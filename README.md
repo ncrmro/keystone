@@ -28,3 +28,8 @@ Multiple ZFS Backup Targets distributed
 ---
 
 Windows TPM Pass Through
+
+---
+
+Home User Share with Freinds and Family
+Orginization share with other founders/board/engineers members
