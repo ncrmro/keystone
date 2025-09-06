@@ -7,9 +7,13 @@ servers provide services for any clients. All storage is encrypted both on the c
 
 At the most macro scale one could expect to have two clients 1 mobile phone and 1 desktop or laptop and a single baremetal or VPS server. The server though should have a public IP address though later we should support using another entities public ip address for ingress and egress. 
 
-For this macro setup one could imaginen a raspberry pi or nuc attached to their home router with an external HDD as a server. The user can host a DNS server that blocks ads and trackers which their laptop client could take advantage of. Their laptop remotly backups to this device
+- raspberry pi or nuc attached to their home router with an external HDD as a server
+- VPS on AWS, Vultr etc
+  - using cheap storage for backups
 
-The server ideally is battery backuped up but also configured to automatically restart anytime power applied is applied.
+The user can host a DNS server that blocks ads and trackers which their laptop client could take advantage of. Their laptop remotly backups to this device
+
+The server ideally is battery backuped up but also configured to automatically restart anytime power hi is applied.
 
 All devices use a TPM to store an encryption key that unlock the root disk as long as hardware and bootloader attestations are verfied.
 
