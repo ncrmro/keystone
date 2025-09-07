@@ -12,9 +12,13 @@
       # Example SSH public keys - replace these with your actual keys
       exampleSshKeys = [
         # Example RSA key (replace with your actual public key)
-        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... user@example.com"
+        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDGvq9+WLBsOQe9H5q5Y8tQcEU4oOx5Qk7f3E4TYr7rKc user@example.com"
         # Example Ed25519 key (replace with your actual public key) 
-        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@example.com"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG1rP4z1q3w9h8K9zE4Q5Y6x7p2w3v4e5R6T7Y8u9I0o1P2 user@example.com"
+        
+        # You can add multiple keys for different users or machines:
+        # "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... admin@workstation"
+        # "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC... backup@server"
       ];
     in
     {
