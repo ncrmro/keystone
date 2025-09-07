@@ -1,0 +1,24 @@
+# Nix build outputs
+result
+result-*
+
+# Nix development
+.direnv/
+.envrc
+
+# ISO files (they are large)
+*.iso
+
+# Editor files
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
