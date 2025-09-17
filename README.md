@@ -3,6 +3,10 @@
 Self Sovereign Infrastructure. Infrastructure consists of clients and servers. Clients are devices used by end users while 
 servers provide services for any clients. All storage is encrypted both on the client and on remote backups. A distrubute network for clients and services is made available via a VPN. Infrastructure beloning to one group (user,family,friends,business) should allow for shared allocation of resourses (storage/compute), for example two or more business partners, family households, friends, states etc should be able to pool limit defined resources.
 
+## Getting Started
+
+- [USB Installer](docs/usb-installer.md) - Create bootable USB with SSH keys for remote NixOS installation
+
 # Infrastructure
 
 At the most macro scale one could expect to have two clients 1 mobile phone and 1 desktop or laptop and a single baremetal or VPS server. The server though should have a public IP address though later we should support using another entities public ip address for ingress and egress. 
@@ -43,38 +47,6 @@ Workstation
 ---
 
 Multiple ZFS Backup Targets distributed 
-
----
-
-## USB Installer
-
-Keystone includes a USB installer that contains SSH keys for remote installation using nixos-anywhere.
-
-### Quick Start
-
-1. Navigate to the example:
-   ```bash
-   cd examples/iso-installer
-   ```
-
-2. Edit `flake.nix` to add your SSH public keys
-
-3. Build the ISO:
-   ```bash
-   nix build .#iso
-   ```
-
-4. Write to USB:
-   ```bash
-   nix run .#write-usb /dev/sdX
-   ```
-
-5. Boot target machine from USB and install remotely:
-   ```bash
-   nixos-anywhere --flake .#your-config root@<installer-ip>
-   ```
-
-See `examples/iso-installer/README.md` for detailed instructions.
 
 ---
 
