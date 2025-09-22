@@ -1,0 +1,20 @@
+# Nix build outputs
+result
+result-*
+
+# Temporary files
+.tmp/
+*~
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
