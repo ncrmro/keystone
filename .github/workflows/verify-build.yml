@@ -1,0 +1,24 @@
+name: Verify Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v22
+      
+      - name: Check flake
+        run: nix flake check
+        
+      - name: Verify ISO builds
+        run: nix build .#iso --dry-run
+        
+      - name: Verify build-iso package
+        run: nix build .#build-iso
+        
+      - name: Test build-iso script
+        run: nix run .#build-iso -- --help
