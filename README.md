@@ -1,11 +1,12 @@
 # keystone
 
 Self Sovereign Infrastructure. Infrastructure consists of clients and servers. Clients are devices used by end users while 
-servers provide services for any clients. All storage is encrypted both on the client and on remote backups. A distrubute network for clients and services is made available via a VPN. Infrastructure beloning to one group (user,family,friends,business) should allow for shared allocation of resourses (storage/compute), for example two or more business partners, family households, friends, states etc should be able to pool limit defined resources.
+servers provide services for any clients. All storage is encrypted both on the client and on remote backups. A distributed network for clients and services is made available via a VPN. Infrastructure belonging to one group (user, family, friends, business) should allow for shared allocation of resources (storage/compute), for example two or more business partners, family households, friends, states etc should be able to pool limit defined resources.
 
 ## Getting Started
 
-- [USB Installer](docs/usb-installer.md) - Create bootable USB with SSH keys for remote NixOS installation
+- [ISO Generation](docs/iso-generation.md) - Create bootable USB with SSH keys for remote NixOS installation
+- [Build Platforms](docs/build-platforms.md) - Platform-specific setup instructions
 
 # Infrastructure
 
@@ -15,11 +16,11 @@ At the most macro scale one could expect to have two clients 1 mobile phone and 
 - VPS on AWS, Vultr etc
   - using cheap storage for backups
 
-The user can host a DNS server that blocks ads and trackers which their laptop client could take advantage of. Their laptop remotly backups to this device
+The user can host a DNS server that blocks ads and trackers which their laptop client could take advantage of. Their laptop remotely backups to this device.
 
-The server ideally is battery backuped up but also configured to automatically restart anytime power hi is applied.
+The server ideally is battery backed up but also configured to automatically restart anytime power is applied.
 
-All devices use a TPM to store an encryption key that unlock the root disk as long as hardware and bootloader attestations are verfied.
+All devices use a TPM to store an encryption key that unlocks the root disk as long as hardware and bootloader attestations are verified.
 
 
 Desktop and Laptop clients use Hyprland.  
@@ -54,5 +55,5 @@ Windows TPM Pass Through
 
 ---
 
-Home User Share with Freinds and Family
-Orginization share with other founders/board/engineers members
+Home User Share with Friends and Family
+Organization share with other founders/board/engineers members
