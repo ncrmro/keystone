@@ -15,7 +15,7 @@ cd keystone
 ./bin/build-iso
 
 # With SSH keys
-./bin/build-iso --ssh-keys ~/.ssh/id_ed25519.pub
+./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
 ## Platform Setup
@@ -67,8 +67,7 @@ jobs:
       - name: Build ISO with SSH key
         if: github.event.inputs.ssh_key != ''
         run: |
-          echo '${{ github.event.inputs.ssh_key }}' > ssh_key.txt
-          nix run .#build-iso -- --ssh-keys ssh_key.txt
+          ./bin/build-iso --ssh-key '${{ github.event.inputs.ssh_key }}'
           
       - name: Build ISO without SSH key
         if: github.event.inputs.ssh_key == ''

@@ -10,7 +10,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default values
-SSH_KEYS_FILE=""
+SSH_KEYS_INPUT=""
 OUTPUT_DIR="result"
 SHOW_HELP=false
 
@@ -22,7 +22,7 @@ Keystone ISO Builder
 Usage: $0 [OPTIONS]
 
 OPTIONS:
-    -k, --ssh-keys FILE     File containing SSH public keys (one per line)
+    -k, --ssh-key INPUT     SSH public key as file path or key string directly
     -o, --output DIR        Output directory (default: result)
     -h, --help              Show this help message
 
@@ -30,17 +30,24 @@ EXAMPLES:
     # Build ISO without SSH keys
     $0
 
-    # Build ISO with SSH keys from file
-    $0 --ssh-keys ~/.ssh/authorized_keys
+    # Build ISO with SSH key from file
+    $0 --ssh-key ~/.ssh/id_ed25519.pub
+    $0 --ssh-key /home/user/.ssh/authorized_keys
+
+    # Build ISO with SSH key string directly
+    $0 --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host"
 
     # Build with custom output directory
-    $0 --ssh-keys keys.txt --output my-iso
+    $0 --ssh-key ~/.ssh/id_ed25519.pub --output my-iso
 
-SSH KEYS FILE FORMAT:
-    The SSH keys file should contain one public key per line, for example:
+SSH KEY INPUT:
+    Can be either:
+    - File path (starts with /, ~, or .): File containing SSH public keys (one per line)
+    - Key string: SSH public key string directly
     
-    ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@workstation
-    ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD... admin@server
+    Examples:
+    - ~/.ssh/id_ed25519.pub                              (file path)
+    - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host  (key string)
 
 EOF
 }
@@ -48,8 +55,8 @@ EOF
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -k|--ssh-keys)
-            SSH_KEYS_FILE="$2"
+        -k|--ssh-key)
+            SSH_KEYS_INPUT="$2"
             shift 2
             ;;
         -o|--output)
@@ -73,17 +80,38 @@ if [[ "$SHOW_HELP" == "true" ]]; then
     exit 0
 fi
 
-# Validate SSH keys file if provided
-if [[ -n "$SSH_KEYS_FILE" ]]; then
-    if [[ ! -f "$SSH_KEYS_FILE" ]]; then
-        echo -e "${RED}Error: SSH keys file '$SSH_KEYS_FILE' not found${NC}" >&2
-        exit 1
-    fi
-    
-    # Check if file has valid SSH keys
-    if ! grep -q "^ssh-" "$SSH_KEYS_FILE"; then
-        echo -e "${YELLOW}Warning: No SSH keys found in '$SSH_KEYS_FILE'${NC}" >&2
-        echo -e "${YELLOW}Expected format: one SSH public key per line${NC}" >&2
+# Process SSH keys input if provided
+SSH_KEYS_FILE=""
+if [[ -n "$SSH_KEYS_INPUT" ]]; then
+    # Check if input looks like a file path (starts with /, ~, or .)
+    if [[ "$SSH_KEYS_INPUT" =~ ^[/~.] ]]; then
+        # Treat as file path
+        SSH_KEYS_FILE="$SSH_KEYS_INPUT"
+        
+        if [[ ! -f "$SSH_KEYS_FILE" ]]; then
+            echo -e "${RED}Error: SSH keys file '$SSH_KEYS_FILE' not found${NC}" >&2
+            exit 1
+        fi
+        
+        # Check if file has valid SSH keys
+        if ! grep -q "^ssh-" "$SSH_KEYS_FILE"; then
+            echo -e "${YELLOW}Warning: No SSH keys found in '$SSH_KEYS_FILE'${NC}" >&2
+            echo -e "${YELLOW}Expected format: one SSH public key per line${NC}" >&2
+        fi
+    else
+        # Treat as direct SSH key string
+        if [[ ! "$SSH_KEYS_INPUT" =~ ^ssh- ]]; then
+            echo -e "${RED}Error: SSH key string must start with 'ssh-'${NC}" >&2
+            echo -e "${YELLOW}Example: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host${NC}" >&2
+            exit 1
+        fi
+        
+        # Create temporary file with the SSH key
+        SSH_KEYS_FILE=$(mktemp)
+        echo "$SSH_KEYS_INPUT" > "$SSH_KEYS_FILE"
+        
+        # Clean up temp file on exit
+        trap "rm -f $SSH_KEYS_FILE" EXIT
     fi
 fi
 
@@ -92,6 +120,9 @@ echo -e "${BLUE}🔨 Building Keystone ISO...${NC}"
 # Create temporary flake if SSH keys are provided
 if [[ -n "$SSH_KEYS_FILE" ]]; then
     echo -e "${BLUE}📋 Using SSH keys from: $SSH_KEYS_FILE${NC}"
+    
+    # Store original working directory
+    ORIG_DIR=$(pwd)
     
     # Create temporary directory
     TEMP_DIR=$(mktemp -d)
@@ -116,14 +147,20 @@ if [[ -n "$SSH_KEYS_FILE" ]]; then
   description = "Keystone ISO with custom SSH keys";
   
   inputs = {
-    keystone.url = "path:$(pwd)";
-    nixpkgs.follows = "keystone/nixpkgs";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
   };
   
-  outputs = { self, keystone, nixpkgs }: {
+  outputs = { self, nixpkgs }: {
     nixosConfigurations = {
-      keystoneIso = keystone.lib.mkKeystoneIso {
-        sshKeys = $SSH_KEYS_ARRAY;
+      keystoneIso = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          "\${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+          $(pwd)/modules/iso-installer.nix
+          {
+            _module.args.sshKeys = $SSH_KEYS_ARRAY;
+          }
+        ];
       };
     };
     
@@ -135,12 +172,12 @@ EOF
     
     echo -e "${BLUE}🚀 Building ISO with SSH keys...${NC}"
     cd "$TEMP_DIR"
-    nix build --out-link "../$OUTPUT_DIR"
+    nix build --impure --out-link "$ORIG_DIR/$OUTPUT_DIR"
     cd - > /dev/null
     
 else
     echo -e "${BLUE}🚀 Building ISO without SSH keys...${NC}"
-    nix build ".#nixosConfigurations.keystoneIso.config.system.build.isoImage" --out-link "$OUTPUT_DIR"
+    nix build ".#iso" --out-link "$OUTPUT_DIR"
 fi
 
 # Check if build was successful

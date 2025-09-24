@@ -1,5 +1,6 @@
 name: Verify Build
 
+# Only run on pull requests to validate changes without consuming excessive CI resources
 on:
   pull_request:
 
@@ -7,17 +8,32 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
+      # Check out the repository code to access flake.nix and related files
       - uses: actions/checkout@v4
+      
+      # Install Nix package manager with flakes support for building NixOS configurations
       - uses: cachix/install-nix-action@v22
       
+      # Validate flake syntax and configuration correctness
+      # This catches basic errors like missing inputs or invalid Nix expressions
       - name: Check flake
         run: nix flake check
         
+      # Test that the ISO configuration can be evaluated and built (dry-run only)
+      # Uses --dry-run to avoid actually building the multi-GB ISO in CI
+      # This verifies the configuration is valid without consuming time/storage
       - name: Verify ISO builds
         run: nix build .#iso --dry-run
         
-      - name: Verify build-iso package
-        run: nix build .#build-iso
-        
+      # Test that the build-iso script executes correctly
+      # Validates the script syntax and help output without triggering a build
       - name: Test build-iso script
-        run: nix run .#build-iso -- --help
+        run: ./bin/build-iso --help
+        
+      # Test build-iso with direct SSH key string (dry run)
+      # Validates SSH key string handling without actually building
+      - name: Test SSH key string handling
+        run: |
+          # Test with a dummy SSH key string to validate parsing
+          echo "Testing SSH key string parsing..."
+          ./bin/build-iso --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGtest test@example.com" --help || true

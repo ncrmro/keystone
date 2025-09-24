@@ -1,169 +1,103 @@
 # ISO Generation Guide
 
-This guide explains how to generate a Keystone installer ISO with your SSH public keys.
+Generate a Keystone installer ISO with SSH keys for remote installation.
 
-## Quick Start
-
-### Method 1: Using the main flake (no SSH keys)
+## Quick Build
 
 ```bash
-# Build the ISO without SSH keys
-nix build .#nixosConfigurations.keystoneIso.config.system.build.isoImage
+# Clone and build
+git clone https://github.com/yourusername/keystone
+cd keystone
 
-# The ISO will be available at: result/iso/keystone-installer.iso
+# Build without SSH keys
+./bin/build-iso
+
+# Build with SSH key from file
+./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
+
+# Build with SSH key string directly
+./bin/build-iso --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host"
 ```
 
-### Method 2: Create your own flake with SSH keys
+## SSH Key Options
 
-1. Create a new directory for your custom ISO:
+The `--ssh-key` option accepts either:
+
+### File Path
 ```bash
-mkdir my-keystone-iso
-cd my-keystone-iso
+# File paths (starts with /, ~, or .)
+./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
+./bin/build-iso --ssh-key /home/user/.ssh/authorized_keys
+./bin/build-iso --ssh-key ./my-keys.txt
 ```
 
-2. Create a `flake.nix` file:
-```nix
-{
-  description = "My custom Keystone ISO with SSH keys";
-  
-  inputs = {
-    keystone.url = "github:yourusername/keystone";  # or path:../path/to/keystone
-    nixpkgs.follows = "keystone/nixpkgs";
-  };
-  
-  outputs = { self, keystone, nixpkgs }: {
-    nixosConfigurations = {
-      myKeystoneIso = keystone.lib.mkKeystoneIso {
-        sshKeys = [
-          # Add your SSH public keys here
-          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@workstation"
-          "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD... admin@server"
-        ];
-      };
-    };
-    
-    packages.x86_64-linux.default = 
-      self.nixosConfigurations.myKeystoneIso.config.system.build.isoImage;
-  };
-}
-```
-
-3. Build your custom ISO:
+### Direct Key String
 ```bash
-nix build
+# SSH key string directly
+./bin/build-iso --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host"
+./bin/build-iso --ssh-key "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD... user@host"
 ```
 
-## Getting Your SSH Public Key
-
-To find your SSH public key:
+## Get Your SSH Key
 
 ```bash
-# For Ed25519 keys (recommended)
+# Ed25519 (recommended)
 cat ~/.ssh/id_ed25519.pub
 
-# For RSA keys
+# RSA
 cat ~/.ssh/id_rsa.pub
 
-# If you don't have a key, generate one:
+# Generate if needed
 ssh-keygen -t ed25519 -C "your-email@example.com"
 ```
 
-## Writing to USB Drive
+## Write to USB
 
-### Using the convenience script (if available)
 ```bash
-nix run .#write-usb /dev/sdX  # Replace X with your USB drive letter
-```
-
-### Manual method
-```bash
-# Find your USB device
+# Find USB device
 lsblk
 
-# Write the ISO (replace /dev/sdX with your actual device)
-sudo dd if=result/iso/keystone-installer.iso of=/dev/sdX bs=4M status=progress
+# Write ISO
+sudo dd if=result/iso/*.iso of=/dev/sdX bs=4M status=progress
 sync
 ```
 
-⚠️ **Warning**: Double-check your device path! The `dd` command will overwrite all data on the target device.
+⚠️ **Warning**: `dd` will erase all data on target device.
 
-## Using the ISO
+## Use the ISO
 
-1. Boot from the USB drive
-2. The system will automatically:
-   - Start SSH daemon
-   - Configure networking via DHCP
-   - Load your SSH keys for root access
+1. Boot from USB
+2. System auto-configures: SSH, DHCP, tools
+3. Get IP: `ip addr show`
+4. Connect: `ssh root@<ip-address>`
 
-3. Find the IP address:
-```bash
-ip addr show
-```
+## Features
 
-4. Connect remotely:
-```bash
-ssh root@<ip-address>
-```
-
-## Features Included
-
-The Keystone installer ISO includes:
-
-- **SSH access**: Preconfigured with your public keys
-- **Networking**: DHCP enabled by default
-- **Essential tools**: git, curl, vim, htop, parted, cryptsetup
-- **ZFS support**: Ready for advanced filesystem setups
-- **nixos-anywhere compatibility**: Works with automated deployment tools
-
-## Troubleshooting
-
-### ISO build fails
-- Ensure you have enough disk space (builds can be several GB)
-- Check that all SSH keys are valid public keys
-- Verify your flake syntax with `nix flake check`
-
-### Can't connect via SSH
-- Verify the machine has network connectivity
-- Check that SSH is running: `systemctl status sshd`
-- Ensure your private key corresponds to the public key in the ISO
-- Try connecting with verbose output: `ssh -v root@<ip>`
-
-### USB won't boot
-- Ensure UEFI/BIOS is configured to boot from USB
-- Try a different USB port or drive
-- Verify the ISO was written correctly by checking the file size
+- SSH with your keys
+- DHCP networking
+- Essential tools (git, vim, parted, etc.)
+- ZFS support
+- nixos-anywhere compatible
 
 ## Advanced Usage
 
-### Custom hostname
-```nix
-# In your flake.nix modules list:
-{
-  networking.hostName = "my-installer";
-}
+```bash
+./bin/build-iso --help              # Show all options
+./bin/build-iso -o custom-dir       # Custom output directory
+
+# Direct Nix commands (no SSH keys)
+nix build .#iso                     # Build ISO directly
 ```
 
-### Additional packages
-```nix
-# In your flake.nix modules list:
-{
-  environment.systemPackages = with pkgs; [
-    tmux
-    ripgrep
-    # ... other packages
-  ];
-}
-```
+## Platform Setup
 
-### Wireless networking
-```nix
-# In your flake.nix modules list:
-{
-  networking.wireless.enable = true;
-  networking.wireless.networks = {
-    "MyWiFi" = {
-      psk = "password";
-    };
-  };
-}
+Need to install Nix first? See **[Build Platforms](build-platforms.md)** for setup instructions on Ubuntu, macOS, Windows, and GitHub Actions.
+
+## File Format
+
+When using a file path, SSH keys file should contain one public key per line:
+
+```
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@workstation  
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD... admin@server
 ```
