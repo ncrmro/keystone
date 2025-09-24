@@ -1,7 +1,6 @@
 name: Verify Build
 
 on:
-  push:
   pull_request:
 
 jobs:
