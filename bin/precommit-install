@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+
+if [ -z "$REPO_ROOT" ]; then
+    echo "Error: Not in a git repository"
+    exit 1
+fi
+
+HOOK_FILE="$REPO_ROOT/.git/hooks/pre-commit"
+
+echo "Setting up pre-commit hook for Alejandra formatting..."
+
+cat > "$HOOK_FILE" << 'EOF'
+#!/usr/bin/env bash
+
+set -e
+
+echo "Running Alejandra formatter on staged Nix files..."
+
+if ! command -v alejandra &> /dev/null; then
+    echo "Error: alejandra is not installed"
+    echo "Install it with: nix-env -iA nixpkgs.alejandra"
+    exit 1
+fi
+
+# Get list of staged .nix files
+STAGED_NIX_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.nix$' || true)
+
+if [ -z "$STAGED_NIX_FILES" ]; then
+    echo "No staged .nix files to format"
+    exit 0
+fi
+
+echo "Formatting staged .nix files:"
+echo "$STAGED_NIX_FILES"
+
+# Format each staged file
+echo "$STAGED_NIX_FILES" | while IFS= read -r file; do
+    if [ -f "$file" ]; then
+        alejandra "$file"
+        if [ $? -ne 0 ]; then
+            echo "Alejandra formatting failed for $file"
+            exit 1
+        fi
+        # Re-stage the formatted file
+        git add "$file"
+    fi
+done
+
+echo "Alejandra formatting complete"
+EOF
+
+chmod +x "$HOOK_FILE"
+
+echo "Pre-commit hook installed successfully at $HOOK_FILE"
+echo "The hook will format only staged .nix files before each commit"
