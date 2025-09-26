@@ -1,12 +1,18 @@
-# keystone
+# Keystone
 
-Self Sovereign Infrastructure. Infrastructure consists of clients and servers. Clients are devices used by end users while 
-servers provide services for any clients. All storage is encrypted both on the client and on remote backups. A distributed network for clients and services is made available via a VPN. Infrastructure belonging to one group (user, family, friends, business) should allow for shared allocation of resources (storage/compute), for example two or more business partners, family households, friends, states etc should be able to pool limit defined resources.
+Keystone enables self-sovereign infrastructure that you fully control, whether running on bare-metal hardware or cloud services. Unlike traditional infrastructure solutions, Keystone is designed for seamless migration between different environments while maintaining security, availability, and shared resource access.
+
+## Core Principles
+
+**Self-Sovereign Infrastructure**: Your infrastructure belongs to you. All data is encrypted at rest and in transit, with cryptographic keys under your control. Whether running on a Raspberry Pi in your home or a cloud VPS, you maintain full ownership and control.
+
+**Declarative Configuration**: Everything is configured as code and can be managed in version control systems like Git. Define your desired infrastructure state once in configuration files, and Keystone maintains it across different hardware and network environments. This goes beyond traditional disaster recovery—it enables live migration of services between bare-metal and cloud infrastructure as needs change.
+
+**Flexible Resource Sharing**: Share compute and storage resources within trusted groups (family, friends, business partners) while maintaining security boundaries and resource limits.
 
 ## Getting Started
 
-- [ISO Generation](docs/iso-generation.md) - Create bootable USB with SSH keys for remote NixOS installation
-- [Build Platforms](docs/build-platforms.md) - Platform-specific setup instructions
+- [Installation Guide](docs/installation.md) - Complete installation process from ISO generation to first boot
 
 # Infrastructure
 
