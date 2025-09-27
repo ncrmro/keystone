@@ -10,56 +10,85 @@ Keystone enables self-sovereign infrastructure that you fully control, whether r
 
 **Flexible Resource Sharing**: Share compute and storage resources within trusted groups (family, friends, business partners) while maintaining security boundaries and resource limits.
 
+## Architecture: Servers and Clients
+
+Keystone provides two primary types of infrastructure:
+
+### Servers 🖥️
+**Always-on infrastructure that provides services**
+- Network gateway, VPN endpoint, DNS server with ad/tracker blocking
+- Storage server with redundant disks, backup destination, media server
+- **Purpose**: Run 24/7, provide services to clients and external access
+- **Hardware**: Raspberry Pi, NUC, dedicated server, or VPS
+
+### Clients 💻
+**Interactive devices for daily computing**
+- Desktop/laptop with development tools, user applications, desktop environment
+- **Purpose**: Daily work, development, desktop computing that connects to server services
+- **Hardware**: Laptop, desktop workstation, or any device for interactive use
+
+### How They Work Together
+- Clients connect to servers for backups, VPN access, shared storage
+- Servers provide always-on services while clients can be powered down
+- Both use the same security model (TPM, encryption, secure boot attestation)
+- All devices automatically encrypt data and maintain cryptographic verification
+
+## Common Deployment Patterns
+
+### Pattern 1: Home Server + Laptop
+- **Server**: Raspberry Pi or NUC providing network services and storage
+- **Client**: Laptop for daily computing
+- **Use Case**: Home user with reliable home internet, wants network-wide ad blocking and secure remote access
+
+### Pattern 2: VPS + Workstation  
+- **Server**: Cloud VPS providing VPN and backup services
+- **Client**: Desktop workstation with high-performance hardware
+- **Use Case**: Remote work, need reliable external access point and backup destination
+
+### Pattern 3: Complete Home Lab
+- **Servers**: Multiple servers for different services and redundancy
+- **Clients**: Multiple devices for family or team use
+- **Use Case**: Family or small team with extensive home infrastructure needs
+
 ## Getting Started
 
 - [Installation Guide](docs/installation.md) - Complete installation process from ISO generation to first boot
+- [Examples](docs/examples.md) - Server and client deployment examples
 
-# Infrastructure
+## Available Configurations
 
-At the most macro scale one could expect to have two clients 1 mobile phone and 1 desktop or laptop and a single baremetal or VPS server. The server though should have a public IP address though later we should support using another entities public ip address for ingress and egress. 
+### Server Configuration
+- Network gateway, VPN server, DNS with ad blocking, firewall management
+- Storage server with ZFS, automated backups, media services
+- Always-on services for clients and external access
 
-- raspberry pi or nuc attached to their home router with an external HDD as a server
-- VPS on AWS, Vultr etc
-  - using cheap storage for backups
+### Client Configuration  
+- Desktop environment, development tools, automated backup client
+- Interactive computing that connects to server services
 
-The user can host a DNS server that blocks ads and trackers which their laptop client could take advantage of. Their laptop remotely backups to this device.
+### Installer
+- **ISO Installer**: Bootable installer for deploying Keystone to new hardware
 
-The server ideally is battery backed up but also configured to automatically restart anytime power is applied.
+## Key Features
 
-All devices use a TPM to store an encryption key that unlocks the root disk as long as hardware and bootloader attestations are verified.
+### Security
+- **TPM Integration**: Hardware-based encryption key storage and bootloader attestation
+- **Full Disk Encryption**: LUKS encryption on all storage devices
+- **Secure Boot**: Verified boot chain with hardware attestation
+- **Zero-Knowledge Architecture**: All data encrypted before leaving devices
 
+### Storage & Backups
+- **ZFS Everywhere**: Copy-on-write filesystem with snapshots and compression
+- **Automated Backups**: Clients automatically backup to designated servers
+- **Distributed Storage**: Multiple backup targets across different locations
+- **Incremental Snapshots**: Efficient storage using ZFS snapshot capabilities
 
-Desktop and Laptop clients use Hyprland.  
+### Networking
+- **WireGuard VPN**: Secure remote access to home network and services
+- **DNS Filtering**: Network-wide ad and tracker blocking
+- **Secure Networking**: Encrypted communication between all Keystone devices
 
-Users typically have the following hardware.
-
-- Laptop
-- Workstation
-- Server
-  - Router
-  - NAS
-
----
-
-Typically these services are needed
-
-- VPN
-- Backups
-- Compute
-
----
-
-Workstation
-
----
-
-Multiple ZFS Backup Targets distributed 
-
----
-
-Windows TPM Pass Through
-
----
-
-Home User Share with Friends and Family
-Organization share with other founders/board/engineers members
+### Resource Sharing
+- **Family/Team Access**: Controlled sharing of compute and storage resources
+- **Permission Management**: Fine-grained access control for shared resources
+- **Cross-Platform Support**: Windows/Mac clients can connect to Linux servers
