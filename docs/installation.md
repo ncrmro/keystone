@@ -93,7 +93,7 @@ lsblk -f
 
 ## Configuration Examples
 
-### Basic Workstation
+### Client Configuration
 
 ```nix
 # flake.nix
@@ -104,10 +104,10 @@ lsblk -f
   };
 
   outputs = { nixpkgs, keystone, ... }: {
-    nixosConfigurations.workstation = nixpkgs.lib.nixosSystem {
+    nixosConfigurations.client = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        keystone.nixosModules.workstation
+        keystone.nixosModules.client
         ./hardware-configuration.nix
         {
           # Your custom configuration
