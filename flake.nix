@@ -26,6 +26,55 @@
           }
         ];
       };
+
+      # VM Infrastructure Configurations
+      router = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          ./vm-infrastructure/configs/router.nix
+        ];
+      };
+
+      storage = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          ./vm-infrastructure/configs/storage.nix
+        ];
+      };
+
+      client = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          ./vm-infrastructure/configs/client.nix
+        ];
+      };
+
+      backup = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          ./vm-infrastructure/configs/backup.nix
+        ];
+      };
+
+      dev = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          ./vm-infrastructure/configs/dev.nix
+        ];
+      };
+
+      off-site = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          ./vm-infrastructure/configs/off-site.nix
+        ];
+      };
     };
 
     # Export Keystone modules for use in other flakes
