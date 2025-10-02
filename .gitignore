@@ -22,3 +22,9 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+
+# VM files and directories
+vms/
+*.qcow2
+*.log
+*.fd

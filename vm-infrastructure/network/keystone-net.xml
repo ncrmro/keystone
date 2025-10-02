@@ -1,0 +1,20 @@
+<network>
+  <name>keystone-net</name>
+  <forward mode='nat'>
+    <nat>
+      <port start='1024' end='65535'/>
+    </nat>
+  </forward>
+  <bridge name='virbr-keystone' stp='on' delay='0'/>
+  <mac address='52:54:00:12:34:56'/>
+  <ip address='192.168.100.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.100.50' end='192.168.100.100'/>
+      <!-- Static leases for servers -->
+      <host mac='52:54:00:12:34:10' name='keystone-router' ip='192.168.100.10'/>
+      <host mac='52:54:00:12:34:20' name='keystone-storage' ip='192.168.100.20'/>
+      <host mac='52:54:00:12:34:30' name='keystone-backup' ip='192.168.100.30'/>
+      <host mac='52:54:00:12:34:40' name='keystone-off-site' ip='192.168.100.40'/>
+    </dhcp>
+  </ip>
+</network>
