@@ -4,9 +4,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.client.services.system;
-in {
+in
+{
   options.keystone.client.services.system = {
     enable = mkEnableOption "System services and configuration";
   };
@@ -30,7 +32,10 @@ in {
     };
 
     # Enable flakes and new nix command
-    nix.settings.experimental-features = ["nix-command" "flakes"];
+    nix.settings.experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
 
     # Allow unfree packages (for some hardware drivers)
     nixpkgs.config.allowUnfree = true;

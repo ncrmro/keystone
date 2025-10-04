@@ -4,7 +4,8 @@
   pkgs,
   ...
 }:
-with lib; {
+with lib;
+{
   # Client configuration module
   # Provides interactive workstation/laptop setup with Hyprland desktop
 
@@ -19,7 +20,9 @@ with lib; {
   ];
 
   options.keystone.client = {
-    enable = mkEnableOption "Keystone client configuration" // {default = true;};
+    enable = mkEnableOption "Keystone client configuration" // {
+      default = true;
+    };
 
     desktop = {
       hyprland.enable = mkOption {

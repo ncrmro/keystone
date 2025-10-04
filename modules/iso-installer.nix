@@ -3,9 +3,10 @@
   config,
   pkgs,
   lib,
-  sshKeys ? [],
+  sshKeys ? [ ],
   ...
-}: {
+}:
+{
   # Enable SSH daemon for remote access
   services.openssh = {
     enable = true;
@@ -50,13 +51,13 @@
   ];
 
   # Enable the serial console for remote debugging
-  boot.kernelParams = ["console=ttyS0,115200"];
+  boot.kernelParams = [ "console=ttyS0,115200" ];
 
   # Ensure SSH starts on boot
-  systemd.services.sshd.wantedBy = lib.mkForce ["multi-user.target"];
+  systemd.services.sshd.wantedBy = lib.mkForce [ "multi-user.target" ];
 
   # Automatically configure network on boot
-  systemd.services.dhcpcd.wantedBy = ["multi-user.target"];
+  systemd.services.dhcpcd.wantedBy = [ "multi-user.target" ];
 
   # Set a reasonable timeout for the installation media
   boot.kernelPackages = pkgs.linuxPackages_latest;
@@ -66,7 +67,7 @@
   documentation.nixos.enable = false;
 
   # Enable zfs support (common for nixos-anywhere setups)
-  boot.supportedFilesystems = ["zfs"];
+  boot.supportedFilesystems = [ "zfs" ];
   boot.zfs.forceImportRoot = false;
   boot.zfs.forceImportAll = false;
 

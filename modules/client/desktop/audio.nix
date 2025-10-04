@@ -4,9 +4,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.client.desktop.audio;
-in {
+in
+{
   options.keystone.client.desktop.audio = {
     enable = mkEnableOption "PipeWire audio system";
   };

@@ -1,4 +1,5 @@
-{...}: {
+{ ... }:
+{
   services.k3s.autoDeployCharts = {
     loki = {
       name = "loki";
@@ -89,7 +90,7 @@
             tls = [
               {
                 # Using default ingress-nginx wildcard cert (*.ncrmro.com)
-                hosts = ["loki.ncrmro.com"];
+                hosts = [ "loki.ncrmro.com" ];
               }
             ];
           };

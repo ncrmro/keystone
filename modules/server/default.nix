@@ -4,7 +4,8 @@
   pkgs,
   ...
 }:
-with lib; {
+with lib;
+{
   # Server configuration module
   # Provides always-on infrastructure services
 
@@ -13,7 +14,9 @@ with lib; {
   ];
 
   options.keystone.server = {
-    enable = mkEnableOption "Keystone server configuration" // {default = true;};
+    enable = mkEnableOption "Keystone server configuration" // {
+      default = true;
+    };
   };
 
   config = mkIf config.keystone.server.enable {
@@ -45,7 +48,7 @@ with lib; {
     # Basic firewall configuration
     networking.firewall = {
       enable = true;
-      allowedTCPPorts = [22]; # SSH
+      allowedTCPPorts = [ 22 ]; # SSH
     };
 
     # Enable systemd-resolved for DNS
