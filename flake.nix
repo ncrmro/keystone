@@ -7,7 +7,10 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-
+    omarchy = {
+      url = "github:basecamp/omarchy/v3.0.2";
+      flake = false;
+    };
   };
 
   outputs =
