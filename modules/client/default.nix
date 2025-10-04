@@ -2,6 +2,8 @@
   lib,
   config,
   pkgs,
+  home-manager,
+  omarchy,
   ...
 }:
 with lib;
@@ -11,12 +13,14 @@ with lib;
 
   imports = [
     ../disko-single-disk-root
+    home-manager.nixosModules.home-manager
     ./desktop/hyprland.nix
     ./desktop/audio.nix
     ./desktop/greetd.nix
     ./desktop/packages.nix
     ./services/networking.nix
     ./services/system.nix
+    ./home
   ];
 
   options.keystone.client = {
@@ -63,6 +67,20 @@ with lib;
         description = "Enable system services and configuration";
       };
     };
+
+    home = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable home-manager configuration";
+      };
+
+      omarchy.enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable omarchy configuration and tools";
+      };
+    };
   };
 
   config = mkIf config.keystone.client.enable {
@@ -79,6 +97,11 @@ with lib;
         networking.enable = mkDefault config.keystone.client.services.networking.enable;
         system.enable = mkDefault config.keystone.client.services.system.enable;
       };
+
+      home = {
+        enable = mkDefault config.keystone.client.home.enable;
+        omarchy.enable = mkDefault config.keystone.client.home.omarchy.enable;
+      };
     };
 
     # Client-optimized kernel settings
@@ -92,6 +115,11 @@ with lib;
 
     # Enable mutable users for desktop usage
     users.mutableUsers = true;
+
+    # Pass omarchy to home-manager modules
+    home-manager.extraSpecialArgs = {
+      inherit omarchy;
+    };
 
     # Additional client-specific packages
     environment.systemPackages = with pkgs; [

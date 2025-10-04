@@ -7,6 +7,10 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    home-manager = {
+      url = "github:nix-community/home-manager/release-25.05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     omarchy = {
       url = "github:basecamp/omarchy/v3.0.2";
       flake = false;
@@ -18,6 +22,8 @@
       self,
       nixpkgs,
       disko,
+      home-manager,
+      omarchy,
       ...
     }:
     {
@@ -41,6 +47,7 @@
       nixosModules = {
         server = ./modules/server;
         client = ./modules/client;
+        clientHome = ./modules/client/home;
         diskoSingleDiskRoot = ./modules/disko-single-disk-root;
         isoInstaller = ./modules/iso-installer.nix;
       };
