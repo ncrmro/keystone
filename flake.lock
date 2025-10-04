@@ -36,10 +36,28 @@
         "type": "github"
       }
     },
+    "omarchy": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1759093827,
+        "narHash": "sha256-1QJBoMe6MzaD/dcOcqC8QpRxG0Z2c1p+WYqtNFlsTOA=",
+        "owner": "basecamp",
+        "repo": "omarchy",
+        "rev": "f634bfeeb6225cf6cd2df9bb336831f81b1c99c6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "basecamp",
+        "ref": "v3.0.2",
+        "repo": "omarchy",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "disko": "disko",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "omarchy": "omarchy"
       }
     }
   },
