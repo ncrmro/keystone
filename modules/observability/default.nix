@@ -1,4 +1,5 @@
-{...}: {
+{ ... }:
+{
   imports = [
     ./loki.nix
     ./alloy.nix

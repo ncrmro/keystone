@@ -1,4 +1,5 @@
-{...}: {
+{ ... }:
+{
   services.k3s.autoDeployCharts = {
     # Grafana Alloy Helm Chart: https://artifacthub.io/packages/helm/grafana/alloy
     alloy = {

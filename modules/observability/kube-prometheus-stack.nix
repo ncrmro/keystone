@@ -1,4 +1,5 @@
-{...}: {
+{ ... }:
+{
   services.k3s.autoDeployCharts = {
     # Kube Prometheus Stack Helm Chart: https://artifacthub.io/packages/helm/prometheus-community/kube-prometheus-stack
     kube-prometheus-stack = {
@@ -15,19 +16,19 @@
             retention = "90d";
             # Monitor all ServiceMonitors across all namespaces
             serviceMonitorSelectorNilUsesHelmValues = false;
-            serviceMonitorSelector = {};
-            serviceMonitorNamespaceSelector = {};
+            serviceMonitorSelector = { };
+            serviceMonitorNamespaceSelector = { };
             podMonitorSelectorNilUsesHelmValues = false;
-            podMonitorSelector = {};
-            podMonitorNamespaceSelector = {};
+            podMonitorSelector = { };
+            podMonitorNamespaceSelector = { };
             ruleSelectorNilUsesHelmValues = false;
-            ruleSelector = {};
-            ruleNamespaceSelector = {};
+            ruleSelector = { };
+            ruleNamespaceSelector = { };
             storageSpec = {
               volumeClaimTemplate = {
                 spec = {
                   storageClassName = "ocean-nvme";
-                  accessModes = ["ReadWriteOnce"];
+                  accessModes = [ "ReadWriteOnce" ];
                   resources = {
                     requests = {
                       storage = "50Gi";
@@ -41,14 +42,14 @@
                 job_name = "node-exporter";
                 static_configs = [
                   {
-                    targets = ["100.64.0.3:9100"];
+                    targets = [ "100.64.0.3:9100" ];
                     labels = {
                       instance = "ncrmro-workstation";
                       environment = "home";
                     };
                   }
                   {
-                    targets = ["100.64.0.1:9100"];
+                    targets = [ "100.64.0.1:9100" ];
                     labels = {
                       instance = "ncrmro-laptop";
                       environment = "home";
@@ -63,11 +64,11 @@
           ingress = {
             enabled = true;
             ingressClassName = "nginx";
-            hosts = ["prometheus.ncrmro.com"];
+            hosts = [ "prometheus.ncrmro.com" ];
             tls = [
               {
                 # Using default ingress-nginx wildcard cert (*.ncrmro.com)
-                hosts = ["prometheus.ncrmro.com"];
+                hosts = [ "prometheus.ncrmro.com" ];
               }
             ];
           };
@@ -81,11 +82,11 @@
           ingress = {
             enabled = true;
             ingressClassName = "nginx";
-            hosts = ["grafana.ncrmro.com"];
+            hosts = [ "grafana.ncrmro.com" ];
             tls = [
               {
                 # Using default ingress-nginx wildcard cert (*.ncrmro.com)
-                hosts = ["grafana.ncrmro.com"];
+                hosts = [ "grafana.ncrmro.com" ];
               }
             ];
           };
@@ -110,7 +111,7 @@
               volumeClaimTemplate = {
                 spec = {
                   storageClassName = "ocean-nvme";
-                  accessModes = ["ReadWriteOnce"];
+                  accessModes = [ "ReadWriteOnce" ];
                   resources = {
                     requests = {
                       storage = "10Gi";

@@ -43,23 +43,41 @@
   # Service ports
   services = {
     # VPN services
-    wireguard = {port = 51820;};
+    wireguard = {
+      port = 51820;
+    };
     headscale = {
       http = 8080;
       grpc = 50443;
     };
 
     # Infrastructure services
-    adguard = {port = 3000;};
-    jellyfin = {port = 8096;};
-    nextcloud = {port = 8080;};
-    grafana = {port = 3001;};
-    prometheus = {port = 9090;};
+    adguard = {
+      port = 3000;
+    };
+    jellyfin = {
+      port = 8096;
+    };
+    nextcloud = {
+      port = 8080;
+    };
+    grafana = {
+      port = 3001;
+    };
+    prometheus = {
+      port = 9090;
+    };
 
     # Storage services
-    nfs = {port = 2049;};
-    samba = {port = 445;};
-    minio = {port = 9000;};
+    nfs = {
+      port = 2049;
+    };
+    samba = {
+      port = 445;
+    };
+    minio = {
+      port = 9000;
+    };
   };
 
   # SSH keys for infrastructure
