@@ -1,4 +1,4 @@
-.PHONY: ci fmt check-lockfile
+.PHONY: ci fmt check-lockfile vm-server
 
 ci: fmt check-lockfile
 
@@ -13,3 +13,6 @@ check-lockfile:
 	fi
 	@nix flake check --no-build
 	@echo "Lockfile verification passed"
+
+vm-server:
+	cd vms && quickemu --vm server.conf
