@@ -25,6 +25,8 @@ check-lockfile: ## Verify flake.lock is up to date
 	@echo "Lockfile verification passed"
 
 ## VM Testing Targets
+## Note: SSH commands use StrictHostKeyChecking=no for ephemeral test VMs
+## (same default behavior as nixos-anywhere for unattended deployments)
 
 vm-server: ## Launch VM with quickemu (manual workflow)
 	@command -v quickemu >/dev/null 2>&1 || (echo "❌ Error: quickemu not found. Install with: nix-env -iA nixpkgs.quickemu" && exit 1)
@@ -50,7 +52,20 @@ vm-test: ## Build ISO with SSH key and launch VM (automated workflow)
 	fi
 	@if pgrep -f "qemu.*server.conf" > /dev/null; then \
 		echo "⚠️  VM already running (PID: $$(pgrep -f 'qemu.*server.conf'))"; \
-		echo "   Stop it with: make vm-stop"; \
+		echo ""; \
+		if nc -z localhost 22220 2>/dev/null; then \
+			echo "✅ SSH is ready"; \
+			echo ""; \
+			echo "📡 Connect via SSH:"; \
+			echo "   make vm-ssh  (or make vm-connect)"; \
+			echo "   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22220 root@localhost"; \
+			echo ""; \
+		else \
+			echo "⚠️  SSH not ready yet (wait a moment and try 'make vm-ssh')"; \
+			echo ""; \
+		fi; \
+		echo "🛑 Stop: make vm-stop"; \
+		echo "🧹 Clean: make vm-clean"; \
 		exit 1; \
 	fi
 	@if nc -z localhost 22220 2>/dev/null; then \
@@ -66,13 +81,12 @@ vm-test: ## Build ISO with SSH key and launch VM (automated workflow)
 		if nc -z localhost 22220 2>/dev/null; then \
 			echo "✅ VM ready!"; \
 			echo ""; \
-			echo "📡 Connect to VM:"; \
-			echo "   ssh -p 22220 root@localhost"; \
-			echo "   OR: make vm-connect"; \
+			echo "📡 Connect via SSH:"; \
+			echo "   make vm-ssh  (or make vm-connect)"; \
+			echo "   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22220 root@localhost"; \
 			echo ""; \
-			echo "ℹ️  Show connection: make vm-ssh"; \
-			echo "🛑 Stop with: make vm-stop"; \
-			echo "🧹 Clean artifacts: make vm-clean"; \
+			echo "🛑 Stop: make vm-stop"; \
+			echo "🧹 Clean: make vm-clean"; \
 			exit 0; \
 		fi; \
 		sleep 1; \
@@ -82,20 +96,16 @@ vm-test: ## Build ISO with SSH key and launch VM (automated workflow)
 	echo "   Check logs: tail -f vms/server/server.log (if exists)"; \
 	exit 1
 
-vm-ssh: ## Show SSH connection command
+vm-ssh: ## Connect to VM via SSH (alias for vm-connect)
 	@if ! pgrep -f "qemu.*server.conf" > /dev/null; then \
 		echo "⚠️  VM not running. Start with: make vm-server or make vm-test"; \
 		exit 1; \
 	fi
-	@if nc -z localhost $${SSH_PORT:-22220} 2>/dev/null; then \
-		echo "✅ VM is ready"; \
-		echo ""; \
-		echo "📡 SSH connection:"; \
-		echo "   ssh -p $${SSH_PORT:-22220} root@localhost"; \
-	else \
-		echo "⚠️  VM is running but SSH not ready yet"; \
-		echo "   Wait a moment and try again"; \
+	@if ! nc -z localhost $${SSH_PORT:-22220} 2>/dev/null; then \
+		echo "⚠️  VM is running but SSH not ready yet. Wait a moment and try again."; \
+		exit 1; \
 	fi
+	@ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $${SSH_PORT:-22220} root@localhost
 
 vm-connect: ## Connect to VM via SSH
 	@if ! pgrep -f "qemu.*server.conf" > /dev/null; then \
@@ -106,7 +116,7 @@ vm-connect: ## Connect to VM via SSH
 		echo "⚠️  VM is running but SSH not ready yet. Wait a moment and try again."; \
 		exit 1; \
 	fi
-	@ssh -p $${SSH_PORT:-22220} root@localhost
+	@ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $${SSH_PORT:-22220} root@localhost
 
 vm-stop: ## Stop the VM
 	@if pgrep -f "qemu.*server.conf" > /dev/null; then \
