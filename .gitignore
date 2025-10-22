@@ -22,3 +22,11 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+
+# VM artifacts
+vms/*/disk.qcow2
+vms/*/OVMF_VARS.fd
+vms/*/*.pid
+vms/*/*.ports
+vms/*/*.log
+vms/*/*.socket
