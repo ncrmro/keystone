@@ -55,6 +55,50 @@ Keystone provides two primary types of infrastructure:
 - [Installation Guide](docs/installation.md) - Complete installation process from ISO generation to first boot
 - [Examples](docs/examples.md) - Server and client deployment examples
 
+## Development & Testing
+
+### VM Testing Workflow
+
+Test Keystone ISOs quickly using automated VM workflows:
+
+```bash
+# Complete automated test (build ISO + launch VM + SSH)
+make vm-test
+
+# SSH into the VM
+ssh -p 22220 root@localhost
+
+# Stop the VM when done
+make vm-stop
+
+# Clean VM artifacts
+make vm-clean
+```
+
+**Manual workflow** (step-by-step):
+```bash
+# 1. Build ISO with your SSH key
+./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
+
+# 2. Launch VM
+make vm-server
+
+# 3. SSH into VM (wait ~30 seconds for boot)
+ssh -p 22220 root@localhost
+
+# 4. Stop VM
+make vm-stop
+```
+
+**Available VM targets**:
+- `make vm-test` - Build ISO and launch VM with automated SSH check
+- `make vm-server` - Launch VM manually (requires pre-built ISO)
+- `make vm-ssh` - Show SSH connection command
+- `make vm-stop` - Stop running VM
+- `make vm-clean` - Remove VM artifacts
+
+**Requirements**: Install quickemu with `nix-env -iA nixpkgs.quickemu`
+
 ## Available Configurations
 
 ### Server Configuration
