@@ -19,22 +19,11 @@ in
       description = "The disk device to use for installation (by-id path recommended)";
     };
 
-    enableEncryptedSwap = mkOption {
-      type = types.bool;
-      default = true;
-      description = "Whether to create an encrypted swap partition";
-    };
-
     swapSize = mkOption {
       type = types.str;
-      default = "64G";
-      description = "Size of the swap partition";
-    };
-
-    espSize = mkOption {
-      type = types.str;
-      default = "1G";
-      description = "Size of the EFI System Partition";
+      default = "8G";
+      example = "16G";
+      description = "Size of encrypted swap partition (e.g., 8G, 16G, 64G)";
     };
   };
 
@@ -186,7 +175,7 @@ in
 
     # Disko configuration
     disko.devices = {
-      disk.primary = {
+      disk.root = {
         type = "disk";
         device = cfg.device;
         content = {
@@ -194,133 +183,91 @@ in
           partitions = {
             esp = {
               name = "ESP";
-              size = cfg.espSize;
+              size = "1G";
               type = "EF00";
               content = {
                 type = "filesystem";
                 format = "vfat";
                 mountpoint = "/boot";
-                mountOptions = [ "umask=0077" ];
               };
             };
-            zfs = mkMerge [
-              {
-                content = {
-                  type = "zfs";
-                  pool = "rpool";
-                };
-              }
-              (mkIf cfg.enableEncryptedSwap {
-                end = "-${cfg.swapSize}";
-              })
-              (mkIf (!cfg.enableEncryptedSwap) {
-                size = "100%";
-              })
-            ];
-          }
-          // (mkIf cfg.enableEncryptedSwap {
+            zfs = {
+              end = "-${cfg.swapSize}";
+              content = {
+                type = "zfs";
+                pool = "rpool";
+              };
+            };
             encryptedSwap = {
               size = "100%";
               content = {
                 type = "swap";
                 randomEncryption = true;
-                priority = 100;
               };
             };
-          });
+          };
         };
       };
-
-      zpool.rpool = {
-        type = "zpool";
-        rootFsOptions = {
-          mountpoint = "none";
-          compression = "zstd";
-          acltype = "posixacl";
-          xattr = "sa";
-          "com.sun:auto-snapshot" = "true";
-        };
-        options = {
-          ashift = "12";
-          autotrim = "on";
-        };
-        datasets = {
-          # Credstore for encryption keys
-          credstore = {
-            type = "zfs_volume";
-            size = "100M";
-            content = {
-              type = "luks";
-              name = "credstore";
+      zpool = {
+        rpool = {
+          type = "zpool";
+          rootFsOptions = {
+            mountpoint = "none";
+            compression = "zstd";
+            acltype = "posixacl";
+            xattr = "sa";
+            "com.sun:auto-snapshot" = "true";
+          };
+          options.ashift = "12";
+          datasets = {
+            # Credstore: LUKS-encrypted volume that stores ZFS encryption keys
+            #
+            # Password Strategy:
+            # - Default password "keystone" enables automated nixos-anywhere deployments
+            # - After installation, TPM2 handles automatic unlock via boot attestation
+            # - Users reset this password during TPM2 enrollment (systemd-cryptenroll)
+            # - Password fallback available if TPM2 fails (VMs, hardware issues)
+            #
+            # Security Notes:
+            # - Default password is public knowledge - TPM2 enrollment is mandatory
+            # - TPM2 PCR measurements prevent unauthorized decryption
+            # - Credstore only accessible during boot (unmounted after key load)
+            credstore = {
+              type = "zfs_volume";
+              size = "100M";
               content = {
-                type = "filesystem";
-                format = "ext4";
-                mountpoint = null; # Managed by systemd service
+                type = "luks";
+                name = "credstore";
+                passwordFile = "${./credstore-password}";
+                content = {
+                  type = "filesystem";
+                  format = "ext4";
+                };
               };
             };
-          };
-
-          # Encrypted root dataset
-          crypt = {
-            type = "zfs_fs";
-            options = {
-              mountpoint = "none";
-              encryption = "aes-256-gcm";
-              keyformat = "raw";
-              keylocation = "file:///etc/credstore/zfs-sysroot.mount";
+            crypt = {
+              type = "zfs_fs";
+              options.mountpoint = "none";
+              options.encryption = "aes-256-gcm";
+              options.keyformat = "raw";
+              options.keylocation = "file:///etc/credstore/zfs-sysroot.mount";
+              preCreateHook = "mount -o X-mount.mkdir /dev/mapper/credstore /etc/credstore && head -c 32 /dev/urandom > /etc/credstore/zfs-sysroot.mount";
+              postCreateHook = "umount /etc/credstore && cryptsetup luksClose /dev/mapper/credstore";
             };
-            preCreateHook = ''
-              mount -o X-mount.mkdir /dev/mapper/credstore /etc/credstore
-              head -c 32 /dev/urandom > /etc/credstore/zfs-sysroot.mount
-            '';
-            postCreateHook = ''
-              umount /etc/credstore
-              cryptsetup luksClose credstore
-            '';
-          };
-
-          # System datasets under encryption
-          "crypt/system" = {
-            type = "zfs_fs";
-            mountpoint = "/";
-            options = {
+            "crypt/system" = {
+              type = "zfs_fs";
               mountpoint = "/";
             };
-          };
-
-          "crypt/system/nix" = {
-            type = "zfs_fs";
-            mountpoint = "/nix";
-            options = {
-              "com.sun:auto-snapshot" = "false";
+            "crypt/system/nix" = {
+              type = "zfs_fs";
               mountpoint = "/nix";
+              options = {
+                "com.sun:auto-snapshot" = "false";
+              };
             };
-          };
-
-          "crypt/system/var" = {
-            type = "zfs_fs";
-            mountpoint = "/var";
-            options = {
+            "crypt/system/var" = {
+              type = "zfs_fs";
               mountpoint = "/var";
-            };
-          };
-
-          "crypt/system/home" = {
-            type = "zfs_fs";
-            mountpoint = "/home";
-            options = {
-              mountpoint = "/home";
-              "com.sun:auto-snapshot" = "true";
-            };
-          };
-
-          "crypt/system/tmp" = {
-            type = "zfs_fs";
-            mountpoint = "/tmp";
-            options = {
-              mountpoint = "/tmp";
-              "com.sun:auto-snapshot" = "false";
-              sync = "disabled";
             };
           };
         };
@@ -347,6 +294,9 @@ in
     boot.zfs = {
       forceImportRoot = false;
       allowHibernation = false;
+      # Use the same device path type as cfg.device to fix kexec reboot in VMs
+      # See: https://github.com/nix-community/nixos-anywhere/issues/156
+      devNodes = lib.dirOf cfg.device;
     };
 
     # Kernel parameters for ZFS
@@ -377,6 +327,6 @@ in
 
     # Ensure proper ZFS module loading
     boot.kernelModules = [ "zfs" ];
-    boot.extraModulePackages = with config.boot.kernelPackages; [ zfs ];
+    boot.extraModulePackages = [ config.boot.kernelPackages.${pkgs.zfs.kernelModuleAttribute} ];
   };
 }

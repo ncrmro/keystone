@@ -52,6 +52,34 @@ Keystone provides two primary types of infrastructure:
 
 ## Getting Started
 
+### Quick Deployment to VM
+
+Deploy a minimal Keystone server to a VM for testing:
+
+```bash
+# 1. Build ISO with SSH key
+./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
+
+# 2. Boot VM from ISO and note its IP address
+
+# 3. Configure your deployment in vms/test-server/configuration.nix
+#    (see examples/test-server.nix for reference)
+
+# 4. Deploy with automated wrapper
+./scripts/deploy-vm.sh test-server <vm-ip> --verify
+
+# OR deploy directly with nixos-anywhere
+nixos-anywhere --flake .#test-server root@<vm-ip>
+
+# 5. SSH into deployed server
+ssh root@<vm-ip>
+ssh root@test-server.local  # via mDNS
+```
+
+See `examples/test-server.nix` for a fully documented example configuration.
+
+### Installation Guides
+
 - [Installation Guide](docs/installation.md) - Complete installation process from ISO generation to first boot
 - [Examples](docs/examples.md) - Server and client deployment examples
 
