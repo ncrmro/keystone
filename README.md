@@ -125,7 +125,9 @@ make vm-stop
 - `make vm-stop` - Stop running VM
 - `make vm-clean` - Remove VM artifacts
 
-**Requirements**: Install quickemu with `nix-env -iA nixpkgs.quickemu`
+**Requirements**:
+- quickemu: `nix-env -iA nixpkgs.quickemu`
+- socat: `nix-env -iA nixpkgs.socat` (for `bin/test-deployment` automated testing)
 
 ## Available Configurations
 
