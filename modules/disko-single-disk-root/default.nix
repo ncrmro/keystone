@@ -84,6 +84,10 @@ in
                   echo ${fs.device} has valid encryptionroot "$encroot" >&2
                 fi
               '';
+              # Use the same device directory as cfg.device for pool import
+              # This matches boot.zfs.devNodes setting and supports both /dev/vda (VMs)
+              # and /dev/disk/by-id/... (physical hardware) paths
+              importDir = builtins.dirOf cfg.device;
             in
             ''
               function cleanup() {
@@ -93,7 +97,7 @@ in
                 fi
               }
               trap cleanup EXIT
-              zpool import -N -d /dev/disk/by-id rpool
+              zpool import -N -d ${importDir} rpool
 
               # Check that the file systems we will mount have the right encryptionroot.
               ${lib.concatStringsSep "\n" (
