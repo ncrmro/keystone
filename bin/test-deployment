@@ -306,29 +306,9 @@ def deploy_to_vm():
     else:
         print_warning("Cleanup command had issues, but system may still reboot")
 
-    # Manual password entry step
-    print()
-    print("=" * 60)
-    print_warning("MANUAL STEP REQUIRED: Password Entry")
-    print("=" * 60)
-    print()
-    print("The deployed system is rebooting and will prompt for a password.")
-    print()
-    print("WHAT TO DO:")
-    print("1. The password prompt will appear in THIS TERMINAL (no separate window)")
-    print("2. Wait for the boot password prompt to appear below")
-    print("3. Enter a password to unlock the credstore when prompted")
-    print("   (You can use any password - this is ephemeral test data)")
-    print("4. The system will continue booting after unlock")
-    print()
-    print_info("The password prompt looks like: 'Please enter passphrase for disk ...'")
-    print()
-
-    try:
-        input(f"{CYAN}Press Enter once you've entered the password and see the system booting...{NC} ")
-    except EOFError:
-        # Handle non-interactive environments
-        print_warning("Non-interactive mode detected, continuing without confirmation")
+    # Wait for system to reboot
+    print_info("Waiting for system to reboot...")
+    time.sleep(5)
 
     return True
 
