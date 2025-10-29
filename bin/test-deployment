@@ -123,10 +123,19 @@ def kill_vm_processes(hard=False):
     return False
 
 def clean_vm_artifacts():
-    """Remove VM disk and runtime files"""
+    """Remove VM disk and runtime files, and restore ISO line in config"""
     # Sync filesystems to ensure all writes are flushed
     run_command("sync", check=False)
     time.sleep(1)
+
+    # Restore ISO line in config if it was commented out
+    config_file = Path("vms/server.conf")
+    if config_file.exists():
+        config_content = config_file.read_text()
+        if '#iso="keystone-installer.iso"' in config_content:
+            config_content = config_content.replace('#iso="keystone-installer.iso"', 'iso="keystone-installer.iso"')
+            config_file.write_text(config_content)
+            print_info("Restored ISO line in VM configuration")
 
     vm_dir = Path("vms/server")
     if not vm_dir.exists():
@@ -178,8 +187,8 @@ def rebuild_iso():
         print_error("ISO build failed")
         return False
 
-def patch_vm_script_with_serial():
-    """Add disk serial to the generated VM script for stable /dev/disk/by-id path"""
+def patch_vm_script_remove_snapshot():
+    """Remove snapshot mode from VM script (makes disk read-only)"""
     script_file = Path("vms/server/server.sh")
     if not script_file.exists():
         return False
@@ -187,42 +196,32 @@ def patch_vm_script_with_serial():
     content = script_file.read_text()
 
     # Check if already patched
-    if "serial=" in content:
-        print_info("VM script already has serial parameter")
+    if "-snapshot" not in content:
+        print_info("VM script already patched (snapshot removed)")
         return True
 
-    # Add serial parameter to virtio-blk-pci device
-    # This creates /dev/disk/by-id/virtio-keystone-test-disk-123
-    patched = content.replace(
-        "-device virtio-blk-pci,drive=SystemDisk",
-        "-device virtio-blk-pci,drive=SystemDisk,serial=keystone-test-disk-123"
-    )
+    # Remove snapshot mode
+    patched = content.replace("    -snapshot \\\n", "")
 
     if patched != content:
         script_file.write_text(patched)
-        print_success("Added disk serial to VM script")
+        print_success("Patched VM script: removed snapshot mode")
         return True
 
-    print_warning("Could not patch VM script")
-    return False
+    print_info("VM script doesn't need patching")
+    return True
 
 def start_vm():
     """Start the VM"""
     print_info("Starting VM from ISO...")
 
-    # Generate the VM script first
-    result = run_command("cd vms && quickemu --vm server.conf --display none --status-quo", check=False, timeout=5)
+    # Use make to start the VM - it handles disk creation and script generation
+    print_info("Starting VM using make vm-server...")
+    result = run_command("make vm-server", check=False, timeout=30)
 
-    # Patch the script to add disk serial
-    patch_vm_script_with_serial()
-
-    # Start VM in background using the patched script
-    subprocess.Popen(
-        "bash vms/server/server.sh",
-        shell=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    if not result:
+        print_error("Failed to start VM")
+        return False
 
     print_info("Waiting for VM to boot (30 seconds)...")
     time.sleep(30)
@@ -271,9 +270,18 @@ def deploy_to_vm():
     print_success("Deployment phase completed!")
 
     # Now perform manual cleanup to prevent hanging during pool export
-    print_info("Performing credstore cleanup before reboot...")
+    print_info("Performing cleanup before reboot...")
 
     cleanup_cmd = """ssh -p 22220 -o StrictHostKeyChecking=no root@localhost '
+        # Unmount all ZFS filesystems first
+        if zpool list rpool >/dev/null 2>&1; then
+            echo "Unmounting ZFS filesystems..."
+            # Change to root to ensure we are not in /mnt
+            cd /
+            # Unmount all filesystems under /mnt
+            umount -R /mnt 2>/dev/null || true
+        fi
+
         # Close the credstore LUKS device (must be done before pool export)
         if cryptsetup status credstore >/dev/null 2>&1; then
             echo "Closing credstore LUKS device..."
@@ -373,22 +381,9 @@ def remove_iso_and_reboot():
         script_file.unlink()
         print_success("Removed old startup script")
 
-    # Restart VM - this will regenerate the script and we'll patch it again
+    # Restart VM - use make which handles everything
     print_info("Restarting VM to boot from installed disk...")
-
-    # Generate the VM script
-    run_command("cd vms && quickemu --vm server.conf --display none --status-quo", check=False, timeout=5)
-
-    # Patch with disk serial again
-    patch_vm_script_with_serial()
-
-    # Start VM
-    subprocess.Popen(
-        "bash vms/server/server.sh",
-        shell=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    run_command("make vm-server", check=False, timeout=30)
 
     print_info("Waiting for VM to boot (20 seconds)...")
     time.sleep(20)
