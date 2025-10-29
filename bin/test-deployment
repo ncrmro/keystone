@@ -211,6 +211,26 @@ def patch_vm_script_remove_snapshot():
     print_info("VM script doesn't need patching")
     return True
 
+def send_password_to_serial(password="keystone"):
+    """Send password to VM serial console via Unix socket"""
+    socket_path = Path("vms/server/server-serial.socket")
+
+    if not socket_path.exists():
+        print_error(f"Serial socket not found: {socket_path}")
+        return False
+
+    print_info(f"Sending password to serial console...")
+    # Use socat to send password to the serial socket
+    cmd = f"echo '{password}' | socat - UNIX-CONNECT:{socket_path}"
+    result = run_command(cmd, check=False, timeout=5)
+
+    if result:
+        print_success("Password sent to serial console")
+        return True
+    else:
+        print_error("Failed to send password to serial console")
+        return False
+
 def start_vm():
     """Start the VM"""
     print_info("Starting VM from ISO...")
@@ -365,8 +385,17 @@ def remove_iso_and_reboot():
     print_info("Restarting VM to boot from installed disk...")
     run_command("make vm-server", check=False, timeout=30)
 
-    print_info("Waiting for VM to boot (20 seconds)...")
-    time.sleep(20)
+    # Wait for boot to reach LUKS password prompt
+    print_info("Waiting for LUKS password prompt (15 seconds)...")
+    time.sleep(15)
+
+    # Automatically send the LUKS password
+    if not send_password_to_serial("keystone"):
+        print_warning("Failed to send password, but continuing...")
+
+    # Wait for unlock to complete and system to finish booting
+    print_info("Waiting for system to finish booting (25 seconds)...")
+    time.sleep(25)
 
     return True
 
@@ -504,7 +533,15 @@ def main():
         print("=" * 60)
         print()
         print("SSH to deployed server:")
+        print()
+        print("Remove old host key (if you get host key verification failed):")
+        print(f"  ssh-keygen -R '[localhost]:22220'")
+        print()
+        print("SSH with normal key checking:")
         print(f"  ssh -p 22220 root@localhost")
+        print()
+        print("SSH ignoring host key verification:")
+        print(f"  ssh -p 22220 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost")
         print()
 
     return 0
