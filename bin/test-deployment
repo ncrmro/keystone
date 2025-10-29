@@ -77,9 +77,10 @@ def run_command(cmd, check=True, capture=False, timeout=None):
         return False
 
 def find_vm_processes():
-    """Find running quickemu VM processes"""
+    """Find running quickemu or qemu VM processes for server"""
     try:
-        output = run_command("pgrep -f 'quickemu.*server'", check=False, capture=True)
+        # Match both quickemu processes and direct qemu processes with server name
+        output = run_command("pgrep -f '(quickemu.*server|qemu.*-name server)'", check=False, capture=True)
         if output:
             return [int(pid) for pid in output.split('\n') if pid.strip()]
         return []
@@ -177,13 +178,47 @@ def rebuild_iso():
         print_error("ISO build failed")
         return False
 
+def patch_vm_script_with_serial():
+    """Add disk serial to the generated VM script for stable /dev/disk/by-id path"""
+    script_file = Path("vms/server/server.sh")
+    if not script_file.exists():
+        return False
+
+    content = script_file.read_text()
+
+    # Check if already patched
+    if "serial=" in content:
+        print_info("VM script already has serial parameter")
+        return True
+
+    # Add serial parameter to virtio-blk-pci device
+    # This creates /dev/disk/by-id/virtio-keystone-test-disk-123
+    patched = content.replace(
+        "-device virtio-blk-pci,drive=SystemDisk",
+        "-device virtio-blk-pci,drive=SystemDisk,serial=keystone-test-disk-123"
+    )
+
+    if patched != content:
+        script_file.write_text(patched)
+        print_success("Added disk serial to VM script")
+        return True
+
+    print_warning("Could not patch VM script")
+    return False
+
 def start_vm():
     """Start the VM"""
     print_info("Starting VM from ISO...")
 
-    # Start VM in background
+    # Generate the VM script first
+    result = run_command("cd vms && quickemu --vm server.conf --display none --status-quo", check=False, timeout=5)
+
+    # Patch the script to add disk serial
+    patch_vm_script_with_serial()
+
+    # Start VM in background using the patched script
     subprocess.Popen(
-        "make vm-server",
+        "bash vms/server/server.sh",
         shell=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
@@ -220,25 +255,150 @@ def wait_for_ssh(max_attempts=10, delay=3):
     return False
 
 def deploy_to_vm():
-    """Deploy using nixos-anywhere"""
+    """Deploy using nixos-anywhere with manual cleanup and reboot"""
     print_info("Starting nixos-anywhere deployment...")
     print_info("This will take 5-10 minutes...")
     print_warning("You may need to interact with the deployment (confirmations, etc.)")
 
-    cmd = "nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@localhost --ssh-port 22220"
+    # Use --no-reboot to allow manual cleanup before rebooting
+    cmd = "nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@localhost --ssh-port 22220 --no-reboot"
     success = run_command(cmd, timeout=600)
 
-    if success:
-        print_success("Deployment completed!")
-        return True
-    else:
+    if not success:
         print_error("Deployment failed")
         return False
 
+    print_success("Deployment phase completed!")
+
+    # Now perform manual cleanup to prevent hanging during pool export
+    print_info("Performing credstore cleanup before reboot...")
+
+    cleanup_cmd = """ssh -p 22220 -o StrictHostKeyChecking=no root@localhost '
+        # Close the credstore LUKS device (must be done before pool export)
+        if cryptsetup status credstore >/dev/null 2>&1; then
+            echo "Closing credstore LUKS device..."
+            cryptsetup close credstore
+        fi
+
+        # Now safely export the ZFS pool
+        if zpool list rpool >/dev/null 2>&1; then
+            echo "Exporting ZFS pool..."
+            zpool export rpool
+        fi
+
+        # Trigger reboot
+        echo "Rebooting system..."
+        nohup sh -c "sleep 2 && reboot" >/dev/null 2>&1 &
+    '"""
+
+    cleanup_success = run_command(cleanup_cmd, check=False, timeout=30)
+
+    if cleanup_success:
+        print_success("Cleanup and reboot triggered successfully!")
+    else:
+        print_warning("Cleanup command had issues, but system may still reboot")
+
+    # Manual password entry step
+    print()
+    print("=" * 60)
+    print_warning("MANUAL STEP REQUIRED: Password Entry")
+    print("=" * 60)
+    print()
+    print("The deployed system is rebooting and will prompt for a password.")
+    print()
+    print("WHAT TO DO:")
+    print("1. The password prompt will appear in THIS TERMINAL (no separate window)")
+    print("2. Wait for the boot password prompt to appear below")
+    print("3. Enter a password to unlock the credstore when prompted")
+    print("   (You can use any password - this is ephemeral test data)")
+    print("4. The system will continue booting after unlock")
+    print()
+    print_info("The password prompt looks like: 'Please enter passphrase for disk ...'")
+    print()
+
+    try:
+        input(f"{CYAN}Press Enter once you've entered the password and see the system booting...{NC} ")
+    except EOFError:
+        # Handle non-interactive environments
+        print_warning("Non-interactive mode detected, continuing without confirmation")
+
+    return True
+
+def remove_iso_and_reboot():
+    """Remove ISO from VM config and restart to boot from disk"""
+    print_info("Exporting ZFS pool before VM restart...")
+
+    # Export the pool cleanly to avoid import conflicts
+    export_cmd = """ssh -p 22220 -o StrictHostKeyChecking=no root@localhost '
+        if zpool list rpool >/dev/null 2>&1; then
+            echo "Exporting ZFS pool rpool..."
+            zpool export rpool
+            echo "Pool exported successfully"
+        else
+            echo "Pool not imported, nothing to export"
+        fi
+    ' 2>/dev/null"""
+
+    export_result = run_command(export_cmd, check=False, timeout=10)
+    if export_result:
+        print_success("ZFS pool exported successfully")
+    else:
+        print_warning("Could not export pool (may not be mounted)")
+
+    print_info("Removing ISO from VM configuration...")
+
+    config_file = Path("vms/server.conf")
+    if not config_file.exists():
+        print_error("VM config file not found")
+        return False
+
+    # Read current config
+    config_content = config_file.read_text()
+
+    # Comment out the ISO line
+    new_config = config_content.replace('iso="keystone-installer.iso"', '#iso="keystone-installer.iso"')
+
+    # Write back
+    config_file.write_text(new_config)
+    print_success("ISO removed from configuration")
+
+    # Kill VM
+    print_info("Stopping VM...")
+    if not kill_vm_processes(hard=True):
+        print_warning("Failed to stop VM cleanly")
+
+    # Remove generated script so it regenerates without ISO
+    script_file = Path("vms/server/server.sh")
+    if script_file.exists():
+        script_file.unlink()
+        print_success("Removed old startup script")
+
+    # Restart VM - this will regenerate the script and we'll patch it again
+    print_info("Restarting VM to boot from installed disk...")
+
+    # Generate the VM script
+    run_command("cd vms && quickemu --vm server.conf --display none --status-quo", check=False, timeout=5)
+
+    # Patch with disk serial again
+    patch_vm_script_with_serial()
+
+    # Start VM
+    subprocess.Popen(
+        "bash vms/server/server.sh",
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+    print_info("Waiting for VM to boot (20 seconds)...")
+    time.sleep(20)
+
+    return True
+
 def verify_deployment():
     """Run the verification script"""
-    print_info("Waiting for deployed system to boot (60 seconds)...")
-    time.sleep(60)
+    print_info("Waiting for deployed system to finish booting (30 seconds)...")
+    time.sleep(30)
 
     print_info("Running verification checks...")
 
@@ -284,7 +444,7 @@ def main():
     print(f"Hard Reset: {hard_reset_flag}")
     print()
 
-    total_steps = 5
+    total_steps = 6  # Updated from 5 to include ISO removal step
     if rebuild_iso_flag:
         total_steps += 1
     if hard_reset_flag:
@@ -345,6 +505,14 @@ def main():
 
     if not deploy_to_vm():
         print_error("Deployment failed - check output above")
+        return 1
+
+    # Step: Remove ISO and reboot to installed system
+    current_step += 1
+    print_step(current_step, total_steps, "Removing ISO and rebooting to disk")
+
+    if not remove_iso_and_reboot():
+        print_error("Failed to remove ISO and reboot")
         return 1
 
     # Step: Verify

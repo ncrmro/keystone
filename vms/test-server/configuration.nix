@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 {
   # Minimal Keystone server configuration for VM testing
   # This configuration enables nixos-anywhere deployment to VMs
@@ -14,11 +14,9 @@
     # Disk configuration with ZFS and encryption
     disko = {
       enable = true;
-      # Disk device - adjust based on your VM:
-      # - QEMU/KVM (virtio): /dev/vda
-      # - VirtualBox (SATA): /dev/sda
-      # - Physical hardware: /dev/disk/by-id/nvme-... or /dev/disk/by-id/ata-...
-      device = "/dev/vda";
+      # Disk device for VM testing
+      # Using stable disk-by-id path with serial from VM configuration
+      device = "/dev/disk/by-id/virtio-keystone-test-disk-123";
 
       # Swap size (default: 8G)
       # Adjust based on disk size: 20GB VM = 8G, larger systems = 16G or 64G
@@ -28,6 +26,19 @@
     # Server services (SSH, mDNS, firewall, etc.)
     server.enable = true;
   };
+
+  # Serial console support for VM testing
+  # Enables console output via serial port (useful for password prompts in initrd)
+  boot.kernelParams = [
+    "console=ttyS0,115200n8"  # Serial console
+    "console=tty0"             # Keep VGA console as fallback
+  ];
+
+  # Enable serial console in systemd (for initrd password prompts)
+  boot.initrd.systemd.emergencyAccess = true;  # Allow emergency access via serial
+
+  # Ensure virtio modules are available in initrd (required for QEMU/KVM VMs)
+  boot.initrd.availableKernelModules = [ "virtio_blk" "virtio_pci" "virtio_net" ];
 
   # SSH access configuration
   # IMPORTANT: Replace with your actual SSH public key(s)

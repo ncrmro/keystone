@@ -152,6 +152,7 @@ After deployment completes:
    - This is expected in VMs without TPM2
    - Enter a password to unlock the encrypted credstore
    - Remember this password for future boots
+   - **Note for automated testing**: When using `./bin/test-deployment`, the QEMU window will appear automatically. The script will pause and prompt you when it's time to enter the password.
 3. **Wait for boot**: System continues booting after unlock
 4. **Test SSH access**:
 
