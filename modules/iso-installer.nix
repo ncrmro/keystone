@@ -47,6 +47,8 @@
     parted
     cryptsetup
     util-linux
+    # ZFS utilities for nixos-anywhere deployment
+    config.boot.kernelPackages.zfs_2_3
   ];
 
   # Enable the serial console for remote debugging
@@ -58,16 +60,26 @@
   # Automatically configure network on boot
   systemd.services.dhcpcd.wantedBy = ["multi-user.target"];
 
-  # Set a reasonable timeout for the installation media
-  boot.kernelPackages = pkgs.linuxPackages_latest;
+  # Note: kernel is set in flake.nix to override minimal CD default
+
+  # Enable ZFS for nixos-anywhere deployments
+  boot.supportedFilesystems = [ "zfs" ];
+  boot.zfs.forceImportRoot = false;
+
+  # Ensure ZFS kernel modules are loaded and available
+  boot.kernelModules = [ "zfs" ];
+  boot.extraModulePackages = [ config.boot.kernelPackages.zfs_2_3 ];
+
+  # Critical: Add ZFS packages to system for nixos-anywhere
+  services.udev.packages = [ config.boot.kernelPackages.zfs_2_3 ];
+  systemd.packages = [ config.boot.kernelPackages.zfs_2_3 ];
+
+  # Set required hostId for ZFS
+  networking.hostId = lib.mkDefault "8425e349";
 
   # Optimize for installation - less bloat
   documentation.enable = false;
   documentation.nixos.enable = false;
-
-  # Disable ZFS in installer ISO - not needed during installation
-  # The final installed system will have ZFS through the disko module
-  boot.supportedFilesystems = lib.mkForce [];
 
   # Set the ISO label
   isoImage.isoName = lib.mkForce "keystone-installer.iso";

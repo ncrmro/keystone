@@ -38,7 +38,20 @@
             ./modules/iso-installer.nix
             {
               _module.args.sshKeys = [ ];
+              # Force kernel 6.12 - must be set here to override minimal CD
+              boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.x86_64-linux.linuxPackages_6_12;
             }
+          ];
+        };
+
+        # Test server configuration for nixos-anywhere deployment
+        test-server = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            disko.nixosModules.disko
+            ./modules/server
+            ./modules/disko-single-disk-root
+            ./vms/test-server/configuration.nix
           ];
         };
       };
