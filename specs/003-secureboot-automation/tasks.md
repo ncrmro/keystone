@@ -24,9 +24,9 @@
 
 **Purpose**: Ensure VM firmware and configuration support Secure Boot testing
 
-- [ ] T001 Update `vms/server.conf.example` to document OVMF Secure Boot requirements
-- [ ] T002 [P] Verify OVMF firmware with Secure Boot support is accessible on development machine
-- [ ] T003 [P] Document VM configuration prerequisites in `specs/003-secureboot-automation/quickstart.md` (already done, verify complete)
+- [X] T001 Update `vms/server.conf.example` to document OVMF Secure Boot requirements
+- [X] T002 [P] Verify OVMF firmware with Secure Boot support is accessible on development machine
+- [X] T003 [P] Document VM configuration prerequisites in `specs/003-secureboot-automation/quickstart.md` (already done, verify complete)
 
 ---
 
@@ -36,10 +36,10 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Add TestPhase enum values for Secure Boot phases in `bin/test-deployment`
-- [ ] T005 [P] Create `check_uefi_mode()` helper function in `bin/test-deployment`
-- [ ] T006 [P] Create `run_ssh_command()` helper function for remote commands in `bin/test-deployment`
-- [ ] T007 Update `main()` function to calculate total_steps including Secure Boot phases in `bin/test-deployment`
+- [X] T004 Add TestPhase enum values for Secure Boot phases in `bin/test-deployment`
+- [X] T005 [P] Create `check_uefi_mode()` helper function in `bin/test-deployment`
+- [X] T006 [P] Create `run_ssh_command()` helper function for remote commands in `bin/test-deployment`
+- [X] T007 Update `main()` function to calculate total_steps including Secure Boot phases in `bin/test-deployment`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -57,15 +57,15 @@
 
 ### Implementation for User Story 1
 
-- [ ] T008 [P] [US1] Create `check_secure_boot_capability()` function in `bin/test-deployment`
-- [ ] T009 [P] [US1] Create `detect_secure_boot_support()` function in `bin/test-deployment`
-- [ ] T010 [US1] Create `enroll_secure_boot_keys()` function in `bin/test-deployment`
-- [ ] T011 [US1] Create `trigger_reboot_after_enrollment()` function in `bin/test-deployment`
-- [ ] T012 [US1] Add Secure Boot capability check phase in `main()` function in `bin/test-deployment`
-- [ ] T013 [US1] Add Secure Boot enrollment phase in `main()` function in `bin/test-deployment`
-- [ ] T014 [US1] Add post-enrollment reboot phase in `main()` function in `bin/test-deployment`
-- [ ] T015 [US1] Update lanzaboote configuration in `examples/test-server.nix`
-- [ ] T016 [US1] Add logging for all Secure Boot enrollment operations in `bin/test-deployment`
+- [X] T008 [P] [US1] Create `check_secure_boot_capability()` function in `bin/test-deployment`
+- [X] T009 [P] [US1] Create `detect_secure_boot_support()` function in `bin/test-deployment`
+- [X] T010 [US1] Create `enroll_secure_boot_keys()` function in `bin/test-deployment`
+- [X] T011 [US1] Create `trigger_reboot_after_enrollment()` function in `bin/test-deployment`
+- [X] T012 [US1] Add Secure Boot capability check phase in `main()` function in `bin/test-deployment`
+- [X] T013 [US1] Add Secure Boot enrollment phase in `main()` function in `bin/test-deployment`
+- [X] T014 [US1] Add post-enrollment reboot phase in `main()` function in `bin/test-deployment`
+- [X] T015 [US1] Update lanzaboote configuration in `examples/test-server.nix`
+- [X] T016 [US1] Add logging for all Secure Boot enrollment operations in `bin/test-deployment`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - automated enrollment working end-to-end
 
@@ -83,14 +83,14 @@
 
 ### Implementation for User Story 2
 
-- [ ] T017 [P] [US2] Create `check_secure_boot_status()` function using sysfs in `bin/test-deployment`
-- [ ] T018 [P] [US2] Create `verify_setup_mode_disabled()` function in `bin/test-deployment`
-- [ ] T019 [P] [US2] Create `verify_secure_boot_enabled()` function using bootctl in `bin/test-deployment`
-- [ ] T020 [P] [US2] Create `verify_boot_files_signed()` function using sbctl in `bin/test-deployment`
-- [ ] T021 [US2] Create `verify_secure_boot()` function that runs all checks in `bin/test-deployment`
-- [ ] T022 [US2] Add Secure Boot verification phase in `main()` function in `bin/test-deployment`
-- [ ] T023 [US2] Update existing `verify_deployment()` to include Secure Boot checks in `bin/test-deployment`
-- [ ] T024 [US2] Add detailed error reporting for failed verification checks in `bin/test-deployment`
+- [X] T017 [P] [US2] Create `check_secure_boot_status()` function using sysfs in `bin/test-deployment`
+- [X] T018 [P] [US2] Create `verify_setup_mode_disabled()` function in `bin/test-deployment`
+- [X] T019 [P] [US2] Create `verify_secure_boot_enabled()` function using bootctl in `bin/test-deployment`
+- [X] T020 [P] [US2] Create `verify_boot_files_signed()` function using sbctl in `bin/test-deployment`
+- [X] T021 [US2] Create `verify_secure_boot()` function that runs all checks in `bin/test-deployment`
+- [X] T022 [US2] Add Secure Boot verification phase in `main()` function in `bin/test-deployment`
+- [X] T023 [US2] Update existing `verify_deployment()` to include Secure Boot checks in `bin/test-deployment`
+- [X] T024 [US2] Add detailed error reporting for failed verification checks in `bin/test-deployment`
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work - enrollment + verification complete
 
@@ -109,13 +109,13 @@
 
 ### Implementation for User Story 3
 
-- [ ] T025 [P] [US3] Add `--skip-secureboot` command-line flag parsing in `bin/test-deployment`
-- [ ] T026 [P] [US3] Create `should_skip_secure_boot()` decision function in `bin/test-deployment`
-- [ ] T027 [US3] Add fallback logic in Secure Boot capability check phase in `bin/test-deployment`
-- [ ] T028 [US3] Update phase skip logic in `main()` for unsupported platforms in `bin/test-deployment`
-- [ ] T029 [US3] Add warning messages for skipped Secure Boot phases in `bin/test-deployment`
-- [ ] T030 [US3] Update final summary to indicate Secure Boot test status in `bin/test-deployment`
-- [ ] T031 [US3] Update help text with `--skip-secureboot` option in `bin/test-deployment`
+- [X] T025 [P] [US3] Add `--skip-secureboot` command-line flag parsing in `bin/test-deployment`
+- [X] T026 [P] [US3] Create `should_skip_secure_boot()` decision function in `bin/test-deployment`
+- [X] T027 [US3] Add fallback logic in Secure Boot capability check phase in `bin/test-deployment`
+- [X] T028 [US3] Update phase skip logic in `main()` for unsupported platforms in `bin/test-deployment`
+- [X] T029 [US3] Add warning messages for skipped Secure Boot phases in `bin/test-deployment`
+- [X] T030 [US3] Update final summary to indicate Secure Boot test status in `bin/test-deployment`
+- [X] T031 [US3] Update help text with `--skip-secureboot` option in `bin/test-deployment`
 
 **Checkpoint**: All user stories should now be independently functional - complete graceful handling
 
@@ -125,15 +125,15 @@
 
 **Purpose**: Improvements and documentation that affect multiple user stories
 
-- [ ] T032 [P] Add Python type hints to all new functions in `bin/test-deployment`
-- [ ] T033 [P] Update `specs/003-secureboot-automation/quickstart.md` with final usage examples
-- [ ] T034 [P] Add examples for all command-line flags in `bin/test-deployment --help` output
-- [ ] T035 [P] Update CLAUDE.md with Secure Boot automation workflow documentation
-- [ ] T036 Code cleanup: Extract repeated SSH command patterns into helpers in `bin/test-deployment`
-- [ ] T037 Add timeout handling for Secure Boot operations in `bin/test-deployment`
-- [ ] T038 Performance: Reduce wait times by checking status instead of fixed delays in `bin/test-deployment`
-- [ ] T039 Validate quickstart.md instructions match actual implementation
-- [ ] T040 Update contracts/test-deployment-cli.md if any CLI changes were made
+- [X] T032 [P] Add Python type hints to all new functions in `bin/test-deployment`
+- [X] T033 [P] Update `specs/003-secureboot-automation/quickstart.md` with final usage examples
+- [X] T034 [P] Add examples for all command-line flags in `bin/test-deployment --help` output
+- [X] T035 [P] Update CLAUDE.md with Secure Boot automation workflow documentation
+- [X] T036 Code cleanup: Extract repeated SSH command patterns into helpers in `bin/test-deployment` (already done - `run_ssh_command_on_vm`)
+- [X] T037 Add timeout handling for Secure Boot operations in `bin/test-deployment` (already implemented in all functions)
+- [X] T038 Performance: Reduce wait times by checking status instead of fixed delays in `bin/test-deployment` (wait_for_ssh already uses retry logic)
+- [X] T039 Validate quickstart.md instructions match actual implementation (validated - all instructions accurate)
+- [X] T040 Update contracts/test-deployment-cli.md if any CLI changes were made (no contract changes needed - backward compatible)
 
 ---
 

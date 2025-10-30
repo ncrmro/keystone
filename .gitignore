@@ -33,3 +33,17 @@ vms/*/*.socket
 
 # VM configuration (keep .example files tracked)
 vms/*.conf
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.env
+.venv
+venv/
+ENV/

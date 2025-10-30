@@ -44,6 +44,13 @@
   # Ensure virtio modules are available in initrd (required for QEMU/KVM VMs)
   boot.initrd.availableKernelModules = ["virtio_blk" "virtio_pci" "virtio_net"];
 
+  # Secure Boot will be configured in phases:
+  # Phase 1: Deploy with systemd-boot (this configuration)
+  # Phase 2: Generate sbctl keys on deployed system
+  # Phase 3: Enable lanzaboote and sign boot files
+  # Phase 4: Enroll keys into UEFI firmware
+  # For now, use standard systemd-boot (disko module enables it by default)
+
   # SSH access configuration
   # IMPORTANT: Replace with your actual SSH public key(s)
   # You can get your public key with: cat ~/.ssh/id_ed25519.pub
@@ -54,8 +61,8 @@
   # Optional: Set timezone (default: UTC from server module)
   # time.timeZone = "America/New_York";
 
-  # Optional: Additional packages
-  # environment.systemPackages = with pkgs; [
-  #   neovim
-  # ];
+  # Secure Boot management tools
+  environment.systemPackages = with pkgs; [
+    sbctl # Secure Boot key manager (required for lanzaboote)
+  ];
 }

@@ -11,6 +11,10 @@
       url = "github:nix-community/home-manager/release-25.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    lanzaboote = {
+      url = "github:nix-community/lanzaboote";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     omarchy = {
       url = "github:basecamp/omarchy/v3.0.2";
       flake = false;
@@ -23,6 +27,7 @@
       nixpkgs,
       disko,
       home-manager,
+      lanzaboote,
       omarchy,
       ...
     }:
@@ -49,6 +54,7 @@
           system = "x86_64-linux";
           modules = [
             disko.nixosModules.disko
+            lanzaboote.nixosModules.lanzaboote
             ./modules/server
             ./modules/disko-single-disk-root
             ./vms/test-server/configuration.nix

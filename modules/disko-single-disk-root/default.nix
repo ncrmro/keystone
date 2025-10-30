@@ -29,8 +29,8 @@ in {
     # Ensure ZFS support is enabled
     boot.supportedFilesystems = ["zfs"];
 
-    # Boot loader configuration
-    boot.loader.systemd-boot.enable = true;
+    # Boot loader configuration (defaults to systemd-boot, can be overridden for lanzaboote)
+    boot.loader.systemd-boot.enable = lib.mkDefault true;
     boot.loader.efi.canTouchEfiVariables = true;
 
     # Complex initrd configuration for ZFS with encrypted credstore

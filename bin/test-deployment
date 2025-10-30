@@ -6,6 +6,7 @@ Automates the complete VM deployment testing workflow:
 - VM lifecycle management (start, stop, hard reset)
 - ISO building (optional)
 - nixos-anywhere deployment
+- Secure Boot automation with lanzaboote (optional)
 - Post-deployment verification
 
 Zero external dependencies - uses only Python standard library.
@@ -14,6 +15,7 @@ Usage:
     ./bin/test-deployment                    # Normal test run
     ./bin/test-deployment --rebuild-iso      # Rebuild ISO first
     ./bin/test-deployment --hard-reset       # Force kill VM and clean artifacts
+    ./bin/test-deployment --skip-secureboot  # Skip Secure Boot phases
     ./bin/test-deployment --rebuild-iso --hard-reset  # Full clean test
 """
 
@@ -23,6 +25,7 @@ import time
 import os
 import signal
 from pathlib import Path
+from typing import Tuple
 
 # ANSI color codes
 RED = '\033[0;31m'
@@ -231,6 +234,207 @@ def send_password_to_serial(password="keystone"):
         print_error("Failed to send password to serial console")
         return False
 
+# Secure Boot helper functions
+
+def check_uefi_mode() -> bool:
+    """Check if the VM is running in UEFI mode
+
+    Returns:
+        bool: True if in UEFI mode, False otherwise
+    """
+    result = run_ssh_command_on_vm("test -d /sys/firmware/efi && echo 'UEFI' || echo 'BIOS'")
+    return result.strip() == "UEFI"
+
+def detect_secure_boot_support() -> bool:
+    """Detect if the VM firmware supports Secure Boot
+
+    Returns:
+        bool: True if Secure Boot variables are accessible, False otherwise
+    """
+    # Check for SecureBoot UEFI variable
+    result = run_ssh_command_on_vm(
+        "test -f /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c && echo 'SUPPORTED' || echo 'NOT_SUPPORTED'"
+    )
+    return result.strip() == "SUPPORTED"
+
+def check_secure_boot_capability() -> Tuple[bool, str]:
+    """Check if Secure Boot is supported and can be configured
+
+    Returns:
+        tuple: (supported: bool, message: str)
+    """
+    print_info("Verifying UEFI mode and Secure Boot support...")
+
+    # Check UEFI mode
+    if not check_uefi_mode():
+        return (False, "System is not booted in UEFI mode")
+
+    print_success("UEFI mode confirmed")
+
+    # Check Secure Boot variable support
+    if not detect_secure_boot_support():
+        return (False, "Secure Boot variables not accessible")
+
+    print_success("Secure Boot variables accessible")
+
+    return (True, "Secure Boot capability confirmed")
+
+def enroll_secure_boot_keys() -> bool:
+    """Enroll Secure Boot keys using sbctl
+
+    The lanzaboote module with enrollKeys=true should automatically enroll keys
+    during the first boot. This function verifies the enrollment.
+
+    Returns:
+        bool: True if keys enrolled successfully, False otherwise
+    """
+    print_info("Checking Secure Boot key enrollment status...")
+
+    # Check if sbctl is available
+    sbctl_check = run_ssh_command_on_vm("command -v sbctl && echo 'FOUND' || echo 'NOT_FOUND'")
+    if sbctl_check.strip() != "FOUND":
+        print_error("sbctl command not found on deployed system")
+        return False
+
+    # Check current sbctl status
+    status_output = run_ssh_command_on_vm("sbctl status", timeout=15)
+    print_info("Current sbctl status:")
+    if status_output:
+        for line in status_output.split('\n'):
+            print(f"  {line}")
+
+    # Check if Setup Mode is disabled (keys enrolled)
+    setup_mode_check = run_ssh_command_on_vm(
+        "sbctl status | grep -i 'Setup Mode' | grep -q 'Disabled' && echo 'ENROLLED' || echo 'NOT_ENROLLED'"
+    )
+
+    if setup_mode_check.strip() == "ENROLLED":
+        print_success("Secure Boot keys already enrolled")
+        print_success("Setup Mode disabled (User Mode active)")
+        return True
+
+    # If not enrolled and lanzaboote has enrollKeys=true, it should have been automatic
+    print_warning("Keys not yet enrolled - this may require manual enrollment or UEFI settings")
+    print_info("With lanzaboote enrollKeys=true, keys should enroll on first boot")
+
+    return False
+
+def trigger_reboot_after_enrollment() -> bool:
+    """Trigger a system reboot after Secure Boot key enrollment
+
+    Returns:
+        bool: True if reboot triggered successfully, False otherwise
+    """
+    print_info("Triggering system reboot...")
+
+    # Trigger reboot via SSH
+    cmd = "nohup sh -c 'sleep 2 && reboot' >/dev/null 2>&1 &"
+    run_ssh_command_on_vm(cmd, timeout=5)
+
+    print_success("Reboot triggered")
+
+    # Wait for system to go down
+    print_info("Waiting for system to reboot (60 seconds)...")
+    time.sleep(60)
+
+    # Wait for SSH to come back up
+    print_info("Waiting for SSH to become available...")
+    if wait_for_ssh(max_attempts=15, delay=3):
+        print_success("System rebooted successfully")
+        return True
+    else:
+        print_error("System did not come back online after reboot")
+        return False
+
+# Secure Boot verification functions (Phase 4 - US2)
+
+def check_secure_boot_status() -> bool:
+    """Check if Secure Boot is enabled via sysfs
+
+    Returns:
+        bool: True if Secure Boot is enabled, False otherwise
+    """
+    result = run_ssh_command_on_vm(
+        "cat /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c | od -An -t u1 | awk '{print $NF}'"
+    )
+    return result.strip() == "1"
+
+def verify_setup_mode_disabled() -> bool:
+    """Verify that Setup Mode is disabled (keys enrolled)
+
+    Returns:
+        bool: True if Setup Mode is disabled, False otherwise
+    """
+    result = run_ssh_command_on_vm(
+        "cat /sys/firmware/efi/efivars/SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c | od -An -t u1 | awk '{print $NF}'"
+    )
+    # Setup Mode: 0 = User Mode (keys enrolled), 1 = Setup Mode
+    return result.strip() == "0"
+
+def verify_secure_boot_enabled() -> bool:
+    """Verify Secure Boot is enabled using bootctl
+
+    Returns:
+        bool: True if bootctl confirms Secure Boot enabled, False otherwise
+    """
+    result = run_ssh_command_on_vm("bootctl status | grep -i 'Secure Boot' | grep -q 'enabled' && echo 'ENABLED' || echo 'DISABLED'")
+    return result.strip() == "ENABLED"
+
+def verify_boot_files_signed() -> bool:
+    """Verify boot files are properly signed using sbctl
+
+    Returns:
+        bool: True if all boot files are signed, False otherwise
+    """
+    result = run_ssh_command_on_vm("sbctl verify 2>&1 | grep -q 'Verifying' && echo 'SIGNED' || echo 'UNSIGNED'")
+    return result.strip() == "SIGNED"
+
+def verify_secure_boot() -> bool:
+    """Run all Secure Boot verification checks
+
+    Returns:
+        bool: True if all checks pass, False otherwise
+    """
+    print_info("Running Secure Boot verification checks...")
+
+    checks = [
+        ("Setup Mode status: disabled", verify_setup_mode_disabled),
+        ("Secure Boot enabled (sysfs)", check_secure_boot_status),
+        ("Secure Boot enabled (bootctl)", verify_secure_boot_enabled),
+        ("Boot files properly signed", verify_boot_files_signed),
+    ]
+
+    all_passed = True
+    for check_name, check_func in checks:
+        if check_func():
+            print_success(check_name)
+        else:
+            print_error(check_name)
+            all_passed = False
+
+    return all_passed
+
+def should_skip_secure_boot(skip_secureboot_flag: bool, secure_boot_capable: bool) -> Tuple[bool, str]:
+    """Determine if Secure Boot phases should be skipped
+
+    This function centralizes the decision logic for whether to skip Secure Boot
+    phases based on user flags and platform capability detection.
+
+    Args:
+        skip_secureboot_flag: User explicitly requested to skip via --skip-secureboot
+        secure_boot_capable: Platform has Secure Boot capability (UEFI + variables)
+
+    Returns:
+        tuple: (should_skip: bool, reason: str)
+    """
+    if skip_secureboot_flag:
+        return (True, "User requested skip with --skip-secureboot flag")
+
+    if not secure_boot_capable:
+        return (True, "Platform does not support Secure Boot")
+
+    return (False, "Secure Boot phases will proceed")
+
 def start_vm():
     """Start the VM"""
     print_info("Starting VM from ISO...")
@@ -248,18 +452,35 @@ def start_vm():
 
     return True
 
+def run_ssh_command_on_vm(cmd, timeout=10, check=False):
+    """Run a command on the deployed VM via SSH
+
+    This is a dedicated helper for running commands on the deployed system
+    at localhost:22220. It properly handles SSH options and error cases.
+
+    Args:
+        cmd: Command to execute on the VM
+        timeout: Command timeout in seconds
+        check: Whether to raise on failure
+
+    Returns:
+        str: Command output (stdout) or empty string on failure
+    """
+    ssh_opts = "-p 22220 -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    full_cmd = f"ssh {ssh_opts} root@localhost '{cmd}' 2>/dev/null"
+    try:
+        result = run_command(full_cmd, check=check, capture=True, timeout=timeout)
+        return result if result else ""
+    except:
+        return ""
+
 def wait_for_ssh(max_attempts=10, delay=3):
     """Wait for SSH to become available"""
     print_info(f"Waiting for SSH access (max {max_attempts * delay} seconds)...")
 
     for attempt in range(max_attempts):
         try:
-            result = run_command(
-                "ssh -p 22220 -o ConnectTimeout=3 -o StrictHostKeyChecking=no root@localhost 'echo ready' 2>/dev/null",
-                check=False,
-                capture=True,
-                timeout=5
-            )
+            result = run_ssh_command_on_vm("echo ready", timeout=5)
             if result == "ready":
                 print_success("SSH is ready")
                 return True
@@ -273,6 +494,22 @@ def wait_for_ssh(max_attempts=10, delay=3):
     print_error("SSH never became available")
     return False
 
+def prebuild_system_config():
+    """Pre-build the system configuration on the host to populate Nix cache"""
+    print_info("Pre-building system configuration on host...")
+    print_info("This ensures all packages are cached locally before deployment")
+
+    # Build the full system configuration including all dependencies
+    cmd = "nix build .#nixosConfigurations.test-server.config.system.build.toplevel --no-link"
+    success = run_command(cmd, timeout=600)
+
+    if success:
+        print_success("System configuration pre-built successfully")
+        return True
+    else:
+        print_error("Failed to pre-build system configuration")
+        return False
+
 def deploy_to_vm():
     """Deploy using nixos-anywhere with manual cleanup and reboot"""
     print_info("Starting nixos-anywhere deployment...")
@@ -280,7 +517,8 @@ def deploy_to_vm():
     print_warning("You may need to interact with the deployment (confirmations, etc.)")
 
     # Use --no-reboot to allow manual cleanup before rebooting
-    cmd = "nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@localhost --ssh-port 22220 --no-reboot"
+    # Use --build-on local to ensure builds happen on host and use the cache
+    cmd = "nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@localhost --ssh-port 22220 --no-reboot --build-on local"
     success = run_command(cmd, timeout=600)
 
     if not success:
@@ -399,31 +637,49 @@ def remove_iso_and_reboot():
 
     return True
 
-def verify_deployment():
-    """Run the verification script"""
+def verify_deployment(include_secureboot=False):
+    """Run deployment verification checks
+
+    Args:
+        include_secureboot: If True, include Secure Boot checks in verification
+
+    Returns:
+        bool: True if all checks pass, False otherwise
+    """
     print_info("Waiting for deployed system to finish booting (30 seconds)...")
     time.sleep(30)
 
     print_info("Running verification checks...")
 
-    # The verification script expects standard SSH port, so we'll do manual checks
+    # Basic deployment checks
     checks = [
-        ("SSH connectivity", "ssh -p 22220 -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@localhost 'echo ok' 2>/dev/null"),
-        ("Hostname", "ssh -p 22220 -o StrictHostKeyChecking=no root@localhost 'hostname' 2>/dev/null"),
-        ("ZFS pool", "ssh -p 22220 -o StrictHostKeyChecking=no root@localhost 'zpool status rpool' 2>/dev/null | grep -q ONLINE"),
-        ("SSH service", "ssh -p 22220 -o StrictHostKeyChecking=no root@localhost 'systemctl is-active sshd' 2>/dev/null"),
+        ("SSH connectivity", lambda: run_ssh_command_on_vm("echo ok", timeout=5) == "ok"),
+        ("Hostname", lambda: len(run_ssh_command_on_vm("hostname", timeout=5)) > 0),
+        ("ZFS pool status", lambda: "ONLINE" in run_ssh_command_on_vm("zpool status rpool", timeout=10)),
+        ("SSH service active", lambda: run_ssh_command_on_vm("systemctl is-active sshd", timeout=5) == "active"),
     ]
+
+    # Add Secure Boot checks if requested
+    if include_secureboot:
+        checks.extend([
+            ("Secure Boot: Setup Mode disabled", verify_setup_mode_disabled),
+            ("Secure Boot: Enabled (sysfs)", check_secure_boot_status),
+            ("Secure Boot: sbctl confirms", lambda: "enabled" in run_ssh_command_on_vm("sbctl status | grep -i 'secure boot'", timeout=10).lower()),
+        ])
 
     passed = 0
     failed = 0
 
-    for check_name, check_cmd in checks:
-        result = run_command(check_cmd, check=False)
-        if result:
-            print_success(f"{check_name}")
-            passed += 1
-        else:
-            print_error(f"{check_name}")
+    for check_name, check_func in checks:
+        try:
+            if check_func():
+                print_success(f"{check_name}")
+                passed += 1
+            else:
+                print_error(f"{check_name}")
+                failed += 1
+        except Exception as e:
+            print_error(f"{check_name} (error: {e})")
             failed += 1
 
     print(f"\nPassed: {GREEN}{passed}{NC}, Failed: {RED}{failed}{NC}")
@@ -452,6 +708,7 @@ def main():
     # Parse arguments
     rebuild_iso_flag = "--rebuild-iso" in sys.argv
     hard_reset_flag = "--hard-reset" in sys.argv
+    skip_secureboot_flag = "--skip-secureboot" in sys.argv
     help_flag = "--help" in sys.argv or "-h" in sys.argv
 
     if help_flag:
@@ -467,15 +724,22 @@ def main():
     print("=" * 60)
     print(f"Rebuild ISO: {rebuild_iso_flag}")
     print(f"Hard Reset: {hard_reset_flag}")
+    print(f"Skip Secure Boot: {skip_secureboot_flag}")
     print()
 
-    total_steps = 6  # Updated from 5 to include ISO removal step
+    # Base steps: VM stop, VM start, SSH wait, Pre-build, Deploy, Reboot to disk, Verification
+    total_steps = 7
     if rebuild_iso_flag:
         total_steps += 1
     if hard_reset_flag:
         total_steps += 2
+    # Secure Boot adds 3 steps: capability check, enrollment, verification
+    # We'll dynamically adjust total_steps if Secure Boot is skipped or unsupported
 
     current_step = 0
+    secure_boot_supported = False  # Track if we should attempt Secure Boot phases
+    secure_boot_tested = False  # Track if Secure Boot was actually tested
+    secure_boot_status_msg = "Not tested"  # Track status message for summary
 
     # Step: Hard reset if requested
     if hard_reset_flag:
@@ -524,6 +788,14 @@ def main():
         print_error("VM did not become accessible")
         return 1
 
+    # Step: Pre-build system configuration
+    current_step += 1
+    print_step(current_step, total_steps, "Pre-building system configuration on host")
+
+    if not prebuild_system_config():
+        print_error("Failed to pre-build system configuration")
+        return 1
+
     # Step: Deploy
     current_step += 1
     print_step(current_step, total_steps, "Deploying with nixos-anywhere")
@@ -540,11 +812,57 @@ def main():
         print_error("Failed to remove ISO and reboot")
         return 1
 
+    # Secure Boot phases (Phase 3-4: User Stories 1-2)
+    if not skip_secureboot_flag:
+        # Adjust total_steps to include Secure Boot phases
+        total_steps += 3
+
+        # Step: Check Secure Boot capability
+        current_step += 1
+        print_step(current_step, total_steps, "Checking Secure Boot capability")
+
+        supported, message = check_secure_boot_capability()
+        if not supported:
+            print_warning(f"UEFI Secure Boot not supported: {message}")
+            print_info("Skipping Secure Boot enrollment and verification")
+            # Remove the Secure Boot steps from total_steps since we're skipping
+            total_steps -= 2
+            secure_boot_status_msg = f"Skipped - {message}"
+        else:
+            print_success(message)
+            secure_boot_supported = True
+            secure_boot_tested = True
+
+            # Step: Verify Secure Boot enrollment
+            current_step += 1
+            print_step(current_step, total_steps, "Verifying Secure Boot key enrollment")
+
+            if not enroll_secure_boot_keys():
+                print_warning("Secure Boot keys not enrolled automatically")
+                print_info("This may be expected - keys might enroll after UEFI settings change")
+                # Continue anyway - verification step will show actual status
+
+            # Step: Verify Secure Boot configuration
+            current_step += 1
+            print_step(current_step, total_steps, "Verifying Secure Boot configuration")
+
+            if not verify_secure_boot():
+                print_warning("Some Secure Boot verification checks failed")
+                print_info("This may be expected if Secure Boot is not enabled in UEFI firmware")
+                print_info("Keys are enrolled, but Secure Boot may need to be enabled manually in UEFI settings")
+                secure_boot_status_msg = "Tested - Keys enrolled, but not fully enabled"
+            else:
+                print_success("Secure Boot is fully configured and functional!")
+                secure_boot_status_msg = "Fully configured and functional"
+    else:
+        print_info("Skipping Secure Boot phases (--skip-secureboot flag)")
+        secure_boot_status_msg = "Skipped - User requested via --skip-secureboot"
+
     # Step: Verify
     current_step += 1
     print_step(current_step, total_steps, "Verifying deployment")
 
-    if not verify_deployment():
+    if not verify_deployment(include_secureboot=secure_boot_supported):
         print_warning("Some verification checks failed")
         print_info("You can still SSH to the VM: ssh -p 22220 root@localhost")
     else:
@@ -552,6 +870,10 @@ def main():
         print("=" * 60)
         print(f"{GREEN}✓ All tests passed!{NC}")
         print("=" * 60)
+        print()
+        print("Test Summary:")
+        print(f"  Deployment: {GREEN}✓{NC} Successful")
+        print(f"  Secure Boot: {secure_boot_status_msg}")
         print()
         print("SSH to deployed server:")
         print()

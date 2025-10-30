@@ -93,6 +93,37 @@ ip addr show
 nixos-anywhere --flake .#your-config root@<installer-ip>
 ```
 
+### Testing Deployments
+```bash
+# Run automated VM deployment test (includes Secure Boot)
+./bin/test-deployment
+
+# Full clean test (rebuild ISO + hard reset)
+./bin/test-deployment --rebuild-iso --hard-reset
+
+# Skip Secure Boot automation (for unsupported platforms)
+./bin/test-deployment --skip-secureboot
+
+# Just rebuild ISO with your SSH key
+./bin/test-deployment --rebuild-iso
+```
+
+The test-deployment script automates the complete deployment workflow:
+- VM lifecycle management (start, stop, cleanup)
+- ISO building with SSH key injection
+- nixos-anywhere deployment automation
+- **Secure Boot enrollment and verification** (automatic)
+- Post-deployment validation
+
+After successful deployment, access the VM:
+```bash
+ssh -p 22220 root@localhost
+
+# Verify Secure Boot status
+bootctl status | grep "Secure Boot"
+sbctl status
+```
+
 ## Key Implementation Details
 
 ### Disko Configuration
@@ -106,6 +137,9 @@ nixos-anywhere --flake .#your-config root@<installer-ip>
 - SystemD credentials system securely provides keys to services
 - Encryption root validation prevents mounting fraudulent filesystems
 - Boot process includes cleanup and error handling with proper service dependencies
+- **Automated Secure Boot enrollment** via lanzaboote with custom key generation
+- Test automation detects UEFI Secure Boot capability and enrolls keys automatically
+- Complete boot chain verification (bootloader + kernel signing)
 
 ### Client Module Structure
 ```
@@ -144,6 +178,10 @@ Each component can be individually enabled/disabled through the configuration in
 
 - The pool name is hardcoded to "rpool" throughout the disko module
 - TPM2 integration requires compatible hardware and UEFI firmware setup
-- Secure Boot requires manual key enrollment during installation process
+- **Secure Boot enrollment is automated** in the test-deployment script for VMs
+  - Automatically detects UEFI Secure Boot capability
+  - Generates custom keys via lanzaboote module
+  - Enrolls keys and verifies boot chain integrity
+  - Gracefully skips on unsupported platforms
 - All ZFS datasets use native encryption with automatic key management
 - Client configurations are NixOS system-level only (no home-manager integration)

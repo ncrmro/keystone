@@ -15,9 +15,13 @@ As a developer testing Keystone deployments, I need the test-vm script to automa
 
 **Independent Test**: Can be fully tested by running the extended test-vm script and verifying that Secure Boot is enabled and functional in the VM after deployment completes. Success means SSH access to a running system with Secure Boot actively enforcing boot security.
 
+**Note**: This process uses a two-phase provisioning approach:
+- **Phase 1**: `bin/test-deployment` deploys the base system with systemd-boot
+- **Phase 2**: `bin/post-install-provisioner` generates and enrolls Secure Boot keys via SSH on the deployed system
+
 **Acceptance Scenarios**:
 
-1. **Given** a VM has successfully deployed with ZFS encrypted root and unlocked via serial, **When** the test script proceeds to the Secure Boot enrollment phase, **Then** lanzaboote generates and enrolls custom Secure Boot keys without manual interaction
+1. **Given** a VM has successfully deployed with ZFS encrypted root and unlocked via serial, **When** the test script proceeds to Phase 2 (Secure Boot enrollment), **Then** `post-install-provisioner` connects via SSH and uses sbctl to generate custom Secure Boot keys without manual interaction
 2. **Given** Secure Boot keys have been enrolled, **When** the system reboots, **Then** the bootloader verifies all boot components using Secure Boot and successfully boots to the encrypted system
 3. **Given** the test script has completed, **When** a developer verifies the deployment, **Then** Secure Boot status shows as enabled and enforcing with custom keys enrolled
 
@@ -63,30 +67,42 @@ As a developer testing Keystone on various VM configurations, I need the test sc
 - How does the script behave when Secure Boot variables are already populated from a previous test run?
 - What happens when the VM firmware has Secure Boot enabled but in Setup Mode versus User Mode?
 - How does the system recover if the signed bootloader fails to boot after Secure Boot enrollment?
+- What happens when trying to enable lanzaboote before Secure Boot keys are in place?
+- How does the system handle VMs that don't support Secure Boot (quickemu may require lower-level QEMU/libvirt configuration)?
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: Test script MUST extend the existing test-deployment workflow to include a Secure Boot enrollment phase after successful ZFS encrypted deployment
-- **FR-002**: Test script MUST detect whether the VM firmware supports UEFI Secure Boot before attempting enrollment
-- **FR-003**: Test script MUST use lanzaboote to generate custom Secure Boot keys during the enrollment phase
-- **FR-004**: Test script MUST enroll the generated Secure Boot keys into the VM firmware without requiring manual interaction
-- **FR-005**: Test script MUST configure the bootloader to use the enrolled keys for boot verification
-- **FR-006**: Test script MUST trigger a system reboot after Secure Boot enrollment to verify the boot chain
-- **FR-007**: Test script MUST verify Secure Boot status is enabled and enforcing after the post-enrollment reboot
-- **FR-008**: Test script MUST verify that all boot components pass Secure Boot signature verification
-- **FR-009**: Test script MUST log clear status messages for each phase of Secure Boot enrollment and verification
-- **FR-010**: Test script MUST return appropriate exit codes indicating success or failure of the Secure Boot automation
-- **FR-011**: Test script MUST skip Secure Boot enrollment gracefully when the VM firmware does not support it
-- **FR-012**: Test script MUST preserve existing test-deployment functionality for ZFS encryption, serial unlock, and SSH verification
+- **FR-002**: Test script MUST use a two-phase provisioning approach: Phase 1 (`bin/test-deployment`) deploys base system with systemd-boot, Phase 2 (`bin/post-install-provisioner`) generates and enrolls Secure Boot keys
+- **FR-003**: Phase 1 script (`bin/test-deployment`) MUST deploy the base NixOS system with systemd-boot via nixos-anywhere
+- **FR-004**: Phase 2 script (`bin/post-install-provisioner`) MUST connect to the deployed system via SSH to perform key generation and enrollment
+- **FR-005**: Test script MUST detect whether the VM firmware supports UEFI Secure Boot before attempting enrollment
+- **FR-006**: `post-install-provisioner` MUST use sbctl to generate custom Secure Boot keys (PK, KEK, db) in `/var/lib/sbctl` during the enrollment phase
+- **FR-007**: `post-install-provisioner` MUST enroll the generated Secure Boot keys into the VM firmware without requiring manual interaction
+- **FR-008**: `post-install-provisioner` MUST support multiple operational modes: generate keys only, enroll keys, verify status, and full automation with reboot
+- **FR-009**: Test script MUST trigger a system reboot after Secure Boot enrollment to verify the boot chain
+- **FR-010**: Test script MUST verify Secure Boot status is enabled and enforcing after the post-enrollment reboot
+- **FR-011**: Test script MUST verify that all boot components pass Secure Boot signature verification
+- **FR-012**: Test script MUST log clear status messages for each phase of Secure Boot enrollment and verification
+- **FR-013**: Test script MUST return appropriate exit codes indicating success or failure of the Secure Boot automation
+- **FR-014**: Test script MUST skip Secure Boot enrollment gracefully when the VM firmware does not support it
+- **FR-015**: Test script MUST preserve existing test-deployment functionality for ZFS encryption, serial unlock, and SSH verification
+- **FR-016**: Specification MUST document that lanzaboote cannot be activated until Secure Boot keys are generated and enrolled
+- **FR-017**: Specification MUST document that enabling Secure Boot in quickemu-based VMs may require lower-level tooling (direct QEMU/libvirt XML configuration)
 
 ### Key Entities *(include if feature involves data)*
 
-- **Secure Boot Keys**: Custom cryptographic keys generated by lanzaboote that are enrolled in UEFI firmware to verify bootloader signatures
+- **Phase 1 (Base System)**: Initial deployment stage using `bin/test-deployment` that installs NixOS with ZFS encryption, TPM2 integration, and systemd-boot via nixos-anywhere
+- **Phase 2 (Security Provisioning)**: Post-deployment stage using `bin/post-install-provisioner` that generates and enrolls Secure Boot keys via SSH
+- **Secure Boot Keys**: Custom cryptographic keys (PK, KEK, db) generated by sbctl in `/var/lib/sbctl` that are enrolled in UEFI firmware to verify bootloader signatures
+- **sbctl**: Tool used by `post-install-provisioner` to generate and manage Secure Boot keys
+- **lanzaboote**: Secure Boot bootloader that replaces systemd-boot; cannot be activated until Secure Boot keys are in place
 - **UEFI Variables**: Firmware storage containing Secure Boot configuration state (enabled/disabled, Setup Mode/User Mode, enrolled keys)
 - **Boot Components**: The bootloader, kernel, and initrd that must be signed and verified during Secure Boot process
 - **Enrollment State**: The configuration state tracking whether Secure Boot keys have been successfully generated and enrolled
+- **VM Firmware Configuration**: UEFI firmware settings for the test VM; quickemu may not support Secure Boot, requiring direct QEMU/libvirt XML configuration
 
 ## Success Criteria *(mandatory)*
 
