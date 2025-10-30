@@ -5,11 +5,9 @@
   utils,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.disko;
-in
-{
+in {
   options.keystone.disko = {
     enable = mkEnableOption "Keystone disko configuration";
 
@@ -29,10 +27,9 @@ in
 
   config = mkIf cfg.enable {
     # Ensure ZFS support is enabled
-    boot.supportedFilesystems = [ "zfs" ];
+    boot.supportedFilesystems = ["zfs"];
 
     # Boot loader configuration
-    boot.initrd.systemd.emergencyAccess = lib.mkDefault false;
     boot.loader.systemd-boot.enable = true;
     boot.loader.efi.canTouchEfiVariables = true;
 
@@ -40,71 +37,68 @@ in
     boot.initrd = {
       # This would be a nightmare without systemd initrd
       systemd.enable = true;
+      systemd.emergencyAccess = lib.mkDefault false;
 
       # Disable NixOS's systemd service that imports the pool
       systemd.services.zfs-import-rpool.enable = false;
 
-      systemd.services.import-rpool-bare =
-        let
-          # Compute the systemd units for the devices in the pool
-          devices = map (p: utils.escapeSystemdPath p + ".device") [
-            cfg.device
-          ];
-        in
-        {
-          after = [ "modprobe@zfs.service" ] ++ devices;
-          requires = [ "modprobe@zfs.service" ];
+      systemd.services.import-rpool-bare = let
+        # Compute the systemd units for the devices in the pool
+        devices = map (p: utils.escapeSystemdPath p + ".device") [
+          cfg.device
+        ];
+      in {
+        after = ["modprobe@zfs.service"] ++ devices;
+        requires = ["modprobe@zfs.service"];
 
-          # Devices are added to 'wants' instead of 'requires' so that a
-          # degraded import may be attempted if one of them times out.
-          # 'cryptsetup-pre.target' is wanted because it isn't pulled in
-          # normally and we want this service to finish before
-          # 'systemd-cryptsetup@.service' instances begin running.
-          wants = [ "cryptsetup-pre.target" ] ++ devices;
-          before = [ "cryptsetup-pre.target" ];
+        # Devices are added to 'wants' instead of 'requires' so that a
+        # degraded import may be attempted if one of them times out.
+        # 'cryptsetup-pre.target' is wanted because it isn't pulled in
+        # normally and we want this service to finish before
+        # 'systemd-cryptsetup@.service' instances begin running.
+        wants = ["cryptsetup-pre.target"] ++ devices;
+        before = ["cryptsetup-pre.target"];
 
-          unitConfig.DefaultDependencies = false;
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-          };
-          path = [ config.boot.zfs.package ];
-          enableStrictShellChecks = true;
-          script =
-            let
-              # Check that the FSes we're about to mount actually come from
-              # our encryptionroot. If not, they may be fraudulent.
-              shouldCheckFS = fs: fs.fsType == "zfs" && utils.fsNeededForBoot fs;
-              checkFS = fs: ''
-                encroot="$(zfs get -H -o value encryptionroot ${fs.device})"
-                if [ "$encroot" != rpool/crypt ]; then
-                  echo ${fs.device} has invalid encryptionroot "$encroot" >&2
-                  exit 1
-                else
-                  echo ${fs.device} has valid encryptionroot "$encroot" >&2
-                fi
-              '';
-              # Use the same device directory as cfg.device for pool import
-              # This matches boot.zfs.devNodes setting and supports both /dev/vda (VMs)
-              # and /dev/disk/by-id/... (physical hardware) paths
-              importDir = builtins.dirOf cfg.device;
-            in
-            ''
-              function cleanup() {
-                exit_code=$?
-                if [ "$exit_code" != 0 ]; then
-                  zpool export rpool
-                fi
-              }
-              trap cleanup EXIT
-              zpool import -N -d ${importDir} rpool
-
-              # Check that the file systems we will mount have the right encryptionroot.
-              ${lib.concatStringsSep "\n" (
-                lib.map checkFS (lib.filter shouldCheckFS config.system.build.fileSystems)
-              )}
-            '';
+        unitConfig.DefaultDependencies = false;
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
         };
+        path = [config.boot.zfs.package];
+        enableStrictShellChecks = true;
+        script = let
+          # Check that the FSes we're about to mount actually come from
+          # our encryptionroot. If not, they may be fraudulent.
+          shouldCheckFS = fs: fs.fsType == "zfs" && utils.fsNeededForBoot fs;
+          checkFS = fs: ''
+            encroot="$(zfs get -H -o value encryptionroot ${fs.device})"
+            if [ "$encroot" != rpool/crypt ]; then
+              echo ${fs.device} has invalid encryptionroot "$encroot" >&2
+              exit 1
+            else
+              echo ${fs.device} has valid encryptionroot "$encroot" >&2
+            fi
+          '';
+          # Use the same device directory as cfg.device for pool import
+          # This matches boot.zfs.devNodes setting and supports both /dev/vda (VMs)
+          # and /dev/disk/by-id/... (physical hardware) paths
+          importDir = builtins.dirOf cfg.device;
+        in ''
+          function cleanup() {
+            exit_code=$?
+            if [ "$exit_code" != 0 ]; then
+              zpool export rpool
+            fi
+          }
+          trap cleanup EXIT
+          zpool import -N -d ${importDir} rpool
+
+          # Check that the file systems we will mount have the right encryptionroot.
+          ${lib.concatStringsSep "\n" (
+            lib.map checkFS (lib.filter shouldCheckFS config.system.build.fileSystems)
+          )}
+        '';
+      };
 
       luks.devices.credstore = {
         device = "/dev/zvol/rpool/credstore";
@@ -153,13 +147,13 @@ in
       # 'WantsMountsFor' instead and allow providing the key through any
       # of the numerous other systemd credential provision mechanisms.
       systemd.services.rpool-load-key = {
-        requiredBy = [ "initrd.target" ];
+        requiredBy = ["initrd.target"];
         before = [
           "sysroot.mount"
           "initrd.target"
         ];
-        requires = [ "import-rpool-bare.service" ];
-        after = [ "import-rpool-bare.service" ];
+        requires = ["import-rpool-bare.service"];
+        after = ["import-rpool-bare.service"];
         unitConfig.RequiresMountsFor = "/etc/credstore";
         unitConfig.DefaultDependencies = false;
         serviceConfig = {
@@ -174,7 +168,7 @@ in
       # There's a race condition where udev is being shutdown as we transition
       # out of initrd, but the cryptsetup detach verb needs to do one last udev
       # update, so that has to happen before udev shuts down.
-      systemd.services.systemd-udevd.before = [ "systemd-cryptsetup@credstore.service" ];
+      systemd.services.systemd-udevd.before = ["systemd-cryptsetup@credstore.service"];
     };
 
     # Disko configuration
@@ -288,10 +282,10 @@ in
     # '/var' datasets.
     #
     # All of that is incorrect if you just use 'mountpoint=legacy'
-    fileSystems = lib.genAttrs [ "/" "/nix" "/var" ] (fs: {
+    fileSystems = lib.genAttrs ["/" "/nix" "/var"] (fs: {
       device = "rpool/crypt/system${lib.optionalString (fs != "/") fs}";
       fsType = "zfs";
-      options = [ "zfsutil" ];
+      options = ["zfsutil"];
     });
 
     # ZFS configuration
@@ -330,7 +324,7 @@ in
     };
 
     # Ensure proper ZFS module loading
-    boot.kernelModules = [ "zfs" ];
-    boot.extraModulePackages = [ config.boot.kernelPackages.${pkgs.zfs.kernelModuleAttribute} ];
+    boot.kernelModules = ["zfs"];
+    boot.extraModulePackages = [config.boot.kernelPackages.${pkgs.zfs.kernelModuleAttribute}];
   };
 }
