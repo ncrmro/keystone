@@ -129,6 +129,8 @@ make vm-stop
 - quickemu: `nix-env -iA nixpkgs.quickemu`
 - socat: `nix-env -iA nixpkgs.socat` (for `bin/test-deployment` automated testing)
 
+**Note**: VM configuration is automatically created from `vms/server.conf.example` on first run. The config file is gitignored to prevent committing runtime state changes.
+
 ## Available Configurations
 
 ### Server Configuration
