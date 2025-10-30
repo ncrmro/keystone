@@ -10,13 +10,14 @@ serial="socket"
 ssh_port="22220"
 
 # Secure Boot Configuration
-# quickemu automatically enables UEFI boot for Linux guests
-# For Secure Boot testing, ensure your quickemu installation uses OVMF with Secure Boot support
-# OVMF (Open Virtual Machine Firmware) provides UEFI implementation for QEMU/KVM
-# The OVMF_VARS.fd file in server/ directory stores Secure Boot keys and NVRAM state
-#
+# Enable Secure Boot support in OVMF firmware (UEFI Secure Boot capable)
+# This loads OVMF with Secure Boot variables available for key enrollment
+# Note: Secure Boot starts DISABLED (Setup Mode) to allow key enrollment
+# The test-deployment script will automatically enroll custom keys via lanzaboote
+secureboot="on"
+
 # Requirements for Secure Boot automation:
 # - UEFI boot mode (enabled by default for Linux guests in quickemu)
-# - OVMF firmware with secureBoot=true support
-# - Writable OVMF_VARS.fd for persistent key storage
-# - NixOS configuration with lanzaboote module enabled (see examples/test-server.nix)
+# - secureboot="on" option (see above) loads Secure Boot capable OVMF firmware
+# - Writable OVMF_VARS.fd for persistent key storage (created in server/ directory)
+# - NixOS configuration with lanzaboote module enabled (see vms/test-server/configuration.nix)

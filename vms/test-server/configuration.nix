@@ -44,12 +44,14 @@
   # Ensure virtio modules are available in initrd (required for QEMU/KVM VMs)
   boot.initrd.availableKernelModules = ["virtio_blk" "virtio_pci" "virtio_net"];
 
-  # Secure Boot will be configured in phases:
-  # Phase 1: Deploy with systemd-boot (this configuration)
-  # Phase 2: Generate sbctl keys on deployed system
-  # Phase 3: Enable lanzaboote and sign boot files
-  # Phase 4: Enroll keys into UEFI firmware
-  # For now, use standard systemd-boot (disko module enables it by default)
+  # Secure Boot configuration with lanzaboote
+  # Lanzaboote replaces systemd-boot and automatically signs boot files
+  # Keys are generated during first boot and enrollment is automated via test script
+  boot.loader.systemd-boot.enable = lib.mkForce false; # Disable systemd-boot (lanzaboote replaces it)
+  boot.lanzaboote = {
+    enable = true;
+    pkiBundle = "/var/lib/sbctl"; # Where sbctl stores Secure Boot keys
+  };
 
   # SSH access configuration
   # IMPORTANT: Replace with your actual SSH public key(s)

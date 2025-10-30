@@ -137,6 +137,37 @@
 
 ---
 
+## Phase 7: End-to-End Secure Boot Validation 🎯 **CRITICAL**
+
+**Purpose**: Validate that Secure Boot actually works end-to-end with real VM
+
+**⚠️ BLOCKER**: This phase MUST be completed before the feature can be considered done. All previous phases only tested the graceful fallback path (`--skip-secureboot`).
+
+### Prerequisites for Testing
+- [X] T041 Verify OVMF firmware with Secure Boot support is available at the correct path
+- [X] T042 Update `vms/server.conf` to use OVMF with `secureboot="on"` (quickemu syntax)
+- [X] T043 Configure `vms/test-server/configuration.nix` to enable lanzaboote module
+- [X] T044 Verify `flake.nix` has lanzaboote input configured
+
+### Actual Secure Boot Testing
+- [ ] T045 Run `./bin/test-deployment --hard-reset --rebuild-iso` (WITHOUT --skip-secureboot)
+- [ ] T046 Verify UEFI Secure Boot capability is detected during deployment
+- [ ] T047 Verify Secure Boot keys are enrolled automatically
+- [ ] T048 Verify Setup Mode transitions from enabled to disabled
+- [ ] T049 Verify all boot files are properly signed by sbctl
+- [ ] T050 Verify final summary shows "Secure Boot: Fully configured and functional"
+- [ ] T051 SSH into deployed VM and manually verify: `bootctl status | grep "Secure Boot: enabled"`
+- [ ] T052 SSH into deployed VM and manually verify: `sbctl status` shows Secure Boot enabled
+
+### Failure Scenarios
+- [ ] T053 Test on VM without Secure Boot support and verify graceful skip
+- [ ] T054 Verify error messages are clear if Secure Boot enrollment fails
+- [ ] T055 Verify script continues to work with both `--skip-secureboot` and without it
+
+**Checkpoint**: ONLY after this phase can the feature be considered complete and ready for production use.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

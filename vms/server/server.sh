@@ -43,8 +43,9 @@
     -device virtio-net,netdev=nic \
     -netdev user,hostname=server,hostfwd=tcp::22220-:22,smb=/home/ncrmro,id=nic \
     -global driver=cfi.pflash01,property=secure,value=on \
-    -drive if=pflash,format=raw,unit=0,file=/nix/store/0nfx5pvd23z8dhngdw3n7ggcjb9lyj3k-OVMF-202411-fd/FV/OVMF_CODE.fd,readonly=on \
+    -drive if=pflash,format=raw,unit=0,file=/nix/store/gvhzp0xr5lq7j8qkniyx2a4zbcch9ibs-OVMF-202411-fd/FV/OVMF_CODE.fd,readonly=on \
     -drive if=pflash,format=raw,unit=1,file=server/OVMF_VARS.fd \
+    -drive media=cdrom,index=0,file=keystone-installer.iso \
     -device virtio-blk-pci,drive=SystemDisk \
     -drive id=SystemDisk,if=none,format=qcow2,file=server/disk.qcow2 \
     -fsdev local,id=fsdev0,path=/home/ncrmro,security_model=mapped-xattr \
