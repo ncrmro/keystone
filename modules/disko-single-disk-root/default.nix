@@ -5,11 +5,9 @@
   utils,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.disko;
-in
-{
+in {
   options.keystone.disko = {
     enable = mkEnableOption "Keystone disko configuration";
 
@@ -19,31 +17,19 @@ in
       description = "The disk device to use for installation (by-id path recommended)";
     };
 
-    enableEncryptedSwap = mkOption {
-      type = types.bool;
-      default = true;
-      description = "Whether to create an encrypted swap partition";
-    };
-
     swapSize = mkOption {
       type = types.str;
-      default = "64G";
-      description = "Size of the swap partition";
-    };
-
-    espSize = mkOption {
-      type = types.str;
-      default = "1G";
-      description = "Size of the EFI System Partition";
+      default = "8G";
+      example = "16G";
+      description = "Size of encrypted swap partition (e.g., 8G, 16G, 64G)";
     };
   };
 
   config = mkIf cfg.enable {
     # Ensure ZFS support is enabled
-    boot.supportedFilesystems = [ "zfs" ];
+    boot.supportedFilesystems = ["zfs"];
 
     # Boot loader configuration
-    boot.initrd.systemd.emergencyAccess = lib.mkDefault false;
     boot.loader.systemd-boot.enable = true;
     boot.loader.efi.canTouchEfiVariables = true;
 
@@ -51,67 +37,68 @@ in
     boot.initrd = {
       # This would be a nightmare without systemd initrd
       systemd.enable = true;
+      systemd.emergencyAccess = lib.mkDefault false;
 
       # Disable NixOS's systemd service that imports the pool
       systemd.services.zfs-import-rpool.enable = false;
 
-      systemd.services.import-rpool-bare =
-        let
-          # Compute the systemd units for the devices in the pool
-          devices = map (p: utils.escapeSystemdPath p + ".device") [
-            cfg.device
-          ];
-        in
-        {
-          after = [ "modprobe@zfs.service" ] ++ devices;
-          requires = [ "modprobe@zfs.service" ];
+      systemd.services.import-rpool-bare = let
+        # Compute the systemd units for the devices in the pool
+        devices = map (p: utils.escapeSystemdPath p + ".device") [
+          cfg.device
+        ];
+      in {
+        after = ["modprobe@zfs.service"] ++ devices;
+        requires = ["modprobe@zfs.service"];
 
-          # Devices are added to 'wants' instead of 'requires' so that a
-          # degraded import may be attempted if one of them times out.
-          # 'cryptsetup-pre.target' is wanted because it isn't pulled in
-          # normally and we want this service to finish before
-          # 'systemd-cryptsetup@.service' instances begin running.
-          wants = [ "cryptsetup-pre.target" ] ++ devices;
-          before = [ "cryptsetup-pre.target" ];
+        # Devices are added to 'wants' instead of 'requires' so that a
+        # degraded import may be attempted if one of them times out.
+        # 'cryptsetup-pre.target' is wanted because it isn't pulled in
+        # normally and we want this service to finish before
+        # 'systemd-cryptsetup@.service' instances begin running.
+        wants = ["cryptsetup-pre.target"] ++ devices;
+        before = ["cryptsetup-pre.target"];
 
-          unitConfig.DefaultDependencies = false;
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-          };
-          path = [ config.boot.zfs.package ];
-          enableStrictShellChecks = true;
-          script =
-            let
-              # Check that the FSes we're about to mount actually come from
-              # our encryptionroot. If not, they may be fraudulent.
-              shouldCheckFS = fs: fs.fsType == "zfs" && utils.fsNeededForBoot fs;
-              checkFS = fs: ''
-                encroot="$(zfs get -H -o value encryptionroot ${fs.device})"
-                if [ "$encroot" != rpool/crypt ]; then
-                  echo ${fs.device} has invalid encryptionroot "$encroot" >&2
-                  exit 1
-                else
-                  echo ${fs.device} has valid encryptionroot "$encroot" >&2
-                fi
-              '';
-            in
-            ''
-              function cleanup() {
-                exit_code=$?
-                if [ "$exit_code" != 0 ]; then
-                  zpool export rpool
-                fi
-              }
-              trap cleanup EXIT
-              zpool import -N -d /dev/disk/by-id rpool
-
-              # Check that the file systems we will mount have the right encryptionroot.
-              ${lib.concatStringsSep "\n" (
-                lib.map checkFS (lib.filter shouldCheckFS config.system.build.fileSystems)
-              )}
-            '';
+        unitConfig.DefaultDependencies = false;
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
         };
+        path = [config.boot.zfs.package];
+        enableStrictShellChecks = true;
+        script = let
+          # Check that the FSes we're about to mount actually come from
+          # our encryptionroot. If not, they may be fraudulent.
+          shouldCheckFS = fs: fs.fsType == "zfs" && utils.fsNeededForBoot fs;
+          checkFS = fs: ''
+            encroot="$(zfs get -H -o value encryptionroot ${fs.device})"
+            if [ "$encroot" != rpool/crypt ]; then
+              echo ${fs.device} has invalid encryptionroot "$encroot" >&2
+              exit 1
+            else
+              echo ${fs.device} has valid encryptionroot "$encroot" >&2
+            fi
+          '';
+          # Use the same device directory as cfg.device for pool import
+          # This matches boot.zfs.devNodes setting and supports both /dev/vda (VMs)
+          # and /dev/disk/by-id/... (physical hardware) paths
+          importDir = builtins.dirOf cfg.device;
+        in ''
+          function cleanup() {
+            exit_code=$?
+            if [ "$exit_code" != 0 ]; then
+              zpool export rpool
+            fi
+          }
+          trap cleanup EXIT
+          zpool import -N -d ${importDir} rpool
+
+          # Check that the file systems we will mount have the right encryptionroot.
+          ${lib.concatStringsSep "\n" (
+            lib.map checkFS (lib.filter shouldCheckFS config.system.build.fileSystems)
+          )}
+        '';
+      };
 
       luks.devices.credstore = {
         device = "/dev/zvol/rpool/credstore";
@@ -160,13 +147,13 @@ in
       # 'WantsMountsFor' instead and allow providing the key through any
       # of the numerous other systemd credential provision mechanisms.
       systemd.services.rpool-load-key = {
-        requiredBy = [ "initrd.target" ];
+        requiredBy = ["initrd.target"];
         before = [
           "sysroot.mount"
           "initrd.target"
         ];
-        requires = [ "import-rpool-bare.service" ];
-        after = [ "import-rpool-bare.service" ];
+        requires = ["import-rpool-bare.service"];
+        after = ["import-rpool-bare.service"];
         unitConfig.RequiresMountsFor = "/etc/credstore";
         unitConfig.DefaultDependencies = false;
         serviceConfig = {
@@ -181,12 +168,12 @@ in
       # There's a race condition where udev is being shutdown as we transition
       # out of initrd, but the cryptsetup detach verb needs to do one last udev
       # update, so that has to happen before udev shuts down.
-      systemd.services.systemd-udevd.before = [ "systemd-cryptsetup@credstore.service" ];
+      systemd.services.systemd-udevd.before = ["systemd-cryptsetup@credstore.service"];
     };
 
     # Disko configuration
     disko.devices = {
-      disk.primary = {
+      disk.root = {
         type = "disk";
         device = cfg.device;
         content = {
@@ -194,133 +181,91 @@ in
           partitions = {
             esp = {
               name = "ESP";
-              size = cfg.espSize;
+              size = "1G";
               type = "EF00";
               content = {
                 type = "filesystem";
                 format = "vfat";
                 mountpoint = "/boot";
-                mountOptions = [ "umask=0077" ];
               };
             };
-            zfs = mkMerge [
-              {
-                content = {
-                  type = "zfs";
-                  pool = "rpool";
-                };
-              }
-              (mkIf cfg.enableEncryptedSwap {
-                end = "-${cfg.swapSize}";
-              })
-              (mkIf (!cfg.enableEncryptedSwap) {
-                size = "100%";
-              })
-            ];
-          }
-          // (mkIf cfg.enableEncryptedSwap {
+            zfs = {
+              end = "-${cfg.swapSize}";
+              content = {
+                type = "zfs";
+                pool = "rpool";
+              };
+            };
             encryptedSwap = {
               size = "100%";
               content = {
                 type = "swap";
                 randomEncryption = true;
-                priority = 100;
               };
             };
-          });
+          };
         };
       };
-
-      zpool.rpool = {
-        type = "zpool";
-        rootFsOptions = {
-          mountpoint = "none";
-          compression = "zstd";
-          acltype = "posixacl";
-          xattr = "sa";
-          "com.sun:auto-snapshot" = "true";
-        };
-        options = {
-          ashift = "12";
-          autotrim = "on";
-        };
-        datasets = {
-          # Credstore for encryption keys
-          credstore = {
-            type = "zfs_volume";
-            size = "100M";
-            content = {
-              type = "luks";
-              name = "credstore";
+      zpool = {
+        rpool = {
+          type = "zpool";
+          rootFsOptions = {
+            mountpoint = "none";
+            compression = "zstd";
+            acltype = "posixacl";
+            xattr = "sa";
+            "com.sun:auto-snapshot" = "true";
+          };
+          options.ashift = "12";
+          datasets = {
+            # Credstore: LUKS-encrypted volume that stores ZFS encryption keys
+            #
+            # Password Strategy:
+            # - Default password "keystone" enables automated nixos-anywhere deployments
+            # - After installation, TPM2 handles automatic unlock via boot attestation
+            # - Users reset this password during TPM2 enrollment (systemd-cryptenroll)
+            # - Password fallback available if TPM2 fails (VMs, hardware issues)
+            #
+            # Security Notes:
+            # - Default password is public knowledge - TPM2 enrollment is mandatory
+            # - TPM2 PCR measurements prevent unauthorized decryption
+            # - Credstore only accessible during boot (unmounted after key load)
+            credstore = {
+              type = "zfs_volume";
+              size = "100M";
               content = {
-                type = "filesystem";
-                format = "ext4";
-                mountpoint = null; # Managed by systemd service
+                type = "luks";
+                name = "credstore";
+                passwordFile = "${./credstore-password}";
+                content = {
+                  type = "filesystem";
+                  format = "ext4";
+                };
               };
             };
-          };
-
-          # Encrypted root dataset
-          crypt = {
-            type = "zfs_fs";
-            options = {
-              mountpoint = "none";
-              encryption = "aes-256-gcm";
-              keyformat = "raw";
-              keylocation = "file:///etc/credstore/zfs-sysroot.mount";
+            crypt = {
+              type = "zfs_fs";
+              options.mountpoint = "none";
+              options.encryption = "aes-256-gcm";
+              options.keyformat = "raw";
+              options.keylocation = "file:///etc/credstore/zfs-sysroot.mount";
+              preCreateHook = "mount -o X-mount.mkdir /dev/mapper/credstore /etc/credstore && head -c 32 /dev/urandom > /etc/credstore/zfs-sysroot.mount";
+              postCreateHook = "umount /etc/credstore && cryptsetup luksClose /dev/mapper/credstore";
             };
-            preCreateHook = ''
-              mount -o X-mount.mkdir /dev/mapper/credstore /etc/credstore
-              head -c 32 /dev/urandom > /etc/credstore/zfs-sysroot.mount
-            '';
-            postCreateHook = ''
-              umount /etc/credstore
-              cryptsetup luksClose credstore
-            '';
-          };
-
-          # System datasets under encryption
-          "crypt/system" = {
-            type = "zfs_fs";
-            mountpoint = "/";
-            options = {
+            "crypt/system" = {
+              type = "zfs_fs";
               mountpoint = "/";
             };
-          };
-
-          "crypt/system/nix" = {
-            type = "zfs_fs";
-            mountpoint = "/nix";
-            options = {
-              "com.sun:auto-snapshot" = "false";
+            "crypt/system/nix" = {
+              type = "zfs_fs";
               mountpoint = "/nix";
+              options = {
+                "com.sun:auto-snapshot" = "false";
+              };
             };
-          };
-
-          "crypt/system/var" = {
-            type = "zfs_fs";
-            mountpoint = "/var";
-            options = {
+            "crypt/system/var" = {
+              type = "zfs_fs";
               mountpoint = "/var";
-            };
-          };
-
-          "crypt/system/home" = {
-            type = "zfs_fs";
-            mountpoint = "/home";
-            options = {
-              mountpoint = "/home";
-              "com.sun:auto-snapshot" = "true";
-            };
-          };
-
-          "crypt/system/tmp" = {
-            type = "zfs_fs";
-            mountpoint = "/tmp";
-            options = {
-              mountpoint = "/tmp";
-              "com.sun:auto-snapshot" = "false";
-              sync = "disabled";
             };
           };
         };
@@ -337,16 +282,19 @@ in
     # '/var' datasets.
     #
     # All of that is incorrect if you just use 'mountpoint=legacy'
-    fileSystems = lib.genAttrs [ "/" "/nix" "/var" ] (fs: {
+    fileSystems = lib.genAttrs ["/" "/nix" "/var"] (fs: {
       device = "rpool/crypt/system${lib.optionalString (fs != "/") fs}";
       fsType = "zfs";
-      options = [ "zfsutil" ];
+      options = ["zfsutil"];
     });
 
     # ZFS configuration
     boot.zfs = {
       forceImportRoot = false;
       allowHibernation = false;
+      # Use the same device path type as cfg.device to fix kexec reboot in VMs
+      # See: https://github.com/nix-community/nixos-anywhere/issues/156
+      devNodes = lib.dirOf cfg.device;
     };
 
     # Kernel parameters for ZFS
@@ -376,7 +324,7 @@ in
     };
 
     # Ensure proper ZFS module loading
-    boot.kernelModules = [ "zfs" ];
-    boot.extraModulePackages = with config.boot.kernelPackages; [ zfs ];
+    boot.kernelModules = ["zfs"];
+    boot.extraModulePackages = [config.boot.kernelPackages.${pkgs.zfs.kernelModuleAttribute}];
   };
 }
