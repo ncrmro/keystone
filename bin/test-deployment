@@ -76,96 +76,75 @@ def run_command(cmd, check=True, capture=False, timeout=None):
         print_error(f"Command timed out after {timeout} seconds")
         return False
 
-def find_vm_processes():
-    """Find running quickemu or qemu VM processes for server"""
+def get_vm_state():
+    """Get the state of the keystone-test-vm"""
     try:
-        # Match both quickemu processes and direct qemu processes with server name
-        output = run_command("pgrep -f '(quickemu.*server|qemu.*-name server)'", check=False, capture=True)
-        if output:
-            return [int(pid) for pid in output.split('\n') if pid.strip()]
-        return []
+        output = run_command("virsh list --all 2>/dev/null | grep keystone-test-vm || true", check=False, capture=True)
+        if not output or "keystone-test-vm" not in output:
+            return "not-defined"
+        if "running" in output:
+            return "running"
+        if "shut off" in output:
+            return "shut-off"
+        return "unknown"
     except:
-        return []
+        return "unknown"
 
-def kill_vm_processes(hard=False):
-    """Kill VM processes"""
-    pids = find_vm_processes()
-    if not pids:
-        print_info("No VM processes found")
+def stop_vm(force=False):
+    """Stop the VM using libvirt"""
+    state = get_vm_state()
+
+    if state == "not-defined":
+        print_info("VM not defined")
         return True
 
-    signal_type = signal.SIGKILL if hard else signal.SIGTERM
-    signal_name = "SIGKILL" if hard else "SIGTERM"
+    if state != "running":
+        print_info(f"VM already stopped (state: {state})")
+        return True
 
-    for pid in pids:
-        try:
-            print_info(f"Sending {signal_name} to process {pid}")
-            os.kill(pid, signal_type)
-            time.sleep(0.5)
-        except ProcessLookupError:
-            pass  # Already dead
-        except PermissionError:
-            print_error(f"Permission denied to kill process {pid}")
-            return False
+    command = "virsh destroy keystone-test-vm" if force else "virsh shutdown keystone-test-vm"
+    action = "Force stopping" if force else "Gracefully stopping"
 
-    # Wait for processes to die
+    print_info(f"{action} VM...")
+    result = run_command(command, check=False)
+
+    if not result:
+        if not force:
+            print_warning("Graceful shutdown failed, trying force stop...")
+            return stop_vm(force=True)
+        print_error("Failed to stop VM")
+        return False
+
+    # Wait for VM to stop
     for i in range(10):
-        remaining = find_vm_processes()
-        if not remaining:
-            print_success("All VM processes terminated")
-            # Extra cooldown to ensure disk is released
-            print_info("Waiting for disk to be fully released...")
-            time.sleep(3)
+        if get_vm_state() != "running":
+            print_success("VM stopped")
+            time.sleep(2)  # Extra cooldown
             return True
         time.sleep(0.5)
 
-    print_error("Some VM processes still running")
+    print_error("VM still running after stop command")
     return False
 
-def clean_vm_artifacts():
-    """Remove VM disk and runtime files, and restore ISO line in config"""
-    # Sync filesystems to ensure all writes are flushed
-    run_command("sync", check=False)
-    time.sleep(1)
+def reset_vm():
+    """Completely remove VM and all artifacts using bin/virtual-machine"""
+    print_info("Resetting VM (remove all artifacts)...")
 
-    # Restore ISO line in config if it was commented out
-    config_file = Path("vms/server.conf")
-    if config_file.exists():
-        config_content = config_file.read_text()
-        if '#iso="keystone-installer.iso"' in config_content:
-            config_content = config_content.replace('#iso="keystone-installer.iso"', 'iso="keystone-installer.iso"')
-            config_file.write_text(config_content)
-            print_info("Restored ISO line in VM configuration")
+    # Use the VM script's reset function
+    result = run_command("./bin/virtual-machine --reset keystone-test-vm", check=False)
 
-    vm_dir = Path("vms/server")
-    if not vm_dir.exists():
-        print_info("VM directory doesn't exist, nothing to clean")
+    if result:
+        print_success("VM reset complete")
         return True
-
-    artifacts = [
-        "disk.qcow2",
-        "OVMF_VARS.fd",
-        "*.pid",
-        "*.socket",
-        "*.log",
-        "*.ports"
-    ]
-
-    removed = []
-    for pattern in artifacts:
-        for file in vm_dir.glob(pattern):
-            try:
-                file.unlink()
-                removed.append(file.name)
-            except Exception as e:
-                print_warning(f"Could not remove {file}: {e}")
-
-    if removed:
-        print_success(f"Removed {len(removed)} artifact(s): {', '.join(removed)}")
     else:
-        print_info("No artifacts to clean")
+        # VM might not exist, which is fine
+        state = get_vm_state()
+        if state == "not-defined":
+            print_info("VM was not defined, nothing to reset")
+            return True
 
-    return True
+        print_error("Failed to reset VM")
+        return False
 
 def rebuild_iso():
     """Rebuild the Keystone ISO with SSH keys"""
@@ -187,81 +166,74 @@ def rebuild_iso():
         print_error("ISO build failed")
         return False
 
-def patch_vm_script_remove_snapshot():
-    """Remove snapshot mode from VM script (makes disk read-only)"""
-    script_file = Path("vms/server/server.sh")
-    if not script_file.exists():
-        return False
+# Obsolete functions removed - TPM2 handles auto-unlock, libvirt handles VM lifecycle
 
-    content = script_file.read_text()
+# VM configuration constants
+VM_IP = "192.168.100.99"
+VM_HOSTNAME = "keystone-test-vm"
 
-    # Check if already patched
-    if "-snapshot" not in content:
-        print_info("VM script already patched (snapshot removed)")
-        return True
-
-    # Remove snapshot mode
-    patched = content.replace("    -snapshot \\\n", "")
-
-    if patched != content:
-        script_file.write_text(patched)
-        print_success("Patched VM script: removed snapshot mode")
-        return True
-
-    print_info("VM script doesn't need patching")
-    return True
-
-def send_password_to_serial(password="keystone"):
-    """Send password to VM serial console via Unix socket"""
-    socket_path = Path("vms/server/server-serial.socket")
-
-    if not socket_path.exists():
-        print_error(f"Serial socket not found: {socket_path}")
-        return False
-
-    print_info(f"Sending password to serial console...")
-    # Use socat to send password to the serial socket
-    cmd = f"echo '{password}' | socat - UNIX-CONNECT:{socket_path}"
-    result = run_command(cmd, check=False, timeout=5)
-
-    if result:
-        print_success("Password sent to serial console")
-        return True
-    else:
-        print_error("Failed to send password to serial console")
-        return False
+def ssh_vm(command, check=True, capture=False, timeout=None):
+    """Execute SSH command on the test VM"""
+    ssh_cmd = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@{VM_IP} '{command}'"
+    return run_command(ssh_cmd, check=check, capture=capture, timeout=timeout)
 
 def start_vm():
-    """Start the VM"""
+    """Start the VM using bin/virtual-machine"""
     print_info("Starting VM from ISO...")
 
-    # Use make to start the VM - it handles disk creation and script generation
-    print_info("Starting VM using make vm-server...")
-    result = run_command("make vm-server", check=False, timeout=30)
+    state = get_vm_state()
 
-    if not result:
-        print_error("Failed to start VM")
-        return False
+    # If VM is already defined, just start it
+    if state in ["shut-off", "shut off"]:
+        print_info("VM already defined, starting it...")
+        result = run_command("virsh start keystone-test-vm", check=False, timeout=30)
+        if not result:
+            print_error("Failed to start existing VM")
+            return False
+    # If VM doesn't exist, create and start it
+    elif state == "not-defined":
+        print_info("Creating new VM...")
+        result = run_command("./bin/virtual-machine --name keystone-test-vm --start", check=False, timeout=60)
+        if not result:
+            print_error("Failed to create VM")
+            return False
+    # If VM is already running, that's fine
+    elif state == "running":
+        print_info("VM is already running")
+    else:
+        print_warning(f"VM in unexpected state: {state}")
 
-    print_info("Waiting for VM to boot (30 seconds)...")
-    time.sleep(30)
+    # Wait for VM to be reachable (check every 5 seconds, max 2 minutes)
+    print_info("Waiting for VM to boot (max 120 seconds)...")
+    max_wait = 120
+    check_interval = 5
+    elapsed = 0
 
+    while elapsed < max_wait:
+        # Simple connectivity check via virsh
+        result = run_command("virsh domstate keystone-test-vm 2>/dev/null | grep -q running", check=False)
+        if result:
+            # Give a bit more time for services to start
+            time.sleep(5)
+            print_success(f"VM booted (took ~{elapsed + 5} seconds)")
+            return True
+
+        print(f"  Waiting... {elapsed}/{max_wait}s", end='\r')
+        time.sleep(check_interval)
+        elapsed += check_interval
+
+    print_warning("VM may not be fully booted, continuing anyway...")
     return True
 
-def wait_for_ssh(max_attempts=10, delay=3):
+def wait_for_ssh(max_attempts=20, delay=5):
     """Wait for SSH to become available"""
-    print_info(f"Waiting for SSH access (max {max_attempts * delay} seconds)...")
+    print_info(f"Waiting for SSH access at {VM_IP} (max {max_attempts * delay} seconds)...")
 
     for attempt in range(max_attempts):
         try:
-            result = run_command(
-                "ssh -p 22220 -o ConnectTimeout=3 -o StrictHostKeyChecking=no root@localhost 'echo ready' 2>/dev/null",
-                check=False,
-                capture=True,
-                timeout=5
-            )
+            result = ssh_vm("echo ready", check=False, capture=True, timeout=5)
             if result == "ready":
-                print_success("SSH is ready")
+                print_success(f"SSH is ready at {VM_IP}")
                 return True
         except:
             pass
@@ -280,7 +252,7 @@ def deploy_to_vm():
     print_warning("You may need to interact with the deployment (confirmations, etc.)")
 
     # Use --no-reboot to allow manual cleanup before rebooting
-    cmd = "nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@localhost --ssh-port 22220 --no-reboot"
+    cmd = f"nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@{VM_IP} --no-reboot"
     success = run_command(cmd, timeout=600)
 
     if not success:
@@ -292,13 +264,11 @@ def deploy_to_vm():
     # Now perform manual cleanup to prevent hanging during pool export
     print_info("Performing cleanup before reboot...")
 
-    cleanup_cmd = """ssh -p 22220 -o StrictHostKeyChecking=no root@localhost '
+    cleanup_script = """
         # Unmount all ZFS filesystems first
         if zpool list rpool >/dev/null 2>&1; then
             echo "Unmounting ZFS filesystems..."
-            # Change to root to ensure we are not in /mnt
             cd /
-            # Unmount all filesystems under /mnt
             umount -R /mnt 2>/dev/null || true
         fi
 
@@ -317,9 +287,9 @@ def deploy_to_vm():
         # Trigger reboot
         echo "Rebooting system..."
         nohup sh -c "sleep 2 && reboot" >/dev/null 2>&1 &
-    '"""
+    """
 
-    cleanup_success = run_command(cleanup_cmd, check=False, timeout=30)
+    cleanup_success = ssh_vm(cleanup_script, check=False, timeout=30)
 
     if cleanup_success:
         print_success("Cleanup and reboot triggered successfully!")
@@ -334,68 +304,27 @@ def deploy_to_vm():
 
 def remove_iso_and_reboot():
     """Remove ISO from VM config and restart to boot from disk"""
-    print_info("Exporting ZFS pool before VM restart...")
+    print_info("Preparing VM for post-installation boot...")
 
-    # Export the pool cleanly to avoid import conflicts
-    export_cmd = """ssh -p 22220 -o StrictHostKeyChecking=no root@localhost '
-        if zpool list rpool >/dev/null 2>&1; then
-            echo "Exporting ZFS pool rpool..."
-            zpool export rpool
-            echo "Pool exported successfully"
-        else
-            echo "Pool not imported, nothing to export"
-        fi
-    ' 2>/dev/null"""
+    # Shut down the VM first
+    print_info("Shutting down VM...")
+    if not stop_vm(force=True):
+        print_warning("Failed to stop VM cleanly, continuing anyway...")
 
-    export_result = run_command(export_cmd, check=False, timeout=10)
-    if export_result:
-        print_success("ZFS pool exported successfully")
-    else:
-        print_warning("Could not export pool (may not be mounted)")
+    # Use bin/virtual-machine's post-install-reboot function
+    print_info("Running post-install reboot (removes ISO, snapshots disk, restarts)...")
+    result = run_command("./bin/virtual-machine --post-install-reboot keystone-test-vm", check=False, timeout=60)
 
-    print_info("Removing ISO from VM configuration...")
-
-    config_file = Path("vms/server.conf")
-    if not config_file.exists():
-        print_error("VM config file not found")
+    if not result:
+        print_error("Post-install reboot failed")
         return False
 
-    # Read current config
-    config_content = config_file.read_text()
+    print_success("VM restarted without ISO")
 
-    # Comment out the ISO line
-    new_config = config_content.replace('iso="keystone-installer.iso"', '#iso="keystone-installer.iso"')
-
-    # Write back
-    config_file.write_text(new_config)
-    print_success("ISO removed from configuration")
-
-    # Kill VM
-    print_info("Stopping VM...")
-    if not kill_vm_processes(hard=True):
-        print_warning("Failed to stop VM cleanly")
-
-    # Remove generated script so it regenerates without ISO
-    script_file = Path("vms/server/server.sh")
-    if script_file.exists():
-        script_file.unlink()
-        print_success("Removed old startup script")
-
-    # Restart VM - use make which handles everything
-    print_info("Restarting VM to boot from installed disk...")
-    run_command("make vm-server", check=False, timeout=30)
-
-    # Wait for boot to reach LUKS password prompt
-    print_info("Waiting for LUKS password prompt (15 seconds)...")
-    time.sleep(15)
-
-    # Automatically send the LUKS password
-    if not send_password_to_serial("keystone"):
-        print_warning("Failed to send password, but continuing...")
-
-    # Wait for unlock to complete and system to finish booting
-    print_info("Waiting for system to finish booting (25 seconds)...")
-    time.sleep(25)
+    # With TPM2, the system should auto-unlock
+    # Wait for system to finish booting
+    print_info("Waiting for system to finish booting (30 seconds)...")
+    time.sleep(30)
 
     return True
 
@@ -406,23 +335,27 @@ def verify_deployment():
 
     print_info("Running verification checks...")
 
-    # The verification script expects standard SSH port, so we'll do manual checks
+    # Manual verification checks using ssh_vm helper
     checks = [
-        ("SSH connectivity", "ssh -p 22220 -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@localhost 'echo ok' 2>/dev/null"),
-        ("Hostname", "ssh -p 22220 -o StrictHostKeyChecking=no root@localhost 'hostname' 2>/dev/null"),
-        ("ZFS pool", "ssh -p 22220 -o StrictHostKeyChecking=no root@localhost 'zpool status rpool' 2>/dev/null | grep -q ONLINE"),
-        ("SSH service", "ssh -p 22220 -o StrictHostKeyChecking=no root@localhost 'systemctl is-active sshd' 2>/dev/null"),
+        ("SSH connectivity", lambda: ssh_vm("echo ok", check=False, capture=True, timeout=5) == "ok"),
+        ("Hostname", lambda: ssh_vm("hostname", check=False, capture=True, timeout=5) == VM_HOSTNAME),
+        ("ZFS pool", lambda: ssh_vm("zpool status rpool | grep -q ONLINE", check=False, timeout=5)),
+        ("SSH service", lambda: ssh_vm("systemctl is-active sshd", check=False, capture=True, timeout=5) == "active"),
     ]
 
     passed = 0
     failed = 0
 
-    for check_name, check_cmd in checks:
-        result = run_command(check_cmd, check=False)
-        if result:
-            print_success(f"{check_name}")
-            passed += 1
-        else:
+    for check_name, check_func in checks:
+        try:
+            result = check_func()
+            if result:
+                print_success(f"{check_name}")
+                passed += 1
+            else:
+                print_error(f"{check_name}")
+                failed += 1
+        except:
             print_error(f"{check_name}")
             failed += 1
 
@@ -430,22 +363,7 @@ def verify_deployment():
 
     return failed == 0
 
-def ensure_vm_config():
-    """Ensure VM config exists, create from example if needed"""
-    config_file = Path("vms/server.conf")
-    example_file = Path("vms/server.conf.example")
-
-    if not config_file.exists():
-        if not example_file.exists():
-            print_error("Neither vms/server.conf nor vms/server.conf.example found!")
-            print_info("Please ensure you're in the project root directory")
-            return False
-
-        print_info("Creating vms/server.conf from example...")
-        config_file.write_text(example_file.read_text())
-        print_success("Created vms/server.conf")
-
-    return True
+# ensure_vm_config() no longer needed - libvirt VMs don't use quickemu .conf files
 
 def main():
     """Main test workflow"""
@@ -458,10 +376,6 @@ def main():
         print(__doc__)
         return 0
 
-    # Ensure VM config exists
-    if not ensure_vm_config():
-        return 1
-
     print("=" * 60)
     print(f"{CYAN}Keystone Deployment Test{NC}")
     print("=" * 60)
@@ -469,11 +383,11 @@ def main():
     print(f"Hard Reset: {hard_reset_flag}")
     print()
 
-    total_steps = 6  # Updated from 5 to include ISO removal step
+    total_steps = 5  # Stop/Reset, ISO rebuild (optional), Start, Deploy, Remove ISO, Verify
     if rebuild_iso_flag:
         total_steps += 1
     if hard_reset_flag:
-        total_steps += 2
+        total_steps += 0  # No extra step, just different behavior in step 1
 
     current_step = 0
 
@@ -482,24 +396,17 @@ def main():
         current_step += 1
         print_step(current_step, total_steps, "Hard resetting VM")
 
-        if not kill_vm_processes(hard=True):
-            print_error("Failed to kill VM processes")
-            return 1
-
-        current_step += 1
-        print_step(current_step, total_steps, "Cleaning VM artifacts")
-
-        if not clean_vm_artifacts():
-            print_error("Failed to clean VM artifacts")
+        if not reset_vm():
+            print_error("Failed to reset VM")
             return 1
     else:
         # Graceful stop
         current_step += 1
         print_step(current_step, total_steps, "Stopping existing VM")
 
-        if not kill_vm_processes(hard=False):
-            print_warning("Failed graceful stop, trying hard kill...")
-            kill_vm_processes(hard=True)
+        if not stop_vm(force=False):
+            print_warning("Failed graceful stop, trying force stop...")
+            stop_vm(force=True)
 
     # Step: Rebuild ISO if requested
     if rebuild_iso_flag:
@@ -546,7 +453,7 @@ def main():
 
     if not verify_deployment():
         print_warning("Some verification checks failed")
-        print_info("You can still SSH to the VM: ssh -p 22220 root@localhost")
+        print_info(f"You can still SSH to the VM: ssh root@{VM_IP}")
     else:
         print()
         print("=" * 60)
@@ -556,13 +463,16 @@ def main():
         print("SSH to deployed server:")
         print()
         print("Remove old host key (if you get host key verification failed):")
-        print(f"  ssh-keygen -R '[localhost]:22220'")
+        print(f"  ssh-keygen -R {VM_IP}")
         print()
         print("SSH with normal key checking:")
-        print(f"  ssh -p 22220 root@localhost")
+        print(f"  ssh root@{VM_IP}")
         print()
         print("SSH ignoring host key verification:")
-        print(f"  ssh -p 22220 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost")
+        print(f"  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@{VM_IP}")
+        print()
+        print("Or use the hostname:")
+        print(f"  ssh root@{VM_HOSTNAME}")
         print()
 
     return 0
