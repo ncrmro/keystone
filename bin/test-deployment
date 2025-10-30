@@ -430,6 +430,23 @@ def verify_deployment():
 
     return failed == 0
 
+def ensure_vm_config():
+    """Ensure VM config exists, create from example if needed"""
+    config_file = Path("vms/server.conf")
+    example_file = Path("vms/server.conf.example")
+
+    if not config_file.exists():
+        if not example_file.exists():
+            print_error("Neither vms/server.conf nor vms/server.conf.example found!")
+            print_info("Please ensure you're in the project root directory")
+            return False
+
+        print_info("Creating vms/server.conf from example...")
+        config_file.write_text(example_file.read_text())
+        print_success("Created vms/server.conf")
+
+    return True
+
 def main():
     """Main test workflow"""
     # Parse arguments
@@ -440,6 +457,10 @@ def main():
     if help_flag:
         print(__doc__)
         return 0
+
+    # Ensure VM config exists
+    if not ensure_vm_config():
+        return 1
 
     print("=" * 60)
     print(f"{CYAN}Keystone Deployment Test{NC}")

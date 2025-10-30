@@ -30,3 +30,6 @@ vms/*/*.pid
 vms/*/*.ports
 vms/*/*.log
 vms/*/*.socket
+
+# VM configuration (keep .example files tracked)
+vms/*.conf
