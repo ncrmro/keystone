@@ -245,6 +245,89 @@ def wait_for_ssh(max_attempts=20, delay=5):
     print_error("SSH never became available")
     return False
 
+def ensure_initrd_ssh_key():
+    """Generate or verify initrd SSH host key exists for VM testing"""
+    key_dir = Path("vms/test-server/ssh-keys")
+    key_path = key_dir / "initrd_ssh_host_ed25519_key"
+    key_pub_path = key_path.with_suffix(".pub")
+
+    # Extra files directory for nixos-anywhere
+    extra_files_dir = Path("vms/test-server/extra-files/etc/ssh")
+    extra_files_key = extra_files_dir / "initrd_ssh_host_ed25519_key"
+    extra_files_pub = extra_files_dir / "initrd_ssh_host_ed25519_key.pub"
+
+    # Check if key exists
+    if key_path.exists():
+        print_info(f"Initrd SSH host key already exists: {key_path}")
+
+        # Ensure it's also in extra-files directory
+        extra_files_dir.mkdir(parents=True, exist_ok=True)
+        if not extra_files_key.exists():
+            print_info("Copying key to extra-files directory...")
+            import shutil
+            shutil.copy2(key_path, extra_files_key)
+            shutil.copy2(key_pub_path, extra_files_pub)
+
+        return True
+
+    print_info("Generating initrd SSH host key for VM testing...")
+
+    # Create directories
+    key_dir.mkdir(parents=True, exist_ok=True)
+    extra_files_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate the key
+    cmd = f'ssh-keygen -t ed25519 -N "" -f {key_path} -C "test-vm-initrd-host-key"'
+    success = run_command(cmd, check=False, timeout=30)
+
+    if success and key_path.exists():
+        print_success(f"Initrd SSH host key generated: {key_path}")
+
+        # Copy to extra-files directory for nixos-anywhere
+        print_info("Copying key to extra-files directory...")
+        import shutil
+        shutil.copy2(key_path, extra_files_key)
+        shutil.copy2(key_pub_path, extra_files_pub)
+
+        return True
+    else:
+        print_error("Failed to generate initrd SSH host key")
+        return False
+
+def copy_ssh_key_to_vm():
+    """Copy host SSH public key to VM for nixos-anywhere installation"""
+    print_info("Copying host SSH key to VM...")
+
+    ssh_key_file = Path.home() / ".ssh" / "id_ed25519.pub"
+    if not ssh_key_file.exists():
+        print_error(f"SSH key not found: {ssh_key_file}")
+        return False
+
+    # Read the SSH public key
+    try:
+        with open(ssh_key_file, 'r') as f:
+            ssh_key = f.read().strip()
+    except Exception as e:
+        print_error(f"Failed to read SSH key: {e}")
+        return False
+
+    # Copy the key to the VM's authorized_keys
+    copy_cmd = f"""
+        mkdir -p /root/.ssh
+        chmod 700 /root/.ssh
+        echo '{ssh_key}' > /root/.ssh/authorized_keys
+        chmod 600 /root/.ssh/authorized_keys
+    """
+
+    result = ssh_vm(copy_cmd, check=False, timeout=10)
+
+    if result:
+        print_success("SSH key copied successfully")
+        return True
+    else:
+        print_error("Failed to copy SSH key")
+        return False
+
 def deploy_to_vm():
     """Deploy using nixos-anywhere with manual cleanup and reboot"""
     print_info("Starting nixos-anywhere deployment...")
@@ -252,7 +335,8 @@ def deploy_to_vm():
     print_warning("You may need to interact with the deployment (confirmations, etc.)")
 
     # Use --no-reboot to allow manual cleanup before rebooting
-    cmd = f"nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@{VM_IP} --no-reboot"
+    # Use --extra-files to copy initrd SSH key to the target before building
+    cmd = f"nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@{VM_IP} --no-reboot --extra-files vms/test-server/extra-files"
     success = run_command(cmd, timeout=600)
 
     if not success:
@@ -321,17 +405,71 @@ def remove_iso_and_reboot():
 
     print_success("VM restarted without ISO")
 
-    # With TPM2, the system should auto-unlock
-    # Wait for system to finish booting
-    print_info("Waiting for system to finish booting (30 seconds)...")
-    time.sleep(30)
-
     return True
+
+def auto_unlock_disk():
+    """Automatically unlock the disk via initrd SSH"""
+    print_info("Waiting for initrd SSH to become available...")
+
+    # Wait for initrd SSH (max 2 minutes)
+    max_wait = 120
+    check_interval = 5
+    elapsed = 0
+
+    while elapsed < max_wait:
+        # Try to connect to initrd SSH
+        # The systemd-tty-ask-password-agent will be the shell
+        result = run_command(
+            f'echo "keystone" | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@{VM_IP}',
+            check=False,
+            timeout=10
+        )
+
+        if result:
+            print_success("Disk unlock password sent!")
+            return True
+
+        print(f"  Waiting for initrd... {elapsed}/{max_wait}s", end='\r')
+        time.sleep(check_interval)
+        elapsed += check_interval
+
+    print_error("Initrd SSH never became available")
+    return False
 
 def verify_deployment():
     """Run the verification script"""
-    print_info("Waiting for deployed system to finish booting (30 seconds)...")
-    time.sleep(30)
+    print_info("Waiting for deployed system to finish booting...")
+    print_info("This includes time for initrd SSH unlock and boot continuation")
+
+    # Wait longer and try SSH multiple times
+    max_wait = 120  # 2 minutes
+    check_interval = 5
+    elapsed = 0
+    ssh_ready = False
+
+    print_info(f"Attempting SSH connection (max {max_wait} seconds)...")
+    while elapsed < max_wait:
+        try:
+            result = ssh_vm("echo ok", check=False, capture=True, timeout=5)
+            if result == "ok":
+                print_success(f"SSH connected after {elapsed} seconds")
+                ssh_ready = True
+                break
+        except:
+            pass
+
+        print(f"  Waiting... {elapsed}/{max_wait}s", end='\r')
+        time.sleep(check_interval)
+        elapsed += check_interval
+
+    if not ssh_ready:
+        print_error("SSH never became available after deployment")
+        print_warning("The system may be waiting for disk unlock at the initrd prompt")
+        print_info("Try connecting via serial console: virsh console keystone-test-vm")
+        return False
+
+    # Give system a few more seconds to finish starting services
+    time.sleep(5)
 
     print_info("Running verification checks...")
 
@@ -383,7 +521,7 @@ def main():
     print(f"Hard Reset: {hard_reset_flag}")
     print()
 
-    total_steps = 5  # Stop/Reset, ISO rebuild (optional), Start, Deploy, Remove ISO, Verify
+    total_steps = 8  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Deploy, Remove ISO, Unlock, Verify
     if rebuild_iso_flag:
         total_steps += 1
     if hard_reset_flag:
@@ -416,6 +554,14 @@ def main():
         if not rebuild_iso():
             return 1
 
+    # Step: Ensure initrd SSH key exists
+    current_step += 1
+    print_step(current_step, total_steps, "Ensuring initrd SSH key exists")
+
+    if not ensure_initrd_ssh_key():
+        print_error("Failed to generate initrd SSH key")
+        return 1
+
     # Step: Start VM
     current_step += 1
     print_step(current_step, total_steps, "Starting VM from ISO")
@@ -429,6 +575,14 @@ def main():
 
     if not wait_for_ssh():
         print_error("VM did not become accessible")
+        return 1
+
+    # Step: Copy SSH key to VM
+    current_step += 1
+    print_step(current_step, total_steps, "Copying SSH key to VM")
+
+    if not copy_ssh_key_to_vm():
+        print_error("Failed to copy SSH key to VM")
         return 1
 
     # Step: Deploy
@@ -445,6 +599,15 @@ def main():
 
     if not remove_iso_and_reboot():
         print_error("Failed to remove ISO and reboot")
+        return 1
+
+    # Step: Auto unlock disk via initrd SSH
+    current_step += 1
+    print_step(current_step, total_steps, "Unlocking disk via initrd SSH")
+
+    if not auto_unlock_disk():
+        print_error("Failed to unlock disk")
+        print_info("Try manually: ssh root@{VM_IP}")
         return 1
 
     # Step: Verify
