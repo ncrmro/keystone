@@ -673,7 +673,7 @@ def main():
 
     if not run_post_install_provisioning():
         print_error("Post-install provisioning failed")
-        print_warning("Continuing with verification anyway...")
+        return 1
 
     # Step: Verify
     current_step += 1
