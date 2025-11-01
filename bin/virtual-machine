@@ -22,6 +22,40 @@ import xml.etree.ElementTree as ET
 import subprocess
 import glob
 
+def validate_nvram_setup_mode(nvram_path):
+    """
+    Check if NVRAM file appears to be in setup mode (no pre-enrolled keys)
+
+    Args:
+        nvram_path: Path to NVRAM file (OVMF_VARS.fd copy)
+
+    Returns:
+        tuple: (is_valid, message)
+            is_valid (bool): True if NVRAM appears to be in setup mode
+            message (str): Warning message if validation fails, None otherwise
+    """
+    if not os.path.exists(nvram_path):
+        return True, None  # Will be created from template
+
+    # Empty template should be exactly 540,672 bytes
+    expected_size = 540672
+    actual_size = os.path.getsize(nvram_path)
+
+    # Allow 10KB variance for metadata
+    if actual_size > expected_size + 10000:
+        warning = (
+            f"⚠️  WARNING: NVRAM file is larger than expected\n"
+            f"    Expected: ~{expected_size} bytes (empty template)\n"
+            f"    Actual:   {actual_size} bytes\n"
+            f"    This may indicate pre-enrolled keys.\n"
+            f"    VM may NOT boot in setup mode.\n"
+            f"    To reset: rm {nvram_path}"
+        )
+        return False, warning
+
+    return True, None
+
+
 def find_ovmf_firmware():
     """
     Find OVMF firmware files on NixOS
@@ -106,7 +140,7 @@ def create_uefi_secureboot_vm(
     ssh_port=22222,
 ):
     """
-    Create a VM with UEFI Secure Boot enabled (NixOS-compatible)
+    Create a VM with UEFI Secure Boot enabled in Setup Mode
 
     Args:
         conn: libvirt connection object
@@ -117,6 +151,18 @@ def create_uefi_secureboot_vm(
         disk_size_gb: Size of disk if creating new
         iso_path: Path to installation ISO (optional)
         ssh_port: Host port for SSH forwarding (default 22222)
+
+    Returns:
+        libvirt.virDomain: Domain object for created VM
+
+    Raises:
+        SystemExit(1): If OVMF firmware not found or VM creation fails
+
+    Postconditions:
+        - VM defined in libvirt with Secure Boot enabled
+        - NVRAM file created from empty OVMF_VARS template
+        - VM in Setup Mode (no keys enrolled, SetupMode=1)
+        - Running `bootctl status` in VM shows "Secure Boot: disabled (setup)"
     """
 
     # Set default disk path to vms/ directory
@@ -154,22 +200,38 @@ def create_uefi_secureboot_vm(
         print("  Or install manually: nix-env -iA nixos.OVMF")
         sys.exit(1)
 
+    # Verify Secure Boot firmware is available (non-optional)
+    if "secure" not in ovmf_code.lower():
+        print("ERROR: Secure Boot firmware not found!")
+        print("This script requires Secure Boot enabled OVMF firmware.")
+        print(f"Found: {ovmf_code}")
+        print(f"Expected: edk2-x86_64-secure-code.fd or OVMF_CODE.secboot.fd")
+        print("\nOn NixOS, ensure QEMU with EDK2 Secure Boot firmware is available:")
+        print("  Add to configuration.nix:")
+        print("    virtualisation.libvirtd.enable = true;")
+        print("  Then rebuild:")
+        print("    sudo nixos-rebuild switch")
+        sys.exit(1)
+
     print(f"✓ Found OVMF CODE: {ovmf_code}")
     print(f"✓ Found OVMF VARS: {ovmf_vars}")
 
     # Copy OVMF vars template to VM-specific NVRAM
     if not os.path.exists(nvram_path):
         os.makedirs(os.path.dirname(nvram_path), exist_ok=True)
+
+        # Validate VARS template before copying
+        is_valid, warning = validate_nvram_setup_mode(ovmf_vars)
+        if not is_valid:
+            print(warning)
+
         os.system(f"cp {ovmf_vars} {nvram_path}")
         print(f"✓ Created NVRAM: {nvram_path}")
-    
-    # Verify Secure Boot firmware is available (non-optional)
-    if "secure" not in ovmf_code.lower():
-        print("ERROR: Secure Boot firmware not found!")
-        print("This script requires Secure Boot enabled OVMF firmware.")
-        print(f"Found: {ovmf_code}")
-        print("On NixOS, ensure QEMU is installed with EDK2 Secure Boot firmware.")
-        sys.exit(1)
+    else:
+        # Validate existing NVRAM file
+        is_valid, warning = validate_nvram_setup_mode(nvram_path)
+        if not is_valid:
+            print(warning)
 
     print(f"✓ Secure Boot enabled")
 
@@ -183,7 +245,7 @@ def create_uefi_secureboot_vm(
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>
     <loader readonly='yes' secure='yes' type='pflash'>{ovmf_code}</loader>
-    <nvram>{nvram_path}</nvram>
+    <nvram template='{ovmf_vars}'>{nvram_path}</nvram>
     <boot dev='hd'/>
     {"<boot dev='cdrom'/>" if iso_path else ""}
   </os>
@@ -345,6 +407,67 @@ def post_install_reboot(conn, vm_name):
         sys.exit(1)
 
 
+def reset_setup_mode(conn, vm_name):
+    """
+    Reset VM NVRAM to Setup Mode (delete and recreate from template)
+    VM must be shut down before running this
+    """
+    try:
+        dom = conn.lookupByName(vm_name)
+
+        # Check if VM is shut down
+        if dom.isActive():
+            print(f"ERROR: VM '{vm_name}' is still running!")
+            print(f"Shut down the VM first: virsh shutdown {vm_name}")
+            sys.exit(1)
+
+        # Get NVRAM path from XML
+        xml = dom.XMLDesc(0)
+        root = ET.fromstring(xml)
+        nvram_elem = root.find('.//os/nvram')
+
+        if nvram_elem is None or not nvram_elem.text:
+            print(f"ERROR: No NVRAM file found for VM '{vm_name}'")
+            sys.exit(1)
+
+        nvram_path = nvram_elem.text
+        nvram_template = nvram_elem.get('template')
+
+        if not nvram_template:
+            print(f"WARNING: No NVRAM template attribute found in VM XML")
+            print(f"Will delete NVRAM, but you may need to manually recreate the VM")
+
+        # Delete existing NVRAM
+        if os.path.exists(nvram_path):
+            os.remove(nvram_path)
+            print(f"✓ Deleted NVRAM: {nvram_path}")
+        else:
+            print(f"ℹ NVRAM file does not exist: {nvram_path}")
+
+        # Recreate from template if available
+        if nvram_template and os.path.exists(nvram_template):
+            os.makedirs(os.path.dirname(nvram_path), exist_ok=True)
+            os.system(f"cp {nvram_template} {nvram_path}")
+            print(f"✓ Recreated NVRAM from template: {nvram_template}")
+            print(f"✓ VM '{vm_name}' reset to Setup Mode")
+            print(f"\nNext steps:")
+            print(f"  virsh start {vm_name}")
+            print(f"  virsh console {vm_name}")
+            print(f"  # Inside VM: bootctl status")
+        else:
+            print(f"✓ NVRAM deleted")
+            print(f"ℹ To recreate the VM with fresh NVRAM:")
+            print(f"  ./bin/virtual-machine --reset {vm_name}")
+            print(f"  ./bin/virtual-machine --name {vm_name} --start")
+
+    except libvirt.libvirtError as e:
+        if "Domain not found" in str(e):
+            print(f"ERROR: VM '{vm_name}' does not exist")
+        else:
+            print(f"ERROR: {e}")
+        sys.exit(1)
+
+
 def reset_vm(conn, vm_name):
     """
     Completely delete VM and all associated files (no confirmation)
@@ -470,11 +593,32 @@ def print_connection_commands(vm_name, ssh_port):
     print(f"  2. Run post-install:  python3 {sys.argv[0]} --post-install-reboot {vm_name}")
     print(f"     (This will: snapshot disk, remove ISO, and reboot)")
     
-    print("\n🔒 VERIFY SECURE BOOT (NixOS):")
-    print("  Inside the VM after boot:")
-    print("    bootctl status | grep 'Secure Boot'")
-    print("    dmesg | grep -i 'secure boot'")
-    print("    cat /sys/firmware/efi/efivars/SecureBoot-* | od -An -t u1")
+    print("\n🔒 VERIFY SECURE BOOT SETUP MODE:")
+    print("  VMs are created with Secure Boot enabled in Setup Mode (no keys enrolled).")
+    print("  This allows testing custom key enrollment and Keystone installer integration.")
+    print()
+    print("  Inside the VM after booting from the installer ISO:")
+    print("    bootctl status")
+    print()
+    print("  Expected output:")
+    print("    System:")
+    print("         Firmware: UEFI 2.70 (EDK II 1.00)")
+    print("      Secure Boot: disabled (setup)")
+    print("       Setup Mode: setup")
+    print()
+    print("  What this means:")
+    print("    • 'Secure Boot: disabled (setup)' - Firmware has Secure Boot capability")
+    print("    • 'Setup Mode: setup' - No Platform Key (PK) enrolled, ready for key enrollment")
+    print("    • OS installer can enroll custom Secure Boot keys")
+    print()
+    print("  Alternative verification:")
+    print("    # Check SetupMode variable (should be 1)")
+    print("    od --address-radix=n --format=u1 /sys/firmware/efi/efivars/SetupMode-*")
+    print("    # Last byte should be: 1")
+    print()
+    print("  After key enrollment (post-installation):")
+    print("    bootctl status")
+    print("    # Should show: Secure Boot: enabled (user)")
     
     print("\n📝 NixOS GUEST SETUP:")
     print("  • Serial console is automatically configured during NixOS install")
@@ -497,6 +641,7 @@ def main():
     parser.add_argument('--ssh-port', type=int, default=22220, help='SSH port on host')
     parser.add_argument('--post-install-reboot', metavar='VM_NAME', help='Post-install: snapshot disk, remove ISO, reboot (VM must be shut down)')
     parser.add_argument('--reset', metavar='VM_NAME', help='Delete VM and all associated files (forces destroy if running)')
+    parser.add_argument('--reset-setup-mode', metavar='VM_NAME', help='Reset VM NVRAM to Setup Mode (VM must be shut down)')
     parser.add_argument('--start', action='store_true', help='Start VM after creation')
 
     args = parser.parse_args()
@@ -521,7 +666,13 @@ def main():
         post_install_reboot(conn, args.post_install_reboot)
         conn.close()
         return
-    
+
+    # Handle reset to setup mode
+    if args.reset_setup_mode:
+        reset_setup_mode(conn, args.reset_setup_mode)
+        conn.close()
+        return
+
     # Handle VM reset/deletion
     if args.reset:
         reset_vm(conn, args.reset)

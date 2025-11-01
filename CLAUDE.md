@@ -61,11 +61,40 @@ The `bin/virtual-machine` script is the **primary driver** for creating and mana
 ```
 
 **Key Features**:
-- UEFI Secure Boot with automatic OVMF firmware detection
+- **UEFI Secure Boot Setup Mode** - VMs boot with Secure Boot enabled but no pre-enrolled keys
+- Automatic OVMF firmware detection (uses NixOS QEMU package)
 - Integrates with `keystone-net` network (static IP: 192.168.100.99)
 - Serial console + SPICE graphical display
 - TPM 2.0 emulation for testing TPM-based features
 - Post-installation workflows (snapshot, ISO detachment)
+
+**Secure Boot Setup Mode**:
+
+VMs are automatically created in **Setup Mode**, which means:
+- Secure Boot firmware is enabled
+- No Platform Key (PK) is enrolled
+- Allows unsigned code to run (including the Keystone installer)
+- Enables testing of custom Secure Boot key enrollment
+
+To verify Setup Mode inside the VM:
+```bash
+bootctl status
+# Expected output:
+#   Secure Boot: disabled (setup)
+#   Setup Mode: setup
+```
+
+To reset a VM back to Setup Mode:
+```bash
+# Shut down the VM first
+virsh shutdown keystone-test-vm
+
+# Reset NVRAM to setup mode
+./bin/virtual-machine --reset-setup-mode keystone-test-vm
+
+# Start VM again
+virsh start keystone-test-vm
+```
 
 **Connection Methods**:
 ```bash
@@ -79,7 +108,7 @@ virsh console keystone-test-vm
 ssh root@192.168.100.99
 ```
 
-See bin/virtual-machine:1 for complete implementation details.
+See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complete details.
 
 ### Building ISOs
 ```bash
