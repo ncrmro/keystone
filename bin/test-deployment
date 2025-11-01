@@ -473,8 +473,8 @@ def run_post_install_provisioning():
     """Run post-install provisioning tasks (Secure Boot, etc.)"""
     print_info("Running post-install provisioning...")
 
-    # Call the post-install-provisioner script
-    cmd = f"./bin/post-install-provisioner --target root@{VM_IP} --only-secureboot"
+    # Call the simplified post-install-provisioner script (SSH-only)
+    cmd = f"./bin/post-install-provisioner root@{VM_IP}"
     result = run_command(cmd, check=False, timeout=300)
 
     if result:
