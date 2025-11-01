@@ -7,6 +7,14 @@
 
 **Organization**: Tasks grouped by user story to enable independent implementation and testing
 
+**IMPLEMENTATION NOTE**: This feature was implemented using a Python-based approach (`bin/post-install-provisioner`) instead of separate bash scripts. This provides:
+- Better maintainability and error handling
+- Integration with existing Python test infrastructure (bin/test-deployment)
+- Extensibility for future provisioning tasks (TPM enrollment, etc.)
+- Single source of truth for post-installation logic
+
+The implementation fulfills all user stories and contracts, but using Python instead of bash scripts.
+
 ## Format: `[ID] [P?] [Story] Description`
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (US1, US2, US3)
@@ -18,10 +26,10 @@
 
 **Purpose**: Project initialization and directory structure
 
-- [ ] T001 Create scripts/ directory for Secure Boot shell scripts
-- [ ] T002 [P] Ensure sbctl is available in NixOS environment (check via nix-shell -p sbctl)
-- [ ] T003 [P] Verify bootctl availability in target environment
-- [ ] T004 [P] Create documentation structure in specs/004-specify-scripts-bash/
+- [X] T001 Create scripts/ directory for Secure Boot shell scripts
+- [X] T002 [P] Ensure sbctl is available in NixOS environment (added to examples/test-server.nix)
+- [X] T003 [P] Verify bootctl availability in target environment
+- [X] T004 [P] Create documentation structure in specs/004-specify-scripts-bash/
 
 ---
 
