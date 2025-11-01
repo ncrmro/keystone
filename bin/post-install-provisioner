@@ -98,7 +98,7 @@ class SecureBootProvisioner:
 
         # Check root
         result = ssh_run(self.target, "id -u", capture=True)
-        if not result or result.stdout.strip() != "0":
+        if result is None or result.returncode != 0 or result.stdout.strip() != "0":
             print_error("Must run as root on target")
             return False
 
