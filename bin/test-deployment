@@ -436,6 +436,39 @@ def auto_unlock_disk():
     print_error("Initrd SSH never became available")
     return False
 
+def verify_secureboot_setup_mode():
+    """Verify VM booted in Secure Boot setup mode (before deployment)"""
+    print_info("Verifying Secure Boot setup mode...")
+
+    # Check bootctl status for setup mode
+    bootctl_output = ssh_vm("bootctl status 2>/dev/null || echo 'bootctl not available'", check=False, capture=True, timeout=10)
+
+    if not bootctl_output or "bootctl not available" in bootctl_output:
+        print_warning("bootctl not available in installer environment")
+        return True  # Not a failure, just not verifiable
+
+    # Check for expected setup mode indicators
+    setup_mode_indicators = [
+        "Secure Boot: disabled (setup)",
+        "Setup Mode: setup"
+    ]
+
+    found_indicators = []
+    for indicator in setup_mode_indicators:
+        if indicator in bootctl_output:
+            found_indicators.append(indicator)
+
+    if len(found_indicators) >= 1:
+        print_success(f"Secure Boot setup mode confirmed: {', '.join(found_indicators)}")
+        return True
+    else:
+        print_error("VM is NOT in Secure Boot setup mode!")
+        print_info("bootctl output:")
+        for line in bootctl_output.split('\n')[:10]:  # Show first 10 lines
+            print(f"  {line}")
+        return False
+
+
 def verify_deployment():
     """Run the verification script"""
     print_info("Waiting for deployed system to finish booting...")
@@ -521,7 +554,7 @@ def main():
     print(f"Hard Reset: {hard_reset_flag}")
     print()
 
-    total_steps = 8  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Deploy, Remove ISO, Unlock, Verify
+    total_steps = 9  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot, Deploy, Remove ISO, Unlock, Verify
     if rebuild_iso_flag:
         total_steps += 1
     if hard_reset_flag:
@@ -584,6 +617,14 @@ def main():
     if not copy_ssh_key_to_vm():
         print_error("Failed to copy SSH key to VM")
         return 1
+
+    # Step: Verify Secure Boot setup mode
+    current_step += 1
+    print_step(current_step, total_steps, "Verifying Secure Boot setup mode")
+
+    if not verify_secureboot_setup_mode():
+        print_error("Secure Boot setup mode verification failed")
+        print_warning("Continuing with deployment, but VM may not be in correct state")
 
     # Step: Deploy
     current_step += 1

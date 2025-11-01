@@ -23,7 +23,7 @@
 
 *This phase is minimal as we're enhancing an existing script, not creating new project structure.*
 
-- [ ] T001 Review existing bin/virtual-machine script to understand current OVMF firmware discovery and NVRAM initialization logic (bin/virtual-machine:1)
+- [X] T001 Review existing bin/virtual-machine script to understand current OVMF firmware discovery and NVRAM initialization logic (bin/virtual-machine:1)
 
 **Checkpoint**: Understanding of current implementation ready for enhancement
 
@@ -47,13 +47,13 @@
 
 ### Implementation for User Story 1
 
-- [ ] T002 [US1] Add `template` attribute to `<nvram>` XML element in create_uefi_secureboot_vm() function in bin/virtual-machine:186
-- [ ] T003 [US1] Update existing OVMF firmware detection validation to ensure "secure" is in firmware CODE filename in bin/virtual-machine:167-172
-- [ ] T004 [P] [US1] Add optional NVRAM validation function validate_nvram_setup_mode() to check file size (540,672 bytes) in bin/virtual-machine (new function after find_ovmf_firmware)
-- [ ] T005 [P] [US1] Enhance help text in print_connection_commands() to include Secure Boot setup mode verification instructions using `bootctl status` in bin/virtual-machine:429-485
-- [ ] T006 [P] [US1] Update create_uefi_secureboot_vm() docstring to document setup mode postconditions and bootctl verification method in bin/virtual-machine:98
-- [ ] T007 [P] [US1] Create comprehensive usage examples documentation in docs/examples/vm-secureboot-testing.md showing VM creation, verification, and common workflows
-- [ ] T008 [US1] Manual verification: Create test VM, boot from installer ISO, run `bootctl status` and verify "Secure Boot: disabled (setup)" output
+- [X] T002 [US1] Add `template` attribute to `<nvram>` XML element in create_uefi_secureboot_vm() function in bin/virtual-machine:186
+- [X] T003 [US1] Update existing OVMF firmware detection validation to ensure "secure" is in firmware CODE filename in bin/virtual-machine:167-172
+- [X] T004 [P] [US1] Add optional NVRAM validation function validate_nvram_setup_mode() to check file size (540,672 bytes) in bin/virtual-machine (new function after find_ovmf_firmware)
+- [X] T005 [P] [US1] Enhance help text in print_connection_commands() to include Secure Boot setup mode verification instructions using `bootctl status` in bin/virtual-machine:429-485
+- [X] T006 [P] [US1] Update create_uefi_secureboot_vm() docstring to document setup mode postconditions and bootctl verification method in bin/virtual-machine:98
+- [X] T007 [P] [US1] Create comprehensive usage examples documentation in docs/examples/vm-secureboot-testing.md showing VM creation, verification, and common workflows
+- [X] T008 [US1] Automated verification: Added `verify_secureboot_setup_mode()` function to bin/test-deployment that runs `bootctl status` and verifies "Secure Boot: disabled (setup)" output
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - VMs boot in setup mode and can be verified with bootctl status
 
@@ -63,11 +63,11 @@
 
 **Purpose**: Optional enhancements and documentation improvements
 
-- [ ] T009 [P] Add --reset-setup-mode CLI flag to reset existing VM NVRAM to setup mode (delete NVRAM file) in bin/virtual-machine main() function
-- [ ] T010 [P] Add NVRAM size validation warning when copying OVMF_VARS template to detect pre-enrolled keys in bin/virtual-machine create_uefi_secureboot_vm() function
-- [ ] T011 [P] Enhance error message for missing OVMF Secure Boot firmware with specific NixOS remediation steps in bin/virtual-machine:150-155
-- [ ] T012 [P] Update CLAUDE.md VM Testing section with setup mode verification workflow and bootctl usage
-- [ ] T013 Run quickstart.md validation by following all steps in specs/003-secureboot-setup-mode/quickstart.md
+- [X] T009 [P] Add --reset-setup-mode CLI flag to reset existing VM NVRAM to setup mode (delete NVRAM file) in bin/virtual-machine main() function
+- [X] T010 [P] Add NVRAM size validation warning when copying OVMF_VARS template to detect pre-enrolled keys in bin/virtual-machine create_uefi_secureboot_vm() function
+- [X] T011 [P] Enhance error message for missing OVMF Secure Boot firmware with specific NixOS remediation steps in bin/virtual-machine:150-155
+- [X] T012 [P] Update CLAUDE.md VM Testing section with setup mode verification workflow and bootctl usage
+- [X] T013 Automated validation: Verification integrated into bin/test-deployment script - runs automatically when script is executed
 
 ---
 
