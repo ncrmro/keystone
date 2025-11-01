@@ -39,6 +39,48 @@ The client module provides a complete Hyprland desktop:
 
 ## Common Development Commands
 
+### VM Testing with bin/virtual-machine
+
+The `bin/virtual-machine` script is the **primary driver** for creating and managing libvirt VMs for Keystone testing:
+
+```bash
+# Create a new VM with default settings (uses vms/keystone-installer.iso if available)
+./bin/virtual-machine --name keystone-test-vm --start
+
+# Create VM with custom ISO
+./bin/virtual-machine --name my-vm --iso /path/to/custom.iso --start
+
+# Create VM with custom resources
+./bin/virtual-machine --name large-vm --memory 8192 --vcpus 4 --disk-size 50 --start
+
+# Post-installation: snapshot disk, remove ISO, and reboot (after VM shutdown)
+./bin/virtual-machine --post-install-reboot keystone-test-vm
+
+# Completely delete VM and all associated files
+./bin/virtual-machine --reset keystone-test-vm
+```
+
+**Key Features**:
+- UEFI Secure Boot with automatic OVMF firmware detection
+- Integrates with `keystone-net` network (static IP: 192.168.100.99)
+- Serial console + SPICE graphical display
+- TPM 2.0 emulation for testing TPM-based features
+- Post-installation workflows (snapshot, ISO detachment)
+
+**Connection Methods**:
+```bash
+# Graphical display (after starting VM)
+remote-viewer $(virsh domdisplay keystone-test-vm)
+
+# Serial console
+virsh console keystone-test-vm
+
+# SSH (after NixOS installation)
+ssh root@192.168.100.99
+```
+
+See bin/virtual-machine:1 for complete implementation details.
+
 ### Building ISOs
 ```bash
 # Build installer ISO without SSH keys

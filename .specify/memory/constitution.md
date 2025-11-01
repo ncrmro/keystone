@@ -1,29 +1,30 @@
 <!--
 SYNC IMPACT REPORT
 ===================
-Version: 0.0.0 → 1.0.0
-Change Type: MAJOR (Initial constitution establishment)
+Version: 1.0.0 → 1.0.1
+Change Type: PATCH (Clarification of development tooling)
 
-Principles Established:
-- I. Declarative Infrastructure (NEW)
-- II. Security by Default (NEW)
-- III. Modular Composability (NEW)
-- IV. Hardware Agnostic (NEW)
-- V. Cryptographic Sovereignty (NEW)
+Principles Modified:
+- None (core principles unchanged)
+
+Sections Added:
+- Development Tooling subsection under NixOS-Specific Constraints
+
+Sections Removed:
+- None
 
 Templates Status:
-- ✅ plan-template.md: Constitution Check section compatible (requires no updates)
-- ✅ spec-template.md: Requirements section compatible (requires no updates)
-- ✅ tasks-template.md: Task structure compatible (requires no updates)
+- ✅ plan-template.md: No updates required (constitution check remains compatible)
+- ✅ spec-template.md: No updates required (requirements section unaffected)
+- ✅ tasks-template.md: No updates required (task structure unaffected)
 
 Follow-up Actions:
-- None - initial constitution establishment complete
-- Future amendments will trigger template consistency validation
+- None - clarification only, no dependent artifact changes needed
 
-Rationale for Version 1.0.0:
-- First constitution ratification for Keystone project
-- Establishes foundational governance and architectural principles
-- Based on existing project patterns in NixOS modules and security architecture
+Rationale for Version 1.0.1:
+- Added Development Tooling subsection documenting bin/virtual-machine as primary VM driver
+- PATCH bump: Clarifying guidance for development workflow, no semantic changes
+- Does not affect core principles, module standards, or testing requirements
 -->
 
 # Keystone Constitution
@@ -90,6 +91,19 @@ All NixOS modules MUST:
 - Include assertions for configuration validation
 - Document options with clear descriptions and examples
 
+### Development Tooling
+
+Development and testing workflows MUST use standardized tooling:
+- **VM Testing**: `bin/virtual-machine` is the primary driver for creating and managing libvirt VMs
+  - Supports UEFI Secure Boot with OVMF firmware
+  - Integrates with keystone-net network for static IP assignment
+  - Provides post-installation snapshot and ISO detachment workflows
+  - See bin/virtual-machine:1 for complete implementation
+- **ISO Building**: `bin/build-iso` for creating bootable installers with optional SSH key injection
+- **Deployment**: `nixos-anywhere` for remote installations to VMs or bare-metal
+
+**Rationale**: Standardized tooling ensures consistent development workflows, reduces manual setup complexity, and enables reproducible testing environments. The bin/virtual-machine script encapsulates complex libvirt XML generation and OVMF firmware discovery specific to NixOS.
+
 ### Testing Requirements
 
 Configuration changes MUST include:
@@ -131,4 +145,4 @@ All contributions MUST:
 
 Violations require explicit justification in design documents and approval from maintainers.
 
-**Version**: 1.0.0 | **Ratified**: 2025-10-16 | **Last Amended**: 2025-10-16
+**Version**: 1.0.1 | **Ratified**: 2025-10-16 | **Last Amended**: 2025-10-31
