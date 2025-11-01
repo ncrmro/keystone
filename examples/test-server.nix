@@ -1,5 +1,8 @@
-{ config, pkgs, ... }:
 {
+  config,
+  pkgs,
+  ...
+}: {
   #
   # Keystone Test Server Example Configuration
   #
@@ -121,13 +124,15 @@
   # time.timeZone = "Asia/Tokyo";
 
   # Add extra packages beyond the server defaults
-  # environment.systemPackages = with pkgs; [
-  #   neovim    # Enhanced text editor
-  #   curl      # HTTP client
-  #   wget      # Download tool
-  #   jq        # JSON processor
-  #   tree      # Directory tree viewer
-  # ];
+  # IMPORTANT: sbctl is required for Secure Boot key management
+  environment.systemPackages = with pkgs; [
+    sbctl # Secure Boot key management tool (required for key generation/enrollment)
+    #   neovim    # Enhanced text editor
+    #   curl      # HTTP client
+    #   wget      # Download tool
+    #   jq        # JSON processor
+    #   tree      # Directory tree viewer
+  ];
 
   # Customize swap size if needed
   # keystone.disko.swapSize = "32G";

@@ -469,6 +469,22 @@ def verify_secureboot_setup_mode():
         return False
 
 
+def run_post_install_provisioning():
+    """Run post-install provisioning tasks (Secure Boot, etc.)"""
+    print_info("Running post-install provisioning...")
+
+    # Call the post-install-provisioner script
+    cmd = f"./bin/post-install-provisioner --target root@{VM_IP} --only-secureboot"
+    result = run_command(cmd, check=False, timeout=300)
+
+    if result:
+        print_success("Post-install provisioning completed")
+        return True
+    else:
+        print_error("Post-install provisioning failed")
+        return False
+
+
 def verify_deployment():
     """Run the verification script"""
     print_info("Waiting for deployed system to finish booting...")
@@ -554,7 +570,7 @@ def main():
     print(f"Hard Reset: {hard_reset_flag}")
     print()
 
-    total_steps = 9  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot, Deploy, Remove ISO, Unlock, Verify
+    total_steps = 10  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot, Deploy, Remove ISO, Unlock, Post-install provisioning, Verify
     if rebuild_iso_flag:
         total_steps += 1
     if hard_reset_flag:
@@ -650,6 +666,14 @@ def main():
         print_error("Failed to unlock disk")
         print_info("Try manually: ssh root@{VM_IP}")
         return 1
+
+    # Step: Run post-install provisioning (Secure Boot)
+    current_step += 1
+    print_step(current_step, total_steps, "Running Secure Boot provisioning")
+
+    if not run_post_install_provisioning():
+        print_error("Post-install provisioning failed")
+        print_warning("Continuing with verification anyway...")
 
     # Step: Verify
     current_step += 1
