@@ -8,28 +8,28 @@
 
 **Goal**: Initialize project structure and dependencies
 
-- [ ] T001 Add lanzaboote as flake input in flake.nix
-- [ ] T002 Add sbctl to installer environment in modules/iso-installer.nix
-- [ ] T003 Create modules/secure-boot directory structure
+- [X] T001 Add lanzaboote as flake input in flake.nix
+- [X] T002 Add sbctl to installer environment in modules/iso-installer.nix
+- [X] T003 Create modules/secure-boot directory structure
 
 ## Phase 2: Foundational
 
 **Goal**: Create base module structure and configuration options
 
-- [ ] T004 Create modules/secure-boot/default.nix with module skeleton
-- [ ] T005 Define keystone.secureBoot options (enable, includeMS, autoEnroll, pkiBundle)
-- [ ] T006 Add module assertions and validation logic in modules/secure-boot/default.nix
+- [X] T004 Create modules/secure-boot/default.nix with module skeleton
+- [X] T005 Define keystone.secureBoot options (enable, includeMS, autoEnroll, pkiBundle)
+- [X] T006 Add module assertions and validation logic in modules/secure-boot/default.nix
 
 ## Phase 3: User Story 1 - Automatic Key Generation [US1]
 
 **Goal**: Generate Secure Boot keys during disko partitioning
 **Test**: Keys exist at /var/lib/sbctl/keys after disko execution
 
-- [ ] T007 [US1] Create secure boot hook script in modules/secure-boot/hook.sh
-- [ ] T008 [US1] Implement Setup Mode detection logic in modules/secure-boot/hook.sh
-- [ ] T009 [US1] Implement key generation with sbctl in modules/secure-boot/hook.sh
-- [ ] T010 [US1] Add error handling for key generation failures in modules/secure-boot/hook.sh
-- [ ] T011 [P] [US1] Integrate hook into disko module at modules/disko-single-disk-root/default.nix
+- [X] T007 [US1] Create secure boot hook script in modules/secure-boot/hook.sh
+- [X] T008 [US1] Implement Setup Mode detection logic in modules/secure-boot/hook.sh
+- [X] T009 [US1] Implement key generation with sbctl in modules/secure-boot/hook.sh
+- [X] T010 [US1] Add error handling for key generation failures in modules/secure-boot/hook.sh
+- [X] T011 [P] [US1] Integrate hook into disko module at modules/disko-single-disk-root/default.nix
 
 ## Phase 4: User Story 2 - Key Enrollment [US2]
 
