@@ -71,8 +71,8 @@
   # Optional: Set timezone (default: UTC from server module)
   # time.timeZone = "America/New_York";
 
-  # Optional: Additional packages
-  # environment.systemPackages = with pkgs; [
-  #   neovim
-  # ];
+  # Additional packages for Secure Boot provisioning
+  environment.systemPackages = with pkgs; [
+    sbctl # Secure Boot key management tool (required for post-install provisioning)
+  ];
 }
