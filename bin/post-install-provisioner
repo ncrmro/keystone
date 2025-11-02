@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+"""
+Keystone Post-Installation Provisioner
+
+CONTEXT:
+This script runs on a remote NixOS host via SSH immediately after nixos-anywhere
+deployment completes. It handles post-deployment security hardening that cannot
+be done during the initial deployment phase.
+
+PURPOSE:
+- Generate custom Secure Boot keys (PK, KEK, db)
+- Enroll keys into UEFI firmware (transition Setup Mode -> User Mode)
+- Verify Secure Boot enforcement is active
+- Future: TPM enrollment for measured boot
+
+WORKFLOW INTEGRATION:
+Called by bin/test-deployment after nixos-anywhere finishes:
+  1. nixos-anywhere deploys NixOS to VM
+  2. VM reboots to deployed system
+  3. This script connects via SSH and provisions security features
+  4. Test verification confirms Secure Boot is enabled
+
+PREREQUISITES:
+- Target system deployed with NixOS
+- sbctl package installed (environment.systemPackages)
+- UEFI firmware in Setup Mode (no keys enrolled yet)
+- SSH access to target system
+
+USAGE:
+    # Basic provisioning (custom keys only)
+    ./bin/post-install-provisioner root@192.168.100.99
+
+    # Include Microsoft OEM certificates (for physical hardware)
+    ./bin/post-install-provisioner root@192.168.100.99 --microsoft-keys
+
+    # Force re-enrollment even if keys exist
+    ./bin/post-install-provisioner root@192.168.100.99 --force
+
+Zero external dependencies - uses only Python standard library.
+"""
+
+import subprocess
+import sys
+import time
+
+# ANSI color codes
+RED = '\033[0;31m'
+GREEN = '\033[0;32m'
+YELLOW = '\033[1;33m'
+CYAN = '\033[0;36m'
+NC = '\033[0m'
+
+def print_section(title):
+    """Print formatted section header"""
+    print(f"\n{CYAN}{'=' * 60}{NC}")
+    print(f"{CYAN}{title}{NC}")
+    print(f"{CYAN}{'=' * 60}{NC}\n")
+
+def print_success(msg):
+    print(f"{GREEN}✓{NC} {msg}")
+
+def print_error(msg):
+    print(f"{RED}✗{NC} {msg}")
+
+def print_warning(msg):
+    print(f"{YELLOW}⚠{NC} {msg}")
+
+def print_info(msg):
+    print(f"{CYAN}ℹ{NC} {msg}")
+
+def ssh_run(target, cmd, capture=False, timeout=30):
+    """Execute command on remote host via SSH"""
+    ssh_cmd = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {target} '{cmd}'"
+    try:
+        result = subprocess.run(
+            ssh_cmd,
+            shell=True,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        return result if capture else (result.returncode == 0)
+    except subprocess.TimeoutExpired:
+        print_error(f"Command timed out after {timeout}s")
+        return None
+
+class SecureBootProvisioner:
+    """Handle Secure Boot key generation and enrollment via SSH"""
+
+    def __init__(self, target):
+        self.target = target
+        self.start_time = None
+        self.sbctl_path = "sbctl"  # Default to assuming it's in PATH
+
+    def check_prerequisites(self):
+        """Verify sbctl and UEFI requirements"""
+        print_info("Checking prerequisites...")
+
+        # Check root
+        result = ssh_run(self.target, "whoami", capture=True)
+        if result is None or result.returncode != 0 or result.stdout.strip() != "root":
+            print_error("Must run as root on target")
+            return False
+
+        # Check sbctl - NixOS always puts it here when in environment.systemPackages
+        if not ssh_run(self.target, "test -x /run/current-system/sw/bin/sbctl"):
+            print_error("sbctl not found")
+            print_info("Add to environment.systemPackages: pkgs.sbctl")
+            return False
+
+        print_success("Found sbctl")
+        self.sbctl_path = "/run/current-system/sw/bin/sbctl"
+
+        # Check EFI variables
+        if not ssh_run(self.target, "test -d /sys/firmware/efi/efivars"):
+            print_error("EFI variables not accessible")
+            return False
+
+        print_success("Prerequisites met")
+        return True
+
+    def check_setup_mode(self):
+        """Check if firmware is in Setup Mode (ready for enrollment)"""
+        print_info("Checking Secure Boot status...")
+
+        result = ssh_run(
+            self.target,
+            "od --address-radix=n --format=u1 /sys/firmware/efi/efivars/SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c 2>/dev/null | awk '{print $NF}'",
+            capture=True
+        )
+
+        if not result or result.returncode != 0:
+            print_warning("Could not read SetupMode")
+            return None
+
+        mode = result.stdout.strip()
+        if mode == "1":
+            print_success("System in Setup Mode (ready for enrollment)")
+            return True
+        elif mode == "0":
+            print_warning("Already in User Mode (keys enrolled)")
+            return False
+        else:
+            print_warning(f"Unknown SetupMode: {mode}")
+            return None
+
+    def generate_keys(self, force=False):
+        """Generate Secure Boot keys with sbctl"""
+        print_info("Generating Secure Boot keys...")
+        self.start_time = time.time()
+
+        # Check existing keys
+        if ssh_run(self.target, "test -f /var/lib/sbctl/keys/PK/PK.key"):
+            if not force:
+                print_warning("Keys exist (use --force to regenerate)")
+                return True
+            print_warning("Removing existing keys")
+            ssh_run(self.target, "rm -rf /var/lib/sbctl/keys /var/lib/sbctl/GUID")
+
+        # Generate
+        result = ssh_run(self.target, f"{self.sbctl_path} create-keys", capture=True, timeout=60)
+        if not result or result.returncode != 0:
+            print_error("Key generation failed")
+            if result and result.stderr:
+                print_error(f"Error: {result.stderr}")
+            return False
+
+        # Verify
+        for key in ["PK/PK.key", "KEK/KEK.key", "db/db.key"]:
+            if not ssh_run(self.target, f"test -f /var/lib/sbctl/keys/{key}"):
+                print_error(f"Missing: {key}")
+                return False
+
+        duration = time.time() - self.start_time
+        print_success(f"Keys generated in {duration:.1f}s")
+        return True
+
+    def enroll_keys(self, include_microsoft=False):
+        """Enroll keys into UEFI firmware"""
+        print_info("Enrolling keys...")
+
+        cmd = f"{self.sbctl_path} enroll-keys"
+        if include_microsoft:
+            cmd += " --microsoft"
+            print_info("Including Microsoft certificates")
+        else:
+            cmd += " --yes-this-might-brick-my-machine"
+            print_warning("Custom keys only (no Microsoft)")
+
+        start = time.time()
+        result = ssh_run(self.target, cmd, capture=True, timeout=120)
+        duration = time.time() - start
+
+        if not result or result.returncode != 0:
+            print_error("Enrollment failed")
+            if result and result.stderr:
+                print_error(f"Error: {result.stderr}")
+            return False
+
+        print_success(f"Enrolled in {duration:.1f}s")
+        print_info("Reboot required to activate Secure Boot")
+        return True
+
+    def verify_status(self):
+        """Verify Secure Boot is enabled"""
+        print_info("Verifying Secure Boot...")
+
+        result = ssh_run(self.target, "bootctl status 2>/dev/null", capture=True)
+
+        if result and result.returncode == 0:
+            output = result.stdout
+            if "Secure Boot: enabled" in output or "enabled (user)" in output:
+                print_success("Secure Boot ENABLED")
+                return True
+            elif "disabled (setup)" in output:
+                print_warning("Still in Setup Mode")
+                return False
+
+        # Fallback to EFI variable
+        result = ssh_run(
+            self.target,
+            "od --address-radix=n --format=u1 /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c 2>/dev/null | awk '{print $NF}'",
+            capture=True
+        )
+
+        if result and result.returncode == 0 and result.stdout.strip() == "1":
+            print_success("SecureBoot variable = 1")
+            return True
+
+        print_warning("Secure Boot not enabled")
+        return False
+
+    def reboot_system(self):
+        """Trigger system reboot"""
+        print_info("Triggering system reboot...")
+
+        # Use nohup to avoid hanging
+        result = ssh_run(
+            self.target,
+            "nohup sh -c 'sleep 2 && reboot' >/dev/null 2>&1 &",
+            capture=True,
+            timeout=5
+        )
+
+        if result is None:
+            print_warning("Reboot command may have failed")
+            return False
+
+        print_success("Reboot triggered")
+        return True
+
+    def wait_for_reconnect(self, max_wait=120, check_interval=5):
+        """Wait for SSH to become available after reboot"""
+        print_info(f"Waiting for system to reboot (max {max_wait} seconds)...")
+
+        # Give system time to actually shut down
+        time.sleep(10)
+
+        elapsed = 10
+        while elapsed < max_wait:
+            try:
+                result = ssh_run(self.target, "echo ok", capture=True, timeout=5)
+                if result and result.returncode == 0 and result.stdout.strip() == "ok":
+                    print_success(f"System back online after {elapsed} seconds")
+                    return True
+            except:
+                pass
+
+            print(f"  Waiting... {elapsed}/{max_wait}s", end='\r')
+            time.sleep(check_interval)
+            elapsed += check_interval
+
+        print()
+        print_error("System did not come back online")
+        return False
+
+    def provision(self, force=False, include_microsoft=False):
+        """Full provisioning workflow"""
+        print_section("Secure Boot Provisioning")
+
+        if not self.check_prerequisites():
+            return False
+
+        setup_mode = self.check_setup_mode()
+        if setup_mode == False and not force:
+            print_info("Keys already enrolled")
+            # Still verify even if already enrolled
+            return self.verify_status()
+
+        if not self.generate_keys(force=force):
+            return False
+
+        if not self.enroll_keys(include_microsoft=include_microsoft):
+            return False
+
+        total = time.time() - self.start_time
+        print_success(f"Key generation and enrollment complete in {total:.1f}s")
+
+        # Reboot to activate Secure Boot
+        print_section("Activating Secure Boot")
+
+        if not self.reboot_system():
+            print_error("Failed to trigger reboot")
+            return False
+
+        if not self.wait_for_reconnect():
+            print_error("System did not come back online after reboot")
+            return False
+
+        # Verify Secure Boot is now enabled
+        if not self.verify_status():
+            print_error("Secure Boot is not enabled after reboot")
+            return False
+
+        return True
+
+
+def main():
+    """Main provisioning workflow"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Keystone Post-Installation Provisioner (SSH-only)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic provisioning
+  %(prog)s root@192.168.100.99
+
+  # With Microsoft certificates
+  %(prog)s root@192.168.100.99 --microsoft-keys
+
+  # Force re-enrollment
+  %(prog)s root@192.168.100.99 --force
+        """
+    )
+
+    parser.add_argument('target', help='SSH target (user@host)')
+    parser.add_argument('--force', action='store_true', help='Force re-enrollment')
+    parser.add_argument('--microsoft-keys', action='store_true', help='Include Microsoft certificates')
+
+    args = parser.parse_args()
+
+    print_section("Keystone Post-Installation Provisioner")
+    print_info(f"Target: {args.target}")
+
+    provisioner = SecureBootProvisioner(args.target)
+    if provisioner.provision(force=args.force, include_microsoft=args.microsoft_keys):
+        print()
+        print_section("Provisioning Complete")
+        print_success("Secure Boot keys generated, enrolled, and activated")
+        print_success("System has been rebooted and Secure Boot is now enabled")
+        print()
+        print_info("You can verify Secure Boot status with:")
+        print(f"  ssh {args.target} bootctl status")
+        print("  Expected: 'Secure Boot: enabled (user)'")
+        return 0
+    else:
+        print()
+        print_error("Provisioning failed")
+        return 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print()
+        print_warning("Interrupted")
+        sys.exit(130)
+    except Exception as e:
+        print_error(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

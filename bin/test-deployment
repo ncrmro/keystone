@@ -14,7 +14,8 @@ Usage:
     ./bin/test-deployment                    # Normal test run
     ./bin/test-deployment --rebuild-iso      # Rebuild ISO first
     ./bin/test-deployment --hard-reset       # Force kill VM and clean artifacts
-    ./bin/test-deployment --rebuild-iso --hard-reset  # Full clean test
+    ./bin/test-deployment --debug            # Show full nixos-anywhere output
+    ./bin/test-deployment --rebuild-iso --hard-reset --debug  # Full clean test with debug
 """
 
 import subprocess
@@ -328,16 +329,44 @@ def copy_ssh_key_to_vm():
         print_error("Failed to copy SSH key")
         return False
 
-def deploy_to_vm():
+def deploy_to_vm(debug=False):
     """Deploy using nixos-anywhere with manual cleanup and reboot"""
     print_info("Starting nixos-anywhere deployment...")
     print_info("This will take 5-10 minutes...")
-    print_warning("You may need to interact with the deployment (confirmations, etc.)")
+
+    if debug:
+        print_warning("Debug mode: showing full nixos-anywhere output")
+        print_warning("You may need to interact with the deployment (confirmations, etc.)")
+    else:
+        print_info("Running in quiet mode. Use --debug to see full output")
 
     # Use --no-reboot to allow manual cleanup before rebooting
     # Use --extra-files to copy initrd SSH key to the target before building
     cmd = f"nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@{VM_IP} --no-reboot --extra-files vms/test-server/extra-files"
-    success = run_command(cmd, timeout=600)
+
+    if debug:
+        # Show full output in debug mode
+        success = run_command(cmd, timeout=600)
+    else:
+        # Capture output and only show if errors occur
+        try:
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=600
+            )
+            success = result.returncode == 0
+            if not success:
+                print_error("Deployment failed! Output:")
+                print(result.stdout)
+                if result.stderr:
+                    print_error("Errors:")
+                    print(result.stderr)
+        except subprocess.TimeoutExpired:
+            print_error("Deployment timed out after 10 minutes")
+            success = False
 
     if not success:
         print_error("Deployment failed")
@@ -469,6 +498,22 @@ def verify_secureboot_setup_mode():
         return False
 
 
+def run_post_install_provisioning():
+    """Run post-install provisioning tasks (Secure Boot, etc.)"""
+    print_info("Running post-install provisioning...")
+
+    # Call the simplified post-install-provisioner script (SSH-only)
+    cmd = f"./bin/post-install-provisioner root@{VM_IP}"
+    result = run_command(cmd, check=False, timeout=300)
+
+    if result:
+        print_success("Post-install provisioning completed")
+        return True
+    else:
+        print_error("Post-install provisioning failed")
+        return False
+
+
 def verify_deployment():
     """Run the verification script"""
     print_info("Waiting for deployed system to finish booting...")
@@ -512,6 +557,7 @@ def verify_deployment():
         ("Hostname", lambda: ssh_vm("hostname", check=False, capture=True, timeout=5) == VM_HOSTNAME),
         ("ZFS pool", lambda: ssh_vm("zpool status rpool | grep -q ONLINE", check=False, timeout=5)),
         ("SSH service", lambda: ssh_vm("systemctl is-active sshd", check=False, capture=True, timeout=5) == "active"),
+        ("Secure Boot", lambda: "enabled" in ssh_vm("bootctl status 2>/dev/null | grep 'Secure Boot'", check=False, capture=True, timeout=5)),
     ]
 
     passed = 0
@@ -541,20 +587,17 @@ def main():
     # Parse arguments
     rebuild_iso_flag = "--rebuild-iso" in sys.argv
     hard_reset_flag = "--hard-reset" in sys.argv
+    debug_flag = "--debug" in sys.argv
     help_flag = "--help" in sys.argv or "-h" in sys.argv
 
     if help_flag:
         print(__doc__)
         return 0
 
-    print("=" * 60)
     print(f"{CYAN}Keystone Deployment Test{NC}")
     print("=" * 60)
-    print(f"Rebuild ISO: {rebuild_iso_flag}")
-    print(f"Hard Reset: {hard_reset_flag}")
-    print()
 
-    total_steps = 9  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot, Deploy, Remove ISO, Unlock, Verify
+    total_steps = 10  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot, Deploy, Remove ISO, Unlock, Post-install provisioning (includes reboot), Verify
     if rebuild_iso_flag:
         total_steps += 1
     if hard_reset_flag:
@@ -630,7 +673,7 @@ def main():
     current_step += 1
     print_step(current_step, total_steps, "Deploying with nixos-anywhere")
 
-    if not deploy_to_vm():
+    if not deploy_to_vm(debug=debug_flag):
         print_error("Deployment failed - check output above")
         return 1
 
@@ -651,6 +694,28 @@ def main():
         print_info("Try manually: ssh root@{VM_IP}")
         return 1
 
+    # Wait for system to fully boot after unlock
+    print_info("Waiting for system to complete boot...")
+    if not wait_for_ssh(max_attempts=24, delay=5):  # 2 minutes max
+        print_error("System did not become ready after disk unlock")
+        return 1
+
+    # Give a bit more time for all services to stabilize
+    print_info("Allowing services to stabilize...")
+    time.sleep(5)
+    print_success("System is ready")
+
+    # Step: Run post-install provisioning (Secure Boot)
+    # Note: This will handle key enrollment, reboot, and verification
+    current_step += 1
+    print_step(current_step, total_steps, "Running Secure Boot provisioning")
+
+    if not run_post_install_provisioning():
+        print_error("Post-install provisioning failed")
+        return 1
+
+    print_success("Post-install provisioning completed (system has been rebooted)")
+
     # Step: Verify
     current_step += 1
     print_step(current_step, total_steps, "Verifying deployment")
@@ -664,6 +729,11 @@ def main():
         print(f"{GREEN}✓ All tests passed!{NC}")
         print("=" * 60)
         print()
+        print("Test Configuration:")
+        print(f"  Rebuild ISO: {rebuild_iso_flag}")
+        print(f"  Hard Reset: {hard_reset_flag}")
+        print(f"  Debug Mode: {debug_flag}")
+        print()
         print("SSH to deployed server:")
         print()
         print("Remove old host key (if you get host key verification failed):")
@@ -675,7 +745,7 @@ def main():
         print("SSH ignoring host key verification:")
         print(f"  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@{VM_IP}")
         print()
-        print("Or use the hostname:")
+        print("Or use the hostname (requires host key verification):")
         print(f"  ssh root@{VM_HOSTNAME}")
         print()
 
