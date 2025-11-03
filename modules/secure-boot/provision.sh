@@ -70,8 +70,8 @@ generate_keys() {
     log_info "Generating Secure Boot keys..."
 
     # Check if keys already exist
-    if [ -d "$PKI_BUNDLE/PK" ]; then
-        log_info "Keys already exist at $PKI_BUNDLE"
+    if [ -d "$PKI_BUNDLE/keys" ]; then
+        log_info "Keys already exist at $PKI_BUNDLE/keys"
         return 0
     fi
 
@@ -87,15 +87,15 @@ generate_keys() {
     fi
 
     # Verify key generation
-    local required_keys=("PK/PK.key" "PK/PK.crt" "KEK/KEK.key" "KEK/KEK.crt" "db/db.key" "db/db.crt")
+    local required_keys=("PK/PK.key" "PK/PK.pem" "KEK/KEK.key" "KEK/KEK.pem" "db/db.key" "db/db.pem")
     for key_file in "${required_keys[@]}"; do
-        if [ ! -f "$PKI_BUNDLE/$key_file" ]; then
+        if [ ! -f "$PKI_BUNDLE/keys/$key_file" ]; then
             log_error "Missing required key file: $key_file"
             return 1
         fi
     done
 
-    log_info "Successfully generated Secure Boot keys at $PKI_BUNDLE"
+    log_info "Successfully generated Secure Boot keys at $PKI_BUNDLE/keys"
     return 0
 }
 
@@ -133,7 +133,7 @@ main() {
     fi
 
     # Check if keys already exist and are valid
-    if [ -d "$PKI_BUNDLE/PK" ] && [ -f "$PKI_BUNDLE/db/db.crt" ]; then
+    if [ -d "$PKI_BUNDLE/keys" ] && [ -f "$PKI_BUNDLE/keys/db/db.pem" ]; then
         log_info "Secure Boot keys already exist, skipping generation"
         exit 0
     fi
@@ -160,7 +160,7 @@ main() {
     if ! generate_keys; then
         log_error "Key generation failed - cannot continue"
         # Clean up partial state
-        if [ -d "$PKI_BUNDLE" ] && [ ! -f "$PKI_BUNDLE/db/db.crt" ]; then
+        if [ -d "$PKI_BUNDLE" ] && [ ! -f "$PKI_BUNDLE/keys/db/db.pem" ]; then
             log_warn "Cleaning up incomplete PKI directory"
             rm -rf "$PKI_BUNDLE"
         fi
@@ -179,7 +179,7 @@ main() {
     fi
 
     log_info "Secure Boot provisioning completed successfully"
-    log_info "Keys stored at: $PKI_BUNDLE"
+    log_info "Keys stored at: $PKI_BUNDLE/keys"
 }
 
 # Execute main function
