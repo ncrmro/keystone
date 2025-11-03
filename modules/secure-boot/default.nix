@@ -38,8 +38,8 @@ in {
     # Activation script to provision Secure Boot keys on first boot
     system.activationScripts.secureBootProvisioning = {
       text = ''
-        # Run Secure Boot provisioning script
-        ${pkgs.bash}/bin/bash ${./provision.sh}
+        # Run Secure Boot provisioning script with sbctl path
+        ${pkgs.bash}/bin/bash ${./provision.sh} "${pkgs.sbctl}/bin/sbctl"
       '';
       deps = []; # Run early in activation
     };
