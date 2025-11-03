@@ -250,7 +250,9 @@ in {
               options.keyformat = "raw";
               options.keylocation = "file:///etc/credstore/zfs-sysroot.mount";
               preCreateHook = "mount -o X-mount.mkdir /dev/mapper/credstore /etc/credstore && head -c 32 /dev/urandom > /etc/credstore/zfs-sysroot.mount";
-              postCreateHook = "umount /etc/credstore && cryptsetup luksClose /dev/mapper/credstore";
+              postCreateHook = ''
+                umount /etc/credstore && cryptsetup luksClose /dev/mapper/credstore
+              '';
             };
             "crypt/system" = {
               type = "zfs_fs";

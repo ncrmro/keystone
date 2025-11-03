@@ -49,6 +49,8 @@
     util-linux
     # ZFS utilities for nixos-anywhere deployment
     config.boot.kernelPackages.zfs_2_3
+    # Secure Boot key management
+    sbctl
   ];
 
   # Enable the serial console for remote debugging
@@ -63,16 +65,16 @@
   # Note: kernel is set in flake.nix to override minimal CD default
 
   # Enable ZFS for nixos-anywhere deployments
-  boot.supportedFilesystems = [ "zfs" ];
+  boot.supportedFilesystems = ["zfs"];
   boot.zfs.forceImportRoot = false;
 
   # Ensure ZFS kernel modules are loaded and available
-  boot.kernelModules = [ "zfs" ];
-  boot.extraModulePackages = [ config.boot.kernelPackages.zfs_2_3 ];
+  boot.kernelModules = ["zfs"];
+  boot.extraModulePackages = [config.boot.kernelPackages.zfs_2_3];
 
   # Critical: Add ZFS packages to system for nixos-anywhere
-  services.udev.packages = [ config.boot.kernelPackages.zfs_2_3 ];
-  systemd.packages = [ config.boot.kernelPackages.zfs_2_3 ];
+  services.udev.packages = [config.boot.kernelPackages.zfs_2_3];
+  systemd.packages = [config.boot.kernelPackages.zfs_2_3];
 
   # Set required hostId for ZFS
   networking.hostId = lib.mkDefault "8425e349";
