@@ -28,6 +28,9 @@ PKI_BUNDLE="/var/lib/sbctl"
 INCLUDE_MS="false"  # Don't include Microsoft certificates
 AUTO_ENROLL="true"  # Always auto-enroll
 
+# sbctl path provided by activation script
+SBCTL="${1:-sbctl}"  # Default to 'sbctl' if not provided
+
 # Setup Mode detection
 check_setup_mode() {
     log_info "Checking UEFI Setup Mode status..."
@@ -77,7 +80,7 @@ generate_keys() {
 
     # Generate keys using sbctl
     log_info "Running sbctl to generate keys..."
-    if ! sbctl create-keys --export "$PKI_BUNDLE"; then
+    if ! "$SBCTL" create-keys --export "$PKI_BUNDLE"; then
         log_error "Failed to generate keys with sbctl"
         return 1
     fi
@@ -99,16 +102,16 @@ generate_keys() {
 enroll_keys() {
     log_info "Enrolling Secure Boot keys in UEFI firmware..."
 
-    # Build enrollment command
-    local enroll_cmd="sbctl enroll-keys --yes-this-might-brick-my-machine"
+    # Build enrollment command arguments
+    local enroll_args="enroll-keys --yes-this-might-brick-my-machine"
 
     if [ "$INCLUDE_MS" = "true" ]; then
-        enroll_cmd="$enroll_cmd --microsoft"
+        enroll_args="$enroll_args --microsoft"
         log_info "Including Microsoft certificates for dual-boot compatibility"
     fi
 
     # Enroll the keys
-    if ! $enroll_cmd; then
+    if ! "$SBCTL" $enroll_args; then
         log_error "Failed to enroll keys"
         return 1
     fi
@@ -121,9 +124,10 @@ enroll_keys() {
 main() {
     log_info "Starting Secure Boot provisioning"
 
-    # Check if sbctl is available
-    if ! command -v sbctl >/dev/null 2>&1; then
-        log_error "sbctl command not found - ensure it's in environment.systemPackages"
+    # Check if sbctl binary exists and is executable
+    if [ ! -x "$SBCTL" ]; then
+        log_error "sbctl not found or not executable at: $SBCTL"
+        log_error "This is a configuration error - sbctl should be provided by the activation script"
         exit 2
     fi
 
