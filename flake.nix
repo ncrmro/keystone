@@ -52,6 +52,7 @@
         system = "x86_64-linux";
         modules = [
           disko.nixosModules.disko
+          lanzaboote.nixosModules.lanzaboote
           ./modules/server
           ./modules/disko-single-disk-root
           ./modules/initrd-ssh-unlock
