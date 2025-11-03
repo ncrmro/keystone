@@ -250,35 +250,7 @@ in {
               options.keyformat = "raw";
               options.keylocation = "file:///etc/credstore/zfs-sysroot.mount";
               preCreateHook = "mount -o X-mount.mkdir /dev/mapper/credstore /etc/credstore && head -c 32 /dev/urandom > /etc/credstore/zfs-sysroot.mount";
-              postCreateHook = let
-                secureBootHook =
-                  if config.keystone.secureBoot.enable or false
-                  then ''
-                    # Run Secure Boot key provisioning if enabled
-                    export TARGET_ROOT="/mnt"
-                    export PKI_BUNDLE="${config.keystone.secureBoot.pkiBundle or "/var/lib/sbctl"}"
-                    export INCLUDE_MS="${
-                      if config.keystone.secureBoot.includeMS or false
-                      then "true"
-                      else "false"
-                    }"
-                    export AUTO_ENROLL="${
-                      if config.keystone.secureBoot.autoEnroll or true
-                      then "true"
-                      else "false"
-                    }"
-
-                    # Check if hook script exists and is executable
-                    if [ -x "${../secure-boot/hook.sh}" ]; then
-                      echo "Running Secure Boot provisioning hook..."
-                      "${../secure-boot/hook.sh}" || echo "Warning: Secure Boot provisioning had issues but continuing"
-                    else
-                      echo "Warning: Secure Boot hook script not found or not executable"
-                    fi
-                  ''
-                  else "";
-              in ''
-                ${secureBootHook}
+              postCreateHook = ''
                 umount /etc/credstore && cryptsetup luksClose /dev/mapper/credstore
               '';
             };
