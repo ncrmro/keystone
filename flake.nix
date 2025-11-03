@@ -15,6 +15,10 @@
       url = "github:basecamp/omarchy/v3.0.2";
       flake = false;
     };
+    lanzaboote = {
+      url = "github:nix-community/lanzaboote/v0.4.2";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -23,6 +27,7 @@
     disko,
     home-manager,
     omarchy,
+    lanzaboote,
     ...
   }: {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
@@ -47,9 +52,11 @@
         system = "x86_64-linux";
         modules = [
           disko.nixosModules.disko
+          lanzaboote.nixosModules.lanzaboote
           ./modules/server
           ./modules/disko-single-disk-root
           ./modules/initrd-ssh-unlock
+          ./modules/secure-boot
           ./vms/test-server/configuration.nix
         ];
       };
@@ -63,6 +70,7 @@
       diskoSingleDiskRoot = ./modules/disko-single-disk-root;
       initrdSshUnlock = ./modules/initrd-ssh-unlock;
       isoInstaller = ./modules/iso-installer.nix;
+      secureBoot = ./modules/secure-boot;
     };
 
     packages.x86_64-linux = {
