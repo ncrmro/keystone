@@ -9,24 +9,6 @@ with lib; let
 in {
   options.keystone.secureBoot = {
     enable = mkEnableOption "Secure Boot with lanzaboote";
-
-    includeMS = mkOption {
-      type = types.bool;
-      default = false;
-      description = "Include Microsoft certificates (for dual-boot or hardware compatibility)";
-    };
-
-    autoEnroll = mkOption {
-      type = types.bool;
-      default = true;
-      description = "Automatically enroll keys when in Setup Mode";
-    };
-
-    pkiBundle = mkOption {
-      type = types.str;
-      default = "/var/lib/sbctl";
-      description = "Path to PKI bundle directory";
-    };
   };
 
   config = mkIf cfg.enable {
@@ -48,6 +30,22 @@ in {
     # Ensure sbctl is available in the system
     environment.systemPackages = [pkgs.sbctl];
 
-    # Configuration will be implemented in subsequent tasks
+    # Configure lanzaboote for Secure Boot
+    boot.lanzaboote = {
+      enable = true;
+      pkiBundle = "/var/lib/sbctl";
+    };
+
+    # Disable systemd-boot when using lanzaboote
+    boot.loader.systemd-boot.enable = mkForce false;
+
+    # Activation script to provision Secure Boot keys on first boot
+    system.activationScripts.secureBootProvisioning = {
+      text = ''
+        # Run Secure Boot provisioning script
+        ${pkgs.bash}/bin/bash ${./provision.sh}
+      '';
+      deps = []; # Run early in activation
+    };
   };
 }
