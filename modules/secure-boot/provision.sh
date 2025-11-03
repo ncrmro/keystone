@@ -28,8 +28,9 @@ PKI_BUNDLE="/var/lib/sbctl"
 INCLUDE_MS="false"  # Don't include Microsoft certificates
 AUTO_ENROLL="true"  # Always auto-enroll
 
-# sbctl path provided by activation script
+# Tool paths provided by activation script
 SBCTL="${1:-sbctl}"  # Default to 'sbctl' if not provided
+AWK="${2:-awk}"      # Default to 'awk' if not provided
 
 # Setup Mode detection
 check_setup_mode() {
@@ -50,7 +51,7 @@ check_setup_mode() {
 
     # Extract the value (last byte of the variable)
     local setup_mode_value
-    setup_mode_value=$(od --address-radix=n --format=u1 "$setup_mode_var" 2>/dev/null | awk '{print $NF}')
+    setup_mode_value=$(od --address-radix=n --format=u1 "$setup_mode_var" 2>/dev/null | "$AWK" '{print $NF}')
 
     if [ "$setup_mode_value" = "1" ]; then
         log_info "System is in Setup Mode (ready for key enrollment)"
@@ -74,13 +75,13 @@ generate_keys() {
         return 0
     fi
 
-    # Create PKI directory structure
+    # Create PKI directory structure (sbctl will create subdirectories)
     log_info "Creating PKI directory at $PKI_BUNDLE"
     mkdir -p "$PKI_BUNDLE"
 
-    # Generate keys using sbctl
+    # Generate keys using sbctl (keys are created in /var/lib/sbctl by default)
     log_info "Running sbctl to generate keys..."
-    if ! "$SBCTL" create-keys --export "$PKI_BUNDLE"; then
+    if ! "$SBCTL" create-keys; then
         log_error "Failed to generate keys with sbctl"
         return 1
     fi
