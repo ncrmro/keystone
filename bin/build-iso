@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+#
+# Keystone ISO Builder
+#
+# NOTE: This script is part of the automated testing procedure.
+#       Any changes here should be reflected in docs/testing-procedure.md
+#
+# See: docs/testing-procedure.md for complete testing workflows
 
 set -euo pipefail
 
