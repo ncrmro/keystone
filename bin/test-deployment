@@ -519,6 +519,62 @@ def run_post_install_provisioning():
         return False
 
 
+def test_tpm_enrollment():
+    """Test TPM enrollment with recovery key"""
+    print_info("Running TPM enrollment with --auto flag...")
+    print_info("The recovery key will be displayed - you should save it for testing")
+    print_info("When prompted, READ the recovery key from your backup to verify")
+
+    # Run enrollment - requires user interaction
+    result = ssh_vm("keystone-enroll-recovery --auto", check=False, timeout=180)
+
+    if not result:
+        print_error("TPM enrollment command failed")
+        return False
+
+    # Verify enrollment marker created
+    if not ssh_vm("test -f /var/lib/keystone/tpm-enrollment-complete", check=False, timeout=5):
+        print_error("Enrollment marker file not found")
+        return False
+
+    # Verify TPM keyslot exists
+    has_tpm = ssh_vm(
+        "systemd-cryptenroll /dev/zvol/rpool/credstore 2>/dev/null | grep -q tpm2",
+        check=False,
+        timeout=10
+    )
+
+    if not has_tpm:
+        print_error("TPM keyslot not found in LUKS header")
+        return False
+
+    print_success("TPM enrollment completed and verified")
+    return True
+
+def verify_tpm_auto_unlock():
+    """Reboot VM and verify it unlocks automatically via TPM (no password prompt)"""
+    print_info("Triggering reboot to test TPM automatic unlock...")
+
+    # Trigger reboot
+    ssh_vm("nohup bash -c 'sleep 2 && reboot' >/dev/null 2>&1 &", check=False, timeout=5)
+
+    print_info("Waiting for system to shut down...")
+    time.sleep(15)
+
+    # Wait for SSH to come back - this should happen automatically without password
+    print_info("Waiting for automatic TPM unlock and boot (max 120 seconds)...")
+    print_info("If this succeeds, TPM automatic unlock is working!")
+
+    if not wait_for_ssh(max_attempts=24, delay=5):
+        print_error("System did not boot after reboot")
+        print_warning("TPM automatic unlock may have failed - system might be waiting for password")
+        print_info("Check via serial console: virsh console keystone-test-vm")
+        return False
+
+    print_success("System rebooted and unlocked automatically via TPM!")
+    print_success("No password prompt was needed - TPM automatic unlock works!")
+    return True
+
 def verify_deployment():
     """Run the verification script"""
     print_info("Waiting for deployed system to finish booting...")
@@ -557,12 +613,24 @@ def verify_deployment():
     print_info("Running verification checks...")
 
     # Manual verification checks using ssh_vm helper
+    def check_secureboot():
+        """Check Secure Boot status using sbctl"""
+        # Use sbctl without grep - just check if full output contains "Enabled"
+        result = ssh_vm("sbctl status 2>/dev/null", check=False, capture=True, timeout=10)
+        if not result:
+            return False
+        # Check if Secure Boot line contains "Enabled"
+        for line in result.split('\n'):
+            if 'Secure Boot' in line and ('Enabled' in line or '✓' in line):
+                return True
+        return False
+
     checks = [
         ("SSH connectivity", lambda: ssh_vm("echo ok", check=False, capture=True, timeout=5) == "ok"),
         ("Hostname", lambda: ssh_vm("hostname", check=False, capture=True, timeout=5) == VM_HOSTNAME),
         ("ZFS pool", lambda: ssh_vm("zpool status rpool | grep -q ONLINE", check=False, timeout=5)),
         ("SSH service", lambda: ssh_vm("systemctl is-active sshd", check=False, capture=True, timeout=5) == "active"),
-        ("Secure Boot", lambda: "enabled" in ssh_vm("bootctl status 2>/dev/null | grep 'Secure Boot'", check=False, capture=True, timeout=5)),
+        ("Secure Boot", check_secureboot),
     ]
 
     passed = 0
@@ -602,7 +670,7 @@ def main():
     print(f"{CYAN}Keystone Deployment Test{NC}")
     print("=" * 60)
 
-    total_steps = 10  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot, Deploy, Remove ISO, Unlock, Post-install provisioning (includes reboot), Verify
+    total_steps = 11  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot setup, Deploy, Remove ISO, Unlock, Verify, TPM enrollment, TPM auto-unlock reboot
     if rebuild_iso_flag:
         total_steps += 1
     if hard_reset_flag:
@@ -710,29 +778,50 @@ def main():
     time.sleep(5)
     print_success("System is ready")
 
-    # Step: Run post-install provisioning (Secure Boot)
-    # Note: This will handle key enrollment, reboot, and verification
-    current_step += 1
-    print_step(current_step, total_steps, "Running Secure Boot provisioning")
+    # Note: Secure Boot is automatically provisioned during activation
+    # The secure-boot module's activation script runs on first boot
+    print_info("Secure Boot provisioning happens automatically via activation scripts")
 
-    if not run_post_install_provisioning():
-        print_error("Post-install provisioning failed")
-        return 1
-
-    print_success("Post-install provisioning completed (system has been rebooted)")
-
-    # Step: Verify
+    # Step: Verify basic deployment
     current_step += 1
     print_step(current_step, total_steps, "Verifying deployment")
 
     if not verify_deployment():
         print_warning("Some verification checks failed")
         print_info(f"You can still SSH to the VM: ssh root@{VM_IP}")
-    else:
+        return 1
+
+    # Step: Test TPM enrollment
+    current_step += 1
+    print_step(current_step, total_steps, "Testing TPM enrollment")
+
+    if not test_tpm_enrollment():
+        print_error("TPM enrollment test failed")
+        print_info(f"You can manually test: ssh root@{VM_IP}")
+        print_info(f"  sudo keystone-enroll-recovery --auto")
+        return 1
+
+    # Step: Reboot to verify TPM automatic unlock
+    current_step += 1
+    print_step(current_step, total_steps, "Rebooting to verify TPM automatic unlock")
+
+    if not verify_tpm_auto_unlock():
+        print_error("TPM automatic unlock verification failed")
+        print_warning("System may be waiting for password at boot")
+        return 1
+
+    # All tests passed
+    if True:
         print()
         print("=" * 60)
         print(f"{GREEN}✓ All tests passed!{NC}")
         print("=" * 60)
+        print()
+        print("Test Results:")
+        print(f"  {GREEN}✓{NC} Fresh deployment successful")
+        print(f"  {GREEN}✓{NC} Secure Boot enrolled and verified")
+        print(f"  {GREEN}✓{NC} TPM enrollment completed")
+        print(f"  {GREEN}✓{NC} TPM automatic unlock working")
         print()
         print("Test Configuration:")
         print(f"  Rebuild ISO: {rebuild_iso_flag}")
