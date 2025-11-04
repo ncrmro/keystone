@@ -57,6 +57,7 @@
           ./modules/disko-single-disk-root
           ./modules/initrd-ssh-unlock
           ./modules/secure-boot
+          ./modules/tpm-enrollment
           ./vms/test-server/configuration.nix
         ];
       };
@@ -71,6 +72,7 @@
       initrdSshUnlock = ./modules/initrd-ssh-unlock;
       isoInstaller = ./modules/iso-installer.nix;
       secureBoot = ./modules/secure-boot;
+      tpmEnrollment = ./modules/tpm-enrollment;
     };
 
     packages.x86_64-linux = {
