@@ -10,12 +10,17 @@ Automates the complete VM deployment testing workflow:
 
 Zero external dependencies - uses only Python standard library.
 
+NOTE: This script is part of the automated testing procedure.
+      Any changes here should be reflected in docs/testing-procedure.md
+
 Usage:
     ./bin/test-deployment                    # Normal test run
     ./bin/test-deployment --rebuild-iso      # Rebuild ISO first
     ./bin/test-deployment --hard-reset       # Force kill VM and clean artifacts
     ./bin/test-deployment --debug            # Show full nixos-anywhere output
     ./bin/test-deployment --rebuild-iso --hard-reset --debug  # Full clean test with debug
+
+See: docs/testing-procedure.md for complete testing workflows
 """
 
 import subprocess

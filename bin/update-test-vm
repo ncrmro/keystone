@@ -6,11 +6,16 @@
 # configuration changes without requiring full redeployment. Perfect for
 # rapid iteration during development.
 #
+# NOTE: This script is part of the automated testing procedure.
+#       Any changes here should be reflected in docs/testing-procedure.md
+#
 # Usage:
 #   ./bin/update-test-vm                 # Build locally, switch (no reboot)
 #   ./bin/update-test-vm --reboot        # Build locally, switch, and reboot
 #   ./bin/update-test-vm --build-host    # Build on VM (slower, less bandwidth)
 #   ./bin/update-test-vm --help          # Show this help
+#
+# See: docs/testing-procedure.md for complete testing workflows
 
 set -euo pipefail
 
