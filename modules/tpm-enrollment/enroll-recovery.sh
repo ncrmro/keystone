@@ -142,10 +142,15 @@ if ! @systemd_cryptenroll@ \
 fi
 
 # Extract recovery key from output
-RECOVERY_KEY=$(grep -oP 'Recovery key: \K[a-z0-9-]+' "$TEMP_RECOVERY" || echo "")
+# Format: indented 8-word recovery key (each word is 8 letters)
+# Example:     cgecnccb-gkglvevj-vihtbgee-jetghjkr-gtrvuljc-vhdirfdc-jtccfikg-jifuhvkf
+RECOVERY_KEY=$(grep -oP '^\s+[a-z]{8}(-[a-z]{8}){7}$' "$TEMP_RECOVERY" | tr -d '[:space:]' || echo "")
 
 if [[ -z "$RECOVERY_KEY" ]]; then
   echo "[ERROR] Could not extract recovery key from output"
+  echo ""
+  echo "systemd-cryptenroll output:"
+  cat "$TEMP_RECOVERY"
   exit 5
 fi
 
@@ -165,8 +170,15 @@ echo "  [OK] Password manager with offline backup"
 echo "  [OK] Printed paper in physical safe"
 echo "  [NO] NOT on this encrypted disk"
 echo ""
-read -rp "Press ENTER after you have saved this key..."
-echo ""
+# Only prompt if running in interactive terminal
+if [[ -t 0 ]]; then
+  read -rp "Press ENTER after you have saved this key..."
+  echo ""
+else
+  echo "[Non-interactive mode detected - skipping confirmation prompt]"
+  echo ""
+  sleep 2  # Give user time to see the key
+fi
 
 echo "[Step 2/3] Enrolling TPM and removing default password..."
 echo ""
@@ -194,24 +206,40 @@ echo "  * TPM replaced"
 echo ""
 echo "Firmware/kernel updates: No re-enrollment needed (signed by same keys)"
 echo ""
-echo "$ systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=$TPM_PCRS --wipe-slot=password"
-echo ""
+# Check if running in interactive terminal
+if [[ -t 0 ]]; then
+  # Interactive: Let user type recovery key for verification
+  echo "$ systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=$TPM_PCRS --wipe-slot=password"
+  echo ""
 
-if ! @systemd_cryptenroll@ \
-  "$CREDSTORE_DEVICE" \
-  --tpm2-device=auto \
-  --tpm2-pcrs="$TPM_PCRS" \
-  --wipe-slot=password; then
+  if ! @systemd_cryptenroll@ \
+    "$CREDSTORE_DEVICE" \
+    --tpm2-device=auto \
+    --tpm2-pcrs="$TPM_PCRS" \
+    --wipe-slot=password; then
+    echo ""
+    echo "[ERROR] TPM enrollment and password removal failed"
+    echo ""
+    echo "Your recovery key is still enrolled. To retry:"
+    echo "  sudo keystone-enroll-recovery --auto"
+    exit 6
+  fi
+else
+  # Non-interactive: Auto-provide recovery key
+  echo "$ systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=$TPM_PCRS --wipe-slot=password --unlock-key-file=<(echo -n \"<recovery-key>\")"
+  echo "[Non-interactive mode - automatically using recovery key]"
   echo ""
-  echo "[ERROR] TPM enrollment and password removal failed"
-  echo ""
-  echo "Possible causes:"
-  echo "  * Recovery key entered incorrectly"
-  echo "  * TPM enrollment failed"
-  echo ""
-  echo "Your recovery key is still enrolled. To retry:"
-  echo "  sudo keystone-enroll-recovery --auto"
-  exit 6
+
+  if ! @systemd_cryptenroll@ \
+    "$CREDSTORE_DEVICE" \
+    --tpm2-device=auto \
+    --tpm2-pcrs="$TPM_PCRS" \
+    --wipe-slot=password \
+    --unlock-key-file=<(echo -n "$RECOVERY_KEY"); then
+    echo ""
+    echo "[ERROR] TPM enrollment and password removal failed"
+    exit 6
+  fi
 fi
 echo ""
 echo "[OK] TPM enrolled and default password removed"

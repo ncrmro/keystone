@@ -152,17 +152,17 @@ in {
     in [
       # T017-T023: Recovery key enrollment command
       (pkgs.writeShellScriptBin "keystone-enroll-recovery" ''
-        exec ${enrollRecoveryScript}
+        exec ${enrollRecoveryScript} "$@"
       '')
 
       # T024-T029: Custom password enrollment command
       (pkgs.writeShellScriptBin "keystone-enroll-password" ''
-        exec ${enrollPasswordScript}
+        exec ${enrollPasswordScript} "$@"
       '')
 
       # T030-T035: Standalone TPM enrollment command (advanced users)
       (pkgs.writeShellScriptBin "keystone-enroll-tpm" ''
-        exec ${enrollTpmScript}
+        exec ${enrollTpmScript} "$@"
       '')
     ];
   };
