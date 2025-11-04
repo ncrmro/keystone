@@ -9,10 +9,15 @@
 Create a libvirt VM with UEFI Secure Boot enabled for NixOS (NixOS-compatible version)
 Outputs to both serial console and graphical display
 
+NOTE: This script is part of the automated testing procedure.
+      Any changes here should be reflected in docs/testing-procedure.md
+
 NixOS requirements:
   Add to your configuration.nix:
     virtualisation.libvirtd.enable = true;
     users.users.<youruser>.extraGroups = [ "libvirtd" ];
+
+See: docs/testing-procedure.md for complete testing workflows
 """
 
 import libvirt
