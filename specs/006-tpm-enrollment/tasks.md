@@ -24,11 +24,11 @@
 
 **Purpose**: Project initialization and module structure
 
-- [ ] T001 Create module directory structure at modules/tpm-enrollment/
-- [ ] T002 [P] Create placeholder script files (enrollment-check.sh, enroll-recovery.sh, enroll-password.sh, enroll-tpm.sh)
-- [ ] T003 [P] Create documentation directory at docs/tpm-enrollment.md
-- [ ] T004 [P] Create examples directory at examples/tpm-enrollment/
-- [ ] T005 Update flake.nix to export tpmEnrollment module in nixosModules
+- [x] T001 Create module directory structure at modules/tpm-enrollment/
+- [x] T002 [P] Create placeholder script files (enrollment-check.sh, enroll-recovery.sh, enroll-password.sh, enroll-tpm.sh)
+- [x] T003 [P] Create documentation directory at docs/tpm-enrollment.md
+- [x] T004 [P] Create examples directory at examples/tpm-enrollment/
+- [x] T005 Update flake.nix to export tpmEnrollment module in nixosModules
 
 ---
 
@@ -38,11 +38,11 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Create NixOS module skeleton in modules/tpm-enrollment/default.nix with enable option
-- [ ] T007 Add module options: tpmPCRs (list of integers, default [1 7]), credstoreDevice (string, default "/dev/zvol/rpool/credstore")
-- [ ] T008 Add assertions: Secure Boot enabled (config.keystone.secureBoot.enable), disko enabled (config.keystone.disko.enable)
-- [ ] T009 Create systemd tmpfiles rule to create /var/lib/keystone directory (0755 root:root)
-- [ ] T010 Implement PCR list to comma-separated string conversion helper function in default.nix
+- [x] T006 Create NixOS module skeleton in modules/tpm-enrollment/default.nix with enable option
+- [x] T007 Add module options: tpmPCRs (list of integers, default [1 7]), credstoreDevice (string, default "/dev/zvol/rpool/credstore")
+- [x] T008 Add assertions: Secure Boot enabled (config.keystone.secureBoot.enable), disko enabled (config.keystone.disko.enable)
+- [x] T009 Create systemd tmpfiles rule to create /var/lib/keystone directory (0755 root:root)
+- [x] T010 Implement PCR list to comma-separated string conversion helper function in default.nix
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -56,12 +56,12 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [P] [US1] Implement enrollment status detection logic in modules/tpm-enrollment/enrollment-check.sh
-- [ ] T012 [US1] Add marker file validation (check /var/lib/keystone/tpm-enrollment-complete exists)
-- [ ] T013 [US1] Add LUKS header validation (cryptsetup luksDump | grep systemd-tpm2)
-- [ ] T014 [US1] Implement self-healing logic (create marker if TPM enrolled but marker missing)
-- [ ] T015 [US1] Add warning banner display with ASCII box drawing and enrollment instructions
-- [ ] T016 [US1] Configure shell profile integration in default.nix via environment.etc."profile.d/tpm-enrollment-warning.sh"
+- [x] T011 [P] [US1] Implement enrollment status detection logic in modules/tpm-enrollment/enrollment-check.sh
+- [x] T012 [US1] Add marker file validation (check /var/lib/keystone/tpm-enrollment-complete exists)
+- [x] T013 [US1] Add LUKS header validation (cryptsetup luksDump | grep systemd-tpm2)
+- [x] T014 [US1] Implement self-healing logic (create marker if TPM enrolled but marker missing)
+- [x] T015 [US1] Add warning banner display with ASCII box drawing and enrollment instructions
+- [x] T016 [US1] Configure shell profile integration in default.nix via environment.etc."profile.d/tpm-enrollment-warning.sh"
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - banner appears on fresh install, disappears after enrollment
 
@@ -75,13 +75,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T017 [P] [US2] Implement prerequisite checks in modules/tpm-enrollment/enroll-recovery.sh (Secure Boot enabled, TPM available, credstore exists)
-- [ ] T018 [P] [US2] Add recovery key generation using systemd-cryptenroll --recovery-key
-- [ ] T019 [US2] Implement recovery key display with security warnings and storage recommendations
-- [ ] T020 [US2] Add user confirmation prompt (press ENTER after saving key)
-- [ ] T021 [US2] Implement TPM enrollment using configured PCR list from module options
-- [ ] T022 [US2] Add default password removal logic (verify new credentials work first, then remove slot 0)
-- [ ] T023 [US2] Create enrollment marker file with metadata (timestamp, method: recovery-key, PCRs used)
+- [x] T017 [P] [US2] Implement prerequisite checks in modules/tpm-enrollment/enroll-recovery.sh (Secure Boot enabled, TPM available, credstore exists)
+- [x] T018 [P] [US2] Add recovery key generation using systemd-cryptenroll --recovery-key
+- [x] T019 [US2] Implement recovery key display with security warnings and storage recommendations
+- [x] T020 [US2] Add user confirmation prompt (press ENTER after saving key)
+- [x] T021 [US2] Implement TPM enrollment using configured PCR list from module options
+- [x] T022 [US2] Add default password removal logic (verify new credentials work first, then remove slot 0)
+- [x] T023 [US2] Create enrollment marker file with metadata (timestamp, method: recovery-key, PCRs used)
 
 **Checkpoint**: User Story 2 complete - recovery key enrollment works independently, TPM auto-unlock functional
 
@@ -95,12 +95,12 @@
 
 ### Implementation for User Story 3
 
-- [ ] T024 [P] [US3] Implement password validation function in modules/tpm-enrollment/enroll-password.sh (12-64 chars, not "keystone")
-- [ ] T025 [P] [US3] Add password prompt with silent input and confirmation
-- [ ] T026 [US3] Implement password validation error messages (too short, too long, mismatch, prohibited)
-- [ ] T027 [US3] Add optional password strength checking with pwscore (if available, warning only)
-- [ ] T028 [US3] Implement LUKS password addition using cryptsetup luksAddKey
-- [ ] T029 [US3] Add TPM enrollment and default password removal logic (reuse from US2)
+- [x] T024 [P] [US3] Implement password validation function in modules/tpm-enrollment/enroll-password.sh (12-64 chars, not "keystone")
+- [x] T025 [P] [US3] Add password prompt with silent input and confirmation
+- [x] T026 [US3] Implement password validation error messages (too short, too long, mismatch, prohibited)
+- [x] T027 [US3] Add optional password strength checking with pwscore (if available, warning only)
+- [x] T028 [US3] Implement LUKS password addition using cryptsetup luksAddKey
+- [x] T029 [US3] Add TPM enrollment and default password removal logic (reuse from US2)
 
 **Checkpoint**: User Story 3 complete - custom password enrollment works independently alongside recovery key method
 
@@ -114,12 +114,12 @@
 
 ### Implementation for User Story 4
 
-- [ ] T030 [P] [US4] Implement standalone TPM enrollment script in modules/tpm-enrollment/enroll-tpm.sh
-- [ ] T031 [US4] Add Secure Boot validation using bootctl status (must show "enabled (user)")
-- [ ] T032 [US4] Add TPM device detection using systemd-cryptenroll --tpm2-device=list
-- [ ] T033 [US4] Implement systemd-cryptenroll command with configurable PCR list and --wipe-slot=empty
-- [ ] T034 [US4] Add enrollment verification (check LUKS header for systemd-tpm2 token)
-- [ ] T035 [US4] Add comprehensive error handling (no TPM, no Secure Boot, enrollment failure, keyslot exhaustion)
+- [x] T030 [P] [US4] Implement standalone TPM enrollment script in modules/tpm-enrollment/enroll-tpm.sh
+- [x] T031 [US4] Add Secure Boot validation using bootctl status (must show "enabled (user)")
+- [x] T032 [US4] Add TPM device detection using systemd-cryptenroll --tpm2-device=list
+- [x] T033 [US4] Implement systemd-cryptenroll command with configurable PCR list and --wipe-slot=empty
+- [x] T034 [US4] Add enrollment verification (check LUKS header for systemd-tpm2 token)
+- [x] T035 [US4] Add comprehensive error handling (no TPM, no Secure Boot, enrollment failure, keyslot exhaustion)
 
 **Checkpoint**: All user stories complete - full enrollment workflow functional with TPM automatic unlock
 
@@ -129,10 +129,10 @@
 
 **Purpose**: Documentation, examples, testing validation, and final integration
 
-- [ ] T036 [P] Write user-facing documentation in docs/tpm-enrollment.md (enrollment guide, recovery scenarios, PCR configuration)
-- [ ] T037 [P] Create example configuration in examples/tpm-enrollment/configuration.nix showing module usage
-- [ ] T038 [P] Add flake.nix example showing external usage of tpmEnrollment module
-- [ ] T039 Create manual test plan based on quickstart.md validation steps
+- [x] T036 [P] Write user-facing documentation in docs/tpm-enrollment.md (enrollment guide, recovery scenarios, PCR configuration)
+- [x] T037 [P] Create example configuration in examples/tpm-enrollment/configuration.nix showing module usage
+- [x] T038 [P] Add flake.nix example showing external usage of tpmEnrollment module
+- [x] T039 Create manual test plan based on quickstart.md validation steps
 - [ ] T040 Test on VM with bin/virtual-machine (fresh install, enrollment, reboot, auto-unlock, recovery)
 - [ ] T041 Test PCR configuration variations (default [1,7], custom [7], custom [0,1,7])
 
