@@ -74,6 +74,19 @@
   # Optional: Set timezone (default: UTC from server module)
   # time.timeZone = "America/New_York";
 
+  # Test user for ZFS user module verification
+  keystone.users = {
+    testuser = {
+      uid = 1001;
+      fullName = "Test User for ZFS Verification";
+      initialPassword = "testpass"; # Test only - insecure
+      zfsProperties = {
+        quota = "10G";
+        compression = "lz4";
+      };
+    };
+  };
+
   # Additional packages for Secure Boot provisioning
   environment.systemPackages = with pkgs; [
     sbctl # Secure Boot key management tool (required for post-install provisioning)
