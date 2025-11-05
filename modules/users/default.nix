@@ -1,3 +1,9 @@
+# User Management with ZFS-backed Home Directories
+#
+# This module creates users with ZFS datasets and delegated permissions.
+#
+# NOTE: Any changes to this module should be reflected in docs/users.md
+#
 {
   config,
   lib,
