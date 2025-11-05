@@ -737,8 +737,12 @@ def main():
     print(f"{CYAN}Keystone Deployment Test{NC}")
     print("=" * 60)
 
-    total_steps = 12  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot setup, Deploy, Remove ISO, Unlock, Verify, ZFS Users, TPM enrollment, TPM auto-unlock reboot
-    if rebuild_iso_flag:
+    # Check if ISO needs rebuilding
+    iso_path = Path("vms/keystone-installer.iso")
+    iso_missing = not iso_path.exists() or not iso_path.resolve().exists()
+
+    total_steps = 12  # Stop/Reset, ISO rebuild (conditional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot setup, Deploy, Remove ISO, Unlock, Verify, ZFS Users, TPM enrollment, TPM auto-unlock reboot
+    if rebuild_iso_flag or iso_missing:
         total_steps += 1
     if hard_reset_flag:
         total_steps += 0  # No extra step, just different behavior in step 1
@@ -762,10 +766,13 @@ def main():
             print_warning("Failed graceful stop, trying force stop...")
             stop_vm(force=True)
 
-    # Step: Rebuild ISO if requested
-    if rebuild_iso_flag:
+    # Step: Rebuild ISO if requested OR if ISO is missing/invalid
+    if rebuild_iso_flag or iso_missing:
         current_step += 1
-        print_step(current_step, total_steps, "Rebuilding ISO")
+        if iso_missing and not rebuild_iso_flag:
+            print_step(current_step, total_steps, "ISO missing or invalid - rebuilding")
+        else:
+            print_step(current_step, total_steps, "Rebuilding ISO")
 
         if not rebuild_iso():
             return 1
