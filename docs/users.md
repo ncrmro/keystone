@@ -39,14 +39,11 @@ Users can:
 
 ### Mount Limitation
 
-**Linux kernel restricts mounting to root.** Use sudo for mount operations:
+**Linux kernel restricts mounting to root.** Use sudo for dataset creation and mounting:
 
 ```bash
-# Create child dataset (as user)
-zfs create rpool/crypt/home/alice/documents
-
-# Mount (requires sudo)
-sudo zfs mount rpool/crypt/home/alice/documents
+# Create and mount child dataset (requires sudo)
+sudo zfs create rpool/crypt/home/alice/documents
 ```
 
 ### Snapshot Exclusion
