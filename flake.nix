@@ -58,6 +58,7 @@
           ./modules/initrd-ssh-unlock
           ./modules/secure-boot
           ./modules/tpm-enrollment
+          ./modules/users
           ./vms/test-server/configuration.nix
         ];
       };
@@ -73,6 +74,7 @@
       isoInstaller = ./modules/iso-installer.nix;
       secureBoot = ./modules/secure-boot;
       tpmEnrollment = ./modules/tpm-enrollment;
+      users = ./modules/users;
     };
 
     packages.x86_64-linux = {
