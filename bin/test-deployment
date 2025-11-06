@@ -575,6 +575,73 @@ def verify_tpm_auto_unlock():
     print_success("No password prompt was needed - TPM automatic unlock works!")
     return True
 
+def verify_zfs_user_permissions():
+    """Verify ZFS user dataset permissions"""
+    print_info("Verifying ZFS user permissions...")
+
+    test_user = "testuser"
+    test_dataset = f"rpool/crypt/home/{test_user}"
+
+    checks = [
+        # Dataset exists
+        (f"Dataset exists: {test_dataset}",
+         lambda: ssh_vm(f"zfs list {test_dataset}", check=False, timeout=5)),
+
+        # Dataset is mounted
+        (f"Dataset mounted at /home/{test_user}",
+         lambda: ssh_vm(f"mountpoint -q /home/{test_user}", check=False, timeout=5)),
+
+        # TODO: Uncomment when Linux mount restriction workaround is implemented
+        # User can create child datasets, but Linux kernel prevents auto-mounting
+        # See: https://github.com/openzfs/zfs/discussions/10648
+        # (f"User can create child dataset",
+        #  lambda: ssh_vm(f'su - {test_user} -c "zfs create -o canmount=off {test_dataset}/documents"', check=False, timeout=10)),
+
+        # User can create snapshot
+        (f"User can create snapshot",
+         lambda: ssh_vm(f'su - {test_user} -c "zfs snapshot {test_dataset}@test"', check=False, timeout=10)),
+
+        # User can list their dataset
+        (f"User can list dataset",
+         lambda: ssh_vm(f'su - {test_user} -c "zfs list {test_dataset}"', check=False, timeout=5)),
+
+        # User can send snapshot
+        (f"User can send snapshot",
+         lambda: ssh_vm(f'su - {test_user} -c "zfs send {test_dataset}@test > /tmp/test.zfs"', check=False, timeout=10)),
+
+        # User can destroy their snapshot
+        (f"User can destroy snapshot",
+         lambda: ssh_vm(f'su - {test_user} -c "zfs destroy {test_dataset}@test"', check=False, timeout=10)),
+
+        # TODO: Uncomment when Linux mount restriction workaround is implemented
+        # Dependent on ability to create child datasets
+        # (f"User can destroy child dataset (unmounted)",
+        #  lambda: ssh_vm(f'su - {test_user} -c "zfs destroy {test_dataset}/documents"', check=False, timeout=10)),
+
+        # User CANNOT destroy parent dataset (should fail)
+        (f"User cannot destroy parent dataset (security check)",
+         lambda: not ssh_vm(f'su - {test_user} -c "zfs destroy {test_dataset}"', check=False, timeout=5)),
+    ]
+
+    passed = 0
+    failed = 0
+
+    for check_name, check_func in checks:
+        try:
+            result = check_func()
+            if result:
+                print_success(check_name)
+                passed += 1
+            else:
+                print_error(check_name)
+                failed += 1
+        except:
+            print_error(check_name)
+            failed += 1
+
+    print(f"\nZFS User Checks - Passed: {GREEN}{passed}{NC}, Failed: {RED}{failed}{NC}")
+    return failed == 0
+
 def verify_deployment():
     """Run the verification script"""
     print_info("Waiting for deployed system to finish booting...")
@@ -670,8 +737,12 @@ def main():
     print(f"{CYAN}Keystone Deployment Test{NC}")
     print("=" * 60)
 
-    total_steps = 11  # Stop/Reset, ISO rebuild (optional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot setup, Deploy, Remove ISO, Unlock, Verify, TPM enrollment, TPM auto-unlock reboot
-    if rebuild_iso_flag:
+    # Check if ISO needs rebuilding
+    iso_path = Path("vms/keystone-installer.iso")
+    iso_missing = not iso_path.exists() or not iso_path.resolve().exists()
+
+    total_steps = 12  # Stop/Reset, ISO rebuild (conditional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot setup, Deploy, Remove ISO, Unlock, Verify, ZFS Users, TPM enrollment, TPM auto-unlock reboot
+    if rebuild_iso_flag or iso_missing:
         total_steps += 1
     if hard_reset_flag:
         total_steps += 0  # No extra step, just different behavior in step 1
@@ -695,10 +766,13 @@ def main():
             print_warning("Failed graceful stop, trying force stop...")
             stop_vm(force=True)
 
-    # Step: Rebuild ISO if requested
-    if rebuild_iso_flag:
+    # Step: Rebuild ISO if requested OR if ISO is missing/invalid
+    if rebuild_iso_flag or iso_missing:
         current_step += 1
-        print_step(current_step, total_steps, "Rebuilding ISO")
+        if iso_missing and not rebuild_iso_flag:
+            print_step(current_step, total_steps, "ISO missing or invalid - rebuilding")
+        else:
+            print_step(current_step, total_steps, "Rebuilding ISO")
 
         if not rebuild_iso():
             return 1
@@ -791,6 +865,15 @@ def main():
         print_info(f"You can still SSH to the VM: ssh root@{VM_IP}")
         return 1
 
+    # Step: Verify ZFS user permissions
+    current_step += 1
+    print_step(current_step, total_steps, "Verifying ZFS user permissions")
+
+    if not verify_zfs_user_permissions():
+        print_warning("Some ZFS user checks failed")
+        print_info(f"You can manually test: ssh root@{VM_IP}")
+        return 1
+
     # Step: Test TPM enrollment
     current_step += 1
     print_step(current_step, total_steps, "Testing TPM enrollment")
@@ -820,6 +903,7 @@ def main():
         print("Test Results:")
         print(f"  {GREEN}✓{NC} Fresh deployment successful")
         print(f"  {GREEN}✓{NC} Secure Boot enrolled and verified")
+        print(f"  {GREEN}✓{NC} ZFS user datasets and permissions working")
         print(f"  {GREEN}✓{NC} TPM enrollment completed")
         print(f"  {GREEN}✓{NC} TPM automatic unlock working")
         print()
