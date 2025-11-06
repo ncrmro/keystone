@@ -91,6 +91,9 @@
     };
   };
 
+  # Allow testuser to receive nix store paths over SSH (for home-manager testing)
+  nix.settings.trusted-users = ["root" "testuser"];
+
   # Additional packages for Secure Boot provisioning
   environment.systemPackages = with pkgs; [
     sbctl # Secure Boot key management tool (required for post-install provisioning)
