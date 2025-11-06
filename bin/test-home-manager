@@ -116,65 +116,44 @@ def setup_testuser_ssh():
         return False
 
 def install_and_configure_home_manager():
-    """Install home-manager and terminal-dev-environment via local flake over SSH"""
-    print_info("Installing home-manager with terminal-dev-environment via local flake...")
+    """Install home-manager and terminal-dev-environment via root flake"""
+    print_info("Building home-manager configuration from root flake...")
     print_info("This may take 2-5 minutes...")
 
-    # Create a minimal flake configuration for testuser that includes terminal-dev-environment
-    # We'll build locally and deploy over SSH using home-manager's --flake option
-    flake_config = f"""
-        {{
-          inputs = {{
-            nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-            home-manager.url = "github:nix-community/home-manager/release-25.05";
-            home-manager.inputs.nixpkgs.follows = "nixpkgs";
-          }};
+    # Build the home-manager configuration locally
+    print_info("Building configuration locally...")
+    build_cmd = "nix build .#homeConfigurations.testuser.activationPackage"
+    if not run_command(build_cmd, check=False, timeout=300):
+        print_error("Failed to build home-manager configuration")
+        return False
 
-          outputs = {{ nixpkgs, home-manager, ... }}: {{
-            homeConfigurations."{TEST_USER}" = home-manager.lib.homeManagerConfiguration {{
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
-              modules = [
-                $(pwd)/home-manager/modules/terminal-dev-environment
-                {{
-                  home.username = "{TEST_USER}";
-                  home.homeDirectory = "/home/{TEST_USER}";
-                  home.stateVersion = "25.05";
+    print_success("Configuration built successfully")
 
-                  programs.terminal-dev-environment.enable = true;
+    # Copy the built configuration to the VM
+    print_info("Copying configuration to VM...")
+    # Set SSH options via NIX_SSHOPTS environment variable
+    copy_cmd = f"NIX_SSHOPTS='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' nix copy --to ssh://{TEST_USER}@{VM_IP} .#homeConfigurations.testuser.activationPackage"
+    if not run_command(copy_cmd, check=False, timeout=120):
+        print_error("Failed to copy configuration to VM")
+        return False
 
-                  programs.git = {{
-                    userName = "Test User";
-                    userEmail = "{TEST_USER}@keystone-test-vm";
-                  }};
+    print_success("Configuration copied to VM")
 
-                  programs.home-manager.enable = true;
-                }}
-              ];
-            }};
-          }};
-        }}
-    """
+    # Activate on the VM
+    print_info("Activating home-manager configuration on VM...")
+    activation_path = run_command("readlink -f result", check=False, capture=True, timeout=5)
+    if not activation_path:
+        print_error("Failed to get activation package path")
+        return False
 
-    # Write temporary flake.nix for testing
-    temp_flake = Path("vms/test-server/home-manager-flake.nix")
-    temp_flake.write_text(flake_config)
-
-    # Use home-manager with --flake to build and deploy from local machine
-    # This builds locally and activates remotely via SSH
-    hm_cmd = f"home-manager --flake {temp_flake.parent}#{TEST_USER} switch --experimental-features 'nix-command flakes' -b backup"
-
-    # Set SSH target for remote activation
-    env_vars = f"export NIX_SSHOPTS='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'; export TARGET_HOST={TEST_USER}@{VM_IP}"
-
-    result = run_command(f"{env_vars}; {hm_cmd}", check=False, timeout=300)
+    activate_cmd = f"{activation_path}/activate"
+    result = ssh_testuser(activate_cmd, check=False, timeout=60)
 
     if result:
-        print_success("Home-manager installed and configured successfully")
-        temp_flake.unlink()  # Clean up
+        print_success("Home-manager activated successfully")
         return True
     else:
-        print_error("Failed to install home-manager")
-        print_info(f"Temporary flake saved at: {temp_flake}")
+        print_error("Failed to activate home-manager")
         return False
 
 def verify_tools_in_path():
