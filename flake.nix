@@ -64,6 +64,28 @@
       };
     };
 
+    # Home-manager configurations for testing
+    homeConfigurations = {
+      testuser = home-manager.lib.homeManagerConfiguration {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        modules = [
+          ./home-manager/modules/terminal-dev-environment
+          {
+            home.username = "testuser";
+            home.homeDirectory = "/home/testuser";
+            home.stateVersion = "25.05";
+
+            programs.terminal-dev-environment.enable = true;
+
+            programs.git = {
+              userName = "Test User";
+              userEmail = "testuser@keystone-test-vm";
+            };
+          }
+        ];
+      };
+    };
+
     # Export Keystone modules for use in other flakes
     nixosModules = {
       server = ./modules/server;

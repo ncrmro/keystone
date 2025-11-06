@@ -7,6 +7,9 @@
   # Minimal Keystone server configuration for VM testing
   # This configuration enables nixos-anywhere deployment to VMs
 
+  # NixOS state version - do not change after initial deployment
+  system.stateVersion = "25.05";
+
   # System identity
   networking.hostName = "keystone-test-vm";
   # Required for ZFS - unique 8-character hex string
@@ -75,6 +78,7 @@
   # time.timeZone = "America/New_York";
 
   # Test user for ZFS user module verification
+  # Home-manager configuration is tested separately via bin/test-home-manager
   keystone.users = {
     testuser = {
       uid = 1001;
@@ -86,6 +90,9 @@
       };
     };
   };
+
+  # Allow testuser to receive nix store paths over SSH (for home-manager testing)
+  nix.settings.trusted-users = ["root" "testuser"];
 
   # Additional packages for Secure Boot provisioning
   environment.systemPackages = with pkgs; [
