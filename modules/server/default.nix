@@ -74,6 +74,9 @@ with lib;
       "net.ipv4.tcp_wmem" = "4096 65536 134217728";
     };
 
+    # Enable experimental Nix features for modern workflows
+    nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
     # Enable automatic garbage collection
     nix.gc = {
       automatic = true;

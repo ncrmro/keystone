@@ -741,7 +741,7 @@ def main():
     iso_path = Path("vms/keystone-installer.iso")
     iso_missing = not iso_path.exists() or not iso_path.resolve().exists()
 
-    total_steps = 12  # Stop/Reset, ISO rebuild (conditional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot setup, Deploy, Remove ISO, Unlock, Verify, ZFS Users, TPM enrollment, TPM auto-unlock reboot
+    total_steps = 13  # Stop/Reset, ISO rebuild (conditional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot setup, Deploy, Remove ISO, Unlock, Verify, ZFS Users, Terminal Dev Env, TPM enrollment, TPM auto-unlock reboot
     if rebuild_iso_flag or iso_missing:
         total_steps += 1
     if hard_reset_flag:
@@ -874,6 +874,16 @@ def main():
         print_info(f"You can manually test: ssh root@{VM_IP}")
         return 1
 
+    # Step: Test terminal development environment (home-manager)
+    current_step += 1
+    print_step(current_step, total_steps, "Testing terminal development environment")
+
+    result = run_command("./bin/test-home-manager", check=False, timeout=300)
+    if not result:
+        print_error("Terminal dev environment test failed")
+        print_info("You can manually test: ./bin/test-home-manager")
+        return 1
+
     # Step: Test TPM enrollment
     current_step += 1
     print_step(current_step, total_steps, "Testing TPM enrollment")
@@ -904,6 +914,7 @@ def main():
         print(f"  {GREEN}✓{NC} Fresh deployment successful")
         print(f"  {GREEN}✓{NC} Secure Boot enrolled and verified")
         print(f"  {GREEN}✓{NC} ZFS user datasets and permissions working")
+        print(f"  {GREEN}✓{NC} Terminal development environment verified")
         print(f"  {GREEN}✓{NC} TPM enrollment completed")
         print(f"  {GREEN}✓{NC} TPM automatic unlock working")
         print()
