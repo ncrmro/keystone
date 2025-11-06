@@ -1,0 +1,324 @@
+#!/usr/bin/env python3
+"""
+Test Terminal Development Environment Module
+
+Tests the terminal-dev-environment home-manager module as testuser on the VM.
+This script is called by bin/test-deployment as part of the deployment verification.
+
+Performs:
+- Home-manager installation for testuser
+- Module configuration and activation
+- Comprehensive verification of all tools and integrations
+
+Returns exit code 0 on success, 1 on failure (fails outer test-deployment).
+
+Usage:
+    ./bin/test-home-manager    # Run from keystone repository root
+"""
+
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+# ANSI color codes (same as test-deployment)
+RED = '\033[0;31m'
+GREEN = '\033[0;32m'
+YELLOW = '\033[1;33m'
+BLUE = '\033[0;34m'
+CYAN = '\033[0;36m'
+NC = '\033[0m'
+
+VM_IP = "192.168.100.99"
+TEST_USER = "testuser"
+
+def print_success(message):
+    """Print a success message"""
+    print(f"{GREEN}✓{NC} {message}")
+
+def print_error(message):
+    """Print an error message"""
+    print(f"{RED}✗{NC} {message}")
+
+def print_warning(message):
+    """Print a warning message"""
+    print(f"{YELLOW}⚠{NC} {message}")
+
+def print_info(message):
+    """Print an info message"""
+    print(f"{CYAN}ℹ{NC} {message}")
+
+def run_command(cmd, check=True, capture=False, timeout=None):
+    """Run a shell command"""
+    try:
+        if capture:
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                check=check,
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+            return result.stdout.strip()
+        else:
+            result = subprocess.run(cmd, shell=True, check=check, timeout=timeout)
+            return result.returncode == 0
+    except subprocess.CalledProcessError as e:
+        if check:
+            raise
+        return False
+    except subprocess.TimeoutExpired:
+        print_error(f"Command timed out after {timeout} seconds")
+        return False
+
+def ssh_vm(command, check=True, capture=False, timeout=None):
+    """Execute SSH command as root on the VM"""
+    ssh_cmd = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@{VM_IP} '{command}'"
+    return run_command(ssh_cmd, check=check, capture=capture, timeout=timeout)
+
+def ssh_testuser(command, check=True, capture=False, timeout=None):
+    """Execute SSH command as testuser on the VM"""
+    ssh_cmd = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {TEST_USER}@{VM_IP} '{command}'"
+    return run_command(ssh_cmd, check=check, capture=capture, timeout=timeout)
+
+def setup_testuser_ssh():
+    """Setup SSH access for testuser by copying host key via root"""
+    print_info("Setting up SSH access for testuser...")
+
+    ssh_key_file = Path.home() / ".ssh" / "id_ed25519.pub"
+    if not ssh_key_file.exists():
+        print_error(f"SSH key not found: {ssh_key_file}")
+        return False
+
+    try:
+        with open(ssh_key_file, 'r') as f:
+            ssh_key = f.read().strip()
+    except Exception as e:
+        print_error(f"Failed to read SSH key: {e}")
+        return False
+
+    setup_cmd = f"""
+        mkdir -p /home/{TEST_USER}/.ssh
+        chmod 700 /home/{TEST_USER}/.ssh
+        echo '{ssh_key}' > /home/{TEST_USER}/.ssh/authorized_keys
+        chmod 600 /home/{TEST_USER}/.ssh/authorized_keys
+        chown -R {TEST_USER}:users /home/{TEST_USER}/.ssh
+    """
+
+    result = ssh_vm(setup_cmd, check=False, timeout=10)
+
+    if result:
+        print_success("SSH access configured for testuser")
+        return True
+    else:
+        print_error("Failed to setup SSH access for testuser")
+        return False
+
+def install_and_configure_home_manager():
+    """Install home-manager and terminal-dev-environment via local flake over SSH"""
+    print_info("Installing home-manager with terminal-dev-environment via local flake...")
+    print_info("This may take 2-5 minutes...")
+
+    # Create a minimal flake configuration for testuser that includes terminal-dev-environment
+    # We'll build locally and deploy over SSH using home-manager's --flake option
+    flake_config = f"""
+        {{
+          inputs = {{
+            nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+            home-manager.url = "github:nix-community/home-manager/release-25.05";
+            home-manager.inputs.nixpkgs.follows = "nixpkgs";
+          }};
+
+          outputs = {{ nixpkgs, home-manager, ... }}: {{
+            homeConfigurations."{TEST_USER}" = home-manager.lib.homeManagerConfiguration {{
+              pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              modules = [
+                $(pwd)/home-manager/modules/terminal-dev-environment
+                {{
+                  home.username = "{TEST_USER}";
+                  home.homeDirectory = "/home/{TEST_USER}";
+                  home.stateVersion = "25.05";
+
+                  programs.terminal-dev-environment.enable = true;
+
+                  programs.git = {{
+                    userName = "Test User";
+                    userEmail = "{TEST_USER}@keystone-test-vm";
+                  }};
+
+                  programs.home-manager.enable = true;
+                }}
+              ];
+            }};
+          }};
+        }}
+    """
+
+    # Write temporary flake.nix for testing
+    temp_flake = Path("vms/test-server/home-manager-flake.nix")
+    temp_flake.write_text(flake_config)
+
+    # Use home-manager with --flake to build and deploy from local machine
+    # This builds locally and activates remotely via SSH
+    hm_cmd = f"home-manager --flake {temp_flake.parent}#{TEST_USER} switch --experimental-features 'nix-command flakes' -b backup"
+
+    # Set SSH target for remote activation
+    env_vars = f"export NIX_SSHOPTS='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'; export TARGET_HOST={TEST_USER}@{VM_IP}"
+
+    result = run_command(f"{env_vars}; {hm_cmd}", check=False, timeout=300)
+
+    if result:
+        print_success("Home-manager installed and configured successfully")
+        temp_flake.unlink()  # Clean up
+        return True
+    else:
+        print_error("Failed to install home-manager")
+        print_info(f"Temporary flake saved at: {temp_flake}")
+        return False
+
+def verify_tools_in_path():
+    """Verify all tools are installed and in PATH"""
+    tools = ["helix", "git", "zsh", "zellij", "lazygit", "ghostty"]
+
+    for tool in tools:
+        result = ssh_testuser(f"command -v {tool}", check=False, capture=True, timeout=5)
+        if not result or tool not in result:
+            return False
+
+    return True
+
+def verify_zsh_default():
+    """Verify zsh is the default shell"""
+    shell = ssh_testuser("echo $SHELL", check=False, capture=True, timeout=5)
+    return shell and "zsh" in shell
+
+def verify_helix_lsp():
+    """Verify helix language servers are available"""
+    lsps = ["bash-language-server", "yaml-language-server", "nixfmt"]
+
+    for lsp in lsps:
+        result = ssh_testuser(f"command -v {lsp}", check=False, capture=True, timeout=5)
+        if not result or lsp not in result:
+            return False
+
+    # Test that helix can actually use the LSP
+    test_cmd = """
+        cd /tmp
+        echo '{ }' > test.nix
+        timeout 5 hx --health nix >/dev/null 2>&1
+        rm -f test.nix
+    """
+    return ssh_testuser(test_cmd, check=False, timeout=15)
+
+def verify_lazygit():
+    """Verify lazygit is available"""
+    result = ssh_testuser("command -v lazygit", check=False, capture=True, timeout=5)
+    return result and "lazygit" in result
+
+def verify_zellij_theme():
+    """Verify zellij configuration exists with theme"""
+    config_check = ssh_testuser("test -f ~/.config/zellij/config.kdl", check=False, timeout=5)
+    if not config_check:
+        return False
+
+    # Check theme is configured
+    theme_check = ssh_testuser("grep -q 'tokyo-night-dark' ~/.config/zellij/config.kdl", check=False, timeout=5)
+    return theme_check
+
+def verify_aliases():
+    """Verify shell aliases are configured"""
+    aliases = ["lg", "hx", "g"]
+
+    for alias in aliases:
+        # Test that alias exists in zsh
+        result = ssh_testuser(f"zsh -i -c 'alias {alias}'", check=False, capture=True, timeout=5)
+        if not result or alias not in result:
+            return False
+
+    return True
+
+def verify_starship():
+    """Verify starship prompt is active"""
+    result = ssh_testuser("command -v starship", check=False, capture=True, timeout=5)
+    return result and "starship" in result
+
+def verify_zoxide():
+    """Verify zoxide is installed"""
+    result = ssh_testuser("command -v zoxide", check=False, capture=True, timeout=5)
+    return result and "zoxide" in result
+
+def verify_ghostty():
+    """Verify ghostty is installed"""
+    result = ssh_testuser("command -v ghostty", check=False, capture=True, timeout=5)
+    return result and "ghostty" in result
+
+def main():
+    """Main test workflow"""
+    print(f"{CYAN}Terminal Development Environment Test{NC}")
+    print("=" * 60)
+
+    # Setup SSH access for testuser
+    if not setup_testuser_ssh():
+        return 1
+
+    # Install and configure home-manager via local flake
+    if not install_and_configure_home_manager():
+        return 1
+
+    # Run verification checks
+    print_info("Running verification checks...")
+
+    checks = [
+        ("All tools in PATH", verify_tools_in_path),
+        ("Zsh is default shell", verify_zsh_default),
+        ("Helix with LSP works", verify_helix_lsp),
+        ("Lazygit available", verify_lazygit),
+        ("Zellij with theme", verify_zellij_theme),
+        ("Shell aliases work", verify_aliases),
+        ("Starship prompt active", verify_starship),
+        ("Zoxide navigation", verify_zoxide),
+        ("Ghostty terminal", verify_ghostty),
+    ]
+
+    passed = 0
+    failed = 0
+
+    for check_name, check_func in checks:
+        try:
+            result = check_func()
+            if result:
+                print_success(check_name)
+                passed += 1
+            else:
+                print_error(check_name)
+                failed += 1
+        except Exception as e:
+            print_error(f"{check_name}: {e}")
+            failed += 1
+
+    print(f"\nTerminal Dev Environment Checks - Passed: {GREEN}{passed}{NC}, Failed: {RED}{failed}{NC}")
+
+    if failed == 0:
+        print()
+        print(f"{GREEN}✓ All terminal development environment checks passed!{NC}")
+        print()
+        return 0
+    else:
+        print()
+        print(f"{RED}✗ Terminal development environment verification failed{NC}")
+        print()
+        return 1
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print()
+        print_warning("Test interrupted by user")
+        sys.exit(130)
+    except Exception as e:
+        print_error(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

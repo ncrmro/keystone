@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import subprocess
+import sys
+
+def get_project_root():
+    """Get the project root directory (parent of bin/)."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(script_dir)
+
+def create_mcp_config(workspace_path):
+    """Create the MCP server configuration."""
+    return {
+        "mcpServers": {
+            "typescript-lsp": {
+                "command": "mcp-language-server",
+                "args": [
+                    "--workspace",
+                    workspace_path,
+                    "--lsp",
+                    "typescript-language-server",
+                    "--",
+                    "--stdio"
+                ]
+            },
+            "playwright": {
+                "type": "stdio",
+                "command": "npx",
+                "env": {
+                    "PLAYWRIGHT_BROWSERS_PATH": "",
+                    "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS": "true"
+                },
+                "args": [
+                    "@playwright/mcp@latest",
+                    "--browser=chromium",
+                    "--executable-path=/nix/store/ciwl3hnki3yvx36vjsagx2yhrcy8jb1k-playwright-browsers/chromium-1181/chrome-linux/chrome"
+                ]
+            },
+            "docker": {
+                "type": "stdio",
+                "command": "uvx",
+                "args": [
+                    "docker-mcp"
+                ],
+                "env": {}
+            }
+        }
+    }
+
+def main():
+    """Run Claude with MCP server configuration."""
+    project_root = get_project_root()
+
+    # Process arguments to handle --worktree flag
+    args = sys.argv[1:]
+    processed_args = []
+    workspace_path = project_root  # Default to project root
+    i = 0
+
+    while i < len(args):
+        if args[i] == "--worktree":
+            # Get the worktree branch name
+            if i + 1 >= len(args):
+                print("Error: --worktree requires a branch name argument", file=sys.stderr)
+                sys.exit(1)
+
+            branch_name = args[i + 1]
+
+            # Construct the full worktree path
+            worktree_path = os.path.join(project_root, "worktree", branch_name)
+
+            # Update workspace path for TypeScript LSP
+            workspace_path = worktree_path
+
+            # Add the --add-dir flag
+            processed_args.extend(["--add-dir", worktree_path])
+
+            # Add the --append-system-prompt flag
+            system_prompt = (
+                f"You are handling work in worktree located at {worktree_path}, "
+                f"only read or edit files in that directory, all commands should be run in that directory"
+            )
+            processed_args.extend(["--append-system-prompt", system_prompt])
+
+            # Skip the worktree branch name argument
+            i += 2
+        else:
+            # Pass through other arguments
+            processed_args.append(args[i])
+            i += 1
+
+    # Create MCP config with the appropriate workspace path
+    mcp_config = create_mcp_config(workspace_path)
+    mcp_config_json = json.dumps(mcp_config)
+
+    # Build the command: claude --mcp-config <json> <processed args>
+    cmd = ["claude", "--mcp-config", mcp_config_json] + processed_args
+
+    # Execute the command, replacing the current process
+    try:
+        os.execvp("claude", cmd)
+    except OSError as e:
+        print(f"Error executing claude: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
