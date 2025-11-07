@@ -124,8 +124,18 @@ def find_ovmf_firmware():
 
     # Fallback to traditional paths (non-NixOS)
     traditional_paths = [
+        # Ubuntu 22.04+ paths with Secure Boot
         ("/usr/share/OVMF/OVMF_CODE_4M.secboot.fd", "/usr/share/OVMF/OVMF_VARS_4M.ms.fd"),
+        ("/usr/share/OVMF/OVMF_CODE.secboot.fd", "/usr/share/OVMF/OVMF_VARS.ms.fd"),
+        # Generic Ubuntu/Debian paths
+        ("/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_VARS_4M.fd"),
+        ("/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/OVMF/OVMF_VARS.fd"),
+        # EDK2 paths
         ("/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd", "/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd"),
+        ("/usr/share/edk2-ovmf/x64/OVMF_CODE.secboot.fd", "/usr/share/edk2-ovmf/x64/OVMF_VARS.fd"),
+        # QEMU paths
+        ("/usr/share/qemu/OVMF_CODE.secboot.fd", "/usr/share/qemu/OVMF_VARS.fd"),
+        ("/usr/share/qemu/ovmf-x86_64-code.bin", "/usr/share/qemu/ovmf-x86_64-vars.bin"),
     ]
 
     for code, vars in traditional_paths:
