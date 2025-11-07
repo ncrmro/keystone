@@ -130,11 +130,15 @@ def find_ovmf_firmware():
         # Generic Ubuntu/Debian paths
         ("/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_VARS_4M.fd"),
         ("/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/OVMF/OVMF_VARS.fd"),
-        # EDK2 paths
+        # EDK2 paths with Secure Boot
         ("/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd", "/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd"),
-        ("/usr/share/edk2-ovmf/x64/OVMF_CODE.secboot.fd", "/usr/share/edk2-ovmf/x64/OVMF_VARS.fd"),
-        # QEMU paths
-        ("/usr/share/qemu/OVMF_CODE.secboot.fd", "/usr/share/qemu/OVMF_VARS.fd"),
+        ("/usr/share/edk2-ovmf/x64/OVMF_CODE.secboot.fd", "/usr/share/edk2-ovmf/x64/OVMF_VARS.secboot.fd"),
+        # EDK2 paths without secboot (fallback)
+        ("/usr/share/edk2-ovmf/x64/OVMF_CODE.fd", "/usr/share/edk2-ovmf/x64/OVMF_VARS.fd"),
+        # QEMU paths with Secure Boot
+        ("/usr/share/qemu/OVMF_CODE.secboot.fd", "/usr/share/qemu/OVMF_VARS.secboot.fd"),
+        # QEMU paths without secboot (fallback)
+        ("/usr/share/qemu/OVMF_CODE.fd", "/usr/share/qemu/OVMF_VARS.fd"),
         ("/usr/share/qemu/ovmf-x86_64-code.bin", "/usr/share/qemu/ovmf-x86_64-vars.bin"),
     ]
 
