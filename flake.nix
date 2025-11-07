@@ -62,6 +62,22 @@
           ./vms/test-server/configuration.nix
         ];
       };
+
+      # Test Hyprland desktop configuration
+      test-hyprland = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          home-manager.nixosModules.home-manager
+          ./modules/client
+          ./modules/disko-single-disk-root
+          ./modules/users
+          ./vms/test-hyprland/configuration.nix
+          {
+            _module.args.omarchy = omarchy;
+          }
+        ];
+      };
     };
 
     # Home-manager configurations for testing
@@ -97,6 +113,12 @@
       secureBoot = ./modules/secure-boot;
       tpmEnrollment = ./modules/tpm-enrollment;
       users = ./modules/users;
+    };
+
+    # Export home-manager modules
+    homeManagerModules = {
+      terminalDevEnvironment = ./home-manager/modules/terminal-dev-environment;
+      desktopHyprland = ./home-manager/modules/desktop/hyprland;
     };
 
     packages.x86_64-linux = {
