@@ -58,6 +58,9 @@ jobs:
           echo "Checking KVM availability..."
           ls -la /dev/kvm
           
+          echo "Checking OVMF firmware paths..."
+          find /usr/share -name "*.fd" 2>/dev/null | grep -i ovmf || echo "No OVMF firmware found in /usr/share"
+          
           echo "Adding runner to kvm and libvirt groups..."
           sudo usermod -a -G kvm,libvirt $USER
           
@@ -69,6 +72,11 @@ jobs:
           # Configure libvirt to allow current user
           echo "Configuring libvirt permissions..."
           sudo chmod 666 /var/run/libvirt/libvirt-sock
+          
+          # Also ensure the images directory is writable
+          sudo mkdir -p /var/lib/libvirt/images
+          sudo chown -R libvirt-qemu:kvm /var/lib/libvirt/images
+          sudo chmod 775 /var/lib/libvirt/images
           
           echo "Verifying libvirt connection..."
           virsh version
