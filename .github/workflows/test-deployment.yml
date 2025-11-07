@@ -148,6 +148,7 @@ jobs:
       
       # Run the deployment test
       - name: Run deployment test
+        id: deployment_test
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           echo "Starting full deployment test..."
@@ -161,6 +162,23 @@ jobs:
           # Run test-deployment with full rebuild and debug mode
           ./bin/test-deployment --rebuild-iso --debug
         timeout-minutes: 25
+      
+      # Capture VM logs on failure
+      - name: Capture VM logs on failure
+        if: failure() && steps.deployment_test.outcome == 'failure'
+        run: |
+          echo "Capturing VM state and logs..."
+          virsh list --all || true
+          virsh dominfo keystone-test-vm || true
+          echo ""
+          echo "Network status:"
+          virsh net-list --all || true
+          echo ""
+          echo "Storage pools:"
+          virsh pool-list --all || true
+          echo ""
+          echo "Recent dmesg output:"
+          sudo dmesg | tail -100 || true
       
       # Clean up on success or failure
       - name: Clean up test VM
