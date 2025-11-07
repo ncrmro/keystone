@@ -4,60 +4,53 @@
 
 - NixOS system with flakes enabled
 - home-manager configured for the target user
-- Access to `bin/virtual-machine` for testing
+- Python 3 (for test scripts)
+- Libvirt/QEMU for VM testing
 
-## Testing the Feature
+## Automated Testing (Recommended)
 
-### 1. Create a Test VM
+The easiest way to test the Hyprland desktop is using the automated test scripts:
+
+### 1. Deploy Base System
 
 ```bash
 # From the repository root
-./bin/virtual-machine --name hyprland-test --memory 4096 --vcpus 2 --start
+# This deploys the base infrastructure to a VM
+./bin/test-deployment
 ```
 
-### 2. Enable the Modules
+This will:
+- Create a VM with ISO
+- Deploy base NixOS configuration with disk encryption
+- Set up SSH access
+- Takes ~10-15 minutes
 
-Create a test NixOS configuration that enables the new desktop modules:
-
-```nix
-# Example: vms/test-client/configuration.nix
-{ config, pkgs, ... }:
-
-{
-  imports = [
-    ../../modules/client/desktop/hyprland.nix
-  ];
-
-  # Enable the Hyprland desktop
-  keystone.client.desktop.hyprland.enable = true;
-
-  # User configuration
-  users.users.testuser = {
-    isNormalUser = true;
-    extraGroups = [ "wheel" "video" "audio" ];
-    initialPassword = "test";
-  };
-
-  # Home-manager configuration
-  home-manager.users.testuser = { pkgs, ... }: {
-    imports = [
-      ../../home-manager/modules/desktop/hyprland
-    ];
-
-    keystone.homeManager.desktop.hyprland.enable = true;
-  };
-}
-```
-
-### 3. Build and Deploy
+### 2. Add Desktop Environment
 
 ```bash
-# Build the configuration
-nix build .#nixosConfigurations.hyprland-test.config.system.build.toplevel
-
-# Deploy to VM (if using nixos-anywhere)
-nixos-anywhere --flake .#hyprland-test root@192.168.100.99
+# Apply desktop configuration on top of the base system
+./bin/test-desktop
 ```
+
+This will:
+- Build the Hyprland desktop configuration
+- Deploy to the running VM via nixos-rebuild
+- Verify desktop services and packages
+- Show manual testing steps
+- Takes ~5-10 minutes
+
+### 3. Test Graphical Session
+
+```bash
+# Connect to VM graphical console
+remote-viewer $(virsh domdisplay keystone-test-vm)
+```
+
+Login credentials:
+- Username: `testuser`
+- Password: `testpass`
+
+## Manual Testing (Advanced)
 
 ### 4. Verify User Story 1: Graphical Session Login
 
