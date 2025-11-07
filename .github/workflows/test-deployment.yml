@@ -155,7 +155,6 @@ jobs:
       - name: Run deployment test
         id: deployment_test
         run: |
-          export PATH="$HOME/.cargo/bin:$PATH"
           echo "Starting full deployment test..."
           echo "This will:"
           echo "  1. Build ISO with SSH keys"
@@ -165,7 +164,8 @@ jobs:
           echo ""
           
           # Run test-deployment as runner user with fresh bash session
-          sudo -u runner bash -c 'export PATH="$HOME/.cargo/bin:$PATH" && ./bin/test-deployment --rebuild-iso --debug'
+          # Explicitly set PATH to include uv installation
+          sudo -u runner bash -c 'export PATH="/home/runner/.cargo/bin:$PATH" && ./bin/test-deployment --rebuild-iso --debug'
         timeout-minutes: 25
       
       # Capture VM logs on failure
