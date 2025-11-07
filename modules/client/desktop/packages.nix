@@ -4,13 +4,15 @@
   pkgs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.client.desktop.packages;
-in
-{
+in {
   options.keystone.client.desktop.packages = {
-    enable = mkEnableOption "Essential desktop packages";
+    enable =
+      mkEnableOption "Essential desktop packages"
+      // {
+        default = true;
+      };
   };
 
   config = mkIf cfg.enable {
