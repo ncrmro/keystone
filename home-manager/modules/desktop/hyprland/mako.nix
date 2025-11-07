@@ -10,34 +10,36 @@ in {
     services.mako = {
       enable = true;
 
-      # Default notification settings
-      defaultTimeout = 5000; # 5 seconds
+      settings = {
+        # Default notification settings
+        default-timeout = 5000; # 5 seconds
 
-      # Visual settings
-      backgroundColor = "#2b303b";
-      textColor = "#ffffff";
-      borderColor = "#33ccff";
-      borderSize = 2;
-      borderRadius = 10;
+        # Visual settings
+        background-color = "#2b303b";
+        text-color = "#ffffff";
+        border-color = "#33ccff";
+        border-size = 2;
+        border-radius = 10;
 
-      # Position and layout
-      anchor = "top-right";
-      margin = "10";
-      padding = "10";
+        # Position and layout
+        anchor = "top-right";
+        margin = "10";
+        padding = "10";
 
-      # Size constraints
-      width = 300;
-      height = 100;
+        # Size constraints
+        width = 300;
+        height = 100;
 
-      # Font
-      font = "CaskaydiaMono Nerd Font 11";
+        # Font
+        font = "CaskaydiaMono Nerd Font 11";
 
-      # Icons
-      icons = true;
-      maxIconSize = 64;
+        # Icons
+        icons = true;
+        max-icon-size = 64;
 
-      # Group notifications
-      groupBy = "app-name";
+        # Group notifications
+        group-by = "app-name";
+      };
     };
   };
 }
