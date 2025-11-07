@@ -61,42 +61,47 @@ jobs:
           echo "Checking OVMF firmware paths..."
           find /usr/share -name "*.fd" 2>/dev/null | grep -i ovmf || echo "No OVMF firmware found in /usr/share"
           
-          echo "Adding runner to kvm and libvirt groups..."
-          sudo usermod -a -G kvm,libvirt $USER
+          echo "Configuring libvirt permissions..."
+          # Add user to libvirt and kvm groups
+          sudo usermod -a -G libvirt,kvm $USER
+          
+          # Configure PolicyKit to allow libvirt access without password
+          sudo tee /etc/polkit-1/localauthority/50-local.d/50-libvirt.pkla > /dev/null << 'EOF'
+          [Allow runner to manage libvirt]
+          Identity=unix-user:runner
+          Action=org.libvirt.unix.manage
+          ResultAny=yes
+          ResultInactive=yes
+          ResultActive=yes
+          EOF
           
           echo "Starting libvirt service..."
+          sudo systemctl restart polkit
           sudo systemctl start libvirtd
           sudo systemctl enable libvirtd
           sudo systemctl status libvirtd --no-pager
           
-          # Configure libvirt to allow current user
-          echo "Configuring libvirt permissions..."
-          sudo chmod 666 /var/run/libvirt/libvirt-sock
-          
-          # Also ensure the images directory is writable
-          sudo mkdir -p /var/lib/libvirt/images
-          sudo chown -R libvirt-qemu:kvm /var/lib/libvirt/images
-          sudo chmod 775 /var/lib/libvirt/images
-          
           echo "Verifying libvirt connection..."
-          virsh version
+          # Test with a new login shell to activate group membership
+          sudo -u runner bash -c 'virsh version'
       
       # Configure libvirt networking for test VMs
       - name: Set up libvirt network
         run: |
           echo "Ensuring default storage pool exists..."
-          virsh pool-list --all
+          sudo -u runner bash -c 'virsh pool-list --all'
           
           # Create default pool if it doesn't exist
-          if ! virsh pool-info default >/dev/null 2>&1; then
+          if ! sudo -u runner bash -c 'virsh pool-info default' >/dev/null 2>&1; then
             echo "Creating default storage pool..."
-            virsh pool-define-as default dir --target /var/lib/libvirt/images
-            virsh pool-build default
-            virsh pool-start default
-            virsh pool-autostart default
+            sudo mkdir -p /var/lib/libvirt/images
+            sudo -u runner bash -c 'virsh pool-define-as default dir --target /var/lib/libvirt/images'
+            sudo -u runner bash -c 'virsh pool-build default'
+            sudo -u runner bash -c 'virsh pool-start default'
+            sudo -u runner bash -c 'virsh pool-autostart default'
           else
             # Make sure it's started
-            virsh pool-start default || true
+            sudo -u runner bash -c 'virsh pool-start default' || true
           fi
           
           echo "Creating keystone-net network for test VMs..."
@@ -117,10 +122,10 @@ jobs:
           EOF
           
           # Define and start the network
-          virsh net-define /tmp/keystone-net.xml
-          virsh net-start keystone-net
-          virsh net-autostart keystone-net
-          virsh net-list --all
+          sudo -u runner bash -c 'virsh net-define /tmp/keystone-net.xml'
+          sudo -u runner bash -c 'virsh net-start keystone-net'
+          sudo -u runner bash -c 'virsh net-autostart keystone-net'
+          sudo -u runner bash -c 'virsh net-list --all'
       
       # Generate SSH keys for CI
       - name: Generate SSH keys
@@ -159,8 +164,8 @@ jobs:
           echo "  4. Verify Secure Boot, ZFS, TPM, etc."
           echo ""
           
-          # Run test-deployment with full rebuild and debug mode
-          ./bin/test-deployment --rebuild-iso --debug
+          # Run test-deployment as runner user with fresh bash session
+          sudo -u runner bash -c 'export PATH="$HOME/.cargo/bin:$PATH" && ./bin/test-deployment --rebuild-iso --debug'
         timeout-minutes: 25
       
       # Capture VM logs on failure
@@ -168,14 +173,14 @@ jobs:
         if: failure() && steps.deployment_test.outcome == 'failure'
         run: |
           echo "Capturing VM state and logs..."
-          virsh list --all || true
-          virsh dominfo keystone-test-vm || true
+          sudo -u runner bash -c 'virsh list --all' || true
+          sudo -u runner bash -c 'virsh dominfo keystone-test-vm' || true
           echo ""
           echo "Network status:"
-          virsh net-list --all || true
+          sudo -u runner bash -c 'virsh net-list --all' || true
           echo ""
           echo "Storage pools:"
-          virsh pool-list --all || true
+          sudo -u runner bash -c 'virsh pool-list --all' || true
           echo ""
           echo "Recent dmesg output:"
           sudo dmesg | tail -100 || true
@@ -185,9 +190,9 @@ jobs:
         if: always()
         run: |
           echo "Cleaning up test VM and artifacts..."
-          virsh destroy keystone-test-vm || true
-          virsh undefine keystone-test-vm --nvram || true
-          virsh vol-delete --pool default keystone-test-vm.qcow2 || true
-          virsh net-destroy keystone-net || true
-          virsh net-undefine keystone-net || true
+          sudo -u runner bash -c 'virsh destroy keystone-test-vm' || true
+          sudo -u runner bash -c 'virsh undefine keystone-test-vm --nvram' || true
+          sudo -u runner bash -c 'virsh vol-delete --pool default keystone-test-vm.qcow2' || true
+          sudo -u runner bash -c 'virsh net-destroy keystone-net' || true
+          sudo -u runner bash -c 'virsh net-undefine keystone-net' || true
           echo "Cleanup complete"
