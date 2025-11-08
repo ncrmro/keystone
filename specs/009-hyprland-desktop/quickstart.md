@@ -33,11 +33,15 @@ This will:
 ```
 
 This will:
+- Check if desktop is already installed (via marker file `/var/lib/keystone-desktop-installed`)
 - Build the Hyprland desktop configuration
 - Deploy to the running VM via nixos-rebuild
+- Create installation marker file (contents: `1`)
+- **First-time installation**: Automatically reboot VM to start greetd display manager
+- **Subsequent runs**: Skip reboot if marker file exists
 - Verify desktop services and packages
 - Show manual testing steps
-- Takes ~5-10 minutes
+- Takes ~5-10 minutes (first time includes reboot + wait)
 
 ### 3. Test Graphical Session
 

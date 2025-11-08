@@ -11,9 +11,22 @@ Prerequisites:
 
 Workflow:
     1. Verify VM is accessible
-    2. Apply desktop configuration (.#test-hyprland) via nixos-rebuild
-    3. Verify desktop services are running
-    4. Test graphical session components
+    2. Check if desktop already installed (via /var/lib/keystone-desktop-installed marker)
+    3. Apply desktop configuration (.#test-hyprland) via nixos-rebuild
+    4. Create installation marker file (contents: "1")
+    5. Reboot VM on first-time installation (required for greetd to start)
+    6. Verify desktop services are running after reboot
+    7. Test graphical session components
+
+First-Time Installation:
+    - The script detects first-time installation by checking for the marker file
+    - After successful deployment, creates /var/lib/keystone-desktop-installed with contents "1"
+    - Automatically reboots the VM to start greetd display manager
+    - Waits for VM to come back online before verification
+
+Subsequent Runs:
+    - Skips reboot if marker file exists
+    - Updates configuration without restarting display manager
 
 Usage:
     ./bin/test-desktop                    # Normal desktop test
@@ -39,6 +52,7 @@ NC = '\033[0m'  # No Color
 
 VM_IP = "192.168.100.99"
 VM_HOSTNAME = "keystone-test-vm"
+DESKTOP_MARKER_FILE = "/var/lib/keystone-desktop-installed"
 
 def print_step(step_num, total_steps, message):
     """Print a formatted step message"""
@@ -121,6 +135,51 @@ def cleanup_vm_host_key():
     # (it's OK if the key doesn't exist)
     print_success("Host key cleanup complete")
     return True
+
+def is_desktop_installed():
+    """Check if desktop has been previously installed by checking marker file"""
+    result = ssh_vm(f"test -f {DESKTOP_MARKER_FILE} && cat {DESKTOP_MARKER_FILE}", check=False, capture=True, timeout=5)
+    return result == "1"
+
+def create_desktop_marker():
+    """Create marker file to indicate desktop has been installed"""
+    print_info("Creating desktop installation marker...")
+    result = ssh_vm(f"echo '1' | tee {DESKTOP_MARKER_FILE}", check=False, capture=True, timeout=5)
+    if result == "1":
+        print_success(f"Desktop marker created at {DESKTOP_MARKER_FILE}")
+        return True
+    else:
+        print_error("Failed to create desktop marker")
+        return False
+
+def reboot_vm():
+    """Reboot the VM and wait for it to come back online"""
+    print_info("Rebooting VM to start display manager...")
+
+    # Send reboot command (don't wait for response as connection will drop)
+    ssh_vm("reboot", check=False, timeout=5)
+
+    print_info("Waiting for VM to shut down...")
+    time.sleep(10)
+
+    print_info("Waiting for VM to come back online...")
+    max_wait = 120  # 2 minutes
+    start_time = time.time()
+
+    while time.time() - start_time < max_wait:
+        try:
+            result = ssh_vm("echo ready", check=False, capture=True, timeout=5)
+            if result == "ready":
+                elapsed = int(time.time() - start_time)
+                print_success(f"VM is back online (took {elapsed} seconds)")
+                return True
+        except:
+            pass
+
+        time.sleep(5)
+
+    print_error("VM did not come back online within 2 minutes")
+    return False
 
 def apply_desktop_config(debug=False):
     """Apply desktop configuration via nixos-rebuild on the VM"""
@@ -294,7 +353,7 @@ def main():
     if verify_only:
         total_steps = 4
     else:
-        total_steps = 7  # Added one step for SSH host key cleanup
+        total_steps = 9  # Increased for new steps: check marker, create marker, reboot
 
     current_step = 0
 
@@ -310,6 +369,20 @@ def main():
     hostname = get_hostname()
     if hostname:
         print_info(f"Current hostname: {hostname}")
+
+    # Check if desktop already installed
+    first_time_install = False
+    if not verify_only:
+        current_step += 1
+        print_step(current_step, total_steps, "Checking desktop installation status")
+
+        if is_desktop_installed():
+            print_success("Desktop already installed (found marker file)")
+            first_time_install = False
+        else:
+            print_info("First-time desktop installation detected")
+            print_warning("VM will be rebooted after installation to start display manager")
+            first_time_install = True
 
     if not verify_only:
         # Step: Clean up SSH host key
@@ -327,9 +400,38 @@ def main():
             print_error("Failed to apply desktop configuration")
             return 1
 
-        # Wait for services to stabilize
-        print_info("Waiting for services to stabilize...")
-        time.sleep(10)
+        # Step: Create desktop marker
+        current_step += 1
+        print_step(current_step, total_steps, "Creating desktop installation marker")
+
+        if not create_desktop_marker():
+            print_warning("Failed to create marker file, continuing anyway...")
+
+        # Step: Reboot if first time
+        if first_time_install:
+            current_step += 1
+            print_step(current_step, total_steps, "Rebooting VM (first-time installation)")
+
+            if not reboot_vm():
+                print_error("Failed to reboot VM or VM did not come back online")
+                return 1
+
+            # Clean up host key again after reboot (it may have changed)
+            print_info("Cleaning up SSH host key after reboot...")
+            cleanup_vm_host_key()
+
+            # Wait for services to stabilize after reboot
+            print_info("Waiting for services to stabilize after reboot...")
+            time.sleep(15)
+        else:
+            # Skip reboot step for display purposes
+            current_step += 1
+            print_step(current_step, total_steps, "Skipping reboot (desktop already installed)")
+            print_info("Desktop was previously installed, no reboot required")
+
+            # Wait for services to stabilize after config change
+            print_info("Waiting for services to stabilize...")
+            time.sleep(10)
 
     # Step: Verify desktop services
     current_step += 1

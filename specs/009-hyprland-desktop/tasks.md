@@ -7,7 +7,7 @@
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
-**Status**: 42/50 tasks completed (84%) - Implementation complete, VM testing pending
+**Status**: 48/50 tasks completed (96%) - Implementation complete with SSH fix, manual VM testing pending
 
 **Testing**: Use `bin/test-deployment` followed by `bin/test-desktop` for automated testing workflow.
 
@@ -132,6 +132,8 @@
 - [x] T046 Fix chromium, hyprlock, hypridle package placement (FR-004)
 - [x] T047 Fix mako deprecated options to use settings format
 - [x] T048 Build and verify configuration compiles successfully
+- [x] T051 Create shared SSH module for client/server configurations (SSH access fix)
+- [x] T052 Update test-desktop script with first-time install reboot handling
 - [ ] T049 Run full quickstart.md validation on VM
 - [ ] T050 Verify all success criteria from spec.md are met
 
