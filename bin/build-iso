@@ -233,12 +233,16 @@ if [[ -L "$OUTPUT_DIR" && -d "$OUTPUT_DIR" ]]; then
         echo -e "${GREEN}📦 Size: $ISO_SIZE${NC}"
 
         # Link ISO to vms directory for VM testing
+        # Use realpath to get the actual nix store path, not the result symlink
+        # This prevents the link from breaking if result is GC'd or replaced
+        REAL_ISO_PATH=$(realpath "$ISO_PATH")
         VM_ISO_PATH="vms/keystone-installer.iso"
         if [[ -e "$VM_ISO_PATH" ]]; then
             rm -f "$VM_ISO_PATH"
         fi
-        ln -sf "../$ISO_PATH" "$VM_ISO_PATH"
+        ln -sf "$REAL_ISO_PATH" "$VM_ISO_PATH"
         echo -e "${GREEN}🔗 Linked to: $VM_ISO_PATH${NC}"
+        echo -e "${GREEN}   (points to: $REAL_ISO_PATH)${NC}"
 
         echo ""
         echo -e "${BLUE}🔥 To write to USB:${NC}"
