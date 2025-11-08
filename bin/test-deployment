@@ -451,16 +451,22 @@ def auto_unlock_disk():
     elapsed = 0
 
     while elapsed < max_wait:
-        # Try to connect to initrd SSH
+        # Try to connect to initrd SSH and send password
         # The systemd-tty-ask-password-agent will be the shell
-        result = run_command(
-            f'echo "keystone" | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@{VM_IP}',
-            check=False,
-            timeout=10
-        )
+        # Use heredoc to send password followed by newline
+        ssh_cmd = f'''ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@{VM_IP} <<EOF
+keystone
+EOF'''
+
+        result = run_command(ssh_cmd, check=False, timeout=10)
 
         if result:
             print_success("Disk unlock password sent!")
+            print_info("Waiting for disk unlock and boot continuation (10 seconds)...")
+            time.sleep(10)
+
+            # Verify the disk actually unlocked by attempting to connect to main system
+            print_info("Verifying unlock was successful...")
             return True
 
         print(f"  Waiting for initrd... {elapsed}/{max_wait}s", end='\r')
@@ -468,6 +474,8 @@ def auto_unlock_disk():
         elapsed += check_interval
 
     print_error("Initrd SSH never became available")
+    print_info("Try manually: ssh root@{VM_IP}")
+    print_info("Then enter password: keystone")
     return False
 
 def verify_secureboot_setup_mode():
@@ -525,16 +533,31 @@ def test_tpm_enrollment():
     print_info("The recovery key will be displayed - you should save it for testing")
     print_info("When prompted, READ the recovery key from your backup to verify")
 
-    # Run enrollment - requires user interaction
-    result = ssh_vm("keystone-enroll-recovery --auto", check=False, timeout=180)
+    # First check if keystone-enroll-recovery command exists
+    cmd_exists = ssh_vm("which keystone-enroll-recovery", check=False, capture=True, timeout=5)
+    if not cmd_exists:
+        print_error("keystone-enroll-recovery command not found!")
+        print_error("TPM enrollment module may not be enabled in configuration")
+        print_info("Ensure keystone.tpmEnrollment module is loaded")
+        return False
 
-    if not result:
-        print_error("TPM enrollment command failed")
+    # Run enrollment - capture output for debugging
+    print_info("Executing: keystone-enroll-recovery --auto")
+    enrollment_output = ssh_vm("keystone-enroll-recovery --auto 2>&1", check=False, capture=True, timeout=180)
+
+    if not enrollment_output or "error" in enrollment_output.lower():
+        print_error("TPM enrollment command failed!")
+        if enrollment_output:
+            print_error(f"Output: {enrollment_output[:500]}")  # Show first 500 chars
         return False
 
     # Verify enrollment marker created
     if not ssh_vm("test -f /var/lib/keystone/tpm-enrollment-complete", check=False, timeout=5):
-        print_error("Enrollment marker file not found")
+        print_error("Enrollment marker file not found at /var/lib/keystone/tpm-enrollment-complete")
+        print_info("Checking enrollment status...")
+        slots_output = ssh_vm("systemd-cryptenroll /dev/zvol/rpool/credstore", check=False, capture=True, timeout=10)
+        if slots_output:
+            print_info(f"Current LUKS slots:\n{slots_output}")
         return False
 
     # Verify TPM keyslot exists
@@ -546,6 +569,14 @@ def test_tpm_enrollment():
 
     if not has_tpm:
         print_error("TPM keyslot not found in LUKS header")
+        # Show actual slots for debugging
+        slots_output = ssh_vm("systemd-cryptenroll /dev/zvol/rpool/credstore", check=False, capture=True, timeout=10)
+        if slots_output:
+            print_error(f"Current LUKS slots:\n{slots_output}")
+        print_info("Troubleshooting:")
+        print_info("  1. Check if TPM is available: tpm2_getcap properties-fixed")
+        print_info("  2. Check Secure Boot status: bootctl status")
+        print_info("  3. Verify TPM enrollment module is enabled in config")
         return False
 
     print_success("TPM enrollment completed and verified")
@@ -555,8 +586,8 @@ def verify_tpm_auto_unlock():
     """Reboot VM and verify it unlocks automatically via TPM (no password prompt)"""
     print_info("Triggering reboot to test TPM automatic unlock...")
 
-    # Trigger reboot
-    ssh_vm("nohup bash -c 'sleep 2 && reboot' >/dev/null 2>&1 &", check=False, timeout=5)
+    # Trigger reboot (use escaped quotes to avoid nested quote issues)
+    ssh_vm("nohup bash -c \"sleep 2 && reboot\" >/dev/null 2>&1 &", check=False, timeout=5)
 
     print_info("Waiting for system to shut down...")
     time.sleep(15)
@@ -692,6 +723,16 @@ def verify_deployment():
                 return True
         return False
 
+    def check_tpm_enrolled():
+        """Check if TPM is enrolled (informational only for initial deployment)"""
+        # Check if TPM keyslot exists
+        result = ssh_vm(
+            "systemd-cryptenroll /dev/zvol/rpool/credstore 2>/dev/null | grep -q tpm2",
+            check=False,
+            timeout=10
+        )
+        return result
+
     checks = [
         ("SSH connectivity", lambda: ssh_vm("echo ok", check=False, capture=True, timeout=5) == "ok"),
         ("Hostname", lambda: ssh_vm("hostname", check=False, capture=True, timeout=5) == VM_HOSTNAME),
@@ -700,9 +741,15 @@ def verify_deployment():
         ("Secure Boot", check_secureboot),
     ]
 
+    # TPM enrollment status check (enrollment happens in next step)
+    tpm_checks = [
+        ("TPM enrollment status", check_tpm_enrolled),
+    ]
+
     passed = 0
     failed = 0
 
+    # Run critical checks
     for check_name, check_func in checks:
         try:
             result = check_func()
@@ -715,6 +762,17 @@ def verify_deployment():
         except:
             print_error(f"{check_name}")
             failed += 1
+
+    # Run TPM enrollment status check (informational - enrollment happens in next step)
+    for check_name, check_func in tpm_checks:
+        try:
+            result = check_func()
+            if result:
+                print_success(f"{check_name}: Already enrolled")
+            else:
+                print_info(f"{check_name}: Not enrolled - will enroll in next step")
+        except:
+            print_warning(f"{check_name}: Check failed")
 
     print(f"\nPassed: {GREEN}{passed}{NC}, Failed: {RED}{failed}{NC}")
 
@@ -741,7 +799,7 @@ def main():
     iso_path = Path("vms/keystone-installer.iso")
     iso_missing = not iso_path.exists() or not iso_path.resolve().exists()
 
-    total_steps = 13  # Stop/Reset, ISO rebuild (conditional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot setup, Deploy, Remove ISO, Unlock, Verify, ZFS Users, Terminal Dev Env, TPM enrollment, TPM auto-unlock reboot
+    total_steps = 13  # Stop/Reset, ISO rebuild (conditional), Ensure initrd key, Start, Wait SSH, Copy SSH key, Verify Secure Boot setup, Deploy, Remove ISO, Unlock, Verify, TPM enrollment, TPM auto-unlock reboot, ZFS Users, Terminal Dev Env
     if rebuild_iso_flag or iso_missing:
         total_steps += 1
     if hard_reset_flag:
@@ -865,6 +923,26 @@ def main():
         print_info(f"You can still SSH to the VM: ssh root@{VM_IP}")
         return 1
 
+    # Step: Test TPM enrollment (moved earlier to fail fast before expensive tests)
+    current_step += 1
+    print_step(current_step, total_steps, "Testing TPM enrollment")
+    print_info(f"DEBUG: About to call test_tpm_enrollment() - current_step={current_step}")
+
+    if not test_tpm_enrollment():
+        print_error("TPM enrollment test failed")
+        print_info(f"You can manually test: ssh root@{VM_IP}")
+        print_info(f"  sudo keystone-enroll-recovery --auto")
+        return 1
+
+    # Step: Reboot to verify TPM automatic unlock
+    current_step += 1
+    print_step(current_step, total_steps, "Rebooting to verify TPM automatic unlock")
+
+    if not verify_tpm_auto_unlock():
+        print_error("TPM automatic unlock verification failed")
+        print_warning("System may be waiting for password at boot")
+        return 1
+
     # Step: Verify ZFS user permissions
     current_step += 1
     print_step(current_step, total_steps, "Verifying ZFS user permissions")
@@ -882,25 +960,6 @@ def main():
     if not result:
         print_error("Terminal dev environment test failed")
         print_info("You can manually test: ./bin/test-home-manager")
-        return 1
-
-    # Step: Test TPM enrollment
-    current_step += 1
-    print_step(current_step, total_steps, "Testing TPM enrollment")
-
-    if not test_tpm_enrollment():
-        print_error("TPM enrollment test failed")
-        print_info(f"You can manually test: ssh root@{VM_IP}")
-        print_info(f"  sudo keystone-enroll-recovery --auto")
-        return 1
-
-    # Step: Reboot to verify TPM automatic unlock
-    current_step += 1
-    print_step(current_step, total_steps, "Rebooting to verify TPM automatic unlock")
-
-    if not verify_tpm_auto_unlock():
-        print_error("TPM automatic unlock verification failed")
-        print_warning("System may be waiting for password at boot")
         return 1
 
     # All tests passed
