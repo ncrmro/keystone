@@ -115,6 +115,7 @@
       initrdSshUnlock = ./modules/initrd-ssh-unlock;
       isoInstaller = ./modules/iso-installer.nix;
       secureBoot = ./modules/secure-boot;
+      ssh = ./modules/ssh;
       tpmEnrollment = ./modules/tpm-enrollment;
       users = ./modules/users;
     };

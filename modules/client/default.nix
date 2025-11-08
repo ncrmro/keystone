@@ -11,6 +11,7 @@ with lib; {
 
   imports = [
     ../disko-single-disk-root
+    ../ssh
     ./desktop/hyprland.nix
     ./desktop/audio.nix
     ./desktop/greetd.nix
