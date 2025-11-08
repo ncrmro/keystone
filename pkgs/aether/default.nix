@@ -88,7 +88,7 @@ EOF
       - Support for Hyprland, Waybar, Kitty, and 15+ more applications
     '';
     homepage = "https://github.com/bjarneo/aether";
-    license = licenses.unfree; # License not specified in repository
+    license = licenses.mit;
     maintainers = [ ];
     platforms = platforms.linux;
     mainProgram = "aether";
