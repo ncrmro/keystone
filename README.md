@@ -21,15 +21,33 @@ Keystone provides two primary types of infrastructure:
 - **Purpose**: Run 24/7, provide services to clients and external access
 - **Hardware**: Raspberry Pi, NUC, dedicated server, or VPS
 
-### Clients 💻
-**Interactive devices for daily computing**
-- Desktop/laptop with development tools, user applications, desktop environment
-- **Purpose**: Daily work, development, desktop computing that connects to server services
-- **Hardware**: Laptop, desktop workstation, or any device for interactive use
+### Clients
+
+Keystone provides two types of client configurations for different use cases:
+
+#### Workstations 🖥️💻
+**Always-on development machines with remote access capabilities**
+- Hardwired, battery-backed systems that remain powered on
+- Terminal-based development environment (desktop optional)
+- **Remote Development Workflow**:
+  - SSH into workstation from laptops or other clients
+  - Resume Zellij terminal sessions seamlessly across connections
+  - Access local development servers via Tailscale/Headscale hostnames
+  - Start work from one device, continue from another without interruption
+- **Purpose**: Central development hub accessible from anywhere on your network
+- **Hardware**: Desktop workstation, mini PC, or any always-on hardware
+
+#### Interactive Clients 💻
+**Portable devices for daily computing**
+- Laptop or portable device with full desktop environment
+- Development tools, user applications, graphical interface
+- **Purpose**: Daily work, mobile computing, can SSH into workstations for development
+- **Hardware**: Laptop, portable device, or any interactive-use hardware
 
 ### How They Work Together
 - Clients connect to servers for backups, VPN access, shared storage
 - Servers provide always-on services while clients can be powered down
+- Interactive clients can SSH into workstations for development, accessing persistent terminal sessions and local dev servers via Tailscale hostnames
 - Both use the same security model (TPM, encryption, secure boot attestation)
 - All devices automatically encrypt data and maintain cryptographic verification
 
