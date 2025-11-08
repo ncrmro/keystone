@@ -68,9 +68,13 @@
         system = "x86_64-linux";
         modules = [
           disko.nixosModules.disko
+          lanzaboote.nixosModules.lanzaboote
           home-manager.nixosModules.home-manager
           ./modules/client
           ./modules/disko-single-disk-root
+          ./modules/initrd-ssh-unlock
+          ./modules/secure-boot
+          ./modules/tpm-enrollment
           ./modules/users
           ./vms/test-hyprland/configuration.nix
           {
