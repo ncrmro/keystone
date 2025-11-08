@@ -18,6 +18,7 @@ with lib;
     ./desktop/audio.nix
     ./desktop/greetd.nix
     ./desktop/packages.nix
+    ./desktop/aether.nix
     ./services/networking.nix
     ./services/system.nix
     ./home
@@ -51,6 +52,12 @@ with lib;
         type = types.bool;
         default = true;
         description = "Enable essential desktop packages";
+      };
+
+      aether.enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable Aether theming application";
       };
     };
 
@@ -91,6 +98,7 @@ with lib;
         audio.enable = mkDefault config.keystone.client.desktop.audio.enable;
         greetd.enable = mkDefault config.keystone.client.desktop.greetd.enable;
         packages.enable = mkDefault config.keystone.client.desktop.packages.enable;
+        aether.enable = mkDefault config.keystone.client.desktop.aether.enable;
       };
 
       services = {

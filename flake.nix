@@ -101,6 +101,7 @@
 
     packages.x86_64-linux = {
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
+      aether = nixpkgs.legacyPackages.x86_64-linux.callPackage ./pkgs/aether { };
     };
   };
 }
