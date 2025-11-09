@@ -2,6 +2,8 @@
 
 let
   cfg = config.programs.terminal-dev-environment;
+  # Import zesh package from flake
+  zesh = pkgs.callPackage ../../../packages/zesh { };
 in
 {
   config = lib.mkIf (cfg.enable && cfg.tools.shell) {
@@ -18,6 +20,7 @@ in
         g = "git";
         lg = "lazygit";
         hx = "helix";
+        z = "zoxide";
       };
 
       history.size = lib.mkDefault 100000;
@@ -48,6 +51,7 @@ in
       tree
       jq
       htop
+      zesh
     ];
   };
 }

@@ -150,8 +150,11 @@
       desktopHyprland = ./home-manager/modules/desktop/hyprland;
     };
 
-    packages.x86_64-linux = {
+    packages.x86_64-linux = let
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+    in {
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
+      zesh = pkgs.callPackage ./packages/zesh { };
     };
   };
 }
