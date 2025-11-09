@@ -37,14 +37,13 @@
   # Basic networking with DHCP
   networking.useDHCP = lib.mkDefault true;
 
-  # Forward SSH port for easy host access
+  # Forward SSH port for easy host access via QEMU user networking
   # This allows: ssh -p 2222 testuser@localhost
-  virtualisation.forwardPorts = [
-    {
-      from = "host";
-      host.port = 2222;
-      guest.port = 22;
-    }
+  virtualisation.qemu.networkingOptions = [
+    # Default QEMU user networking
+    "-net nic,netdev=user.0,model=virtio"
+    # Add SSH port forwarding: host port 2222 -> guest port 22
+    "-netdev user,id=user.0,hostfwd=tcp::2222-:22"
   ];
 
   # Enable serial console for VM
