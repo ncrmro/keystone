@@ -74,6 +74,17 @@
     trusted-users = ["root" "testuser"];
   };
 
+  # Configure home-manager
+  home-manager = {
+    useGlobalPkgs = true;
+    useUserPackages = true;
+
+    # Import home-manager modules
+    sharedModules = [
+      ../../home-manager/modules/terminal-dev-environment
+    ];
+  };
+
   # Configure home-manager for test user
   home-manager.users.testuser = {
     home.stateVersion = "25.05";

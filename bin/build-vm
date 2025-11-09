@@ -58,8 +58,22 @@ VM Details:
   - User: testuser / Password: testpass
   - Root: root / Password: root
 
-The VM script is at: ./result/bin/run-build-vm-{terminal,desktop}-vm
-The persistent disk is at: ./build-vm-{terminal,desktop}.qcow2
+How to Access:
+  Console:
+    1. Run VM script: ./result/bin/run-build-vm-{terminal,desktop}-vm
+    2. QEMU window opens with console access
+    3. Login with credentials above
+
+  SSH:
+    1. Login via console first
+    2. Get VM IP with: ip addr show (usually 10.0.2.15)
+    3. From host: ssh testuser@<VM_IP>
+
+  Stop: 'poweroff' or Ctrl-C
+
+Files Created:
+  - VM script: ./result/bin/run-build-vm-{terminal,desktop}-vm
+  - Persistent disk: ./build-vm-{terminal,desktop}.qcow2
 
 Compare workflows:
   ./bin/test-deployment  Full testing (ZFS, encryption, secure boot, TPM)
@@ -93,6 +107,12 @@ if [ $# -eq 0 ]; then
     echo
     print_usage
     exit 1
+fi
+
+# Check for help flag first
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    print_usage
+    exit 0
 fi
 
 CONFIG="$1"
@@ -173,6 +193,24 @@ echo "  Disk image:    $DISK_IMAGE"
 echo "  VM script:     ./result/bin/run-$FLAKE_CONFIG-vm"
 echo
 
+print_info "How to Access the VM:"
+echo "  Console Access:"
+echo "    1. Run the VM script (opens QEMU window)"
+echo "    2. Wait for boot to complete (shows login prompt)"
+echo "    3. Login with credentials below"
+echo
+echo "  SSH Access:"
+echo "    1. Login via console first"
+echo "    2. Get VM IP: ip addr show (usually 10.0.2.15)"
+echo "    3. SSH from host: ssh testuser@<VM_IP>"
+echo "    Note: QEMU user networking - VM can reach internet,"
+echo "          but host->VM requires console first to get IP"
+echo
+echo "  Stop VM:"
+echo "    - Type 'poweroff' inside VM, or"
+echo "    - Press Ctrl-C in terminal running VM"
+echo
+
 print_info "Login Credentials:"
 echo "  User:     testuser / testpass"
 echo "  Root:     root / root"
@@ -194,6 +232,12 @@ elif [ "$CONFIG" = "desktop" ]; then
     echo "  - Firefox, VSCode, VLC"
 fi
 
+echo
+print_info "VM Features:"
+echo "  - Persistent disk survives reboots"
+echo "  - Host Nix store mounted at /nix/store (9P, read-only)"
+echo "  - QEMU window provides direct console access"
+echo "  - SSH enabled on VM's network interface"
 echo
 
 # Run if requested

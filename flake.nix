@@ -91,7 +91,6 @@
         system = "x86_64-linux";
         modules = [
           home-manager.nixosModules.home-manager
-          ./home-manager/modules/terminal-dev-environment
           ./vms/build-vm-terminal/configuration.nix
         ];
       };
