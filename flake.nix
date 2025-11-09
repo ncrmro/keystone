@@ -92,6 +92,9 @@
         modules = [
           home-manager.nixosModules.home-manager
           ./vms/build-vm-terminal/configuration.nix
+          {
+            _module.args.omarchy = omarchy;
+          }
         ];
       };
 

@@ -2,6 +2,17 @@
 
 let
   cfg = config.programs.terminal-dev-environment;
+  themingCfg = config.programs.omarchy-theming or { };
+  
+  # Check if theming is enabled and helix theming is specifically enabled
+  themingEnabled = themingCfg.enable or false 
+    && themingCfg.terminal.enable or false 
+    && themingCfg.terminal.applications.helix or false;
+    
+  # Path to omarchy helix theme config (if it exists)
+  # Note: The integration method depends on the actual structure of helix.toml in omarchy themes
+  # This may need adjustment based on whether it's a theme file or config override
+  themePath = "${config.xdg.configHome}/omarchy/current/theme/helix.toml";
 in
 {
   config = lib.mkIf (cfg.enable && cfg.tools.editor) {
@@ -21,7 +32,14 @@ in
 
     programs.helix = {
       enable = true;
+      
+      # When theming is enabled, we'll merge/include the omarchy theme config
+      # The exact method depends on the structure of omarchy's helix.toml file
+      # TODO: Test with actual omarchy theme to determine if this is a theme file
+      # or a config overlay that should be merged into settings
+      
       settings = {
+        # Default theme when omarchy theming is not enabled
         theme = lib.mkDefault "default";
         editor = {
           line-number = "relative";
