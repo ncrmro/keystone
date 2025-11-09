@@ -6,17 +6,20 @@
 # without the overhead of full deployment (no disko/encryption/secure boot).
 #
 # Usage:
-#   ./bin/build-vm terminal          # Build terminal dev environment VM
-#   ./bin/build-vm desktop            # Build Hyprland desktop VM
-#   ./bin/build-vm terminal --run     # Build and run immediately
-#   ./bin/build-vm desktop --run      # Build and run immediately
-#   ./bin/build-vm terminal --clean   # Clean old VM artifacts first
+#   ./bin/build-vm terminal          # Build and auto-SSH into terminal VM
+#   ./bin/build-vm desktop            # Build and open desktop VM console
+#   ./bin/build-vm terminal --clean   # Clean old artifacts first
+#   ./bin/build-vm terminal --build-only  # Build only, don't run
 #
 # The VMs:
 #   - Mount host Nix store via 9P (read-only, fast)
 #   - Create persistent qcow2 disk (survives reboots)
 #   - Much faster than full deployment for testing configs
 #   - Located at ./build-vm-{terminal,desktop}.qcow2
+#
+# Automatic connection:
+#   - terminal: Starts VM in background, automatically SSHs in
+#   - desktop: Opens graphical console for Hyprland
 #
 # Compare with ./bin/test-deployment:
 #   - test-deployment: Full stack (ZFS, encryption, secure boot, TPM)
@@ -36,21 +39,22 @@ print_usage() {
     cat <<EOF
 Usage: $0 <terminal|desktop> [OPTIONS]
 
-Build and run VMs for fast testing of Keystone configurations.
+Build and automatically connect to VMs for fast testing of Keystone configurations.
 
 Configurations:
-  terminal    Terminal development environment only
-  desktop     Full Hyprland desktop with terminal dev environment
+  terminal    Terminal dev environment - auto-SSH into VM
+  desktop     Hyprland desktop - open graphical console
 
 Options:
-  --run       Build and run immediately
-  --clean     Remove old VM artifacts before building
-  --help      Show this help message
+  --build-only    Build VM but don't run/connect
+  --clean         Remove old VM artifacts before building
+  --help          Show this help message
 
 Examples:
-  $0 terminal                  # Build terminal VM
-  $0 desktop --run              # Build and run desktop VM
-  $0 terminal --clean --run     # Clean, build, and run
+  $0 terminal                  # Build and SSH into terminal VM
+  $0 desktop                   # Build and open desktop console
+  $0 terminal --clean          # Clean, rebuild, and connect
+  $0 desktop --build-only      # Just build, don't open console
 
 VM Details:
   - Mounts host Nix store via 9P (read-only)
@@ -58,22 +62,26 @@ VM Details:
   - User: testuser / Password: testpass
   - Root: root / Password: root
 
-How to Access:
-  Console:
-    1. Run VM script: ./result/bin/run-build-vm-{terminal,desktop}-vm
-    2. QEMU window opens with console access
-    3. Login with credentials above
+Automatic Connection:
+  terminal: Starts VM in background, waits for SSH, then connects
+            Exit SSH to stop VM: 'exit' or Ctrl-D
+            VM runs in background after disconnect
 
-  SSH:
-    1. Login via console first
-    2. Get VM IP with: ip addr show (usually 10.0.2.15)
-    3. From host: ssh testuser@<VM_IP>
+  desktop:  Opens QEMU window with graphical display
+            Stop with: 'poweroff' in VM or Ctrl-C
 
-  Stop: 'poweroff' or Ctrl-C
+Manual Access (if needed):
+  terminal VM:
+    SSH: ssh -p 2222 testuser@localhost
+    Console: ./result/bin/run-build-vm-terminal-vm
+
+  desktop VM:
+    Console: ./result/bin/run-build-vm-desktop-vm
 
 Files Created:
   - VM script: ./result/bin/run-build-vm-{terminal,desktop}-vm
   - Persistent disk: ./build-vm-{terminal,desktop}.qcow2
+  - VM PID file: ./build-vm-{terminal,desktop}.pid (terminal only)
 
 Compare workflows:
   ./bin/test-deployment  Full testing (ZFS, encryption, secure boot, TPM)
@@ -118,13 +126,13 @@ fi
 CONFIG="$1"
 shift
 
-RUN_VM=false
+BUILD_ONLY=false
 CLEAN=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --run)
-            RUN_VM=true
+        --build-only)
+            BUILD_ONLY=true
             shift
             ;;
         --clean)
@@ -184,74 +192,100 @@ else
     exit 1
 fi
 
-# Show information
+# Show build information
 echo
-print_info "VM Configuration Details:"
-echo "  Configuration: $CONFIG"
-echo "  Flake output:  $FLAKE_CONFIG"
-echo "  Disk image:    $DISK_IMAGE"
-echo "  VM script:     ./result/bin/run-$FLAKE_CONFIG-vm"
+print_info "Configuration: $CONFIG"
+print_info "VM script:     ./result/bin/run-$FLAKE_CONFIG-vm"
+print_info "Disk image:    $DISK_IMAGE"
 echo
 
-print_info "How to Access the VM:"
-echo "  Console Access:"
-echo "    1. Run the VM script (opens QEMU window)"
-echo "    2. Wait for boot to complete (shows login prompt)"
-echo "    3. Login with credentials below"
-echo
-echo "  SSH Access:"
-echo "    1. Login via console first"
-echo "    2. Get VM IP: ip addr show (usually 10.0.2.15)"
-echo "    3. SSH from host: ssh testuser@<VM_IP>"
-echo "    Note: QEMU user networking - VM can reach internet,"
-echo "          but host->VM requires console first to get IP"
-echo
-echo "  Stop VM:"
-echo "    - Type 'poweroff' inside VM, or"
-echo "    - Press Ctrl-C in terminal running VM"
-echo
-
-print_info "Login Credentials:"
-echo "  User:     testuser / testpass"
-echo "  Root:     root / root"
-echo
-
-if [ "$CONFIG" = "terminal" ]; then
-    print_info "Available Tools (Terminal Dev Environment):"
-    echo "  - Helix editor (hx)"
-    echo "  - Zsh shell with utilities"
-    echo "  - Zellij terminal multiplexer"
-    echo "  - Ghostty terminal emulator"
-    echo "  - Git with UI tools"
-elif [ "$CONFIG" = "desktop" ]; then
-    print_info "Available Features (Hyprland Desktop):"
-    echo "  - Hyprland Wayland compositor"
-    echo "  - Waybar status bar"
-    echo "  - Mako notification daemon"
-    echo "  - Terminal dev environment"
-    echo "  - Firefox, VSCode, VLC"
+# If build-only, exit here
+if [ "$BUILD_ONLY" = true ]; then
+    print_info "Build complete. To run manually:"
+    echo "  ./result/bin/run-$FLAKE_CONFIG-vm"
+    echo
+    if [ "$CONFIG" = "terminal" ]; then
+        print_info "Or use this script without --build-only to auto-connect"
+    fi
+    exit 0
 fi
 
-echo
-print_info "VM Features:"
-echo "  - Persistent disk survives reboots"
-echo "  - Host Nix store mounted at /nix/store (9P, read-only)"
-echo "  - QEMU window provides direct console access"
-echo "  - SSH enabled on VM's network interface"
-echo
+# Auto-connect logic
+if [ "$CONFIG" = "terminal" ]; then
+    # Terminal VM: Start in background and SSH in
+    print_step "Starting terminal VM in background..."
 
-# Run if requested
-if [ "$RUN_VM" = true ]; then
-    print_step "Starting VM..."
-    print_info "Press Ctrl-C to stop the VM"
-    print_warning "The VM disk is persistent - changes survive reboots"
+    VM_SCRIPT="./result/bin/run-$FLAKE_CONFIG-vm"
+    PID_FILE="./build-vm-terminal.pid"
+
+    # Clean up any existing VM
+    if [ -f "$PID_FILE" ]; then
+        OLD_PID=$(cat "$PID_FILE")
+        if kill -0 "$OLD_PID" 2>/dev/null; then
+            print_info "Stopping existing VM (PID $OLD_PID)..."
+            kill "$OLD_PID" 2>/dev/null || true
+            sleep 2
+        fi
+        rm -f "$PID_FILE"
+    fi
+
+    # Start VM in background
+    nohup "$VM_SCRIPT" </dev/null >/dev/null 2>&1 &
+    VM_PID=$!
+    echo "$VM_PID" > "$PID_FILE"
+
+    print_info "VM started (PID $VM_PID)"
+    print_info "Waiting for SSH to be ready..."
+
+    # Wait for SSH to be available (max 60 seconds)
+    SSH_READY=false
+    for i in {1..60}; do
+        if ssh -o StrictHostKeyChecking=no \
+               -o UserKnownHostsFile=/dev/null \
+               -o ConnectTimeout=1 \
+               -o LogLevel=ERROR \
+               -p 2222 testuser@localhost "echo ready" >/dev/null 2>&1; then
+            SSH_READY=true
+            break
+        fi
+        sleep 1
+    done
+
+    if [ "$SSH_READY" = false ]; then
+        print_error "SSH did not become ready in time"
+        print_info "VM is still running in background (PID $VM_PID)"
+        print_info "Try manually: ssh -p 2222 testuser@localhost"
+        print_info "Or connect to console: $VM_SCRIPT"
+        exit 1
+    fi
+
+    print_success "VM is ready!"
+    echo
+    print_info "Connecting via SSH..."
+    print_info "Password: testpass"
+    print_warning "VM will keep running in background after you exit SSH"
+    print_info "To stop VM: kill $VM_PID  or  kill \$(cat $PID_FILE)"
+    echo
+
+    # SSH into the VM (suppress host key warnings for cleaner output)
+    ssh -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o LogLevel=ERROR \
+        -p 2222 testuser@localhost
+
+    # After SSH exits
+    echo
+    print_info "SSH session ended"
+    print_info "VM is still running in background (PID $VM_PID)"
+    print_info "To reconnect: ssh -p 2222 testuser@localhost"
+    print_info "To stop VM: kill $VM_PID"
+
+elif [ "$CONFIG" = "desktop" ]; then
+    # Desktop VM: Run with graphical console
+    print_step "Starting desktop VM with graphical console..."
+    print_info "Login with: testuser / testpass"
+    print_info "Press Ctrl-C or use 'poweroff' in VM to stop"
     echo
 
     exec ./result/bin/run-$FLAKE_CONFIG-vm
-else
-    print_info "To run the VM:"
-    echo "  ./result/bin/run-$FLAKE_CONFIG-vm"
-    echo
-    print_info "Or rebuild with --run flag:"
-    echo "  $0 $CONFIG --run"
 fi
