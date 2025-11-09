@@ -25,6 +25,12 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  # Root filesystem (required for NixOS)
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
+  };
+
   # Enable SSH for remote access
   services.openssh = {
     enable = true;

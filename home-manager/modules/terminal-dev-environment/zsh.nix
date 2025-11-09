@@ -5,6 +5,9 @@
   ...
 }: let
   cfg = config.programs.terminal-dev-environment;
+
+  # Import zesh package directly
+  zesh = pkgs.callPackage ../../../packages/zesh {};
 in {
   config = lib.mkIf (cfg.enable && cfg.tools.shell) {
     programs.zsh = {
