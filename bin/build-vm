@@ -59,28 +59,30 @@ Examples:
 VM Details:
   - Mounts host Nix store via 9P (read-only)
   - Creates persistent qcow2 disk
-  - User: testuser / Password: testpass
+  - User: testuser (automatic SSH key login)
   - Root: root / Password: root
 
 Automatic Connection:
-  terminal: Starts VM in background, waits for SSH, then connects
-            Exit SSH to stop VM: 'exit' or Ctrl-D
-            VM runs in background after disconnect
+  terminal: Starts VM in background, waits for SSH, then auto-connects
+            Uses SSH key authentication (no password needed)
+            Exit SSH with: 'exit' or Ctrl-D
+            VM continues running in background after disconnect
 
   desktop:  Opens QEMU window with graphical display
+            Login: testuser / testpass
             Stop with: 'poweroff' in VM or Ctrl-C
 
 Manual Access (if needed):
   terminal VM:
     SSH: ssh -p 2222 testuser@localhost
-    Console: ./result/bin/run-build-vm-terminal-vm
+    Console: ./result/bin/run-keystone-buildvm-terminal-vm
 
   desktop VM:
-    Console: ./result/bin/run-build-vm-desktop-vm
+    Console: ./result/bin/run-keystone-buildvm-desktop-vm
 
 Files Created:
-  - VM script: ./result/bin/run-build-vm-{terminal,desktop}-vm
-  - Persistent disk: ./build-vm-{terminal,desktop}.qcow2
+  - VM script: ./result/bin/run-keystone-buildvm-{terminal,desktop}-vm
+  - Persistent disk: ./keystone-buildvm-{terminal,desktop}.qcow2
   - VM PID file: ./build-vm-{terminal,desktop}.pid (terminal only)
 
 Compare workflows:
@@ -156,7 +158,9 @@ done
 case "$CONFIG" in
     terminal|desktop)
         FLAKE_CONFIG="build-vm-$CONFIG"
-        DISK_IMAGE="build-vm-$CONFIG.qcow2"
+        # VM script and disk names are based on hostname from VM config
+        VM_HOSTNAME="keystone-buildvm-$CONFIG"
+        DISK_IMAGE="$VM_HOSTNAME.qcow2"
         ;;
     *)
         print_error "Invalid configuration: $CONFIG"
@@ -195,14 +199,14 @@ fi
 # Show build information
 echo
 print_info "Configuration: $CONFIG"
-print_info "VM script:     ./result/bin/run-$FLAKE_CONFIG-vm"
+print_info "VM script:     ./result/bin/run-$VM_HOSTNAME-vm"
 print_info "Disk image:    $DISK_IMAGE"
 echo
 
 # If build-only, exit here
 if [ "$BUILD_ONLY" = true ]; then
     print_info "Build complete. To run manually:"
-    echo "  ./result/bin/run-$FLAKE_CONFIG-vm"
+    echo "  ./result/bin/run-$VM_HOSTNAME-vm"
     echo
     if [ "$CONFIG" = "terminal" ]; then
         print_info "Or use this script without --build-only to auto-connect"
@@ -215,7 +219,7 @@ if [ "$CONFIG" = "terminal" ]; then
     # Terminal VM: Start in background and SSH in
     print_step "Starting terminal VM in background..."
 
-    VM_SCRIPT="./result/bin/run-$FLAKE_CONFIG-vm"
+    VM_SCRIPT="./result/bin/run-$VM_HOSTNAME-vm"
     PID_FILE="./build-vm-terminal.pid"
 
     # Clean up any existing VM
@@ -229,13 +233,28 @@ if [ "$CONFIG" = "terminal" ]; then
         rm -f "$PID_FILE"
     fi
 
+    # Check if port 2222 is already in use (e.g., from crashed VM)
+    if ss -tln 2>/dev/null | grep -q ":2222 "; then
+        print_warning "Port 2222 is already in use"
+        # Try to find and kill the process using port 2222
+        PORT_PID=$(ss -tlnp 2>/dev/null | grep ":2222 " | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2)
+        if [ -n "$PORT_PID" ]; then
+            print_info "Killing process $PORT_PID using port 2222..."
+            kill "$PORT_PID" 2>/dev/null || true
+            sleep 2
+        fi
+    fi
+
     # Start VM in background
     nohup "$VM_SCRIPT" </dev/null >/dev/null 2>&1 &
     VM_PID=$!
     echo "$VM_PID" > "$PID_FILE"
 
     print_info "VM started (PID $VM_PID)"
-    print_info "Waiting for SSH to be ready..."
+    print_info "Waiting for VM to boot and SSH to be ready..."
+
+    # Give VM a few seconds to start booting before checking SSH
+    sleep 5
 
     # Wait for SSH to be available (max 60 seconds)
     SSH_READY=false
@@ -261,13 +280,12 @@ if [ "$CONFIG" = "terminal" ]; then
 
     print_success "VM is ready!"
     echo
-    print_info "Connecting via SSH..."
-    print_info "Password: testpass"
+    print_info "Connecting via SSH (automatic key authentication)..."
     print_warning "VM will keep running in background after you exit SSH"
     print_info "To stop VM: kill $VM_PID  or  kill \$(cat $PID_FILE)"
     echo
 
-    # SSH into the VM (suppress host key warnings for cleaner output)
+    # SSH into the VM (automatic key-based authentication)
     ssh -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
         -o LogLevel=ERROR \
@@ -287,5 +305,5 @@ elif [ "$CONFIG" = "desktop" ]; then
     print_info "Press Ctrl-C or use 'poweroff' in VM to stop"
     echo
 
-    exec ./result/bin/run-$FLAKE_CONFIG-vm
+    exec ./result/bin/run-$VM_HOSTNAME-vm
 fi
