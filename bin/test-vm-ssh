@@ -98,13 +98,11 @@ def check_vm_running(vm_name, vm_config, verbose=False):
         sys.exit(1)
 
 
-def wait_for_ssh(vm_config, max_attempts=5):
+def wait_for_ssh(vm_config, max_attempts=5, verbose=False):
     """Wait for SSH to be available on the VM."""
     host = vm_config["host"]
     port = vm_config["port"]
     user = vm_config["user"]
-
-    log(YELLOW, f"Checking SSH connectivity to {host}:{port}...")
 
     ssh_opts = [
         "-p", str(port),
@@ -118,15 +116,17 @@ def wait_for_ssh(vm_config, max_attempts=5):
     for attempt in range(1, max_attempts + 1):
         result = subprocess.run(
             ["ssh"] + ssh_opts + [f"{user}@{host}", "exit 0"],
-            capture_output=True
+            capture_output=True,
+            stderr=subprocess.DEVNULL
         )
 
         if result.returncode == 0:
             return True
 
         if attempt == max_attempts:
-            log(RED, f"Error: Could not connect to SSH after {max_attempts} attempts.")
-            log(YELLOW, f"Make sure sshd is running and port {port} is accessible.")
+            if verbose:
+                log(RED, f"Error: Could not connect to SSH after {max_attempts} attempts.")
+                log(YELLOW, f"Make sure sshd is running and port {port} is accessible.")
             return False
 
         time.sleep(2)
@@ -144,7 +144,7 @@ def filter_ssh_output(line):
     return not any(warning in line for warning in warnings)
 
 
-def run_ssh(vm_name, vm_config, command=None):
+def run_ssh(vm_name, vm_config, command=None, verbose=False):
     """Run SSH connection, either interactive or with a command."""
     host = vm_config["host"]
     port = vm_config["port"]
@@ -154,7 +154,7 @@ def run_ssh(vm_name, vm_config, command=None):
         "-p", str(port),
         "-o", "StrictHostKeyChecking=no",
         "-o", f"UserKnownHostsFile={KNOWN_HOSTS_FILE}",
-        "-o", "LogLevel=ERROR",
+        "-o", "LogLevel=QUIET",
         "-o", "ServerAliveInterval=60",
         "-o", "ServerAliveCountMax=3"
     ]
@@ -162,34 +162,42 @@ def run_ssh(vm_name, vm_config, command=None):
     ssh_cmd = ["ssh"] + ssh_opts
 
     if command:
-        # Run command mode
+        # Run command mode - suppress all SSH warnings
         ssh_cmd.extend([f"{user}@{host}", command])
+
+        try:
+            process = subprocess.Popen(
+                ssh_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                bufsize=1
+            )
+
+            # Stream output line by line, filtering any remaining warnings
+            for line in process.stdout:
+                if filter_ssh_output(line):
+                    print(line, end='')
+
+            process.wait()
+            sys.exit(process.returncode)
+
+        except KeyboardInterrupt:
+            sys.exit(130)
     else:
-        # Interactive mode
-        log(GREEN, f"Connecting to {vm_name} ({host}:{port}) as {user}...")
-        log(YELLOW, "Exit with 'exit' or Ctrl-D")
+        # Interactive mode - pass through to terminal but suppress warnings
         ssh_cmd.extend(["-t", f"{user}@{host}"])
 
-    # Run SSH and filter output
-    try:
-        process = subprocess.Popen(
-            ssh_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
+        try:
+            # For interactive mode, redirect stderr to devnull to suppress all warnings
+            result = subprocess.run(
+                ssh_cmd,
+                stderr=subprocess.DEVNULL
+            )
+            sys.exit(result.returncode)
 
-        # Stream output line by line, filtering warnings
-        for line in process.stdout:
-            if filter_ssh_output(line):
-                print(line, end='')
-
-        process.wait()
-        sys.exit(process.returncode)
-
-    except KeyboardInterrupt:
-        sys.exit(130)  # Standard exit code for Ctrl-C
+        except KeyboardInterrupt:
+            sys.exit(130)
 
 
 def list_vms():
@@ -204,42 +212,46 @@ def list_vms():
 
 def main():
     """Main entry point."""
-    # Parse VM name argument
+    # Parse arguments
+    verbose = "--verbose" in sys.argv or "-v" in sys.argv
+    args = [arg for arg in sys.argv[1:] if arg not in ["--verbose", "-v"]]
+
     vm_name = DEFAULT_VM
     command_args = []
 
-    if len(sys.argv) > 1:
+    if len(args) > 0:
         # Check if first arg is a VM name or --list
-        if sys.argv[1] == "--list":
+        if args[0] == "--list":
             list_vms()
             sys.exit(0)
-        elif sys.argv[1] in VM_CONFIGS:
-            vm_name = sys.argv[1]
-            command_args = sys.argv[2:]
+        elif args[0] in VM_CONFIGS:
+            vm_name = args[0]
+            command_args = args[1:]
         else:
             # First arg is part of command, use default VM
-            command_args = sys.argv[1:]
+            command_args = args
 
     # Get VM config
     if vm_name not in VM_CONFIGS:
-        log(RED, f"Error: Unknown VM '{vm_name}'")
-        log(YELLOW, "Available VMs:")
-        for name in VM_CONFIGS.keys():
-            log(YELLOW, f"  {name}")
+        if verbose:
+            log(RED, f"Error: Unknown VM '{vm_name}'")
+            log(YELLOW, "Available VMs:")
+            for name in VM_CONFIGS.keys():
+                log(YELLOW, f"  {name}")
         sys.exit(1)
 
     vm_config = VM_CONFIGS[vm_name]
 
-    # Check VM running state
-    check_vm_running(vm_name, vm_config)
+    # Check VM running state (silent unless verbose)
+    check_vm_running(vm_name, vm_config, verbose)
 
-    # Wait for SSH
-    if not wait_for_ssh(vm_config):
+    # Wait for SSH (silent unless verbose)
+    if not wait_for_ssh(vm_config, verbose=verbose):
         sys.exit(1)
 
     # Build command if arguments provided
     command = " ".join(command_args) if command_args else None
-    run_ssh(vm_name, vm_config, command)
+    run_ssh(vm_name, vm_config, command, verbose)
 
 
 if __name__ == "__main__":
