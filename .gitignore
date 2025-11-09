@@ -31,6 +31,12 @@ vms/*/*.ports
 vms/*/*.log
 vms/*/*.socket
 
+# build-vm artifacts (nixos-rebuild build-vm)
+.build-vm/
+build-vm-*.pid
+keystone-buildvm-*.qcow2
+build-vm-*.qcow2
+
 # VM configuration (keep .example files tracked)
 vms/*.conf
 
