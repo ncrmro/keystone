@@ -4,13 +4,15 @@
   pkgs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.client.services.networking;
-in
-{
+in {
   options.keystone.client.services.networking = {
-    enable = mkEnableOption "NetworkManager and network services";
+    enable =
+      mkEnableOption "NetworkManager and network services"
+      // {
+        default = true;
+      };
 
     bluetooth.enable = mkOption {
       type = types.bool;
@@ -44,11 +46,10 @@ in
 
     # Add user to networkmanager group (will be configured per user)
     # This allows non-root users to manage network connections
-    users.groups.networkmanager = { };
+    users.groups.networkmanager = {};
 
     # Essential networking packages
-    environment.systemPackages =
-      with pkgs;
+    environment.systemPackages = with pkgs;
       [
         # Network utilities
         networkmanagerapplet # GUI for NetworkManager
