@@ -97,6 +97,7 @@
       secureBoot = ./modules/secure-boot;
       tpmEnrollment = ./modules/tpm-enrollment;
       users = ./modules/users;
+      macTimeMachine = ./modules/backups/mac-timemachine;
     };
 
     packages.x86_64-linux = {
