@@ -139,14 +139,4 @@
     };
   };
 
-  # VM-specific optimizations
-  # Increase memory for desktop environment
-  virtualisation.memorySize = 4096; # 4GB RAM
-  virtualisation.cores = 2;
-
-  # Enable 3D acceleration in VM
-  virtualisation.qemu.options = [
-    "-vga virtio"
-    "-display gtk,gl=on"
-  ];
 }
