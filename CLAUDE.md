@@ -104,8 +104,15 @@ remote-viewer $(virsh domdisplay keystone-test-vm)
 # Serial console
 virsh console keystone-test-vm
 
-# SSH (after NixOS installation)
-ssh root@192.168.100.99
+# SSH (after NixOS installation) - ALWAYS use this script for VM SSH
+./bin/test-vm-ssh
+
+# The test-vm-ssh script:
+# - Connects to keystone-test-vm at 192.168.100.99
+# - Uses isolated known_hosts to avoid polluting user's SSH configuration
+# - Filters out SSH warnings to keep agent context clean
+# - Checks VM is running before attempting connection
+# - Supports passing commands: ./bin/test-vm-ssh "systemctl status"
 ```
 
 See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complete details.
