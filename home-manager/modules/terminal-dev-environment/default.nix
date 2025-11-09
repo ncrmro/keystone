@@ -7,6 +7,7 @@ in
   meta.maintainers = [ ];
 
   imports = [
+    ../omarchy-theming
     ./git.nix
     ./helix.nix
     ./zsh.nix

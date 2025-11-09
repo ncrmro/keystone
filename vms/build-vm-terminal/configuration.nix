@@ -115,6 +115,15 @@
       };
     };
 
+    # Enable Omarchy theming
+    programs.omarchy-theming = {
+      enable = true;
+      # Uses all defaults:
+      # - terminal.enable = true
+      # - terminal.applications.helix = true
+      # - terminal.applications.ghostty = true
+    };
+
     # Git configuration
     programs.git = {
       userName = "Terminal Test User";
