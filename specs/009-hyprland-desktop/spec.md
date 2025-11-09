@@ -3,7 +3,7 @@
 **Feature Branch**: `009-hyprland-desktop`  
 **Created**: 2025-11-06  
 **Status**: Draft  
-**Input**: User description: "we now need to create a desktop nix modules, it contains two parts the nixos module and the home-manager module. The modules work together to setup a hyprland desktop environment. Noting that most of the termal based work is handled in ./home-manager/modules/terminal-dev-environment/ . The desktop needs to ensure hyprlock, hypridle, chromium are installed. It should install ghostty, hyprpaper, waybar, mako. It should not be initially very configurable. # Essential Hyprland packages - cannot be excluded
+**Input**: User description: "we now need to create a desktop nix modules, it contains two parts the nixos module and the home-manager module. The modules work together to setup a hyprland desktop environment. Noting that most of the terminal based work is handled in ./home-manager/modules/terminal-dev-environment/ . The desktop needs to ensure hyprlock, hypridle, chromium are installed. It should install ghostty, hyprpaper, waybar, mako. It should not be initially very configurable. # Essential Hyprland packages - cannot be excluded
   hyprlandPackages = with pkgs; [
     hyprshot
     hyprpicker
@@ -15,7 +15,7 @@
     pavucontrol
     wl-clipboard
     glib
-  ]; It should use uwsm app . Use greetd to laucnh the uswsm agin follow these for examples https://github.com/ncrmro/omarchy-nix/blob/feat/submodule-omarchy-arch/modules/nixos/system.nix"
+  ]; It should use uwsm app . Use greetd to launch the uwsm again follow these for examples https://github.com/ncrmro/omarchy-nix/blob/feat/submodule-omarchy-arch/modules/nixos/system.nix"
 
 ## User Scenarios & Testing *(mandatory)*
 
