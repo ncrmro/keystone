@@ -25,6 +25,12 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  # Root filesystem (required for NixOS)
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
+  };
+
   # Enable SSH for remote access
   services.openssh = {
     enable = true;
@@ -65,6 +71,9 @@
     description = "Terminal Dev Test User";
     initialPassword = "testpass"; # Test only - insecure
     extraGroups = ["wheel" "networkmanager"];
+    openssh.authorizedKeys.keys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyrDBVcGK+pUZOTUA7MLoD5vYK/kaPF6TNNyoDmwNl2 ncrmro@ncrmro-laptop-fw7k"
+    ];
   };
 
   # Root password for easy access
