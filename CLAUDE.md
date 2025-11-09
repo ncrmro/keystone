@@ -39,9 +39,45 @@ The client module provides a complete Hyprland desktop:
 
 ## Common Development Commands
 
-### VM Testing with bin/virtual-machine
+### Fast VM Testing with bin/build-vm (Recommended for Config Testing)
 
-The `bin/virtual-machine` script is the **primary driver** for creating and managing libvirt VMs for Keystone testing:
+The `bin/build-vm` script provides the **fastest way** to test desktop and terminal configurations using `nixos-rebuild build-vm`:
+
+```bash
+# Terminal development environment only
+./bin/build-vm terminal             # Build only
+./bin/build-vm terminal --run       # Build and run immediately
+./bin/build-vm terminal --clean     # Clean old artifacts first
+
+# Hyprland desktop with terminal dev environment
+./bin/build-vm desktop              # Build only
+./bin/build-vm desktop --run        # Build and run immediately
+./bin/build-vm desktop --clean      # Clean old artifacts first
+```
+
+**Key Features**:
+- **Fast iteration** - Mounts host Nix store via 9P (no copying, faster builds)
+- **Persistent disk** - Creates `build-vm-{terminal,desktop}.qcow2` for persistent state
+- **No encryption/secure boot overhead** - Focus on config testing, not security features
+- **Simple credentials** - User: `testuser/testpass`, Root: `root/root`
+
+**When to use build-vm vs test-deployment**:
+- Use `build-vm` for: Testing desktop configs, terminal dev environment, home-manager modules, fast iteration
+- Use `test-deployment` for: Full stack testing (ZFS encryption, secure boot, TPM, initrd SSH unlock)
+
+**VM Details**:
+- The VM script is at `./result/bin/run-build-vm-{terminal,desktop}-vm`
+- Persistent disk at `./build-vm-{terminal,desktop}.qcow2`
+- Disk survives reboots but can be deleted with `--clean`
+- VMs use QEMU directly (no libvirt)
+
+**Configurations**:
+- `terminal`: Minimal NixOS with terminal dev environment (Helix, Zsh, Zellij, Ghostty, Git)
+- `desktop`: Full Hyprland desktop + terminal dev environment (Firefox, VSCode, VLC, Waybar, etc.)
+
+### Full Stack VM Testing with bin/virtual-machine
+
+The `bin/virtual-machine` script is the **primary driver** for creating and managing libvirt VMs for full-stack Keystone testing:
 
 ```bash
 # Create a new VM with default settings (uses vms/keystone-installer.iso if available)
