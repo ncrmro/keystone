@@ -1,15 +1,16 @@
-# SOC2 Cloud Operations - Quickstart Guide
+# SOC2 Bare-Metal Operations - Quickstart Guide
 
 ## Overview
 
-This quickstart guide helps you deploy Keystone infrastructure with SOC2 compliance controls for cloud or hybrid cloud environments. It provides the fastest path to achieving SOC2 Type 2 certification readiness.
+This quickstart guide helps you deploy Keystone infrastructure with SOC2 compliance controls for bare-metal or hybrid (bare-metal + cloud) environments. It provides the fastest path to achieving SOC2 Type 2 certification readiness for organizations operating physical hardware.
 
 ## Prerequisites
 
 - **Time to Certification**: 6-12 months minimum (required for SOC2 Type 2 evidence collection)
-- **Infrastructure**: Cloud accounts (AWS, GCP, Azure, or others) or hybrid infrastructure
-- **Personnel**: Security officer, operations team, compliance specialist
-- **Budget**: Auditor fees ($15,000-$50,000+), tooling costs, personnel time
+- **Infrastructure**: Physical servers (on-premises, colocation, or owned hardware) with optional cloud backup/DR
+- **Physical Security**: Appropriate facility controls (data center, colocation cage, or secure server room)
+- **Personnel**: Security officer, operations team, compliance specialist, facilities/hardware management
+- **Budget**: Auditor fees ($15,000-$50,000+), tooling costs, hardware costs, colocation fees (if applicable), personnel time
 
 ## Trust Services Criteria Selection
 
@@ -20,6 +21,70 @@ Before starting, determine which criteria apply to your organization:
 - **Confidentiality**: If you handle sensitive customer data
 - **Processing Integrity**: If you process data on behalf of customers
 - **Privacy**: If you handle personally identifiable information (PII)
+
+## Physical Security Setup (Bare-Metal Prerequisite)
+
+Before deploying servers, ensure appropriate physical security controls:
+
+### Option 1: Colocation Facility (Recommended for Most Organizations)
+```bash
+# Checklist for selecting a colocation provider:
+- [ ] Provider has SOC2 Type 2 report available
+- [ ] Badge access control with logging
+- [ ] 24/7 security and monitoring
+- [ ] Redundant power (N+1 or 2N)
+- [ ] Redundant cooling
+- [ ] Fire suppression system
+- [ ] Network connectivity redundancy
+- [ ] Remote hands service available
+- [ ] Individual lockable cabinets/cages
+- [ ] Security cameras covering access points
+```
+
+**Setup Steps**:
+1. Sign colocation contract and obtain access credentials
+2. Request provider's SOC2 Type 2 report (annual)
+3. Provision cabinet/cage with power and network
+4. Set up authorized personnel list for physical access
+5. Configure remote hands service contact
+6. Document facility access procedures
+
+### Option 2: On-Premises Secure Server Room
+```bash
+# Minimum requirements for on-premises deployment:
+- [ ] Dedicated lockable room for servers
+- [ ] Access control (badge reader or keypad with logging)
+- [ ] Temperature monitoring with alerting
+- [ ] UPS power backup
+- [ ] Fire detection and suppression
+- [ ] Physical access log (manual or automated)
+- [ ] Visitor escort policy
+- [ ] Security camera covering entry (recommended)
+```
+
+**Setup Steps**:
+1. Designate secure room with limited access
+2. Install UPS appropriate for equipment load
+3. Deploy temperature/humidity monitoring
+4. Implement access logging (badge system or manual log)
+5. Install fire detection and suppression
+6. Document physical access procedures
+7. Conduct physical security risk assessment
+
+### Option 3: Small Office Deployment (Limited Scope)
+**Warning**: Suitable only for non-critical systems or low-sensitivity data
+
+```bash
+# Absolute minimum for small deployments:
+- [ ] Locked room or locking server cabinet
+- [ ] Access limited to authorized personnel
+- [ ] UPS for power protection
+- [ ] Temperature monitoring
+- [ ] Access log (can be manual)
+- [ ] Physical security assessment documented
+```
+
+Note: This approach may require additional compensating controls for SOC2 audit.
 
 ## Quick Deployment Path
 
@@ -96,14 +161,24 @@ cat > configuration.nix <<'EOF'
 }
 EOF
 
-# 2. Deploy to cloud VM or on-premises hardware
+# 2. Deploy to physical hardware
+# Boot target hardware from Keystone ISO or network boot
+# Then deploy from your workstation:
 nixos-anywhere --flake .#your-config root@<target-ip>
 
-# 3. Verify security controls
+# 3. Record hardware asset information (required for SOC2)
+cat >> hardware-inventory.csv <<'ASSET'
+Serial Number,Make,Model,Location,Service,Purchase Date,TPM EK
+SN123456,Dell,PowerEdge R740,Colo-Cabinet-A12,prod-server-01,2024-01-15,<TPM EK cert>
+ASSET
+
+# 4. Verify security controls
 ssh admin@<target-ip>
 sudo systemctl status
 sudo zpool status
 sudo tpm2_pcrread  # Verify TPM is functional
+lsblk -f  # Verify encryption
+sudo dmidecode -t system  # Record serial number for asset tracking
 ```
 
 ### Step 2: Implement Git-Based Configuration Management (Week 2)
@@ -341,11 +416,16 @@ chmod +x scripts/access-review.sh
 1. **Starting evidence collection late**: Begin on Day 1, not Month 6
 2. **Incomplete documentation**: Policies and procedures must be complete before audit
 3. **Manual processes**: Automate evidence collection to ensure completeness
-4. **Ignoring availability controls**: Most cloud services need availability in scope
+4. **Ignoring availability controls**: Most services need availability in scope
 5. **Poor change management**: Every infrastructure change must be tracked in Git
 6. **Missing access reviews**: Quarterly access reviews are expected for SOC2
 7. **No DR testing**: Disaster recovery must be tested, not just documented
-8. **Weak vendor management**: Cloud providers and other vendors need assessment
+8. **Weak vendor management**: Colocation providers and other vendors need assessment
+9. **Inadequate physical security documentation** (Bare-Metal): Missing visitor logs, access logs, or environmental monitoring records
+10. **No hardware asset tracking** (Bare-Metal): Hardware inventory incomplete or not updated quarterly
+11. **Improper hardware disposal** (Bare-Metal): Decommissioned hardware not cryptographically erased or physically destroyed
+12. **Missing colocation SOC2 reports** (Bare-Metal): Colocation provider's SOC2 Type 2 report not obtained or reviewed annually
+13. **Physical access control gaps** (Bare-Metal): Visitor access not logged, no escort policy, or access lists not reviewed
 
 ## Testing Your Compliance
 
@@ -392,8 +472,34 @@ grep -q "mutableUsers = false" /etc/nixos/configuration.nix && echo "  ✓ Decla
 echo "✓ Checking configuration management..."
 cd /etc/nixos && git status >/dev/null 2>&1 && echo "  ✓ Git repository initialized" || echo "  ✗ No Git repository"
 
+# Bare-Metal Physical Security Checks
+echo ""
+echo "=== Bare-Metal Physical Security Checks ==="
+echo "✓ Checking hardware asset inventory..."
+[ -f hardware-inventory.csv ] && echo "  ✓ Hardware inventory exists" || echo "  ✗ Hardware inventory missing"
+
+echo "✓ Checking physical access logs..."
+echo "  ℹ Manual check required: Verify physical access logs are being maintained"
+echo "  ℹ  - Colocation: Request access logs from provider monthly"
+echo "  ℹ  - On-premises: Check badge system or manual log"
+
+echo "✓ Checking environmental monitoring..."
+echo "  ℹ Manual check required: Verify temperature/humidity monitoring"
+echo "  ℹ  - Check monitoring system for recent data"
+echo "  ℹ  - Verify alerting is configured"
+
+echo "✓ Checking UPS status..."
+upsc ups 2>/dev/null | grep -q "battery.charge" && echo "  ✓ UPS monitoring configured" || echo "  ℹ Check UPS status manually"
+
+echo "✓ Checking colocation SOC2 report..."
+echo "  ℹ Manual check required: If using colocation:"
+echo "  ℹ  - Obtain SOC2 Type 2 report from provider (annual)"
+echo "  ℹ  - Review for physical security controls"
+echo "  ℹ  - Document review and any findings"
+
 echo ""
 echo "Review complete. Address any ✗ items before audit."
+echo "Note: ℹ items require manual verification."
 ```
 
 ## Next Steps
