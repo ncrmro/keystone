@@ -39,9 +39,56 @@ The client module provides a complete Hyprland desktop:
 
 ## Common Development Commands
 
-### VM Testing with bin/virtual-machine
+### Fast VM Testing with bin/build-vm (Recommended for Config Testing)
 
-The `bin/virtual-machine` script is the **primary driver** for creating and managing libvirt VMs for Keystone testing:
+The `bin/build-vm` script provides the **fastest way** to test desktop and terminal configurations using `nixos-rebuild build-vm`. It automatically builds and connects you to the VM:
+
+```bash
+# Terminal development environment - auto-SSH into VM
+./bin/build-vm terminal             # Build and auto-connect via SSH
+./bin/build-vm terminal --clean     # Clean old artifacts first
+
+# Hyprland desktop - open graphical console
+./bin/build-vm desktop              # Build and open console
+./bin/build-vm desktop --clean      # Clean old artifacts first
+
+# Build only, don't connect
+./bin/build-vm terminal --build-only
+```
+
+**Key Features**:
+- **Automatic connection** - Terminal: auto-SSH, Desktop: graphical console
+- **Fast iteration** - Mounts host Nix store via 9P (no copying, faster builds)
+- **Persistent disk** - Creates `build-vm-{terminal,desktop}.qcow2` for persistent state
+- **No encryption/secure boot overhead** - Focus on config testing, not security features
+- **Simple credentials** - User: `testuser/testpass`, Root: `root/root`
+
+**How it works**:
+- **Terminal VM**: Starts VM in background, waits for SSH to be ready, then automatically connects you
+  - Exit SSH with `exit` or Ctrl-D (VM keeps running in background)
+  - Reconnect: `ssh -p 2222 testuser@localhost`
+  - Stop VM: `kill $(cat build-vm-terminal.pid)`
+- **Desktop VM**: Opens QEMU window with Hyprland desktop
+  - Stop with `poweroff` inside VM or Ctrl-C
+
+**When to use build-vm vs test-deployment**:
+- Use `build-vm` for: Testing desktop configs, terminal dev environment, home-manager modules, fast iteration
+- Use `test-deployment` for: Full stack testing (ZFS encryption, secure boot, TPM, initrd SSH unlock)
+
+**VM Details**:
+- The VM script is at `./result/bin/run-build-vm-{terminal,desktop}-vm`
+- Persistent disk at `./build-vm-{terminal,desktop}.qcow2`
+- Disk survives reboots but can be deleted with `--clean`
+- VMs use QEMU directly (no libvirt)
+- Terminal VM: SSH forwarded to `localhost:2222`
+
+**Configurations**:
+- `terminal`: Minimal NixOS with terminal dev environment (Helix, Zsh, Zellij, Ghostty, Git)
+- `desktop`: Full Hyprland desktop + terminal dev environment (Firefox, VSCode, VLC, Waybar, etc.)
+
+### Full Stack VM Testing with bin/virtual-machine
+
+The `bin/virtual-machine` script is the **primary driver** for creating and managing libvirt VMs for full-stack Keystone testing:
 
 ```bash
 # Create a new VM with default settings (uses vms/keystone-installer.iso if available)

@@ -82,6 +82,30 @@
           }
         ];
       };
+
+      # Fast VM testing configurations using nixos-rebuild build-vm
+      # These skip disko/encryption/secure boot for rapid iteration
+
+      # Terminal development environment testing
+      build-vm-terminal = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          home-manager.nixosModules.home-manager
+          ./vms/build-vm-terminal/configuration.nix
+        ];
+      };
+
+      # Hyprland desktop testing
+      build-vm-desktop = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          home-manager.nixosModules.home-manager
+          ./vms/build-vm-desktop/configuration.nix
+          {
+            _module.args.omarchy = omarchy;
+          }
+        ];
+      };
     };
 
     # Home-manager configurations for testing
