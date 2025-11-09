@@ -73,15 +73,15 @@ Automatic Connection:
 Manual Access (if needed):
   terminal VM:
     SSH: ssh -p 2222 testuser@localhost
-    Console: ./result/bin/run-build-vm-terminal-vm
+    Console: ./result/bin/run-keystone-buildvm-terminal-vm
 
   desktop VM:
-    Console: ./result/bin/run-build-vm-desktop-vm
+    Console: ./result/bin/run-keystone-buildvm-desktop-vm
 
 Files Created:
-  - VM script: ./result/bin/run-build-vm-{terminal,desktop}-vm
-  - Persistent disk: ./build-vm-{terminal,desktop}.qcow2
-  - VM PID file: ./build-vm-{terminal,desktop}.pid (terminal only)
+  - VM script: ./result/bin/run-keystone-buildvm-{terminal,desktop}-vm
+  - Persistent disk: .build-vm/keystone-buildvm-{terminal,desktop}.qcow2
+  - VM PID file: .build-vm/{terminal,desktop}.pid (terminal only)
 
 Compare workflows:
   ./bin/test-deployment  Full testing (ZFS, encryption, secure boot, TPM)
@@ -156,7 +156,9 @@ done
 case "$CONFIG" in
     terminal|desktop)
         FLAKE_CONFIG="build-vm-$CONFIG"
-        DISK_IMAGE="build-vm-$CONFIG.qcow2"
+        VM_DIR=".build-vm"
+        DISK_IMAGE="$VM_DIR/keystone-buildvm-$CONFIG.qcow2"
+        PID_FILE="$VM_DIR/$CONFIG.pid"
         ;;
     *)
         print_error "Invalid configuration: $CONFIG"
@@ -165,6 +167,9 @@ case "$CONFIG" in
         exit 1
         ;;
 esac
+
+# Create VM directory if it doesn't exist
+mkdir -p "$VM_DIR"
 
 # Clean if requested
 if [ "$CLEAN" = true ]; then
@@ -195,14 +200,17 @@ fi
 # Show build information
 echo
 print_info "Configuration: $CONFIG"
-print_info "VM script:     ./result/bin/run-$FLAKE_CONFIG-vm"
+print_info "VM script:     ./result/bin/run-keystone-buildvm-$CONFIG-vm"
 print_info "Disk image:    $DISK_IMAGE"
+if [ "$CONFIG" = "desktop" ]; then
+    print_info "Login:         testuser / testpass"
+fi
 echo
 
 # If build-only, exit here
 if [ "$BUILD_ONLY" = true ]; then
     print_info "Build complete. To run manually:"
-    echo "  ./result/bin/run-$FLAKE_CONFIG-vm"
+    echo "  ./result/bin/run-keystone-buildvm-$CONFIG-vm"
     echo
     if [ "$CONFIG" = "terminal" ]; then
         print_info "Or use this script without --build-only to auto-connect"
@@ -215,8 +223,7 @@ if [ "$CONFIG" = "terminal" ]; then
     # Terminal VM: Start in background and SSH in
     print_step "Starting terminal VM in background..."
 
-    VM_SCRIPT="./result/bin/run-$FLAKE_CONFIG-vm"
-    PID_FILE="./build-vm-terminal.pid"
+    VM_SCRIPT="./result/bin/run-keystone-buildvm-$CONFIG-vm"
 
     # Clean up any existing VM
     if [ -f "$PID_FILE" ]; then
@@ -229,8 +236,8 @@ if [ "$CONFIG" = "terminal" ]; then
         rm -f "$PID_FILE"
     fi
 
-    # Start VM in background
-    nohup "$VM_SCRIPT" </dev/null >/dev/null 2>&1 &
+    # Start VM in background (set NIX_DISK_IMAGE to use our directory)
+    NIX_DISK_IMAGE="$DISK_IMAGE" nohup "$VM_SCRIPT" </dev/null >/dev/null 2>&1 &
     VM_PID=$!
     echo "$VM_PID" > "$PID_FILE"
 
@@ -283,9 +290,14 @@ if [ "$CONFIG" = "terminal" ]; then
 elif [ "$CONFIG" = "desktop" ]; then
     # Desktop VM: Run with graphical console
     print_step "Starting desktop VM with graphical console..."
-    print_info "Login with: testuser / testpass"
+    echo
+    print_success "VM Credentials:"
+    echo "  Username: testuser"
+    echo "  Password: testpass"
+    echo
     print_info "Press Ctrl-C or use 'poweroff' in VM to stop"
     echo
 
-    exec ./result/bin/run-$FLAKE_CONFIG-vm
+    # Run desktop VM with custom disk image location
+    exec env NIX_DISK_IMAGE="$DISK_IMAGE" ./result/bin/run-keystone-buildvm-$CONFIG-vm
 fi

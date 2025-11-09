@@ -72,6 +72,19 @@
   # Basic networking with DHCP
   networking.useDHCP = lib.mkDefault true;
 
+  # VM-specific configuration for build-vm
+  # These options only apply when building with nixos-rebuild build-vm
+  virtualisation.vmVariant = {
+    # Forward SSH port for easy host access: ssh -p 2222 testuser@localhost
+    virtualisation.forwardPorts = [
+      {
+        from = "host";
+        host.port = 2222;
+        guest.port = 22;
+      }
+    ];
+  };
+
   # Enable serial console for VM
   boot.kernelParams = [
     "console=ttyS0,115200n8"
@@ -87,6 +100,10 @@
     description = "Hyprland Test User";
     initialPassword = "testpass"; # Test only - insecure
     extraGroups = ["wheel" "networkmanager" "video" "audio"];
+    # Add host SSH key for passwordless access
+    openssh.authorizedKeys.keys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyrDBVcGK+pUZOTUA7MLoD5vYK/kaPF6TNNyoDmwNl2 ncrmro@ncrmro-laptop-fw7k"
+    ];
   };
 
   # Root password for easy access
