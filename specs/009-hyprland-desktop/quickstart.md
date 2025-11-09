@@ -62,7 +62,7 @@ Login credentials:
 
 1. Connect to VM console:
    ```bash
-   remote-viewer $(virsh domdisplay hyprland-test)
+   remote-viewer $(virsh domdisplay keystone-test-vm)
    ```
 
 2. Expected: greetd login prompt appears within 30 seconds of boot
@@ -163,8 +163,8 @@ After deployment, verify these items:
 
 ```bash
 # Shut down VM
-virsh shutdown hyprland-test
+virsh shutdown keystone-test-vm
 
 # Remove VM completely
-./bin/virtual-machine --reset hyprland-test
+./bin/virtual-machine --reset keystone-test-vm
 ```
