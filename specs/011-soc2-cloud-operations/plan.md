@@ -1,8 +1,8 @@
-# Implementation Plan: SOC2-Compliant Cloud Operations
+# Implementation Plan: SOC2-Compliant Bare-Metal Operations
 
 ## Overview
 
-This plan outlines the implementation approach for operating Keystone infrastructure in a SOC2-compliant manner for both 100% cloud and hybrid cloud deployments. The plan is designed for a typical organization pursuing SOC2 Type 2 certification over a 12-month period.
+This plan outlines the implementation approach for operating Keystone infrastructure in a SOC2-compliant manner for both 100% bare-metal and hybrid (bare-metal + cloud) deployments. The plan is designed for a typical organization pursuing SOC2 Type 2 certification over a 12-month period, with emphasis on physical security controls required for bare-metal infrastructure.
 
 ## Goals
 
@@ -25,7 +25,39 @@ This plan outlines the implementation approach for operating Keystone infrastruc
 
 ### Phase 1: Foundation (Months 1-2)
 
-**Goal**: Establish secure infrastructure foundation with all mandatory security controls operational.
+**Goal**: Establish secure infrastructure foundation with all mandatory security controls operational, including physical security for bare-metal deployments.
+
+#### Week 0: Physical Security Setup (Bare-Metal Prerequisite)
+**Note**: Complete before infrastructure deployment. Skip if using cloud-only initially.
+
+- Select and secure physical location
+  - Colocation facility: Evaluate providers, select, sign contract, provision cabinet/cage
+  - On-premises: Designate secure room, install access controls, environmental monitoring
+- Implement physical access controls
+  - Badge access system or lock with access logging
+  - Visitor sign-in procedures
+  - Access list maintenance process
+- Deploy environmental controls
+  - Temperature and humidity monitoring
+  - UPS installation and testing
+  - Fire detection and suppression verification
+- Hardware procurement and receiving
+  - Order hardware from authorized vendors
+  - Inspect for tampering upon receipt
+  - Record serial numbers and create asset inventory
+- Obtain colocation provider documentation (if applicable)
+  - Request SOC2 Type 2 report
+  - Review SLA for uptime, power, cooling
+  - Document remote hands procedures
+
+**Deliverables**:
+- [ ] Physical location secured (colocation contract or on-premises room)
+- [ ] Physical access control system operational
+- [ ] Environmental monitoring configured with alerting
+- [ ] UPS installed and tested
+- [ ] Hardware asset inventory created
+- [ ] Colocation SOC2 report obtained and reviewed (if applicable)
+- [ ] Physical Security Policy drafted
 
 #### Week 1-2: Infrastructure Deployment
 - Deploy Keystone servers and clients with full security stack
@@ -346,10 +378,41 @@ This plan outlines the implementation approach for operating Keystone infrastruc
 |----------|---------------|-------|
 | Auditor Fees | $20,000-$50,000 | Varies by organization size and complexity |
 | Tooling | $5,000-$20,000/year | Logging, monitoring, vulnerability scanning, compliance automation |
-| Infrastructure | $5,000-$50,000/year | Cloud costs, additional redundancy for availability |
+| **Bare-Metal Infrastructure** | **$15,000-$100,000+** | **See breakdown below** |
+| Physical Security | $2,000-$20,000 | Access control system, cameras, environmental monitoring (on-premises) |
 | Training | $2,000-$5,000 | Security awareness, compliance training |
 | Consulting (optional) | $10,000-$50,000 | Gap assessments, readiness reviews, implementation support |
-| **Total** | **$42,000-$175,000** | First year cost including one-time and recurring |
+| **Total** | **$54,000-$245,000+** | First year cost including one-time and recurring |
+
+#### Bare-Metal Infrastructure Cost Breakdown
+
+**Option 1: Colocation Facility** (Most Common)
+| Item | Cost | Notes |
+|------|------|-------|
+| Hardware (2-4 servers) | $10,000-$40,000 | One-time: Dell/HPE/Supermicro servers with TPM2 |
+| Colocation fees | $200-$2,000/month | $2,400-$24,000/year: Quarter rack to full rack |
+| Network connectivity | $100-$1,000/month | $1,200-$12,000/year: Bandwidth and redundancy |
+| Remote hands | $100-$500/month | $1,200-$6,000/year: As-needed hardware maintenance |
+| **Annual Total** | **$15,000-$80,000** | Hardware + first year colocation |
+
+**Option 2: On-Premises Data Center**
+| Item | Cost | Notes |
+|------|------|-------|
+| Hardware (2-4 servers) | $10,000-$40,000 | One-time: Enterprise servers |
+| Physical security setup | $2,000-$20,000 | Badge system, cameras, locks (one-time) |
+| UPS/power | $1,000-$10,000 | One-time: Appropriate for load |
+| Environmental monitoring | $500-$2,000 | Temperature/humidity sensors, alerting |
+| ISP connectivity | $100-$1,000/month | $1,200-$12,000/year: Redundant business class |
+| Rack/mounting | $500-$2,000 | One-time: Server rack and mounting equipment |
+| **First Year Total** | **$16,000-$85,000** | Hardware + infrastructure + annual ISP |
+
+**Option 3: Hybrid (Bare-Metal + Cloud DR)**
+| Item | Cost | Notes |
+|------|------|-------|
+| Primary bare-metal | See above | Colocation or on-premises |
+| Cloud DR | $1,000-$10,000/year | Cold standby or backup-only cloud infrastructure |
+| VPN/networking | $500-$2,000/year | Inter-site connectivity |
+| **Annual Total** | **$17,000-$95,000** | Bare-metal + cloud DR |
 
 ### Infrastructure
 

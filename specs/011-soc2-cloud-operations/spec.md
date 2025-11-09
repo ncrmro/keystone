@@ -1,15 +1,17 @@
-# Feature Specification: SOC2-Compliant Cloud Operations
+# Feature Specification: SOC2-Compliant Bare-Metal Operations
 
 **Feature Branch**: `011-soc2-cloud-operations`
 **Created**: 2025-11-09
 **Status**: Draft
-**Input**: User requirement: "Outline a spec for operating 100% or hybrid clouds in a SOC2 manner using keystone"
+**Input**: User requirement: "Outline a spec for operating 100% bare-metal or hybrid in a SOC2 manner using keystone"
 
 ## Executive Summary
 
-This specification defines how to operate 100% cloud or hybrid cloud infrastructure in a SOC2 Type 2 compliant manner using the Keystone platform. It establishes architectural patterns, operational procedures, security controls, and audit requirements necessary to achieve and maintain SOC2 certification for organizations using Keystone.
+This specification defines how to operate 100% bare-metal or hybrid (bare-metal + cloud) infrastructure in a SOC2 Type 2 compliant manner using the Keystone platform. It establishes architectural patterns, operational procedures, physical and logical security controls, and audit requirements necessary to achieve and maintain SOC2 certification for organizations using Keystone on self-owned or colocation hardware.
 
-Keystone provides a strong foundation for SOC2 compliance through its security-first architecture (TPM2, LUKS encryption, Secure Boot, ZFS encryption), declarative configuration, and infrastructure-as-code approach. This specification maps Keystone's existing capabilities to SOC2 Trust Services Criteria and defines additional operational controls needed for full compliance.
+Keystone provides a strong foundation for SOC2 compliance through its security-first architecture (TPM2, LUKS encryption, Secure Boot, ZFS encryption), declarative configuration, and infrastructure-as-code approach. This specification maps Keystone's existing capabilities to SOC2 Trust Services Criteria and defines additional operational controls—particularly physical security controls—needed for full compliance with bare-metal deployments.
+
+**Key Bare-Metal Considerations**: Unlike cloud-only deployments, bare-metal operations require physical security controls, hardware lifecycle management, physical asset tracking, data center or colocation facility management, and environmental controls. This specification addresses these requirements comprehensively.
 
 ## User Scenarios & Testing
 
@@ -109,11 +111,16 @@ As a privacy officer, I need controls for collecting, processing, storing, and d
 
 ### Edge Cases
 
-- **Hybrid cloud split-brain scenarios**: Network partition between on-premises and cloud infrastructure causing data divergence
-- **TPM failure or hardware replacement**: Loss of TPM2 requiring recovery key usage and re-enrollment
+- **Physical hardware failure**: Disk, motherboard, or power supply failure requiring hardware replacement and recovery
+- **TPM failure or hardware replacement**: Loss of TPM2 requiring recovery key usage and re-enrollment on new hardware
+- **Physical security breach**: Unauthorized physical access to data center or colocation facility
+- **Environmental failure**: Cooling, power, or environmental control system failure in data center
+- **Natural disaster**: Flood, fire, or earthquake affecting physical infrastructure location
+- **Hardware theft or loss**: Physical theft of servers containing encrypted data
+- **Hybrid infrastructure split-brain**: Network partition between bare-metal and cloud backup infrastructure
 - **Certificate expiration**: TLS/SSL certificate renewal in production without service disruption
-- **Multi-region compliance**: Data residency requirements conflicting with disaster recovery strategies
-- **Third-party vendor changes**: Cloud provider security control changes affecting Keystone compliance posture
+- **Data center provider changes**: Colocation facility policy or security control changes
+- **Decommissioning hardware**: Secure disposal of hardware containing encrypted data at end of lifecycle
 
 ## Requirements
 
@@ -176,31 +183,67 @@ As a privacy officer, I need controls for collecting, processing, storing, and d
 - **FR-006.5**: The system MUST implement log retention policies (minimum 1 year for SOC2)
 - **FR-006.6**: The system MUST support automated compliance scanning
 
+#### FR-007: Physical Security Controls (Bare-Metal Specific)
+
+- **FR-007.1**: The organization MUST control physical access to server locations (data center, colocation, or on-premises)
+- **FR-007.2**: The organization MUST maintain visitor logs for physical facility access
+- **FR-007.3**: The organization MUST implement environmental controls (temperature, humidity, fire suppression)
+- **FR-007.4**: The organization MUST provide physical security monitoring (cameras, motion detection) where appropriate
+- **FR-007.5**: The organization MUST implement secure hardware disposal procedures (cryptographic erasure, physical destruction)
+- **FR-007.6**: The organization MUST maintain hardware asset inventory with serial numbers and locations
+- **FR-007.7**: The organization MUST protect against power failures (UPS, generator, or redundant power)
+- **FR-007.8**: The organization MUST implement physical tamper detection where feasible
+- **FR-007.9**: The organization MUST secure network equipment and cabling in physical spaces
+
 ### Architectural Requirements
 
 #### AR-001: Deployment Architecture
 
-**AR-001.1 - 100% Cloud Deployment Pattern**: For organizations operating entirely in cloud environments:
-- All Keystone servers MUST run on cloud VMs (AWS EC2, GCP Compute Engine, Azure VMs, DigitalOcean Droplets, etc.)
-- Keystone clients MAY run on cloud VMs (developer workstations) or on-premises
-- Cloud infrastructure MUST use provider's hardware security modules (HSMs) or virtual TPM when available
-- Multi-region deployment RECOMMENDED for high availability
-- Cloud provider storage encryption SHOULD be enabled in addition to Keystone encryption
+**AR-001.1 - 100% Bare-Metal Deployment Pattern**: For organizations operating entirely on physical hardware:
+- All Keystone servers MUST run on physical hardware owned or leased by the organization
+- Hardware locations: on-premises data center, colocation facility, or secure server room
+- Physical hardware MUST use hardware TPM2 for key management and boot attestation
+- Redundant hardware RECOMMENDED for high availability (N+1 or active-active configurations)
+- Physical security controls MUST be appropriate for the facility type (see AR-011)
+- Hardware lifecycle management MUST include procurement, deployment, maintenance, and secure disposal
+- Network connectivity MUST include redundant ISPs or network paths where availability is critical
 
-**AR-001.2 - Hybrid Cloud Deployment Pattern**: For organizations using both cloud and on-premises infrastructure:
-- Keystone servers MAY run in both cloud and on-premises locations
-- WireGuard VPN MUST interconnect all locations
-- On-premises infrastructure SHOULD use hardware TPM2
-- Cloud infrastructure MUST use virtual TPM where available
-- Data residency requirements MUST be enforced through configuration
+**AR-001.2 - Hybrid Deployment Pattern**: For organizations using both bare-metal and cloud infrastructure:
+- Primary Keystone servers MUST run on bare-metal hardware for performance and control
+- Cloud infrastructure MAY be used for:
+  - Disaster recovery and backup sites
+  - Geographic distribution for availability
+  - Burst capacity or development/testing environments
+  - Cold storage for archival backups
+- WireGuard VPN MUST interconnect all locations (bare-metal and cloud)
+- Bare-metal infrastructure SHOULD use hardware TPM2
+- Cloud infrastructure SHOULD use virtual TPM where available
+- Data residency and sovereignty requirements MUST be enforced through configuration
+- Cost optimization: Use bare-metal for sustained workloads, cloud for variable or backup capacity
 
-**AR-001.3 - Security Zone Segmentation**: Deployments MUST implement network segmentation:
+**AR-001.3 - On-Premises Deployment**: For organizations hosting in owned facilities:
+- Organization MUST control physical access to server locations
+- Environmental controls (HVAC, fire suppression, power) MUST be maintained
+- Physical security monitoring (cameras, alarms) MUST be implemented per risk assessment
+- Hardware maintenance and replacement parts MUST be available within RTO requirements
+- Network connectivity MUST include redundant paths to prevent single point of failure
+
+**AR-001.4 - Colocation Deployment**: For organizations using colocation facilities:
+- Colocation provider MUST have SOC2 report available for review
+- Physical access controls MUST meet organizational security requirements
+- SLA MUST guarantee uptime, power, cooling, and network connectivity appropriate for needs
+- Remote hands service SHOULD be available for hardware maintenance
+- Organization retains responsibility for logical security controls
+- Cabinet/cage access logs MUST be maintained and reviewed
+
+**AR-001.5 - Security Zone Segmentation**: All deployments MUST implement network segmentation:
 - **Management Zone**: Administrative access, configuration management, audit logging
 - **Application Zone**: Workloads and services
 - **Data Zone**: Storage systems and databases
 - **DMZ**: Internet-facing services with restricted backend access
+- Physical network isolation (VLANs, separate switches) RECOMMENDED for critical zones
 
-**Rationale**: Proper deployment architecture ensures security boundaries, availability, and compliance with data residency requirements.
+**Rationale**: Bare-metal deployments provide maximum control, performance, and cost efficiency for sustained workloads, but require comprehensive physical security controls. Hybrid approaches balance control with flexibility for disaster recovery and geographic distribution.
 
 #### AR-002: Infrastructure as Code (IaC)
 
@@ -470,6 +513,7 @@ As a privacy officer, I need controls for collecting, processing, storing, and d
 - Privacy Policy (if applicable)
 - Acceptable Use Policy
 - Vendor Management Policy
+- Physical Security Policy (for bare-metal deployments)
 
 **AR-010.2 - Procedure Documentation**: Operational procedures MUST be documented:
 - User provisioning/deprovisioning
@@ -480,6 +524,9 @@ As a privacy officer, I need controls for collecting, processing, storing, and d
 - Configuration changes
 - Security monitoring
 - Audit log review
+- Physical access control (for bare-metal)
+- Hardware maintenance and replacement (for bare-metal)
+- Secure hardware disposal (for bare-metal)
 
 **AR-010.3 - Evidence Collection**: For SOC2 Type 2, evidence MUST be collected:
 - Access reviews (quarterly)
@@ -492,6 +539,10 @@ As a privacy officer, I need controls for collecting, processing, storing, and d
 - Security awareness communications
 - DR test results
 - Risk assessments
+- Physical access logs (for bare-metal)
+- Hardware inventory records (for bare-metal)
+- Environmental monitoring logs (for bare-metal)
+- Colocation facility SOC2 reports (if applicable)
 
 **AR-010.4 - Annual Reviews**: The following MUST be reviewed annually:
 - All policies and procedures
@@ -502,6 +553,114 @@ As a privacy officer, I need controls for collecting, processing, storing, and d
 - Access controls and permissions
 
 **Rationale**: Comprehensive documentation provides evidence for auditors and ensures consistent operations.
+
+#### AR-011: Physical Security Controls (Bare-Metal Specific)
+
+**AR-011.1 - Physical Access Control**: Organizations operating bare-metal infrastructure MUST implement:
+- Badge access systems or lock-and-key with access logs
+- Visitor sign-in procedures with escort requirements
+- Access lists maintained and reviewed quarterly
+- Physical access provisioning/deprovisioning procedures
+- Separation of physical and logical access (different personnel where feasible)
+- Failed access attempt logging and investigation
+
+**AR-011.2 - Facility Requirements by Deployment Type**:
+
+**On-Premises Data Center**:
+- Dedicated room or cage for server infrastructure
+- Restricted access with badge reader or keypad
+- Security cameras covering entry points
+- Environmental controls (HVAC) appropriate for equipment
+- Fire suppression system (clean agent or pre-action sprinkler)
+- UPS and generator backup power
+- Physical security monitoring and alarm system
+
+**Colocation Facility**:
+- Facility MUST have SOC2 Type 2 report available for review
+- Cabinet or cage must be lockable with organization-controlled access
+- Organization MUST maintain list of personnel authorized for physical access
+- Remote hands service agreements MUST be documented
+- Access logs MUST be obtained from facility and reviewed
+- SLA MUST cover environmental controls, power, and physical security
+
+**Secure Server Room** (for small deployments):
+- Locked room with access limited to authorized personnel
+- Environmental monitoring (temperature alerts)
+- UPS for power protection
+- Fire detection and suppression appropriate for space
+- Access logging through badge system or manual log
+- Physical security assessment appropriate to data classification
+
+**AR-011.3 - Environmental Controls**:
+- Temperature monitoring with alerting (typical range: 18-27°C / 64-80°F)
+- Humidity monitoring with alerting (typical range: 40-60% RH)
+- Fire detection and suppression systems tested annually
+- Water leak detection in areas with plumbing near equipment
+- HVAC redundancy or rapid repair SLA for critical environments
+- Emergency power off (EPO) button accessible but protected from accidental activation
+
+**AR-011.4 - Hardware Asset Management**:
+- Asset inventory MUST include:
+  - Serial numbers
+  - Make and model
+  - Physical location
+  - Purchase date and warranty status
+  - Assignment (which system/service)
+  - TPM endorsement key (EK) certificate
+- Asset inventory MUST be reviewed quarterly
+- Asset disposition MUST be tracked (deployed, storage, decommissioned)
+- Asset transfers between locations MUST be logged
+
+**AR-011.5 - Hardware Lifecycle Management**:
+- **Procurement**: Hardware MUST be ordered from authorized vendors with chain of custody
+- **Receiving**: Hardware MUST be inspected for tampering upon receipt
+- **Deployment**: Hardware MUST be tracked from receipt to production deployment
+- **Maintenance**: Hardware repairs MUST be performed by authorized personnel with logging
+- **Decommissioning**: Hardware MUST be securely wiped or destroyed per disposal policy
+
+**AR-011.6 - Secure Hardware Disposal**:
+- Storage devices MUST be cryptographically erased or physically destroyed
+- Cryptographic erasure: ZFS dataset destruction with key deletion PLUS disk secure erase command
+- Physical destruction: Shredding, degaussing, or crushing by certified disposal vendor
+- Certificate of destruction MUST be obtained and retained
+- Disposal logs MUST track serial number, disposal method, date, and approving personnel
+- Hardware disposal MUST occur within 30 days of decommissioning to limit storage risk
+
+**AR-011.7 - Physical Tamper Detection**:
+- Server chassis intrusion detection enabled where hardware supports it
+- Tamper-evident seals on critical equipment where appropriate
+- Regular physical inspection of equipment for signs of tampering
+- Investigation procedure for suspected physical tampering
+- TPM boot attestation to detect firmware/bootloader tampering
+
+**AR-011.8 - Network Infrastructure Physical Security**:
+- Network equipment (switches, routers, firewalls) MUST be in secured locations
+- Cabling MUST be protected from physical access where feasible
+- Network jacks in unsecured areas MUST be disabled or on isolated VLAN
+- Physical network taps and unauthorized devices MUST be detected through monitoring
+- Wireless access points MUST be inventoried and monitored for rogue APs
+
+**AR-011.9 - Power and Cooling Redundancy**:
+- Critical systems MUST have UPS protection with sufficient runtime for graceful shutdown
+- Generator backup RECOMMENDED for facilities requiring >4 hour uptime during power outages
+- UPS battery testing MUST occur quarterly
+- Generator testing MUST occur monthly (if present)
+- Cooling failure MUST trigger alerts before equipment reaches shutdown temperature
+- Redundant power supplies RECOMMENDED for critical servers
+
+**AR-011.10 - Colocation Provider Assessment**:
+When using colocation facilities, organizations MUST assess:
+- Physical security controls (badge access, cameras, guards, mantraps)
+- SOC2 Type 2 report covering physical security controls
+- Environmental controls and SLAs
+- Power redundancy and SLAs
+- Fire suppression and detection systems
+- Disaster recovery capabilities (e.g., geographic diversity)
+- Access logging capabilities and retention
+- Remote hands services and response times
+- Network connectivity redundancy
+
+**Rationale**: Physical security is often the weakest link in bare-metal deployments. While Keystone's encryption protects against data extraction from stolen hardware, physical access can enable attacks against running systems, firmware tampering, or denial of service. Comprehensive physical controls are essential for SOC2 compliance with bare-metal infrastructure.
 
 ### Key Entities
 
