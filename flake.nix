@@ -92,14 +92,6 @@
         modules = [
           home-manager.nixosModules.home-manager
           ./vms/build-vm-terminal/configuration.nix
-          {
-            # Add overlay to make zesh package available
-            nixpkgs.overlays = [
-              (final: prev: {
-                zesh = final.callPackage ./packages/zesh {};
-              })
-            ];
-          }
         ];
       };
 
@@ -111,12 +103,6 @@
           ./vms/build-vm-desktop/configuration.nix
           {
             _module.args.omarchy = omarchy;
-            # Add overlay to make zesh package available
-            nixpkgs.overlays = [
-              (final: prev: {
-                zesh = final.callPackage ./packages/zesh {};
-              })
-            ];
           }
         ];
       };
