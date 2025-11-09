@@ -1,0 +1,3 @@
+{
+  "Stop": ".claude/hooks/nix-flake-check-on-stop.py"
+}
