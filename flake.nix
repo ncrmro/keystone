@@ -62,6 +62,50 @@
           ./vms/test-server/configuration.nix
         ];
       };
+
+      # Test Hyprland desktop configuration
+      test-hyprland = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          lanzaboote.nixosModules.lanzaboote
+          home-manager.nixosModules.home-manager
+          ./modules/client
+          ./modules/disko-single-disk-root
+          ./modules/initrd-ssh-unlock
+          ./modules/secure-boot
+          ./modules/tpm-enrollment
+          ./modules/users
+          ./vms/test-hyprland/configuration.nix
+          {
+            _module.args.omarchy = omarchy;
+          }
+        ];
+      };
+
+      # Fast VM testing configurations using nixos-rebuild build-vm
+      # These skip disko/encryption/secure boot for rapid iteration
+
+      # Terminal development environment testing
+      build-vm-terminal = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          home-manager.nixosModules.home-manager
+          ./vms/build-vm-terminal/configuration.nix
+        ];
+      };
+
+      # Hyprland desktop testing
+      build-vm-desktop = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          home-manager.nixosModules.home-manager
+          ./vms/build-vm-desktop/configuration.nix
+          {
+            _module.args.omarchy = omarchy;
+          }
+        ];
+      };
     };
 
     # Home-manager configurations for testing
@@ -95,8 +139,15 @@
       initrdSshUnlock = ./modules/initrd-ssh-unlock;
       isoInstaller = ./modules/iso-installer.nix;
       secureBoot = ./modules/secure-boot;
+      ssh = ./modules/ssh;
       tpmEnrollment = ./modules/tpm-enrollment;
       users = ./modules/users;
+    };
+
+    # Export home-manager modules
+    homeManagerModules = {
+      terminalDevEnvironment = ./home-manager/modules/terminal-dev-environment;
+      desktopHyprland = ./home-manager/modules/desktop/hyprland;
     };
 
     packages.x86_64-linux = {
