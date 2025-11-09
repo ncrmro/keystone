@@ -25,6 +25,12 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  # Root filesystem (required for NixOS)
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
+  };
+
   # Import individual Keystone client modules WITHOUT disko/secure boot
   # We import these directly to avoid the disko dependency in the main client module
   imports = [
@@ -87,6 +93,9 @@
     description = "Hyprland Test User";
     initialPassword = "testpass"; # Test only - insecure
     extraGroups = ["wheel" "networkmanager" "video" "audio"];
+    openssh.authorizedKeys.keys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyrDBVcGK+pUZOTUA7MLoD5vYK/kaPF6TNNyoDmwNl2 ncrmro@ncrmro-laptop-fw7k"
+    ];
   };
 
   # Root password for easy access
@@ -138,5 +147,4 @@
       userEmail = "testuser@keystone-buildvm-desktop";
     };
   };
-
 }
