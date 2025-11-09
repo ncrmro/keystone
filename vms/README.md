@@ -16,20 +16,25 @@ There are two types of VM testing workflows:
 
 **Usage**:
 ```bash
-# Terminal dev environment
-./bin/build-vm terminal --run
+# Terminal dev environment - auto-SSH into VM
+./bin/build-vm terminal
 
-# Hyprland desktop
-./bin/build-vm desktop --run
+# Hyprland desktop - open graphical console
+./bin/build-vm desktop
+
+# Build only, don't connect
+./bin/build-vm terminal --build-only
 ```
 
 **Characteristics**:
 - Uses `nixos-rebuild build-vm`
+- **Automatic connection** - Terminal auto-SSHs, Desktop opens console
 - Mounts host Nix store via 9P (read-only)
 - No encryption, secure boot, or TPM
 - Fast iteration (~minutes)
 - Persistent qcow2 disk images
 - Direct QEMU execution (no libvirt)
+- Terminal: SSH forwarded to `localhost:2222`
 
 ### 2. Full Stack Testing with `test-deployment` (For Complete Testing)
 
@@ -167,8 +172,8 @@ nixos-rebuild build-vm --flake .#build-vm-desktop
 # Edit desktop configuration
 vim modules/client/desktop/hyprland.nix
 
-# Rebuild and test
-./bin/build-vm desktop --run
+# Rebuild and auto-connect to graphical console
+./bin/build-vm desktop
 ```
 
 ### Quick Terminal Config Test
@@ -176,8 +181,8 @@ vim modules/client/desktop/hyprland.nix
 # Edit home-manager config
 vim home-manager/modules/terminal-dev-environment/default.nix
 
-# Rebuild and test
-./bin/build-vm terminal --run
+# Rebuild and auto-SSH into VM
+./bin/build-vm terminal
 ```
 
 ### Full Security Stack Test
@@ -220,9 +225,21 @@ rm -f build-vm-*.qcow2
 - Check if `result/bin/run-build-vm-*-vm` exists
 - Ensure KVM is available: `ls -la /dev/kvm`
 
+**Problem**: SSH connection times out (terminal VM)
+- Check if VM is running: `ps aux | grep qemu`
+- Check if port 2222 is in use: `lsof -i :2222`
+- Try manual connection: `ssh -p 2222 testuser@localhost`
+- Check VM console: `./result/bin/run-build-vm-terminal-vm`
+
 **Problem**: Display issues in desktop VM
 - Ensure you have X11 or Wayland display available
 - Check QEMU display options in configuration
+
+**Problem**: Terminal VM still running after disconnect
+- This is expected - VM runs in background
+- Reconnect: `ssh -p 2222 testuser@localhost`
+- Stop VM: `kill $(cat build-vm-terminal.pid)`
+- Or find and kill: `ps aux | grep build-vm-terminal`
 
 ### test-deployment Issues
 

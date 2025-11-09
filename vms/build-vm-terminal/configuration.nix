@@ -37,6 +37,16 @@
   # Basic networking with DHCP
   networking.useDHCP = lib.mkDefault true;
 
+  # Forward SSH port for easy host access
+  # This allows: ssh -p 2222 testuser@localhost
+  virtualisation.forwardPorts = [
+    {
+      from = "host";
+      host.port = 2222;
+      guest.port = 22;
+    }
+  ];
+
   # Enable serial console for VM
   boot.kernelParams = [
     "console=ttyS0,115200n8"
