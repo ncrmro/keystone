@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+#
+# build-vm - Fast VM testing for Keystone configurations
+#
+# This script uses nixos-rebuild build-vm for rapid iteration on configurations
+# without the overhead of full deployment (no disko/encryption/secure boot).
+#
+# Usage:
+#   ./bin/build-vm terminal          # Build terminal dev environment VM
+#   ./bin/build-vm desktop            # Build Hyprland desktop VM
+#   ./bin/build-vm terminal --run     # Build and run immediately
+#   ./bin/build-vm desktop --run      # Build and run immediately
+#   ./bin/build-vm terminal --clean   # Clean old VM artifacts first
+#
+# The VMs:
+#   - Mount host Nix store via 9P (read-only, fast)
+#   - Create persistent qcow2 disk (survives reboots)
+#   - Much faster than full deployment for testing configs
+#   - Located at ./build-vm-{terminal,desktop}.qcow2
+#
+# Compare with ./bin/test-deployment:
+#   - test-deployment: Full stack (ZFS, encryption, secure boot, TPM)
+#   - build-vm: Fast iteration on configs (no encryption/secure boot)
+
+set -euo pipefail
+
+# ANSI colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+print_usage() {
+    cat <<EOF
+Usage: $0 <terminal|desktop> [OPTIONS]
+
+Build and run VMs for fast testing of Keystone configurations.
+
+Configurations:
+  terminal    Terminal development environment only
+  desktop     Full Hyprland desktop with terminal dev environment
+
+Options:
+  --run       Build and run immediately
+  --clean     Remove old VM artifacts before building
+  --help      Show this help message
+
+Examples:
+  $0 terminal                  # Build terminal VM
+  $0 desktop --run              # Build and run desktop VM
+  $0 terminal --clean --run     # Clean, build, and run
+
+VM Details:
+  - Mounts host Nix store via 9P (read-only)
+  - Creates persistent qcow2 disk
+  - User: testuser / Password: testpass
+  - Root: root / Password: root
+
+The VM script is at: ./result/bin/run-build-vm-{terminal,desktop}-vm
+The persistent disk is at: ./build-vm-{terminal,desktop}.qcow2
+
+Compare workflows:
+  ./bin/test-deployment  Full testing (ZFS, encryption, secure boot, TPM)
+  ./bin/build-vm        Fast config testing (no encryption/secure boot)
+EOF
+}
+
+print_step() {
+    echo -e "${BLUE}==>${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+print_info() {
+    echo -e "${CYAN}ℹ${NC} $1"
+}
+
+# Parse arguments
+if [ $# -eq 0 ]; then
+    print_error "No configuration specified"
+    echo
+    print_usage
+    exit 1
+fi
+
+CONFIG="$1"
+shift
+
+RUN_VM=false
+CLEAN=false
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --run)
+            RUN_VM=true
+            shift
+            ;;
+        --clean)
+            CLEAN=true
+            shift
+            ;;
+        --help|-h)
+            print_usage
+            exit 0
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            echo
+            print_usage
+            exit 1
+            ;;
+    esac
+done
+
+# Validate configuration
+case "$CONFIG" in
+    terminal|desktop)
+        FLAKE_CONFIG="build-vm-$CONFIG"
+        DISK_IMAGE="build-vm-$CONFIG.qcow2"
+        ;;
+    *)
+        print_error "Invalid configuration: $CONFIG"
+        echo
+        print_usage
+        exit 1
+        ;;
+esac
+
+# Clean if requested
+if [ "$CLEAN" = true ]; then
+    print_step "Cleaning old VM artifacts"
+
+    if [ -f "$DISK_IMAGE" ]; then
+        rm -f "$DISK_IMAGE"
+        print_success "Removed $DISK_IMAGE"
+    fi
+
+    if [ -L result ]; then
+        rm -f result
+        print_success "Removed result symlink"
+    fi
+fi
+
+# Build VM
+print_step "Building VM for configuration: $CONFIG"
+print_info "This may take a few minutes on first build..."
+
+if nixos-rebuild build-vm --flake ".#$FLAKE_CONFIG"; then
+    print_success "VM built successfully"
+else
+    print_error "Failed to build VM"
+    exit 1
+fi
+
+# Show information
+echo
+print_info "VM Configuration Details:"
+echo "  Configuration: $CONFIG"
+echo "  Flake output:  $FLAKE_CONFIG"
+echo "  Disk image:    $DISK_IMAGE"
+echo "  VM script:     ./result/bin/run-$FLAKE_CONFIG-vm"
+echo
+
+print_info "Login Credentials:"
+echo "  User:     testuser / testpass"
+echo "  Root:     root / root"
+echo
+
+if [ "$CONFIG" = "terminal" ]; then
+    print_info "Available Tools (Terminal Dev Environment):"
+    echo "  - Helix editor (hx)"
+    echo "  - Zsh shell with utilities"
+    echo "  - Zellij terminal multiplexer"
+    echo "  - Ghostty terminal emulator"
+    echo "  - Git with UI tools"
+elif [ "$CONFIG" = "desktop" ]; then
+    print_info "Available Features (Hyprland Desktop):"
+    echo "  - Hyprland Wayland compositor"
+    echo "  - Waybar status bar"
+    echo "  - Mako notification daemon"
+    echo "  - Terminal dev environment"
+    echo "  - Firefox, VSCode, VLC"
+fi
+
+echo
+
+# Run if requested
+if [ "$RUN_VM" = true ]; then
+    print_step "Starting VM..."
+    print_info "Press Ctrl-C to stop the VM"
+    print_warning "The VM disk is persistent - changes survive reboots"
+    echo
+
+    exec ./result/bin/run-$FLAKE_CONFIG-vm
+else
+    print_info "To run the VM:"
+    echo "  ./result/bin/run-$FLAKE_CONFIG-vm"
+    echo
+    print_info "Or rebuild with --run flag:"
+    echo "  $0 $CONFIG --run"
+fi
