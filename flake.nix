@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -24,6 +25,7 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-unstable,
     disko,
     home-manager,
     omarchy,
@@ -138,6 +140,7 @@
       diskoSingleDiskRoot = ./modules/disko-single-disk-root;
       initrdSshUnlock = ./modules/initrd-ssh-unlock;
       isoInstaller = ./modules/iso-installer.nix;
+      mailServer = ./modules/mail-server;
       secureBoot = ./modules/secure-boot;
       ssh = ./modules/ssh;
       tpmEnrollment = ./modules/tpm-enrollment;
