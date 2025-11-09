@@ -4,13 +4,15 @@
   pkgs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.client.desktop.hyprland;
-in
-{
+in {
   options.keystone.client.desktop.hyprland = {
-    enable = mkEnableOption "Hyprland Wayland compositor";
+    enable =
+      mkEnableOption "Hyprland Wayland compositor"
+      // {
+        default = true;
+      };
   };
 
   config = mkIf cfg.enable {

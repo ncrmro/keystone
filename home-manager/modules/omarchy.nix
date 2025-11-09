@@ -8,7 +8,9 @@
 with lib;
 {
   options.keystone.home.omarchy = {
-    enable = mkEnableOption "Enable omarchy configuration and tools";
+    enable = mkEnableOption "Enable omarchy configuration and tools" // {
+      default = true;
+    };
   };
 
   config = mkIf config.keystone.home.omarchy.enable {
