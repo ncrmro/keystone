@@ -37,14 +37,16 @@
   # Basic networking with DHCP
   networking.useDHCP = lib.mkDefault true;
 
-  # VM configuration for build-vm
-  # Forward SSH port for easy host access: ssh -p 2222 testuser@localhost
-  virtualisation = {
-    # Add port forwarding to QEMU options
-    # This overrides the default networking to add SSH forwarding
-    qemu.options = [
-      "-net nic,netdev=user.0,model=virtio"
-      "-netdev user,id=user.0,hostfwd=tcp::2222-:22"
+  # VM-specific configuration for build-vm
+  # These options only apply when building with nixos-rebuild build-vm
+  virtualisation.vmVariant = {
+    # Forward SSH port for easy host access: ssh -p 2222 testuser@localhost
+    virtualisation.forwardPorts = [
+      {
+        from = "host";
+        host.port = 2222;
+        guest.port = 22;
+      }
     ];
   };
 
