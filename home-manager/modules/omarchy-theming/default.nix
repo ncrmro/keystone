@@ -128,14 +128,15 @@ in
     ];
 
     # Warnings for potentially misconfigured setups
-    warnings = lib.optionals (cfg.terminal.enable && config.programs.terminal-dev-environment.enable == false) [
-      "Terminal theming is enabled but programs.terminal-dev-environment is not enabled. Theme integration may not work as expected."
-    ]
-    ++ lib.optionals (cfg.terminal.applications.helix && (config.programs.terminal-dev-environment.tools.editor or false) == false) [
-      "Helix theming is enabled but programs.terminal-dev-environment.tools.editor is not enabled. Helix theme will not be applied."
-    ]
-    ++ lib.optionals (cfg.terminal.applications.ghostty && (config.programs.terminal-dev-environment.tools.terminal or false) == false) [
-      "Ghostty theming is enabled but programs.terminal-dev-environment.tools.terminal is not enabled. Ghostty theme will not be applied."
-    ];
+    warnings = 
+      lib.optionals (cfg.terminal.enable && (config.programs.terminal-dev-environment.enable or false) == false) [
+        "Terminal theming is enabled but programs.terminal-dev-environment is not enabled. Theme integration may not work as expected."
+      ]
+      ++ lib.optionals (cfg.terminal.enable && cfg.terminal.applications.helix && (config.programs.terminal-dev-environment.tools.editor or false) == false) [
+        "Helix theming is enabled but programs.terminal-dev-environment.tools.editor is not enabled. Helix theme will not be applied."
+      ]
+      ++ lib.optionals (cfg.terminal.enable && cfg.terminal.applications.ghostty && (config.programs.terminal-dev-environment.tools.terminal or false) == false) [
+        "Ghostty theming is enabled but programs.terminal-dev-environment.tools.terminal is not enabled. Ghostty theme will not be applied."
+      ];
   };
 }
