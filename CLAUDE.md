@@ -86,6 +86,57 @@ The `bin/build-vm` script provides the **fastest way** to test desktop and termi
 - `terminal`: Minimal NixOS with terminal dev environment (Helix, Zsh, Zellij, Ghostty, Git)
 - `desktop`: Full Hyprland desktop + terminal dev environment (Firefox, VSCode, VLC, Waybar, etc.)
 
+### Confined VMs for Sandboxed Development
+
+The `bin/confined-vm` script creates **network-isolated VMs** designed for secure, sandboxed development work. These VMs are particularly useful for AI assistants like Claude to work on code without internet access:
+
+```bash
+# Use current directory as workspace
+./bin/confined-vm
+
+# Mount specific directory as workspace
+./bin/confined-vm /path/to/project
+
+# Build with more resources
+./bin/confined-vm --memory 8192 --cores 8
+
+# Clean rebuild
+./bin/confined-vm --clean
+```
+
+**Key Features**:
+- **Complete Network Isolation** - No network interfaces (except loopback), absolutely no internet access
+- **Workspace Mounting** - Host directory mounted at `/mnt/workspace` via 9P/virtfs
+- **Complete Dev Environment** - All common development tools pre-installed (Rust, Go, Node.js, Python, etc.)
+- **Nix Store Sharing** - Uses host's `/nix/store` for instant access to packages
+- **Pre-cached Dependencies** - All dependencies must be fetched on host before starting VM
+
+**Use Cases**:
+- AI assistant development work in isolated environment
+- Testing code that shouldn't have network access
+- Offline development with reproducible environment
+- Security-sensitive work requiring network isolation
+
+**How it works**:
+1. Build on host: `nix build .#yourproject` (caches dependencies)
+2. Start VM: `./bin/confined-vm /path/to/project`
+3. Login: `dev/dev` (or `root/root`)
+4. Work at `/mnt/workspace` - all changes persist to host
+5. No network = complete isolation
+
+**Verifying Isolation**:
+```bash
+# In VM - should show only loopback
+ip addr show
+
+# These should all fail - no internet
+ping 8.8.8.8
+curl https://google.com
+nix build nixpkgs#hello  # Fails if not cached
+```
+
+See `docs/confined-vms.md` for comprehensive documentation including advanced configuration, performance tuning, and security considerations.
+
 ### Full Stack VM Testing with bin/virtual-machine
 
 The `bin/virtual-machine` script is the **primary driver** for creating and managing libvirt VMs for full-stack Keystone testing:

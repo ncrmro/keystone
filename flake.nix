@@ -106,6 +106,16 @@
           }
         ];
       };
+
+      # Confined VM for sandboxed development (no network access)
+      # Designed for AI assistants like Claude to work in isolated environments
+      confined-dev = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          home-manager.nixosModules.home-manager
+          ./vms/confined-dev/configuration.nix
+        ];
+      };
     };
 
     # Home-manager configurations for testing
