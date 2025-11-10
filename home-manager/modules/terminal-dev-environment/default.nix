@@ -34,6 +34,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    home.packages = cfg.extraPackages;
+    home.packages = with pkgs; [
+      csview  # CSV viewer for terminal
+    ] ++ cfg.extraPackages;
   };
 }
