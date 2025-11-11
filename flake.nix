@@ -156,5 +156,80 @@
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
       zesh = pkgs.callPackage ./packages/zesh {};
     };
+
+    # Development shell with terminal dev environment tools
+    devShells.x86_64-linux.default = let
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      zesh = pkgs.callPackage ./packages/zesh {};
+    in
+      pkgs.mkShell {
+        name = "keystone-dev";
+
+        packages = with pkgs; [
+          # Version control
+          git
+          git-lfs
+          lazygit
+
+          # Editor
+          helix
+
+          # Shell utilities
+          zsh
+          starship
+          zoxide
+          direnv
+          nix-direnv
+
+          # Terminal multiplexer
+          zellij
+
+          # Terminal emulator
+          ghostty
+
+          # File utilities
+          eza
+          ripgrep
+          tree
+          fd
+          bat
+
+          # Data processing
+          jq
+          yq
+          csview
+
+          # System utilities
+          htop
+          bottom
+
+          # Nix tools
+          nixfmt-rfc-style
+          nil # Nix LSP
+          nixos-anywhere
+
+          # Custom packages
+          zesh
+        ];
+
+        shellHook = ''
+          echo "🔑 Keystone Development Environment"
+          echo ""
+          echo "Available tools:"
+          echo "  - Git (with lazygit UI)"
+          echo "  - Helix editor"
+          echo "  - Zsh with starship prompt"
+          echo "  - Zellij terminal multiplexer"
+          echo "  - Ghostty terminal emulator"
+          echo "  - Modern CLI tools (eza, ripgrep, bat, fd)"
+          echo "  - Nix development tools (nixfmt, nil)"
+          echo ""
+          echo "Quick commands:"
+          echo "  - 'hx' - Open Helix editor"
+          echo "  - 'lg' - Open lazygit"
+          echo "  - 'zesh' - Zellij session manager"
+          echo ""
+        '';
+      };
   };
 }
