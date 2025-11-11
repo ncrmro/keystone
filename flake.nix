@@ -156,5 +156,60 @@
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
       zesh = pkgs.callPackage ./packages/zesh {};
     };
+
+    # Development shell using home-manager terminal-dev-environment module
+    devShells.x86_64-linux.default = let
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      
+      # Create a home-manager environment with terminal-dev-environment
+      hmEnv = home-manager.lib.homeManagerConfiguration {
+        inherit pkgs;
+        modules = [
+          ./home-manager/modules/terminal-dev-environment
+          {
+            home.username = "vscode";
+            home.homeDirectory = "/home/vscode";
+            home.stateVersion = "25.05";
+            
+            programs.terminal-dev-environment.enable = true;
+            
+            # Additional packages for Nix development
+            home.packages = with pkgs; [
+              nixfmt-rfc-style
+              nil
+              nixos-anywhere
+            ];
+          }
+        ];
+      };
+    in
+      pkgs.mkShell {
+        name = "keystone-dev";
+
+        # Install home-manager environment
+        buildInputs = [ hmEnv.activationPackage ];
+
+        shellHook = ''
+          # Activate home-manager environment
+          ${hmEnv.activationPackage}/activate
+          
+          echo "🔑 Keystone Development Environment"
+          echo ""
+          echo "Available tools:"
+          echo "  - Git (with lazygit UI)"
+          echo "  - Helix editor with LSP support"
+          echo "  - Zsh with starship prompt"
+          echo "  - Zellij terminal multiplexer"
+          echo "  - Ghostty terminal emulator"
+          echo "  - Modern CLI tools (eza, ripgrep, bat, fd)"
+          echo "  - Nix development tools (nixfmt, nil)"
+          echo ""
+          echo "Quick commands:"
+          echo "  - 'hx' - Open Helix editor"
+          echo "  - 'lg' - Open lazygit"
+          echo "  - 'zesh' - Zellij session manager"
+          echo ""
+        '';
+      };
   };
 }
