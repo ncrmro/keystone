@@ -158,6 +158,7 @@
     };
 
     # Development shell with terminal dev environment tools
+    # Reuses packages from home-manager terminal-dev-environment module
     devShells.x86_64-linux.default = let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
       zesh = pkgs.callPackage ./packages/zesh {};
@@ -166,50 +167,52 @@
         name = "keystone-dev";
 
         packages = with pkgs; [
-          # Version control
+          # From home-manager/modules/terminal-dev-environment/git.nix
           git
           git-lfs
           lazygit
 
-          # Editor
+          # From home-manager/modules/terminal-dev-environment/helix.nix
           helix
+          bash-language-server
+          yaml-language-server
+          dockerfile-language-server-nodejs
+          vscode-langservers-extracted
+          marksman
+          nixfmt-classic
 
-          # Shell utilities
+          # From home-manager/modules/terminal-dev-environment/zsh.nix
           zsh
           starship
           zoxide
           direnv
           nix-direnv
-
-          # Terminal multiplexer
-          zellij
-
-          # Terminal emulator
-          ghostty
-
-          # File utilities
           eza
           ripgrep
           tree
-          fd
-          bat
-
-          # Data processing
           jq
-          yq
+          htop
+          zesh
+
+          # From home-manager/modules/terminal-dev-environment/zellij.nix
+          zellij
+
+          # From home-manager/modules/terminal-dev-environment/ghostty.nix
+          ghostty
+
+          # From home-manager/modules/terminal-dev-environment/default.nix
           csview
 
-          # System utilities
-          htop
+          # Additional packages for development
+          fd
+          bat
+          yq
           bottom
 
-          # Nix tools
+          # Nix development tools
           nixfmt-rfc-style
-          nil # Nix LSP
+          nil
           nixos-anywhere
-
-          # Custom packages
-          zesh
         ];
 
         shellHook = ''
@@ -217,7 +220,7 @@
           echo ""
           echo "Available tools:"
           echo "  - Git (with lazygit UI)"
-          echo "  - Helix editor"
+          echo "  - Helix editor with LSP support"
           echo "  - Zsh with starship prompt"
           echo "  - Zellij terminal multiplexer"
           echo "  - Ghostty terminal emulator"
