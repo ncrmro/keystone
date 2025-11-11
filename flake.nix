@@ -157,65 +157,42 @@
       zesh = pkgs.callPackage ./packages/zesh {};
     };
 
-    # Development shell with terminal dev environment tools
-    # Reuses packages from home-manager terminal-dev-environment module
+    # Development shell using home-manager terminal-dev-environment module
     devShells.x86_64-linux.default = let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
-      zesh = pkgs.callPackage ./packages/zesh {};
+      
+      # Create a home-manager environment with terminal-dev-environment
+      hmEnv = home-manager.lib.homeManagerConfiguration {
+        inherit pkgs;
+        modules = [
+          ./home-manager/modules/terminal-dev-environment
+          {
+            home.username = "vscode";
+            home.homeDirectory = "/home/vscode";
+            home.stateVersion = "25.05";
+            
+            programs.terminal-dev-environment.enable = true;
+            
+            # Additional packages for Nix development
+            home.packages = with pkgs; [
+              nixfmt-rfc-style
+              nil
+              nixos-anywhere
+            ];
+          }
+        ];
+      };
     in
       pkgs.mkShell {
         name = "keystone-dev";
 
-        packages = with pkgs; [
-          # From home-manager/modules/terminal-dev-environment/git.nix
-          git
-          git-lfs
-          lazygit
-
-          # From home-manager/modules/terminal-dev-environment/helix.nix
-          helix
-          bash-language-server
-          yaml-language-server
-          dockerfile-language-server-nodejs
-          vscode-langservers-extracted
-          marksman
-          nixfmt-classic
-
-          # From home-manager/modules/terminal-dev-environment/zsh.nix
-          zsh
-          starship
-          zoxide
-          direnv
-          nix-direnv
-          eza
-          ripgrep
-          tree
-          jq
-          htop
-          zesh
-
-          # From home-manager/modules/terminal-dev-environment/zellij.nix
-          zellij
-
-          # From home-manager/modules/terminal-dev-environment/ghostty.nix
-          ghostty
-
-          # From home-manager/modules/terminal-dev-environment/default.nix
-          csview
-
-          # Additional packages for development
-          fd
-          bat
-          yq
-          bottom
-
-          # Nix development tools
-          nixfmt-rfc-style
-          nil
-          nixos-anywhere
-        ];
+        # Install home-manager environment
+        buildInputs = [ hmEnv.activationPackage ];
 
         shellHook = ''
+          # Activate home-manager environment
+          ${hmEnv.activationPackage}/activate
+          
           echo "🔑 Keystone Development Environment"
           echo ""
           echo "Available tools:"

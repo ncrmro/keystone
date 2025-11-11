@@ -22,8 +22,8 @@
     "NIXPKGS_ALLOW_UNFREE": "1"
   },
 
-  // Use the flake's devShell
-  "postCreateCommand": "nix develop --command echo 'Development environment ready'",
+  // Install home-manager environment via the flake's devShell
+  "postCreateCommand": "nix develop --command bash -c 'echo Development environment ready'",
 
   // Set up customizations
   "customizations": {
@@ -54,7 +54,7 @@
     }
   },
 
-  // Set the default shell
+  // Activate home-manager environment in the shell
   "postAttachCommand": "nix develop",
 
   // Run as the vscode user
