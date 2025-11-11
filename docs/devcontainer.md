@@ -151,30 +151,20 @@ If you're running the devcontainer locally with Docker:
    docker exec -it <container-id> nix develop --command zsh
    ```
 
-### Method 4: Enable SSH Server in Container (Advanced)
+### Method 4: Built-in SSH Server
 
-For a persistent SSH server in the container, you can modify the devcontainer:
+The devcontainer includes an SSH server (via the `sshd` feature) that starts automatically:
 
-1. **Add SSH server to the Dockerfile**:
-   ```dockerfile
-   # In .devcontainer/Dockerfile
-   RUN nix-env -iA nixpkgs.openssh
-   ```
-
-2. **Update devcontainer.json**:
-   ```json
-   {
-     "postCreateCommand": "sudo service ssh start",
-     "forwardPorts": [22]
-   }
-   ```
-
-3. **Configure SSH**:
+1. **Connect via SSH**:
    ```bash
-   # In the container
-   sudo mkdir -p /etc/ssh
-   sudo ssh-keygen -A
-   sudo service ssh start
+   # Use the forwarded port from VS Code Ports panel or Codespaces
+   ssh -p <FORWARDED_PORT> vscode@localhost
+   ```
+
+2. **Set up SSH key authentication**:
+   ```bash
+   # Copy your public key to the container
+   ssh-copy-id -p <FORWARDED_PORT> vscode@localhost
    ```
 
 ## Using the Development Environment

@@ -1,15 +1,19 @@
 {
-  "name": "Keystone Development",
-  "build": {
-    "dockerfile": "Dockerfile",
-    "context": ".."
-  },
+  "name": "Keystone Devcontainer",
+  "image": "mcr.microsoft.com/devcontainers/base:debian",
   
-  // Configure features
+  "hostRequirements": {
+    "cpus": 8,
+    "memory": "32gb"
+  },
+
   "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/sshd:1": {},
     "ghcr.io/devcontainers/features/nix:1": {
+      "version": "latest",
       "multiUser": false,
-      "version": "latest"
+      "extraNixConfig": "experimental-features = nix-command flakes"
     }
   },
 

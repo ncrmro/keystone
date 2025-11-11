@@ -13,14 +13,19 @@ This directory contains the devcontainer configuration for the Keystone project.
 
 The devcontainer provides:
 - **Nix** with flakes enabled
+- **Docker-in-Docker** for container workflows
+- **SSH server** for remote access
 - **All tools** from the Keystone flake devShell
 - **VS Code extensions** for Nix development
-- **SSH port forwarding** for remote access
+
+## Hardware Requirements
+
+- **CPUs**: 8 cores recommended
+- **Memory**: 32GB RAM recommended
 
 ## Files
 
 - `devcontainer.json` - Main configuration file
-- `Dockerfile` - Container image definition
 
 ## Documentation
 
