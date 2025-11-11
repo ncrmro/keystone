@@ -1,0 +1,63 @@
+{
+  "name": "Keystone Development",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  
+  // Configure features
+  "features": {
+    "ghcr.io/devcontainers/features/nix:1": {
+      "multiUser": false,
+      "version": "latest"
+    }
+  },
+
+  // Configure container settings
+  "containerEnv": {
+    "NIXPKGS_ALLOW_UNFREE": "1"
+  },
+
+  // Use the flake's devShell
+  "postCreateCommand": "nix develop --command echo 'Development environment ready'",
+
+  // Set up customizations
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "jnoortheen.nix-ide",
+        "bbenoist.nix",
+        "arrterian.nix-env-selector"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "nix.enableLanguageServer": true,
+        "nix.serverPath": "nil",
+        "editor.formatOnSave": true,
+        "[nix]": {
+          "editor.defaultFormatter": "jnoortheen.nix-ide"
+        }
+      }
+    }
+  },
+
+  // Forward SSH port
+  "forwardPorts": [22],
+  "portsAttributes": {
+    "22": {
+      "label": "SSH",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // Set the default shell
+  "postAttachCommand": "nix develop",
+
+  // Run as the vscode user
+  "remoteUser": "vscode",
+
+  // Mount the Nix store as a volume for better performance
+  "mounts": [
+    "source=nix-store,target=/nix,type=volume"
+  ]
+}

@@ -103,6 +103,16 @@ See `examples/test-server.nix` for a fully documented example configuration.
 
 ## Development & Testing
 
+### Devcontainer Environment
+
+Keystone includes a complete devcontainer configuration for development:
+
+- **Quick Start**: Open in VS Code with Dev Containers extension or GitHub Codespaces
+- **Included Tools**: Git, Helix, Zsh, Zellij, Nix development tools, and more
+- **SSH Access**: Multiple methods for remote access to the container
+
+See [Devcontainer Documentation](docs/devcontainer.md) for complete setup and usage instructions.
+
 ### VM Testing Workflow
 
 Test Keystone ISOs quickly using automated VM workflows:
