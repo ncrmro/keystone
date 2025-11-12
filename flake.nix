@@ -63,6 +63,16 @@
         ];
       };
 
+      # Simple CI test configuration - no encryption, Secure Boot, or TPM
+      ci-simple = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          ./vms/ci-simple/configuration.nix
+        ];
+      };
+        
+       
       # Test Hyprland desktop configuration
       test-hyprland = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
