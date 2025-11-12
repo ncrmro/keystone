@@ -164,6 +164,46 @@ virsh console keystone-test-vm
 
 See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complete details.
 
+### GitHub Actions CI Testing
+
+The project includes automated VM testing in GitHub Actions for validating NixOS configurations:
+
+**Purpose**: Enable GitHub Copilot agents and developers to iteratively test configuration changes in a real VM environment, receiving structured feedback about build/boot/service failures.
+
+**Key Features**:
+- **Automated VM provisioning** using `nixos-rebuild build-vm` (fast, no encryption/secure boot overhead)
+- **Structured JSON output** conforming to `specs/011-github-actions-vm-ci/contracts/test-result-schema.json`
+- **Multi-phase testing**: Build → Boot → Services validation
+- **Concurrency control**: One workflow per branch, auto-cancel older runs
+- **5-minute boot timeout** with partial results on failure
+- **90-day artifact retention** for test results
+
+**Workflow Triggers**:
+- **Manual**: Via GitHub Actions UI or API (workflow_dispatch)
+- **Automatic**: On push to `modules/**`, `vms/**`, `home-manager/**`, `flake.nix`, `flake.lock`
+
+**Testing Scripts** (in `tests/ci/`):
+- `check-boot-status.sh` - Verifies VM booted successfully
+- `validate-services.sh` - Checks critical services are running
+- `format-results.sh` - Converts logs to JSON schema format
+
+**CI-Specific VM Configuration**:
+- Location: `vms/ci-test/configuration.nix`
+- Optimized for CI: Minimal packages, fast boot, 2 cores, 4GB RAM
+- Flake output: `build-vm-ci-test`
+
+**For Copilot Agents**:
+See `specs/011-github-actions-vm-ci/quickstart.md` for API usage examples, polling patterns, and JSON result interpretation.
+
+**For Developers**:
+- View results: GitHub Actions → Workflow run → Summary tab
+- Download JSON: GitHub Actions → Workflow run → Artifacts section
+- Automatic validation on push to configuration files
+
+**Key Difference from Local Testing**:
+- Local `bin/build-vm`: Interactive testing, manual connection
+- CI workflow: Automated testing, structured JSON output, no manual interaction
+
 ### Building ISOs
 ```bash
 # Build installer ISO without SSH keys
