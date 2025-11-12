@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help ci fmt check-lockfile vm-server vm-test vm-ssh vm-connect vm-stop vm-clean
+.PHONY: help ci fmt check-lockfile vm-server vm-test vm-ssh vm-connect vm-stop vm-clean vm-display
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -146,3 +146,15 @@ vm-clean: ## Clean VM artifacts
 		rmdir vms/server 2>/dev/null || true; \
 	fi
 	@echo "✅ Cleanup complete"
+
+## Libvirt VM Targets (for bin/virtual-machine workflow)
+
+vm-display: ## Open graphical display for keystone-test-vm
+	@if ! virsh list --state-running | grep -q "keystone-test-vm"; then \
+		echo "⚠️  VM 'keystone-test-vm' is not running"; \
+		echo "Start it with: ./bin/virtual-machine --name keystone-test-vm --start"; \
+		exit 1; \
+	fi
+	@command -v remote-viewer >/dev/null 2>&1 || (echo "❌ Error: remote-viewer not found. Install with: nix-env -iA nixpkgs.virt-viewer" && exit 1)
+	@echo "🖥️  Opening remote-viewer for keystone-test-vm..."
+	@remote-viewer $$(virsh domdisplay keystone-test-vm)

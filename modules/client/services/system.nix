@@ -4,13 +4,15 @@
   pkgs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.client.services.system;
-in
-{
+in {
   options.keystone.client.services.system = {
-    enable = mkEnableOption "System services and configuration";
+    enable =
+      mkEnableOption "System services and configuration"
+      // {
+        default = true;
+      };
   };
 
   config = mkIf cfg.enable {
@@ -21,7 +23,6 @@ in
     services.locate = {
       enable = true;
       package = pkgs.mlocate;
-      localuser = null; # Allow all users to access locate database
     };
 
     # Enable automatic garbage collection
