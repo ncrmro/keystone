@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ncrmro/keystone/schemas/vm-config.json",
+  "title": "VMConfiguration",
+  "description": "NixOS VM configuration parameters for GitHub Actions testing",
+  "type": "object",
+  "required": [
+    "flake_ref",
+    "type"
+  ],
+  "properties": {
+    "flake_ref": {
+      "type": "string",
+      "pattern": "^(\\.#)?[a-zA-Z0-9_-]+(\\.[a-zA-Z0-9_-]+)*$",
+      "description": "Flake reference for the NixOS configuration (e.g., '.#build-vm-terminal')",
+      "examples": [
+        ".#build-vm-terminal",
+        ".#build-vm-desktop",
+        ".#test-server"
+      ]
+    },
+    "type": {
+      "type": "string",
+      "enum": ["terminal", "desktop", "server"],
+      "description": "Configuration type determining which modules are tested"
+    },
+    "cores": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "default": 2,
+      "description": "Number of vCPUs allocated to VM (max 4 on GitHub-hosted runners)"
+    },
+    "memory_mb": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 12288,
+      "default": 4096,
+      "description": "RAM in megabytes (max 12GB to leave 4GB for host on 16GB runners)"
+    },
+    "disk_size_mb": {
+      "type": "integer",
+      "minimum": 2048,
+      "maximum": 14336,
+      "default": 8192,
+      "description": "Disk size in megabytes (max ~14GB due to runner disk constraints)"
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "flake_ref": ".#build-vm-terminal",
+      "type": "terminal",
+      "cores": 2,
+      "memory_mb": 4096,
+      "disk_size_mb": 8192
+    },
+    {
+      "flake_ref": ".#build-vm-desktop",
+      "type": "desktop",
+      "cores": 4,
+      "memory_mb": 8192,
+      "disk_size_mb": 10240
+    }
+  ]
+}
