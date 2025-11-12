@@ -67,12 +67,12 @@ jobs:
     name: Test VM Configuration
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    
+
     outputs:
       test_result: ${{ steps.output-results.outputs.test_result }}
       status: ${{ steps.output-results.outputs.status }}
       phase: ${{ steps.output-results.outputs.phase }}
-    
+
     steps:
       # Determine configuration name
       # For workflow_dispatch: use input
@@ -87,7 +87,7 @@ jobs:
           fi
           echo "config_name=$CONFIG_NAME" >> $GITHUB_OUTPUT
           echo "Testing configuration: $CONFIG_NAME"
-      
+
       # Determine flake attribute
       # Use input override if provided, otherwise derive from config_name
       - name: Set Flake Attribute
@@ -100,11 +100,11 @@ jobs:
           fi
           echo "flake_attr=$FLAKE_ATTR" >> $GITHUB_OUTPUT
           echo "Flake attribute: $FLAKE_ATTR"
-      
+
       # Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v4
-      
+
       # Install Nix with flakes support
       - name: Install Nix
         uses: cachix/install-nix-action@v27
@@ -113,7 +113,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-      
+
       # Check KVM availability (hardware acceleration required)
       - name: Check KVM Availability
         id: check-kvm
@@ -123,112 +123,112 @@ jobs:
             echo "Hardware acceleration is required for VM testing"
             exit 1
           fi
-          
+
           if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
             echo "::error::Insufficient permissions for /dev/kvm"
             ls -la /dev/kvm
             exit 1
           fi
-          
+
           echo "KVM available and accessible"
           ls -la /dev/kvm
-      
+
       # Build VM using nixos-rebuild build-vm
       - name: Build VM
         id: build-vm
         run: |
           set +e  # Don't exit on error, we want to capture it
-          
+
           BUILD_START=$(date +%s)
-          
+
           echo "Building VM for configuration: ${{ steps.set-config.outputs.config_name }}"
           echo "Flake attribute: ${{ steps.set-flake-attr.outputs.flake_attr }}"
-          
+
           # Capture both stdout and stderr
           BUILD_OUTPUT=$(nixos-rebuild build-vm --flake ".#${{ steps.set-flake-attr.outputs.flake_attr }}" 2>&1)
           BUILD_EXIT_CODE=$?
-          
+
           BUILD_END=$(date +%s)
           BUILD_DURATION=$((BUILD_END - BUILD_START))
-          
+
           echo "build_duration=$BUILD_DURATION" >> $GITHUB_OUTPUT
-          
+
           if [ $BUILD_EXIT_CODE -ne 0 ]; then
             echo "::error::Build failed with exit code $BUILD_EXIT_CODE"
             echo "build_success=false" >> $GITHUB_OUTPUT
-            
+
             # Extract error message (last 50 lines)
             ERROR_LOGS=$(echo "$BUILD_OUTPUT" | tail -n 50)
-            
+
             # Try to extract a concise error message
             ERROR_MESSAGE=$(echo "$BUILD_OUTPUT" | grep -i "error:" | head -n 1 || echo "Build failed")
             if [ -z "$ERROR_MESSAGE" ]; then
               ERROR_MESSAGE="Build failed with exit code $BUILD_EXIT_CODE"
             fi
-            
+
             # Escape for JSON
             ERROR_MESSAGE=$(echo "$ERROR_MESSAGE" | head -c 500)
             ERROR_LOGS=$(echo "$ERROR_LOGS" | head -c 2000)
-            
+
             echo "error_message<<EOF" >> $GITHUB_OUTPUT
             echo "$ERROR_MESSAGE" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
-            
+
             echo "error_logs<<EOF" >> $GITHUB_OUTPUT
             echo "$ERROR_LOGS" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
-            
+
             exit 1
           fi
-          
+
           echo "build_success=true" >> $GITHUB_OUTPUT
-          
+
           # Get build outputs
           if [ -L result ]; then
             VM_SCRIPT=$(readlink -f result)/bin/run-*-vm
             echo "build_outputs=$VM_SCRIPT" >> $GITHUB_OUTPUT
             echo "VM script: $VM_SCRIPT"
           fi
-          
+
           echo "Build successful (${BUILD_DURATION}s)"
         continue-on-error: true
-      
+
       # Boot VM and check connectivity
       - name: Boot VM
         id: boot-vm
         if: steps.build-vm.outputs.build_success == 'true'
         run: |
           set +e  # Don't exit on error
-          
+
           BOOT_START=$(date +%s)
-          
+
           # Find the VM script
           VM_SCRIPT=$(find result/bin -name "run-*-vm" -type f | head -n 1)
-          
+
           if [ -z "$VM_SCRIPT" ]; then
             echo "::error::VM script not found in result/bin"
             exit 1
           fi
-          
+
           echo "Starting VM: $VM_SCRIPT"
-          
+
           # Start VM in background
           nohup "$VM_SCRIPT" </dev/null >/dev/null 2>&1 &
           VM_PID=$!
           echo "vm_pid=$VM_PID" >> $GITHUB_OUTPUT
           echo "VM started (PID $VM_PID)"
-          
+
           # Give VM a few seconds to start booting
           sleep 5
-          
+
           # Use check-boot-status.sh to wait for boot (5 minute timeout)
           chmod +x tests/ci/check-boot-status.sh
-          
+
           if tests/ci/check-boot-status.sh 2222 300; then
             BOOT_END=$(date +%s)
             BOOT_DURATION=$((BOOT_END - BOOT_START))
             BOOT_TIME=$BOOT_DURATION
-            
+
             echo "boot_success=true" >> $GITHUB_OUTPUT
             echo "boot_duration=$BOOT_DURATION" >> $GITHUB_OUTPUT
             echo "boot_time=$BOOT_TIME" >> $GITHUB_OUTPUT
@@ -236,78 +236,78 @@ jobs:
           else
             BOOT_END=$(date +%s)
             BOOT_DURATION=$((BOOT_END - BOOT_START))
-            
+
             echo "boot_success=false" >> $GITHUB_OUTPUT
             echo "boot_duration=$BOOT_DURATION" >> $GITHUB_OUTPUT
-            
+
             # Try to get some diagnostic info if VM is still running
             if kill -0 $VM_PID 2>/dev/null; then
               echo "VM process still running but not responsive"
             else
               echo "VM process died"
             fi
-            
+
             ERROR_MESSAGE="VM failed to boot within 5-minute timeout"
             ERROR_LOGS="Boot timeout after ${BOOT_DURATION}s. VM may have hung during initialization."
-            
+
             echo "error_message=$ERROR_MESSAGE" >> $GITHUB_OUTPUT
             echo "error_logs=$ERROR_LOGS" >> $GITHUB_OUTPUT
-            
+
             exit 1
           fi
         continue-on-error: true
-      
+
       # Validate services
       - name: Validate Services
         id: validate-services
         if: steps.boot-vm.outputs.boot_success == 'true'
         run: |
           set +e  # Don't exit on error
-          
+
           chmod +x tests/ci/validate-services.sh
-          
+
           # Run service validation
           SERVICES_OUTPUT=$(tests/ci/validate-services.sh 2222 2>&1)
           SERVICES_EXIT_CODE=$?
-          
+
           echo "$SERVICES_OUTPUT"
-          
+
           # Parse output
           RUNNING=$(echo "$SERVICES_OUTPUT" | grep "^RUNNING:" | cut -d: -f2- | xargs)
           FAILED=$(echo "$SERVICES_OUTPUT" | grep "^FAILED:" | cut -d: -f2- | xargs)
-          
+
           # Convert space-separated to comma-separated
           RUNNING_CSV=$(echo "$RUNNING" | tr ' ' ',')
           FAILED_CSV=$(echo "$FAILED" | tr ' ' ',')
-          
+
           echo "services_running=$RUNNING_CSV" >> $GITHUB_OUTPUT
           echo "services_failed=$FAILED_CSV" >> $GITHUB_OUTPUT
-          
+
           if [ $SERVICES_EXIT_CODE -eq 0 ]; then
             echo "services_success=true" >> $GITHUB_OUTPUT
             echo "All services validated successfully"
           else
             echo "services_success=false" >> $GITHUB_OUTPUT
-            
+
             ERROR_MESSAGE="One or more critical services failed: $FAILED"
             ERROR_LOGS=$(echo "$SERVICES_OUTPUT" | grep "✗" || echo "Service validation failed")
-            
+
             echo "error_message=$ERROR_MESSAGE" >> $GITHUB_OUTPUT
             echo "error_logs<<EOF" >> $GITHUB_OUTPUT
             echo "$ERROR_LOGS" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
-            
+
             exit 1
           fi
         continue-on-error: true
-      
+
       # Format results as JSON
       - name: Format Results
         id: format-results
         if: always()
         run: |
           chmod +x tests/ci/format-results.sh
-          
+
           # Determine overall status and phase
           if [ "${{ steps.build-vm.outputs.build_success }}" != "true" ]; then
             STATUS="failure"
@@ -334,16 +334,16 @@ jobs:
             ERROR_MESSAGE=""
             ERROR_LOGS=""
           fi
-          
+
           # Calculate total duration
           WORKFLOW_START="${{ github.event.created_at }}"
           WORKFLOW_END=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          
+
           # Simple duration calculation (use build + boot durations)
           BUILD_DUR="${{ steps.build-vm.outputs.build_duration }}"
           BOOT_DUR="${{ steps.boot-vm.outputs.boot_duration }}"
           TOTAL_DURATION=$((${BUILD_DUR:-0} + ${BOOT_DUR:-0}))
-          
+
           # Build format-results.sh arguments
           ARGS=(
             --status "$STATUS"
@@ -355,14 +355,14 @@ jobs:
             --build-duration "${BUILD_DUR:-0}"
             --output "test-result.json"
           )
-          
+
           # Add build outputs if available
           if [ -n "${{ steps.build-vm.outputs.build_outputs }}" ]; then
             ARGS+=(--build-outputs "${{ steps.build-vm.outputs.build_outputs }}")
           else
             ARGS+=(--build-outputs "")
           fi
-          
+
           # Add boot results if available
           if [ -n "${{ steps.boot-vm.outputs.boot_success }}" ]; then
             ARGS+=(--boot-success "${{ steps.boot-vm.outputs.boot_success }}")
@@ -371,27 +371,27 @@ jobs:
               ARGS+=(--boot-time "${{ steps.boot-vm.outputs.boot_time }}")
             fi
           fi
-          
+
           # Add services results if available
           if [ -n "${{ steps.validate-services.outputs.services_success }}" ]; then
             ARGS+=(--services-success "${{ steps.validate-services.outputs.services_success }}")
             ARGS+=(--services-running "${{ steps.validate-services.outputs.services_running }}")
             ARGS+=(--services-failed "${{ steps.validate-services.outputs.services_failed }}")
           fi
-          
+
           # Add error details if this is a failure
           if [ "$STATUS" = "failure" ]; then
             ARGS+=(--error-message "$ERROR_MESSAGE")
             ARGS+=(--error-phase "$ERROR_PHASE")
             ARGS+=(--error-logs "$ERROR_LOGS")
           fi
-          
+
           # Generate JSON
           tests/ci/format-results.sh "${ARGS[@]}"
-          
+
           echo "JSON results generated"
           cat test-result.json
-      
+
       # Set job outputs for API access
       - name: Set Job Outputs
         id: output-results
@@ -401,15 +401,15 @@ jobs:
           TEST_RESULT=$(cat test-result.json)
           STATUS=$(echo "$TEST_RESULT" | jq -r '.status')
           PHASE=$(echo "$TEST_RESULT" | jq -r '.phase')
-          
+
           # Set outputs (escape JSON for output)
           echo "test_result<<EOF" >> $GITHUB_OUTPUT
           echo "$TEST_RESULT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          
+
           echo "status=$STATUS" >> $GITHUB_OUTPUT
           echo "phase=$PHASE" >> $GITHUB_OUTPUT
-      
+
       # Upload JSON results as artifact
       - name: Upload Test Results
         if: always()
@@ -418,46 +418,46 @@ jobs:
           name: test-results-${{ github.run_id }}
           path: test-result.json
           retention-days: 90
-      
+
       # Generate human-readable summary
       - name: Generate Summary
         if: always()
         run: |
           echo "# VM Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           STATUS=$(cat test-result.json | jq -r '.status')
           PHASE=$(cat test-result.json | jq -r '.phase')
           DURATION=$(cat test-result.json | jq -r '.duration_seconds')
-          
+
           if [ "$STATUS" = "success" ]; then
             echo "✅ **Status**: Success" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Status**: Failure" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           echo "📊 **Phase**: $PHASE" >> $GITHUB_STEP_SUMMARY
           echo "⏱️ **Duration**: ${DURATION}s" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           # Build results
           echo "## Build Phase" >> $GITHUB_STEP_SUMMARY
           BUILD_SUCCESS=$(cat test-result.json | jq -r '.results.build.success')
           BUILD_DUR=$(cat test-result.json | jq -r '.results.build.duration_seconds')
-          
+
           if [ "$BUILD_SUCCESS" = "true" ]; then
             echo "✅ Build succeeded (${BUILD_DUR}s)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Build failed (${BUILD_DUR}s)" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           # Boot results (if present)
           BOOT_SUCCESS=$(cat test-result.json | jq -r '.results.boot.success // empty')
           if [ -n "$BOOT_SUCCESS" ]; then
             echo "## Boot Phase" >> $GITHUB_STEP_SUMMARY
             BOOT_DUR=$(cat test-result.json | jq -r '.results.boot.duration_seconds')
-            
+
             if [ "$BOOT_SUCCESS" = "true" ]; then
               BOOT_TIME=$(cat test-result.json | jq -r '.results.boot.boot_time_seconds // empty')
               echo "✅ Boot succeeded (${BOOT_TIME}s)" >> $GITHUB_STEP_SUMMARY
@@ -466,14 +466,14 @@ jobs:
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           # Services results (if present)
           SERVICES_SUCCESS=$(cat test-result.json | jq -r '.results.services.success // empty')
           if [ -n "$SERVICES_SUCCESS" ]; then
             echo "## Services Phase" >> $GITHUB_STEP_SUMMARY
             RUNNING=$(cat test-result.json | jq -r '.results.services.running | join(", ")')
             FAILED=$(cat test-result.json | jq -r '.results.services.failed | join(", ")')
-            
+
             if [ "$SERVICES_SUCCESS" = "true" ]; then
               echo "✅ All services running" >> $GITHUB_STEP_SUMMARY
               echo "- Running: $RUNNING" >> $GITHUB_STEP_SUMMARY
@@ -484,7 +484,7 @@ jobs:
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           # Error details (if present)
           ERROR_MESSAGE=$(cat test-result.json | jq -r '.error.message // empty')
           if [ -n "$ERROR_MESSAGE" ]; then
@@ -499,13 +499,13 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "</details>" >> $GITHUB_STEP_SUMMARY
           fi
-      
+
       # Cleanup: Kill VM and remove disk images
       - name: Cleanup
         if: always()
         run: |
           echo "Cleaning up VM resources..."
-          
+
           # Kill VM process if it's still running
           VM_PID="${{ steps.boot-vm.outputs.vm_pid }}"
           if [ -n "$VM_PID" ] && kill -0 "$VM_PID" 2>/dev/null; then
@@ -514,18 +514,18 @@ jobs:
             sleep 2
             kill -9 "$VM_PID" 2>/dev/null || true
           fi
-          
+
           # Remove QCOW2 disk images
           echo "Removing QCOW2 disk images..."
           rm -f *.qcow2 || true
           rm -f keystone-buildvm-*.qcow2 || true
           rm -f build-vm-*.qcow2 || true
-          
+
           # Clean up PID files
           rm -f build-vm-*.pid || true
-          
+
           echo "Cleanup complete"
-      
+
       # Fail the job if tests failed
       - name: Check Test Status
         if: always()
