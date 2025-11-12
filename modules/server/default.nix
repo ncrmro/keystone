@@ -4,31 +4,25 @@
   pkgs,
   ...
 }:
-with lib;
-{
+with lib; {
   # Server configuration module
   # Provides always-on infrastructure services
 
   imports = [
     ../disko-single-disk-root
+    ../ssh
   ];
 
   options.keystone.server = {
-    enable = mkEnableOption "Keystone server configuration" // {
-      default = true;
-    };
+    enable =
+      mkEnableOption "Keystone server configuration"
+      // {
+        default = true;
+      };
   };
 
   config = mkIf config.keystone.server.enable {
-    # Enable SSH for remote administration
-    services.openssh = {
-      enable = true;
-      settings = {
-        PermitRootLogin = "prohibit-password";
-        PasswordAuthentication = false;
-        PubkeyAuthentication = true;
-      };
-    };
+    # SSH is enabled via the shared ssh module
 
     # Enable mDNS for easy discovery
     services.avahi = {
@@ -46,10 +40,8 @@ with lib;
     };
 
     # Basic firewall configuration
-    networking.firewall = {
-      enable = true;
-      allowedTCPPorts = [ 22 ]; # SSH
-    };
+    # SSH port (22) is opened by the shared ssh module
+    networking.firewall.enable = true;
 
     # Enable systemd-resolved for DNS
     services.resolved.enable = true;
@@ -75,7 +67,7 @@ with lib;
     };
 
     # Enable experimental Nix features for modern workflows
-    nix.settings.experimental-features = [ "nix-command" "flakes" ];
+    nix.settings.experimental-features = ["nix-command" "flakes"];
 
     # Enable automatic garbage collection
     nix.gc = {

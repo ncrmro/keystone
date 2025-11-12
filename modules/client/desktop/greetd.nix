@@ -4,13 +4,15 @@
   pkgs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.client.desktop.greetd;
-in
-{
+in {
   options.keystone.client.desktop.greetd = {
-    enable = mkEnableOption "greetd login manager with Hyprland";
+    enable =
+      mkEnableOption "greetd login manager with Hyprland"
+      // {
+        default = true;
+      };
   };
 
   config = mkIf cfg.enable {
@@ -24,13 +26,8 @@ in
       };
     };
 
-    # Ensure greetd user can access video group for display
-    users.groups.greetd = { };
-    users.users.greeter = {
-      isSystemUser = true;
-      group = "greetd";
-      extraGroups = [ "video" ];
-    };
+    # Ensure greeter user can access video group for display
+    users.users.greeter.extraGroups = ["video"];
 
     # Enable required packages
     environment.systemPackages = with pkgs; [
