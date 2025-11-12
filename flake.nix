@@ -62,6 +62,15 @@
           ./vms/test-server/configuration.nix
         ];
       };
+
+      # Simple CI test configuration - no encryption, Secure Boot, or TPM
+      ci-simple = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          ./vms/ci-simple/configuration.nix
+        ];
+      };
     };
 
     # Home-manager configurations for testing

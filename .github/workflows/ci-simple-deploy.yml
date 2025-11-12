@@ -1,0 +1,121 @@
+name: CI Simple Deployment Test
+
+# Proof of concept: Deploy NixOS to QEMU VM using nixos-anywhere
+# Uses etchdroid/qemu-kvm-action for VM management
+# Simplified: No Secure Boot, TPM, or complex encryption
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/ci-simple-deploy.yml'
+      - 'vms/ci-simple/**'
+      - 'flake.nix'
+
+jobs:
+  simple-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check disk space
+        run: df -h
+      
+      # Install Nix for building and nixos-anywhere
+      - uses: cachix/install-nix-action@v22
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      
+      # Generate SSH key for deployment
+      - name: Generate SSH keys
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "ci@test"
+          chmod 600 ~/.ssh/id_ed25519
+          chmod 644 ~/.ssh/id_ed25519.pub
+          echo "SSH public key:"
+          cat ~/.ssh/id_ed25519.pub
+      
+      # Setup QEMU/KVM
+      - name: Setup QEMU
+        uses: etchdroid/qemu-kvm-action/setup@v1
+      
+      # Start a VM to deploy to
+      - name: Start QEMU VM
+        id: start-qemu
+        uses: etchdroid/qemu-kvm-action/start@v1
+        with:
+          # Create a 20GB disk for the VM
+          image-size: 20G
+          # Use UEFI firmware
+          uefi: true
+          # Memory and CPU
+          memory: 4G
+          cpu-cores: 2
+          # Boot from NixOS ISO (we'll build a minimal one or use upstream)
+          # For now, use network boot / PXE or point to an ISO
+          # TODO: May need to build installer ISO first
+          boot-media: |
+            https://channels.nixos.org/nixos-25.05/latest-nixos-minimal-x86_64-linux.iso
+          # Network configuration - we need SSH access
+          network: user,hostfwd=tcp::2222-:22
+          # Enable serial console for debugging
+          serial: true
+      
+      # Wait for VM to boot and SSH to be available
+      - name: Wait for SSH
+        run: |
+          echo "Waiting for VM to boot and SSH to be ready..."
+          for i in {1..60}; do
+            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                   -p 2222 nixos@localhost echo "ready" 2>/dev/null; then
+              echo "SSH is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/60..."
+            sleep 5
+          done
+          echo "SSH never became available"
+          exit 1
+      
+      # Copy SSH key to installer
+      - name: Setup installer SSH access
+        run: |
+          # The NixOS installer should have SSH enabled by default
+          # Copy our SSH key for passwordless access
+          ssh-copy-id -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -p 2222 -i ~/.ssh/id_ed25519.pub nixos@localhost || true
+      
+      # Deploy NixOS using nixos-anywhere
+      - name: Deploy NixOS
+        run: |
+          echo "Deploying NixOS configuration ci-simple..."
+          nix run nixpkgs#nixos-anywhere -- \
+            --flake .#ci-simple \
+            --build-on-remote \
+            nixos@localhost:2222
+      
+      # Verify deployment
+      - name: Verify installation
+        run: |
+          echo "Verifying NixOS installation..."
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -p 2222 root@localhost "hostname && uname -a"
+      
+      # Stop QEMU VM
+      - name: Stop QEMU
+        if: always()
+        uses: etchdroid/qemu-kvm-action/stop@v1
+        with:
+          run-id: ${{ steps.start-qemu.outputs.run-id }}
+      
+      # Optional: Upload video recording
+      - name: Upload recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-recording
+          path: ${{ steps.start-qemu.outputs.video-output }}
