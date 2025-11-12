@@ -56,6 +56,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Permissions: Minimal required for workflow execution
+permissions:
+  contents: read      # Read repository contents
+  actions: read       # Read workflow run information
+  statuses: write     # Update commit statuses (optional)
+
 jobs:
   test-vm:
     name: Test VM Configuration
