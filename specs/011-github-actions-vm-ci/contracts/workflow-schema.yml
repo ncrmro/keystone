@@ -1,0 +1,258 @@
+# GitHub Actions Workflow Contract for Copilot VM Testing
+# This file defines the expected workflow structure and inputs
+
+name: Copilot VM Test
+
+# Trigger Configuration
+on:
+  # Manual trigger with configuration selection
+  workflow_dispatch:
+    inputs:
+      config_name:
+        description: 'NixOS configuration to test'
+        required: true
+        type: choice
+        options:
+          - terminal
+          - desktop
+          - server
+        default: 'terminal'
+
+      # Optional: specific flake attribute to test
+      flake_attr:
+        description: 'Flake attribute (defaults to build-vm-{config_name})'
+        required: false
+        type: string
+
+      # Optional: enable verbose output for debugging
+      debug:
+        description: 'Enable debug logging'
+        required: false
+        type: boolean
+        default: false
+
+  # Automatic trigger on configuration changes
+  push:
+    branches:
+      - '**'  # All branches (per FR-008: queue per branch)
+    paths:
+      - 'modules/**'
+      - 'vms/**'
+      - 'home-manager/**'
+      - 'flake.nix'
+      - 'flake.lock'
+
+# Concurrency Control (FR-008)
+# One workflow run at a time per branch, cancel older pending runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default Permissions
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  test-vm:
+    name: Test NixOS Configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # Per FR-013: complete within time limits
+
+    outputs:
+      # Structured JSON result for programmatic access
+      test_result: ${{ steps.format_results.outputs.result }}
+      status: ${{ steps.format_results.outputs.status }}
+      phase: ${{ steps.format_results.outputs.phase }}
+
+    steps:
+      # 1. Setup
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Install Nix with KVM support (FR-002a)
+      - name: Install Nix with KVM
+        uses: cachix/install-nix-action@v22
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      # 3. Verify hardware acceleration availability (FR-002a)
+      - name: Check KVM availability
+        id: check_kvm
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::Hardware acceleration (KVM) not available on this runner"
+            echo "status=unavailable" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          echo "status=available" >> $GITHUB_OUTPUT
+          ls -la /dev/kvm
+
+      # 4. Configure Nix caching (optimization)
+      - name: Setup Nix cache
+        uses: cachix/cachix-action@v12
+        with:
+          name: keystone
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+          skipPush: true
+
+      # 5. Determine configuration to test
+      - name: Determine configuration
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CONFIG="${{ github.event.inputs.config_name }}"
+            FLAKE_ATTR="${{ github.event.inputs.flake_attr }}"
+            DEBUG="${{ github.event.inputs.debug }}"
+          else
+            # Default to terminal for push events
+            CONFIG="terminal"
+            FLAKE_ATTR=""
+            DEBUG="false"
+          fi
+
+          # Use flake_attr if provided, otherwise construct from config name
+          if [ -z "$FLAKE_ATTR" ]; then
+            FLAKE_ATTR="build-vm-${CONFIG}"
+          fi
+
+          echo "config=${CONFIG}" >> $GITHUB_OUTPUT
+          echo "flake_attr=${FLAKE_ATTR}" >> $GITHUB_OUTPUT
+          echo "debug=${DEBUG}" >> $GITHUB_OUTPUT
+
+          echo "Testing configuration: ${CONFIG} (flake: .#${FLAKE_ATTR})"
+
+      # 6. Build VM (FR-003)
+      - name: Build NixOS VM
+        id: build
+        run: |
+          START_TIME=$(date +%s)
+
+          set +e  # Don't exit on error, capture it
+          nixos-rebuild build-vm --flake ".#${{ steps.config.outputs.flake_attr }}"
+          BUILD_EXIT=$?
+          set -e
+
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+
+          echo "duration=${DURATION}" >> $GITHUB_OUTPUT
+
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "::error::Build failed with exit code $BUILD_EXIT"
+            exit 1
+          fi
+
+          echo "success=true" >> $GITHUB_OUTPUT
+
+          # List generated outputs
+          if [ -L result ]; then
+            VM_SCRIPT=$(readlink -f result/bin/run-*-vm | head -1)
+            echo "vm_script=${VM_SCRIPT}" >> $GITHUB_OUTPUT
+            echo "Built VM script: ${VM_SCRIPT}"
+          fi
+
+      # 7. Boot VM (FR-004)
+      - name: Boot VM and validate
+        id: boot
+        if: steps.build.outputs.success == 'true'
+        timeout-minutes: 5  # FR-004a: 5-minute boot timeout
+        run: |
+          START_TIME=$(date +%s)
+
+          VM_SCRIPT="${{ steps.build.outputs.vm_script }}"
+
+          # Start VM in background
+          nohup "$VM_SCRIPT" &
+          VM_PID=$!
+          echo "vm_pid=${VM_PID}" >> $GITHUB_OUTPUT
+
+          # Wait for VM to boot (check for SSH on port 2222 for terminal config)
+          BOOT_SUCCESS=false
+          for i in {1..60}; do
+            sleep 5
+            if nc -z localhost 2222 2>/dev/null; then
+              BOOT_SUCCESS=true
+              break
+            fi
+          done
+
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+
+          echo "duration=${DURATION}" >> $GITHUB_OUTPUT
+
+          if [ "$BOOT_SUCCESS" = "false" ]; then
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "::error::VM failed to boot within 5 minutes"
+            kill $VM_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "success=true" >> $GITHUB_OUTPUT
+          echo "boot_time=${DURATION}" >> $GITHUB_OUTPUT
+
+      # 8. Validate services (FR-011)
+      - name: Validate critical services
+        id: services
+        if: steps.boot.outputs.success == 'true'
+        run: |
+          # Run service validation script
+          tests/ci/validate-services.sh
+
+          echo "success=true" >> $GITHUB_OUTPUT
+
+      # 9. Format results (FR-005, FR-012)
+      - name: Format test results
+        id: format_results
+        if: always()
+        run: |
+          # Use helper script to format JSON output
+          tests/ci/format-results.sh \
+            --build-success="${{ steps.build.outputs.success }}" \
+            --build-duration="${{ steps.build.outputs.duration }}" \
+            --boot-success="${{ steps.boot.outputs.success }}" \
+            --boot-duration="${{ steps.boot.outputs.duration }}" \
+            --services-success="${{ steps.services.outputs.success }}" \
+            --workflow-run-id="${{ github.run_id }}" \
+            --commit-sha="${{ github.sha }}" \
+            > test-result.json
+
+          # Set outputs for programmatic access
+          cat test-result.json | jq -r '.status' | xargs -I {} echo "status={}" >> $GITHUB_OUTPUT
+          cat test-result.json | jq -r '.phase' | xargs -I {} echo "phase={}" >> $GITHUB_OUTPUT
+          cat test-result.json | jq -c '.' | xargs -I {} echo "result={}" >> $GITHUB_OUTPUT
+
+      # 10. Upload results as artifact (FR-010)
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ github.run_id }}
+          path: test-result.json
+          retention-days: 90
+
+      # 11. Write summary (FR-010)
+      - name: Write test summary
+        if: always()
+        run: |
+          cat test-result.json | jq -r '"# Test Results\n\n**Status**: \(.status)\n**Phase**: \(.phase)\n**Duration**: \(.duration_seconds)s\n\n## Build\n- Success: \(.results.build.success)\n- Duration: \(.results.build.duration_seconds)s\n\n## Boot\n- Success: \(.results.boot.success // "N/A")\n- Duration: \(.results.boot.duration_seconds // "N/A")s\n\n## Services\n- Running: \(.results.services.running // [] | join(", "))\n- Failed: \(.results.services.failed // [] | join(", "))"' >> $GITHUB_STEP_SUMMARY
+
+      # 12. Cleanup (FR-009)
+      - name: Cleanup VM resources
+        if: always()
+        run: |
+          # Kill VM if still running
+          if [ -n "${{ steps.boot.outputs.vm_pid }}" ]; then
+            kill ${{ steps.boot.outputs.vm_pid }} 2>/dev/null || true
+          fi
+
+          # Clean up disk images
+          rm -f *.qcow2
+
+          # Clean up result symlinks
+          rm -f result
