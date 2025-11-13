@@ -1,10 +1,15 @@
+---
+layout: default
+title: Home
+---
+
 # Keystone Documentation
 
 Welcome to the Keystone documentation. Keystone is a NixOS-based self-sovereign infrastructure platform that enables users to deploy secure, encrypted infrastructure on any hardware.
 
 ## Quick Links
 
-- **[Project Roadmap](../ROADMAP.md)** - Development milestones and future plans
+- **[Project Roadmap](https://github.com/ncrmro/keystone/blob/main/ROADMAP.md)** - Development milestones and future plans
 - **[GitHub Repository](https://github.com/ncrmro/keystone)** - Source code and issue tracking
 - **[Quick Start](#quick-start)** - Get up and running quickly
 
@@ -138,7 +143,7 @@ Interactive systems featuring:
 - macOS compatibility
 - Portable configurations
 
-See the full **[Roadmap](../ROADMAP.md)** for detailed version plans and future features.
+See the full **[Roadmap](https://github.com/ncrmro/keystone/blob/main/ROADMAP.md)** for detailed version plans and future features.
 
 ## Contributing
 
@@ -150,7 +155,7 @@ We welcome contributions! Areas where help is particularly needed:
 - Module development
 - Platform support
 
-Please see our [Contributing Guide](../CONTRIBUTING.md) for details on how to get involved.
+Please see our [GitHub repository](https://github.com/ncrmro/keystone) for details on how to get involved.
 
 ## Community & Support
 
@@ -160,7 +165,7 @@ Please see our [Contributing Guide](../CONTRIBUTING.md) for details on how to ge
 
 ## License
 
-Keystone is open source software licensed under the [MIT License](../LICENSE).
+Keystone is open source software licensed under the [MIT License](https://github.com/ncrmro/keystone/blob/main/LICENSE).
 
 ---
 
