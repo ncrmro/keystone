@@ -1,33 +1,21 @@
 # GitHub Pages Jekyll Configuration
 title: Keystone
 description: Self-sovereign infrastructure platform with secure, encrypted NixOS deployments
+url: "https://ncrmro.github.io"
+baseurl: "/keystone"
+
+# Theme and appearance
 theme: jekyll-theme-minimal
 show_downloads: true
 
 # Build settings
 markdown: kramdown
-kramdown:
-  input: GFM
-  syntax_highlighter: rouge
-  syntax_highlighter_opts:
-    css_class: 'highlight'
+highlighter: rouge
 
-# Plugins
+# Plugins (GitHub Pages supported)
 plugins:
-  - jekyll-relative-links
   - jekyll-seo-tag
-
-# Relative links configuration
-relative_links:
-  enabled: true
-  collections: true
+  - jekyll-sitemap
 
 # Repository info (for "View on GitHub" link)
-github_username: ncrmro
-repository: keystone
-
-# Exclude from build
-exclude:
-  - Gemfile
-  - Gemfile.lock
-  - vendor
+repository: ncrmro/keystone
