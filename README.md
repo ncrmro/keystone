@@ -2,6 +2,8 @@
 
 Keystone enables self-sovereign infrastructure that you fully control, whether running on bare-metal hardware or cloud services. Unlike traditional infrastructure solutions, Keystone is designed for seamless migration between different environments while maintaining security, availability, and shared resource access.
 
+**[📚 Documentation](https://ncrmro.github.io/keystone/)** | **[🗺️ Roadmap](ROADMAP.md)** | **[🚀 Quick Start](#getting-started)**
+
 ## Core Principles
 
 **Self-Sovereign Infrastructure**: Your infrastructure belongs to you. All data is encrypted at rest and in transit, with cryptographic keys under your control. Whether running on a Raspberry Pi in your home or a cloud VPS, you maintain full ownership and control.
@@ -96,10 +98,14 @@ ssh root@test-server.local  # via mDNS
 
 See `examples/test-server.nix` for a fully documented example configuration.
 
-### Installation Guides
+### Documentation
 
+For comprehensive documentation, visit our **[Documentation Hub](https://ncrmro.github.io/keystone/)**.
+
+Quick links:
 - [Installation Guide](docs/installation.md) - Complete installation process from ISO generation to first boot
 - [Examples](docs/examples.md) - Server and client deployment examples
+- [Roadmap](ROADMAP.md) - Development milestones and future plans
 
 ## Development & Testing
 
