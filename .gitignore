@@ -45,4 +45,5 @@ vms/test-server/ssh-keys/
 vms/test-server/extra-files/
 
 worktrees
+worktree
 __pycache__/
