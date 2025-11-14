@@ -5,7 +5,7 @@ url: "https://ncrmro.github.io"
 baseurl: "/keystone"
 
 # Theme and appearance
-theme: jekyll-theme-minimal
+theme: jekyll-theme-midnight
 show_downloads: true
 
 # Build settings
