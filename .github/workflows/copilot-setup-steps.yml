@@ -1,0 +1,171 @@
+name: 'Copilot Setup Steps'
+
+# IMPORTANT: When making changes to this workflow, update the conventions documentation:
+# specs/011-github-actions-vm-ci/quickstart.md
+
+# This workflow provides automated VM testing for NixOS configurations.
+# It enables GitHub Copilot agents to iteratively develop and test configurations
+# by providing structured JSON feedback about build/boot/service failures.
+#
+# GitHub Actions context variable (automatically set by GitHub Actions):
+# - github.job = "copilot-setup-steps" when running via PR or workflow_dispatch
+# - github.job = "copilot" when running during Copilot agent execution
+#
+# We use github.job in conditionals to control execution:
+# - Setup mode (github.job=copilot-setup-steps): Run nix flake check + VM build test
+#   to verify the environment is working correctly before Copilot uses it
+# - Copilot mode (github.job=copilot): Skip setup/verification since the
+#   environment was already verified during setup steps
+
+# Automatically run the setup steps when they are changed to allow for easy validation, and
+# allow manual testing through the repository's "Actions" tab
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+      - modules/**
+      - vms/**
+      - home-manager/**
+      - flake.nix
+      - flake.lock
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Set the permissions to the lowest permissions possible needed for your steps.
+    # Copilot will be given its own token for its operations.
+    permissions:
+      # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
+      contents: read
+
+    # You can define any steps you want, and they will run before the agent starts.
+    # If you do not check out your code, Copilot will do this for you.
+    steps:
+      - name: Validate GITHUB_JOB
+        run: |
+          echo "GITHUB_JOB=$GITHUB_JOB"
+          echo "github.job=${{ github.job }}"
+          echo "github.event_name=${{ github.event_name }}"
+
+          # Validate GITHUB_JOB value
+          if [[ "$GITHUB_JOB" != "copilot-setup-steps" && "$GITHUB_JOB" != "copilot" ]]; then
+            echo "ERROR: Unexpected GITHUB_JOB value: $GITHUB_JOB"
+            echo "Expected: 'copilot-setup-steps' or 'copilot'"
+            exit 1
+          fi
+
+          echo "✓ GITHUB_JOB validation passed: $GITHUB_JOB"
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Install Nix with flakes support
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-25.05
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      # Check KVM availability (hardware acceleration required for VMs)
+      - name: Check KVM Availability
+        if: github.job == 'copilot-setup-steps'
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::KVM device not found at /dev/kvm"
+            echo "Hardware acceleration is required for VM testing"
+            exit 1
+          fi
+
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "::error::Insufficient permissions for /dev/kvm"
+            ls -la /dev/kvm
+            exit 1
+          fi
+
+          echo "✓ KVM available and accessible"
+          ls -la /dev/kvm
+
+      # The following steps only run during setup verification (github.job=copilot-setup-steps)
+      # They are skipped in Copilot mode since the environment is already verified.
+
+      - name: Verify Nix Flake (setup mode only)
+        if: github.job == 'copilot-setup-steps'
+        run: |
+          echo "Running nix flake check to verify flake configuration..."
+          nix flake check --show-trace
+          echo "✓ Nix flake check passed"
+        # Runs when github.job=copilot-setup-steps (PR validation or workflow_dispatch).
+        # Skipped when github.job=copilot (Copilot agent execution).
+
+      - name: Verify VM can be built (setup mode only)
+        if: github.job == 'copilot-setup-steps'
+        run: |
+          echo "Building terminal VM configuration to verify build system..."
+          nixos-rebuild build-vm --flake ".#build-vm-terminal"
+
+          if [ -L result ]; then
+            VM_SCRIPT=$(find result/bin -name "run-*-vm" -type f | head -n 1)
+            if [ -z "$VM_SCRIPT" ]; then
+              echo "::error::VM script not found in result/bin"
+              exit 1
+            fi
+            echo "✓ VM built successfully: $VM_SCRIPT"
+          else
+            echo "::error::Build result symlink not found"
+            exit 1
+          fi
+        # Builds a VM to ensure nixos-rebuild build-vm works correctly.
+        # Runs when github.job=copilot-setup-steps (PR validation or workflow_dispatch).
+        # Skipped when github.job=copilot (Copilot agent execution).
+
+      - name: Test VM can start (setup mode only)
+        if: github.job == 'copilot-setup-steps'
+        run: |
+          echo "Starting VM to verify it can boot..."
+
+          # Find the VM script
+          VM_SCRIPT=$(find result/bin -name "run-*-vm" -type f | head -n 1)
+
+          # Start VM in background
+          nohup "$VM_SCRIPT" </dev/null >/dev/null 2>&1 &
+          VM_PID=$!
+          echo "VM started (PID $VM_PID)"
+
+          # Give VM time to start booting
+          sleep 10
+
+          # Check if VM is still running
+          if kill -0 $VM_PID 2>/dev/null; then
+            echo "✓ VM started successfully and is running"
+            # Kill the VM
+            kill $VM_PID 2>/dev/null || true
+            sleep 2
+            kill -9 $VM_PID 2>/dev/null || true
+          else
+            echo "::error::VM process died shortly after starting"
+            exit 1
+          fi
+        # Starts the VM briefly to ensure it can boot without crashing immediately.
+        # Runs when github.job=copilot-setup-steps (PR validation or workflow_dispatch).
+        # Skipped when github.job=copilot (Copilot agent execution).
+
+      - name: Cleanup VM artifacts
+        if: always() && github.job == 'copilot-setup-steps'
+        run: |
+          echo "Cleaning up VM resources..."
+
+          # Remove QCOW2 disk images
+          rm -f *.qcow2 || true
+          rm -f keystone-buildvm-*.qcow2 || true
+          rm -f build-vm-*.qcow2 || true
+
+          # Clean up PID files
+          rm -f build-vm-*.pid || true
+
+          echo "✓ Cleanup complete"

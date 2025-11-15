@@ -164,6 +164,36 @@ virsh console keystone-test-vm
 
 See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complete details.
 
+### GitHub Actions CI Testing
+
+The project includes automated VM testing in GitHub Actions for validating NixOS configurations:
+
+**Purpose**: Enable GitHub Copilot agents to iteratively develop and test NixOS configurations by verifying the environment before agent execution.
+
+**Workflow**: `.github/workflows/copilot-setup-steps.yml`
+
+**Key Features**:
+- **GitHub Copilot Agent Integration**: Job name `copilot-setup-steps` enables Copilot agent discovery
+- **Conditional Execution**: Uses `github.job` to differentiate between setup verification and agent execution
+- **Setup Mode** (`github.job == 'copilot-setup-steps'`): Runs verification steps
+  - `nix flake check` - Validates flake configuration
+  - VM build test - Verifies `nixos-rebuild build-vm` works
+  - VM start test - Ensures VM can boot without crashing
+- **Copilot Mode** (`github.job == 'copilot'`): Skips verification (environment pre-validated)
+
+**Workflow Triggers**:
+- **Manual**: Via GitHub Actions UI (workflow_dispatch)
+- **Automatic**: On PR changes to workflow file or configuration files
+
+**For Copilot Agents**:
+- The workflow validates the environment is working before the agent starts
+- Agents can assume Nix and VM tooling are functional after setup completes
+- See `specs/011-github-actions-vm-ci/quickstart.md` for integration details
+
+**For Developers**:
+- Manual trigger via Actions tab to verify environment
+- Automatic validation on PR to workflow or configuration files
+
 ### Building ISOs
 ```bash
 # Build installer ISO without SSH keys
