@@ -168,41 +168,31 @@ See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complet
 
 The project includes automated VM testing in GitHub Actions for validating NixOS configurations:
 
-**Purpose**: Enable GitHub Copilot agents and developers to iteratively test configuration changes in a real VM environment, receiving structured feedback about build/boot/service failures.
+**Purpose**: Enable GitHub Copilot agents to iteratively develop and test NixOS configurations by verifying the environment before agent execution.
+
+**Workflow**: `.github/workflows/copilot-setup-steps.yml`
 
 **Key Features**:
-- **Automated VM provisioning** using `nixos-rebuild build-vm` (fast, no encryption/secure boot overhead)
-- **Structured JSON output** conforming to `specs/011-github-actions-vm-ci/contracts/test-result-schema.json`
-- **Multi-phase testing**: Build → Boot → Services validation
-- **Concurrency control**: One workflow per branch, auto-cancel older runs
-- **5-minute boot timeout** with partial results on failure
-- **90-day artifact retention** for test results
+- **GitHub Copilot Agent Integration**: Job name `copilot-setup-steps` enables Copilot agent discovery
+- **Conditional Execution**: Uses `github.job` to differentiate between setup verification and agent execution
+- **Setup Mode** (`github.job == 'copilot-setup-steps'`): Runs verification steps
+  - `nix flake check` - Validates flake configuration
+  - VM build test - Verifies `nixos-rebuild build-vm` works
+  - VM start test - Ensures VM can boot without crashing
+- **Copilot Mode** (`github.job == 'copilot'`): Skips verification (environment pre-validated)
 
 **Workflow Triggers**:
-- **Manual**: Via GitHub Actions UI or API (workflow_dispatch)
-- **Automatic**: On push to `modules/**`, `vms/**`, `home-manager/**`, `flake.nix`, `flake.lock`
-
-**Testing Scripts** (in `tests/ci/`):
-- `check-boot-status.sh` - Verifies VM booted successfully
-- `validate-services.sh` - Checks critical services are running
-- `format-results.sh` - Converts logs to JSON schema format
-
-**CI-Specific VM Configuration**:
-- Location: `vms/ci-test/configuration.nix`
-- Optimized for CI: Minimal packages, fast boot, 2 cores, 4GB RAM
-- Flake output: `build-vm-ci-test`
+- **Manual**: Via GitHub Actions UI (workflow_dispatch)
+- **Automatic**: On PR changes to workflow file or configuration files
 
 **For Copilot Agents**:
-See `specs/011-github-actions-vm-ci/quickstart.md` for API usage examples, polling patterns, and JSON result interpretation.
+- The workflow validates the environment is working before the agent starts
+- Agents can assume Nix and VM tooling are functional after setup completes
+- See `specs/011-github-actions-vm-ci/quickstart.md` for integration details
 
 **For Developers**:
-- View results: GitHub Actions → Workflow run → Summary tab
-- Download JSON: GitHub Actions → Workflow run → Artifacts section
-- Automatic validation on push to configuration files
-
-**Key Difference from Local Testing**:
-- Local `bin/build-vm`: Interactive testing, manual connection
-- CI workflow: Automated testing, structured JSON output, no manual interaction
+- Manual trigger via Actions tab to verify environment
+- Automatic validation on PR to workflow or configuration files
 
 ### Building ISOs
 ```bash
