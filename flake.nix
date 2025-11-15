@@ -142,6 +142,7 @@
       ssh = ./modules/ssh;
       tpmEnrollment = ./modules/tpm-enrollment;
       users = ./modules/users;
+      macTimeMachine = ./modules/backups/mac-timemachine;
     };
 
     # Export home-manager modules
