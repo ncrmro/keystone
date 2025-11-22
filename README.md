@@ -80,7 +80,11 @@ Deploy a minimal Keystone server to a VM for testing:
 # 1. Build ISO with SSH key
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
 
-# 2. Boot VM from ISO and note its IP address
+# 2. Boot VM from ISO
+#    The installer TUI will automatically:
+#    - Check for Ethernet connectivity
+#    - Offer WiFi setup if no Ethernet detected
+#    - Display the IP address for remote installation
 
 # 3. Configure your deployment in vms/test-server/configuration.nix
 #    (see examples/test-server.nix for reference)
@@ -98,11 +102,20 @@ ssh root@test-server.local  # via mDNS
 
 See `examples/test-server.nix` for a fully documented example configuration.
 
+### Interactive Installer
+
+The Keystone ISO includes an interactive Terminal UI installer that:
+- Automatically checks for Ethernet connectivity
+- Provides WiFi setup if needed (scans networks, handles authentication)
+- Displays the IP address and installation command
+- See [Installer TUI Documentation](docs/installer-tui.md) for details
+
 ### Documentation
 
 For comprehensive documentation, visit our **[Documentation Hub](https://ncrmro.github.io/keystone/)**.
 
 Quick links:
+- [Installer TUI](docs/installer-tui.md) - Interactive installer with network configuration
 - [Installation Guide](docs/installation.md) - Complete installation process from ISO generation to first boot
 - [Examples](docs/examples.md) - Server and client deployment examples
 - [Roadmap](ROADMAP.md) - Development milestones and future plans
