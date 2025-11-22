@@ -140,7 +140,7 @@ const App: React.FC = () => {
         <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1}>
           <Text bold>Ready for Installation</Text>
           <Text dimColor>From your deployment machine, run:</Text>
-          <Text color="yellow">nixos-anywhere --flake .#your-config root@{ipAddress}</Text>
+          <Text color="yellow">{`nixos-anywhere --flake .#your-config root@${ipAddress}`}</Text>
         </Box>
       </Box>
     );
@@ -279,7 +279,7 @@ const App: React.FC = () => {
         <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1}>
           <Text bold>Ready for Installation</Text>
           <Text dimColor>From your deployment machine, run:</Text>
-          <Text color="yellow">nixos-anywhere --flake .#your-config root@{ipAddress}</Text>
+          <Text color="yellow">{`nixos-anywhere --flake .#your-config root@${ipAddress}`}</Text>
         </Box>
       </Box>
     );
