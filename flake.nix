@@ -155,6 +155,7 @@
     in {
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
       zesh = pkgs.callPackage ./packages/zesh {};
+      keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
     };
   };
 }
