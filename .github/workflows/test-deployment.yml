@@ -1,0 +1,198 @@
+name: Test Deployment
+
+# Only run when explicitly triggered or when specific files change
+# This is a longer-running test (10-15 minutes) that requires full VM deployment
+on:
+  # Allow manual trigger for testing
+  workflow_dispatch:
+  # Run on PRs that affect deployment-critical files
+  pull_request:
+    paths:
+      - 'bin/test-deployment'
+      - 'bin/virtual-machine'
+      - 'bin/build-iso'
+      - 'modules/**'
+      - 'vms/test-server/**'
+      - 'flake.nix'
+      - '.github/workflows/test-deployment.yml'
+
+jobs:
+  test-vm-deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # Give enough time for full deployment test
+    
+    steps:
+      # Check out the repository code
+      - uses: actions/checkout@v4
+      
+      # Check available disk space
+      - name: Check disk space
+        run: |
+          echo "Available disk space before starting:"
+          df -h
+          echo ""
+          echo "Free space in /home:"
+          df -h /home
+      
+      # Install Nix package manager with flakes support
+      - uses: cachix/install-nix-action@v22
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      
+      # Set up KVM and libvirt for virtualization
+      - name: Set up KVM and libvirt
+        run: |
+          echo "Installing KVM and libvirt packages..."
+          sudo apt-get update
+          sudo apt-get install -y \
+            qemu-kvm \
+            libvirt-daemon-system \
+            libvirt-clients \
+            virtinst \
+            bridge-utils \
+            cpu-checker \
+            python3-libvirt \
+            ovmf
+          
+          echo "Checking KVM availability..."
+          ls -la /dev/kvm
+          
+          echo "Checking OVMF firmware paths..."
+          find /usr/share -name "*.fd" 2>/dev/null | grep -i ovmf || echo "No OVMF firmware found in /usr/share"
+          
+          echo "Configuring libvirt permissions..."
+          # Add user to libvirt and kvm groups
+          sudo usermod -a -G libvirt,kvm $USER
+          
+          # Configure PolicyKit to allow libvirt access without password
+          sudo tee /etc/polkit-1/localauthority/50-local.d/50-libvirt.pkla > /dev/null << 'EOF'
+          [Allow runner to manage libvirt]
+          Identity=unix-user:runner
+          Action=org.libvirt.unix.manage
+          ResultAny=yes
+          ResultInactive=yes
+          ResultActive=yes
+          EOF
+          
+          echo "Starting libvirt service..."
+          sudo systemctl restart polkit
+          sudo systemctl start libvirtd
+          sudo systemctl enable libvirtd
+          sudo systemctl status libvirtd --no-pager
+          
+          echo "Verifying libvirt connection..."
+          # Test with a new login shell to activate group membership
+          sudo -u runner bash -c 'virsh version'
+      
+      # Configure libvirt networking for test VMs
+      - name: Set up libvirt network
+        run: |
+          echo "Ensuring default storage pool exists..."
+          sudo -u runner bash -c 'virsh pool-list --all'
+          
+          # Create default pool if it doesn't exist
+          if ! sudo -u runner bash -c 'virsh pool-info default' >/dev/null 2>&1; then
+            echo "Creating default storage pool..."
+            sudo mkdir -p /var/lib/libvirt/images
+            sudo -u runner bash -c 'virsh pool-define-as default dir --target /var/lib/libvirt/images'
+            sudo -u runner bash -c 'virsh pool-build default'
+            sudo -u runner bash -c 'virsh pool-start default'
+            sudo -u runner bash -c 'virsh pool-autostart default'
+          else
+            # Make sure it's started
+            sudo -u runner bash -c 'virsh pool-start default' || true
+          fi
+          
+          echo "Creating keystone-net network for test VMs..."
+          
+          # Create network configuration
+          cat > /tmp/keystone-net.xml << 'EOF'
+          <network>
+            <name>keystone-net</name>
+            <forward mode='nat'/>
+            <bridge name='virbr1' stp='on' delay='0'/>
+            <ip address='192.168.100.1' netmask='255.255.255.0'>
+              <dhcp>
+                <range start='192.168.100.2' end='192.168.100.254'/>
+                <host mac='52:54:00:12:34:56' name='keystone-test-vm' ip='192.168.100.99'/>
+              </dhcp>
+            </ip>
+          </network>
+          EOF
+          
+          # Define and start the network
+          sudo -u runner bash -c 'virsh net-define /tmp/keystone-net.xml'
+          sudo -u runner bash -c 'virsh net-start keystone-net'
+          sudo -u runner bash -c 'virsh net-autostart keystone-net'
+          sudo -u runner bash -c 'virsh net-list --all'
+      
+      # Generate SSH keys for CI
+      - name: Generate SSH keys
+        run: |
+          echo "Generating SSH key pair for CI..."
+          mkdir -p ~/.ssh
+          ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "github-actions-ci@keystone"
+          chmod 600 ~/.ssh/id_ed25519
+          chmod 644 ~/.ssh/id_ed25519.pub
+          echo "SSH public key:"
+          cat ~/.ssh/id_ed25519.pub
+      
+      # Install uv for running Python scripts with dependencies
+      - name: Install uv
+        run: |
+          echo "Installing uv for Python script execution..."
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      
+      # Verify uv installation
+      - name: Verify uv installation
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          uv --version
+      
+      # Run the deployment test
+      - name: Run deployment test
+        id: deployment_test
+        run: |
+          echo "Starting full deployment test..."
+          echo "This will:"
+          echo "  1. Build ISO with SSH keys"
+          echo "  2. Create and start VM"
+          echo "  3. Deploy via nixos-anywhere"
+          echo "  4. Verify Secure Boot, ZFS, TPM, etc."
+          echo ""
+          
+          # Run test-deployment as runner user with fresh bash session
+          # Explicitly set PATH to include uv installation
+          sudo -u runner bash -c 'export PATH="/home/runner/.cargo/bin:$PATH" && ./bin/test-deployment --rebuild-iso --debug'
+        timeout-minutes: 25
+      
+      # Capture VM logs on failure
+      - name: Capture VM logs on failure
+        if: failure() && steps.deployment_test.outcome == 'failure'
+        run: |
+          echo "Capturing VM state and logs..."
+          sudo -u runner bash -c 'virsh list --all' || true
+          sudo -u runner bash -c 'virsh dominfo keystone-test-vm' || true
+          echo ""
+          echo "Network status:"
+          sudo -u runner bash -c 'virsh net-list --all' || true
+          echo ""
+          echo "Storage pools:"
+          sudo -u runner bash -c 'virsh pool-list --all' || true
+          echo ""
+          echo "Recent dmesg output:"
+          sudo dmesg | tail -100 || true
+      
+      # Clean up on success or failure
+      - name: Clean up test VM
+        if: always()
+        run: |
+          echo "Cleaning up test VM and artifacts..."
+          sudo -u runner bash -c 'virsh destroy keystone-test-vm' || true
+          sudo -u runner bash -c 'virsh undefine keystone-test-vm --nvram' || true
+          sudo -u runner bash -c 'virsh vol-delete --pool default keystone-test-vm.qcow2' || true
+          sudo -u runner bash -c 'virsh net-destroy keystone-net' || true
+          sudo -u runner bash -c 'virsh net-undefine keystone-net' || true
+          echo "Cleanup complete"
