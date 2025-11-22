@@ -5,7 +5,10 @@
   lib,
   sshKeys ? [],
   ...
-}: {
+}: 
+let
+  keystone-installer-ui = pkgs.callPackage ../packages/keystone-installer-ui {};
+in {
   # Enable SSH daemon for remote access
   services.openssh = {
     enable = true;
@@ -25,11 +28,16 @@
     openssh.authorizedKeys.keys = sshKeys;
   };
 
-  # Enable networking
+  # Enable networking with NetworkManager for WiFi support
   networking = {
-    dhcpcd.enable = true;
-    wireless.enable = false; # We'll use dhcp for simplicity
-    useDHCP = true;
+    dhcpcd.enable = false; # Disable dhcpcd in favor of NetworkManager
+    wireless.enable = false; # NetworkManager handles WiFi
+    networkmanager = {
+      enable = true;
+      # Ensure NetworkManager starts early
+      dispatcherScripts = [];
+    };
+    useDHCP = false; # NetworkManager handles DHCP
   };
 
   # Include useful tools for nixos-anywhere and debugging
@@ -51,6 +59,10 @@
     config.boot.kernelPackages.zfs_2_3
     # Secure Boot key management
     sbctl
+    # Keystone installer UI
+    keystone-installer-ui
+    # NetworkManager CLI for WiFi management
+    networkmanager
   ];
 
   # Enable the serial console for remote debugging
@@ -59,8 +71,25 @@
   # Ensure SSH starts on boot
   systemd.services.sshd.wantedBy = lib.mkForce ["multi-user.target"];
 
-  # Automatically configure network on boot
-  systemd.services.dhcpcd.wantedBy = ["multi-user.target"];
+  # Keystone installer service - auto-start the TUI
+  systemd.services.keystone-installer = {
+    description = "Keystone Installer TUI";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network.target" "NetworkManager.service" ];
+    wants = [ "NetworkManager.service" ];
+    
+    serviceConfig = {
+      Type = "simple";
+      ExecStart = "${keystone-installer-ui}/bin/keystone-installer";
+      Restart = "on-failure";
+      RestartSec = "5s";
+      StandardInput = "tty";
+      StandardOutput = "tty";
+      TTYPath = "/dev/tty1";
+      TTYReset = "yes";
+      TTYVHangup = "yes";
+    };
+  };
 
   # Note: kernel is set in flake.nix to override minimal CD default
 
