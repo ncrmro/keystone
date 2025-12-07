@@ -50,14 +50,15 @@ A user chooses local installation and selects a target disk from detected storag
 **Acceptance Scenarios**:
 
 1. **Given** local installation is selected, **When** the disk selection screen loads, **Then** all detected storage devices are listed with size and model information
-2. **Given** a disk is selected, **When** the user confirms selection, **Then** a warning about data destruction is displayed requiring explicit confirmation
-3. **Given** the user confirms disk selection, **When** installation proceeds, **Then** the installer partitions, formats, and installs NixOS to the selected disk
+2. **Given** a disk is selected, **When** the user confirms selection, **Then** the installer offers a choice between encrypted (ZFS + TPM2) and unencrypted installation
+3. **Given** encryption preference is selected, **When** the user confirms, **Then** a warning about data destruction is displayed requiring explicit confirmation
+4. **Given** the user confirms disk selection, **When** installation proceeds, **Then** the installer partitions, formats (using disko for encrypted or plain for unencrypted), and installs NixOS to the selected disk
 
 ---
 
 ### User Story 4 - Host Configuration Creation (Priority: P2)
 
-During installation, the installer creates a NixOS flake configuration at ~/nixos-config/ with a host-specific folder containing disk-config.nix, hardware-configuration.nix, and default.nix. The user provides a hostname, and the installer transparently shows each file being created.
+During installation, the installer creates a NixOS flake configuration at ~/nixos-config/ with a host-specific folder containing disk-config.nix, hardware-configuration.nix, and default.nix. The user provides a hostname, username, password, and selects a system type (server or client). The installer transparently shows each file being created.
 
 **Why this priority**: Creating proper configuration structure is essential for users to manage their system after installation. Transparency builds user familiarity with NixOS.
 
@@ -66,9 +67,12 @@ During installation, the installer creates a NixOS flake configuration at ~/nixo
 **Acceptance Scenarios**:
 
 1. **Given** installation is in progress, **When** the hostname prompt appears, **Then** the user can enter a valid hostname (alphanumeric, hyphens, 1-63 characters)
-2. **Given** a hostname is provided, **When** configuration files are created, **Then** the installer displays each file path and a summary of what it contains
-3. **Given** configuration is complete, **When** the user reviews the output, **Then** they see ~/nixos-config/hosts/{hostname}/ containing disk-config.nix, hardware-configuration.nix, and default.nix
-4. **Given** the OS is installed on the target disk, **When** the installer finalizes, **Then** the configuration directory is copied from the live ISO environment to the installed system's home directory
+2. **Given** a hostname is provided, **When** the username prompt appears, **Then** the user can enter a valid username (lowercase alphanumeric, 1-32 characters, starts with letter)
+3. **Given** a username is provided, **When** the password prompt appears, **Then** the user enters and confirms a password (masked input)
+4. **Given** credentials are provided, **When** the system type prompt appears, **Then** the user chooses between "Server" (headless, services) or "Client" (Hyprland desktop)
+5. **Given** system type is selected, **When** configuration files are created, **Then** the installer displays each file path and a summary of what it contains
+6. **Given** configuration is complete, **When** the user reviews the output, **Then** they see ~/nixos-config/hosts/{hostname}/ containing disk-config.nix, hardware-configuration.nix, and default.nix
+7. **Given** the OS is installed on the target disk, **When** the installer finalizes, **Then** the configuration directory is copied to /home/{username}/nixos-config/ on the installed system
 
 ---
 
@@ -101,6 +105,7 @@ Throughout the installation process, the installer clearly shows all file operat
 1. **Given** any file is created, **When** the operation completes, **Then** the installer displays the full path and a one-line description of the file's purpose
 2. **Given** any file is modified, **When** the operation completes, **Then** the installer displays the file path and what was changed
 3. **Given** installation completes, **When** the summary screen appears, **Then** it lists all files created/modified with their locations
+4. **Given** summary is displayed, **When** user reviews the information, **Then** they can confirm reboot or return to review details before rebooting
 
 ---
 
@@ -111,6 +116,7 @@ Throughout the installation process, the installer clearly shows all file operat
 - What happens when git clone fails? Display error with reason (network, auth, invalid URL) and allow retry
 - What happens when hostname conflicts with existing host folder? Prompt user to overwrite, rename, or cancel
 - What happens when ~/nixos-config/ already exists? Offer to use existing, backup and create new, or cancel
+- What happens when user selects encrypted install but no TPM2 is detected? Display warning that disk unlock will require password entry on every boot, allow user to proceed with password-only LUKS or switch to unencrypted
 - How does the installer handle network disconnection mid-installation? Checkpoint progress and allow resume when reconnected
 - What happens when the user presses Ctrl+C during installation? Confirm exit, warn about incomplete state, offer to continue or abort
 - What happens if copying configuration files to the installed disk fails? Display error with reason, offer retry, and warn that config files exist only in RAM until successfully copied
@@ -125,16 +131,22 @@ Throughout the installation process, the installer clearly shows all file operat
 - **FR-004**: Installer MUST display three installation methods: Remote (SSH), Local, and Clone Repository
 - **FR-005**: Installer MUST detect and list all block storage devices with size and model information
 - **FR-006**: Installer MUST require explicit confirmation before any destructive disk operations
+- **FR-006a**: Installer MUST offer user choice between encrypted installation (ZFS with TPM2 via disko) and unencrypted installation (plain partitioning)
+- **FR-006b**: Installer MUST detect TPM2 availability when encrypted installation is selected; if TPM2 is unavailable, display warning explaining password-only unlock requirement and allow user to proceed or choose unencrypted
 - **FR-007**: Installer MUST create configuration directory at ~/nixos-config/ by default
 - **FR-008**: Installer MUST create host-specific folder structure: hosts/{hostname}/disk-config.nix, hardware-configuration.nix, default.nix
 - **FR-009**: Installer MUST display each file operation with path and purpose as it occurs
 - **FR-010**: Installer MUST validate hostname format (alphanumeric and hyphens, 1-63 characters)
+- **FR-010a**: Installer MUST prompt for username and password to create the primary user account during installation
+- **FR-010b**: Installer MUST validate username format (lowercase alphanumeric, 1-32 characters, must start with letter)
+- **FR-010c**: Installer MUST offer choice between server configuration (headless, services-focused) and client configuration (Hyprland desktop)
 - **FR-011**: Installer MUST support cloning git repositories via HTTPS or SSH URLs
 - **FR-012**: Installer MUST initialize a git repository in ~/nixos-config/ for new installations
 - **FR-013**: Installer MUST generate hardware-configuration.nix based on detected hardware
 - **FR-014**: Installer MUST allow navigation back to previous screens without losing entered data
 - **FR-015**: Installer MUST provide clear error messages with suggested remediation actions
 - **FR-016**: Installer MUST copy the configuration directory from the live ISO environment to the installed system's home directory after OS installation completes (since the live ISO runs in RAM, files must be persisted to the target disk)
+- **FR-017**: Installer MUST display a completion summary showing all configuration choices made, files created, and system details, then prompt user to confirm reboot
 
 ### Key Entities
 
@@ -155,6 +167,16 @@ Throughout the installation process, the installer clearly shows all file operat
 - **SC-005**: The generated ~/nixos-config/ structure allows users to rebuild their system with `nixos-rebuild switch` after installation
 - **SC-006**: Error messages include actionable remediation steps, reducing user confusion
 - **SC-007**: Users can navigate back to correct mistakes without restarting the installer
+
+## Clarifications
+
+### Session 2025-12-07
+
+- Q: Should local installation use disko ZFS encryption with TPM2, plain partitioning, or offer user choice? → A: Offer user choice between encrypted and unencrypted
+- Q: How should the user account be created during installation? → A: Prompt for username and password during installation
+- Q: What happens if user selects encrypted install but TPM2 is not available? → A: Warn but allow with password-only LUKS fallback
+- Q: Which Keystone module type should the generated configuration use? → A: Let user choose between server and client during installation
+- Q: What happens after installation completes successfully? → A: Show summary and prompt user to confirm reboot
 
 ## Assumptions
 
