@@ -84,9 +84,10 @@ qemu-system-x86_64 \
 3. Installer should display:
    - Green checkmark: "Network Connected"
    - Interface name and IP address
-   - Installation command with IP
+4. Select "Continue to Installation"
+5. Method selection screen should appear
 
-**Expected Result**: Installer displays IP address and installation instructions immediately.
+**Expected Result**: Installer displays IP address and allows continuing to method selection.
 
 ### Scenario 2: No Network (WiFi Setup Path)
 
@@ -110,13 +111,86 @@ qemu-system-x86_64 \
 
 **Expected Result**: Installer offers WiFi setup but gracefully handles no WiFi hardware.
 
-### Scenario 3: Manual Network Configuration
+### Scenario 3: Local Installation (Full Flow)
 
-1. Boot VM from ISO
-2. When prompted for WiFi setup, select "No, I'll configure manually"
-3. Installer shows placeholder IP (or allows manual continuation)
+1. Boot VM from ISO with network
+2. Continue to method selection
+3. Select "Local installation"
+4. **Disk Selection**:
+   - Verify disks are listed with size and model
+   - Disks with data show warning icon
+   - Select a disk
+5. **Disk Confirmation**:
+   - Warning about data erasure displayed
+   - Confirm selection
+6. **Encryption Choice**:
+   - Select encrypted or unencrypted
+   - If encrypted and no TPM2, warning should appear
+7. **Hostname Input**:
+   - Enter valid hostname (e.g., "test-server")
+   - Invalid hostnames should show error
+8. **Username Input**:
+   - Enter valid username (e.g., "admin")
+   - Reserved names should be rejected
+9. **Password Input**:
+   - Enter and confirm password
+   - Mismatched passwords should show error
+10. **System Type**:
+    - Select Server or Client
+11. **Summary**:
+    - Verify all settings displayed correctly
+    - Start installation
 
-**Expected Result**: User can skip WiFi setup and configure manually.
+**Expected Result**: Installation proceeds through all phases with progress display.
+
+### Scenario 4: Clone from Repository
+
+1. Boot VM from ISO with network
+2. Continue to method selection
+3. Select "Clone from repository"
+4. Enter a valid git URL (e.g., `https://github.com/ncrmro/keystone`)
+5. Wait for clone to complete
+6. Select a host from the list (if available)
+7. Verify summary and start installation
+
+**Expected Result**: Repository is cloned and hosts are available for selection.
+
+### Scenario 5: Dev Mode Testing
+
+Test the installer without making real changes:
+
+```bash
+# Build and run in dev mode
+cd packages/keystone-installer-ui
+npm run build
+DEV_MODE=1 node dist/index.js
+```
+
+**Expected Result**:
+- "[DEV MODE]" indicator shown in header
+- Disks detected but operations simulated
+- Config files written to /tmp/keystone-dev/
+- No actual formatting or installation
+
+### Scenario 6: Back Navigation
+
+1. Navigate to any screen past method selection
+2. Press Escape key
+3. Verify return to previous screen
+4. Data entered should be preserved
+
+**Expected Result**: Escape key navigates back without losing data.
+
+### Scenario 7: No Disks Detected
+
+1. Boot VM with no virtual disks attached
+2. Select "Local installation"
+3. Disk selection screen should show:
+   - "No suitable disks found" message
+   - Hardware check suggestion
+   - Option to refresh or go back
+
+**Expected Result**: Graceful handling with user guidance.
 
 ## Manual Testing Steps
 
@@ -157,15 +231,50 @@ systemctl restart keystone-installer
 
 After booting the installer ISO:
 
+### Network Setup
 - [ ] Installer appears on TTY1 automatically
 - [ ] Network check completes within 3 seconds
 - [ ] Ethernet connections are detected correctly
 - [ ] IP addresses are displayed accurately
 - [ ] WiFi option appears when no Ethernet
-- [ ] Installation command is properly formatted
-- [ ] IP address in command matches detected IP
+- [ ] "Continue to Installation" button appears after network setup
+
+### Method Selection
+- [ ] Three installation methods displayed
+- [ ] Remote method shows SSH command with correct IP
+- [ ] Local method transitions to disk selection
+- [ ] Clone method transitions to repository URL input
+
+### Local Installation Flow
+- [ ] Disks detected and listed correctly
+- [ ] Warning icons shown for disks with data
+- [ ] Disk confirmation shows correct details
+- [ ] Encryption options displayed
+- [ ] TPM2 warning shown when TPM unavailable
+- [ ] Hostname validation works (RFC 1123)
+- [ ] Username validation works (POSIX)
+- [ ] Password confirmation required
+- [ ] System type selection works
+- [ ] Summary shows all configuration
+- [ ] Installation progress displayed
+- [ ] File operations logged and shown
+- [ ] Complete screen with reboot option
+
+### Navigation
+- [ ] Escape key returns to previous screen
+- [ ] Data preserved when going back
+- [ ] Cannot go back during installation
+
+### Error Handling
+- [ ] No disks shows helpful message
+- [ ] Invalid input shows specific error
+- [ ] Installation errors show suggestion
+- [ ] Retry option available on error
+
+### General
 - [ ] Service restarts on failure
 - [ ] Logs are accessible via journalctl
+- [ ] DEV_MODE works without real operations
 
 ## Troubleshooting Tests
 
