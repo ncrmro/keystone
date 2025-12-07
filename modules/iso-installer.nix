@@ -63,6 +63,10 @@ in {
     keystone-installer-ui
     # NetworkManager CLI for WiFi management
     networkmanager
+    # JSON parsing for lsblk disk detection
+    jq
+    # TPM2 detection for encrypted installation
+    tpm2-tools
   ];
 
   # Enable the serial console for remote debugging

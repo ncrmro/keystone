@@ -1,14 +1,17 @@
 # Keystone Installer - Interactive TUI
 
-The Keystone installer ISO now includes an interactive Terminal User Interface (TUI) that automatically helps you configure network connectivity for remote installation.
+The Keystone installer ISO includes an interactive Terminal User Interface (TUI) that provides multiple installation methods: remote installation via SSH, local installation directly on the machine, or cloning from an existing NixOS configuration repository.
 
 ## Overview
 
 When you boot from the Keystone ISO, the installer automatically:
 
-1. **Checks for Ethernet connectivity** - If an Ethernet cable is connected and has obtained an IP address, it displays the IP and installation instructions
+1. **Checks for Ethernet connectivity** - If an Ethernet cable is connected and has obtained an IP address, it displays the IP address
 2. **Offers WiFi setup** - If no Ethernet connection is detected, it prompts you to configure WiFi
-3. **Guides the installation** - Once network is configured, it shows the exact `nixos-anywhere` command to run from your deployment machine
+3. **Presents installation options** - Once network is configured, you can choose from three installation methods:
+   - **Remote via SSH**: Traditional nixos-anywhere deployment from another machine
+   - **Local installation**: Install NixOS directly on this machine with guided configuration
+   - **Clone from repository**: Use an existing NixOS flake configuration from a git repository
 
 ## Features
 
@@ -34,6 +37,43 @@ If no Ethernet connection is detected, the installer offers to scan for WiFi net
 3. **Authenticate**: Prompts for the WiFi password (masked input)
 4. **Connect**: Attempts to connect and displays the IP address once connected
 
+### Local Installation
+
+The local installation workflow guides you through:
+
+1. **Disk Selection**: Choose which disk to install to
+   - Shows all available disks with size and model information
+   - Warns about disks containing existing data
+   - Validates minimum disk size (8GB)
+
+2. **Encryption Choice**: Select your security preference
+   - **Encrypted (ZFS + LUKS + TPM2)**: Full disk encryption with automatic TPM2 unlock
+   - **Unencrypted (ext4)**: Simple installation without encryption
+   - TPM2 availability is automatically detected
+
+3. **Host Configuration**: Set up your system
+   - Hostname (validated per RFC 1123)
+   - Username (validated per POSIX standards)
+   - Password (with confirmation)
+   - System type (Server or Client with Hyprland desktop)
+
+4. **Configuration Generation**: Creates NixOS flake configuration
+   - `~/nixos-config/flake.nix`: Main flake with Keystone inputs
+   - `~/nixos-config/hosts/{hostname}/default.nix`: Host configuration
+   - `~/nixos-config/hosts/{hostname}/disk-config.nix`: Disk configuration
+   - `~/nixos-config/hosts/{hostname}/hardware-configuration.nix`: Auto-detected hardware
+
+5. **Installation**: Runs nixos-install with the generated configuration
+
+### Clone from Repository
+
+Use an existing NixOS configuration:
+
+1. Enter the git repository URL (HTTPS or SSH)
+2. The installer clones the repository
+3. Select from available host configurations in the `hosts/` directory
+4. Installation proceeds with the selected configuration
+
 ### User-Friendly Interface
 
 Built with [Ink](https://github.com/vadimdemedes/ink) (React for terminal UIs), the installer provides:
@@ -41,7 +81,10 @@ Built with [Ink](https://github.com/vadimdemedes/ink) (React for terminal UIs), 
 - Clean, modern terminal interface
 - Loading spinners during network operations
 - Clear error messages and retry options
-- Keyboard navigation for network selection
+- Keyboard navigation for all selections
+- Back navigation (press Escape)
+- Real-time input validation
+- File operation transparency during installation
 
 ## Usage
 
@@ -52,8 +95,11 @@ Built with [Ink](https://github.com/vadimdemedes/ink) (React for terminal UIs), 
 3. **Configure network if needed**:
    - If Ethernet is connected: Skip to step 4
    - If no Ethernet: Follow WiFi setup prompts
-4. **Note the IP address**: The installer displays the IP address
-5. **Run nixos-anywhere**: From your deployment machine, run the command shown
+4. **Select "Continue to Installation"**: After network is configured
+5. **Choose installation method**:
+   - **Remote via SSH**: Note the IP address and run nixos-anywhere from another machine
+   - **Local installation**: Follow the guided setup to install directly
+   - **Clone from repository**: Enter your existing config repository URL
 
 ### WiFi Setup Example
 
@@ -96,9 +142,49 @@ Keystone Installer
 ✓ WiFi Connected to MyHomeNetwork
 Interface: wlan0 - IP: 192.168.1.150
 
-Ready for Installation
-From your deployment machine, run:
-nixos-anywhere --flake .#your-config root@192.168.1.150
+> Continue to Installation →
+```
+
+### Local Installation Example
+
+After selecting "Local installation" from the method selection:
+
+```
+Keystone Installer - Disk Selection
+
+Select a disk for installation:
+> nvme0n1 - 500 GB (Samsung SSD 980 PRO)
+  sda - 2 TB (WD Blue)
+  ⚠️ sdb - 1 TB (Has existing data)
+
+⚠️ = Disk contains existing data (will be erased)
+```
+
+After confirming disk selection:
+
+```
+Keystone Installer - Encryption
+
+Choose disk encryption option:
+> 🔒 Encrypted (ZFS + LUKS + TPM2) - Recommended
+  🔓 Unencrypted (ext4) - Simple
+```
+
+After completing all configuration:
+
+```
+Keystone Installer - Installation Summary
+
+┌─────────────────────────────────────────┐
+│ Hostname: my-server                     │
+│ Username: admin                         │
+│ System Type: server                     │
+│ Disk: nvme0n1 (500 GB)                  │
+│ Encryption: ZFS + LUKS                  │
+└─────────────────────────────────────────┘
+
+> ✓ Start Installation
+  ← Go back and make changes
 ```
 
 ## Technical Details
