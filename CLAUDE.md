@@ -272,3 +272,10 @@ Each component can be individually enabled/disabled through the configuration in
 - Secure Boot requires manual key enrollment during installation process
 - All ZFS datasets use native encryption with automatic key management
 - Client configurations are NixOS system-level only (no home-manager integration)
+
+## Active Technologies
+- TypeScript 5.x (transpiled to JavaScript, Node.js runtime) + React 18.3.1, Ink 5.0.1, ink-text-input 6.0.0, ink-select-input 6.0.0, ink-spinner 5.0.0 (011-tui-local-installer)
+- ZFS with LUKS credstore (encrypted path) or plain ext4 (unencrypted path) (011-tui-local-installer)
+
+## Recent Changes
+- 011-tui-local-installer: Added TypeScript 5.x (transpiled to JavaScript, Node.js runtime) + React 18.3.1, Ink 5.0.1, ink-text-input 6.0.0, ink-select-input 6.0.0, ink-spinner 5.0.0

@@ -13,10 +13,10 @@ buildNpmPackage {
   # Generate package-lock.json hash
   # To get the correct hash, run: nix build .#keystone-installer-ui
   # The error message will show the expected hash
-  npmDepsHash = lib.fakeSha256;
+  npmDepsHash = "sha256-Hge/LwloXaBSPEreeSoQWxdWN9if64PrTd8vTjCUyCM=";
 
   # Dependencies needed at runtime
-  buildInputs = [ nodejs ];
+  buildInputs = [nodejs];
 
   # Build script is already defined in package.json
   npmBuildScript = "build";
