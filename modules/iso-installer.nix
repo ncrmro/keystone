@@ -122,9 +122,8 @@ in {
     };
   };
 
-  # Set kernel 6.12 for ZFS compatibility (ZFS 2.3 requires kernel < 6.14)
-  # Using pkgs here instead of flake.nix to avoid IFD issues in CI
-  boot.kernelPackages = lib.mkForce pkgs.linuxPackages_6_12;
+  # NixOS 25.05 uses kernel 6.12 by default which is ZFS-compatible
+  # No need to override - the default LTS kernel works with ZFS 2.3
 
   # Enable ZFS for nixos-anywhere deployments
   boot.supportedFilesystems = ["zfs"];
