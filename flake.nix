@@ -41,7 +41,7 @@
           ./modules/iso-installer.nix
           {
             _module.args.sshKeys = [];
-            # Kernel is set in iso-installer.nix using pkgs to avoid IFD issues
+            # Uses NixOS 25.05 default kernel (6.12 LTS) - ZFS compatible
           }
         ];
       };
