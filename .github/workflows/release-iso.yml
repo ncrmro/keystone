@@ -1,0 +1,77 @@
+name: Build and Release ISO
+
+on:
+  pull_request:
+    branches: [main]
+    # TODO: Uncomment paths filter when ready for selective builds
+    # paths:
+    #   - 'modules/iso-installer.nix'
+    #   - 'packages/keystone-installer-ui/**'
+    #   - 'flake.nix'
+    #   - 'flake.lock'
+    #   - '.github/workflows/release-iso.yml'
+
+  # Manual trigger for testing
+  workflow_dispatch:
+
+permissions:
+  contents: write # Needed to create/update releases
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v22
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # TODO: Add Cachix for faster builds
+      # - uses: cachix/cachix-action@v12
+      #   with:
+      #     name: keystone
+      #     authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      - name: Build ISO
+        run: nix build .#iso --print-build-logs
+
+      - name: Get ISO info
+        id: iso-info
+        run: |
+          ISO_PATH=$(readlink -f result/iso/*.iso)
+          ISO_NAME=$(basename "$ISO_PATH")
+          ISO_SIZE=$(du -h "$ISO_PATH" | cut -f1)
+          echo "path=$ISO_PATH" >> $GITHUB_OUTPUT
+          echo "name=$ISO_NAME" >> $GITHUB_OUTPUT
+          echo "size=$ISO_SIZE" >> $GITHUB_OUTPUT
+
+      - name: Create/Update Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: latest-iso
+          name: Keystone Installer ISO (Latest)
+          body: |
+            ## Keystone Installer ISO
+
+            **Built from:** ${{ github.sha }}
+            **Branch:** ${{ github.head_ref || github.ref_name }}
+            **Size:** ${{ steps.iso-info.outputs.size }}
+
+            ### Quick Start
+            1. Download the ISO below
+            2. Write to USB: `sudo dd if=keystone-installer.iso of=/dev/sdX bs=4M status=progress`
+            3. Boot target machine from USB
+            4. Follow the TUI installer
+
+            ### Notes
+            - No SSH keys included - console access only
+            - Build your own ISO with `./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub` for SSH access
+
+            ---
+            *This release is automatically updated on each build*
+          draft: false
+          prerelease: true
+          files: ${{ steps.iso-info.outputs.path }}
+          fail_on_unmatched_files: true
