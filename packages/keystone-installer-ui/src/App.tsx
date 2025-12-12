@@ -1241,6 +1241,9 @@ const App: React.FC = () => {
   // ============================================================================
 
   if (screen === 'error') {
+    // Find the last failed operation with output
+    const lastFailedOp = fileOperations.filter(op => !op.success).pop();
+
     return (
       <Box flexDirection="column" padding={1}>
         {renderHeader('Installation Error')}
@@ -1250,8 +1253,16 @@ const App: React.FC = () => {
         <Box marginBottom={1} borderStyle="round" borderColor="red" padding={1}>
           <Text>{installError || 'An unknown error occurred'}</Text>
         </Box>
+        {lastFailedOp?.output && (
+          <Box marginBottom={1} flexDirection="column">
+            <Text dimColor>Last output (truncated):</Text>
+            <Box borderStyle="single" padding={1}>
+              <Text>{lastFailedOp.output.slice(-500)}</Text>
+            </Box>
+          </Box>
+        )}
         <Box marginBottom={1}>
-          <Text dimColor>Check /tmp/keystone-install.log for details</Text>
+          <Text dimColor>Full log: /tmp/keystone-install.log</Text>
         </Box>
         <SelectInput
           items={[
