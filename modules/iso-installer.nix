@@ -122,7 +122,9 @@ in {
     };
   };
 
-  # Note: kernel is set in flake.nix to override minimal CD default
+  # Set kernel 6.12 for ZFS compatibility (ZFS 2.3 requires kernel < 6.14)
+  # Using pkgs here instead of flake.nix to avoid IFD issues in CI
+  boot.kernelPackages = lib.mkForce pkgs.linuxPackages_6_12;
 
   # Enable ZFS for nixos-anywhere deployments
   boot.supportedFilesystems = ["zfs"];

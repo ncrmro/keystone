@@ -41,8 +41,7 @@
           ./modules/iso-installer.nix
           {
             _module.args.sshKeys = [];
-            # Force kernel 6.12 - must be set here to override minimal CD
-            boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.x86_64-linux.linuxPackages_6_12;
+            # Kernel is set in iso-installer.nix using pkgs to avoid IFD issues
           }
         ];
       };
