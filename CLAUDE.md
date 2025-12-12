@@ -194,6 +194,30 @@ See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complet
 nix build .#iso
 ```
 
+### Pre-built ISO Downloads
+
+Pre-built ISOs are available from [GitHub Releases](https://github.com/ncrmro/keystone/releases/tag/latest-iso):
+
+- **No SSH keys included** - Console access only (use serial or graphical console)
+- **Auto-updated** - The `latest-iso` release is rebuilt on each PR to main
+- Build your own with `./bin/build-iso --ssh-key` if you need SSH access
+
+### CI/CD Workflows
+
+Located in `.github/workflows/`:
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `verify-build.yml` | PRs | Validate flake syntax, dry-run ISO build |
+| `release-iso.yml` | PRs to main | Build ISO and publish to GitHub Releases |
+| `docs.yml` | Push to main (docs/) | Deploy documentation to GitHub Pages |
+
+**Release Workflow Notes:**
+- Publishes to `latest-iso` tag (overwrites on each build)
+- Marked as prerelease for development builds
+- TODO: Cachix integration for faster builds
+- TODO: Path-based triggers for selective rebuilds
+
 ### Using Modules in External Flakes
 ```nix
 {
