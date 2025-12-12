@@ -293,6 +293,9 @@ export interface FileOperation {
 
   /** Error message if failed */
   error?: string;
+
+  /** Captured command output (for execute actions) */
+  output?: string;
 }
 
 /**

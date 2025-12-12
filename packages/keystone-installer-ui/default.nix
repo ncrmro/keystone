@@ -23,23 +23,23 @@ buildNpmPackage {
 
   # Install phase
   installPhase = ''
-    runHook preInstall
+        runHook preInstall
 
-    mkdir -p $out/bin $out/lib/keystone-installer
+        mkdir -p $out/bin $out/lib/keystone-installer
 
-    # Copy all necessary files
-    cp -r dist $out/lib/keystone-installer/
-    cp -r node_modules $out/lib/keystone-installer/
-    cp package.json $out/lib/keystone-installer/
+        # Copy all necessary files
+        cp -r dist $out/lib/keystone-installer/
+        cp -r node_modules $out/lib/keystone-installer/
+        cp package.json $out/lib/keystone-installer/
 
-    # Create executable wrapper
-    cat > $out/bin/keystone-installer << 'EOF'
+        # Create executable wrapper
+        cat > $out/bin/keystone-installer << EOF
     #!${nodejs}/bin/node
     import('$out/lib/keystone-installer/dist/index.js');
     EOF
-    chmod +x $out/bin/keystone-installer
+        chmod +x $out/bin/keystone-installer
 
-    runHook postInstall
+        runHook postInstall
   '';
 
   meta = with lib; {

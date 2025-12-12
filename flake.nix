@@ -157,5 +157,15 @@
       zesh = pkgs.callPackage ./packages/zesh {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
     };
+
+    # VM tests for the installer
+    checks.x86_64-linux = let
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+    in {
+      installer-test = import ./tests/installer-test.nix {
+        inherit pkgs;
+        lib = pkgs.lib;
+      };
+    };
   };
 }

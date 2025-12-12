@@ -33,6 +33,13 @@ VM_CONFIGS = {
         "check_virsh": True,
         "description": "Libvirt test VM with full stack"
     },
+    "keystone-tui-test": {
+        "host": "192.168.100.99",
+        "port": 22,
+        "user": "root",
+        "check_virsh": True,
+        "description": "TUI installer test VM"
+    },
     "build-vm-terminal": {
         "host": "localhost",
         "port": 2222,

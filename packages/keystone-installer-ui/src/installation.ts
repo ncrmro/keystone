@@ -29,7 +29,82 @@ import {
   GIT_CLONE_TIMEOUT,
 } from './types.js';
 import { formatDiskEncrypted, formatDiskUnencrypted, mountFilesystems, unmountFilesystems } from './disk.js';
-import { generateConfiguration, initGitRepository, HostConfiguration } from './config-generator.js';
+import { generateConfiguration, HostConfiguration } from './config-generator.js';
+
+// ============================================================================
+// Command Execution with Output Capture
+// ============================================================================
+
+/**
+ * Result of running a command with output capture.
+ */
+interface CommandResult {
+  success: boolean;
+  output: string;
+  error?: string;
+  exitCode: number | null;
+}
+
+/**
+ * Run a command with output streamed to TTY AND captured for logging.
+ * Uses spawn to handle long-running commands like nixos-install.
+ */
+function runCommandWithCapture(
+  command: string,
+  timeout: number
+): Promise<CommandResult> {
+  return new Promise((resolve) => {
+    const chunks: string[] = [];
+    const proc = spawn('/bin/sh', ['-c', command], {
+      stdio: ['inherit', 'pipe', 'pipe']
+    });
+
+    // Stream stdout to console AND capture
+    proc.stdout?.on('data', (data: Buffer) => {
+      const text = data.toString();
+      process.stdout.write(text);  // Show on TTY
+      chunks.push(text);           // Capture
+    });
+
+    // Stream stderr to console AND capture
+    proc.stderr?.on('data', (data: Buffer) => {
+      const text = data.toString();
+      process.stderr.write(text);  // Show on TTY
+      chunks.push(text);           // Capture
+    });
+
+    // Handle timeout
+    const timer = setTimeout(() => {
+      proc.kill('SIGTERM');
+      resolve({
+        success: false,
+        output: chunks.join(''),
+        error: `Command timed out after ${timeout / 1000}s`,
+        exitCode: null
+      });
+    }, timeout);
+
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({
+        success: code === 0,
+        output: chunks.join(''),
+        error: code !== 0 ? `Exit code: ${code}` : undefined,
+        exitCode: code
+      });
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({
+        success: false,
+        output: chunks.join(''),
+        error: err.message,
+        exitCode: null
+      });
+    });
+  });
+}
 
 // ============================================================================
 // Public API
@@ -58,57 +133,10 @@ export async function runInstallation(
   };
 
   try {
-    // Phase 1: Partitioning
-    onProgress({
-      phase: 'partitioning',
-      progress: 0,
-      currentOperation: 'Partitioning disk...',
-      startedAt
-    });
-
-    const partitionResult = await partitionDisk(
-      config.diskDevice,
-      config.encrypted,
-      config.swapSize,
-      logOp
-    );
-
-    if (!partitionResult.success) {
-      return createErrorResult('partitioning', partitionResult.error || 'Partitioning failed', operations);
-    }
-
-    // Phase 2: Formatting
-    onProgress({
-      phase: 'formatting',
-      progress: 20,
-      currentOperation: 'Formatting filesystems...',
-      startedAt
-    });
-
-    const formatResult = await formatDisk(config.diskDevice, config.encrypted, logOp);
-
-    if (!formatResult.success) {
-      return createErrorResult('formatting', formatResult.error || 'Formatting failed', operations);
-    }
-
-    // Phase 3: Mounting
-    onProgress({
-      phase: 'mounting',
-      progress: 35,
-      currentOperation: 'Mounting filesystems...',
-      startedAt
-    });
-
-    const mountResult = await mountForInstall(config.diskDevice, config.encrypted, logOp);
-
-    if (!mountResult.success) {
-      return createErrorResult('mounting', mountResult.error || 'Mount failed', operations);
-    }
-
-    // Phase 4: Config Generation
+    // Phase 1: Config Generation (to temp location first)
     onProgress({
       phase: 'config-generation',
-      progress: 45,
+      progress: 0,
       currentOperation: 'Generating NixOS configuration...',
       startedAt
     });
@@ -119,16 +147,48 @@ export async function runInstallation(
       return createErrorResult('config-generation', configResult.error || 'Config generation failed', operations);
     }
 
-    // Phase 5: NixOS Install
+    // Phase 2: Partitioning & Formatting with disko
+    onProgress({
+      phase: 'partitioning',
+      progress: 15,
+      currentOperation: 'Partitioning and formatting disk with disko...',
+      startedAt
+    });
+
+    const diskoResult = await runDisko(configResult.diskConfigPath!, config.diskDevice, logOp);
+
+    if (!diskoResult.success) {
+      return createErrorResult('partitioning', diskoResult.error || 'Disko failed', operations);
+    }
+
+    // Phase 3: Move config to final location
+    onProgress({
+      phase: 'mounting',
+      progress: 35,
+      currentOperation: 'Setting up configuration on target...',
+      startedAt
+    });
+
+    const moveResult = await moveConfigToTarget(
+      configResult.tempConfigPath!,
+      config.username,
+      logOp
+    );
+
+    if (!moveResult.success) {
+      return createErrorResult('mounting', moveResult.error || 'Failed to move config', operations);
+    }
+
+    // Phase 4: NixOS Install
     onProgress({
       phase: 'nixos-install',
-      progress: 55,
+      progress: 45,
       currentOperation: 'Running nixos-install (this may take several minutes)...',
       startedAt
     });
 
     const installResult = await runNixosInstall(
-      configResult.flakePath!,
+      moveResult.finalPath!,
       config.hostname,
       config.password,
       onProgress,
@@ -139,25 +199,7 @@ export async function runInstallation(
       return createErrorResult('nixos-install', installResult.error || 'Installation failed', operations);
     }
 
-    // Phase 6: Config Copy
-    onProgress({
-      phase: 'config-copy',
-      progress: 90,
-      currentOperation: 'Copying configuration to installed system...',
-      startedAt
-    });
-
-    const copyResult = await copyConfigToInstalled(
-      configResult.sourcePath!,
-      config.username,
-      logOp
-    );
-
-    if (!copyResult.success) {
-      return createErrorResult('config-copy', copyResult.error || 'Config copy failed', operations);
-    }
-
-    // Phase 7: Cleanup
+    // Phase 5: Cleanup
     onProgress({
       phase: 'cleanup',
       progress: 95,
@@ -308,18 +350,144 @@ export async function mountForInstall(
 }
 
 /**
- * Generate NixOS configuration.
+ * Run disko to partition, format, and mount the disk.
+ */
+async function runDisko(
+  diskConfigPath: string,
+  diskDevice: string,
+  onOperation: OperationCallback
+): Promise<{ success: boolean; error?: string }> {
+  if (DEV_MODE) {
+    console.log(`[DEV] Would run disko with ${diskConfigPath}`);
+    // Create dev mode mount points
+    fs.mkdirSync(MOUNT_ROOT, { recursive: true });
+    fs.mkdirSync(`${MOUNT_ROOT}/boot`, { recursive: true });
+    fs.mkdirSync(`${MOUNT_ROOT}/home`, { recursive: true });
+    onOperation({
+      timestamp: new Date(),
+      action: 'execute',
+      path: `disko --mode disko ${diskConfigPath}`,
+      purpose: '[DEV] Would run disko to partition and format disk',
+      success: true
+    });
+    return { success: true };
+  }
+
+  // Disko needs NIX_PATH set to find nixpkgs
+  // Use flake:nixpkgs to reference nixpkgs from the flake registry
+  const cmd = `NIX_PATH=nixpkgs=flake:nixpkgs disko --mode disko ${diskConfigPath}`;
+
+  onOperation({
+    timestamp: new Date(),
+    action: 'execute',
+    path: cmd,
+    purpose: 'Running disko to partition, format, and mount disk...',
+    success: true
+  });
+
+  try {
+    const result = await runCommandWithCapture(cmd, 300000); // 5 minute timeout for disko
+
+    onOperation({
+      timestamp: new Date(),
+      action: 'execute',
+      path: cmd,
+      purpose: result.success ? 'Disko completed successfully' : 'Disko failed',
+      success: result.success,
+      error: result.error,
+      output: result.output.slice(-4000)
+    });
+
+    if (!result.success) {
+      return { success: false, error: result.error || 'Disko failed to partition/format disk' };
+    }
+
+    // Verify mount points exist
+    if (!fs.existsSync(MOUNT_ROOT)) {
+      return { success: false, error: `Disko did not create mount point at ${MOUNT_ROOT}` };
+    }
+    if (!fs.existsSync(`${MOUNT_ROOT}/boot`)) {
+      return { success: false, error: `Disko did not create boot mount point at ${MOUNT_ROOT}/boot` };
+    }
+
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Move configuration from temp location to final location on mounted disk.
+ */
+async function moveConfigToTarget(
+  tempConfigPath: string,
+  username: string,
+  onOperation: OperationCallback
+): Promise<{ success: boolean; error?: string; finalPath?: string }> {
+  const finalPath = `${MOUNT_ROOT}/home/${username}/nixos-config`;
+
+  if (DEV_MODE) {
+    console.log(`[DEV] Would move ${tempConfigPath} to ${finalPath}`);
+    onOperation({
+      timestamp: new Date(),
+      action: 'copy',
+      path: finalPath,
+      purpose: '[DEV] Would move config to target',
+      success: true
+    });
+    return { success: true, finalPath: tempConfigPath }; // In dev mode, use temp path
+  }
+
+  try {
+    // Ensure parent directory exists
+    const parentDir = `${MOUNT_ROOT}/home/${username}`;
+    fs.mkdirSync(parentDir, { recursive: true });
+
+    // Copy config to final location
+    execSync(`cp -r "${tempConfigPath}" "${finalPath}"`, { encoding: 'utf-8' });
+
+    onOperation({
+      timestamp: new Date(),
+      action: 'copy',
+      path: finalPath,
+      purpose: 'Moved NixOS configuration to target disk',
+      success: true
+    });
+
+    return { success: true, finalPath };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    onOperation({
+      timestamp: new Date(),
+      action: 'copy',
+      path: finalPath,
+      purpose: 'Move NixOS configuration to target disk',
+      success: false,
+      error: message
+    });
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Generate NixOS configuration to a temporary location.
+ * Config is generated to /tmp first, then moved after disko formats/mounts.
  */
 async function generateNixosConfig(
   config: InstallationConfig,
   onOperation: OperationCallback
-): Promise<{ success: boolean; error?: string; flakePath?: string; sourcePath?: string }> {
-  const basePath = DEV_MODE ? CONFIG_BASE_PATH : `${MOUNT_ROOT}/home/${config.username}`;
-  const configPath = path.join(basePath, 'nixos-config');
+): Promise<{ success: boolean; error?: string; tempConfigPath?: string; diskConfigPath?: string; finalFlakePath?: string }> {
+  // Generate config to /tmp first (before disk is formatted/mounted)
+  const tempBasePath = '/tmp/keystone-install';
+  const tempConfigPath = path.join(tempBasePath, 'nixos-config');
 
   try {
-    // Ensure base path exists
-    fs.mkdirSync(basePath, { recursive: true });
+    // Clean up any previous temp config
+    if (fs.existsSync(tempBasePath)) {
+      fs.rmSync(tempBasePath, { recursive: true, force: true });
+    }
+    fs.mkdirSync(tempBasePath, { recursive: true });
 
     const hostConfig: HostConfiguration = {
       hostname: config.hostname,
@@ -330,22 +498,23 @@ async function generateNixosConfig(
       swapSize: config.swapSize
     };
 
-    const result = generateConfiguration(hostConfig, basePath, onOperation);
+    const result = generateConfiguration(hostConfig, tempBasePath, onOperation);
 
     if (!result.success) {
       return { success: false, error: result.error };
     }
 
-    // Initialize git repository
-    const gitSuccess = initGitRepository(configPath, onOperation);
-    if (!gitSuccess) {
-      console.warn('[installation] Git initialization failed, continuing without version control');
-    }
+    // Path to the standalone disko config for disko CLI
+    const diskConfigPath = path.join(tempConfigPath, 'hosts', config.hostname, 'disko-standalone.nix');
+
+    // Final path after moving to /mnt
+    const finalFlakePath = `${MOUNT_ROOT}/home/${config.username}/nixos-config`;
 
     return {
       success: true,
-      flakePath: configPath,
-      sourcePath: configPath
+      tempConfigPath,
+      diskConfigPath,
+      finalFlakePath
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -393,36 +562,49 @@ export async function runNixosInstall(
     return { success: true };
   }
 
-  try {
-    const cmd = `nixos-install --root ${MOUNT_ROOT} --no-root-passwd --flake ${flakePath}#${hostname}`;
+  const cmd = `nixos-install --root ${MOUNT_ROOT} --no-root-passwd --flake ${flakePath}#${hostname}`;
 
-    onOperation({
-      timestamp: new Date(),
-      action: 'execute',
-      path: cmd,
-      purpose: 'Run nixos-install',
-      success: true
-    });
+  // Log start of nixos-install
+  onOperation({
+    timestamp: new Date(),
+    action: 'execute',
+    path: cmd,
+    purpose: 'Starting nixos-install...',
+    success: true
+  });
 
-    execSync(cmd, {
-      encoding: 'utf-8',
-      timeout: NIXOS_INSTALL_TIMEOUT,
-      stdio: 'inherit'
-    });
+  // Run nixos-install with output capture (streams to TTY AND captures for logging)
+  const result = await runCommandWithCapture(cmd, NIXOS_INSTALL_TIMEOUT);
 
-    // Set user password
-    if (password) {
+  // Log completion with captured output
+  onOperation({
+    timestamp: new Date(),
+    action: 'execute',
+    path: cmd,
+    purpose: result.success ? 'nixos-install completed' : 'nixos-install failed',
+    success: result.success,
+    error: result.error,
+    output: result.output.slice(-4000)  // Last 4KB of output
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error || 'nixos-install failed' };
+  }
+
+  // Set user password
+  if (password) {
+    try {
       execSync(`nixos-enter --root ${MOUNT_ROOT} -- /bin/sh -c "echo '${hostname}:${password}' | chpasswd"`, {
         encoding: 'utf-8',
         timeout: 30000
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: `Failed to set user password: ${message}` };
     }
-
-    return { success: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return { success: false, error: `nixos-install failed: ${message}` };
   }
+
+  return { success: true };
 }
 
 /**
@@ -627,7 +809,12 @@ export function logOperation(
 ): void {
   try {
     const status = operation.success ? 'SUCCESS' : `FAILED: ${operation.error || 'Unknown'}`;
-    const line = `[${operation.timestamp.toISOString()}] ${operation.action.toUpperCase()} ${operation.path} - ${operation.purpose} (${status})\n`;
+    let line = `[${operation.timestamp.toISOString()}] ${operation.action.toUpperCase()} ${operation.path} - ${operation.purpose} (${status})\n`;
+
+    // Include captured output if present (for execute actions)
+    if (operation.output) {
+      line += `--- OUTPUT ---\n${operation.output}\n--- END OUTPUT ---\n`;
+    }
 
     // Ensure log directory exists
     const logDir = path.dirname(logPath);

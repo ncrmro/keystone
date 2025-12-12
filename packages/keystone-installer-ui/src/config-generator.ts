@@ -133,12 +133,17 @@ export function generateConfiguration(
     const hostDefaultPath = path.join(hostsDir, 'default.nix');
     writeConfigFile(hostDefaultPath, hostDefaultContent, 'Host-specific configuration', files, onOperation);
 
-    // Generate disk-config.nix
+    // Generate disk-config.nix (NixOS module for nixos-install)
     const diskConfigContent = config.encrypted
       ? generateDiskConfigEncrypted(config.diskDevice, config.swapSize)
       : generateDiskConfigUnencrypted(config.diskDevice, config.swapSize);
     const diskConfigPath = path.join(hostsDir, 'disk-config.nix');
     writeConfigFile(diskConfigPath, diskConfigContent, `Disko configuration (${config.encrypted ? 'encrypted ZFS' : 'unencrypted ext4'})`, files, onOperation);
+
+    // Generate standalone disko config (for disko CLI)
+    const standaloneDiskConfig = generateStandaloneDiskConfig(config.diskDevice, config.swapSize);
+    const standaloneDiskConfigPath = path.join(hostsDir, 'disko-standalone.nix');
+    writeConfigFile(standaloneDiskConfigPath, standaloneDiskConfig, 'Standalone disko config for CLI', files, onOperation);
 
     // Generate hardware-configuration.nix
     const hardwareContent = generateHardwareConfig();
@@ -257,7 +262,7 @@ export function generateDiskConfigEncrypted(
 }
 
 /**
- * Generate disk-config.nix content for unencrypted installation.
+ * Generate disk-config.nix content for unencrypted installation (NixOS module format).
  *
  * @param diskDevice - Device path (by-id preferred)
  * @param swapSize - Swap partition size
@@ -312,6 +317,60 @@ export function generateDiskConfigUnencrypted(
   # Boot loader
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+}
+`;
+}
+
+/**
+ * Generate standalone disko config for disko CLI (not a NixOS module).
+ * This is used by `disko --mode disko` to partition/format/mount.
+ *
+ * @param diskDevice - Device path (by-id preferred)
+ * @param swapSize - Swap partition size
+ * @returns Nix file content as string
+ */
+export function generateStandaloneDiskConfig(
+  diskDevice: string,
+  swapSize: string
+): string {
+  return `# Standalone disko configuration for disko CLI
+# Device: ${diskDevice}
+{
+  disko.devices = {
+    disk.root = {
+      type = "disk";
+      device = "${diskDevice}";
+      content = {
+        type = "gpt";
+        partitions = {
+          esp = {
+            name = "ESP";
+            size = "1G";
+            type = "EF00";
+            content = {
+              type = "filesystem";
+              format = "vfat";
+              mountpoint = "/boot";
+            };
+          };
+          swap = {
+            size = "${swapSize}";
+            content = {
+              type = "swap";
+            };
+          };
+          root = {
+            size = "100%";
+            content = {
+              type = "filesystem";
+              format = "ext4";
+              mountpoint = "/";
+            };
+          };
+        };
+      };
+    };
+  };
 }
 `;
 }
@@ -388,77 +447,12 @@ export function generateHardwareConfig(rootPath: string = MOUNT_ROOT): string {
   }
 }
 
-/**
- * Initialize git repository in configuration directory.
- *
- * @param configPath - Path to configuration directory
- * @param onOperation - Optional callback for operations
- * @returns Success status
- */
-export function initGitRepository(
-  configPath: string,
-  onOperation?: OperationCallback
-): boolean {
-  if (DEV_MODE) {
-    console.log(`[DEV] Would init git repository at ${configPath}`);
-    return true;
-  }
-
-  try {
-    // Initialize git repository
-    execSync(`git init "${configPath}"`, { encoding: 'utf-8' });
-
-    logOp(onOperation, {
-      timestamp: new Date(),
-      action: 'execute',
-      path: configPath,
-      purpose: 'Initialize git repository',
-      success: true
-    });
-
-    // Configure git user for initial commit (use generic values)
-    execSync(`git -C "${configPath}" config user.email "installer@keystone.local"`, { encoding: 'utf-8' });
-    execSync(`git -C "${configPath}" config user.name "Keystone Installer"`, { encoding: 'utf-8' });
-
-    // Add all files
-    execSync(`git -C "${configPath}" add -A`, { encoding: 'utf-8' });
-
-    logOp(onOperation, {
-      timestamp: new Date(),
-      action: 'execute',
-      path: configPath,
-      purpose: 'Stage all configuration files',
-      success: true
-    });
-
-    // Create initial commit
-    execSync(`git -C "${configPath}" commit -m "Initial NixOS configuration"`, { encoding: 'utf-8' });
-
-    logOp(onOperation, {
-      timestamp: new Date(),
-      action: 'execute',
-      path: configPath,
-      purpose: 'Create initial commit',
-      success: true
-    });
-
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[config-generator] Error initializing git: ${message}`);
-
-    logOp(onOperation, {
-      timestamp: new Date(),
-      action: 'execute',
-      path: configPath,
-      purpose: 'Initialize git repository',
-      success: false,
-      error: message
-    });
-
-    return false;
-  }
-}
+// TODO: Git repository initialization removed from installer
+// Git init during install causes ownership errors because:
+// - Installer runs as root, creates .git owned by root
+// - nixos-install uses Nix daemon which runs as nixbld user
+// - Git refuses to operate on root-owned .git directories
+// User should run `git init` after first boot as their own user
 
 /**
  * Scan a directory for available host configurations.
