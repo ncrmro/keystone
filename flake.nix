@@ -156,12 +156,10 @@
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
       zesh = pkgs.callPackage ./packages/zesh {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
-    };
 
-    # VM tests for the installer
-    checks.x86_64-linux = let
-      pkgs = nixpkgs.legacyPackages.x86_64-linux;
-    in {
+      # Internal VM test - run with: nix build .#installer-test
+      # Not in checks to avoid IFD evaluation issues with nix flake check
+      # (NixOS VM tests use kernel modules that cause IFD failures in CI)
       installer-test = import ./tests/installer-test.nix {
         inherit pkgs;
         lib = pkgs.lib;
