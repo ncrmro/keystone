@@ -150,17 +150,32 @@ remote-viewer $(virsh domdisplay keystone-test-vm)
 
 # Serial console
 virsh console keystone-test-vm
+```
 
-# SSH (after NixOS installation) - ALWAYS use this script for VM SSH
+**SSH Access - ALWAYS use `./bin/test-vm-ssh`**:
+
+**IMPORTANT**: Never use raw `ssh` commands to connect to test VMs. Always use the `./bin/test-vm-ssh` script:
+
+```bash
+# Connect to default VM (keystone-test-vm)
 ./bin/test-vm-ssh
 
-# The test-vm-ssh script:
-# - Connects to keystone-test-vm at 192.168.100.99
-# - Uses isolated known_hosts to avoid polluting user's SSH configuration
-# - Filters out SSH warnings to keep agent context clean
-# - Checks VM is running before attempting connection
-# - Supports passing commands: ./bin/test-vm-ssh "systemctl status"
+# Connect to specific VM
+./bin/test-vm-ssh keystone-tui-test
+
+# Run a command on a VM
+./bin/test-vm-ssh keystone-tui-test "systemctl status keystone-installer"
+
+# List available VMs
+./bin/test-vm-ssh --list
 ```
+
+**Why use test-vm-ssh**:
+- Uses isolated known_hosts (`/tmp/keystone-test-vm-known-hosts`) - won't pollute `~/.ssh/known_hosts`
+- Filters SSH warnings to keep agent context clean
+- Checks VM is running before attempting connection
+- Handles host key changes automatically (VMs are frequently reset)
+- Supports all whitelisted test VMs with correct ports/users
 
 See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complete details.
 
@@ -178,6 +193,30 @@ See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complet
 # Direct Nix build (no SSH keys)
 nix build .#iso
 ```
+
+### Pre-built ISO Downloads
+
+Pre-built ISOs are available from [GitHub Releases](https://github.com/ncrmro/keystone/releases/tag/latest-iso):
+
+- **No SSH keys included** - Console access only (use serial or graphical console)
+- **Auto-updated** - The `latest-iso` release is rebuilt on each PR to main
+- Build your own with `./bin/build-iso --ssh-key` if you need SSH access
+
+### CI/CD Workflows
+
+Located in `.github/workflows/`:
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `verify-build.yml` | PRs | Validate flake syntax, dry-run ISO build |
+| `release-iso.yml` | PRs to main | Build ISO and publish to GitHub Releases |
+| `docs.yml` | Push to main (docs/) | Deploy documentation to GitHub Pages |
+
+**Release Workflow Notes:**
+- Publishes to `latest-iso` tag (overwrites on each build)
+- Marked as prerelease for development builds
+- TODO: Cachix integration for faster builds
+- TODO: Path-based triggers for selective rebuilds
 
 ### Using Modules in External Flakes
 ```nix
@@ -272,3 +311,10 @@ Each component can be individually enabled/disabled through the configuration in
 - Secure Boot requires manual key enrollment during installation process
 - All ZFS datasets use native encryption with automatic key management
 - Client configurations are NixOS system-level only (no home-manager integration)
+
+## Active Technologies
+- TypeScript 5.x (transpiled to JavaScript, Node.js runtime) + React 18.3.1, Ink 5.0.1, ink-text-input 6.0.0, ink-select-input 6.0.0, ink-spinner 5.0.0 (011-tui-local-installer)
+- ZFS with LUKS credstore (encrypted path) or plain ext4 (unencrypted path) (011-tui-local-installer)
+
+## Recent Changes
+- 011-tui-local-installer: Added TypeScript 5.x (transpiled to JavaScript, Node.js runtime) + React 18.3.1, Ink 5.0.1, ink-text-input 6.0.0, ink-select-input 6.0.0, ink-spinner 5.0.0

@@ -41,8 +41,7 @@
           ./modules/iso-installer.nix
           {
             _module.args.sshKeys = [];
-            # Force kernel 6.12 - must be set here to override minimal CD
-            boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.x86_64-linux.linuxPackages_6_12;
+            # Uses NixOS 25.05 default kernel (6.12 LTS) - ZFS compatible
           }
         ];
       };
@@ -155,6 +154,15 @@
     in {
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
       zesh = pkgs.callPackage ./packages/zesh {};
+      keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
+
+      # Internal VM test - run with: nix build .#installer-test
+      # Not in checks to avoid IFD evaluation issues with nix flake check
+      # (NixOS VM tests use kernel modules that cause IFD failures in CI)
+      installer-test = import ./tests/installer-test.nix {
+        inherit pkgs;
+        lib = pkgs.lib;
+      };
     };
   };
 }

@@ -5,7 +5,9 @@
   lib,
   sshKeys ? [],
   ...
-}: {
+}: let
+  keystone-installer-ui = pkgs.callPackage ../packages/keystone-installer-ui {};
+in {
   # Enable SSH daemon for remote access
   services.openssh = {
     enable = true;
@@ -25,11 +27,16 @@
     openssh.authorizedKeys.keys = sshKeys;
   };
 
-  # Enable networking
+  # Enable networking with NetworkManager for WiFi support
   networking = {
-    dhcpcd.enable = true;
-    wireless.enable = false; # We'll use dhcp for simplicity
-    useDHCP = true;
+    dhcpcd.enable = false; # Disable dhcpcd in favor of NetworkManager
+    wireless.enable = false; # NetworkManager handles WiFi
+    networkmanager = {
+      enable = true;
+      # Ensure NetworkManager starts early
+      dispatcherScripts = [];
+    };
+    useDHCP = false; # NetworkManager handles DHCP
   };
 
   # Include useful tools for nixos-anywhere and debugging
@@ -51,6 +58,14 @@
     config.boot.kernelPackages.zfs_2_3
     # Secure Boot key management
     sbctl
+    # Keystone installer UI
+    keystone-installer-ui
+    # NetworkManager CLI for WiFi management
+    networkmanager
+    # JSON parsing for lsblk disk detection
+    jq
+    # TPM2 detection for encrypted installation
+    tpm2-tools
   ];
 
   # Enable the serial console for remote debugging
@@ -59,10 +74,56 @@
   # Ensure SSH starts on boot
   systemd.services.sshd.wantedBy = lib.mkForce ["multi-user.target"];
 
-  # Automatically configure network on boot
-  systemd.services.dhcpcd.wantedBy = ["multi-user.target"];
+  # Disable getty on tty1 so the installer can use it
+  systemd.services."getty@tty1".enable = false;
+  systemd.services."autovt@tty1".enable = false;
 
-  # Note: kernel is set in flake.nix to override minimal CD default
+  # Keystone installer service - auto-start the TUI
+  systemd.services.keystone-installer = {
+    description = "Keystone Installer TUI";
+    wantedBy = ["multi-user.target"];
+    after = ["network.target" "NetworkManager.service"];
+    wants = ["NetworkManager.service"];
+    conflicts = ["getty@tty1.service" "autovt@tty1.service"];
+
+    # Add required tools to PATH for the installer
+    path = with pkgs; [
+      networkmanager # nmcli
+      iproute2 # ip
+      util-linux # lsblk
+      jq # JSON parsing
+      tpm2-tools # TPM detection
+      parted # disk partitioning
+      cryptsetup # LUKS encryption
+      config.boot.kernelPackages.zfs_2_3 # ZFS tools
+      dosfstools # mkfs.fat
+      e2fsprogs # mkfs.ext4
+      nix # nix command for flake operations
+      nixos-install-tools # nixos-install, nixos-generate-config, nixos-enter
+      disko # disk partitioning and formatting
+      git # git clone for repository installation
+      shadow # chpasswd for setting user passwords
+    ];
+
+    # NOTE: Git initialization removed from installer to avoid ownership errors
+    # User should run `git init` after first boot as their own user
+
+    serviceConfig = {
+      Type = "simple";
+      User = "root";
+      ExecStart = "${keystone-installer-ui}/bin/keystone-installer";
+      Restart = "on-failure";
+      RestartSec = "5s";
+      StandardInput = "tty";
+      StandardOutput = "tty";
+      TTYPath = "/dev/tty1";
+      TTYReset = "yes";
+      TTYVHangup = "yes";
+    };
+  };
+
+  # NixOS 25.05 uses kernel 6.12 by default which is ZFS-compatible
+  # No need to override - the default LTS kernel works with ZFS 2.3
 
   # Enable ZFS for nixos-anywhere deployments
   boot.supportedFilesystems = ["zfs"];
@@ -79,6 +140,9 @@
   # Set required hostId for ZFS
   networking.hostId = lib.mkDefault "8425e349";
 
+  # Enable flakes for disko and nixos-install
+  nix.settings.experimental-features = ["nix-command" "flakes"];
+
   # Optimize for installation - less bloat
   documentation.enable = false;
   documentation.nixos.enable = false;
@@ -86,6 +150,22 @@
   # Set the ISO label
   isoImage.isoName = lib.mkForce "keystone-installer.iso";
   isoImage.volumeID = lib.mkForce "KEYSTONE";
+
+  # Custom welcome banner
+  environment.etc."issue".text = lib.mkForce ''
+
+    \e[1;35m╔═══════════════════════════════════════════════════════════════╗
+    ║           \e[1;36mKeystone Installer\e[1;35m - NixOS ${config.system.nixos.release}            ║
+    ╚═══════════════════════════════════════════════════════════════╝\e[0m
+
+    The installer TUI is running on \e[1;33mtty1\e[0m.
+    Press \e[1;32mAlt+F1\e[0m to switch to the installer.
+
+    For manual access:
+      - SSH: \e[1;36mssh root@<this-ip>\e[0m (key-based auth only)
+      - Root shell: This terminal
+
+  '';
 
   # Include the keystone modules in the ISO for reference
   environment.etc."keystone-modules".source = ../modules;
