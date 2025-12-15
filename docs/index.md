@@ -7,6 +7,23 @@ title: Home
 
 Welcome to the Keystone documentation. Keystone is a NixOS-based self-sovereign infrastructure platform that enables users to deploy secure, encrypted infrastructure on any hardware.
 
+## Core Concepts
+
+<!-- TODO: add screenshots here -->
+
+### Keystone TUI
+Keystone TUI is an opinionated set of terminal tools and configuration options. It can replace hombrew on macOS or your OS's native package manager.
+
+### Keystone OS
+The immutable, secure operating system based on NixOS. It comes in two primary variants:
+- **Server:** Optimized for headless operation, providing robust services, networking, and storage capabilities.
+- **Desktop:** A feature-rich Graphical User Interface (GUI) environment tailored for **laptops** and workstations, offering a consistent and secure user experience.
+- Comes installed with the Keystone TUI.
+
+### Keystone HA
+A distributed computing layer that ensures **High Availability** and resilience. It enables your services to remain operational even if individual nodes fail. Additionally
+it allows clusters to share resources between super entities. Eg family, friends or other orginizations an enterprises.
+
 ## Quick Links
 
 - **[Project Roadmap](https://github.com/ncrmro/keystone/blob/main/ROADMAP.md)** - Development milestones and future plans
