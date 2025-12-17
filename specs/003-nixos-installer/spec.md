@@ -6,18 +6,17 @@
 - Automation: Must be fully testable headlessly via VM tests (`./bin/test-installer`) to gate changes in CI.
 
 ## Functional Requirements
-- Startup: Present network status and block progression until basic connectivity is confirmed (or provide a clear retry path).
-- Install methods: Offer at least “Local installation” (on this machine); keep stubs for remote/clone as future options.
-- Disk handling:
-  - Enumerate installable disks and surface size/model hints.
-  - Confirm destructive actions before proceeding.
-  - Support unencrypted ext4 path; plan for encrypted ZFS/LUKS flow.
-  - Use generated disko configs; ensure target mounts land at `/mnt` for subsequent steps.
-- Host/user inputs: Collect hostname, username, and password with validation and confirmation.
-- System type: Allow choosing server vs client module set for generated flake config.
-- Config generation: Produce flake + host files, disko config(s), and hardware configuration under `/mnt/home/<user>/nixos-config`.
-- Install execution: Run `nixos-install` with the generated flake; set user password; log all operations to `/tmp/keystone-install.log`.
-- Logging/UX: Stream progress and errors; provide tail of the install log on failure.
+- FR-001 Startup: Present network status and block progression until basic connectivity is confirmed (or provide a clear retry path).
+- FR-002 Install methods: Offer at least “Local installation” (on this machine); keep stubs for remote/clone as future options.
+- FR-003 Disk enumeration: Enumerate installable disks and surface size/model hints.
+- FR-004 Disk confirmation: Confirm destructive actions before proceeding.
+- FR-005 Disk modes: Support unencrypted ext4 path; plan for encrypted ZFS/LUKS flow.
+- FR-006 Disk mounting: Use generated disko configs; ensure target mounts land at `/mnt` for subsequent steps.
+- FR-007 Identity inputs: Collect hostname, username, and password with validation and confirmation.
+- FR-008 System role: Allow choosing server vs client module set for generated flake config.
+- FR-009 Config generation: Produce flake + host files, disko config(s), and hardware configuration under `/mnt/home/<user>/nixos-config`.
+- FR-010 Install execution: Run `nixos-install` with the generated flake; set user password; log all operations to `/tmp/keystone-install.log`.
+- FR-011 Logging/UX: Stream progress and errors; provide tail of the install log on failure.
 
 ## Non-Functional Requirements
 - Automated testing: The full happy path must run headlessly in VM tests via `./bin/test-installer`; failures should exit non-zero and print diagnostic tails.
