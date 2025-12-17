@@ -22,6 +22,9 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+.cache/
+.nix-store/
+.nixos-test-history
 
 # VM artifacts
 vms/*/disk.qcow2
