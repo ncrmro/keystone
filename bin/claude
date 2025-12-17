@@ -74,12 +74,25 @@ def main():
             # Update workspace path for TypeScript LSP
             workspace_path = worktree_path
 
+            # Get the actual git branch in the worktree
+            try:
+                result = subprocess.run(
+                    ["git", "branch", "--show-current"],
+                    cwd=worktree_path,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                actual_branch = result.stdout.strip()
+            except subprocess.CalledProcessError:
+                actual_branch = branch_name  # Fallback to directory name
+
             # Add the --add-dir flag
             processed_args.extend(["--add-dir", worktree_path])
 
             # Add the --append-system-prompt flag
             system_prompt = (
-                f"You are handling work in worktree located at {worktree_path}, "
+                f"You are handling work in worktree located at {worktree_path} on branch {actual_branch}, "
                 f"only read or edit files in that directory, all commands should be run in that directory"
             )
             processed_args.extend(["--append-system-prompt", system_prompt])
