@@ -144,8 +144,8 @@
       users = ./modules/users;
     };
 
-    # Export home-manager modules
-    homeManagerModules = {
+    # Export home-manager modules (homeModules is the standard flake output name)
+    homeModules = {
       terminalDevEnvironment = ./home-manager/modules/terminal-dev-environment;
       desktopHyprland = ./home-manager/modules/desktop/hyprland;
     };
@@ -156,7 +156,7 @@
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
       zesh = pkgs.callPackage ./packages/zesh {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
-      keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha-tui-client {};
+      keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
 
       # Internal VM test - run with: nix build .#installer-test
       # Not in checks to avoid IFD evaluation issues with nix flake check
