@@ -31,9 +31,9 @@ themes {
         magenta "#9C59B2"
         // ANSI Cyan color
         cyan "#32878F"
-        // ANSI White color
+        // ANSI White color (used for bottom bar text)
         white "#B8A26C"
-        // Orange color (often used for specific UI highlights) - reusing yellow in this theme
-        orange "#B8A26C"
+        // Orange color (used for inactive tabs) - darker gold
+        orange "#7A6A45"
     }
 }

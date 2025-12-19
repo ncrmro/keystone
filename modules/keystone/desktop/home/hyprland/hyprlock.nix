@@ -18,7 +18,6 @@ in
         general = {
           disable_loading_bar = true;
           no_fade_in = false;
-          no_fade_out = true;
         };
 
         auth = {
