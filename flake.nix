@@ -142,6 +142,8 @@
       ssh = ./modules/ssh;
       tpmEnrollment = ./modules/tpm-enrollment;
       users = ./modules/users;
+      # Standalone desktop module (no disko/encryption dependencies)
+      keystoneDesktop = ./modules/keystone/desktop/nixos.nix;
     };
 
     # Export home-manager modules (homeModules is the standard flake output name)
