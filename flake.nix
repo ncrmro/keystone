@@ -150,6 +150,9 @@
     homeModules = {
       terminalDevEnvironment = ./home-manager/modules/terminal-dev-environment;
       desktopHyprland = ./home-manager/modules/desktop/hyprland;
+      # Keystone-specific home-manager modules
+      keystoneTerminal = ./modules/keystone/terminal/default.nix;
+      keystoneDesktop = ./modules/keystone/desktop/home/default.nix;
     };
 
     packages.x86_64-linux = let
