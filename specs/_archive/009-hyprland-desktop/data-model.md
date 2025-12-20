@@ -23,19 +23,43 @@ This feature involves configuration modules rather than traditional data entitie
 - Depends on: Base NixOS system configuration
 - Integrates with: home-manager for user-level configuration
 
-### 2. Home-Manager Desktop Module (`home-manager/modules/desktop/hyprland/default.nix`)
+### 2. Keystone Desktop Hyprland Module (`modules/keystone/desktop/home/hyprland/default.nix`)
 
 **Purpose**: User-level configuration for the Hyprland desktop environment.
 
 **Key Attributes**:
 - `enable`: Boolean option to activate the user desktop module
-- `packages`: List of user-level packages (ghostty, hyprpaper, waybar, mako, essential Hyprland utilities)
-- `hyprland`: Configuration for the Hyprland compositor
-- `waybar`: Configuration for the status bar
-- `mako`: Configuration for notifications
-- `hyprpaper`: Configuration for wallpapers
-- `hyprlock`: Configuration for screen locking
-- `hypridle`: Configuration for idle management
+- `monitors`: List of monitor configuration strings for Hyprland
+- `terminal`: Default terminal application (default: `uwsm app -- ghostty`)
+- `fileManager`: Default file manager application (default: `uwsm app -- nautilus --new-window`)
+- `browser`: Default browser application (default: `uwsm app -- chromium --new-window --ozone-platform=wayland`)
+- `scale`: Display scale factor (default: `2` for HiDPI displays)
+- `modifierKey`: Primary modifier key for keybindings (default: `ALT`, options: `SUPER`, `ALT`, `CTRL`)
+- `capslockAsControl`: Remap Caps Lock to Control key (default: `true`)
+
+**Example Configuration**:
+```nix
+{
+  keystone.desktop.hyprland = {
+    enable = true;
+    modifierKey = "ALT";        # Use ALT as the primary modifier
+    capslockAsControl = true;   # Remap Caps Lock to Control
+    scale = 1;                  # For non-HiDPI displays
+  };
+}
+```
+
+**Sub-modules**:
+- `appearance.nix`: Visual styling and appearance settings
+- `autostart.nix`: Applications to start with the session
+- `bindings.nix`: Keyboard shortcuts (uses `modifierKey` option)
+- `environment.nix`: Environment variables
+- `hypridle.nix`: Idle management configuration
+- `hyprlock.nix`: Screen lock configuration
+- `hyprpaper.nix`: Wallpaper configuration
+- `hyprsunset.nix`: Night light configuration
+- `input.nix`: Input device settings (uses `capslockAsControl` option)
+- `layout.nix`: Window layout settings
 
 **Validation Rules**:
 - When enabled, Hyprland must be installed at system level
