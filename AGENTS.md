@@ -272,3 +272,34 @@ Each component can be individually enabled/disabled through the configuration in
 - Secure Boot requires manual key enrollment during installation process
 - All ZFS datasets use native encryption with automatic key management
 - Client configurations are NixOS system-level only (no home-manager integration)
+
+## Submodule Usage in nixos-config
+
+When keystone is used as a git submodule in another flake (like nixos-config):
+
+### Flake Input Configuration
+```nix
+keystone = {
+  url = "git+file:./.submodules/keystone?submodules=1";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+```
+
+### Local Development
+Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes without requiring commits:
+```bash
+./bin/dev-keystone        # Uses current hostname
+./bin/dev-keystone mox    # Specific host
+```
+
+### Available Home-Manager Modules
+- `inputs.keystone.homeModules.terminal` - Terminal dev environment
+- `inputs.keystone.homeModules.desktop` - Full Hyprland desktop
+
+### Key Options
+- `keystone.terminal.enable` - Enable terminal tools (zsh, starship, zellij, helix)
+- `keystone.terminal.git.userName` / `userEmail` - Required git config
+- `keystone.desktop.enable` - Enable desktop environment
+- `keystone.desktop.hyprland.enable` - Enable Hyprland config
+- `keystone.desktop.hyprland.modifierKey` - Primary modifier (default: ALT)
+- `keystone.desktop.hyprland.capslockAsControl` - Remap caps to ctrl (default: true)
