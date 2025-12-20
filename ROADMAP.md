@@ -4,6 +4,8 @@
 
 Keystone is a NixOS-based self-sovereign infrastructure platform that enables users to deploy secure, encrypted infrastructure on any hardware. It provides a progressive path from secure servers to full desktop workstations, with consistent developer experience across all platforms.
 
+> **Specification**: See [`specs/001-keystone-os/spec.md`](specs/001-keystone-os/spec.md) for functional requirements and [`specs/001-keystone-os/plan.md`](specs/001-keystone-os/plan.md) for technology implementation details.
+
 ## Version 0.0.1 (Alpha) - Secure Foundation
 **Status**: 🟢 Core Complete | 🟡 Needs Polish
 
@@ -233,6 +235,14 @@ nix-shell -p home-manager --run "home-manager switch --flake github:ncrmro/keyst
 - `./bin/virtual-machine` - Full-stack libvirt VMs
 - `./bin/test-deployment` - Integration testing
 - GitHub Actions CI for basic builds
+
+### Migration to Flake Checks
+Tests are being migrated to proper `nix flake check` outputs for better CI integration. See [`specs/001-keystone-os/plan.md`](specs/001-keystone-os/plan.md#testing-infrastructure) for the migration plan.
+
+Target structure:
+- `checks.x86_64-linux.vm-*` - Fast iteration VMs
+- `checks.x86_64-linux.integration-*` - Full stack testing with TPM emulation
+- `checks.x86_64-linux.nixos-*` - Module unit tests
 
 ### Needed for v0.0.1
 - Automated secure boot testing
