@@ -51,14 +51,11 @@
       test-server = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
+          # Dependencies required by OS module
           disko.nixosModules.disko
           lanzaboote.nixosModules.lanzaboote
+          # Server module auto-imports the consolidated OS module
           ./modules/server
-          ./modules/disko-single-disk-root
-          ./modules/initrd-ssh-unlock
-          ./modules/secure-boot
-          ./modules/tpm-enrollment
-          ./modules/users
           ./vms/test-server/configuration.nix
         ];
       };
@@ -67,15 +64,12 @@
       test-hyprland = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
+          # Dependencies required by OS module
           disko.nixosModules.disko
           lanzaboote.nixosModules.lanzaboote
           home-manager.nixosModules.home-manager
+          # Client module auto-imports the consolidated OS module
           ./modules/client
-          ./modules/disko-single-disk-root
-          ./modules/initrd-ssh-unlock
-          ./modules/secure-boot
-          ./modules/tpm-enrollment
-          ./modules/users
           ./vms/test-hyprland/configuration.nix
           {
             _module.args.omarchy = omarchy;
@@ -132,16 +126,21 @@
 
     # Export Keystone modules for use in other flakes
     nixosModules = {
+      # Consolidated OS module - includes storage, secure boot, TPM, remote unlock, users
+      operating-system = {
+        imports = [
+          disko.nixosModules.disko
+          lanzaboote.nixosModules.lanzaboote
+          ./modules/os
+        ];
+      };
+
+      # High-level role modules (auto-include operating-system)
       server = ./modules/server;
       client = ./modules/client;
-      clientHome = ./modules/client/home;
-      diskoSingleDiskRoot = ./modules/disko-single-disk-root;
-      initrdSshUnlock = ./modules/initrd-ssh-unlock;
+
+      # Other modules
       isoInstaller = ./modules/iso-installer.nix;
-      secureBoot = ./modules/secure-boot;
-      ssh = ./modules/ssh;
-      tpmEnrollment = ./modules/tpm-enrollment;
-      users = ./modules/users;
       # Standalone desktop module (no disko/encryption dependencies)
       desktop = ./modules/keystone/desktop/nixos.nix;
     };

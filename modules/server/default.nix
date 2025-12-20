@@ -7,10 +7,13 @@
 with lib; {
   # Server configuration module
   # Provides always-on infrastructure services
+  #
+  # NOTE: Requires disko and lanzaboote to be imported at the flake level:
+  #   disko.nixosModules.disko
+  #   lanzaboote.nixosModules.lanzaboote
 
   imports = [
-    ../disko-single-disk-root
-    ../ssh
+    ../os # Consolidated OS module (storage, secure-boot, tpm, remote-unlock, users, ssh)
   ];
 
   options.keystone.server = {

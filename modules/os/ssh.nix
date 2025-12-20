@@ -1,23 +1,18 @@
+# Keystone OS SSH Module
+#
+# Provides secure SSH access for remote administration.
+# Part of the consolidated OS module - used by both server and client.
+#
 {
   lib,
   config,
   pkgs,
   ...
 }:
-with lib; {
-  # SSH server configuration module
-  # Provides secure SSH access for remote administration
-  # Used by both server and client configurations
-
-  options.keystone.ssh = {
-    enable =
-      mkEnableOption "SSH server for remote administration"
-      // {
-        default = true;
-      };
-  };
-
-  config = mkIf config.keystone.ssh.enable {
+with lib; let
+  osCfg = config.keystone.os;
+in {
+  config = mkIf (osCfg.enable && osCfg.ssh.enable) {
     # Enable SSH server with secure defaults
     services.openssh = {
       enable = true;

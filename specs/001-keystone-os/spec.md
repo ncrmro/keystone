@@ -57,6 +57,159 @@ The filesystem MUST support efficient snapshots and data integrity.
 - Remote replication capability for backups
 - Per-dataset configuration (quotas, compression, snapshots)
 
+---
+
+## Block Storage Configuration
+
+This section details the storage configuration options for the root operating system pool.
+
+### Root OS Pool
+
+The root pool contains the operating system, user home directories, and system data.
+
+#### Filesystem Type
+
+| Type | Use Case | Features |
+|------|----------|----------|
+| `zfs` | Default, recommended | Snapshots, compression, checksums, encryption, quotas |
+| `ext4` | Simple/legacy | Minimal overhead, wide compatibility, no advanced features |
+
+When `ext4` is selected:
+- LUKS encryption is used directly on the partition
+- No snapshots, compression, or per-user quotas available
+- Suitable for resource-constrained systems or VMs
+
+#### Disk Configuration
+
+**Single Disk (default):**
+```
+devices = [ "/dev/disk/by-id/nvme-..." ];
+```
+
+**Multi-Disk with Redundancy Mode:**
+
+| Mode | Min Disks | Description | Use Case |
+|------|-----------|-------------|----------|
+| `single` | 1 | No redundancy, single disk or concatenated | Dev/testing |
+| `mirror` | 2 | All disks mirror each other (RAID1) | Small redundancy |
+| `stripe` | 2 | Data striped across disks (RAID0) | Performance, no redundancy |
+| `raidz1` | 3 | Single parity (RAID5 equivalent) | Balanced redundancy |
+| `raidz2` | 4 | Double parity (RAID6 equivalent) | High redundancy |
+| `raidz3` | 5 | Triple parity | Maximum redundancy |
+
+```
+devices = [
+  "/dev/disk/by-id/nvme-disk1"
+  "/dev/disk/by-id/nvme-disk2"
+  "/dev/disk/by-id/nvme-disk3"
+];
+mode = "raidz1";
+```
+
+#### Partition Sizing
+
+Configurable sizes for partitions and datasets:
+
+| Partition/Dataset | Default | Description |
+|-------------------|---------|-------------|
+| `esp` | `1G` | EFI System Partition (boot) |
+| `swap` | `8G` | Encrypted swap (random key per boot) |
+| `credstore` | `100M` | LUKS volume for ZFS encryption keys |
+| `root` | remaining | Root filesystem |
+
+**ZFS Dataset Sizing (quotas):**
+
+| Dataset | Default | Description |
+|---------|---------|-------------|
+| `/nix` | unlimited | Nix store (compression highly effective) |
+| `/var` | unlimited | Variable data, logs |
+| `/home/<user>` | configurable | Per-user home with quota |
+
+#### Configuration Options
+
+```nix
+keystone.os.storage = {
+  # Filesystem type
+  type = "zfs";  # or "ext4"
+
+  # Disk devices (by-id paths recommended)
+  devices = [ "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB" ];
+
+  # Redundancy mode (only for multi-disk ZFS)
+  mode = "single";  # single, mirror, stripe, raidz1, raidz2, raidz3
+
+  # Partition sizes
+  esp.size = "1G";
+  swap.size = "8G";        # Set to "0" to disable swap
+  credstore.size = "100M"; # Only for ZFS
+
+  # ZFS-specific options
+  zfs = {
+    compression = "zstd";     # off, lz4, zstd, gzip-N
+    atime = "off";            # Access time updates
+    arcMax = "4G";            # ARC cache limit
+    autoSnapshot = true;      # Enable auto-snapshots
+    autoScrub = true;         # Weekly integrity check
+  };
+};
+```
+
+### TODO: Additional Storage Pools (Future)
+
+The following storage pool types are planned for future implementation:
+
+#### Data Pool (NAS/Media)
+- Separate pool for bulk data storage
+- Optimized for large files (media, backups)
+- Different redundancy than root pool
+- Network sharing via NFS/SMB
+
+```nix
+# Future API concept
+keystone.os.pools.data = {
+  devices = [ "/dev/disk/by-id/sata-disk1" "/dev/disk/by-id/sata-disk2" ];
+  mode = "mirror";
+  mountpoint = "/data";
+  shares = {
+    media = { path = "/data/media"; nfs = true; smb = true; };
+    backups = { path = "/data/backups"; nfs = true; };
+  };
+};
+```
+
+#### Backup Pool
+- Dedicated pool for receiving ZFS snapshots
+- Can be external/removable drives
+- Rotation support for multiple backup drives
+
+```nix
+# Future API concept
+keystone.os.pools.backup = {
+  devices = [ "/dev/disk/by-id/usb-backup-drive" ];
+  mode = "single";
+  mountpoint = "/backup";
+  receive = {
+    from = [ "rpool" "data" ];  # Pools to receive snapshots from
+    schedule = "daily";
+  };
+};
+```
+
+#### Cache/Fast Pool
+- NVMe cache for spinning disk pools
+- L2ARC read cache
+- SLOG write cache
+
+```nix
+# Future API concept
+keystone.os.pools.data.cache = {
+  l2arc = "/dev/disk/by-id/nvme-cache";
+  slog = "/dev/disk/by-id/nvme-slog";
+};
+```
+
+---
+
 ### FR-006 Remote Installation
 
 Systems MUST be deployable to any SSH-accessible target.
