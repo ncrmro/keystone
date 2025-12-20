@@ -21,6 +21,7 @@ in {
 
         touchpad = {
           natural_scroll = true;
+          drag_lock = cfg.touchpad.dragLock;
         };
       };
 
