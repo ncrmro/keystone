@@ -98,6 +98,10 @@ in
     };
 
     home.packages = with pkgs; [
+      # Eza - Modern replacement for ls with colors and git integration
+      # https://github.com/eza-community/eza
+      eza
+
       # GNU Make - Build automation tool
       # https://www.gnu.org/software/make/
       gnumake

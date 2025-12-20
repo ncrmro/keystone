@@ -11,7 +11,7 @@ in
 {
   config = mkIf cfg.enable {
     wayland.windowManager.hyprland.settings = {
-      "$mod" = mkDefault "SUPER";
+      "$mod" = mkDefault cfg.modifierKey;
 
       bind = mkDefault [
         # Application launchers

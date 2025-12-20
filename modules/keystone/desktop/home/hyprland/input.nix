@@ -6,12 +6,15 @@
 }:
 with lib; let
   cfg = config.keystone.desktop.hyprland;
+  # Build kb_options based on configuration
+  # If capslockAsControl is true, use ctrl:nocaps, otherwise use compose:caps
+  kbOptions = if cfg.capslockAsControl then "ctrl:nocaps" else "compose:caps";
 in {
   config = mkIf cfg.enable {
     wayland.windowManager.hyprland.settings = {
       input = mkDefault {
         kb_layout = "us";
-        kb_options = "compose:caps";
+        kb_options = kbOptions;
         follow_mouse = 1;
         sensitivity = 0;
         scroll_factor = 0.4; # Reduce scroll speed (omarchy default)

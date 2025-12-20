@@ -171,42 +171,44 @@ Monitor configurations are runtime-only by default. For persistent configuration
 
 | Keybinding | Action |
 |------------|--------|
-| `Super+Escape` | Open main menu |
+| `$mod+Escape` | Open main menu |
 | `XF86PowerOff` | Open system submenu directly |
-| `Super+K` | Open keybindings reference |
+| `$mod+K` | Open keybindings reference |
 
 ## Keybindings Reference
+
+> **Note**: `$mod` refers to the configured modifier key (default: `ALT`, configurable via `modifierKey` option)
 
 ### Core Navigation
 
 | Keybinding | Action |
 |------------|--------|
-| `Super+Return` | Open terminal |
-| `Super+Space` | Application launcher |
-| `Super+B` | Open browser |
-| `Super+E` | Open file manager |
-| `Super+W` | Close active window |
+| `$mod+Return` | Open terminal |
+| `$mod+Space` | Application launcher |
+| `$mod+B` | Open browser |
+| `$mod+E` | Open file manager |
+| `$mod+W` | Close active window |
 
 ### Window Management
 
 | Keybinding | Action |
 |------------|--------|
-| `Super+H/L` | Move focus left/right |
-| `Super+Arrow` | Move focus in direction |
-| `Super+Shift+Arrow` | Swap window in direction |
-| `Super+F` | Toggle fullscreen |
-| `Super+Shift+V` | Toggle floating |
-| `Super+T` | Toggle split direction |
+| `$mod+H/L` | Move focus left/right |
+| `$mod+Arrow` | Move focus in direction |
+| `$mod+Shift+Arrow` | Swap window in direction |
+| `$mod+F` | Toggle fullscreen |
+| `$mod+Shift+V` | Toggle floating |
+| `$mod+T` | Toggle split direction |
 
 ### Workspaces
 
 | Keybinding | Action |
 |------------|--------|
-| `Super+1-0` | Switch to workspace 1-10 |
-| `Super+Shift+1-0` | Move window to workspace |
-| `Super+Tab` | Next workspace |
-| `Super+Shift+Tab` | Previous workspace |
-| `Super+S` | Toggle scratchpad |
+| `$mod+1-0` | Switch to workspace 1-10 |
+| `$mod+Shift+1-0` | Move window to workspace |
+| `$mod+Tab` | Next workspace |
+| `$mod+Shift+Tab` | Previous workspace |
+| `$mod+S` | Toggle scratchpad |
 
 ### Utilities
 
@@ -214,10 +216,10 @@ Monitor configurations are runtime-only by default. For persistent configuration
 |------------|--------|
 | `Print` | Screenshot with editing |
 | `Shift+Print` | Screenshot to clipboard |
-| `Super+Ctrl+V` | Clipboard history |
-| `Super+Ctrl+E` | Emoji picker |
-| `Super+Ctrl+I` | Toggle idle inhibitor |
-| `Super+Ctrl+N` | Toggle nightlight |
+| `$mod+Ctrl+V` | Clipboard history |
+| `$mod+Ctrl+E` | Emoji picker |
+| `$mod+Ctrl+I` | Toggle idle inhibitor |
+| `$mod+Ctrl+N` | Toggle nightlight |
 
 ## Nix Options
 
@@ -251,6 +253,37 @@ keystone.desktop.hyprland = {
     type = types.str;
     default = "uwsm app -- nautilus";
   };
+
+  modifierKey = mkOption {
+    type = types.str;
+    default = "ALT";
+    description = "Primary modifier key for keybindings (SUPER, ALT, CTRL)";
+  };
+
+  capslockAsControl = mkOption {
+    type = types.bool;
+    default = true;
+    description = "Remap Caps Lock to Control key";
+  };
+};
+```
+
+### Input Configuration
+
+The desktop module supports keyboard remapping options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `modifierKey` | `ALT` | Primary modifier for all keybindings (`$mod`) |
+| `capslockAsControl` | `true` | Remaps Caps Lock to Control via `ctrl:nocaps` |
+
+**Example: Restore traditional keybindings**
+
+```nix
+keystone.desktop.hyprland = {
+  enable = true;
+  modifierKey = "SUPER";        # Use Super/Windows key as modifier
+  capslockAsControl = false;    # Keep Caps Lock as Caps Lock
 };
 ```
 

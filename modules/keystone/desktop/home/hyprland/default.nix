@@ -56,6 +56,18 @@ in
       default = 2;
       description = "Display scale factor (1 for 1x displays, 2 for 2x/HiDPI displays)";
     };
+
+    modifierKey = mkOption {
+      type = types.str;
+      default = "ALT";
+      description = "Primary modifier key for keybindings (e.g., 'SUPER', 'ALT', 'CTRL')";
+    };
+
+    capslockAsControl = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Remap Caps Lock to Control key";
+    };
   };
 
   config = mkIf cfg.enable {
