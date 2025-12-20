@@ -8,10 +8,13 @@
 with lib; {
   # Client configuration module
   # Provides interactive workstation/laptop setup with Hyprland desktop
+  #
+  # NOTE: Requires disko and lanzaboote to be imported at the flake level:
+  #   disko.nixosModules.disko
+  #   lanzaboote.nixosModules.lanzaboote
 
   imports = [
-    ../disko-single-disk-root
-    ../ssh
+    ../os # Consolidated OS module (storage, secure-boot, tpm, remote-unlock, users, ssh)
     ./desktop/hyprland.nix
     ./desktop/audio.nix
     ./desktop/greetd.nix

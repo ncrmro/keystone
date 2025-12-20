@@ -11,10 +11,17 @@ Keystone is a NixOS-based self-sovereign infrastructure platform that enables us
 ### Module System
 The project is organized around NixOS modules that can be composed together:
 
-- **`modules/server/`** - Always-on infrastructure (VPN, DNS, storage, media)
-- **`modules/client/`** - Interactive workstations with Hyprland desktop
-- **`modules/disko-single-disk-root/`** - Disk partitioning with ZFS encryption and TPM2
+- **`modules/os/`** - Consolidated OS module (storage, secure boot, TPM, remote unlock, users)
+- **`modules/server/`** - Always-on infrastructure (auto-imports OS module)
+- **`modules/client/`** - Interactive workstations with Hyprland desktop (auto-imports OS module)
 - **`modules/iso-installer.nix`** - Bootable installer configuration
+
+The `modules/os/` module provides a unified `keystone.os.*` options interface:
+- `keystone.os.storage` - ZFS/ext4 with encryption, multi-disk support (mirror, raidz1/2/3)
+- `keystone.os.secureBoot` - Lanzaboote Secure Boot configuration
+- `keystone.os.tpm` - TPM-based automatic disk unlock
+- `keystone.os.remoteUnlock` - SSH in initrd for remote disk unlocking
+- `keystone.os.users` - User management with ZFS home directories
 
 ### Security Model
 All configurations use a layered security approach:
@@ -180,26 +187,111 @@ nix build .#iso
 ```
 
 ### Using Modules in External Flakes
+
+**Server with single disk:**
 ```nix
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     keystone.url = "github:ncrmro/keystone";
     disko.url = "github:nix-community/disko";
+    lanzaboote.url = "github:nix-community/lanzaboote/v0.4.2";
   };
 
-  outputs = { nixpkgs, keystone, disko, ... }: {
-    nixosConfigurations.mySystem = nixpkgs.lib.nixosSystem {
+  outputs = { nixpkgs, keystone, disko, lanzaboote, ... }: {
+    nixosConfigurations.myserver = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
         disko.nixosModules.disko
-        keystone.nixosModules.diskoSingleDiskRoot
-        keystone.nixosModules.client  # or .server
+        lanzaboote.nixosModules.lanzaboote
+        keystone.nixosModules.server  # Auto-imports OS module
         {
-          keystone.disko = {
+          networking.hostId = "deadbeef";  # Required for ZFS
+
+          keystone.os = {
             enable = true;
-            device = "/dev/disk/by-id/your-disk";
-            enableEncryptedSwap = true;
+            storage = {
+              type = "zfs";
+              devices = [ "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB" ];
+              swap.size = "16G";
+            };
+            remoteUnlock = {
+              enable = true;
+              authorizedKeys = [ "ssh-ed25519 AAAAC3... admin@workstation" ];
+            };
+            users.admin = {
+              fullName = "Server Admin";
+              email = "admin@example.com";
+              extraGroups = [ "wheel" ];
+              authorizedKeys = [ "ssh-ed25519 AAAAC3... admin@workstation" ];
+              hashedPassword = "$6$...";  # mkpasswd -m sha-512
+              terminal.enable = true;
+            };
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+**Server with mirrored disks:**
+```nix
+keystone.os = {
+  enable = true;
+  storage = {
+    type = "zfs";
+    devices = [
+      "/dev/disk/by-id/nvme-disk1"
+      "/dev/disk/by-id/nvme-disk2"
+    ];
+    mode = "mirror";  # RAID1
+  };
+  # ...
+};
+```
+
+**Desktop with Hyprland:**
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    keystone.url = "github:ncrmro/keystone";
+    disko.url = "github:nix-community/disko";
+    lanzaboote.url = "github:nix-community/lanzaboote/v0.4.2";
+    home-manager.url = "github:nix-community/home-manager/release-25.05";
+  };
+
+  outputs = { nixpkgs, keystone, disko, lanzaboote, home-manager, ... }: {
+    nixosConfigurations.workstation = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        disko.nixosModules.disko
+        lanzaboote.nixosModules.lanzaboote
+        home-manager.nixosModules.home-manager
+        keystone.nixosModules.client  # Auto-imports OS module
+        {
+          networking.hostId = "deadbeef";
+
+          keystone.os = {
+            enable = true;
+            storage = {
+              type = "zfs";
+              devices = [ "/dev/disk/by-id/nvme-WD_BLACK_SN850X_2TB" ];
+              swap.size = "32G";
+            };
+            users.alice = {
+              fullName = "Alice Smith";
+              email = "alice@example.com";
+              extraGroups = [ "wheel" "networkmanager" ];
+              initialPassword = "changeme";
+              terminal.enable = true;
+              desktop = {
+                enable = true;
+                hyprland.modifierKey = "SUPER";
+              };
+              zfs.quota = "500G";
+            };
           };
         }
       ];
@@ -220,11 +312,24 @@ nixos-anywhere --flake .#your-config root@<installer-ip>
 
 ## Key Implementation Details
 
-### Disko Configuration
-- Always uses "rpool" as the ZFS pool name (not configurable)
-- Credstore pattern: 100MB LUKS volume stores ZFS encryption keys
-- SystemD services handle credstore lifecycle in initrd
-- Supports optional encrypted swap with random encryption per boot
+### OS Module Structure
+```
+modules/os/
+├── default.nix           # Main orchestrator with keystone.os.* options
+├── storage.nix           # ZFS/ext4 + LUKS credstore
+├── secure-boot.nix       # Lanzaboote configuration
+├── tpm.nix               # TPM enrollment commands
+├── remote-unlock.nix     # Initrd SSH
+├── users.nix             # User management + ZFS homes
+└── scripts/              # Enrollment and provisioning scripts
+```
+
+### Storage Configuration
+- Always uses "rpool" as the ZFS pool name
+- Supports multiple disks with modes: single, mirror, stripe, raidz1/2/3
+- Credstore pattern: LUKS volume stores ZFS encryption keys
+- Optional ext4 with LUKS for simpler setups (no snapshots/compression)
+- Configurable partition sizes: ESP, swap, credstore
 
 ### Security Features
 - `tpm2-measure-pcr=yes` in LUKS configuration ensures TPM state integrity
@@ -267,11 +372,13 @@ Each component can be individually enabled/disabled through the configuration in
 
 ## Important Notes
 
-- The pool name is hardcoded to "rpool" throughout the disko module
+- The pool name is hardcoded to "rpool" throughout the OS module
+- Server and client modules auto-import the OS module - no need to import separately
+- Disko and lanzaboote must still be imported at the flake level
 - TPM2 integration requires compatible hardware and UEFI firmware setup
 - Secure Boot requires manual key enrollment during installation process
 - All ZFS datasets use native encryption with automatic key management
-- Client configurations are NixOS system-level only (no home-manager integration)
+- Home-manager integration is optional and only configured when imported
 
 ## Submodule Usage in nixos-config
 
