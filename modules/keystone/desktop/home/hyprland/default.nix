@@ -68,6 +68,14 @@ in
       default = true;
       description = "Remap Caps Lock to Control key";
     };
+
+    touchpad = {
+      dragLock = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable drag lock (double-tap-hold to drag, lift finger, continue dragging until tap)";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
