@@ -14,6 +14,7 @@ in {
         kb_options = "compose:caps";
         follow_mouse = 1;
         sensitivity = 0;
+        scroll_factor = 0.4; # Reduce scroll speed (omarchy default)
 
         touchpad = {
           natural_scroll = true;
