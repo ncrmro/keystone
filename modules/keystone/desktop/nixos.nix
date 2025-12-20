@@ -52,6 +52,14 @@ in
         description = "Enable Bluetooth support";
       };
     };
+
+    networking = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable NetworkManager and systemd-resolved for laptops, portables, and thin clients";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -91,6 +99,13 @@ in
     # Bluetooth
     hardware.bluetooth.enable = mkIf cfg.bluetooth.enable (mkDefault true);
     services.blueman.enable = mkIf cfg.bluetooth.enable (mkDefault true);
+
+    # Networking (for laptops, portables, and thin clients)
+    networking.networkmanager.enable = mkIf cfg.networking.enable (mkDefault true);
+    services.resolved.enable = mkIf cfg.networking.enable (mkDefault true);
+    # Required for Tailscale MagicDNS to work with systemd-resolved
+    # https://github.com/NixOS/nixpkgs/issues/231191#issuecomment-1664053176
+    environment.etc."resolv.conf".mode = mkIf cfg.networking.enable "direct-symlink";
 
     # Fonts
     fonts.packages = with pkgs; [
