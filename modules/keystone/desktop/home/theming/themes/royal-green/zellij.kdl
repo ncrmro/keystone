@@ -27,13 +27,47 @@ themes {
         yellow "#B8A26C"
         // ANSI Blue color
         blue "#6797C2"
-        // ANSI Magenta color
-        magenta "#9C59B2"
+        // ANSI Magenta color - dark gold for bottom bar
+        magenta "#7A6A45"
         // ANSI Cyan color
         cyan "#32878F"
         // ANSI White color (used for bottom bar text)
         white "#B8A26C"
         // Orange color (used for inactive tabs) - darker gold
         orange "#7A6A45"
+
+        // Component-based styling for UI elements
+        ribbon_selected {
+            base "#00120C"
+            background "#B8A26C"
+            emphasis_0 "#00120C"
+            emphasis_1 "#6797C2"
+            emphasis_2 "#32878F"
+            emphasis_3 "#C27280"
+        }
+        ribbon_unselected {
+            base "#00120C"
+            background "#7A6A45"
+            emphasis_0 "#00120C"
+            emphasis_1 "#6797C2"
+            emphasis_2 "#32878F"
+            emphasis_3 "#C27280"
+        }
+        text_unselected {
+            base "#7A6A45"
+            background "#00120C"
+            emphasis_0 "#7A6A45"
+            emphasis_1 "#6797C2"
+            emphasis_2 "#32878F"
+            emphasis_3 "#C27280"
+        }
+        text_selected {
+            base "#B8A26C"
+            background "#00120C"
+            emphasis_0 "#B8A26C"
+            emphasis_1 "#6797C2"
+            emphasis_2 "#32878F"
+            emphasis_3 "#C27280"
+        }
     }
 }
