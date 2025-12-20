@@ -192,3 +192,92 @@ make vm-stop
 - **Family/Team Access**: Controlled sharing of compute and storage resources
 - **Permission Management**: Fine-grained access control for shared resources
 - **Cross-Platform Support**: Windows/Mac clients can connect to Linux servers
+
+## Using Keystone as a Flake Input
+
+### Basic Setup
+
+Add Keystone to your flake inputs:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
+
+    keystone = {
+      url = "github:ncrmro/keystone";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { nixpkgs, keystone, ... }: {
+    nixosConfigurations.my-server = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        keystone.nixosModules.diskoSingleDiskRoot
+        keystone.nixosModules.secureBoot
+        keystone.nixosModules.server
+        # ... your configuration
+      ];
+    };
+  };
+}
+```
+
+### Available Modules
+
+**NixOS Modules** (`keystone.nixosModules.*`):
+- `server` - Base server configuration (SSH, mDNS, firewall)
+- `client` - Workstation with Hyprland desktop
+- `diskoSingleDiskRoot` - ZFS + LUKS encryption with TPM2 support
+- `secureBoot` - Lanzaboote Secure Boot configuration
+- `tpmEnrollment` - TPM binding and enrollment scripts
+- `users` - Declarative user management
+- `ssh` - SSH configuration
+- `isoInstaller` - Bootable installer configuration
+
+**Home Manager Modules** (`keystone.homeModules.*`):
+- `terminal` - Terminal dev environment (Helix, Zsh, Zellij, Git)
+- `desktop` - Full Hyprland desktop configuration
+
+### Local Development Workflow
+
+When developing Keystone alongside a consuming flake, use `--override-input` to test local changes without committing:
+
+```bash
+# Instead of committing and pushing keystone changes, override the input:
+sudo nixos-rebuild switch --flake .#hostname \
+  --override-input keystone "path:/path/to/keystone"
+```
+
+#### Example: dev-keystone Script
+
+Create a helper script in your consuming flake (e.g., `bin/dev-keystone`):
+
+```bash
+#!/usr/bin/env bash
+# Rebuild NixOS with local keystone changes without requiring commits
+# Usage: ./bin/dev-keystone <hostname>
+#        ./bin/dev-keystone              # uses current hostname
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+KEYSTONE_PATH="$REPO_ROOT/.submodules/keystone"  # or wherever keystone is cloned
+
+HOSTNAME="${1:-$(hostname)}"
+
+echo "Rebuilding with local keystone from: $KEYSTONE_PATH"
+echo "Target hostname: $HOSTNAME"
+
+sudo nixos-rebuild switch --flake "$REPO_ROOT#$HOSTNAME" \
+  --override-input keystone "path:$KEYSTONE_PATH"
+```
+
+This allows rapid iteration on Keystone modules without:
+- Committing changes to the keystone repo
+- Pushing to GitHub
+- Running `nix flake update keystone`
+
+Once changes are tested, commit and push keystone, then run `nix flake update keystone` in the consuming flake to lock the new version.
