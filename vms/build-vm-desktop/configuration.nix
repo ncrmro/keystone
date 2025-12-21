@@ -31,39 +31,21 @@
     fsType = "ext4";
   };
 
-  # Import individual Keystone client modules WITHOUT disko/secure boot
-  # We import these directly to avoid the disko dependency in the main client module
+  # Import Keystone desktop module WITHOUT disko/secure boot
   imports = [
-    ../../modules/client/desktop/hyprland.nix
-    ../../modules/client/desktop/audio.nix
-    ../../modules/client/desktop/greetd.nix
-    ../../modules/client/desktop/packages.nix
-    ../../modules/client/services/networking.nix
-    ../../modules/client/services/system.nix
-    ../../modules/client/home
+    ../../modules/keystone/desktop/nixos.nix
   ];
 
   # Enable Keystone desktop components
-  keystone.client = {
-    # Desktop components
-    desktop = {
-      hyprland.enable = true;
-      greetd.enable = true;
-      audio.enable = true;
-      packages.enable = true;
-    };
+  keystone.desktop = {
+    enable = true;
+    user = "testuser";
 
-    # Network and system services
-    services = {
-      networking.enable = true;
-      system.enable = true;
-    };
-
-    # Home-manager configuration
-    home = {
-      enable = true;
-      omarchy.enable = true;
-    };
+    hyprland.enable = true;
+    greetd.enable = true;
+    audio.enable = true;
+    bluetooth.enable = true;
+    networking.enable = true;
   };
 
   # Enable SSH for remote access
@@ -114,37 +96,13 @@
   home-manager.users.testuser = {
     home.stateVersion = "25.05";
 
-    # Enable desktop environment modules
-    programs.desktop.hyprland = {
-      enable = true;
-
-      # All components enabled by default
-      components = {
-        waybar = true;
-        mako = true;
-        hyprpaper = true;
-        hyprlock = true;
-        hypridle = true;
-      };
-    };
-
-    # Enable terminal dev environment
-    programs.terminal-dev-environment = {
-      enable = true;
-
-      tools = {
-        git = true;
-        editor = true;
-        shell = true;
-        multiplexer = true;
-        terminal = true;
-      };
-    };
-
     # Git configuration
     programs.git = {
-      userName = "Hyprland Test User";
-      userEmail = "testuser@keystone-buildvm-desktop";
+      enable = true;
+      settings = {
+        user.name = "Hyprland Test User";
+        user.email = "testuser@keystone-buildvm-desktop";
+      };
     };
   };
 }

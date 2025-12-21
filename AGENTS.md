@@ -4,16 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Keystone is a NixOS-based self-sovereign infrastructure platform that enables users to deploy secure, encrypted infrastructure on any hardware. It provides two primary configuration types: **Servers** (always-on infrastructure services) and **Clients** (interactive desktop workstations).
+Keystone is a NixOS-based self-sovereign infrastructure platform that enables users to deploy secure, encrypted infrastructure on any hardware.
 
 ## Core Architecture
 
 ### Module System
 The project is organized around NixOS modules that can be composed together:
 
-- **`modules/os/`** - Consolidated OS module (storage, secure boot, TPM, remote unlock, users)
-- **`modules/server/`** - Always-on infrastructure (auto-imports OS module)
-- **`modules/client/`** - Interactive workstations with Hyprland desktop (auto-imports OS module)
+- **`modules/os/`** - Core operating system module (storage, secure boot, TPM, remote unlock, users, services)
+- **`modules/keystone/desktop/`** - Hyprland desktop environment (audio, greetd login)
 - **`modules/iso-installer.nix`** - Bootable installer configuration
 
 The `modules/os/` module provides a unified `keystone.os.*` options interface:
@@ -22,6 +21,8 @@ The `modules/os/` module provides a unified `keystone.os.*` options interface:
 - `keystone.os.tpm` - TPM-based automatic disk unlock
 - `keystone.os.remoteUnlock` - SSH in initrd for remote disk unlocking
 - `keystone.os.users` - User management with ZFS home directories
+- `keystone.os.services` - Avahi/mDNS, firewall, systemd-resolved
+- `keystone.os.nix` - Flakes, garbage collection settings
 
 ### Security Model
 All configurations use a layered security approach:
@@ -36,13 +37,13 @@ The disko module implements a sophisticated boot process:
 2. TPM2 PCR measurements for boot state verification
 3. Automatic fallback to password unlock if TPM fails
 
-### Client Desktop Stack
-The client module provides a complete Hyprland desktop:
+### Desktop Stack
+The desktop module provides a complete Hyprland environment:
 - **Hyprland** compositor with UWSM (Universal Wayland Session Manager)
 - **PipeWire** audio with ALSA/Pulse/Jack compatibility
 - **greetd** login manager with tuigreet
 - **NetworkManager** with Bluetooth support
-- Modular desktop components in `modules/client/desktop/` and `modules/client/services/`
+- Modular desktop components in `modules/keystone/desktop/`
 
 ## Common Development Commands
 
@@ -174,37 +175,98 @@ See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complet
 ### Building ISOs
 ```bash
 # Build installer ISO without SSH keys
-./bin/build-iso
+make build-iso
 
 # Build with SSH key from file
+make build-iso-ssh
+
+# Or use the script directly
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
-
-# Build with SSH key string directly
-./bin/build-iso --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host"
-
-# Direct Nix build (no SSH keys)
-nix build .#iso
 ```
+
+### Make Targets Reference
+
+Run `make help` to see all available targets. Key targets:
+
+**ISO Building:**
+- `make build-iso` - Build installer ISO
+- `make build-iso-ssh` - Build ISO with your SSH key
+
+**Fast Config Testing (no encryption/TPM):**
+- `make build-vm-terminal` - Build and SSH into terminal dev VM
+- `make build-vm-desktop` - Build and open desktop VM with Hyprland
+
+**Libvirt VM Management (full TPM + Secure Boot):**
+- `make vm-create` - Create and start VM with TPM
+- `make vm-start` - Start existing VM
+- `make vm-stop` - Stop VM gracefully
+- `make vm-destroy` - Force stop VM
+- `make vm-reset` - Delete VM and all artifacts
+- `make vm-ssh` - SSH into test VM
+- `make vm-console` - Serial console access
+- `make vm-display` - Open graphical display
+- `make vm-status` - Show VM status
+- `make vm-post-install` - Post-install workflow (remove ISO, snapshot, reboot)
+- `make vm-reset-secureboot` - Reset to Secure Boot setup mode
+
+**Testing:**
+- `make test` - Run all tests
+- `make test-checks` - Fast flake validation
+- `make test-module` - Module isolation tests
+- `make test-integration` - Integration tests
+- `make test-deploy` - Full stack deployment test
+- `make test-desktop` - Hyprland desktop test
+- `make test-hm` - Home-manager module test
+- `make test-template` - Validate flake template
+
+**CI:**
+- `make ci` - Run CI checks (format + lockfile)
+- `make fmt` - Format Nix files
+
+**Custom VM name:** Use `VM_NAME=my-vm make vm-ssh` to target a different VM.
+
+### Flake Template (Recommended for New Users)
+
+The easiest way to start using Keystone is with the flake template:
+
+```bash
+# Initialize a new project
+nix flake init -t github:ncrmro/keystone
+
+# Edit configuration.nix - search for TODO: to find required changes
+grep -n "TODO:" configuration.nix
+
+# Generate hostId and find disk ID
+head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
+ls -la /dev/disk/by-id/
+
+# Deploy to target machine
+nixos-anywhere --flake .#my-machine root@<installer-ip>
+```
+
+The template includes:
+- `flake.nix` - All required inputs with operating-system module (desktop optional)
+- `configuration.nix` - Documented `keystone.os.*` options with TODO markers
+- `hardware.nix` - Hardware configuration placeholder
+- `README.md` - Quick start guide
 
 ### Using Modules in External Flakes
 
-**Server with single disk:**
+**Headless server:**
 ```nix
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     keystone.url = "github:ncrmro/keystone";
-    disko.url = "github:nix-community/disko";
-    lanzaboote.url = "github:nix-community/lanzaboote/v0.4.2";
+    home-manager.url = "github:nix-community/home-manager/release-25.05";
   };
 
-  outputs = { nixpkgs, keystone, disko, lanzaboote, ... }: {
+  outputs = { nixpkgs, keystone, home-manager, ... }: {
     nixosConfigurations.myserver = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        disko.nixosModules.disko
-        lanzaboote.nixosModules.lanzaboote
-        keystone.nixosModules.server  # Auto-imports OS module
+        home-manager.nixosModules.home-manager
+        keystone.nixosModules.operating-system  # Includes disko + lanzaboote
         {
           networking.hostId = "deadbeef";  # Required for ZFS
 
@@ -235,7 +297,7 @@ nix build .#iso
 }
 ```
 
-**Server with mirrored disks:**
+**Mirrored disks:**
 ```nix
 keystone.os = {
   enable = true;
@@ -257,19 +319,16 @@ keystone.os = {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     keystone.url = "github:ncrmro/keystone";
-    disko.url = "github:nix-community/disko";
-    lanzaboote.url = "github:nix-community/lanzaboote/v0.4.2";
     home-manager.url = "github:nix-community/home-manager/release-25.05";
   };
 
-  outputs = { nixpkgs, keystone, disko, lanzaboote, home-manager, ... }: {
+  outputs = { nixpkgs, keystone, home-manager, ... }: {
     nixosConfigurations.workstation = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        disko.nixosModules.disko
-        lanzaboote.nixosModules.lanzaboote
         home-manager.nixosModules.home-manager
-        keystone.nixosModules.client  # Auto-imports OS module
+        keystone.nixosModules.operating-system  # Includes disko + lanzaboote
+        keystone.nixosModules.desktop            # Hyprland desktop
         {
           networking.hostId = "deadbeef";
 
@@ -337,44 +396,32 @@ modules/os/
 - Encryption root validation prevents mounting fraudulent filesystems
 - Boot process includes cleanup and error handling with proper service dependencies
 
-### Client Module Structure
+### Desktop Module Structure
 ```
-modules/client/
-├── default.nix              # Main orchestration
-├── desktop/
-│   ├── hyprland.nix         # Wayland compositor
-│   ├── audio.nix            # PipeWire audio
-│   ├── greetd.nix           # Login manager
-│   └── packages.nix         # Essential packages
-└── services/
-    ├── networking.nix       # NetworkManager, Bluetooth
-    └── system.nix           # System services
+modules/keystone/desktop/
+├── nixos.nix                # NixOS desktop configuration
+└── home/
+    └── default.nix          # Home-manager Hyprland config
 ```
-
-Each component can be individually enabled/disabled through the configuration interface.
 
 ## Deployment Patterns
 
-### Pattern 1: Home Server + Laptop
-- Server: Raspberry Pi/NUC with router + storage services
-- Client: Laptop with Hyprland desktop
-- Use case: Home user with network-wide ad blocking and secure remote access
+### Pattern 1: Home Server + Desktop
+- Headless: Use `operating-system` module for always-on infrastructure
+- Desktop: Add `desktop` module for workstations with Hyprland
 
 ### Pattern 2: VPS + Workstation
-- Server: Cloud VPS providing VPN and backup services  
-- Client: High-performance desktop workstation
-- Use case: Remote work with reliable external access
+- VPS: `operating-system` with `remoteUnlock` for headless operation
+- Workstation: `operating-system` + `desktop` for local development
 
-### Pattern 3: Complete Home Lab
-- Multiple servers for different services and redundancy
-- Multiple client devices for family/team use
-- Use case: Extensive home infrastructure needs
+### Pattern 3: Multi-Machine Setup
+- Mix headless and desktop configurations as needed
+- All share the same `keystone.os.*` options for consistent security
 
 ## Important Notes
 
 - The pool name is hardcoded to "rpool" throughout the OS module
-- Server and client modules auto-import the OS module - no need to import separately
-- Disko and lanzaboote must still be imported at the flake level
+- The `operating-system` module includes disko and lanzaboote - no separate import needed
 - TPM2 integration requires compatible hardware and UEFI firmware setup
 - Secure Boot requires manual key enrollment during installation process
 - All ZFS datasets use native encryption with automatic key management

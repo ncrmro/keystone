@@ -65,8 +65,8 @@
     };
   };
 
-  # Server services (SSH, mDNS, firewall, etc.)
-  keystone.server.enable = true;
+  # Server services are enabled by default in keystone.os:
+  # - SSH, Avahi/mDNS, firewall, systemd-resolved
 
   # Serial console support for VM testing
   # Enables console output via serial port (useful for password prompts in initrd)

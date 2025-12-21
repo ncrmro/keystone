@@ -5,14 +5,9 @@
   inputs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.desktop;
-  pkgs-unstable = import inputs.nixpkgs-unstable {
-    system = pkgs.system;
-  };
-in
-{
+in {
   options.keystone.desktop = {
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities";
 
@@ -110,7 +105,7 @@ in
     # Fonts
     fonts.packages = with pkgs; [
       noto-fonts
-      noto-fonts-emoji
+      noto-fonts-color-emoji
       nerd-fonts.jetbrains-mono
       nerd-fonts.caskaydia-mono
     ];
@@ -139,11 +134,11 @@ in
       # Cursor themes
       adwaita-icon-theme
 
-      # Additional Hyprland tools (from unstable)
-      pkgs-unstable.hyprsunset
-      pkgs-unstable.hyprlock
-      pkgs-unstable.hypridle
-      pkgs-unstable.hyprpaper
+      # Additional Hyprland tools
+      hyprsunset
+      hyprlock
+      hypridle
+      hyprpaper
     ];
 
     # Enable polkit

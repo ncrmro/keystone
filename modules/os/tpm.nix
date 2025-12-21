@@ -25,17 +25,14 @@ with lib; let
   # Helper to create executable substituted scripts
   makeExecutableScript = name: src: substitutions:
     pkgs.runCommand name {} ''
-      cp ${pkgs.substituteAll ({
-          inherit src;
-        }
-        // substitutions)} $out
+      cp ${pkgs.replaceVars src substitutions} $out
       chmod +x $out
     '';
 
   # Enrollment check script
   enrollmentCheckScript = makeExecutableScript "enrollment-check.sh" ./scripts/enrollment-check.sh {
     cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
-    inherit credstoreDevice;
+    credstoreDevice = credstoreDevice;
   };
 
   # Recovery key enrollment script
@@ -43,7 +40,7 @@ with lib; let
     cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
     systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
     bootctl = "${pkgs.systemd}/bin/bootctl";
-    inherit credstoreDevice;
+    credstoreDevice = credstoreDevice;
     tpmPCRs = tpmPCRString;
   };
 
@@ -52,7 +49,7 @@ with lib; let
     cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
     systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
     bootctl = "${pkgs.systemd}/bin/bootctl";
-    inherit credstoreDevice;
+    credstoreDevice = credstoreDevice;
     tpmPCRs = tpmPCRString;
   };
 
@@ -61,7 +58,7 @@ with lib; let
     cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
     systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
     bootctl = "${pkgs.systemd}/bin/bootctl";
-    inherit credstoreDevice;
+    credstoreDevice = credstoreDevice;
     tpmPCRs = tpmPCRString;
   };
 in {

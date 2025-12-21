@@ -12,7 +12,7 @@
   lib,
   self,
 }:
-pkgs.nixosTest {
+pkgs.testers.nixosTest {
   name = "desktop-isolation";
 
   nodes.machine = {

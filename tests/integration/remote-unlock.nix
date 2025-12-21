@@ -17,7 +17,7 @@
   lib,
   self,
 }:
-pkgs.nixosTest {
+pkgs.testers.nixosTest {
   name = "remote-unlock";
 
   nodes = {

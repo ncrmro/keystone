@@ -2,13 +2,13 @@
   description = "Keystone NixOS installation media";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     home-manager = {
-      url = "github:nix-community/home-manager/release-25.05";
+      url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     omarchy = {
@@ -19,6 +19,7 @@
       url = "github:nix-community/lanzaboote/v0.4.2";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    hyprland.url = "github:hyprwm/Hyprland";
   };
 
   outputs = {
@@ -28,8 +29,14 @@
     home-manager,
     omarchy,
     lanzaboote,
+    hyprland,
     ...
-  }: {
+  }: let
+    # Create inputs attrset for desktop module
+    inputs = {
+      inherit nixpkgs hyprland;
+    };
+  in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
 
     # ISO configuration without SSH keys (use bin/build-iso for SSH keys)
@@ -51,7 +58,7 @@
 
     # Export Keystone modules for use in other flakes
     nixosModules = {
-      # Consolidated OS module - includes storage, secure boot, TPM, remote unlock, users
+      # Core OS module - storage, secure boot, TPM, remote unlock, users, services
       operating-system = {
         imports = [
           disko.nixosModules.disko
@@ -60,14 +67,14 @@
         ];
       };
 
-      # High-level role modules (auto-include operating-system)
-      server = ./modules/server;
-      client = ./modules/client;
+      # Desktop module - Hyprland, audio, greetd (no disko/encryption dependencies)
+      desktop = {
+        imports = [./modules/keystone/desktop/nixos.nix];
+        _module.args.inputs = inputs;
+      };
 
-      # Other modules
+      # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
-      # Standalone desktop module (no disko/encryption dependencies)
-      desktop = ./modules/keystone/desktop/nixos.nix;
     };
 
     # Export home-manager modules (homeModules is the standard flake output name)
@@ -150,6 +157,28 @@
 
         # Rust environment variables
         RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+      };
+    };
+
+    # Flake templates for users to scaffold new projects
+    templates = {
+      default = {
+        path = ./templates/default;
+        description = "Keystone infrastructure starter with OS module and home-manager";
+        welcomeText = ''
+          # Keystone Infrastructure Configuration
+
+          Your project has been initialized!
+
+          ## Quick Start
+
+          1. Edit configuration.nix - search for TODO: to find required changes
+          2. Generate hostId: head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
+          3. Find your disk: ls -l /dev/disk/by-id/
+          4. Deploy: nixos-anywhere --flake .#my-machine root@<installer-ip>
+
+          See README.md for detailed instructions.
+        '';
       };
     };
   };
