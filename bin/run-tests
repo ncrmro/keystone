@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# Keystone Test Runner
+#
+# Runs various test suites for the Keystone project.
+# Tests are defined in ./tests/flake.nix (separate from main flake).
+#
+# Usage:
+#   ./bin/run-tests              # Run all tests
+#   ./bin/run-tests checks       # Run fast flake checks only
+#   ./bin/run-tests module       # Run module isolation tests
+#   ./bin/run-tests integration  # Run integration tests
+#   ./bin/run-tests <test-name>  # Run a specific test
+#
+# Examples:
+#   ./bin/run-tests test-installer
+#   ./bin/run-tests test-desktop-isolation
+#
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+TESTS_DIR="$PROJECT_ROOT/tests"
+
+cd "$PROJECT_ROOT"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+log_section() {
+    echo ""
+    echo -e "${YELLOW}========================================${NC}"
+    echo -e "${YELLOW}$1${NC}"
+    echo -e "${YELLOW}========================================${NC}"
+    echo ""
+}
+
+run_checks() {
+    log_section "Running Flake Checks (Main)"
+    log_info "Running: nix flake check"
+    nix flake check
+    log_success "Main flake checks passed"
+
+    log_section "Running Flake Checks (Tests - Evaluation Only)"
+    log_info "Running: nix flake check ./tests --no-build"
+    log_info "(Use 'module' or 'integration' commands to run actual VM tests)"
+    nix flake check "$TESTS_DIR" --no-build
+    log_success "Test flake evaluation passed"
+}
+
+run_module_tests() {
+    log_section "Running Module Isolation Tests"
+
+    log_info "Running: test-server-isolation"
+    nix build "$TESTS_DIR#test-server-isolation" --no-link
+    log_success "test-server-isolation passed"
+
+    log_info "Running: test-desktop-isolation"
+    nix build "$TESTS_DIR#test-desktop-isolation" --no-link
+    log_success "test-desktop-isolation passed"
+
+    log_info "Running: test-os-evaluation"
+    nix build "$TESTS_DIR#test-os-evaluation" --no-link
+    log_success "test-os-evaluation passed"
+}
+
+run_integration_tests() {
+    log_section "Running Integration Tests"
+
+    log_info "Running: test-installer"
+    nix build "$TESTS_DIR#test-installer" --no-link
+    log_success "test-installer passed"
+
+    log_info "Running: test-remote-unlock"
+    nix build "$TESTS_DIR#test-remote-unlock" --no-link
+    log_success "test-remote-unlock passed"
+}
+
+run_specific_test() {
+    local test_name="$1"
+    log_section "Running Test: $test_name"
+
+    log_info "Running: nix build ./tests#$test_name"
+    nix build "$TESTS_DIR#$test_name"
+    log_success "$test_name passed"
+
+    echo ""
+    log_info "Test output available at: ./result"
+    log_info "For interactive mode: nix build ./tests#$test_name.driverInteractive"
+}
+
+show_help() {
+    cat << EOF
+Keystone Test Runner
+
+Usage: ./bin/run-tests [command]
+
+Commands:
+    (no args)      Run all tests (checks + module + integration)
+    checks         Run fast flake checks only (nix flake check)
+    module         Run module isolation tests
+    integration    Run integration tests
+    <test-name>    Run a specific test by name
+
+Available Tests:
+    Module Tests:
+        test-server-isolation   - Server services in isolation
+        test-desktop-isolation  - Desktop environment in isolation
+        test-os-evaluation      - OS module configuration evaluation
+
+    Integration Tests:
+        test-installer          - Full installer TUI walkthrough
+        test-remote-unlock      - Remote disk unlock via SSH
+
+Examples:
+    ./bin/run-tests                        # Run all tests
+    ./bin/run-tests checks                 # Quick validation
+    ./bin/run-tests test-installer         # Run installer test only
+    ./bin/run-tests test-desktop-isolation # Run desktop test only
+
+Interactive Mode:
+    For VM tests, you can run interactively:
+    nix build ./tests#test-installer.driverInteractive
+    ./result/bin/nixos-test-driver --interactive
+
+Note:
+    Tests are defined in ./tests/flake.nix (separate from main flake)
+    to avoid IFD (Import-From-Derivation) issues during evaluation.
+EOF
+}
+
+case "${1:-all}" in
+    -h|--help|help)
+        show_help
+        ;;
+    checks)
+        run_checks
+        ;;
+    module)
+        run_module_tests
+        ;;
+    integration)
+        run_integration_tests
+        ;;
+    all)
+        run_checks
+        run_module_tests
+        run_integration_tests
+        log_section "All Tests Passed!"
+        ;;
+    test-*)
+        run_specific_test "$1"
+        ;;
+    *)
+        log_error "Unknown command: $1"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac

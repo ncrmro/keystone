@@ -33,6 +33,7 @@
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
 
     # ISO configuration without SSH keys (use bin/build-iso for SSH keys)
+    # Note: Test/dev configurations are in ./tests/flake.nix
     nixosConfigurations = {
       keystoneIso = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
@@ -43,82 +44,6 @@
             _module.args.sshKeys = [];
             # Force kernel 6.12 - must be set here to override minimal CD
             boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.x86_64-linux.linuxPackages_6_12;
-          }
-        ];
-      };
-
-      # Test server configuration for nixos-anywhere deployment
-      test-server = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          # Dependencies required by OS module
-          disko.nixosModules.disko
-          lanzaboote.nixosModules.lanzaboote
-          # Server module auto-imports the consolidated OS module
-          ./modules/server
-          ./vms/test-server/configuration.nix
-        ];
-      };
-
-      # Test Hyprland desktop configuration
-      test-hyprland = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          # Dependencies required by OS module
-          disko.nixosModules.disko
-          lanzaboote.nixosModules.lanzaboote
-          home-manager.nixosModules.home-manager
-          # Client module auto-imports the consolidated OS module
-          ./modules/client
-          ./vms/test-hyprland/configuration.nix
-          {
-            _module.args.omarchy = omarchy;
-          }
-        ];
-      };
-
-      # Fast VM testing configurations using nixos-rebuild build-vm
-      # These skip disko/encryption/secure boot for rapid iteration
-
-      # Terminal development environment testing
-      build-vm-terminal = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          home-manager.nixosModules.home-manager
-          ./vms/build-vm-terminal/configuration.nix
-        ];
-      };
-
-      # Hyprland desktop testing
-      build-vm-desktop = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          home-manager.nixosModules.home-manager
-          ./vms/build-vm-desktop/configuration.nix
-          {
-            _module.args.omarchy = omarchy;
-          }
-        ];
-      };
-    };
-
-    # Home-manager configurations for testing
-    homeConfigurations = {
-      testuser = home-manager.lib.homeManagerConfiguration {
-        pkgs = nixpkgs.legacyPackages.x86_64-linux;
-        modules = [
-          ./home-manager/modules/terminal-dev-environment
-          {
-            home.username = "testuser";
-            home.homeDirectory = "/home/testuser";
-            home.stateVersion = "25.05";
-
-            programs.terminal-dev-environment.enable = true;
-
-            programs.git = {
-              userName = "Test User";
-              userEmail = "testuser@keystone-test-vm";
-            };
           }
         ];
       };
@@ -154,6 +79,8 @@
       desktop = ./modules/keystone/desktop/home/default.nix;
     };
 
+    # Packages exported for consumption
+    # Note: Tests are in ./tests/flake.nix (separate flake to avoid IFD issues)
     packages.x86_64-linux = let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
     in {
@@ -161,14 +88,6 @@
       zesh = pkgs.callPackage ./packages/zesh {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
-
-      # Internal VM test - run with: nix build .#installer-test
-      # Not in checks to avoid IFD evaluation issues with nix flake check
-      # (NixOS VM tests use kernel modules that cause IFD failures in CI)
-      installer-test = import ./tests/installer-test.nix {
-        inherit pkgs;
-        lib = pkgs.lib;
-      };
     };
 
     # Development shell
