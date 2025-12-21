@@ -83,6 +83,15 @@
           }
         ];
       };
+
+      # Container development testing (Docker rootless + Kind)
+      build-vm-containers = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          home-manager.nixosModules.home-manager
+          ../vms/build-vm-containers/configuration.nix
+        ];
+      };
     };
 
     # ============================================================
