@@ -177,18 +177,12 @@ export function generateFlakeNix(
       url = "github:ncrmro/keystone";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    disko = {
-      url = "github:nix-community/disko";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, keystone, disko, ... }: {
+  outputs = { self, nixpkgs, keystone, ... }: {
     nixosConfigurations.${hostname} = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        disko.nixosModules.disko
-        keystone.nixosModules.diskoSingleDiskRoot
         keystone.nixosModules.${systemType}
         ./hosts/${hostname}
       ];
@@ -249,13 +243,16 @@ export function generateDiskConfigEncrypted(
   return `{ config, ... }:
 
 {
-  # Disko configuration for encrypted ZFS installation
+  # Storage configuration for encrypted ZFS installation
   # Device: ${diskDevice}
 
-  keystone.disko = {
+  keystone.os = {
     enable = true;
-    device = "${diskDevice}";
-    swapSize = "${swapSize}";
+    storage = {
+      type = "zfs";
+      devices = [ "${diskDevice}" ];
+      swap.size = "${swapSize}";
+    };
   };
 }
 `;
@@ -275,48 +272,17 @@ export function generateDiskConfigUnencrypted(
   return `{ config, lib, ... }:
 
 {
-  # Simple disk configuration for unencrypted installation
+  # Storage configuration for unencrypted ext4 installation
   # Device: ${diskDevice}
 
-  disko.devices = {
-    disk.root = {
-      type = "disk";
-      device = "${diskDevice}";
-      content = {
-        type = "gpt";
-        partitions = {
-          esp = {
-            name = "ESP";
-            size = "1G";
-            type = "EF00";
-            content = {
-              type = "filesystem";
-              format = "vfat";
-              mountpoint = "/boot";
-            };
-          };
-          swap = {
-            size = "${swapSize}";
-            content = {
-              type = "swap";
-            };
-          };
-          root = {
-            size = "100%";
-            content = {
-              type = "filesystem";
-              format = "ext4";
-              mountpoint = "/";
-            };
-          };
-        };
-      };
+  keystone.os = {
+    enable = true;
+    storage = {
+      type = "ext4";
+      devices = [ "${diskDevice}" ];
+      swap.size = "${swapSize}";
     };
   };
-
-  # Boot loader
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
 }
 `;
 }
@@ -350,7 +316,7 @@ export function generateStandaloneDiskConfig(
             content = {
               type = "filesystem";
               format = "vfat";
-              mountpoint = "/mnt/boot";
+              mountpoint = "/boot";
             };
           };
           swap = {
@@ -364,7 +330,7 @@ export function generateStandaloneDiskConfig(
             content = {
               type = "filesystem";
               format = "ext4";
-              mountpoint = "/mnt";
+              mountpoint = "/";
             };
           };
         };

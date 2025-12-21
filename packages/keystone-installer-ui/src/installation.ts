@@ -47,8 +47,9 @@ interface CommandResult {
 }
 
 /**
- * Run a command with output streamed to TTY AND captured for logging.
+ * Run a command with output captured for logging.
  * Uses spawn to handle long-running commands like nixos-install.
+ * Output is captured but NOT written to TTY to avoid interfering with Ink rendering.
  */
 function runCommandWithCapture(
   command: string,
@@ -60,18 +61,16 @@ function runCommandWithCapture(
       stdio: ['inherit', 'pipe', 'pipe']
     });
 
-    // Stream stdout to console AND capture
+    // Capture stdout (don't write to TTY - would interfere with Ink)
     proc.stdout?.on('data', (data: Buffer) => {
       const text = data.toString();
-      process.stdout.write(text);  // Show on TTY
-      chunks.push(text);           // Capture
+      chunks.push(text);  // Capture only
     });
 
-    // Stream stderr to console AND capture
+    // Capture stderr (don't write to TTY - would interfere with Ink)
     proc.stderr?.on('data', (data: Buffer) => {
       const text = data.toString();
-      process.stderr.write(text);  // Show on TTY
-      chunks.push(text);           // Capture
+      chunks.push(text);  // Capture only
     });
 
     // Handle timeout

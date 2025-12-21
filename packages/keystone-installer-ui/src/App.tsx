@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Box, Text, useInput, useApp } from 'ink';
+import { Box, Text, useInput, useApp, useStdout } from 'ink';
 import Spinner from 'ink-spinner';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
@@ -28,6 +28,31 @@ import {
   validateGitUrl,
   getInstallationSummary,
 } from './installation.js';
+
+// ============================================================================
+// Theme Colors - Royal Green with Gold accents
+// ============================================================================
+
+const theme = {
+  // Background
+  bg: 'green' as const,
+  // Primary text (gold/yellow)
+  primary: 'yellow' as const,
+  // Bright accent (bright gold)
+  accent: 'yellowBright' as const,
+  // Success indicator (bright gold on green bg)
+  success: 'yellowBright' as const,
+  // Warning
+  warning: 'yellow' as const,
+  // Error (stays red for visibility)
+  error: 'red' as const,
+  // Dim/secondary text
+  dim: 'white' as const,
+  // Borders
+  border: 'yellow' as const,
+  // Input prompt
+  prompt: 'yellowBright' as const,
+};
 
 // ============================================================================
 // Screen Types
@@ -82,6 +107,23 @@ interface SelectItem {
 
 const App: React.FC = () => {
   const { exit } = useApp();
+  const { stdout } = useStdout();
+
+  // Get terminal dimensions for fullscreen layout
+  const terminalWidth = stdout?.columns || 80;
+  const terminalHeight = stdout?.rows || 24;
+
+  // Fullscreen wrapper component
+  const FullScreen: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <Box
+      width={terminalWidth}
+      height={terminalHeight}
+      flexDirection="column"
+      padding={1}
+    >
+      {children}
+    </Box>
+  );
 
   // Network state
   const [screen, setScreen] = useState<Screen>('checking');
@@ -451,16 +493,16 @@ const App: React.FC = () => {
 
   const renderHeader = (subtitle?: string) => (
     <Box marginBottom={1}>
-      <Text bold color="cyan">Keystone Installer</Text>
-      {subtitle && <Text dimColor> - {subtitle}</Text>}
-      {DEV_MODE && <Text color="yellow"> [DEV MODE]</Text>}
+      <Text bold color={theme.accent}>Keystone Installer</Text>
+      {subtitle && <Text color={theme.dim}> - {subtitle}</Text>}
+      {DEV_MODE && <Text color={theme.warning}> [DEV MODE]</Text>}
     </Box>
   );
 
   const renderBackHint = () => (
     screenHistory.length > 0 && !['installing', 'complete'].includes(screen) ? (
       <Box marginTop={1}>
-        <Text dimColor>Press Escape to go back</Text>
+        <Text color={theme.dim}>Press Escape to go back</Text>
       </Box>
     ) : null
   );
@@ -471,15 +513,15 @@ const App: React.FC = () => {
 
   if (screen === 'checking') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader()}
         <Box>
-          <Text color="green">
+          <Text color={theme.accent}>
             <Spinner type="dots" />
           </Text>
-          <Text> Checking network connectivity...</Text>
+          <Text color={theme.primary}> Checking network connectivity...</Text>
         </Box>
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -491,16 +533,16 @@ const App: React.FC = () => {
     const interfaces = getNetworkInterfaces();
 
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader()}
         <Box marginBottom={1}>
-          <Text color="green">✓ Network Connected</Text>
+          <Text color={theme.success}>✓ Network Connected</Text>
         </Box>
         <Box flexDirection="column" marginBottom={1}>
           {interfaces.map(iface => (
             <Box key={iface.name}>
-              <Text>
-                Interface: <Text bold>{iface.name}</Text> - IP: <Text bold color="yellow">{iface.ipAddress}</Text>
+              <Text color={theme.primary}>
+                Interface: <Text bold>{iface.name}</Text> - IP: <Text bold color={theme.accent}>{iface.ipAddress}</Text>
               </Text>
             </Box>
           ))}
@@ -513,7 +555,7 @@ const App: React.FC = () => {
             onSelect={() => handleContinueToMethodSelection()}
           />
         </Box>
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -523,18 +565,18 @@ const App: React.FC = () => {
 
   if (screen === 'wifi-setup') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('WiFi Setup')}
         <Box marginBottom={1}>
-          <Text color="yellow">⚠ No Ethernet connection detected</Text>
+          <Text color={theme.warning}>⚠ No Ethernet connection detected</Text>
         </Box>
         {errorMessage && (
           <Box marginBottom={1}>
-            <Text color="red">{errorMessage}</Text>
+            <Text color={theme.error}>{errorMessage}</Text>
           </Box>
         )}
         <Box marginBottom={1}>
-          <Text>Would you like to set up WiFi?</Text>
+          <Text color={theme.primary}>Would you like to set up WiFi?</Text>
         </Box>
         <SelectInput
           items={[
@@ -549,7 +591,7 @@ const App: React.FC = () => {
             }
           }}
         />
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -559,15 +601,15 @@ const App: React.FC = () => {
 
   if (screen === 'wifi-scanning') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('WiFi Setup')}
         <Box>
-          <Text color="green">
+          <Text color={theme.accent}>
             <Spinner type="dots" />
           </Text>
-          <Text> Scanning for WiFi networks...</Text>
+          <Text color={theme.primary}> Scanning for WiFi networks...</Text>
         </Box>
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -582,14 +624,14 @@ const App: React.FC = () => {
     }));
 
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('WiFi Setup')}
         <Box marginBottom={1}>
-          <Text>Select a WiFi network:</Text>
+          <Text color={theme.primary}>Select a WiFi network:</Text>
         </Box>
         <SelectInput items={items} onSelect={handleSelectWiFiNetwork} />
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -599,16 +641,16 @@ const App: React.FC = () => {
 
   if (screen === 'wifi-password') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('WiFi Setup')}
         <Box marginBottom={1}>
-          <Text>Network: <Text bold>{selectedNetwork}</Text></Text>
+          <Text color={theme.primary}>Network: <Text bold color={theme.accent}>{selectedNetwork}</Text></Text>
         </Box>
         <Box marginBottom={1}>
-          <Text>Enter password (press Enter when done):</Text>
+          <Text color={theme.primary}>Enter password (press Enter when done):</Text>
         </Box>
         <Box>
-          <Text color="green">&gt; </Text>
+          <Text color={theme.prompt}>&gt; </Text>
           <TextInput
             value={wifiPassword}
             onChange={setWifiPassword}
@@ -617,7 +659,7 @@ const App: React.FC = () => {
           />
         </Box>
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -627,15 +669,15 @@ const App: React.FC = () => {
 
   if (screen === 'wifi-connecting') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('WiFi Setup')}
         <Box>
-          <Text color="green">
+          <Text color={theme.accent}>
             <Spinner type="dots" />
           </Text>
-          <Text> Connecting to {selectedNetwork}...</Text>
+          <Text color={theme.primary}> Connecting to {selectedNetwork}...</Text>
         </Box>
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -647,16 +689,16 @@ const App: React.FC = () => {
     const interfaces = getNetworkInterfaces();
 
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader()}
         <Box marginBottom={1}>
-          <Text color="green">✓ WiFi Connected to {selectedNetwork}</Text>
+          <Text color={theme.success}>✓ WiFi Connected to {selectedNetwork}</Text>
         </Box>
         <Box flexDirection="column" marginBottom={1}>
           {interfaces.map(iface => (
             <Box key={iface.name}>
-              <Text>
-                Interface: <Text bold>{iface.name}</Text> - IP: <Text bold color="yellow">{iface.ipAddress}</Text>
+              <Text color={theme.primary}>
+                Interface: <Text bold>{iface.name}</Text> - IP: <Text bold color={theme.accent}>{iface.ipAddress}</Text>
               </Text>
             </Box>
           ))}
@@ -669,7 +711,7 @@ const App: React.FC = () => {
             onSelect={() => handleContinueToMethodSelection()}
           />
         </Box>
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -679,13 +721,13 @@ const App: React.FC = () => {
 
   if (screen === 'wifi-failed') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('WiFi Setup')}
         <Box marginBottom={1}>
-          <Text color="red">✗ Connection Failed</Text>
+          <Text color={theme.error}>✗ Connection Failed</Text>
         </Box>
         <Box marginBottom={1}>
-          <Text>{errorMessage}</Text>
+          <Text color={theme.primary}>{errorMessage}</Text>
         </Box>
         <SelectInput
           items={[
@@ -700,7 +742,7 @@ const App: React.FC = () => {
             }
           }}
         />
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -710,10 +752,10 @@ const App: React.FC = () => {
 
   if (screen === 'method-selection') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Installation Method')}
         <Box marginBottom={1}>
-          <Text>How would you like to install NixOS?</Text>
+          <Text color={theme.primary}>How would you like to install NixOS?</Text>
         </Box>
         <SelectInput
           items={[
@@ -724,19 +766,19 @@ const App: React.FC = () => {
           onSelect={handleMethodSelect}
         />
         <Box marginTop={1} flexDirection="column">
-          <Text dimColor>Remote: Run nixos-anywhere from another machine</Text>
-          <Text dimColor>Local: Install directly on this machine</Text>
-          <Text dimColor>Clone: Use an existing NixOS configuration</Text>
+          <Text color={theme.dim}>Remote: Run nixos-anywhere from another machine</Text>
+          <Text color={theme.dim}>Local: Install directly on this machine</Text>
+          <Text color={theme.dim}>Clone: Use an existing NixOS configuration</Text>
         </Box>
         {selectedMethod?.type === 'remote' && (
-          <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="cyan" padding={1}>
-            <Text bold>Ready for Remote Installation</Text>
-            <Text dimColor>From your deployment machine, run:</Text>
-            <Text color="yellow">{`nixos-anywhere --flake .#your-config root@${ipAddress}`}</Text>
+          <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor={theme.border} padding={1}>
+            <Text bold color={theme.accent}>Ready for Remote Installation</Text>
+            <Text color={theme.dim}>From your deployment machine, run:</Text>
+            <Text color={theme.accent}>{`nixos-anywhere --flake .#your-config root@${ipAddress}`}</Text>
           </Box>
         )}
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -747,13 +789,13 @@ const App: React.FC = () => {
   if (screen === 'disk-selection') {
     if (disks.length === 0) {
       return (
-        <Box flexDirection="column" padding={1}>
+        <FullScreen>
           {renderHeader('Disk Selection')}
           <Box marginBottom={1}>
-            <Text color="red">✗ No suitable disks found</Text>
+            <Text color={theme.error}>✗ No suitable disks found</Text>
           </Box>
-          <Text dimColor>Please check that your storage device is connected and detected.</Text>
-          <Text dimColor>Disks must be at least 8GB in size.</Text>
+          <Text color={theme.dim}>Please check that your storage device is connected and detected.</Text>
+          <Text color={theme.dim}>Disks must be at least 8GB in size.</Text>
           <SelectInput
             items={[
               { label: 'Refresh disk list', value: 'refresh' },
@@ -767,7 +809,7 @@ const App: React.FC = () => {
               }
             }}
           />
-        </Box>
+        </FullScreen>
       );
     }
 
@@ -777,22 +819,22 @@ const App: React.FC = () => {
     }));
 
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Disk Selection')}
         <Box marginBottom={1}>
-          <Text>Select a disk for installation:</Text>
+          <Text color={theme.primary}>Select a disk for installation:</Text>
         </Box>
         {errorMessage && (
           <Box marginBottom={1}>
-            <Text color="red">{errorMessage}</Text>
+            <Text color={theme.error}>{errorMessage}</Text>
           </Box>
         )}
         <SelectInput items={diskItems} onSelect={handleDiskSelect} />
         <Box marginTop={1}>
-          <Text dimColor>⚠️ = Disk contains existing data (will be erased)</Text>
+          <Text color={theme.dim}>⚠️ = Disk contains existing data (will be erased)</Text>
         </Box>
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -802,16 +844,16 @@ const App: React.FC = () => {
 
   if (screen === 'disk-confirmation') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Confirm Disk Selection')}
-        <Box marginBottom={1} borderStyle="round" borderColor="red" padding={1}>
-          <Text color="red" bold>⚠️ WARNING: ALL DATA WILL BE ERASED</Text>
+        <Box marginBottom={1} borderStyle="round" borderColor={theme.error} padding={1}>
+          <Text color={theme.error} bold>⚠️ WARNING: ALL DATA WILL BE ERASED</Text>
         </Box>
         <Box flexDirection="column" marginBottom={1}>
-          <Text>Selected disk: <Text bold>{selectedDisk?.name}</Text></Text>
-          <Text>Size: <Text bold>{selectedDisk?.sizeHuman}</Text></Text>
-          {selectedDisk?.model && <Text>Model: <Text bold>{selectedDisk.model}</Text></Text>}
-          {selectedDisk?.byIdPath && <Text dimColor>Path: {selectedDisk.byIdPath}</Text>}
+          <Text color={theme.primary}>Selected disk: <Text bold color={theme.accent}>{selectedDisk?.name}</Text></Text>
+          <Text color={theme.primary}>Size: <Text bold color={theme.accent}>{selectedDisk?.sizeHuman}</Text></Text>
+          {selectedDisk?.model && <Text color={theme.primary}>Model: <Text bold color={theme.accent}>{selectedDisk.model}</Text></Text>}
+          {selectedDisk?.byIdPath && <Text color={theme.dim}>Path: {selectedDisk.byIdPath}</Text>}
         </Box>
         <SelectInput
           items={[
@@ -820,7 +862,7 @@ const App: React.FC = () => {
           ]}
           onSelect={(item) => handleDiskConfirm(item.value === 'yes')}
         />
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -830,10 +872,10 @@ const App: React.FC = () => {
 
   if (screen === 'encryption-choice') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Encryption')}
         <Box marginBottom={1}>
-          <Text>Choose disk encryption option:</Text>
+          <Text color={theme.primary}>Choose disk encryption option:</Text>
         </Box>
         <SelectInput
           items={[
@@ -843,11 +885,11 @@ const App: React.FC = () => {
           onSelect={handleEncryptionSelect}
         />
         <Box marginTop={1} flexDirection="column">
-          <Text dimColor>Encrypted: Full disk encryption with automatic TPM2 unlock</Text>
-          <Text dimColor>Unencrypted: Faster, simpler, suitable for testing</Text>
+          <Text color={theme.dim}>Encrypted: Full disk encryption with automatic TPM2 unlock</Text>
+          <Text color={theme.dim}>Unencrypted: Faster, simpler, suitable for testing</Text>
         </Box>
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -857,15 +899,15 @@ const App: React.FC = () => {
 
   if (screen === 'tpm-warning') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('TPM2 Not Available')}
-        <Box marginBottom={1} borderStyle="round" borderColor="yellow" padding={1}>
-          <Text color="yellow">⚠️ TPM2 device not detected</Text>
+        <Box marginBottom={1} borderStyle="round" borderColor={theme.warning} padding={1}>
+          <Text color={theme.warning}>⚠️ TPM2 device not detected</Text>
         </Box>
         <Box flexDirection="column" marginBottom={1}>
-          <Text>Your system does not have a TPM2 device available.</Text>
-          <Text>Encryption will still work, but you will need to enter</Text>
-          <Text>a password on every boot to unlock the disk.</Text>
+          <Text color={theme.primary}>Your system does not have a TPM2 device available.</Text>
+          <Text color={theme.primary}>Encryption will still work, but you will need to enter</Text>
+          <Text color={theme.primary}>a password on every boot to unlock the disk.</Text>
         </Box>
         <SelectInput
           items={[
@@ -880,7 +922,7 @@ const App: React.FC = () => {
             }
           }}
         />
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -890,18 +932,18 @@ const App: React.FC = () => {
 
   if (screen === 'hostname-input') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Hostname')}
         <Box marginBottom={1}>
-          <Text>Enter a hostname for this machine:</Text>
+          <Text color={theme.primary}>Enter a hostname for this machine:</Text>
         </Box>
         {hostnameError && (
           <Box marginBottom={1}>
-            <Text color="red">{hostnameError}</Text>
+            <Text color={theme.error}>{hostnameError}</Text>
           </Box>
         )}
         <Box>
-          <Text color="green">&gt; </Text>
+          <Text color={theme.prompt}>&gt; </Text>
           <TextInput
             value={hostname}
             onChange={(value) => {
@@ -913,10 +955,10 @@ const App: React.FC = () => {
           />
         </Box>
         <Box marginTop={1}>
-          <Text dimColor>Letters, numbers, and hyphens only (e.g., my-server)</Text>
+          <Text color={theme.dim}>Letters, numbers, and hyphens only (e.g., my-server)</Text>
         </Box>
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -926,18 +968,18 @@ const App: React.FC = () => {
 
   if (screen === 'username-input') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Username')}
         <Box marginBottom={1}>
-          <Text>Enter a username for the primary account:</Text>
+          <Text color={theme.primary}>Enter a username for the primary account:</Text>
         </Box>
         {usernameError && (
           <Box marginBottom={1}>
-            <Text color="red">{usernameError}</Text>
+            <Text color={theme.error}>{usernameError}</Text>
           </Box>
         )}
         <Box>
-          <Text color="green">&gt; </Text>
+          <Text color={theme.prompt}>&gt; </Text>
           <TextInput
             value={username}
             onChange={(value) => {
@@ -949,10 +991,10 @@ const App: React.FC = () => {
           />
         </Box>
         <Box marginTop={1}>
-          <Text dimColor>Lowercase letters, numbers, and underscores only</Text>
+          <Text color={theme.dim}>Lowercase letters, numbers, and underscores only</Text>
         </Box>
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -962,18 +1004,18 @@ const App: React.FC = () => {
 
   if (screen === 'password-input') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Password')}
         <Box marginBottom={1}>
-          <Text>Enter a password for {username}:</Text>
+          <Text color={theme.primary}>Enter a password for {username}:</Text>
         </Box>
         {passwordError && (
           <Box marginBottom={1}>
-            <Text color="red">{passwordError}</Text>
+            <Text color={theme.error}>{passwordError}</Text>
           </Box>
         )}
         <Box>
-          <Text color="green">&gt; </Text>
+          <Text color={theme.prompt}>&gt; </Text>
           <TextInput
             value={password}
             onChange={(value) => {
@@ -985,7 +1027,7 @@ const App: React.FC = () => {
           />
         </Box>
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -995,18 +1037,18 @@ const App: React.FC = () => {
 
   if (screen === 'password-confirm') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Confirm Password')}
         <Box marginBottom={1}>
-          <Text>Confirm password for {username}:</Text>
+          <Text color={theme.primary}>Confirm password for {username}:</Text>
         </Box>
         {passwordError && (
           <Box marginBottom={1}>
-            <Text color="red">{passwordError}</Text>
+            <Text color={theme.error}>{passwordError}</Text>
           </Box>
         )}
         <Box>
-          <Text color="green">&gt; </Text>
+          <Text color={theme.prompt}>&gt; </Text>
           <TextInput
             value={passwordConfirm}
             onChange={(value) => {
@@ -1018,7 +1060,7 @@ const App: React.FC = () => {
           />
         </Box>
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -1028,10 +1070,10 @@ const App: React.FC = () => {
 
   if (screen === 'system-type-selection') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('System Type')}
         <Box marginBottom={1}>
-          <Text>Select the type of system to install:</Text>
+          <Text color={theme.primary}>Select the type of system to install:</Text>
         </Box>
         <SelectInput
           items={[
@@ -1041,11 +1083,11 @@ const App: React.FC = () => {
           onSelect={handleSystemTypeSelect}
         />
         <Box marginTop={1} flexDirection="column">
-          <Text dimColor>Server: VPN, DNS, storage, and other services</Text>
-          <Text dimColor>Client: Desktop workstation with Hyprland</Text>
+          <Text color={theme.dim}>Server: VPN, DNS, storage, and other services</Text>
+          <Text color={theme.dim}>Client: Desktop workstation with Hyprland</Text>
         </Box>
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -1055,18 +1097,18 @@ const App: React.FC = () => {
 
   if (screen === 'repository-url') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Clone Repository')}
         <Box marginBottom={1}>
-          <Text>Enter the git repository URL:</Text>
+          <Text color={theme.primary}>Enter the git repository URL:</Text>
         </Box>
         {repositoryError && (
           <Box marginBottom={1}>
-            <Text color="red">{repositoryError}</Text>
+            <Text color={theme.error}>{repositoryError}</Text>
           </Box>
         )}
         <Box>
-          <Text color="green">&gt; </Text>
+          <Text color={theme.prompt}>&gt; </Text>
           <TextInput
             value={repositoryUrl}
             onChange={(value) => {
@@ -1078,11 +1120,11 @@ const App: React.FC = () => {
           />
         </Box>
         <Box marginTop={1} flexDirection="column">
-          <Text dimColor>HTTPS: https://github.com/user/repo</Text>
-          <Text dimColor>SSH: git@github.com:user/repo</Text>
+          <Text color={theme.dim}>HTTPS: https://github.com/user/repo</Text>
+          <Text color={theme.dim}>SSH: git@github.com:user/repo</Text>
         </Box>
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -1092,15 +1134,15 @@ const App: React.FC = () => {
 
   if (screen === 'repository-cloning') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Cloning Repository')}
         <Box>
-          <Text color="green">
+          <Text color={theme.accent}>
             <Spinner type="dots" />
           </Text>
-          <Text> Cloning {repositoryUrl}...</Text>
+          <Text color={theme.primary}> Cloning {repositoryUrl}...</Text>
         </Box>
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -1115,14 +1157,14 @@ const App: React.FC = () => {
     }));
 
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Select Host')}
         <Box marginBottom={1}>
-          <Text>Select a host configuration to deploy:</Text>
+          <Text color={theme.primary}>Select a host configuration to deploy:</Text>
         </Box>
         <SelectInput items={hostItems} onSelect={handleHostSelect} />
         {renderBackHint()}
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -1132,22 +1174,22 @@ const App: React.FC = () => {
 
   if (screen === 'summary') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Installation Summary')}
-        <Box flexDirection="column" marginBottom={1} borderStyle="single" padding={1}>
-          <Text>Hostname: <Text bold color="cyan">{hostname}</Text></Text>
-          <Text>Username: <Text bold color="cyan">{username}</Text></Text>
-          <Text>System Type: <Text bold color="cyan">{systemType}</Text></Text>
+        <Box flexDirection="column" marginBottom={1} borderStyle="single" borderColor={theme.border} padding={1}>
+          <Text color={theme.primary}>Hostname: <Text bold color={theme.accent}>{hostname}</Text></Text>
+          <Text color={theme.primary}>Username: <Text bold color={theme.accent}>{username}</Text></Text>
+          <Text color={theme.primary}>System Type: <Text bold color={theme.accent}>{systemType}</Text></Text>
           {selectedDisk && (
             <>
-              <Text>Disk: <Text bold color="cyan">{selectedDisk.name}</Text> ({selectedDisk.sizeHuman})</Text>
-              <Text>Encryption: <Text bold color={encryptionChoice?.encrypted ? 'green' : 'yellow'}>
+              <Text color={theme.primary}>Disk: <Text bold color={theme.accent}>{selectedDisk.name}</Text> ({selectedDisk.sizeHuman})</Text>
+              <Text color={theme.primary}>Encryption: <Text bold color={theme.accent}>
                 {encryptionChoice?.encrypted ? 'ZFS + LUKS' : 'None (ext4)'}
               </Text></Text>
             </>
           )}
           {selectedMethod?.type === 'clone' && (
-            <Text>Source: <Text bold color="cyan">Cloned from repository</Text></Text>
+            <Text color={theme.primary}>Source: <Text bold color={theme.accent}>Cloned from repository</Text></Text>
           )}
         </Box>
         <SelectInput
@@ -1163,7 +1205,7 @@ const App: React.FC = () => {
             }
           }}
         />
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -1173,30 +1215,30 @@ const App: React.FC = () => {
 
   if (screen === 'installing') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Installing')}
         <Box marginBottom={1}>
-          <Text color="green">
+          <Text color={theme.accent}>
             <Spinner type="dots" />
           </Text>
-          <Text> {installProgress?.currentOperation || 'Starting installation...'}</Text>
+          <Text color={theme.primary}> {installProgress?.currentOperation || 'Starting installation...'}</Text>
         </Box>
         {installProgress && (
           <Box marginBottom={1}>
-            <Text>Progress: {installProgress.progress}%</Text>
+            <Text color={theme.primary}>Progress: {installProgress.progress}%</Text>
           </Box>
         )}
         <Box flexDirection="column" marginTop={1}>
-          <Text dimColor>Recent operations:</Text>
+          <Text color={theme.dim}>Recent operations:</Text>
           {fileOperations.slice(-5).map((op, i) => (
             <Box key={i}>
-              <Text color={op.success ? 'green' : 'red'}>
+              <Text color={op.success ? theme.success : theme.error}>
                 {op.success ? '✓' : '✗'} {op.action}: {op.purpose}
               </Text>
             </Box>
           ))}
         </Box>
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -1206,18 +1248,18 @@ const App: React.FC = () => {
 
   if (screen === 'complete') {
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Installation Complete')}
         <Box marginBottom={1}>
-          <Text color="green">✓ NixOS has been successfully installed!</Text>
+          <Text color={theme.success}>✓ NixOS has been successfully installed!</Text>
         </Box>
         <Box flexDirection="column" marginBottom={1}>
-          <Text>Hostname: <Text bold>{hostname}</Text></Text>
-          <Text>Username: <Text bold>{username}</Text></Text>
-          <Text>System Type: <Text bold>{systemType}</Text></Text>
+          <Text color={theme.primary}>Hostname: <Text bold color={theme.accent}>{hostname}</Text></Text>
+          <Text color={theme.primary}>Username: <Text bold color={theme.accent}>{username}</Text></Text>
+          <Text color={theme.primary}>System Type: <Text bold color={theme.accent}>{systemType}</Text></Text>
         </Box>
-        <Box marginBottom={1} borderStyle="round" borderColor="cyan" padding={1}>
-          <Text>Configuration saved to: ~/nixos-config/</Text>
+        <Box marginBottom={1} borderStyle="round" borderColor={theme.border} padding={1}>
+          <Text color={theme.primary}>Configuration saved to: ~/nixos-config/</Text>
         </Box>
         <SelectInput
           items={[
@@ -1232,7 +1274,7 @@ const App: React.FC = () => {
             }
           }}
         />
-      </Box>
+      </FullScreen>
     );
   }
 
@@ -1245,24 +1287,24 @@ const App: React.FC = () => {
     const lastFailedOp = fileOperations.filter(op => !op.success).pop();
 
     return (
-      <Box flexDirection="column" padding={1}>
+      <FullScreen>
         {renderHeader('Installation Error')}
         <Box marginBottom={1}>
-          <Text color="red">✗ Installation failed</Text>
+          <Text color={theme.error}>✗ Installation failed</Text>
         </Box>
-        <Box marginBottom={1} borderStyle="round" borderColor="red" padding={1}>
-          <Text>{installError || 'An unknown error occurred'}</Text>
+        <Box marginBottom={1} borderStyle="round" borderColor={theme.error} padding={1}>
+          <Text color={theme.primary}>{installError || 'An unknown error occurred'}</Text>
         </Box>
         {lastFailedOp?.output && (
           <Box marginBottom={1} flexDirection="column">
-            <Text dimColor>Last output (truncated):</Text>
-            <Box borderStyle="single" padding={1}>
-              <Text>{lastFailedOp.output.slice(-500)}</Text>
+            <Text color={theme.dim}>Last output (truncated):</Text>
+            <Box borderStyle="single" borderColor={theme.border} padding={1}>
+              <Text color={theme.primary}>{lastFailedOp.output.slice(-500)}</Text>
             </Box>
           </Box>
         )}
         <Box marginBottom={1}>
-          <Text dimColor>Full log: /tmp/keystone-install.log</Text>
+          <Text color={theme.dim}>Full log: /tmp/keystone-install.log</Text>
         </Box>
         <SelectInput
           items={[
@@ -1279,7 +1321,7 @@ const App: React.FC = () => {
             }
           }}
         />
-      </Box>
+      </FullScreen>
     );
   }
 
