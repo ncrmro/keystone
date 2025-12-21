@@ -11,6 +11,7 @@ in {
     ./shell.nix
     ./editor.nix
     ./ai.nix
+    ./containers.nix
   ];
 
   options.keystone.terminal = {
