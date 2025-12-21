@@ -87,6 +87,8 @@ This document demonstrates different ways Keystone servers and clients can be de
 
 **Integration**: Connects to home server for backups, uses server VPN when remote, accesses shared storage.
 
+**See also**: [Container Development Workstation](examples/container-dev-workstation.md) - Complete example with Docker and Kind for Kubernetes development.
+
 ### Example 2: Family Laptop
 **Hardware**: Standard laptop  
 **Features**: Secure desktop environment, automatic backups, web filtering  
