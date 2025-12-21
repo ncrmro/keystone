@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help ci fmt check-lockfile vm-server vm-test vm-ssh vm-connect vm-stop vm-clean vm-display
+.PHONY: help ci fmt check-lockfile test test-checks test-module test-integration vm-server vm-test vm-ssh vm-connect vm-stop vm-clean vm-display
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -23,6 +23,21 @@ check-lockfile: ## Verify flake.lock is up to date
 	fi
 	@nix flake check --no-build
 	@echo "Lockfile verification passed"
+
+## Test Targets
+## Tests are defined in ./tests/flake.nix (separate from main flake)
+
+test: ## Run all tests (checks + module + integration)
+	./bin/run-tests all
+
+test-checks: ## Run flake checks only (fast validation)
+	./bin/run-tests checks
+
+test-module: ## Run module isolation tests
+	./bin/run-tests module
+
+test-integration: ## Run integration tests
+	./bin/run-tests integration
 
 ## VM Testing Targets
 ## Note: SSH commands use StrictHostKeyChecking=no for ephemeral test VMs

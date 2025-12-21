@@ -4,6 +4,7 @@
 #
 # This script uses nixos-rebuild build-vm for rapid iteration on configurations
 # without the overhead of full deployment (no disko/encryption/secure boot).
+# VM configurations are defined in ./tests/flake.nix.
 #
 # Usage:
 #   ./bin/build-vm terminal          # Build and auto-SSH into terminal VM
@@ -185,11 +186,11 @@ if [ "$CLEAN" = true ]; then
     fi
 fi
 
-# Build VM
+# Build VM (configurations are in ./tests/flake.nix)
 print_step "Building VM for configuration: $CONFIG"
 print_info "This may take a few minutes on first build..."
 
-if nixos-rebuild build-vm --flake ".#$FLAKE_CONFIG"; then
+if nixos-rebuild build-vm --flake "./tests#$FLAKE_CONFIG"; then
     print_success "VM built successfully"
 else
     print_error "Failed to build VM"

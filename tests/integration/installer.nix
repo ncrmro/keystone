@@ -27,7 +27,7 @@
   pkgs,
   lib,
 }: let
-  keystone-installer-ui = pkgs.callPackage ../packages/keystone-installer-ui {};
+  keystone-installer-ui = pkgs.callPackage ../../packages/keystone-installer-ui {};
 in
   pkgs.testers.runNixOSTest {
     name = "keystone-installer";
