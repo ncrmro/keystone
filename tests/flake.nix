@@ -10,6 +10,7 @@
     disko.follows = "keystone/disko";
     lanzaboote.follows = "keystone/lanzaboote";
     omarchy.follows = "keystone/omarchy";
+    hyprland.follows = "keystone/hyprland";
   };
 
   outputs = {
@@ -20,6 +21,7 @@
     disko,
     lanzaboote,
     omarchy,
+    hyprland,
   }: let
     system = "x86_64-linux";
     pkgs = nixpkgs.legacyPackages.${system};
@@ -34,9 +36,7 @@
       test-server = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
-          disko.nixosModules.disko
-          lanzaboote.nixosModules.lanzaboote
-          keystone.nixosModules.server
+          keystone.nixosModules.operating-system
           ../vms/test-server/configuration.nix
         ];
       };
@@ -45,10 +45,9 @@
       test-hyprland = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
-          disko.nixosModules.disko
-          lanzaboote.nixosModules.lanzaboote
           home-manager.nixosModules.home-manager
-          keystone.nixosModules.client
+          keystone.nixosModules.operating-system
+          keystone.nixosModules.desktop
           ../vms/test-hyprland/configuration.nix
           {
             _module.args.omarchy = omarchy;
@@ -71,6 +70,11 @@
       # Hyprland desktop testing
       build-vm-desktop = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
+        specialArgs = {
+          inputs = {
+            inherit nixpkgs hyprland;
+          };
+        };
         modules = [
           home-manager.nixosModules.home-manager
           ../vms/build-vm-desktop/configuration.nix

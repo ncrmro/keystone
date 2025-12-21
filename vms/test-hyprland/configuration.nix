@@ -63,29 +63,17 @@
     };
   };
 
-  # Enable client configuration with desktop
-  keystone.client = {
+  # Enable desktop environment (Hyprland)
+  keystone.desktop = {
     enable = true;
+    user = "testuser";
 
     # Desktop components (all enabled by default)
-    desktop = {
-      hyprland.enable = true;
-      greetd.enable = true;
-      audio.enable = true;
-      packages.enable = true;
-    };
-
-    # Network and system services
-    services = {
-      networking.enable = true;
-      system.enable = true;
-    };
-
-    # Home-manager configuration
-    home = {
-      enable = true;
-      omarchy.enable = true;
-    };
+    hyprland.enable = true;
+    greetd.enable = true;
+    audio.enable = true;
+    bluetooth.enable = true;
+    networking.enable = true;
   };
 
   # Serial console support for VM testing

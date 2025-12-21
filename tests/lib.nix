@@ -18,7 +18,7 @@
     nodes ? {},
     ...
   } @ args:
-    pkgs.nixosTest (
+    pkgs.testers.nixosTest (
       {
         inherit name testScript;
         nodes =

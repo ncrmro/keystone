@@ -307,6 +307,60 @@ in {
       };
     };
 
+    # System services (moved from server module)
+    services = {
+      avahi = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Enable Avahi/mDNS for network discovery (.local hostnames)";
+        };
+      };
+
+      firewall = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Enable basic firewall (SSH port is opened automatically)";
+        };
+      };
+
+      resolved = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Enable systemd-resolved for DNS resolution";
+        };
+      };
+    };
+
+    # Nix configuration
+    nix = {
+      gc = {
+        automatic = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Enable automatic Nix garbage collection";
+        };
+        dates = mkOption {
+          type = types.str;
+          default = "weekly";
+          description = "Schedule for garbage collection";
+        };
+        options = mkOption {
+          type = types.str;
+          default = "--delete-older-than 30d";
+          description = "Options passed to nix-collect-garbage";
+        };
+      };
+
+      flakes = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable Nix flakes and nix-command";
+      };
+    };
+
     # User configuration
     users = mkOption {
       type = types.attrsOf userSubmodule;
@@ -375,5 +429,39 @@ in {
         message = "All users must have either initialPassword or hashedPassword set";
       }
     ];
+
+    # Avahi/mDNS configuration
+    services.avahi = mkIf cfg.services.avahi.enable {
+      enable = true;
+      nssmdns4 = true;
+      nssmdns6 = true;
+      publish = {
+        enable = true;
+        addresses = true;
+        domain = true;
+        hinfo = true;
+        userServices = true;
+        workstation = true;
+      };
+    };
+
+    # Firewall configuration
+    networking.firewall.enable = cfg.services.firewall.enable;
+
+    # DNS resolution
+    services.resolved.enable = cfg.services.resolved.enable;
+
+    # Nix configuration
+    nix.settings.experimental-features = mkIf cfg.nix.flakes ["nix-command" "flakes"];
+
+    nix.gc = mkIf cfg.nix.gc.automatic {
+      automatic = true;
+      dates = cfg.nix.gc.dates;
+      options = cfg.nix.gc.options;
+    };
+
+    # Locale defaults
+    time.timeZone = lib.mkDefault "UTC";
+    i18n.defaultLocale = lib.mkDefault "en_US.UTF-8";
   };
 }

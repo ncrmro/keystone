@@ -1,6 +1,12 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help ci fmt check-lockfile test test-checks test-module test-integration vm-server vm-test vm-ssh vm-connect vm-stop vm-clean vm-display
+.PHONY: help ci fmt check-lockfile test test-checks test-module test-integration test-template
+.PHONY: vm-create vm-start vm-stop vm-destroy vm-reset vm-ssh vm-console vm-display vm-status vm-post-install vm-reset-secureboot
+.PHONY: build-vm-terminal build-vm-desktop build-iso build-iso-ssh
+.PHONY: test-deploy test-desktop test-hm
+
+# Default VM name for libvirt targets
+VM_NAME ?= keystone-test-vm
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -39,137 +45,96 @@ test-module: ## Run module isolation tests
 test-integration: ## Run integration tests
 	./bin/run-tests integration
 
-## VM Testing Targets
-## Note: SSH commands use StrictHostKeyChecking=no for ephemeral test VMs
-## (same default behavior as nixos-anywhere for unattended deployments)
+test-template: ## Validate flake template evaluates correctly
+	@echo "🧪 Testing flake template..."
+	@cd templates/default && nix flake check --no-build
+	@echo "✅ Template validation passed"
 
-vm-server: ## Launch VM with quickemu (manual workflow)
-	@command -v quickemu >/dev/null 2>&1 || (echo "❌ Error: quickemu not found. Install with: nix-env -iA nixpkgs.quickemu" && exit 1)
-	@test -f vms/keystone-installer.iso || (echo "❌ Error: vms/keystone-installer.iso not found. Run ./bin/build-iso first" && exit 1)
-	@mkdir -p vms/server
-	cd vms && quickemu --vm server.conf
+## ISO Building
 
-vm-test: ## Build ISO with SSH key and launch VM (automated workflow)
-	@command -v quickemu >/dev/null 2>&1 || (echo "❌ Error: quickemu not found. Install with: nix-env -iA nixpkgs.quickemu" && exit 1)
-	@command -v nc >/dev/null 2>&1 || (echo "⚠️  Warning: netcat not found, SSH readiness check may fail" >&2)
-	@echo "🔨 Building ISO with SSH key..."
-	@if [ -z "$$SSH_KEY" ]; then \
-		if [ -f ~/.ssh/id_ed25519.pub ]; then \
-			./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub; \
-		elif [ -f ~/.ssh/id_rsa.pub ]; then \
-			./bin/build-iso --ssh-key ~/.ssh/id_rsa.pub; \
-		else \
-			echo "❌ Error: No SSH key found. Set SSH_KEY or create ~/.ssh/id_ed25519.pub"; \
-			exit 1; \
-		fi \
+build-iso: ## Build installer ISO
+	./bin/build-iso
+
+build-iso-ssh: ## Build installer ISO with SSH key
+	@if [ -f ~/.ssh/id_ed25519.pub ]; then \
+		./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub; \
+	elif [ -f ~/.ssh/id_rsa.pub ]; then \
+		./bin/build-iso --ssh-key ~/.ssh/id_rsa.pub; \
 	else \
-		./bin/build-iso --ssh-key "$$SSH_KEY"; \
-	fi
-	@if pgrep -f "qemu.*server.conf" > /dev/null; then \
-		echo "⚠️  VM already running (PID: $$(pgrep -f 'qemu.*server.conf'))"; \
-		echo ""; \
-		if nc -z localhost 22220 2>/dev/null; then \
-			echo "✅ SSH is ready"; \
-			echo ""; \
-			echo "📡 Connect via SSH:"; \
-			echo "   make vm-ssh  (or make vm-connect)"; \
-			echo "   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22220 root@localhost"; \
-			echo ""; \
-		else \
-			echo "⚠️  SSH not ready yet (wait a moment and try 'make vm-ssh')"; \
-			echo ""; \
-		fi; \
-		echo "🛑 Stop: make vm-stop"; \
-		echo "🧹 Clean: make vm-clean"; \
+		echo "❌ Error: No SSH key found at ~/.ssh/id_ed25519.pub or ~/.ssh/id_rsa.pub"; \
 		exit 1; \
 	fi
-	@if nc -z localhost 22220 2>/dev/null; then \
-		echo "⚠️  Port 22220 already in use. Try another port or stop conflicting process"; \
-		echo "   Check with: lsof -i :22220"; \
-		exit 1; \
-	fi
-	@echo "🚀 Launching VM..."
-	@mkdir -p vms/server
-	@cd vms && quickemu --vm server.conf --display none &
-	@echo "⏱️  Waiting for SSH (port 22220)..."
-	@for i in $$(seq 1 30); do \
-		if nc -z localhost 22220 2>/dev/null; then \
-			echo "✅ VM ready!"; \
-			echo ""; \
-			echo "📡 Connect via SSH:"; \
-			echo "   make vm-ssh  (or make vm-connect)"; \
-			echo "   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22220 root@localhost"; \
-			echo ""; \
-			echo "🛑 Stop: make vm-stop"; \
-			echo "🧹 Clean: make vm-clean"; \
-			exit 0; \
-		fi; \
-		sleep 1; \
-	done; \
-	echo "⚠️  SSH not available after 30 seconds. Check VM status:"; \
-	echo "   ps aux | grep qemu"; \
-	echo "   Check logs: tail -f vms/server/server.log (if exists)"; \
-	exit 1
 
-vm-ssh: ## Connect to VM via SSH (alias for vm-connect)
-	@if ! pgrep -f "qemu.*server.conf" > /dev/null; then \
-		echo "⚠️  VM not running. Start with: make vm-server or make vm-test"; \
-		exit 1; \
-	fi
-	@if ! nc -z localhost $${SSH_PORT:-22220} 2>/dev/null; then \
-		echo "⚠️  VM is running but SSH not ready yet. Wait a moment and try again."; \
-		exit 1; \
-	fi
-	@ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $${SSH_PORT:-22220} root@localhost
+## Fast Config Testing (no encryption/TPM)
+## Uses nixos-rebuild build-vm for rapid iteration
 
-vm-connect: ## Connect to VM via SSH
-	@if ! pgrep -f "qemu.*server.conf" > /dev/null; then \
-		echo "⚠️  VM not running. Start with: make vm-server or make vm-test"; \
-		exit 1; \
-	fi
-	@if ! nc -z localhost $${SSH_PORT:-22220} 2>/dev/null; then \
-		echo "⚠️  VM is running but SSH not ready yet. Wait a moment and try again."; \
-		exit 1; \
-	fi
-	@ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $${SSH_PORT:-22220} root@localhost
+build-vm-terminal: ## Build and SSH into terminal dev VM
+	./bin/build-vm terminal
 
-vm-stop: ## Stop the VM
-	@if pgrep -f "qemu.*server.conf" > /dev/null; then \
-		echo "🛑 Stopping VM..."; \
-		pkill -f "qemu.*server.conf"; \
-		sleep 2; \
-		if pgrep -f "qemu.*server.conf" > /dev/null; then \
-			echo "⚠️  VM still running, force killing..."; \
-			pkill -9 -f "qemu.*server.conf"; \
-		fi; \
-		echo "✅ VM stopped"; \
+build-vm-desktop: ## Build and open desktop VM
+	./bin/build-vm desktop
+
+## Libvirt VM Management (TPM + Secure Boot)
+## Uses bin/virtual-machine for full-stack testing with encryption
+
+vm-create: ## Create and start libvirt VM with TPM + Secure Boot
+	@if [ ! -f vms/keystone-installer.iso ]; then \
+		echo "📀 ISO not found, building with SSH key..."; \
+		$(MAKE) build-iso-ssh; \
+	fi
+	./bin/virtual-machine --name $(VM_NAME) --start
+
+vm-start: ## Start existing VM
+	@if ! virsh dominfo $(VM_NAME) >/dev/null 2>&1; then \
+		echo "❌ VM '$(VM_NAME)' not found. Create with: make vm-create"; \
+		exit 1; \
+	elif virsh list --state-running | grep -q "$(VM_NAME)"; then \
+		echo "ℹ️  VM '$(VM_NAME)' is already running"; \
 	else \
-		echo "ℹ️  No VM running"; \
+		virsh start $(VM_NAME); \
 	fi
 
-vm-clean: ## Clean VM artifacts
-	@if [ "$$FORCE" = "1" ] && pgrep -f "qemu.*server.conf" > /dev/null; then \
-		echo "🛑 Stopping VM first..."; \
-		$(MAKE) vm-stop; \
-	elif pgrep -f "qemu.*server.conf" > /dev/null; then \
-		echo "⚠️  VM is running. Stop it first with 'make vm-stop' or use 'FORCE=1 make vm-clean'"; \
+vm-stop: ## Stop VM gracefully
+	@virsh shutdown $(VM_NAME) 2>/dev/null || echo "ℹ️  VM '$(VM_NAME)' not running"
+
+vm-destroy: ## Force stop VM
+	@virsh destroy $(VM_NAME) 2>/dev/null || echo "ℹ️  VM '$(VM_NAME)' not running"
+
+vm-reset: ## Delete VM and all artifacts
+	./bin/virtual-machine --reset $(VM_NAME)
+
+vm-ssh: ## SSH into test VM
+	./bin/test-vm-ssh $(VM_NAME)
+
+vm-console: ## Connect to VM serial console
+	@virsh console $(VM_NAME)
+
+vm-display: ## Open graphical display for VM
+	@if ! virsh list --state-running | grep -q "$(VM_NAME)"; then \
+		echo "⚠️  VM '$(VM_NAME)' is not running"; \
+		echo "Start it with: make vm-create"; \
 		exit 1; \
 	fi
-	@echo "🧹 Cleaning VM artifacts..."
-	@rm -f vms/server/*.qcow2 vms/server/*.fd vms/server/*.pid vms/server/*.log vms/server/*.ports vms/server/*.socket 2>/dev/null || true
-	@if [ -d vms/server ] && [ -z "$$(ls -A vms/server 2>/dev/null)" ]; then \
-		rmdir vms/server 2>/dev/null || true; \
-	fi
-	@echo "✅ Cleanup complete"
+	@command -v remote-viewer >/dev/null 2>&1 || (echo "❌ Error: remote-viewer not found. Install virt-viewer" && exit 1)
+	@echo "🖥️  Opening remote-viewer for $(VM_NAME)..."
+	@remote-viewer $$(virsh domdisplay $(VM_NAME))
 
-## Libvirt VM Targets (for bin/virtual-machine workflow)
+vm-status: ## Show VM status
+	@virsh dominfo $(VM_NAME) 2>/dev/null || echo "ℹ️  VM '$(VM_NAME)' not defined"
 
-vm-display: ## Open graphical display for keystone-test-vm
-	@if ! virsh list --state-running | grep -q "keystone-test-vm"; then \
-		echo "⚠️  VM 'keystone-test-vm' is not running"; \
-		echo "Start it with: ./bin/virtual-machine --name keystone-test-vm --start"; \
-		exit 1; \
-	fi
-	@command -v remote-viewer >/dev/null 2>&1 || (echo "❌ Error: remote-viewer not found. Install with: nix-env -iA nixpkgs.virt-viewer" && exit 1)
-	@echo "🖥️  Opening remote-viewer for keystone-test-vm..."
-	@remote-viewer $$(virsh domdisplay keystone-test-vm)
+vm-post-install: ## Post-install: remove ISO, snapshot, reboot
+	./bin/virtual-machine --post-install-reboot $(VM_NAME)
+
+vm-reset-secureboot: ## Reset to Secure Boot setup mode
+	./bin/virtual-machine --reset-setup-mode $(VM_NAME)
+
+## Deployment Testing
+
+test-deploy: ## Run full stack deployment test
+	./bin/test-deployment
+
+test-desktop: ## Test Hyprland desktop environment
+	./bin/test-desktop
+
+test-hm: ## Test home-manager modules
+	./bin/test-home-manager

@@ -11,7 +11,7 @@
   lib,
   self,
 }:
-pkgs.nixosTest {
+pkgs.testers.nixosTest {
   name = "server-isolation";
 
   nodes.machine = {

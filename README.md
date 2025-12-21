@@ -72,6 +72,35 @@ Keystone provides two types of client configurations for different use cases:
 
 ## Getting Started
 
+### Quick Start with Flake Template (Recommended)
+
+The fastest way to get started is using the Keystone flake template:
+
+```bash
+# Initialize a new project from the template
+nix flake init -t github:ncrmro/keystone
+
+# Edit configuration.nix - search for TODO: to find required changes
+grep -n "TODO:" configuration.nix
+
+# Generate a unique host ID (required for ZFS)
+head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
+
+# Find your disk ID (use /dev/disk/by-id/ paths)
+ls -la /dev/disk/by-id/
+
+# Boot target machine from Keystone ISO, then deploy
+nixos-anywhere --flake .#my-machine root@<installer-ip>
+```
+
+The template includes:
+- **flake.nix** - All required inputs with role toggle (server/client)
+- **configuration.nix** - Documented options with TODO markers for required values
+- **hardware.nix** - Placeholder ready for your hardware config
+- **README.md** - Detailed getting started guide
+
+See the template's README.md for post-deployment steps (Secure Boot keys, TPM enrollment).
+
 ### Quick Deployment to VM
 
 Deploy a minimal Keystone server to a VM for testing:
@@ -195,29 +224,46 @@ make vm-stop
 
 ## Using Keystone as a Flake Input
 
-### Basic Setup
+### Recommended: Use the Template
 
-Add Keystone to your flake inputs:
+The easiest way to set up Keystone is with the flake template (see [Quick Start](#quick-start-with-flake-template-recommended)):
+
+```bash
+nix flake init -t github:ncrmro/keystone
+```
+
+This creates a complete project with all required inputs and documented configuration options.
+
+### Manual Setup
+
+If you prefer to add Keystone to an existing flake manually:
 
 ```nix
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
-
-    keystone = {
-      url = "github:ncrmro/keystone";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    keystone.url = "github:ncrmro/keystone";
+    home-manager.url = "github:nix-community/home-manager/release-25.05";
   };
 
-  outputs = { nixpkgs, keystone, ... }: {
+  outputs = { nixpkgs, keystone, home-manager, ... }: {
     nixosConfigurations.my-server = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        keystone.nixosModules.diskoSingleDiskRoot
-        keystone.nixosModules.secureBoot
-        keystone.nixosModules.server
-        # ... your configuration
+        home-manager.nixosModules.home-manager
+        keystone.nixosModules.operating-system
+        # keystone.nixosModules.desktop  # Add for Hyprland desktop
+        {
+          networking.hostId = "deadbeef";  # Required for ZFS
+          keystone.os = {
+            enable = true;
+            storage.devices = [ "/dev/disk/by-id/your-disk" ];
+            users.admin = {
+              fullName = "Admin";
+              initialPassword = "changeme";
+            };
+          };
+        }
       ];
     };
   };
@@ -227,13 +273,8 @@ Add Keystone to your flake inputs:
 ### Available Modules
 
 **NixOS Modules** (`keystone.nixosModules.*`):
-- `server` - Base server configuration (SSH, mDNS, firewall)
-- `client` - Workstation with Hyprland desktop
-- `diskoSingleDiskRoot` - ZFS + LUKS encryption with TPM2 support
-- `secureBoot` - Lanzaboote Secure Boot configuration
-- `tpmEnrollment` - TPM binding and enrollment scripts
-- `users` - Declarative user management
-- `ssh` - SSH configuration
+- `operating-system` - Core OS (storage, secure boot, TPM, users, SSH, mDNS, firewall)
+- `desktop` - Hyprland desktop environment (audio, greetd login)
 - `isoInstaller` - Bootable installer configuration
 
 **Home Manager Modules** (`keystone.homeModules.*`):
