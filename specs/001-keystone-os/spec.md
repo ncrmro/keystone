@@ -371,3 +371,112 @@ The following features are explicitly out of scope for this specification and pl
 - **Enterprise features**: LDAP/AD integration, compliance automation, audit logging
 - **Laptop-specific features**: Suspend/hibernate, battery management, lid switch handling
 - **Multi-GPU configurations**: Complex graphics setups, GPU passthrough
+
+---
+
+## Apple Silicon Mac Support (`operating-system-mac`)
+
+This section specifies support for running Keystone on Apple Silicon Macs (M1/M2/M3) via the [nixos-apple-silicon](https://github.com/nix-community/nixos-apple-silicon) project.
+
+### Overview
+
+Apple Silicon Macs use a fundamentally different security architecture than x86 systems. The Secure Enclave is not accessible from Linux, so TPM-based automatic disk unlock is not possible. A separate module output (`operating-system-mac`) provides Mac-specific configuration while sharing common infrastructure with the x86 module.
+
+### Platform Differences
+
+| Aspect | x86 (`operating-system`) | Apple Silicon (`operating-system-mac`) |
+|--------|--------------------------|----------------------------------------|
+| Boot Security | TPM2 + Secure Boot (Lanzaboote) | Apple iBoot chain (not controllable) |
+| Key Storage | TPM2 PCR binding | Not available from Linux |
+| Disk Unlock | Automatic via TPM | Manual password required |
+| Boot Loader | systemd-boot + Lanzaboote | systemd-boot only |
+| EFI Variables | Modifiable | Read-only (`canTouchEfiVariables = false`) |
+| Storage | ZFS or ext4 | ext4 initially (ZFS untested) |
+
+### FR-012 Apple Silicon Hardware Support
+
+Systems MUST support Apple Silicon Mac hardware via Asahi Linux.
+
+- Import `nixos-apple-silicon` for kernel and driver support
+- Configure firmware extraction from EFI partition
+- Set `boot.loader.efi.canTouchEfiVariables = false`
+- Support M1, M2, M3 chip families
+
+### FR-013 Mac Storage Configuration
+
+Apple Silicon systems MUST support encrypted storage with manual unlock.
+
+- LUKS2 encryption with Argon2id key derivation
+- Manual password entry at boot (no TPM auto-unlock)
+- ext4 filesystem initially (ZFS deferred pending testing)
+- Same partition layout options as x86 (ESP, swap, root)
+
+### FR-014 Shared Module Infrastructure
+
+Common functionality MUST be shared between x86 and Mac modules.
+
+- User management (`keystone.os.users`) shared
+- Service configuration (`keystone.os.services`) shared
+- Nix settings (`keystone.os.nix`) shared
+- Platform-specific options only exist in respective modules
+
+### Mac-Specific Limitations
+
+The following x86 features are NOT available on Apple Silicon:
+
+| Feature | Reason |
+|---------|--------|
+| `keystone.os.tpm` | No TPM hardware; Secure Enclave inaccessible from Linux |
+| `keystone.os.secureBoot` | Apple uses different boot verification; Lanzaboote incompatible |
+| ZFS storage | Untested on Asahi kernel; deferred to future work |
+| Automatic disk unlock | No hardware key storage available |
+
+### Mac User Stories
+
+#### US-MAC-1: Module Base Refactor (Priority: P0)
+
+As a developer, I want the common OS module code extracted into a shared base so that both x86 and Mac modules can reuse it without duplication.
+
+**Acceptance Criteria**:
+1. Existing `operating-system` module works unchanged after refactor
+2. `nix flake check` passes with no errors
+
+#### US-MAC-2: Mac Module Creation (Priority: P1)
+
+As a user with an Apple Silicon Mac, I want to install NixOS using Keystone modules so that I can have a consistent Keystone experience on my Mac hardware.
+
+**Acceptance Criteria**:
+1. `keystone.nixosModules.operating-system-mac` produces valid aarch64-linux system
+2. `keystone.os.tpm` and `keystone.os.secureBoot` options do NOT exist in Mac module
+3. System boots successfully on Apple Silicon hardware
+
+#### US-MAC-3: LUKS Encryption (Priority: P2)
+
+As a user, I want my Mac's disk to be encrypted with LUKS so that my data is protected at rest.
+
+**Acceptance Criteria**:
+1. LUKS encryption prompts for password at boot
+2. Root filesystem unlocks and mounts after correct password
+
+#### US-MAC-4: User Environment (Priority: P3)
+
+As a user, I want my terminal and desktop environment to work on my Mac.
+
+**Acceptance Criteria**:
+1. Terminal environment (Zsh, Helix, Zellij) available when `terminal.enable = true`
+2. Hyprland launches when `desktop.enable = true` (GPU maturity caveats apply)
+
+### Mac Success Criteria
+
+- **SC-MAC-1**: `nix flake check` passes for both x86_64-linux and aarch64-linux
+- **SC-MAC-2**: Test configuration using `operating-system-mac` builds successfully
+- **SC-MAC-3**: x86 `operating-system` module continues to pass all existing tests
+- **SC-MAC-4**: User can deploy to Apple Silicon hardware using nixos-anywhere
+
+### Mac Out of Scope
+
+- ZFS storage on Apple Silicon (deferred pending kernel testing)
+- TPM-equivalent security via Secure Enclave (not accessible from Linux)
+- Intel Mac support (use standard x86 `operating-system` module)
+- Automated installer ISO for Mac (complex Asahi boot chain)
+- GPU-accelerated Hyprland testing (depends on Asahi driver maturity)

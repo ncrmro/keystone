@@ -481,3 +481,107 @@
 - Each phase has explicit success criteria before moving forward
 - Spike (Phase 0) is time-boxed to validate approach before full implementation
 - Cloud provider integration (Phase 2) is optional for on-prem only deployments
+
+---
+
+## Phase 7: Apple Silicon Mac Support (`operating-system-mac`)
+
+**Goal**: Enable Keystone on Apple Silicon Macs via nixos-apple-silicon
+
+**Depends on**: None (can be done in parallel with cluster phases)
+
+**Research**: See `specs/research.hardware-macbook.md` for detailed hardware analysis
+
+### Epic: Base Module Extraction (Phase 7.1)
+
+**Purpose**: Extract shared code without breaking existing functionality
+
+#### 7.1.1 Create Base Module Structure
+- [ ] Create directory `modules/os/base/`
+- [ ] Analyze `modules/os/default.nix` to identify platform-agnostic code
+- [ ] Extract user management to `modules/os/base/users.nix`
+- [ ] Extract services config to `modules/os/base/services.nix`
+- [ ] Extract nix settings to `modules/os/base/nix.nix`
+- [ ] Create `modules/os/base/default.nix` to import all base modules
+- [ ] Update `modules/os/default.nix` to import base module
+- [ ] Run `nix flake check` to verify no regressions
+
+**Checkpoint**: X86 module works exactly as before
+
+### Epic: X86 Module Organization (Phase 7.2)
+
+**Purpose**: Move x86-specific code to dedicated directory
+
+#### 7.2.1 Reorganize X86 Modules
+- [ ] Create directory `modules/os/x86/`
+- [ ] [P] Move `modules/os/storage.nix` to `modules/os/x86/storage.nix`
+- [ ] [P] Move `modules/os/secure-boot.nix` to `modules/os/x86/secure-boot.nix`
+- [ ] [P] Move `modules/os/tpm.nix` to `modules/os/x86/tpm.nix`
+- [ ] [P] Move `modules/os/remote-unlock.nix` to `modules/os/x86/remote-unlock.nix`
+- [ ] Create `modules/os/x86/default.nix` to orchestrate x86 modules
+- [ ] Update `modules/os/default.nix` to import `base + x86`
+- [ ] Update import paths in any files referencing moved modules
+- [ ] Run `nix flake check` to verify no regressions
+- [ ] Run existing VM tests to verify functionality
+
+**Checkpoint**: All existing tests pass; structure reorganized
+
+### Epic: Flake Infrastructure (Phase 7.3)
+
+**Purpose**: Add aarch64-linux support to flake
+
+#### 7.3.1 Multi-Architecture Support
+- [ ] Add `nixos-apple-silicon` input to `flake.nix`
+- [ ] Add `packages.aarch64-linux` outputs (mirror x86_64-linux)
+- [ ] Add `devShells.aarch64-linux` outputs
+- [ ] Add `formatter.aarch64-linux` output
+- [ ] Create stub `operating-system-mac` module in nixosModules
+- [ ] Run `nix flake check` on x86_64-linux
+- [ ] Verify flake shows aarch64-linux outputs with `nix flake show`
+
+**Checkpoint**: Flake builds on both architectures
+
+### Epic: Mac Module Implementation (Phase 7.4)
+
+**Purpose**: Create Apple Silicon-specific OS module
+
+#### 7.4.1 Core Module Structure
+- [ ] Create directory `modules/os/mac/`
+- [ ] [P] Create `modules/os/mac/apple-silicon.nix` with hardware config
+- [ ] [P] Create `modules/os/mac/boot.nix` with systemd-boot config
+- [ ] Create `modules/os/mac/storage.nix` with ext4 + LUKS
+- [ ] Create `modules/os/mac/default.nix` orchestrating mac modules
+- [ ] Wire up `operating-system-mac` in flake.nix nixosModules
+
+#### 7.4.2 Configuration Details
+- [ ] Configure `boot.loader.efi.canTouchEfiVariables = false`
+- [ ] Import `apple-silicon-support` module from nixos-apple-silicon
+- [ ] Configure LUKS device in `boot.initrd.luks.devices`
+- [ ] Add assertion for unsupported ZFS storage type
+- [ ] Ensure base module options (users, services) work correctly
+
+#### 7.4.3 Testing
+- [ ] Create test configuration at `tests/mac/configuration.nix`
+- [ ] Verify test configuration builds
+- [ ] Run `nix flake check` with new module
+
+**Checkpoint**: Mac module compiles and includes all required components
+
+### Epic: Documentation & Polish (Phase 7.5)
+
+**Purpose**: Complete documentation and prepare for release
+
+#### 7.5.1 Documentation Updates
+- [ ] [P] Update `ROADMAP.md` with Mac support status
+- [ ] [P] Update `CLAUDE.md` with `operating-system-mac` usage examples
+- [ ] Document Mac-specific limitations in research file
+
+**Checkpoint**: Documentation complete; feature ready for use
+
+### Phase 7 Success Criteria
+
+- [ ] `nix flake check` passes for both x86_64-linux and aarch64-linux
+- [ ] Existing x86 configurations still build unchanged
+- [ ] New Mac test configuration builds successfully
+- [ ] `nix flake show` displays both module outputs
+- [ ] CLAUDE.md examples are accurate and tested

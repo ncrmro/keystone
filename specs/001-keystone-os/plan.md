@@ -357,6 +357,144 @@ home-manager.users.user = {
 
 ---
 
+## Apple Silicon Mac Support
+
+This section describes the implementation plan for `operating-system-mac` module.
+
+### Summary
+
+Add Apple Silicon Mac support through a new `operating-system-mac` NixOS module by:
+
+1. Refactoring `modules/os/` to extract shared code into `modules/os/base/`
+2. Moving x86-specific code to `modules/os/x86/`
+3. Creating `modules/os/mac/` for Apple Silicon support
+4. Adding `nixos-apple-silicon` flake input
+5. Exposing `aarch64-linux` outputs
+
+### Technical Context
+
+- **Target Platform**: aarch64-linux (Apple Silicon via Asahi)
+- **Constraints**: No TPM, no Secure Boot, `canTouchEfiVariables = false`
+- **Testing**: Manual on Apple Silicon hardware; CI limited to build verification
+
+### Module Structure After Refactor
+
+```
+modules/os/
+├── base/                    # Shared across platforms
+│   ├── default.nix          # Imports all base modules
+│   ├── users.nix            # User management (from current default.nix)
+│   ├── services.nix         # Avahi, firewall, resolved
+│   └── nix.nix              # Flakes, GC settings
+├── x86/                     # x86_64-linux specific
+│   ├── default.nix          # Orchestrates x86 modules
+│   ├── storage.nix          # ZFS + LUKS credstore (current storage.nix)
+│   ├── secure-boot.nix      # Lanzaboote (current secure-boot.nix)
+│   ├── tpm.nix              # TPM enrollment (current tpm.nix)
+│   └── remote-unlock.nix    # Initrd SSH (current remote-unlock.nix)
+├── mac/                     # Apple Silicon specific
+│   ├── default.nix          # Orchestrates Mac modules
+│   ├── apple-silicon.nix    # Hardware config, firmware
+│   ├── storage.nix          # ext4 + LUKS (simplified)
+│   └── boot.nix             # Systemd-boot config
+└── default.nix              # Now imports base + x86
+```
+
+### Flake Changes
+
+```nix
+# New input
+inputs.apple-silicon = {
+  url = "github:nix-community/nixos-apple-silicon";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+
+# Updated nixosModules
+nixosModules = {
+  operating-system = {
+    imports = [
+      ./modules/os/base
+      ./modules/os/x86
+      disko.nixosModules.disko
+      lanzaboote.nixosModules.lanzaboote
+    ];
+  };
+
+  operating-system-mac = {
+    imports = [
+      ./modules/os/base
+      ./modules/os/mac
+      disko.nixosModules.disko
+      apple-silicon.nixosModules.apple-silicon-support
+    ];
+  };
+};
+
+# Multi-architecture outputs
+packages.aarch64-linux = { ... };
+devShells.aarch64-linux = { ... };
+formatter.aarch64-linux = ...;
+```
+
+### Implementation Phases
+
+#### Phase 1: Base Module Extraction
+
+Extract shared code from `modules/os/default.nix` into `modules/os/base/`:
+- `base/users.nix` - User management
+- `base/services.nix` - Avahi, firewall, resolved
+- `base/nix.nix` - Flakes, GC settings
+- `base/default.nix` - Import all
+
+**Checkpoint**: `nix flake check` passes; x86 unchanged.
+
+#### Phase 2: X86 Module Organization
+
+Move x86-specific code to `modules/os/x86/`:
+- `storage.nix` → `x86/storage.nix`
+- `secure-boot.nix` → `x86/secure-boot.nix`
+- `tpm.nix` → `x86/tpm.nix`
+- `remote-unlock.nix` → `x86/remote-unlock.nix`
+
+**Checkpoint**: All existing tests pass.
+
+#### Phase 3: Flake Infrastructure
+
+- Add `nixos-apple-silicon` input
+- Add `packages.aarch64-linux` outputs
+- Add `devShells.aarch64-linux` outputs
+- Create `operating-system-mac` module stub
+
+**Checkpoint**: `nix flake check` passes on both architectures.
+
+#### Phase 4: Mac Module Implementation
+
+Create `modules/os/mac/`:
+- `default.nix` - Orchestration
+- `apple-silicon.nix` - Hardware config, firmware
+- `storage.nix` - ext4 + LUKS
+- `boot.nix` - Systemd-boot with `canTouchEfiVariables = false`
+
+**Checkpoint**: Mac module builds; test config compiles.
+
+#### Phase 5: Documentation
+
+- Update ROADMAP.md
+- Update CLAUDE.md with usage examples
+- Document limitations
+
+### Mac Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Base module extraction | Not Started | Phase 1 |
+| X86 module reorganization | Not Started | Phase 2 |
+| Flake aarch64 outputs | Not Started | Phase 3 |
+| Mac module | Not Started | Phase 4 |
+| Documentation | Not Started | Phase 5 |
+
+---
+
 ## References
 
 - [NixOS Manual](https://nixos.org/manual/nixos/stable/)
@@ -366,3 +504,5 @@ home-manager.users.user = {
 - [Tailscale Documentation](https://tailscale.com/kb/)
 - [Headscale Documentation](https://headscale.net/)
 - [systemd-cryptenroll](https://www.freedesktop.org/software/systemd/man/systemd-cryptenroll.html)
+- [nixos-apple-silicon](https://github.com/nix-community/nixos-apple-silicon)
+- [Asahi Linux](https://asahilinux.org/)
