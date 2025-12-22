@@ -11,6 +11,7 @@
     lanzaboote.follows = "keystone/lanzaboote";
     omarchy.follows = "keystone/omarchy";
     hyprland.follows = "keystone/hyprland";
+    # MicroVM for fast cluster testing with network access
     microvm = {
       url = "github:astro/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -91,6 +92,52 @@
           ./microvm/tpm-test.nix
         ];
       };
+
+      # ============================================================
+      # MicroVM Cluster Configurations
+      # ============================================================
+      # These use microvm.nix for fast cluster testing with network access
+
+      # Cluster primer with k3s + Headscale
+      cluster-primer = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          microvm.nixosModules.microvm
+          keystone.nixosModules.cluster-primer
+          ./microvm/cluster-primer.nix
+        ];
+      };
+
+      # Cluster worker nodes
+      cluster-worker1 = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          microvm.nixosModules.microvm
+          keystone.nixosModules.cluster-worker
+          ./microvm/cluster-worker.nix
+          {networking.hostName = "worker1";}
+        ];
+      };
+
+      cluster-worker2 = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          microvm.nixosModules.microvm
+          keystone.nixosModules.cluster-worker
+          ./microvm/cluster-worker.nix
+          {networking.hostName = "worker2";}
+        ];
+      };
+
+      cluster-worker3 = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          microvm.nixosModules.microvm
+          keystone.nixosModules.cluster-worker
+          ./microvm/cluster-worker.nix
+          {networking.hostName = "worker3";}
+        ];
+      };
     };
 
     # ============================================================
@@ -131,6 +178,12 @@
       };
 
       test-remote-unlock = import ./integration/remote-unlock.nix {
+        inherit pkgs lib;
+        self = keystone;
+      };
+
+      # Cluster Tests
+      cluster-headscale = import ./integration/cluster-headscale.nix {
         inherit pkgs lib;
         self = keystone;
       };

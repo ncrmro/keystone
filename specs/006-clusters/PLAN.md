@@ -258,6 +258,50 @@ keystone/
 
 **Deliverable**: Interactive installer for Primer server bootstrap
 
+## Testing Infrastructure
+
+### Framework Selection
+
+Based on `specs/001-keystone-os/research.testing.md`, we use the **NixOS Test Framework** for cluster validation:
+
+| Feature | Benefit |
+|---------|---------|
+| Multi-node orchestration | Up to 10+ VMs in a single test |
+| Automatic network bridging | No manual network config needed |
+| Python test scripting | Full control over test flow |
+| Interactive debugging | `driverInteractive` mode |
+| ~30s iteration cycle | Much faster than libvirt (~5min) |
+
+### Implemented Tests
+
+| Test | Location | Purpose |
+|------|----------|---------|
+| `cluster-headscale` | `tests/integration/cluster-headscale.nix` | 4-node mesh validation |
+
+### Running Tests
+
+```bash
+# Build and run cluster test
+cd tests && nix build .#cluster-headscale
+
+# Interactive debugging
+cd tests && nix build .#cluster-headscale.driverInteractive
+./result/bin/nixos-test-driver
+>>> start_all()
+>>> primer.shell_interact()
+```
+
+### Module Exports
+
+The cluster modules are exported from the main flake:
+
+```nix
+keystone.nixosModules.cluster-primer  # k3s + Headscale server
+keystone.nixosModules.cluster-worker  # Tailscale client
+```
+
+See `specs/006-clusters/research.testing.md` for detailed testing patterns.
+
 ## Risk Mitigation
 
 ### Technical Risks
@@ -277,11 +321,12 @@ keystone/
 
 ## Success Criteria
 
-### Spike Complete When
-- [ ] Primer boots from USB with encrypted ZFS
-- [ ] etcd running and healthy
-- [ ] kubectl works against local API server
-- [ ] Headscale accepts node registrations
+### Spike Complete When (Headscale-First)
+- [ ] Primer boots with k3s running
+- [ ] Headscale pod is healthy in k3s
+- [ ] Workers register via pre-auth key
+- [ ] All 4 nodes can `tailscale ping` each other
+- [ ] `cluster-headscale` test passes
 
 ### MVP Complete When
 - [ ] Phases 0-4 complete
@@ -297,7 +342,8 @@ keystone/
 
 ## Next Steps
 
-1. Review this plan with stakeholders
-2. Begin Spike implementation (see tasks.md)
-3. Set up test environment (qcow2 VMs)
-4. Validate assumptions from research docs
+1. ~~Review this plan with stakeholders~~
+2. ~~Set up test environment (NixOS tests)~~
+3. Run `cluster-headscale` test to validate spike
+4. Extend test with kubectl access validation
+5. Add worker nodes as k3s agents
