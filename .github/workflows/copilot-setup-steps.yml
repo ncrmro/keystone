@@ -13,15 +13,16 @@ on:
       - .github/workflows/copilot-setup-steps.yml
 
 jobs:
-  verify:
+  copilot-setup-steps:
     runs-on: ubuntu-latest
     steps:
       # Check out the repository code to access flake.nix and related files
       - uses: actions/checkout@v4
       
       # Install Nix package manager with flakes support for building NixOS configurations
-      - uses: cachix/install-nix-action@v22
-      
+      - uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable      
       # Validate flake syntax and configuration correctness
       # This catches basic errors like missing inputs or invalid Nix expressions
       - name: Check flake
