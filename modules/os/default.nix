@@ -144,6 +144,12 @@ in {
 
     # Storage configuration
     storage = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable storage/disk management. Disable for testing environments with external storage.";
+      };
+
       type = mkOption {
         type = types.enum ["zfs" "ext4"];
         default = "zfs";
@@ -334,30 +340,32 @@ in {
   config = mkIf cfg.enable {
     # Assertions for configuration validation
     assertions = [
+      # Storage assertions (only when storage is enabled)
       {
-        assertion = cfg.storage.devices != [];
+        assertion = !cfg.storage.enable || cfg.storage.devices != [];
         message = "keystone.os.storage.devices must contain at least one disk device";
       }
       {
-        assertion = cfg.storage.type == "ext4" || cfg.storage.mode == "single" || length cfg.storage.devices >= 2;
+        assertion = !cfg.storage.enable || cfg.storage.type == "ext4" || cfg.storage.mode == "single" || length cfg.storage.devices >= 2;
         message = "Multi-disk modes (mirror, stripe, raidz*) require at least 2 devices";
       }
       {
-        assertion = cfg.storage.mode != "raidz1" || length cfg.storage.devices >= 3;
+        assertion = !cfg.storage.enable || cfg.storage.mode != "raidz1" || length cfg.storage.devices >= 3;
         message = "raidz1 requires at least 3 devices";
       }
       {
-        assertion = cfg.storage.mode != "raidz2" || length cfg.storage.devices >= 4;
+        assertion = !cfg.storage.enable || cfg.storage.mode != "raidz2" || length cfg.storage.devices >= 4;
         message = "raidz2 requires at least 4 devices";
       }
       {
-        assertion = cfg.storage.mode != "raidz3" || length cfg.storage.devices >= 5;
+        assertion = !cfg.storage.enable || cfg.storage.mode != "raidz3" || length cfg.storage.devices >= 5;
         message = "raidz3 requires at least 5 devices";
       }
       {
-        assertion = cfg.storage.type == "ext4" -> cfg.storage.mode == "single";
+        assertion = !cfg.storage.enable || cfg.storage.type == "ext4" -> cfg.storage.mode == "single";
         message = "ext4 only supports single-disk mode";
       }
+      # Non-storage assertions
       {
         assertion = cfg.remoteUnlock.enable -> (cfg.remoteUnlock.authorizedKeys != [] || cfg.users != {});
         message = "Remote unlock requires authorizedKeys or at least one configured user with SSH keys";
