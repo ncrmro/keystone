@@ -123,15 +123,6 @@
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
     };
 
-    # aarch64-linux packages (Apple Silicon)
-    packages.aarch64-linux = let
-      pkgs = nixpkgs.legacyPackages.aarch64-linux;
-    in {
-      zesh = pkgs.callPackage ./packages/zesh {};
-      keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
-      keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
-    };
-
     # Development shell
     devShells.x86_64-linux = let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
