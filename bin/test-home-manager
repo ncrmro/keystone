@@ -1,16 +1,31 @@
 #!/usr/bin/env python3
 """
-Test Terminal Development Environment Module
+test-home-manager - Terminal development environment verification
 
 Tests the terminal-dev-environment home-manager module as testuser on the VM.
 This script is called by bin/test-deployment as part of the deployment verification.
 
-Performs:
-- Home-manager installation for testuser
-- Module configuration and activation
-- Comprehensive verification of all tools and integrations
+FUNCTIONAL REQUIREMENTS VALIDATED:
+  - Terminal development tools (Helix, Zsh, Zellij, Git)
+  - Shell integration (Starship prompt, aliases, zoxide)
+  - Editor LSP support (Nix, Bash, YAML)
+  Note: This tests user experience, not security FRs
 
-Returns exit code 0 on success, 1 on failure (fails outer test-deployment).
+TESTING TIER: 3 (libvirt)
+  - Runs after full deployment via bin/test-deployment
+  - Tests home-manager activation on deployed system
+
+RELATED FILES:
+  - bin/test-deployment          - Calls this script for terminal verification
+  - bin/virtual-machine          - VM infrastructure
+  - tests/flake.nix              - Contains homeConfigurations.testuser
+  - home-manager/modules/terminal-dev-environment/ - Module source
+
+WORKFLOW:
+  1. Setup SSH access for testuser
+  2. Build home-manager configuration from tests/flake.nix
+  3. Copy activation package to VM
+  4. Activate and verify tools
 
 Usage:
     ./bin/test-home-manager    # Run from keystone repository root
@@ -116,13 +131,13 @@ def setup_testuser_ssh():
         return False
 
 def install_and_configure_home_manager():
-    """Install home-manager and terminal-dev-environment via root flake"""
-    print_info("Building home-manager configuration from root flake...")
+    """Install home-manager and terminal-dev-environment via tests flake"""
+    print_info("Building home-manager configuration from tests flake...")
     print_info("This may take 2-5 minutes...")
 
     # Build the home-manager configuration locally
     print_info("Building configuration locally...")
-    build_cmd = "nix build .#homeConfigurations.testuser.activationPackage"
+    build_cmd = "nix build ./tests#homeConfigurations.testuser.activationPackage"
     if not run_command(build_cmd, check=False, timeout=300):
         print_error("Failed to build home-manager configuration")
         return False
@@ -132,7 +147,7 @@ def install_and_configure_home_manager():
     # Copy the built configuration to the VM
     print_info("Copying configuration to VM...")
     # Set SSH options via NIX_SSHOPTS environment variable
-    copy_cmd = f"NIX_SSHOPTS='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' nix copy --to ssh://{TEST_USER}@{VM_IP} .#homeConfigurations.testuser.activationPackage"
+    copy_cmd = f"NIX_SSHOPTS='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' nix copy --to ssh://{TEST_USER}@{VM_IP} ./tests#homeConfigurations.testuser.activationPackage"
     if not run_command(copy_cmd, check=False, timeout=120):
         print_error("Failed to copy configuration to VM")
         return False

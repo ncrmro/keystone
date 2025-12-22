@@ -58,3 +58,6 @@ dist/
 
 # Rust artifacts
 target/
+
+# VM screenshots for debugging
+screenshots/

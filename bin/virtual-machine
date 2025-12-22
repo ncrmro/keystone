@@ -6,11 +6,37 @@
 # ]
 # ///
 """
-Create a libvirt VM with UEFI Secure Boot enabled for NixOS (NixOS-compatible version)
-Outputs to both serial console and graphical display
+virtual-machine - Libvirt VM management for Keystone testing (Tier 3 infrastructure)
 
-NOTE: This script is part of the automated testing procedure.
-      Any changes here should be reflected in docs/testing-procedure.md
+Creates and manages libvirt VMs with UEFI Secure Boot enabled for full-stack testing.
+Provides the VM infrastructure that bin/test-deployment uses.
+
+FUNCTIONAL REQUIREMENTS SUPPORTED:
+  - FR-004 Verified Boot Chain: Creates VMs in Secure Boot setup mode
+    - UEFI firmware with EDK2 Secure Boot enabled
+    - No pre-enrolled Platform Key (allows custom key enrollment)
+    - TPM 2.0 emulation for hardware security testing
+  See: specs/001-keystone-os/spec.md
+
+TESTING TIER: 3 (libvirt + OVMF)
+  - Full UEFI boot environment
+  - Secure Boot setup mode (no pre-enrolled keys)
+  - TPM 2.0 emulation
+  - Used by: bin/test-deployment
+
+RELATED FILES:
+  - bin/test-deployment        - Uses this script to create VMs for testing
+  - bin/test-microvm-tpm       - Fast TPM testing (Tier 1, ~20s, no UEFI)
+  - tests/flake.nix            - Test configurations (test-server, test-hyprland)
+  - specs/001-keystone-os/spec.md - Functional requirements
+  - specs/001-keystone-os/research.testing.md - Testing strategy
+
+VM CAPABILITIES:
+  - Secure Boot in setup mode (custom key enrollment supported)
+  - TPM 2.0 via QEMU swtpm backend
+  - Serial console + SPICE graphical display
+  - keystone-net network (static IP: 192.168.100.99)
+  - EDK2 Secure Boot firmware auto-detection
 
 NixOS requirements:
   Add to your configuration.nix:
