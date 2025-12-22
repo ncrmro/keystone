@@ -7,6 +7,10 @@
   microvm = {
     hypervisor = "qemu";
 
+    # Use q35 machine type for proper TPM ACPI table support
+    # The default "microvm" machine type doesn't generate TPM2 ACPI tables
+    qemu.machine = "q35";
+
     # Add the TPM device via extra QEMU args
     qemu.extraArgs = [
       "-chardev"

@@ -54,6 +54,9 @@ in {
         }
       ];
 
+      # Enable zsh system-wide if any user has terminal enabled
+      programs.zsh.enable = mkIf (any (u: u.terminal.enable) (attrValues cfg)) true;
+
       # Generate NixOS users
       users.users =
         mapAttrs (username: userCfg: {
@@ -66,6 +69,7 @@ in {
           initialPassword = userCfg.initialPassword;
           hashedPassword = userCfg.hashedPassword;
           openssh.authorizedKeys.keys = userCfg.authorizedKeys;
+          shell = mkIf userCfg.terminal.enable pkgs.zsh;
         })
         cfg;
 

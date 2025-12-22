@@ -93,6 +93,31 @@ The `bin/build-vm` script provides the **fastest way** to test desktop and termi
 - `terminal`: Minimal NixOS with terminal dev environment (Helix, Zsh, Zellij, Ghostty, Git)
 - `desktop`: Full Hyprland desktop + terminal dev environment (Firefox, VSCode, VLC, Waybar, etc.)
 
+### MicroVM Testing
+
+For lightweight and reproducible testing of specific NixOS module configurations (e.g., TPM, networking, specific services), we utilize `microvm.nix`. This setup allows for faster iteration and integrates well with the Nix build system.
+
+**Key Features**:
+-   **Lightweight & Fast**: Quick feedback loop for testing.
+-   **Reproducible**: Environment is fully defined in Nix.
+-   **Flexible**: Supports various configurations, including hardware emulation (e.g., TPM with `swtpm`).
+
+**Integration Overview**:
+1.  `microvm.nix` is added as an input in `tests/flake.nix`.
+2.  Dedicated MicroVM configurations are defined in `tests/microvm/` (e.g., `tpm-test.nix` for TPM emulation). These configurations build a NixOS guest system tailored for specific test scenarios, enabling necessary modules and services.
+3.  Test runner scripts in `bin/` (e.g., `bin/test-microvm-tpm`) manage the lifecycle of the MicroVM, including any necessary host-side services (like `swtpm` for TPM emulation) and post-boot verification.
+
+**How to Run a MicroVM Test**:
+
+To execute a MicroVM test, use the corresponding script in `bin/` within a development shell:
+
+```bash
+# Example: Run the TPM MicroVM test
+nix develop --command bin/test-microvm-tpm
+```
+
+The test script will handle building the MicroVM runner, starting any required host services, launching the MicroVM, and performing checks inside the guest before cleaning up.
+
 ### Full Stack VM Testing with bin/virtual-machine
 
 The `bin/virtual-machine` script is the **primary driver** for creating and managing libvirt VMs for full-stack Keystone testing:
@@ -170,6 +195,27 @@ virsh console keystone-test-vm
 ```
 
 See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complete details.
+
+### VM Screenshot Debugging (libvirt VMs only)
+
+Use `bin/screenshot` to capture a libvirt VM's graphical display for debugging boot issues:
+
+```bash
+# Screenshot keystone-test-vm (default)
+./bin/screenshot                           # -> screenshots/vm-screenshot-*.png
+
+# Screenshot specific domain
+./bin/screenshot keystone-test-vm
+
+# Screenshot with custom output path
+./bin/screenshot keystone-test-vm debug.png
+```
+
+The script outputs the relative path to the PNG file (e.g., `screenshots/vm-screenshot-20251222-010214.png`), which can be read directly with the Read tool for visual inspection. Useful for debugging:
+- UEFI boot failures ("Access Denied", "No bootable device")
+- Secure Boot issues
+- Disk unlock prompts in initrd
+- Any state where SSH is not available
 
 ### Building ISOs
 ```bash
