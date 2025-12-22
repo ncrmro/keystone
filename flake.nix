@@ -20,6 +20,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     hyprland.url = "github:hyprwm/Hyprland";
+    nixos-apple-silicon = {
+      url = "github:tpwrules/nixos-apple-silicon";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -30,6 +34,7 @@
     omarchy,
     lanzaboote,
     hyprland,
+    nixos-apple-silicon,
     ...
   }: let
     # Create inputs attrset for desktop module
@@ -38,6 +43,7 @@
     };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
+    formatter.aarch64-linux = nixpkgs.legacyPackages.aarch64-linux.nixfmt-rfc-style;
 
     # ISO configuration without SSH keys (use bin/build-iso for SSH keys)
     # Note: Test/dev configurations are in ./tests/flake.nix
@@ -58,12 +64,23 @@
 
     # Export Keystone modules for use in other flakes
     nixosModules = {
-      # Core OS module - storage, secure boot, TPM, remote unlock, users, services
+      # Core OS module - storage, secure boot, TPM, remote unlock, users, services (x86_64)
       operating-system = {
         imports = [
           disko.nixosModules.disko
           lanzaboote.nixosModules.lanzaboote
           ./modules/os
+        ];
+      };
+
+      # Mac OS module - ext4+LUKS storage, systemd-boot, users, services (aarch64, Apple Silicon)
+      operating-system-mac = {
+        imports = [
+          disko.nixosModules.disko
+          nixos-apple-silicon.nixosModules.apple-silicon-support
+          ./modules/os/options.nix # Shared option definitions
+          ./modules/os/base # Platform-agnostic base
+          ./modules/os/mac # Mac-specific implementation
         ];
       };
 
@@ -92,6 +109,24 @@
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
     in {
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
+      zesh = pkgs.callPackage ./packages/zesh {};
+      keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
+      keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
+    };
+
+    # aarch64-linux packages (Apple Silicon)
+    packages.aarch64-linux = let
+      pkgs = nixpkgs.legacyPackages.aarch64-linux;
+    in {
+      zesh = pkgs.callPackage ./packages/zesh {};
+      keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
+      keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
+    };
+
+    # aarch64-linux packages (Apple Silicon)
+    packages.aarch64-linux = let
+      pkgs = nixpkgs.legacyPackages.aarch64-linux;
+    in {
       zesh = pkgs.callPackage ./packages/zesh {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
@@ -149,6 +184,61 @@
           echo "  ./bin/build-iso        - Build installer ISO"
           echo "  ./bin/build-vm         - Fast VM testing (terminal/desktop)"
           echo "  ./bin/virtual-machine  - Full stack VM with libvirt"
+          echo "  nix flake check        - Validate flake"
+          echo ""
+          echo "Rust packages:  packages/keystone-ha/"
+          echo "Node packages:  packages/keystone-installer-ui/"
+        '';
+
+        # Rust environment variables
+        RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+      };
+    };
+
+    # aarch64-linux development shell (Apple Silicon)
+    devShells.aarch64-linux = let
+      pkgs = nixpkgs.legacyPackages.aarch64-linux;
+    in {
+      default = pkgs.mkShell {
+        name = "keystone-dev";
+
+        # Rust development
+        nativeBuildInputs = with pkgs; [
+          cargo
+          rustc
+          rust-analyzer
+          clippy
+          rustfmt
+          pkg-config
+        ];
+
+        buildInputs = with pkgs; [
+          openssl
+        ];
+
+        # Node.js development
+        packages = with pkgs; [
+          nodejs
+          nodePackages.npm
+          nodePackages.typescript
+          nodePackages.typescript-language-server
+
+          # Nix tools
+          nixfmt-rfc-style
+          nil # Nix LSP
+          nix-tree
+          nvd # Nix version diff
+
+          # General utilities
+          jq
+          yq-go
+          gh # GitHub CLI
+        ];
+
+        shellHook = ''
+          echo "🔑 Keystone development shell (Apple Silicon)"
+          echo ""
+          echo "Available commands:"
           echo "  nix flake check        - Validate flake"
           echo ""
           echo "Rust packages:  packages/keystone-ha/"
