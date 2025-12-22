@@ -58,7 +58,7 @@ with lib; let
 in {
   config = mkMerge [
     # ZFS configuration
-    (mkIf (osCfg.enable && cfg.type == "zfs") {
+    (mkIf (osCfg.enable && cfg.enable && cfg.type == "zfs") {
       # Ensure ZFS support is enabled
       boot.supportedFilesystems = ["zfs"];
 
@@ -333,7 +333,7 @@ in {
     })
 
     # ext4 configuration (simpler alternative to ZFS)
-    (mkIf (osCfg.enable && cfg.type == "ext4") {
+    (mkIf (osCfg.enable && cfg.enable && cfg.type == "ext4") {
       # Boot loader configuration
       boot.loader.systemd-boot.enable = true;
       boot.loader.efi.canTouchEfiVariables = true;

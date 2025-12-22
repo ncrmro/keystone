@@ -11,6 +11,10 @@
     lanzaboote.follows = "keystone/lanzaboote";
     omarchy.follows = "keystone/omarchy";
     hyprland.follows = "keystone/hyprland";
+    microvm = {
+      url = "github:astro/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -22,6 +26,7 @@
     lanzaboote,
     omarchy,
     hyprland,
+    microvm,
   }: let
     system = "x86_64-linux";
     pkgs = nixpkgs.legacyPackages.${system};
@@ -49,9 +54,7 @@
           keystone.nixosModules.operating-system
           keystone.nixosModules.desktop
           ../vms/test-hyprland/configuration.nix
-          {
-            _module.args.omarchy = omarchy;
-          }
+          {_module.args.omarchy = omarchy;}
         ];
       };
 
@@ -70,17 +73,22 @@
       # Hyprland desktop testing
       build-vm-desktop = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
-        specialArgs = {
-          inputs = {
-            inherit nixpkgs hyprland;
-          };
-        };
+        specialArgs = {inputs = {inherit nixpkgs hyprland;};};
         modules = [
           home-manager.nixosModules.home-manager
           ../vms/build-vm-desktop/configuration.nix
-          {
-            _module.args.omarchy = omarchy;
-          }
+          {_module.args.omarchy = omarchy;}
+        ];
+      };
+
+      # MicroVM testing configurations
+      tpm-microvm = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          microvm.nixosModules.microvm
+          disko.nixosModules.disko
+          keystone.nixosModules.operating-system # This enables keystone.os.* options
+          ./microvm/tpm-test.nix
         ];
       };
     };
@@ -145,6 +153,14 @@
     };
 
     # Also expose tests as packages for convenience
-    packages.${system} = self.checks.${system};
+    packages.${system} =
+      self.checks.${system}
+      // {
+        test-microvm-tpm = pkgs.writeShellApplication {
+          name = "test-microvm-tpm";
+          runtimeInputs = [pkgs.swtpm];
+          text = builtins.readFile ../bin/test-microvm-tpm;
+        };
+      };
   };
 }

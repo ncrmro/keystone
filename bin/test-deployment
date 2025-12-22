@@ -1,25 +1,55 @@
 #!/usr/bin/env python3
 """
-Keystone Deployment Test Script
+test-deployment - Full-stack Keystone deployment test (Tier 3)
 
-Automates the complete VM deployment testing workflow:
-- VM lifecycle management (start, stop, hard reset)
-- ISO building (optional)
-- nixos-anywhere deployment
-- Post-deployment verification
+Automates the complete VM deployment testing workflow with UEFI Secure Boot,
+TPM-based disk encryption, and ZFS storage.
 
-Zero external dependencies - uses only Python standard library.
+FUNCTIONAL REQUIREMENTS VALIDATED:
+  - FR-002 Full Disk Encryption: LUKS2 + ZFS native encryption
+  - FR-003 Automatic Unlock: TPM enrollment and automatic disk unlock
+  - FR-004 Verified Boot Chain: Secure Boot setup mode and key enrollment
+  - FR-005 Copy-on-Write Storage: ZFS pool creation and verification
+  See: specs/001-keystone-os/spec.md
 
-NOTE: This script is part of the automated testing procedure.
-      Any changes here should be reflected in docs/testing-procedure.md
+TESTING TIER: 3 (libvirt + OVMF)
+  - Full UEFI boot with Secure Boot
+  - TPM 2.0 emulation via QEMU
+  - Complete nixos-anywhere deployment
+  - ~10-30 minutes per run
+
+RELATED FILES:
+  - bin/virtual-machine        - Libvirt VM management (creates VMs used by this script)
+  - bin/test-microvm-tpm       - Fast TPM testing (Tier 1, ~20s)
+  - tests/flake.nix            - Test configurations (test-server, test-hyprland)
+  - vms/test-server/           - Server VM configuration
+  - specs/001-keystone-os/spec.md - Functional requirements
+  - specs/001-keystone-os/research.testing.md - Testing strategy
+
+WORKFLOW STEPS:
+  1. Stop/reset VM
+  2. Build ISO with SSH key injection
+  3. Generate initrd SSH host key
+  4. Start VM from ISO
+  5. Wait for SSH access
+  6. Copy SSH key to VM
+  7. Verify Secure Boot setup mode
+  8. Deploy via nixos-anywhere
+  9. Remove ISO and reboot
+  10. Unlock disk via initrd SSH
+  11. Verify deployment (SSH, ZFS, Secure Boot)
+  12. TPM enrollment with recovery key
+  13. Reboot and verify TPM unlock
+  14. Test terminal dev environment
 
 Usage:
     ./bin/test-deployment                    # Normal test run
     ./bin/test-deployment --rebuild-iso      # Rebuild ISO first
     ./bin/test-deployment --hard-reset       # Force kill VM and clean artifacts
     ./bin/test-deployment --debug            # Show full nixos-anywhere output
-    ./bin/test-deployment --rebuild-iso --hard-reset --debug  # Full clean test with debug
+    ./bin/test-deployment --rebuild-iso --hard-reset --debug  # Full clean test
 
+Zero external dependencies - uses only Python standard library.
 See: docs/testing-procedure.md for complete testing workflows
 """
 
@@ -347,7 +377,7 @@ def deploy_to_vm(debug=False):
 
     # Use --no-reboot to allow manual cleanup before rebooting
     # Use --extra-files to copy initrd SSH key to the target before building
-    cmd = f"nix run nixpkgs#nixos-anywhere -- --flake .#test-server root@{VM_IP} --no-reboot --extra-files vms/test-server/extra-files"
+    cmd = f"nix run nixpkgs#nixos-anywhere -- --flake ./tests#test-server root@{VM_IP} --no-reboot --extra-files vms/test-server/extra-files"
 
     if debug:
         # Show full output in debug mode

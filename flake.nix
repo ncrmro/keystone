@@ -135,6 +135,7 @@
           qemu
           libvirt
           virt-viewer
+          swtpm
 
           # General utilities
           jq
