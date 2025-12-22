@@ -58,14 +58,25 @@ Hyprland desktop for local or remote workstation use.
 ---
 
 ## v0.0.4 — Universal Development
-**Status**: Planning
+**Status**: Mac support in progress
 
-Portable home-manager configuration for Codespaces, macOS, and any Nix platform.
+Multi-platform support for Apple Silicon Macs and portable home-manager.
 
-- Standalone home-manager flake with platform detection
-- GitHub Codespaces integration
-- macOS support via nix-darwin
-- Cross-platform secrets handling (agenix/sops-nix)
+| Component | Status |
+|-----------|--------|
+| Apple Silicon Mac module (operating-system-mac) | Done |
+| ext4 + LUKS storage for Mac | Done |
+| Base module extraction (users, services, nix) | Done |
+| Portable home-manager flake with platform detection | Pending |
+| GitHub Codespaces integration | Pending |
+| macOS support via nix-darwin | Pending |
+| Cross-platform secrets handling (agenix/sops-nix) | Pending |
+
+**Mac Platform Notes**:
+- Uses `nixos-apple-silicon` for M1/M2/M3 hardware
+- ext4 only (ZFS untested)
+- No TPM or Secure Boot (uses Apple's boot chain)
+- Manual password entry on boot
 
 ---
 

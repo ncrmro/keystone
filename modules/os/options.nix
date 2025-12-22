@@ -1,28 +1,13 @@
-# Keystone OS - Unified Operating System Module
+# Keystone OS - Shared Option Definitions
 #
-# This module consolidates all OS-level configuration for Keystone:
-# - Storage (ZFS/ext4 with encryption)
-# - Secure Boot (Lanzaboote)
-# - TPM enrollment
-# - Remote unlock (initrd SSH)
-# - User management (NixOS users + home-manager + ZFS homes)
-#
-# Usage:
-#   keystone.os = {
-#     enable = true;
-#     storage.devices = [ "/dev/disk/by-id/..." ];
-#     users.alice = { fullName = "Alice"; email = "alice@example.com"; };
-#   };
+# This module defines all keystone.os.* options that are shared across platforms.
+# Platform-specific modules (x86, mac) implement these options differently.
 #
 {
   lib,
-  config,
-  pkgs,
   ...
 }:
 with lib; let
-  cfg = config.keystone.os;
-
   # User submodule type definition
   userSubmodule = types.submodule ({name, ...}: {
     options = {
@@ -130,12 +115,6 @@ with lib; let
     };
   });
 in {
-  imports = [
-    ./options.nix # Shared option definitions
-    ./base # Platform-agnostic base (users, SSH, services, nix, locale)
-    ./x86 # X86-specific (storage, secure boot, TPM, remote unlock)
-  ];
-
   options.keystone.os = {
     enable = mkEnableOption "Keystone OS - secure storage, boot, and user management";
 
@@ -233,7 +212,7 @@ in {
       };
     };
 
-    # Secure Boot configuration
+    # Secure Boot configuration (x86 only)
     secureBoot = {
       enable = mkOption {
         type = types.bool;
@@ -242,7 +221,7 @@ in {
       };
     };
 
-    # TPM configuration
+    # TPM configuration (x86 only)
     tpm = {
       enable = mkOption {
         type = types.bool;
@@ -304,7 +283,7 @@ in {
       };
     };
 
-    # System services (moved from server module)
+    # System services
     services = {
       avahi = {
         enable = mkOption {
@@ -380,53 +359,5 @@ in {
         }
       '';
     };
-  };
-
-  config = mkIf cfg.enable {
-    # Assertions for configuration validation
-    assertions = [
-      {
-        assertion = cfg.storage.devices != [];
-        message = "keystone.os.storage.devices must contain at least one disk device";
-      }
-      {
-        assertion = cfg.storage.type == "ext4" || cfg.storage.mode == "single" || length cfg.storage.devices >= 2;
-        message = "Multi-disk modes (mirror, stripe, raidz*) require at least 2 devices";
-      }
-      {
-        assertion = cfg.storage.mode != "raidz1" || length cfg.storage.devices >= 3;
-        message = "raidz1 requires at least 3 devices";
-      }
-      {
-        assertion = cfg.storage.mode != "raidz2" || length cfg.storage.devices >= 4;
-        message = "raidz2 requires at least 4 devices";
-      }
-      {
-        assertion = cfg.storage.mode != "raidz3" || length cfg.storage.devices >= 5;
-        message = "raidz3 requires at least 5 devices";
-      }
-      {
-        assertion = cfg.storage.type == "ext4" -> cfg.storage.mode == "single";
-        message = "ext4 only supports single-disk mode";
-      }
-      {
-        assertion = cfg.remoteUnlock.enable -> (cfg.remoteUnlock.authorizedKeys != [] || cfg.users != {});
-        message = "Remote unlock requires authorizedKeys or at least one configured user with SSH keys";
-      }
-      {
-        assertion = cfg.tpm.enable -> cfg.secureBoot.enable;
-        message = "TPM enrollment requires Secure Boot to be enabled";
-      }
-      {
-        assertion = all (pcr: pcr >= 0 && pcr <= 23) cfg.tpm.pcrs;
-        message = "TPM PCR values must be in the range 0-23";
-      }
-      {
-        assertion = cfg.users != {} -> all (u: u.initialPassword != null || u.hashedPassword != null) (attrValues cfg.users);
-        message = "All users must have either initialPassword or hashedPassword set";
-      }
-    ];
-
-    # Platform-specific configuration is handled by imported modules (base + x86)
   };
 }
