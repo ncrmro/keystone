@@ -75,6 +75,15 @@
 
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
+
+      # Cluster modules - k3s + Headscale mesh networking
+      cluster-primer = {
+        imports = [./modules/cluster/primer];
+      };
+
+      cluster-worker = {
+        imports = [./modules/cluster/worker];
+      };
     };
 
     # Export home-manager modules (homeModules is the standard flake output name)
