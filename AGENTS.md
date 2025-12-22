@@ -111,17 +111,52 @@ The `bin/virtual-machine` script is the **primary driver** for creating and mana
 # Post-installation: snapshot disk, remove ISO, and reboot (after VM shutdown)
 ./bin/virtual-machine --post-install-reboot keystone-test-vm
 
+# Create VM with virtiofs for /nix/store sharing (experimental)
+./bin/virtual-machine --name my-vm --enable-virtiofs --start
+
 # Completely delete VM and all associated files
 ./bin/virtual-machine --reset keystone-test-vm
 ```
 
 **Key Features**:
 - **UEFI Secure Boot Setup Mode** - VMs boot with Secure Boot enabled but no pre-enrolled keys
+- **Virtiofs support** - Optional `/nix/store` sharing from host (experimental)
 - Automatic OVMF firmware detection (uses NixOS QEMU package)
 - Integrates with `keystone-net` network (static IP: 192.168.100.99)
 - Serial console + SPICE graphical display
 - TPM 2.0 emulation for testing TPM-based features
 - Post-installation workflows (snapshot, ISO detachment)
+
+**Virtiofs Filesystem Sharing** (Experimental):
+
+For improved VM performance, you can share the host's `/nix/store` with guests:
+
+```bash
+# On Host: Enable virtiofsd
+# In /etc/nixos/configuration.nix:
+imports = [ ./path/to/keystone/modules/virtualization/host-virtiofs.nix ];
+keystone.virtualization.host.virtiofs.enable = true;
+
+# Create VM with virtiofs enabled
+./bin/virtual-machine --name test-vm --enable-virtiofs --start
+
+# In Guest: Mount the shared store
+# In configuration.nix:
+imports = [ ./path/to/keystone/modules/virtualization/guest-virtiofs.nix ];
+keystone.virtualization.guest.virtiofs = {
+  enable = true;
+  shareName = "nix-store-share";
+};
+```
+
+Benefits:
+- **Faster builds** - No need to copy store paths to VM disk
+- **Reduced disk usage** - Guest doesn't duplicate host's `/nix/store`
+- **Instant updates** - Guest sees new store paths immediately
+- **MicroVM-like experience** - Similar to direct kernel boot workflows
+
+See `docs/virtiofs-setup.md` for complete setup guide.
+
 
 **Secure Boot Setup Mode**:
 
