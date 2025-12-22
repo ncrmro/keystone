@@ -143,6 +143,7 @@ def create_uefi_secureboot_vm(
     disk_size_gb=20,
     iso_path=None,
     ssh_port=22222,
+    enable_virtiofs=False,
 ):
     """
     Create a VM with UEFI Secure Boot enabled in Setup Mode
@@ -156,6 +157,7 @@ def create_uefi_secureboot_vm(
         disk_size_gb: Size of disk if creating new
         iso_path: Path to installation ISO (optional)
         ssh_port: Host port for SSH forwarding (default 22222)
+        enable_virtiofs: Enable virtiofs for sharing host /nix/store (default False)
 
     Returns:
         libvirt.virDomain: Domain object for created VM
@@ -240,12 +242,22 @@ def create_uefi_secureboot_vm(
 
     print(f"✓ Secure Boot enabled")
 
+    # virtiofs status message
+    if enable_virtiofs:
+        print(f"✓ virtiofs enabled for /nix/store sharing")
+
     # Build XML configuration
     xml_config = f"""
 <domain type='kvm'>
   <name>{vm_name}</name>
   <memory unit='MiB'>{memory_mb}</memory>
   <vcpu placement='static'>{vcpus}</vcpu>
+  
+  {"<!-- Shared memory for virtiofs -->" if enable_virtiofs else ""}
+  {"<memoryBacking>" if enable_virtiofs else ""}
+    {"<access mode='shared'/>" if enable_virtiofs else ""}
+    {"<source type='memfd'/>" if enable_virtiofs else ""}
+  {"</memoryBacking>" if enable_virtiofs else ""}
 
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>
@@ -323,6 +335,13 @@ def create_uefi_secureboot_vm(
     <!-- Input devices -->
     <input type='tablet' bus='usb'/>
     <input type='keyboard' bus='usb'/>
+    
+    {"<!-- virtiofs filesystem sharing -->" if enable_virtiofs else ""}
+    {"<filesystem type='mount' accessmode='passthrough'>" if enable_virtiofs else ""}
+      {"<driver type='virtiofs' queue='1024'/>" if enable_virtiofs else ""}
+      {"<source dir='/nix/store'/>" if enable_virtiofs else ""}
+      {"<target dir='nix-store-share'/>" if enable_virtiofs else ""}
+    {"</filesystem>" if enable_virtiofs else ""}
     
     <!-- TPM 2.0 (useful for Windows 11 and Secure Boot) -->
     <tpm model='tpm-crb'>
@@ -631,6 +650,13 @@ def print_connection_commands(vm_name, ssh_port):
     print("    boot.kernelParams = [ \"console=tty0\" \"console=ttyS0,115200\" ];")
     print("  • For SSH access, ensure in configuration.nix:")
     print("    services.openssh.enable = true;")
+    
+    print("\n🚀 VIRTIOFS SETUP (if --enable-virtiofs was used):")
+    print("  To use the shared /nix/store in guest, add to configuration.nix:")
+    print("    imports = [ ./modules/virtualization/guest-virtiofs.nix ];")
+    print("    keystone.virtualization.guest.virtiofs.enable = true;")
+    print("  This mounts host's /nix/store via virtiofs with overlay for writes.")
+    print("  See: modules/virtualization/guest-virtiofs.nix for options.")
     print("="*70 + "\n")
 
 
@@ -648,6 +674,7 @@ def main():
     parser.add_argument('--reset', metavar='VM_NAME', help='Delete VM and all associated files (forces destroy if running)')
     parser.add_argument('--reset-setup-mode', metavar='VM_NAME', help='Reset VM NVRAM to Setup Mode (VM must be shut down)')
     parser.add_argument('--start', action='store_true', help='Start VM after creation')
+    parser.add_argument('--enable-virtiofs', action='store_true', help='Enable virtiofs for sharing host /nix/store with guest (requires guest config)')
 
     args = parser.parse_args()
 
@@ -711,7 +738,8 @@ def main():
         disk_path=disk_path,
         disk_size_gb=args.disk_size,
         iso_path=iso_path,
-        ssh_port=args.ssh_port
+        ssh_port=args.ssh_port,
+        enable_virtiofs=args.enable_virtiofs
     )
 
     # Start VM if requested
