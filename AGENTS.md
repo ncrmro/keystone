@@ -359,6 +359,62 @@ keystone.os = {
 }
 ```
 
+**Apple Silicon Mac (M1/M2/M3):**
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    keystone.url = "github:ncrmro/keystone";
+    home-manager.url = "github:nix-community/home-manager";
+    nixos-apple-silicon.url = "github:tpwrules/nixos-apple-silicon";
+  };
+
+  outputs = { nixpkgs, keystone, home-manager, nixos-apple-silicon, ... }: {
+    nixosConfigurations.macbook = nixpkgs.lib.nixosSystem {
+      system = "aarch64-linux";
+      modules = [
+        home-manager.nixosModules.home-manager
+        keystone.nixosModules.operating-system-mac  # Mac-specific module
+        keystone.nixosModules.desktop                # Optional Hyprland desktop
+        {
+          # No networking.hostId needed for ext4
+
+          keystone.os = {
+            enable = true;
+            storage = {
+              type = "ext4";  # ZFS not supported yet
+              devices = [ "/dev/disk/by-id/nvme-APPLE_SSD_..." ];
+              swap.size = "16G";
+            };
+            # No TPM or Secure Boot options (not supported on Mac)
+            users.alice = {
+              fullName = "Alice Smith";
+              email = "alice@example.com";
+              extraGroups = [ "wheel" "networkmanager" ];
+              initialPassword = "changeme";
+              terminal.enable = true;
+              desktop = {
+                enable = true;
+                hyprland.modifierKey = "SUPER";
+              };
+            };
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+**Mac Platform Differences:**
+- Uses `operating-system-mac` module instead of `operating-system`
+- Only supports `ext4` storage (no ZFS support yet)
+- No `secureBoot` or `tpm` options (incompatible with Apple Silicon)
+- No `networking.hostId` required (ext4 doesn't need it)
+- Manual password entry on boot (no TPM auto-unlock)
+- Uses Apple's boot chain (no lanzaboote)
+- Requires nixos-apple-silicon input for hardware support
+
 ### Installation Process
 ```bash
 # 1. Boot target machine from Keystone ISO
@@ -374,13 +430,28 @@ nixos-anywhere --flake .#your-config root@<installer-ip>
 ### OS Module Structure
 ```
 modules/os/
-├── default.nix           # Main orchestrator with keystone.os.* options
-├── storage.nix           # ZFS/ext4 + LUKS credstore
-├── secure-boot.nix       # Lanzaboote configuration
-├── tpm.nix               # TPM enrollment commands
-├── remote-unlock.nix     # Initrd SSH
-├── users.nix             # User management + ZFS homes
-└── scripts/              # Enrollment and provisioning scripts
+├── default.nix           # Main orchestrator (imports options + base + x86)
+├── options.nix           # Shared option definitions for all platforms
+├── base/                 # Platform-agnostic base
+│   ├── default.nix       # Imports users, SSH, services, nix, locale
+│   ├── services.nix      # Avahi, firewall, resolved
+│   ├── nix.nix           # Flakes, garbage collection
+│   └── locale.nix        # Timezone, locale
+├── x86/                  # X86_64-specific implementation
+│   ├── default.nix       # Imports storage, secure-boot, TPM, remote-unlock
+│   ├── storage.nix       # ZFS/ext4 + LUKS credstore pattern
+│   ├── secure-boot.nix   # Lanzaboote configuration
+│   ├── tpm.nix           # TPM enrollment commands
+│   ├── remote-unlock.nix # Initrd SSH unlock
+│   └── scripts/          # Enrollment and provisioning scripts
+├── mac/                  # Apple Silicon-specific implementation
+│   ├── default.nix       # Imports apple-silicon, boot, storage, remote-unlock
+│   ├── apple-silicon.nix # Hardware support config
+│   ├── boot.nix          # systemd-boot (no lanzaboote)
+│   ├── storage.nix       # ext4 + LUKS (no ZFS)
+│   └── remote-unlock.nix # Initrd SSH (no TPM fallback)
+├── users.nix             # User management (shared by all platforms)
+└── ssh.nix               # SSH server (shared by all platforms)
 ```
 
 ### Storage Configuration
@@ -406,26 +477,43 @@ modules/keystone/desktop/
 
 ## Deployment Patterns
 
-### Pattern 1: Home Server + Desktop
+### Pattern 1: Home Server + Desktop (x86_64)
 - Headless: Use `operating-system` module for always-on infrastructure
 - Desktop: Add `desktop` module for workstations with Hyprland
 
-### Pattern 2: VPS + Workstation
+### Pattern 2: VPS + Workstation (x86_64)
 - VPS: `operating-system` with `remoteUnlock` for headless operation
 - Workstation: `operating-system` + `desktop` for local development
 
-### Pattern 3: Multi-Machine Setup
-- Mix headless and desktop configurations as needed
-- All share the same `keystone.os.*` options for consistent security
+### Pattern 3: Apple Silicon Mac
+- Use `operating-system-mac` module for M1/M2/M3 hardware
+- Optional `desktop` module for Hyprland
+- Manual password entry on boot (no TPM auto-unlock)
+- ext4 only (ZFS not yet supported)
+
+### Pattern 4: Multi-Machine Setup
+- Mix x86 and Mac configurations as needed
+- Shared `keystone.os.*` options for consistent config
+- Platform-specific features (TPM, Secure Boot) only on x86
 
 ## Important Notes
 
+### X86_64 Systems (operating-system module)
 - The pool name is hardcoded to "rpool" throughout the OS module
-- The `operating-system` module includes disko and lanzaboote - no separate import needed
+- Includes disko and lanzaboote - no separate import needed
 - TPM2 integration requires compatible hardware and UEFI firmware setup
 - Secure Boot requires manual key enrollment during installation process
 - All ZFS datasets use native encryption with automatic key management
 - Home-manager integration is optional and only configured when imported
+
+### Apple Silicon Macs (operating-system-mac module)
+- Uses `nixos-apple-silicon` for hardware support
+- Only supports ext4 storage (ZFS untested)
+- No TPM or Secure Boot support (uses Apple's boot chain)
+- `boot.loader.efi.canTouchEfiVariables = false` (Apple Silicon limitation)
+- Manual LUKS password entry required on every boot
+- No `networking.hostId` needed (ext4 doesn't require it)
+- Shares base modules (users, SSH, services) with x86 systems
 
 ## Submodule Usage in nixos-config
 
