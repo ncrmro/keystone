@@ -75,6 +75,10 @@
 
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
+
+      # Virtualization modules
+      virtiofs-host = ./modules/virtualization/host-virtiofs.nix;
+      virtiofs-guest = ./modules/virtualization/guest-virtiofs.nix;
     };
 
     # Export home-manager modules (homeModules is the standard flake output name)
