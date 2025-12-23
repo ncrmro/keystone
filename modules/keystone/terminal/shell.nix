@@ -24,6 +24,15 @@ in
       enableZshIntegration = true;
     };
 
+    # Direnv - Unclutter your .profile
+    # Loads and unloads environment variables depending on the current directory
+    # https://direnv.net/
+    programs.direnv = {
+      enable = true;
+      enableZshIntegration = true;
+      nix-direnv.enable = true;
+    };
+
     # Zellij - A terminal multiplexer with layouts, panes, and tabs
     # Modern alternative to tmux/screen with built-in session management
     # https://zellij.dev/
