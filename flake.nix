@@ -69,7 +69,7 @@
 
       # Desktop module - Hyprland, audio, greetd (no disko/encryption dependencies)
       desktop = {
-        imports = [./modules/keystone/desktop/nixos.nix];
+        imports = [./modules/desktop/nixos.nix];
         _module.args.inputs = inputs;
       };
 
@@ -82,8 +82,8 @@
       terminalDevEnvironment = ./home-manager/modules/terminal-dev-environment;
       desktopHyprland = ./home-manager/modules/desktop/hyprland;
       # Keystone-specific home-manager modules
-      terminal = ./modules/keystone/terminal/default.nix;
-      desktop = ./modules/keystone/desktop/home/default.nix;
+      terminal = ./modules/terminal/default.nix;
+      desktop = ./modules/desktop/home/default.nix;
     };
 
     # Packages exported for consumption
