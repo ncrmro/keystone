@@ -33,7 +33,7 @@
 
   # Import Keystone desktop module WITHOUT disko/secure boot
   imports = [
-    ../../modules/keystone/desktop/nixos.nix
+    ../../modules/desktop/nixos.nix
   ];
 
   # Enable Keystone desktop components
