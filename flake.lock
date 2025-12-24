@@ -652,8 +652,7 @@
         "hyprland": "hyprland",
         "lanzaboote": "lanzaboote",
         "nixpkgs": "nixpkgs_2",
-        "omarchy": "omarchy",
-        "tests": "tests"
+        "omarchy": "omarchy"
       }
     },
     "rust-overlay": {
@@ -691,50 +690,6 @@
         "repo": "default-linux",
         "type": "github"
       }
-    },
-    "tests": {
-      "inputs": {
-        "disko": [
-          "tests",
-          "keystone",
-          "disko"
-        ],
-        "home-manager": [
-          "tests",
-          "keystone",
-          "home-manager"
-        ],
-        "hyprland": [
-          "tests",
-          "keystone",
-          "hyprland"
-        ],
-        "keystone": [],
-        "lanzaboote": [
-          "tests",
-          "keystone",
-          "lanzaboote"
-        ],
-        "nixpkgs": [
-          "tests",
-          "keystone",
-          "nixpkgs"
-        ],
-        "omarchy": [
-          "tests",
-          "keystone",
-          "omarchy"
-        ]
-      },
-      "locked": {
-        "path": "./tests",
-        "type": "path"
-      },
-      "original": {
-        "path": "./tests",
-        "type": "path"
-      },
-      "parent": []
     },
     "xdph": {
       "inputs": {

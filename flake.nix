@@ -20,10 +20,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     hyprland.url = "github:hyprwm/Hyprland";
-    tests = {
-      url = "path:./tests";
-      inputs.keystone.follows = "";
-    };
   };
 
   outputs = {
@@ -34,7 +30,6 @@
     omarchy,
     lanzaboote,
     hyprland,
-    tests,
     ...
   }: let
     # Create inputs attrset for desktop module
@@ -100,8 +95,6 @@
       zesh = pkgs.callPackage ./packages/zesh {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
-      # Expose installer test from tests flake for CI
-      installer-test = tests.packages.x86_64-linux.test-installer;
     };
 
     # Development shell
