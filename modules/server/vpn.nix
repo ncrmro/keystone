@@ -1,3 +1,8 @@
+# Keystone VPN Server Module
+#
+# Provides VPN server with Headscale operator running on Kubernetes.
+# This is a Kubernetes-based solution for managing Tailscale/Headscale infrastructure.
+#
 {
   lib,
   config,
@@ -6,9 +11,7 @@
 }:
 with lib;
 {
-  options.keystone.vpn.server = {
-    enable = mkEnableOption "Keystone VPN server with Headscale operator";
-
+  options.keystone.server.vpn = {
     namespace = mkOption {
       type = types.str;
       default = "headscale-system";
@@ -78,7 +81,7 @@ with lib;
     };
   };
 
-  config = mkIf config.keystone.vpn.server.enable {
+  config = mkIf config.keystone.server.vpn.enable {
     # Enable Kubernetes
     services.kubernetes = {
       roles = [
@@ -127,7 +130,7 @@ with lib;
 
       script =
         let
-          cfg = config.keystone.vpn.server;
+          cfg = config.keystone.server.vpn;
           headscaleOperatorManifest = pkgs.writeText "headscale-operator.yaml" ''
             apiVersion: v1
             kind: Namespace
