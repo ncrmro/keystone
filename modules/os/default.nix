@@ -79,6 +79,14 @@ with lib; let
         };
       };
 
+      containers = {
+        enable = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Enable container development tools (rootless Docker + Kind)";
+        };
+      };
+
       desktop = {
         enable = mkOption {
           type = types.bool;
@@ -137,6 +145,7 @@ in {
     ./remote-unlock.nix
     ./users.nix
     ./ssh.nix
+    ./containers.nix
   ];
 
   options.keystone.os = {

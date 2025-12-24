@@ -31,6 +31,7 @@ Welcome to the Keystone documentation. Keystone is a NixOS-based self-sovereign 
 
 ### Module Documentation
 - **[Terminal Development Environment](modules/terminal-dev-environment.md)** - Helix, Zsh, Zellij, and Ghostty setup
+- **[Container Development](containers-kind.md)** - Rootless Docker and Kind for Kubernetes development
 
 ### Advanced Topics
 - **[Build Platforms](build-platforms.md)** - Cross-platform build configuration

@@ -183,9 +183,9 @@ in {
       };
     }
     // optionalAttrs (options ? home-manager) {
-      # Configure home-manager for users with terminal/desktop enabled
+      # Configure home-manager for users with terminal/desktop/containers enabled
       # This requires home-manager to be imported in the system configuration
-      home-manager = mkIf (any (u: u.terminal.enable || u.desktop.enable) (attrValues cfg)) {
+      home-manager = mkIf (any (u: u.terminal.enable || u.desktop.enable || u.containers.enable) (attrValues cfg)) {
         useGlobalPkgs = mkDefault true;
         useUserPackages = mkDefault true;
 
@@ -215,7 +215,12 @@ in {
               capslockAsControl = userCfg.desktop.hyprland.capslockAsControl;
             };
           };
-        }) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) cfg);
+
+          # Container development tools
+          keystone.terminal.containers = mkIf userCfg.containers.enable {
+            enable = true;
+          };
+        }) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable || u.containers.enable) cfg);
       };
     };
 }
