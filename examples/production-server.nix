@@ -16,46 +16,61 @@
   # System Identity
   # Use a descriptive hostname that identifies the system's purpose and location
   networking.hostName = "prod-server-01";
+  networking.hostId = "deadbeef"; # Required for ZFS - generate with: head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
 
-  # Keystone Server Module
-  # Enables server-specific services: SSH, mDNS, firewall, admin tools
-  keystone.server.enable = true;
-
-  # Disk Configuration with Disko
-  keystone.disko = {
+  # Keystone OS Module
+  # Enables OS-level services: storage, secure boot, TPM, SSH, mDNS, firewall
+  keystone.os = {
     enable = true;
 
-    # CRITICAL: Use stable /dev/disk/by-id/ paths in production
-    # Never use /dev/sda, /dev/nvme0n1, etc. as these can change on reboot
-    #
-    # To find your disk ID:
-    #   ls -l /dev/disk/by-id/
-    #
-    # Look for entries like:
-    #   ata-Samsung_SSD_870_EVO_2TB_S62ANL0W123456
-    #   nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W127373V
-    #
-    # Example NVMe disk:
-    device = "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W127373V";
+    # Storage Configuration
+    storage = {
+      type = "zfs";
 
-    # Example SATA SSD disk:
-    # device = "/dev/disk/by-id/ata-Samsung_SSD_870_EVO_2TB_S62ANL0W123456";
+      # CRITICAL: Use stable /dev/disk/by-id/ paths in production
+      # Never use /dev/sda, /dev/nvme0n1, etc. as these can change on reboot
+      #
+      # To find your disk ID:
+      #   ls -l /dev/disk/by-id/
+      #
+      # Look for entries like:
+      #   ata-Samsung_SSD_870_EVO_2TB_S62ANL0W123456
+      #   nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W127373V
+      #
+      # Example NVMe disk:
+      devices = ["/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W127373V"];
 
-    # Example multiple disk scenario (choose ONE, comment others):
-    # device = "/dev/disk/by-id/ata-WDC_WD40EFRX-68N32N0_WD-WCC7K1234567";
+      # Example SATA SSD disk:
+      # devices = ["/dev/disk/by-id/ata-Samsung_SSD_870_EVO_2TB_S62ANL0W123456"];
 
-    # Encrypted swap configuration
-    # Swap size guideline:
-    #   - 64G: Systems with 32GB RAM
-    #   - 128G: Systems with 64GB+ RAM
-    #   - Consider disabling for systems with abundant RAM (>128GB)
-    enableEncryptedSwap = true;
-    swapSize = "64G";
+      # Example multiple disk mirrored scenario:
+      # devices = [
+      #   "/dev/disk/by-id/nvme-disk1"
+      #   "/dev/disk/by-id/nvme-disk2"
+      # ];
+      # mode = "mirror";
 
-    # EFI System Partition size
-    # 1G is sufficient for most use cases
-    # Only increase if using multiple boot entries or custom kernels
-    espSize = "1G";
+      # Encrypted swap configuration
+      # Swap size guideline:
+      #   - 64G: Systems with 32GB RAM
+      #   - 128G: Systems with 64GB+ RAM
+      #   - Consider disabling for systems with abundant RAM (>128GB)
+      swap.size = "64G";
+
+      # EFI System Partition size
+      # 1G is sufficient for most use cases
+      # Only increase if using multiple boot entries or custom kernels
+      esp.size = "1G";
+    };
+
+    # Enable Secure Boot with lanzaboote
+    secureBoot.enable = true;
+
+    # Enable TPM-based automatic disk unlock
+    tpm = {
+      enable = true;
+      pcrs = [1 7]; # Firmware config + Secure Boot
+    };
   };
 
   # SSH Access Configuration
@@ -133,9 +148,7 @@
 #    nixosConfigurations.prod-server-01 = nixpkgs.lib.nixosSystem {
 #      system = "x86_64-linux";
 #      modules = [
-#        disko.nixosModules.disko
-#        ./modules/server
-#        ./modules/disko-single-disk-root
+#        keystone.nixosModules.operating-system
 #        ./examples/production-server.nix
 #      ];
 #    };
