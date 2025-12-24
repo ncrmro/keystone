@@ -73,6 +73,9 @@
         _module.args.inputs = inputs;
       };
 
+      # Server module - VPN, monitoring, mail (optional services)
+      server = ./modules/server;
+
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
     };
