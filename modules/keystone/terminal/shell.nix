@@ -96,6 +96,9 @@ in
         # Local Development
         g = "git";
         lg = "lazygit";
+        # Terminal utilities
+        zs = "zesh";  # Zellij session manager
+        y = "yazi";
       };
       history.size = 100000;
       zplug.enable = lib.mkForce false;
