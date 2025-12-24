@@ -7,7 +7,7 @@
 #   ./bin/test-installer --help      # Show help
 #
 # This script builds and runs the NixOS VM test for the installer TUI.
-# The test is exposed at .#installer-test (in packages, not checks, to avoid IFD).
+# The test is in ./tests#test-installer (from tests/flake.nix).
 # In interactive mode, you can watch the VM and manually interact with it.
 #
 # Interactive mode REPL commands:
@@ -132,8 +132,8 @@ cd "$PROJECT_DIR"
 
 if [[ "$MODE" == "interactive" ]]; then
     echo -e "${BLUE}Building interactive test driver...${NC}"
-    # Test is in packages (not checks) to avoid IFD issues with nix flake check
-    nix_cmd build .#installer-test.driverInteractive
+    # Test is in tests flake to avoid IFD issues with nix flake check
+    nix_cmd build ./tests#test-installer.driverInteractive
 
     if [[ "$BUILD_ONLY" == "true" ]]; then
         echo -e "${GREEN}Build complete: ./result/bin/nixos-test-driver${NC}"
@@ -153,14 +153,14 @@ else
     echo -e "${BLUE}Building and running test headlessly...${NC}"
 
     if [[ "$BUILD_ONLY" == "true" ]]; then
-        # Test is in packages (not checks) to avoid IFD issues with nix flake check
-        nix_cmd build .#installer-test
+        # Test is in tests flake to avoid IFD issues with nix flake check
+        nix_cmd build ./tests#test-installer
         echo -e "${GREEN}Build complete: ./result${NC}"
         exit 0
     fi
 
-    # Run the test (in packages, not checks)
-    if nix_cmd build .#installer-test --print-build-logs; then
+    # Run the test from tests flake
+    if nix_cmd build ./tests#test-installer --print-build-logs; then
         echo -e "${GREEN}✓ All tests passed!${NC}"
         exit 0
     else
