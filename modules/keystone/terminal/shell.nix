@@ -4,11 +4,10 @@
   pkgs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.terminal;
-in
-{
+  zesh = pkgs.callPackage ../../../packages/zesh {};
+in {
   config = mkIf cfg.enable {
     # Starship - A minimal, blazing-fast, and infinitely customizable prompt for any shell
     # Shows git status, language versions, execution time, and more in your terminal prompt
@@ -47,36 +46,36 @@ in
           normal = {
             # Previous tab: Ctrl+PgUp
             "bind \"Ctrl PageUp\"" = {
-              GoToPreviousTab = { };
+              GoToPreviousTab = {};
             };
             # Next tab: Ctrl+PgDn
             "bind \"Ctrl PageDown\"" = {
-              GoToNextTab = { };
+              GoToNextTab = {};
             };
             # Previous tab (alternative): Ctrl+Shift+Tab
             "bind \"Ctrl Shift Tab\"" = {
-              GoToPreviousTab = { };
+              GoToPreviousTab = {};
             };
             # Next tab (alternative): Ctrl+Tab
             "bind \"Ctrl Tab\"" = {
-              GoToNextTab = { };
+              GoToNextTab = {};
             };
             # New tab: Ctrl+T
             "bind \"Ctrl t\"" = {
-              NewTab = { };
+              NewTab = {};
             };
             # Close tab: Ctrl+W
             "bind \"Ctrl w\"" = {
-              CloseTab = { };
+              CloseTab = {};
             };
             # Unbind default Ctrl+G (conflict with Claude Code)
-            "unbind \"Ctrl g\"" = [ ];
+            "unbind \"Ctrl g\"" = [];
             # Lock mode: Ctrl+Shift+G
             "bind \"Ctrl Shift g\"" = {
               SwitchToMode = "locked";
             };
             # Unbind default Ctrl+O (conflict with Claude Code and lazygit)
-            "unbind \"Ctrl o\"" = [ ];
+            "unbind \"Ctrl o\"" = [];
             # Session mode: Ctrl+Shift+O
             "bind \"Ctrl Shift o\"" = {
               SwitchToMode = "session";
@@ -97,14 +96,14 @@ in
         g = "git";
         lg = "lazygit";
         # Terminal utilities
-        zs = "zesh";  # Zellij session manager
+        zs = "zesh"; # Zellij session manager with zoxide integration
         y = "yazi";
       };
       history.size = 100000;
       zplug.enable = lib.mkForce false;
       oh-my-zsh = {
         enable = true;
-        plugins = [ "git" ];
+        plugins = ["git"];
         theme = "robbyrussell";
       };
     };
@@ -129,6 +128,10 @@ in
       # Yazi - Blazing fast terminal file manager written in Rust
       # https://github.com/sxyazi/yazi
       yazi
+
+      # Zesh - Zellij session manager with zoxide integration
+      # https://github.com/roberte777/zesh
+      zesh
     ];
   };
 }
