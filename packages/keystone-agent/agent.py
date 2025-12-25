@@ -520,7 +520,7 @@ def main():
     start_parser.add_argument("--vcpus", type=int, default=4, help="Virtual CPU count (default: 4)")
     start_parser.add_argument("--no-nested", action="store_true", help="Disable nested virtualization")
     start_parser.add_argument("--fresh", action="store_true", help="Discard previous sandbox state")
-    start_parser.add_argument("--network", choices=["nat", "none", "bridge"], default="nat", help="Network mode (default: nat)")
+    start_parser.add_argument("--network", choices=["user", "tap", "macvtap", "bridge"], default="user", help="Network mode (default: user)")
     start_parser.add_argument("--sync-mode", choices=["manual", "auto-commit", "auto-idle"], default="manual", help="Sync mode (default: manual)")
     start_parser.add_argument("--no-attach", action="store_true", help="Start without attaching to session")
     start_parser.add_argument("--agent", choices=["claude", "gemini", "codex"], help="Auto-start agent")
