@@ -226,7 +226,12 @@ direnv allow
 
 Verify language servers are installed:
 ```bash
-which bash-language-server yaml-language-server nixfmt
+which bash-language-server yaml-language-server nil nixfmt
+```
+
+Check Helix health for a specific language:
+```bash
+hx --health nix
 ```
 
 ### Zsh completions not working
