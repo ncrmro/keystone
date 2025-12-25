@@ -114,7 +114,7 @@ in
             args = [ "--stdio" ];
           };
           nil = {
-            command = "${nil}/bin/nil";
+            command = "${pkgs.nil}/bin/nil";
           };
         };
         language = [
