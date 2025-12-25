@@ -148,6 +148,7 @@
           jq
           yq-go
           gh # GitHub CLI
+          python3
         ];
 
         shellHook = ''
