@@ -5,6 +5,7 @@
   ...
 }: let
   cfg = config.keystone.agent;
+  keystoneAgentPackage = pkgs.callPackage ../../../packages/keystone-agent {};
 in {
   options.keystone.agent = {
     enable = lib.mkEnableOption "Keystone Agent Sandbox system";
@@ -172,9 +173,7 @@ in {
 
     # Install agent CLI globally
     environment.systemPackages = [
-      (pkgs.writeShellScriptBin "keystone-agent" ''
-        exec ${pkgs.python3}/bin/python3 ${../../../bin/agent} "$@"
-      '')
+      keystoneAgentPackage
     ];
 
     # Create agent config directory
