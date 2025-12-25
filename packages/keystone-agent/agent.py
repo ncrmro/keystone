@@ -321,7 +321,6 @@ class AgentCLI:
         result = subprocess.run(
             [
                 "nix", "build",
-                "--offline",  # Use offline mode to prevent network fetches
                 f"{state_dir}#nixosConfigurations.sandbox.config.microvm.declaredRunner",
                 "--out-link", str(runner_path)
             ],
@@ -367,18 +366,22 @@ class AgentCLI:
         
         return 0
     
-    def _generate_sandbox_flake(self, sandbox_name: str, workspace_dir: Path, 
+    def _generate_sandbox_flake(self, sandbox_name: str, workspace_dir: Path,
                                  memory: int, vcpus: int, nested: bool, network: str) -> str:
-        """Generate flake.nix for the sandbox MicroVM.
-        
-        Uses a simple standalone configuration that doesn't require network access
-        when used within a nix develop shell that already has microvm.nix available.
+        """Generate minimal flake.nix for the sandbox MicroVM.
+
+        Uses a pinned nixpkgs revision for reproducibility and a minimal NixOS
+        configuration with just basic development tools.
         """
+        # Pin to known-good nixpkgs revision from keystone flake.lock
+        # This avoids build failures from transient breakage in nixos-unstable HEAD
+        nixpkgs_rev = "c6245e83d836d0433170a16eb185cefe0572f8b8"
+
         return f'''{{
   description = "Agent Sandbox: {sandbox_name}";
 
   inputs = {{
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/{nixpkgs_rev}";
     microvm = {{
       url = "github:astro/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -390,55 +393,54 @@ class AgentCLI:
       system = "x86_64-linux";
       modules = [
         microvm.nixosModules.microvm
-        ({{ pkgs, config, lib, ... }}: {{
+        ({{ pkgs, ... }}: {{
+          # MicroVM configuration
           microvm = {{
             hypervisor = "qemu";
             mem = {memory};
             vcpu = {vcpus};
-            
-            shares = [
-              {{
-                proto = "virtiofs";
-                tag = "workspace";
-                source = "{workspace_dir}";
-                mountPoint = "/workspace";
-              }}
-            ];
-            
-            interfaces = [
-              {{
-                type = "{network}";
-                id = "eth0";
-                mac = "02:00:00:01:01:01";
-              }}
-            ];
+
+            shares = [{{
+              proto = "virtiofs";
+              tag = "workspace";
+              source = "{workspace_dir}";
+              mountPoint = "/workspace";
+            }}];
+
+            interfaces = [{{
+              type = "{network}";
+              id = "eth0";
+              mac = "02:00:00:01:01:01";
+            }}];
           }};
 
+          # Minimal system config
           networking.hostName = "{sandbox_name}";
-          
+          system.stateVersion = "25.05";
+
+          # Single user with sudo
           users.users.sandbox = {{
             isNormalUser = true;
-            description = "Sandbox User";
             extraGroups = [ "wheel" ];
             initialPassword = "sandbox";
           }};
-          
           security.sudo.wheelNeedsPassword = false;
-          
-          # Development tools
+
+          # Basic development tools only
           environment.systemPackages = with pkgs; [
             git
+            python3
             vim
             curl
+            wget
             htop
           ];
-          
+
+          # SSH for access
           services.openssh = {{
             enable = true;
             settings.PasswordAuthentication = true;
           }};
-          
-          system.stateVersion = "25.05";
         }})
       ];
     }};
