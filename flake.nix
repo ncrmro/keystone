@@ -73,6 +73,11 @@
         _module.args.inputs = inputs;
       };
 
+      # Agent Sandbox module - isolated AI coding agent environments
+      agent = {
+        imports = [./modules/keystone/agent];
+      };
+
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
     };
@@ -84,6 +89,7 @@
       # Keystone-specific home-manager modules
       terminal = ./modules/keystone/terminal/default.nix;
       desktop = ./modules/keystone/desktop/home/default.nix;
+      agentTui = ./modules/keystone/agent/home/tui.nix;
     };
 
     # Packages exported for consumption
