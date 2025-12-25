@@ -158,16 +158,69 @@ class SandboxRegistry:
 
 class AgentCLI:
     """Main CLI application for Agent Sandbox management."""
-    
+
     def __init__(self):
         self.config_dir = Path.home() / ".config" / "keystone" / "agent"
         self.registry_path = self.config_dir / "sandboxes.json"
         self.sandboxes_dir = self.config_dir / "sandboxes"
         self.registry = SandboxRegistry(self.registry_path)
-        
+
         # Ensure directories exist
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.sandboxes_dir.mkdir(parents=True, exist_ok=True)
+
+    def _resolve_sandbox_name(self, name: Optional[str]) -> Optional[str]:
+        """Resolve sandbox name from argument or current directory."""
+        if name:
+            return name
+        # Derive from current directory
+        cwd = Path.cwd()
+        if (cwd / ".git").exists():
+            return cwd.name
+        return None
+
+    def _get_sandbox_or_error(self, name: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Get sandbox config or print error if not found."""
+        resolved_name = self._resolve_sandbox_name(name)
+        if not resolved_name:
+            print_error("Could not determine sandbox name. Specify --name or run from a git repository.")
+            return None
+
+        sandbox = self.registry.get_sandbox(resolved_name)
+        if not sandbox:
+            print_error(f"Sandbox '{resolved_name}' not found")
+            print_info("Use 'keystone agent list' to see available sandboxes")
+            return None
+
+        sandbox['_name'] = resolved_name  # Store resolved name
+        return sandbox
+
+    def _get_pid_file(self, sandbox_name: str) -> Path:
+        """Get the PID file path for a sandbox."""
+        return self.sandboxes_dir / sandbox_name / "state" / "microvm.pid"
+
+    def _is_running(self, sandbox_name: str) -> bool:
+        """Check if a sandbox is currently running."""
+        pid_file = self._get_pid_file(sandbox_name)
+        if not pid_file.exists():
+            return False
+
+        try:
+            pid = int(pid_file.read_text().strip())
+            # Check if process exists
+            os.kill(pid, 0)
+            return True
+        except (ValueError, ProcessLookupError, PermissionError):
+            return False
+
+    def _update_status(self, sandbox_name: str) -> None:
+        """Update sandbox status based on actual running state."""
+        sandbox = self.registry.get_sandbox(sandbox_name)
+        if sandbox:
+            actual_status = "running" if self._is_running(sandbox_name) else "stopped"
+            if sandbox.get('status') != actual_status:
+                sandbox['status'] = actual_status
+                self.registry.add_sandbox(sandbox_name, sandbox)
     
     def run(self, args: argparse.Namespace) -> int:
         """Main entry point for CLI commands."""
@@ -450,13 +503,99 @@ class AgentCLI:
     
     def cmd_stop(self, args: argparse.Namespace) -> int:
         """Stop a sandbox."""
-        print_info("Command 'stop' not yet implemented")
+        sandbox = self._get_sandbox_or_error(args.name)
+        if not sandbox:
+            return 1
+
+        sandbox_name = sandbox['_name']
+        state_dir = Path(sandbox.get('state_dir', ''))
+
+        # Check if running
+        if not self._is_running(sandbox_name):
+            print_info(f"Sandbox '{sandbox_name}' is not running")
+            return 0
+
+        # Sync before stopping if requested
+        if args.sync:
+            print_info("Syncing changes before stopping...")
+            # TODO: Implement sync logic
+            print_warning("Sync not yet implemented, skipping")
+
+        # Try graceful shutdown first
+        shutdown_script = state_dir / "runner" / "bin" / "microvm-shutdown"
+        if shutdown_script.exists():
+            print_info(f"Stopping sandbox '{sandbox_name}'...")
+            result = subprocess.run(
+                [str(shutdown_script)],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                print_success(f"Sandbox '{sandbox_name}' stopped")
+            else:
+                print_warning("Graceful shutdown failed, trying force kill...")
+                # Force kill via PID
+                pid_file = self._get_pid_file(sandbox_name)
+                if pid_file.exists():
+                    try:
+                        pid = int(pid_file.read_text().strip())
+                        os.kill(pid, 15)  # SIGTERM
+                        print_success(f"Sandbox '{sandbox_name}' terminated")
+                    except (ValueError, ProcessLookupError):
+                        pass
+        else:
+            # No shutdown script, try PID file
+            pid_file = self._get_pid_file(sandbox_name)
+            if pid_file.exists():
+                try:
+                    pid = int(pid_file.read_text().strip())
+                    os.kill(pid, 15)  # SIGTERM
+                    print_success(f"Sandbox '{sandbox_name}' terminated")
+                except (ValueError, ProcessLookupError):
+                    print_error(f"Could not stop sandbox '{sandbox_name}'")
+                    return 1
+
+        # Update status
+        sandbox['status'] = 'stopped'
+        self.registry.add_sandbox(sandbox_name, sandbox)
+
         return 0
     
     def cmd_attach(self, args: argparse.Namespace) -> int:
-        """Attach to a sandbox session."""
-        print_info("Command 'attach' not yet implemented")
-        return 0
+        """Attach to a sandbox session via SSH."""
+        sandbox = self._get_sandbox_or_error(args.name)
+        if not sandbox:
+            return 1
+
+        sandbox_name = sandbox['_name']
+
+        # Check if running
+        if not self._is_running(sandbox_name):
+            print_error(f"Sandbox '{sandbox_name}' is not running")
+            print_info(f"Start it with: keystone agent start")
+            return 1
+
+        # For now, just SSH in (web UI not implemented)
+        if args.web:
+            print_warning("Web UI not yet implemented, using SSH instead")
+
+        print_info(f"Attaching to sandbox '{sandbox_name}'...")
+        print_info("Use 'exit' or Ctrl-D to detach")
+
+        # SSH to the sandbox (user networking uses port forwarding)
+        # Default SSH port is forwarded to localhost:2222 in user mode
+        result = subprocess.run(
+            [
+                "ssh",
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=/dev/null",
+                "-o", "LogLevel=ERROR",
+                "-p", "2222",
+                "sandbox@localhost"
+            ]
+        )
+
+        return result.returncode
     
     def cmd_sync(self, args: argparse.Namespace) -> int:
         """Sync changes between sandbox and host."""
@@ -465,7 +604,56 @@ class AgentCLI:
     
     def cmd_status(self, args: argparse.Namespace) -> int:
         """Show sandbox status."""
-        print_info("Command 'status' not yet implemented")
+        sandbox = self._get_sandbox_or_error(args.name)
+        if not sandbox:
+            return 1
+
+        sandbox_name = sandbox['_name']
+
+        # Update status based on actual running state
+        self._update_status(sandbox_name)
+        sandbox = self.registry.get_sandbox(sandbox_name)
+
+        # JSON output
+        if args.json:
+            print(json.dumps(sandbox, indent=2))
+            return 0
+
+        # Human-readable output
+        status = sandbox.get('status', 'unknown')
+        is_running = self._is_running(sandbox_name)
+
+        # Status with color
+        if is_running:
+            status_str = f"{Colors.GREEN}running{Colors.RESET}"
+        else:
+            status_str = f"{Colors.YELLOW}stopped{Colors.RESET}"
+
+        print(f"{Colors.BOLD}Sandbox: {sandbox_name}{Colors.RESET}")
+        print(f"  Status:      {status_str}")
+        print(f"  Project:     {sandbox.get('project_path', 'N/A')}")
+        print(f"  Workspace:   {sandbox.get('workspace_dir', 'N/A')}")
+        print(f"  Memory:      {sandbox.get('memory', 'N/A')} MB")
+        print(f"  vCPUs:       {sandbox.get('vcpus', 'N/A')}")
+        print(f"  Network:     {sandbox.get('network', 'N/A')}")
+        print(f"  Nested virt: {'enabled' if sandbox.get('nested', False) else 'disabled'}")
+        print(f"  Sync mode:   {sandbox.get('sync_mode', 'N/A')}")
+
+        # Show runner path if available
+        runner_path = sandbox.get('runner_path')
+        if runner_path:
+            print(f"  Runner:      {runner_path}")
+
+        # Show PID if running
+        if is_running:
+            pid_file = self._get_pid_file(sandbox_name)
+            if pid_file.exists():
+                try:
+                    pid = int(pid_file.read_text().strip())
+                    print(f"  PID:         {pid}")
+                except ValueError:
+                    pass
+
         return 0
     
     def cmd_list(self, args: argparse.Namespace) -> int:
@@ -513,8 +701,51 @@ class AgentCLI:
         return 0
     
     def cmd_destroy(self, args: argparse.Namespace) -> int:
-        """Destroy a sandbox."""
-        print_info("Command 'destroy' not yet implemented")
+        """Destroy a sandbox completely."""
+        sandbox_name = args.name
+        sandbox = self.registry.get_sandbox(sandbox_name)
+
+        if not sandbox:
+            print_error(f"Sandbox '{sandbox_name}' not found")
+            return 1
+
+        # Check if running
+        if self._is_running(sandbox_name):
+            if not args.force:
+                print_error(f"Sandbox '{sandbox_name}' is still running")
+                print_info("Stop it first with: keystone agent stop")
+                print_info("Or use --force to destroy anyway")
+                return 1
+            else:
+                # Force stop first
+                print_info(f"Force stopping sandbox '{sandbox_name}'...")
+                pid_file = self._get_pid_file(sandbox_name)
+                if pid_file.exists():
+                    try:
+                        pid = int(pid_file.read_text().strip())
+                        os.kill(pid, 9)  # SIGKILL
+                    except (ValueError, ProcessLookupError):
+                        pass
+
+        # Confirm destruction if not forced
+        if not args.force:
+            print_warning(f"This will permanently delete sandbox '{sandbox_name}'")
+            print_warning("Including: workspace, state, and all configuration")
+            response = input("Are you sure? [y/N] ").strip().lower()
+            if response != 'y':
+                print_info("Aborted")
+                return 0
+
+        # Remove sandbox directory
+        sandbox_dir = self.sandboxes_dir / sandbox_name
+        if sandbox_dir.exists():
+            print_info(f"Removing sandbox directory: {sandbox_dir}")
+            shutil.rmtree(sandbox_dir)
+
+        # Remove from registry
+        self.registry.remove_sandbox(sandbox_name)
+
+        print_success(f"Sandbox '{sandbox_name}' destroyed")
         return 0
     
     def cmd_worktree(self, args: argparse.Namespace) -> int:
@@ -523,14 +754,67 @@ class AgentCLI:
         return 0
     
     def cmd_exec(self, args: argparse.Namespace) -> int:
-        """Execute command in sandbox."""
-        print_info("Command 'exec' not yet implemented")
-        return 0
-    
+        """Execute command in sandbox via SSH."""
+        sandbox = self._get_sandbox_or_error(args.name)
+        if not sandbox:
+            return 1
+
+        sandbox_name = sandbox['_name']
+
+        # Check if running
+        if not self._is_running(sandbox_name):
+            print_error(f"Sandbox '{sandbox_name}' is not running")
+            return 1
+
+        # Get command to execute
+        command = args.command if args.command else []
+        if not command:
+            print_error("No command specified")
+            print_info("Usage: keystone agent exec [sandbox] -- <command>")
+            return 1
+
+        # Execute via SSH
+        result = subprocess.run(
+            [
+                "ssh",
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=/dev/null",
+                "-o", "LogLevel=ERROR",
+                "-p", "2222",
+                "sandbox@localhost",
+                "--"
+            ] + command
+        )
+
+        return result.returncode
+
     def cmd_ssh(self, args: argparse.Namespace) -> int:
-        """SSH into sandbox."""
-        print_info("Command 'ssh' not yet implemented")
-        return 0
+        """SSH into sandbox (alias for attach)."""
+        sandbox = self._get_sandbox_or_error(args.name)
+        if not sandbox:
+            return 1
+
+        sandbox_name = sandbox['_name']
+
+        # Check if running
+        if not self._is_running(sandbox_name):
+            print_error(f"Sandbox '{sandbox_name}' is not running")
+            print_info(f"Start it with: keystone agent start")
+            return 1
+
+        # SSH to the sandbox
+        result = subprocess.run(
+            [
+                "ssh",
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=/dev/null",
+                "-o", "LogLevel=ERROR",
+                "-p", "2222",
+                "sandbox@localhost"
+            ]
+        )
+
+        return result.returncode
 
 
 def main():
