@@ -31,8 +31,8 @@ in {
       };
 
       network = lib.mkOption {
-        type = lib.types.enum ["nat" "none" "bridge"];
-        default = "nat";
+        type = lib.types.enum ["user" "tap" "macvtap" "bridge"];
+        default = "user";
         description = "Default network mode for sandboxes";
       };
 
