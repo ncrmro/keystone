@@ -232,7 +232,6 @@ class AgentCLI:
         
         if args.fresh and sandbox_dir.exists():
             print_info(f"Removing existing sandbox: {sandbox_name}")
-            import shutil
             shutil.rmtree(sandbox_dir)
         
         sandbox_dir.mkdir(parents=True, exist_ok=True)
@@ -259,8 +258,9 @@ class AgentCLI:
         print(f"  Network: {args.network}")
         print(f"  Sync mode: {args.sync_mode}")
         
-        # Build the MicroVM configuration dynamically
-        microvm_config = self._generate_microvm_config(
+        # Generate flake.nix and configuration for the sandbox
+        print_info("Generating sandbox configuration...")
+        flake_content = self._generate_sandbox_flake(
             sandbox_name=sandbox_name,
             workspace_dir=workspace_dir,
             memory=args.memory,
@@ -269,10 +269,50 @@ class AgentCLI:
             network=args.network
         )
         
-        # Write configuration to state directory
-        config_path = state_dir / "config.nix"
-        with open(config_path, 'w') as f:
-            f.write(microvm_config)
+        # Write flake to state directory
+        flake_path = state_dir / "flake.nix"
+        with open(flake_path, 'w') as f:
+            f.write(flake_content)
+        
+        # Try to copy flake.lock from keystone tests if available (for offline use)
+        # Look in common keystone repo locations
+        possible_keystone_paths = [
+            Path.cwd(),  # Current directory
+            Path.home() / "code" / "ncrmro" / "keystone",  # Common dev location
+            Path("/home/runner/work/keystone/keystone"),  # CI location
+        ]
+        
+        for keystone_path in possible_keystone_paths:
+            test_lock = keystone_path / "tests" / "flake.lock"
+            if test_lock.exists():
+                print_info(f"Using flake.lock from {test_lock} for offline support")
+                shutil.copy(test_lock, state_dir / "flake.lock")
+                break
+        else:
+            print_warning("No flake.lock found - will require network access to build")
+        
+        # Initialize git repo for the flake (required by Nix flakes)
+        if not (state_dir / ".git").exists():
+            subprocess.run(["git", "init"], cwd=state_dir, capture_output=True, check=True)
+            subprocess.run(["git", "add", "."], cwd=state_dir, capture_output=True, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "sandbox@keystone.local"],
+                cwd=state_dir,
+                capture_output=True,
+                check=True
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Keystone Agent Sandbox"],
+                cwd=state_dir,
+                capture_output=True,
+                check=True
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "Initial sandbox configuration"],
+                cwd=state_dir,
+                capture_output=True,
+                check=True
+            )
         
         # Build the MicroVM runner
         print_info("Building MicroVM runner...")
@@ -281,9 +321,9 @@ class AgentCLI:
         result = subprocess.run(
             [
                 "nix", "build",
-                "--impure",  # Allow impure evaluation for local paths
-                "--expr",
-                f'(import <nixpkgs> {{}}).nixos ({microvm_config})',
+                "--offline",  # Use offline mode to prevent network fetches
+                "--refresh", "false",  # Don't refresh cached inputs
+                f"{state_dir}#nixosConfigurations.sandbox.config.microvm.declaredRunner",
                 "--out-link", str(runner_path)
             ],
             capture_output=True,
@@ -291,7 +331,15 @@ class AgentCLI:
         )
         
         if result.returncode != 0:
-            print_error(f"Failed to build MicroVM: {result.stderr}")
+            print_error(f"Failed to build MicroVM")
+            print_error("Note: Building sandboxes requires network access on first use")
+            print_error("to fetch microvm.nix and nixpkgs. After the first successful")
+            print_error("build, the flake.lock can be reused for offline builds.")
+            if result.stderr:
+                print_info("Build error:")
+                for line in result.stderr.split('\n')[-15:]:  # Show last 15 lines
+                    if line.strip():
+                        print(f"  {line}")
             return 3
         
         # Register sandbox
@@ -307,67 +355,95 @@ class AgentCLI:
             'network': args.network,
             'sync_mode': args.sync_mode,
             'status': 'running',
-            'created_at': str(Path(state_dir / "created").write_text(str(os.times())))
+            'runner_path': str(runner_path)
         })
         
         print_success(f"Sandbox '{sandbox_name}' started successfully!")
+        print_info(f"Runner: {runner_path}/bin/microvm-run")
         
         if not args.no_attach:
-            print_info("Attaching to sandbox session...")
-            # TODO: Implement attach functionality
+            print_info("To start the MicroVM, run:")
+            print(f"  {runner_path}/bin/microvm-run")
             print_warning("Auto-attach not yet implemented. Use 'keystone agent attach' to connect.")
         
         return 0
     
-    def _generate_microvm_config(self, sandbox_name: str, workspace_dir: Path, 
-                                  memory: int, vcpus: int, nested: bool, network: str) -> str:
-        """Generate NixOS configuration for MicroVM."""
-        return f'''
-{{ pkgs, config, lib, ... }}: {{
-  imports = [
-    <nixpkgs/nixos/modules/virtualisation/microvm.nix>
-  ];
+    def _generate_sandbox_flake(self, sandbox_name: str, workspace_dir: Path, 
+                                 memory: int, vcpus: int, nested: bool, network: str) -> str:
+        """Generate flake.nix for the sandbox MicroVM.
+        
+        Uses a simple standalone configuration that doesn't require network access
+        when used within a nix develop shell that already has microvm.nix available.
+        """
+        return f'''{{
+  description = "Agent Sandbox: {sandbox_name}";
 
-  microvm = {{
-    hypervisor = "qemu";
-    mem = {memory};
-    vcpu = {vcpus};
-    
-    shares = [
-      {{
-        proto = "virtiofs";
-        tag = "workspace";
-        source = "{workspace_dir}";
-        mountPoint = "/workspace";
-      }}
-    ];
-    
-    interfaces = [
-      {{
-        type = "{network}";
-        id = "eth0";
-        mac = "02:00:00:01:01:01";
-      }}
-    ];
+  inputs = {{
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    microvm = {{
+      url = "github:astro/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
   }};
 
-  networking.hostName = "{sandbox_name}";
-  
-  users.users.sandbox = {{
-    isNormalUser = true;
-    description = "Sandbox User";
-    extraGroups = [ "wheel" ];
-    initialPassword = "sandbox";
+  outputs = {{ self, nixpkgs, microvm }}: {{
+    nixosConfigurations.sandbox = nixpkgs.lib.nixosSystem {{
+      system = "x86_64-linux";
+      modules = [
+        microvm.nixosModules.microvm
+        ({{ pkgs, config, lib, ... }}: {{
+          microvm = {{
+            hypervisor = "qemu";
+            mem = {memory};
+            vcpu = {vcpus};
+            
+            shares = [
+              {{
+                proto = "virtiofs";
+                tag = "workspace";
+                source = "{workspace_dir}";
+                mountPoint = "/workspace";
+              }}
+            ];
+            
+            interfaces = [
+              {{
+                type = "{network}";
+                id = "eth0";
+                mac = "02:00:00:01:01:01";
+              }}
+            ];
+          }};
+
+          networking.hostName = "{sandbox_name}";
+          
+          users.users.sandbox = {{
+            isNormalUser = true;
+            description = "Sandbox User";
+            extraGroups = [ "wheel" ];
+            initialPassword = "sandbox";
+          }};
+          
+          security.sudo.wheelNeedsPassword = false;
+          
+          # Development tools
+          environment.systemPackages = with pkgs; [
+            git
+            vim
+            curl
+            htop
+          ];
+          
+          services.openssh = {{
+            enable = true;
+            settings.PasswordAuthentication = true;
+          }};
+          
+          system.stateVersion = "25.05";
+        }})
+      ];
+    }};
   }};
-  
-  security.sudo.wheelNeedsPassword = false;
-  
-  services.openssh = {{
-    enable = true;
-    settings.PasswordAuthentication = true;
-  }};
-  
-  system.stateVersion = "25.05";
 }}
 '''
     
