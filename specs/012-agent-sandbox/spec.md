@@ -152,7 +152,7 @@ A developer in a team environment wants sandboxes to run on a shared Kubernetes 
 **Developer Experience**:
 - **FR-009**: System MUST provide a TUI for session management (attach, detach, switch worktrees)
 - **FR-010**: TUI MUST integrate with Zellij web sessions for terminal multiplexing
-- **FR-011**: TUI MUST work both on host (as controller) and inside VM (as client)
+- **FR-011**: TUI MUST work both on host (as controller) and inside VM (as client) - satisfied by Zellij's native session management in guest
 - **FR-012**: System MUST automatically proxy development servers to `<project>.sandbox.local` hostnames
 
 **Backend Abstraction**:
@@ -173,7 +173,7 @@ A developer in a team environment wants sandboxes to run on a shared Kubernetes 
 
 ### Key Entities
 
-- **Sandbox**: An isolated execution environment (MicroVM or pod) with a single project workspace. Lifecycle states: `starting` (provisioning), `running` (usable), `stopped` (terminated), `error` (failed)
+- **Sandbox**: An isolated execution environment (MicroVM or pod) with a single project workspace. Lifecycle states: `created` (initialized), `starting` (provisioning), `running` (usable), `stopping` (shutting down), `stopped` (terminated), `error` (failed)
 - **Workspace**: The `/workspace/` directory containing the cloned repo and `.worktrees/` folder
 - **Worktree**: A git worktree at `/workspace/.worktrees/<branch>/` for parallel branch work
 - **Backend**: The runtime provider (MicroVM, Kubernetes) that creates and manages sandboxes
@@ -194,7 +194,7 @@ A developer in a team environment wants sandboxes to run on a shared Kubernetes 
 
 ### Measurable Outcomes
 
-- **SC-001**: User can go from `keystone agent start` to agent executing tasks in under 30 seconds (warm cache)
+- **SC-001**: User can go from `keystone agent start` to agent executing tasks in under 30 seconds (warm cache: VM image cached locally, sandbox previously created with `persist=true`)
 - **SC-002**: Agent operates without any permission prompts or confirmation dialogs during normal operation
 - **SC-003**: Code changes sync to host in under 5 seconds for typical commits
 - **SC-004**: TUI session attach latency is under 500ms
