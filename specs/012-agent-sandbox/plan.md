@@ -106,10 +106,10 @@ bin/
 # NixOS Modules
 modules/keystone/agent/
 ├── default.nix          # Module entrypoint with keystone.agent.* options
-├── sandbox.nix          # MicroVM sandbox configuration
 ├── sync.nix             # Git/rsync sync services
 ├── proxy.nix            # Dev server proxy configuration
 └── backends/
+    ├── default.nix      # Backend interface abstraction
     ├── microvm.nix      # MicroVM backend implementation
     └── kubernetes.nix   # K8s backend stub (future)
 
@@ -200,4 +200,4 @@ No constitution violations identified. Design is ready for task generation.
 | data-model.md | Complete | `specs/012-agent-sandbox/data-model.md` |
 | cli-spec.md | Complete | `specs/012-agent-sandbox/contracts/cli-spec.md` |
 | quickstart.md | Complete | `specs/012-agent-sandbox/quickstart.md` |
-| tasks.md | Pending | Run `/speckit.tasks` to generate |
+| tasks.md | Complete | `specs/012-agent-sandbox/tasks.md` |
