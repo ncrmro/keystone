@@ -503,3 +503,6 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
 - `keystone.desktop.hyprland.enable` - Enable Hyprland config
 - `keystone.desktop.hyprland.modifierKey` - Primary modifier (default: ALT)
 - `keystone.desktop.hyprland.capslockAsControl` - Remap caps to ctrl (default: true)
+
+## Recent Changes
+- 012-agent-sandbox: Added Nix (NixOS Flakes), Bash/Python for CLI scripts + microvm.nix (astro/microvm.nix), Zellij, QEMU, virtiofs/9p
