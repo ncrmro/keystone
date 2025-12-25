@@ -322,7 +322,6 @@ class AgentCLI:
             [
                 "nix", "build",
                 "--offline",  # Use offline mode to prevent network fetches
-                "--refresh", "false",  # Don't refresh cached inputs
                 f"{state_dir}#nixosConfigurations.sandbox.config.microvm.declaredRunner",
                 "--out-link", str(runner_path)
             ],
