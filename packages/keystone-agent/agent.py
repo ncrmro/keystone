@@ -474,10 +474,39 @@ class AgentCLI:
             print_info("No sandboxes found")
             return 0
         
-        print(f"{Colors.BOLD}Sandboxes:{Colors.RESET}")
-        for name, config in sandboxes.items():
+        # JSON output
+        if args.json:
+            import json
+            print(json.dumps(sandboxes, indent=2))
+            return 0
+        
+        # Table output
+        # Header
+        print(f"{Colors.BOLD}{'SANDBOX':<20} {'STATE':<12} {'BACKEND':<10} {'PROJECT':<40}{Colors.RESET}")
+        print("─" * 82)
+        
+        # Rows
+        for name, config in sorted(sandboxes.items()):
             status = config.get('status', 'unknown')
-            print(f"  {name}: {status}")
+            backend = 'microvm'  # Default backend
+            project_path = config.get('project_path', 'N/A')
+            
+            # Truncate project path if too long
+            if len(project_path) > 38:
+                project_path = '...' + project_path[-35:]
+            
+            # Color code status
+            if status == 'running':
+                status_colored = f"{Colors.GREEN}{status}{Colors.RESET}"
+            elif status == 'stopped':
+                status_colored = f"{Colors.YELLOW}{status}{Colors.RESET}"
+            else:
+                status_colored = status
+            
+            print(f"{name:<20} {status_colored:<21} {backend:<10} {project_path:<40}")
+        
+        print()
+        print(f"Total: {len(sandboxes)} sandbox(es)")
         
         return 0
     
