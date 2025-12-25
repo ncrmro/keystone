@@ -33,6 +33,7 @@ in
       solargraph
       nodePackages.prettier
       harper
+      nil # Nix LSP
     ];
 
     # Helix - Modal text editor
@@ -112,13 +113,19 @@ in
             command = "${harper}/bin/harper-ls";
             args = [ "--stdio" ];
           };
+          nil = {
+            command = "${nil}/bin/nil";
+          };
         };
         language = [
           {
             name = "nix";
             auto-format = true;
             formatter.command = "${pkgs.nixfmt}/bin/nixfmt";
-            language-servers = [ "harper-ls" ];
+            language-servers = [
+              "nil"
+              "harper-ls"
+            ];
           }
           {
             name = "bash";
