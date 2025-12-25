@@ -17,6 +17,7 @@ in
       vscode-langservers-extracted
       marksman
       nixfmt-classic
+      nil # Nix LSP
     ];
 
     programs.helix = {
@@ -56,6 +57,9 @@ in
             command = "${pkgs.marksman}/bin/marksman";
             args = [ "server" ];
           };
+          nil = {
+            command = "${pkgs.nil}/bin/nil";
+          };
         };
 
         language = [
@@ -63,6 +67,7 @@ in
             name = "nix";
             auto-format = true;
             formatter.command = "${pkgs.nixfmt-classic}/bin/nixfmt";
+            language-servers = [ "nil" ];
           }
           {
             name = "bash";
