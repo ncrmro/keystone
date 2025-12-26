@@ -698,14 +698,17 @@ class AgentCLI:
 
         # SSH to the sandbox (user networking uses port forwarding)
         # Default SSH port is forwarded to localhost:2223 in user mode
+        # Start in /workspace directory for convenience
         result = subprocess.run(
             [
                 "ssh",
+                "-t",  # Force pseudo-terminal for interactive shell
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "LogLevel=ERROR",
                 "-p", "2223",
-                "sandbox@localhost"
+                "sandbox@localhost",
+                "cd /workspace && exec $SHELL -l"
             ]
         )
 
@@ -1108,15 +1111,17 @@ class AgentCLI:
             print_info(f"Start it with: keystone agent start")
             return 1
 
-        # SSH to the sandbox
+        # SSH to the sandbox, starting in /workspace
         result = subprocess.run(
             [
                 "ssh",
+                "-t",  # Force pseudo-terminal for interactive shell
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "LogLevel=ERROR",
                 "-p", "2223",
-                "sandbox@localhost"
+                "sandbox@localhost",
+                "cd /workspace && exec $SHELL -l"
             ]
         )
 
