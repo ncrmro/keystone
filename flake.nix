@@ -73,6 +73,11 @@
         _module.args.inputs = inputs;
       };
 
+      # Agent Sandbox module - isolated AI coding agent environments
+      agent = {
+        imports = [./modules/keystone/agent];
+      };
+
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
     };
@@ -84,6 +89,7 @@
       # Keystone-specific home-manager modules
       terminal = ./modules/keystone/terminal/default.nix;
       desktop = ./modules/keystone/desktop/home/default.nix;
+      agentTui = ./modules/keystone/agent/home/tui.nix;
     };
 
     # Packages exported for consumption
@@ -95,6 +101,7 @@
       zesh = pkgs.callPackage ./packages/zesh {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
+      keystone-agent = pkgs.callPackage ./packages/keystone-agent {};
     };
 
     # Development shell
@@ -141,6 +148,7 @@
           jq
           yq-go
           gh # GitHub CLI
+          python3
         ];
 
         shellHook = ''
