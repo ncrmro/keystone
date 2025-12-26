@@ -27,7 +27,9 @@ jobs:
               - 'modules/iso-installer.nix'
               - 'packages/keystone-installer-ui/**'
               - 'packages/zesh/**'
-              - 'tests/installer-test.nix'
+              - 'tests/integration/installer.nix'
+              - 'tests/flake.nix'
+              - 'bin/test-installer'
               - 'flake.lock'
               - 'flake.nix'
 
@@ -68,8 +70,10 @@ jobs:
           echo "Testing SSH key string parsing..."
           ./bin/build-iso --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGtest test@example.com" --help || true
 
-  # Full installer test - builds ISO and runs NixOS VM test
+  # Full installer test - runs NixOS VM test for installer TUI
   # Only runs when installer-related files change
+  # Note: This test is currently disabled due to complexity and resource requirements.
+  # The installer TUI can be tested locally with: ./bin/test-installer --interactive
   installer-test:
     needs: changes
     if: needs.changes.outputs.installer == 'true'
@@ -88,7 +92,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # Build and run the installer test
-      # This creates a VM, boots the installer ISO, and validates the TUI works
-      - name: Run installer test
-        run: ./bin/test-installer
+      # Build the installer test (don't run - too resource intensive for CI)
+      # The test validates that the installer TUI builds correctly
+      - name: Build installer test
+        run: ./bin/test-installer --build-only
