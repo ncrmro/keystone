@@ -596,7 +596,19 @@ class AgentCLI:
             curl
             wget
             htop
+            direnv
           ];
+
+          # Configure bash with direnv hook
+          programs.bash.interactiveShellInit = '''
+            eval "$(direnv hook bash)"
+          ''';
+
+          # Auto-allow direnv for /workspace
+          environment.etc."direnv/direnv.toml".text = '''
+            [whitelist]
+            prefix = [ "/workspace" ]
+          ''';
 
           # SSH configuration
           {ssh_config}
