@@ -538,13 +538,18 @@ tests/microvm/agent-sandbox.nix  # MicroVM test configuration
 CLI Commands:
 - `keystone agent start` - Launch sandbox for current project
 - `keystone agent stop` - Stop sandbox
-- `keystone agent attach` - Attach to Zellij session
-- `keystone agent sync` - Sync changes back to host
+- `keystone agent attach` / `ssh` - SSH into sandbox
+- `keystone agent exec` - Run command in sandbox
+- `keystone agent sync` - Sync committed changes back to host
 - `keystone agent status` - Show sandbox status and resources
 - `keystone agent list` - List all sandboxes
 - `keystone agent destroy` - Remove sandbox completely
 
-See: `specs/012-agent-sandbox/` for full specification and implementation status
+Documentation:
+- `packages/keystone-agent/README.md` - Quick CLI reference
+- `docs/agent-sandbox.md` - Full user guide
+- `docs/agent-microvms.md` - Architecture deep dive
+- `specs/012-agent-sandbox/` - Implementation specification
 
 ## Deployment Patterns
 

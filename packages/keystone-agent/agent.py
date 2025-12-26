@@ -217,7 +217,30 @@ class AgentCLI:
             if sandbox.get('status') != actual_status:
                 sandbox['status'] = actual_status
                 self.registry.add_sandbox(sandbox_name, sandbox)
-    
+
+    def _run_in_sandbox(self, sandbox_name: str, command: list) -> subprocess.CompletedProcess:
+        """Execute a command inside the sandbox via SSH.
+
+        Args:
+            sandbox_name: Name of the sandbox (used for error messages)
+            command: Command and arguments to run in the sandbox
+
+        Returns:
+            CompletedProcess with stdout, stderr, and returncode
+        """
+        ssh_cmd = [
+            "ssh",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "LogLevel=ERROR",
+            "-o", "ConnectTimeout=10",
+            "-p", "2223",
+            "sandbox@localhost",
+            "--"
+        ] + command
+
+        return subprocess.run(ssh_cmd, capture_output=True, text=True)
+
     def run(self, args: argparse.Namespace) -> int:
         """Main entry point for CLI commands."""
         command = args.command
@@ -689,8 +712,200 @@ class AgentCLI:
         return result.returncode
     
     def cmd_sync(self, args: argparse.Namespace) -> int:
-        """Sync changes between sandbox and host."""
-        print_info("Command 'sync' not yet implemented")
+        """Sync changes from sandbox back to host.
+
+        This command pulls committed changes from the sandbox workspace
+        back to the host repository using git fetch and merge.
+
+        Exit codes:
+            0 - Sync completed successfully
+            1 - Sandbox not found or not running
+            2 - No changes to sync
+            3 - Merge conflict or fetch failed
+        """
+        # 1. Resolve sandbox
+        sandbox = self._get_sandbox_or_error(args.name)
+        if not sandbox:
+            return 1
+
+        sandbox_name = sandbox['_name']
+        project_path = Path(sandbox.get('project_path'))
+
+        # 2. Check sandbox is running
+        if not self._is_running(sandbox_name):
+            print_error(f"Sandbox '{sandbox_name}' is not running")
+            print_info("Start it with: keystone agent start")
+            return 1
+
+        # 3. Check host repo state
+        host_status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=project_path,
+            capture_output=True,
+            text=True
+        )
+
+        if host_status.stdout.strip():
+            print_warning("Host repository has uncommitted changes:")
+            for line in host_status.stdout.strip().split('\n')[:5]:
+                print(f"  {line}")
+            if len(host_status.stdout.strip().split('\n')) > 5:
+                print("  ...")
+            print_info("Consider stashing: git stash")
+            # Don't block, just warn - conflicts will be caught during merge
+
+        # 4. Check sandbox for changes
+        print_info(f"Checking sandbox '{sandbox_name}' for changes...")
+
+        sandbox_status = self._run_in_sandbox(
+            sandbox_name,
+            ["git", "-C", "/workspace", "status", "--porcelain"]
+        )
+
+        sandbox_log = self._run_in_sandbox(
+            sandbox_name,
+            ["git", "-C", "/workspace", "log", "--oneline", "origin/HEAD..HEAD", "-n", "20"]
+        )
+
+        uncommitted = sandbox_status.stdout.strip() if sandbox_status.returncode == 0 else ""
+        new_commits = sandbox_log.stdout.strip() if sandbox_log.returncode == 0 else ""
+
+        # 5. Report findings
+        has_changes = bool(new_commits)
+
+        if not has_changes and not args.artifacts:
+            if uncommitted:
+                print_info("Sandbox has uncommitted changes (not synced):")
+                for line in uncommitted.split('\n')[:10]:
+                    print(f"  {line}")
+                print_info("Commit changes in sandbox to sync them")
+            else:
+                print_info("Nothing to sync - sandbox is up to date with host")
+            return 2
+
+        # 6. Show what will be synced
+        if new_commits:
+            print(f"\n{Colors.CYAN}New commits in sandbox:{Colors.RESET}")
+            for line in new_commits.split('\n'):
+                print(f"  {line}")
+
+        if uncommitted:
+            print(f"\n{Colors.YELLOW}Uncommitted changes (will NOT sync):{Colors.RESET}")
+            for line in uncommitted.split('\n')[:10]:
+                print(f"  {line}")
+            if len(uncommitted.split('\n')) > 10:
+                print("  ...")
+
+        # 7. Dry run stops here
+        if args.dry_run:
+            print_info("\nDry run complete - no changes made")
+            return 0
+
+        # 8. Perform git sync
+        if new_commits:
+            print_info("\nFetching changes from sandbox...")
+
+            # Set up SSH command for git
+            ssh_command = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -p 2223"
+            env = {**os.environ, "GIT_SSH_COMMAND": ssh_command}
+
+            # Fetch from sandbox
+            result = subprocess.run(
+                ["git", "fetch", "sandbox@localhost:/workspace", "HEAD"],
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                env=env
+            )
+
+            if result.returncode != 0:
+                print_error("Failed to fetch from sandbox")
+                if result.stderr:
+                    for line in result.stderr.strip().split('\n')[-5:]:
+                        print(f"  {line}")
+                return 3
+
+            # Try fast-forward merge
+            result = subprocess.run(
+                ["git", "merge", "--ff-only", "FETCH_HEAD"],
+                cwd=project_path,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                print_warning("Fast-forward merge not possible")
+                print_info("The sandbox branch has diverged from host")
+                print_info("To resolve, run in your project directory:")
+                print(f"  cd {project_path}")
+                print("  git merge FETCH_HEAD  # or: git rebase FETCH_HEAD")
+                return 3
+
+            print_success("Git changes synced successfully!")
+
+        # 9. Sync artifacts if requested
+        if args.artifacts:
+            return self._sync_artifacts(sandbox_name, project_path, dry_run=False)
+
+        return 0
+
+    def _sync_artifacts(self, sandbox_name: str, project_path: Path,
+                        dry_run: bool = False) -> int:
+        """Rsync build artifacts from sandbox to host.
+
+        Args:
+            sandbox_name: Name of the sandbox
+            project_path: Path to host project directory
+            dry_run: If True, only show what would be synced
+
+        Returns:
+            0 on success, non-zero on failure
+        """
+        # Common artifact directories
+        artifact_dirs = ["dist/", "build/", "target/", ".next/", "out/"]
+
+        print_info("Syncing build artifacts...")
+
+        synced_any = False
+        for artifact_dir in artifact_dirs:
+            # Check if directory exists in sandbox
+            check = self._run_in_sandbox(
+                sandbox_name,
+                ["test", "-d", f"/workspace/{artifact_dir}"]
+            )
+
+            if check.returncode == 0:
+                print_info(f"  Syncing {artifact_dir}...")
+
+                rsync_cmd = [
+                    "rsync",
+                    "-avz",
+                    "--progress",
+                    "-e", "ssh -p 2223 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR",
+                ]
+
+                if dry_run:
+                    rsync_cmd.append("--dry-run")
+
+                source = f"sandbox@localhost:/workspace/{artifact_dir}"
+                dest = str(project_path / artifact_dir)
+
+                result = subprocess.run(
+                    rsync_cmd + [source, dest],
+                    capture_output=True,
+                    text=True
+                )
+
+                if result.returncode != 0:
+                    print_warning(f"  Failed to sync {artifact_dir}")
+                    if result.stderr:
+                        print(f"    {result.stderr.strip()}")
+                else:
+                    synced_any = True
+
+        if not synced_any:
+            print_info("No artifact directories found to sync")
+
         return 0
     
     def cmd_status(self, args: argparse.Namespace) -> int:
