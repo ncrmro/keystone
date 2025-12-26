@@ -18,39 +18,36 @@
   # Import required Keystone modules
   imports = [
     # These would be imported from the Keystone flake in a real deployment:
-    # keystone.nixosModules.diskoSingleDiskRoot
-    # keystone.nixosModules.secureBoot
-    # keystone.nixosModules.tpmEnrollment
+    # keystone.nixosModules.operating-system
   ];
 
   # Basic system configuration
   networking.hostName = "keystone-example";
   networking.hostId = "12345678"; # Required for ZFS
 
-  # Enable Keystone disk encryption with disko
-  keystone.disko = {
-    enable = true;
-    device = "/dev/vda"; # Or /dev/disk/by-id/... for bare metal
-    swapSize = "8G";
-  };
-
-  # Enable Secure Boot (prerequisite for TPM enrollment)
-  keystone.secureBoot = {
-    enable = true;
-  };
-
-  # Enable TPM enrollment module with default settings
-  keystone.tpmEnrollment = {
+  # Enable Keystone OS with disk encryption, Secure Boot, and TPM
+  keystone.os = {
     enable = true;
 
-    # Optional: Customize PCR list
-    # Default [1 7] is recommended for most users
-    # tpmPCRs = [ 1 7 ];  # Default: Firmware config + Secure Boot
-    # tpmPCRs = [ 7 ];    # More update-resilient: Secure Boot only
-    # tpmPCRs = [ 0 1 7 ]; # More restrictive: Firmware code + config + Secure Boot
+    # Storage configuration
+    storage = {
+      type = "zfs";
+      devices = ["/dev/vda"]; # Or /dev/disk/by-id/... for bare metal
+      swap.size = "8G";
+    };
 
-    # Optional: Custom credstore device (if you modified disko config)
-    # credstoreDevice = "/dev/zvol/rpool/credstore";  # Default
+    # Enable Secure Boot (prerequisite for TPM enrollment)
+    secureBoot.enable = true;
+
+    # Enable TPM enrollment with default settings
+    tpm = {
+      enable = true;
+      # Optional: Customize PCR list
+      # Default [1 7] is recommended for most users
+      pcrs = [1 7]; # Default: Firmware config + Secure Boot
+      # pcrs = [ 7 ];    # More update-resilient: Secure Boot only
+      # pcrs = [ 0 1 7 ]; # More restrictive: Firmware code + config + Secure Boot
+    };
   };
 
   # User account configuration
