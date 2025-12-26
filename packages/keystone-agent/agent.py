@@ -105,11 +105,6 @@ def print_warning(msg: str) -> None:
     print(f"{Colors.YELLOW}⚠ {msg}{Colors.RESET}")
 
 
-def print_warning(msg: str) -> None:
-    """Print warning message in yellow."""
-    print(f"{Colors.YELLOW}⚠ {msg}{Colors.RESET}")
-
-
 class SandboxRegistry:
     """Manages the registry of sandboxes."""
     
@@ -304,6 +299,20 @@ class AgentCLI:
                 print_error(f"Failed to clone repository: {result.stderr}")
                 return 1
         
+        # Find user's SSH public key for authentication
+        ssh_key = None
+        for key_name in ["id_ed25519.pub", "id_rsa.pub", "id_ecdsa.pub"]:
+            key_path = Path.home() / ".ssh" / key_name
+            if key_path.exists():
+                ssh_key = key_path.read_text().strip()
+                print_info(f"Using SSH key: {key_path}")
+                break
+
+        if not ssh_key:
+            print_warning("No SSH key found in ~/.ssh/")
+            print_info("Generate one with: ssh-keygen -t ed25519")
+            print_info("Falling back to password authentication (password: sandbox)")
+
         print_success(f"Starting sandbox '{sandbox_name}'...")
         print(f"  Project: {project_path}")
         print(f"  Memory: {args.memory} MB")
@@ -311,7 +320,8 @@ class AgentCLI:
         print(f"  Nested virt: {'disabled' if args.no_nested else 'enabled'}")
         print(f"  Network: {args.network}")
         print(f"  Sync mode: {args.sync_mode}")
-        
+        print(f"  SSH auth: {'key' if ssh_key else 'password'}")
+
         # Generate flake.nix and configuration for the sandbox
         print_info("Generating sandbox configuration...")
         flake_content = self._generate_sandbox_flake(
@@ -320,7 +330,8 @@ class AgentCLI:
             memory=args.memory,
             vcpus=args.vcpus,
             nested=not args.no_nested,
-            network=args.network
+            network=args.network,
+            ssh_key=ssh_key
         )
         
         # Write flake to state directory
@@ -407,7 +418,8 @@ class AgentCLI:
             'network': args.network,
             'sync_mode': args.sync_mode,
             'status': 'stopped',
-            'runner_path': str(runner_path)
+            'runner_path': str(runner_path),
+            'ssh_auth': 'key' if ssh_key else 'password'
         })
 
         # Launch the MicroVM in the background
@@ -441,12 +453,13 @@ class AgentCLI:
         # Just check if port is open, don't try to auth
         for i in range(30):  # Wait up to 30 seconds
             result = subprocess.run(
-                ["nc", "-z", "localhost", "2222"],
+                ["nc", "-z", "localhost", "2223"],
                 capture_output=True
             )
             if result.returncode == 0:
                 print_success("SSH port is ready!")
-                print_info("Password: sandbox")
+                if not ssh_key:
+                    print_info("Password: sandbox")
                 break
             time.sleep(1)
         else:
@@ -460,7 +473,8 @@ class AgentCLI:
         return 0
     
     def _generate_sandbox_flake(self, sandbox_name: str, workspace_dir: Path,
-                                 memory: int, vcpus: int, nested: bool, network: str) -> str:
+                                 memory: int, vcpus: int, nested: bool, network: str,
+                                 ssh_key: Optional[str] = None) -> str:
         """Generate minimal flake.nix for the sandbox MicroVM.
 
         Uses a pinned nixpkgs revision for reproducibility and a minimal NixOS
@@ -469,6 +483,36 @@ class AgentCLI:
         # Pin to known-good nixpkgs revision from keystone flake.lock
         # This avoids build failures from transient breakage in nixos-unstable HEAD
         nixpkgs_rev = "c6245e83d836d0433170a16eb185cefe0572f8b8"
+
+        # Generate user config based on SSH key availability
+        if ssh_key:
+            # SSH key auth - more secure, no password needed
+            user_config = f'''users.users.sandbox = {{
+            isNormalUser = true;
+            extraGroups = [ "wheel" ];
+            openssh.authorizedKeys.keys = [ "{ssh_key}" ];
+          }};'''
+            ssh_config = '''services.openssh = {
+            enable = true;
+            settings = {
+              PasswordAuthentication = false;
+              PermitRootLogin = "no";
+            };
+          };'''
+        else:
+            # Fallback to password auth when no SSH key available
+            user_config = '''users.users.sandbox = {
+            isNormalUser = true;
+            extraGroups = [ "wheel" ];
+            initialPassword = "sandbox";
+          };'''
+            ssh_config = '''services.openssh = {
+            enable = true;
+            settings = {
+              PasswordAuthentication = true;
+              PermitRootLogin = "no";
+            };
+          };'''
 
         return f'''{{
   description = "Agent Sandbox: {sandbox_name}";
@@ -507,9 +551,9 @@ class AgentCLI:
               mac = "02:00:00:01:01:01";
             }}];
 
-            # Forward SSH port to host
+            # Forward SSH port to localhost only
             forwardPorts = [
-              {{ from = "host"; host.port = 2222; guest.port = 22; }}
+              {{ from = "host"; host.port = 2223; guest.port = 22; }}
             ];
           }};
 
@@ -517,12 +561,8 @@ class AgentCLI:
           networking.hostName = "{sandbox_name}";
           system.stateVersion = "25.05";
 
-          # Single user with sudo
-          users.users.sandbox = {{
-            isNormalUser = true;
-            extraGroups = [ "wheel" ];
-            initialPassword = "sandbox";
-          }};
+          # User configuration
+          {user_config}
           security.sudo.wheelNeedsPassword = false;
 
           # Basic development tools only
@@ -535,14 +575,8 @@ class AgentCLI:
             htop
           ];
 
-          # SSH for access
-          services.openssh = {{
-            enable = true;
-            settings = {{
-              PasswordAuthentication = true;
-              PermitRootLogin = "yes";
-            }};
-          }};
+          # SSH configuration
+          {ssh_config}
         }})
       ];
     }};
@@ -640,15 +674,14 @@ class AgentCLI:
         print_info("Use 'exit' or Ctrl-D to detach")
 
         # SSH to the sandbox (user networking uses port forwarding)
-        # Default SSH port is forwarded to localhost:2222 in user mode
+        # Default SSH port is forwarded to localhost:2223 in user mode
         result = subprocess.run(
             [
                 "ssh",
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "LogLevel=ERROR",
-                "-o", "PreferredAuthentications=password,keyboard-interactive",
-                "-p", "2222",
+                "-p", "2223",
                 "sandbox@localhost"
             ]
         )
@@ -838,8 +871,7 @@ class AgentCLI:
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "LogLevel=ERROR",
-                "-o", "PreferredAuthentications=password,keyboard-interactive",
-                "-p", "2222",
+                "-p", "2223",
                 "sandbox@localhost",
                 "--"
             ] + command
@@ -868,8 +900,7 @@ class AgentCLI:
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "LogLevel=ERROR",
-                "-o", "PreferredAuthentications=password,keyboard-interactive",
-                "-p", "2222",
+                "-p", "2223",
                 "sandbox@localhost"
             ]
         )
