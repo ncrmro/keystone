@@ -68,6 +68,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -393,7 +394,7 @@ class AgentCLI:
                         print(f"  {line}")
             return 3
         
-        # Register sandbox
+        # Register sandbox (initially as stopped until we launch it)
         self.registry.add_sandbox(sandbox_name, {
             'name': sandbox_name,
             'project_path': str(project_path),
@@ -405,18 +406,57 @@ class AgentCLI:
             'nested': not args.no_nested,
             'network': args.network,
             'sync_mode': args.sync_mode,
-            'status': 'running',
+            'status': 'stopped',
             'runner_path': str(runner_path)
         })
-        
+
+        # Launch the MicroVM in the background
+        print_info("Launching MicroVM...")
+        microvm_run = runner_path / "bin" / "microvm-run"
+
+        # Start the MicroVM process in background (must run in state_dir for socket paths)
+        process = subprocess.Popen(
+            [str(microvm_run)],
+            cwd=str(state_dir),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True  # Detach from terminal
+        )
+
+        # Save PID for tracking
+        pid_file = self._get_pid_file(sandbox_name)
+        pid_file.write_text(str(process.pid))
+
+        # Update status to running
+        sandbox = self.registry.get_sandbox(sandbox_name)
+        sandbox['status'] = 'running'
+        sandbox['pid'] = process.pid
+        self.registry.add_sandbox(sandbox_name, sandbox)
+
         print_success(f"Sandbox '{sandbox_name}' started successfully!")
-        print_info(f"Runner: {runner_path}/bin/microvm-run")
-        
+        print_info(f"PID: {process.pid}")
+        print_info("Waiting for SSH to become available...")
+
+        # Wait for SSH to be ready (with timeout)
+        # Just check if port is open, don't try to auth
+        for i in range(30):  # Wait up to 30 seconds
+            result = subprocess.run(
+                ["nc", "-z", "localhost", "2222"],
+                capture_output=True
+            )
+            if result.returncode == 0:
+                print_success("SSH port is ready!")
+                print_info("Password: sandbox")
+                break
+            time.sleep(1)
+        else:
+            print_warning("SSH not ready after 30s - VM may still be booting")
+            print_info("Try: keystone agent ssh")
+
         if not args.no_attach:
-            print_info("To start the MicroVM, run:")
-            print(f"  {runner_path}/bin/microvm-run")
-            print_warning("Auto-attach not yet implemented. Use 'keystone agent attach' to connect.")
-        
+            print_info("Attaching to sandbox...")
+            return self.cmd_attach(args)
+
         return 0
     
     def _generate_sandbox_flake(self, sandbox_name: str, workspace_dir: Path,
@@ -453,8 +493,9 @@ class AgentCLI:
             mem = {memory};
             vcpu = {vcpus};
 
+            # Use 9p instead of virtiofs - simpler, doesn't require virtiofsd daemon
             shares = [{{
-              proto = "virtiofs";
+              proto = "9p";
               tag = "workspace";
               source = "{workspace_dir}";
               mountPoint = "/workspace";
@@ -465,6 +506,11 @@ class AgentCLI:
               id = "eth0";
               mac = "02:00:00:01:01:01";
             }}];
+
+            # Forward SSH port to host
+            forwardPorts = [
+              {{ from = "host"; host.port = 2222; guest.port = 22; }}
+            ];
           }};
 
           # Minimal system config
@@ -492,7 +538,10 @@ class AgentCLI:
           # SSH for access
           services.openssh = {{
             enable = true;
-            settings.PasswordAuthentication = true;
+            settings = {{
+              PasswordAuthentication = true;
+              PermitRootLogin = "yes";
+            }};
           }};
         }})
       ];
@@ -527,11 +576,12 @@ class AgentCLI:
             print_info(f"Stopping sandbox '{sandbox_name}'...")
             result = subprocess.run(
                 [str(shutdown_script)],
+                cwd=str(state_dir),
                 capture_output=True,
                 text=True
             )
             if result.returncode == 0:
-                print_success(f"Sandbox '{sandbox_name}' stopped")
+                print_success(f"MicroVM stopped")
             else:
                 print_warning("Graceful shutdown failed, trying force kill...")
                 # Force kill via PID
@@ -540,7 +590,7 @@ class AgentCLI:
                     try:
                         pid = int(pid_file.read_text().strip())
                         os.kill(pid, 15)  # SIGTERM
-                        print_success(f"Sandbox '{sandbox_name}' terminated")
+                        print_success(f"MicroVM terminated")
                     except (ValueError, ProcessLookupError):
                         pass
         else:
@@ -550,15 +600,22 @@ class AgentCLI:
                 try:
                     pid = int(pid_file.read_text().strip())
                     os.kill(pid, 15)  # SIGTERM
-                    print_success(f"Sandbox '{sandbox_name}' terminated")
+                    print_success(f"MicroVM terminated")
                 except (ValueError, ProcessLookupError):
                     print_error(f"Could not stop sandbox '{sandbox_name}'")
                     return 1
 
+        # Clean up PID file
+        pid_file = self._get_pid_file(sandbox_name)
+        if pid_file.exists():
+            pid_file.unlink()
+
         # Update status
         sandbox['status'] = 'stopped'
+        del sandbox['_name']  # Remove internal field
         self.registry.add_sandbox(sandbox_name, sandbox)
 
+        print_success(f"Sandbox '{sandbox_name}' stopped")
         return 0
     
     def cmd_attach(self, args: argparse.Namespace) -> int:
@@ -590,6 +647,7 @@ class AgentCLI:
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "LogLevel=ERROR",
+                "-o", "PreferredAuthentications=password,keyboard-interactive",
                 "-p", "2222",
                 "sandbox@localhost"
             ]
@@ -780,6 +838,7 @@ class AgentCLI:
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "LogLevel=ERROR",
+                "-o", "PreferredAuthentications=password,keyboard-interactive",
                 "-p", "2222",
                 "sandbox@localhost",
                 "--"
@@ -809,6 +868,7 @@ class AgentCLI:
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "LogLevel=ERROR",
+                "-o", "PreferredAuthentications=password,keyboard-interactive",
                 "-p", "2222",
                 "sandbox@localhost"
             ]
