@@ -132,8 +132,8 @@ cd "$PROJECT_DIR"
 
 if [[ "$MODE" == "interactive" ]]; then
     echo -e "${BLUE}Building interactive test driver...${NC}"
-    # Test is in packages (not checks) to avoid IFD issues with nix flake check
-    nix_cmd build .#installer-test.driverInteractive
+    # Test is in tests/flake.nix checks
+    nix_cmd build ./tests#checks.x86_64-linux.test-installer.driverInteractive
 
     if [[ "$BUILD_ONLY" == "true" ]]; then
         echo -e "${GREEN}Build complete: ./result/bin/nixos-test-driver${NC}"
@@ -153,14 +153,14 @@ else
     echo -e "${BLUE}Building and running test headlessly...${NC}"
 
     if [[ "$BUILD_ONLY" == "true" ]]; then
-        # Test is in packages (not checks) to avoid IFD issues with nix flake check
-        nix_cmd build .#installer-test
+        # Test is in tests/flake.nix checks
+        nix_cmd build ./tests#checks.x86_64-linux.test-installer
         echo -e "${GREEN}Build complete: ./result${NC}"
         exit 0
     fi
 
-    # Run the test (in packages, not checks)
-    if nix_cmd build .#installer-test --print-build-logs; then
+    # Run the test
+    if nix_cmd build ./tests#checks.x86_64-linux.test-installer --print-build-logs; then
         echo -e "${GREEN}✓ All tests passed!${NC}"
         exit 0
     else
