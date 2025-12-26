@@ -9,10 +9,12 @@ Keystone is a NixOS-based self-sovereign infrastructure platform that enables us
 ## Core Architecture
 
 ### Module System
-The project is organized around NixOS modules that can be composed together:
+The project is organized around NixOS modules in four main categories:
 
 - **`modules/os/`** - Core operating system module (storage, secure boot, TPM, remote unlock, users, services)
-- **`modules/keystone/desktop/`** - Hyprland desktop environment (audio, greetd login)
+- **`modules/desktop/`** - Hyprland desktop environment (audio, greetd login)
+- **`modules/terminal/`** - Terminal development environment (zsh, helix, zellij)
+- **`modules/server/`** - Optional server services (VPN, monitoring, mail)
 - **`modules/iso-installer.nix`** - Bootable installer configuration
 
 The `modules/os/` module provides a unified `keystone.os.*` options interface:
@@ -43,7 +45,23 @@ The desktop module provides a complete Hyprland environment:
 - **PipeWire** audio with ALSA/Pulse/Jack compatibility
 - **greetd** login manager with tuigreet
 - **NetworkManager** with Bluetooth support
-- Modular desktop components in `modules/keystone/desktop/`
+- Modular desktop components in `modules/desktop/`
+
+### Server Services
+The server module provides optional infrastructure services:
+- **VPN** - Headscale/Tailscale VPN server (Kubernetes-based)
+- **Monitoring** - Prometheus/Grafana stack (NixOS services)
+- **Mail** - Placeholder for future mail server implementation
+- **Headscale Exit Node** - Placeholder for exit node configuration
+- **Observability** - Loki/Alloy (Kubernetes-based, reference implementation)
+
+### Terminal Environment
+The terminal module provides development tools:
+- **Zsh** shell with starship prompt
+- **Helix** editor with language servers
+- **Zellij** terminal multiplexer
+- **Git** configuration with user credentials
+- **AI tools** - Claude Code and other AI assistants
 
 ## Common Development Commands
 
@@ -93,6 +111,31 @@ The `bin/build-vm` script provides the **fastest way** to test desktop and termi
 **Configurations**:
 - `terminal`: Minimal NixOS with terminal dev environment (Helix, Zsh, Zellij, Ghostty, Git)
 - `desktop`: Full Hyprland desktop + terminal dev environment (Firefox, VSCode, VLC, Waybar, etc.)
+
+### MicroVM Testing
+
+For lightweight and reproducible testing of specific NixOS module configurations (e.g., TPM, networking, specific services), we utilize `microvm.nix`. This setup allows for faster iteration and integrates well with the Nix build system.
+
+**Key Features**:
+-   **Lightweight & Fast**: Quick feedback loop for testing.
+-   **Reproducible**: Environment is fully defined in Nix.
+-   **Flexible**: Supports various configurations, including hardware emulation (e.g., TPM with `swtpm`).
+
+**Integration Overview**:
+1.  `microvm.nix` is added as an input in `tests/flake.nix`.
+2.  Dedicated MicroVM configurations are defined in `tests/microvm/` (e.g., `tpm-test.nix` for TPM emulation). These configurations build a NixOS guest system tailored for specific test scenarios, enabling necessary modules and services.
+3.  Test runner scripts in `bin/` (e.g., `bin/test-microvm-tpm`) manage the lifecycle of the MicroVM, including any necessary host-side services (like `swtpm` for TPM emulation) and post-boot verification.
+
+**How to Run a MicroVM Test**:
+
+To execute a MicroVM test, use the corresponding script in `bin/` within a development shell:
+
+```bash
+# Example: Run the TPM MicroVM test
+nix develop --command bin/test-microvm-tpm
+```
+
+The test script will handle building the MicroVM runner, starting any required host services, launching the MicroVM, and performing checks inside the guest before cleaning up.
 
 ### Full Stack VM Testing with bin/virtual-machine
 
@@ -171,6 +214,27 @@ virsh console keystone-test-vm
 ```
 
 See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complete details.
+
+### VM Screenshot Debugging (libvirt VMs only)
+
+Use `bin/screenshot` to capture a libvirt VM's graphical display for debugging boot issues:
+
+```bash
+# Screenshot keystone-test-vm (default)
+./bin/screenshot                           # -> screenshots/vm-screenshot-*.png
+
+# Screenshot specific domain
+./bin/screenshot keystone-test-vm
+
+# Screenshot with custom output path
+./bin/screenshot keystone-test-vm debug.png
+```
+
+The script outputs the relative path to the PNG file (e.g., `screenshots/vm-screenshot-20251222-010214.png`), which can be read directly with the Read tool for visual inspection. Useful for debugging:
+- UEFI boot failures ("Access Denied", "No bootable device")
+- Secure Boot issues
+- Disk unlock prompts in initrd
+- Any state where SSH is not available
 
 ### Building ISOs
 ```bash
@@ -406,26 +470,43 @@ modules/keystone/desktop/
 
 ## Deployment Patterns
 
-### Pattern 1: Home Server + Desktop
-- Headless: Use `operating-system` module for always-on infrastructure
-- Desktop: Add `desktop` module for workstations with Hyprland
+### Pattern 1: Headless Server
+- Use `operating-system` module for secure storage and boot
+- Optionally enable `server` module for monitoring/VPN
+```nix
+keystone.os.enable = true;
+keystone.server.enable = true;
+keystone.server.monitoring.enable = true;
+```
 
-### Pattern 2: VPS + Workstation
-- VPS: `operating-system` with `remoteUnlock` for headless operation
-- Workstation: `operating-system` + `desktop` for local development
+### Pattern 2: Workstation with Desktop
+- Use `operating-system` + `desktop` module
+```nix
+keystone.os.enable = true;
+keystone.os.users.alice.desktop.enable = true;
+```
 
-### Pattern 3: Multi-Machine Setup
-- Mix headless and desktop configurations as needed
-- All share the same `keystone.os.*` options for consistent security
+### Pattern 3: Multi-Service Server
+- Use `operating-system` + `server` module with multiple services
+```nix
+keystone.os.enable = true;
+keystone.server = {
+  enable = true;
+  vpn.enable = true;
+  monitoring.enable = true;
+};
+```
 
 ## Important Notes
 
-- The pool name is hardcoded to "rpool" throughout the OS module
+- ZFS pool is always named "rpool" throughout the OS module
 - The `operating-system` module includes disko and lanzaboote - no separate import needed
+- The `server` module is optional and provides infrastructure services
 - TPM2 integration requires compatible hardware and UEFI firmware setup
 - Secure Boot requires manual key enrollment during installation process
 - All ZFS datasets use native encryption with automatic key management
 - Home-manager integration is optional and only configured when imported
+- Terminal and desktop modules are home-manager based, not NixOS system modules
 
 ## Submodule Usage in nixos-config
 

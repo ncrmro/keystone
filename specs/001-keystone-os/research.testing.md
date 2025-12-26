@@ -1,5 +1,28 @@
 # Keystone Testing Infrastructure Research
 
+## Quick Reference: Test Scripts & FR Coverage
+
+### Test Scripts by Tier
+
+| Script | Tier | Time | FR Coverage | Use Case |
+|--------|------|------|-------------|----------|
+| `bin/test-microvm-tpm` | 1 | ~20s | FR-002, FR-003 | Fast TPM enrollment iteration |
+| `bin/test-deployment` | 3 | ~10-30min | FR-002, FR-003, FR-004, FR-005 | Full-stack verification |
+| `bin/virtual-machine` | 3 | N/A | FR-004 | VM infrastructure for test-deployment |
+
+### Functional Requirements Tested
+
+| FR | Name | Tier 1 (microvm) | Tier 3 (libvirt) |
+|----|------|------------------|------------------|
+| FR-002 | Full Disk Encryption | ✅ LUKS2 loopback | ✅ Full ZFS + LUKS |
+| FR-003 | Automatic Unlock | ✅ TPM enrollment | ✅ TPM auto-unlock |
+| FR-004 | Verified Boot Chain | ❌ No UEFI | ✅ Secure Boot |
+| FR-005 | Copy-on-Write Storage | ❌ | ✅ ZFS pool |
+
+See: `specs/001-keystone-os/spec.md` for full requirements
+
+---
+
 ## Current State Analysis
 
 ### Test Locations

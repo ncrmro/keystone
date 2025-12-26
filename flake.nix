@@ -69,9 +69,12 @@
 
       # Desktop module - Hyprland, audio, greetd (no disko/encryption dependencies)
       desktop = {
-        imports = [./modules/keystone/desktop/nixos.nix];
+        imports = [./modules/desktop/nixos.nix];
         _module.args.inputs = inputs;
       };
+
+      # Server module - VPN, monitoring, mail (optional services)
+      server = ./modules/server;
 
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
@@ -91,8 +94,8 @@
       terminalDevEnvironment = ./home-manager/modules/terminal-dev-environment;
       desktopHyprland = ./home-manager/modules/desktop/hyprland;
       # Keystone-specific home-manager modules
-      terminal = ./modules/keystone/terminal/default.nix;
-      desktop = ./modules/keystone/desktop/home/default.nix;
+      terminal = ./modules/terminal/default.nix;
+      desktop = ./modules/desktop/home/default.nix;
     };
 
     # Packages exported for consumption
@@ -144,6 +147,7 @@
           qemu
           libvirt
           virt-viewer
+          swtpm
 
           # General utilities
           jq
