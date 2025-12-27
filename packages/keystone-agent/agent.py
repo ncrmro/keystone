@@ -702,7 +702,7 @@ class AgentCLI:
             return 1
 
         # For now, just SSH in (web UI not implemented)
-        if args.web:
+        if getattr(args, 'web', False):
             print_warning("Web UI not yet implemented, using SSH instead")
 
         print_info(f"Attaching to sandbox '{sandbox_name}'...")
