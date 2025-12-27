@@ -27,7 +27,7 @@ jobs:
               - 'modules/iso-installer.nix'
               - 'packages/keystone-installer-ui/**'
               - 'packages/zesh/**'
-              - 'tests/installer-test.nix'
+              - 'tests/integration/installer.nix'
               - 'flake.lock'
               - 'flake.nix'
 
@@ -92,3 +92,14 @@ jobs:
       # This creates a VM, boots the installer ISO, and validates the TUI works
       - name: Run installer test
         run: ./bin/test-installer
+
+      # Upload screenshots and test log as artifacts
+      - name: Upload test screenshots
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if test fails (useful for debugging)
+        with:
+          name: installer-test-screenshots
+          path: |
+            result/*.png
+            result/log.html
+          if-no-files-found: warn

@@ -161,6 +161,9 @@ in
       print("Waiting for boot...")
       installer.wait_for_unit("multi-user.target")
 
+      # Screenshot: Boot complete
+      installer.screenshot("01-boot-complete")
+
       # Ensure an ethernet interface has an IP address before starting installer
       print("Verifying network connectivity...")
       installer.wait_until_succeeds("ip -4 addr show | grep -E 'eth[01]' | grep -q 'inet '", timeout=30)
@@ -180,6 +183,7 @@ in
       # Screen 1: Network check
       # We know network is good, so TUI should show "Continue to Installation"
       print("Step: Network Check -> Continue")
+      installer.screenshot("02-network-check")
       installer.send_key("ret")
 
       # Screen 2: Install Method
@@ -187,6 +191,7 @@ in
       # We want: "Local installation" (Down -> Enter)
       print("Step: Install Method -> Local")
       time.sleep(1)
+      installer.screenshot("03-install-method")
       installer.send_key("down")
       time.sleep(0.5)
       installer.send_key("ret")
@@ -195,6 +200,7 @@ in
       # Use lsblk order to choose the target data disk (vdb)
       print("Step: Disk Selection -> vdb")
       time.sleep(1)
+      installer.screenshot("04-disk-selection")
       disks_output = installer.succeed("lsblk -dn -o NAME,TYPE | awk '$2==\"disk\"{print $1}'")
       disks = [line.strip() for line in disks_output.splitlines() if line.strip()]
       if TARGET_DISK not in disks:
@@ -208,6 +214,7 @@ in
       # Warning dialog needs confirmation
       print("Step: Confirm Disk")
       time.sleep(1)
+      installer.screenshot("05-disk-confirm")
       installer.send_key("ret")
 
       # Screen 5: Encryption Choice
@@ -215,6 +222,7 @@ in
       # We want: No encryption (Down -> Enter)
       print("Step: Encryption -> None")
       time.sleep(2) # Wait for partition scan/transition
+      installer.screenshot("06-encryption")
       installer.send_key("down")
       time.sleep(0.5)
       installer.send_key("ret")
@@ -222,6 +230,7 @@ in
       # Screen 6: Hostname
       print("Step: Hostname -> test-machine")
       time.sleep(1)
+      installer.screenshot("07-hostname")
       type_text("test-machine")
       time.sleep(0.5)
       installer.send_key("ret")
@@ -229,6 +238,7 @@ in
       # Screen 7: Username
       print("Step: Username -> testuser")
       time.sleep(1)
+      installer.screenshot("08-username")
       type_text("testuser")
       time.sleep(0.5)
       installer.send_key("ret")
@@ -236,6 +246,7 @@ in
       # Screen 8: Password
       print("Step: Password")
       time.sleep(1)
+      installer.screenshot("09-password")
       type_text("testpass123")
       time.sleep(0.5)
       installer.send_key("ret")
@@ -251,12 +262,14 @@ in
       # Default: Server (first option) -> Enter
       print("Step: System Type -> Server")
       time.sleep(1)
+      installer.screenshot("10-system-type")
       installer.send_key("ret")
 
       # Screen 11: Summary
       # We are at the end, press Enter to install
       print("Step: Summary -> Install")
       time.sleep(2)
+      installer.screenshot("11-summary")
       installer.send_key("ret")
 
       # Monitor Installation
@@ -264,6 +277,9 @@ in
 
       # Wait for log file to appear (proof installation script started)
       wait_for_installer_log()
+
+      # Screenshot: Installation in progress
+      installer.screenshot("12-installing")
 
       # Wait for installation artifacts to appear (signals completion)
       print("Waiting for installation completion (timeout: 10m)...")
@@ -282,6 +298,9 @@ in
       installer.succeed("test -f /mnt/etc/nixos/hardware-configuration.nix")
       # Basic presence check (hardware config)
       installer.succeed("test -f /mnt/etc/nixos/hardware-configuration.nix")
+
+      # Screenshot: Installation complete
+      installer.screenshot("13-complete")
 
       print("All tests passed!")
     '';
