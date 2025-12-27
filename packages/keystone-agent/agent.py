@@ -503,6 +503,15 @@ class AgentCLI:
         Uses a pinned nixpkgs revision for reproducibility and a minimal NixOS
         configuration with just basic development tools.
         """
+        # Generate build ID to force cache invalidation
+        # Why: Nix was aggressively caching the erofs disk image, causing it to lack
+        #      newly added packages (like direnv) despite the flake config changing.
+        #      This timestamp forces a unique input hash for every build.
+        # Downside: This prevents caching of the VM image between runs, causing
+        #           slower startup times (rebuilds every time).
+        # TODO: Remove this once we identify why the cache invalidation is failing.
+        build_id = int(time.time())
+
         # Pin to known-good nixpkgs revision from keystone flake.lock
         # This avoids build failures from transient breakage in nixos-unstable HEAD
         nixpkgs_rev = "c6245e83d836d0433170a16eb185cefe0572f8b8"
@@ -582,6 +591,8 @@ class AgentCLI:
 
           # Minimal system config
           networking.hostName = "{sandbox_name}";
+          # Force rebuild by changing actual config (comments are ignored by Nix evaluator)
+          environment.etc."build-id".text = "{build_id}";
           system.stateVersion = "25.05";
 
           # User configuration
