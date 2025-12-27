@@ -488,6 +488,48 @@ class AgentCLI:
         else:
             print_warning("SSH not ready after 30s - VM may still be booting")
             print_info("Try: keystone agent ssh")
+        
+        # Initialize sandbox workspace
+        print_info("Initializing sandbox workspace...")
+        # Give SSH service a moment to fully accept connections
+        time.sleep(2)
+        
+        # Use rsync to push the repo to the VM
+        rsync_cmd = [
+            "rsync",
+            "-avz",
+            "--exclude", ".git",  # Exclude .git folder for speed (optional, but good for initial init)
+            "--exclude", "node_modules",
+            "--exclude", "target",
+            "--exclude", "dist",
+            "-e", "ssh -p 2223 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR",
+            f"{workspace_dir}/",
+            "sandbox@localhost:/workspace/"
+        ]
+        
+        # We need to re-include .git if we want git to work inside, 
+        # but for a large repo this might be slow on first boot.
+        # Let's include it for now as it's required for git operations.
+        # Removing exclusions for now.
+        rsync_cmd = [
+            "rsync",
+            "-az",  # Archive mode, compress
+            "-e", "ssh -p 2223 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR",
+            f"{workspace_dir}/",
+            "sandbox@localhost:/workspace/"
+        ]
+
+        # Retry rsync a few times as SSH might reject early connections
+        for attempt in range(5):
+            result = subprocess.run(rsync_cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                print_success("Workspace initialized")
+                break
+            time.sleep(2)
+        else:
+            print_error("Failed to initialize workspace")
+            if result.stderr:
+                print(f"  {result.stderr.strip()}")
 
         if not args.no_attach:
             print_info("Attaching to sandbox...")
@@ -569,14 +611,6 @@ class AgentCLI:
             mem = {memory};
             vcpu = {vcpus};
 
-            # Use 9p instead of virtiofs - simpler, doesn't require virtiofsd daemon
-            shares = [{{
-              proto = "9p";
-              tag = "workspace";
-              source = "{workspace_dir}";
-              mountPoint = "/workspace";
-            }}];
-
             interfaces = [{{
               type = "{network}";
               id = "eth0";
@@ -594,6 +628,11 @@ class AgentCLI:
           # Force rebuild by changing actual config (comments are ignored by Nix evaluator)
           environment.etc."build-id".text = "{build_id}";
           system.stateVersion = "25.05";
+
+          # Create /workspace directory with correct ownership
+          systemd.tmpfiles.rules = [
+            "d /workspace 0755 sandbox users -"
+          ];
 
           # User configuration
           {user_config}
