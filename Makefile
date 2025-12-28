@@ -2,7 +2,7 @@
 
 .PHONY: help ci fmt check-lockfile test test-checks test-module test-integration test-template
 .PHONY: vm-create vm-start vm-stop vm-destroy vm-reset vm-ssh vm-console vm-display vm-status vm-post-install vm-reset-secureboot
-.PHONY: build-vm-terminal build-vm-desktop build-iso build-iso-ssh
+.PHONY: build-vm-terminal build-vm-desktop build-iso build-iso-ssh build-iso-ssh-aarch64
 .PHONY: test-deploy test-desktop test-hm
 
 # Default VM name for libvirt targets
@@ -11,7 +11,7 @@ VM_NAME ?= keystone-test-vm
 help: ## Show this help message
 	@echo "Available targets:"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
 ci: ## Run CI checks (format + lockfile verification)
@@ -60,6 +60,16 @@ build-iso-ssh: ## Build installer ISO with SSH key
 		./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub; \
 	elif [ -f ~/.ssh/id_rsa.pub ]; then \
 		./bin/build-iso --ssh-key ~/.ssh/id_rsa.pub; \
+	else \
+		echo "❌ Error: No SSH key found at ~/.ssh/id_ed25519.pub or ~/.ssh/id_rsa.pub"; \
+		exit 1; \
+	fi
+
+build-iso-ssh-aarch64: ## Build aarch64 (ARM64/Apple Silicon) ISO with SSH key
+	@if [ -f ~/.ssh/id_ed25519.pub ]; then \
+		./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub --arch aarch64-linux; \
+	elif [ -f ~/.ssh/id_rsa.pub ]; then \
+		./bin/build-iso --ssh-key ~/.ssh/id_rsa.pub --arch aarch64-linux; \
 	else \
 		echo "❌ Error: No SSH key found at ~/.ssh/id_ed25519.pub or ~/.ssh/id_rsa.pub"; \
 		exit 1; \

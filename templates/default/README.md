@@ -45,12 +45,51 @@ In `flake.nix`, the `operating-system` module is already imported. For desktops:
 - Uncomment `keystone.nixosModules.desktop` for Hyprland desktop environment
 - Set `desktop.enable = true` in your user configuration
 
-### 5. Deploy
+### 5. Build Installer ISO (Optional)
+
+Build a custom installer with your SSH keys pre-configured:
+
+```bash
+# 1. Add your SSH key(s) to installerSshKeys in flake.nix
+#    (same keys you added to configuration.nix)
+
+# 2. Build the ISO
+nix build .#installer-iso
+
+# 3. Write to USB (replace /dev/sdX with your USB device)
+sudo dd if=result/iso/*.iso of=/dev/sdX bs=4M status=progress oflag=sync
+```
+
+The ISO includes:
+- Keystone TUI installer (auto-starts on boot)
+- Your SSH keys for remote access
+- All required tools (disko, ZFS, sbctl, tpm2-tools)
+
+#### Headless Mode (SSH-only)
+
+For servers without display, disable the TUI installer:
+
+1. In `flake.nix`, set `enableTuiInstaller = false`
+2. Build and boot the ISO
+3. SSH in: `ssh root@<target-ip>`
+4. Deploy: `nixos-anywhere --flake .#my-machine root@<target-ip>`
+
+#### ARM64 / Apple Silicon ISO
+
+To build an aarch64-linux installer for ARM servers or Apple Silicon Macs:
+
+1. In `flake.nix`, set `buildAarch64Iso = true`
+2. Build: `nix build .#installer-iso-aarch64`
+
+Requires binfmt emulation (`boot.binfmt.emulatedSystems = ["aarch64-linux"]`)
+or an aarch64 remote builder configured.
+
+### 6. Deploy
 
 #### Option A: Fresh Installation (nixos-anywhere)
 
-1. Boot target machine from Keystone installer ISO
-2. Get the IP address: `ip addr show`
+1. Boot target machine from your Keystone installer ISO
+2. Get the IP address: `ip addr show` (or check your router)
 3. Deploy from your development machine:
 
 ```bash
@@ -88,10 +127,12 @@ systemd-cryptenroll --tpm2-device=auto /dev/<your-luks-device>
 
 ```
 .
-├── flake.nix           # Inputs and machine definitions
+├── flake.nix           # Inputs, machine definitions, and installer ISO
 ├── configuration.nix   # System configuration
 ├── hardware.nix        # Hardware-specific settings
-└── README.md           # This file
+├── README.md           # This file
+└── result/             # Build output (after nix build)
+    └── iso/            # Contains installer ISO
 ```
 
 ## Adding More Machines
@@ -116,6 +157,13 @@ machines/
 ```bash
 nix flake update
 sudo nixos-rebuild switch --flake .#my-machine
+```
+
+### Rebuild Installer ISO
+
+```bash
+nix build .#installer-iso
+# ISO located at: result/iso/keystone-installer.iso
 ```
 
 ### View Configuration Options
