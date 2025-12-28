@@ -101,17 +101,18 @@
       testuser = home-manager.lib.homeManagerConfiguration {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
         modules = [
-          ../home-manager/modules/terminal-dev-environment
+          ../modules/keystone/terminal
           {
             home.username = "testuser";
             home.homeDirectory = "/home/testuser";
             home.stateVersion = "25.05";
 
-            programs.terminal-dev-environment.enable = true;
-
-            programs.git = {
-              userName = "Test User";
-              userEmail = "testuser@keystone-test-vm";
+            keystone.terminal = {
+              enable = true;
+              git = {
+                userName = "Test User";
+                userEmail = "testuser@keystone-test-vm";
+              };
             };
           }
         ];

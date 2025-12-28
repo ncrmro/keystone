@@ -195,15 +195,13 @@ in {
           home.stateVersion = config.system.stateVersion;
 
           # Terminal development environment
-          programs.terminal-dev-environment = mkIf userCfg.terminal.enable {
+          keystone.terminal = mkIf userCfg.terminal.enable {
             enable = true;
-          };
-
-          # Git configuration from user fullName and email
-          programs.git = mkIf (userCfg.terminal.enable && userCfg.email != null) {
-            enable = true;
-            userName = userCfg.fullName;
-            userEmail = userCfg.email;
+            git = {
+              enable = userCfg.email != null;
+              userName = userCfg.fullName;
+              userEmail = userCfg.email;
+            };
           };
 
           # Desktop configuration (Hyprland)

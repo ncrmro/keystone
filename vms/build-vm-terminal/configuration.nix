@@ -103,7 +103,7 @@
 
     # Import home-manager modules
     sharedModules = [
-      ../../home-manager/modules/terminal-dev-environment
+      ../../modules/keystone/terminal
     ];
   };
 
@@ -112,22 +112,12 @@
     home.stateVersion = "25.05";
 
     # Enable terminal dev environment
-    programs.terminal-dev-environment = {
+    keystone.terminal = {
       enable = true;
-
-      tools = {
-        git = true;
-        editor = true;
-        shell = true;
-        multiplexer = true;
-        terminal = true;
+      git = {
+        userName = "Terminal Test User";
+        userEmail = "testuser@keystone-buildvm-terminal";
       };
-    };
-
-    # Git configuration
-    programs.git = {
-      userName = "Terminal Test User";
-      userEmail = "testuser@keystone-buildvm-terminal";
     };
   };
 }

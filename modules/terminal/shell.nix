@@ -87,6 +87,9 @@ in {
 
     programs.zsh = {
       enable = true;
+      enableCompletion = mkDefault true;
+      autosuggestion.enable = mkDefault true;
+      syntaxHighlighting.enable = mkDefault true;
       shellAliases = {
         # Better unix commands
         l = "eza -1l";
@@ -96,14 +99,14 @@ in {
         g = "git";
         lg = "lazygit";
         # Terminal utilities
-        zs = "zesh"; # Zellij session manager with zoxide integration
+        zs = "zesh connect"; # Zellij session manager with zoxide integration
         y = "yazi";
       };
       history.size = 100000;
       zplug.enable = lib.mkForce false;
       oh-my-zsh = {
         enable = true;
-        plugins = ["git"];
+        plugins = ["git" "colored-man-pages"];
         theme = "robbyrussell";
       };
     };
@@ -117,6 +120,10 @@ in {
       # https://www.gnu.org/software/make/
       gnumake
 
+      # Htop - Interactive process viewer
+      # https://htop.dev/
+      htop
+
       # Lazygit - Simple terminal UI for git commands
       # https://github.com/jesseduffield/lazygit
       lazygit
@@ -124,6 +131,10 @@ in {
       # Ripgrep - Fast search tool that recursively searches directories
       # https://github.com/BurntSushi/ripgrep
       ripgrep
+
+      # Tree - Display directory structure as a tree
+      # https://mama.indstate.edu/users/ice/tree/
+      tree
 
       # Yazi - Blazing fast terminal file manager written in Rust
       # https://github.com/sxyazi/yazi
