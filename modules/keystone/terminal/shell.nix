@@ -6,7 +6,6 @@
 }:
 with lib; let
   cfg = config.keystone.terminal;
-  zesh = pkgs.callPackage ../../../packages/zesh {};
 in {
   config = mkIf cfg.enable {
     # Starship - A minimal, blazing-fast, and infinitely customizable prompt for any shell
@@ -131,7 +130,8 @@ in {
 
       # Zesh - Zellij session manager with zoxide integration
       # https://github.com/roberte777/zesh
-      zesh
+      # Provided via keystone overlay
+      pkgs.keystone.zesh
     ];
   };
 }

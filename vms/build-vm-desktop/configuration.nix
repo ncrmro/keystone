@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  keystone,
   ...
 }: {
   # Minimal Keystone configuration for Hyprland desktop testing
@@ -85,6 +86,12 @@
 
   # Allow sudo without password (testing only)
   security.sudo.wheelNeedsPassword = false;
+
+  # System packages
+  environment.systemPackages = [
+    # Keystone agent CLI for sandbox management
+    keystone.packages.x86_64-linux.keystone-agent
+  ];
 
   # Nix settings
   nix.settings = {

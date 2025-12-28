@@ -304,6 +304,13 @@ class AgentCLI:
         
         if args.fresh and sandbox_dir.exists():
             print_info(f"Removing existing sandbox: {sandbox_name}")
+            # Ensure existing process is stopped before removing files
+            if self._is_running(sandbox_name):
+                print_info(f"Stopping running instance of '{sandbox_name}'...")
+                self.cmd_stop(argparse.Namespace(name=sandbox_name, sync=False))
+                # Give it a moment to release ports
+                time.sleep(2)
+            
             shutil.rmtree(sandbox_dir)
         
         sandbox_dir.mkdir(parents=True, exist_ok=True)
@@ -350,6 +357,7 @@ class AgentCLI:
         flake_content = self._generate_sandbox_flake(
             sandbox_name=sandbox_name,
             workspace_dir=workspace_dir,
+            project_path=project_path,
             memory=args.memory,
             vcpus=args.vcpus,
             nested=not args.no_nested,
@@ -538,6 +546,7 @@ class AgentCLI:
         return 0
     
     def _generate_sandbox_flake(self, sandbox_name: str, workspace_dir: Path,
+                                 project_path: Path,
                                  memory: int, vcpus: int, nested: bool, network: str,
                                  ssh_key: Optional[str] = None) -> str:
         """Generate minimal flake.nix for the sandbox MicroVM.
@@ -557,6 +566,18 @@ class AgentCLI:
         # Pin to known-good nixpkgs revision from keystone flake.lock
         # This avoids build failures from transient breakage in nixos-unstable HEAD
         nixpkgs_rev = "c6245e83d836d0433170a16eb185cefe0572f8b8"
+
+        # Determine keystone flake URL
+        # If project is the keystone repo itself, use local path for development
+        # Otherwise use the published GitHub version
+        keystone_terminal_path = project_path / "modules" / "keystone" / "terminal"
+        if keystone_terminal_path.exists():
+            # Local keystone development - use path reference to ORIGINAL project
+            # This captures uncommitted changes
+            keystone_url = f"path:{project_path}"
+        else:
+            # External project - use published keystone
+            keystone_url = "github:ncrmro/keystone"
 
         # Generate user config based on SSH key availability
         if ssh_key:
@@ -597,14 +618,33 @@ class AgentCLI:
       url = "github:astro/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     }};
+    home-manager = {{
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
+    keystone = {{
+      url = "{keystone_url}";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
   }};
 
-  outputs = {{ self, nixpkgs, microvm }}: {{
+  outputs = {{ self, nixpkgs, microvm, home-manager, keystone }}: let
+    # Apply keystone overlay to get keystone packages (zesh, claude-code)
+    pkgs = import nixpkgs {{
+      system = "x86_64-linux";
+      config.allowUnfree = true;
+      overlays = [ keystone.overlays.default ];
+    }};
+  in {{
     nixosConfigurations.sandbox = nixpkgs.lib.nixosSystem {{
       system = "x86_64-linux";
       modules = [
         microvm.nixosModules.microvm
-        ({{ pkgs, ... }}: {{
+        home-manager.nixosModules.home-manager
+        ({{ ... }}: {{
+          # Use the overlayed pkgs
+          nixpkgs.pkgs = pkgs;
+
           # MicroVM configuration
           microvm = {{
             hypervisor = "qemu";
@@ -621,11 +661,13 @@ class AgentCLI:
             forwardPorts = [
               {{ from = "host"; host.port = 2223; guest.port = 22; }}
             ];
+
+            # Enable writable store overlay for Home Manager activation
+            writableStoreOverlay = "/nix/.rw-store";
           }};
 
           # Minimal system config
           networking.hostName = "{sandbox_name}";
-          # Force rebuild by changing actual config (comments are ignored by Nix evaluator)
           environment.etc."build-id".text = "{build_id}";
           system.stateVersion = "25.05";
 
@@ -638,21 +680,35 @@ class AgentCLI:
           {user_config}
           security.sudo.wheelNeedsPassword = false;
 
-          # Basic development tools only
-          environment.systemPackages = with pkgs; [
-            git
-            python3
-            vim
-            curl
-            wget
-            htop
-            direnv
-          ];
+          # Home-manager configuration with keystone terminal
+          home-manager = {{
+            useGlobalPkgs = true;
+            useUserPackages = true;
+            extraSpecialArgs = {{
+              inputs = {{
+                inherit keystone;
+              }};
+            }};
+            sharedModules = [
+              keystone.homeModules.terminal
+            ];
+            users.sandbox = {{
+              home.stateVersion = "25.05";
 
-          # Configure bash with direnv hook
-          programs.bash.interactiveShellInit = ''
-            eval "$(direnv hook bash)"
-          '';
+              # Enable keystone terminal module
+              keystone.terminal = {{
+                enable = true;
+                git = {{
+                  userName = "Sandbox User";
+                  userEmail = "sandbox@keystone.local";
+                }};
+              }};
+            }};
+          }};
+
+          # System-wide zsh
+          users.defaultUserShell = pkgs.zsh;
+          programs.zsh.enable = true;
 
           # Auto-allow direnv for /workspace
           environment.etc."direnv/direnv.toml".text = ''
@@ -1138,7 +1194,7 @@ class AgentCLI:
             return 1
 
         # Get command to execute
-        command = args.command if args.command else []
+        command = args.exec_command if args.exec_command else []
         if not command:
             print_error("No command specified")
             print_info("Usage: keystone agent exec [sandbox] -- <command>")
@@ -1262,7 +1318,7 @@ def main():
     # Exec command
     exec_parser = subparsers.add_parser("exec", help="Execute command in sandbox")
     exec_parser.add_argument("name", nargs="?", help="Sandbox name (default: current project)")
-    exec_parser.add_argument("command", nargs=argparse.REMAINDER, help="Command to execute")
+    exec_parser.add_argument("exec_command", nargs=argparse.REMAINDER, help="Command to execute")
     
     # SSH command
     ssh_parser = subparsers.add_parser("ssh", help="SSH into sandbox")

@@ -522,28 +522,45 @@ modules/keystone/agent/
 ├── sync.nix                 # Host-initiated git sync
 └── proxy.nix                # Dev server proxy (*.sandbox.local)
 
-bin/agent                    # CLI entrypoint for sandbox management
+packages/keystone-agent/     # CLI package (Python)
 tests/microvm/agent-sandbox.nix  # MicroVM test configuration
 ```
 
 ### Agent Sandbox Features
-- **Isolated Execution**: MicroVM sandbox with no host filesystem access
-- **AI Agents**: Pre-installed Claude Code, Gemini CLI, Codex (configurable)
-- **Secure Sync**: Host-initiated git push/pull (VM cannot access host SSH keys)
-- **Session Management**: Zellij for persistent terminal multiplexing
+- **Isolated Execution**: MicroVM sandbox with 9p filesystem sharing (workspace only)
+- **SSH Access**: Key-based authentication with password fallback
+- **Secure Sync**: Host-initiated git fetch/merge (VM cannot access host SSH keys)
+- **direnv Integration**: Auto-loads `.envrc` in `/workspace` directory
 - **Nested Virtualization**: Optional KVM passthrough for infrastructure testing
-- **Dev Server Proxy**: Automatic routing of *.sandbox.local to sandbox ports
-- **Multi-Worktree**: Support for parallel branch development
+- **Persistent State**: Sandbox state preserved between sessions (use `--fresh` to reset)
 
-CLI Commands:
-- `keystone agent start` - Launch sandbox for current project
-- `keystone agent stop` - Stop sandbox
-- `keystone agent attach` / `ssh` - SSH into sandbox
-- `keystone agent exec` - Run command in sandbox
-- `keystone agent sync` - Sync committed changes back to host
-- `keystone agent status` - Show sandbox status and resources
-- `keystone agent list` - List all sandboxes
-- `keystone agent destroy` - Remove sandbox completely
+CLI Commands (via `nix run .#keystone-agent -- <command>` or after `nix build`):
+- `keystone-agent start` - Launch sandbox for current project (auto-attaches)
+- `keystone-agent stop` - Stop sandbox gracefully
+- `keystone-agent attach` / `ssh` - SSH into sandbox (starts in /workspace)
+- `keystone-agent exec -- <cmd>` - Run command in sandbox
+- `keystone-agent sync` - Fetch committed changes from sandbox to host
+- `keystone-agent status` - Show sandbox status and resources
+- `keystone-agent list` - List all sandboxes
+- `keystone-agent destroy <name>` - Remove sandbox completely
+
+Quick Start:
+```bash
+# Build the CLI
+nix build .#keystone-agent
+
+# Start sandbox for current project
+result/bin/keystone-agent start
+
+# Work in sandbox (SSH session opens automatically)
+# Exit with Ctrl-D or 'exit'
+
+# Sync changes back to host
+result/bin/keystone-agent sync
+
+# Stop when done
+result/bin/keystone-agent stop
+```
 
 Documentation:
 - `packages/keystone-agent/README.md` - Quick CLI reference
@@ -617,4 +634,10 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
 - `keystone.agent.proxy.enable` - Enable dev server proxy to *.sandbox.local
 
 ## Recent Changes
-- 012-agent-sandbox: Phase 1 & 2 complete - Created module structure, CLI framework, guest configuration, and MicroVM test setup. Ready for Phase 3 implementation (MicroVM backend lifecycle).
+- 012-agent-sandbox: Phases 1-3 complete - Agent sandbox is now functional:
+  - MicroVM backend with start/stop lifecycle management
+  - SSH key-based authentication (falls back to password if no key)
+  - Git-based sync command for pulling committed changes back to host
+  - direnv auto-load support for `/workspace` directory
+  - Persistent sandbox state between sessions
+  - SSH sessions start directly in `/workspace` for convenience
