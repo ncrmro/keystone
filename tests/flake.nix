@@ -64,6 +64,7 @@
       # Terminal development environment testing
       build-vm-terminal = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
+        specialArgs = {inherit keystone;};
         modules = [
           home-manager.nixosModules.home-manager
           ../vms/build-vm-terminal/configuration.nix
@@ -73,7 +74,10 @@
       # Hyprland desktop testing
       build-vm-desktop = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
-        specialArgs = {inputs = {inherit nixpkgs hyprland;};};
+        specialArgs = {
+          inherit keystone;
+          inputs = {inherit nixpkgs hyprland;};
+        };
         modules = [
           home-manager.nixosModules.home-manager
           ../vms/build-vm-desktop/configuration.nix

@@ -56,6 +56,19 @@
       };
     };
 
+    # Overlay that provides keystone packages
+    # NOTE: Paths must be captured in `let` BEFORE the function, otherwise they
+    # get evaluated in the wrong context when the overlay is applied by a consumer flake
+    overlays.default = let
+      zesh-src = ./packages/zesh;
+      claude-code-src = ./modules/keystone/terminal/claude-code;
+    in final: prev: {
+      keystone = {
+        zesh = final.callPackage zesh-src {};
+        claude-code = final.callPackage claude-code-src {};
+      };
+    };
+
     # Export Keystone modules for use in other flakes
     nixosModules = {
       # Core OS module - storage, secure boot, TPM, remote unlock, users, services
