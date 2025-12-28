@@ -177,7 +177,11 @@ Monitor configurations are runtime-only by default. For persistent configuration
 
 ## Keybindings Reference
 
-> **Note**: `$mod` refers to the configured modifier key (default: `ALT`, configurable via `modifierKey` option)
+> **Note**: `$mod` refers to the configured modifier key (default: `SUPER`, configurable via `modifierKey` option)
+>
+> **Ergonomics**: With `altwin:swap_alt_win` enabled (default), physical Alt sends Super keycodes.
+> This places frequent window management on the more accessible physical Alt key (thumb position),
+> while physical Super + Left/Right sends Alt + Left/Right for browser back/forward navigation.
 
 ### Core Navigation
 
@@ -256,8 +260,13 @@ keystone.desktop.hyprland = {
 
   modifierKey = mkOption {
     type = types.str;
-    default = "ALT";
-    description = "Primary modifier key for keybindings (SUPER, ALT, CTRL)";
+    default = "SUPER";
+    description = ''
+      Primary modifier key for Hyprland keybindings (SUPER, ALT).
+      SUPER is recommended with altwin:swap_alt_win enabled, which places
+      window management on physical Alt (ergonomic thumb position) while
+      keeping physical Super + arrows free for browser back/forward.
+    '';
   };
 
   capslockAsControl = mkOption {
@@ -274,16 +283,22 @@ The desktop module supports keyboard remapping options:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `modifierKey` | `ALT` | Primary modifier for all keybindings (`$mod`) |
+| `modifierKey` | `SUPER` | Primary modifier for all keybindings (`$mod`). With `altwin:swap_alt_win`, physical Alt triggers these. |
 | `capslockAsControl` | `true` | Remaps Caps Lock to Control via `ctrl:nocaps` |
 
-**Example: Restore traditional keybindings**
+**Ergonomic defaults** (recommended):
+- `modifierKey = "SUPER"` with `altwin:swap_alt_win` means physical Alt = Hyprland commands
+- Physical Alt is in a more accessible thumb position than Super/Win key
+- Physical Super + Left/Right = browser back/forward (sends Alt + arrow after swap)
+
+**Example: Traditional keybindings (no swap)**
 
 ```nix
 keystone.desktop.hyprland = {
   enable = true;
-  modifierKey = "SUPER";        # Use Super/Windows key as modifier
+  modifierKey = "SUPER";        # Physical Super key for window management
   capslockAsControl = false;    # Keep Caps Lock as Caps Lock
+  # Note: Browser back/forward with Alt+arrows works natively
 };
 ```
 

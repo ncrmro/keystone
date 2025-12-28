@@ -7,8 +7,12 @@
 with lib; let
   cfg = config.keystone.desktop.hyprland;
   # Build kb_options based on configuration
-  # If capslockAsControl is true, use ctrl:nocaps, otherwise use compose:caps
-  kbOptions = if cfg.capslockAsControl then "ctrl:nocaps" else "compose:caps";
+  # - altwin:swap_alt_win: Swap Alt and Super keys for ergonomic window management
+  #   Physical Alt (thumb position) → Super keycodes → Hyprland $mod
+  #   Physical Super → Alt keycodes → Browser back/forward (Alt+Left/Right)
+  # - ctrl:nocaps or compose:caps: Caps Lock behavior
+  capsOption = if cfg.capslockAsControl then "ctrl:nocaps" else "compose:caps";
+  kbOptions = "${capsOption},altwin:swap_alt_win";
 in {
   config = mkIf cfg.enable {
     wayland.windowManager.hyprland.settings = {
