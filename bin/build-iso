@@ -20,6 +20,7 @@ NC='\033[0m' # No Color
 SSH_KEYS_INPUT=""
 NO_SSH_KEYS=false
 OUTPUT_DIR="result"
+ARCH="x86_64-linux"
 SHOW_HELP=false
 
 # Help function
@@ -32,13 +33,18 @@ Usage: $0 [OPTIONS]
 OPTIONS:
     -k, --ssh-key INPUT     SSH public key as file path or key string directly
     --no-ssh-key            Build ISO without SSH keys (⚠️  creates inaccessible installer)
+    -a, --arch ARCH         Target architecture: x86_64-linux or aarch64-linux (default: x86_64-linux)
     -o, --output DIR        Output directory (default: result)
     -h, --help              Show this help message
 
 NOTE: Either --ssh-key or --no-ssh-key MUST be specified.
 
+ARCHITECTURE NOTES:
+    x86_64-linux   Standard PC/server ISO with ZFS support
+    aarch64-linux  Apple Silicon ISO using nixos-apple-silicon (Asahi kernel, no ZFS)
+
 EXAMPLES:
-    # Build ISO with SSH key from file
+    # Build x86_64 ISO with SSH key from file
     $0 --ssh-key ~/.ssh/id_ed25519.pub
     $0 --ssh-key /home/user/.ssh/authorized_keys
 
@@ -47,6 +53,9 @@ EXAMPLES:
 
     # Build with custom output directory
     $0 --ssh-key ~/.ssh/id_ed25519.pub --output my-iso
+
+    # Build for Apple Silicon Macs (uses Asahi Linux kernel)
+    $0 --ssh-key ~/.ssh/id_ed25519.pub --arch aarch64-linux
 
     # Build ISO without SSH keys (⚠️  creates inaccessible installer - only for testing)
     $0 --no-ssh-key
@@ -73,6 +82,10 @@ while [[ $# -gt 0 ]]; do
         --no-ssh-key)
             NO_SSH_KEYS=true
             shift
+            ;;
+        -a|--arch)
+            ARCH="$2"
+            shift 2
             ;;
         -o|--output)
             OUTPUT_DIR="$2"
@@ -110,6 +123,45 @@ if [[ -z "$SSH_KEYS_INPUT" && "$NO_SSH_KEYS" == "false" ]]; then
     echo -e "  ${BLUE}$0 --ssh-key ~/.ssh/id_ed25519.pub${NC}   # Recommended" >&2
     echo -e "  ${BLUE}$0 --no-ssh-key${NC}                     # Only for testing" >&2
     exit 1
+fi
+
+# Validate architecture
+if [[ "$ARCH" != "x86_64-linux" && "$ARCH" != "aarch64-linux" ]]; then
+    echo -e "${RED}Error: Invalid architecture '$ARCH'${NC}" >&2
+    echo -e "${YELLOW}Valid options: x86_64-linux, aarch64-linux${NC}" >&2
+    exit 1
+fi
+
+# Check for cross-compilation capability
+HOST_ARCH=$(uname -m)
+if [[ "$ARCH" == "aarch64-linux" && "$HOST_ARCH" == "x86_64" ]]; then
+    # Check if binfmt emulation is available
+    if [[ -f /proc/sys/fs/binfmt_misc/qemu-aarch64 ]]; then
+        echo -e "${BLUE}ℹ️  Cross-compiling aarch64-linux on x86_64 (using binfmt emulation)${NC}"
+    elif nix show-config 2>/dev/null | grep -q "aarch64-linux"; then
+        echo -e "${BLUE}ℹ️  Cross-compiling aarch64-linux on x86_64 (using remote builder)${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Cross-compiling aarch64-linux on x86_64${NC}" >&2
+        echo -e "${YELLOW}   No binfmt emulation or remote builder detected.${NC}" >&2
+        echo -e "${YELLOW}   Build may fail or be slow. To enable fast cross-compilation:${NC}" >&2
+        echo "" >&2
+        echo -e "${BLUE}   # Add to your NixOS configuration:${NC}" >&2
+        echo -e "${BLUE}   boot.binfmt.emulatedSystems = [ \"aarch64-linux\" ];${NC}" >&2
+        echo "" >&2
+        echo -e "${YELLOW}   Then rebuild: sudo nixos-rebuild switch${NC}" >&2
+        echo "" >&2
+        read -p "Continue anyway? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+elif [[ "$ARCH" == "x86_64-linux" && "$HOST_ARCH" == "aarch64" ]]; then
+    if [[ -f /proc/sys/fs/binfmt_misc/qemu-x86_64 ]]; then
+        echo -e "${BLUE}ℹ️  Cross-compiling x86_64-linux on aarch64 (using binfmt emulation)${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Cross-compiling x86_64-linux on aarch64 - may require remote builder${NC}" >&2
+    fi
 fi
 
 # Warn if building without SSH keys
@@ -180,43 +232,133 @@ if [[ -n "$SSH_KEYS_FILE" ]]; then
     done < "$SSH_KEYS_FILE"
     SSH_KEYS_ARRAY="$SSH_KEYS_ARRAY]"
     
-    # Create temporary flake
-    cat > "$TEMP_DIR/flake.nix" << EOF
+    # Create temporary flake (architecture-specific)
+    if [[ "$ARCH" == "aarch64-linux" ]]; then
+        # Apple Silicon: use nixos-apple-silicon module
+        cat > "$TEMP_DIR/flake.nix" << EOF
+{
+  description = "Keystone ISO with custom SSH keys (Apple Silicon)";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixos-apple-silicon = {
+      url = "github:tpwrules/nixos-apple-silicon";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { self, nixpkgs, nixos-apple-silicon }: {
+    nixosConfigurations = {
+      keystoneIso = nixpkgs.lib.nixosSystem {
+        system = "aarch64-linux";
+        modules = [
+          "\${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+          nixos-apple-silicon.nixosModules.apple-silicon-support
+          $(pwd)/modules/iso-installer-apple-silicon.nix
+          {
+            _module.args.sshKeys = $SSH_KEYS_ARRAY;
+            _module.args.enableTui = true;
+          }
+        ];
+      };
+    };
+
+    packages.aarch64-linux.default =
+      self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
+  };
+}
+EOF
+    else
+        # x86_64: use standard kernel
+        cat > "$TEMP_DIR/flake.nix" << EOF
 {
   description = "Keystone ISO with custom SSH keys";
-  
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
   };
-  
+
   outputs = { self, nixpkgs }: {
     nixosConfigurations = {
       keystoneIso = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
+        system = "$ARCH";
         modules = [
           "\${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
           $(pwd)/modules/iso-installer.nix
           {
             _module.args.sshKeys = $SSH_KEYS_ARRAY;
+            _module.args.enableTui = true;
+            boot.kernelPackages = nixpkgs.lib.mkForce
+              nixpkgs.legacyPackages.$ARCH.linuxPackages_6_12;
           }
         ];
       };
     };
-    
-    packages.x86_64-linux.default = 
+
+    packages.$ARCH.default =
       self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
   };
 }
 EOF
-    
-    echo -e "${BLUE}🚀 Building ISO with SSH keys...${NC}"
+    fi
+
+    echo -e "${BLUE}🚀 Building $ARCH ISO with SSH keys...${NC}"
     cd "$TEMP_DIR"
-    nix build --impure --out-link "$ORIG_DIR/$OUTPUT_DIR"
+    nix build ".#packages.${ARCH}.default" --impure --out-link "$ORIG_DIR/$OUTPUT_DIR"
     cd - > /dev/null
     
 else
-    echo -e "${BLUE}🚀 Building ISO without SSH keys...${NC}"
-    nix build ".#iso" --out-link "$OUTPUT_DIR"
+    # For x86_64-linux without SSH keys, use the main flake
+    # For aarch64-linux, we need a temporary flake
+    if [[ "$ARCH" == "x86_64-linux" ]]; then
+        echo -e "${BLUE}🚀 Building $ARCH ISO without SSH keys...${NC}"
+        nix build ".#iso" --out-link "$OUTPUT_DIR"
+    else
+        # aarch64-linux without SSH keys: use Apple Silicon support
+        echo -e "${BLUE}🚀 Building $ARCH ISO without SSH keys (Apple Silicon)...${NC}"
+
+        ORIG_DIR=$(pwd)
+        TEMP_DIR=$(mktemp -d)
+        trap "rm -rf $TEMP_DIR" EXIT
+
+        cat > "$TEMP_DIR/flake.nix" << EOF
+{
+  description = "Keystone ISO for Apple Silicon";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixos-apple-silicon = {
+      url = "github:tpwrules/nixos-apple-silicon";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { self, nixpkgs, nixos-apple-silicon }: {
+    nixosConfigurations = {
+      keystoneIso = nixpkgs.lib.nixosSystem {
+        system = "aarch64-linux";
+        modules = [
+          "\${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+          nixos-apple-silicon.nixosModules.apple-silicon-support
+          $(pwd)/modules/iso-installer-apple-silicon.nix
+          {
+            _module.args.sshKeys = [];
+            _module.args.enableTui = true;
+          }
+        ];
+      };
+    };
+
+    packages.aarch64-linux.default =
+      self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
+  };
+}
+EOF
+
+        cd "$TEMP_DIR"
+        nix build ".#packages.${ARCH}.default" --impure --out-link "$ORIG_DIR/$OUTPUT_DIR"
+        cd - > /dev/null
+    fi
 fi
 
 # Check if build was successful

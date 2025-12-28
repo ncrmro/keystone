@@ -45,11 +45,35 @@ nixos-anywhere --flake .#my-machine root@<installer-ip>
 
 The template includes documented `keystone.os.*` options with TODO markers for required values.
 
-### Manual ISO Deployment
+### Building the Installer ISO
 
 ```bash
-# Build installer ISO
-./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
+# x86_64 ISO with your SSH key
+make build-iso-ssh
+
+# aarch64 ISO (Apple Silicon Macs)
+make build-iso-ssh-aarch64
+
+# Or with explicit flags
+./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub --arch aarch64-linux
+```
+
+**No Nix installed?** Use the devcontainer with VS Code or GitHub Codespaces:
+1. Open repo in devcontainer
+2. Run `make build-iso-ssh-aarch64`
+3. Copy `result/iso/*.iso` to USB
+
+**Cross-compilation** (building aarch64 on x86_64):
+```nix
+# Add to NixOS config, then nixos-rebuild switch
+boot.binfmt.emulatedSystems = [ "aarch64-linux" ];
+```
+
+### Deploying
+
+```bash
+# Write ISO to USB
+sudo dd if=result/iso/*.iso of=/dev/sdX bs=4M status=progress
 
 # Deploy to target machine
 nixos-anywhere --flake .#your-server root@<installer-ip>
