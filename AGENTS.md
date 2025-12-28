@@ -265,12 +265,29 @@ The script outputs the relative path to the PNG file (e.g., `screenshots/vm-scre
 # Build installer ISO without SSH keys
 make build-iso
 
-# Build with SSH key from file
+# Build x86_64 ISO with SSH key from file
 make build-iso-ssh
 
-# Or use the script directly
+# Build aarch64 (ARM64/Apple Silicon) ISO with SSH key
+make build-iso-ssh-aarch64
+
+# Or use the script directly with architecture flag
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
+./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub --arch aarch64-linux
 ```
+
+### Cross-Compilation Setup (aarch64 on x86_64)
+
+To build aarch64-linux ISOs on an x86_64 host, enable binfmt emulation:
+
+```nix
+# Add to your NixOS configuration
+boot.binfmt.emulatedSystems = [ "aarch64-linux" ];
+```
+
+Then rebuild: `sudo nixos-rebuild switch`
+
+The devshell and build scripts will automatically detect if cross-compilation is available and warn if not configured.
 
 ### Make Targets Reference
 
@@ -278,7 +295,8 @@ Run `make help` to see all available targets. Key targets:
 
 **ISO Building:**
 - `make build-iso` - Build installer ISO
-- `make build-iso-ssh` - Build ISO with your SSH key
+- `make build-iso-ssh` - Build x86_64 ISO with your SSH key
+- `make build-iso-ssh-aarch64` - Build aarch64 ISO with your SSH key
 
 **Fast Config Testing (no encryption/TPM):**
 - `make build-vm-terminal` - Build and SSH into terminal dev VM

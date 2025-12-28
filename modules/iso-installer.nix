@@ -4,6 +4,7 @@
   pkgs,
   lib,
   sshKeys ? [],
+  enableTui ? true, # Set to false for SSH-only headless mode
   ...
 }: let
   keystone-installer-ui = pkgs.callPackage ../packages/keystone-installer-ui {};
@@ -65,12 +66,13 @@ in {
   # NetworkManager for network detection (required by TUI installer)
   networking.networkmanager.enable = true;
 
-  # Disable getty on tty1 so TUI installer can use it
-  systemd.services."getty@tty1".enable = false;
-  systemd.services."autovt@tty1".enable = false;
+  # Disable getty on tty1 when TUI enabled (so TUI can use it)
+  # Restore getty when TUI disabled (for normal login prompt)
+  systemd.services."getty@tty1".enable = !enableTui;
+  systemd.services."autovt@tty1".enable = !enableTui;
 
-  # Keystone TUI installer service - auto-starts on boot
-  systemd.services.keystone-installer = {
+  # Keystone TUI installer service - auto-starts on boot (when enabled)
+  systemd.services.keystone-installer = lib.mkIf enableTui {
     description = "Keystone Installer TUI";
     after = ["network.target" "NetworkManager.service"];
     wants = ["NetworkManager.service"];
@@ -141,7 +143,7 @@ in {
 
   # Set the ISO label
   image.fileName = lib.mkForce "keystone-installer.iso";
-  isoImage.volumeID = lib.mkForce "KEYSTONE";
+  isoImage.volumeID = lib.mkDefault "KEYSTONE";
 
   # Include the keystone modules in the ISO for reference
   environment.etc."keystone-modules".source = ../modules;
