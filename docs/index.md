@@ -30,7 +30,8 @@ Welcome to the Keystone documentation. Keystone is a NixOS-based self-sovereign 
 - **[User Management](users.md)** - User configuration and access control
 
 ### Module Documentation
-- **[Terminal Development Environment](modules/terminal-dev-environment.md)** - Helix, Zsh, Zellij, and Ghostty setup
+- **Terminal** (`keystone.terminal`) - Shell, editor, and development tools (Zsh, Helix, Zellij, etc.)
+- **Desktop** (`keystone.desktop`) - Hyprland desktop environment
 
 ### Advanced Topics
 - **[Build Platforms](build-platforms.md)** - Cross-platform build configuration

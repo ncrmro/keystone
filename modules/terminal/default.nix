@@ -11,10 +11,17 @@ in {
     ./shell.nix
     ./editor.nix
     ./ai.nix
+    ./devtools.nix
   ];
 
   options.keystone.terminal = {
     enable = mkEnableOption "Keystone Terminal - Core terminal tools and configuration";
+
+    devTools = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Enable additional development tools (csview, jq)";
+    };
 
     editor = mkOption {
       type = types.str;

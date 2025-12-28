@@ -82,7 +82,6 @@
 
     # Export home-manager modules (homeModules is the standard flake output name)
     homeModules = {
-      terminalDevEnvironment = ./home-manager/modules/terminal-dev-environment;
       desktopHyprland = ./home-manager/modules/desktop/hyprland;
       # Keystone-specific home-manager modules
       terminal = ./modules/terminal/default.nix;

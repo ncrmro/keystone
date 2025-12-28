@@ -25,19 +25,6 @@ def create_mcp_config(workspace_path):
                     "--stdio"
                 ]
             },
-            "playwright": {
-                "type": "stdio",
-                "command": "npx",
-                "env": {
-                    "PLAYWRIGHT_BROWSERS_PATH": "",
-                    "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS": "true"
-                },
-                "args": [
-                    "@playwright/mcp@latest",
-                    "--browser=chromium",
-                    "--executable-path=/nix/store/ciwl3hnki3yvx36vjsagx2yhrcy8jb1k-playwright-browsers/chromium-1181/chrome-linux/chrome"
-                ]
-            },
             "docker": {
                 "type": "stdio",
                 "command": "uvx",
