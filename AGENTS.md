@@ -536,5 +536,5 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
 - `keystone.terminal.git.userName` / `userEmail` - Required git config
 - `keystone.desktop.enable` - Enable desktop environment
 - `keystone.desktop.hyprland.enable` - Enable Hyprland config
-- `keystone.desktop.hyprland.modifierKey` - Primary modifier (default: ALT)
+- `keystone.desktop.hyprland.modifierKey` - Primary modifier (default: SUPER). With altwin:swap_alt_win, physical Alt triggers these for ergonomic thumb access
 - `keystone.desktop.hyprland.capslockAsControl` - Remap caps to ctrl (default: true)

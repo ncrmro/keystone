@@ -59,8 +59,14 @@ in
 
     modifierKey = mkOption {
       type = types.str;
-      default = "ALT";
-      description = "Primary modifier key for keybindings (e.g., 'SUPER', 'ALT', 'CTRL')";
+      default = "SUPER";
+      description = ''
+        Primary modifier key for Hyprland keybindings (e.g., 'SUPER', 'ALT').
+        SUPER is recommended because with altwin:swap_alt_win enabled (default),
+        physical Alt sends Super keycodes - placing frequent window management
+        on the ergonomic thumb position. Physical Super + arrows then sends
+        Alt + arrows for browser back/forward navigation.
+      '';
     };
 
     capslockAsControl = mkOption {
