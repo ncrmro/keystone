@@ -984,7 +984,60 @@ class AgentCLI:
 
             print_success("Git changes synced successfully!")
 
-        # 9. Sync artifacts if requested
+        # 9. Push host changes back to sandbox (Bidirectional Sync)
+        print_info("Pushing host changes to sandbox...")
+        
+        # Check if host is ahead
+        host_log = subprocess.run(
+            ["git", "log", "FETCH_HEAD..HEAD", "--oneline", "-n", "20"],
+            cwd=project_path,
+            capture_output=True,
+            text=True
+        )
+        
+        new_host_commits = host_log.stdout.strip()
+        
+        if new_host_commits:
+            print(f"\n{Colors.CYAN}New commits on host (pushing to sandbox):{Colors.RESET}")
+            for line in new_host_commits.split('\n'):
+                print(f"  {line}")
+                
+            # Set up SSH command for git
+            ssh_command = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -p 2223"
+            env = {**os.environ, "GIT_SSH_COMMAND": ssh_command}
+
+            # Push to sandbox
+            # We push to the currently checked out branch in sandbox
+            # First get the current branch name
+            branch_cmd = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=project_path,
+                capture_output=True,
+                text=True
+            )
+            branch_name = branch_cmd.stdout.strip()
+
+            if branch_name:
+                result = subprocess.run(
+                    ["git", "push", "sandbox@localhost:/workspace", branch_name],
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True,
+                    env=env
+                )
+
+                if result.returncode == 0:
+                    print_success("Host changes pushed to sandbox")
+                else:
+                    print_warning("Failed to push changes to sandbox")
+                    if result.stderr:
+                        print(f"  {result.stderr.strip()}")
+            else:
+                 print_warning("Could not determine current branch to push")
+        else:
+            print_info("Sandbox is already up to date with host")
+
+        # 10. Sync artifacts if requested
         if args.artifacts:
             return self._sync_artifacts(sandbox_name, project_path, dry_run=False)
 
