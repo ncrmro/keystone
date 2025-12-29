@@ -7,9 +7,6 @@
 }:
 with lib; let
   cfg = config.keystone.terminal;
-  # Use inputs.keystone when used as a dependency, inputs.self when used directly
-  keystoneFlake = inputs.keystone or inputs.self;
-  zesh = keystoneFlake.packages.${pkgs.system}.zesh;
 in {
   config = mkIf cfg.enable {
     # Starship - A minimal, blazing-fast, and infinitely customizable prompt for any shell
@@ -145,7 +142,8 @@ in {
 
       # Zesh - Zellij session manager with zoxide integration
       # https://github.com/roberte777/zesh
-      zesh
+      # Provided via keystone overlay
+      pkgs.keystone.zesh
     ];
   };
 }
