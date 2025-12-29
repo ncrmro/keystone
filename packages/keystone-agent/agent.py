@@ -529,14 +529,18 @@ class AgentCLI:
 
         # Retry rsync a few times as SSH might reject early connections
         for attempt in range(5):
-            result = subprocess.run(rsync_cmd, capture_output=True, text=True)
-            if result.returncode == 0:
-                print_success("Workspace initialized")
-                break
+            try:
+                result = subprocess.run(rsync_cmd, capture_output=True, text=True, timeout=30)
+                if result.returncode == 0:
+                    print_success("Workspace initialized")
+                    break
+            except subprocess.TimeoutExpired:
+                print_warning(f"Rsync attempt {attempt+1} timed out")
+            
             time.sleep(2)
         else:
             print_error("Failed to initialize workspace")
-            if result.stderr:
+            if 'result' in locals() and result.stderr:
                 print(f"  {result.stderr.strip()}")
 
         if not args.no_attach:
@@ -670,6 +674,9 @@ class AgentCLI:
           networking.hostName = "{sandbox_name}";
           environment.etc."build-id".text = "{build_id}";
           system.stateVersion = "25.05";
+          
+          # Enable Nix experimental features
+          nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
           # Create /workspace directory with correct ownership
           systemd.tmpfiles.rules = [
@@ -749,16 +756,29 @@ class AgentCLI:
         shutdown_script = state_dir / "runner" / "bin" / "microvm-shutdown"
         if shutdown_script.exists():
             print_info(f"Stopping sandbox '{sandbox_name}'...")
-            result = subprocess.run(
-                [str(shutdown_script)],
-                cwd=str(state_dir),
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                print_success(f"MicroVM stopped")
-            else:
-                print_warning("Graceful shutdown failed, trying force kill...")
+            try:
+                result = subprocess.run(
+                    [str(shutdown_script)],
+                    cwd=str(state_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    print_success(f"MicroVM stopped")
+                else:
+                    print_warning("Graceful shutdown failed, trying force kill...")
+                    # Force kill via PID
+                    pid_file = self._get_pid_file(sandbox_name)
+                    if pid_file.exists():
+                        try:
+                            pid = int(pid_file.read_text().strip())
+                            os.kill(pid, 15)  # SIGTERM
+                            print_success(f"MicroVM terminated")
+                        except (ValueError, ProcessLookupError):
+                            pass
+            except subprocess.TimeoutExpired:
+                print_warning("Graceful shutdown timed out, trying force kill...")
                 # Force kill via PID
                 pid_file = self._get_pid_file(sandbox_name)
                 if pid_file.exists():
