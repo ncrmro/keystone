@@ -4,9 +4,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.terminal;
-in {
+in
+{
   config = mkIf cfg.enable {
     home.packages = [
       # Claude Code - AI-powered CLI assistant from Anthropic
@@ -15,10 +17,10 @@ in {
       pkgs.keystone.claude-code
 
       # Gemini CLI - Google's AI assistant (when available in nixpkgs)
-      # pkgs.gemini-cli
+      pkgs.gemini-cli
 
       # Codex - OpenAI's lightweight coding agent (when available in nixpkgs)
-      # pkgs.codex
+      pkgs.codex
     ];
   };
 }
