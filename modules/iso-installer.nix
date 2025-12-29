@@ -140,7 +140,7 @@ in {
   documentation.nixos.enable = false;
 
   # Set the ISO label
-  isoImage.isoName = lib.mkForce "keystone-installer.iso";
+  image.fileName = lib.mkForce "keystone-installer.iso";
   isoImage.volumeID = lib.mkForce "KEYSTONE";
 
   # Include the keystone modules in the ISO for reference

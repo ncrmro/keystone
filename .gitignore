@@ -61,3 +61,4 @@ target/
 
 # VM screenshots for debugging
 screenshots/
+*.sock
