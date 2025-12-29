@@ -1,6 +1,8 @@
 # Agent MicroVMs
 
-This document outlines using MicroVMs to run AI coding agents (Claude Code, Gemini CLI, Codex) in isolated, fully autonomous environments without restrictions.
+> **Looking for the user guide?** See the **[Agent Sandbox User Guide](agent-sandbox.md)** for CLI usage and workflows.
+
+This document outlines the architecture of using MicroVMs to run AI coding agents (Claude Code, Gemini CLI, Codex) in isolated, fully autonomous environments without restrictions.
 
 ## Overview
 

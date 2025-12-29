@@ -56,6 +56,19 @@
       };
     };
 
+    # Overlay that provides keystone packages
+    # NOTE: Paths must be captured in `let` BEFORE the function, otherwise they
+    # get evaluated in the wrong context when the overlay is applied by a consumer flake
+    overlays.default = let
+      zesh-src = ./packages/zesh;
+      claude-code-src = ./modules/keystone/terminal/claude-code;
+    in final: prev: {
+      keystone = {
+        zesh = final.callPackage zesh-src {};
+        claude-code = final.callPackage claude-code-src {};
+      };
+    };
+
     # Export Keystone modules for use in other flakes
     nixosModules = {
       # Core OS module - storage, secure boot, TPM, remote unlock, users, services
@@ -76,6 +89,11 @@
       # Server module - VPN, monitoring, mail (optional services)
       server = ./modules/server;
 
+      # Agent Sandbox module - isolated AI coding agent environments
+      agent = {
+        imports = [./modules/keystone/agent];
+      };
+
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
     };
@@ -86,6 +104,7 @@
       # Keystone-specific home-manager modules
       terminal = ./modules/terminal/default.nix;
       desktop = ./modules/desktop/home/default.nix;
+      agentTui = ./modules/keystone/agent/home/tui.nix;
     };
 
     # Packages exported for consumption
@@ -97,6 +116,7 @@
       zesh = pkgs.callPackage ./packages/zesh {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
+      keystone-agent = pkgs.callPackage ./packages/keystone-agent {};
     };
 
     # Development shell
@@ -143,6 +163,7 @@
           jq
           yq-go
           gh # GitHub CLI
+          python3
         ];
 
         shellHook = ''

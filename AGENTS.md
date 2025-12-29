@@ -423,6 +423,61 @@ keystone.os = {
 }
 ```
 
+**With Agent Sandbox (development workstation):**
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    keystone.url = "github:ncrmro/keystone";
+    home-manager.url = "github:nix-community/home-manager/release-25.05";
+  };
+
+  outputs = { nixpkgs, keystone, home-manager, ... }: {
+    nixosConfigurations.devbox = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        home-manager.nixosModules.home-manager
+        keystone.nixosModules.operating-system  # Core OS
+        keystone.nixosModules.desktop            # Hyprland desktop
+        keystone.nixosModules.agent              # Agent sandbox
+        {
+          networking.hostId = "deadbeef";
+
+          keystone.os = {
+            enable = true;
+            storage = {
+              type = "zfs";
+              devices = [ "/dev/disk/by-id/nvme-WD_BLACK_SN850X_2TB" ];
+              swap.size = "32G";
+            };
+            users.dev = {
+              fullName = "Dev User";
+              email = "dev@example.com";
+              extraGroups = [ "wheel" "networkmanager" "kvm" ];
+              initialPassword = "changeme";
+              terminal.enable = true;
+              desktop.enable = true;
+            };
+          };
+
+          # Enable agent sandbox for isolated AI coding
+          keystone.agent = {
+            enable = true;
+            sandbox = {
+              memory = 16384;  # 16GB for development
+              vcpus = 8;
+              nestedVirtualization = true;  # For testing VMs inside sandbox
+            };
+            proxy.enable = true;  # Access dev servers at *.sandbox.local
+            guest.agents.claudeCode.enable = true;
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
 ### Installation Process
 ```bash
 # 1. Boot target machine from Keystone ISO
@@ -467,6 +522,69 @@ modules/keystone/desktop/
 └── home/
     └── default.nix          # Home-manager Hyprland config
 ```
+
+### Agent Sandbox Module Structure
+```
+modules/keystone/agent/
+├── default.nix              # Main orchestrator with keystone.agent.* options
+├── backends/
+│   ├── default.nix          # Backend abstraction layer
+│   ├── microvm.nix          # MicroVM backend implementation
+│   └── kubernetes.nix       # Kubernetes backend (stub)
+├── guest/
+│   ├── default.nix          # Guest OS base configuration
+│   ├── agents.nix           # AI agent packages (Claude Code, etc.)
+│   ├── tools.nix            # Development tools (git, direnv, etc.)
+│   ├── zellij.nix           # Session management
+│   └── worktree.nix         # Git worktree support
+├── sync.nix                 # Host-initiated git sync
+└── proxy.nix                # Dev server proxy (*.sandbox.local)
+
+packages/keystone-agent/     # CLI package (Python)
+tests/microvm/agent-sandbox.nix  # MicroVM test configuration
+```
+
+### Agent Sandbox Features
+- **Isolated Execution**: MicroVM sandbox with 9p filesystem sharing (workspace only)
+- **SSH Access**: Key-based authentication with password fallback
+- **Secure Sync**: Host-initiated git fetch/merge (VM cannot access host SSH keys)
+- **direnv Integration**: Auto-loads `.envrc` in `/workspace` directory
+- **Nested Virtualization**: Optional KVM passthrough for infrastructure testing
+- **Persistent State**: Sandbox state preserved between sessions (use `--fresh` to reset)
+
+CLI Commands (via `nix run .#keystone-agent -- <command>` or after `nix build`):
+- `keystone-agent start` - Launch sandbox for current project (auto-attaches)
+- `keystone-agent stop` - Stop sandbox gracefully
+- `keystone-agent attach` / `ssh` - SSH into sandbox (starts in /workspace)
+- `keystone-agent exec -- <cmd>` - Run command in sandbox
+- `keystone-agent sync` - Fetch committed changes from sandbox to host
+- `keystone-agent status` - Show sandbox status and resources
+- `keystone-agent list` - List all sandboxes
+- `keystone-agent destroy <name>` - Remove sandbox completely
+
+Quick Start:
+```bash
+# Build the CLI
+nix build .#keystone-agent
+
+# Start sandbox for current project
+result/bin/keystone-agent start
+
+# Work in sandbox (SSH session opens automatically)
+# Exit with Ctrl-D or 'exit'
+
+# Sync changes back to host
+result/bin/keystone-agent sync
+
+# Stop when done
+result/bin/keystone-agent stop
+```
+
+Documentation:
+- `packages/keystone-agent/README.md` - Quick CLI reference
+- `docs/agent-sandbox.md` - Full user guide
+- `docs/agent-microvms.md` - Architecture deep dive
+- `specs/012-agent-sandbox/` - Implementation specification
 
 ## Deployment Patterns
 
@@ -530,6 +648,13 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
 ### Available Home-Manager Modules
 - `inputs.keystone.homeModules.terminal` - Terminal dev environment
 - `inputs.keystone.homeModules.desktop` - Full Hyprland desktop
+- `inputs.keystone.homeModules.agentTui` - Agent sandbox TUI client (optional)
+
+### Available NixOS Modules
+- `inputs.keystone.nixosModules.operating-system` - Core OS (storage, secure boot, TPM)
+- `inputs.keystone.nixosModules.desktop` - Hyprland desktop environment
+- `inputs.keystone.nixosModules.agent` - Agent sandbox system (isolated AI coding environments)
+- `inputs.keystone.nixosModules.isoInstaller` - Bootable installer
 
 ### Key Options
 - `keystone.terminal.enable` - Enable terminal tools (zsh, starship, zellij, helix)
@@ -538,6 +663,16 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
 - `keystone.desktop.hyprland.enable` - Enable Hyprland config
 - `keystone.desktop.hyprland.modifierKey` - Primary modifier (default: SUPER). With altwin:swap_alt_win, physical Alt triggers these for ergonomic thumb access
 - `keystone.desktop.hyprland.capslockAsControl` - Remap caps to ctrl (default: true)
+- `keystone.agent.enable` - Enable agent sandbox system
+- `keystone.agent.sandbox.*` - Sandbox resource configuration (memory, vcpus, nested virt)
+- `keystone.agent.backend.type` - Backend type: microvm (default) or kubernetes
+- `keystone.agent.proxy.enable` - Enable dev server proxy to *.sandbox.local
 
 ## Recent Changes
-- 012-agent-sandbox: Added Nix (NixOS Flakes), Bash/Python for CLI scripts + microvm.nix (astro/microvm.nix), Zellij, QEMU, virtiofs/9p
+- 012-agent-sandbox: Phases 1-3 complete - Agent sandbox is now functional:
+  - MicroVM backend with start/stop lifecycle management
+  - SSH key-based authentication (falls back to password if no key)
+  - Git-based sync command for pulling committed changes back to host
+  - direnv auto-load support for `/workspace` directory
+  - Persistent sandbox state between sessions
+  - SSH sessions start directly in `/workspace` for convenience
