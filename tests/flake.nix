@@ -16,6 +16,11 @@
       url = "github:astro/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Agenix for secret management testing
+    agenix = {
+      url = "github:ryantm/agenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -28,6 +33,7 @@
     omarchy,
     hyprland,
     microvm,
+    agenix,
   }: let
     system = "x86_64-linux";
     pkgs = nixpkgs.legacyPackages.${system};
@@ -103,6 +109,7 @@
         system = "x86_64-linux";
         modules = [
           microvm.nixosModules.microvm
+          agenix.nixosModules.default
           keystone.nixosModules.cluster-primer
           ./microvm/cluster-primer.nix
         ];

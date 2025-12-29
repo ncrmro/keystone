@@ -16,6 +16,16 @@ in {
   options.keystone.cluster.primer.headscaleDeployment = {
     enable = mkEnableOption "Headscale deployment in k3s";
 
+    useAgenixSecrets = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Use agenix-managed secrets for Headscale keys.
+        When enabled, expects secrets at /run/agenix/headscale-{private,noise,derp}
+        and creates a Kubernetes Secret from them before deployment.
+      '';
+    };
+
     image = mkOption {
       type = types.str;
       default = "headscale/headscale:0.23.0";
@@ -57,11 +67,12 @@ in {
   };
 
   config = mkIf cfg.enable {
-    # Create systemd service to deploy Headscale manifests after k3s is ready
-    systemd.services.headscale-deploy = {
-      description = "Deploy Headscale to k3s";
+    # Create K8s Secret from agenix-decrypted files (when agenix secrets enabled)
+    systemd.services.headscale-secrets = mkIf cfg.useAgenixSecrets {
+      description = "Create Kubernetes secrets for Headscale from agenix";
       wantedBy = ["multi-user.target"];
       after = ["k3s-ready.service"];
+      before = ["headscale-deploy.service"];
       requires = ["k3s-ready.service"];
 
       serviceConfig = {
@@ -73,165 +84,104 @@ in {
 
       script = let
         namespace = primerCfg.headscale.namespace;
+      in ''
+        set -euo pipefail
 
-        # Write manifest with properly indented inline config
-        # Note: ConfigMap data uses literal block scalar (|) which preserves indentation
-        headscaleManifests = pkgs.writeText "headscale-manifests.yaml" ''
-          apiVersion: v1
-          kind: Namespace
-          metadata:
-            name: ${namespace}
-          ---
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: headscale-config
-            namespace: ${namespace}
-          data:
-            config.yaml: |
-              server_url: ${primerCfg.headscale.serverUrl}
-              listen_addr: 0.0.0.0:8080
-              metrics_listen_addr: 0.0.0.0:9090
-              grpc_listen_addr: 0.0.0.0:50443
-              grpc_allow_insecure: false
-              private_key_path: /var/lib/headscale/private.key
-              noise:
-                private_key_path: /var/lib/headscale/noise_private.key
-              prefixes:
-                v4: 100.64.0.0/10
-                v6: fd7a:115c:a1e0::/48
-              derp:
-                server:
-                  enabled: true
-                  private_key_path: /var/lib/headscale/derp_private.key
-                  region_id: 999
-                  region_code: "headscale"
-                  region_name: "Headscale Embedded"
-                  stun_listen_addr: "0.0.0.0:3478"
-                urls:
-                  - https://controlplane.tailscale.com/derpmap/default
-                auto_update_enabled: true
-                update_frequency: 24h
-              disable_check_updates: false
-              ephemeral_node_inactivity_timeout: 30m
-              database:
-                type: sqlite
-                sqlite:
-                  path: /var/lib/headscale/db.sqlite
-              dns:
-                magic_dns: true
-                base_domain: ${primerCfg.headscale.baseDomain}
-                nameservers:
-                  global:
-                    - 1.1.1.1
-                    - 8.8.8.8
-              log:
-                format: text
-                level: info
-          ---
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: headscale-data
-            namespace: ${namespace}
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 1Gi
-          ---
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: headscale
-            namespace: ${namespace}
-            labels:
-              app: headscale
-          spec:
-            replicas: ${toString cfg.replicas}
-            selector:
-              matchLabels:
-                app: headscale
-            template:
-              metadata:
-                labels:
-                  app: headscale
-              spec:
-                containers:
-                  - name: headscale
-                    image: ${cfg.image}
-                    command:
-                      - headscale
-                      - serve
-                    ports:
-                      - name: http
-                        containerPort: 8080
-                        protocol: TCP
-                      - name: grpc
-                        containerPort: 50443
-                        protocol: TCP
-                      - name: metrics
-                        containerPort: 9090
-                        protocol: TCP
-                      - name: stun
-                        containerPort: 3478
-                        protocol: UDP
-                    volumeMounts:
-                      - name: config
-                        mountPath: /etc/headscale
-                        readOnly: true
-                      - name: data
-                        mountPath: /var/lib/headscale
-                    resources:
-                      requests:
-                        cpu: ${cfg.resources.requests.cpu}
-                        memory: ${cfg.resources.requests.memory}
-                      limits:
-                        cpu: ${cfg.resources.limits.cpu}
-                        memory: ${cfg.resources.limits.memory}
-                    livenessProbe:
-                      httpGet:
-                        path: /health
-                        port: http
-                      initialDelaySeconds: 10
-                      periodSeconds: 10
-                    readinessProbe:
-                      httpGet:
-                        path: /health
-                        port: http
-                      initialDelaySeconds: 5
-                      periodSeconds: 5
-                volumes:
-                  - name: config
-                    configMap:
-                      name: headscale-config
-                  - name: data
-                    persistentVolumeClaim:
-                      claimName: headscale-data
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: headscale
-            namespace: ${namespace}
-          spec:
-            type: NodePort
-            selector:
-              app: headscale
-            ports:
-              - name: http
-                port: 8080
-                targetPort: http
-                nodePort: 30080
-              - name: grpc
-                port: 50443
-                targetPort: grpc
-              - name: stun
-                port: 3478
-                targetPort: stun
-                protocol: UDP
-        '';
+        echo "Creating Headscale K8s secrets from agenix..."
+
+        # Ensure namespace exists
+        ${pkgs.kubectl}/bin/kubectl create namespace ${namespace} --dry-run=client -o yaml | \
+          ${pkgs.kubectl}/bin/kubectl apply -f -
+
+        # Create Secret from agenix-decrypted files
+        ${pkgs.kubectl}/bin/kubectl create secret generic headscale-keys \
+          --namespace=${namespace} \
+          --from-file=private.key=/run/agenix/headscale-private \
+          --from-file=noise_private.key=/run/agenix/headscale-noise \
+          --from-file=derp_private.key=/run/agenix/headscale-derp \
+          --dry-run=client -o yaml | ${pkgs.kubectl}/bin/kubectl apply -f -
+
+        echo "Headscale K8s secrets created successfully!"
+      '';
+    };
+
+    # Create systemd service to deploy Headscale manifests after k3s is ready
+    systemd.services.headscale-deploy = {
+      description = "Deploy Headscale to k3s";
+      wantedBy = ["multi-user.target"];
+      after =
+        ["k3s-ready.service"]
+        ++ (
+          if cfg.useAgenixSecrets
+          then ["headscale-secrets.service"]
+          else []
+        );
+      requires =
+        ["k3s-ready.service"]
+        ++ (
+          if cfg.useAgenixSecrets
+          then ["headscale-secrets.service"]
+          else []
+        );
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        User = "root";
+        Environment = "KUBECONFIG=/etc/rancher/k3s/k3s.yaml";
+      };
+
+      script = let
+        namespace = primerCfg.headscale.namespace;
+
+        # Volume mounts for keys (if using agenix secrets)
+        # Note: YAML must have exact indentation for the template position (12 spaces for volumeMounts)
+        keysVolumeMounts =
+          if cfg.useAgenixSecrets
+          then "            - name: keys\n              mountPath: /var/lib/headscale/private.key\n              subPath: private.key\n              readOnly: true\n            - name: keys\n              mountPath: /var/lib/headscale/noise_private.key\n              subPath: noise_private.key\n              readOnly: true\n            - name: keys\n              mountPath: /var/lib/headscale/derp_private.key\n              subPath: derp_private.key\n              readOnly: true"
+          else "";
+
+        # Keys volume definition (if using agenix secrets)
+        # Note: YAML must have exact indentation for the template position (8 spaces for volumes)
+        keysVolume =
+          if cfg.useAgenixSecrets
+          then "        - name: keys\n          secret:\n            secretName: headscale-keys\n            defaultMode: 256"
+          else "";
+
+        # Generate manifest from external YAML template
+        # The YAML file uses @@placeholder@@ syntax for substitution
+        # Using builtins.replaceStrings handles multiline values correctly
+        manifestTemplate = builtins.readFile ./headscale-manifests.yaml;
+        manifestContent =
+          builtins.replaceStrings
+          [
+            "@@namespace@@"
+            "@@serverUrl@@"
+            "@@baseDomain@@"
+            "@@replicas@@"
+            "@@image@@"
+            "@@requestsCpu@@"
+            "@@requestsMemory@@"
+            "@@limitsCpu@@"
+            "@@limitsMemory@@"
+            "@@keysVolumeMounts@@"
+            "@@keysVolume@@"
+          ]
+          [
+            namespace
+            primerCfg.headscale.serverUrl
+            primerCfg.headscale.baseDomain
+            (toString cfg.replicas)
+            cfg.image
+            cfg.resources.requests.cpu
+            cfg.resources.requests.memory
+            cfg.resources.limits.cpu
+            cfg.resources.limits.memory
+            keysVolumeMounts
+            keysVolume
+          ]
+          manifestTemplate;
+        headscaleManifests = pkgs.writeText "headscale-manifests.yaml" manifestContent;
       in ''
         set -euo pipefail
 
