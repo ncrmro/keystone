@@ -58,3 +58,4 @@ dist/
 
 # Rust artifacts
 target/
+*.img

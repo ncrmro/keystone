@@ -84,6 +84,37 @@
       serverUrl = "http://localhost:8080";
       baseDomain = "cluster.local";
     };
+    # Use agenix-managed secrets for Headscale keys
+    headscaleDeployment.useAgenixSecrets = true;
+  };
+
+  # ============================================================
+  # Agenix Secret Management (for testing the full secrets flow)
+  # ============================================================
+  # WARNING: Uses test-only age key committed to repo - NOT for production!
+
+  # Age identity for decryption - use nix store path directly
+  # IMPORTANT: The identity file MUST be available during initrd activation,
+  # so we reference it from the nix store (NOT /etc which isn't mounted yet)
+  age.identityPaths = ["${../fixtures/test-age-key.txt}"];
+
+  # Also provision to /etc for manual decryption debugging (optional)
+  environment.etc."age/test-key.txt" = {
+    source = ../fixtures/test-age-key.txt;
+    mode = "0400";
+  };
+
+  # Secrets to decrypt at boot (decrypted to /run/agenix/)
+  age.secrets = {
+    headscale-private = {
+      file = ../fixtures/headscale-private.age;
+    };
+    headscale-noise = {
+      file = ../fixtures/headscale-noise.age;
+    };
+    headscale-derp = {
+      file = ../fixtures/headscale-derp.age;
+    };
   };
 
   # SSH for debugging
