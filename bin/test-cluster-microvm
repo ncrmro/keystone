@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Test cluster with microVMs
+#
+# This script starts the primer microVM, waits for k3s and Headscale,
+# then optionally starts worker VMs.
+#
+# Usage:
+#   ./bin/test-cluster-microvm              # Start primer only
+#   ./bin/test-cluster-microvm --workers    # Start primer + 3 workers
+#   ./bin/test-cluster-microvm --shell      # Start primer and drop into shell
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+TESTS_DIR="$PROJECT_ROOT/tests"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+info() { echo -e "${GREEN}[INFO]${NC} $*"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
+cleanup() {
+    info "Cleaning up..."
+    # Kill any running microvm processes
+    pkill -f "microvm-run" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Parse arguments
+START_WORKERS=false
+SHELL_MODE=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --workers)
+            START_WORKERS=true
+            shift
+            ;;
+        --shell)
+            SHELL_MODE=true
+            shift
+            ;;
+        *)
+            error "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+cd "$TESTS_DIR"
+
+# Build primer microVM
+info "Building cluster-primer microVM..."
+nix build .#nixosConfigurations.cluster-primer.config.microvm.declaredRunner -o result-primer
+
+info "Starting primer microVM..."
+info "  SSH: ssh -p 2222 root@localhost (password: root)"
+info "  k3s API: https://localhost:6443"
+info "  Headscale: http://localhost:8080"
+echo ""
+
+if $SHELL_MODE; then
+    info "Running in foreground. Press Ctrl+C to stop."
+    ./result-primer/bin/microvm-run
+else
+    # Run in background
+    ./result-primer/bin/microvm-run &
+    PRIMER_PID=$!
+
+    info "Primer started (PID: $PRIMER_PID)"
+    info "Waiting for SSH to be ready..."
+
+    # Wait for SSH
+    for i in {1..60}; do
+        if ssh -o ConnectTimeout=1 -o StrictHostKeyChecking=no -p 2222 root@localhost exit 2>/dev/null; then
+            break
+        fi
+        sleep 2
+    done
+
+    info "Primer is ready!"
+
+    # Check k3s status
+    info "Checking k3s status..."
+    ssh -o StrictHostKeyChecking=no -p 2222 root@localhost "kubectl get nodes" 2>/dev/null || true
+
+    if $START_WORKERS; then
+        # Build and start workers
+        for i in 1 2 3; do
+            info "Building cluster-worker$i microVM..."
+            nix build ".#nixosConfigurations.cluster-worker$i.config.microvm.declaredRunner" -o "result-worker$i"
+
+            info "Starting worker$i..."
+            "./result-worker$i/bin/microvm-run" &
+        done
+
+        info "Workers starting in background..."
+        info "Use 'ssh -p 2222 root@localhost' to access primer and run:"
+        info "  kubectl exec -n headscale-system deploy/headscale -- headscale preauthkeys create --user default --reusable --expiration 1h"
+    fi
+
+    info ""
+    info "Cluster is running. Press Enter to stop..."
+    read -r
+fi
