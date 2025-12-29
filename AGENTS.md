@@ -215,6 +215,30 @@ virsh console keystone-test-vm
 
 See bin/virtual-machine:1 and docs/examples/vm-secureboot-testing.md for complete details.
 
+## Commit Message Guidelines
+
+When contributing to this repository, especially when submitting pull requests, please adhere to the following commit message conventions:
+
+-   **Conventional Commits**: All commit messages should follow the [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/). This helps with automated changelog generation and semantic versioning.
+    -   **Format**: `<type>([scope]): <description>`
+        -   **`type`**: `feat` (new feature), `fix` (bug fix), `chore` (routine tasks), `docs` (documentation), `refactor` (code refactoring), `perf` (performance improvements), `test` (adding or refactoring tests), `build` (build system changes), `ci` (CI configuration changes), `revert` (reverts a previous commit).
+        -   **`scope` (optional)**: The part of the codebase affected (e.g., `agent`, `os`, `desktop`, `tpm`, `cli`).
+        -   **`description`**: A concise, imperative, present-tense summary of the change.
+-   **Reference Specs**: If a commit or pull request addresses a specific design or implementation specification (e.g., in the `specs/` directory), please reference it in the commit subject line using the format `[SPEC-XXX]`.
+
+    **Example:**
+    ```
+    feat(agent): [SPEC-012] Implement MicroVM runner execution
+
+    This commit introduces the logic to launch the MicroVM runner
+    within the agent's `start` command, as defined in SPEC-012.
+    ```
+    ```
+    fix(os): [SPEC-003] Correct Secure Boot key enrollment flow
+
+    Addresses issues in the Secure Boot key enrollment process detailed in SPEC-003.
+    ```
+
 ### VM Screenshot Debugging (libvirt VMs only)
 
 Use `bin/screenshot` to capture a libvirt VM's graphical display for debugging boot issues:
