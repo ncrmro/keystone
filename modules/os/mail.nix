@@ -119,6 +119,11 @@ in {
         };
 
         # Spam filter - disabled to avoid missing file error
+        # TODO: Spam filter is currently disabled because the default `spamfilter.toml`
+        # resource was not found in the Stalwart Mail package. To re-enable, either:
+        # 1. Find or create a `spamfilter.toml` file and point the `resource`
+        #    option to its path.
+        # 2. Configure spam filtering directly within the `spam-filter` section.
         spam-filter = {
           resource = "";
         };
