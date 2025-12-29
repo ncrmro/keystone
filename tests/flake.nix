@@ -64,6 +64,7 @@
       # Terminal development environment testing
       build-vm-terminal = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
+        specialArgs = {inherit keystone;};
         modules = [
           home-manager.nixosModules.home-manager
           ../vms/build-vm-terminal/configuration.nix
@@ -73,7 +74,10 @@
       # Hyprland desktop testing
       build-vm-desktop = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
-        specialArgs = {inputs = {inherit nixpkgs hyprland;};};
+        specialArgs = {
+          inherit keystone;
+          inputs = {inherit nixpkgs hyprland;};
+        };
         modules = [
           home-manager.nixosModules.home-manager
           ../vms/build-vm-desktop/configuration.nix
@@ -89,6 +93,16 @@
           disko.nixosModules.disko
           keystone.nixosModules.operating-system # This enables keystone.os.* options
           ./microvm/tpm-test.nix
+        ];
+      };
+
+      # Agent Sandbox MicroVM test configuration
+      agent-sandbox-microvm = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          microvm.nixosModules.microvm
+          keystone.nixosModules.agent # This enables keystone.agent.* options
+          ./microvm/agent-sandbox.nix
         ];
       };
     };

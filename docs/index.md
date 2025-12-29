@@ -32,6 +32,7 @@ Welcome to the Keystone documentation. Keystone is a NixOS-based self-sovereign 
 ### Module Documentation
 - **Terminal** (`keystone.terminal`) - Shell, editor, and development tools (Zsh, Helix, Zellij, etc.)
 - **Desktop** (`keystone.desktop`) - Hyprland desktop environment
+- **[Agent Sandbox](agent-sandbox.md)** - Run AI agents in isolated MicroVM environments
 
 ### Advanced Topics
 - **[Build Platforms](build-platforms.md)** - Cross-platform build configuration

@@ -11,18 +11,18 @@ fi
 
 HOOK_FILE="$REPO_ROOT/.git/hooks/pre-commit"
 
-echo "Setting up pre-commit hook for Alejandra formatting..."
+echo "Setting up pre-commit hook for nixfmt formatting..."
 
 cat > "$HOOK_FILE" << 'EOF'
 #!/usr/bin/env bash
 
 set -e
 
-echo "Running Alejandra formatter on staged Nix files..."
+echo "Running nixfmt formatter on staged Nix files..."
 
-if ! command -v alejandra &> /dev/null; then
-    echo "Error: alejandra is not installed"
-    echo "Install it with: nix-env -iA nixpkgs.alejandra"
+if ! command -v nixfmt &> /dev/null; then
+    echo "Error: nixfmt is not installed"
+    echo "Install it with: nix-env -iA nixpkgs.nixfmt-rfc-style"
     exit 1
 fi
 
@@ -40,9 +40,9 @@ echo "$STAGED_NIX_FILES"
 # Format each staged file
 echo "$STAGED_NIX_FILES" | while IFS= read -r file; do
     if [ -f "$file" ]; then
-        alejandra "$file"
+        nixfmt "$file"
         if [ $? -ne 0 ]; then
-            echo "Alejandra formatting failed for $file"
+            echo "nixfmt formatting failed for $file"
             exit 1
         fi
         # Re-stage the formatted file
@@ -50,10 +50,10 @@ echo "$STAGED_NIX_FILES" | while IFS= read -r file; do
     fi
 done
 
-echo "Alejandra formatting complete"
+echo "nixfmt formatting complete"
 EOF
 
 chmod +x "$HOOK_FILE"
 
 echo "Pre-commit hook installed successfully at $HOOK_FILE"
-echo "The hook will format only staged .nix files before each commit"
+echo "The hook will format only staged .nix files before each commit using nixfmt"
