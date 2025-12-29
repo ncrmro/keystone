@@ -61,7 +61,7 @@
     # get evaluated in the wrong context when the overlay is applied by a consumer flake
     overlays.default = let
       zesh-src = ./packages/zesh;
-      claude-code-src = ./modules/keystone/terminal/claude-code;
+      claude-code-src = ./modules/terminal/claude-code;
     in final: prev: {
       keystone = {
         zesh = final.callPackage zesh-src {};
