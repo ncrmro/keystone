@@ -138,6 +138,7 @@ in {
     ./users.nix
     ./ssh.nix
     ./airplay.nix
+    ./mail.nix
   ];
 
   options.keystone.os = {
