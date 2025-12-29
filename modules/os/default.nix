@@ -137,6 +137,7 @@ in {
     ./remote-unlock.nix
     ./users.nix
     ./ssh.nix
+    ./airplay.nix
   ];
 
   options.keystone.os = {
