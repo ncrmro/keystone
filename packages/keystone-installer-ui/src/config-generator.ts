@@ -168,6 +168,14 @@ export function generateFlakeNix(
   hostname: string,
   systemType: SystemType
 ): string {
+  // For client systems, include both operating-system and desktop modules
+  // For server systems, include only operating-system module
+  const modules = systemType === 'client'
+    ? ['keystone.nixosModules.operating-system', 'keystone.nixosModules.desktop']
+    : ['keystone.nixosModules.operating-system'];
+
+  const modulesStr = modules.join('\n        ');
+
   return `{
   description = "NixOS configuration for ${hostname}";
 
@@ -177,13 +185,18 @@ export function generateFlakeNix(
       url = "github:ncrmro/keystone";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    home-manager = {
+      url = "github:nix-community/home-manager/release-${NIXOS_VERSION}";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, keystone, ... }: {
+  outputs = { self, nixpkgs, keystone, home-manager, ... }: {
     nixosConfigurations.${hostname} = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        keystone.nixosModules.${systemType}
+        home-manager.nixosModules.home-manager
+        ${modulesStr}
         ./hosts/${hostname}
       ];
     };
@@ -202,6 +215,29 @@ export function generateHostDefaultNix(config: HostConfiguration): string {
   // Generate a deterministic host ID from hostname
   const hostId = generateHostId(config.hostname);
 
+  // Generate user configuration based on system type
+  const userConfig = config.systemType === 'client'
+    ? `  # Primary user with desktop environment
+  keystone.os.users.${config.username} = {
+    fullName = "${config.username}";
+    email = "${config.username}@${config.hostname}.local";
+    extraGroups = [ "wheel" "networkmanager" ];
+    # Password will be set during installation
+    terminal.enable = true;
+    desktop = {
+      enable = true;
+      hyprland.enable = true;
+    };
+  };`
+    : `  # Primary user for server
+  keystone.os.users.${config.username} = {
+    fullName = "${config.username}";
+    email = "${config.username}@${config.hostname}.local";
+    extraGroups = [ "wheel" ];
+    # Password will be set during installation
+    terminal.enable = true;
+  };`;
+
   return `{ config, pkgs, lib, ... }:
 
 {
@@ -216,12 +252,7 @@ export function generateHostDefaultNix(config: HostConfiguration): string {
   # Host ID for ZFS (required, deterministically generated from hostname)
   networking.hostId = "${hostId}";
 
-  # Primary user
-  users.users.${config.username} = {
-    isNormalUser = true;
-    extraGroups = [ "wheel" "networkmanager" ];
-    # Password will be set during nixos-install
-  };
+${userConfig}
 
   # System state version
   system.stateVersion = "${STATE_VERSION}";
