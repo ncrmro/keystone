@@ -10,7 +10,7 @@ let
   cfg = config.keystone.terminal;
   # Use unstable helix if inputs.nixpkgs-unstable is available, otherwise use stable
   helix-pkg = if inputs ? nixpkgs-unstable
-    then (import inputs.nixpkgs-unstable { system = pkgs.system; config.allowUnfree = true; }).helix
+    then (import inputs.nixpkgs-unstable { system = pkgs.stdenv.hostPlatform.system; config.allowUnfree = true; }).helix
     else pkgs.helix;
   # Kinda-nvim theme if available
   hasKindaNvim = inputs ? kinda-nvim-hx;
@@ -28,7 +28,7 @@ in
       bash-language-server
       docker-compose-language-service
       yaml-language-server
-      dockerfile-language-server-nodejs
+      dockerfile-language-server
       vscode-langservers-extracted
       helm-ls
       ruby-lsp
@@ -85,7 +85,7 @@ in
             args = [ "--stdio" ];
           };
           dockerfile-language-server = {
-            command = "${dockerfile-language-server-nodejs}/bin/docker-langserver";
+            command = "${dockerfile-language-server}/bin/docker-langserver";
             args = [ "--stdio" ];
           };
           vscode-json-language-server = {
