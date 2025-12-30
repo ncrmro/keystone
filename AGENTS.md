@@ -289,6 +289,28 @@ Then rebuild: `sudo nixos-rebuild switch`
 
 The devshell and build scripts will automatically detect if cross-compilation is available and warn if not configured.
 
+### Building aarch64-linux on macOS (Remote Builder)
+
+macOS cannot build Linux binaries natively. Use `--builder` to offload builds to a remote Linux machine:
+
+```bash
+# Build Apple Silicon ISO using a remote aarch64-linux builder
+./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub \
+    --arch aarch64-linux \
+    --builder "user@linux-host aarch64-linux"
+```
+
+**Remote builder requirements:**
+- Nix installed (multi-user mode recommended)
+- SSH key-based authentication from Mac
+- Support for aarch64-linux architecture
+- Sufficient disk/memory for kernel compilation
+
+**Recommended options:**
+- **OrbStack** - Lightweight Linux VM for Mac (native speed): `brew install orbstack && orb create nixos`
+- **Hetzner CAX** - Cheap ARM cloud servers
+- **Oracle Cloud** - Free tier ARM instances
+
 ### Make Targets Reference
 
 Run `make help` to see all available targets. Key targets:
