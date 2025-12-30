@@ -68,21 +68,22 @@ in {
     # Configure git when enabled
     programs.git = mkIf cfg.git.enable {
       enable = true;
-      userName = cfg.git.userName;
-      userEmail = cfg.git.userEmail;
       lfs.enable = mkDefault true;
 
-      aliases = mkDefault {
-        s = "switch";
-        f = "fetch";
-        p = "pull";
-        b = "branch";
-        st = "status -sb";
-        co = "checkout";
-        c = "commit";
-      };
-
-      extraConfig = mkDefault {
+      settings = mkDefault {
+        user = {
+          name = cfg.git.userName;
+          email = cfg.git.userEmail;
+        };
+        alias = {
+          s = "switch";
+          f = "fetch";
+          p = "pull";
+          b = "branch";
+          st = "status -sb";
+          co = "checkout";
+          c = "commit";
+        };
         push.autoSetupRemote = true;
         init.defaultBranch = "main";
       };
