@@ -328,6 +328,8 @@ const App: React.FC = () => {
     } else if (item.value === 'clone') {
       setSelectedMethod({ type: 'clone', repositoryUrl: '', description: 'Clone from repository' });
       navigateTo('repository-url');
+    } else if (item.value === 'exit') {
+      exit();
     }
   };
 
@@ -762,6 +764,7 @@ const App: React.FC = () => {
             { label: '🖥️  Remote via SSH (nixos-anywhere)', value: 'remote' },
             { label: '💻 Local installation (on this machine)', value: 'local' },
             { label: '📦 Clone from existing repository', value: 'clone' },
+            { label: '  Exit to Shell', value: 'exit' },
           ]}
           onSelect={handleMethodSelect}
         />
@@ -769,6 +772,7 @@ const App: React.FC = () => {
           <Text color={theme.dim}>Remote: Run nixos-anywhere from another machine</Text>
           <Text color={theme.dim}>Local: Install directly on this machine</Text>
           <Text color={theme.dim}>Clone: Use an existing NixOS configuration</Text>
+          <Text color={theme.dim}>Exit: Drop to a root shell on TTY1</Text>
         </Box>
         {selectedMethod?.type === 'remote' && (
           <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor={theme.border} padding={1}>

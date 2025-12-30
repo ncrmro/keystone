@@ -1,123 +1,26 @@
-# ISO installer configuration with TUI installer
+# ISO installer configuration (x86_64 / ZFS enabled)
 {
   config,
   pkgs,
   lib,
-  sshKeys ? [],
-  enableTui ? true, # Set to false for SSH-only headless mode
+  enableTui ? true,
   ...
-}: let
-  keystone-installer-ui = pkgs.callPackage ../packages/keystone-installer-ui {};
-in {
-  # Enable SSH daemon for remote access
-  services.openssh = {
-    enable = true;
-    settings = {
-      PermitRootLogin = "yes";
-      PasswordAuthentication = false;
-      PubkeyAuthentication = true;
-    };
-    # Start SSH as early as possible
-    extraConfig = ''
-      UseDNS no
-    '';
-  };
+}: {
+  imports = [./iso-base.nix];
 
-  # Configure root user with SSH keys
-  users.users.root = {
-    openssh.authorizedKeys.keys = sshKeys;
-  };
-
-  # Enable networking via NetworkManager (for TUI installer network detection)
-  networking = {
-    wireless.enable = false;
-  };
-
-  # Include TUI installer and tools for installation
-  environment.systemPackages = with pkgs; [
-    keystone-installer-ui
-    git
-    curl
-    wget
-    vim
-    htop
-    lsof
-    rsync
-    jq
-    # Tools needed for installation
-    parted
-    cryptsetup
-    util-linux
-    dosfstools
-    e2fsprogs
-    nix
-    nixos-install-tools
-    disko
-    shadow
-    iproute2
-    networkmanager
-    tpm2-tools
-    # ZFS utilities
+  # Include ZFS utilities in system packages
+  environment.systemPackages = [
     config.boot.kernelPackages.zfs_2_3
-    # Secure Boot key management
-    sbctl
+    pkgs.tpm2-tools
   ];
 
-  # NetworkManager for network detection (required by TUI installer)
-  networking.networkmanager.enable = true;
-
-  # Disable getty on tty1 when TUI enabled (so TUI can use it)
-  # Restore getty when TUI disabled (for normal login prompt)
-  systemd.services."getty@tty1".enable = !enableTui;
-  systemd.services."autovt@tty1".enable = !enableTui;
-
-  # Keystone TUI installer service - auto-starts on boot (when enabled)
+  # Add ZFS tools to the installer service path
   systemd.services.keystone-installer = lib.mkIf enableTui {
-    description = "Keystone Installer TUI";
-    after = ["network.target" "NetworkManager.service"];
-    wants = ["NetworkManager.service"];
-    wantedBy = ["multi-user.target"];
-    conflicts = ["getty@tty1.service" "autovt@tty1.service"];
-
-    path = with pkgs; [
-      networkmanager
-      iproute2
-      util-linux
-      jq
-      tpm2-tools
-      parted
-      cryptsetup
+    path = [
       config.boot.kernelPackages.zfs_2_3
-      dosfstools
-      e2fsprogs
-      nix
-      nixos-install-tools
-      disko
-      git
-      shadow
+      pkgs.tpm2-tools
     ];
-
-    serviceConfig = {
-      Type = "simple";
-      User = "root";
-      ExecStart = "${keystone-installer-ui}/bin/keystone-installer";
-      Restart = "on-failure";
-      RestartSec = "5s";
-      StandardInput = "tty";
-      StandardOutput = "tty";
-      TTYPath = "/dev/tty1";
-      TTYReset = "yes";
-      TTYVHangup = "yes";
-    };
   };
-
-  # Enable console on both serial (for remote) and tty1 (for TUI installer)
-  boot.kernelParams = ["console=ttyS0,115200" "console=tty1"];
-
-  # Ensure SSH starts on boot
-  systemd.services.sshd.wantedBy = lib.mkForce ["multi-user.target"];
-
-  # Note: kernel is set in flake.nix to override minimal CD default
 
   # Enable ZFS for nixos-anywhere deployments
   boot.supportedFilesystems = ["zfs"];
@@ -133,18 +36,4 @@ in {
 
   # Set required hostId for ZFS
   networking.hostId = lib.mkDefault "8425e349";
-
-  # Enable flakes - required for installation
-  nix.settings.experimental-features = ["nix-command" "flakes"];
-
-  # Optimize for installation - less bloat
-  documentation.enable = false;
-  documentation.nixos.enable = false;
-
-  # Set the ISO label
-  image.fileName = lib.mkForce "keystone-installer.iso";
-  isoImage.volumeID = lib.mkDefault "KEYSTONE";
-
-  # Include the keystone modules in the ISO for reference
-  environment.etc."keystone-modules".source = ../modules;
 }
