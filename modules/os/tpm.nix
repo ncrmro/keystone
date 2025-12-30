@@ -37,7 +37,6 @@ with lib; let
 
   # Recovery key enrollment script
   enrollRecoveryScript = makeExecutableScript "enroll-recovery.sh" ./scripts/enroll-recovery.sh {
-    cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
     systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
     bootctl = "${pkgs.systemd}/bin/bootctl";
     credstoreDevice = credstoreDevice;
