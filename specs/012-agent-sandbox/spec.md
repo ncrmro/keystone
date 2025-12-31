@@ -148,6 +148,8 @@ A developer in a team environment wants sandboxes to run on a shared Kubernetes 
 - **FR-022**: Sync mode MUST be configurable (manual, auto-on-commit, auto-on-idle) with manual as default
 - **FR-023**: System MUST sync .env files (.env, .env.local, .env.production, etc.) from host to sandbox via rsync
 - **FR-024**: Sandbox MUST have direnv installed and configured to auto-load .env files in /workspace/
+- **FR-027**: When syncing, if host and sandbox are on different branches, system MUST error if host is dirty, or auto-checkout sandbox branch if host is clean
+- **FR-027**: When syncing, if host and sandbox are on different branches, system MUST error if host is dirty, or auto-checkout sandbox branch if host is clean
 
 **Developer Experience**:
 - **FR-009**: System MUST provide a TUI for session management (attach, detach, switch worktrees)

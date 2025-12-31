@@ -156,6 +156,13 @@ keystone agent attach --web
 
 Sync changes between sandbox and host.
 
+**Behavior**:
+- Pulls new commits from the sandbox to the host.
+- Pushes new commits from the host to the sandbox (bidirectional sync).
+- If the host and sandbox are on different branches:
+    - If the host working directory is dirty (uncommitted changes), the sync will fail with an error.
+    - If the host working directory is clean, the host will automatically switch to the sandbox's branch (creating it if it doesn't exist locally) before performing the sync.
+
 **Usage**:
 ```bash
 keystone agent sync [OPTIONS] [SANDBOX_NAME]
