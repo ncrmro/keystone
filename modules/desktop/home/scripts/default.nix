@@ -5,8 +5,7 @@
   inputs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.desktop;
   hyprlandPkg = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
 
@@ -218,22 +217,24 @@ let
       fi
     fi
   '';
-in
-{
+in {
   config = mkIf cfg.enable {
-    home.packages = [
-      keystoneScreenrecord
-      keystoneAudioSwitch
-      keystoneIdleToggle
-      keystoneNightlightToggle
-      keystoneBatteryMonitor
-      keystoneLaunchWalker
-      keystoneMenu
-      keystoneMenuKeybindings
-      # Dependencies that should be available
-      pkgs.gpu-screen-recorder
-      pkgs.libxkbcommon # for xkbcli in keybindings menu
-      pkgs.hypridle
-    ];
+    home.packages =
+      [
+        keystoneScreenrecord
+        keystoneAudioSwitch
+        keystoneIdleToggle
+        keystoneNightlightToggle
+        keystoneBatteryMonitor
+        keystoneLaunchWalker
+        keystoneMenu
+        keystoneMenuKeybindings
+        # Dependencies that should be available
+        pkgs.libxkbcommon # for xkbcli in keybindings menu
+        pkgs.hypridle
+      ]
+      ++ lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") [
+        pkgs.gpu-screen-recorder # x86_64 only
+      ];
   };
 }
