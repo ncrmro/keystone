@@ -31,12 +31,6 @@
     # Additional nixpkgs for bleeding edge packages
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # Helix editor theme
-    kinda-nvim-hx = {
-      url = "github:monomadic/kinda-nvim-helix";
-      flake = false;
-    };
-
     # Apple Silicon support (Asahi Linux kernel and hardware)
     nixos-apple-silicon = {
       url = "github:tpwrules/nixos-apple-silicon";
@@ -55,13 +49,12 @@
     elephant,
     walker,
     nixpkgs-unstable,
-    kinda-nvim-hx,
     nixos-apple-silicon,
     ...
   }: let
     # Create inputs attrset for desktop and terminal modules
     inputs = {
-      inherit self nixpkgs hyprland walker omarchy nixpkgs-unstable kinda-nvim-hx;
+      inherit self nixpkgs hyprland walker omarchy nixpkgs-unstable;
       keystone = self; # For modules that reference inputs.keystone
     };
   in {
