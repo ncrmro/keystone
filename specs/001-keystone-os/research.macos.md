@@ -122,3 +122,416 @@ If your currently booted ISO lacks `NetworkManager`, `dhclient`, or `dhcpcd`, yo
     ```
 
 After these steps, you should have network connectivity. You can verify with `ping google.com`.
+
+---
+
+## 4. NixOS Installation on Apple Silicon (Post-Asahi)
+
+This section documents how to install Keystone (NixOS) on Apple Silicon after the Asahi Linux environment has been set up.
+
+### 4.1 Why nixos-anywhere + Disko Won't Work
+
+**Important**: The standard Keystone deployment method (`nixos-anywhere` with `disko`) **cannot be used** on Apple Silicon. Here's why:
+
+1. **Disko reformats the entire disk**: Disko is designed to declaratively partition and format disks. On Apple Silicon, this would destroy critical system partitions.
+
+2. **Apple Silicon requires preserved partitions**: The following partitions must NEVER be modified:
+   | Partition | Type | Purpose |
+   |-----------|------|---------|
+   | iBootSystemContainer | APFS | Boot policies, system firmware, boot picker |
+   | macOS Container | APFS | Main macOS installation |
+   | RecoveryOSContainer | APFS | System recovery (deletion breaks OS upgrades) |
+
+3. **Asahi creates its own structure**: The Asahi installer creates:
+   - Stub APFS partition (2.5GB) - Contains m1n1 stage 1 bootloader
+   - EFI System Partition (500MB) - Contains m1n1 stage 2, U-Boot, kernels
+   - These must be used as-is, not replaced
+
+4. **ZFS not supported**: The Asahi Linux kernel does not support ZFS. Keystone's default ZFS configuration will not work - ext4 is required.
+
+### 4.2 Apple Silicon Partition Layout
+
+After running the Asahi installer, your disk layout looks like:
+
+```
+[iBootSystemContainer] [macOS] [Stub APFS] [ESP] [Free Space] [Recovery]
+       DO NOT TOUCH      ↑         ↑        ↑         ↑        DO NOT TOUCH
+                     Preserve   Created  Created   For Linux
+                                by Asahi by Asahi  root partition
+```
+
+**Key constraint**: All new partitions must be placed between the existing partitions and the RecoveryOSContainer (which must remain last).
+
+### 4.3 Prerequisites
+
+Before installing NixOS, ensure:
+
+1. **Asahi Linux installer has been run**: `curl https://alx.sh | sh`
+   - Select "UEFI environment only" option (recommended)
+   - This creates the stub APFS and ESP partitions
+
+2. **Boot into Keystone installer ISO**: The Apple Silicon ISO you built
+
+3. **Network connectivity established**: Verify with `ip addr` and `ping`
+
+### 4.4 Installation Approach
+
+Since disko cannot be used, we provide two installation methods:
+
+1. **Automated script** - `install-apple-silicon` (included in ISO)
+2. **Manual installation** - Step-by-step commands (recommended for troubleshooting)
+
+---
+
+#### 4.4.1 Automated Script Installation
+
+The `install-apple-silicon` script is **included in the ISO** and available in `$PATH` after booting.
+
+**Usage:**
+```bash
+# From the booted installer ISO (script is pre-installed):
+install-apple-silicon --hostname my-macbook
+
+# With SSH key:
+install-apple-silicon --hostname my-macbook --ssh-key ~/.ssh/id_ed25519.pub
+
+# With LUKS encryption:
+install-apple-silicon --hostname my-macbook --encrypt
+
+# Preview without making changes:
+install-apple-silicon --dry-run
+```
+
+**Options:**
+- `--hostname NAME` - System hostname (default: keystone-mac)
+- `--disk DEVICE` - Target disk device (default: /dev/nvme0n1)
+- `--encrypt` - Enable LUKS encryption on root partition
+- `--ssh-key FILE` - SSH public key file to add for admin user
+- `--dry-run` - Show what would be done without making changes
+
+**What the script does:**
+1. Detects the Asahi ESP partition (from `/proc/device-tree/chosen/asahi,efi-system-partition`)
+2. Creates a root partition in free space (if not already exists)
+3. Optionally encrypts root with LUKS
+4. Formats root as ext4
+5. Mounts ESP to `/mnt/boot` and root to `/mnt`
+6. Initializes a Keystone flake template with Apple Silicon-specific configuration
+7. Runs `nixos-install` with the generated flake
+8. Copies the configuration to `/root/keystone-config` for future modifications
+
+---
+
+#### 4.4.2 Manual Installation (Recommended)
+
+Manual installation gives full control and is easier to troubleshoot. This method is recommended when the automated script encounters issues.
+
+##### Step 1: Verify Partition Layout
+
+First, check the current disk layout:
+
+```bash
+# View partition layout
+lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL
+
+# Get detailed GPT information (sector locations)
+sgdisk -p /dev/nvme0n1
+```
+
+Expected Asahi layout:
+```
+Number  Start (sector)    End (sector)  Size       Code  Name
+   1               6          128005   500.0 MiB   AF0B  iBootSystemContainer
+   2          128006        24542213   93.1 GiB    AF0A  (macOS)
+   3        24542214        25152517   2.3 GiB     AF0A  (Asahi stub)
+   4        25152518        25274629   477.0 MiB   EF00  (ESP)
+   5        59968630        61279338   5.0 GiB     AF0C  RecoveryOSContainer
+```
+
+**Key observation**: Free space exists between partition 4 (ESP, ends ~25274629) and partition 5 (Recovery, starts ~59968630).
+
+##### Step 2: Create Linux Root Partition
+
+The Recovery partition **must remain last** on disk. Create the new partition in the gap:
+
+```bash
+# Create partition 6 between ESP and Recovery
+# Adjust sector numbers based on YOUR sgdisk output!
+sgdisk -n 6:25274630:59968628 -t 6:8300 -c 6:nixos /dev/nvme0n1
+
+# Inform kernel of partition table changes
+partprobe /dev/nvme0n1
+sleep 2
+
+# Verify partition was created
+lsblk
+```
+
+##### Step 3a: Format WITHOUT Encryption (Simple)
+
+```bash
+# Format as ext4
+mkfs.ext4 -L nixos /dev/nvme0n1p6
+
+# Mount filesystems
+mount /dev/nvme0n1p6 /mnt
+mkdir -p /mnt/boot
+mount /dev/nvme0n1p4 /mnt/boot
+```
+
+##### Step 3b: Format WITH LUKS Encryption (Recommended)
+
+```bash
+# Set up LUKS encryption (you'll be prompted for a passphrase)
+cryptsetup luksFormat --type luks2 /dev/nvme0n1p6
+
+# Open the encrypted volume
+cryptsetup luksOpen /dev/nvme0n1p6 cryptroot
+
+# Format the encrypted volume as ext4
+mkfs.ext4 -L nixos /dev/mapper/cryptroot
+
+# Mount filesystems
+mount /dev/mapper/cryptroot /mnt
+mkdir -p /mnt/boot
+mount /dev/nvme0n1p4 /mnt/boot
+
+# Save the LUKS UUID (needed for configuration)
+LUKS_UUID=$(blkid -s UUID -o value /dev/nvme0n1p6)
+echo "LUKS UUID: $LUKS_UUID"
+```
+
+##### Step 4: Get ESP PARTUUID
+
+```bash
+# Get ESP PARTUUID (needed for hardware-configuration.nix)
+ESP_PARTUUID=$(blkid -s PARTUUID -o value /dev/nvme0n1p4)
+echo "ESP PARTUUID: $ESP_PARTUUID"
+
+# Or from device tree (more reliable on Asahi)
+cat /proc/device-tree/chosen/asahi,efi-system-partition | tr -d '\0'
+```
+
+##### Step 5: Generate NixOS Configuration
+
+```bash
+# Generate hardware configuration
+nixos-generate-config --root /mnt
+
+# This creates:
+# /mnt/etc/nixos/configuration.nix
+# /mnt/etc/nixos/hardware-configuration.nix
+```
+
+##### Step 6: Edit Configuration Files
+
+Edit `/mnt/etc/nixos/hardware-configuration.nix`:
+
+```nix
+{ config, lib, pkgs, modulesPath, ... }:
+
+{
+  imports = [ ];
+
+  # Root filesystem
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
+  };
+
+  # Boot partition (use YOUR ESP PARTUUID)
+  fileSystems."/boot" = {
+    device = "/dev/disk/by-partuuid/YOUR-ESP-PARTUUID-HERE";
+    fsType = "vfat";
+  };
+
+  # LUKS encryption (only if using --encrypt)
+  # Use YOUR LUKS UUID from Step 3b
+  boot.initrd.luks.devices."cryptroot" = {
+    device = "/dev/disk/by-uuid/YOUR-LUKS-UUID-HERE";
+  };
+
+  nixpkgs.hostPlatform = lib.mkDefault "aarch64-linux";
+}
+```
+
+Edit `/mnt/etc/nixos/configuration.nix`:
+
+```nix
+{ config, pkgs, lib, ... }:
+
+{
+  imports = [ ./hardware-configuration.nix ];
+
+  # CRITICAL: U-Boot cannot write EFI variables - prevents bricking!
+  boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.systemd-boot.consoleMode = "0";
+
+  networking.hostName = "keystone-mac";
+
+  # Networking
+  networking.networkmanager.enable = true;
+  networking.networkmanager.wifi.backend = "iwd";
+  networking.wireless.iwd.enable = true;
+
+  # Users
+  users.users.admin = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" "networkmanager" "video" "audio" ];
+    initialPassword = "changeme";
+  };
+
+  # SSH
+  services.openssh.enable = true;
+
+  # Nix settings
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
+  # Basic packages
+  environment.systemPackages = with pkgs; [
+    vim git curl wget htop
+  ];
+
+  system.stateVersion = "25.05";
+}
+```
+
+##### Step 7: Add Apple Silicon Support
+
+For full Apple Silicon support, you need the `nixos-apple-silicon` flake. Create `/mnt/etc/nixos/flake.nix`:
+
+```nix
+{
+  description = "Keystone - Apple Silicon Configuration";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixos-apple-silicon = {
+      url = "github:tpwrules/nixos-apple-silicon";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { self, nixpkgs, nixos-apple-silicon, ... }: {
+    nixosConfigurations.keystone-mac = nixpkgs.lib.nixosSystem {
+      system = "aarch64-linux";
+      modules = [
+        nixos-apple-silicon.nixosModules.default
+        ./configuration.nix
+        {
+          # Asahi hardware support
+          hardware.asahi = {
+            enable = true;
+            useExperimentalGPUDriver = true;
+            setupAsahiSound = true;
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+##### Step 8: Run Installation
+
+```bash
+# Install NixOS
+nixos-install --flake /mnt/etc/nixos#keystone-mac --no-root-passwd
+
+# Or without flake (uses configuration.nix directly):
+nixos-install --no-root-passwd
+```
+
+##### Step 9: Reboot
+
+```bash
+# Unmount filesystems
+umount /mnt/boot
+umount /mnt
+
+# If using LUKS:
+cryptsetup luksClose cryptroot
+
+# Reboot
+reboot
+```
+
+**Post-reboot:**
+1. Hold power button during boot to access boot picker
+2. Select "NixOS" (or "EFI Boot")
+3. If using LUKS, enter passphrase at prompt
+4. Login as `admin` with password `changeme`
+5. Change password immediately: `passwd`
+
+### 4.5 Required NixOS Configuration for Apple Silicon
+
+Apple Silicon requires specific configuration that differs from x86_64:
+
+```nix
+{ config, pkgs, lib, ... }: {
+  # Import nixos-apple-silicon overlay
+  imports = [
+    # From your flake inputs
+    inputs.nixos-apple-silicon.nixosModules.default
+  ];
+
+  # Filesystem configuration (NO ZFS - use ext4)
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
+  };
+
+  fileSystems."/boot" = {
+    device = "/dev/disk/by-partuuid/<your-esp-uuid>";
+    fsType = "vfat";
+  };
+
+  # CRITICAL: U-Boot cannot write EFI variables
+  boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.systemd-boot.consoleMode = "0";
+
+  # Enable Asahi hardware support
+  hardware.asahi.enable = true;
+  hardware.asahi.useExperimentalGPUDriver = true;  # For GPU acceleration
+
+  # Disable features not available on Apple Silicon
+  # (TPM, Secure Boot are not available)
+
+  # NetworkManager recommended for USB Ethernet and WiFi
+  networking.networkmanager.enable = true;
+  networking.networkmanager.wifi.backend = "iwd";
+}
+```
+
+### 4.6 Key Differences from x86_64 Installation
+
+| Feature | x86_64 | Apple Silicon |
+|---------|--------|---------------|
+| Deployment tool | nixos-anywhere + disko | Custom script (manual partitioning) |
+| Filesystem | ZFS (recommended) | ext4 only |
+| EFI Variables | `canTouchEfiVariables = true` | `= false` (U-Boot limitation) |
+| Boot Loader | systemd-boot | U-Boot → systemd-boot |
+| TPM Support | Yes | No |
+| Secure Boot | Yes (Lanzaboote) | No |
+| Partitioning | Full disk (disko) | Partial disk (preserve Apple partitions) |
+
+### 4.7 Post-Installation
+
+After `nixos-install` completes:
+
+1. **Reboot**: `reboot`
+2. **Select NixOS** from the boot picker (hold power button during boot)
+3. **First boot** may take longer as firmware is extracted
+
+**Troubleshooting:**
+- If boot fails, hold power button to access boot picker
+- Select "Options" → "Startup Disk" to change default boot OS
+- Recovery is always available by holding power button
+
+### 4.8 Future Improvements
+
+- [ ] Add Keystone OS module support for ext4-only configurations
+- [ ] Create Apple Silicon-specific flake template
+- [ ] Add GPU driver and sound configuration to desktop module
+- [ ] Document WiFi setup with iwd/NetworkManager

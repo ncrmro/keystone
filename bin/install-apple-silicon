@@ -1,0 +1,643 @@
+#!/usr/bin/env bash
+#
+# install-apple-silicon - Install Keystone NixOS on Apple Silicon (post-Asahi)
+#
+# This script installs Keystone (NixOS) on Apple Silicon Macs that have already
+# run the Asahi Linux installer. It:
+#   1. Detects the Asahi-created ESP partition
+#   2. Creates/formats root partition as ext4 (optionally with LUKS)
+#   3. Clones the Keystone flake template with Apple Silicon configuration
+#   4. Runs nixos-install
+#   5. Copies the flake to /root/keystone-config for future modifications
+#
+# IMPORTANT: This script does NOT use disko because Apple Silicon requires
+# preserving specific system partitions that disko would destroy.
+#
+# Usage:
+#   ./bin/install-apple-silicon [OPTIONS]
+#
+# Options:
+#   --disk DEVICE       Target disk device (default: /dev/nvme0n1)
+#   --hostname NAME     System hostname (default: keystone-mac)
+#   --encrypt           Enable LUKS encryption on root partition
+#   --ssh-key FILE      SSH public key file to add for admin user
+#   --yes, -y           Skip all confirmation prompts (for automation/SSH)
+#   --dry-run           Show what would be done without making changes
+#   --help              Show this help message
+#
+# Prerequisites:
+#   - Asahi Linux installer has been run (ESP partition exists)
+#   - Booted into NixOS installer ISO
+#   - Network connectivity established
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Default values
+DISK=""
+HOSTNAME="keystone-mac"
+ENCRYPT=false
+SSH_KEY_FILE=""
+DRY_RUN=false
+AUTO_CONFIRM=false
+MOUNT_POINT="/mnt"
+CONFIG_DIR="/root/keystone-config"
+KEYSTONE_REPO="github:ncrmro/keystone"
+
+# Logging functions
+log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
+log_success() { echo -e "${GREEN}[OK]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+log_step() { echo -e "${CYAN}[STEP]${NC} $*"; }
+
+# Confirmation helper - skips prompt if AUTO_CONFIRM=true or DRY_RUN=true
+confirm_action() {
+    local prompt="${1:-Continue?}"
+    if [[ "$DRY_RUN" == true || "$AUTO_CONFIRM" == true ]]; then
+        [[ "$AUTO_CONFIRM" == true ]] && log_info "Auto-confirmed: $prompt"
+        return 0
+    fi
+    read -rp "$prompt [y/N] " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        log_error "Aborted by user"
+        exit 1
+    fi
+}
+
+# Show help
+show_help() {
+    sed -n '/^# Usage:/,/^# Prerequisites:/p' "$0" | grep -v "^# Prerequisites:" | sed 's/^# //'
+    exit 0
+}
+
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --disk)
+                DISK="$2"
+                shift 2
+                ;;
+            --hostname)
+                HOSTNAME="$2"
+                shift 2
+                ;;
+            --encrypt)
+                ENCRYPT=true
+                shift
+                ;;
+            --ssh-key)
+                SSH_KEY_FILE="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --yes|-y)
+                AUTO_CONFIRM=true
+                shift
+                ;;
+            --help|-h)
+                show_help
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                show_help
+                ;;
+        esac
+    done
+}
+
+# Run command (or show in dry-run mode)
+run_cmd() {
+    if [[ "$DRY_RUN" == true ]]; then
+        echo -e "${YELLOW}[DRY-RUN]${NC} $*"
+    else
+        "$@"
+    fi
+}
+
+# Check if running on Apple Silicon
+check_apple_silicon() {
+    log_step "Checking for Apple Silicon..."
+
+    if [[ ! -d /proc/device-tree/chosen ]]; then
+        log_error "Not running on Apple Silicon (no device tree found)"
+        exit 1
+    fi
+
+    if [[ -f /proc/device-tree/compatible ]]; then
+        if grep -q "apple" /proc/device-tree/compatible 2>/dev/null; then
+            log_success "Running on Apple Silicon"
+            return 0
+        fi
+    fi
+
+    log_warn "Could not confirm Apple Silicon, proceeding anyway..."
+}
+
+# Detect Asahi ESP partition
+detect_esp() {
+    log_step "Detecting Asahi ESP partition..."
+
+    # Method 1: Check device tree (most reliable on Asahi)
+    local esp_partuuid=""
+    if [[ -f /proc/device-tree/chosen/asahi,efi-system-partition ]]; then
+        esp_partuuid=$(tr -d '\0' < /proc/device-tree/chosen/asahi,efi-system-partition)
+        log_info "Found ESP PARTUUID from device tree: $esp_partuuid"
+    fi
+
+    # Method 2: Look for ESP by type
+    if [[ -z "$esp_partuuid" ]]; then
+        log_info "Searching for ESP by partition type..."
+        local esp_dev
+        esp_dev=$(lsblk -o NAME,PARTTYPE -r | grep -i "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" | head -1 | awk '{print $1}')
+        if [[ -n "$esp_dev" ]]; then
+            esp_partuuid=$(blkid -s PARTUUID -o value "/dev/$esp_dev" 2>/dev/null || true)
+        fi
+    fi
+
+    if [[ -z "$esp_partuuid" ]]; then
+        log_error "Could not detect Asahi ESP partition"
+        log_error "Make sure you've run the Asahi installer first"
+        exit 1
+    fi
+
+    ESP_PARTUUID="$esp_partuuid"
+    ESP_DEVICE="/dev/disk/by-partuuid/$esp_partuuid"
+
+    if [[ ! -e "$ESP_DEVICE" ]]; then
+        log_error "ESP device not found: $ESP_DEVICE"
+        exit 1
+    fi
+
+    log_success "ESP partition: $ESP_DEVICE"
+}
+
+# Detect or auto-select disk
+detect_disk() {
+    if [[ -n "$DISK" ]]; then
+        log_info "Using specified disk: $DISK"
+        return
+    fi
+
+    log_step "Auto-detecting disk..."
+
+    # On Apple Silicon, the internal NVMe is typically nvme0n1
+    if [[ -b /dev/nvme0n1 ]]; then
+        DISK="/dev/nvme0n1"
+        log_success "Detected NVMe disk: $DISK"
+    else
+        log_error "Could not auto-detect disk. Please specify with --disk"
+        exit 1
+    fi
+}
+
+# Show current partition layout
+show_partitions() {
+    log_step "Current partition layout on $DISK:"
+    echo ""
+    lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINT "$DISK"
+    echo ""
+}
+
+# Find or create root partition
+setup_root_partition() {
+    log_step "Setting up root partition..."
+
+    # Look for existing Linux filesystem partition with "nixos" label
+    log_info "Looking for existing Linux partition..."
+
+    local linux_parts
+    linux_parts=$(sgdisk -p "$DISK" 2>/dev/null | grep "8300" | awk '{print $1}' | head -1 || true)
+
+    if [[ -n "$linux_parts" ]]; then
+        ROOT_PARTITION="$linux_parts"
+        ROOT_DEVICE="${DISK}p${ROOT_PARTITION}"
+        log_info "Found existing Linux partition: $ROOT_DEVICE"
+
+        # Check if already formatted
+        local existing_fs
+        existing_fs=$(blkid -s TYPE -o value "$ROOT_DEVICE" 2>/dev/null || true)
+        if [[ -n "$existing_fs" ]]; then
+            log_warn "Partition already has filesystem: $existing_fs"
+            confirm_action "Reformat this partition?"
+        fi
+    else
+        log_info "No existing Linux partition found, creating one..."
+        create_root_partition
+    fi
+
+    if [[ ! -b "$ROOT_DEVICE" ]]; then
+        log_error "Root device not found: $ROOT_DEVICE"
+        exit 1
+    fi
+}
+
+# Create root partition in free space
+create_root_partition() {
+    log_info "Creating root partition in free space..."
+
+    # Find free space between ESP (partition 4) and Recovery (partition 5)
+    # On Apple Silicon, Recovery MUST remain the last partition
+    local esp_end recovery_start free_sectors
+
+    # Get ESP end sector and Recovery start sector
+    esp_end=$(sgdisk -p "$DISK" 2>/dev/null | awk '$1 == "4" {print $3}')
+    recovery_start=$(sgdisk -p "$DISK" 2>/dev/null | awk '$1 == "5" {print $2}')
+
+    if [[ -z "$esp_end" || -z "$recovery_start" ]]; then
+        log_error "Could not detect ESP (partition 4) or Recovery (partition 5)"
+        log_error "This script expects Asahi installer partition layout"
+        exit 1
+    fi
+
+    # Calculate free space (leave 2 sectors gap before Recovery for alignment)
+    local new_start=$((esp_end + 1))
+    local new_end=$((recovery_start - 2))
+    free_sectors=$((new_end - new_start))
+
+    log_info "ESP ends at sector: $esp_end"
+    log_info "Recovery starts at sector: $recovery_start"
+    log_info "Free space: $((free_sectors * 4096 / 1024 / 1024 / 1024)) GiB ($free_sectors sectors)"
+
+    if [[ $free_sectors -lt 10000000 ]]; then  # Less than ~40GB
+        log_warn "Free space is less than 40GB - installation may be tight"
+    fi
+
+    # New partition number (will be 6, inserted between 4 and 5)
+    ROOT_PARTITION=6
+    ROOT_DEVICE="${DISK}p${ROOT_PARTITION}"
+
+    log_warn "This will create partition $ROOT_PARTITION on $DISK"
+    log_warn "Location: sectors $new_start to $new_end (between ESP and Recovery)"
+    confirm_action "Create partition?"
+
+    # Create partition in the free space between ESP and Recovery
+    # Using explicit start:end sectors to avoid touching Recovery
+    run_cmd sgdisk -n "${ROOT_PARTITION}:${new_start}:${new_end}" -t "${ROOT_PARTITION}:8300" -c "${ROOT_PARTITION}:nixos" "$DISK"
+    run_cmd partprobe "$DISK"
+    sleep 2  # Wait for partition to appear
+
+    ROOT_DEVICE="${DISK}p${ROOT_PARTITION}"
+
+    if [[ ! -b "$ROOT_DEVICE" ]]; then
+        log_error "Failed to create partition - device $ROOT_DEVICE not found"
+        exit 1
+    fi
+
+    log_success "Created root partition: $ROOT_DEVICE"
+}
+
+# Format root partition
+format_root() {
+    log_step "Formatting root partition..."
+
+    if [[ "$ENCRYPT" == true ]]; then
+        log_info "Setting up LUKS encryption..."
+
+        if [[ "$DRY_RUN" == false ]]; then
+            echo ""
+            log_warn "You will be prompted to enter a passphrase for disk encryption"
+            echo ""
+            cryptsetup luksFormat --type luks2 "$ROOT_DEVICE"
+            cryptsetup luksOpen "$ROOT_DEVICE" cryptroot
+        else
+            run_cmd cryptsetup luksFormat --type luks2 "$ROOT_DEVICE"
+            run_cmd cryptsetup luksOpen "$ROOT_DEVICE" cryptroot
+        fi
+
+        FORMATTED_DEVICE="/dev/mapper/cryptroot"
+        LUKS_UUID=$(blkid -s UUID -o value "$ROOT_DEVICE" 2>/dev/null || echo "LUKS-UUID")
+    else
+        FORMATTED_DEVICE="$ROOT_DEVICE"
+    fi
+
+    log_info "Creating ext4 filesystem..."
+    run_cmd mkfs.ext4 -L nixos "$FORMATTED_DEVICE"
+
+    log_success "Root partition formatted"
+}
+
+# Mount filesystems
+mount_filesystems() {
+    log_step "Mounting filesystems..."
+
+    # Mount root
+    if [[ "$ENCRYPT" == true ]]; then
+        run_cmd mount /dev/mapper/cryptroot "$MOUNT_POINT"
+    else
+        run_cmd mount "$FORMATTED_DEVICE" "$MOUNT_POINT"
+    fi
+
+    # Create and mount boot
+    run_cmd mkdir -p "$MOUNT_POINT/boot"
+    run_cmd mount "$ESP_DEVICE" "$MOUNT_POINT/boot"
+
+    log_success "Filesystems mounted at $MOUNT_POINT"
+}
+
+# Generate hostId for the system
+generate_hostid() {
+    head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
+}
+
+# Generate NixOS configuration files directly in /mnt/etc/nixos
+# Uses flake-based configuration with nixos-apple-silicon for proper hardware support
+setup_nixos_config() {
+    log_step "Setting up NixOS configuration (flake-based with Asahi support)..."
+
+    local config_dir="$MOUNT_POINT/etc/nixos"
+    run_cmd mkdir -p "$config_dir"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "Would create configuration in $config_dir"
+        return
+    fi
+
+    # Read SSH key if provided
+    local ssh_key=""
+    if [[ -n "$SSH_KEY_FILE" && -f "$SSH_KEY_FILE" ]]; then
+        ssh_key=$(cat "$SSH_KEY_FILE")
+        log_info "Using SSH key from $SSH_KEY_FILE"
+    fi
+
+    # Generate hardware-configuration.nix
+    log_info "Generating hardware-configuration.nix..."
+    cat > "$config_dir/hardware-configuration.nix" << EOF
+# Hardware configuration for Apple Silicon
+# Generated by install-apple-silicon
+
+{ config, lib, pkgs, modulesPath, ... }:
+
+{
+  imports = [ ];
+
+  # Root filesystem (ext4 - ZFS not supported on Asahi kernel)
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
+  };
+
+  # Boot partition (Asahi ESP)
+  fileSystems."/boot" = {
+    device = "/dev/disk/by-partuuid/$ESP_PARTUUID";
+    fsType = "vfat";
+  };
+
+$(if [[ "$ENCRYPT" == true ]]; then
+cat << LUKS
+  # LUKS encryption
+  boot.initrd.luks.devices."cryptroot" = {
+    device = "/dev/disk/by-uuid/$LUKS_UUID";
+  };
+
+LUKS
+fi)
+  # No swap configured (add manually if needed)
+  # swapDevices = [ { device = "/dev/disk/by-label/swap"; } ];
+
+  nixpkgs.hostPlatform = lib.mkDefault "aarch64-linux";
+}
+EOF
+
+    # Generate configuration.nix
+    log_info "Generating configuration.nix..."
+    cat > "$config_dir/configuration.nix" << EOF
+# Keystone NixOS Configuration - Apple Silicon
+# Generated by install-apple-silicon
+
+{ config, pkgs, lib, ... }:
+
+{
+  imports = [ ./hardware-configuration.nix ];
+
+  # ============================================================================
+  # SYSTEM IDENTITY
+  # ============================================================================
+
+  networking.hostName = "$HOSTNAME";
+  system.stateVersion = "25.05";
+
+  # ============================================================================
+  # APPLE SILICON BOOT CONFIGURATION
+  # ============================================================================
+
+  # CRITICAL: U-Boot cannot write EFI variables - this prevents bricking!
+  boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.systemd-boot.consoleMode = "0";
+
+  # ============================================================================
+  # NETWORKING
+  # ============================================================================
+
+  networking.networkmanager.enable = true;
+  networking.networkmanager.wifi.backend = "iwd";
+  networking.wireless.iwd.enable = true;
+
+  # ============================================================================
+  # USERS
+  # ============================================================================
+
+  users.users.admin = {
+    isNormalUser = true;
+    description = "System Administrator";
+    extraGroups = [ "wheel" "networkmanager" "video" "audio" ];
+    initialPassword = "changeme";  # TODO: Change after first login!
+$(if [[ -n "$ssh_key" ]]; then
+cat << SSH
+    openssh.authorizedKeys.keys = [
+      "$ssh_key"
+    ];
+SSH
+fi)
+  };
+
+  # ============================================================================
+  # SERVICES
+  # ============================================================================
+
+  services.openssh = {
+    enable = true;
+    settings = {
+      PermitRootLogin = "prohibit-password";
+      PasswordAuthentication = true;  # TODO: Set to false after adding SSH keys
+    };
+  };
+
+  # ============================================================================
+  # NIX SETTINGS
+  # ============================================================================
+
+  nix.settings = {
+    experimental-features = [ "nix-command" "flakes" ];
+    trusted-users = [ "root" "@wheel" ];
+  };
+
+  # ============================================================================
+  # PACKAGES
+  # ============================================================================
+
+  environment.systemPackages = with pkgs; [
+    vim
+    git
+    curl
+    wget
+    htop
+    tree
+  ];
+
+  # Timezone
+  time.timeZone = "UTC";  # TODO: Change to your timezone
+}
+EOF
+
+    # Generate flake.nix with Apple Silicon support
+    log_info "Generating flake.nix with nixos-apple-silicon..."
+    cat > "$config_dir/flake.nix" << 'FLAKE_EOF'
+{
+  description = "Keystone - Apple Silicon Configuration";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixos-apple-silicon = {
+      url = "github:tpwrules/nixos-apple-silicon";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { self, nixpkgs, nixos-apple-silicon, ... }: {
+    nixosConfigurations.HOSTNAME_PLACEHOLDER = nixpkgs.lib.nixosSystem {
+      system = "aarch64-linux";
+      modules = [
+        # Apple Silicon hardware support (Asahi kernel, GPU, audio)
+        nixos-apple-silicon.nixosModules.default
+        ./configuration.nix
+        {
+          # Asahi hardware options
+          hardware.asahi = {
+            enable = true;
+            useExperimentalGPUDriver = true;
+            setupAsahiSound = true;
+          };
+        }
+      ];
+    };
+  };
+}
+FLAKE_EOF
+
+    # Replace placeholder with actual hostname
+    sed -i "s/HOSTNAME_PLACEHOLDER/$HOSTNAME/g" "$config_dir/flake.nix"
+
+    log_success "NixOS configuration created in $config_dir"
+}
+
+# Run nixos-install with flake
+run_install() {
+    log_step "Running nixos-install with flake (includes Asahi kernel)..."
+
+    local config_dir="$MOUNT_POINT/etc/nixos"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "Would run: nixos-install --flake $config_dir#$HOSTNAME --no-root-passwd"
+        return
+    fi
+
+    # Generate flake.lock first (download nixos-apple-silicon)
+    log_info "Resolving flake inputs (downloading nixos-apple-silicon)..."
+    if ! (cd "$config_dir" && nix flake update); then
+        log_error "Failed to resolve flake inputs (nix flake update failed)"
+        log_error "Check network connectivity and try again"
+        exit 1
+    fi
+
+    # Run nixos-install with flake
+    log_info "Installing NixOS with Asahi kernel (this may take a while)..."
+    if ! nixos-install --flake "$config_dir#$HOSTNAME" --no-root-passwd; then
+        log_error "nixos-install failed"
+        log_error "Check the output above for details"
+        exit 1
+    fi
+
+    # Copy config to user-accessible location
+    log_info "Copying configuration to $MOUNT_POINT$CONFIG_DIR..."
+    mkdir -p "$MOUNT_POINT$CONFIG_DIR"
+    cp -r "$config_dir"/* "$MOUNT_POINT$CONFIG_DIR/"
+
+    log_success "NixOS installation complete!"
+}
+
+# Main
+main() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║     Keystone - Apple Silicon NixOS Installer                     ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    parse_args "$@"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_warn "DRY-RUN MODE - No changes will be made"
+        echo ""
+    fi
+
+    # Check prerequisites
+    check_apple_silicon
+    detect_esp
+    detect_disk
+
+    # Show current state
+    show_partitions
+
+    # Confirm before proceeding
+    echo ""
+    log_warn "This will install Keystone NixOS on $DISK"
+    log_warn "Hostname: $HOSTNAME"
+    log_warn "Encryption: $ENCRYPT"
+    log_warn "The root partition will be formatted (data will be lost)"
+    echo ""
+    confirm_action "Continue with installation?"
+
+    # Run installation steps
+    setup_root_partition
+    format_root
+    mount_filesystems
+    setup_nixos_config
+    run_install
+
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║     Installation Complete!                                        ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    echo ""
+    log_success "Keystone NixOS has been installed on your Apple Silicon Mac"
+    echo ""
+    log_info "Configuration saved to: $CONFIG_DIR"
+    log_info ""
+    log_info "Next steps:"
+    log_info "  1. Reboot: reboot"
+    log_info "  2. Hold power button during boot to access boot picker"
+    log_info "  3. Select NixOS to boot"
+    log_info "  4. Login as 'admin' with password: changeme"
+    log_info "  5. Change your password: passwd"
+    log_info ""
+    log_info "To modify your system configuration:"
+    log_info "  cd /etc/nixos"
+    log_info "  sudo vim configuration.nix"
+    log_info "  sudo nixos-rebuild switch --flake .#$HOSTNAME"
+    echo ""
+}
+
+main "$@"
