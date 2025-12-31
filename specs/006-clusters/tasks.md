@@ -28,10 +28,10 @@
 ### Epic: Bootable Primer Image
 
 #### 0.1 Create Primer NixOS Configuration
-- [ ] Create `modules/cluster/primer/default.nix` module structure
-- [ ] Configure single-node etcd with systemd service
-- [ ] Add k3s or kubeadm control plane configuration
-- [ ] Enable automatic ZFS import on boot
+- [x] Create `modules/cluster/primer/default.nix` module structure
+- [x] Configure single-node etcd with systemd service
+- [x] Add k3s or kubeadm control plane configuration
+- [x] Enable automatic ZFS import on boot
 
 #### 0.2 Integrate with Existing Disko Module
 - [ ] Verify encrypted ZFS works with cluster workloads
@@ -39,40 +39,44 @@
 - [ ] Set up Kubernetes state directories (`/var/lib/kubernetes`, `/var/lib/etcd`)
 
 #### [P] 0.3 Build Test Image
-- [ ] Create qcow2 image for VM testing
-- [ ] Configure `bin/virtual-machine` for primer testing
+- [x] Create qcow2 image for VM testing
+- [x] Configure `bin/virtual-machine` for primer testing
 - [ ] Document manual installation steps for USB boot
+
+#### [P] 0.3.1 Air-gapped Test Stability
+- [ ] Set up local container registry or image pre-loading for NixOS tests (coredns, metrics-server, etc.)
+- [x] Fix Headscale/Pause image pull failures in integration tests
 
 ### Epic: Cluster Credentials
 
 #### 0.4 CA and Certificate Generation
-- [ ] Implement cluster CA generation (stored on encrypted ZFS)
-- [ ] Generate etcd peer certificates
-- [ ] Generate Kubernetes API server certificates
-- [ ] Generate admin kubeconfig
+- [x] Implement cluster CA generation (stored on encrypted ZFS)
+- [x] Generate etcd peer certificates
+- [x] Generate Kubernetes API server certificates
+- [x] Generate admin kubeconfig
 
 #### 0.5 Initial Secrets Storage
-- [ ] Create credstore pattern for cluster secrets
-- [ ] Integrate with existing Keystone credstore module
+- [x] Create credstore pattern for cluster secrets
+- [x] Integrate with existing Keystone credstore module
 - [ ] Document secret rotation process
 
 ### Epic: Basic Kubernetes
 
 #### 0.6 etcd Single-Node Setup
-- [ ] Configure etcd systemd service
-- [ ] Set up etcd client authentication
-- [ ] Verify data persistence across reboots
+- [x] Configure etcd systemd service
+- [x] Set up etcd client authentication
+- [x] Verify data persistence across reboots
 
 #### 0.7 Kubernetes Control Plane
-- [ ] Deploy k3s server or kubeadm control plane
-- [ ] Configure API server with cluster CA
-- [ ] Verify kubectl access from Primer node
+- [x] Deploy k3s server or kubeadm control plane
+- [x] Configure API server with cluster CA
+- [x] Verify kubectl access from Primer node
 
 ### Spike Success Criteria
-- [ ] Primer boots from qcow2 with encrypted ZFS
-- [ ] etcd running and healthy (`etcdctl endpoint health`)
-- [ ] kubectl works against local API server
-- [ ] Credentials survive reboot
+- [x] Primer boots from qcow2 with encrypted ZFS
+- [x] etcd running and healthy (`etcdctl endpoint health`)
+- [x] kubectl works against local API server
+- [x] Credentials survive reboot
 
 ---
 
@@ -85,10 +89,10 @@
 ### Epic: Headscale Deployment
 
 #### 1.1 Headscale NixOS Module
-- [ ] Create `modules/cluster/primer/headscale.nix`
-- [ ] Configure Headscale with PostgreSQL/SQLite backend
-- [ ] Set up HTTPS with Let's Encrypt or self-signed cert
-- [ ] Enable metrics endpoint
+- [x] Create `modules/cluster/primer/headscale.nix`
+- [x] Configure Headscale with PostgreSQL/SQLite backend
+- [x] Set up HTTPS with Let's Encrypt or self-signed cert
+- [x] Enable metrics endpoint
 
 #### 1.2 ACL Configuration
 - [ ] Define initial ACL structure (cluster-admins, developers)
@@ -96,39 +100,53 @@
 - [ ] Document ACL update process
 
 #### [P] 1.3 DERP Relay Setup
-- [ ] Deploy DERP relay on Primer
+- [x] Deploy DERP relay on Primer
 - [ ] Configure custom DERP map
 - [ ] Test NAT traversal scenarios
 
 ### Epic: Node Registration
 
 #### 1.4 Pre-Auth Key Management
-- [ ] Implement pre-auth key generation for new nodes
-- [ ] Create API endpoint for key creation (protected)
+- [x] Implement pre-auth key generation for new nodes
+- [x] Create API endpoint for key creation (protected)
 - [ ] Document node onboarding process
 
 #### 1.5 Worker Node Tailscale Integration
-- [ ] Create `modules/cluster/worker/tailscale.nix`
-- [ ] Configure automatic registration on boot
-- [ ] Test cloud-init integration pattern
+- [x] Create `modules/cluster/worker/tailscale.nix`
+- [x] Configure automatic registration on boot
+- [x] Test cloud-init integration pattern
+
+#### 1.6 Worker k3s Agent Integration
+- [ ] Create `modules/cluster/worker/k3s.nix` with agent mode support
+- [ ] Add `useAgenixToken` option for k3s token from `/run/agenix/k3s-agent-token`
+- [ ] Add `useAgenixAuthKey` option for Headscale key from `/run/agenix/headscale-authkey`
+- [ ] Update integration test to verify workers join k3s cluster
+- [ ] Test `kubectl get nodes` shows all workers as Ready
+
+#### 1.7 Token Export Service (Primer)
+- [ ] Create systemd service to export k3s token to accessible location
+- [ ] Generate long-lived reusable Headscale pre-auth key at bootstrap
+- [ ] Document token extraction for agenix encryption workflow
 
 ### Epic: Access Patterns
 
-#### 1.6 Machine Access (SSH)
-- [ ] Verify SSH over Headscale mesh
+#### 1.8 Machine Access (SSH)
+- [x] Verify SSH over Headscale mesh
 - [ ] Configure SSH host keys distribution
 - [ ] Document SSH access workflow
 
-#### 1.7 Cluster Access (kubectl)
-- [ ] Generate kubeconfig with Headscale IPs
-- [ ] Test API server access over mesh
+#### 1.9 Cluster Access (kubectl)
+- [x] Generate kubeconfig with Headscale IPs
+- [x] Test API server access over mesh
 - [ ] Document kubectl setup for developers
 
 ### Phase 1 Success Criteria
-- [ ] Headscale running on Primer with valid ACLs
-- [ ] At least one worker node registered via Headscale
-- [ ] SSH works to all nodes via Headscale
-- [ ] kubectl works via Headscale network
+- [x] Headscale running on Primer with valid ACLs
+- [x] At least one worker node registered via Headscale
+- [x] SSH works to all nodes via Headscale
+- [x] kubectl works via Headscale network
+- [ ] Workers join as k3s agents (`kubectl get nodes` shows workers)
+- [ ] Worker join tokens managed via agenix secrets
 
 ---
 

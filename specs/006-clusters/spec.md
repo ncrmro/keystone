@@ -261,6 +261,8 @@ The system uses a multi-recipient encryption model where each secret can be decr
 | `headscale-private.age` | Headscale main private key | primer + all admins |
 | `headscale-noise.age` | Noise protocol key for node communication | primer + all admins |
 | `headscale-derp.age` | DERP relay server key | primer + all admins |
+| `headscale-authkey.age` | Reusable pre-auth key for worker mesh registration | primer + all admins + workers |
+| `k3s-agent-token.age` | k3s agent join token for worker nodes | primer + all admins + workers |
 | `k8s-ca-key.age` | Kubernetes CA private key | primer + all admins |
 | `etcd-encryption.age` | etcd data-at-rest encryption key | primer + all admins |
 | `oidc-signing.age` | OIDC token signing key | primer + all admins |
@@ -399,3 +401,10 @@ The cluster shall continue to operate when the Primer Server is offline, with th
 
 ### FR-013: Agenix Secret Management
 The system shall use agenix for encrypting and storing cluster secrets in git, with support for multiple admin keys (per-admin revocable) and autonomous primer server decryption. All cluster secrets (Headscale keys, Kubernetes CA, etcd encryption, OIDC signing) shall be encrypted with age and decrypted at boot to `/run/agenix/`.
+
+### FR-014: Worker Node Auto-Join
+Workers shall automatically join both the Headscale mesh and k3s cluster using agenix-managed tokens decrypted at boot. The system shall support:
+- **Headscale pre-auth key** (`headscale-authkey.age`): Long-lived reusable key for mesh VPN registration via `tailscale up --authkey`
+- **k3s agent token** (`k3s-agent-token.age`): Token for Kubernetes cluster membership via k3s agent mode
+
+Both tokens are generated once during cluster bootstrap, encrypted with agenix, and distributed to worker nodes. This enables autoscaling patterns (AWS ASG, bare metal provisioning) where new nodes join automatically without manual intervention.
