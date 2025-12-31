@@ -8,8 +8,12 @@
 with lib; let
   cfg = config.keystone.desktop;
   hyprlandPkg = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
+  isX86_64 = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
 
-  # Screen recording script using gpu-screen-recorder
+  # Screen recording script using gpu-screen-recorder (x86_64-linux only)
+  #
+  # Note: gpu-screen-recorder is not available on aarch64-linux, so this script
+  # and the package are only included on x86_64-linux systems.
   #
   # Waybar Integration:
   # The waybar module "custom/screenrecording-indicator" uses signal-based updates
@@ -20,75 +24,77 @@ with lib; let
   # The waybar config uses "signal": 8 which maps to RTMIN+8.
   # See: modules/keystone/desktop/home/components/waybar.nix
   #
-  keystoneScreenrecord = pkgs.writeShellScriptBin "keystone-screenrecord" ''
-    [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
-    OUTPUT_DIR="''${KEYSTONE_SCREENRECORD_DIR:-''${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+  keystoneScreenrecord = lib.optionalAttrs isX86_64 {
+    pkg = pkgs.writeShellScriptBin "keystone-screenrecord" ''
+      [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
+      OUTPUT_DIR="''${KEYSTONE_SCREENRECORD_DIR:-''${XDG_VIDEOS_DIR:-$HOME/Videos}}"
 
-    if [[ ! -d "$OUTPUT_DIR" ]]; then
-      ${pkgs.libnotify}/bin/notify-send "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
-      exit 1
-    fi
-
-    DESKTOP_AUDIO="false"
-    MICROPHONE_AUDIO="false"
-    STOP_RECORDING="false"
-
-    for arg in "$@"; do
-      case "$arg" in
-        --with-desktop-audio) DESKTOP_AUDIO="true" ;;
-        --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
-        --stop) STOP_RECORDING="true" ;;
-      esac
-    done
-
-    start_screenrecording() {
-      local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
-      local audio_args=""
-
-      if [[ "$DESKTOP_AUDIO" == "true" && "$MICROPHONE_AUDIO" == "true" ]]; then
-        audio_args="-a default_output|default_input"
-      elif [[ "$DESKTOP_AUDIO" == "true" ]]; then
-        audio_args="-a default_output"
-      elif [[ "$MICROPHONE_AUDIO" == "true" ]]; then
-        audio_args="-a default_input"
+      if [[ ! -d "$OUTPUT_DIR" ]]; then
+        ${pkgs.libnotify}/bin/notify-send "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
+        exit 1
       fi
 
-      ${pkgs.gpu-screen-recorder}/bin/gpu-screen-recorder -w portal -f 60 -encoder gpu -o "$filename" $audio_args -ac aac &
-      ${pkgs.libnotify}/bin/notify-send "Screen recording started" -t 2000
-      ${pkgs.procps}/bin/pkill -RTMIN+8 waybar
-    }
+      DESKTOP_AUDIO="false"
+      MICROPHONE_AUDIO="false"
+      STOP_RECORDING="false"
 
-    stop_screenrecording() {
-      ${pkgs.procps}/bin/pkill -SIGINT -f "^gpu-screen-recorder"
-
-      # Wait up to 5 seconds for clean shutdown
-      local count=0
-      while ${pkgs.procps}/bin/pgrep -f "^gpu-screen-recorder" >/dev/null && [ $count -lt 50 ]; do
-        sleep 0.1
-        count=$((count + 1))
+      for arg in "$@"; do
+        case "$arg" in
+          --with-desktop-audio) DESKTOP_AUDIO="true" ;;
+          --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
+          --stop) STOP_RECORDING="true" ;;
+        esac
       done
 
-      if ${pkgs.procps}/bin/pgrep -f "^gpu-screen-recorder" >/dev/null; then
-        ${pkgs.procps}/bin/pkill -9 -f "^gpu-screen-recorder"
-        ${pkgs.libnotify}/bin/notify-send "Screen recording error" "Recording had to be force-killed. Video may be corrupted." -u critical -t 5000
+      start_screenrecording() {
+        local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
+        local audio_args=""
+
+        if [[ "$DESKTOP_AUDIO" == "true" && "$MICROPHONE_AUDIO" == "true" ]]; then
+          audio_args="-a default_output|default_input"
+        elif [[ "$DESKTOP_AUDIO" == "true" ]]; then
+          audio_args="-a default_output"
+        elif [[ "$MICROPHONE_AUDIO" == "true" ]]; then
+          audio_args="-a default_input"
+        fi
+
+        ${pkgs.gpu-screen-recorder}/bin/gpu-screen-recorder -w portal -f 60 -encoder gpu -o "$filename" $audio_args -ac aac &
+        ${pkgs.libnotify}/bin/notify-send "Screen recording started" -t 2000
+        ${pkgs.procps}/bin/pkill -RTMIN+8 waybar
+      }
+
+      stop_screenrecording() {
+        ${pkgs.procps}/bin/pkill -SIGINT -f "^gpu-screen-recorder"
+
+        # Wait up to 5 seconds for clean shutdown
+        local count=0
+        while ${pkgs.procps}/bin/pgrep -f "^gpu-screen-recorder" >/dev/null && [ $count -lt 50 ]; do
+          sleep 0.1
+          count=$((count + 1))
+        done
+
+        if ${pkgs.procps}/bin/pgrep -f "^gpu-screen-recorder" >/dev/null; then
+          ${pkgs.procps}/bin/pkill -9 -f "^gpu-screen-recorder"
+          ${pkgs.libnotify}/bin/notify-send "Screen recording error" "Recording had to be force-killed. Video may be corrupted." -u critical -t 5000
+        else
+          ${pkgs.libnotify}/bin/notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+        fi
+        ${pkgs.procps}/bin/pkill -RTMIN+8 waybar
+      }
+
+      screenrecording_active() {
+        ${pkgs.procps}/bin/pgrep -f "^gpu-screen-recorder" >/dev/null
+      }
+
+      if screenrecording_active; then
+        stop_screenrecording
+      elif [[ "$STOP_RECORDING" == "false" ]]; then
+        start_screenrecording
       else
-        ${pkgs.libnotify}/bin/notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+        exit 1
       fi
-      ${pkgs.procps}/bin/pkill -RTMIN+8 waybar
-    }
-
-    screenrecording_active() {
-      ${pkgs.procps}/bin/pgrep -f "^gpu-screen-recorder" >/dev/null
-    }
-
-    if screenrecording_active; then
-      stop_screenrecording
-    elif [[ "$STOP_RECORDING" == "false" ]]; then
-      start_screenrecording
-    else
-      exit 1
-    fi
-  '';
+    '';
+  };
 
   # Audio switch script
   keystoneAudioSwitch = pkgs.writeShellScriptBin "keystone-audio-switch" ''
@@ -221,7 +227,6 @@ in {
   config = mkIf cfg.enable {
     home.packages =
       [
-        keystoneScreenrecord
         keystoneAudioSwitch
         keystoneIdleToggle
         keystoneNightlightToggle
@@ -233,8 +238,10 @@ in {
         pkgs.libxkbcommon # for xkbcli in keybindings menu
         pkgs.hypridle
       ]
-      ++ lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") [
-        pkgs.gpu-screen-recorder # x86_64 only
+      # Screen recording is x86_64 only (gpu-screen-recorder not available on aarch64)
+      ++ lib.optionals isX86_64 [
+        keystoneScreenrecord.pkg
+        pkgs.gpu-screen-recorder
       ];
   };
 }
