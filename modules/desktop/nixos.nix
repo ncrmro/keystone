@@ -111,35 +111,39 @@ in {
     ];
 
     # System packages for desktop environment
-    environment.systemPackages = with pkgs; [
-      # Screen recording
-      gpu-screen-recorder
+    environment.systemPackages = with pkgs;
+      [
+        # Screen recording (x86_64 only - gpu-screen-recorder doesn't support aarch64)
+      ]
+      ++ lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") [
+        gpu-screen-recorder
+      ]
+      ++ [
+        # File management
+        nautilus
+        file-roller
 
-      # File management
-      nautilus
-      file-roller
+        # System utilities
+        pavucontrol
+        networkmanagerapplet
+        blueberry
 
-      # System utilities
-      pavucontrol
-      networkmanagerapplet
-      blueberry
+        # XDG portals and desktop integration
+        xdg-utils
+        xdg-user-dirs
 
-      # XDG portals and desktop integration
-      xdg-utils
-      xdg-user-dirs
+        # Polkit agent
+        hyprpolkitagent
 
-      # Polkit agent
-      hyprpolkitagent
+        # Cursor themes
+        adwaita-icon-theme
 
-      # Cursor themes
-      adwaita-icon-theme
-
-      # Additional Hyprland tools
-      hyprsunset
-      hyprlock
-      hypridle
-      hyprpaper
-    ];
+        # Additional Hyprland tools
+        hyprsunset
+        hyprlock
+        hypridle
+        hyprpaper
+      ];
 
     # Enable polkit
     security.polkit.enable = mkDefault true;
