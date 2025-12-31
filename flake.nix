@@ -28,6 +28,15 @@
       inputs.elephant.follows = "elephant";
     };
 
+    # Additional nixpkgs for bleeding edge packages
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    # Helix editor theme
+    kinda-nvim-hx = {
+      url = "github:monomadic/kinda-nvim-helix";
+      flake = false;
+    };
+
     # Apple Silicon support (Asahi Linux kernel and hardware)
     nixos-apple-silicon = {
       url = "github:tpwrules/nixos-apple-silicon";
@@ -45,12 +54,15 @@
     hyprland,
     elephant,
     walker,
+    nixpkgs-unstable,
+    kinda-nvim-hx,
     nixos-apple-silicon,
     ...
   }: let
-    # Create inputs attrset for desktop module
+    # Create inputs attrset for desktop and terminal modules
     inputs = {
-      inherit nixpkgs hyprland walker;
+      inherit self nixpkgs hyprland walker omarchy nixpkgs-unstable kinda-nvim-hx;
+      keystone = self; # For modules that reference inputs.keystone
     };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
