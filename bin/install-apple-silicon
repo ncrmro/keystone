@@ -503,6 +503,8 @@ fi)
 EOF
 
     # Generate flake.nix with Apple Silicon support
+    # NOTE: During installation, firmware is at /mnt/boot/asahi (ESP mounted at /mnt/boot)
+    # After nixos-install completes, we update the path to /boot/asahi for runtime use
     log_info "Generating flake.nix with nixos-apple-silicon..."
     cat > "$config_dir/flake.nix" << 'FLAKE_EOF'
 {
@@ -527,7 +529,8 @@ EOF
           # Asahi hardware options
           hardware.asahi = {
             enable = true;
-            useExperimentalGPUDriver = true;
+            # Install-time path: /mnt/boot/asahi (updated to /boot/asahi after install)
+            peripheralFirmwareDirectory = /mnt/boot/asahi;
             setupAsahiSound = true;
           };
         }
@@ -543,6 +546,155 @@ FLAKE_EOF
     log_success "NixOS configuration created in $config_dir"
 }
 
+# ============================================================================
+# PRE-REBOOT VERIFICATION FUNCTIONS
+# These verify the installation will boot successfully BEFORE rebooting
+# ============================================================================
+
+# Verify Asahi kernel was installed (not standard NixOS kernel)
+verify_asahi_kernel() {
+    log_step "Verifying Asahi kernel installation..."
+
+    # Check kernel exists in boot partition
+    if ! ls "$MOUNT_POINT/boot/EFI/nixos/"*linux-asahi*.efi >/dev/null 2>&1; then
+        log_error "Asahi kernel not found in boot partition!"
+        log_error "Standard NixOS kernel will cause BLACK SCREEN on Apple Silicon"
+        return 1
+    fi
+
+    # Check initrd exists
+    if ! ls "$MOUNT_POINT/boot/EFI/nixos/"*initrd*.efi >/dev/null 2>&1; then
+        log_error "Initrd not found in boot partition!"
+        return 1
+    fi
+
+    local kernel_file
+    kernel_file=$(ls "$MOUNT_POINT/boot/EFI/nixos/"*linux-asahi*.efi 2>/dev/null | head -1)
+    log_success "Asahi kernel found: $(basename "$kernel_file")"
+}
+
+# Verify boot loader is properly configured
+verify_bootloader() {
+    log_step "Verifying boot loader configuration..."
+
+    # Check loader.conf exists
+    if [[ ! -f "$MOUNT_POINT/boot/loader/loader.conf" ]]; then
+        log_error "Boot loader configuration missing!"
+        return 1
+    fi
+
+    # Check boot entry exists
+    if ! ls "$MOUNT_POINT/boot/loader/entries/"*.conf >/dev/null 2>&1; then
+        log_error "No boot entries found!"
+        return 1
+    fi
+
+    # Verify entry points to Asahi kernel (not generic linux)
+    local entry
+    entry=$(ls "$MOUNT_POINT/boot/loader/entries/"*.conf | head -1)
+    if ! grep -q "linux-asahi" "$entry" 2>/dev/null; then
+        log_warn "Boot entry may not be using Asahi kernel"
+        log_info "Entry contents:"
+        cat "$entry"
+    fi
+
+    log_success "Boot loader configured correctly"
+}
+
+# Verify Asahi firmware files are present
+verify_firmware() {
+    log_step "Verifying Asahi firmware files..."
+
+    # Check firmware directory exists
+    if [[ ! -d "$MOUNT_POINT/boot/asahi" ]]; then
+        log_error "Firmware directory /boot/asahi not found!"
+        return 1
+    fi
+
+    # Check required firmware files
+    local required_files=("all_firmware.tar.gz")
+    for file in "${required_files[@]}"; do
+        if [[ ! -f "$MOUNT_POINT/boot/asahi/$file" ]]; then
+            log_error "Required firmware file missing: $file"
+            return 1
+        fi
+    done
+
+    log_success "Firmware files present in /boot/asahi"
+    ls -la "$MOUNT_POINT/boot/asahi/"
+}
+
+# Verify flake configuration uses runtime path (not install path)
+verify_flake_config() {
+    log_step "Verifying flake configuration for runtime..."
+
+    local config_dir="$MOUNT_POINT/etc/nixos"
+
+    # Check flake uses runtime path (not install path)
+    if grep -q "/mnt/boot/asahi" "$config_dir/flake.nix" 2>/dev/null; then
+        log_error "Flake still contains install-time path /mnt/boot/asahi"
+        log_error "This will fail after reboot!"
+        return 1
+    fi
+
+    if ! grep -q "peripheralFirmwareDirectory = /boot/asahi" "$config_dir/flake.nix" 2>/dev/null; then
+        log_error "Flake missing runtime firmware path /boot/asahi"
+        return 1
+    fi
+
+    log_success "Flake configuration ready for runtime"
+}
+
+# Verify critical Apple Silicon boot settings
+verify_boot_settings() {
+    log_step "Verifying critical Apple Silicon boot settings..."
+
+    local config="$MOUNT_POINT/etc/nixos/configuration.nix"
+
+    # Check canTouchEfiVariables is false (CRITICAL - prevents bricking)
+    if ! grep -q "canTouchEfiVariables.*false" "$config" 2>/dev/null; then
+        log_error "CRITICAL: canTouchEfiVariables must be false on Apple Silicon!"
+        log_error "Setting this to true can brick the device"
+        return 1
+    fi
+
+    # Check systemd-boot is enabled
+    if ! grep -q "systemd-boot.enable.*true" "$config" 2>/dev/null; then
+        log_warn "systemd-boot may not be enabled"
+    fi
+
+    log_success "Boot settings verified safe for Apple Silicon"
+}
+
+# Run all pre-reboot verification checks
+run_pre_reboot_verification() {
+    log_step "Running pre-reboot verification suite..."
+    echo ""
+
+    local failed=0
+
+    verify_asahi_kernel || ((failed++))
+    verify_bootloader || ((failed++))
+    verify_firmware || ((failed++))
+    verify_flake_config || ((failed++))
+    verify_boot_settings || ((failed++))
+
+    echo ""
+    if [[ $failed -gt 0 ]]; then
+        log_error "════════════════════════════════════════════════════════════"
+        log_error "Pre-reboot verification failed with $failed error(s)"
+        log_error "DO NOT REBOOT - system may not boot correctly"
+        log_error "Review errors above and fix before rebooting"
+        log_error "════════════════════════════════════════════════════════════"
+        return 1
+    fi
+
+    log_success "════════════════════════════════════════════════════════════"
+    log_success "All pre-reboot verification checks passed!"
+    log_success "System should boot successfully after reboot"
+    log_success "════════════════════════════════════════════════════════════"
+}
+
 # Run nixos-install with flake
 run_install() {
     log_step "Running nixos-install with flake (includes Asahi kernel)..."
@@ -550,7 +702,9 @@ run_install() {
     local config_dir="$MOUNT_POINT/etc/nixos"
 
     if [[ "$DRY_RUN" == true ]]; then
-        log_info "Would run: nixos-install --flake $config_dir#$HOSTNAME --no-root-passwd"
+        log_info "Would run: nixos-install --flake $config_dir#$HOSTNAME --no-root-passwd --impure"
+        log_info "Would update flake path from /mnt/boot/asahi to /boot/asahi"
+        log_info "Would run pre-reboot verification"
         return
     fi
 
@@ -563,19 +717,44 @@ run_install() {
     fi
 
     # Run nixos-install with flake
+    # --impure is required because peripheralFirmwareDirectory (/mnt/boot/asahi)
+    # needs filesystem access which pure evaluation mode blocks
     log_info "Installing NixOS with Asahi kernel (this may take a while)..."
-    if ! nixos-install --flake "$config_dir#$HOSTNAME" --no-root-passwd; then
+    if ! nixos-install --flake "$config_dir#$HOSTNAME" --no-root-passwd --impure; then
         log_error "nixos-install failed"
         log_error "Check the output above for details"
         exit 1
     fi
 
-    # Copy config to user-accessible location
+    log_success "NixOS installation complete!"
+    echo ""
+
+    # CRITICAL: Update flake to use runtime path BEFORE reboot
+    # During install: firmware at /mnt/boot/asahi (ESP mounted at /mnt/boot)
+    # After reboot: firmware at /boot/asahi (ESP mounted at /boot)
+    log_step "Updating configuration for runtime use..."
+    log_info "Changing peripheralFirmwareDirectory: /mnt/boot/asahi → /boot/asahi"
+
+    if ! sed -i 's|/mnt/boot/asahi|/boot/asahi|g' "$config_dir/flake.nix"; then
+        log_error "Failed to update firmware path in flake.nix"
+        exit 1
+    fi
+
+    # Copy config to user-accessible location (with updated path)
     log_info "Copying configuration to $MOUNT_POINT$CONFIG_DIR..."
     mkdir -p "$MOUNT_POINT$CONFIG_DIR"
     cp -r "$config_dir"/* "$MOUNT_POINT$CONFIG_DIR/"
 
-    log_success "NixOS installation complete!"
+    log_success "Configuration updated for runtime use"
+    echo ""
+
+    # Run pre-reboot verification to ensure system will boot
+    if ! run_pre_reboot_verification; then
+        log_error ""
+        log_error "Installation completed but verification failed!"
+        log_error "Please review the errors above before rebooting."
+        exit 1
+    fi
 }
 
 # Main
