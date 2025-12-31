@@ -578,3 +578,170 @@ After `nixos-install` completes:
 - [ ] Document WiFi setup with iwd/NetworkManager
 - [x] Add pre-reboot verification to prevent black screen issues
 - [x] Document two-phase firmware path handling (`/mnt/boot/asahi` → `/boot/asahi`)
+- [ ] Add desktop installation as default in install-apple-silicon script (with --no-desktop flag to opt out)
+
+### 4.9 Installing Keystone Desktop (Hyprland)
+
+After a successful base installation, you can add the Keystone desktop environment (Hyprland) to your Apple Silicon Mac.
+
+#### Prerequisites
+- Successfully booted NixOS on Apple Silicon
+- Network connectivity established
+- Logged in as admin user
+
+#### Step 1: Update flake.nix
+
+Edit `/etc/nixos/flake.nix` to add the Keystone flake input and desktop module:
+
+```nix
+{
+  description = "Keystone - Apple Silicon Configuration";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixos-apple-silicon = {
+      url = "github:tpwrules/nixos-apple-silicon";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # Add Keystone input
+    keystone = {
+      url = "github:ncrmro/keystone";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # Add home-manager for desktop user configuration
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { self, nixpkgs, nixos-apple-silicon, keystone, home-manager, ... }: {
+    nixosConfigurations.keystone-mac = nixpkgs.lib.nixosSystem {
+      system = "aarch64-linux";
+      modules = [
+        nixos-apple-silicon.nixosModules.default
+        home-manager.nixosModules.home-manager
+        keystone.nixosModules.desktop  # Add desktop module
+        ./configuration.nix
+        {
+          hardware.asahi = {
+            enable = true;
+            peripheralFirmwareDirectory = /boot/asahi;
+            setupAsahiSound = true;
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+#### Step 2: Update configuration.nix
+
+Modify `/etc/nixos/configuration.nix` to enable desktop for your user:
+
+```nix
+{ config, pkgs, lib, ... }:
+
+{
+  imports = [ ./hardware-configuration.nix ];
+
+  # ... existing configuration ...
+
+  # Enable home-manager integration
+  home-manager.useGlobalPkgs = true;
+  home-manager.useUserPackages = true;
+
+  # Configure admin user with desktop
+  home-manager.users.admin = { pkgs, ... }: {
+    imports = [
+      # Import Keystone home-manager modules (from flake)
+    ];
+
+    home.stateVersion = "25.05";
+
+    # Enable Keystone desktop
+    keystone.desktop = {
+      enable = true;
+      hyprland = {
+        enable = true;
+        modifierKey = "SUPER";  # Use Command key as modifier
+        capslockAsControl = true;
+        scale = 2;  # HiDPI for Retina display
+      };
+    };
+
+    # Enable terminal tools
+    keystone.terminal = {
+      enable = true;
+      git = {
+        userName = "Your Name";
+        userEmail = "you@example.com";
+      };
+    };
+  };
+}
+```
+
+#### Step 3: Rebuild the System
+
+```bash
+cd /etc/nixos
+sudo nixos-rebuild switch --flake .#keystone-mac
+```
+
+This will:
+- Download and build Hyprland and all desktop components
+- Configure greetd display manager
+- Set up PipeWire audio
+- Install desktop applications (browser, file manager, terminal)
+
+#### Step 4: Reboot or Start Desktop Session
+
+After rebuild completes:
+
+```bash
+# Reboot to start fresh with greetd
+sudo reboot
+
+# Or manually start Hyprland (if already logged in)
+Hyprland
+```
+
+#### Desktop Features on Apple Silicon
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Hyprland compositor | ✓ Works | Full Wayland support |
+| HiDPI/Retina | ✓ Works | Set `scale = 2` for MacBook displays |
+| Audio (speakers) | ✓ Works | Via `setupAsahiSound = true` |
+| Touchpad gestures | ✓ Works | Configure via Hyprland input settings |
+| GPU acceleration | Partial | Experimental via Asahi GPU drivers |
+| External displays | Varies | Depends on adapter/dock support |
+
+#### Key Bindings (Default)
+
+With `modifierKey = "SUPER"` (Command key):
+
+| Binding | Action |
+|---------|--------|
+| Super+Return | Open terminal (Ghostty) |
+| Super+Space | Application launcher |
+| Super+B | Open browser |
+| Super+E | File manager |
+| Super+W | Close window |
+| Super+1-0 | Switch workspace |
+| Super+Escape | Keystone menu |
+
+#### Troubleshooting
+
+**Black screen after enabling desktop:**
+- Ensure `hardware.asahi.enable = true` is set
+- Check that Asahi kernel is being used: `uname -r` should show `asahi`
+
+**No audio:**
+- Verify `setupAsahiSound = true` in hardware.asahi config
+- Run `wpctl status` to check PipeWire
+
+**Touchpad not working:**
+- Add to Hyprland config: `input:touchpad:natural_scroll = true`
