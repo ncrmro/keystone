@@ -6,7 +6,10 @@
   lib,
   sshKeys ? [],
   ...
-}: {
+}: let
+  # Package the install script for inclusion in the ISO
+  install-apple-silicon = pkgs.writeShellScriptBin "install-apple-silicon" (builtins.readFile ../bin/install-apple-silicon);
+in {
   # Enable SSH daemon
   services.openssh = {
     enable = true;
@@ -59,6 +62,8 @@
     # Networking tools
     networkmanager # Explicitly add NetworkManager package
     dhcpcd # DHCP client daemon
+    # Keystone installer
+    install-apple-silicon
   ];
 
   # Disable ZFS to reduce size and complexity (not supported on Asahi kernel easily)
