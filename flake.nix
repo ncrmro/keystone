@@ -164,8 +164,11 @@
     };
 
     # Apple Silicon (aarch64) packages
-    packages.aarch64-linux = {
+    packages.aarch64-linux = let
+      pkgs = nixpkgs.legacyPackages.aarch64-linux;
+    in {
       iso = self.nixosConfigurations.keystoneIsoAppleSilicon.config.system.build.isoImage;
+      zesh = pkgs.callPackage ./packages/zesh {};
     };
 
     # Development shell
