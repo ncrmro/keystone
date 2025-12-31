@@ -21,6 +21,13 @@
     };
     hyprland.url = "github:hyprwm/Hyprland";
 
+    # Walker application launcher
+    elephant.url = "github:abenz1267/elephant";
+    walker = {
+      url = "github:abenz1267/walker";
+      inputs.elephant.follows = "elephant";
+    };
+
     # Apple Silicon support (Asahi Linux kernel and hardware)
     nixos-apple-silicon = {
       url = "github:tpwrules/nixos-apple-silicon";
@@ -36,12 +43,14 @@
     omarchy,
     lanzaboote,
     hyprland,
+    elephant,
+    walker,
     nixos-apple-silicon,
     ...
   }: let
     # Create inputs attrset for desktop module
     inputs = {
-      inherit nixpkgs hyprland;
+      inherit nixpkgs hyprland walker;
     };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
