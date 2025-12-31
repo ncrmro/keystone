@@ -422,7 +422,8 @@ For full Apple Silicon support, you need the `nixos-apple-silicon` flake. Create
           # Asahi hardware support
           hardware.asahi = {
             enable = true;
-            useExperimentalGPUDriver = true;
+            # Use /mnt/boot/asahi during install, update to /boot/asahi before reboot
+            peripheralFirmwareDirectory = /mnt/boot/asahi;
             setupAsahiSound = true;
           };
         }
@@ -432,15 +433,51 @@ For full Apple Silicon support, you need the `nixos-apple-silicon` flake. Create
 }
 ```
 
+**Important notes about the flake configuration:**
+
+1. **`useExperimentalGPUDriver` is deprecated** - As of late 2024, the Asahi GPU drivers have been merged into mainline Mesa, so this option is no longer needed and will cause an error if included.
+
+2. **`peripheralFirmwareDirectory` - Two-Phase Path Handling**:
+
+   The firmware path is evaluated at **build time**, not runtime. This creates a path mismatch:
+
+   | Phase | ESP Mount | Firmware Path |
+   |-------|-----------|---------------|
+   | During `nixos-install` | `/mnt/boot` | `/mnt/boot/asahi` |
+   | After reboot (runtime) | `/boot` | `/boot/asahi` |
+
+   **Solution**: Use a two-phase approach:
+   1. During install: Use `/mnt/boot/asahi` with `--impure` flag
+   2. Before reboot: Update flake to `/boot/asahi`
+   3. Future rebuilds: Work without `--impure` (path exists)
+
+   **IMPORTANT**: Update the path BEFORE rebooting:
+   ```bash
+   # After nixos-install completes, update the path
+   sed -i 's|/mnt/boot/asahi|/boot/asahi|g' /mnt/etc/nixos/flake.nix
+   ```
+
+   The `install-apple-silicon` script handles this automatically.
+
 ##### Step 8: Run Installation
 
 ```bash
-# Install NixOS
-nixos-install --flake /mnt/etc/nixos#keystone-mac --no-root-passwd
-
-# Or without flake (uses configuration.nix directly):
-nixos-install --no-root-passwd
+# IMPORTANT: Must use --impure flag!
+# The firmware path detection requires filesystem access, which pure evaluation blocks.
+nixos-install --flake /mnt/etc/nixos#keystone-mac --no-root-passwd --impure
 ```
+
+**Why `--impure` is required:**
+- Flakes use "pure evaluation" by default, blocking access to absolute paths like `/mnt/boot/asahi`
+- The nixos-apple-silicon module needs to read the firmware files during evaluation
+- Without `--impure`, you'll get: `error: access to absolute path '/mnt/boot/asahi' is forbidden in pure evaluation mode`
+
+**Do NOT use the non-flake method:**
+```bash
+# This will NOT work for Apple Silicon!
+# nixos-install --no-root-passwd
+```
+The standard nixos-install without `--flake` uses only `configuration.nix`, which doesn't include the Asahi kernel. This results in a **black screen on boot** because the standard NixOS kernel lacks Apple Silicon display drivers.
 
 ##### Step 9: Reboot
 
@@ -492,8 +529,12 @@ Apple Silicon requires specific configuration that differs from x86_64:
   boot.loader.systemd-boot.consoleMode = "0";
 
   # Enable Asahi hardware support
-  hardware.asahi.enable = true;
-  hardware.asahi.useExperimentalGPUDriver = true;  # For GPU acceleration
+  hardware.asahi = {
+    enable = true;
+    # GPU drivers are now in mainline Mesa (useExperimentalGPUDriver is deprecated)
+    peripheralFirmwareDirectory = /boot/asahi;  # Firmware extracted by Asahi installer
+    setupAsahiSound = true;  # PipeWire/ALSA config for Apple speakers
+  };
 
   # Disable features not available on Apple Silicon
   # (TPM, Secure Boot are not available)
@@ -532,6 +573,8 @@ After `nixos-install` completes:
 ### 4.8 Future Improvements
 
 - [ ] Add Keystone OS module support for ext4-only configurations
-- [ ] Create Apple Silicon-specific flake template
-- [ ] Add GPU driver and sound configuration to desktop module
+- [x] Create Apple Silicon-specific flake template (implemented in `install-apple-silicon` script)
+- [x] Add GPU driver and sound configuration (GPU now in mainline Mesa, `setupAsahiSound = true`)
 - [ ] Document WiFi setup with iwd/NetworkManager
+- [x] Add pre-reboot verification to prevent black screen issues
+- [x] Document two-phase firmware path handling (`/mnt/boot/asahi` → `/boot/asahi`)
