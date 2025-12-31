@@ -104,6 +104,10 @@ in
 
         # Monitor configuration
         monitor = mkDefault cfg.monitors;
+
+        # Disable start-hyprland warning - UWSM handles session management
+        # See: specs/001-keystone-os/research.desktop.md#about-the-start-hyprland-warning
+        misc.disable_watchdog_warning = true;
       };
     };
 

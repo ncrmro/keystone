@@ -70,7 +70,7 @@ in {
     services.greetd = mkIf cfg.greetd.enable {
       enable = mkDefault true;
       settings.default_session = {
-        command = mkDefault "uwsm start -S -F Hyprland";
+        command = mkDefault "uwsm start -F Hyprland";
         user = cfg.user;
       };
     };
