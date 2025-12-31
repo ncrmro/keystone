@@ -66,6 +66,7 @@ import argparse
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -456,13 +457,17 @@ class AgentCLI:
         # Launch the MicroVM in the background
         print_info("Launching MicroVM...")
         microvm_run = runner_path / "bin" / "microvm-run"
+        
+        # Log file for debugging
+        log_file_path = state_dir / "vm.log"
+        log_file = open(log_file_path, "w")
 
         # Start the MicroVM process in background (must run in state_dir for socket paths)
         process = subprocess.Popen(
             [str(microvm_run)],
             cwd=str(state_dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
             start_new_session=True  # Detach from terminal
         )
 
@@ -478,23 +483,22 @@ class AgentCLI:
 
         print_success(f"Sandbox '{sandbox_name}' started successfully!")
         print_info(f"PID: {process.pid}")
+        print_info(f"Log: {log_file_path}")
         print_info("Waiting for SSH to become available...")
 
         # Wait for SSH to be ready (with timeout)
         # Just check if port is open, don't try to auth
-        for i in range(30):  # Wait up to 30 seconds
-            result = subprocess.run(
-                ["nc", "-z", "localhost", "2223"],
-                capture_output=True
-            )
-            if result.returncode == 0:
-                print_success("SSH port is ready!")
-                if not ssh_key:
-                    print_info("Password: sandbox")
-                break
-            time.sleep(1)
+        for i in range(60):  # Wait up to 60 seconds (increased from 30)
+            try:
+                with socket.create_connection(("localhost", 2223), timeout=1):
+                    print_success("SSH port is ready!")
+                    if not ssh_key:
+                        print_info("Password: sandbox")
+                    break
+            except (socket.timeout, ConnectionRefusedError, OSError):
+                time.sleep(1)
         else:
-            print_warning("SSH not ready after 30s - VM may still be booting")
+            print_warning("SSH not ready after 60s - VM may still be booting")
             print_info("Try: keystone agent ssh")
         
         # Initialize sandbox workspace
@@ -558,15 +562,6 @@ class AgentCLI:
         Uses a pinned nixpkgs revision for reproducibility and a minimal NixOS
         configuration with just basic development tools.
         """
-        # Generate build ID to force cache invalidation
-        # Why: Nix was aggressively caching the erofs disk image, causing it to lack
-        #      newly added packages (like direnv) despite the flake config changing.
-        #      This timestamp forces a unique input hash for every build.
-        # Downside: This prevents caching of the VM image between runs, causing
-        #           slower startup times (rebuilds every time).
-        # TODO: Remove this once we identify why the cache invalidation is failing.
-        build_id = int(time.time())
-
         # Pin to known-good nixpkgs revision from keystone flake.lock
         # This avoids build failures from transient breakage in nixos-unstable HEAD
         nixpkgs_rev = "c6245e83d836d0433170a16eb185cefe0572f8b8"
@@ -672,7 +667,6 @@ class AgentCLI:
 
           # Minimal system config
           networking.hostName = "{sandbox_name}";
-          environment.etc."build-id".text = "{build_id}";
           system.stateVersion = "25.05";
           
           # Enable Nix experimental features
@@ -941,8 +935,66 @@ class AgentCLI:
         if args.dry_run:
             print_info("\nDry run complete - no changes made")
             return 0
+        
+        # 8. Branch alignment (FR-027)
+        host_branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=project_path,
+            capture_output=True,
+            text=True
+        )
+        host_branch = host_branch_result.stdout.strip()
 
-        # 8. Perform git sync
+        sandbox_branch_result = self._run_in_sandbox(
+            sandbox_name,
+            ["git", "-C", "/workspace", "branch", "--show-current"]
+        )
+        sandbox_branch = sandbox_branch_result.stdout.strip()
+
+        if host_branch != sandbox_branch:
+            print_warning(f"Host branch '{host_branch}' and sandbox branch '{sandbox_branch}' differ.")
+            
+            # Check if host is dirty
+            host_dirty_check = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=project_path,
+                capture_output=True,
+                text=True
+            )
+            if host_dirty_check.stdout.strip():
+                print_error(f"Cannot switch branches: Host repository is dirty.")
+                print_info("Please commit or stash your changes before syncing, or switch branches manually.")
+                return 3
+            else:
+                print_info(f"Host repository is clean. Switching to branch '{sandbox_branch}' to match sandbox.")
+                # Fetch from sandbox to ensure the branch exists locally
+                # Set up SSH command for git
+                ssh_command = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -p 2223"
+                env = {**os.environ, "GIT_SSH_COMMAND": ssh_command}
+                
+                fetch_result = subprocess.run(
+                    ["git", "fetch", "sandbox@localhost:/workspace", sandbox_branch],
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True,
+                    env=env
+                )
+                if fetch_result.returncode != 0:
+                    print_error(f"Failed to fetch sandbox branch '{sandbox_branch}': {fetch_result.stderr.strip()}")
+                    return 3
+                
+                checkout_result = subprocess.run(
+                    ["git", "checkout", sandbox_branch],
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True
+                )
+                if checkout_result.returncode != 0:
+                    print_error(f"Failed to checkout branch '{sandbox_branch}' on host: {checkout_result.stderr.strip()}")
+                    return 3
+                print_success(f"Host switched to branch '{sandbox_branch}'.")
+
+        # 9. Perform git sync
         if new_commits:
             print_info("\nFetching changes from sandbox...")
 

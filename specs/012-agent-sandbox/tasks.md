@@ -128,6 +128,10 @@ Based on plan.md structure:
 - [ ] T050 [P] [US3] Implement auto-idle sync mode with inotify watcher in modules/keystone/agent/sync.nix
 - [ ] T051 [US3] Add --sync flag to stop command in bin/agent
 - [ ] T052 [US3] Handle merge conflicts with clear error messaging in bin/agent
+- [x] T053 [US3] Implement branch alignment for `keystone agent sync` (FR-027):
+    - Check if host and sandbox branches differ.
+    - If host is dirty, error and abort.
+    - If host is clean, auto-checkout sandbox's branch on host.
 
 **Checkpoint**: User Story 3 complete - full sandbox workflow operational (MVP COMPLETE)
 
