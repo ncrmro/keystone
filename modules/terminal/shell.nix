@@ -7,8 +7,6 @@
 }:
 with lib; let
   cfg = config.keystone.terminal;
-  # Check if keystone overlay is available
-  hasKeystoneOverlay = pkgs ? keystone && pkgs.keystone ? zesh;
 in {
   config = mkIf cfg.enable {
     # Starship - A minimal, blazing-fast, and infinitely customizable prompt for any shell
@@ -113,39 +111,39 @@ in {
       };
     };
 
-    home.packages =
-      (with pkgs; [
-        # Eza - Modern replacement for ls with colors and git integration
-        # https://github.com/eza-community/eza
-        eza
+    home.packages = with pkgs; [
+      # Eza - Modern replacement for ls with colors and git integration
+      # https://github.com/eza-community/eza
+      eza
 
-        # GNU Make - Build automation tool
-        # https://www.gnu.org/software/make/
-        gnumake
+      # GNU Make - Build automation tool
+      # https://www.gnu.org/software/make/
+      gnumake
 
-        # Htop - Interactive process viewer
-        # https://htop.dev/
-        htop
+      # Htop - Interactive process viewer
+      # https://htop.dev/
+      htop
 
-        # Lazygit - Simple terminal UI for git commands
-        # https://github.com/jesseduffield/lazygit
-        lazygit
+      # Lazygit - Simple terminal UI for git commands
+      # https://github.com/jesseduffield/lazygit
+      lazygit
 
-        # Ripgrep - Fast search tool that recursively searches directories
-        # https://github.com/BurntSushi/ripgrep
-        ripgrep
+      # Ripgrep - Fast search tool that recursively searches directories
+      # https://github.com/BurntSushi/ripgrep
+      ripgrep
 
-        # Tree - Display directory structure as a tree
-        # https://mama.indstate.edu/users/ice/tree/
-        tree
+      # Tree - Display directory structure as a tree
+      # https://mama.indstate.edu/users/ice/tree/
+      tree
 
-        # Yazi - Blazing fast terminal file manager written in Rust
-        # https://github.com/sxyazi/yazi
-        yazi
-      ])
+      # Yazi - Blazing fast terminal file manager written in Rust
+      # https://github.com/sxyazi/yazi
+      yazi
+
       # Zesh - Zellij session manager with zoxide integration
       # https://github.com/roberte777/zesh
-      # Provided via keystone overlay (optional)
-      ++ lib.optionals hasKeystoneOverlay [pkgs.keystone.zesh];
+      # Provided via keystone overlay
+      pkgs.keystone.zesh
+    ];
   };
 }
