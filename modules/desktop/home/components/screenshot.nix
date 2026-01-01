@@ -5,8 +5,7 @@
   inputs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.desktop;
   hyprlandPkg = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
 
@@ -109,8 +108,7 @@ let
       ${pkgs.grim}/bin/grim -g "$SELECTION" - | ${pkgs.wl-clipboard}/bin/wl-copy
     fi
   '';
-in
-{
+in {
   config = mkIf cfg.enable {
     home.packages = [
       keystoneScreenshot
@@ -131,6 +129,7 @@ in
     '';
 
     # Hyprland layer rule to remove animation artifacts during screenshot selection
-    wayland.windowManager.hyprland.settings.layerrule = [ "no_anim on, match:namespace slurp" ];
+    # Uses Hyprland 0.53+ syntax: action, match:condition
+    wayland.windowManager.hyprland.settings.layerrule = ["noanim, match:namespace slurp"];
   };
 }
