@@ -7,10 +7,17 @@
 }:
 with lib; let
   cfg = config.keystone.terminal;
-  pkgs-unstable = import inputs.nixpkgs-unstable {
-    system = pkgs.system;
-    config.allowUnfree = true;
-  };
+  # Use unstable helix if inputs.nixpkgs-unstable is available, otherwise use stable
+  helix-pkg =
+    if inputs ? nixpkgs-unstable
+    then
+      (import inputs.nixpkgs-unstable {
+        system = pkgs.stdenv.hostPlatform.system;
+        config.allowUnfree = true;
+      }).helix
+    else pkgs.helix;
+  # Kinda-nvim theme removed - always use default
+  hasKindaNvim = false;
 in {
   config = mkIf cfg.enable {
     # Set the default editor
@@ -40,7 +47,10 @@ in {
       package = helix-pkg;
       settings = {
         # Use kinda_nvim theme if available, otherwise use default
-        theme = if hasKindaNvim then "kinda_nvim" else "default";
+        theme =
+          if hasKindaNvim
+          then "kinda_nvim"
+          else "default";
         editor = {
           line-number = "absolute";
           mouse = true;
