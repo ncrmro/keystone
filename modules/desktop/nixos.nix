@@ -119,9 +119,18 @@ in {
         gpu-screen-recorder
       ]
       ++ [
+        # Web browser (referenced by Hyprland $mod+B binding)
+        chromium
+
         # File management
         nautilus
         file-roller
+
+        # Terminal (referenced by Hyprland $mod+Return binding)
+        ghostty
+
+        # Media
+        vlc
 
         # System utilities
         pavucontrol

@@ -5,12 +5,10 @@
   inputs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.desktop.hyprland;
   hyprlandPkg = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
-in
-{
+in {
   imports = [
     ./appearance.nix
     ./autostart.nix
@@ -29,7 +27,7 @@ in
 
     monitors = mkOption {
       type = types.listOf types.str;
-      default = [ ",preferred,auto,1" ];
+      default = [",preferred,auto,1"];
       description = "Monitor configuration strings for Hyprland";
     };
 
@@ -104,10 +102,6 @@ in
 
         # Monitor configuration
         monitor = mkDefault cfg.monitors;
-
-        # Disable start-hyprland warning - UWSM handles session management
-        # See: specs/001-keystone-os/research.desktop.md#about-the-start-hyprland-warning
-        misc.disable_watchdog_warning = true;
       };
     };
 
