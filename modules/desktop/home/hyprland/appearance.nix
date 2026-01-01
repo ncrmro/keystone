@@ -4,11 +4,9 @@
   pkgs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.desktop.hyprland;
-in
-{
+in {
   config = mkIf cfg.enable {
     wayland.windowManager.hyprland.settings = {
       general = mkDefault {
@@ -72,6 +70,9 @@ in
         force_default_wallpaper = 0;
         disable_hyprland_logo = true;
         disable_splash_rendering = true;
+        # Disable start-hyprland warning - UWSM handles session management
+        # See: specs/001-keystone-os/research.desktop.md#about-the-start-hyprland-warning
+        disable_watchdog_warning = true;
       };
     };
   };
