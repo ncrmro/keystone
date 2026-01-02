@@ -47,9 +47,10 @@ in {
       ];
 
       # layerrule disabled until Hyprland 0.52+ syntax is confirmed
+      # Hyprland 0.52+ layerrule syntax: "rule value, namespace"
       # layerrule = mkDefault [
-      #   "blur on, namespace:wofi"
-      #   "blur on, namespace:waybar"
+      #   "blur on, wofi"
+      #   "blur on, waybar"
       # ];
     };
   };
