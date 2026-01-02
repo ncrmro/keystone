@@ -17,6 +17,9 @@ This document describes the technology choices and architecture for implementing
 | Mesh Networking | Tailscale/Headscale | WireGuard-based, NAT traversal |
 | Desktop Environment | Hyprland | Modern Wayland compositor |
 | Testing Framework | NixOS VM Tests | Built-in, flake-integrated testing |
+| Battery Monitoring | UPower | Standard Linux battery API, D-Bus integration |
+| Brightness Control | brightnessctl | Backlight control, already in Hyprland bindings |
+| Fingerprint Auth | fprintd | Standard Linux fingerprint stack (currently broken) |
 
 ---
 
@@ -336,6 +339,139 @@ home-manager.users.user = {
 
 ---
 
+## Laptop Features (FR-011)
+
+This section covers laptop-specific functionality added to the desktop module.
+
+### Technology Stack
+
+| Feature | Technology | Rationale |
+|---------|------------|-----------|
+| Battery Monitoring | UPower | Standard Linux battery API, D-Bus integration |
+| Notifications | mako + notify-send | Already in desktop stack, libnotify compatible |
+| Brightness Control | brightnessctl | Already configured in Hyprland bindings |
+| WiFi Management | NetworkManager | Already enabled in desktop module |
+| Fingerprint | fprintd + PAM | Standard Linux fingerprint stack |
+
+### Battery Alert Notifications (FR-011.1)
+
+**Architecture:**
+```
+UPower D-Bus → battery-notify service → notify-send → mako
+                      │
+                      └─ Thresholds: 20% (warning), 10% (critical), 5% (urgent)
+```
+
+**Implementation:**
+1. Enable UPower service in `modules/desktop/nixos.nix`:
+   ```nix
+   services.upower.enable = mkDefault true;
+   ```
+
+2. Create systemd user service `battery-notify.service`:
+   - Monitor `org.freedesktop.UPower` D-Bus signals
+   - Send notifications via `notify-send` with escalating urgency
+   - Use hysteresis (2% buffer) to prevent notification spam
+
+3. Add to home-manager autostart in `modules/desktop/home/hyprland/autostart.nix`
+
+**Notification Levels:**
+| Threshold | Urgency | Sound | Persistent |
+|-----------|---------|-------|------------|
+| 20% | Normal | No | No |
+| 10% | Critical | Yes | No |
+| 5% | Critical | Yes | Yes (requires dismiss) |
+
+### WiFi & Captive Portal Handling (FR-011.2, FR-011.3)
+
+**Current State:**
+- NetworkManager enabled in `modules/desktop/nixos.nix`
+- Waybar network widget with `on-click = "nm-connection-editor"`
+- Tailscale DNS configured via `systemd-resolved`
+
+**Problem:**
+Tailscale's MagicDNS intercepts all DNS queries, preventing captive portal redirects from working. Coffee shop/hotel WiFi shows "no internet" because the portal page never loads.
+
+**Solutions:**
+
+1. **neverssl.com Workaround** (Documentation only):
+   - Navigate to `http://neverssl.com` to trigger captive portal redirect
+   - Works because the site is HTTP-only (no HTTPS upgrade)
+
+2. **Tailscale Toggle Script** (`keystone-tailscale`):
+   ```bash
+   #!/usr/bin/env bash
+   case "$1" in
+     down) tailscale down && notify-send "Tailscale" "Disconnected" ;;
+     up)   tailscale up && notify-send "Tailscale" "Connected" ;;
+     *)    tailscale status ;;
+   esac
+   ```
+
+3. **Documentation** (`docs/laptop-wifi.md`):
+   - Step-by-step captive portal workflow
+   - Troubleshooting common issues
+
+### Brightness Control (FR-011.4)
+
+**Current State (Already Implemented):**
+```nix
+# modules/desktop/home/hyprland/bindings.nix
+bindel = [
+  ",XF86MonBrightnessUp, exec, brightnessctl -e4 -n2 set 5%+"
+  ",XF86MonBrightnessDown, exec, brightnessctl -e4 -n2 set 5%-"
+];
+```
+
+**Additions Needed:**
+1. Keyboard backlight support:
+   ```nix
+   ",XF86KbdBrightnessUp, exec, brightnessctl -d *::kbd_backlight set 10%+"
+   ",XF86KbdBrightnessDown, exec, brightnessctl -d *::kbd_backlight set 10%-"
+   ```
+
+2. Verify `brightnessctl` is in system packages (it's likely pulled in already)
+
+3. SwayOSD integration (already configured) provides visual feedback
+
+### Fingerprint Scanner (FR-011.5) - Status: Broken
+
+**Current State:** Not enabled, needs investigation
+
+**Planned Implementation:**
+```nix
+# modules/desktop/nixos.nix
+services.fprintd.enable = mkDefault true;
+
+# PAM integration
+security.pam.services = {
+  login.fprintAuth = true;
+  sudo.fprintAuth = true;
+  hyprlock.fprintAuth = true;
+};
+```
+
+**Investigation Needed:**
+1. Check hardware compatibility (laptop model)
+2. Test fprintd enrollment: `fprintd-enroll`
+3. Debug PAM configuration order (fingerprint vs password)
+4. Verify hyprlock PAM service exists
+
+**Documentation:** `docs/fingerprint.md` (troubleshooting guide)
+
+### File Changes Summary
+
+| File | Change Type | Description |
+|------|-------------|-------------|
+| `modules/desktop/nixos.nix` | Modify | Add UPower, fprintd services |
+| `modules/desktop/home/components/battery-notify.nix` | New | Battery notification service |
+| `modules/desktop/home/hyprland/bindings.nix` | Modify | Add keyboard backlight keys |
+| `modules/desktop/home/scripts/keystone-tailscale.sh` | New | Tailscale toggle script |
+| `docs/laptop-wifi.md` | New | Captive portal documentation |
+| `docs/fingerprint.md` | New | Fingerprint setup/troubleshooting |
+
+---
+
 ## Implementation Status
 
 | Component | Status | Notes |
@@ -354,6 +490,10 @@ home-manager.users.user = {
 | Tailscale client | Complete | Via upstream NixOS module |
 | Headscale server | Partial | Needs module refinement |
 | Flake checks | Not Started | Currently in `bin/` scripts |
+| **Battery Notifications** | **Not Started** | FR-011.1 |
+| **Captive Portal Docs** | **Not Started** | FR-011.2, FR-011.3 |
+| **Keyboard Backlight** | **Not Started** | FR-011.4 |
+| **Fingerprint Auth** | **Broken** | FR-011.5, needs investigation |
 
 ---
 
