@@ -129,7 +129,7 @@ in {
     '';
 
     # Hyprland layer rule to remove animation artifacts during screenshot selection
-    # Uses Hyprland 0.53+ syntax: action, match:condition
-    wayland.windowManager.hyprland.settings.layerrule = ["noanim, match:namespace slurp"];
+    # Layerrules use old syntax (no match: prefix) - just namespace regex
+    wayland.windowManager.hyprland.settings.layerrule = ["noanim, slurp"];
   };
 }
