@@ -261,7 +261,47 @@ The system MUST support interactive desktop workstation configurations.
 - Bluetooth connectivity
 - Terminal development environment (editor, shell, multiplexer)
 
-### FR-011 Testing via Flake Checks
+### FR-011 Laptop Features
+
+The system MUST support laptop-specific functionality for mobile productivity.
+
+#### FR-011.1 Battery Monitoring and Alerts
+
+- Desktop notifications at configurable battery thresholds (default: 20%, 10%, 5%)
+- Escalating notification urgency as battery level decreases
+- Critical alerts at 5% requiring user acknowledgment
+- No notifications when AC power is connected
+- Hysteresis to prevent notification spam from battery calibration fluctuations
+
+#### FR-011.2 WiFi and Network Management
+
+- WiFi scanning, connection, and credential saving via NetworkManager
+- Automatic reconnection to saved networks
+- WiFi controls integrated with Hyprland desktop (Waybar)
+- Signal strength indicators for available networks
+
+#### FR-011.3 Captive Portal Handling
+
+- Documentation for neverssl.com workaround when Tailscale DNS blocks captive portals
+- Quick commands/scripts to temporarily disable Tailscale for portal sign-in
+- Documentation for the complete captive portal workflow:
+  1. Disable Tailscale → 2. Connect to WiFi → 3. Complete portal sign-in → 4. Re-enable Tailscale
+
+#### FR-011.4 Brightness Control
+
+- Keyboard brightness controls (Fn keys) functional out of the box
+- Integration with Hyprland for brightness key bindings
+- Screen brightness adjustable via keyboard shortcuts
+- Keyboard backlight control (if hardware supports it)
+
+#### FR-011.5 Fingerprint Scanner (Status: Broken)
+
+- Fingerprint authentication for login and sudo
+- Integration with fprintd for fingerprint enrollment
+- PAM integration for seamless authentication
+- **Current Status**: Not working - requires investigation and fix
+
+### FR-012 Testing via Flake Checks
 
 All system features MUST be testable via standard flake check mechanism.
 
@@ -359,6 +399,16 @@ Tests for individual module functionality.
 - Tests complete in under 30 minutes total
 - Test failures produce actionable diagnostics
 
+### SC-005 Laptop Features
+
+- Battery warnings delivered at least 10 minutes before unexpected shutdown
+- 100% notification delivery rate during normal operation
+- Captive portal sign-in completable within 2 minutes using documented workflow
+- Tailscale disable/re-enable workflow executable in under 30 seconds
+- WiFi connection to saved networks succeeds 95% on first attempt
+- Brightness keys respond within 200ms of keypress
+- Fingerprint enrollment and authentication functional (once fixed)
+
 ## Out of Scope
 
 The following features are explicitly out of scope for this specification and planned for future versions:
@@ -369,5 +419,5 @@ The following features are explicitly out of scope for this specification and pl
 - **Container orchestration**: Kubernetes/k3s integration
 - **Distributed storage**: Ceph, GlusterFS, or similar
 - **Enterprise features**: LDAP/AD integration, compliance automation, audit logging
-- **Laptop-specific features**: Suspend/hibernate, battery management, lid switch handling
+- **Suspend/hibernate**: Power state management and sleep modes
 - **Multi-GPU configurations**: Complex graphics setups, GPU passthrough
