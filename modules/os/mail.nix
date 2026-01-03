@@ -96,12 +96,9 @@ in {
           };
         };
 
-        # Queue configuration
-        queue = {
-          outbound = {
-            next-hop = "local";
-          };
-        };
+        # Queue configuration - route all mail locally
+        # (next-hop deprecated in v0.13.0, replaced by queue.strategy.route)
+        queue.strategy.route = "local";
 
         # Resolver configuration
         resolver = {
