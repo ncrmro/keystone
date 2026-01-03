@@ -333,11 +333,14 @@ in {
         };
       };
 
+      # Previously defaulted to true for both server and desktop, but this conflicts
+      # with AdGuard Home (and other DNS servers) binding to port 53. The desktop
+      # module enables this automatically when needed for Tailscale MagicDNS.
       resolved = {
         enable = mkOption {
           type = types.bool;
-          default = true;
-          description = "Enable systemd-resolved for DNS resolution";
+          default = false;
+          description = "Enable systemd-resolved for DNS resolution (enabled automatically by desktop module for Tailscale MagicDNS)";
         };
       };
     };
