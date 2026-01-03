@@ -34,7 +34,6 @@
     # Apple Silicon support (Asahi Linux kernel and hardware)
     nixos-apple-silicon = {
       url = "github:tpwrules/nixos-apple-silicon";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
@@ -92,6 +91,40 @@
           }
         ];
       };
+
+      # Keystone Mac (Apple Silicon) Desktop
+      keystone-mac = nixpkgs.lib.nixosSystem {
+        system = "aarch64-linux";
+        modules = [
+          nixos-apple-silicon.nixosModules.apple-silicon-support
+          home-manager.nixosModules.home-manager
+          self.nixosModules.desktop
+          ./templates/macos/configuration.nix
+          {
+            # Make Keystone home-manager modules available to users
+            home-manager.sharedModules = [
+              self.homeModules.desktop
+            ];
+
+            # Pass inputs to Home Manager modules
+            home-manager.extraSpecialArgs = {inherit inputs;};
+
+            # Apply Keystone overlay
+            nixpkgs.overlays = [self.overlays.default];
+
+            nix.settings = {
+              substituters = ["https://nixos-apple-silicon.cachix.org"];
+              trusted-public-keys = ["nixos-apple-silicon.cachix.org-1:99u9ab+GY9STfbzeMIzavoAgMEnkkCXvYLsFqzk9bDs="];
+            };
+
+            hardware.asahi = {
+              enable = true;
+              peripheralFirmwareDirectory = /boot/asahi;
+              setupAsahiSound = true;
+            };
+          }
+        ];
+      };
     };
 
     # Overlay that provides keystone packages
@@ -100,12 +133,13 @@
     overlays.default = let
       zesh-src = ./packages/zesh;
       claude-code-src = ./modules/terminal/claude-code;
-    in final: prev: {
-      keystone = {
-        zesh = final.callPackage zesh-src {};
-        claude-code = final.callPackage claude-code-src {};
+    in
+      final: prev: {
+        keystone = {
+          zesh = final.callPackage zesh-src {};
+          claude-code = final.callPackage claude-code-src {};
+        };
       };
-    };
 
     # Export Keystone modules for use in other flakes
     nixosModules = {
@@ -264,6 +298,44 @@
           4. Deploy: nixos-anywhere --flake .#my-machine root@<installer-ip>
 
           See README.md for detailed instructions.
+        '';
+      };
+
+      macos = {
+        path = ./templates/macos;
+        description = "Keystone configuration for Apple Silicon Macs (Asahi Linux)";
+        welcomeText = ''
+          # Keystone Apple Silicon Configuration
+
+          Your standalone Apple Silicon configuration has been created!
+
+          ## Quick Start
+
+          1. **Update hardware-configuration.nix** with your disk UUIDs:
+             ```bash
+             lsblk -o NAME,UUID,LABEL,FSTYPE
+             blkid /dev/nvme0n1p* | grep -i boot
+             ```
+
+          2. **Edit configuration.nix**:
+             - Set your timezone (default: UTC)
+             - Update user settings (name, email)
+             - Change initial password
+
+          3. **Deploy**:
+             ```bash
+             sudo nixos-rebuild switch --flake .#keystone-mac
+             ```
+
+          ## Updating
+
+          To get the latest Keystone updates:
+          ```bash
+          nix flake update keystone
+          nixos-rebuild switch --flake .#keystone-mac
+          ```
+
+          See README.md for more details.
         '';
       };
     };
