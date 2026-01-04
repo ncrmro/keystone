@@ -2,16 +2,21 @@
   config,
   lib,
   pkgs,
-  inputs ? {},
+  inputs ? { },
   ...
 }:
 with lib;
 let
   cfg = config.keystone.terminal;
   # Use unstable helix if inputs.nixpkgs-unstable is available, otherwise use stable
-  helix-pkg = if inputs ? nixpkgs-unstable
-    then (import inputs.nixpkgs-unstable { system = pkgs.stdenv.hostPlatform.system; config.allowUnfree = true; }).helix
-    else pkgs.helix;
+  helix-pkg =
+    if inputs ? nixpkgs-unstable then
+      (import inputs.nixpkgs-unstable {
+        system = pkgs.stdenv.hostPlatform.system;
+        config.allowUnfree = true;
+      }).helix
+    else
+      pkgs.helix;
   # Kinda-nvim theme if available
   hasKindaNvim = inputs ? kinda-nvim-hx;
 in
@@ -53,6 +58,15 @@ in
             insert = "bar";
             normal = "block";
             select = "underline";
+          };
+          # Soft wrap long lines for better readability
+          # Toggle with: :toggle soft-wrap.enable
+          # Docs: https://docs.helix-editor.com/editor.html#editorsoft-wrap-section
+          soft-wrap = {
+            enable = true;
+            max-wrap = 25; # Max chars before forced wrap
+            max-indent-retain = 0; # Indentation retained on wrapped lines
+            wrap-indicator = ""; # Visual indicator (empty = none)
           };
         };
         keys.normal = {
