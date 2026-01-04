@@ -49,9 +49,11 @@ in {
               tls.implicit = true;
             };
             # JMAP/Management interface (localhost only)
+            # Using 8082 to avoid conflict with common ingress port 8080
+            # TODO: Can revert to 8080 after removing k8s ingress-nginx
             jmap = {
               protocol = "http";
-              bind = ["127.0.0.1:8080"];
+              bind = ["127.0.0.1:8082"];
             };
           };
         };
@@ -114,6 +116,9 @@ in {
             enable = true;
           };
         };
+
+        # Web admin interface is configured automatically by nixpkgs
+        # (sets webadmin.path to /var/cache/stalwart-mail)
 
         # Spam filter - disabled to avoid missing file error
         # TODO: Spam filter is currently disabled because the default `spamfilter.toml`
