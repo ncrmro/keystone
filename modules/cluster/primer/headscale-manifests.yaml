@@ -49,9 +49,7 @@ data:
           - 8.8.8.8
     log:
       format: text
-      level: info
----
-@@pvcResource@@
+      level: info@@pvcResource@@
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -94,8 +92,7 @@ spec:
               mountPath: /etc/headscale
               readOnly: true
             - name: data
-              mountPath: /var/lib/headscale
-@@keysVolumeMounts@@
+              mountPath: /var/lib/headscale@@keysVolumeMounts@@
           resources:
             requests:
               cpu: @@requestsCpu@@
@@ -119,8 +116,7 @@ spec:
         - name: config
           configMap:
             name: headscale-config
-@@dataVolume@@
-@@keysVolume@@
+@@dataVolume@@@@keysVolume@@
 ---
 apiVersion: v1
 kind: Service

@@ -148,6 +148,8 @@ in {
         pvcResource =
           if primerCfg.headscale.storage.type == "pvc"
           then ''
+
+            ---
             apiVersion: v1
             kind: PersistentVolumeClaim
             metadata:
@@ -178,14 +180,14 @@ in {
         # Note: YAML must have exact indentation for the template position (12 spaces for volumeMounts)
         keysVolumeMounts =
           if cfg.useAgenixSecrets
-          then "            - name: keys\n              mountPath: /var/lib/headscale/private.key\n              subPath: private.key\n              readOnly: true\n            - name: keys\n              mountPath: /var/lib/headscale/noise_private.key\n              subPath: noise_private.key\n              readOnly: true\n            - name: keys\n              mountPath: /var/lib/headscale/derp_private.key\n              subPath: derp_private.key\n              readOnly: true"
+          then "\n            - name: keys\n              mountPath: /var/lib/headscale/private.key\n              subPath: private.key\n              readOnly: true\n            - name: keys\n              mountPath: /var/lib/headscale/noise_private.key\n              subPath: noise_private.key\n              readOnly: true\n            - name: keys\n              mountPath: /var/lib/headscale/derp_private.key\n              subPath: derp_private.key\n              readOnly: true"
           else "";
 
         # Keys volume definition (if using agenix secrets)
         # Note: YAML must have exact indentation for the template position (8 spaces for volumes)
         keysVolume =
           if cfg.useAgenixSecrets
-          then "        - name: keys\n          secret:\n            secretName: headscale-keys\n            defaultMode: 256"
+          then "\n        - name: keys\n          secret:\n            secretName: headscale-keys\n            defaultMode: 256"
           else "";
 
         # Generate manifest from external YAML template
