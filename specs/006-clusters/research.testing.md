@@ -222,6 +222,85 @@ jobs:
 | **Cluster** | NixOS test | ⚠️ On change | ~5min |
 | Full deploy | libvirt | ❌ Manual | ~20min |
 
+## Test Execution Results
+
+### MicroVM Infrastructure Validation (2026-01-04)
+
+**Objective**: Validate MicroVM test infrastructure before full cluster testing.
+
+**Test Commands**:
+```bash
+# Build and run primer microVM
+cd tests
+nix build .#nixosConfigurations.cluster-primer.config.microvm.declaredRunner -o result-primer
+./result-primer/bin/microvm-run
+
+# SSH connection (in another terminal)
+ssh -i fixtures/test-ssh-key -p 22223 root@localhost
+
+# Check k3s status
+kubectl get pods -A
+systemctl status k3s
+```
+
+**SSH Key Authentication**:
+
+Test SSH key pair created at `tests/fixtures/test-ssh-key{,.pub}`:
+- Configured in `tests/microvm/cluster-primer.nix` via `openssh.authorizedKeys.keyFiles`
+- Configured in `tests/microvm/cluster-worker.nix` via same mechanism
+- Script `bin/test-cluster-microvm` updated to use `-i $SSH_KEY` for all SSH commands
+- Password fallback (`root/root`) still available for debugging
+
+**Validated Components**:
+
+| Component | Status | Evidence |
+|-----------|--------|----------|
+| MicroVM boot | ✅ | NixOS 26.05 login prompt in ~30s |
+| SSH key auth | ✅ | `ssh -i fixtures/test-ssh-key -p 22223 root@localhost` succeeds |
+| k3s service | ✅ | `systemctl status k3s` shows active |
+| k3s API | ✅ | `kubectl get nodes` returns primer node |
+| CoreDNS | ✅ | Pod running in kube-system namespace |
+| Agenix secrets | ✅ | Files present at `/run/agenix/headscale-*` |
+
+**Issue Discovered: Headscale Key Format**
+
+The Headscale pod enters CrashLoopBackOff with:
+```
+FTL Error initializing error="failed to read or create Noise protocol private key:
+failed to parse private key: key hex has the wrong size, got 44 want 64"
+```
+
+**Analysis**:
+- Headscale expects noise/private keys as 64-character hex strings (32 bytes)
+- Test fixtures contain WireGuard-format base64 keys (e.g., `privkey:IAprsDCdCQa+...`)
+- The agenix decryption works correctly; the issue is key content format
+
+**Resolution**:
+Regenerate keys in correct hex format:
+```bash
+cd tests/fixtures
+
+# Generate proper 64-char hex keys
+openssl rand -hex 32 > headscale-private.key
+openssl rand -hex 32 > headscale-noise.key
+openssl rand -hex 32 > headscale-derp.key
+
+# Re-encrypt with agenix (using test age key)
+agenix -e headscale-private.age -i test-age-key.txt < headscale-private.key
+agenix -e headscale-noise.age -i test-age-key.txt < headscale-noise.key
+agenix -e headscale-derp.age -i test-age-key.txt < headscale-derp.key
+
+# Clean up plaintext
+rm headscale-*.key
+```
+
+**Next Steps**:
+1. Fix Headscale key format (above)
+2. Re-run microVM test to validate Headscale startup
+3. Proceed with full cluster test (`--workers` flag)
+
+---
+
 ## References
 
 - [NixOS Test Framework](https://nixos.org/manual/nixos/stable/#sec-nixos-tests)

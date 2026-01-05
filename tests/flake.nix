@@ -119,7 +119,11 @@
           microvm.nixosModules.microvm
           keystone.nixosModules.cluster-worker
           ./microvm/cluster-worker.nix
-          {networking.hostName = "worker1";}
+          {
+            networking.hostName = "worker1";
+            microvm.interfaces = [ { type = "user"; id = "net0"; mac = "02:00:00:00:00:11"; } ];
+            microvm.forwardPorts = [ { from = "host"; host.port = 22231; guest.port = 22; } ];
+          }
         ];
       };
 
@@ -129,7 +133,11 @@
           microvm.nixosModules.microvm
           keystone.nixosModules.cluster-worker
           ./microvm/cluster-worker.nix
-          {networking.hostName = "worker2";}
+          {
+            networking.hostName = "worker2";
+            microvm.interfaces = [ { type = "user"; id = "net0"; mac = "02:00:00:00:00:12"; } ];
+            microvm.forwardPorts = [ { from = "host"; host.port = 22232; guest.port = 22; } ];
+          }
         ];
       };
 
@@ -139,7 +147,11 @@
           microvm.nixosModules.microvm
           keystone.nixosModules.cluster-worker
           ./microvm/cluster-worker.nix
-          {networking.hostName = "worker3";}
+          {
+            networking.hostName = "worker3";
+            microvm.interfaces = [ { type = "user"; id = "net0"; mac = "02:00:00:00:00:13"; } ];
+            microvm.forwardPorts = [ { from = "host"; host.port = 22233; guest.port = 22; } ];
+          }
         ];
       };
     };

@@ -341,3 +341,57 @@ kubectl get nodes
 4. Validate mesh connectivity between all 4 nodes
 5. Verify k3s agent join process for workers
 
+---
+
+## Test Validation Log
+
+### 2026-01-04: MicroVM SSH + k3s Bootstrap
+
+**Environment**: MicroVM with user-mode networking (SLIRP)
+
+**Test Artifacts**:
+- SSH key pair: `tests/fixtures/test-ssh-key{,.pub}`
+- MicroVM configs: `tests/microvm/cluster-{primer,worker}.nix`
+- Test script: `bin/test-cluster-microvm`
+
+**Results**:
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| MicroVM boot | ✅ Pass | ~30s to login prompt |
+| SSH key auth | ✅ Pass | `tests/fixtures/test-ssh-key` works |
+| k3s service | ✅ Pass | Active and healthy |
+| CoreDNS | ✅ Pass | Running in k3s |
+| Agenix decryption | ✅ Pass | Secrets at `/run/agenix/` |
+| Headscale pod | ❌ Fail | CrashLoopBackOff |
+
+**Issue Found**: Headscale noise key format mismatch
+
+```
+FTL Error initializing error="failed to read or create Noise protocol private key:
+failed to parse private key: key hex has the wrong size, got 44 want 64"
+```
+
+- **Root cause**: Test fixtures have WireGuard-style base64 keys (44 chars), but Headscale expects 64-character hex strings
+- **Action Required**: Regenerate `headscale-{private,noise,derp}.age` with correct format:
+
+```bash
+# Generate 32-byte random hex (64 chars) for each key
+openssl rand -hex 32 > headscale-private.key
+openssl rand -hex 32 > headscale-noise.key
+openssl rand -hex 32 > headscale-derp.key
+
+# Re-encrypt with agenix
+cd tests/fixtures
+agenix -e headscale-private.age -i test-age-key.txt < headscale-private.key
+agenix -e headscale-noise.age -i test-age-key.txt < headscale-noise.key
+agenix -e headscale-derp.age -i test-age-key.txt < headscale-derp.key
+```
+
+**Validated Spike Criteria**:
+- [x] Primer boots via MicroVM with k3s running
+- [ ] Headscale pod is healthy *(blocked on key format fix)*
+- [ ] Workers register via pre-auth key *(blocked on Headscale)*
+- [ ] All 4 nodes can `tailscale ping` each other *(blocked on Headscale)*
+- [x] Cluster is reachable from host via port-forwarding (SSH on 22223, k3s on 16443)
+

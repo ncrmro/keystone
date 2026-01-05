@@ -25,17 +25,65 @@ pkgs.testers.nixosTest {
       pkgs,
       lib,
       ...
-    }: {
+    }: let
+      # Build Headscale image for the test
+      headscaleImage = pkgs.dockerTools.buildImage {
+        name = "headscale/headscale";
+        tag = "0.23.0";
+        copyToRoot = [ pkgs.headscale pkgs.cacert pkgs.busybox ];
+        config = {
+          Cmd = [ "/bin/headscale" ];
+          Env = [ "PATH=/bin" "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" ];
+        };
+      };
+
+      # Build Pause image for k3s sandbox
+      pauseImage = pkgs.dockerTools.buildImage {
+        name = "rancher/mirrored-pause";
+        tag = "3.6";
+        copyToRoot = [ pkgs.busybox ];
+        config = {
+          Cmd = [ "/bin/sh" "-c" "sleep inf" ];
+        };
+      };
+    in {
       imports = [self.nixosModules.cluster-primer];
 
       system.stateVersion = "25.05";
+
+      # Pre-load images into k3s
+      systemd.services.k3s-import-images = {
+        description = "Import images into k3s";
+        wantedBy = ["multi-user.target"];
+        before = ["headscale-deploy.service"];
+        after = ["k3s.service"];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          ${pkgs.k3s}/bin/k3s ctr images import ${headscaleImage}
+          ${pkgs.k3s}/bin/k3s ctr images import ${pauseImage}
+        '';
+      };
+
+      # Ensure deployment waits for image import
+      systemd.services.headscale-deploy.requires = ["k3s-import-images.service"];
+      systemd.services.headscale-deploy.after = ["k3s-import-images.service"];
 
       keystone.cluster.primer = {
         enable = true;
         headscale = {
           serverUrl = "http://primer:30080";
           baseDomain = "test.local";
+          storage.type = "ephemeral";
         };
+        k3s.disableComponents = [
+          "traefik"
+          "metrics-server"
+          "local-storage"
+          "coredns"
+        ];
       };
 
       # VM settings - k3s needs more resources

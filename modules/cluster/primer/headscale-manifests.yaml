@@ -51,17 +51,7 @@ data:
       format: text
       level: info
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: headscale-data
-  namespace: @@namespace@@
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+@@pvcResource@@
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -129,9 +119,7 @@ spec:
         - name: config
           configMap:
             name: headscale-config
-        - name: data
-          persistentVolumeClaim:
-            claimName: headscale-data
+@@dataVolume@@
 @@keysVolume@@
 ---
 apiVersion: v1
