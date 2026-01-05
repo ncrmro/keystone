@@ -1,0 +1,29 @@
+# Project-local SSH config for Keystone Apple Silicon deployment
+# Used via: ssh -F ./ssh/config nixbuilder
+#
+# This file is used by deploy.sh and test-builder.sh automatically.
+# No need to modify ~/.ssh/config.
+
+# =============================================================================
+# OrbStack NixOS Builder (via Mac Pro ProxyJump)
+# =============================================================================
+# The Linux VM runs inside OrbStack on the Mac Pro. The .orb.local domain
+# only resolves on the Mac Pro itself, so we use ProxyJump to tunnel through.
+
+Host nixbuilder
+  HostName nixbuilder.orb.local
+  User root
+  ProxyJump nicholas@unsup-16-pro.local
+  IdentityFile ~/.ssh/id_ed25519
+  StrictHostKeyChecking accept-new
+
+# =============================================================================
+# MacBook Target (Asahi Linux)
+# =============================================================================
+# Your MacBook running NixOS/Asahi Linux. Update the IP if using DHCP.
+
+Host macbook
+  HostName 192.168.1.64
+  User root
+  IdentityFile ~/.ssh/id_ed25519
+  StrictHostKeyChecking accept-new
