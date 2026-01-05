@@ -167,13 +167,15 @@ in {
         dataVolume =
           if primerCfg.headscale.storage.type == "pvc"
           then ''
-                    - name: data
-                      persistentVolumeClaim:
-                        claimName: headscale-data
+
+        - name: data
+          persistentVolumeClaim:
+            claimName: headscale-data
           ''
           else ''
-                    - name: data
-                      emptyDir: {}
+
+        - name: data
+          emptyDir: {}
           '';
 
         # Volume mounts for keys (if using agenix secrets)
