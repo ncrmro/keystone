@@ -66,6 +66,16 @@ in {
     };
   };
 
+  options.keystone.cluster.primer.headscale = {
+    storage = {
+      type = mkOption {
+        type = types.enum ["pvc" "ephemeral"];
+        default = "pvc";
+        description = "Storage type for Headscale data (pvc or ephemeral/emptyDir)";
+      };
+    };
+  };
+
   config = mkIf cfg.enable {
     # Create K8s Secret from agenix-decrypted files (when agenix secrets enabled)
     systemd.services.headscale-secrets = mkIf cfg.useAgenixSecrets {
@@ -134,6 +144,36 @@ in {
       script = let
         namespace = primerCfg.headscale.namespace;
 
+        # Storage configuration
+        pvcResource =
+          if primerCfg.headscale.storage.type == "pvc"
+          then ''
+            apiVersion: v1
+            kind: PersistentVolumeClaim
+            metadata:
+              name: headscale-data
+              namespace: @@namespace@@
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 1Gi
+          ''
+          else "";
+
+        dataVolume =
+          if primerCfg.headscale.storage.type == "pvc"
+          then ''
+                    - name: data
+                      persistentVolumeClaim:
+                        claimName: headscale-data
+          ''
+          else ''
+                    - name: data
+                      emptyDir: {}
+          '';
+
         # Volume mounts for keys (if using agenix secrets)
         # Note: YAML must have exact indentation for the template position (12 spaces for volumeMounts)
         keysVolumeMounts =
@@ -164,6 +204,8 @@ in {
             "@@requestsMemory@@"
             "@@limitsCpu@@"
             "@@limitsMemory@@"
+            "@@pvcResource@@"
+            "@@dataVolume@@"
             "@@keysVolumeMounts@@"
             "@@keysVolume@@"
           ]
@@ -177,6 +219,8 @@ in {
             cfg.resources.requests.memory
             cfg.resources.limits.cpu
             cfg.resources.limits.memory
+            pvcResource
+            dataVolume
             keysVolumeMounts
             keysVolume
           ]
