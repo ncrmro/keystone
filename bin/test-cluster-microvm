@@ -14,6 +14,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TESTS_DIR="$PROJECT_ROOT/tests"
+SSH_KEY="$TESTS_DIR/fixtures/test-ssh-key"
+
+# SSH options for key-based auth with fallback
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+if [ -f "$SSH_KEY" ]; then
+    SSH_OPTS="$SSH_OPTS -i $SSH_KEY"
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -59,9 +66,9 @@ info "Building cluster-primer microVM..."
 nix build .#nixosConfigurations.cluster-primer.config.microvm.declaredRunner -o result-primer
 
 info "Starting primer microVM..."
-info "  SSH: ssh -p 2222 root@localhost (password: root)"
-info "  k3s API: https://localhost:6443"
-info "  Headscale: http://localhost:8080"
+info "  SSH: ssh $SSH_OPTS -p 22223 root@localhost"
+info "  k3s API: https://localhost:16443"
+info "  Headscale: http://localhost:18080"
 echo ""
 
 if $SHELL_MODE; then
@@ -77,7 +84,7 @@ else
 
     # Wait for SSH
     for i in {1..60}; do
-        if ssh -o ConnectTimeout=1 -o StrictHostKeyChecking=no -p 2222 root@localhost exit 2>/dev/null; then
+        if ssh $SSH_OPTS -o ConnectTimeout=1 -p 22223 root@localhost exit 2>/dev/null; then
             break
         fi
         sleep 2
@@ -86,10 +93,28 @@ else
     info "Primer is ready!"
 
     # Check k3s status
-    info "Checking k3s status..."
-    ssh -o StrictHostKeyChecking=no -p 2222 root@localhost "kubectl get nodes" 2>/dev/null || true
+    info "Waiting for k3s to be ready..."
+    for i in {1..60}; do
+        if ssh $SSH_OPTS -p 22223 root@localhost "kubectl get nodes" &>/dev/null; then
+            info "k3s is ready!"
+            break
+        fi
+        [ $i -eq 60 ] && { error "Timeout waiting for k3s"; exit 1; }
+        sleep 5
+    done
 
     if $START_WORKERS; then
+        # Generate pre-auth key from primer
+        info "Generating Headscale pre-auth key..."
+        AUTH_KEY=$(ssh $SSH_OPTS -p 22223 root@localhost \
+            "kubectl exec -n headscale-system deploy/headscale -- headscale preauthkeys create --user default --reusable --expiration 1h" | grep -oE '[a-z0-9]{48}')
+        
+        if [ -z "$AUTH_KEY" ]; then
+            error "Failed to generate auth key"
+            exit 1
+        fi
+        info "Generated auth key: ${AUTH_KEY:0:10}..."
+
         # Build and start workers
         for i in 1 2 3; do
             info "Building cluster-worker$i microVM..."
@@ -99,12 +124,35 @@ else
             "./result-worker$i/bin/microvm-run" &
         done
 
-        info "Workers starting in background..."
-        info "Use 'ssh -p 2222 root@localhost' to access primer and run:"
-        info "  kubectl exec -n headscale-system deploy/headscale -- headscale preauthkeys create --user default --reusable --expiration 1h"
+        info "Waiting for workers to boot and join mesh..."
+        # We need to manually trigger tailscale up on workers since we have the key now
+        # OR we could have updated the worker config with the key, but runtime join is more realistic
+        for i in 1 2 3; do
+            PORT=$((22230 + i))
+            info "Waiting for worker$i SSH (port $PORT)..."
+            for j in {1..60}; do
+                if ssh $SSH_OPTS -o ConnectTimeout=1 -p $PORT root@localhost exit 2>/dev/null; then
+                    break
+                fi
+                sleep 2
+            done
+
+            info "Joining worker$i to mesh..."
+            ssh $SSH_OPTS -p $PORT root@localhost "/etc/keystone/join-mesh.sh $AUTH_KEY"
+        done
+
+        info "Verifying mesh connectivity..."
+        ssh $SSH_OPTS -p 22223 root@localhost \
+            "kubectl exec -n headscale-system deploy/headscale -- headscale nodes list"
     fi
 
     info ""
-    info "Cluster is running. Press Enter to stop..."
-    read -r
+    info "Cluster test complete!"
+    if [ -t 0 ]; then
+        info "Press Enter to stop cluster..."
+        read -r
+    else
+        info "Non-interactive mode: Cluster will run for 30s then exit..."
+        sleep 30
+    fi
 fi

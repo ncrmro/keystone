@@ -51,6 +51,12 @@
         host.port = 18080;
         guest.port = 30080;
       }
+      # Headscale DERP/STUN
+      {
+        from = "host";
+        host.port = 13478;
+        guest.port = 3478;
+      }
     ];
 
     # Persistent volume for k3s data
@@ -80,8 +86,8 @@
   keystone.cluster.primer = {
     enable = true;
     headscale = {
-      # Use localhost since we're port-forwarding
-      serverUrl = "http://localhost:8080";
+      # Use 10.0.2.2 (host IP from guest) so workers can reach it via forwarded port
+      serverUrl = "http://10.0.2.2:18080";
       baseDomain = "cluster.local";
     };
     # Use agenix-managed secrets for Headscale keys
@@ -117,14 +123,21 @@
     };
   };
 
-  # SSH for debugging
+  # SSH for debugging - prefer key-based auth, fall back to password
   services.openssh = {
     enable = true;
-    settings.PermitRootLogin = "yes";
+    settings = {
+      PermitRootLogin = "yes";
+      PasswordAuthentication = true; # Fallback for debugging
+    };
   };
 
-  # Set root password for testing
-  users.users.root.initialPassword = "root";
+  # Set root password for testing (fallback)
+  users.users.root = {
+    initialPassword = "root";
+    # Test SSH key for automated testing (NOT FOR PRODUCTION)
+    openssh.authorizedKeys.keyFiles = [../fixtures/test-ssh-key.pub];
+  };
 
   # Firewall off for testing
   networking.firewall.enable = false;

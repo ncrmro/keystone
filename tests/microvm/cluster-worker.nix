@@ -17,29 +17,11 @@
     hypervisor = "qemu";
 
     # Workers need less resources than primer
-    mem = 2048;
+    # Note: Using 2049 instead of 2048 to avoid QEMU hang bug
+    mem = 2049;
     vcpu = 1;
 
-    # User-mode networking
-    interfaces = [
-      {
-        type = "user";
-        id = "net0";
-        # MAC will be overridden per-worker
-        mac = "02:00:00:00:00:10";
-      }
-    ];
-
-    # Forward SSH for debugging
-    forwardPorts = [
-      {
-        from = "host";
-        host.port = 2223; # Adjust per worker
-        guest.port = 22;
-      }
-    ];
-
-    # Share /nix/store from host
+    # Share /nix/store from host (faster builds)
     shares = [
       {
         tag = "ro-store";
@@ -60,14 +42,21 @@
     headscaleUrl = "http://10.0.2.2:8080"; # Host from guest perspective
   };
 
-  # SSH for debugging
+  # SSH for debugging - prefer key-based auth, fall back to password
   services.openssh = {
     enable = true;
-    settings.PermitRootLogin = "yes";
+    settings = {
+      PermitRootLogin = "yes";
+      PasswordAuthentication = true; # Fallback for debugging
+    };
   };
 
-  # Set root password for testing
-  users.users.root.initialPassword = "root";
+  # Set root password for testing (fallback)
+  users.users.root = {
+    initialPassword = "root";
+    # Test SSH key for automated testing (NOT FOR PRODUCTION)
+    openssh.authorizedKeys.keyFiles = [../fixtures/test-ssh-key.pub];
+  };
 
   # Firewall off for testing
   networking.firewall.enable = false;
