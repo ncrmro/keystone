@@ -99,6 +99,7 @@ in {
         g = "git";
         lg = "lazygit";
         # Terminal utilities
+        ztab = "zellij action rename-tab";
         zs = "zesh connect"; # Zellij session manager with zoxide integration
         y = "yazi";
       };
