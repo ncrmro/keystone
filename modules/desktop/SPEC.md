@@ -111,13 +111,50 @@ Setup → Monitors
 └── Detect         → Re-detect connected monitors
 ```
 
+#### Default Behavior: Mirror
+
+**By default, external displays mirror the laptop screen.** This design choice prioritizes the presentation use case:
+
+- When presenting, users often fumble to remember display commands under pressure
+- Regular desk setups are familiar—users remember how to switch to extended mode
+- Unexpected external connections (conference rooms, unfamiliar projectors) should "just work"
+
+The default monitor configuration mirrors any external display to the laptop:
+
+```nix
+keystone.desktop.hyprland.monitors = [
+  "eDP-1,preferred,auto,1"                    # Laptop display
+  ",preferred,auto,1,mirror,eDP-1"            # Any other display mirrors laptop
+];
+```
+
+#### Customizing for Extended Displays
+
+For users who prefer extended desktop as the default (e.g., home office with known monitors):
+
+```nix
+# Extended display to the right of laptop
+keystone.desktop.hyprland.monitors = [
+  "eDP-1,preferred,auto,1"
+  ",preferred,auto-right,1"
+];
+
+# Or specify exact monitors for precise control
+keystone.desktop.hyprland.monitors = [
+  "eDP-1,preferred,0x0,1"
+  "DP-1,preferred,2560x0,1"    # 2560px to the right
+];
+```
+
+The menu system (Setup → Monitors) remains available for runtime switching when needed.
+
 #### Monitor Modes
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
 | **Auto Left** | External positioned left of laptop display | Desk setup with monitor on left |
 | **Auto Right** | External positioned right of laptop display | Desk setup with monitor on right |
-| **Mirror** | Same content on both displays | Presentations, screen sharing |
+| **Mirror** | Same content on both displays (DEFAULT) | Presentations, screen sharing |
 | **External Only** | Laptop display disabled | Docked at desk, lid closed |
 | **Laptop Only** | External display disabled | Undocking, travel |
 | **Detect** | Query connected monitors and show status | Troubleshooting, verification |
@@ -233,8 +270,11 @@ keystone.desktop.hyprland = {
 
   monitors = mkOption {
     type = types.listOf types.str;
-    default = [ ",preferred,auto,1" ];
-    description = "Monitor configuration strings";
+    default = [
+      "eDP-1,preferred,auto,1"              # Laptop display
+      ",preferred,auto,1,mirror,eDP-1"      # External displays mirror laptop
+    ];
+    description = "Monitor configuration strings (defaults to mirroring for presentations)";
   };
 
   scale = mkOption {
