@@ -29,8 +29,15 @@ in
 
     monitors = mkOption {
       type = types.listOf types.str;
-      default = [ ",preferred,auto,1" ];
-      description = "Monitor configuration strings for Hyprland";
+      default = [
+        "eDP-1,preferred,auto,1" # Laptop display
+        ",preferred,auto,1,mirror,eDP-1" # External displays mirror laptop by default
+      ];
+      description = ''
+        Monitor configuration strings for Hyprland.
+        Defaults to mirroring external displays to laptop for presentation scenarios.
+        See modules/desktop/SPEC.md for customization options.
+      '';
     };
 
     terminal = mkOption {
