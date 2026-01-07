@@ -35,20 +35,63 @@ in
       solargraph
       nodePackages.prettier
       harper
-    ];
+      pandoc
+      marksman
+      xdg-utils
+      # Helper script for Markdown preview in Helix
+      # We use a script with :pipe because:
+      # 1. Helix's % expansion in :sh commands is finicky (requires %% escaping in Nix, but sometimes fails in Helix)
+      # 2. It allows previewing unsaved buffers (streaming content via stdin)
+      # 3. It creates a robust environment with absolute paths for pandoc/xdg-open
+      (writeShellScriptBin "helix-preview-markdown" ''
+        LOG="/tmp/helix-preview.log"
+        echo "--- $(date) ---" >> "$LOG"
+        temp_file=$(mktemp)
+        cat > "$temp_file"
+        
+        ${pkgs.pandoc}/bin/pandoc -f markdown "$temp_file" -o /tmp/helix-preview.html 2>> "$LOG"
+        
+        if [ $? -eq 0 ]; then
+          echo "Pandoc success" >> "$LOG"
+          URL="file:///tmp/helix-preview.html"
+          
+          # Copy to clipboard
+          CMD="${if pkgs.stdenv.isDarwin then "pbcopy" else "${pkgs.wl-clipboard}/bin/wl-copy"}"
+          if command -v $CMD >/dev/null 2>&1 || [ -x "$CMD" ]; then
+             echo -n "$URL" | $CMD
+             echo "Copied to clipboard: $URL" >> "$LOG"
+          else
+             echo "Clipboard command not found: $CMD" >> "$LOG"
+          fi
+
+          # Open in browser
+          ${pkgs.xdg-utils}/bin/xdg-open /tmp/helix-preview.html >> "$LOG" 2>&1 &
+        else
+          echo "Pandoc failed" >> "$LOG"
+        fi
+
+        cat "$temp_file"
+        rm "$temp_file"
+      '')
+    ] ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.wl-clipboard ];
 
     # Helix - Modal text editor
     # https://helix-editor.com/
     programs.helix = {
-      enable = true;
-      package = helix-pkg;
-      settings = {
+      enable = mkDefault true;
+      package = mkDefault helix-pkg;
+      settings = mkDefault {
         # Use kinda_nvim theme if available, otherwise use default
         theme = if hasKindaNvim then "kinda_nvim" else "default";
         editor = {
           line-number = "absolute";
           mouse = true;
           clipboard-provider = "wayland";
+          text-width = 120;
+          soft-wrap = {
+            enable = true;
+            wrap-at-text-width = true;
+          };
           cursor-shape = {
             insert = "bar";
             normal = "block";
@@ -57,6 +100,10 @@ in
         };
         keys.normal = {
           ret = ":write";
+          # Keystone Helix Commands
+          # Tutorial: https://helix-editor-tutorials.com/tutorials/writing-documentation-and-prose-in-markdown-using-helix/
+          F6 = [ "select_all" ":pipe helix-preview-markdown" "collapse_selection" ];
+          F7 = ":toggle soft-wrap.enable";
         };
       };
       languages = with pkgs; {
@@ -114,6 +161,10 @@ in
           harper-ls = {
             command = "${harper}/bin/harper-ls";
             args = [ "--stdio" ];
+          };
+          marksman = {
+            command = "${marksman}/bin/marksman";
+            args = [ "server" ];
           };
         };
         language = [
@@ -193,7 +244,18 @@ in
           }
           {
             name = "markdown";
-            language-servers = [ "harper-ls" ];
+            language-servers = [
+              "marksman"
+              "harper-ls"
+            ];
+            auto-format = true;
+            formatter = {
+              command = "prettier";
+              args = [
+                "--parser"
+                "markdown"
+              ];
+            };
           }
           {
             name = "c";
