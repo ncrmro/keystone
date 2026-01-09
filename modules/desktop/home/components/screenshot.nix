@@ -123,6 +123,8 @@ in
     ];
 
     # Satty configuration - Ctrl+C copies to clipboard, saves file, and exits
+    # Note: output-filename uses ~/Pictures as it's Satty's config. The script uses
+    # KEYSTONE_SCREENSHOT_DIR or XDG_PICTURES_DIR if set. Both default to ~/Pictures.
     xdg.configFile."satty/config.toml".text = ''
       [general]
       early-exit = true
