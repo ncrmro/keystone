@@ -128,6 +128,7 @@ in
       early-exit = true
       save-after-copy = true
       copy-command = "${pkgs.wl-clipboard}/bin/wl-copy"
+      output-filename = "~/Pictures/screenshot-%Y-%m-%d_%H-%M-%S.png"
     '';
 
     # Hyprland layer rule to remove animation artifacts during screenshot selection
