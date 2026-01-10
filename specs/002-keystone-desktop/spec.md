@@ -39,6 +39,7 @@ The system MUST provide a secure screen locking mechanism (Hyprlock).
 ### Lock Inhibition (dt-inhibit-001)
 The system MUST provide a mechanism to prevent automatic screen locking/suspension for specific applications or activities.
 - **dt-inhibit-001.1**: The system MUST allow for temporary manual inhibition of screen locking/suspension.
+- **dt-inhibit-001.2**: The system MUST ignore D-Bus inhibition requests (e.g., from web browsers playing media) by default to ensure the screen locks when the user is idle, even if audio/video is playing.
 
 ### Night Light (dt-night-001)
 The system MUST provide a blue light filter (Hyprsunset) to reduce eye strain.
@@ -62,10 +63,40 @@ The system MUST provide a centralized theming infrastructure to switch the visua
 - **dt-theme-001.4**: The system MUST allow for custom themes defined locally, in addition to upstream themes.
 
 ### Screen Recording (dt-record-001)
-The system MUST allow starting and stopping screen recordings, capturing a selected region or the entire screen.
+The system MUST allow starting and stopping screen recordings, capturing a selected region or the entire screen, with optional audio capture and configurable output management.
 - **dt-record-001.1**: The screen recording MUST be toggleable via the "Capture" menu or a dedicated shortcut.
 - **dt-record-001.2**: An indicator in the Waybar MUST show when recording is active.
 - **dt-record-001.3**: Clicking the Waybar indicator MUST stop the active screen recording.
+- **dt-record-001.4**: The system MUST support optional audio capture from desktop audio (`--with-desktop-audio`) and microphone input (`--with-microphone-audio`), which can be combined.
+- **dt-record-001.5**: Screen recordings MUST be saved to `$KEYSTONE_SCREENRECORD_DIR` (if set), otherwise `$XDG_VIDEOS_DIR`, with fallback to `~/Videos`, using filename format `screenrecording-YYYY-MM-DD_HH-MM-SS.mp4`.
+- **dt-record-001.6**: The recording MUST use GPU-accelerated encoding at 60 FPS with H.264 video codec and AAC audio codec.
+- **dt-record-001.7**: Recording MUST provide visual notifications for start, stop, and error conditions with file path confirmation on completion.
+
+#### User Stories (dt-record-001-stories)
+
+**Story 1: Quick Screen Recording**
+As a developer, I want to quickly record my screen for documentation and bug reports, so that I can share visual information with teammates without external tools.
+
+Acceptance Scenarios:
+- Given a user at any screen with Hyprland desktop, When they access the Capture menu and select "Screenrecord", Then recording starts immediately with a notification
+- Given recording is active, When the user clicks the Waybar indicator, Then recording stops and a completion notification shows the file path
+- Given a recording completes, When the user checks their Videos directory, Then a properly formatted video file exists with timestamp in filename
+
+**Story 2: Recording with Audio**
+As a content creator, I want to capture system audio and microphone input alongside screen video, so that I can create complete tutorials and presentations.
+
+Acceptance Scenarios:
+- Given a user starts recording with `--with-desktop-audio`, When audio plays from applications, Then the recording captures system audio in the output file
+- Given a user starts recording with `--with-microphone-audio`, When they speak into the microphone, Then voice audio is captured in the output file
+- Given a user specifies both audio options, When recording completes, Then the output file contains synchronized desktop and microphone audio
+
+**Story 3: Flexible Output Management**
+As a developer, I want to control where recordings are saved, so that I can organize videos by project.
+
+Acceptance Scenarios:
+- Given `KEYSTONE_SCREENRECORD_DIR` is set to a custom path, When recording completes, Then the file is saved to that directory
+- Given no custom directory is configured, When recording completes, Then the file defaults to ~/Videos with format `screenrecording-YYYY-MM-DD_HH-MM-SS.mp4`
+- Given the configured output directory doesn't exist, When recording attempts to start, Then a notification warns the user and recording is prevented
 
 ### Screenshots (dt-shot-001)
 The system MUST allow capturing screenshots of a selected region, window, or entire screen.
