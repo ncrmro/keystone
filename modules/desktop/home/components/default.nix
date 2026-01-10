@@ -12,6 +12,7 @@ in
   imports = [
     ./btop.nix
     ./clipboard.nix
+    ./file-picker.nix
     ./ghostty.nix
     ./launcher.nix
     ./mako.nix
