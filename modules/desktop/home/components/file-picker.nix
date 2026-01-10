@@ -9,6 +9,7 @@ let
   cfg = config.keystone.desktop;
   
   # Yazi wrapper script for file picker integration
+  # This script is pre-configured and ready to use once xdg-desktop-portal-termfilechooser is installed
   yaziFilePickerWrapper = pkgs.writeShellScript "yazi-file-picker" ''
     #!/usr/bin/env bash
     # Yazi wrapper for XDG Desktop Portal file picker
@@ -28,25 +29,30 @@ in
 {
   config = mkIf cfg.enable {
     # Create XDG portal configuration directory structure
+    # These files are created automatically but yazi file picker requires
+    # xdg-desktop-portal-termfilechooser to be installed separately
     xdg.configFile."xdg-desktop-portal/portals.conf".text = ''
       [preferred]
       # Use GTK portal for most functions
       default=gtk
       
-      # To enable yazi as file picker, install xdg-desktop-portal-termfilechooser
-      # and uncomment the following line:
+      # To enable yazi as file picker:
+      # 1. Install xdg-desktop-portal-termfilechooser (see docs/yazi-file-picker.md)
+      # 2. Uncomment the following line:
       # org.freedesktop.impl.portal.FileChooser=termfilechooser
+      # 3. Restart xdg-desktop-portal: systemctl --user restart xdg-desktop-portal.service
     '';
     
-    # Create placeholder config for termfilechooser
+    # Create pre-configured termfilechooser config with yazi wrapper
     xdg.configFile."xdg-desktop-portal-termfilechooser/config".text = ''
       [filechooser]
-      # Wrapper script for yazi file picker
-      # To enable, install xdg-desktop-portal-termfilechooser package
+      # Wrapper script for yazi file picker (pre-configured)
+      # This config is ready to use once xdg-desktop-portal-termfilechooser is installed
       cmd=${yaziFilePickerWrapper}
     '';
     
     # Firefox configuration for XDG portal file picker
+    # This enables Firefox to use the portal system for file selection
     programs.firefox = mkIf (config.programs.firefox.enable or false) {
       profiles = mkIf (config.programs.firefox.profiles != {}) (
         mapAttrs (name: profile: {
