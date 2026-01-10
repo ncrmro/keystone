@@ -1,394 +1,153 @@
 #!/usr/bin/env python3
-"""
-Git Worktree Manager for Concurrent Development
 
-This script automates the creation and setup of git worktrees to enable working on
-multiple branches simultaneously without switching contexts or dealing with stashing.
-
-Goals:
-------
-1. Create isolated worktrees in ./worktree/<branch-name>/ for any git branch
-2. Automatically handle local, remote, and new branches with intelligent fetching
-3. Copy .env configuration with randomized ports (WEB_PORT, DB_PORT) to prevent conflicts
-4. Initialize the development environment by running 'make up' and waiting for services
-5. Provide a fully-ready development environment without manual setup
-6. Clean up worktrees by stopping services and removing the worktree directory
-
-Workflow:
----------
-1. Check if branch exists locally (if yes, use it)
-2. If not local, fetch from remote and track it
-3. If branch doesn't exist anywhere, create a new branch
-4. Create git worktree in ./worktree/<branch-name>/
-5. Copy .env from root with randomized ports (3000-9999 for WEB, 8000-9999 for DB)
-6. Install dependencies with 'npm install'
-7. Run 'make up' and monitor Docker services until web service is healthy
-8. Exit when environment is ready for development
-
-Usage:
-------
-    bin/worktree <branch-name>              # Create worktree
-    bin/worktree -r <branch-name>           # Remove worktree
-    bin/worktree --remove <branch-name>     # Remove worktree (long form)
-
-Examples:
-    bin/worktree feat/new-feature           # Create worktree for a feature branch
-    bin/worktree main                       # Create worktree for main branch
-    bin/worktree fix/bug-123                # Create worktree for a bug fix
-    bin/worktree -r feat/new-feature        # Remove worktree when done
-    bin/worktree --remove main              # Remove main worktree
-
-Benefits:
----------
-- Work on multiple branches simultaneously without context switching
-- No need to stash/unstash changes when switching tasks
-- Each worktree has isolated dependencies and services with unique ports
-- Fully automated setup - ready to code immediately after script completes
-"""
-
-import argparse
 import os
-import random
 import re
+import shutil
 import subprocess
 import sys
-import time
 
-def run_git_command(args, capture_output=True, check=True):
-    """Run a git command and return the result."""
+
+def run_command(command, check=True, capture_output=False, cwd=None):
+    """Helper to run shell commands."""
     try:
-        result = subprocess.run(
-            ["git"] + args,
-            capture_output=capture_output,
-            text=True,
-            check=check
-        )
-        return result
-    except subprocess.CalledProcessError as e:
-        if not check:
-            return e
-        print(f"Error running git command: {e}", file=sys.stderr)
-        if e.stderr:
-            print(e.stderr, file=sys.stderr)
+        process = subprocess.run(command, check=False, capture_output=capture_output, text=True, shell=True, cwd=cwd)
+        if process.returncode != 0 and check:
+            print(f"Error executing command: {command}", file=sys.stderr)
+            if process.stdout:
+                print(f"Stdout: {process.stdout.strip()}", file=sys.stderr)
+            if process.stderr:
+                print(f"Stderr: {process.stderr.strip()}", file=sys.stderr)
+            sys.exit(process.returncode)
+        
+        return process.stdout.strip() if capture_output else True
+    except FileNotFoundError:
+        print(f"Command not found: {command.split()[0]}", file=sys.stderr)
         sys.exit(1)
 
-def get_project_root():
-    """Get the project root directory (git repository root)."""
-    result = run_git_command(["rev-parse", "--show-toplevel"])
-    return result.stdout.strip()
+def sluggify(value):
+    """
+    Normalizes string, converts to lowercase, removes non-alpha characters,
+    and converts spaces to hyphens.
+    """
+    value = str(value)
+    # Replace slashes with hyphens
+    value = value.replace('/', '-')
+    # Keep alphanumeric and hyphens, remove others
+    value = re.sub(r'[^\w\-]', '', value)
+    # Convert to lowercase
+    value = value.lower()
+    return value
 
-def branch_exists_locally(branch_name):
-    """Check if a branch exists locally."""
-    result = run_git_command(
-        ["branch", "--list", branch_name],
-        check=False
-    )
-    return bool(result.stdout.strip())
+def get_worktree_path(branch_name):
+    """Returns the expected path for a worktree."""
+    return os.path.join(".worktrees", sluggify(branch_name))
 
-def branch_exists_remotely(branch_name):
-    """Check if a branch exists on any remote."""
-    result = run_git_command(
-        ["branch", "-r", "--list", f"*/{branch_name}"],
-        check=False
-    )
-    if result.stdout.strip():
-        return True
+def cmd_list():
+    """Lists all active worktrees."""
+    print("Listing git worktrees:")
+    run_command("git worktree list")
 
-    # Also try with origin/ prefix explicitly
-    result = run_git_command(
-        ["branch", "-r", "--list", f"origin/{branch_name}"],
-        check=False
-    )
-    return bool(result.stdout.strip())
+def cmd_add(branch_name, base_ref=None):
+    """Adds a new worktree."""
+    worktree_path = get_worktree_path(branch_name)
 
-def get_remote_branch_name(branch_name):
-    """Get the full remote branch name (e.g., origin/branch-name)."""
-    result = run_git_command(
-        ["branch", "-r", "--list", f"*/{branch_name}"],
-        check=False
-    )
-    if result.stdout.strip():
-        return result.stdout.strip().split('\n')[0].strip()
-
-    result = run_git_command(
-        ["branch", "-r", "--list", f"origin/{branch_name}"],
-        check=False
-    )
-    if result.stdout.strip():
-        return result.stdout.strip().split('\n')[0].strip()
-
-    return None
-
-def worktree_exists(worktree_path):
-    """Check if a worktree already exists at the given path."""
-    result = run_git_command(
-        ["worktree", "list", "--porcelain"],
-        check=False
-    )
-    for line in result.stdout.split('\n'):
-        if line.startswith('worktree '):
-            existing_path = line.replace('worktree ', '')
-            if os.path.abspath(existing_path) == os.path.abspath(worktree_path):
-                return True
-    return False
-
-def copy_and_randomize_env(project_root, worktree_path):
-    """Copy .env from project root to worktree and randomize ports."""
-    env_source = os.path.join(project_root, ".env")
-    env_dest = os.path.join(worktree_path, ".env")
-
-    # Check if .env exists in project root
-    if not os.path.exists(env_source):
-        print("⚠ No .env file found in project root, skipping .env copy")
-        return
-
-    # Read the .env file
-    with open(env_source, 'r') as f:
-        env_content = f.read()
-
-    # Generate random ports
-    web_port = random.randint(3000, 9999)
-    db_port = random.randint(8000, 9999)
-
-    # Replace or add port values
-    if re.search(r'^WEB_PORT=', env_content, flags=re.MULTILINE):
-        env_content = re.sub(r'^WEB_PORT=\d+', f'WEB_PORT={web_port}', env_content, flags=re.MULTILINE)
-    else:
-        env_content += f'\nWEB_PORT={web_port}\n'
-
-    if re.search(r'^DB_PORT=', env_content, flags=re.MULTILINE):
-        env_content = re.sub(r'^DB_PORT=\d+', f'DB_PORT={db_port}', env_content, flags=re.MULTILINE)
-    else:
-        env_content += f'DB_PORT={db_port}\n'
-
-    # Write to worktree .env
-    with open(env_dest, 'w') as f:
-        f.write(env_content)
-
-    print(f"✓ Copied .env with randomized ports:")
-    print(f"  WEB_PORT={web_port}")
-    print(f"  DB_PORT={db_port}")
-
-def install_dependencies(worktree_path):
-    """Run npm install in the worktree directory."""
-    print("Installing dependencies with 'npm install'...")
-    try:
-        result = subprocess.run(
-            ["npm", "install"],
-            cwd=worktree_path,
-            check=True
-        )
-        print("✓ Dependencies installed successfully")
-    except subprocess.CalledProcessError as e:
-        print(f"⚠ Warning: npm install failed", file=sys.stderr)
-        if e.stderr:
-            print(e.stderr, file=sys.stderr)
-        sys.exit(1)
-
-def setup_worktree(worktree_path):
-    """Run make up in the worktree and wait for services to be ready."""
-    print("Starting services with 'make up'...")
-
-    # Start make up - don't capture output so errors are visible
-    try:
-        process = subprocess.Popen(
-            ["make", "up"],
-            cwd=worktree_path
-        )
-
-        print("Waiting for web service to be healthy...")
-
-        # Wait for services to be ready
-        sleep_interval = 3  # seconds between checks
-        max_attempts = 40   # 40 attempts * 3 seconds = 120 seconds timeout
-        attempts = 0
-        web_healthy = False
-
-        while attempts < max_attempts:
-            time.sleep(sleep_interval)
-            attempts += 1
-            elapsed = attempts * sleep_interval
-
-            # Check docker compose service status
-            result = subprocess.run(
-                ["docker", "compose", "ps", "--format", "json"],
-                cwd=worktree_path,
-                capture_output=True,
-                text=True,
-                check=False
-            )
-
-            if result.returncode != 0:
-                print(f"  Waiting... [{elapsed}s]", end='\r')
-                continue
-
-            # Parse the JSON output to check service states
-            import json
-            try:
-                services = [json.loads(line) for line in result.stdout.strip().split('\n') if line]
-
-                for service in services:
-                    name = service.get('Name', '')
-                    service_name = service.get('Service', '')
-                    state = service.get('State', '')
-                    health = service.get('Health', '')
-
-                    # Check for web service health
-                    if 'web' in (name + service_name) and state == 'running':
-                        if health == 'healthy' and not web_healthy:
-                            web_healthy = True
-                            print(f"\n  ✓ web service is healthy [{elapsed}s]")
-                            print(f"✓ All services ready [{elapsed}s]")
-                            return
-                        elif health == 'starting':
-                            print(f"  Waiting for web health check... [{elapsed}s]", end='\r')
-                        elif not health:
-                            # No health check configured, just check if running
-                            web_healthy = True
-                            print(f"\n  ✓ web service is running [{elapsed}s]")
-                            print(f"✓ All services ready [{elapsed}s]")
-                            return
-
-            except (json.JSONDecodeError, KeyError):
-                print(f"  Waiting... [{elapsed}s]", end='\r')
-                continue
-
-        timeout_seconds = max_attempts * sleep_interval
-        print(f"\n⚠ Warning: Timed out waiting for web service to be healthy ({timeout_seconds}s)", file=sys.stderr)
-
-    except subprocess.CalledProcessError as e:
-        print(f"⚠ Warning: make up failed", file=sys.stderr)
-        if e.stderr:
-            print(e.stderr, file=sys.stderr)
-    except Exception as e:
-        print(f"⚠ Warning: Error during setup: {e}", file=sys.stderr)
-
-def remove_worktree(branch_name):
-    """Remove a git worktree for the specified branch."""
-    project_root = get_project_root()
-    worktree_path = os.path.join(project_root, "worktree", branch_name)
-
-    # Check if worktree exists
-    if not worktree_exists(worktree_path):
-        print(f"Worktree does not exist at: {worktree_path}", file=sys.stderr)
-        print("Use 'git worktree list' to see all worktrees", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Removing worktree at: {worktree_path}")
-
-    # Stop any running services first
-    try:
-        print("Stopping services with 'make down'...")
-        subprocess.run(
-            ["make", "down"],
-            cwd=worktree_path,
-            check=False
-        )
-    except Exception as e:
-        print(f"⚠ Warning: Could not stop services: {e}", file=sys.stderr)
-
-    # Remove the worktree
-    try:
-        run_git_command(["worktree", "remove", worktree_path, "--force"])
-        print(f"✓ Worktree removed successfully")
-    except Exception as e:
-        print(f"Error removing worktree: {e}", file=sys.stderr)
-        print(f"You may need to manually remove it with: git worktree remove {worktree_path}", file=sys.stderr)
-        sys.exit(1)
-
-def create_worktree(branch_name):
-    """Create a git worktree for the specified branch."""
-    project_root = get_project_root()
-    worktree_path = os.path.join(project_root, "worktree", branch_name)
-
-    # Check if worktree already exists
-    if worktree_exists(worktree_path):
-        print(f"Worktree already exists at: {worktree_path}")
-        return
-
-    # Check if directory already exists
+    # Check if directory already exists BEFORE checking git
     if os.path.exists(worktree_path):
-        print(f"Error: Directory already exists at {worktree_path}", file=sys.stderr)
-        print("Please remove it manually or choose a different branch name.", file=sys.stderr)
+        print(f"Worktree directory '{worktree_path}' already exists. Skipping git worktree creation.")
+        # Run direnv allow if direnv is installed
+        if shutil.which("direnv"):
+            print(f"Running 'direnv allow' in {worktree_path}...")
+            run_command(f"direnv allow {worktree_path}", check=False)
+        return
+
+    print(f"Creating worktree for branch '{branch_name}' at '{worktree_path}'...")
+
+    if not os.path.exists(".worktrees"):
+        os.makedirs(".worktrees")
+        print(f"Created directory: .worktrees/")
+
+    git_command_prefix = "git" # Assuming git is in PATH
+
+    # Check if the branch already exists
+    branch_exists_result = subprocess.run(
+        f"{git_command_prefix} show-ref --verify --quiet refs/heads/{branch_name}",
+        shell=True,
+        capture_output=True
+    )
+    branch_exists = branch_exists_result.returncode == 0
+
+    if base_ref:
+        command = f"{git_command_prefix} worktree add -b {branch_name} {worktree_path} {base_ref}"
+    elif branch_exists:
+        command = f"{git_command_prefix} worktree add {worktree_path} {branch_name}"
+    else: # branch does not exist, create it from current HEAD
+        command = f"{git_command_prefix} worktree add -b {branch_name} {worktree_path}"
+    
+    run_command(command)
+    
+    # Run direnv allow if direnv is installed
+    if shutil.which("direnv"):
+        print(f"Running 'direnv allow' in {worktree_path}...")
+        run_command(f"direnv allow {worktree_path}", check=False)
+
+def cmd_remove(branch_name):
+    """Removes a worktree."""
+    worktree_path = get_worktree_path(branch_name)
+    print(f"Removing worktree for branch '{branch_name}' at '{worktree_path}'...")
+    
+    if not os.path.exists(worktree_path):
+        print(f"Error: Worktree path '{worktree_path}' does not exist.", file=sys.stderr)
         sys.exit(1)
 
-    # Check if branch exists locally
-    if branch_exists_locally(branch_name):
-        print(f"Branch '{branch_name}' found locally")
-        print(f"Creating worktree at: {worktree_path}")
-        run_git_command(["worktree", "add", worktree_path, branch_name])
-        print(f"✓ Worktree created successfully")
-        copy_and_randomize_env(project_root, worktree_path)
-        install_dependencies(worktree_path)
-        setup_worktree(worktree_path)
-        print(f"  cd {worktree_path}")
-        return
+    # Git worktree remove requires being outside the worktree itself
+    current_dir = os.getcwd()
+    # Get absolute path of worktree for comparison
+    worktree_full_path = os.path.abspath(worktree_path)
 
-    # Branch doesn't exist locally, fetch from remote
-    print(f"Branch '{branch_name}' not found locally, fetching from remote...")
-    run_git_command(["fetch", "--all"])
+    # Check if current_dir is the worktree_full_path or a subdirectory of it
+    if current_dir == worktree_full_path or current_dir.startswith(worktree_full_path + os.sep):
+        print(f"Error: Cannot remove worktree from inside its directory ('{worktree_path}'). Please run 'bin/worktree remove' from the project root.", file=sys.stderr)
+        sys.exit(1)
 
-    # Check if branch exists remotely after fetch
-    if branch_exists_remotely(branch_name):
-        remote_branch = get_remote_branch_name(branch_name)
-        print(f"Branch '{branch_name}' found on remote: {remote_branch}")
-        print(f"Creating worktree at: {worktree_path}")
-        run_git_command(["worktree", "add", worktree_path, "-b", branch_name, "--track", remote_branch])
-        print(f"✓ Worktree created successfully (tracking {remote_branch})")
-        copy_and_randomize_env(project_root, worktree_path)
-        install_dependencies(worktree_path)
-        setup_worktree(worktree_path)
-        print(f"  cd {worktree_path}")
-        return
+    run_command(f"git worktree remove {worktree_path}")
+    print(f"Worktree '{branch_name}' removed successfully.")
+    
+    # Clean up the directory if git leaves anything behind
+    if os.path.exists(worktree_path):
+        try:
+            os.rmdir(worktree_path)
+            print(f"Cleaned up empty directory '{worktree_path}'.")
+        except OSError as e:
+            print(f"Warning: Directory '{worktree_path}' was not empty after removal or could not be removed: {e}. Manual cleanup may be required.", file=sys.stderr)
 
-    # Branch doesn't exist anywhere, create new branch
-    print(f"Branch '{branch_name}' not found locally or remotely")
-    print(f"Creating new branch and worktree at: {worktree_path}")
-    run_git_command(["worktree", "add", "-b", branch_name, worktree_path])
-    print(f"✓ New branch and worktree created successfully")
-    copy_and_randomize_env(project_root, worktree_path)
-    install_dependencies(worktree_path)
-    setup_worktree(worktree_path)
-    print(f"  cd {worktree_path}")
 
 def main():
-    """Main entry point for the worktree script."""
-    parser = argparse.ArgumentParser(
-        description="Create or remove a git worktree for the specified branch.",
-        epilog="""
-Examples:
-  %(prog)s feat/new-feature          # Create worktree for feat/new-feature
-  %(prog)s main                      # Create worktree for main branch
-  %(prog)s -r feat/new-feature       # Remove worktree for feat/new-feature
-  %(prog)s --remove main             # Remove worktree for main branch
-  %(prog)s feat/new-feature -r       # Remove worktree (flag after branch)
-        """,
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-
-    parser.add_argument(
-        "-r", "--remove",
-        action="store_true",
-        help="Remove the worktree instead of creating it"
-    )
-
-    parser.add_argument(
-        "branch",
-        help="The branch name to create or remove a worktree for"
-    )
-
-    args = parser.parse_args()
-
-    # Validate we're in a git repository
-    result = run_git_command(["rev-parse", "--git-dir"], check=False)
-    if result.returncode != 0:
-        print("Error: Not in a git repository", file=sys.stderr)
+    if len(sys.argv) < 2:
+        print("Usage: bin/worktree <command> [args]", file=sys.stderr)
+        print("Commands: list, add <branch-name> [base-ref], remove <branch-name>", file=sys.stderr)
         sys.exit(1)
 
-    if args.remove:
-        remove_worktree(args.branch)
+    command = sys.argv[1]
+
+    if command == "list":
+        cmd_list()
+    elif command == "add":
+        if len(sys.argv) < 3:
+            print("Usage: bin/worktree add <branch-name> [base-ref]", file=sys.stderr)
+            sys.exit(1)
+        branch_name = sys.argv[2]
+        base_ref = sys.argv[3] if len(sys.argv) > 3 else None
+        cmd_add(branch_name, base_ref)
+    elif command == "remove":
+        if len(sys.argv) < 3:
+            print("Usage: bin/worktree remove <branch-name>", file=sys.stderr)
+            sys.exit(1)
+        branch_name = sys.argv[2]
+        cmd_remove(branch_name)
     else:
-        create_worktree(args.branch)
+        print(f"Unknown command: {command}", file=sys.stderr)
+        print(f"Did you mean: bin/worktree add {command}", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
