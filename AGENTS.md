@@ -700,3 +700,10 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
   - direnv auto-load support for `/workspace` directory
   - Persistent sandbox state between sessions
   - SSH sessions start directly in `/workspace` for convenience
+- 010-notes: Planning phase complete
+  - **Technology**: Rust, Ratatui (TUI), Clap (CLI), Tokio (Async)
+  - Defined jobs.toml schema for scheduled tasks
+  - Researched systemd user units for scheduling
+  - Implemented git-sync and context-filtering strategy
+  - Defined trust mechanism for repo-hosted scripts
+  - Added support for Agent CLI (Claude Code/Gemini) integration via MCP

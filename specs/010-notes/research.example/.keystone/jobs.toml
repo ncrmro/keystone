@@ -1,0 +1,30 @@
+[global]
+backend = "claude-code"
+use_mcp = true
+
+# Job 1: Daily Summary
+# Runs every morning at 8 AM.
+# It runs a script to "cat" yesterday's note, sends it to Claude,
+# and appends the result to today's note.
+[[jobs]]
+name = "daily-summary"
+schedule = "0 8 * * *"
+script = "scripts/summarize.sh"
+context_mode = "diff" # Send recent changes to the agent
+context_lookback = "24h"
+
+# Job 2: Sync
+# Runs every 15 minutes to keep notes synced across devices.
+[[jobs]]
+name = "sync"
+schedule = "*/15 * * * *"
+script = "builtin:sync"
+
+# Job 3: Movie Recommendations
+# Runs every Friday at 6 PM.
+# Fetches data from an API and asks the agent to pick a movie.
+[[jobs]]
+name = "movie-night"
+schedule = "0 18 * * FRI"
+script = "scripts/fetch-movies.py"
+backend = "ollama" # Use local model for fun/privacy

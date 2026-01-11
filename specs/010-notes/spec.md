@@ -74,6 +74,20 @@ The user prefers to run these agent tasks using a local open-source model for pr
 1. **Given** a configured local model (e.g., via Ollama/LocalAI), **When** an agent job runs, **Then** the inference is performed locally without calling external APIs (Claude/Gemini).
 2. **Given** the local model is unavailable, **When** a job runs, **Then** the system fails gracefully or falls back to a configured cloud provider (if allowed).
 
+### User Story 5 - Quick Daily Note Access (Priority: P2)
+
+The user wants to quickly open today's daily note (creating it if it doesn't exist) in their preferred editor to reduce friction when starting their day or logging tasks.
+
+**Why this priority**: High-frequency user interaction that improves the "quality of life" for note-taking.
+
+**Independent Test**: Run `keystone-notes daily` and verify the correct file (e.g., `daily/YYYY-MM-DD.md`) opens in the editor defined by `$EDITOR`.
+
+**Acceptance Scenarios**:
+
+1. **Given** the `$EDITOR` environment variable is set (e.g., to `vim` or `code`), **When** the user runs `keystone-notes daily`, **Then** the system launches that editor with today's note file path.
+2. **Given** today's note file does not exist, **When** the user runs `keystone-notes daily`, **Then** the file is created (optionally with a template) before opening.
+3. **Given** no `$EDITOR` is set, **When** the command is run, **Then** the system falls back to a sensible default (e.g., `nano` or `vi`) or errors with a clear message.
+
 ### Edge Cases
 
 - What happens when the internet is down during a sync/fetch? (Job should retry or fail silently without corruption).
@@ -100,6 +114,8 @@ The user prefers to run these agent tasks using a local open-source model for pr
 - **FR-007**: System MUST load job configurations from a `.keystone/jobs.toml` file located in the root of the notes repository.
 - **FR-008**: System MUST filter agent context by including content only from the last X commits and pull requests matching a user-defined regex pattern.
 - **FR-009**: System MUST implement a trust mechanism for job scripts; scripts defined in the notes repository MUST be manually authorized by the user before execution (similar to `direnv allow`).
+- **FR-010**: System MUST support integration with `claude-code` and `gemini` CLIs, utilizing the Model Context Protocol (MCP) to provide structured context and tool access to the agents during cron execution.
+- **FR-011**: System MUST provide a `daily` command that determines the current date, creates a note file if missing (standard format `YYYY-MM-DD.md`), and opens it using the user's `$EDITOR`.
 
 ### Key Entities
 
