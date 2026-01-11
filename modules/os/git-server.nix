@@ -170,7 +170,7 @@ in {
       settings = {
         server = {
           DOMAIN = cfg.domain;
-          ROOT_URL = "http://${cfg.domain}:${toString cfg.httpPort}/";
+          ROOT_URL = mkDefault "http://${cfg.domain}:${toString cfg.httpPort}/";
           HTTP_PORT = cfg.httpPort;
           SSH_PORT = cfg.sshPort;
           SSH_LISTEN_HOST = "0.0.0.0";
