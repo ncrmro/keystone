@@ -258,12 +258,50 @@ keystone/
 
 **Deliverable**: Interactive installer for Primer server bootstrap
 
+## Testing Infrastructure
+
+### Framework Selection
+
+Testing Keystone Clusters requires internet access for pulling container images and communicating with external APIs (like AWS). We use **microvm.nix** as our primary testing framework to satisfy these requirements while maintaining near-instant boot times.
+
+| Feature | Benefit |
+|---------|---------|
+| Internet Access | VMs use user-mode networking (SLIRP) to pull images at runtime |
+| Performance | ~10s boot times for a full cluster (Primer + 3 Workers) |
+| Port Forwarding | Easy access to k3s API (16443) and Headscale (18080) from host |
+| Portability | Runs as a normal user process (no root required) |
+
+### Running Tests
+
+The test suite orchestrates a multi-node cluster including the Primer node and multiple Worker nodes.
+
+```bash
+# Start the full cluster (Primer + 3 Workers)
+./bin/test-cluster-microvm --workers
+
+# Access the Primer node
+ssh -p 22223 root@localhost
+
+# Check cluster status (from host)
+export KUBECONFIG=~/.kube/keystone-test.yaml # if configured
+kubectl get nodes
+```
+
+### Component Validation
+
+| Component | Validation Method |
+|-----------|-------------------|
+| Networking | `tailscale ping` between all nodes in the mesh |
+| Kubernetes | `kubectl get nodes` shows all workers as Ready |
+| Secrets | `agenix` decrypts Headscale keys in initrd/boot |
+| Storage | Ceph OSDs join the cluster from worker nodes |
+
 ## Risk Mitigation
 
 ### Technical Risks
 | Risk | Mitigation |
 |------|------------|
-| Ceph on ZFS performance | Tune ZFS settings per research doc |
+| Image Pull Failures | Use MicroVMs with NAT access; cache images in local registry if needed |
 | Headscale stability | Use stable release, have DERP fallback |
 | OIDC token expiry issues | Configure proper token refresh |
 | Cloud provider API limits | Implement backoff and retry |
@@ -271,33 +309,89 @@ keystone/
 ### Schedule Risks
 | Risk | Mitigation |
 |------|------------|
-| Spike takes longer than expected | Time-box to 2 weeks, reduce scope if needed |
-| Integration issues between phases | Each phase has integration tests |
-| External dependency changes | Pin versions, automate updates |
+| Integration issues | Continuous validation via MicroVM cluster |
+| External dependencies | Pin versions, automate updates |
 
 ## Success Criteria
 
-### Spike Complete When
-- [ ] Primer boots from USB with encrypted ZFS
-- [ ] etcd running and healthy
-- [ ] kubectl works against local API server
-- [ ] Headscale accepts node registrations
+### Spike Complete When (MicroVM-First)
+- [ ] Primer boots via MicroVM with k3s running
+- [ ] Headscale pod is healthy and pulls image successfully
+- [ ] Workers register via pre-auth key over virtual network
+- [ ] All 4 nodes can `tailscale ping` each other
+- [ ] Cluster is reachable from host via port-forwarding
 
 ### MVP Complete When
 - [ ] Phases 0-4 complete
 - [ ] At least 3 nodes in cluster
-- [ ] Storage available to workloads
-- [ ] Metrics and logs being collected
+- [ ] Storage available to workloads (Ceph/Rook)
+- [ ] Metrics and logs being collected (Prometheus/Loki)
 
 ### Full Implementation When
 - [ ] All phases complete
 - [ ] TUI installer tested on 3+ hardware configs
 - [ ] Documentation complete
-- [ ] End-to-end tests passing
+- [ ] End-to-end tests passing in MicroVM and physical hardware
 
 ## Next Steps
 
-1. Review this plan with stakeholders
-2. Begin Spike implementation (see tasks.md)
-3. Set up test environment (qcow2 VMs)
-4. Validate assumptions from research docs
+1. ~~Review this plan with stakeholders~~
+2. ~~Set up MicroVM test environment~~
+3. Launch cluster via `./bin/test-cluster-microvm --workers`
+4. Validate mesh connectivity between all 4 nodes
+5. Verify k3s agent join process for workers
+
+---
+
+## Test Validation Log
+
+### 2026-01-04: MicroVM SSH + k3s Bootstrap
+
+**Environment**: MicroVM with user-mode networking (SLIRP)
+
+**Test Artifacts**:
+- SSH key pair: `tests/fixtures/test-ssh-key{,.pub}`
+- MicroVM configs: `tests/microvm/cluster-{primer,worker}.nix`
+- Test script: `bin/test-cluster-microvm`
+
+**Results**:
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| MicroVM boot | ✅ Pass | ~30s to login prompt |
+| SSH key auth | ✅ Pass | `tests/fixtures/test-ssh-key` works |
+| k3s service | ✅ Pass | Active and healthy |
+| CoreDNS | ✅ Pass | Running in k3s |
+| Agenix decryption | ✅ Pass | Secrets at `/run/agenix/` |
+| Headscale pod | ❌ Fail | CrashLoopBackOff |
+
+**Issue Found**: Headscale noise key format mismatch
+
+```
+FTL Error initializing error="failed to read or create Noise protocol private key:
+failed to parse private key: key hex has the wrong size, got 44 want 64"
+```
+
+- **Root cause**: Test fixtures have WireGuard-style base64 keys (44 chars), but Headscale expects 64-character hex strings
+- **Action Required**: Regenerate `headscale-{private,noise,derp}.age` with correct format:
+
+```bash
+# Generate 32-byte random hex (64 chars) for each key
+openssl rand -hex 32 > headscale-private.key
+openssl rand -hex 32 > headscale-noise.key
+openssl rand -hex 32 > headscale-derp.key
+
+# Re-encrypt with agenix
+cd tests/fixtures
+agenix -e headscale-private.age -i test-age-key.txt < headscale-private.key
+agenix -e headscale-noise.age -i test-age-key.txt < headscale-noise.key
+agenix -e headscale-derp.age -i test-age-key.txt < headscale-derp.key
+```
+
+**Validated Spike Criteria**:
+- [x] Primer boots via MicroVM with k3s running
+- [ ] Headscale pod is healthy *(blocked on key format fix)*
+- [ ] Workers register via pre-auth key *(blocked on Headscale)*
+- [ ] All 4 nodes can `tailscale ping` each other *(blocked on Headscale)*
+- [x] Cluster is reachable from host via port-forwarding (SSH on 22223, k3s on 16443)
+

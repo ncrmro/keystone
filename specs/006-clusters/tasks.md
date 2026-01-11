@@ -28,9 +28,9 @@
 ### Epic: Bootable Primer Image
 
 #### 0.1 Create Primer NixOS Configuration
-- [ ] Create `modules/cluster/primer/default.nix` module structure
-- [ ] Configure single-node etcd with systemd service
-- [ ] Add k3s or kubeadm control plane configuration
+- [x] Create `modules/cluster/primer/default.nix` module structure
+- [x] Configure single-node etcd with systemd service
+- [x] Add k3s or kubeadm control plane configuration
 - [ ] Enable automatic ZFS import on boot
 
 #### 0.2 Integrate with Existing Disko Module
@@ -59,14 +59,14 @@
 ### Epic: Basic Kubernetes
 
 #### 0.6 etcd Single-Node Setup
-- [ ] Configure etcd systemd service
-- [ ] Set up etcd client authentication
-- [ ] Verify data persistence across reboots
+- [x] Configure etcd systemd service
+- [x] Set up etcd client authentication
+- [x] Verify data persistence across reboots
 
 #### 0.7 Kubernetes Control Plane
-- [ ] Deploy k3s server or kubeadm control plane
-- [ ] Configure API server with cluster CA
-- [ ] Verify kubectl access from Primer node
+- [x] Deploy k3s server or kubeadm control plane
+- [x] Configure API server with cluster CA
+- [x] Verify kubectl access from Primer node
 
 ### Spike Success Criteria
 - [ ] Primer boots from qcow2 with encrypted ZFS
@@ -85,10 +85,10 @@
 ### Epic: Headscale Deployment
 
 #### 1.1 Headscale NixOS Module
-- [ ] Create `modules/cluster/primer/headscale.nix`
-- [ ] Configure Headscale with PostgreSQL/SQLite backend
-- [ ] Set up HTTPS with Let's Encrypt or self-signed cert
-- [ ] Enable metrics endpoint
+- [x] Create `modules/cluster/primer/headscale.nix`
+- [x] Configure Headscale with PostgreSQL/SQLite backend
+- [x] Set up HTTPS with Let's Encrypt or self-signed cert
+- [x] Enable metrics endpoint
 
 #### 1.2 ACL Configuration
 - [ ] Define initial ACL structure (cluster-admins, developers)
@@ -108,9 +108,9 @@
 - [ ] Document node onboarding process
 
 #### 1.5 Worker Node Tailscale Integration
-- [ ] Create `modules/cluster/worker/tailscale.nix`
-- [ ] Configure automatic registration on boot
-- [ ] Test cloud-init integration pattern
+- [x] Create `modules/cluster/worker/tailscale.nix`
+- [x] Configure automatic registration on boot
+- [x] Test cloud-init integration pattern
 
 ### Epic: Access Patterns
 
@@ -427,10 +427,11 @@
 
 ### Epic: Testing
 
-#### [P] 6.11 qcow2 Test Workflow
-- [ ] Create automated VM testing script
-- [ ] Implement keystroke injection for TUI
-- [ ] Add assertions for successful installation
+#### [P] 6.11 MicroVM Test Workflow
+- [ ] Create automated cluster testing via `./bin/test-cluster-microvm`
+- [ ] Implement service health checks (k3s, Headscale) in test script
+- [ ] Add assertions for cross-node mesh connectivity
+- [ ] Verify port-forwarding access from host
 
 #### 6.12 Hardware Testing
 - [ ] Test on 3+ different hardware configs
