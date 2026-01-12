@@ -84,7 +84,7 @@ in
           # signal = 8 means waybar listens for RTMIN+8 (sent by keystone-screenrecord)
           # See: modules/keystone/desktop/home/scripts/default.nix
           "custom/screenrecording-indicator" = {
-            exec = "pgrep -f '^gpu-screen-recorder' >/dev/null && echo '{\"text\": \"󰻂\", \"tooltip\": \"Stop recording\", \"class\": \"active\"}' || echo '{\"text\": \"\"}'";
+            exec = "pgrep -f '[g]pu-screen-recorder' >/dev/null && echo '{\"text\": \"󰻂\", \"tooltip\": \"Stop recording\", \"class\": \"active\"}' || echo '{\"text\": \"\"}'";
             return-type = "json";
             signal = 8;
             on-click = "keystone-screenrecord";
@@ -276,6 +276,16 @@ in
 
         #clock {
           margin-left: 8.75px;
+        }
+
+        #custom-screenrecording-indicator {
+          min-width: 20px;
+          padding: 0 8px;
+        }
+
+        #custom-screenrecording-indicator.active {
+          color: #ef5350;
+          font-weight: bold;
         }
       '';
     };
