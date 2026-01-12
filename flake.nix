@@ -62,12 +62,13 @@
     overlays.default = let
       zesh-src = ./packages/zesh;
       claude-code-src = ./modules/terminal/claude-code;
-    in final: prev: {
-      keystone = {
-        zesh = final.callPackage zesh-src {};
-        claude-code = final.callPackage claude-code-src {};
+    in
+      final: prev: {
+        keystone = {
+          zesh = final.callPackage zesh-src {};
+          claude-code = final.callPackage claude-code-src {};
+        };
       };
-    };
 
     # Export Keystone modules for use in other flakes
     nixosModules = {
@@ -117,6 +118,7 @@
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
       keystone-agent = pkgs.callPackage ./packages/keystone-agent {};
+      keystone-notes = pkgs.callPackage ./packages/keystone-notes {};
     };
 
     # Development shell
