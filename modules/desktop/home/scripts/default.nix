@@ -60,17 +60,17 @@ let
     }
 
     stop_screenrecording() {
-      ${pkgs.procps}/bin/pkill -SIGINT -f "^gpu-screen-recorder"
+      ${pkgs.procps}/bin/pkill -SIGINT -f "[g]pu-screen-recorder"
 
       # Wait up to 5 seconds for clean shutdown
       local count=0
-      while ${pkgs.procps}/bin/pgrep -f "^gpu-screen-recorder" >/dev/null && [ $count -lt 50 ]; do
+      while ${pkgs.procps}/bin/pgrep -f "[g]pu-screen-recorder" >/dev/null && [ $count -lt 50 ]; do
         sleep 0.1
         count=$((count + 1))
       done
 
-      if ${pkgs.procps}/bin/pgrep -f "^gpu-screen-recorder" >/dev/null; then
-        ${pkgs.procps}/bin/pkill -9 -f "^gpu-screen-recorder"
+      if ${pkgs.procps}/bin/pgrep -f "[g]pu-screen-recorder" >/dev/null; then
+        ${pkgs.procps}/bin/pkill -9 -f "[g]pu-screen-recorder"
         ${pkgs.libnotify}/bin/notify-send "Screen recording error" "Recording had to be force-killed. Video may be corrupted." -u critical -t 5000
       else
         ${pkgs.libnotify}/bin/notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
@@ -79,7 +79,7 @@ let
     }
 
     screenrecording_active() {
-      ${pkgs.procps}/bin/pgrep -f "^gpu-screen-recorder" >/dev/null
+      ${pkgs.procps}/bin/pgrep -f "[g]pu-screen-recorder" >/dev/null
     }
 
     if screenrecording_active; then
