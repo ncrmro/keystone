@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run the cluster-primer MicroVM
+set -e
+cd "$(dirname "$0")/.."
+./result-primer/bin/microvm-run "$@"

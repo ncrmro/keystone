@@ -146,58 +146,45 @@ in
         let
           namespace = primerCfg.headscale.namespace;
 
-          # Storage configuration
+          # Load YAML snippets from external files
+          # Storage configuration - conditionally include PVC or use emptyDir
           pvcResource =
-            if primerCfg.headscale.storage.type == "pvc" then
-              ''
-                apiVersion: v1
-                kind: PersistentVolumeClaim
-                metadata:
-                  name: headscale-data
-                  namespace: @@namespace@@
-                spec:
-                  accessModes:
-                    - ReadWriteOnce
-                  resources:
-                    requests:
-                      storage: 1Gi
-              ''
-            else
-              "";
+            if primerCfg.headscale.storage.type == "pvc" then builtins.readFile ./manifests/pvc.yaml else "";
 
           dataVolume =
             if primerCfg.headscale.storage.type == "pvc" then
-              ''
-                - name: data
-                  persistentVolumeClaim:
-                    claimName: headscale-data
-              ''
+              builtins.readFile ./manifests/volume-pvc.yaml
             else
-              ''
-                - name: data
-                  emptyDir: {}
-              '';
+              builtins.readFile ./manifests/volume-emptydir.yaml;
 
-          # Volume mounts for keys (if using agenix secrets)
-          # Note: YAML must have exact indentation for the template position (12 spaces for volumeMounts)
+          # Keys volume configuration (when using agenix secrets)
           keysVolumeMounts =
-            if cfg.useAgenixSecrets then
-              "            - name: keys\n              mountPath: /var/lib/headscale/private.key\n              subPath: private.key\n              readOnly: true\n            - name: keys\n              mountPath: /var/lib/headscale/noise_private.key\n              subPath: noise_private.key\n              readOnly: true\n            - name: keys\n              mountPath: /var/lib/headscale/derp_private.key\n              subPath: derp_private.key\n              readOnly: true"
-            else
-              "";
+            if cfg.useAgenixSecrets then builtins.readFile ./manifests/keys-volume-mounts.yaml else "";
 
-          # Keys volume definition (if using agenix secrets)
-          # Note: YAML must have exact indentation for the template position (8 spaces for volumes)
-          keysVolume =
-            if cfg.useAgenixSecrets then
-              "        - name: keys\n          secret:\n            secretName: headscale-keys\n            defaultMode: 256"
-            else
-              "";
+          keysVolume = if cfg.useAgenixSecrets then builtins.readFile ./manifests/keys-volume.yaml else "";
 
           # Generate manifest from external YAML template
           # The YAML file uses @@placeholder@@ syntax for substitution
-          # Using builtins.replaceStrings handles multiline values correctly
-          manifestTemplate = builtins.readFile ./headscale-manifests.yaml;
+          manifestTemplate = builtins.readFile ./manifests/headscale.yaml;
+
+          # First pass: substitute snippet placeholders with file contents
+          manifestWithSnippets =
+            builtins.replaceStrings
+              [
+                "@@pvcResource@@"
+                "@@dataVolume@@"
+                "@@keysVolumeMounts@@"
+                "@@keysVolume@@"
+              ]
+              [
+                pvcResource
+                dataVolume
+                keysVolumeMounts
+                keysVolume
+              ]
+              manifestTemplate;
+
+          # Second pass: substitute all remaining placeholders including those in snippets
           manifestContent =
             builtins.replaceStrings
               [
@@ -210,10 +197,6 @@ in
                 "@@requestsMemory@@"
                 "@@limitsCpu@@"
                 "@@limitsMemory@@"
-                "@@pvcResource@@"
-                "@@dataVolume@@"
-                "@@keysVolumeMounts@@"
-                "@@keysVolume@@"
               ]
               [
                 namespace
@@ -225,12 +208,9 @@ in
                 cfg.resources.requests.memory
                 cfg.resources.limits.cpu
                 cfg.resources.limits.memory
-                pvcResource
-                dataVolume
-                keysVolumeMounts
-                keysVolume
               ]
-              manifestTemplate;
+              manifestWithSnippets;
+
           headscaleManifests = pkgs.writeText "headscale-manifests.yaml" manifestContent;
         in
         ''
