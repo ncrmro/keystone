@@ -1,0 +1,4 @@
+        - name: keys
+          secret:
+            secretName: headscale-keys
+            defaultMode: 256
