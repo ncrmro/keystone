@@ -115,6 +115,9 @@ in {
       # Screen recording
       gpu-screen-recorder
 
+      # Media
+      mpv
+
       # File management
       nautilus
       file-roller
