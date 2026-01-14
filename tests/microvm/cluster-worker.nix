@@ -40,7 +40,8 @@
   keystone.cluster.worker = {
     enable = true;
     # Connect to primer's Headscale (via host port forward)
-    headscaleUrl = "http://10.0.2.2:8080"; # Host from guest perspective
+    # Primer forwards host:18080 -> guest:30080 (Headscale NodePort)
+    headscaleUrl = "http://10.0.2.2:18080";
   };
 
   # SSH for debugging - prefer key-based auth, fall back to password
