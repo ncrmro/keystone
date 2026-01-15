@@ -116,6 +116,7 @@ in {
       gpu-screen-recorder
 
       # Media
+      kdenlive
       mpv
 
       # File management
