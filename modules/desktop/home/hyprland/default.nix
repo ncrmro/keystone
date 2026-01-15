@@ -22,16 +22,11 @@ in
     ./hyprsunset.nix
     ./input.nix
     ./layout.nix
+    ./monitors.nix
   ];
 
   options.keystone.desktop.hyprland = {
     enable = mkEnableOption "Hyprland window manager configuration";
-
-    monitors = mkOption {
-      type = types.listOf types.str;
-      default = [ ",preferred,auto,1" ];
-      description = "Monitor configuration strings for Hyprland";
-    };
 
     terminal = mkOption {
       type = types.str;
@@ -101,9 +96,6 @@ in
         "$terminal" = mkDefault cfg.terminal;
         "$fileManager" = mkDefault cfg.fileManager;
         "$browser" = mkDefault cfg.browser;
-
-        # Monitor configuration
-        monitor = mkDefault cfg.monitors;
 
         # Disable start-hyprland warning - UWSM handles session management
         # See: specs/001-keystone-os/research.desktop.md#about-the-start-hyprland-warning

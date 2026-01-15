@@ -1,6 +1,6 @@
 # Keystone Desktop Specification
 
-This specification defines the functional requirements for the core Keystone Desktop environment components, including the menu system, keybindings help, status bar, screen locking, night light, and theming infrastructure.
+This specification defines the functional requirements for the core Keystone Desktop environment components, including the menu system, keybindings help, status bar, screen locking, night light, monitor management, and theming infrastructure.
 
 ## Functional Requirements
 
@@ -13,6 +13,15 @@ The system MUST provide a unified, hierarchical menu accessible via a global key
 - **dt-menu-001.5**: The "Capture" sub-menu MUST provide options for starting/stopping screen recordings and taking various types of screenshots.
 - **dt-menu-001.6**: The "Learn" sub-menu MUST provide access to keybindings help and documentation.
 - **dt-menu-001.7**: The menu MUST support direct navigation to specific sub-menus via command-line arguments.
+- **dt-menu-001.8**: The "Setup" sub-menu MUST provide a "Monitors" section for dynamic display configuration (see dt-monitor-001).
+
+### Monitor Management (dt-monitor-001)
+The system MUST provide an interactive menu for configuring displays at runtime, optimized for presentation scenarios.
+- **dt-monitor-001.1**: The monitor menu MUST list all currently connected displays.
+- **dt-monitor-001.2**: The menu MUST provide a global "Mirror All" toggle to clone the primary display to all others.
+- **dt-monitor-001.3**: The menu MUST allow selecting specific external monitors to mirror the primary display individually.
+- **dt-monitor-001.4**: The menu MUST provide resolution presets (e.g., 1080p) for compatibility with projectors.
+- **dt-monitor-001.5**: The system MUST support an `autoMirror` configuration option that, when enabled, automatically mirrors the primary display to any newly connected external display.
 
 ### Keybindings Help (dt-help-001)
 The system MUST provide a searchable display of current keyboard shortcuts, accessible via `Mod + K`.
@@ -219,3 +228,5 @@ The keybinding system MUST work consistently across different keyboard hardware.
 - [x] **dt-task-record-001**: Implement screen recording functionality (start/stop) with region/screen selection.
 - [x] **dt-task-shot-001**: Implement screenshot functionality with integrated editing and save-to-pictures-and-close workflow.
 - [x] **dt-task-bar-002**: Integrate screen recording indicator with Waybar, enabling stop-on-click functionality.
+- [x] **dt-task-monitor-001**: Implement `keystone-desktop-monitors` option with `autoMirror` support.
+- [ ] **dt-task-monitor-002**: Implement `keystone-monitors` script for interactive monitor configuration.

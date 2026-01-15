@@ -81,6 +81,10 @@ in
     # This enables loginctl lock-session to work properly
     security.pam.services.greetd.rules.session.systemd.settings = mkIf cfg.greetd.enable {
       type = "wayland";
+      # Setting the session class to 'user' explicitly tells logind that this is a regular user session,
+      # which enables proper lock screen support. Without this, logind might classify the session
+      # as a 'greeter' (login screen), preventing 'loginctl lock-session' from working.
+      class = "user";
     };
 
     # Pipewire audio stack
