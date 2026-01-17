@@ -128,6 +128,15 @@ vm-post-install: ## Post-install: remove ISO, snapshot, reboot
 vm-reset-secureboot: ## Reset to Secure Boot setup mode
 	./bin/virtual-machine --reset-setup-mode $(VM_NAME)
 
+vm-create-virtiofs: ## Create VM with virtiofs for /nix/store sharing (experimental)
+	@if [ ! -f vms/keystone-installer.iso ]; then \
+		echo "📀 ISO not found, building with SSH key..."; \
+		$(MAKE) build-iso-ssh; \
+	fi
+	@echo "🚀 Creating VM with virtiofs support..."
+	@echo "ℹ️  Guest must import modules/virtualization/guest-virtiofs.nix"
+	./bin/virtual-machine --name $(VM_NAME) --enable-virtiofs --start
+
 ## Deployment Testing
 
 test-deploy: ## Run full stack deployment test

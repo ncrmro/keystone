@@ -119,6 +119,91 @@ virsh console keystone-test-vm
 ./bin/test-vm-ssh "systemctl status"
 ```
 
+## Virtiofs Filesystem Sharing (Experimental)
+
+Virtiofs enables sharing the host's `/nix/store` with guest VMs for improved performance. Instead of copying Nix store paths to the VM disk, the guest mounts the host's store directly.
+
+### Benefits
+
+- **Faster builds**: No need to copy store paths to VM disk
+- **Reduced disk usage**: Guest doesn't duplicate host's /nix/store
+- **Instant updates**: Guest sees new store paths immediately
+- **MicroVM-like experience**: Similar to direct kernel boot workflows
+
+### Host Setup
+
+Enable virtiofsd support on the NixOS host:
+
+```nix
+# Host configuration.nix
+imports = [ ./modules/virtualization/host-virtiofs.nix ];
+
+keystone.virtualization.host.virtiofs.enable = true;
+```
+
+This adds `virtiofsd` to libvirt's vhost-user packages, enabling virtiofs support.
+
+### VM Creation
+
+Create a VM with virtiofs enabled:
+
+```bash
+./bin/virtual-machine --name keystone-test-vm --enable-virtiofs --start
+```
+
+The VM is configured with:
+- Shared memory backing (required for virtiofs)
+- Virtiofs filesystem device sharing `/nix/store`
+- Target directory name: `nix-store-share`
+
+### Guest Configuration
+
+Configure the guest to mount the shared store:
+
+```nix
+# Guest configuration.nix
+imports = [ ./modules/virtualization/guest-virtiofs.nix ];
+
+keystone.virtualization.guest.virtiofs = {
+  enable = true;
+  shareName = "nix-store-share";  # Must match VM XML
+};
+```
+
+This configures:
+- Virtiofs mount at `/sysroot/nix/.ro-store` (read-only)
+- Tmpfs overlay at `/sysroot/nix/.rw-store` (writable layer)
+- OverlayFS combining both at `/nix/store`
+
+### How It Works
+
+The guest uses OverlayFS to provide a writable `/nix/store`:
+
+1. **Lower layer**: Host's `/nix/store` mounted via virtiofs (read-only)
+2. **Upper layer**: Tmpfs for temporary writes (RAM disk)
+3. **Overlay**: Combined view at `/nix/store` (appears writable)
+
+Programs can write to `/nix/store` (e.g., lock files), but writes go to the tmpfs overlay and don't affect the host.
+
+### Limitations
+
+- **Tmpfs overlay**: Writes lost on reboot (configurable with `persistentRwStore`)
+- **Host dependency**: Guest requires host's Nix store to be accessible
+- **No encryption**: Shared store bypasses guest's encryption
+- **Experimental**: virtiofs is newer and may have edge cases
+
+### Use Cases
+
+**Best for:**
+- Fast iteration during development
+- Testing configurations without encryption overhead
+- Reducing VM disk usage
+
+**Not suitable for:**
+- Production deployments
+- Testing encryption/secure boot integration
+- Persistent store modifications
+
 ## Graphics Configuration for VMs
 
 ### Working Configuration (2025-11-08)
