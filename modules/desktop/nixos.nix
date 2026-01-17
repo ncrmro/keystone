@@ -154,6 +154,11 @@ in {
       extraPortals = with pkgs; [
         xdg-desktop-portal-gtk
       ];
+      # Note: xdg-desktop-portal-termfilechooser can be added here when available
+      # extraPortals = with pkgs; [
+      #   xdg-desktop-portal-gtk
+      #   xdg-desktop-portal-termfilechooser
+      # ];
     };
 
     # This allows shell scripts to resolve /bin/bash
