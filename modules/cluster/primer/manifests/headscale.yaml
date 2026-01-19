@@ -74,7 +74,7 @@ spec:
         - name: headscale
           image: @@image@@
           command:
-            - headscale
+            - /bin/headscale
             - serve
           ports:
             - name: http
