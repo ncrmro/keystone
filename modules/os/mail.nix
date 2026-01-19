@@ -121,22 +121,20 @@ in {
         };
 
         # Session configuration
+        # Note: Directory references need single quotes for Stalwart TOML
         session = {
           rcpt = {
-            directory = "internal";
+            directory = "'internal'";
           };
           auth = {
-            directory = "internal";
-            mechanisms = [
-              "PLAIN"
-              "LOGIN"
-            ];
+            directory = "'internal'";
+            mechanisms = "[plain, login]";
           };
         };
 
         # Queue configuration - route all mail locally
         # (next-hop deprecated in v0.13.0, replaced by queue.strategy.route)
-        queue.strategy.route = "local";
+        queue.strategy.route = "'local'";
 
         # Resolver configuration
         resolver = {
