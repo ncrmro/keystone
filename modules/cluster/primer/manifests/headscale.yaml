@@ -103,20 +103,13 @@ spec:
             limits:
               cpu: @@limitsCpu@@
               memory: @@limitsMemory@@
-          livenessProbe:
-            tcpSocket:
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
           readinessProbe:
             tcpSocket:
               port: 8080
-            initialDelaySeconds: 10
+            initialDelaySeconds: 20
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 3
+            failureThreshold: 6
       volumes:
         - name: config
           configMap:
