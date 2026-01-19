@@ -70,44 +70,12 @@ spec:
       labels:
         app: headscale
     spec:
-      initContainers:
-        - name: init-keys
-          image: @@image@@
-          command:
-            - /bin/sh
-            - -c
-            - |
-              # Check if keys exist, if not generate them
-              cd /var/lib/headscale
-              
-              if [ ! -f private.key ]; then
-                echo "Generating private.key..."
-                head -c 32 /dev/urandom | base64 > private.key
-              fi
-              
-              if [ ! -f noise_private.key ]; then
-                echo "Generating noise_private.key..."
-                head -c 32 /dev/urandom | base64 > noise_private.key
-              fi
-              
-              if [ ! -f derp_private.key ]; then
-                echo "Generating derp_private.key..."
-                head -c 32 /dev/urandom | base64 > derp_private.key
-              fi
-              
-              echo "Keys ready"
-              ls -la /var/lib/headscale/
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/headscale
       containers:
         - name: headscale
           image: @@image@@
           command:
             - /bin/headscale
             - serve
-            - --config
-            - /etc/headscale/config.yaml
           ports:
             - name: http
               containerPort: 8080
@@ -135,16 +103,6 @@ spec:
             limits:
               cpu: @@limitsCpu@@
               memory: @@limitsMemory@@
-          livenessProbe:
-            tcpSocket:
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          readinessProbe:
-            tcpSocket:
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 5
       volumes:
         - name: config
           configMap:
