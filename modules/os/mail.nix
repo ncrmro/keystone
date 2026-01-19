@@ -1,3 +1,39 @@
+# Keystone Mail Server (Stalwart)
+#
+# This module provides a basic Stalwart mail server configuration.
+# On first boot, Stalwart generates a random admin password in the logs.
+#
+# ## Setting Admin Password with Agenix
+#
+# To use a managed admin password instead, extend this config in your host:
+#
+# ```nix
+# # 1. Add to secrets.nix:
+# "secrets/stalwart-admin-password.age".publicKeys = adminKeys ++ [ systems.yourhost ];
+#
+# # 2. Create the secret:
+# echo -n "your-secure-password" | agenix -e secrets/stalwart-admin-password.age
+#
+# # 3. In your host configuration:
+# age.secrets.stalwart-admin-password = {
+#   file = ../../secrets/stalwart-admin-password.age;
+#   owner = "root";
+#   mode = "0400";
+# };
+#
+# services.stalwart-mail = {
+#   credentials = {
+#     admin_password = config.age.secrets.stalwart-admin-password.path;
+#   };
+#   settings.authentication.fallback-admin = {
+#     user = "admin";
+#     secret = "%{file:/run/credentials/stalwart-mail.service/admin_password}%";
+#   };
+# };
+# ```
+#
+# The credentials option uses systemd's LoadCredential to securely pass
+# the secret to the service, accessible via the %{file:...}% macro.
 {
   config,
   lib,
