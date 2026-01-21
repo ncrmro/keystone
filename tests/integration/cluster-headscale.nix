@@ -216,9 +216,25 @@ pkgs.testers.nixosTest {
     # Phase 2: Wait for Headscale deployment
     print("\n[Phase 2] Waiting for Headscale deployment...")
 
-    # Wait for headscale-deploy service
-    primer.wait_for_unit("headscale-deploy.service", timeout=300)
-    print("Headscale deployment service completed")
+    # Try to wait for deployment, but capture logs if it fails
+    try:
+        primer.wait_for_unit("headscale-deploy.service", timeout=300)
+        print("Headscale deployment service completed")
+    except Exception as e:
+        print(f"Deployment failed: {e}")
+        print("\n=== Checking pod status ===")
+        pod_status = primer.execute("kubectl get pods -n headscale-system -o wide")[1]
+        print(pod_status)
+        print("\n=== Checking deployment status ===")
+        deploy_status = primer.execute("kubectl describe deployment headscale -n headscale-system")[1]
+        print(deploy_status)
+        print("\n=== Capturing pod logs ===")
+        pod_logs = primer.execute("kubectl logs -n headscale-system -l app=headscale --tail=100")[1]
+        print(pod_logs)
+        print("\n=== Checking events ===")
+        events = primer.execute("kubectl get events -n headscale-system --sort-by='.lastTimestamp'")[1]
+        print(events)
+        raise
 
     # Verify Headscale pod is running
     primer.succeed("kubectl get pods -n headscale-system")
