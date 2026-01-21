@@ -59,4 +59,37 @@ mod tests {
         
         Ok(())
     }
+
+    struct MockBackend;
+    #[async_trait::async_trait]
+    impl crate::modules::backend::Backend for MockBackend {
+        async fn generate(&self, _prompt: &str) -> anyhow::Result<String> {
+            Ok("Mock Result".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_runner_output_handling() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let output_file = temp_dir.path().join("output.txt");
+        
+        let job = crate::modules::config::JobConfig {
+            name: "test-job".to_string(),
+            schedule: "0 8 * * *".to_string(),
+            script: "builtin:test".to_string(),
+            backend: None,
+            context_mode: None,
+            context_lookback: None,
+            output_path: Some(output_file.to_str().unwrap().to_string()),
+            output_mode: Some(crate::modules::config::OutputMode::Overwrite),
+        };
+        
+        let runner = crate::modules::runner::AgentRunner::new(Box::new(MockBackend));
+        runner.run_job(&job).await?;
+        
+        let content = std::fs::read_to_string(output_file)?;
+        assert_eq!(content, "Mock Result");
+        
+        Ok(())
+    }
 }

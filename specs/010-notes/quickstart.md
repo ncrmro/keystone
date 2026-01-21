@@ -16,7 +16,7 @@
 
     [[jobs]]
     name = "sync"
-    schedule = "*/10 * * * *"
+    schedule = "*:0/10" # Systemd OnCalendar format (e.g., every 10 mins)
     script = "builtin:sync"
     ```
 
@@ -30,6 +30,7 @@
 
 2.  **Install Jobs**:
     Register your jobs with the system scheduler.
+    *Note: Schedules use Systemd [OnCalendar](https://www.freedesktop.org/software/systemd/man/latest/systemd.time.html#Calendar%20Events) format.*
     ```bash
     keystone-notes install-jobs
     ```

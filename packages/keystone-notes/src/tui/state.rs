@@ -1,11 +1,25 @@
+use crate::modules::config::{Config, JobConfig};
+use anyhow::Result;
+
 pub struct AppState {
-    pub jobs: Vec<String>,
+    pub jobs: Vec<JobConfig>,
+    pub selected_index: usize,
 }
 
 impl AppState {
     pub fn new() -> Self {
         Self {
-            jobs: vec!["Job 1: Sync (Scheduled)".to_string(), "Job 2: Daily Summary (Scheduled)".to_string()],
+            jobs: Vec::new(),
+            selected_index: 0,
         }
+    }
+
+    pub async fn load_jobs(&mut self) -> Result<()> {
+        let config_path = std::path::Path::new(".keystone/jobs.toml");
+        if config_path.exists() {
+            let config = Config::load(config_path).await?;
+            self.jobs = config.jobs;
+        }
+        Ok(())
     }
 }

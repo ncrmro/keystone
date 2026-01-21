@@ -39,7 +39,45 @@ impl ContextBuilder {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    async fn build_files(_lookback: Option<&str>) -> Result<String> {
-         Ok("ContextMode::Files not fully implemented yet".to_string())
+    async fn build_files(lookback: Option<&str>) -> Result<String> {
+        // Implementation: Find files changed in recent commits (filtered by regex if provided in lookback)
+        // For now, let's assume lookback is "commits:X" or just "X"
+        let n = if let Some(lb) = lookback {
+            if lb.starts_with("commits:") {
+                lb.strip_prefix("commits:").unwrap().parse::<usize>().unwrap_or(1)
+            } else {
+                lb.parse::<usize>().unwrap_or(1)
+            }
+        } else {
+            1
+        };
+
+        // Get list of files changed in last N commits
+        let output = Command::new("git")
+            .args(&["log", "-n", &n.to_string(), "--pretty=format:", "--name-only"])
+            .output()
+            .await
+            .context("Failed to get changed files from git")?;
+
+        let files_str = String::from_utf8_lossy(&output.stdout);
+        let mut files: Vec<&str> = files_str.lines()
+            .filter(|l| !l.is_empty())
+            .collect();
+        files.sort();
+        files.dedup();
+
+        let mut context = String::new();
+        for file in files {
+            if std::path::Path::new(file).exists() {
+                let content = tokio::fs::read_to_string(file).await;
+                if let Ok(c) = content {
+                    context.push_str(&format!("--- File: {} ---\n", file));
+                    context.push_str(&c);
+                    context.push_str("\n\n");
+                }
+            }
+        }
+
+        Ok(context)
     }
 }

@@ -39,6 +39,8 @@ pub struct JobConfig {
     pub backend: Option<String>,
     pub context_mode: Option<ContextMode>,
     pub context_lookback: Option<String>,
+    pub output_path: Option<String>,
+    pub output_mode: Option<OutputMode>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy)]
@@ -46,6 +48,13 @@ pub struct JobConfig {
 pub enum ContextMode {
     Diff,
     Files,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputMode {
+    Overwrite,
+    Append,
 }
 
 impl Config {

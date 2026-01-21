@@ -40,6 +40,7 @@ impl TrustManager {
         })
     }
 
+    #[cfg(test)]
     pub async fn with_path(store_path: PathBuf) -> Result<Self> {
         let store = if store_path.exists() {
             let content = fs::read_to_string(&store_path).await?;
