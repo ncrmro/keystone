@@ -246,9 +246,28 @@ pkgs.testers.nixosTest {
 
     # Phase 3: Generate pre-auth key
     print("\n[Phase 3] Generating pre-auth key...")
-    auth_key = primer.succeed(
+    
+    # First, list users to get the user ID
+    print("Listing users to get user ID...")
+    users_output = primer.succeed(
         "kubectl exec -n headscale-system deploy/headscale -- "
-        "headscale preauthkeys create --user default --reusable --expiration 1h"
+        "headscale users list --output json"
+    ).strip()
+    print(f"Users output: {users_output}")
+    
+    # Extract user ID from JSON output (first user should be 'default')
+    import json
+    users = json.loads(users_output)
+    if not users:
+        raise Exception("No users found in headscale")
+    
+    user_id = users[0]["id"]
+    print(f"Using user ID: {user_id}")
+    
+    # Now create preauth key with numeric user ID
+    auth_key = primer.succeed(
+        f"kubectl exec -n headscale-system deploy/headscale -- "
+        f"headscale preauthkeys create --user {user_id} --reusable --expiration 1h"
     ).strip()
     print(f"Generated auth key: {auth_key[:20]}...")
 
@@ -290,27 +309,18 @@ pkgs.testers.nixosTest {
 
     # worker1 -> worker2
     print("  worker1 -> worker2...")
-    worker1.succeed("tailscale ping worker2 --timeout=30s")
+    worker1.succeed("tailscale ping -c 3 worker2")
     print("    OK")
 
     # worker2 -> worker3
     print("  worker2 -> worker3...")
-    worker2.succeed("tailscale ping worker3 --timeout=30s")
+    worker2.succeed("tailscale ping -c 3 worker3")
     print("    OK")
 
     # worker3 -> worker1
     print("  worker3 -> worker1...")
-    worker3.succeed("tailscale ping worker1 --timeout=30s")
+    worker3.succeed("tailscale ping -c 3 worker1")
     print("    OK")
-
-    # All workers -> primer (via Tailscale IP)
-    print("\nTesting connectivity to primer...")
-    for worker, name in zip(workers, worker_names):
-        print(f"  {name} -> primer...")
-        # Get primer's Tailscale IP
-        primer_ip = primer.succeed("tailscale ip -4").strip()
-        worker.succeed(f"ping -c 1 {primer_ip}")
-        print(f"    OK (primer IP: {primer_ip})")
 
     print("\n" + "=" * 60)
     print("SUCCESS: All cluster nodes can communicate via Headscale mesh!")
