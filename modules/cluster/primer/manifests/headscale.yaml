@@ -30,11 +30,10 @@ data:
         region_code: "headscale"
         region_name: "Headscale Embedded"
         stun_listen_addr: "0.0.0.0:3478"
-      urls:
-        - https://controlplane.tailscale.com/derpmap/default
-      auto_update_enabled: true
+      urls: []
+      auto_update_enabled: false
       update_frequency: 24h
-    disable_check_updates: false
+    disable_check_updates: true
     ephemeral_node_inactivity_timeout: 30m
     database:
       type: sqlite
@@ -74,7 +73,7 @@ spec:
         - name: headscale
           image: @@image@@
           command:
-            - headscale
+            - /bin/headscale
             - serve
           ports:
             - name: http
@@ -103,18 +102,13 @@ spec:
             limits:
               cpu: @@limitsCpu@@
               memory: @@limitsMemory@@
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
           readinessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 5
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 20
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
       volumes:
         - name: config
           configMap:
