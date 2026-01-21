@@ -233,10 +233,117 @@ After TUI setup completes:
 
 ### Secret Management
 
-- All secrets encrypted at rest (age + TPM)
-- Kubernetes secrets encrypted with envelope encryption
+Cluster secrets are managed using **agenix**, which encrypts secrets with age and stores them in git alongside the NixOS configuration. This enables GitOps workflows while keeping secrets secure.
+
+#### Key Hierarchy
+
+The system uses a multi-recipient encryption model where each secret can be decrypted by multiple authorized parties:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    secrets.nix                               │
+│  Defines which age public keys can decrypt which secrets    │
+│                                                              │
+│  Recipients for each secret:                                 │
+│  ├── Primer server's age key (for autonomous decryption)    │
+│  ├── Admin 1's age public key                               │
+│  ├── Admin 2's age public key                               │
+│  └── Admin N's age public key                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Per-admin keys** allow individual revocation without affecting other administrators. When an admin leaves, only their key is removed and secrets are re-encrypted.
+
+#### Secrets Inventory
+
+| Secret | Purpose | Recipients |
+|--------|---------|------------|
+| `headscale-private.age` | Headscale main private key | primer + all admins |
+| `headscale-noise.age` | Noise protocol key for node communication | primer + all admins |
+| `headscale-derp.age` | DERP relay server key | primer + all admins |
+| `k8s-ca-key.age` | Kubernetes CA private key | primer + all admins |
+| `etcd-encryption.age` | etcd data-at-rest encryption key | primer + all admins |
+| `oidc-signing.age` | OIDC token signing key | primer + all admins |
+
+#### Admin Workflows
+
+**Adding a new admin:**
+```bash
+# 1. New admin generates age keypair
+age-keygen -o ~/.config/age/keystone-admin.txt
+# Output: Public key: age1...
+
+# 2. New admin shares public key with existing admin (out-of-band)
+
+# 3. Existing admin adds public key to secrets.nix
+# let
+#   adminKeys = {
+#     alice = "age1...";
+#     bob = "age1...";  # New admin
+#   };
+
+# 4. Re-encrypt all secrets with new recipient
+agenix -r
+
+# 5. Commit and push
+git add . && git commit -m "Add admin: bob" && git push
+```
+
+**Revoking an admin:**
+```bash
+# 1. Remove admin's public key from secrets.nix
+
+# 2. Re-encrypt all secrets (revoked admin can no longer decrypt)
+agenix -r
+
+# 3. IMPORTANT: Rotate all secrets (revoked admin had previous access)
+# Generate new keys for: headscale, k8s CA, etcd encryption, OIDC
+
+# 4. Commit and push
+git add . && git commit -m "Revoke admin: eve" && git push
+
+# 5. Redeploy affected services
+```
+
+**Primer server key setup:**
+```bash
+# During installation, primer generates its age identity
+age-keygen -o /etc/age/primer.txt
+
+# The public key is added to secrets.nix for all cluster secrets
+# At boot, agenix decrypts secrets to /run/agenix/
+# Services read secrets from /run/agenix/<secret-name>
+```
+
+#### Directory Structure
+
+```
+cluster-config/
+├── flake.nix
+├── configuration.nix
+├── secrets.nix              # Age public keys and secret→recipient mappings
+└── secrets/
+    ├── headscale-private.age
+    ├── headscale-noise.age
+    ├── headscale-derp.age
+    ├── k8s-ca-key.age
+    ├── etcd-encryption.age
+    └── oidc-signing.age
+```
+
+#### Runtime Behavior
+
+- At boot, the agenix NixOS module decrypts secrets to `/run/agenix/`
+- Secrets are mounted with restricted permissions (root-only by default)
+- Services reference secrets via `config.age.secrets.<name>.path`
+- Secrets never touch disk unencrypted (tmpfs-backed `/run`)
+
+#### Additional Security Properties
+
+- All secrets encrypted at rest in git (age encryption)
+- Kubernetes secrets use envelope encryption with the etcd encryption key
 - etcd data encrypted with AES-GCM
-- Regular automatic key rotation
+- Regular automatic key rotation recommended for compliance
 
 ### Network Security
 
@@ -289,3 +396,6 @@ The system shall provide a terminal-based installer for guided setup of all comp
 
 ### FR-012: Air-Gap Capability
 The cluster shall continue to operate when the Primer Server is offline, with the ability to restore from encrypted snapshots.
+
+### FR-013: Agenix Secret Management
+The system shall use agenix for encrypting and storing cluster secrets in git, with support for multiple admin keys (per-admin revocable) and autonomous primer server decryption. All cluster secrets (Headscale keys, Kubernetes CA, etcd encryption, OIDC signing) shall be encrypted with age and decrypted at boot to `/run/agenix/`.

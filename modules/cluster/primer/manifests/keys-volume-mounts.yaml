@@ -1,0 +1,12 @@
+            - name: keys
+              mountPath: /var/lib/headscale/private.key
+              subPath: private.key
+              readOnly: true
+            - name: keys
+              mountPath: /var/lib/headscale/noise_private.key
+              subPath: noise_private.key
+              readOnly: true
+            - name: keys
+              mountPath: /var/lib/headscale/derp_private.key
+              subPath: derp_private.key
+              readOnly: true
