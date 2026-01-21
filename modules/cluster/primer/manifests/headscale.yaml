@@ -30,11 +30,10 @@ data:
         region_code: "headscale"
         region_name: "Headscale Embedded"
         stun_listen_addr: "0.0.0.0:3478"
-      urls:
-        - https://controlplane.tailscale.com/derpmap/default
-      auto_update_enabled: true
+      urls: []
+      auto_update_enabled: false
       update_frequency: 24h
-    disable_check_updates: false
+    disable_check_updates: true
     ephemeral_node_inactivity_timeout: 30m
     database:
       type: sqlite
