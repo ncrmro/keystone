@@ -95,6 +95,14 @@ in {
     hardware.bluetooth.enable = mkIf cfg.bluetooth.enable (mkDefault true);
     services.blueman.enable = mkIf cfg.bluetooth.enable (mkDefault true);
 
+    # Printing (CUPS + Avahi/mDNS discovery)
+    services.printing.enable = mkDefault true;
+    services.avahi = {
+      enable = mkDefault true;
+      nssmdns4 = mkDefault true;
+      openFirewall = mkDefault true;
+    };
+
     # Networking (for laptops, portables, and thin clients)
     networking.networkmanager.enable = mkIf cfg.networking.enable (mkDefault true);
     services.resolved.enable = mkIf cfg.networking.enable (mkDefault true);
