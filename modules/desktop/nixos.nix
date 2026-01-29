@@ -5,9 +5,11 @@
   inputs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.desktop;
-in {
+in
+{
   options.keystone.desktop = {
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities";
 
@@ -124,7 +126,9 @@ in {
       gpu-screen-recorder
 
       # Media
-      kdenlive
+      ## Video Editor
+      kdePackages.kdenlive
+      ## Video Player
       mpv
 
       # File management
