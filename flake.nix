@@ -20,6 +20,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     hyprland.url = "github:hyprwm/Hyprland";
+    himalaya = {
+      url = "github:pimalaya/himalaya";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -30,11 +34,12 @@
     omarchy,
     lanzaboote,
     hyprland,
+    himalaya,
     ...
   }: let
     # Create inputs attrset for desktop module
     inputs = {
-      inherit nixpkgs hyprland;
+      inherit nixpkgs hyprland himalaya;
     };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
@@ -62,10 +67,12 @@
     overlays.default = let
       zesh-src = ./packages/zesh;
       claude-code-src = ./modules/terminal/claude-code;
+      himalaya-flake = himalaya;
     in final: prev: {
       keystone = {
         zesh = final.callPackage zesh-src {};
         claude-code = final.callPackage claude-code-src {};
+        himalaya = himalaya-flake.packages.${final.system}.default;
       };
     };
 
@@ -102,8 +109,14 @@
     homeModules = {
       desktopHyprland = ./home-manager/modules/desktop/hyprland;
       # Keystone-specific home-manager modules
-      terminal = ./modules/terminal/default.nix;
-      desktop = ./modules/desktop/home/default.nix;
+      terminal = {
+        imports = [./modules/terminal/default.nix];
+        _module.args.inputs = inputs;
+      };
+      desktop = {
+        imports = [./modules/desktop/home/default.nix];
+        _module.args.inputs = inputs;
+      };
       agentTui = ./modules/keystone/agent/home/tui.nix;
     };
 
