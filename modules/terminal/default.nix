@@ -12,6 +12,7 @@ in {
     ./editor.nix
     ./ai.nix
     ./devtools.nix
+    ./mail.nix
   ];
 
   options.keystone.terminal = {

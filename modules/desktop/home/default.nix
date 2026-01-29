@@ -23,6 +23,9 @@ in {
     # Desktop implies terminal
     keystone.terminal.enable = true;
 
+    # Desktop enables mail tools by default
+    keystone.terminal.mail.enable = mkDefault true;
+
     home.packages = with pkgs; [
       # Core utilities
     ];
