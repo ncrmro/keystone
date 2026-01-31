@@ -13,8 +13,7 @@ in
     home.packages = [
       # Claude Code - AI-powered CLI assistant from Anthropic
       # https://claude.com/claude-code
-      # Provided via keystone overlay
-      pkgs.keystone.claude-code
+      pkgs.claude-code
 
       # Gemini CLI - Google's AI assistant (when available in nixpkgs)
       pkgs.gemini-cli
