@@ -11,12 +11,11 @@ in {
     services.hyprpaper = {
       enable = mkDefault true;
       settings = {
-        preload = [
-          "${config.xdg.configHome}/keystone/current/background"
-        ];
-        wallpaper = [
-          ",${config.xdg.configHome}/keystone/current/background"
-        ];
+        wallpaper = {
+          monitor = "";
+          path = "${config.xdg.configHome}/keystone/current/background";
+          fit_mode = "cover";
+        };
       };
     };
   };
