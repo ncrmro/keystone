@@ -137,6 +137,7 @@ in {
     ./remote-unlock.nix
     ./users.nix
     ./ssh.nix
+    ./eternal-terminal.nix
     ./airplay.nix
     ./mail.nix
   ];
@@ -330,6 +331,20 @@ in {
           type = types.bool;
           default = true;
           description = "Enable basic firewall (SSH port is opened automatically)";
+        };
+      };
+
+      eternalTerminal = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Enable Eternal Terminal (et) for persistent remote shell sessions that survive network changes";
+        };
+
+        port = mkOption {
+          type = types.port;
+          default = 2022;
+          description = "Port for the Eternal Terminal daemon";
         };
       };
 
