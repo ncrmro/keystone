@@ -127,7 +127,8 @@ in
 
       # Media
       ## Video Editor
-      kdePackages.kdenlive
+      ## kdenlive disabled: broken in nixpkgs unstable (missing shaderc link in ffmpeg-full)
+      # kdePackages.kdenlive
       ## Video Player
       mpv
 
