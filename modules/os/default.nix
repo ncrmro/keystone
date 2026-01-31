@@ -140,6 +140,7 @@ in {
     ./eternal-terminal.nix
     ./airplay.nix
     ./mail.nix
+    ./git-server.nix
   ];
 
   options.keystone.os = {
