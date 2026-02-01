@@ -11,6 +11,7 @@ in {
     services.hyprpaper = {
       enable = mkDefault true;
       settings = {
+        splash = false;
         wallpaper = {
           monitor = "";
           path = "${config.xdg.configHome}/keystone/current/background";
