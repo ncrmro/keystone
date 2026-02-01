@@ -11,8 +11,10 @@
 # # 1. Add to secrets.nix:
 # "secrets/stalwart-admin-password.age".publicKeys = adminKeys ++ [ systems.yourhost ];
 #
-# # 2. Create the secret:
-# echo -n "your-secure-password" | agenix -e secrets/stalwart-admin-password.age
+# # 2. Create the secret with a SHA-512 hashed password (NOT plaintext).
+# #    fallback-admin.secret requires a $6$ hash format.
+# #    Generate the hash: mkpasswd -m sha-512 "your-password"
+# #    Then store it:     echo -n '$6$...' | agenix -e secrets/stalwart-admin-password.age
 #
 # # 3. In your host configuration:
 # age.secrets.stalwart-admin-password = {
@@ -34,6 +36,12 @@
 #
 # The credentials option uses systemd's LoadCredential to securely pass
 # the secret to the service, accessible via the %{file:...}% macro.
+#
+# ## IMAP/SMTP Client Authentication
+#
+# When connecting with an IMAP/SMTP client (e.g. himalaya), the login
+# username is the Stalwart account **name** (e.g. "ncrmro"), NOT the
+# email address. The email is only used as the envelope/from address.
 {
   config,
   lib,
