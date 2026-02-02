@@ -80,6 +80,10 @@ in
         # Scroll through workspaces with comma/period
         "$mod, comma, workspace, -1"
         "$mod, period, workspace, +1"
+
+        # Move window to adjacent workspace
+        "$mod SHIFT, comma, movetoworkspace, -1"
+        "$mod SHIFT, period, movetoworkspace, +1"
         "$mod, mouse_down, workspace, e+1"
         "$mod, mouse_up, workspace, e-1"
 
@@ -123,9 +127,9 @@ in
         "$mod, Backspace, exec, hyprctl dispatch setprop \"address:$(hyprctl activewindow -j | jq -r '.address')\" opaque toggle"
 
         # Notifications (mako)
-        "$mod SHIFT, period, exec, makoctl dismiss"
-        "$mod CTRL, period, exec, makoctl dismiss --all"
-        "$mod ALT, period, exec, makoctl mode -t do-not-disturb"
+        "$mod SHIFT, N, exec, makoctl dismiss"
+        "$mod ALT, N, exec, makoctl dismiss --all"
+        "$mod CTRL SHIFT, N, exec, makoctl mode -t do-not-disturb"
 
         # Screenshots
         ", Print, exec, keystone-screenshot"
