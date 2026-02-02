@@ -100,6 +100,11 @@ in
         # Disable start-hyprland warning - UWSM handles session management
         # See: specs/001-keystone-os/research.desktop.md#about-the-start-hyprland-warning
         misc.disable_watchdog_warning = true;
+
+        # Hardware cursors don't handle rotated monitors correctly,
+        # causing the cursor to be invisible or stuck on transformed displays.
+        # See: https://github.com/hyprwm/Hyprland/issues/8993
+        cursor.no_hardware_cursors = true;
       };
     };
 
