@@ -177,5 +177,13 @@ in
     systemd.tmpfiles.rules = [
       "L+ /bin/bash - - - - ${pkgs.bash}/bin/bash"
     ];
+
+    # OOM Killer configuration
+    # Prioritize killing docker/podman rootless processes over Hyprland
+    systemd.user.services = {
+      docker.serviceConfig.OOMScoreAdjust = 1000;
+      podman.serviceConfig.OOMScoreAdjust = 1000;
+      "wayland-wm@Hyprland".serviceConfig.OOMScoreAdjust = -500;
+    };
   };
 }
