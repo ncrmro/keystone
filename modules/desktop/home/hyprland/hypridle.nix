@@ -10,6 +10,17 @@ let
 in
 {
   config = mkIf cfg.enable {
+    # UWSM session target fix: greetd starts wayland-session-envelope@ but not
+    # wayland-session@ which is what binds to graphical-session.target.
+    # hypridle and other services depend on graphical-session.target, so we need
+    # to ensure wayland-session@ is started when the envelope starts.
+    # See: https://github.com/hyprwm/Hyprland/issues/9342
+    systemd.user.targets."wayland-session-envelope@Hyprland" = {
+      Unit = {
+        Wants = [ "wayland-session@Hyprland.target" ];
+      };
+    };
+
     services.hypridle = {
       enable = mkDefault true;
       settings = {
