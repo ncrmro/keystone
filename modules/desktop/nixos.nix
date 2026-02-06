@@ -180,10 +180,12 @@ in
 
     # OOM Killer configuration
     # Prioritize killing docker/podman rootless processes over Hyprland
+    # NOTE: Cannot set OOMScoreAdjust for wayland-wm@Hyprland here because
+    # NixOS creates a replacement unit instead of a drop-in, which breaks the
+    # template-based service. The wayland-wm@ template from UWSM must be used as-is.
     systemd.user.services = {
       docker.serviceConfig.OOMScoreAdjust = 1000;
       podman.serviceConfig.OOMScoreAdjust = 1000;
-      "wayland-wm@Hyprland".serviceConfig.OOMScoreAdjust = -500;
     };
   };
 }
