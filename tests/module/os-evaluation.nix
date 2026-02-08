@@ -115,6 +115,30 @@ let
       };
       boot.loader.systemd-boot.enable = true;
     };
+
+    # ext4 with hibernation enabled
+    ext4-hibernate = {
+      imports = [self.nixosModules.operating-system];
+      keystone.os = {
+        enable = true;
+        storage = {
+          type = "ext4";
+          devices = ["/dev/vda"];
+          swap.size = "16G";
+          hibernate.enable = true;
+        };
+        users.testuser = {
+          fullName = "Test User";
+          initialPassword = "testpass";
+        };
+      };
+      system.stateVersion = "25.05";
+      fileSystems."/" = {
+        device = "/dev/vda2";
+        fsType = "ext4";
+      };
+      boot.loader.systemd-boot.enable = true;
+    };
   };
 
   # Evaluate each configuration
@@ -149,6 +173,7 @@ in
     echo "  - minimal-zfs: Minimal ZFS setup"
     echo "  - full-zfs: Full ZFS with all options"
     echo "  - ext4-simple: Simple ext4 setup"
+    echo "  - ext4-hibernate: ext4 with hibernation enabled"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out

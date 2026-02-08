@@ -376,10 +376,20 @@ in {
               };
               swap = mkIf enableSwap {
                 size = "100%";
-                content = {
-                  type = "swap";
-                  randomEncryption = true;
-                };
+                content =
+                  if cfg.hibernate.enable
+                  then {
+                    type = "luks";
+                    name = "cryptswap";
+                    passwordFile = "${./scripts/credstore-password}";
+                    content = {
+                      type = "swap";
+                    };
+                  }
+                  else {
+                    type = "swap";
+                    randomEncryption = true;
+                  };
               };
             };
           };
@@ -393,6 +403,21 @@ in {
           "tpm2-device=auto"
         ];
       };
+
+      # Hibernation support: persistent LUKS swap + resumeDevice
+      boot.initrd.luks.devices.cryptswap = mkIf (enableSwap && cfg.hibernate.enable) {
+        device = "/dev/disk/by-partlabel/disk-root-swap";
+        crypttabExtraOpts = [
+          "tpm2-measure-pcr=yes"
+          "tpm2-device=auto"
+        ];
+      };
+
+      boot.resumeDevice = mkIf cfg.hibernate.enable "/dev/mapper/cryptswap";
+
+      boot.initrd.availableKernelModules = mkIf cfg.hibernate.enable (
+        lib.mkAfter ["resume"]
+      );
     })
   ];
 }
