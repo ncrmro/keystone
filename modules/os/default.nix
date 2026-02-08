@@ -204,6 +204,10 @@ in {
         };
       };
 
+      hibernate = {
+        enable = mkEnableOption "hibernation support (ext4 only)";
+      };
+
       credstore = {
         size = mkOption {
           type = types.str;
@@ -456,6 +460,15 @@ in {
       {
         assertion = cfg.users != {} -> all (u: u.initialPassword != null || u.hashedPassword != null) (attrValues cfg.users);
         message = "All users must have either initialPassword or hashedPassword set";
+      }
+      # Hibernation assertions
+      {
+        assertion = !cfg.storage.hibernate.enable || cfg.storage.type == "ext4";
+        message = "Hibernation requires ext4 storage backend. ZFS cannot support hibernation because dirty writes after freeze corrupt pools.";
+      }
+      {
+        assertion = !cfg.storage.hibernate.enable || cfg.storage.swap.size != "0" && cfg.storage.swap.size != "";
+        message = "Hibernation requires swap to be enabled (storage.swap.size must not be '0' or empty)";
       }
     ];
 
