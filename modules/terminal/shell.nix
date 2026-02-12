@@ -113,6 +113,10 @@ in {
     };
 
     home.packages = with pkgs; [
+      # Direnv - Unclutter your .profile
+      # https://direnv.net/
+      direnv
+
       # Eza - Modern replacement for ls with colors and git integration
       # https://github.com/eza-community/eza
       eza
