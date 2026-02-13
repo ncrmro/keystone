@@ -164,8 +164,8 @@ in
         ", XF86AudioPlay, exec, playerctl play-pause"
         ", XF86AudioPrev, exec, playerctl previous"
         ", XF86PowerOff, exec, keystone-menu system"
-        # Lid switch bindings
-        ", switch:on:Lid Switch, exec, loginctl lock-session"
+        # Lid switch bindings - lock AND suspend on close
+        ", switch:on:Lid Switch, exec, pidof hyprlock || hyprlock; systemctl suspend"
         ", switch:off:Lid Switch, exec, hyprctl dispatch dpms on"
       ];
     };
