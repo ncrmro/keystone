@@ -65,13 +65,6 @@ systemctl --user status keystone-bluetooth-proximity-monitor
 journalctl --user -u keystone-bluetooth-proximity-monitor -f
 ```
 
-### Check Monitor Logs
-
-```bash
-# View the monitor's activity log via systemd journal
-journalctl --user -u keystone-bluetooth-proximity-monitor -f
-```
-
 ### Test Device Connection
 
 ```bash
