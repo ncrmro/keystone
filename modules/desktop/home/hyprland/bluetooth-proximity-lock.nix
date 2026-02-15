@@ -35,6 +35,8 @@ let
 
     while true; do
       # Check if device is connected (using single pipeline for efficiency)
+      # Note: Relies on bluetoothctl's "Connected: yes" output format
+      # If format changes in future bluez versions, this may need adjustment
       if ${pkgs.bluez}/bin/bluetoothctl info "$DEVICE_ADDRESS" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q "Connected: yes"; then
         if [ "$last_state" != "connected" ]; then
           log "Device connected"
@@ -58,13 +60,14 @@ let
             
             # Use systemd-run with unit name to prevent duplicate instances
             # The --unit parameter ensures only one lock instance per trigger
-            if ${pkgs.systemd}/bin/systemd-run --user --scope \
+            # Capture stderr to aid debugging if lock fails
+            if error_msg=$(${pkgs.systemd}/bin/systemd-run --user --scope \
                 --unit=hyprlock-bluetooth-lock \
                 --property=Restart=no \
-                ${pkgs.hyprlock}/bin/hyprlock 2>/dev/null; then
+                ${pkgs.hyprlock}/bin/hyprlock 2>&1); then
               log "Screen lock triggered"
             else
-              log "Screen lock already active or failed to start"
+              log "Screen lock failed: $error_msg"
             fi
 
             # Reset to avoid repeated locks
