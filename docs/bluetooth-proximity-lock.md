@@ -7,7 +7,7 @@ The Bluetooth Proximity Lock feature automatically locks your screen when a trus
 - **Automatic Locking**: Screen locks when your phone disconnects from Bluetooth
 - **Debouncing**: Configurable delay to prevent false positives from brief connection drops
 - **Systemd Integration**: Runs as a user service that starts with your desktop session
-- **Logging**: Activity is logged to `/tmp/keystone-bluetooth-proximity-monitor.log` for debugging
+- **Secure Logging**: Activity is logged via systemd journal for debugging
 
 ## Configuration
 
@@ -68,8 +68,8 @@ journalctl --user -u keystone-bluetooth-proximity-monitor -f
 ### Check Monitor Logs
 
 ```bash
-# View the monitor's activity log
-tail -f /tmp/keystone-bluetooth-proximity-monitor.log
+# View the monitor's activity log via systemd journal
+journalctl --user -u keystone-bluetooth-proximity-monitor -f
 ```
 
 ### Test Device Connection
