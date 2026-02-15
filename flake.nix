@@ -96,6 +96,9 @@
 
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
+
+      # Hardware key module - FIDO2/YubiKey for GPG/SSH agent
+      hardwareKey = ./modules/os/hardware-key.nix;
     };
 
     # Export home-manager modules (homeModules is the standard flake output name)

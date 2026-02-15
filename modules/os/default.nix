@@ -134,6 +134,7 @@ in {
     ./storage.nix
     ./secure-boot.nix
     ./tpm.nix
+    ./hardware-key.nix
     ./remote-unlock.nix
     ./users.nix
     ./ssh.nix
