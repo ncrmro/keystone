@@ -15,6 +15,7 @@ in
     ./appearance.nix
     ./autostart.nix
     ./bindings.nix
+    ./bluetooth-proximity-lock.nix
     ./environment.nix
     ./hypridle.nix
     ./hyprlock.nix
