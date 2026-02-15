@@ -111,5 +111,13 @@
         user.email = "testuser@keystone-buildvm-desktop";
       };
     };
+
+    # Enable Bluetooth proximity lock feature (example)
+    keystone.desktop.hyprland.bluetoothProximityLock = {
+      # Disabled by default - uncomment and set your device address to enable
+      # enable = true;
+      # deviceAddress = "AA:BB:CC:DD:EE:FF";  # Replace with your phone's MAC address
+      # disconnectDelay = 30;  # Lock after 30 seconds of disconnection
+    };
   };
 }
