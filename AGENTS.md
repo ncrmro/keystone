@@ -45,6 +45,7 @@ The desktop module provides a complete Hyprland environment:
 - **PipeWire** audio with ALSA/Pulse/Jack compatibility
 - **greetd** login manager with tuigreet
 - **NetworkManager** with Bluetooth support
+- **Bluetooth Proximity Lock** - Automatic screen lock when trusted device (e.g., phone) goes out of range
 - Modular desktop components in `modules/desktop/`
 
 ### Server Services
@@ -687,12 +688,20 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
 - `keystone.desktop.hyprland.enable` - Enable Hyprland config
 - `keystone.desktop.hyprland.modifierKey` - Primary modifier (default: SUPER). With altwin:swap_alt_win, physical Alt triggers these for ergonomic thumb access
 - `keystone.desktop.hyprland.capslockAsControl` - Remap caps to ctrl (default: true)
+- `keystone.desktop.hyprland.bluetoothProximityLock.enable` - Enable automatic screen lock when trusted Bluetooth device disconnects
+- `keystone.desktop.hyprland.bluetoothProximityLock.deviceAddress` - MAC address of device to monitor (e.g., phone)
+- `keystone.desktop.hyprland.bluetoothProximityLock.disconnectDelay` - Seconds to wait before locking after disconnect (default: 30)
 - `keystone.agent.enable` - Enable agent sandbox system
 - `keystone.agent.sandbox.*` - Sandbox resource configuration (memory, vcpus, nested virt)
 - `keystone.agent.backend.type` - Backend type: microvm (default) or kubernetes
 - `keystone.agent.proxy.enable` - Enable dev server proxy to *.sandbox.local
 
 ## Recent Changes
+- **Bluetooth Proximity Lock**: Added automatic screen locking when trusted Bluetooth device (e.g., phone) goes out of range
+  - Configurable device MAC address and disconnect delay
+  - Systemd user service integration
+  - Debouncing to prevent false positives
+  - See `docs/bluetooth-proximity-lock.md` for usage
 - 012-agent-sandbox: Phases 1-3 complete - Agent sandbox is now functional:
   - MicroVM backend with start/stop lifecycle management
   - SSH key-based authentication (falls back to password if no key)
