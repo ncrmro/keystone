@@ -307,7 +307,7 @@
       repo-sync = pkgs.callPackage ./packages/repo-sync {};
       podman-agent = pkgs.callPackage ./packages/podman-agent {};
       ks = pkgs.callPackage ./packages/ks {};
-      keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
+      keystone-tui = pkgs.callPackage ./packages/keystone-tui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
     };
 
@@ -332,13 +332,7 @@
           openssl
         ];
 
-        # Node.js development
         packages = with pkgs; [
-          nodejs
-          nodePackages.npm
-          nodePackages.typescript
-          nodePackages.typescript-language-server
-
           # Nix tools
           nixfmt
           nil # Nix LSP
@@ -367,8 +361,7 @@
           echo "  ./bin/virtual-machine  - Full stack VM with libvirt"
           echo "  nix flake check        - Validate flake"
           echo ""
-          echo "Rust packages:  packages/keystone-ha/"
-          echo "Node packages:  packages/keystone-installer-ui/"
+          echo "Rust packages:  packages/keystone-ha/, packages/keystone-tui/"
         '';
 
         # Rust environment variables
