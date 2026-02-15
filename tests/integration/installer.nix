@@ -27,7 +27,7 @@
   pkgs,
   lib,
 }: let
-  keystone-installer-ui = pkgs.callPackage ../../packages/keystone-installer-ui {};
+  keystone-tui = pkgs.callPackage ../../packages/keystone-tui {};
 in
   pkgs.testers.runNixOSTest {
     name = "keystone-installer";
@@ -56,7 +56,7 @@ in
 
       # Include tools needed for installation
       environment.systemPackages = with pkgs; [
-        keystone-installer-ui
+        keystone-tui
         networkmanager
         iproute2
         util-linux
@@ -109,7 +109,7 @@ in
         serviceConfig = {
           Type = "simple";
           User = "root";
-          ExecStart = "${keystone-installer-ui}/bin/keystone-installer";
+          ExecStart = "${keystone-tui}/bin/keystone-tui";
           Restart = "on-failure";
           RestartSec = "5s";
           StandardInput = "tty";
@@ -172,7 +172,7 @@ in
 
       # Wait for process to be running
       print("Waiting for installer process...")
-      installer.wait_until_succeeds("pgrep -f 'node .*keystone-installer'", timeout=10)
+      installer.wait_until_succeeds("pgrep -f 'keystone-tui'", timeout=10)
 
       # Allow TUI to initialize
       time.sleep(5)
