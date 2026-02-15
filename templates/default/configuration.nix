@@ -170,6 +170,14 @@
           hyprland = {
             modifierKey = "SUPER"; # "SUPER" (Windows key) or "ALT"
             capslockAsControl = true; # Remap Caps Lock to Control
+
+            # Bluetooth proximity lock (optional)
+            # Locks screen automatically when your phone goes out of range
+            # bluetoothProximityLock = {
+            #   enable = true;
+            #   deviceAddress = "AA:BB:CC:DD:EE:FF";  # Your phone's MAC (find with: bluetoothctl devices)
+            #   disconnectDelay = 30;  # Lock after 30 seconds disconnected
+            # };
           };
         };
 
@@ -199,7 +207,15 @@
       #   terminal.enable = true;
       #   desktop = {
       #     enable = true;
-      #     hyprland.modifierKey = "SUPER";
+      #     hyprland = {
+      #       modifierKey = "SUPER";
+      #       # Optional: Lock screen when phone disconnects
+      #       # bluetoothProximityLock = {
+      #       #   enable = true;
+      #       #   deviceAddress = "AA:BB:CC:DD:EE:FF";
+      #       #   disconnectDelay = 30;
+      #       # };
+      #     };
       #   };
       #   zfs.quota = "500G";
       # };
