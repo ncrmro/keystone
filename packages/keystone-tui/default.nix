@@ -3,8 +3,8 @@
   rustPlatform,
   pkg-config,
   openssl,
-  libgit2,
   zlib,
+  cmake,
 }:
 rustPlatform.buildRustPackage {
   pname = "keystone-tui";
@@ -14,15 +14,13 @@ rustPlatform.buildRustPackage {
 
   cargoLock.lockFile = ./Cargo.lock;
 
-  nativeBuildInputs = [pkg-config];
+  nativeBuildInputs = [pkg-config cmake];
   buildInputs = [
     openssl
-    libgit2
     zlib
   ];
 
-  # Use system libgit2 instead of bundled
-  LIBGIT2_NO_VENDOR = 1;
+  # Let libgit2-sys vendor its own libgit2 to avoid version mismatches
 
   meta = with lib; {
     description = "TUI for Keystone NixOS infrastructure configuration and management";

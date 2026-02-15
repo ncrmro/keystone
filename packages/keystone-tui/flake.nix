@@ -32,11 +32,10 @@
 
       buildInputs = with pkgs; [
         openssl
-        libgit2
         zlib
       ];
 
-      LIBGIT2_NO_VENDOR = 1;
+      # Let libgit2-sys vendor its own libgit2 to avoid version mismatches
       RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
     };
   };
