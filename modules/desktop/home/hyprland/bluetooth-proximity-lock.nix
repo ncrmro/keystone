@@ -29,6 +29,11 @@ let
       sleep 5
     done
 
+    # Validate bluetoothctl output format at startup (fail fast if format changes)
+    if ! ${pkgs.bluez}/bin/bluetoothctl info "$DEVICE_ADDRESS" 2>/dev/null | grep -q "Connected:"; then
+      log "Warning: Unable to verify device or bluetoothctl output format. Ensure device is paired."
+    fi
+
     # Track disconnection time
     disconnected_since=""
     last_state="unknown"
@@ -58,12 +63,12 @@ let
           if [ $disconnect_duration -ge $DISCONNECT_DELAY ]; then
             log "Device disconnected for ''${disconnect_duration}s (threshold: ''${DISCONNECT_DELAY}s) - locking screen"
             
-            # Use systemd-run with unit name to prevent duplicate instances
-            # The --unit parameter ensures only one lock instance per trigger
+            # Use systemd-run to create a transient service for hyprlock
+            # --no-block ensures immediate execution without waiting
+            # --unit provides a unique name to prevent duplicate instances
             # Capture stderr to aid debugging if lock fails
-            if error_msg=$(${pkgs.systemd}/bin/systemd-run --user --scope \
+            if error_msg=$(${pkgs.systemd}/bin/systemd-run --user --no-block \
                 --unit=hyprlock-bluetooth-lock \
-                --property=Restart=no \
                 ${pkgs.hyprlock}/bin/hyprlock 2>&1); then
               log "Screen lock triggered"
             else
@@ -91,6 +96,9 @@ in
         Bluetooth MAC address of the device to monitor (e.g., your phone).
         When this device disconnects, the screen will lock after the configured delay.
         Find your device address with: bluetoothctl devices
+        
+        Note: Use the actual MAC address from a paired device, not special addresses
+        like 00:00:00:00:00:00 or FF:FF:FF:FF:FF:FF.
       '';
     };
 
