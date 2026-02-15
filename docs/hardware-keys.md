@@ -21,30 +21,20 @@ There are two types of FIDO2 SSH keys:
 
 | Type | Firmware Required | Key File Needed | Best For |
 |------|------------------|-----------------|----------|
-| **Non-resident** | 5.0+ | Yes (copy between machines) | Older YubiKeys, backup keys |
 | **Resident** | 5.2.3+ | No (stored on YubiKey) | Primary key, multiple machines |
+| **Non-resident** | 5.0+ | Yes (copy between machines) | Older YubiKeys, backup keys |
 
 Check your firmware: `ykman info`
 
-### Non-Resident Keys (Firmware 5.0+)
-
-The "private key" file is just a handle - the actual secret never leaves the YubiKey. Safe to store in dotfiles/home-manager.
-
-```bash
-ssh-keygen -t ed25519-sk -O application=ssh:myidentity -f ~/.ssh/id_ed25519_sk_mykey
-```
-
-You'll need to copy `id_ed25519_sk_mykey` and `id_ed25519_sk_mykey.pub` to other machines, or manage via home-manager (see below).
-
 ### Resident Keys (Firmware 5.2.3+)
 
-Stored directly on the YubiKey - no key files to manage.
+Stored directly on the YubiKey - no key files to manage. Plug in your YubiKey on any machine and the key is available.
 
 ```bash
 ssh-keygen -t ed25519-sk -O resident -O application=ssh:myidentity
 ```
 
-### Load Resident Keys into SSH Agent
+#### Load Resident Keys into SSH Agent
 
 On any machine with your YubiKey plugged in:
 
@@ -54,7 +44,7 @@ ssh-add -K
 
 This loads all resident SSH keys from the YubiKey into your agent. No key files needed.
 
-### Automate Key Loading on Shell Startup
+#### Automate Key Loading on Shell Startup
 
 Add to your shell configuration (e.g., `~/.zshrc` or via home-manager):
 
@@ -76,17 +66,17 @@ programs.zsh.initExtra = ''
 '';
 ```
 
-### List Keys on YubiKey
+### Non-Resident Keys (Firmware 5.0+)
+
+For older YubiKeys (firmware < 5.2.3) or backup keys. The "private key" file is just a handle - the actual secret never leaves the YubiKey. Safe to store in dotfiles/home-manager.
 
 ```bash
-# List resident credentials
-ykman fido credentials list
-
-# List keys in SSH agent
-ssh-add -L
+ssh-keygen -t ed25519-sk -O application=ssh:myidentity -f ~/.ssh/id_ed25519_sk_mykey
 ```
 
-### Managing Non-Resident Keys with Home Manager
+You'll need to copy `id_ed25519_sk_mykey` and `id_ed25519_sk_mykey.pub` to other machines, or manage via home-manager (see below).
+
+#### Managing Non-Resident Keys with Home Manager
 
 For non-resident keys, you can distribute the key handle via home-manager. The "private key" is just a reference - useless without the physical YubiKey.
 
@@ -110,6 +100,16 @@ programs.ssh = {
 ```
 
 Store the key files in your config repo (e.g., `home-manager/keys/`). They're safe to commit - the private key handle is useless without your YubiKey.
+
+### List Keys on YubiKey
+
+```bash
+# List resident credentials
+ykman fido credentials list
+
+# List keys in SSH agent
+ssh-add -L
+```
 
 ## GPG with YubiKey
 
