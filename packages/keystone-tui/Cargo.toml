@@ -15,7 +15,7 @@ ratatui = "0.29"
 crossterm = "0.28"
 
 # Async
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "fs"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
