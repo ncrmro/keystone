@@ -34,8 +34,8 @@ let
     last_state="unknown"
 
     while true; do
-      # Check if device is connected
-      if ${pkgs.bluez}/bin/bluetoothctl info "$DEVICE_ADDRESS" 2>/dev/null | grep -q "Connected: yes"; then
+      # Check if device is connected (using single pipeline for efficiency)
+      if ${pkgs.bluez}/bin/bluetoothctl info "$DEVICE_ADDRESS" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q "Connected: yes"; then
         if [ "$last_state" != "connected" ]; then
           log "Device connected"
           last_state="connected"
@@ -56,14 +56,15 @@ let
           if [ $disconnect_duration -ge $DISCONNECT_DELAY ]; then
             log "Device disconnected for ''${disconnect_duration}s (threshold: ''${DISCONNECT_DELAY}s) - locking screen"
             
-            # Check if already locked to avoid duplicate locks
-            if ! ${pkgs.procps}/bin/pgrep -x hyprlock >/dev/null; then
-              # Use systemd-run to properly manage the lock process
-              ${pkgs.systemd}/bin/systemd-run --user --scope --unit=hyprlock-bluetooth-lock \
-                ${pkgs.hyprlock}/bin/hyprlock
+            # Use systemd-run with unit name to prevent duplicate instances
+            # The --unit parameter ensures only one lock instance per trigger
+            if ${pkgs.systemd}/bin/systemd-run --user --scope \
+                --unit=hyprlock-bluetooth-lock \
+                --property=Restart=no \
+                ${pkgs.hyprlock}/bin/hyprlock 2>/dev/null; then
               log "Screen lock triggered"
             else
-              log "Screen already locked, skipping"
+              log "Screen lock already active or failed to start"
             fi
 
             # Reset to avoid repeated locks
@@ -104,7 +105,7 @@ in
     # Validate MAC address format
     assertions = [
       {
-        assertion = builtins.match "([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}" cfg.deviceAddress != null;
+        assertion = builtins.match "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$" cfg.deviceAddress != null;
         message = "keystone.desktop.hyprland.bluetoothProximityLock.deviceAddress must be a valid MAC address (e.g., AA:BB:CC:DD:EE:FF)";
       }
     ];
