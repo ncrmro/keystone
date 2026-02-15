@@ -17,14 +17,17 @@ This enables:
 
 ## SSH with FIDO2 Keys
 
-There are two types of FIDO2 SSH keys:
+There are two types of FIDO2 SSH keys, with different firmware requirements:
 
-| Type | Firmware Required | Key File Needed | Best For |
-|------|------------------|-----------------|----------|
-| **Resident** | 5.2.3+ | No (stored on YubiKey) | Primary key, multiple machines |
-| **Non-resident** | 5.0+ | Yes (copy between machines) | Older YubiKeys, backup keys |
+| Feature | Firmware Required |
+|---------|------------------|
+| ECDSA-SK (non-resident) | 5.0+ |
+| Ed25519-SK (non-resident) | 5.2.3+ |
+| Resident keys | 5.2.3+ |
 
 Check your firmware: `ykman info`
+
+**Note:** YubiKey firmware cannot be updated. If you have firmware < 5.2.3, use `ecdsa-sk` instead of `ed25519-sk`.
 
 ### Resident Keys (Firmware 5.2.3+)
 
@@ -71,10 +74,14 @@ programs.zsh.initExtra = ''
 For older YubiKeys (firmware < 5.2.3) or backup keys. The "private key" file is just a handle - the actual secret never leaves the YubiKey. Safe to store in dotfiles/home-manager.
 
 ```bash
+# Firmware 5.2.3+ (preferred)
 ssh-keygen -t ed25519-sk -O application=ssh:myidentity -f ~/.ssh/id_ed25519_sk_mykey
+
+# Firmware 5.0+ (use if ed25519-sk fails)
+ssh-keygen -t ecdsa-sk -O application=ssh:myidentity -f ~/.ssh/id_ecdsa_sk_mykey
 ```
 
-You'll need to copy `id_ed25519_sk_mykey` and `id_ed25519_sk_mykey.pub` to other machines, or manage via home-manager (see below).
+You'll need to copy the key files to other machines, or manage via home-manager (see below).
 
 #### Managing Non-Resident Keys with Home Manager
 
