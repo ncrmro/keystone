@@ -17,7 +17,7 @@
   lib,
   ...
 }: let
-  keystone-installer-ui = pkgs.callPackage ../packages/keystone-installer-ui {};
+  keystone-tui = pkgs.callPackage ../packages/keystone-tui {};
 in {
   options.keystone.installer.sshKeys = lib.mkOption {
     type = lib.types.listOf lib.types.str;
@@ -55,7 +55,7 @@ in {
 
   # Include TUI installer and tools for installation
   environment.systemPackages = with pkgs; [
-    keystone-installer-ui
+    keystone-tui
     git
     curl
     wget
@@ -118,7 +118,7 @@ in {
     serviceConfig = {
       Type = "simple";
       User = "root";
-      ExecStart = "${keystone-installer-ui}/bin/keystone-installer";
+      ExecStart = "${keystone-tui}/bin/keystone-tui";
       Restart = "on-failure";
       RestartSec = "5s";
       StandardInput = "tty";
