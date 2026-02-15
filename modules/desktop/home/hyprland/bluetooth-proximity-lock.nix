@@ -15,10 +15,9 @@ let
     DEVICE_ADDRESS="${cfg.deviceAddress}"
     DISCONNECT_DELAY=${toString cfg.disconnectDelay}
     CHECK_INTERVAL=5
-    LOG_FILE="/tmp/keystone-bluetooth-proximity-monitor.log"
 
     log() {
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
     }
 
     log "Starting Bluetooth proximity monitor for device: $DEVICE_ADDRESS"
@@ -59,7 +58,9 @@ let
             
             # Check if already locked to avoid duplicate locks
             if ! ${pkgs.procps}/bin/pgrep -x hyprlock >/dev/null; then
-              ${pkgs.hyprlock}/bin/hyprlock &
+              # Use systemd-run to properly manage the lock process
+              ${pkgs.systemd}/bin/systemd-run --user --scope --unit=hyprlock-bluetooth-lock \
+                ${pkgs.hyprlock}/bin/hyprlock
               log "Screen lock triggered"
             else
               log "Screen already locked, skipping"
