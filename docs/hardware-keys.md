@@ -15,22 +15,34 @@ This enables:
 - GPG agent with SSH support
 - YubiKey management tools
 
-## SSH with Resident Keys
+## SSH with FIDO2 Keys
 
-Resident keys are stored directly on the hardware key, so you don't need to copy key files between machines. Just plug in your YubiKey and the key is available.
+There are two types of FIDO2 SSH keys:
 
-### Generate a Resident SSH Key
+| Type | Firmware Required | Key File Needed | Best For |
+|------|------------------|-----------------|----------|
+| **Non-resident** | 5.0+ | Yes (copy between machines) | Older YubiKeys, backup keys |
+| **Resident** | 5.2.3+ | No (stored on YubiKey) | Primary key, multiple machines |
+
+Check your firmware: `ykman info`
+
+### Non-Resident Keys (Firmware 5.0+)
+
+The "private key" file is just a handle - the actual secret never leaves the YubiKey. Safe to store in dotfiles/home-manager.
+
+```bash
+ssh-keygen -t ed25519-sk -O application=ssh:myidentity -f ~/.ssh/id_ed25519_sk_mykey
+```
+
+You'll need to copy `id_ed25519_sk_mykey` and `id_ed25519_sk_mykey.pub` to other machines, or manage via home-manager (see below).
+
+### Resident Keys (Firmware 5.2.3+)
+
+Stored directly on the YubiKey - no key files to manage.
 
 ```bash
 ssh-keygen -t ed25519-sk -O resident -O application=ssh:myidentity
 ```
-
-Options explained:
-- `-t ed25519-sk`: Use Ed25519 with FIDO2/security key
-- `-O resident`: Store the key on the hardware key itself
-- `-O application=ssh:myidentity`: Label for the key (helps identify it on the YubiKey)
-
-You'll be prompted to touch your YubiKey to confirm.
 
 ### Load Resident Keys into SSH Agent
 
@@ -73,6 +85,31 @@ ykman fido credentials list
 # List keys in SSH agent
 ssh-add -L
 ```
+
+### Managing Non-Resident Keys with Home Manager
+
+For non-resident keys, you can distribute the key handle via home-manager. The "private key" is just a reference - useless without the physical YubiKey.
+
+```nix
+# In your home-manager config
+home.file.".ssh/id_ed25519_sk_yubikey" = {
+  source = ./keys/id_ed25519_sk_yubikey;
+  mode = "0600";
+};
+
+home.file.".ssh/id_ed25519_sk_yubikey.pub" = {
+  source = ./keys/id_ed25519_sk_yubikey.pub;
+  mode = "0644";
+};
+
+# Add to SSH config
+programs.ssh = {
+  enable = true;
+  matchBlocks."*".identityFile = "~/.ssh/id_ed25519_sk_yubikey";
+};
+```
+
+Store the key files in your config repo (e.g., `home-manager/keys/`). They're safe to commit - the private key handle is useless without your YubiKey.
 
 ## GPG with YubiKey
 
