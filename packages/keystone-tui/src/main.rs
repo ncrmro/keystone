@@ -15,6 +15,8 @@ use crossterm::{
 use ratatui::prelude::*;
 
 mod app;
+mod config;
+mod screens;
 
 use app::App;
 
@@ -51,11 +53,13 @@ async fn main() -> Result<()> {
     }));
 
     let mut terminal = setup_terminal()?;
-    let mut app = App::new();
+    let mut app = App::new().await;
 
     let result = run_app(&mut terminal, &mut app).await;
 
     restore_terminal(&mut terminal)?;
+
+    app.save_config().await;
 
     result
 }
@@ -68,19 +72,11 @@ async fn run_app(
     loop {
         terminal.draw(|frame| {
             let area = frame.area();
-            let text = vec![
-                Line::from("Keystone TUI").style(Style::default().bold()),
-                Line::from(""),
-                Line::from("Press 'q' to quit."),
-            ];
-            let paragraph = ratatui::widgets::Paragraph::new(text)
-                .alignment(Alignment::Center)
-                .block(
-                    ratatui::widgets::Block::default()
-                        .borders(ratatui::widgets::Borders::ALL)
-                        .title(" Keystone "),
-                );
-            frame.render_widget(paragraph, area);
+            match &mut app.current_screen {
+                AppScreen::Welcome(welcome_screen) => {
+                    welcome_screen.render(frame, area);
+                }
+            }
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
