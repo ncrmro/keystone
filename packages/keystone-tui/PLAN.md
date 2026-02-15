@@ -16,7 +16,7 @@ The TUI follows the same architecture as `packages/keystone-ha/tui/`: a main eve
 | ssh-key | 0.6 | SSH key parsing and generation |
 | rnix | 0.11 | Nix file parsing and AST manipulation |
 | age | 0.11 | agenix-compatible encryption/decryption |
-| dirs | 6 | Home directory resolution |
+| directories | 6 | XDG config/data paths |
 | serde + toml | 1 / 0.8 | Config serialization |
 | anyhow + thiserror | 1 / 2 | Error handling |
 
@@ -31,7 +31,7 @@ src/
 ├── main.rs          # Entry point, terminal setup, event loop
 ├── lib.rs           # Module declarations
 ├── app.rs           # App state, screen enum, transitions
-├── config.rs        # ~/.keystone/ config loading/saving (TOML)
+├── config.rs        # XDG config loading/saving (TOML)
 ├── screens/         # Screen-specific rendering and input
 │   ├── mod.rs
 │   ├── welcome.rs   # First-run / repo selection
@@ -65,7 +65,7 @@ The `packages/keystone-ha/tui/` crate provides the pattern for:
 ## Implementation Phases
 
 1. **Skeleton** (this PR): Compilable binary with quit-on-q, Nix packaging, requirements + plan docs.
-2. **Config + First Run**: `~/.keystone/` config, repo import/create, flake validation.
+2. **Config + First Run**: XDG config, repo import/create, flake validation.
 3. **Key Management**: SSH key detection, ed25519 generation, FIDO2 enrollment.
 4. **Host Management**: Host listing, adding new hosts, Nix generation with rnix.
 5. **Build + Git**: Nix build integration, diff preview, commit/push workflow.
