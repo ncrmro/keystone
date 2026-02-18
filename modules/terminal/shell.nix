@@ -5,9 +5,11 @@
   inputs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.terminal;
-in {
+in
+{
   config = mkIf cfg.enable {
     # Starship - A minimal, blazing-fast, and infinitely customizable prompt for any shell
     # Shows git status, language versions, execution time, and more in your terminal prompt
@@ -46,36 +48,36 @@ in {
           normal = {
             # Previous tab: Ctrl+PgUp
             "bind \"Ctrl PageUp\"" = {
-              GoToPreviousTab = {};
+              GoToPreviousTab = { };
             };
             # Next tab: Ctrl+PgDn
             "bind \"Ctrl PageDown\"" = {
-              GoToNextTab = {};
+              GoToNextTab = { };
             };
             # Previous tab (alternative): Ctrl+Shift+Tab
             "bind \"Ctrl Shift Tab\"" = {
-              GoToPreviousTab = {};
+              GoToPreviousTab = { };
             };
             # Next tab (alternative): Ctrl+Tab
             "bind \"Ctrl Tab\"" = {
-              GoToNextTab = {};
+              GoToNextTab = { };
             };
             # New tab: Ctrl+T
             "bind \"Ctrl t\"" = {
-              NewTab = {};
+              NewTab = { };
             };
             # Close tab: Ctrl+W
             "bind \"Ctrl w\"" = {
-              CloseTab = {};
+              CloseTab = { };
             };
             # Unbind default Ctrl+G (conflict with Claude Code)
-            "unbind \"Ctrl g\"" = [];
+            "unbind \"Ctrl g\"" = [ ];
             # Lock mode: Ctrl+Shift+G
             "bind \"Ctrl Shift g\"" = {
               SwitchToMode = "locked";
             };
             # Unbind default Ctrl+O (conflict with Claude Code and lazygit)
-            "unbind \"Ctrl o\"" = [];
+            "unbind \"Ctrl o\"" = [ ];
             # Session mode: Ctrl+Shift+O
             "bind \"Ctrl Shift o\"" = {
               SwitchToMode = "session";
@@ -107,7 +109,10 @@ in {
       zplug.enable = lib.mkForce false;
       oh-my-zsh = {
         enable = true;
-        plugins = ["git" "colored-man-pages"];
+        plugins = [
+          "git"
+          "colored-man-pages"
+        ];
         theme = "robbyrussell";
       };
     };
@@ -116,6 +121,12 @@ in {
       # Direnv - Unclutter your .profile
       # https://direnv.net/
       direnv
+
+      # Ghostty terminfo - Required for SSH connections from Ghostty terminal
+      # Without this, remote systems don't recognize TERM="xterm-ghostty" and
+      # ncurses applications fail with "cannot initialize terminal type" errors.
+      # This enables proper terminal handling when SSHing into this machine from Ghostty.
+      ghostty.terminfo
 
       # Eza - Modern replacement for ls with colors and git integration
       # https://github.com/eza-community/eza
