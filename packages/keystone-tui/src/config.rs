@@ -3,32 +3,35 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs;
 
-const CONFIG_FILE_NAME: &str = "config.toml";
+const CONFIG_FILE_NAME: &str = "keystone.json";
 
 /// Represents a managed Keystone repository.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeystoneRepo {
+    pub name: String,
     pub path: PathBuf,
 }
 
-/// Application configuration stored at `~/.keystone/config.toml`.
+/// Application configuration, stored in ~/.keystone/keystone.json.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AppConfig {
     pub repos: Vec<KeystoneRepo>,
 }
 
 impl AppConfig {
-    /// Returns the path to the configuration file (`~/.keystone/config.toml`).
+    /// Returns the path to the configuration file (`~/.keystone/keystone.json`).
     fn config_file_path() -> Result<PathBuf> {
         let home = dirs::home_dir().context("Failed to determine home directory")?;
         Ok(home.join(".keystone").join(CONFIG_FILE_NAME))
     }
 
-    /// Loads the application configuration from `~/.keystone/`.
+    /// Loads the application configuration from ~/.keystone/keystone.json.
     pub async fn load() -> Result<Self> {
         let config_path = Self::config_file_path()?;
         match fs::read_to_string(&config_path).await {
-            Ok(content) => toml::from_str(&content).context("Failed to deserialize config.toml"),
+            Ok(content) => {
+                serde_json::from_str(&content).context("Failed to deserialize keystone.json")
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(anyhow::anyhow!(
                 "Failed to read config file {}: {}",
@@ -38,7 +41,7 @@ impl AppConfig {
         }
     }
 
-    /// Saves the application configuration to `~/.keystone/`.
+    /// Saves the application configuration to ~/.keystone/keystone.json.
     pub async fn save(&self) -> Result<()> {
         let config_path = Self::config_file_path()?;
         let config_dir = config_path
@@ -51,7 +54,7 @@ impl AppConfig {
         ))?;
 
         let config_content =
-            toml::to_string_pretty(self).context("Failed to serialize config to TOML")?;
+            serde_json::to_string_pretty(self).context("Failed to serialize config to JSON")?;
         fs::write(&config_path, config_content)
             .await
             .context(format!(

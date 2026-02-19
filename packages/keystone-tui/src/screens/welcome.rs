@@ -12,9 +12,8 @@ pub struct WelcomeScreen {
     selected_option: WelcomeOption,
 }
 
-#[derive(Default, PartialEq, Eq)]
-#[allow(dead_code)]
-enum WelcomeOption {
+#[derive(Default, PartialEq, Eq, Clone, Copy)]
+pub enum WelcomeOption {
     #[default]
     ImportExisting,
     CreateNew,
@@ -23,6 +22,24 @@ enum WelcomeOption {
 impl WelcomeScreen {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn next(&mut self) {
+        self.selected_option = match self.selected_option {
+            WelcomeOption::ImportExisting => WelcomeOption::CreateNew,
+            WelcomeOption::CreateNew => WelcomeOption::ImportExisting, // Wrap around
+        };
+    }
+
+    pub fn previous(&mut self) {
+        self.selected_option = match self.selected_option {
+            WelcomeOption::ImportExisting => WelcomeOption::CreateNew, // Wrap around
+            WelcomeOption::CreateNew => WelcomeOption::ImportExisting,
+        };
+    }
+
+    pub fn get_selected_option(&self) -> WelcomeOption {
+        self.selected_option
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {

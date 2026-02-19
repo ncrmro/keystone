@@ -81,8 +81,39 @@ async fn run_app(
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') {
-                    app.should_quit = true;
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc => {
+                        app.should_quit = true;
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        #[allow(irrefutable_let_patterns)]
+                        if let AppScreen::Welcome(ref mut welcome) = app.current_screen {
+                            welcome.previous();
+                        }
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        #[allow(irrefutable_let_patterns)]
+                        if let AppScreen::Welcome(ref mut welcome) = app.current_screen {
+                            welcome.next();
+                        }
+                    }
+                    KeyCode::Enter => {
+                        #[allow(irrefutable_let_patterns)]
+                        if let AppScreen::Welcome(ref welcome) = app.current_screen {
+                            use screens::welcome::WelcomeOption;
+                            match welcome.get_selected_option() {
+                                WelcomeOption::ImportExisting => {
+                                    // TODO: Show input prompt for git URL
+                                    eprintln!("Import existing repository selected");
+                                }
+                                WelcomeOption::CreateNew => {
+                                    // TODO: Show input prompt for repo name
+                                    eprintln!("Create new repository selected");
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
