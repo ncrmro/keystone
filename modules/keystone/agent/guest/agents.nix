@@ -3,18 +3,15 @@
   lib,
   pkgs,
   ...
-}: {
+}: let
+  cfg = config.keystone.agent.guest.agents;
+in {
   # AI Agent Packages Configuration
-  # Installs and configures Claude Code, Gemini CLI, and other AI agents
-  
-  # This will be implemented in Phase 3 (User Story 1)
-  # Features:
-  # - Claude Code installation and auto-accept configuration
-  # - Gemini CLI installation
-  # - Codex installation
-  # - Agent-specific environment setup
-  
-  environment.systemPackages = with pkgs; [
-    # Placeholder - actual agent packages will be added
+  # Packages sourced from numtide/llm-agents.nix via keystone overlay
+
+  environment.systemPackages = lib.flatten [
+    (lib.optional cfg.claudeCode.enable pkgs.keystone.claude-code)
+    (lib.optional cfg.geminiCli.enable pkgs.keystone.gemini-cli)
+    (lib.optional cfg.codex.enable pkgs.keystone.codex)
   ];
 }
