@@ -24,6 +24,10 @@
       url = "github:pimalaya/himalaya";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    llm-agents = {
+      url = "github:numtide/llm-agents.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -35,11 +39,12 @@
     lanzaboote,
     hyprland,
     himalaya,
+    llm-agents,
     ...
   }: let
     # Create inputs attrset for desktop module
     inputs = {
-      inherit nixpkgs hyprland himalaya;
+      inherit nixpkgs hyprland himalaya llm-agents;
     };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
@@ -67,10 +72,15 @@
     overlays.default = let
       zesh-src = ./packages/zesh;
       himalaya-flake = himalaya;
+      llm-agents-flake = llm-agents;
     in final: prev: {
       keystone = {
         zesh = final.callPackage zesh-src {};
         himalaya = himalaya-flake.packages.${final.system}.default;
+        # AI coding agents from llm-agents.nix
+        claude-code = llm-agents-flake.packages.${final.system}.claude-code;
+        gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;
+        codex = llm-agents-flake.packages.${final.system}.codex;
       };
     };
 
