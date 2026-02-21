@@ -1,3 +1,4 @@
+# TODO this should move to a dedicated server-os module at some point to delinate it from deskop (maybe)
 # Keystone Mail Server (Stalwart)
 #
 # This module provides a basic Stalwart mail server configuration.
@@ -48,11 +49,23 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.os.mail;
-in {
+in
+{
   options.keystone.os.mail = {
     enable = mkEnableOption "Keystone Mail Server (Stalwart)";
+
+    allowedIps = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "IP ranges to whitelist from fail2ban blocking (e.g., Tailscale ranges)";
+      example = [
+        "100.64.0.0/10"
+        "fd7a:115c:a1e0::/48"
+      ];
+    };
   };
 
   config = mkIf cfg.enable {
@@ -65,6 +78,10 @@ in {
         # Server configuration
         server = {
           hostname = config.networking.hostName;
+
+          # Allow IPs to bypass fail2ban blocking
+          # Using table syntax instead of set notation (NixOS can't generate { "ip" } sets)
+          "allowed-ip" = lib.listToAttrs (map (ip: lib.nameValuePair ip "") cfg.allowedIps);
           tls = {
             enable = true;
             implicit = true;
@@ -73,23 +90,23 @@ in {
             # SMTP for mail delivery (port 25)
             smtp = {
               protocol = "smtp";
-              bind = ["[::]:25"];
+              bind = [ "[::]:25" ];
             };
             # SMTP Submission with TLS (port 465)
             submissions = {
               protocol = "smtp";
-              bind = ["[::]:465"];
+              bind = [ "[::]:465" ];
               tls.implicit = true;
             };
             # SMTP Submission (port 587)
             submission = {
               protocol = "smtp";
-              bind = ["[::]:587"];
+              bind = [ "[::]:587" ];
             };
             # IMAPS (port 993)
             imaps = {
               protocol = "imap";
-              bind = ["[::]:993"];
+              bind = [ "[::]:993" ];
               tls.implicit = true;
             };
             # JMAP/Management interface (localhost only)
@@ -97,7 +114,7 @@ in {
             # TODO: Can revert to 8080 after removing k8s ingress-nginx
             jmap = {
               protocol = "http";
-              bind = ["127.0.0.1:8082"];
+              bind = [ "127.0.0.1:8082" ];
             };
           };
         };
