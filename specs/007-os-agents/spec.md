@@ -4,11 +4,9 @@
 
 - **Goal**: Enable LLM-driven agents to operate as first-class OS users with their own Wayland desktop, email, credentials, and SSH identity — all managed declaratively through Keystone's NixOS module system.
 - **Scope**: User provisioning, headless Wayland desktop, Stalwart email, Bitwarden, Tailscale, Chrome + DevTools MCP, SSH key lifecycle, and agenix secrets management.
-- **Relationship to SPEC-012**: SPEC-012 (Agent Sandbox) provides isolated MicroVM environments for code execution. SPEC-007 (OS Agents) provisions agents as native OS users on the host, giving them a full desktop, network identity, and service accounts. An OS agent may launch MicroVM sandboxes for code work, but the OS agent itself lives on the host.
-
 ## Problem Statement
 
-Current agent sandboxes (SPEC-012) run in isolated MicroVMs with no persistent identity. They cannot:
+LLM-driven agents currently lack persistent OS-level identity. They cannot:
 
 1. Browse the web with a real browser session
 2. Send or receive email

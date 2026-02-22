@@ -96,15 +96,6 @@
         ];
       };
 
-      # Agent Sandbox MicroVM test configuration
-      agent-sandbox-microvm = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          microvm.nixosModules.microvm
-          keystone.nixosModules.agent # This enables keystone.agent.* options
-          ./microvm/agent-sandbox.nix
-        ];
-      };
     };
 
     # ============================================================
