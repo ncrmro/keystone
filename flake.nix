@@ -94,11 +94,6 @@
       # Server module - VPN, monitoring, mail (optional services)
       server = ./modules/server;
 
-      # Agent Sandbox module - isolated AI coding agent environments
-      agent = {
-        imports = [./modules/keystone/agent];
-      };
-
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
     };
@@ -115,7 +110,6 @@
         imports = [./modules/desktop/home/default.nix];
         _module.args.inputs = inputs;
       };
-      agentTui = ./modules/keystone/agent/home/tui.nix;
     };
 
     # Packages exported for consumption
@@ -127,7 +121,6 @@
       zesh = pkgs.callPackage ./packages/zesh {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
-      keystone-agent = pkgs.callPackage ./packages/keystone-agent {};
     };
 
     # Development shell

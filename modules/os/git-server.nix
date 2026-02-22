@@ -12,7 +12,6 @@
 #   * Native systemd services (simple, local execution)
 #   * Docker containers (isolation, flexibility)
 #   * Kubernetes pods (if keystone.server.vpn or monitoring uses K8s)
-#   * MicroVMs (matches keystone.agent sandbox pattern)
 # - Consider security implications of runner execution environments
 # - Evaluate resource allocation and scaling strategies
 # - Research integration with existing keystone infrastructure patterns
