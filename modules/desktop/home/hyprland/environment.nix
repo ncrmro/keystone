@@ -56,6 +56,9 @@ in
           "XCOMPOSEFILE,~/.XCompose"
           "EDITOR,${terminalCfg.editor}"
 
+          # SSH agent socket for child processes
+          "SSH_AUTH_SOCK,$XDG_RUNTIME_DIR/ssh-agent"
+
           # GTK theme
           "GTK_THEME,Adwaita:dark"
         ]
