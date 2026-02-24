@@ -14,7 +14,7 @@ in {
     # SSH client configuration with automatic key loading
     programs.ssh = {
       enable = true;
-      addKeysToAgent = "yes";
+      matchBlocks."*".addKeysToAgent = "1h";
     };
   };
 }
