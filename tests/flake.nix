@@ -19,163 +19,169 @@
     };
   };
 
-  outputs = {
-    self,
-    keystone,
-    nixpkgs,
-    home-manager,
-    disko,
-    lanzaboote,
-    omarchy,
-    hyprland,
-    himalaya,
-    llm-agents,
-    microvm,
-  }: let
-    system = "x86_64-linux";
-    pkgs = nixpkgs.legacyPackages.${system};
-    lib = pkgs.lib;
-  in {
-    # ============================================================
-    # NixOS Configurations for Testing and Development
-    # ============================================================
+  outputs =
+    {
+      self,
+      keystone,
+      nixpkgs,
+      home-manager,
+      disko,
+      lanzaboote,
+      omarchy,
+      hyprland,
+      himalaya,
+      llm-agents,
+      microvm,
+    }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+      lib = pkgs.lib;
+    in
+    {
+      # ============================================================
+      # NixOS Configurations for Testing and Development
+      # ============================================================
 
-    nixosConfigurations = {
-      # Test server configuration for nixos-anywhere deployment
-      test-server = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          keystone.nixosModules.operating-system
-          ../vms/test-server/configuration.nix
-        ];
-      };
-
-      # Test Hyprland desktop configuration
-      test-hyprland = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          home-manager.nixosModules.home-manager
-          keystone.nixosModules.operating-system
-          keystone.nixosModules.desktop
-          ../vms/test-hyprland/configuration.nix
-          {_module.args.omarchy = omarchy;}
-        ];
-      };
-
-      # Fast VM testing configurations using nixos-rebuild build-vm
-      # These skip disko/encryption/secure boot for rapid iteration
-
-      # Terminal development environment testing
-      build-vm-terminal = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = {inherit keystone;};
-        modules = [
-          home-manager.nixosModules.home-manager
-          ../vms/build-vm-terminal/configuration.nix
-        ];
-      };
-
-      # Hyprland desktop testing
-      build-vm-desktop = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = {
-          inherit keystone;
-          inputs = {inherit nixpkgs hyprland;};
+      nixosConfigurations = {
+        # Test server configuration for nixos-anywhere deployment
+        test-server = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            keystone.nixosModules.operating-system
+            ../vms/test-server/configuration.nix
+          ];
         };
-        modules = [
-          home-manager.nixosModules.home-manager
-          ../vms/build-vm-desktop/configuration.nix
-          {_module.args.omarchy = omarchy;}
-        ];
+
+        # Test Hyprland desktop configuration
+        test-hyprland = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            home-manager.nixosModules.home-manager
+            keystone.nixosModules.operating-system
+            keystone.nixosModules.desktop
+            ../vms/test-hyprland/configuration.nix
+            { _module.args.omarchy = omarchy; }
+          ];
+        };
+
+        # Fast VM testing configurations using nixos-rebuild build-vm
+        # These skip disko/encryption/secure boot for rapid iteration
+
+        # Terminal development environment testing
+        build-vm-terminal = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs = { inherit keystone; };
+          modules = [
+            home-manager.nixosModules.home-manager
+            ../vms/build-vm-terminal/configuration.nix
+          ];
+        };
+
+        # Hyprland desktop testing
+        build-vm-desktop = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs = {
+            inherit keystone;
+            inputs = { inherit nixpkgs hyprland; };
+          };
+          modules = [
+            home-manager.nixosModules.home-manager
+            ../vms/build-vm-desktop/configuration.nix
+            { _module.args.omarchy = omarchy; }
+          ];
+        };
+
+        # MicroVM testing configurations
+        tpm-microvm = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            microvm.nixosModules.microvm
+            disko.nixosModules.disko
+            keystone.nixosModules.operating-system # This enables keystone.os.* options
+            ./microvm/tpm-test.nix
+          ];
+        };
+
       };
 
-      # MicroVM testing configurations
-      tpm-microvm = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          microvm.nixosModules.microvm
-          disko.nixosModules.disko
-          keystone.nixosModules.operating-system # This enables keystone.os.* options
-          ./microvm/tpm-test.nix
-        ];
-      };
+      # ============================================================
+      # Home Manager Configurations for Testing
+      # ============================================================
 
-    };
+      homeConfigurations = {
+        testuser = home-manager.lib.homeManagerConfiguration {
+          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          modules = [
+            ../modules/keystone/terminal
+            {
+              home.username = "testuser";
+              home.homeDirectory = "/home/testuser";
+              home.stateVersion = "25.05";
 
-    # ============================================================
-    # Home Manager Configurations for Testing
-    # ============================================================
-
-    homeConfigurations = {
-      testuser = home-manager.lib.homeManagerConfiguration {
-        pkgs = nixpkgs.legacyPackages.x86_64-linux;
-        modules = [
-          ../modules/keystone/terminal
-          {
-            home.username = "testuser";
-            home.homeDirectory = "/home/testuser";
-            home.stateVersion = "25.05";
-
-            keystone.terminal = {
-              enable = true;
-              git = {
-                userName = "Test User";
-                userEmail = "testuser@keystone-test-vm";
+              keystone.terminal = {
+                enable = true;
+                git = {
+                  userName = "Test User";
+                  userEmail = "testuser@keystone-test-vm";
+                };
               };
-            };
-          }
-        ];
-      };
-    };
-
-    # ============================================================
-    # VM Tests (in checks)
-    # ============================================================
-
-    checks.${system} = {
-      # Integration Tests
-      test-installer = import ./integration/installer.nix {
-        inherit pkgs;
-        lib = pkgs.lib;
+            }
+          ];
+        };
       };
 
-      test-remote-unlock = import ./integration/remote-unlock.nix {
-        inherit pkgs lib;
-        self = keystone;
+      # ============================================================
+      # VM Tests (in checks)
+      # ============================================================
+
+      checks.${system} = {
+        # Integration Tests
+        test-installer = import ./integration/installer.nix {
+          inherit pkgs;
+          lib = pkgs.lib;
+        };
+
+        test-remote-unlock = import ./integration/remote-unlock.nix {
+          inherit pkgs lib;
+          self = keystone;
+        };
+
+        # Module Isolation Tests
+        test-desktop-isolation = import ./module/desktop-isolation.nix {
+          inherit pkgs lib;
+          self = keystone;
+        };
+
+        test-server-isolation = import ./module/server-isolation.nix {
+          inherit pkgs lib;
+          self = keystone;
+        };
+
+        test-agent-isolation = import ./module/agent-isolation.nix {
+          inherit pkgs lib;
+          self = keystone;
+        };
+
+        # Evaluation Tests
+        test-os-evaluation = import ./module/os-evaluation.nix {
+          inherit pkgs lib;
+          self = keystone;
+        };
+
+        test-agent-evaluation = import ./module/agent-evaluation.nix {
+          inherit pkgs lib;
+          self = keystone;
+        };
       };
 
-      # Module Isolation Tests
-      test-desktop-isolation = import ./module/desktop-isolation.nix {
-        inherit pkgs lib;
-        self = keystone;
-      };
-
-      test-server-isolation = import ./module/server-isolation.nix {
-        inherit pkgs lib;
-        self = keystone;
-      };
-
-      # Evaluation Tests
-      test-os-evaluation = import ./module/os-evaluation.nix {
-        inherit pkgs lib;
-        self = keystone;
-      };
-
-      test-agent-evaluation = import ./module/agent-evaluation.nix {
-        inherit pkgs lib;
-        self = keystone;
-      };
-    };
-
-    # Also expose tests as packages for convenience
-    packages.${system} =
-      self.checks.${system}
-      // {
+      # Also expose tests as packages for convenience
+      packages.${system} = self.checks.${system} // {
         test-microvm-tpm = pkgs.writeShellApplication {
           name = "test-microvm-tpm";
-          runtimeInputs = [pkgs.swtpm];
+          runtimeInputs = [ pkgs.swtpm ];
           text = builtins.readFile ../bin/test-microvm-tpm;
         };
       };
-  };
+    };
 }
