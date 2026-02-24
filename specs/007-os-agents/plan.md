@@ -15,6 +15,172 @@ keystone.os.agents.{name}
   └── Agent-space (/home/agent-{name}/agent-space/, git-initialized)
 ```
 
+### Architecture Diagram
+
+```
+┌──────────────────────────────── Host Machine ──────────────────────────────────┐
+│                                                                                │
+│  ┌─────────── Human User ───────────┐                                         │
+│  │  Hyprland Desktop                │                                         │
+│  │  VNC client → agent desktops     │                                         │
+│  └──────────────────────────────────┘                                         │
+│                                                                                │
+│  ┌────────────── agent-researcher (uid 4001) ──────────────────────────────┐  │
+│  │  /home/agent-researcher/                                                │  │
+│  │                                                                         │  │
+│  │  agent-space/                        systemd user services:             │  │
+│  │  ├── TASKS.yaml                      ├── cage-desktop.service           │  │
+│  │  ├── PROJECTS.yaml                   ├── wayvnc.service                 │  │
+│  │  ├── ISSUES.yaml                     ├── chrome.service                 │  │
+│  │  ├── SCHEDULES.yaml                  ├── chrome-devtools-mcp.service    │  │
+│  │  ├── SOUL.md / HUMAN.md             ├── ssh-agent.service              │  │
+│  │  ├── AGENTS.md / SERVICES.md        ├── task-loop.timer  (every 15m)   │  │
+│  │  ├── .repos/                         └── scheduler.timer  (daily)       │  │
+│  │  ├── logs/                                                              │  │
+│  │  └── flake.nix                       agenix secrets:                    │  │
+│  │                                      ├── ssh key + passphrase           │  │
+│  │  .mcp.json (generated)               ├── mail credentials               │  │
+│  │  bin/agent.coding-agent              ├── bitwarden API key              │  │
+│  │                                      └── tailscale auth key             │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                │
+│  ┌─────────── Host Services ──────────────────────────────────────────────┐   │
+│  │  Stalwart Mail Server    (IMAP/SMTP for agent accounts)                │   │
+│  │  Headscale / Tailscale   (mesh VPN, agent nodes)                       │   │
+│  │  Vaultwarden             (Bitwarden server, agent collections)         │   │
+│  │  Forgejo                 (agent-space git remotes)                     │   │
+│  └────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                │
+│  ┌─────────── Audit & Monitoring ─────────────────────────────────────────┐   │
+│  │  /var/log/agent-{name}/audit.jsonl   (root-owned, append-only)         │   │
+│  │  /var/lib/agent-incidents/           (shared incident database)         │   │
+│  │  Grafana Alloy → Loki               (log forwarding)                   │   │
+│  └────────────────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+Remote Observation (over Headscale):
+  Laptop ──tailnet──▶ agent-researcher:5901 (VNC) ──▶ Cage desktop + Chrome
+```
+
+### Configuration Interface
+
+```nix
+keystone.os.agents.researcher = {
+  fullName = "Research Agent";
+  email = "researcher@ks.systems";
+
+  desktop = {
+    enable = true;
+    compositor = "cage";        # cage | sway-headless
+    resolution = "1920x1080";
+    vnc.port = 5901;            # Each agent gets a unique port
+  };
+
+  chrome = {
+    enable = true;
+    debugPort = 9222;           # Chrome DevTools Protocol port
+    extensions = [ ];           # Extension IDs to pre-install
+    mcp.enable = true;          # Enable Chrome DevTools MCP server
+  };
+
+  mail = {
+    enable = true;
+    domain = "ks.systems";      # Stalwart domain
+  };
+
+  bitwarden = {
+    enable = true;
+    serverUrl = "https://vault.ks.systems";
+    collection = "agent-researcher";  # Scoped collection
+  };
+
+  tailscale = {
+    enable = true;
+    hostname = "agent-researcher";
+  };
+
+  ssh = {
+    keyType = "ed25519";
+    gitSigningKey = true;       # Use SSH key for git commit signing
+  };
+
+  resources = {
+    cpuQuota = "200%";          # 2 cores max
+    memoryMax = "4G";
+  };
+
+  # Agent space (FR-009)
+  agentSpace = {
+    enable = true;
+    remote = "git@forgejo.local:agents/researcher.git";  # Git remote for agent-space
+    flake.enable = true;        # Scaffold flake.nix in agent-space
+  };
+
+  # Task loop (FR-010)
+  taskLoop = {
+    enable = true;
+    schedulerInterval = "daily";     # How often to ingest new work
+    loopInterval = "15min";          # How often to process task queue
+    maxTasksPerRun = 5;
+    maxWallTime = "2h";
+    errorThreshold = 3;              # Stop after N consecutive failures
+    models = {
+      ingest = "haiku";              # Fast model for triage
+      execute = "sonnet";            # Capable model for task execution
+    };
+    sources = {
+      github.enable = true;
+      email.enable = true;
+      schedules.enable = true;
+    };
+  };
+
+  # Coding subagent (FR-013)
+  codingAgent = {
+    enable = true;
+    branchPrefix = "agent-researcher";  # Branch naming: agent-researcher/slug
+    provider = "claude";                # claude | gemini | codex
+    autoReview = true;                  # Run linter/tests after each commit
+    draftPR = true;                     # PRs are draft by default
+  };
+
+  # MCP configuration (FR-015)
+  mcp = {
+    servers = {
+      # Additional MCP servers beyond Chrome DevTools
+      grafana = {
+        command = "grafana-mcp";
+        args = [ "--url" "https://grafana.local" ];
+      };
+    };
+  };
+};
+```
+
+### Service Dependency Graph
+
+```
+multi-user.target
+  └── agent-desktops.target
+        ├── agent-researcher-desktop.service
+        │     ├── cage (Wayland compositor)
+        │     ├── wayvnc (VNC server, After=cage)
+        │     ├── chrome (browser, After=cage)
+        │     └── chrome-devtools-mcp (After=chrome)
+        └── agent-coder-desktop.service
+              └── (same structure)
+
+user@4001.service (systemd user instance)
+  ├── ssh-agent.service (auto-unlock key from agenix)
+  ├── task-loop.timer → task-loop.service (process task queue)
+  ├── scheduler.timer → scheduler.service (ingest new work)
+  └── mcp-*.service (additional MCP servers)
+
+System services (root):
+  ├── agent-audit@{name}.service (audit log writer)
+  └── agent-audit-forward.service (Alloy → Loki)
+```
+
 ### Component Responsibilities
 
 - **`modules/os/agents.nix`** — Option definitions for `keystone.os.agents.{name}` (agent submodule type). Mirrors `default.nix`'s user submodule pattern. Imports agent sub-modules.
