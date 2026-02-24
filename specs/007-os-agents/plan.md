@@ -270,97 +270,114 @@ tests/
 - `modules/os/default.nix` — Add `keystone.os.agents` option (attrsOf agentSubmodule), add `./agents.nix` to imports
 - `flake.nix` — Add `tests/os-agents.nix` to checks (if not auto-discovered)
 
+## Development Methodology
+
+Development follows a **red-green cycle** driven by `tests/os-agents.nix`, a single NixOS VM test that grows with each phase.
+
+### Why this works
+
+- `nixosTest` VMs mount the host `/nix/store` via 9p — no copying, fast boot (~10s)
+- Phase 1 modules are pure Nix config (users, groups, file generation) — no large packages to build
+- One test file with two agents (`researcher` + `coder`) from the start enables isolation assertions immediately
+- Uses existing `tests/lib.nix` helpers (`mkModuleTest`, `vmDefaults`, `testUser`)
+
+### Workflow per phase
+
+1. **Red** — Write failing assertions in `tests/os-agents.nix` for the phase's requirements
+2. **Green** — Implement the module until all assertions pass
+3. **Refactor** — Clean up, then commit both test and module together
+4. Run via `nix build ./tests#test-os-agents` or `make test-agents`
+
+### Test structure
+
+A single `tests/os-agents.nix` file provisions a VM with 2+ agents and runs all assertions. Each phase adds `machine.succeed()` / `machine.fail()` calls to the test script. Assertions for unimplemented phases stay commented out as a roadmap of what comes next.
+
+### Wiring
+
+- Add `test-os-agents` to `tests/flake.nix` checks
+- Add `test-agents` Makefile target: `./bin/run-tests os-agents`
+
 ## Implementation Strategy
 
 ### Phase 1: Core User Provisioning (FR-001 + FR-008 + FR-012 partial)
 
-The foundation everything else builds on. Create the agent user, home directory, home-manager integration, and agenix secret structure. Write the first VM test proving the user exists with correct properties.
+The foundation everything else builds on.
 
-**Why first**: Every other FR depends on having an agent user. The VM test establishes the testing pattern used throughout.
+**Red** — Write assertions: agent user exists, UID >= 4000, in `agents` group, not in `wheel`, home dir exists, no password login, cross-agent home directory isolation.
 
-**Deliverables**:
+**Green** — Implement:
 - `modules/os/agents.nix` — Option declarations
 - `modules/os/agents/default.nix` — Sub-module imports
 - `modules/os/agents/users.nix` — User creation + home-manager (reusing `keystone.terminal`)
 - `modules/os/agents/secrets.nix` — Agenix path conventions + assertions
-- `tests/os-agents.nix` — VM test: user exists, UID range, agents group, no wheel, home dir exists, no password login
 - Update `modules/os/default.nix` to import agents
 
 ### Phase 2: Desktop + Browser (FR-002 + FR-003)
 
 Give agents a visible desktop with Chrome for web interaction.
 
-**Why second**: Desktop + Chrome is the highest-value capability — it enables web browsing, which most agent tasks require.
+**Red** — Uncomment assertions: compositor service running, VNC port listening, Chrome process active.
 
-**Deliverables**:
+**Green** — Implement:
 - `modules/os/agents/desktop.nix` — Cage compositor + wayvnc as systemd user services
 - `modules/os/agents/chrome.nix` — Chrome with `--remote-debugging-port` as systemd user service
-- Extend VM test: compositor running, VNC port listening, Chrome process active
 
 ### Phase 3: Identity + Credentials (FR-004 + FR-005 + FR-006 + FR-007)
 
 Connect agents to external services: email, password vault, mesh network, git.
 
-**Why third**: These are independent of each other but all depend on Phase 1's user + secrets. Can be developed in parallel.
+**Red** — Uncomment assertions: SSH agent running, git signing configured, mail client available.
 
-**Deliverables**:
+**Green** — Implement (can be developed in parallel, all depend on Phase 1):
 - `modules/os/agents/mail.nix` — Stalwart account config + himalaya
 - `modules/os/agents/bitwarden.nix` — Vaultwarden + bw CLI
 - `modules/os/agents/tailscale.nix` — Tailscale identity + firewall
 - `modules/os/agents/ssh.nix` — SSH keypair + ssh-agent + git signing
-- Extend VM test: SSH agent running, git signing configured
 
 ### Phase 4: Agent Space + MCP (FR-009 + FR-015)
 
 Set up the agent's workspace and tool access.
 
-**Why fourth**: Agent-space provides the working directory for task execution. MCP provides the tool interface. Both are prerequisites for the task loop.
+**Red** — Uncomment assertions: agent-space directory exists with expected files, `.mcp.json` generated.
 
-**Deliverables**:
+**Green** — Implement:
 - `modules/os/agents/agent-space.nix` — Scaffold script + systemd oneshot
 - `modules/os/agents/scripts/scaffold-agent-space.sh` — Git init, file creation, identity population
 - `modules/os/agents/mcp.nix` — `.mcp.json` generation + Chrome DevTools MCP service
-- Extend VM test: agent-space directory exists with expected files, .mcp.json generated
 
 ### Phase 5: Task Loop + Audit (FR-010 + FR-011)
 
 Enable autonomous operation with security logging.
 
-**Why fifth**: Task loop is the agent's execution engine. Audit trail is mandatory security (assertion prevents disabling). Both depend on agent-space existing.
+**Red** — Uncomment assertions: timers active, audit.jsonl exists and is root-owned + append-only.
 
-**Deliverables**:
+**Green** — Implement:
 - `modules/os/agents/task-loop.nix` — Systemd timers (scheduler + loop)
 - `modules/os/agents/scripts/task-loop.sh` — Lock management, stop conditions, model dispatch
 - `modules/os/agents/audit.nix` — Audit log service, logrotate, Loki forwarding config
 - `modules/os/agents/scripts/audit-logger.sh` — Append events to audit.jsonl
-- Extend VM test: timers active, audit.jsonl exists and is root-owned + append-only
 
 ### Phase 6: Coding Subagent + Incidents (FR-013 + FR-014)
 
 Structured code contribution and operational learning.
 
-**Why last**: These are higher-level operational features that build on everything below them.
+**Red** — Uncomment assertions: coding-agent script exists, incident database path exists.
 
-**Deliverables**:
+**Green** — Implement:
 - `modules/os/agents/coding-agent.nix` — Option + script installation
 - `modules/os/agents/scripts/coding-agent.sh` — Pre-flight, branch naming, agent contract, cleanup
 - `modules/os/agents/incidents.nix` — ISSUES.yaml schema validation, shared database, escalation
-- Extend VM test: coding-agent script exists, incident database path exists
 
 ### Phase 7: Full Security Test Suite (FR-012 complete)
 
-Expand the VM test to cover all isolation and credential scoping requirements.
+Final red-green pass: uncomment all remaining security assertions and fill any gaps.
 
-**Why last**: The full test suite needs all features to be implemented before it can verify cross-cutting concerns.
-
-**Deliverables**:
-- Complete `tests/os-agents.nix` with:
-  - Cross-agent home directory isolation (2+ agents)
-  - Agenix secret isolation
-  - Network egress rules
-  - VNC port isolation
-  - Credential scoping (Bitwarden collection, SSH key, IMAP/SMTP)
-  - Cgroup resource limits
+- Cross-agent home directory isolation (already tested from Phase 1)
+- Agenix secret isolation
+- Network egress rules
+- VNC port isolation
+- Credential scoping (Bitwarden collection, SSH key, IMAP/SMTP)
+- Cgroup resource limits
 
 ## Security Considerations
 
@@ -375,14 +392,19 @@ Expand the VM test to cover all isolation and credential scoping requirements.
 
 ## Testing Strategy
 
-| Test Type | What It Covers | Files |
-|---|---|---|
-| NixOS VM test (Phase 1) | User exists, UID range, groups, no password, home dir | `tests/os-agents.nix` |
-| NixOS VM test (Phase 2) | Desktop services running, VNC listening, Chrome process | `tests/os-agents.nix` |
-| NixOS VM test (Phase 7) | Full isolation: cross-agent, secrets, network, credentials | `tests/os-agents.nix` |
-| CI integration | Run `tests/os-agents.nix` on PRs touching `modules/os/agents/` | `.github/workflows/` or `flake.nix` checks |
+All testing is driven by **one growing test file** (`tests/os-agents.nix`) as described in Development Methodology above. The test provisions a VM with 2+ agents and runs assertions via `machine.succeed()` / `machine.fail()`.
 
-All tests use NixOS `nixosTest` — no external test framework needed. Tests provision a VM with 2+ agents and run assertions inside the VM via `machine.succeed()` / `machine.fail()`.
+| Phase | Assertions added |
+|---|---|
+| 1 | User exists, UID >= 4000, `agents` group, no `wheel`, home dir, no password, cross-agent isolation |
+| 2 | Compositor running, VNC port listening, Chrome process active |
+| 3 | SSH agent running, git signing configured, mail client available |
+| 4 | Agent-space directory + expected files, `.mcp.json` generated |
+| 5 | Timers active, audit.jsonl root-owned + append-only |
+| 6 | Coding-agent script exists, incident database path exists |
+| 7 | Full cross-cutting security: secret isolation, network egress, credential scoping, cgroup limits |
+
+CI runs `tests/os-agents.nix` on PRs touching `modules/os/agents/`.
 
 ## Risks and Mitigations
 
