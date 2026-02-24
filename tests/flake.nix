@@ -11,6 +11,8 @@
     lanzaboote.follows = "keystone/lanzaboote";
     omarchy.follows = "keystone/omarchy";
     hyprland.follows = "keystone/hyprland";
+    himalaya.follows = "keystone/himalaya";
+    llm-agents.follows = "keystone/llm-agents";
     microvm = {
       url = "github:astro/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -26,6 +28,8 @@
     lanzaboote,
     omarchy,
     hyprland,
+    himalaya,
+    llm-agents,
     microvm,
   }: let
     system = "x86_64-linux";
@@ -153,6 +157,11 @@
 
       # Evaluation Tests
       test-os-evaluation = import ./module/os-evaluation.nix {
+        inherit pkgs lib;
+        self = keystone;
+      };
+
+      test-agent-evaluation = import ./module/agent-evaluation.nix {
         inherit pkgs lib;
         self = keystone;
       };

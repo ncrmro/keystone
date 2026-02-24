@@ -125,8 +125,24 @@
       };
     };
 
+    # Flake checks — run via `nix flake check` and CI
+    checks.x86_64-linux = let
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      lib = pkgs.lib;
+    in {
+      # Module evaluation tests (fast, no VM boot required)
+      os-evaluation = import ./tests/module/os-evaluation.nix {
+        inherit pkgs lib;
+        self = self;
+      };
+      agent-evaluation = import ./tests/module/agent-evaluation.nix {
+        inherit pkgs lib nixpkgs;
+        self = self;
+      };
+    };
+
     # Packages exported for consumption
-    # Note: Tests are in ./tests/flake.nix (separate flake to avoid IFD issues)
+    # Note: Integration/VM tests are in ./tests/flake.nix (separate flake to avoid IFD issues)
     packages.x86_64-linux = let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
     in {
