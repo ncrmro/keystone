@@ -86,8 +86,6 @@
     git
     curl
     wget
-    # Keystone agent CLI for sandbox management
-    keystone.packages.x86_64-linux.keystone-agent
   ];
 
   # Allow sudo without password (testing only)

@@ -4,7 +4,7 @@
 
 **Total Tasks**: 16
 **Phases**: 7
-**Parallelizable**: 6
+**Parallelizable**: 8
 
 Note: This spec uses functional requirements (FR-NNN) rather than user stories. Tasks reference FRs directly.
 
