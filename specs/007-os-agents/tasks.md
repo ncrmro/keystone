@@ -13,10 +13,10 @@ Note: This spec uses functional requirements (FR-NNN) rather than user stories. 
 ```
 Phase 1:  [1] → [2]
 Phase 2:  [3] → [4]  (depends on Phase 1)
-Phase 3:  [5] [P] [6] [P] [7] [P] [8]  (all depend on Phase 1)
+Phase 3:  [5] [P] [6] [P] [7] [P] [8] [P]  (all depend on Phase 1)
 Phase 4:  [9] → [10]  (depends on Phase 1)
-Phase 5:  [11] [P] [12]  (11 depends on Phase 4, 12 depends on Phase 1)
-Phase 6:  [13] [P] [14]  (depend on Phase 4+5)
+Phase 5:  [11] [P] [12] [P]  (11 depends on Phase 4, 12 depends on Phase 1)
+Phase 6:  [13] [P] [14] [P]  (depend on Phase 4+5)
 Phase 7:  [15] → [16]  (depends on all above)
 ```
 
