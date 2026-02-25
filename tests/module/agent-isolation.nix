@@ -7,6 +7,8 @@
 # - Cross-agent, agent-human, and human-agent filesystem isolation
 # - Agents cannot sudo or write to system paths
 # - Users can write to their own home
+# - Desktop agent has labwc/wayvnc services and config files
+# - Non-desktop agent has no desktop services
 #
 # Build: nix build .#test-agent-isolation
 # Interactive: nix build .#test-agent-isolation.driverInteractive
@@ -50,11 +52,13 @@ pkgs.testers.nixosTest {
         };
 
         # Two agents (alphabetical: coder=4001, researcher=4002)
+        # researcher has desktop enabled, coder does not
         agents.coder = {
           fullName = "Coding Agent";
         };
         agents.researcher = {
           fullName = "Research Agent";
+          desktop.enable = true;
         };
       };
 
@@ -160,6 +164,53 @@ pkgs.testers.nixosTest {
     machine.succeed("su - agent-researcher -c 'touch ~/test-file'")
     machine.succeed("su - testuser -c 'touch ~/test-file'")
     print("PASS: Users can write to own home")
+
+    # === Desktop tests (FR-002) ===
+    print("")
+    print("Starting desktop tests...")
+
+    # 12. labwc service exists and is enabled for desktop agent
+    machine.succeed("systemctl is-enabled labwc-agent-researcher.service")
+    print("PASS: labwc service enabled for researcher")
+
+    # 13. wayvnc service exists and is enabled for desktop agent
+    machine.succeed("systemctl is-enabled wayvnc-agent-researcher.service")
+    print("PASS: wayvnc service enabled for researcher")
+
+    # 14. agent-desktops.target exists
+    machine.succeed("systemctl cat agent-desktops.target")
+    print("PASS: agent-desktops.target exists")
+
+    # 15. Labwc config files exist for desktop agent
+    machine.succeed("test -f /home/agent-researcher/.config/labwc/autostart")
+    machine.succeed("test -f /home/agent-researcher/.config/labwc/rc.xml")
+    machine.succeed("test -x /home/agent-researcher/.config/labwc/autostart")
+    print("PASS: Labwc config files exist and autostart is executable")
+
+    # 16. Labwc autostart references correct resolution
+    autostart = machine.succeed("cat /home/agent-researcher/.config/labwc/autostart")
+    assert "1920x1080" in autostart, f"Expected 1920x1080 in autostart, got: {autostart}"
+    print("PASS: Autostart contains correct resolution")
+
+    # 17. Labwc config owned by agent
+    config_owner = machine.succeed("stat -c '%U:%G' /home/agent-researcher/.config/labwc/autostart").strip()
+    assert config_owner == "agent-researcher:agents", f"labwc config owner: {config_owner}"
+    print("PASS: Labwc config owned by agent")
+
+    # 18. VNC binds to localhost only (no firewall port opened)
+    # Verify VNC port is NOT in the firewall (localhost-only binding)
+    fw_rules = machine.succeed("nft list ruleset")
+    assert "5901" not in fw_rules, "VNC port 5901 should NOT be in firewall (localhost-only)"
+    print("PASS: VNC port not exposed in firewall (localhost-only)")
+
+    # 19. Non-desktop agent has no labwc/wayvnc services
+    machine.fail("systemctl is-enabled labwc-agent-coder.service")
+    machine.fail("systemctl is-enabled wayvnc-agent-coder.service")
+    print("PASS: Non-desktop agent has no desktop services")
+
+    # 20. Non-desktop agent has no labwc config
+    machine.fail("test -f /home/agent-coder/.config/labwc/autostart")
+    print("PASS: Non-desktop agent has no labwc config")
 
     print("")
     print("All agent isolation tests passed!")
