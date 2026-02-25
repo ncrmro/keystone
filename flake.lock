@@ -219,11 +219,11 @@
         "pimalaya": "pimalaya"
       },
       "locked": {
-        "lastModified": 1768941959,
-        "narHash": "sha256-FOADi5gqjea6eS70jWKonDmyYdwHz0x0BnuYs9BeSyQ=",
+        "lastModified": 1771669262,
+        "narHash": "sha256-1ottA+HuEfVCqRa4zTE2YrmnrmcE87UZ+OcSzr9AmEY=",
         "owner": "pimalaya",
         "repo": "himalaya",
-        "rev": "3079e535563051f929fe6f925fa5b23e9bb765f0",
+        "rev": "b9231e1ed44a2580ebaf07d40202b99ca18d602a",
         "type": "github"
       },
       "original": {
@@ -606,11 +606,11 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1771598023,
-        "narHash": "sha256-OfEOXiwtt49IJSpGbQJ40Xe7JaSjpGWZ527GGGif3TA=",
+        "lastModified": 1771944434,
+        "narHash": "sha256-xJOtVIQ52zM9EZeUHKKJ+aGhn1svUTkJI3S8s445NFc=",
         "owner": "numtide",
         "repo": "llm-agents.nix",
-        "rev": "4844fc996b7853d2556bad744489f3ae88741f03",
+        "rev": "aba9382852d7757b45147deee70e464b58e3bd7c",
         "type": "github"
       },
       "original": {
@@ -687,11 +687,11 @@
     "pimalaya": {
       "flake": false,
       "locked": {
-        "lastModified": 1768260022,
-        "narHash": "sha256-GS6EOWJ7iRIzNB4pD1lBim2TRAoT8IT2l+tWLLeNhWM=",
+        "lastModified": 1770914484,
+        "narHash": "sha256-kPxdpg98/EVQKLkUdiFEYWWWI1uTLWfIewyCmb4ZfpE=",
         "owner": "pimalaya",
         "repo": "nix",
-        "rev": "5317be3d745a3b9687301c94ee5ab68dbc5a1253",
+        "rev": "23454cd59e2a32199a67f36f3b13cd5145b5ffb3",
         "type": "github"
       },
       "original": {

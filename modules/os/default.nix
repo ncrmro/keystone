@@ -142,6 +142,7 @@ in {
     ./airplay.nix
     ./mail.nix
     ./git-server.nix
+    ./agents.nix
   ];
 
   options.keystone.os = {
