@@ -10,7 +10,6 @@ let
 in
 {
   imports = [
-    ./age-yubikey.nix
     ./btop.nix
     ./clipboard.nix
     ./ghostty.nix

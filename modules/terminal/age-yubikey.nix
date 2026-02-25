@@ -5,10 +5,10 @@
 }:
 with lib;
 let
-  cfg = config.keystone.desktop.ageYubikey;
+  cfg = config.keystone.terminal.ageYubikey;
 in
 {
-  options.keystone.desktop.ageYubikey = {
+  options.keystone.terminal.ageYubikey = {
     enable = mkEnableOption "age-plugin-yubikey identity file management";
 
     identities = mkOption {
