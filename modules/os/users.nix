@@ -15,9 +15,14 @@
 with lib; let
   osCfg = config.keystone.os;
   cfg = osCfg.users;
+  hwKeyCfg = config.keystone.hardwareKey;
 
   # Check if ZFS is being used
   useZfs = osCfg.storage.type == "zfs";
+
+  # Resolve hardware key names to SSH public keys for a user
+  resolveHardwareKeys = userCfg:
+    map (name: hwKeyCfg.keys.${name}.sshPublicKey) userCfg.hardwareKeys;
 in {
   config =
     mkIf (osCfg.enable && cfg != {}) {
@@ -52,7 +57,14 @@ in {
           assertion = all (user: user.initialPassword != null || user.hashedPassword != null) (attrValues cfg);
           message = "All users must have either initialPassword or hashedPassword set";
         }
-      ];
+      ]
+      # Validate hardwareKeys references exist in keystone.hardwareKey.keys
+      ++ concatLists (mapAttrsToList (username: userCfg:
+        map (name: {
+          assertion = hwKeyCfg.keys ? ${name};
+          message = "keystone.os.users.${username}.hardwareKeys references '${name}' but no such key exists in keystone.hardwareKey.keys";
+        }) userCfg.hardwareKeys
+      ) cfg);
 
       # Enable zsh system-wide if any user has terminal enabled
       programs.zsh.enable = mkIf (any (u: u.terminal.enable) (attrValues cfg)) true;
@@ -68,7 +80,7 @@ in {
           extraGroups = unique (userCfg.extraGroups ++ (optionals useZfs ["zfs"]));
           initialPassword = userCfg.initialPassword;
           hashedPassword = userCfg.hashedPassword;
-          openssh.authorizedKeys.keys = userCfg.authorizedKeys;
+          openssh.authorizedKeys.keys = userCfg.authorizedKeys ++ (resolveHardwareKeys userCfg);
           shell = mkIf userCfg.terminal.enable pkgs.zsh;
         })
         cfg;
