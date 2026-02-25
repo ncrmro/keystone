@@ -361,8 +361,9 @@ in
 
               environment = {
                 WLR_BACKENDS = "headless";
+                WLR_RENDERER = "pixman";
+                WLR_HEADLESS_OUTPUTS = "1";
                 WLR_LIBINPUT_NO_DEVICES = "1";
-                WAYLAND_DISPLAY = waylandDisplay;
                 XDG_RUNTIME_DIR = xdgRuntimeDir;
                 XDG_CONFIG_HOME = "/home/${username}/.config";
               };
@@ -388,7 +389,7 @@ in
               requires = [ "labwc-agent-${name}.service" ];
 
               environment = {
-                WAYLAND_DISPLAY = waylandDisplay;
+                WAYLAND_DISPLAY = "wayland-0";
                 XDG_RUNTIME_DIR = xdgRuntimeDir;
               };
 
