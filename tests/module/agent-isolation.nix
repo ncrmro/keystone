@@ -177,15 +177,15 @@ pkgs.testers.nixosTest {
     machine.wait_for_file("/run/user/4002/wayland-0", timeout=15)
     print("PASS: Wayland socket created")
 
-    # 15. wayvnc is running
+    # 14. wayvnc is running
     machine.wait_for_unit("wayvnc-agent-researcher.service")
     print("PASS: wayvnc service active for researcher")
 
-    # 16. VNC port accepting connections
+    # 15. VNC port accepting connections
     machine.wait_for_open_port(5901, timeout=15)
     print("PASS: VNC port 5901 accepting connections")
 
-    # 17. wlr-randr confirms virtual output at correct resolution
+    # 16. wlr-randr confirms virtual output at correct resolution
     output = machine.succeed(
         "su - agent-researcher -c '"
         "XDG_RUNTIME_DIR=/run/user/4002 "
@@ -195,19 +195,19 @@ pkgs.testers.nixosTest {
     assert "HEADLESS-1" in output, f"Expected HEADLESS-1 in wlr-randr output: {output}"
     print("PASS: wlr-randr shows HEADLESS-1 virtual output")
 
-    # 18. Config files exist with correct ownership
+    # 17. Config files exist with correct ownership
     machine.succeed("test -f /home/agent-researcher/.config/labwc/autostart")
     machine.succeed("test -f /home/agent-researcher/.config/labwc/rc.xml")
     config_owner = machine.succeed("stat -c '%U:%G' /home/agent-researcher/.config/labwc/autostart").strip()
     assert config_owner == "agent-researcher:agents", f"labwc config owner: {config_owner}"
     print("PASS: Config files exist with correct ownership")
 
-    # 19. VNC is localhost-only (not in firewall)
+    # 18. VNC is localhost-only (not in firewall)
     fw_rules = machine.succeed("iptables -L -n 2>/dev/null || nft list ruleset 2>/dev/null || echo 'no firewall'")
     assert "5901" not in fw_rules, "VNC port 5901 should NOT be in firewall (localhost-only)"
     print("PASS: VNC port not exposed in firewall (localhost-only)")
 
-    # 20. Non-desktop agent has none of this
+    # 19. Non-desktop agent has none of this
     machine.fail("systemctl is-enabled labwc-agent-coder.service")
     machine.fail("test -f /home/agent-coder/.config/labwc/autostart")
     print("PASS: Non-desktop agent has no desktop services or config")

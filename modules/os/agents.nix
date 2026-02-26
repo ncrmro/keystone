@@ -342,7 +342,6 @@ in
             resolved = agentsWithUids.${name};
             uid = resolved.uid;
             port = agentVncPort name agentCfg;
-            waylandDisplay = "wayland-agent-${name}";
             xdgRuntimeDir = "/run/user/${toString uid}";
           in
           {
@@ -397,8 +396,9 @@ in
                 Type = "simple";
                 User = username;
                 Group = "agents";
-                # Wait for labwc to create the Wayland socket and virtual output
-                ExecStartPre = "${pkgs.coreutils}/bin/sleep 2";
+                # Poll for Wayland socket instead of fixed sleep — labwc startup
+                # time varies; this waits up to 10s with 100ms intervals
+                ExecStartPre = "${pkgs.bash}/bin/bash -c 'for i in $(seq 1 100); do [ -S \"${xdgRuntimeDir}/wayland-0\" ] && exit 0; sleep 0.1; done; echo \"Timed out waiting for Wayland socket\" >&2; exit 1'";
                 ExecStart = "${pkgs.wayvnc}/bin/wayvnc 127.0.0.1 ${toString port}";
                 Restart = "always";
                 RestartSec = 5;
