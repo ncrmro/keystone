@@ -104,3 +104,35 @@ impl HostDetailScreen {
         frame.render_widget(help, chunks[2]);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_host_accessor() {
+        let host = HostInfo {
+            name: "my-host".to_string(),
+            system: Some("x86_64-linux".to_string()),
+            keystone_modules: vec!["operating-system".to_string(), "desktop".to_string()],
+            config_files: vec!["./configuration.nix".to_string()],
+        };
+        let screen = HostDetailScreen::new(host);
+        assert_eq!(screen.host().name, "my-host");
+        assert_eq!(screen.host().system.as_deref(), Some("x86_64-linux"));
+        assert_eq!(screen.host().keystone_modules.len(), 2);
+    }
+
+    #[test]
+    fn test_host_with_no_system() {
+        let host = HostInfo {
+            name: "unknown-host".to_string(),
+            system: None,
+            keystone_modules: vec![],
+            config_files: vec![],
+        };
+        let screen = HostDetailScreen::new(host);
+        assert_eq!(screen.host().name, "unknown-host");
+        assert!(screen.host().system.is_none());
+    }
+}

@@ -1,0 +1,17 @@
+---
+source: tests/render.rs
+expression: output
+---
+                      Hosts - my-infra                      
+                                                            
+────────────────────────────────────────────────────────────
+>   laptop  (x86_64-linux)                                  
+    server  (x86_64-linux)                                  
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+   ↑/↓: navigate • Enter: details • a: add host • q: quit

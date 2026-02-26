@@ -86,3 +86,58 @@ impl<T> SelectMenu<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_menu() -> SelectMenu<&'static str> {
+        SelectMenu::new(vec![
+            MenuItem {
+                label: "Alpha".to_string(),
+                value: "a",
+            },
+            MenuItem {
+                label: "Beta".to_string(),
+                value: "b",
+            },
+            MenuItem {
+                label: "Gamma".to_string(),
+                value: "c",
+            },
+        ])
+    }
+
+    #[test]
+    fn test_initial_selection_is_zero() {
+        let menu = test_menu();
+        assert_eq!(menu.selected_index(), 0);
+        assert_eq!(menu.selected_value(), Some(&"a"));
+    }
+
+    #[test]
+    fn test_next_wraps_around() {
+        let mut menu = test_menu();
+        menu.next(); // 1
+        menu.next(); // 2
+        menu.next(); // wraps to 0
+        assert_eq!(menu.selected_index(), 0);
+    }
+
+    #[test]
+    fn test_previous_wraps_around() {
+        let mut menu = test_menu();
+        menu.previous(); // wraps to 2
+        assert_eq!(menu.selected_index(), 2);
+        assert_eq!(menu.selected_value(), Some(&"c"));
+    }
+
+    #[test]
+    fn test_empty_menu() {
+        let mut menu: SelectMenu<()> = SelectMenu::new(vec![]);
+        assert_eq!(menu.selected_value(), None);
+        menu.next(); // should not panic
+        menu.previous(); // should not panic
+        assert_eq!(menu.selected_index(), 0);
+    }
+}
