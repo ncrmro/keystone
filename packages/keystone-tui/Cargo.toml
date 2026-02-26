@@ -1,0 +1,48 @@
+[package]
+name = "keystone-tui"
+version = "0.1.0"
+edition = "2021"
+description = "TUI for Keystone NixOS infrastructure configuration and management"
+license = "MIT"
+
+[[bin]]
+name = "keystone-tui"
+path = "src/main.rs"
+
+[dependencies]
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Async
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "fs", "io-util"] }
+tokio-util = "0.7"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Git
+git2 = "0.19"
+
+# SSH keys
+ssh-key = { version = "0.6", features = ["ed25519", "std"] }
+
+# Nix parsing
+rnix = "0.11"
+
+# Encryption (agenix-compatible)
+age = { version = "0.11", features = ["cli-common"] }
+
+# FIDO2
+# ctap-hid-fido2 deferred — shell out to ssh-keygen -t ed25519-sk initially
+
+# Home directory discovery
+home = "0.5"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"

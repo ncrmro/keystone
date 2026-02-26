@@ -6,7 +6,7 @@
   sshKeys ? [],
   ...
 }: let
-  keystone-installer-ui = pkgs.callPackage ../packages/keystone-installer-ui {};
+  keystone-tui = pkgs.callPackage ../packages/keystone-tui {};
 in {
   # Enable SSH daemon for remote access
   services.openssh = {
@@ -34,7 +34,7 @@ in {
 
   # Include TUI installer and tools for installation
   environment.systemPackages = with pkgs; [
-    keystone-installer-ui
+    keystone-tui
     git
     curl
     wget
@@ -98,7 +98,7 @@ in {
     serviceConfig = {
       Type = "simple";
       User = "root";
-      ExecStart = "${keystone-installer-ui}/bin/keystone-installer";
+      ExecStart = "${keystone-tui}/bin/keystone-tui";
       Restart = "on-failure";
       RestartSec = "5s";
       StandardInput = "tty";
