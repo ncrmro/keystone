@@ -136,3 +136,62 @@ impl HostsScreen {
         frame.render_widget(help, chunks[2]);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_hosts() -> Vec<HostInfo> {
+        vec![
+            HostInfo {
+                name: "laptop".to_string(),
+                system: Some("x86_64-linux".to_string()),
+                keystone_modules: vec!["operating-system".to_string()],
+                config_files: vec![],
+            },
+            HostInfo {
+                name: "server".to_string(),
+                system: Some("x86_64-linux".to_string()),
+                keystone_modules: vec![],
+                config_files: vec![],
+            },
+            HostInfo {
+                name: "workstation".to_string(),
+                system: None,
+                keystone_modules: vec![],
+                config_files: vec![],
+            },
+        ]
+    }
+
+    #[test]
+    fn test_initial_selection() {
+        let screen = HostsScreen::new("repo".to_string(), sample_hosts());
+        assert_eq!(screen.selected_host().unwrap().name, "laptop");
+    }
+
+    #[test]
+    fn test_next_wraps() {
+        let mut screen = HostsScreen::new("repo".to_string(), sample_hosts());
+        screen.next(); // server
+        screen.next(); // workstation
+        screen.next(); // wraps to laptop
+        assert_eq!(screen.selected_host().unwrap().name, "laptop");
+    }
+
+    #[test]
+    fn test_previous_wraps() {
+        let mut screen = HostsScreen::new("repo".to_string(), sample_hosts());
+        screen.previous(); // wraps to workstation
+        assert_eq!(screen.selected_host().unwrap().name, "workstation");
+    }
+
+    #[test]
+    fn test_empty_hosts() {
+        let mut screen = HostsScreen::new("repo".to_string(), Vec::new());
+        assert!(screen.selected_host().is_none());
+        screen.next(); // should not panic
+        screen.previous(); // should not panic
+        assert!(screen.selected_host().is_none());
+    }
+}

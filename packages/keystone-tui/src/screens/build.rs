@@ -154,6 +154,38 @@ impl BuildScreen {
         }
     }
 
+    /// Create a BuildScreen with a pre-created channel (no subprocess spawned).
+    /// Useful for testing — inject synthetic BuildMessages via the sender.
+    pub fn new_with_channel(
+        host_name: String,
+        rx: mpsc::UnboundedReceiver<BuildMessage>,
+    ) -> Self {
+        Self {
+            host_name,
+            output_lines: Vec::new(),
+            scroll_offset: 0,
+            auto_scroll: true,
+            result: None,
+            rx,
+            cancel_token: CancellationToken::new(),
+        }
+    }
+
+    /// Get the current output lines.
+    pub fn output_lines(&self) -> &[String] {
+        &self.output_lines
+    }
+
+    /// Get the build result, if finished.
+    pub fn result(&self) -> Option<&BuildResult> {
+        self.result.as_ref()
+    }
+
+    /// Whether auto-scroll is active.
+    pub fn is_auto_scroll(&self) -> bool {
+        self.auto_scroll
+    }
+
     /// Poll for new messages from the build process (non-blocking).
     pub fn poll(&mut self) {
         while let Ok(msg) = self.rx.try_recv() {
@@ -264,5 +296,68 @@ impl BuildScreen {
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_poll_collects_output() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = BuildScreen::new_with_channel("test-host".to_string(), rx);
+
+        tx.send(BuildMessage::Output("line 1".to_string())).unwrap();
+        tx.send(BuildMessage::Output("line 2".to_string())).unwrap();
+
+        screen.poll();
+        assert_eq!(screen.output_lines(), &["line 1", "line 2"]);
+        assert!(!screen.is_finished());
+    }
+
+    #[test]
+    fn test_finished_detection() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = BuildScreen::new_with_channel("test-host".to_string(), rx);
+
+        tx.send(BuildMessage::Output("building...".to_string()))
+            .unwrap();
+        tx.send(BuildMessage::Finished(BuildResult::Success))
+            .unwrap();
+
+        screen.poll();
+        assert!(screen.is_finished());
+        assert!(matches!(screen.result(), Some(BuildResult::Success)));
+    }
+
+    #[test]
+    fn test_scroll_up_disables_auto_scroll() {
+        let (_tx, rx) = mpsc::unbounded_channel();
+        let mut screen = BuildScreen::new_with_channel("test-host".to_string(), rx);
+
+        assert!(screen.is_auto_scroll());
+        screen.scroll_up();
+        assert!(!screen.is_auto_scroll());
+    }
+
+    #[test]
+    fn test_scroll_down_re_enables_auto_scroll() {
+        let (_tx, rx) = mpsc::unbounded_channel();
+        let mut screen = BuildScreen::new_with_channel("test-host".to_string(), rx);
+
+        screen.scroll_up(); // offset=1, auto=false
+        screen.scroll_down(); // offset=0, auto=true
+        assert!(screen.is_auto_scroll());
+    }
+
+    #[test]
+    fn test_scroll_down_at_bottom_is_noop() {
+        let (_tx, rx) = mpsc::unbounded_channel();
+        let mut screen = BuildScreen::new_with_channel("test-host".to_string(), rx);
+
+        // Already at bottom
+        screen.scroll_down();
+        assert!(screen.is_auto_scroll());
     }
 }
