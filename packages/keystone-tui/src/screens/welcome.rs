@@ -19,7 +19,7 @@ pub struct WelcomeScreen {
 }
 
 /// State machine for the welcome screen flow.
-#[derive(Default, PartialEq, Eq, Clone)]
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub enum WelcomeState {
     #[default]
     SelectAction,
@@ -31,7 +31,7 @@ pub enum WelcomeState {
     Error,
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum WelcomeOption {
     #[default]
     ImportExisting,
@@ -39,6 +39,7 @@ pub enum WelcomeOption {
 }
 
 /// Result from handling input on the welcome screen.
+#[derive(Debug)]
 pub enum WelcomeAction {
     None,
     ImportRepo { name: String, git_url: String },
@@ -395,5 +396,125 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
         y: popup_layout[1].y,
         width: popup_layout[1].width,
         height: height.min(popup_layout[1].height),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_initial_state() {
+        let screen = WelcomeScreen::new();
+        assert_eq!(*screen.state(), WelcomeState::SelectAction);
+        assert_eq!(screen.get_selected_option(), WelcomeOption::ImportExisting);
+    }
+
+    #[test]
+    fn test_toggle_options() {
+        let mut screen = WelcomeScreen::new();
+        assert_eq!(screen.get_selected_option(), WelcomeOption::ImportExisting);
+        screen.next();
+        assert_eq!(screen.get_selected_option(), WelcomeOption::CreateNew);
+        screen.next();
+        assert_eq!(screen.get_selected_option(), WelcomeOption::ImportExisting);
+    }
+
+    #[test]
+    fn test_previous_toggles() {
+        let mut screen = WelcomeScreen::new();
+        screen.previous();
+        assert_eq!(screen.get_selected_option(), WelcomeOption::CreateNew);
+    }
+
+    #[test]
+    fn test_confirm_import_transitions_to_input() {
+        let mut screen = WelcomeScreen::new();
+        // Select ImportExisting (default) and confirm
+        let action = screen.confirm();
+        assert!(matches!(action, WelcomeAction::None));
+        assert_eq!(*screen.state(), WelcomeState::InputGitUrl);
+    }
+
+    #[test]
+    fn test_confirm_create_transitions_to_input() {
+        let mut screen = WelcomeScreen::new();
+        screen.next(); // Select CreateNew
+        let action = screen.confirm();
+        assert!(matches!(action, WelcomeAction::None));
+        assert_eq!(*screen.state(), WelcomeState::InputRepoName);
+    }
+
+    #[test]
+    fn test_empty_git_url_produces_error() {
+        let mut screen = WelcomeScreen::new();
+        screen.confirm(); // Go to InputGitUrl
+        // Confirm with empty URL
+        let action = screen.confirm();
+        assert!(matches!(action, WelcomeAction::None));
+        assert_eq!(*screen.state(), WelcomeState::Error);
+    }
+
+    #[test]
+    fn test_cancel_returns_to_select() {
+        let mut screen = WelcomeScreen::new();
+        screen.confirm(); // Go to InputGitUrl
+        assert_eq!(*screen.state(), WelcomeState::InputGitUrl);
+        screen.cancel();
+        assert_eq!(*screen.state(), WelcomeState::SelectAction);
+    }
+
+    #[test]
+    fn test_success_then_complete() {
+        let mut screen = WelcomeScreen::new();
+        screen.set_success("Repo imported!".to_string());
+        assert_eq!(*screen.state(), WelcomeState::Success);
+        let action = screen.confirm();
+        assert!(matches!(action, WelcomeAction::Complete));
+    }
+
+    #[test]
+    fn test_git_url_entry_and_confirm() {
+        let mut screen = WelcomeScreen::new();
+        screen.confirm(); // Go to InputGitUrl
+        assert_eq!(*screen.state(), WelcomeState::InputGitUrl);
+
+        // Type a URL via handle_text_input
+        use crossterm::event::{KeyCode, KeyEventKind, KeyEventState, KeyModifiers};
+        let chars = "https://github.com/user/my-repo.git";
+        for c in chars.chars() {
+            screen.handle_text_input(KeyEvent {
+                code: KeyCode::Char(c),
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            });
+        }
+
+        let action = screen.confirm();
+        match action {
+            WelcomeAction::ImportRepo { name, git_url } => {
+                assert_eq!(git_url, "https://github.com/user/my-repo.git");
+                assert_eq!(name, "my-repo");
+            }
+            other => panic!("Expected ImportRepo, got {:?}", other),
+        }
+        assert_eq!(*screen.state(), WelcomeState::Importing);
+    }
+
+    #[test]
+    fn test_extract_repo_name_https() {
+        assert_eq!(
+            extract_repo_name("https://github.com/user/my-repo.git"),
+            Some("my-repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_ssh() {
+        assert_eq!(
+            extract_repo_name("git@github.com:user/my-repo.git"),
+            Some("my-repo".to_string())
+        );
     }
 }
