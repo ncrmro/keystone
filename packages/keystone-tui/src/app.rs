@@ -92,6 +92,31 @@ impl App {
             .map(|r| r.path.clone())
     }
 
+    /// Create an App with a given config, starting on the Welcome screen.
+    /// Skips filesystem operations (no `discover_repos`, no `AppConfig::load`).
+    pub fn new_with_config(config: AppConfig) -> Self {
+        let has_repos = !config.repos.is_empty();
+        let current_screen = if has_repos {
+            // Start on hosts with empty hosts list (no flake parsing)
+            let name = config.repos[0].name.clone();
+            AppScreen::Hosts(HostsScreen::new(name, Vec::new()))
+        } else {
+            AppScreen::Welcome(WelcomeScreen::new())
+        };
+
+        Self {
+            should_quit: false,
+            config,
+            current_screen,
+            active_repo_index: if has_repos { Some(0) } else { None },
+        }
+    }
+
+    /// Create a minimal App for testing — starts on Welcome with empty config.
+    pub fn new_for_test() -> Self {
+        Self::new_with_config(AppConfig::default())
+    }
+
     pub async fn save_config(&self) {
         if let Err(e) = self.config.save().await {
             eprintln!("Failed to save config: {:?}", e);
