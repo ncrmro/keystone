@@ -32,21 +32,19 @@ Phase 7:  [15] → [16]  (depends on all above)
 **Description:**
 Create the `keystone.os.agents` option set in `modules/os/default.nix` and implement the agent user provisioning module. The agent submodule type mirrors the existing `userSubmodule` in `default.nix` but with agent-specific defaults (no password, `agents` group, UID 4000+ range). Include agenix secret path conventions and assertions. Wire up home-manager to reuse `keystone.terminal` for agent configs.
 
-**Files to Create/Modify:**
-- `modules/os/agents.nix` — Top-level option declarations for `keystone.os.agents` (agentSubmodule type)
-- `modules/os/agents/default.nix` — Imports all agent sub-modules
-- `modules/os/agents/users.nix` — User creation: NixOS user, home dir (ZFS or ext4), `agents` group, home-manager with `keystone.terminal`
-- `modules/os/agents/secrets.nix` — Agenix path convention (`/run/agenix/agent-{name}-*`), assertions (secrets readable only by owner)
-- `modules/os/default.nix` — Add `./agents.nix` to imports, add `keystone.os.agents` option
+**Files Created/Modified:**
+- `modules/os/agents.nix` — Single consolidated module with option declarations, user creation, home directory setup (ZFS + ext4), and desktop services
+
+> **Deviation from plan**: Implemented as a single `agents.nix` file instead of `agents/` directory with 14 sub-files. The consolidated approach keeps all agent logic co-located and avoids premature abstraction while the feature set is small. Sub-modules can be extracted later as complexity grows.
 
 **Acceptance Criteria:**
-- [ ] `keystone.os.agents.researcher = { fullName = "Research Agent"; email = "researcher@test.local"; }` is a valid config
-- [ ] Agent user `agent-researcher` is created with UID >= 4000
-- [ ] Agent user belongs to `agents` group
-- [ ] Agent user has no password and is not in `wheel`
-- [ ] Home directory exists at `/home/agent-researcher` with `chmod 700`
-- [ ] Home-manager config reuses `keystone.terminal` module
-- [ ] Agenix assertions verify secret ownership
+- [x] `keystone.os.agents.researcher = { fullName = "Research Agent"; email = "researcher@test.local"; }` is a valid config
+- [x] Agent user `agent-researcher` is created with UID >= 4000
+- [x] Agent user belongs to `agents` group
+- [x] Agent user has no password and is not in `wheel`
+- [x] Home directory exists at `/home/agent-researcher` with `chmod 700`
+- [ ] Home-manager config reuses `keystone.terminal` module *(deferred — agents don't use home-manager yet)*
+- [ ] Agenix assertions verify secret ownership *(deferred — secrets.nix not implemented yet)*
 
 **Validation:**
 Run `nix eval` on a test config to verify option evaluation succeeds without errors.
@@ -61,29 +59,31 @@ Run `nix eval` on a test config to verify option evaluation succeeds without err
 **Description:**
 Create a NixOS VM test that declares 2 agents and verifies the core provisioning from Task 1. This establishes the test pattern expanded in later phases.
 
-**Files to Create:**
-- `tests/os-agents.nix` — NixOS VM test with 2 agents (`researcher` and `coder`)
+**Files Created:**
+- `tests/module/agent-isolation.nix` — NixOS VM test with 2 agents (`researcher` and `coder`) + 1 human user, 19 assertions covering both eval and runtime
+
+> **Deviation from plan**: Test file at `tests/module/agent-isolation.nix` (not `tests/os-agents.nix`). Check name is `checks.x86_64-linux.test-agent-isolation` (not `os-agents`). Also tests human-agent isolation (bidirectional), sudo restrictions, and system path write restrictions — exceeding the original Phase 1 scope.
 
 **Acceptance Criteria:**
-- [ ] Test provisions 2 agents: `agent-researcher` (uid 4001) and `agent-coder` (uid 4002)
-- [ ] Asserts both users exist with correct UIDs
-- [ ] Asserts both users are in `agents` group
-- [ ] Asserts neither user is in `wheel` group
-- [ ] Asserts home directories exist with correct ownership
-- [ ] Asserts `agent-researcher` cannot read `/home/agent-coder/`
-- [ ] Test passes: `nix build .#checks.x86_64-linux.os-agents`
+- [x] Test provisions 2 agents: `agent-researcher` (uid 4002) and `agent-coder` (uid 4001)
+- [x] Asserts both users exist with correct UIDs
+- [x] Asserts both users are in `agents` group
+- [x] Asserts neither user is in `wheel` group
+- [x] Asserts home directories exist with correct ownership
+- [x] Asserts `agent-researcher` cannot read `/home/agent-coder/`
+- [x] Test passes: `nix build .#checks.x86_64-linux.test-agent-isolation`
 
 **Validation:**
-`nix build .#checks.x86_64-linux.os-agents` exits 0.
+`nix build .#checks.x86_64-linux.test-agent-isolation` exits 0.
 
 ---
 
 ## Checkpoint: Phase 1 Complete
 
 **Verify:**
-- [ ] Agent option declarations evaluate without error
-- [ ] VM test passes with 2 agents
-- [ ] Cross-agent home directory isolation confirmed
+- [x] Agent option declarations evaluate without error
+- [x] VM test passes with 2 agents
+- [x] Cross-agent home directory isolation confirmed
 
 ---
 
@@ -95,20 +95,22 @@ Create a NixOS VM test that declares 2 agents and verifies the core provisioning
 **Dependencies**: Task 1
 
 **Description:**
-Implement the headless Wayland desktop as systemd user services. Cage compositor runs as the primary service, wayvnc binds to a configurable port for remote viewing. Services auto-start on boot and restart on crash. Group under `agent-desktops.target`.
+Implement the headless Wayland desktop as systemd system services with `User=`. labwc compositor runs as the primary service, wayvnc binds to a configurable port for remote viewing. Services auto-start on boot and restart on crash. Group under `agent-desktops.target`.
 
-**Files to Create:**
-- `modules/os/agents/desktop.nix` — Cage compositor + wayvnc as systemd user services, `agent-desktops.target`, configurable resolution and VNC port
+**Files Modified:**
+- `modules/os/agents.nix` — labwc compositor + wayvnc as systemd system services (with `User=`), `agent-desktops.target`, configurable resolution and VNC port, labwc config generation
+
+> **Deviation from plan**: Uses labwc (not Cage) — labwc has better wlroots headless backend support with `WLR_BACKENDS=headless` and `WLR_RENDERER=pixman`. Uses systemd system services with `User=` directive (not user services) to avoid linger/session bootstrap issues. Desktop config is in the consolidated `agents.nix` (not a separate `desktop.nix`).
 
 **Acceptance Criteria:**
-- [ ] `keystone.os.agents.researcher.desktop.enable = true` activates desktop services
-- [ ] Cage compositor runs as systemd user service under agent account
-- [ ] wayvnc binds to configured port (default 5901)
-- [ ] Services restart on failure (`Restart=always`)
-- [ ] `agent-desktops.target` groups all agent desktop services
+- [x] `keystone.os.agents.researcher.desktop.enable = true` activates desktop services
+- [x] labwc compositor runs as systemd system service under agent account
+- [x] wayvnc binds to configured port (default 5901)
+- [x] Services restart on failure (`Restart=always`)
+- [x] `agent-desktops.target` groups all agent desktop services
 
 **Validation:**
-Extend VM test: `systemctl --user -M agent-researcher@ is-active cage-desktop.service` succeeds.
+VM test validates: labwc service active, Wayland socket created, wayvnc service active, VNC port 5901 accepting connections, wlr-randr shows HEADLESS-1 virtual output, config files exist with correct ownership, VNC is localhost-only, non-desktop agent has no desktop services.
 
 ---
 
@@ -134,12 +136,12 @@ Extend VM test: `curl -s http://localhost:9222/json/version` returns Chrome vers
 
 ---
 
-## Checkpoint: Phase 2 Complete
+## Checkpoint: Phase 2 Partial (Desktop complete, Chrome pending)
 
 **Verify:**
-- [ ] Agent desktop visible via VNC connection
-- [ ] Chrome running with remote debugging accessible
-- [ ] Services survive restart
+- [x] Agent desktop visible via VNC connection
+- [ ] Chrome running with remote debugging accessible *(Task 4 not started)*
+- [x] Services survive restart
 
 ---
 
@@ -485,9 +487,9 @@ Configure CI to run the agent security tests on PRs that touch `modules/os/agent
 
 | Task | Status | FR | Phase | Notes |
 |------|--------|----|-------|-------|
-| 1 | [ ] | FR-001, FR-008 | 1 | Foundation — all others depend on this |
-| 2 | [ ] | FR-012 | 1 | VM test pattern established |
-| 3 | [ ] | FR-002 | 2 | Headless desktop |
+| 1 | [x] | FR-001, FR-008 | 1 | Done via single `agents.nix`. Home-manager and agenix deferred. |
+| 2 | [x] | FR-012 | 1 | Done as `tests/module/agent-isolation.nix` (19 assertions, eval + runtime) |
+| 3 | [x] | FR-002 | 2 | Done with labwc (not Cage), system services with `User=` (not user services) |
 | 4 | [ ] | FR-003 | 2 | Chrome + DevTools |
 | 5 | [ ] | FR-004 | 3 | Email (parallel with 6,7,8) |
 | 6 | [ ] | FR-005 | 3 | Bitwarden (parallel with 5,7,8) |
