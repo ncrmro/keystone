@@ -59,6 +59,13 @@ with lib; let
         example = ["ssh-ed25519 AAAAC3... alice@laptop"];
       };
 
+      hardwareKeys = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        description = "Names of hardware keys (from keystone.hardwareKey.keys) whose SSH public keys are added to this user's authorizedKeys.";
+        example = ["yubi-black"];
+      };
+
       initialPassword = mkOption {
         type = types.nullOr types.str;
         default = null;
