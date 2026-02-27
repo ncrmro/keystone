@@ -14,18 +14,20 @@
 }:
 let
   nixosSystem =
-    if nixpkgs != null
-    then nixpkgs.lib.nixosSystem
-    else import "${pkgs.path}/nixos/lib/eval-config.nix";
+    if nixpkgs != null then
+      nixpkgs.lib.nixosSystem
+    else
+      import "${pkgs.path}/nixos/lib/eval-config.nix";
 
   # Helper: evaluate a NixOS config and serialize a config value to prove evaluation.
   # Uses builtins.toJSON on users.users to force module evaluation of agent user
   # creation without pulling in the full system build (which needs lanzaboote/cargo).
-  eval = name: modules: let
-    result = nixosSystem {
-      system = "x86_64-linux";
-      modules =
-        [
+  eval =
+    name: modules:
+    let
+      result = nixosSystem {
+        system = "x86_64-linux";
+        modules = [
           self.nixosModules.operating-system
           {
             # Minimal required config for evaluation
@@ -34,15 +36,17 @@ let
           }
         ]
         ++ modules;
-    };
-    # Serialize user config to force evaluation of agent user creation
-    usersJson = builtins.toJSON (builtins.attrNames result.config.users.users);
-    groupsJson = builtins.toJSON (builtins.attrNames result.config.users.groups);
-  in
-    pkgs.runCommand "eval-${name}" {} ''
+      };
+      # Serialize user config to force evaluation of agent user creation
+      usersJson = builtins.toJSON (builtins.attrNames result.config.users.users);
+      groupsJson = builtins.toJSON (builtins.attrNames result.config.users.groups);
+      servicesJson = builtins.toJSON (builtins.attrNames result.config.systemd.services);
+    in
+    pkgs.runCommand "eval-${name}" { } ''
       echo "Evaluating ${name}..."
       echo "  Users: ${usersJson}"
       echo "  Groups: ${groupsJson}"
+      echo "  Services: ${servicesJson}"
       touch $out
     '';
 
@@ -55,7 +59,7 @@ let
           enable = true;
           storage = {
             type = "ext4";
-            devices = ["/dev/vda"];
+            devices = [ "/dev/vda" ];
           };
           users.testuser = {
             fullName = "Test User";
@@ -76,7 +80,7 @@ let
           enable = true;
           storage = {
             type = "ext4";
-            devices = ["/dev/vda"];
+            devices = [ "/dev/vda" ];
           };
           users.testuser = {
             fullName = "Test User";
@@ -101,7 +105,7 @@ let
           enable = true;
           storage = {
             type = "zfs";
-            devices = ["/dev/vda"];
+            devices = [ "/dev/vda" ];
           };
           users.testuser = {
             fullName = "Test User";
@@ -134,7 +138,7 @@ let
           enable = true;
           storage = {
             type = "ext4";
-            devices = ["/dev/vda"];
+            devices = [ "/dev/vda" ];
           };
           users.testuser = {
             fullName = "Test User";
@@ -151,17 +155,74 @@ let
         };
       }
     ];
+
+    # Agent with desktop enabled (labwc + wayvnc)
+    agent-desktop = eval "agent-desktop" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            desktop.enable = true;
+          };
+          agents.coder = {
+            fullName = "Coding Agent";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with desktop and custom resolution + explicit VNC port
+    agent-desktop-custom = eval "agent-desktop-custom" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            desktop = {
+              enable = true;
+              resolution = "2560x1440";
+              vncPort = 5910;
+            };
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-agent-evaluation"
-{
-  # Depend on all eval derivations so they get built
-  buildInputs = builtins.attrValues tests;
-}
-''
-  echo "Agent module evaluation tests"
-  echo "============================="
-  echo ""
-  echo "All agent module configurations evaluated successfully!"
-  touch $out
-''
+  {
+    # Depend on all eval derivations so they get built
+    buildInputs = builtins.attrValues tests;
+  }
+  ''
+    echo "Agent module evaluation tests"
+    echo "============================="
+    echo ""
+    echo "All agent module configurations evaluated successfully!"
+    touch $out
+  ''
