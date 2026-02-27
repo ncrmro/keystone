@@ -237,9 +237,9 @@ Secrets:
 
 ## Open Questions
 
-1. **Compositor choice**: Cage is simplest (single-app kiosk), but Sway headless allows multi-window. Should agents have multi-window desktops or a Chrome-only kiosk?
-2. **VNC vs RDP**: wayvnc is lightweight but RDP (via wlfreerdp) offers better performance. Which protocol to prioritize?
-3. **Chrome vs Chromium**: Google Chrome includes proprietary codecs and sync. Chromium is pure open-source but lacks some features. Preference?
+1. ~~**Compositor choice**: Cage is simplest (single-app kiosk), but Sway headless allows multi-window. Should agents have multi-window desktops or a Chrome-only kiosk?~~ **Resolved**: labwc — better wlroots headless backend support than Cage or Sway. Runs with `WLR_BACKENDS=headless` + `WLR_RENDERER=pixman`. Multi-window capable for future Chrome + other apps.
+2. ~~**VNC vs RDP**: wayvnc is lightweight but RDP (via wlfreerdp) offers better performance. Which protocol to prioritize?~~ **Resolved**: wayvnc (VNC). Lightweight, Wayland-native, localhost-only by default. Remote access via SSH tunnel (`ssh -L 5901:127.0.0.1:5901`) or Tailscale. TLS support available but not yet configured.
+3. ~~**Chrome vs Chromium**: Google Chrome includes proprietary codecs and sync. Chromium is pure open-source but lacks some features. Preference?~~ **Deferred**: Chrome/Chromium not yet implemented (Task 4). Decision will be made when FR-003 work begins.
 4. **Agent-to-agent communication**: Should agents be able to communicate with each other (e.g., shared mailbox, shared Bitwarden collection)?
 5. **Lifecycle management**: Should there be a CLI (`keystone-agent-os`) for imperative operations (restart desktop, rotate keys, view logs)?
 

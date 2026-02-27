@@ -4,15 +4,15 @@
 
 ### High-Level Design
 
-The agent system extends the existing `keystone.os.users` pattern with a parallel `keystone.os.agents` option set. Agents are standard NixOS users with additional systemd user services for desktop, browser, task loop, and MCP. A shared `agents.nix` module in `modules/os/` mirrors the structure of `users.nix`.
+The agent system extends the existing `keystone.os.users` pattern with a parallel `keystone.os.agents` option set. Agents are standard NixOS users with systemd system services (using `User=` directives) for desktop and VNC, plus future systemd user services for browser, task loop, and MCP. A single `agents.nix` module in `modules/os/` consolidates all agent logic.
 
 ```
 keystone.os.agents.{name}
   ├── NixOS user (agent-{name}, uid 4000+, agents group)
-  ├── Home-manager config (reuses keystone.terminal, adds agent-specific layers)
-  ├── Systemd user services (desktop, chrome, ssh-agent, task-loop, MCP)
-  ├── Agenix secrets (/run/agenix/agent-{name}-*)
-  └── Agent-space (/home/agent-{name}/agent-space/, git-initialized)
+  ├── Systemd system services (labwc desktop, wayvnc — with User= directive)
+  ├── Future: home-manager config (keystone.terminal reuse)
+  ├── Future: agenix secrets (/run/agenix/agent-{name}-*)
+  └── Future: agent-space (/home/agent-{name}/agent-space/, git-initialized)
 ```
 
 ### Architecture Diagram
@@ -28,9 +28,9 @@ keystone.os.agents.{name}
 │  ┌────────────── agent-researcher (uid 4001) ──────────────────────────────┐  │
 │  │  /home/agent-researcher/                                                │  │
 │  │                                                                         │  │
-│  │  agent-space/                        systemd user services:             │  │
-│  │  ├── TASKS.yaml                      ├── cage-desktop.service           │  │
-│  │  ├── PROJECTS.yaml                   ├── wayvnc.service                 │  │
+│  │  agent-space/                        systemd system services (User=):   │  │
+│  │  ├── TASKS.yaml                      ├── labwc-agent-{name}.service     │  │
+│  │  ├── PROJECTS.yaml                   ├── wayvnc-agent-{name}.service    │  │
 │  │  ├── ISSUES.yaml                     ├── chrome.service                 │  │
 │  │  ├── SCHEDULES.yaml                  ├── chrome-devtools-mcp.service    │  │
 │  │  ├── SOUL.md / HUMAN.md             ├── ssh-agent.service              │  │
@@ -58,8 +58,9 @@ keystone.os.agents.{name}
 │  └────────────────────────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────────────────────────┘
 
-Remote Observation (over Headscale):
-  Laptop ──tailnet──▶ agent-researcher:5901 (VNC) ──▶ Cage desktop + Chrome
+Remote Observation (over Headscale or SSH tunnel):
+  Laptop ──tailnet──▶ agent-researcher:5901 (VNC) ──▶ labwc desktop + Chrome
+  Laptop ──ssh -L──▶ host:5901 (localhost) ──▶ labwc desktop + Chrome
 ```
 
 ### Configuration Interface
@@ -71,9 +72,9 @@ keystone.os.agents.researcher = {
 
   desktop = {
     enable = true;
-    compositor = "cage";        # cage | sway-headless
+    # Compositor: labwc with WLR_BACKENDS=headless (resolved from Open Question 1)
     resolution = "1920x1080";
-    vnc.port = 5901;            # Each agent gets a unique port
+    vncPort = 5901;             # Each agent gets a unique port (auto-assigned if null)
   };
 
   chrome = {
@@ -161,32 +162,34 @@ keystone.os.agents.researcher = {
 
 ```
 multi-user.target
+  ├── create-agent-homes.service (ext4) or zfs-agent-datasets.service (ZFS)
   └── agent-desktops.target
-        ├── agent-researcher-desktop.service
-        │     ├── cage (Wayland compositor)
-        │     ├── wayvnc (VNC server, After=cage)
-        │     ├── chrome (browser, After=cage)
-        │     └── chrome-devtools-mcp (After=chrome)
-        └── agent-coder-desktop.service
-              └── (same structure)
+        ├── labwc-agent-researcher.service  (system service, User=agent-researcher)
+        │     └── Requires: create-agent-homes.service
+        ├── wayvnc-agent-researcher.service (system service, User=agent-researcher)
+        │     └── Requires: labwc-agent-researcher.service
+        │     └── ExecStartPre: polls for wayland-0 socket (up to 10s)
+        ├── (future) chrome-agent-researcher.service (After=labwc)
+        └── (future) chrome-devtools-mcp (After=chrome)
 
-user@4001.service (systemd user instance)
+(future) user@{uid}.service (systemd user instance)
   ├── ssh-agent.service (auto-unlock key from agenix)
   ├── task-loop.timer → task-loop.service (process task queue)
   ├── scheduler.timer → scheduler.service (ingest new work)
   └── mcp-*.service (additional MCP servers)
 
-System services (root):
+(future) System services (root):
   ├── agent-audit@{name}.service (audit log writer)
   └── agent-audit-forward.service (Alloy → Loki)
 ```
 
+> **Note on system vs user services**: The plan originally called for systemd user services, but implementation uses system services with `User=` directives. This avoids the complexity of systemd-logind linger sessions and user service bootstrap ordering. The XDG_RUNTIME_DIR is managed via `RuntimeDirectory=` in the service config.
+
 ### Component Responsibilities
 
-- **`modules/os/agents.nix`** — Option definitions for `keystone.os.agents.{name}` (agent submodule type). Mirrors `default.nix`'s user submodule pattern. Imports agent sub-modules.
-- **`modules/os/agents/`** — Directory of agent sub-modules, each handling one FR:
-  - `users.nix` — FR-001: User creation, UID allocation, home directory, home-manager
-  - `desktop.nix` — FR-002: Cage/Sway compositor, wayvnc, systemd user services
+- **`modules/os/agents.nix`** — Single consolidated module handling FR-001 (user provisioning), FR-002 (labwc desktop + wayvnc), and option declarations for the `keystone.os.agents.{name}` submodule type. Includes UID auto-assignment, VNC port auto-assignment, ext4/ZFS home directory creation, labwc config generation, and systemd service definitions.
+- **`tests/module/agent-isolation.nix`** — FR-012: NixOS VM test for isolation verification (19 assertions)
+- **Future sub-modules** (will be extracted from `agents.nix` or added as new files as complexity grows):
   - `chrome.nix` — FR-003: Chrome with remote debugging
   - `mail.nix` — FR-004: Stalwart account + himalaya CLI config
   - `bitwarden.nix` — FR-005: Vaultwarden account + bw CLI config
@@ -199,8 +202,7 @@ System services (root):
   - `coding-agent.nix` — FR-013: Coding subagent script + config
   - `incidents.nix` — FR-014: Shared incident database + escalation
   - `mcp.nix` — FR-015: .mcp.json generation + MCP server services
-- **`tests/os-agents.nix`** — FR-012: NixOS VM test for isolation verification
-- **`modules/os/agents/scripts/`** — Shell scripts used by systemd services (task-loop runner, audit logger, coding-agent wrapper)
+  - `scripts/` — Shell scripts used by systemd services
 
 ### Integration Points
 
@@ -213,8 +215,8 @@ System services (root):
 ## Technology Stack
 
 ### Wayland Compositor
-**Chosen**: Cage (default), Sway headless (optional)
-**Rationale**: Cage is a single-application kiosk compositor — minimal, starts one app (Chrome) fullscreen. Sway headless is available for multi-window use cases. Both are in nixpkgs.
+**Chosen**: labwc (resolved from Open Question 1)
+**Rationale**: labwc provides better wlroots headless backend support than Cage or Sway. Runs with `WLR_BACKENDS=headless` and `WLR_RENDERER=pixman` (software renderer, no GPU needed). Creates a virtual `HEADLESS-1` output via autostart script with `wlr-randr`. Supports multi-window layouts for future Chrome + other apps. Already packaged in nixpkgs with `programs.labwc.enable`.
 
 ### VNC Server
 **Chosen**: wayvnc
@@ -234,15 +236,24 @@ System services (root):
 
 ## File Structure
 
-### New Files
+### Current Files (Phases 1-2 complete)
 
 ```
 modules/os/
-├── agents.nix                      # Option declarations for keystone.os.agents
-└── agents/
-    ├── default.nix                 # Imports all agent sub-modules
-    ├── users.nix                   # FR-001: User provisioning + home-manager
-    ├── desktop.nix                 # FR-002: Cage/Sway + wayvnc
+└── agents.nix                      # Consolidated module: FR-001 (provisioning) + FR-002 (labwc desktop)
+
+tests/module/
+└── agent-isolation.nix             # FR-012: NixOS VM isolation test (19 assertions)
+```
+
+### Future Files (Phases 3-7)
+
+As features are added, the consolidated `agents.nix` may be split into sub-modules:
+
+```
+modules/os/
+├── agents.nix                      # Core options + user provisioning + desktop
+└── agents/                         # (future) Sub-modules extracted as complexity grows
     ├── chrome.nix                  # FR-003: Chrome + DevTools
     ├── mail.nix                    # FR-004: Stalwart account + himalaya
     ├── bitwarden.nix               # FR-005: Vaultwarden + bw CLI
@@ -260,67 +271,63 @@ modules/os/
         ├── task-loop.sh            # Task loop runner (ingest/prioritize/execute)
         ├── audit-logger.sh         # Audit event writer
         └── coding-agent.sh         # Coding subagent wrapper
-
-tests/
-└── os-agents.nix                   # FR-012: NixOS VM isolation test
 ```
 
 ### Modified Files
 
-- `modules/os/default.nix` — Add `keystone.os.agents` option (attrsOf agentSubmodule), add `./agents.nix` to imports
-- `flake.nix` — Add `tests/os-agents.nix` to checks (if not auto-discovered)
+- `modules/os/default.nix` — Added `./agents.nix` to imports
+- `tests/flake.nix` — Added `test-agent-isolation` to checks
+- `flake.nix` — Wired `tests/flake.nix` checks into top-level flake
 
 ## Development Methodology
 
-Development follows a **red-green cycle** driven by `tests/os-agents.nix`, a single NixOS VM test that grows with each phase.
+Development follows a **red-green cycle** driven by `tests/module/agent-isolation.nix`, a single NixOS VM test that grows with each phase.
 
 ### Why this works
 
 - `nixosTest` VMs mount the host `/nix/store` via 9p — no copying, fast boot (~10s)
 - Phase 1 modules are pure Nix config (users, groups, file generation) — no large packages to build
-- One test file with two agents (`researcher` + `coder`) from the start enables isolation assertions immediately
-- Uses existing `tests/lib.nix` helpers (`mkModuleTest`, `vmDefaults`, `testUser`)
+- One test file with two agents (`researcher` + `coder`) plus one human user (`testuser`) enables isolation assertions immediately
+- Uses `pkgs.testers.nixosTest` directly (simpler than `tests/lib.nix` helpers for this use case)
 
 ### Workflow per phase
 
-1. **Red** — Write failing assertions in `tests/os-agents.nix` for the phase's requirements
+1. **Red** — Write failing assertions in `tests/module/agent-isolation.nix` for the phase's requirements
 2. **Green** — Implement the module until all assertions pass
 3. **Refactor** — Clean up, then commit both test and module together
-4. Run via `nix build ./tests#test-os-agents` or `make test-agents`
+4. Run via `nix build .#test-agent-isolation`
 
 ### Test structure
 
-A single `tests/os-agents.nix` file provisions a VM with 2+ agents and runs all assertions. Each phase adds `machine.succeed()` / `machine.fail()` calls to the test script. Assertions for unimplemented phases stay commented out as a roadmap of what comes next.
+A single `tests/module/agent-isolation.nix` file provisions a VM with 2 agents + 1 human user and runs all assertions. Each phase adds `machine.succeed()` / `machine.fail()` calls to the test script.
 
 ### Wiring
 
-- Add `test-os-agents` to `tests/flake.nix` checks
-- Add `test-agents` Makefile target: `./bin/run-tests os-agents`
+- `test-agent-isolation` registered in `tests/flake.nix` checks
+- Build via `nix build .#test-agent-isolation`
+- Interactive debugging via `nix build .#test-agent-isolation.driverInteractive`
 
 ## Implementation Strategy
 
-### Phase 1: Core User Provisioning (FR-001 + FR-008 + FR-012 partial)
+### Phase 1: Core User Provisioning (FR-001 + FR-012 partial) — COMPLETE
 
 The foundation everything else builds on.
 
-**Red** — Write assertions: agent user exists, UID >= 4000, in `agents` group, not in `wheel`, home dir exists, no password login, cross-agent home directory isolation.
+**Implemented** (PR #70):
+- `modules/os/agents.nix` — Consolidated module with option declarations, user creation, UID auto-assignment, ext4/ZFS home directory setup
+- `tests/module/agent-isolation.nix` — 11 assertions: user existence, UIDs, groups, permissions, ownership, cross-agent isolation, agent-human isolation, sudo restrictions, system path write restrictions
 
-**Green** — Implement:
-- `modules/os/agents.nix` — Option declarations
-- `modules/os/agents/default.nix` — Sub-module imports
-- `modules/os/agents/users.nix` — User creation + home-manager (reusing `keystone.terminal`)
-- `modules/os/agents/secrets.nix` — Agenix path conventions + assertions
-- Update `modules/os/default.nix` to import agents
+**Deferred**: FR-008 (agenix secrets), home-manager integration
 
 ### Phase 2: Desktop + Browser (FR-002 + FR-003)
 
-Give agents a visible desktop with Chrome for web interaction.
+**FR-002 COMPLETE** (PR #71):
+- labwc compositor with `WLR_BACKENDS=headless` and `WLR_RENDERER=pixman`
+- wayvnc with Wayland socket polling (up to 10s, 100ms intervals)
+- 8 additional runtime assertions in the VM test (19 total)
+- VNC binds to 127.0.0.1 only (SSH tunnel or Tailscale for remote access)
 
-**Red** — Uncomment assertions: compositor service running, VNC port listening, Chrome process active.
-
-**Green** — Implement:
-- `modules/os/agents/desktop.nix` — Cage compositor + wayvnc as systemd user services
-- `modules/os/agents/chrome.nix` — Chrome with `--remote-debugging-port` as systemd user service
+**FR-003 NOT STARTED**: Chrome + DevTools MCP
 
 ### Phase 3: Identity + Credentials (FR-004 + FR-005 + FR-006 + FR-007)
 
@@ -392,25 +399,25 @@ Final red-green pass: uncomment all remaining security assertions and fill any g
 
 ## Testing Strategy
 
-All testing is driven by **one growing test file** (`tests/os-agents.nix`) as described in Development Methodology above. The test provisions a VM with 2+ agents and runs assertions via `machine.succeed()` / `machine.fail()`.
+All testing is driven by **one growing test file** (`tests/module/agent-isolation.nix`) as described in Development Methodology above. The test provisions a VM with 2 agents + 1 human user and runs assertions via `machine.succeed()` / `machine.fail()`.
 
-| Phase | Assertions added |
-|---|---|
-| 1 | User exists, UID >= 4000, `agents` group, no `wheel`, home dir, no password, cross-agent isolation |
-| 2 | Compositor running, VNC port listening, Chrome process active |
-| 3 | SSH agent running, git signing configured, mail client available |
-| 4 | Agent-space directory + expected files, `.mcp.json` generated |
-| 5 | Timers active, audit.jsonl root-owned + append-only |
-| 6 | Coding-agent script exists, incident database path exists |
-| 7 | Full cross-cutting security: secret isolation, network egress, credential scoping, cgroup limits |
+| Phase | Assertions | Status |
+|---|---|---|
+| 1 | User exists, UID >= 4000, `agents` group, no `wheel`, home dir 700, ownership, cross-agent isolation, agent-human isolation, human-agent isolation, no sudo, no system writes, write to own home | **Complete** (11 assertions) |
+| 2 | labwc service active, Wayland socket created, wayvnc active, VNC port open, wlr-randr headless output, config files + ownership, VNC localhost-only, non-desktop agent clean | **Complete** (8 assertions) |
+| 3 | SSH agent running, git signing configured, mail client available | Pending |
+| 4 | Agent-space directory + expected files, `.mcp.json` generated | Pending |
+| 5 | Timers active, audit.jsonl root-owned + append-only | Pending |
+| 6 | Coding-agent script exists, incident database path exists | Pending |
+| 7 | Full cross-cutting security: secret isolation, network egress, credential scoping, cgroup limits | Pending |
 
-CI runs `tests/os-agents.nix` on PRs touching `modules/os/agents/`.
+CI runs `tests/module/agent-isolation.nix` on PRs touching `modules/os/agents*`.
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Cage/wayvnc not stable enough for long-running sessions | Desktop crashes, agent loses browser state | Systemd `Restart=always` + `RestartSec=5`. Chrome profile persists on disk. |
+| labwc/wayvnc not stable enough for long-running sessions | Desktop crashes, agent loses browser state | Systemd `Restart=always` + `RestartSec=5`. Chrome profile persists on disk. |
 | Task loop LLM API costs | Unexpected spend from frequent polling | Configurable interval, max tasks per run, error threshold stop condition |
 | Agenix secret rotation requires rebuild | Downtime during key rotation | `systemd reload` triggers re-decryption without full rebuild |
 | Audit log disk usage | Fills disk on active agents | Logrotate with configurable retention (default 90 days), compression |
