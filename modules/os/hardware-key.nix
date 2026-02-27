@@ -20,6 +20,47 @@ in {
   options.keystone.hardwareKey = {
     enable = mkEnableOption "Hardware key (FIDO2/YubiKey) system integration";
 
+    keys = mkOption {
+      type = types.attrsOf (types.submodule {
+        options = {
+          description = mkOption {
+            type = types.str;
+            default = "";
+            description = "Human-readable description of this hardware key";
+            example = "Primary YubiKey (USB-A, black)";
+          };
+
+          sshPublicKey = mkOption {
+            type = types.str;
+            description = "SSH public key for this hardware key (e.g., sk-ssh-ed25519 or sk-ecdsa-sha2-nistp256)";
+            example = "sk-ssh-ed25519@openssh.com AAAAGnNr... user@host";
+          };
+
+          ageIdentity = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "age-plugin-yubikey identity string for age encryption/decryption";
+            example = "AGE-PLUGIN-YUBIKEY-...";
+          };
+        };
+      });
+      default = {};
+      description = ''
+        Named hardware keys with their SSH and age key material.
+        Declare once, reference by name from users and rootKeys.
+      '';
+    };
+
+    rootKeys = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      description = ''
+        Names of hardware keys (from keys.<name>) whose SSH public keys
+        should be added to root's authorized_keys.
+      '';
+      example = ["yubi-black"];
+    };
+
     # TODO: LUKS support
     # luksSlot = mkOption {
     #   type = types.int;
@@ -46,6 +87,16 @@ in {
   };
 
   config = mkIf cfg.enable {
+    # Validate rootKeys references exist in keys
+    assertions = map (name: {
+      assertion = cfg.keys ? ${name};
+      message = "keystone.hardwareKey.rootKeys references '${name}' but no such key exists in keystone.hardwareKey.keys";
+    }) cfg.rootKeys;
+
+    # Wire hardware key SSH keys into root's authorized_keys
+    users.users.root.openssh.authorizedKeys.keys =
+      map (name: cfg.keys.${name}.sshPublicKey) cfg.rootKeys;
+
     # TODO: LUKS slot assertion
     # assertions = [
     #   {

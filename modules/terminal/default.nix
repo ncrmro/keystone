@@ -11,6 +11,7 @@ in {
     ./shell.nix
     ./editor.nix
     ./ai.nix
+    ./age-yubikey.nix
     ./devtools.nix
     ./mail.nix
   ];
