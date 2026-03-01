@@ -236,7 +236,7 @@ let
         ssh = {
           enable = mkOption {
             type = types.bool;
-            default = true;
+            default = false;
             description = ''
               Enable SSH key management for this agent. When enabled, declares
               agenix secrets for the private key and passphrase, creates an
@@ -895,8 +895,8 @@ in
         wantedBy = [ "multi-user.target" ];
       };
 
-      # Per-agent tailscaled services
-      systemd.services = mkMerge (
+      # Per-agent tailscaled services + wrapper installer
+      systemd.services = mkMerge ((
         mapAttrsToList (
           name: agentCfg:
           let
@@ -964,24 +964,9 @@ in
             };
           }
         ) tailscaleAgents
-      );
-
-      # Enable nftables
-      networking.nftables.enable = true;
-
-      # Tailscale CLI wrapper per agent (auto-specifies --socket)
-      environment.systemPackages = mapAttrsToList (
-        name: agentCfg:
-        let
-          socketPath = "/run/tailscale/tailscaled-agent-${name}.socket";
-        in
-        pkgs.writeShellScriptBin "tailscale-agent-${name}" ''
-          exec ${pkgs.tailscale}/bin/tailscale --socket=${socketPath} "$@"
-        ''
-      ) tailscaleAgents;
-
-      # Install the wrapper into each agent's PATH via /home/agent-{name}/bin
-      systemd.services.agent-tailscale-wrappers = {
+      ) ++ [{
+        # Install the wrapper into each agent's PATH via /home/agent-{name}/bin
+        agent-tailscale-wrappers = {
         description = "Install tailscale CLI wrappers into agent home directories";
 
         wantedBy = [ "agent-tailscale.target" ];
@@ -1017,7 +1002,8 @@ in
             ) tailscaleAgents
           )}
         '';
-      };
+        };
+      }]);
     })
 
     # SSH agent configuration (ssh-agent + git signing + agenix secrets)
