@@ -29,8 +29,8 @@
 # to sign commits with the SSH key. The agent's public key is added to
 # its own ~/.ssh/authorized_keys for sandbox access.
 #
-# Security: VNC binds to 127.0.0.1 only. For remote access, use SSH port
-# forwarding (ssh -L 5901:127.0.0.1:5901 host) or Tailscale funnel.
+# Security: VNC binds to 0.0.0.0 by default. Set desktop.vncBind = "127.0.0.1"
+# for localhost-only. Use firewall rules or Tailscale ACLs to restrict access.
 # wayvnc supports TLS but it is not yet configured here.
 #
 {
@@ -111,6 +111,12 @@ let
             type = types.nullOr types.port;
             default = null;
             description = "VNC port. If null, auto-assigned starting from 5901.";
+          };
+
+          vncBind = mkOption {
+            type = types.str;
+            default = "0.0.0.0";
+            description = "Address for wayvnc to bind. Use 127.0.0.1 for localhost-only.";
           };
         };
 
@@ -689,7 +695,7 @@ in
                 # Poll for Wayland socket instead of fixed sleep — labwc startup
                 # time varies; this waits up to 10s with 100ms intervals
                 ExecStartPre = "${pkgs.bash}/bin/bash -c 'for i in $(seq 1 100); do [ -S \"${xdgRuntimeDir}/wayland-0\" ] && exit 0; sleep 0.1; done; echo \"Timed out waiting for Wayland socket\" >&2; exit 1'";
-                ExecStart = "${pkgs.wayvnc}/bin/wayvnc 127.0.0.1 ${toString port}";
+                ExecStart = "${pkgs.wayvnc}/bin/wayvnc ${agentCfg.desktop.vncBind} ${toString port}";
                 Restart = "always";
                 RestartSec = 5;
               };
