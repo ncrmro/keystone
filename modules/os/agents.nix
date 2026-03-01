@@ -6,6 +6,7 @@
 # - Home directories at /home/agent-{name} (ZFS dataset or ext4)
 # - chmod 700 isolation between agents
 # - Optional headless Wayland desktop (labwc + wayvnc) for remote viewing
+# - Optional Chromium browser with remote debugging (chrome.enable)
 #
 # Usage:
 #   keystone.os.agents.researcher = {
@@ -36,6 +37,12 @@ let
 
   # Base VNC port for auto-assignment
   vncPortBase = 5900;
+
+  # Base Chrome debug port for auto-assignment
+  chromeDebugPortBase = 9222;
+
+  # Base Chrome MCP port for auto-assignment
+  chromeMcpPortBase = 3100;
 
   # Agent submodule type definition
   agentSubmodule = types.submodule (
@@ -88,6 +95,34 @@ let
             description = "VNC port. If null, auto-assigned starting from 5901.";
           };
         };
+
+        chrome = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Enable Chromium browser with remote debugging on the agent's desktop";
+          };
+
+          debugPort = mkOption {
+            type = types.nullOr types.port;
+            default = null;
+            description = "Chrome remote debugging port. If null, auto-assigned starting from 9222.";
+          };
+
+          mcp = {
+            enable = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Enable Chrome DevTools MCP server for the agent's Chromium instance";
+            };
+
+            port = mkOption {
+              type = types.nullOr types.port;
+              default = null;
+              description = "Chrome DevTools MCP server port. If null, auto-assigned starting from 3101.";
+            };
+          };
+        };
       };
     }
   );
@@ -131,6 +166,39 @@ let
         ) (throw "desktop agent '${name}' not found") (genList (x: x) (length sortedDesktopAgentNames));
       in
       vncPortBase + 1 + idx;
+
+  # Chrome-enabled agents (must also have desktop enabled)
+  chromeAgents = filterAttrs (_: a: a.chrome.enable && a.desktop.enable) cfg;
+  hasChromeAgents = chromeAgents != { };
+
+  # Sorted chrome agent names for deterministic debug port assignment
+  sortedChromeAgentNames = sort lessThan (attrNames chromeAgents);
+
+  # Resolve Chrome debug port for a chrome agent
+  agentChromeDebugPort =
+    name: agentCfg:
+    if agentCfg.chrome.debugPort != null then
+      agentCfg.chrome.debugPort
+    else
+      let
+        idx = findFirst (
+          i: elemAt sortedChromeAgentNames i == name
+        ) (throw "chrome agent '${name}' not found") (genList (x: x) (length sortedChromeAgentNames));
+      in
+      chromeDebugPortBase + idx;
+
+  # Resolve Chrome MCP port for a chrome agent
+  agentChromeMcpPort =
+    name: agentCfg:
+    if agentCfg.chrome.mcp.port != null then
+      agentCfg.chrome.mcp.port
+    else
+      let
+        idx = findFirst (
+          i: elemAt sortedChromeAgentNames i == name
+        ) (throw "chrome agent '${name}' not found") (genList (x: x) (length sortedChromeAgentNames));
+      in
+      chromeMcpPortBase + 1 + idx;
 
   # Generate labwc config for an agent's home directory setup script
   labwcConfigScript =
@@ -406,6 +474,84 @@ in
             };
           }
         ) desktopAgents
+      );
+    })
+
+    # Chrome browser configuration (Chromium with remote debugging)
+    (mkIf hasChromeAgents {
+      assertions = [
+        # All Chrome debug ports must be unique
+        {
+          assertion =
+            let
+              ports = mapAttrsToList (name: a: agentChromeDebugPort name a) chromeAgents;
+              uniquePorts = unique ports;
+            in
+            length ports == length uniquePorts;
+          message = "All agent Chrome debug ports must be unique";
+        }
+        # Chrome requires desktop
+        {
+          assertion = all (a: a.desktop.enable) (attrValues (filterAttrs (_: a: a.chrome.enable) cfg));
+          message = "chrome.enable requires desktop.enable — Chromium needs a Wayland compositor";
+        }
+      ];
+
+      # Chromium package available system-wide for chrome agents
+      environment.systemPackages = [
+        pkgs.chromium
+      ];
+
+      # Chromium services per chrome agent
+      systemd.services = mkMerge (
+        mapAttrsToList (
+          name: agentCfg:
+          let
+            username = "agent-${name}";
+            resolved = agentsWithUids.${name};
+            uid = resolved.uid;
+            debugPort = agentChromeDebugPort name agentCfg;
+            xdgRuntimeDir = "/run/user/${toString uid}";
+            profileDir = "/home/${username}/.config/chromium-agent";
+          in
+          {
+            # Chromium browser with remote debugging
+            "chromium-agent-${name}" = {
+              description = "Chromium browser for agent-${name}";
+
+              wantedBy = [ "agent-desktops.target" ];
+              after = [ "labwc-agent-${name}.service" ];
+              requires = [ "labwc-agent-${name}.service" ];
+
+              environment = {
+                WAYLAND_DISPLAY = "wayland-0";
+                XDG_RUNTIME_DIR = xdgRuntimeDir;
+                XDG_CONFIG_HOME = "/home/${username}/.config";
+              };
+
+              serviceConfig = {
+                Type = "simple";
+                User = username;
+                Group = "agents";
+                # Poll for Wayland socket before starting Chromium
+                ExecStartPre = "${pkgs.bash}/bin/bash -c 'for i in $(seq 1 100); do [ -S \"${xdgRuntimeDir}/wayland-0\" ] && exit 0; sleep 0.1; done; echo \"Timed out waiting for Wayland socket\" >&2; exit 1'";
+                ExecStart = builtins.concatStringsSep " " [
+                  "${pkgs.chromium}/bin/chromium"
+                  "--user-data-dir=${profileDir}"
+                  "--remote-debugging-port=${toString debugPort}"
+                  "--remote-debugging-address=127.0.0.1"
+                  "--no-first-run"
+                  "--no-default-browser-check"
+                  "--disable-gpu"
+                  "--enable-features=UseOzonePlatform"
+                  "--ozone-platform=wayland"
+                ];
+                Restart = "always";
+                RestartSec = 5;
+              };
+            };
+          }
+        ) chromeAgents
       );
     })
   ]);

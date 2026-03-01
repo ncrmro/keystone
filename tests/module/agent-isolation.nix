@@ -52,13 +52,14 @@ pkgs.testers.nixosTest {
         };
 
         # Two agents (alphabetical: coder=4001, researcher=4002)
-        # researcher has desktop enabled, coder does not
+        # researcher has desktop + chrome enabled, coder does not
         agents.coder = {
           fullName = "Coding Agent";
         };
         agents.researcher = {
           fullName = "Research Agent";
           desktop.enable = true;
+          chrome.enable = true;
         };
       };
 
@@ -211,6 +212,42 @@ pkgs.testers.nixosTest {
     machine.fail("systemctl is-enabled labwc-agent-coder.service")
     machine.fail("test -f /home/agent-coder/.config/labwc/autostart")
     print("PASS: Non-desktop agent has no desktop services or config")
+
+    # === Chromium browser runtime validation (FR-003) ===
+    print("")
+    print("Starting Chromium browser tests...")
+
+    # 20. Chromium service is running for researcher
+    machine.wait_for_unit("chromium-agent-researcher.service")
+    print("PASS: Chromium service active for researcher")
+
+    # 21. Chromium process is running under agent-researcher
+    machine.succeed("pgrep -u agent-researcher -f chromium")
+    print("PASS: Chromium process running under agent-researcher")
+
+    # 22. Chrome debug port responding (auto-assigned port 9222)
+    machine.wait_for_open_port(9222, timeout=30)
+    print("PASS: Chrome debug port 9222 accepting connections")
+
+    # 23. Remote debugging endpoint returns valid JSON
+    version_json = machine.succeed("curl -s http://localhost:9222/json/version")
+    assert "webSocketDebuggerUrl" in version_json, f"Expected webSocketDebuggerUrl in: {version_json}"
+    print("PASS: Chrome DevTools Protocol responding with version info")
+
+    # 24. Chromium profile directory persists at expected path
+    machine.succeed("test -d /home/agent-researcher/.config/chromium-agent")
+    profile_owner = machine.succeed("stat -c '%U:%G' /home/agent-researcher/.config/chromium-agent").strip()
+    assert profile_owner == "agent-researcher:agents", f"Chromium profile owner: {profile_owner}"
+    print("PASS: Chromium profile persists at /home/agent-researcher/.config/chromium-agent/")
+
+    # 25. Chromium service starts after labwc
+    chromium_after = machine.succeed("systemctl show chromium-agent-researcher.service -p After").strip()
+    assert "labwc-agent-researcher.service" in chromium_after, f"Chromium should start After labwc: {chromium_after}"
+    print("PASS: Chromium service starts After labwc-agent-researcher.service")
+
+    # 26. Non-chrome agent (coder) has no chromium service
+    machine.fail("systemctl is-enabled chromium-agent-coder.service")
+    print("PASS: Non-chrome agent has no chromium service")
 
     print("")
     print("All agent isolation tests passed!")
