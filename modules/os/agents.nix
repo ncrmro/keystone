@@ -6,12 +6,15 @@
 # - Home directories at /home/agent-{name} (ZFS dataset or ext4)
 # - chmod 700 isolation between agents
 # - Optional headless Wayland desktop (labwc + wayvnc) for remote viewing
+# - Optional Stalwart mail account with himalaya CLI (mail.enable)
 #
 # Usage:
 #   keystone.os.agents.researcher = {
 #     fullName = "Research Agent";
 #     email = "researcher@example.com";
 #     desktop.enable = true;  # headless Wayland + VNC
+#     mail.enable = true;     # Stalwart mail + himalaya CLI
+#     mail.domain = "ks.systems";
 #   };
 #
 # Security: VNC binds to 127.0.0.1 only. For remote access, use SSH port
@@ -39,7 +42,11 @@ let
 
   # Agent submodule type definition
   agentSubmodule = types.submodule (
-    { name, ... }:
+    {
+      name,
+      config,
+      ...
+    }:
     {
       options = {
         uid = mkOption {
@@ -88,6 +95,60 @@ let
             description = "VNC port. If null, auto-assigned starting from 5901.";
           };
         };
+
+        mail = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Enable Stalwart mail account and himalaya CLI for programmatic email access";
+          };
+
+          domain = mkOption {
+            type = types.str;
+            default = "";
+            description = "Mail domain for the agent's email address (e.g., 'ks.systems')";
+            example = "ks.systems";
+          };
+
+          address = mkOption {
+            type = types.str;
+            default = "agent-${name}@${if config.mail.domain != "" then config.mail.domain else "localhost"}";
+            defaultText = literalExpression ''"agent-{name}@{mail.domain}"'';
+            description = "Full email address for the agent. Defaults to agent-{name}@{mail.domain}.";
+            example = "agent-researcher@ks.systems";
+          };
+
+          host = mkOption {
+            type = types.str;
+            default = "";
+            description = "Mail server hostname. Defaults to empty (must be set when mail.enable is true).";
+            example = "mail.ks.systems";
+          };
+
+          imap.port = mkOption {
+            type = types.int;
+            default = 993;
+            description = "IMAP port";
+          };
+
+          smtp.port = mkOption {
+            type = types.int;
+            default = 465;
+            description = "SMTP port";
+          };
+
+          caldav.enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enable CalDAV access (provisioned alongside mail account)";
+          };
+
+          carddav.enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enable CardDAV access (provisioned alongside mail account)";
+          };
+        };
       };
     }
   );
@@ -115,6 +176,10 @@ let
   # Desktop-enabled agents
   desktopAgents = filterAttrs (_: a: a.desktop.enable) cfg;
   hasDesktopAgents = desktopAgents != { };
+
+  # Mail-enabled agents
+  mailAgents = filterAttrs (_: a: a.mail.enable) cfg;
+  hasMailAgents = mailAgents != { };
 
   # Sorted desktop agent names for deterministic VNC port assignment
   sortedDesktopAgentNames = sort lessThan (attrNames desktopAgents);
@@ -153,6 +218,56 @@ let
       RCXML
         chown -R ${username}:agents /home/${username}/.config
     '';
+
+  # Generate himalaya config.toml for a mail-enabled agent
+  himalayaConfig =
+    name: agentCfg:
+    let
+      username = "agent-${name}";
+      mailAddr = agentCfg.mail.address;
+      mailHost = agentCfg.mail.host;
+      imapPort = agentCfg.mail.imap.port;
+      smtpPort = agentCfg.mail.smtp.port;
+      secretPath = "/run/agenix/agent-${name}-mail-password";
+    in
+    pkgs.writeText "himalaya-config-agent-${name}.toml" ''
+      [accounts.${name}]
+      email = "${mailAddr}"
+      display-name = "${agentCfg.fullName}"
+      default = true
+
+      backend.type = "imap"
+      backend.host = "${mailHost}"
+      backend.port = ${toString imapPort}
+      backend.encryption.type = "tls"
+      backend.login = "${username}"
+      backend.auth.type = "password"
+      backend.auth.command = "cat ${secretPath}"
+
+      message.send.backend.type = "smtp"
+      message.send.backend.host = "${mailHost}"
+      message.send.backend.port = ${toString smtpPort}
+      message.send.backend.encryption.type = "tls"
+      message.send.backend.login = "${username}"
+      message.send.backend.auth.type = "password"
+      message.send.backend.auth.command = "cat ${secretPath}"
+
+      # Stalwart folder names (differ from Himalaya defaults)
+      folder.aliases.sent = "Sent Items"
+      folder.aliases.drafts = "Drafts"
+      folder.aliases.trash = "Deleted Items"
+    '';
+
+  # Generate himalaya config setup script for home directory creation
+  himalayaConfigScript =
+    username: agentCfg: name:
+    optionalString agentCfg.mail.enable ''
+      # Create himalaya config directory
+      mkdir -p /home/${username}/.config/himalaya
+      cp ${himalayaConfig name agentCfg} /home/${username}/.config/himalaya/config.toml
+      chmod 600 /home/${username}/.config/himalaya/config.toml
+      chown -R ${username}:agents /home/${username}/.config/himalaya
+    '';
 in
 {
   options.keystone.os.agents = mkOption {
@@ -169,6 +284,11 @@ in
           fullName = "Research Agent";
           email = "researcher@ks.systems";
           desktop.enable = true;
+          mail = {
+            enable = true;
+            domain = "ks.systems";
+            host = "mail.ks.systems";
+          };
         };
       }
     '';
@@ -253,6 +373,7 @@ in
                 chmod 700 /home/${username}
 
                 ${labwcConfigScript username agentCfg}
+                ${himalayaConfigScript username agentCfg name}
               ''
             ) cfg
           )}
@@ -296,6 +417,7 @@ in
                 chmod 700 /home/${username}
 
                 ${labwcConfigScript username agentCfg}
+                ${himalayaConfigScript username agentCfg name}
               ''
             ) cfg
           )}
@@ -407,6 +529,45 @@ in
           }
         ) desktopAgents
       );
+    })
+
+    # Mail agent configuration (Stalwart account + himalaya CLI)
+    # VM test assertion: /home/agent-{name}/.config/himalaya/config.toml exists
+    # for each agent with mail.enable = true
+    (mkIf hasMailAgents {
+      assertions = [
+        # All mail-enabled agents must have a mail domain configured
+        {
+          assertion = all (a: a.mail.domain != "") (attrValues mailAgents);
+          message = "All agents with mail.enable must have mail.domain set";
+        }
+        # All mail-enabled agents must have a mail host configured
+        {
+          assertion = all (a: a.mail.host != "") (attrValues mailAgents);
+          message = "All agents with mail.enable must have mail.host set";
+        }
+      ];
+
+      # Install himalaya CLI system-wide for mail-enabled agents
+      environment.systemPackages = [
+        pkgs.keystone.himalaya
+      ];
+
+      # Declare agenix secrets for each mail-enabled agent
+      # The consumer (nixos-config) provides the encrypted .age files
+      # via age.secrets."agent-{name}-mail-password".file
+      age.secrets = mapAttrs' (
+        name: _agentCfg:
+        let
+          username = "agent-${name}";
+        in
+        nameValuePair "agent-${name}-mail-password" {
+          # file is set by the consumer (nixos-config) — not declared here
+          owner = username;
+          group = "agents";
+          mode = "0400";
+        }
+      ) mailAgents;
     })
   ]);
 }
