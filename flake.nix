@@ -47,7 +47,7 @@
       inherit nixpkgs hyprland himalaya llm-agents;
     };
   in {
-    formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
+    formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
 
     # ISO configuration without SSH keys (use bin/build-iso for SSH keys)
     # Note: Test/dev configurations are in ./tests/flake.nix
@@ -181,7 +181,7 @@
           nodePackages.typescript-language-server
 
           # Nix tools
-          nixfmt-rfc-style
+          nixfmt
           nil # Nix LSP
           nix-tree
           nvd # Nix version diff
