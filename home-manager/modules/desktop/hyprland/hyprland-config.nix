@@ -112,7 +112,7 @@ in {
           "$mod, E, exec, nautilus"
           "$mod, V, togglefloating,"
           "$mod, P, pseudo,"
-          "$mod, J, togglesplit,"
+          "$mod, J, layoutmsg, togglesplit"
           "$mod, L, exec, hyprlock"
           "$mod, B, exec, chromium"
 
