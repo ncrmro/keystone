@@ -212,6 +212,92 @@ let
         };
       }
     ];
+
+    # Agent with chrome enabled (auto-assigned debug port)
+    agent-chrome = eval "agent-chrome" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            desktop.enable = true;
+            chrome.enable = true;
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with chrome and explicit debug port
+    agent-chrome-custom-port = eval "agent-chrome-custom-port" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            desktop.enable = true;
+            chrome = {
+              enable = true;
+              debugPort = 9300;
+            };
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Multiple agents with chrome (non-conflicting auto-assigned ports)
+    multi-agent-chrome = eval "multi-agent-chrome" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            desktop.enable = true;
+            chrome.enable = true;
+          };
+          agents.coder = {
+            fullName = "Coding Agent";
+            desktop.enable = true;
+            chrome.enable = true;
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-agent-evaluation"
