@@ -6,12 +6,14 @@
 # - Home directories at /home/agent-{name} (ZFS dataset or ext4)
 # - chmod 700 isolation between agents
 # - Optional headless Wayland desktop (labwc + wayvnc) for remote viewing
+# - Optional per-agent Tailscale instances with UID-based routing
 #
 # Usage:
 #   keystone.os.agents.researcher = {
 #     fullName = "Research Agent";
 #     email = "researcher@example.com";
 #     desktop.enable = true;  # headless Wayland + VNC
+#     tailscale.enable = true; # per-agent tailscaled instance
 #   };
 #
 # Security: VNC binds to 127.0.0.1 only. For remote access, use SSH port
@@ -88,6 +90,23 @@ let
             description = "VNC port. If null, auto-assigned starting from 5901.";
           };
         };
+
+        tailscale = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = ''
+              Enable a per-agent tailscaled instance. When enabled, the agent gets
+              its own tailscaled daemon with unique state dir, socket, and TUN
+              interface. An nftables fwmark rule routes the agent's UID traffic
+              through its dedicated TUN. A tailscale CLI wrapper in the agent's
+              PATH auto-specifies --socket for convenience.
+
+              Requires an agenix secret at age.secrets."agent-{name}-tailscale-auth-key".
+              When disabled, the agent falls back to the host Tailscale via tailscale0.
+            '';
+          };
+        };
       };
     }
   );
@@ -131,6 +150,24 @@ let
         ) (throw "desktop agent '${name}' not found") (genList (x: x) (length sortedDesktopAgentNames));
       in
       vncPortBase + 1 + idx;
+
+  # Tailscale-enabled agents
+  tailscaleAgents = filterAttrs (_: a: a.tailscale.enable) cfg;
+  hasTailscaleAgents = tailscaleAgents != { };
+
+  # fwmark base for per-agent tailscale routing (one per agent)
+  tailscaleFwmarkBase = 51820;
+  sortedTailscaleAgentNames = sort lessThan (attrNames tailscaleAgents);
+
+  # Compute fwmark for a tailscale agent
+  agentFwmark =
+    name:
+    let
+      idx = findFirst (
+        i: elemAt sortedTailscaleAgentNames i == name
+      ) (throw "tailscale agent '${name}' not found") (genList (x: x) (length sortedTailscaleAgentNames));
+    in
+    tailscaleFwmarkBase + 1 + idx;
 
   # Generate labwc config for an agent's home directory setup script
   labwcConfigScript =
@@ -407,6 +444,149 @@ in
           }
         ) desktopAgents
       );
+    })
+
+    # Per-agent Tailscale instances
+    (mkIf hasTailscaleAgents {
+      # Agenix secrets for tailscale auth keys
+      age.secrets = mapAttrs' (
+        name: _:
+        nameValuePair "agent-${name}-tailscale-auth-key" {
+          file = ../../secrets/agent-${name}-tailscale-auth-key.age;
+          owner = "root";
+          mode = "0400";
+        }
+      ) tailscaleAgents;
+
+      # Systemd target grouping all agent tailscale services
+      systemd.targets.agent-tailscale = {
+        description = "All per-agent tailscaled services";
+        wantedBy = [ "multi-user.target" ];
+      };
+
+      # Per-agent tailscaled services
+      systemd.services = mkMerge (
+        mapAttrsToList (
+          name: agentCfg:
+          let
+            username = "agent-${name}";
+            resolved = agentsWithUids.${name};
+            uid = resolved.uid;
+            fwmark = agentFwmark name;
+            stateDir = "/var/lib/tailscale/tailscaled-agent-${name}.state";
+            socketPath = "/run/tailscale/tailscaled-agent-${name}.socket";
+            tunName = "tailscale-agent-${name}";
+            authKeyPath = config.age.secrets."agent-${name}-tailscale-auth-key".path;
+          in
+          {
+            "tailscaled-agent-${name}" = {
+              description = "Tailscale daemon for agent-${name}";
+
+              wantedBy = [ "agent-tailscale.target" ];
+              after = [
+                "network-online.target"
+                "agenix.service"
+              ];
+              wants = [ "network-online.target" ];
+              requires = [ "agenix.service" ];
+
+              serviceConfig = {
+                Type = "notify";
+                RuntimeDirectory = "tailscale";
+                RuntimeDirectoryPreserve = "yes";
+                StateDirectory = "tailscale";
+                ExecStart = "${pkgs.tailscale}/bin/tailscaled --state=${stateDir} --socket=${socketPath} --tun=${tunName}";
+                ExecStartPost = "${pkgs.tailscale}/bin/tailscale --socket=${socketPath} up --auth-key=file:${authKeyPath} --hostname=agent-${name}";
+                Restart = "on-failure";
+                RestartSec = 5;
+              };
+            };
+
+            # nftables fwmark rule: route agent UID traffic through its TUN
+            "nftables-agent-${name}" = {
+              description = "nftables fwmark routing for agent-${name} via ${tunName}";
+
+              wantedBy = [ "agent-tailscale.target" ];
+              after = [ "tailscaled-agent-${name}.service" ];
+              requires = [ "tailscaled-agent-${name}.service" ];
+
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+                ExecStart = pkgs.writeShellScript "nftables-agent-${name}-up" ''
+                  set -euo pipefail
+                  # Create nftables table and chain for agent UID routing
+                  ${pkgs.nftables}/bin/nft add table inet agent-${name} 2>/dev/null || true
+                  ${pkgs.nftables}/bin/nft add chain inet agent-${name} output "{ type route hook output priority mangle; }" 2>/dev/null || true
+                  ${pkgs.nftables}/bin/nft add rule inet agent-${name} output meta skuid ${toString uid} meta mark set ${toString fwmark}
+
+                  # Add ip rule to route fwmarked traffic through the agent's TUN
+                  ${pkgs.iproute2}/bin/ip rule add fwmark ${toString fwmark} table ${toString fwmark} priority ${toString fwmark} 2>/dev/null || true
+                  ${pkgs.iproute2}/bin/ip route add default dev ${tunName} table ${toString fwmark} 2>/dev/null || true
+                '';
+                ExecStop = pkgs.writeShellScript "nftables-agent-${name}-down" ''
+                  ${pkgs.nftables}/bin/nft delete table inet agent-${name} 2>/dev/null || true
+                  ${pkgs.iproute2}/bin/ip rule del fwmark ${toString fwmark} table ${toString fwmark} 2>/dev/null || true
+                  ${pkgs.iproute2}/bin/ip route del default dev ${tunName} table ${toString fwmark} 2>/dev/null || true
+                '';
+              };
+            };
+          }
+        ) tailscaleAgents
+      );
+
+      # Enable nftables
+      networking.nftables.enable = true;
+
+      # Tailscale CLI wrapper per agent (auto-specifies --socket)
+      environment.systemPackages = mapAttrsToList (
+        name: agentCfg:
+        let
+          socketPath = "/run/tailscale/tailscaled-agent-${name}.socket";
+        in
+        pkgs.writeShellScriptBin "tailscale-agent-${name}" ''
+          exec ${pkgs.tailscale}/bin/tailscale --socket=${socketPath} "$@"
+        ''
+      ) tailscaleAgents;
+
+      # Install the wrapper into each agent's PATH via /home/agent-{name}/bin
+      systemd.services.agent-tailscale-wrappers = {
+        description = "Install tailscale CLI wrappers into agent home directories";
+
+        wantedBy = [ "agent-tailscale.target" ];
+        after = [
+          (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
+        ];
+        requires = [
+          (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
+        ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+
+        script = ''
+          ${concatStringsSep "\n" (
+            mapAttrsToList (
+              name: agentCfg:
+              let
+                username = "agent-${name}";
+                socketPath = "/run/tailscale/tailscaled-agent-${name}.socket";
+              in
+              ''
+                mkdir -p /home/${username}/bin
+                cat > /home/${username}/bin/tailscale <<'WRAPPER'
+                #!/bin/sh
+                exec ${pkgs.tailscale}/bin/tailscale --socket=${socketPath} "$@"
+                WRAPPER
+                chmod +x /home/${username}/bin/tailscale
+                chown -R ${username}:agents /home/${username}/bin
+              ''
+            ) tailscaleAgents
+          )}
+        '';
+      };
     })
   ]);
 }
