@@ -10,6 +10,7 @@
 # - Optional Stalwart mail account with himalaya CLI (mail.enable)
 # - Optional Vaultwarden/Bitwarden integration with per-agent collections
 # - Optional per-agent Tailscale instances with UID-based routing
+# - SSH key management via agenix (ssh-agent + git signing)
 #
 # Usage:
 #   keystone.os.agents.researcher = {
@@ -20,7 +21,13 @@
 #     mail.domain = "ks.systems";
 #     bitwarden.enable = true; # Vaultwarden + bw CLI
 #     tailscale.enable = true; # per-agent tailscaled instance
+#     ssh.publicKey = "ssh-ed25519 AAAAC3...";  # for authorized_keys
 #   };
+#
+# SSH: Each agent gets an ssh-agent systemd service that auto-loads its
+# private key from agenix using the passphrase secret. Git is configured
+# to sign commits with the SSH key. The agent's public key is added to
+# its own ~/.ssh/authorized_keys for sandbox access.
 #
 # Security: VNC binds to 127.0.0.1 only. For remote access, use SSH port
 # forwarding (ssh -L 5901:127.0.0.1:5901 host) or Tailscale funnel.
@@ -225,6 +232,30 @@ let
             '';
           };
         };
+
+        ssh = {
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = ''
+              Enable SSH key management for this agent. When enabled, declares
+              agenix secrets for the private key and passphrase, creates an
+              ssh-agent systemd service that auto-loads the key, configures git
+              for SSH commit signing, and adds the public key to authorized_keys.
+            '';
+          };
+
+          publicKey = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = ''
+              SSH public key for this agent. Added to the agent's
+              ~/.ssh/authorized_keys for sandbox access. Also used as
+              the git signing key.
+            '';
+            example = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... agent-researcher";
+          };
+        };
       };
     }
   );
@@ -260,6 +291,10 @@ let
   # Bitwarden-enabled agents
   bitwardenAgents = filterAttrs (_: a: a.bitwarden.enable) cfg;
   hasBitwardenAgents = bitwardenAgents != { };
+
+  # SSH-enabled agents
+  sshAgents = filterAttrs (_: a: a.ssh.enable) cfg;
+  hasSshAgents = sshAgents != { };
 
   # Sorted desktop agent names for deterministic VNC port assignment
   sortedDesktopAgentNames = sort lessThan (attrNames desktopAgents);
@@ -473,6 +508,8 @@ in
           group = "agents";
           extraGroups = optionals useZfs [ "zfs" ];
           shell = mkIf agentCfg.terminal.enable pkgs.zsh;
+          openssh.authorizedKeys.keys =
+            optional (agentCfg.ssh.enable && agentCfg.ssh.publicKey != null) agentCfg.ssh.publicKey;
           # No password -- agents are non-interactive
         }
       ) cfg;
@@ -981,6 +1018,125 @@ in
           )}
         '';
       };
+    })
+
+    # SSH agent configuration (ssh-agent + git signing + agenix secrets)
+    (mkIf hasSshAgents {
+      # Enable OpenSSH
+      services.openssh.enable = true;
+
+      # Agenix secrets for SSH keys and passphrases
+      age.secrets = mkMerge (
+        mapAttrsToList (
+          name: agentCfg:
+          let
+            username = "agent-${name}";
+          in
+          {
+            "${username}-ssh-key" = {
+              file = ../../secrets/${username}-ssh-key.age;
+              owner = username;
+              group = "agents";
+              mode = "0400";
+            };
+            "${username}-ssh-passphrase" = {
+              file = ../../secrets/${username}-ssh-passphrase.age;
+              owner = username;
+              group = "agents";
+              mode = "0400";
+            };
+          }
+        ) sshAgents
+      );
+
+      # ssh-agent + git-config systemd services per SSH-enabled agent
+      systemd.services = mkMerge (
+        mapAttrsToList (
+          name: agentCfg:
+          let
+            username = "agent-${name}";
+            resolved = agentsWithUids.${name};
+            uid = resolved.uid;
+            sshKeyPath = config.age.secrets."${username}-ssh-key".path;
+            sshPassphrasePath = config.age.secrets."${username}-ssh-passphrase".path;
+            homesService =
+              if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service";
+            # Script that outputs the passphrase for SSH_ASKPASS
+            askpassScript = pkgs.writeShellScript "ssh-askpass-${username}" ''
+              ${pkgs.coreutils}/bin/cat ${sshPassphrasePath}
+            '';
+            # Script to add the key to the running ssh-agent
+            addKeyScript = pkgs.writeShellScript "ssh-add-key-${username}" ''
+              # Wait for the ssh-agent socket to be ready
+              for i in $(seq 1 50); do
+                [ -S "/run/ssh-agent-${username}/agent.sock" ] && break
+                sleep 0.1
+              done
+              export SSH_AUTH_SOCK="/run/ssh-agent-${username}/agent.sock"
+              export SSH_ASKPASS="${askpassScript}"
+              export SSH_ASKPASS_REQUIRE="force"
+              export DISPLAY="none"
+              ${pkgs.openssh}/bin/ssh-add ${sshKeyPath}
+            '';
+          in
+          {
+            # ssh-agent daemon (foreground mode with -D)
+            "ssh-agent-${username}" = {
+              description = "SSH agent for ${username}";
+
+              wantedBy = [ "multi-user.target" ];
+              after = [
+                "multi-user.target"
+                homesService
+              ];
+              requires = [ homesService ];
+
+              environment = {
+                SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
+              };
+
+              serviceConfig = {
+                Type = "simple";
+                User = username;
+                Group = "agents";
+                RuntimeDirectory = "ssh-agent-${username}";
+                RuntimeDirectoryMode = "0700";
+                ExecStart = "${pkgs.openssh}/bin/ssh-agent -D -a /run/ssh-agent-${username}/agent.sock";
+                ExecStartPost = "${addKeyScript}";
+                Restart = "always";
+                RestartSec = 5;
+              };
+            };
+
+            # Git SSH signing configuration
+            "git-config-${username}" = {
+              description = "Configure git SSH signing for ${username}";
+
+              wantedBy = [ "multi-user.target" ];
+              after = [ homesService ];
+              requires = [ homesService ];
+
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+                User = username;
+                Group = "agents";
+              };
+
+              script = ''
+                ${pkgs.git}/bin/git config --global gpg.format ssh
+                ${pkgs.git}/bin/git config --global user.signingkey "${sshKeyPath}"
+                ${pkgs.git}/bin/git config --global commit.gpgsign true
+                ${pkgs.git}/bin/git config --global tag.gpgsign true
+                ${pkgs.git}/bin/git config --global user.name "${agentCfg.fullName}"
+                ${optionalString (agentCfg.email != null) ''
+                  ${pkgs.git}/bin/git config --global user.email "${agentCfg.email}"
+                ''}
+              '';
+            };
+          }
+        ) sshAgents
+      );
     })
   ]);
 }
