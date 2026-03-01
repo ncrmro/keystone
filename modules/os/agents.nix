@@ -8,6 +8,7 @@
 # - Optional headless Wayland desktop (labwc + wayvnc) for remote viewing
 # - Optional Chromium browser with remote debugging (chrome.enable)
 # - Optional Stalwart mail account with himalaya CLI (mail.enable)
+# - Optional Vaultwarden/Bitwarden integration with per-agent collections
 #
 # Usage:
 #   keystone.os.agents.researcher = {
@@ -16,6 +17,7 @@
 #     desktop.enable = true;  # headless Wayland + VNC
 #     mail.enable = true;     # Stalwart mail + himalaya CLI
 #     mail.domain = "ks.systems";
+#     bitwarden.enable = true; # Vaultwarden + bw CLI
 #   };
 #
 # Security: VNC binds to 127.0.0.1 only. For remote access, use SSH port
@@ -184,6 +186,26 @@ let
             description = "Enable CardDAV access (provisioned alongside mail account)";
           };
         };
+
+        bitwarden = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Enable Vaultwarden/Bitwarden integration with bw CLI and agenix-managed password";
+          };
+
+          serverUrl = mkOption {
+            type = types.str;
+            description = "Vaultwarden server URL for bw CLI configuration";
+            example = "https://vault.example.com";
+          };
+
+          collection = mkOption {
+            type = types.str;
+            default = "agent-${name}";
+            description = "Bitwarden collection name scoped to this agent";
+          };
+        };
       };
     }
   );
@@ -215,6 +237,10 @@ let
   # Mail-enabled agents
   mailAgents = filterAttrs (_: a: a.mail.enable) cfg;
   hasMailAgents = mailAgents != { };
+
+  # Bitwarden-enabled agents
+  bitwardenAgents = filterAttrs (_: a: a.bitwarden.enable) cfg;
+  hasBitwardenAgents = bitwardenAgents != { };
 
   # Sorted desktop agent names for deterministic VNC port assignment
   sortedDesktopAgentNames = sort lessThan (attrNames desktopAgents);
@@ -714,6 +740,67 @@ in
           mode = "0400";
         }
       ) mailAgents;
+    })
+
+    # Bitwarden/Vaultwarden agent configuration
+    (mkIf hasBitwardenAgents {
+      # Install bitwarden-cli for agents with bitwarden enabled
+      environment.systemPackages = [
+        pkgs.bitwarden-cli
+      ];
+
+      # Declare agenix secrets for each bitwarden-enabled agent
+      age.secrets = mkMerge (
+        mapAttrsToList (
+          name: agentCfg:
+          let
+            username = "agent-${name}";
+          in
+          {
+            "agent-${name}-bitwarden-password" = {
+              # Consumer provides the .age file via age.secrets.*.file
+              owner = username;
+              group = "agents";
+              mode = "0400";
+            };
+          }
+        ) bitwardenAgents
+      );
+
+      # Configure bw CLI server URL per bitwarden-enabled agent
+      systemd.services = mkMerge (
+        mapAttrsToList (
+          name: agentCfg:
+          let
+            username = "agent-${name}";
+          in
+          {
+            "bitwarden-config-agent-${name}" = {
+              description = "Configure Bitwarden CLI for agent-${name}";
+
+              wantedBy = [ "multi-user.target" ];
+              after = [
+                (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
+              ];
+              requires = [
+                (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
+              ];
+
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+                User = username;
+                Group = "agents";
+              };
+
+              script = ''
+                # Configure bw CLI to use the Vaultwarden server
+                ${pkgs.bitwarden-cli}/bin/bw config server ${agentCfg.bitwarden.serverUrl}
+              '';
+            };
+          }
+        ) bitwardenAgents
+      );
     })
   ]);
 }
