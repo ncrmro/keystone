@@ -44,10 +44,13 @@ OS agents need a persistent identity and environment that survives reboots, inte
 
 ### FR-003: Chrome Browser with DevTools MCP
 
-- The system MUST install Google Chrome (or Chromium) and auto-launch it on the agent's desktop
-- Chrome MUST start with remote debugging enabled (`--remote-debugging-port`)
-- The Chrome DevTools Protocol MCP server MUST be configured and available to the LLM process
-- The Chrome profile MUST persist in the agent's home directory
+- The system MUST install Chromium and auto-launch it on the agent's desktop
+- Chrome MUST start with `--remote-debugging-port={debugPort}` where debugPort is auto-assigned (base 9222) to avoid conflicts across agents
+- The `chrome.debugPort` option MUST support null for auto-assignment (like VNC ports)
+- The `chrome-devtools-mcp` npm package MUST be pinned via a Nix derivation (no `npx -y @latest`)
+- The Chrome DevTools MCP server MUST run as a systemd system service (with `User=`) that connects to the agent's Chrome debug port
+- MCP server port MUST be auto-assigned per agent to avoid conflicts
+- Chrome profile MUST persist in the agent's home directory
 - Extensions SHOULD be pre-installable declaratively (e.g., Bitwarden browser extension)
 
 ### FR-004: Email via Stalwart
@@ -66,13 +69,17 @@ OS agents need a persistent identity and environment that survives reboots, inte
 - The agent MUST be able to retrieve credentials programmatically without human intervention
 - A dedicated Bitwarden collection MUST scope the agent's accessible secrets
 
-### FR-006: Tailscale Identity
+### FR-006: Per-Agent Tailscale Identity
 
-- Each agent MUST have its own Tailscale auth key (pre-auth, reusable)
-- The agent MUST join the Headscale/Tailscale network with a unique hostname (`agent-{name}`)
-- The agent's desktop MUST be reachable over the tailnet for remote viewing
-- Auth keys MUST be stored in agenix and SHOULD be rotated on a configurable schedule
-- Firewall rules MUST restrict the agent's network access to declared services only
+- Each agent MUST have its own `tailscaled` daemon instance with:
+  - Unique state directory: `/var/lib/tailscale/tailscaled-agent-{name}.state`
+  - Unique socket: `/run/tailscale/tailscaled-agent-{name}.socket`
+  - Unique TUN interface: `tailscale-agent-{name}`
+- Each agent MUST appear as a distinct node on the Headscale tailnet (e.g., `agent-drago`)
+- Auth keys MUST be stored in agenix at `/run/agenix/agent-{name}-tailscale-auth-key`
+- The nftables ruleset MUST route each agent's traffic through their specific TUN interface using UID-based fwmark rules
+- A `tailscale` CLI wrapper MUST be available in the agent's PATH that auto-specifies `--socket`
+- The system SHOULD support disabling per-agent Tailscale (fallback to host Tailscale via `tailscale0`)
 
 ### FR-007: SSH Key Management
 
@@ -85,13 +92,26 @@ OS agents need a persistent identity and environment that survives reboots, inte
 
 ### FR-008: Agenix Secrets Management
 
-The system MUST manage all agent secrets via agenix with a consistent structure:
+The keystone agents module MUST declare `age.secrets` entries directly:
 
-- `/run/agenix/agent-{name}-ssh-key` — SSH private key
-- `/run/agenix/agent-{name}-ssh-passphrase` — SSH key passphrase
-- `/run/agenix/agent-{name}-mail-password` — Stalwart IMAP/SMTP password
-- `/run/agenix/agent-{name}-bitwarden-client-secret` — Bitwarden API secret
-- `/run/agenix/agent-{name}-tailscale-auth-key` — Tailscale pre-auth key
+- `age.secrets."agent-{name}-ssh-key"` — SSH private key (owner: agent-{name}, mode: 0400)
+- `age.secrets."agent-{name}-ssh-passphrase"` — SSH key passphrase (owner: agent-{name}, mode: 0400)
+- `age.secrets."agent-{name}-mail-password"` — Stalwart password (owner: agent-{name}, mode: 0400)
+- `age.secrets."agent-{name}-bitwarden-password"` — Vaultwarden password (owner: agent-{name}, mode: 0400)
+- `age.secrets."agent-{name}-tailscale-auth-key"` — Tailscale pre-auth key (owner: root, mode: 0400)
+
+The module MUST accept a `secretsPath` option per agent pointing to the directory containing `.age` files (default: consumer-provided).
+
+The consumer (nixos-config) is responsible for:
+- Providing the encrypted `.age` files in their agenix-secrets repo
+- Adding the host's SSH public key to each secret's `publicKeys` list in `secrets.nix`
+
+Convention for `secrets.nix` in the consumer:
+```nix
+"secrets/agent-{name}-ssh-key.age".publicKeys = adminKeys ++ [ systems.{hostname} ];
+"secrets/agent-{name}-mail-password.age".publicKeys = adminKeys ++ [ systems.{hostname} ];
+# etc.
+```
 
 Secrets:
 - MUST be encrypted to the host's SSH host key and the admin's personal key
@@ -160,10 +180,12 @@ Secrets:
   - No write access to system paths (`/etc`, `/nix/store`, `/usr`)
   - Correct UID/GID assignment from the reserved range
   - Systemd cgroup resource limits are enforced
-- The test MUST verify network isolation:
+- The test MUST verify network isolation (FR-016):
+  - Inter-agent traffic fully blocked via nftables UID rules
   - Egress firewall rules block undeclared destinations
   - VNC ports are accessible only from authorized sources
-  - Each agent's Tailscale identity is distinct
+  - Chrome debug ports are not accessible cross-agent
+  - Each agent's Tailscale identity is distinct (per-agent `tailscaled` instance)
 - The test MUST verify credential scoping:
   - Each agent can only access its own Bitwarden collection
   - Each agent can only use its own SSH key
@@ -208,6 +230,15 @@ Secrets:
 - MCP tool calls SHOULD be logged to the audit trail (FR-011)
 - The `.mcp.json` MUST NOT contain secrets inline; credentials MUST be referenced from agenix paths
 
+### FR-016: Per-Agent Network Isolation
+
+- The system MUST block ALL inter-agent network traffic using nftables UID-based output rules
+- Each agent's nftables rules MUST use `skuid {uid}` to match the agent's traffic
+- Agents MUST NOT be able to connect to other agents' VNC ports, Chrome debug ports, or any other local services
+- The nftables ruleset MUST be generated declaratively from the agent configuration (UIDs, ports)
+- Access to shared services (Stalwart, Vaultwarden, etc.) MUST be via Tailscale ACLs, not localhost
+- The system SHOULD support a `networking.isolation` option per agent for opt-out in testing scenarios
+
 ## Non-Functional Requirements
 
 ### NFR-001: Observability
@@ -222,6 +253,7 @@ Secrets:
 - Agents MUST NOT read other agents' agenix secrets
 - Agents MUST NOT be able to escalate to root (no sudo, no wheel group)
 - Network egress MUST be restricted per-agent via firewall rules
+- Inter-agent network traffic MUST be fully blocked via nftables UID rules (see FR-016)
 
 ### NFR-003: Declarative Everything
 
@@ -239,8 +271,8 @@ Secrets:
 
 1. ~~**Compositor choice**: Cage is simplest (single-app kiosk), but Sway headless allows multi-window. Should agents have multi-window desktops or a Chrome-only kiosk?~~ **Resolved**: labwc — better wlroots headless backend support than Cage or Sway. Runs with `WLR_BACKENDS=headless` + `WLR_RENDERER=pixman`. Multi-window capable for future Chrome + other apps.
 2. ~~**VNC vs RDP**: wayvnc is lightweight but RDP (via wlfreerdp) offers better performance. Which protocol to prioritize?~~ **Resolved**: wayvnc (VNC). Lightweight, Wayland-native, localhost-only by default. Remote access via SSH tunnel (`ssh -L 5901:127.0.0.1:5901`) or Tailscale. TLS support available but not yet configured.
-3. ~~**Chrome vs Chromium**: Google Chrome includes proprietary codecs and sync. Chromium is pure open-source but lacks some features. Preference?~~ **Deferred**: Chrome/Chromium not yet implemented (Task 4). Decision will be made when FR-003 work begins.
-4. **Agent-to-agent communication**: Should agents be able to communicate with each other (e.g., shared mailbox, shared Bitwarden collection)?
+3. ~~**Chrome vs Chromium**~~: **Resolved** — Chromium (open-source, nixpkgs packaged). No proprietary codec dependency needed for agent use cases.
+4. ~~**Agent-to-agent communication**~~: **Resolved** — Agents MUST NOT communicate directly. Full inter-agent traffic block via nftables (FR-016). Shared services accessed via Tailscale ACLs only.
 5. **Lifecycle management**: Should there be a CLI (`keystone-agent-os`) for imperative operations (restart desktop, rotate keys, view logs)?
 
 ## Future Considerations

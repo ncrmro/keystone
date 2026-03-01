@@ -28,25 +28,40 @@ keystone.os.agents.{name}
 │  ┌────────────── agent-researcher (uid 4001) ──────────────────────────────┐  │
 │  │  /home/agent-researcher/                                                │  │
 │  │                                                                         │  │
-│  │  agent-space/                        systemd system services (User=):   │  │
+│  │  agent-space/                        systemd services:                  │  │
 │  │  ├── TASKS.yaml                      ├── labwc-agent-{name}.service     │  │
 │  │  ├── PROJECTS.yaml                   ├── wayvnc-agent-{name}.service    │  │
-│  │  ├── ISSUES.yaml                     ├── chrome.service                 │  │
+│  │  ├── ISSUES.yaml                     ├── chromium-agent-{name}.service  │  │
 │  │  ├── SCHEDULES.yaml                  ├── chrome-devtools-mcp.service    │  │
 │  │  ├── SOUL.md / HUMAN.md             ├── ssh-agent.service              │  │
 │  │  ├── AGENTS.md / SERVICES.md        ├── task-loop.timer  (every 15m)   │  │
 │  │  ├── .repos/                         └── scheduler.timer  (daily)       │  │
 │  │  ├── logs/                                                              │  │
-│  │  └── flake.nix                       agenix secrets:                    │  │
+│  │  └── flake.nix                       per-agent tailscaled:              │  │
+│  │                                      ├── tailscaled-agent-researcher    │  │
+│  │  .mcp.json (generated)               ├── TUN: tailscale-agent-…          │  │
+│  │  bin/agent.coding-agent              └── socket: /run/tailscale/...     │  │
+│  │                                                                         │  │
+│  │                                      agenix secrets:                    │  │
 │  │                                      ├── ssh key + passphrase           │  │
-│  │  .mcp.json (generated)               ├── mail credentials               │  │
-│  │  bin/agent.coding-agent              ├── bitwarden API key              │  │
+│  │                                      ├── mail credentials               │  │
+│  │                                      ├── bitwarden password             │  │
 │  │                                      └── tailscale auth key             │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                │
-│  ┌─────────── Host Services ──────────────────────────────────────────────┐   │
+│  ┌─────────── nftables Network Isolation (FR-016) ───────────────────────┐   │
+│  │  Per-UID output rules:                                                │   │
+│  │  ├── skuid 4001 → block ports 5902, 9223, ... (other agents)         │   │
+│  │  ├── skuid 4002 → block ports 5901, 9222, ... (other agents)         │   │
+│  │  └── Generated declaratively from agent config (UIDs, ports)          │   │
+│  │  Per-UID fwmark routing:                                              │   │
+│  │  ├── uid 4001 → fwmark 0x1001 → tailscale-agent-researcher           │   │
+│  │  └── uid 4002 → fwmark 0x1002 → tailscale-agent-coder                │   │
+│  └────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                │
+│  ┌─────────── Host Services (via Tailscale ACLs, not localhost) ─────────┐   │
 │  │  Stalwart Mail Server    (IMAP/SMTP for agent accounts)                │   │
-│  │  Headscale / Tailscale   (mesh VPN, agent nodes)                       │   │
+│  │  Headscale / Tailscale   (mesh VPN, per-agent nodes)                   │   │
 │  │  Vaultwarden             (Bitwarden server, agent collections)         │   │
 │  │  Forgejo                 (agent-space git remotes)                     │   │
 │  └────────────────────────────────────────────────────────────────────────┘   │
@@ -59,8 +74,9 @@ keystone.os.agents.{name}
 └────────────────────────────────────────────────────────────────────────────────┘
 
 Remote Observation (over Headscale or SSH tunnel):
-  Laptop ──tailnet──▶ agent-researcher:5901 (VNC) ──▶ labwc desktop + Chrome
-  Laptop ──ssh -L──▶ host:5901 (localhost) ──▶ labwc desktop + Chrome
+  Laptop ──tailnet──▶ agent-researcher:5901 (VNC) ──▶ labwc desktop + Chromium
+  Laptop ──ssh -L──▶ host:5901 (localhost) ──▶ labwc desktop + Chromium
+  Each agent has its own tailscaled → own tailnet IP → own Headscale ACLs
 ```
 
 ### Configuration Interface
@@ -79,9 +95,12 @@ keystone.os.agents.researcher = {
 
   chrome = {
     enable = true;
-    debugPort = 9222;           # Chrome DevTools Protocol port
+    debugPort = null;           # null = auto-assign from base 9222 (avoids conflicts)
     extensions = [ ];           # Extension IDs to pre-install
-    mcp.enable = true;          # Enable Chrome DevTools MCP server
+    mcp = {
+      enable = true;            # Enable Chrome DevTools MCP server
+      port = null;              # null = auto-assign MCP server port
+    };
   };
 
   mail = {
@@ -98,6 +117,14 @@ keystone.os.agents.researcher = {
   tailscale = {
     enable = true;
     hostname = "agent-researcher";
+    # Per-agent tailscaled instance (FR-006):
+    # - Unique state dir, socket, TUN interface
+    # - UID-based fwmark routing through agent's TUN
+    # - CLI wrapper auto-specifies --socket
+  };
+
+  networking = {
+    isolation = true;           # FR-016: full inter-agent traffic block (default: true)
   };
 
   ssh = {
@@ -163,14 +190,19 @@ keystone.os.agents.researcher = {
 ```
 multi-user.target
   ├── create-agent-homes.service (ext4) or zfs-agent-datasets.service (ZFS)
-  └── agent-desktops.target
-        ├── labwc-agent-researcher.service  (system service, User=agent-researcher)
-        │     └── Requires: create-agent-homes.service
-        ├── wayvnc-agent-researcher.service (system service, User=agent-researcher)
-        │     └── Requires: labwc-agent-researcher.service
-        │     └── ExecStartPre: polls for wayland-0 socket (up to 10s)
-        ├── (future) chrome-agent-researcher.service (After=labwc)
-        └── (future) chrome-devtools-mcp (After=chrome)
+  ├── agent-desktops.target
+  │     ├── labwc-agent-researcher.service  (system service, User=agent-researcher)
+  │     │     └── Requires: create-agent-homes.service
+  │     ├── wayvnc-agent-researcher.service (system service, User=agent-researcher)
+  │     │     ├── Requires: labwc-agent-researcher.service
+  │     │     └── ExecStartPre: polls for wayland-0 socket (up to 10s)
+  │     ├── chromium-agent-researcher.service (After=labwc, User=agent-researcher)
+  │     └── chrome-devtools-mcp-agent-researcher.service (After=chromium)
+  │
+  ├── tailscaled-agent-researcher.service (per-agent tailscaled instance)
+  ├── tailscaled-agent-coder.service
+  │
+  └── nftables.service (UID-based isolation rules, FR-016)
 
 (future) user@{uid}.service (systemd user instance)
   ├── ssh-agent.service (auto-unlock key from agenix)
@@ -193,7 +225,8 @@ multi-user.target
   - `chrome.nix` — FR-003: Chrome with remote debugging
   - `mail.nix` — FR-004: Stalwart account + himalaya CLI config
   - `bitwarden.nix` — FR-005: Vaultwarden account + bw CLI config
-  - `tailscale.nix` — FR-006: Tailscale identity + firewall rules
+  - `tailscale.nix` — FR-006: Per-agent tailscaled instances + CLI wrapper + fwmark routing
+  - `network-isolation.nix` — FR-016: nftables UID-based inter-agent traffic block
   - `ssh.nix` — FR-007: SSH keypair + ssh-agent service + git signing
   - `secrets.nix` — FR-008: Agenix secret paths + assertions
   - `agent-space.nix` — FR-009: Workspace scaffold + git init
@@ -216,11 +249,15 @@ multi-user.target
 
 ### Wayland Compositor
 **Chosen**: labwc (resolved from Open Question 1)
-**Rationale**: labwc provides better wlroots headless backend support than Cage or Sway. Runs with `WLR_BACKENDS=headless` and `WLR_RENDERER=pixman` (software renderer, no GPU needed). Creates a virtual `HEADLESS-1` output via autostart script with `wlr-randr`. Supports multi-window layouts for future Chrome + other apps. Already packaged in nixpkgs with `programs.labwc.enable`.
+**Rationale**: labwc provides better wlroots headless backend support than Cage or Sway. Runs with `WLR_BACKENDS=headless` and `WLR_RENDERER=pixman` (software renderer, no GPU needed). Creates a virtual `HEADLESS-1` output via autostart script with `wlr-randr`. Supports multi-window layouts for future Chromium + other apps. Already packaged in nixpkgs with `programs.labwc.enable`.
 
 ### VNC Server
 **Chosen**: wayvnc
-**Rationale**: Lightweight Wayland-native VNC server. Already packaged in nixpkgs. Binds to a configurable port per agent.
+**Rationale**: Lightweight Wayland-native VNC server. Already packaged in nixpkgs. Binds to a configurable port per agent. Supports Tailscale-only binding via `vncTailscale` option.
+
+### Browser
+**Chosen**: Chromium
+**Rationale**: Open-source, well-packaged in nixpkgs, no proprietary codec dependency for agent use cases. Chrome DevTools Protocol fully supported.
 
 ### Task Loop
 **Chosen**: Bash script driven by systemd timers, invoking LLM CLI (claude, gemini, etc.)
@@ -257,7 +294,8 @@ modules/os/
     ├── chrome.nix                  # FR-003: Chrome + DevTools
     ├── mail.nix                    # FR-004: Stalwart account + himalaya
     ├── bitwarden.nix               # FR-005: Vaultwarden + bw CLI
-    ├── tailscale.nix               # FR-006: Tailscale identity
+    ├── tailscale.nix               # FR-006: Per-agent Tailscale instances
+    ├── network-isolation.nix       # FR-016: nftables UID-based isolation
     ├── ssh.nix                     # FR-007: SSH keys + ssh-agent
     ├── secrets.nix                 # FR-008: Agenix paths + assertions
     ├── agent-space.nix             # FR-009: Workspace scaffold
@@ -319,7 +357,7 @@ The foundation everything else builds on.
 
 **Deferred**: FR-008 (agenix secrets), home-manager integration
 
-### Phase 2: Desktop + Browser (FR-002 + FR-003)
+### Phase 2: Headless Desktop (FR-002)
 
 **FR-002 COMPLETE** (PR #71):
 - labwc compositor with `WLR_BACKENDS=headless` and `WLR_RENDERER=pixman`
@@ -327,19 +365,28 @@ The foundation everything else builds on.
 - 8 additional runtime assertions in the VM test (19 total)
 - VNC binds to 127.0.0.1 only (SSH tunnel or Tailscale for remote access)
 
-**FR-003 NOT STARTED**: Chrome + DevTools MCP
+### Phase 2.5: Chrome + MCP (FR-003)
 
-### Phase 3: Identity + Credentials (FR-004 + FR-005 + FR-006 + FR-007)
+Add browser with DevTools MCP for web interaction.
 
-Connect agents to external services: email, password vault, mesh network, git.
+**Red** — Uncomment assertions: Chromium process active, debug port responding, MCP service running.
 
-**Red** — Uncomment assertions: SSH agent running, git signing configured, mail client available.
+**Green** — Implement:
+- `modules/os/agents/chrome.nix` — Chromium systemd service (`After=labwc-agent-{name}.service`), debug port auto-assignment (base 9222, like VNC base 5900)
+- Chrome DevTools MCP: Nix derivation wrapping `chrome-devtools-mcp` npm package (pinned version), systemd service (`After=chromium-agent-{name}.service`), connects to agent's Chrome debug port, localhost binding only
+
+### Phase 3: Identity + Credentials + Network Isolation (FR-004 + FR-005 + FR-006 + FR-007 + FR-016)
+
+Connect agents to external services and enforce network isolation.
+
+**Red** — Uncomment assertions: SSH agent running, git signing configured, mail client available, per-agent tailscaled running, inter-agent traffic blocked.
 
 **Green** — Implement (can be developed in parallel, all depend on Phase 1):
 - `modules/os/agents/mail.nix` — Stalwart account config + himalaya
 - `modules/os/agents/bitwarden.nix` — Vaultwarden + bw CLI
-- `modules/os/agents/tailscale.nix` — Tailscale identity + firewall
+- `modules/os/agents/tailscale.nix` — Per-agent `tailscaled` instances with unique state/socket/TUN, nftables fwmark routing per UID, tailscale CLI wrapper with auto `--socket`
 - `modules/os/agents/ssh.nix` — SSH keypair + ssh-agent + git signing
+- `modules/os/agents/network-isolation.nix` — nftables ruleset generated from agent UIDs, full inter-agent block (all traffic, not just VNC/Chrome), declarative from agent config
 
 ### Phase 4: Agent Space + MCP (FR-009 + FR-015)
 
@@ -394,7 +441,8 @@ Final red-green pass: uncomment all remaining security assertions and fill any g
 | NFR-002: No root escalation | Assertions: agent users MUST NOT be in `wheel`. No `sudo` config. |
 | FR-011: Tamper-proof audit | Root-owned `/var/log/agent-{name}/`, `chattr +a` on audit.jsonl, NixOS assertion preventing disable |
 | FR-008: Secret scoping | Each secret has explicit `owner = "agent-{name}"` in agenix config |
-| FR-006: Network restriction | Per-agent iptables/nftables rules via `networking.firewall.extraCommands` |
+| FR-006: Network routing | Per-agent `tailscaled` instances with UID-based fwmark routing through dedicated TUN interfaces |
+| FR-016: Inter-agent isolation | nftables UID-based output rules blocking all inter-agent traffic, generated declaratively from agent config |
 | FR-015: No inline secrets | `.mcp.json` references agenix paths, not plaintext credentials |
 
 ## Testing Strategy
@@ -405,11 +453,12 @@ All testing is driven by **one growing test file** (`tests/module/agent-isolatio
 |---|---|---|
 | 1 | User exists, UID >= 4000, `agents` group, no `wheel`, home dir 700, ownership, cross-agent isolation, agent-human isolation, human-agent isolation, no sudo, no system writes, write to own home | **Complete** (11 assertions) |
 | 2 | labwc service active, Wayland socket created, wayvnc active, VNC port open, wlr-randr headless output, config files + ownership, VNC localhost-only, non-desktop agent clean | **Complete** (8 assertions) |
-| 3 | SSH agent running, git signing configured, mail client available | Pending |
+| 2.5 | Chromium process active, debug port responding, MCP service running, port auto-assignment | Pending |
+| 3 | SSH agent running, git signing configured, mail client available, per-agent tailscaled running, inter-agent traffic blocked (nftables) | Pending |
 | 4 | Agent-space directory + expected files, `.mcp.json` generated | Pending |
 | 5 | Timers active, audit.jsonl root-owned + append-only | Pending |
 | 6 | Coding-agent script exists, incident database path exists | Pending |
-| 7 | Full cross-cutting security: secret isolation, network egress, credential scoping, cgroup limits | Pending |
+| 7 | Full cross-cutting security: secret isolation, network egress, credential scoping, cgroup limits, nftables UID rules | Pending |
 
 CI runs `tests/module/agent-isolation.nix` on PRs touching `modules/os/agents*`.
 
@@ -421,7 +470,8 @@ CI runs `tests/module/agent-isolation.nix` on PRs touching `modules/os/agents*`.
 | Task loop LLM API costs | Unexpected spend from frequent polling | Configurable interval, max tasks per run, error threshold stop condition |
 | Agenix secret rotation requires rebuild | Downtime during key rotation | `systemd reload` triggers re-decryption without full rebuild |
 | Audit log disk usage | Fills disk on active agents | Logrotate with configurable retention (default 90 days), compression |
-| Chrome DevTools port exposure | Unauthorized access to agent browser | Bind to localhost only, firewall rules block external access |
+| Chrome DevTools port exposure | Unauthorized access to agent browser | Bind to localhost only, nftables UID rules block cross-agent access (FR-016), Tailscale ACLs for remote access |
+| Per-agent tailscaled complexity | Multiple TUN interfaces, fwmark routing tables | Declarative Nix config generates all nftables/routing rules; test in VM with 2+ agents |
 
 ## Related Documents
 
