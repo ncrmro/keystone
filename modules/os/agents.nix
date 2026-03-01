@@ -799,21 +799,8 @@ in
         pkgs.keystone.himalaya
       ];
 
-      # Declare agenix secrets for each mail-enabled agent
-      # The consumer (nixos-config) provides the encrypted .age files
-      # via age.secrets."agent-{name}-mail-password".file
-      age.secrets = mapAttrs' (
-        name: _agentCfg:
-        let
-          username = "agent-${name}";
-        in
-        nameValuePair "agent-${name}-mail-password" {
-          # file is set by the consumer (nixos-config) — not declared here
-          owner = username;
-          group = "agents";
-          mode = "0400";
-        }
-      ) mailAgents;
+      # NOTE: Consumer (nixos-config) must declare agenix secrets:
+      #   age.secrets."agent-{name}-mail-password" = { file = ...; owner = "agent-{name}"; mode = "0400"; };
     })
 
     # Bitwarden/Vaultwarden agent configuration
@@ -823,23 +810,8 @@ in
         pkgs.bitwarden-cli
       ];
 
-      # Declare agenix secrets for each bitwarden-enabled agent
-      age.secrets = mkMerge (
-        mapAttrsToList (
-          name: agentCfg:
-          let
-            username = "agent-${name}";
-          in
-          {
-            "agent-${name}-bitwarden-password" = {
-              # Consumer provides the .age file via age.secrets.*.file
-              owner = username;
-              group = "agents";
-              mode = "0400";
-            };
-          }
-        ) bitwardenAgents
-      );
+      # NOTE: Consumer (nixos-config) must declare agenix secrets:
+      #   age.secrets."agent-{name}-bitwarden-password" = { file = ...; owner = "agent-{name}"; mode = "0400"; };
 
       # Configure bw CLI server URL per bitwarden-enabled agent
       systemd.services = mkMerge (
@@ -879,15 +851,8 @@ in
 
     # Per-agent Tailscale instances
     (mkIf hasTailscaleAgents {
-      # Agenix secrets for tailscale auth keys
-      age.secrets = mapAttrs' (
-        name: _:
-        nameValuePair "agent-${name}-tailscale-auth-key" {
-          file = ../../secrets/agent-${name}-tailscale-auth-key.age;
-          owner = "root";
-          mode = "0400";
-        }
-      ) tailscaleAgents;
+      # NOTE: Consumer (nixos-config) must declare agenix secrets:
+      #   age.secrets."agent-{name}-tailscale-auth-key" = { file = ...; owner = "root"; mode = "0400"; };
 
       # Systemd target grouping all agent tailscale services
       systemd.targets.agent-tailscale = {
@@ -907,7 +872,7 @@ in
             stateDir = "/var/lib/tailscale/tailscaled-agent-${name}.state";
             socketPath = "/run/tailscale/tailscaled-agent-${name}.socket";
             tunName = "tailscale-agent-${name}";
-            authKeyPath = config.age.secrets."agent-${name}-tailscale-auth-key".path;
+            authKeyPath = "/run/agenix/agent-${name}-tailscale-auth-key";
           in
           {
             "tailscaled-agent-${name}" = {
@@ -1011,29 +976,9 @@ in
       # Enable OpenSSH
       services.openssh.enable = true;
 
-      # Agenix secrets for SSH keys and passphrases
-      age.secrets = mkMerge (
-        mapAttrsToList (
-          name: agentCfg:
-          let
-            username = "agent-${name}";
-          in
-          {
-            "${username}-ssh-key" = {
-              file = ../../secrets/${username}-ssh-key.age;
-              owner = username;
-              group = "agents";
-              mode = "0400";
-            };
-            "${username}-ssh-passphrase" = {
-              file = ../../secrets/${username}-ssh-passphrase.age;
-              owner = username;
-              group = "agents";
-              mode = "0400";
-            };
-          }
-        ) sshAgents
-      );
+      # NOTE: Consumer (nixos-config) must declare agenix secrets:
+      #   age.secrets."agent-{name}-ssh-key" = { file = ...; owner = "agent-{name}"; mode = "0400"; };
+      #   age.secrets."agent-{name}-ssh-passphrase" = { file = ...; owner = "agent-{name}"; mode = "0400"; };
 
       # ssh-agent + git-config systemd services per SSH-enabled agent
       systemd.services = mkMerge (
@@ -1043,8 +988,8 @@ in
             username = "agent-${name}";
             resolved = agentsWithUids.${name};
             uid = resolved.uid;
-            sshKeyPath = config.age.secrets."${username}-ssh-key".path;
-            sshPassphrasePath = config.age.secrets."${username}-ssh-passphrase".path;
+            sshKeyPath = "/run/agenix/${username}-ssh-key";
+            sshPassphrasePath = "/run/agenix/${username}-ssh-passphrase";
             homesService =
               if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service";
             # Script that outputs the passphrase for SSH_ASKPASS
