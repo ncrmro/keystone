@@ -34,7 +34,7 @@ in
         # Move focus with vim keys
         "$mod, H, movefocus, l"
         "$mod, L, movefocus, r"
-        "$mod, J, togglesplit,"
+        "$mod, J, layoutmsg, togglesplit"
 
         # Move focus with arrow keys
         "$mod, left, movefocus, l"
@@ -103,7 +103,7 @@ in
         "ALT, F11, fullscreen, 1"
 
         # Toggle split direction
-        "$mod, T, togglesplit,"
+        "$mod, T, layoutmsg, togglesplit"
 
         # Resize windows
         "$mod, minus, resizeactive, -100 0"
