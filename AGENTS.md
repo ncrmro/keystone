@@ -49,13 +49,52 @@ The desktop module provides a complete Hyprland environment:
 - Modular desktop components in `modules/desktop/`
 
 ### Server Services
-The server module provides optional infrastructure services:
-- **Binary Cache** - Harmonia binary cache server
+The server module provides unified nginx/ACME/DNS configuration via `keystone.server.services.*`:
+
+```nix
+keystone.domain = "example.com";  # Shared TLD for all services
+keystone.server = {
+  enable = true;
+  tailscaleIP = "100.64.0.6";
+  acme = {
+    enable = true;
+    credentialsFile = config.age.secrets.cloudflare-api-token.path;
+  };
+  services = {
+    immich.enable = true;      # -> photos.example.com, port 2283
+    vaultwarden.enable = true; # -> vaultwarden.example.com, port 8222
+    forgejo.enable = true;     # -> git.example.com, port 3001
+  };
+};
+```
+
+**Available services** (each auto-configures nginx reverse proxy + DNS):
+| Service | Subdomain | Port | Access | Notes |
+|---------|-----------|------|--------|-------|
+| immich | photos | 2283 | tailscale | maxBodySize=50G |
+| vaultwarden | vaultwarden | 8222 | tailscale | |
+| forgejo | git | 3001 | tailscale | |
+| grafana | grafana | 3002 | tailscale | |
+| prometheus | prometheus | 9090 | tailscale | |
+| loki | loki | 3100 | tailscale | |
+| headscale | mercury | 8080 | **public** | |
+| miniflux | miniflux | 8070 | tailscale | |
+| harmonia | harmonia | 5000 | tailscale | |
+| mail | mail | 8082 | tailscale | Stalwart admin |
+| adguard | adguard.home | 3000 | tailscaleAndLocal | |
+
+**Access presets**:
+- `tailscale` - Allow Tailscale network only (100.64.0.0/10, fd7a:115c:a1e0::/48)
+- `tailscaleAndLocal` - Allow Tailscale + local network (192.168.1.0/24)
+- `public` - No restrictions
+- `local` - Local network only
+
+**DNS records** are auto-generated to `keystone.server.generatedDNSRecords` for headscale integration.
+
+**Legacy modules** (still available):
 - **VPN** - Headscale/Tailscale VPN server (Kubernetes-based)
 - **Monitoring** - Prometheus/Grafana stack (NixOS services)
-- **Mail** - Placeholder for future mail server implementation
-- **Headscale Exit Node** - Placeholder for exit node configuration
-- **Observability** - Loki/Alloy (Kubernetes-based, reference implementation)
+- **Observability** - Loki/Alloy (Kubernetes-based)
 
 ### Terminal Environment
 The terminal module provides development tools:
@@ -581,26 +620,75 @@ The `keystone.domain` option (defined in `modules/domain.nix`) establishes a sha
 keystone.domain = "example.com";
 keystone.server = {
   enable = true;
-  binaryCache.enable = true;  # → harmonia.example.com
+  tailscaleIP = "100.64.0.6";  # For DNS record generation
+  acme = {
+    enable = true;
+    credentialsFile = config.age.secrets.cloudflare-api-token.path;
+    extraDomainNames = [ "*.home.example.com" ];
+  };
+  services = {
+    immich.enable = true;      # -> photos.example.com
+    vaultwarden.enable = true; # -> vaultwarden.example.com
+    forgejo.enable = true;     # -> git.example.com
+  };
 };
 keystone.os.agents.drago = {};  # mail → agent-drago@example.com
 ```
 
-Each sub-service has a `domain` option that defaults to `<service>.${keystone.domain}` but can be overridden:
+Each sub-service has a `subdomain` option that defaults to the service name but can be overridden.
 
-```nix
-keystone.server.binaryCache.domain = "cache.custom.org";  # override
+### Module Structure
+
+```
+modules/server/
+├── default.nix          # Main module, imports all services
+├── lib.nix              # Shared helpers (mkServiceOptions, accessPresets)
+├── acme.nix             # ACME wildcard cert configuration
+├── nginx.nix            # Base nginx config + virtualHost generation
+├── dns.nix              # DNS record generation for headscale
+├── services/
+│   ├── immich.nix       # Each service defines options + registers itself
+│   ├── vaultwarden.nix
+│   └── ...
+└── headscale/
+    └── dns-import.nix   # Consume DNS records on headscale host
 ```
 
-### Service Boundary
+### How Services Work
 
-Keystone server modules configure **only the service itself** (bound to `127.0.0.1`). The consumer is responsible for:
-- **Nginx/reverse proxy** — TLS termination, virtual hosts
-- **TLS certificates** — ACME, wildcard certs
-- **Secrets** — signing keys, passwords (via agenix or similar)
-- **Access control** — Tailscale-only, firewall rules
+1. Each service module defines options under `keystone.server.services.<name>`
+2. When enabled, the service registers itself in `keystone.server._enabledServices`
+3. The nginx module auto-generates virtualHosts from `_enabledServices`
+4. The dns module auto-generates DNS records to `keystone.server.generatedDNSRecords`
+5. The headscale host consumes DNS records via `keystone.headscale.dnsRecords`
 
-This separation keeps Keystone portable across different deployment patterns.
+### Adding New Services
+
+1. Create `modules/server/services/<name>.nix`:
+```nix
+{ lib, config, ... }:
+let
+  serverLib = import ../lib.nix { inherit lib; };
+  serverCfg = config.keystone.server;
+  cfg = serverCfg.services.<name>;
+in {
+  options.keystone.server.services.<name> = serverLib.mkServiceOptions {
+    description = "Service description";
+    subdomain = "<name>";
+    port = 8080;
+    access = "tailscale";  # or "public", "local", "tailscaleAndLocal"
+    websockets = true;
+  };
+
+  config = lib.mkIf (serverCfg.enable && cfg.enable) {
+    keystone.server._enabledServices.<name> = {
+      inherit (cfg) subdomain port access maxBodySize websockets registerDNS;
+    };
+  };
+}
+```
+
+2. Import in `modules/server/default.nix`
 
 ### Warning Pattern
 
@@ -610,17 +698,13 @@ Examples:
 - `keystone.domain == null` → warns that subdomains can't be auto-derived
 - `keystone.server.binaryCache.signKeyPaths == []` → warns that store paths won't be signed
 
-### Adding New Sub-Services
+### Port Conflict Detection
 
-Checklist for adding a new server sub-service:
+The module includes automatic port conflict detection. If two enabled services use the same port, an assertion fails with a clear error message.
 
-1. Create `modules/server/<service>.nix`
-2. Add `domain` option defaulting to `"<service>.${config.keystone.domain}"` (null when domain unset)
-3. Add `port` option with a sensible default
-4. Bind the service to `127.0.0.1` only
-5. Emit warnings for missing recommended config (don't use assertions)
-6. Import the new file in `modules/server/default.nix`
-7. Add `<service>.enable` option in `default.nix`
+### Legacy Modules
+
+Legacy modules (`binaryCache`, `monitoring`, `vpn`, `mail`, `headscale`) are still available but configure **only the service itself**. The consumer is responsible for nginx/TLS/access control. These will eventually be migrated to the `services.*` pattern.
 
 ### Migration TODOs
 
