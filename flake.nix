@@ -28,6 +28,10 @@
       url = "github:numtide/llm-agents.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    browser-previews = {
+      url = "github:nix-community/browser-previews";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -40,11 +44,18 @@
     hyprland,
     himalaya,
     llm-agents,
+    browser-previews,
     ...
   }: let
     # Create inputs attrset for desktop module
     inputs = {
-      inherit nixpkgs hyprland himalaya llm-agents;
+      inherit
+        nixpkgs
+        hyprland
+        himalaya
+        llm-agents
+        browser-previews
+        ;
     };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
@@ -73,6 +84,7 @@
       zesh-src = ./packages/zesh;
       himalaya-flake = himalaya;
       llm-agents-flake = llm-agents;
+      browser-previews-flake = browser-previews;
     in final: prev: {
       keystone = {
         zesh = final.callPackage zesh-src {};
@@ -81,6 +93,8 @@
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
         gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;
         codex = llm-agents-flake.packages.${final.system}.codex;
+        # Browsers from browser-previews
+        google-chrome = browser-previews-flake.packages.${final.system}.google-chrome;
       };
     };
 
