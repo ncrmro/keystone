@@ -561,3 +561,59 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
 - `keystone.desktop.hyprland.enable` - Enable Hyprland config
 - `keystone.desktop.hyprland.modifierKey` - Primary modifier (default: SUPER). With altwin:swap_alt_win, physical Alt triggers these for ergonomic thumb access
 - `keystone.desktop.hyprland.capslockAsControl` - Remap caps to ctrl (default: true)
+
+## Server Module: Domain Architecture
+
+### Shared TLD Convention
+
+The server module provides a `keystone.server.domain` option that establishes a shared top-level domain. Sub-services auto-derive their subdomains:
+
+```nix
+keystone.server = {
+  enable = true;
+  domain = "example.com";
+  binaryCache.enable = true;  # → harmonia.example.com
+};
+```
+
+Each sub-service has a `domain` option that defaults to `<service>.${keystone.server.domain}` but can be overridden:
+
+```nix
+keystone.server.binaryCache.domain = "cache.custom.org";  # override
+```
+
+### Service Boundary
+
+Keystone server modules configure **only the service itself** (bound to `127.0.0.1`). The consumer is responsible for:
+- **Nginx/reverse proxy** — TLS termination, virtual hosts
+- **TLS certificates** — ACME, wildcard certs
+- **Secrets** — signing keys, passwords (via agenix or similar)
+- **Access control** — Tailscale-only, firewall rules
+
+This separation keeps Keystone portable across different deployment patterns.
+
+### Warning Pattern
+
+Server modules emit `warnings` (not `assertions`) for missing but recommended config. This ensures `nix eval` never breaks — the user sees a warning during build but evaluation succeeds.
+
+Examples:
+- `keystone.server.domain == null` → warns that subdomains can't be auto-derived
+- `keystone.server.binaryCache.signKeyPaths == []` → warns that store paths won't be signed
+
+### Adding New Sub-Services
+
+Checklist for adding a new server sub-service:
+
+1. Create `modules/server/<service>.nix`
+2. Add `domain` option defaulting to `"<service>.${serverCfg.domain}"` (null when domain unset)
+3. Add `port` option with a sensible default
+4. Bind the service to `127.0.0.1` only
+5. Emit warnings for missing recommended config (don't use assertions)
+6. Import the new file in `modules/server/default.nix`
+7. Add `<service>.enable` option in `default.nix`
+
+### Migration TODOs
+
+These existing services should eventually derive their domains from the shared TLD:
+- `keystone.server.monitoring.grafana.domain` → `"grafana.${serverCfg.domain}"`
+- `keystone.server.mail.domain` → `"mail.${serverCfg.domain}"`
