@@ -32,10 +32,10 @@ keystone.os.agents.{name}
 │  │  ├── TASKS.yaml                      ├── labwc-agent-{name}.service     │  │
 │  │  ├── PROJECTS.yaml                   ├── wayvnc-agent-{name}.service    │  │
 │  │  ├── ISSUES.yaml                     ├── chrome.service                 │  │
-│  │  ├── SCHEDULES.yaml                  ├── chrome-devtools-mcp.service    │  │
-│  │  ├── SOUL.md / HUMAN.md             ├── ssh-agent.service              │  │
-│  │  ├── AGENTS.md / SERVICES.md        ├── task-loop.timer  (every 15m)   │  │
-│  │  ├── .repos/                         └── scheduler.timer  (daily)       │  │
+│  │  ├── SCHEDULES.yaml                  ├── ssh-agent.service              │  │
+│  │  ├── SOUL.md / HUMAN.md             ├── task-loop.timer  (every 15m)   │  │
+│  │  ├── AGENTS.md / SERVICES.md        └── scheduler.timer  (daily)       │  │
+│  │  ├── .repos/                                                            │  │
 │  │  ├── logs/                                                              │  │
 │  │  └── flake.nix                       agenix secrets:                    │  │
 │  │                                      ├── ssh key + passphrase           │  │
@@ -169,8 +169,7 @@ multi-user.target
         ├── wayvnc-agent-researcher.service (system service, User=agent-researcher)
         │     └── Requires: labwc-agent-researcher.service
         │     └── ExecStartPre: polls for wayland-0 socket (up to 10s)
-        ├── (future) chrome-agent-researcher.service (After=labwc)
-        └── (future) chrome-devtools-mcp (After=chrome)
+        └── (future) chrome-agent-researcher.service (After=labwc)
 
 (future) user@{uid}.service (systemd user instance)
   ├── ssh-agent.service (auto-unlock key from agenix)
@@ -201,7 +200,7 @@ multi-user.target
   - `audit.nix` — FR-011: Audit log service + rotation + Loki forwarding
   - `coding-agent.nix` — FR-013: Coding subagent script + config
   - `incidents.nix` — FR-014: Shared incident database + escalation
-  - `mcp.nix` — FR-015: .mcp.json generation + MCP server services
+  - `mcp.nix` — FR-015: .mcp.json generation (Chrome DevTools MCP via stdio + additional servers), human-accessible config fragments at `/etc/keystone/agent-mcp/`
   - `scripts/` — Shell scripts used by systemd services
 
 ### Integration Points
@@ -231,8 +230,8 @@ multi-user.target
 **Rationale**: Append-only files prevent agent tampering. JSON Lines is grep-friendly and parseable by Loki/Alloy. Log rotation via logrotate.
 
 ### MCP Servers
-**Chosen**: Chrome DevTools MCP as systemd user service, additional servers configurable
-**Rationale**: Systemd manages lifecycle, health checks via `RestartSec` + `Restart=on-failure`. `.mcp.json` generated from Nix config.
+**Chosen**: `chrome-devtools-mcp` (npm: [ChromeDevTools/chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp)) via stdio transport
+**Rationale**: Chrome DevTools MCP uses stdio — each MCP client launches its own ephemeral process with `--browserUrl http://127.0.0.1:{debugPort}`. No dedicated systemd service needed; the MCP client (Claude Code, etc.) manages process lifecycle. Multiple clients can connect to the same Chrome debug port simultaneously. The package is built as a Nix derivation in the keystone overlay. `.mcp.json` generated from Nix config includes the Chrome DevTools MCP entry when `chrome.mcp.enable = true`. Human users get discoverable config fragments at `/etc/keystone/agent-mcp/{name}.json`.
 
 ## File Structure
 
@@ -327,7 +326,7 @@ The foundation everything else builds on.
 - 8 additional runtime assertions in the VM test (19 total)
 - VNC binds to 127.0.0.1 only (SSH tunnel or Tailscale for remote access)
 
-**FR-003 NOT STARTED**: Chrome + DevTools MCP
+**FR-003 NOT STARTED**: Chrome + DevTools MCP. Implementation approach: Chrome launches as a systemd system service (After=labwc) with `--remote-debugging-port={debugPort}`. Chrome DevTools MCP is packaged as a Nix derivation from the `chrome-devtools-mcp` npm package and referenced in the agent's `.mcp.json` with `--browserUrl http://127.0.0.1:{debugPort}`. No dedicated MCP systemd service — stdio transport means the MCP client manages the process. Human access via discoverable config fragments at `/etc/keystone/agent-mcp/`.
 
 ### Phase 3: Identity + Credentials (FR-004 + FR-005 + FR-006 + FR-007)
 
@@ -350,7 +349,7 @@ Set up the agent's workspace and tool access.
 **Green** — Implement:
 - `modules/os/agents/agent-space.nix` — Scaffold script + systemd oneshot
 - `modules/os/agents/scripts/scaffold-agent-space.sh` — Git init, file creation, identity population
-- `modules/os/agents/mcp.nix` — `.mcp.json` generation + Chrome DevTools MCP service
+- `modules/os/agents/mcp.nix` — `.mcp.json` generation (Chrome DevTools MCP via stdio + additional servers), `/etc/keystone/agent-mcp/{name}.json` for human access
 
 ### Phase 5: Task Loop + Audit (FR-010 + FR-011)
 
@@ -421,7 +420,7 @@ CI runs `tests/module/agent-isolation.nix` on PRs touching `modules/os/agents*`.
 | Task loop LLM API costs | Unexpected spend from frequent polling | Configurable interval, max tasks per run, error threshold stop condition |
 | Agenix secret rotation requires rebuild | Downtime during key rotation | `systemd reload` triggers re-decryption without full rebuild |
 | Audit log disk usage | Fills disk on active agents | Logrotate with configurable retention (default 90 days), compression |
-| Chrome DevTools port exposure | Unauthorized access to agent browser | Bind to localhost only, firewall rules block external access |
+| Chrome DevTools port exposure | Unauthorized access to agent browser | Bind to localhost only, firewall rules block external access. Human users on same host can connect intentionally via discoverable config. |
 
 ## Related Documents
 

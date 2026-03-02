@@ -18,7 +18,8 @@ with lib; let
   hwKeyCfg = config.keystone.hardwareKey;
 
   # Check if ZFS is being used
-  useZfs = osCfg.storage.type == "zfs";
+  # TODO: Re-evaluate ZFS home folder management. Current implementation can interfere with legacy setups.
+  useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
 
   # Resolve hardware key names to SSH public keys for a user
   resolveHardwareKeys = userCfg:

@@ -268,6 +268,60 @@ let
       }
     ];
 
+    # Agent with space.repo configured (git clone service)
+    agent-space = eval "agent-space" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.drago = {
+            fullName = "Drago";
+            space.repo = "git@git.ncrmro.com:drago/agent-space.git";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with space.repo and SSH (clone depends on ssh-agent)
+    agent-space-ssh = eval "agent-space-ssh" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.drago = {
+            fullName = "Drago";
+            space.repo = "git@git.ncrmro.com:drago/agent-space.git";
+            ssh = {
+              enable = true;
+              publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-drago";
+            };
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
     # Multiple agents with chrome (non-conflicting auto-assigned ports)
     multi-agent-chrome = eval "multi-agent-chrome" [
       {
