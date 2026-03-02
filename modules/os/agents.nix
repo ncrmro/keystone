@@ -44,7 +44,8 @@ let
   osCfg = config.keystone.os;
   cfg = osCfg.agents;
 
-  useZfs = osCfg.storage.type == "zfs";
+  # TODO: Re-evaluate agent ZFS home folders. Implementation needs to be reconciled with legacy setups.
+  useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
 
   # Base UID for agent users
   agentUidBase = 4000;
@@ -554,7 +555,9 @@ in
         '';
       };
 
+      /*
       # ZFS dataset creation for agent homes
+      # TODO: Re-evaluate ZFS home folder management for agents before re-enabling.
       systemd.services.zfs-agent-datasets = mkIf useZfs {
         description = "Create ZFS datasets for agent home directories";
 
@@ -597,6 +600,7 @@ in
           )}
         '';
       };
+      */
     }
 
     # Desktop agent configuration (labwc + wayvnc)

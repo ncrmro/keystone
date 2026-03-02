@@ -114,25 +114,28 @@ VM test validates: labwc service active, Wayland socket created, wayvnc service 
 
 ---
 
-### Task 4: Chrome Browser + DevTools [FR-003]
+### Task 4: Chrome Browser + DevTools MCP [FR-003]
 
 **Type**: Infrastructure
 **Dependencies**: Task 3
 
 **Description:**
-Install Chrome and configure it to auto-launch on the agent's desktop with remote debugging enabled. Chrome profile persists in agent's home directory. The service starts after the Cage compositor.
+Install Chrome/Chromium and configure it to auto-launch on the agent's desktop with remote debugging enabled. Chrome profile persists in agent's home directory. The Chrome service starts after labwc compositor. Package `chrome-devtools-mcp` as a Nix derivation (from the `chrome-devtools-mcp` npm package via [ChromeDevTools/chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp)). Chrome DevTools MCP uses **stdio transport** — no dedicated systemd service; MCP clients launch ephemeral processes. The `.mcp.json` entry for Chrome DevTools MCP is generated in Task 10.
 
 **Files to Create:**
-- `modules/os/agents/chrome.nix` — Chrome systemd user service (`After=cage-desktop.service`), `--remote-debugging-port`, persistent profile at `~/.config/google-chrome-agent/`, configurable extensions
+- `modules/os/agents/chrome.nix` — Chrome systemd system service (`After=labwc-agent-{name}.service`, `User=agent-{name}`), `--remote-debugging-port={debugPort}`, persistent profile at `~/.config/google-chrome-agent/`, configurable extensions
+- Keystone overlay derivation for `chrome-devtools-mcp` npm package (using `buildNpmPackage` or equivalent)
 
 **Acceptance Criteria:**
 - [ ] Chrome starts with `--remote-debugging-port={debugPort}` (default 9222)
 - [ ] Chrome profile persists at `/home/agent-{name}/.config/google-chrome-agent/`
-- [ ] Chrome service starts after Cage compositor
+- [ ] Chrome service starts after labwc compositor (system service with `User=`)
 - [ ] Remote debugging port is accessible from localhost
+- [ ] `chrome-devtools-mcp` Nix derivation builds successfully
+- [ ] Multiple MCP clients can connect to the same debug port
 
 **Validation:**
-Extend VM test: `curl -s http://localhost:9222/json/version` returns Chrome version JSON.
+Extend VM test: `curl -s http://localhost:9222/json/version` returns Chrome version JSON. Verify `chrome-devtools-mcp` binary exists in the Nix store.
 
 ---
 
@@ -275,24 +278,24 @@ Extend VM test: `su - agent-researcher -c "ls agent-space/TASKS.yaml"` succeeds.
 ### Task 10: MCP Configuration [FR-015]
 
 **Type**: Infrastructure
-**Dependencies**: Task 3, Task 9
+**Dependencies**: Task 4, Task 9
 
 **Description:**
-Generate `.mcp.json` from keystone config. Chrome DevTools MCP runs as systemd user service after Chrome, binding to localhost only. Support additional MCP servers. Health checks with automatic restart.
+Generate `.mcp.json` from keystone config. When `chrome.mcp.enable = true`, include a `chrome-devtools` entry pointing to the Nix-packaged `chrome-devtools-mcp` binary with `--browserUrl http://127.0.0.1:{debugPort}`. Chrome DevTools MCP uses **stdio transport** — no dedicated systemd service; the MCP client (Claude Code, etc.) launches an ephemeral process per connection. Support additional MCP servers via `keystone.os.agents.{name}.mcp.servers`. Generate human-accessible config fragments at `/etc/keystone/agent-mcp/{name}.json` so human users on the same host can launch their own MCP client connecting to any agent's Chrome.
 
 **Files to Create:**
-- `modules/os/agents/mcp.nix` — `.mcp.json` generation from `keystone.os.agents.{name}.mcp.servers`, Chrome DevTools MCP systemd user service (`After=chrome.service`, `Restart=on-failure`), localhost binding, no inline secrets
+- `modules/os/agents/mcp.nix` — `.mcp.json` generation from `keystone.os.agents.{name}.mcp.servers` plus Chrome DevTools MCP entry (when `chrome.mcp.enable = true`), human-accessible config at `/etc/keystone/agent-mcp/{name}.json`, no inline secrets
 
 **Acceptance Criteria:**
 - [ ] `.mcp.json` generated at `/home/agent-researcher/.mcp.json`
-- [ ] Chrome DevTools MCP service starts after Chrome
-- [ ] MCP binds to localhost only (not 0.0.0.0)
+- [ ] When `chrome.mcp.enable = true`, `.mcp.json` contains a `chrome-devtools` server entry with `command` pointing to the Nix-packaged `chrome-devtools-mcp` and `args` containing `["--browserUrl", "http://127.0.0.1:{debugPort}"]`
 - [ ] Additional MCP servers from config are included in `.mcp.json`
 - [ ] No secrets appear inline in `.mcp.json` (references to agenix paths only)
-- [ ] MCP service restarts on failure
+- [ ] `/etc/keystone/agent-mcp/{name}.json` exists with Chrome DevTools MCP config for human access
+- [ ] Human users can use the config fragment to connect to agent Chrome instances
 
 **Validation:**
-Extend VM test: `.mcp.json` exists and contains expected server entries.
+Extend VM test: `.mcp.json` exists and contains `chrome-devtools` server entry with correct `--browserUrl`. `/etc/keystone/agent-mcp/researcher.json` exists and is readable by human users.
 
 ---
 
@@ -300,7 +303,8 @@ Extend VM test: `.mcp.json` exists and contains expected server entries.
 
 **Verify:**
 - [ ] Agent-space scaffolded with all standard files
-- [ ] `.mcp.json` generated with Chrome DevTools MCP
+- [ ] `.mcp.json` generated with Chrome DevTools MCP entry (stdio transport, `--browserUrl`)
+- [ ] Human-accessible config fragments at `/etc/keystone/agent-mcp/`
 - [ ] Agent has a working directory and tool access
 
 ---
@@ -490,13 +494,13 @@ Configure CI to run the agent security tests on PRs that touch `modules/os/agent
 | 1 | [x] | FR-001, FR-008 | 1 | Done via single `agents.nix`. Home-manager and agenix deferred. |
 | 2 | [x] | FR-012 | 1 | Done as `tests/module/agent-isolation.nix` (19 assertions, eval + runtime) |
 | 3 | [x] | FR-002 | 2 | Done with labwc (not Cage), system services with `User=` (not user services) |
-| 4 | [ ] | FR-003 | 2 | Chrome + DevTools |
+| 4 | [ ] | FR-003 | 2 | Chrome + DevTools MCP (chrome-devtools-mcp Nix derivation, stdio transport) |
 | 5 | [ ] | FR-004 | 3 | Email (parallel with 6,7,8) |
 | 6 | [ ] | FR-005 | 3 | Bitwarden (parallel with 5,7,8) |
 | 7 | [ ] | FR-006 | 3 | Tailscale (parallel with 5,6,8) |
 | 8 | [ ] | FR-007 | 3 | SSH (parallel with 5,6,7) |
 | 9 | [ ] | FR-009 | 4 | Agent space scaffold |
-| 10 | [ ] | FR-015 | 4 | MCP config |
+| 10 | [ ] | FR-015 | 4 | MCP config (.mcp.json + human access fragments, stdio transport) |
 | 11 | [ ] | FR-010 | 5 | Task loop (parallel with 12) |
 | 12 | [ ] | FR-011 | 5 | Audit trail (parallel with 11) |
 | 13 | [ ] | FR-013 | 6 | Coding subagent (parallel with 14) |

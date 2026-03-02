@@ -45,8 +45,12 @@ OS agents need a persistent identity and environment that survives reboots, inte
 ### FR-003: Chrome Browser with DevTools MCP
 
 - The system MUST install Google Chrome (or Chromium) and auto-launch it on the agent's desktop
-- Chrome MUST start with remote debugging enabled (`--remote-debugging-port`)
-- The Chrome DevTools Protocol MCP server MUST be configured and available to the LLM process
+- Chrome MUST start with remote debugging enabled (`--remote-debugging-port={debugPort}`)
+- The Chrome DevTools MCP server MUST use the `chrome-devtools-mcp` npm package ([ChromeDevTools/chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp)), NOT Playwright MCP
+- The MCP server MUST connect to the agent's Chrome instance via `--browserUrl http://127.0.0.1:{debugPort}`
+- The MCP server uses **stdio transport** — each MCP consumer (agent's LLM process, human's Claude Code, etc.) launches its own ephemeral `chrome-devtools-mcp` process; there is no long-running MCP systemd service
+- Multiple MCP clients MUST be able to connect to the same Chrome debug port simultaneously (Chrome DevTools Protocol supports this natively)
+- Human user accounts on the same host MUST be able to launch a `chrome-devtools-mcp` process connecting to any agent's Chrome debug port
 - The Chrome profile MUST persist in the agent's home directory
 - Extensions SHOULD be pre-installable declaratively (e.g., Bitwarden browser extension)
 
@@ -201,10 +205,12 @@ Secrets:
 ### FR-015: MCP Configuration — Tool Access
 
 - The system MUST generate a `.mcp.json` in the agent's home directory from `keystone.os.agents.{name}.mcp` configuration
-- The Chrome DevTools MCP server MUST run as a systemd user service that starts after Chrome and binds to localhost only
-- Chrome MUST be started as a separate process outside the MCP server (the MCP server connects to an existing Chrome instance)
+- The system MUST package `chrome-devtools-mcp` as a Nix derivation in the keystone overlay (using `buildNpmPackage` or equivalent)
+- When `chrome.mcp.enable = true`, the generated `.mcp.json` MUST include a `chrome-devtools` entry with `command` pointing to the Nix-packaged binary and `args` containing `["--browserUrl", "http://127.0.0.1:{debugPort}"]`
+- Chrome DevTools MCP uses **stdio transport** — no dedicated systemd service is needed; the MCP client (Claude Code, etc.) manages the process lifecycle
+- Chrome MUST be started as a separate process outside the MCP server (the MCP server connects to an existing Chrome instance via the debug port)
+- The system MUST generate MCP config fragments that human users can reference to connect to agent Chrome instances (e.g., a discoverable config at `/etc/keystone/agent-mcp/{name}.json`)
 - The system MUST support configurable additional MCP servers via `keystone.os.agents.{name}.mcp.servers`
-- MCP server processes MUST have health checks with automatic restart on failure
 - MCP tool calls SHOULD be logged to the audit trail (FR-011)
 - The `.mcp.json` MUST NOT contain secrets inline; credentials MUST be referenced from agenix paths
 
