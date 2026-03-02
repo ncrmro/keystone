@@ -5,12 +5,15 @@
 # - Mail server (placeholder)
 # - Monitoring (Prometheus/Grafana using NixOS services)
 # - Observability (Loki/Alloy)
+# - Binary cache (Harmonia)
 #
 # Usage:
 #   keystone.server = {
 #     enable = true;
+#     domain = "example.com";
 #     vpn.enable = true;
 #     monitoring.enable = true;
+#     binaryCache.enable = true;
 #   };
 #
 {
@@ -27,10 +30,22 @@ in {
     ./mail.nix
     ./monitoring.nix
     ./headscale.nix
+    ./binary-cache.nix
   ];
 
   options.keystone.server = {
-    enable = mkEnableOption "Keystone server services (VPN, monitoring, mail)";
+    enable = mkEnableOption "Keystone server services (VPN, monitoring, mail, binary cache)";
+
+    domain = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "example.com";
+      description = ''
+        Shared top-level domain for server services.
+        Sub-services auto-derive their subdomains from this (e.g. harmonia.<domain>).
+        Can be overridden per-service.
+      '';
+    };
 
     # VPN configuration
     vpn = {
@@ -55,9 +70,17 @@ in {
       enable = mkEnableOption "Headscale exit node (placeholder for future implementation)";
       # Options are defined in headscale.nix
     };
+
+    # Binary cache configuration
+    binaryCache = {
+      enable = mkEnableOption "Nix binary cache with Harmonia";
+      # Options are defined in binary-cache.nix
+    };
   };
 
   config = mkIf cfg.enable {
-    # No base configuration needed - services are opt-in
+    warnings =
+      optional (cfg.domain == null)
+        "keystone.server.domain is not set. Sub-services cannot auto-derive their subdomains.";
   };
 }

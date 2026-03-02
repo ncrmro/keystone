@@ -101,8 +101,11 @@
         _module.args.inputs = inputs;
       };
 
-      # Server module - VPN, monitoring, mail (optional services)
+      # Server module - VPN, monitoring, mail, binary cache (optional services)
       server = ./modules/server;
+
+      # Binary cache client - configures nix substituters for Harmonia cache
+      binaryCacheClient = ./modules/binary-cache-client.nix;
 
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
