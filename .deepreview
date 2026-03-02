@@ -1,10 +1,11 @@
 update_keystone_docs:
-  description: "Ensure AGENTS.md stays current when NixOS modules, flake outputs, or options change."
+  description: "Ensure AGENTS.md and docs/ stay current when NixOS modules, flake outputs, or options change."
   match:
     include:
       - "modules/**/*.nix"
       - "flake.nix"
       - "AGENTS.md"
+      - "docs/**"
       - "templates/**"
     exclude:
       - "modules/**/scripts/**"
@@ -12,24 +13,31 @@ update_keystone_docs:
   review:
     strategy: matches_together
     instructions: |
-      When NixOS module files or flake.nix change, check whether AGENTS.md needs updating.
-      Read AGENTS.md and compare against the changed source files.
+      When NixOS module files or flake.nix change, check whether AGENTS.md and docs/ need updating.
+      Read AGENTS.md and the relevant docs/*.md files, then compare against the changed source files.
 
-      Pay particular attention to:
-      - **Module listings**: Does "Module System" section still list all module categories?
-      - **Server Services**: Does "Server Services" section mention all services in modules/server/?
-        (VPN, Monitoring, Mail, Headscale, Binary Cache, etc.)
-      - **nixosModules exports**: Does "Available NixOS Modules" match flake.nix nixosModules?
-      - **homeModules exports**: Does "Available Home-Manager Modules" match flake.nix homeModules?
-      - **Key Options**: Does the options list match actual module options?
-      - **Deployment Patterns**: Do the example config snippets use correct option names/structure?
-      - **Domain Architecture**: Does the server domain docs section match actual domain/port defaults?
-      - **Sub-service checklist**: Does it match the actual pattern used in modules/server/?
-      - **Directory tree listings**: Do they match the actual filesystem layout?
-      - **Template references**: Does template documentation match the actual template files?
+      **AGENTS.md checks:**
+      - Module listings: Does "Module System" section still list all module categories?
+      - Server Services: Does "Server Services" section mention all services in modules/server/?
+      - nixosModules/homeModules exports: Do they match flake.nix?
+      - Key Options: Does the options list match actual module options?
+      - Deployment Patterns: Do example config snippets use correct option names/structure?
+      - Domain Architecture: Does the server domain docs match actual domain/port defaults?
+      - Directory tree listings: Do they match the actual filesystem layout?
 
-      Flag any sections that are now outdated or inaccurate due to the changes.
-      If AGENTS.md itself was changed, verify the updates are correct and consistent
-      with the source files.
+      **docs/ checks:**
+      - docs/index.md: Does the overview match current module structure and features?
+      - docs/installation.md: Do installation steps reference correct module names and options?
+      - docs/users.md: Does it match keystone.os.users options?
+      - docs/terminal.md: Does it match keystone.terminal options?
+      - docs/hardware-keys.md: Does it match keystone.os.hardwareKey options?
+      - docs/testing-vm.md: Does it match current VM testing workflow?
+      - docs/examples.md: Do code examples use correct option paths?
+
+      For any doc that references module options, NixOS config snippets, or CLI commands,
+      verify they still match the actual implementation. Flag outdated sections.
+
+      If a module change adds new user-facing features or options that are not yet
+      documented in any docs/ file, flag this as "missing documentation".
     additional_context:
       unchanged_matching_files: true
