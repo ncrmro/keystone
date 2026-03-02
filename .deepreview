@@ -1,0 +1,35 @@
+update_keystone_docs:
+  description: "Ensure AGENTS.md stays current when NixOS modules, flake outputs, or options change."
+  match:
+    include:
+      - "modules/**/*.nix"
+      - "flake.nix"
+      - "AGENTS.md"
+      - "templates/**"
+    exclude:
+      - "modules/**/scripts/**"
+      - "tests/**"
+  review:
+    strategy: matches_together
+    instructions: |
+      When NixOS module files or flake.nix change, check whether AGENTS.md needs updating.
+      Read AGENTS.md and compare against the changed source files.
+
+      Pay particular attention to:
+      - **Module listings**: Does "Module System" section still list all module categories?
+      - **Server Services**: Does "Server Services" section mention all services in modules/server/?
+        (VPN, Monitoring, Mail, Headscale, Binary Cache, etc.)
+      - **nixosModules exports**: Does "Available NixOS Modules" match flake.nix nixosModules?
+      - **homeModules exports**: Does "Available Home-Manager Modules" match flake.nix homeModules?
+      - **Key Options**: Does the options list match actual module options?
+      - **Deployment Patterns**: Do the example config snippets use correct option names/structure?
+      - **Domain Architecture**: Does the server domain docs section match actual domain/port defaults?
+      - **Sub-service checklist**: Does it match the actual pattern used in modules/server/?
+      - **Directory tree listings**: Do they match the actual filesystem layout?
+      - **Template references**: Does template documentation match the actual template files?
+
+      Flag any sections that are now outdated or inaccurate due to the changes.
+      If AGENTS.md itself was changed, verify the updates are correct and consistent
+      with the source files.
+    additional_context:
+      unchanged_matching_files: true
