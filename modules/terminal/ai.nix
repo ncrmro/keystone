@@ -13,13 +13,13 @@ in
     home.packages = [
       # Claude Code - AI-powered CLI assistant from Anthropic
       # https://claude.com/claude-code
-      pkgs.claude-code
+      pkgs.keystone.claude-code
 
-      # Gemini CLI - Google's AI assistant (when available in nixpkgs)
-      pkgs.gemini-cli
+      # Gemini CLI - Google's AI assistant
+      pkgs.keystone.gemini-cli
 
-      # Codex - OpenAI's lightweight coding agent (when available in nixpkgs)
-      pkgs.codex
+      # Codex - OpenAI's lightweight coding agent
+      pkgs.keystone.codex
     ];
   };
 }
