@@ -5,23 +5,20 @@
 # - UIDs from the 4000+ reserved range
 # - Home directories at /home/agent-{name} (ZFS dataset or ext4)
 # - chmod 700 isolation between agents
-# - Optional headless Wayland desktop (labwc + wayvnc) for remote viewing
-# - Optional Chromium browser with remote debugging (chrome.enable)
-# - Optional Stalwart mail account with himalaya CLI (mail.enable)
-# - Optional Vaultwarden/Bitwarden integration with per-agent collections
-# - Optional per-agent Tailscale instances with UID-based routing
+# - Headless Wayland desktop (labwc + wayvnc) for remote viewing
+# - Terminal environment (zsh, helix, zellij, git)
+# - Chromium browser with remote debugging + Chrome DevTools MCP
+# - Stalwart mail account with himalaya CLI
+# - Vaultwarden/Bitwarden integration with per-agent collections
+# - Per-agent Tailscale instances with UID-based routing
 # - SSH key management via agenix (ssh-agent + git signing)
 #
 # Usage:
+#   keystone.domain = "ks.systems";
 #   keystone.os.agents.researcher = {
 #     fullName = "Research Agent";
-#     email = "researcher@example.com";
-#     desktop.enable = true;  # headless Wayland + VNC
-#     mail.enable = true;     # Stalwart mail + himalaya CLI
-#     mail.domain = "ks.systems";
-#     bitwarden.enable = true; # Vaultwarden + bw CLI
-#     tailscale.enable = true; # per-agent tailscaled instance
-#     ssh.publicKey = "ssh-ed25519 AAAAC3...";  # for authorized_keys
+#     email = "researcher@ks.systems";
+#     ssh.publicKey = "ssh-ed25519 AAAAC3...";
 #   };
 #
 # SSH: Each agent gets an ssh-agent systemd service that auto-loads its
@@ -43,6 +40,7 @@ with lib;
 let
   osCfg = config.keystone.os;
   cfg = osCfg.agents;
+  topDomain = config.keystone.domain;
 
   # TODO: Re-evaluate agent ZFS home folders. Implementation needs to be reconciled with legacy setups.
   useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
@@ -87,21 +85,7 @@ let
           example = "researcher@ks.systems";
         };
 
-        terminal = {
-          enable = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Enable terminal development environment (zsh, helix, zellij, git)";
-          };
-        };
-
         desktop = {
-          enable = mkOption {
-            type = types.bool;
-            default = false;
-            description = "Enable headless Wayland desktop with remote viewing via VNC";
-          };
-
           resolution = mkOption {
             type = types.str;
             default = "1920x1080";
@@ -122,12 +106,6 @@ let
         };
 
         chrome = {
-          enable = mkOption {
-            type = types.bool;
-            default = false;
-            description = "Enable Chromium browser with remote debugging on the agent's desktop";
-          };
-
           debugPort = mkOption {
             type = types.nullOr types.port;
             default = null;
@@ -135,12 +113,6 @@ let
           };
 
           mcp = {
-            enable = mkOption {
-              type = types.bool;
-              default = false;
-              description = "Enable Chrome DevTools MCP server for the agent's Chromium instance";
-            };
-
             port = mkOption {
               type = types.nullOr types.port;
               default = null;
@@ -150,32 +122,11 @@ let
         };
 
         mail = {
-          enable = mkOption {
-            type = types.bool;
-            default = false;
-            description = "Enable Stalwart mail account and himalaya CLI for programmatic email access";
-          };
-
-          domain = mkOption {
-            type = types.str;
-            default = "";
-            description = "Mail domain for the agent's email address (e.g., 'ks.systems')";
-            example = "ks.systems";
-          };
-
           address = mkOption {
-            type = types.str;
-            default = "agent-${name}@${if config.mail.domain != "" then config.mail.domain else "localhost"}";
-            defaultText = literalExpression ''"agent-{name}@{mail.domain}"'';
-            description = "Full email address for the agent. Defaults to agent-{name}@{mail.domain}.";
+            type = types.nullOr types.str;
+            default = null;
+            description = "Full email address. Defaults to agent-{name}@{keystone.domain}.";
             example = "agent-researcher@ks.systems";
-          };
-
-          host = mkOption {
-            type = types.str;
-            default = "";
-            description = "Mail server hostname. Defaults to empty (must be set when mail.enable is true).";
-            example = "mail.ks.systems";
           };
 
           imap.port = mkOption {
@@ -190,32 +141,10 @@ let
             description = "SMTP port";
           };
 
-          caldav.enable = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Enable CalDAV access (provisioned alongside mail account)";
-          };
-
-          carddav.enable = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Enable CardDAV access (provisioned alongside mail account)";
-          };
+          # CalDAV and CardDAV are always provisioned alongside mail
         };
 
         bitwarden = {
-          enable = mkOption {
-            type = types.bool;
-            default = false;
-            description = "Enable Vaultwarden/Bitwarden integration with bw CLI and agenix-managed password";
-          };
-
-          serverUrl = mkOption {
-            type = types.str;
-            description = "Vaultwarden server URL for bw CLI configuration";
-            example = "https://vault.example.com";
-          };
-
           collection = mkOption {
             type = types.str;
             default = "agent-${name}";
@@ -223,35 +152,14 @@ let
           };
         };
 
-        tailscale = {
-          enable = mkOption {
-            type = types.bool;
-            default = false;
-            description = ''
-              Enable a per-agent tailscaled instance. When enabled, the agent gets
-              its own tailscaled daemon with unique state dir, socket, and TUN
-              interface. An nftables fwmark rule routes the agent's UID traffic
-              through its dedicated TUN. A tailscale CLI wrapper in the agent's
-              PATH auto-specifies --socket for convenience.
+        # Tailscale: each agent gets its own tailscaled instance with unique
+        # state dir, socket, and TUN interface. An nftables fwmark rule routes
+        # the agent's UID traffic through its dedicated TUN.
+        # Requires an agenix secret at age.secrets."agent-{name}-tailscale-auth-key".
 
-              Requires an agenix secret at age.secrets."agent-{name}-tailscale-auth-key".
-              When disabled, the agent falls back to the host Tailscale via tailscale0.
-            '';
-          };
-        };
-
+        # SSH: each agent gets ssh-agent + git signing + agenix secrets.
+        # Requires agenix secrets: agent-{name}-ssh-key, agent-{name}-ssh-passphrase.
         ssh = {
-          enable = mkOption {
-            type = types.bool;
-            default = false;
-            description = ''
-              Enable SSH key management for this agent. When enabled, declares
-              agenix secrets for the private key and passphrase, creates an
-              ssh-agent systemd service that auto-loads the key, configures git
-              for SSH commit signing, and adds the public key to authorized_keys.
-            '';
-          };
-
           publicKey = mkOption {
             type = types.nullOr types.str;
             default = null;
@@ -287,21 +195,19 @@ let
 
   agentsWithUids = mapAttrs agentWithUid cfg;
 
-  # Desktop-enabled agents
-  desktopAgents = filterAttrs (_: a: a.desktop.enable) cfg;
-  hasDesktopAgents = desktopAgents != { };
+  # All agents get desktop (labwc + wayvnc)
+  desktopAgents = cfg;
+  hasDesktopAgents = cfg != { };
 
-  # Mail-enabled agents
-  mailAgents = filterAttrs (_: a: a.mail.enable) cfg;
-  hasMailAgents = mailAgents != { };
+  # All agents get mail, bitwarden, and SSH
+  mailAgents = cfg;
+  hasMailAgents = cfg != { };
 
-  # Bitwarden-enabled agents
-  bitwardenAgents = filterAttrs (_: a: a.bitwarden.enable) cfg;
-  hasBitwardenAgents = bitwardenAgents != { };
+  bitwardenAgents = cfg;
+  hasBitwardenAgents = cfg != { };
 
-  # SSH-enabled agents
-  sshAgents = filterAttrs (_: a: a.ssh.enable) cfg;
-  hasSshAgents = sshAgents != { };
+  sshAgents = cfg;
+  hasSshAgents = cfg != { };
 
   # Sorted desktop agent names for deterministic VNC port assignment
   sortedDesktopAgentNames = sort lessThan (attrNames desktopAgents);
@@ -319,9 +225,9 @@ let
       in
       vncPortBase + 1 + idx;
 
-  # Chrome-enabled agents (must also have desktop enabled)
-  chromeAgents = filterAttrs (_: a: a.chrome.enable && a.desktop.enable) cfg;
-  hasChromeAgents = chromeAgents != { };
+  # All agents get Chrome with remote debugging
+  chromeAgents = cfg;
+  hasChromeAgents = cfg != { };
 
   # Sorted chrome agent names for deterministic debug port assignment
   sortedChromeAgentNames = sort lessThan (attrNames chromeAgents);
@@ -352,9 +258,9 @@ let
       in
       chromeMcpPortBase + 1 + idx;
 
-  # Tailscale-enabled agents
-  tailscaleAgents = filterAttrs (_: a: a.tailscale.enable) cfg;
-  hasTailscaleAgents = tailscaleAgents != { };
+  # All agents get tailscale
+  tailscaleAgents = cfg;
+  hasTailscaleAgents = cfg != { };
 
   # fwmark base for per-agent tailscale routing (one per agent)
   tailscaleFwmarkBase = 51820;
@@ -373,7 +279,7 @@ let
   # Generate labwc config for an agent's home directory setup script
   labwcConfigScript =
     username: agentCfg:
-    optionalString agentCfg.desktop.enable ''
+    ''
         # Create labwc config directory
         mkdir -p /home/${username}/.config/labwc
         # autostart: create virtual output for headless VNC
@@ -397,8 +303,10 @@ let
     name: agentCfg:
     let
       username = "agent-${name}";
-      mailAddr = agentCfg.mail.address;
-      mailHost = agentCfg.mail.host;
+      mailAddr =
+        if agentCfg.mail.address != null then agentCfg.mail.address
+        else "agent-${name}@${topDomain}";
+      mailHost = "mail.${topDomain}";
       imapPort = agentCfg.mail.imap.port;
       smtpPort = agentCfg.mail.smtp.port;
       secretPath = "/run/agenix/agent-${name}-mail-password";
@@ -434,7 +342,7 @@ let
   # Generate himalaya config setup script for home directory creation
   himalayaConfigScript =
     username: agentCfg: name:
-    optionalString agentCfg.mail.enable ''
+    ''
       # Create himalaya config directory
       mkdir -p /home/${username}/.config/himalaya
       cp ${himalayaConfig name agentCfg} /home/${username}/.config/himalaya/config.toml
@@ -456,12 +364,7 @@ in
         researcher = {
           fullName = "Research Agent";
           email = "researcher@ks.systems";
-          desktop.enable = true;
-          mail = {
-            enable = true;
-            domain = "ks.systems";
-            host = "mail.ks.systems";
-          };
+          ssh.publicKey = "ssh-ed25519 AAAAC3...";
         };
       }
     '';
@@ -496,8 +399,8 @@ in
       # Create the agents group
       users.groups.agents = { };
 
-      # Enable zsh if any agent has terminal enabled
-      programs.zsh.enable = mkIf (any (a: a.terminal.enable) (attrValues cfg)) true;
+      # All agents get zsh
+      programs.zsh.enable = true;
 
       # Generate NixOS users for agents
       users.users = mapAttrs' (
@@ -514,9 +417,9 @@ in
           createHome = !useZfs;
           group = "agents";
           extraGroups = optionals useZfs [ "zfs" ];
-          shell = mkIf agentCfg.terminal.enable pkgs.zsh;
+          shell = pkgs.zsh;
           openssh.authorizedKeys.keys =
-            optional (agentCfg.ssh.enable && agentCfg.ssh.publicKey != null) agentCfg.ssh.publicKey;
+            optional (agentCfg.ssh.publicKey != null) agentCfg.ssh.publicKey;
           # No password -- agents are non-interactive
         }
       ) cfg;
@@ -651,7 +554,6 @@ in
 
               wantedBy = [ "agent-desktops.target" ];
               after = [
-                "multi-user.target"
                 (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
               ];
               requires = [
@@ -722,11 +624,6 @@ in
             length ports == length uniquePorts;
           message = "All agent Chrome debug ports must be unique";
         }
-        # Chrome requires desktop
-        {
-          assertion = all (a: a.desktop.enable) (attrValues (filterAttrs (_: a: a.chrome.enable) cfg));
-          message = "chrome.enable requires desktop.enable — Chromium needs a Wayland compositor";
-        }
       ];
 
       # Chromium package available system-wide for chrome agents
@@ -787,41 +684,40 @@ in
       );
     })
 
-    # Mail agent configuration (Stalwart account + himalaya CLI)
-    # VM test assertion: /home/agent-{name}/.config/himalaya/config.toml exists
-    # for each agent with mail.enable = true
+    # Mail configuration (Stalwart account + himalaya CLI)
     (mkIf hasMailAgents {
       assertions = [
-        # All mail-enabled agents must have a mail domain configured
         {
-          assertion = all (a: a.mail.domain != "") (attrValues mailAgents);
-          message = "All agents with mail.enable must have mail.domain set";
+          assertion = topDomain != null;
+          message = "keystone.domain must be set when agents are defined (mail derives from it)";
         }
-        # All mail-enabled agents must have a mail host configured
-        {
-          assertion = all (a: a.mail.host != "") (attrValues mailAgents);
-          message = "All agents with mail.enable must have mail.host set";
-        }
-      ];
+      ] ++ (mapAttrsToList (name: _: {
+        assertion = config.age.secrets ? "agent-${name}-mail-password";
+        message = "Agent '${name}' requires age.secrets.\"agent-${name}-mail-password\" to be declared";
+      }) mailAgents);
 
       # Install himalaya CLI system-wide for mail-enabled agents
       environment.systemPackages = [
         pkgs.keystone.himalaya
       ];
-
-      # NOTE: Consumer (nixos-config) must declare agenix secrets:
-      #   age.secrets."agent-{name}-mail-password" = { file = ...; owner = "agent-{name}"; mode = "0400"; };
     })
 
     # Bitwarden/Vaultwarden agent configuration
     (mkIf hasBitwardenAgents {
+      assertions = [
+        {
+          assertion = topDomain != null;
+          message = "keystone.domain must be set when agents are defined (bitwarden derives from it)";
+        }
+      ] ++ (mapAttrsToList (name: _: {
+        assertion = config.age.secrets ? "agent-${name}-bitwarden-password";
+        message = "Agent '${name}' requires age.secrets.\"agent-${name}-bitwarden-password\" to be declared";
+      }) bitwardenAgents);
+
       # Install bitwarden-cli for agents with bitwarden enabled
       environment.systemPackages = [
         pkgs.bitwarden-cli
       ];
-
-      # NOTE: Consumer (nixos-config) must declare agenix secrets:
-      #   age.secrets."agent-{name}-bitwarden-password" = { file = ...; owner = "agent-{name}"; mode = "0400"; };
 
       # Configure bw CLI server URL per bitwarden-enabled agent
       systemd.services = mkMerge (
@@ -851,7 +747,7 @@ in
 
               script = ''
                 # Configure bw CLI to use the Vaultwarden server
-                ${pkgs.bitwarden-cli}/bin/bw config server ${agentCfg.bitwarden.serverUrl}
+                ${pkgs.bitwarden-cli}/bin/bw config server https://vault.${topDomain}
               '';
             };
           }
@@ -861,8 +757,10 @@ in
 
     # Per-agent Tailscale instances
     (mkIf hasTailscaleAgents {
-      # NOTE: Consumer (nixos-config) must declare agenix secrets:
-      #   age.secrets."agent-{name}-tailscale-auth-key" = { file = ...; owner = "root"; mode = "0400"; };
+      assertions = mapAttrsToList (name: _: {
+        assertion = config.age.secrets ? "agent-${name}-tailscale-auth-key";
+        message = "Agent '${name}' requires age.secrets.\"agent-${name}-tailscale-auth-key\" to be declared";
+      }) tailscaleAgents;
 
       # Systemd target grouping all agent tailscale services
       systemd.targets.agent-tailscale = {
@@ -983,12 +881,21 @@ in
 
     # SSH agent configuration (ssh-agent + git signing + agenix secrets)
     (mkIf hasSshAgents {
+      assertions = concatLists (mapAttrsToList (name: _: let
+        username = "agent-${name}";
+      in [
+        {
+          assertion = config.age.secrets ? "${username}-ssh-key";
+          message = "Agent '${name}' requires age.secrets.\"${username}-ssh-key\" to be declared";
+        }
+        {
+          assertion = config.age.secrets ? "${username}-ssh-passphrase";
+          message = "Agent '${name}' requires age.secrets.\"${username}-ssh-passphrase\" to be declared";
+        }
+      ]) sshAgents);
+
       # Enable OpenSSH
       services.openssh.enable = true;
-
-      # NOTE: Consumer (nixos-config) must declare agenix secrets:
-      #   age.secrets."agent-{name}-ssh-key" = { file = ...; owner = "agent-{name}"; mode = "0400"; };
-      #   age.secrets."agent-{name}-ssh-passphrase" = { file = ...; owner = "agent-{name}"; mode = "0400"; };
 
       # ssh-agent + git-config systemd services per SSH-enabled agent
       systemd.services = mkMerge (
@@ -1026,10 +933,7 @@ in
               description = "SSH agent for ${username}";
 
               wantedBy = [ "multi-user.target" ];
-              after = [
-                "multi-user.target"
-                homesService
-              ];
+              after = [ homesService ];
               requires = [ homesService ];
 
               environment = {

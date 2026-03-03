@@ -86,7 +86,9 @@ in {
         })
         cfg;
 
+      /*
       # ZFS dataset creation service (only if using ZFS)
+      # TODO: Re-evaluate ZFS home folder management before re-enabling.
       systemd.services.zfs-user-datasets = mkIf useZfs {
         description = "Create ZFS datasets for user home directories";
 
@@ -170,6 +172,7 @@ in {
           echo "All ZFS user datasets configured successfully"
         '';
       };
+      */
 
       # Home directory ownership for ext4 (ZFS handles this in its service)
       systemd.services.create-user-homes = mkIf (!useZfs) {

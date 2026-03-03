@@ -100,11 +100,15 @@
 
     # Export Keystone modules for use in other flakes
     nixosModules = {
+      # Shared domain option (keystone.domain) — used by OS agents and server services
+      domain = ./modules/domain.nix;
+
       # Core OS module - storage, secure boot, TPM, remote unlock, users, services
       operating-system = {
         imports = [
           disko.nixosModules.disko
           lanzaboote.nixosModules.lanzaboote
+          ./modules/domain.nix
           ./modules/os
         ];
       };
@@ -116,7 +120,12 @@
       };
 
       # Server module - VPN, monitoring, mail, binary cache (optional services)
-      server = ./modules/server;
+      server = {
+        imports = [
+          ./modules/domain.nix
+          ./modules/server
+        ];
+      };
 
       # Binary cache client - configures nix substituters for Harmonia cache
       binaryCacheClient = ./modules/binary-cache-client.nix;

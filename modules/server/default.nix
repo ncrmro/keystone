@@ -8,9 +8,9 @@
 # - Binary cache (Harmonia)
 #
 # Usage:
+#   keystone.domain = "example.com";  # shared top-level domain
 #   keystone.server = {
 #     enable = true;
-#     domain = "example.com";
 #     vpn.enable = true;
 #     monitoring.enable = true;
 #     binaryCache.enable = true;
@@ -35,17 +35,6 @@ in {
 
   options.keystone.server = {
     enable = mkEnableOption "Keystone server services (VPN, monitoring, mail, binary cache)";
-
-    domain = mkOption {
-      type = types.nullOr types.str;
-      default = null;
-      example = "example.com";
-      description = ''
-        Shared top-level domain for server services.
-        Sub-services auto-derive their subdomains from this (e.g. harmonia.<domain>).
-        Can be overridden per-service.
-      '';
-    };
 
     # VPN configuration
     vpn = {
@@ -80,7 +69,7 @@ in {
 
   config = mkIf cfg.enable {
     warnings =
-      optional (cfg.domain == null)
-        "keystone.server.domain is not set. Sub-services cannot auto-derive their subdomains.";
+      optional (config.keystone.domain == null)
+        "keystone.domain is not set. Sub-services cannot auto-derive their subdomains.";
   };
 }
