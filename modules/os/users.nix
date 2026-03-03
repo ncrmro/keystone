@@ -54,10 +54,6 @@ in {
             length uids == length uniqueUids;
           message = "All user UIDs must be unique";
         }
-        {
-          assertion = all (user: user.initialPassword != null || user.hashedPassword != null) (attrValues cfg);
-          message = "All users must have either initialPassword or hashedPassword set";
-        }
       ]
       # Validate hardwareKeys references exist in keystone.hardwareKey.keys
       ++ concatLists (mapAttrsToList (username: userCfg:

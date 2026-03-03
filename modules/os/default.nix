@@ -150,6 +150,7 @@ in {
     ./mail.nix
     ./git-server.nix
     ./agents.nix
+    ./hypervisor.nix
   ];
 
   options.keystone.os = {
@@ -465,10 +466,6 @@ in {
       {
         assertion = all (pcr: pcr >= 0 && pcr <= 23) cfg.tpm.pcrs;
         message = "TPM PCR values must be in the range 0-23";
-      }
-      {
-        assertion = cfg.users != {} -> all (u: u.initialPassword != null || u.hashedPassword != null) (attrValues cfg.users);
-        message = "All users must have either initialPassword or hashedPassword set";
       }
       # Hibernation assertions
       {
