@@ -76,7 +76,10 @@ in {
         user = {
           name = cfg.git.userName;
           email = cfg.git.userEmail;
+          signingkey = "~/.ssh/id_ed25519";
         };
+        gpg.format = "ssh";
+        commit.gpgsign = true;
         alias = {
           s = "switch";
           f = "fetch";

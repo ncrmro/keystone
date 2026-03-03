@@ -396,14 +396,18 @@ in
         }
       ];
 
-      # Create the agents group
+      # Create the agents group (agents belong here) and agent-admins (human users who manage agents)
       users.groups.agents = { };
+      users.groups.agent-admins = { };
 
-      # All agents get zsh
-      programs.zsh.enable = true;
+      # Add all keystone.os.users to agent-admins so they can read agent home dirs
+      users.users = mkMerge [
+        (mapAttrs (_: _: {
+          extraGroups = [ "agent-admins" ];
+        }) config.keystone.os.users)
 
-      # Generate NixOS users for agents
-      users.users = mapAttrs' (
+        # Generate NixOS users for agents
+        (mapAttrs' (
         name: agentCfg:
         let
           username = "agent-${name}";
@@ -422,7 +426,8 @@ in
             optional (agentCfg.ssh.publicKey != null) agentCfg.ssh.publicKey;
           # No password -- agents are non-interactive
         }
-      ) cfg;
+      ) cfg)
+      ];
 
       # Home directory creation for ext4
       systemd.services.create-agent-homes = mkIf (!useZfs) {
@@ -447,8 +452,8 @@ in
                 if [ ! -d /home/${username} ]; then
                   mkdir -p /home/${username}
                 fi
-                chown ${username}:agents /home/${username}
-                chmod 700 /home/${username}
+                chown ${username}:agent-admins /home/${username}
+                chmod 750 /home/${username}
 
                 ${labwcConfigScript username agentCfg}
                 ${himalayaConfigScript username agentCfg name}
@@ -493,8 +498,8 @@ in
               ''
                 zfs create -p -o mountpoint=/home/${username} rpool/crypt/home/${username} 2>/dev/null || true
                 zfs set compression=lz4 rpool/crypt/home/${username}
-                chown ${username}:agents /home/${username}
-                chmod 700 /home/${username}
+                chown ${username}:agent-admins /home/${username}
+                chmod 750 /home/${username}
 
                 ${labwcConfigScript username agentCfg}
                 ${himalayaConfigScript username agentCfg name}
