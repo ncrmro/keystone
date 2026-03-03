@@ -9,12 +9,13 @@ Keystone is a NixOS-based self-sovereign infrastructure platform that enables us
 ## Core Architecture
 
 ### Module System
-The project is organized around NixOS modules in four main categories:
+The project is organized around NixOS modules in five main categories:
 
-- **`modules/os/`** - Core operating system module (storage, secure boot, TPM, remote unlock, users, services)
+- **`modules/domain.nix`** - Shared `keystone.domain` option used by OS agents and server services
+- **`modules/os/`** - Core operating system module (storage, secure boot, TPM, remote unlock, users, agents)
 - **`modules/desktop/`** - Hyprland desktop environment (audio, greetd login)
 - **`modules/terminal/`** - Terminal development environment (zsh, helix, zellij)
-- **`modules/server/`** - Optional server services (VPN, monitoring, mail)
+- **`modules/server/`** - Optional server services (VPN, monitoring, mail, binary cache)
 - **`modules/iso-installer.nix`** - Bootable installer configuration
 
 The `modules/os/` module provides a unified `keystone.os.*` options interface:
@@ -49,6 +50,7 @@ The desktop module provides a complete Hyprland environment:
 
 ### Server Services
 The server module provides optional infrastructure services:
+- **Binary Cache** - Harmonia binary cache server
 - **VPN** - Headscale/Tailscale VPN server (Kubernetes-based)
 - **Monitoring** - Prometheus/Grafana stack (NixOS services)
 - **Mail** - Placeholder for future mail server implementation
@@ -457,6 +459,7 @@ nixos-anywhere --flake .#your-config root@<installer-ip>
 ```
 modules/os/
 ├── default.nix           # Main orchestrator with keystone.os.* options
+├── agents.nix            # OS agent users (desktop, mail, bitwarden, tailscale, SSH)
 ├── storage.nix           # ZFS/ext4 + LUKS credstore
 ├── secure-boot.nix       # Lanzaboote configuration
 ├── tpm.nix               # TPM enrollment commands
@@ -507,6 +510,7 @@ keystone.os.users.alice.desktop.enable = true;
 ### Pattern 3: Multi-Service Server
 - Use `operating-system` + `server` module with multiple services
 ```nix
+keystone.domain = "example.com";
 keystone.os.enable = true;
 keystone.server = {
   enable = true;
@@ -550,11 +554,16 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
 - `inputs.keystone.homeModules.desktop` - Full Hyprland desktop
 
 ### Available NixOS Modules
-- `inputs.keystone.nixosModules.operating-system` - Core OS (storage, secure boot, TPM)
+- `inputs.keystone.nixosModules.domain` - Shared `keystone.domain` option
+- `inputs.keystone.nixosModules.operating-system` - Core OS (storage, secure boot, TPM, agents; imports domain)
+- `inputs.keystone.nixosModules.server` - Server services (binary cache, VPN, monitoring; imports domain)
 - `inputs.keystone.nixosModules.desktop` - Hyprland desktop environment
+- `inputs.keystone.nixosModules.binaryCacheClient` - Binary cache client configuration
+- `inputs.keystone.nixosModules.hardwareKey` - YubiKey/hardware key support
 - `inputs.keystone.nixosModules.isoInstaller` - Bootable installer
 
 ### Key Options
+- `keystone.domain` - Shared top-level domain for all services (e.g., "example.com")
 - `keystone.terminal.enable` - Enable terminal tools (zsh, starship, zellij, helix)
 - `keystone.terminal.git.userName` / `userEmail` - Required git config
 - `keystone.desktop.enable` - Enable desktop environment
@@ -562,21 +571,22 @@ Use `./bin/dev-keystone <hostname>` to rebuild with local keystone changes witho
 - `keystone.desktop.hyprland.modifierKey` - Primary modifier (default: SUPER). With altwin:swap_alt_win, physical Alt triggers these for ergonomic thumb access
 - `keystone.desktop.hyprland.capslockAsControl` - Remap caps to ctrl (default: true)
 
-## Server Module: Domain Architecture
+## Domain Architecture
 
 ### Shared TLD Convention
 
-The server module provides a `keystone.server.domain` option that establishes a shared top-level domain. Sub-services auto-derive their subdomains:
+The `keystone.domain` option (defined in `modules/domain.nix`) establishes a shared top-level domain used by both OS agents and server services. Sub-services auto-derive their subdomains:
 
 ```nix
+keystone.domain = "example.com";
 keystone.server = {
   enable = true;
-  domain = "example.com";
   binaryCache.enable = true;  # → harmonia.example.com
 };
+keystone.os.agents.drago = {};  # mail → agent-drago@example.com
 ```
 
-Each sub-service has a `domain` option that defaults to `<service>.${keystone.server.domain}` but can be overridden:
+Each sub-service has a `domain` option that defaults to `<service>.${keystone.domain}` but can be overridden:
 
 ```nix
 keystone.server.binaryCache.domain = "cache.custom.org";  # override
@@ -597,7 +607,7 @@ This separation keeps Keystone portable across different deployment patterns.
 Server modules emit `warnings` (not `assertions`) for missing but recommended config. This ensures `nix eval` never breaks — the user sees a warning during build but evaluation succeeds.
 
 Examples:
-- `keystone.server.domain == null` → warns that subdomains can't be auto-derived
+- `keystone.domain == null` → warns that subdomains can't be auto-derived
 - `keystone.server.binaryCache.signKeyPaths == []` → warns that store paths won't be signed
 
 ### Adding New Sub-Services
@@ -605,7 +615,7 @@ Examples:
 Checklist for adding a new server sub-service:
 
 1. Create `modules/server/<service>.nix`
-2. Add `domain` option defaulting to `"<service>.${serverCfg.domain}"` (null when domain unset)
+2. Add `domain` option defaulting to `"<service>.${config.keystone.domain}"` (null when domain unset)
 3. Add `port` option with a sensible default
 4. Bind the service to `127.0.0.1` only
 5. Emit warnings for missing recommended config (don't use assertions)
@@ -615,5 +625,5 @@ Checklist for adding a new server sub-service:
 ### Migration TODOs
 
 These existing services should eventually derive their domains from the shared TLD:
-- `keystone.server.monitoring.grafana.domain` → `"grafana.${serverCfg.domain}"`
-- `keystone.server.mail.domain` → `"mail.${serverCfg.domain}"`
+- `keystone.server.monitoring.grafana.domain` → `"grafana.${config.keystone.domain}"`
+- `keystone.server.mail.domain` → `"mail.${config.keystone.domain}"`

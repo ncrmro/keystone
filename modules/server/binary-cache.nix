@@ -20,12 +20,12 @@ in {
     domain = mkOption {
       type = types.nullOr types.str;
       default =
-        if serverCfg.domain != null
-        then "harmonia.${serverCfg.domain}"
+        if config.keystone.domain != null
+        then "harmonia.${config.keystone.domain}"
         else null;
-      defaultText = literalExpression ''"harmonia.''${keystone.server.domain}"'';
+      defaultText = literalExpression ''"harmonia.''${keystone.domain}"'';
       example = "cache.example.com";
-      description = "Domain for the binary cache. Auto-derived from keystone.server.domain when set.";
+      description = "Domain for the binary cache. Auto-derived from keystone.domain when set.";
     };
 
     port = mkOption {

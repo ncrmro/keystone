@@ -58,8 +58,7 @@ pkgs.testers.nixosTest {
         };
         agents.researcher = {
           fullName = "Research Agent";
-          desktop.enable = true;
-          chrome.enable = true;
+
         };
       };
 

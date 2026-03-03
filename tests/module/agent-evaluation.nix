@@ -119,7 +119,6 @@ let
             coder = {
               fullName = "Coding Agent";
               email = "coder@ks.systems";
-              terminal.enable = true;
             };
           };
         };
@@ -171,7 +170,6 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            desktop.enable = true;
           };
           agents.coder = {
             fullName = "Coding Agent";
@@ -228,8 +226,6 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            desktop.enable = true;
-            chrome.enable = true;
           };
         };
         fileSystems."/" = {
@@ -254,7 +250,6 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            desktop.enable = true;
             chrome = {
               enable = true;
               debugPort = 9300;
@@ -337,13 +332,9 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            desktop.enable = true;
-            chrome.enable = true;
           };
           agents.coder = {
             fullName = "Coding Agent";
-            desktop.enable = true;
-            chrome.enable = true;
           };
         };
         fileSystems."/" = {
