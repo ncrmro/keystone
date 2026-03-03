@@ -1,12 +1,3 @@
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
 ## [0.1.0] - 2025-11-08
 
 ### Added
@@ -33,6 +24,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Simplified LUKS password entry — removed redundant manual step ([`43f19ef`](https://github.com/ncrmro/keystone/commit/43f19ef))
 - Corrected sbctl key paths for Secure Boot enrollment (multiple commits)
-
-[Unreleased]: https://github.com/ncrmro/keystone/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/ncrmro/keystone/compare/06fbb40...v0.1.0
