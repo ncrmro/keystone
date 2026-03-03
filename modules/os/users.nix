@@ -25,8 +25,8 @@ with lib; let
   resolveHardwareKeys = userCfg:
     map (name: hwKeyCfg.keys.${name}.sshPublicKey) userCfg.hardwareKeys;
 in {
-  config =
-    mkIf (osCfg.enable && cfg != {}) {
+  config = mkMerge [
+    (mkIf (osCfg.enable && cfg != {}) {
       # Enable ZFS delegation for non-root users (only if using ZFS)
       boot.extraModprobeConfig = mkIf useZfs ''
         options zfs zfs_admin_snapshot=1
@@ -193,11 +193,15 @@ in {
             cfg)}
         '';
       };
-    }
-    // optionalAttrs (options ? home-manager) {
-      # Configure home-manager for users with terminal/desktop enabled
-      # This requires home-manager to be imported in the system configuration
-      home-manager = mkIf (any (u: u.terminal.enable || u.desktop.enable) (attrValues cfg)) {
+    })
+
+    # Configure home-manager for users with terminal/desktop enabled
+    # This requires home-manager to be imported in the system configuration
+    # NOTE: This must be a separate mkMerge entry, not merged with // into the
+    # mkIf block above. Using // on a mkIf value silently drops the merged keys
+    # because the module system only reads the mkIf's `content` attribute.
+    (optionalAttrs (options ? home-manager) {
+      home-manager = mkIf (osCfg.enable && cfg != {} && any (u: u.terminal.enable || u.desktop.enable) (attrValues cfg)) {
         useGlobalPkgs = mkDefault true;
         useUserPackages = mkDefault true;
 
@@ -227,5 +231,6 @@ in {
           };
         }) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) cfg);
       };
-    };
+    })
+  ];
 }
