@@ -419,6 +419,7 @@ in
           description = agentCfg.fullName;
           home = "/home/${username}";
           createHome = !useZfs;
+          homeMode = "750";
           group = "agents";
           extraGroups = optionals useZfs [ "zfs" ];
           shell = pkgs.zsh;
@@ -428,6 +429,29 @@ in
         }
       ) cfg)
       ];
+
+      # Fix agent home ownership after NixOS user creation (activation runs after useradd)
+      # useradd sets group to "agents" (the user's primary group), but we need "agent-admins"
+      # so human administrators can read agent home directories.
+      system.activationScripts.agent-home-permissions = {
+        deps = [ "users" "groups" ];
+        text = ''
+          ${concatStringsSep "\n" (
+            mapAttrsToList (
+              name: _:
+              let
+                username = "agent-${name}";
+              in
+              ''
+                if [ -d /home/${username} ]; then
+                  chown ${username}:agent-admins /home/${username}
+                  chmod 750 /home/${username}
+                fi
+              ''
+            ) cfg
+          )}
+        '';
+      };
 
       # Home directory creation for ext4
       systemd.services.create-agent-homes = mkIf (!useZfs) {
