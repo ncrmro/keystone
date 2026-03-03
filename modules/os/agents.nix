@@ -171,6 +171,20 @@ let
             example = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... agent-researcher";
           };
         };
+
+        space = {
+          repo = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = ''
+              Git repository URL for the agent's workspace. When set,
+              a systemd service clones it to /home/agent-{name}/agent-space/
+              on first boot. If the agent has SSH configured, the clone
+              waits for ssh-agent to be ready.
+            '';
+            example = "git@git.ncrmro.com:drago/agent-space.git";
+          };
+        };
       };
     }
   );
@@ -208,6 +222,10 @@ let
 
   sshAgents = cfg;
   hasSshAgents = cfg != { };
+
+  # Agents with space.repo configured
+  spaceAgents = filterAttrs (_: a: a.space.repo != null) cfg;
+  hasSpaceAgents = spaceAgents != { };
 
   # Sorted desktop agent names for deterministic VNC port assignment
   sortedDesktopAgentNames = sort lessThan (attrNames desktopAgents);
@@ -1010,6 +1028,50 @@ in
             };
           }
         ) sshAgents
+      );
+    })
+
+    # Agent space: clone workspace repo into /home/agent-{name}/agent-space/
+    (mkIf hasSpaceAgents {
+      systemd.services = mkMerge (
+        mapAttrsToList (
+          name: agentCfg:
+          let
+            username = "agent-${name}";
+            spaceDir = "/home/${username}/agent-space";
+            hasSsh = agentCfg.ssh.publicKey != null;
+            homesService =
+              if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service";
+          in
+          {
+            "clone-agent-space-${name}" = {
+              description = "Clone agent-space repo for ${username}";
+
+              wantedBy = [ "multi-user.target" ];
+              after = [ homesService ] ++ optional hasSsh "ssh-agent-${username}.service";
+              requires = [ homesService ] ++ optional hasSsh "ssh-agent-${username}.service";
+
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+                User = username;
+                Group = "agents";
+              } // optionalAttrs hasSsh {
+                Environment = "SSH_AUTH_SOCK=/run/ssh-agent-${username}/agent.sock";
+              };
+
+              script = ''
+                if [ ! -d "${spaceDir}" ]; then
+                  ${pkgs.git}/bin/git clone ${escapeShellArg agentCfg.space.repo} "${spaceDir}"
+                else
+                  # Pull latest if repo already exists
+                  cd "${spaceDir}"
+                  ${pkgs.git}/bin/git pull --ff-only || true
+                fi
+              '';
+            };
+          }
+        ) spaceAgents
       );
     })
   ]);
