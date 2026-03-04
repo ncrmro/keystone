@@ -83,17 +83,23 @@
   # ============================================
   # Using hardware tokens for high-security environments
   #
-  # Generate SSH key on YubiKey:
-  #   ssh-keygen -t ed25519-sk -C "alice@workstation-yubikey"
+  # Best practice: use two YubiKeys (primary + backup) with color stickers
+  # to tell them apart. YubiKey sells sticker packs for this purpose.
+  #
+  # Generate resident SSH key on each YubiKey:
+  #   ssh-keygen -t ed25519-sk -O resident -O application=ssh:alice-yubi-black -C "alice-yubi-black"
+  #   ssh-keygen -t ed25519-sk -O resident -O application=ssh:alice-yubi-green -C "alice-yubi-green" -f ~/.ssh/id_ed25519_sk_yubi_green
   #
   # The -sk suffix indicates a security key (FIDO2/U2F)
+  # The -C flag sets the comment to the key color name (not user@hostname)
+  # The -O application=ssh:<name> namespaces the credential on the YubiKey
   #
   # users.users.root.openssh.authorizedKeys.keys = [
-  #   # YubiKey-based key (requires physical key present)
-  #   "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9w... alice@workstation-yubikey"
+  #   # Primary YubiKey (black, daily carry)
+  #   "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9w... alice-yubi-black"
   #
-  #   # Backup traditional key (in case YubiKey is unavailable)
-  #   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGJhY2t1cCBrZXk= alice@workstation-backup"
+  #   # Backup YubiKey (green sticker, stored in safe)
+  #   "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9w... alice-yubi-green"
   # ];
 
 
