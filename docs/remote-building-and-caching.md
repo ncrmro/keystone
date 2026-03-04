@@ -74,34 +74,54 @@ Nix can offload builds to a remote machine via SSH. The local daemon sends the d
 
 ## Setup Guide
 
-This is a reference for manual setup. Keystone NixOS modules will come later.
+### Server (Keystone module)
 
-### Server
+Enable the Attic server via keystone:
 
-1. **Deploy `atticd`** — the Attic server daemon. Requires:
-   - PostgreSQL database
-   - Storage backend: local filesystem or S3-compatible (recommended)
-   - A TLS-terminated endpoint (nginx, Caddy, or Tailscale HTTPS)
+```nix
+keystone.server.services.attic.enable = true;
 
-2. **Configure storage** in `atticd.toml`:
-   ```toml
-   [storage]
-   type = "s3"
-   region = "auto"
-   bucket = "nix-cache"
-   endpoint = "https://s3.example.com"
-   ```
+# Token signing key (agenix secret)
+age.secrets.attic-server-token-key = {
+  file = "${inputs.agenix-secrets}/secrets/attic-server-token-key.age";
+};
+```
 
-3. **Create a cache**:
+The `attic-server-token-key` secret must contain `ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64=<base64-key>`.
+
+### Post-Deployment: Manual Cache Creation
+
+After the first deploy, the Attic server runs but has **no cache**. You must create one manually:
+
+1. **Generate an admin token** on the server host:
    ```bash
-   atticd-atticadm make-token --sub "admin" --validity "10y" \
-     --push "*" --pull "*" --create-cache "*" --delete "*" \
+   sudo atticd-atticadm make-token --sub "admin" --validity "10y" \
+     --push "*" --pull "*" --create-cache "*" --delete-cache "*" \
      --configure-cache "*" --configure-cache-retention "*"
    ```
+
+2. **Login and create the cache**:
    ```bash
-   attic login server https://attic.example.com <admin-token>
-   attic cache create server:nixos-config
+   attic login cache https://cache.example.com <admin-token>
+   attic cache create cache:main
    ```
+
+3. **Retrieve the public signing key**:
+   ```bash
+   curl -s https://cache.example.com/main/nix-cache-info
+   ```
+   The `StoreDir` and `WantMassQuery` fields confirm the cache works. The signing public key is shown in the output.
+
+4. **Set the public key** in your NixOS config so all machines trust the cache:
+   ```nix
+   keystone.binaryCache = {
+     enable = true;
+     url = "https://cache.example.com";
+     publicKey = "main:AAAA...=";  # from nix-cache-info
+   };
+   ```
+
+5. **Generate push tokens** for builder machines. Store these as agenix secrets (`attic-push-token`).
 
 ### Client (all machines)
 
