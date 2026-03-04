@@ -2,13 +2,13 @@
   config,
   lib,
   pkgs,
-  inputs,
+  keystoneInputs,
   ...
 }:
 with lib;
 let
   cfg = config.keystone.desktop;
-  hyprlandPkg = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
+  hyprlandPkg = keystoneInputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
 
   # Screen recording script using gpu-screen-recorder
   #

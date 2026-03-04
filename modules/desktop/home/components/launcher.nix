@@ -2,7 +2,7 @@
   config,
   lib,
   pkgs,
-  inputs,
+  keystoneInputs,
   ...
 }:
 with lib; let
@@ -18,9 +18,8 @@ with lib; let
   # Read the layout XML
   walkerLayoutXml = builtins.readFile ./walker-layout.xml;
 in {
-  imports = [
-    inputs.walker.homeManagerModules.default
-  ];
+  # walker is imported via flake.nix homeModules.desktop (hoisted to avoid
+  # _module.args infinite recursion when keystoneInputs is used in imports)
 
   config = mkIf cfg.enable {
     # Wofi as the application launcher

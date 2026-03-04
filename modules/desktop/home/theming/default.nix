@@ -2,7 +2,7 @@
   config,
   lib,
   pkgs,
-  inputs,
+  keystoneInputs,
   ...
 }:
 with lib;
@@ -89,7 +89,7 @@ let
   customThemesPath = ./themes;
 
   # Get list of themes from omarchy
-  omarchyThemesPath = "${inputs.omarchy}/themes";
+  omarchyThemesPath = "${keystoneInputs.omarchy}/themes";
 
   # Theme directories available in omarchy
   omarchyThemes = [
@@ -332,7 +332,7 @@ in
       ++ (map mkCustomThemeFiles customThemes)
       ++ [
         {
-          ".local/share/omarchy/default/mako/core.ini".source = "${inputs.omarchy}/default/mako/core.ini";
+          ".local/share/omarchy/default/mako/core.ini".source = "${keystoneInputs.omarchy}/default/mako/core.ini";
         }
       ]
     );

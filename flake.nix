@@ -84,8 +84,9 @@
     kinda-nvim-hx,
     ...
   }: let
-    # Create inputs attrset for modules
-    inputs = {
+    # Create inputs attrset for keystone modules (named keystoneInputs to avoid
+    # shadowing when consumed by other flakes that pass their own `inputs`)
+    keystoneInputs = {
       inherit
         nixpkgs
         hyprland
@@ -98,6 +99,7 @@
         nix-flatpak
         nixos-hardware
         kinda-nvim-hx
+        omarchy
         ;
     };
   in {
@@ -166,8 +168,11 @@
 
       # Desktop module - Hyprland, audio, greetd (no disko/encryption dependencies)
       desktop = {
-        imports = [./modules/desktop/nixos.nix];
-        _module.args.inputs = inputs;
+        imports = [
+          keystoneInputs.nix-flatpak.nixosModules.nix-flatpak
+          ./modules/desktop/nixos.nix
+        ];
+        _module.args.keystoneInputs = keystoneInputs;
       };
 
       # Server module - VPN, monitoring, mail, binary cache (optional services)
@@ -194,11 +199,14 @@
       # Keystone-specific home-manager modules
       terminal = {
         imports = [./modules/terminal/default.nix];
-        _module.args.inputs = inputs;
+        _module.args.keystoneInputs = keystoneInputs;
       };
       desktop = {
-        imports = [./modules/desktop/home/default.nix];
-        _module.args.inputs = inputs;
+        imports = [
+          keystoneInputs.walker.homeManagerModules.default
+          ./modules/desktop/home/default.nix
+        ];
+        _module.args.keystoneInputs = keystoneInputs;
       };
     };
 

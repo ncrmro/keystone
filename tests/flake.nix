@@ -11,6 +11,9 @@
     lanzaboote.follows = "keystone/lanzaboote";
     omarchy.follows = "keystone/omarchy";
     hyprland.follows = "keystone/hyprland";
+    nix-flatpak.follows = "keystone/nix-flatpak";
+    walker.follows = "keystone/walker";
+    kinda-nvim-hx.follows = "keystone/kinda-nvim-hx";
     himalaya.follows = "keystone/himalaya";
     llm-agents.follows = "keystone/llm-agents";
     microvm = {
@@ -29,6 +32,9 @@
       lanzaboote,
       omarchy,
       hyprland,
+      nix-flatpak,
+      walker,
+      kinda-nvim-hx,
       himalaya,
       llm-agents,
       microvm,
@@ -61,7 +67,6 @@
             keystone.nixosModules.operating-system
             keystone.nixosModules.desktop
             ../vms/test-hyprland/configuration.nix
-            { _module.args.omarchy = omarchy; }
           ];
         };
 
@@ -83,12 +88,12 @@
           system = "x86_64-linux";
           specialArgs = {
             inherit keystone;
-            inputs = { inherit nixpkgs hyprland; };
+            keystoneInputs = { inherit nixpkgs hyprland nix-flatpak omarchy walker kinda-nvim-hx; };
           };
           modules = [
             home-manager.nixosModules.home-manager
+            nix-flatpak.nixosModules.nix-flatpak
             ../vms/build-vm-desktop/configuration.nix
-            { _module.args.omarchy = omarchy; }
           ];
         };
 
