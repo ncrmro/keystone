@@ -8,6 +8,7 @@
 {
   lib,
   config,
+  pkgs,
   ...
 }:
 let
@@ -43,6 +44,8 @@ in
       assertion = config.age.secrets ? "attic-server-token-key";
       message = "keystone.server.services.attic requires age.secrets.\"attic-server-token-key\" to be declared.";
     };
+
+    environment.systemPackages = [ pkgs.attic-client ];
 
     keystone.server._enabledServices.attic = {
       inherit (cfg)
