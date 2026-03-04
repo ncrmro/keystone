@@ -86,6 +86,8 @@ let
         };
 
         desktop = {
+          enable = mkEnableOption "Headless Wayland desktop";
+
           resolution = mkOption {
             type = types.str;
             default = "1920x1080";
@@ -106,6 +108,8 @@ let
         };
 
         chrome = {
+          enable = mkEnableOption "Chrome remote debugging";
+
           debugPort = mkOption {
             type = types.nullOr types.port;
             default = null;
