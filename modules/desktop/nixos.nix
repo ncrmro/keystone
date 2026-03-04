@@ -10,6 +10,7 @@ let
   cfg = config.keystone.desktop;
 in
 {
+  imports = [ inputs.nix-flatpak.nixosModules.nix-flatpak ];
   options.keystone.desktop = {
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities";
 
@@ -60,6 +61,9 @@ in
   };
 
   config = mkIf cfg.enable {
+    # Flatpak support (declarative via nix-flatpak)
+    services.flatpak.enable = mkDefault true;
+
     # Hyprland with UWSM (using official flake for latest features)
     programs.hyprland = mkIf cfg.hyprland.enable {
       enable = mkDefault true;

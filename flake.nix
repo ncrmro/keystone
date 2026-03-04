@@ -32,6 +32,35 @@
       url = "github:nix-community/browser-previews";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Desktop tools
+    ghostty.url = "github:ghostty-org/ghostty";
+    yazi.url = "github:sxyazi/yazi";
+    walker = {
+      url = "github:abenz1267/walker";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # Secret management
+    agenix = {
+      url = "github:ryantm/agenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
+    };
+
+    # NixOS tools
+    nix-index-database = {
+      url = "github:nix-community/nix-index-database";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    nix-flatpak.url = "github:gmodena/nix-flatpak";
+    nixos-hardware.url = "github:NixOS/nixos-hardware/master";
+
+    # Helix editor themes
+    kinda-nvim-hx = {
+      url = "github:strash/kinda_nvim.hx";
+      flake = false;
+    };
   };
 
   outputs = {
@@ -45,9 +74,17 @@
     himalaya,
     llm-agents,
     browser-previews,
+    ghostty,
+    yazi,
+    walker,
+    agenix,
+    nix-index-database,
+    nix-flatpak,
+    nixos-hardware,
+    kinda-nvim-hx,
     ...
   }: let
-    # Create inputs attrset for desktop module
+    # Create inputs attrset for modules
     inputs = {
       inherit
         nixpkgs
@@ -55,6 +92,12 @@
         himalaya
         llm-agents
         browser-previews
+        agenix
+        walker
+        nix-index-database
+        nix-flatpak
+        nixos-hardware
+        kinda-nvim-hx
         ;
     };
   in {
@@ -85,6 +128,8 @@
       himalaya-flake = himalaya;
       llm-agents-flake = llm-agents;
       browser-previews-flake = browser-previews;
+      ghostty-flake = ghostty;
+      yazi-flake = yazi;
     in final: prev: {
       keystone = {
         zesh = final.callPackage zesh-src {};
@@ -95,7 +140,13 @@
         codex = llm-agents-flake.packages.${final.system}.codex;
         # Browsers from browser-previews
         google-chrome = browser-previews-flake.packages.${final.system}.google-chrome;
+        # Desktop tools from flake inputs
+        ghostty = ghostty-flake.packages.${final.system}.default;
+        yazi = yazi-flake.packages.${final.system}.default;
       };
+      # Top-level overrides so programs.ghostty/yazi use flake versions
+      ghostty = ghostty-flake.packages.${final.system}.default;
+      yazi = yazi-flake.packages.${final.system}.default;
     };
 
     # Export Keystone modules for use in other flakes
