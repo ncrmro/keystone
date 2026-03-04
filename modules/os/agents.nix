@@ -1052,16 +1052,21 @@ in
               description = "Clone agent-space repo for ${username}";
 
               wantedBy = [ "multi-user.target" ];
-              after = [ homesService ] ++ optional hasSsh "ssh-agent-${username}.service";
-              requires = [ homesService ] ++ optional hasSsh "ssh-agent-${username}.service";
+              after = [ homesService "ssh-agent-${username}.service" ];
+              requires = [ homesService "ssh-agent-${username}.service" ];
+
+              path = [ pkgs.openssh ];
+
+              environment = {
+                GIT_SSH_COMMAND = "ssh -o StrictHostKeyChecking=accept-new";
+                SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
+              };
 
               serviceConfig = {
                 Type = "oneshot";
                 RemainAfterExit = true;
                 User = username;
                 Group = "agents";
-              } // optionalAttrs hasSsh {
-                Environment = "SSH_AUTH_SOCK=/run/ssh-agent-${username}/agent.sock";
               };
 
               script = ''
