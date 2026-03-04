@@ -183,7 +183,7 @@
         ];
       };
 
-      # Binary cache client - configures nix substituters for Harmonia cache
+      # Binary cache client - configures nix substituters for Attic cache
       binaryCacheClient = ./modules/binary-cache-client.nix;
 
       # ISO installer module
