@@ -17,6 +17,9 @@ with lib; let
   cfg = osCfg.users;
   hwKeyCfg = config.keystone.hardwareKey;
 
+  # Whether the keystone desktop NixOS module is imported (gates home-manager desktop config)
+  hasDesktopModule = options.keystone ? desktop;
+
   # Check if ZFS is being used
   # TODO: Re-evaluate ZFS home folder management. Current implementation can interfere with legacy setups.
   useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
@@ -219,8 +222,8 @@ in {
               userEmail = userCfg.email;
             };
           };
-
-          # Desktop configuration (Hyprland)
+        } // optionalAttrs hasDesktopModule {
+          # Desktop configuration (Hyprland) — only set when desktop NixOS module is imported
           keystone.desktop = mkIf userCfg.desktop.enable {
             enable = true;
             hyprland = {
