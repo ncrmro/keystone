@@ -26,10 +26,10 @@
 #   3001 | forgejo      | HTTP
 #   3002 | grafana      |
 #   3100 | loki         |
-#   5000 | harmonia     | Binary cache
 #   8070 | miniflux     |
 #   8080 | headscale    |
 #   8082 | mail         | Stalwart admin
+#   8199 | attic        | Binary cache
 #   8222 | vaultwarden  |
 #   9090 | prometheus   |
 #
@@ -57,7 +57,6 @@ in
     ./mail.nix
     ./monitoring.nix
     ./headscale.nix
-    ./binary-cache.nix
 
     # New infrastructure
     ./acme.nix
@@ -73,7 +72,7 @@ in
     ./services/loki.nix
     ./services/headscale.nix
     ./services/miniflux.nix
-    ./services/harmonia.nix
+    ./services/attic.nix
     ./services/mail.nix
     ./services/adguard.nix
 
@@ -99,10 +98,6 @@ in
 
     headscale = {
       enable = lib.mkEnableOption "Headscale exit node (legacy module)";
-    };
-
-    binaryCache = {
-      enable = lib.mkEnableOption "Nix binary cache with Harmonia (legacy module)";
     };
   };
 

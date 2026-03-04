@@ -1,43 +1,92 @@
 # Keystone Binary Cache Client Module
 #
-# Configures a NixOS machine to use a Harmonia binary cache as a substituter.
-# Import this on client machines that should pull from the cache.
+# Configures a NixOS machine to use an Attic binary cache as a substituter.
+# Import this on client machines that should pull from or push to the cache.
 #
 # Usage:
 #   keystone.binaryCache = {
 #     enable = true;
-#     url = "https://harmonia.example.com";
-#     publicKey = "harmonia.example.com-1:AAAA...=";
+#     url = "https://cache.example.com";
+#     publicKey = "cache.example.com-1:AAAA...=";
+#
+#     push = {
+#       enable = true;
+#       tokenFile = config.age.secrets.attic-token.path;
+#     };
 #   };
 #
 {
   lib,
   config,
+  pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.binaryCache;
-in {
+in
+{
   options.keystone.binaryCache = {
     enable = mkEnableOption "Keystone binary cache client";
 
     url = mkOption {
       type = types.str;
-      example = "https://harmonia.example.com";
-      description = "URL of the Harmonia binary cache.";
+      example = "https://cache.example.com";
+      description = "URL of the Attic binary cache.";
     };
 
     publicKey = mkOption {
-      type = types.str;
-      example = "harmonia.example.com-1:AAAA...=";
+      type = types.nullOr types.str;
+      default = null;
+      example = "cache.example.com-1:AAAA...=";
       description = "Public key for verifying store path signatures from the cache.";
+    };
+
+    push = {
+      enable = mkEnableOption "push support to the binary cache";
+
+      cacheName = mkOption {
+        type = types.str;
+        default = "main";
+        description = "Name of the cache on the Attic server.";
+      };
+
+      tokenFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "Path to the file containing the Attic authentication token.";
+      };
     };
   };
 
   config = mkIf cfg.enable {
     nix.settings = {
       substituters = [ cfg.url ];
-      trusted-public-keys = [ cfg.publicKey ];
+      trusted-public-keys = mkIf (cfg.publicKey != null) [ cfg.publicKey ];
+    };
+
+    environment.systemPackages = mkIf cfg.push.enable [ pkgs.attic-client ];
+
+    systemd.services.attic-watch-store = mkIf cfg.push.enable {
+      description = "Attic Watch Store";
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "simple";
+        DynamicUser = true;
+        StateDirectory = "attic-watch-store";
+        LoadCredential = "token:${cfg.push.tokenFile}";
+        ExecStart = pkgs.writeShellScript "attic-watch-store" ''
+          set -eu
+          export XDG_CONFIG_HOME="/var/lib/attic-watch-store"
+          ${pkgs.attic-client}/bin/attic login cache ${cfg.url} $(cat $CREDENTIALS_DIRECTORY/token)
+          exec ${pkgs.attic-client}/bin/attic watch-store cache:${cfg.push.cacheName}
+        '';
+        Restart = "on-failure";
+        RestartSec = "5s";
+      };
     };
   };
 }
