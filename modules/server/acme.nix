@@ -41,12 +41,8 @@ in
 
     credentialsFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
-      default = null;
-      example = "/run/agenix/cloudflare-api-token";
-      description = ''
-        Path to file containing Cloudflare API token for DNS-01 challenge.
-        Must contain: CLOUDFLARE_DNS_API_TOKEN=your_token
-      '';
+      default = "/run/agenix/cloudflare-api-token";
+      description = "Path to Cloudflare API token for DNS-01 challenge. Defaults to conventional agenix secret.";
     };
 
     extraDomainNames = lib.mkOption {
@@ -66,7 +62,10 @@ in
         assertion = cfg.acme.credentialsFile != null;
         message = "keystone.server.acme.credentialsFile must be set for ACME DNS-01 challenge";
       }
-    ];
+    ] ++ lib.optional (cfg.acme.credentialsFile == "/run/agenix/cloudflare-api-token") {
+      assertion = config.age.secrets ? "cloudflare-api-token";
+      message = "keystone.server.acme requires age.secrets.\"cloudflare-api-token\" to be declared.";
+    };
 
     security.acme = {
       acceptTerms = true;
