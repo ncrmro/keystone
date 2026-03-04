@@ -2,13 +2,13 @@
   config,
   lib,
   pkgs,
-  inputs,
+  keystoneInputs,
   ...
 }:
 with lib;
 let
   cfg = config.keystone.desktop;
-  hyprlandPkg = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
+  hyprlandPkg = keystoneInputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
 
   # Custom satty package using the latest source from GitHub
   # The default version of satty is 0.18.1 and uses --action-on-enter (singular)

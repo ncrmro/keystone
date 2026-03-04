@@ -2,7 +2,7 @@
   config,
   lib,
   pkgs,
-  inputs,
+  keystoneInputs,
   ...
 }:
 with lib;
@@ -10,7 +10,8 @@ let
   cfg = config.keystone.desktop;
 in
 {
-  imports = [ inputs.nix-flatpak.nixosModules.nix-flatpak ];
+  # nix-flatpak is imported via flake.nix nixosModules.desktop (hoisted to avoid
+  # _module.args infinite recursion when keystoneInputs is used in imports)
   options.keystone.desktop = {
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities";
 
@@ -68,7 +69,7 @@ in
     programs.hyprland = mkIf cfg.hyprland.enable {
       enable = mkDefault true;
       withUWSM = mkDefault true;
-      package = mkDefault inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
+      package = mkDefault keystoneInputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
       portalPackage = mkDefault pkgs.xdg-desktop-portal-hyprland; # Use stable nixpkgs version to fix Qt version mismatch
     };
 
