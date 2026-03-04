@@ -9,10 +9,7 @@
 #     url = "https://cache.example.com";
 #     publicKey = "cache.example.com-1:AAAA...=";
 #
-#     push = {
-#       enable = true;
-#       tokenFile = config.age.secrets.attic-token.path;
-#     };
+#     push.enable = true;  # tokenFile defaults to /run/agenix/attic-push-token
 #   };
 #
 {
@@ -52,14 +49,19 @@ in
       };
 
       tokenFile = mkOption {
-        type = types.nullOr types.path;
-        default = null;
-        description = "Path to the file containing the Attic authentication token.";
+        type = types.path;
+        default = "/run/agenix/attic-push-token";
+        description = "Path to Attic auth token. Defaults to conventional agenix secret.";
       };
     };
   };
 
   config = mkIf cfg.enable {
+    assertions = lib.optional (cfg.push.enable && cfg.push.tokenFile == "/run/agenix/attic-push-token") {
+      assertion = config.age.secrets ? "attic-push-token";
+      message = "keystone.binaryCache.push requires age.secrets.\"attic-push-token\" to be declared.";
+    };
+
     nix.settings = {
       substituters = [ cfg.url ];
       trusted-public-keys = mkIf (cfg.publicKey != null) [ cfg.publicKey ];

@@ -27,7 +27,8 @@ in
     // {
       environmentFile = lib.mkOption {
         type = lib.types.path;
-        description = "Path to environment file with ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64";
+        default = "/run/agenix/attic-server-token-key";
+        description = "Path to env file with ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64. Defaults to conventional agenix secret.";
       };
 
       publicKey = lib.mkOption {
@@ -38,6 +39,11 @@ in
     };
 
   config = lib.mkIf (serverCfg.enable && cfg.enable) {
+    assertions = lib.optional (cfg.environmentFile == "/run/agenix/attic-server-token-key") {
+      assertion = config.age.secrets ? "attic-server-token-key";
+      message = "keystone.server.services.attic requires age.secrets.\"attic-server-token-key\" to be declared.";
+    };
+
     keystone.server._enabledServices.attic = {
       inherit (cfg)
         subdomain
