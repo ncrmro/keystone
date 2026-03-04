@@ -26,8 +26,8 @@ in {
           description = mkOption {
             type = types.str;
             default = "";
-            description = "Human-readable description of this hardware key";
-            example = "Primary YubiKey (USB-A, black)";
+            description = "Human-readable description of this hardware key. Use color names to distinguish primary and backup keys (e.g., black for primary, green sticker for backup).";
+            example = "Primary YubiKey 5 NFC (USB-A, black)";
           };
 
           sshPublicKey = mkOption {
@@ -48,6 +48,20 @@ in {
       description = ''
         Named hardware keys with their SSH and age key material.
         Declare once, reference by name from users and rootKeys.
+        Use color-based names (e.g., yubi-black, yubi-green) to
+        distinguish primary and backup keys.
+      '';
+      example = lib.literalExpression ''
+        {
+          yubi-black = {
+            description = "Primary YubiKey 5 NFC (USB-A, black)";
+            sshPublicKey = "sk-ssh-ed25519@openssh.com AAAAGnNr... ncrmro-yubi-black";
+          };
+          yubi-green = {
+            description = "Backup YubiKey 5C NFC (USB-C, green sticker)";
+            sshPublicKey = "sk-ssh-ed25519@openssh.com AAAAGnNr... ncrmro-yubi-green";
+          };
+        }
       '';
     };
 
@@ -58,7 +72,7 @@ in {
         Names of hardware keys (from keys.<name>) whose SSH public keys
         should be added to root's authorized_keys.
       '';
-      example = ["yubi-black"];
+      example = ["yubi-black" "yubi-green"];
     };
 
     # TODO: LUKS support

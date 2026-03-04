@@ -15,6 +15,70 @@ This enables:
 - GPG agent with SSH support
 - YubiKey management tools
 
+## Multi-Key Strategy (Primary + Backup)
+
+Use two YubiKeys: a **primary** for daily carry and a **backup** stored securely. Distinguish them with color stickers (YubiKey sells sticker packs) and use color names throughout your configuration.
+
+| Key Name | Role | Storage | Color |
+|----------|------|---------|-------|
+| `yubi-black` | Primary - daily carry | Keychain | Black (default) |
+| `yubi-green` | Backup - safe storage | Home safe / lockbox | Green sticker |
+
+Both keys should be enrolled for SSH, age encryption, and authorized on all hosts. If the primary is lost, the backup can decrypt all secrets and re-key without downtime.
+
+### Naming Convention
+
+Use `yubi-<color>` as the key name everywhere:
+- NixOS module: `keystone.hardwareKey.keys.yubi-black`, `keystone.hardwareKey.keys.yubi-green`
+- SSH application: `-O application=ssh:ncrmro-yubi-black`, `-O application=ssh:ncrmro-yubi-green`
+- SSH comment: `-C "ncrmro-yubi-black"`, `-C "ncrmro-yubi-green"`
+- Age identity labels in config comments: `# Serial: XXXXX, yubi-black`
+
+### Example NixOS Configuration
+
+```nix
+keystone.hardwareKey = {
+  enable = true;
+  keys.yubi-black = {
+    description = "Primary YubiKey 5 NFC (USB-A, black)";
+    sshPublicKey = "sk-ssh-ed25519@openssh.com AAAAGnNr... ncrmro-yubi-black";
+  };
+  keys.yubi-green = {
+    description = "Backup YubiKey 5C NFC (USB-C, green sticker)";
+    sshPublicKey = "sk-ssh-ed25519@openssh.com AAAAGnNr... ncrmro-yubi-green";
+  };
+  rootKeys = [ "yubi-black" "yubi-green" ];
+};
+```
+
+### Example agenix secrets.nix
+
+```nix
+yubikeys = {
+  ncrmro-yubi-black = "age1yubikey1q...";  # Serial: 36854515
+  ncrmro-yubi-green = "age1yubikey1q...";  # Serial: 36862273
+};
+
+adminKeys = [
+  users.ncrmro-laptop
+  users.ncrmro-workstation
+  yubikeys.ncrmro-yubi-black
+  yubikeys.ncrmro-yubi-green
+];
+```
+
+### Example Home Manager (age identities)
+
+```nix
+keystone.terminal.ageYubikey = {
+  enable = true;
+  identities = [
+    "AGE-PLUGIN-YUBIKEY-17DDRYQ..."  # Serial: 36854515, Slot: 1 (yubi-black)
+    "AGE-PLUGIN-YUBIKEY-1A2B3C4..."  # Serial: 36862273, Slot: 1 (yubi-green)
+  ];
+};
+```
+
 ## SSH with FIDO2 Keys
 
 There are two types of FIDO2 SSH keys, with different firmware requirements:
@@ -34,8 +98,14 @@ Check your firmware: `ykman info`
 Stored directly on the YubiKey - no key files to manage. Plug in your YubiKey on any machine and the key is available.
 
 ```bash
-ssh-keygen -t ed25519-sk -O resident -O application=ssh:myidentity
+# Primary key (black)
+ssh-keygen -t ed25519-sk -O resident -O application=ssh:ncrmro-yubi-black -C "ncrmro-yubi-black"
+
+# Backup key (green) - swap YubiKeys and run again
+ssh-keygen -t ed25519-sk -O resident -O application=ssh:ncrmro-yubi-green -C "ncrmro-yubi-green" -f ~/.ssh/id_ed25519_sk_yubi_green
 ```
+
+The `-C` flag sets a descriptive comment (instead of defaulting to `user@hostname`), and `-O application=ssh:<name>` namespaces the credential on the YubiKey.
 
 #### Load Resident Keys into SSH Agent
 
@@ -75,10 +145,10 @@ For older YubiKeys (firmware < 5.2.3) or backup keys. The "private key" file is 
 
 ```bash
 # Firmware 5.2.3+ (preferred)
-ssh-keygen -t ed25519-sk -O application=ssh:myidentity -f ~/.ssh/id_ed25519_sk_mykey
+ssh-keygen -t ed25519-sk -O application=ssh:ncrmro-yubi-black -C "ncrmro-yubi-black" -f ~/.ssh/id_ed25519_sk_yubi_black
 
 # Firmware 5.0+ (use if ed25519-sk fails)
-ssh-keygen -t ecdsa-sk -O application=ssh:myidentity -f ~/.ssh/id_ecdsa_sk_mykey
+ssh-keygen -t ecdsa-sk -O application=ssh:ncrmro-yubi-black -C "ncrmro-yubi-black" -f ~/.ssh/id_ecdsa_sk_yubi_black
 ```
 
 You'll need to copy the key files to other machines, or manage via home-manager (see below).
@@ -163,14 +233,17 @@ age-plugin-yubikey --list
 
 ### Use with agenix
 
-Add your YubiKey age public key to `secrets.nix`:
+Add your YubiKey age public keys to `secrets.nix`. Enroll both primary and backup keys so either can decrypt secrets:
 
 ```nix
 let
-  # YubiKey age public key (from age-plugin-yubikey --list)
-  yubikey = "age1yubikey1...";
+  yubikeys = {
+    ncrmro-yubi-black = "age1yubikey1q...";  # Serial: 36854515
+    ncrmro-yubi-green = "age1yubikey1q...";  # Serial: 36862273
+  };
+  adminKeys = [ yubikeys.ncrmro-yubi-black yubikeys.ncrmro-yubi-green ];
 in {
-  "secret.age".publicKeys = [ yubikey ];
+  "secret.age".publicKeys = adminKeys;
 }
 ```
 
