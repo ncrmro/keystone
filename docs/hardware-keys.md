@@ -13,7 +13,7 @@ keystone.hardwareKey.enable = true;
 This enables:
 - `pcscd` service for smart card communication
 - GPG agent with SSH support
-- YubiKey management tools
+- YubiKey management tools (`ykman`, `age-plugin-yubikey`, `pam_u2f`, etc.)
 
 ## Multi-Key Strategy (Primary + Backup)
 
@@ -34,7 +34,131 @@ Use `yubi-<color>` as the key name everywhere:
 - SSH comment: `-C "ncrmro-yubi-black"`, `-C "ncrmro-yubi-green"`
 - Age identity labels in config comments: `# Serial: XXXXX, yubi-black`
 
-### Example NixOS Configuration
+## New YubiKey Setup
+
+Complete these steps on each new YubiKey before adding it to your NixOS configuration. All steps require the YubiKey to be physically plugged in.
+
+### Step 1: Verify the YubiKey
+
+```bash
+ykman info
+```
+
+Note the **serial number** and **firmware version**. Firmware 5.2.3+ is required for ed25519-sk resident keys.
+
+### Step 2: Set FIDO2 PIN
+
+The FIDO2 PIN is required for SSH key generation and authentication.
+
+```bash
+ykman fido access change-pin
+```
+
+Choose a memorable PIN (minimum 4 characters). This PIN is entered when using FIDO2 SSH keys.
+
+### Step 3: Set PIV PIN and PUK
+
+The PIV PIN and PUK are used by `age-plugin-yubikey` for age encryption. The defaults are `123456` (PIN) and `12345678` (PUK) — change them immediately.
+
+```bash
+# Change PIV PIN (default: 123456)
+ykman piv access change-pin
+
+# Change PIV PUK (default: 12345678)
+ykman piv access change-puk
+```
+
+The **PIN** is entered during age encrypt/decrypt operations. The **PUK** is used to reset the PIN if it gets locked out.
+
+### Step 4: Set PIV Management Key
+
+The PIV management key must use TDES and be protected (stored on the YubiKey itself, unlocked by PIN). This is required for `age-plugin-yubikey` to work.
+
+```bash
+ykman piv access change-management-key -a TDES --protect
+```
+
+If the key is factory-fresh, the default management key is:
+`010203040506070801020304050607080102030405060708`
+
+The `--protect` flag stores the management key on the YubiKey and gates it behind the PIV PIN, so you don't need to remember or store the management key separately.
+
+### Step 5: Generate Resident SSH Key
+
+```bash
+ssh-keygen -t ed25519-sk -O resident \
+  -O application=ssh:ncrmro-yubi-green \
+  -C "ncrmro-yubi-green" \
+  -f ~/.ssh/id_ed25519_sk_yubi_green
+```
+
+- `-O resident` — stores the key on the YubiKey (portable, no key files needed)
+- `-O application=ssh:<name>` — namespaces the credential on the YubiKey
+- `-C "<name>"` — sets the public key comment (instead of defaulting to `user@hostname`)
+- `-f <path>` — where to save the local key handle
+
+Touch the YubiKey and enter the FIDO2 PIN when prompted. You can skip the file passphrase (the YubiKey itself is the second factor).
+
+Export the public key:
+
+```bash
+cat ~/.ssh/id_ed25519_sk_yubi_green.pub
+```
+
+Save this — it goes in your NixOS configuration.
+
+### Step 6: Generate Age Identity
+
+```bash
+age-plugin-yubikey
+```
+
+When prompted:
+- **Slot**: Choose `1`
+- **PIN policy**: `once` (enter PIN once per session)
+- **Touch policy**: `always` (touch YubiKey for each encrypt/decrypt)
+
+It outputs two values:
+- **Identity** (private): `AGE-PLUGIN-YUBIKEY-1...` — goes in home-manager config
+- **Recipient** (public): `age1yubikey1q...` — goes in `secrets.nix`
+
+Save both.
+
+### Step 7: Record in Hardware Inventory
+
+Update your hardware key inventory with:
+
+```bash
+# Serial number
+ykman info
+
+# SSH fingerprint
+ssh-keygen -lf ~/.ssh/id_ed25519_sk_yubi_green.pub
+
+# Age public key
+age-plugin-yubikey --list
+```
+
+### Verification
+
+Confirm everything is set up:
+
+```bash
+# FIDO2 credentials
+ykman fido credentials list
+
+# PIV certificates (age identity)
+ykman piv info
+
+# SSH public key
+cat ~/.ssh/id_ed25519_sk_yubi_green.pub
+```
+
+## Adding a YubiKey to NixOS Configuration
+
+After completing the YubiKey setup above, add the public keys to your NixOS configuration.
+
+### 1. NixOS Module (hardware key declaration)
 
 ```nix
 keystone.hardwareKey = {
@@ -51,7 +175,7 @@ keystone.hardwareKey = {
 };
 ```
 
-### Example agenix secrets.nix
+### 2. Agenix secrets.nix (age encryption)
 
 ```nix
 yubikeys = {
@@ -67,7 +191,7 @@ adminKeys = [
 ];
 ```
 
-### Example Home Manager (age identities)
+### 3. Home Manager (age identity file)
 
 ```nix
 keystone.terminal.ageYubikey = {
@@ -79,9 +203,33 @@ keystone.terminal.ageYubikey = {
 };
 ```
 
-## SSH with FIDO2 Keys
+### 4. Re-key All Secrets
 
-There are two types of FIDO2 SSH keys, with different firmware requirements:
+```bash
+cd agenix-secrets
+agenix -r
+```
+
+This re-encrypts every secret for the updated set of public keys. Requires YubiKey touch for each secret.
+
+### 5. Commit and Rebuild
+
+```bash
+# In agenix-secrets
+git add -A && git commit -m "enroll new YubiKey: <serial> (<role>)"
+git push
+
+# In nixos-config
+git add agenix-secrets modules/ home-manager/
+git commit -m "enroll new YubiKey: <serial>"
+
+# Rebuild
+sudo nixos-rebuild switch --flake .#<hostname>
+```
+
+## SSH Key Details
+
+### Firmware Requirements
 
 | Feature | Firmware Required |
 |---------|------------------|
@@ -95,13 +243,13 @@ Check your firmware: `ykman info`
 
 ### Resident Keys (Firmware 5.2.3+)
 
-Stored directly on the YubiKey - no key files to manage. Plug in your YubiKey on any machine and the key is available.
+Stored directly on the YubiKey — no key files to manage. Plug in your YubiKey on any machine and the key is available.
 
 ```bash
 # Primary key (black)
 ssh-keygen -t ed25519-sk -O resident -O application=ssh:ncrmro-yubi-black -C "ncrmro-yubi-black"
 
-# Backup key (green) - swap YubiKeys and run again
+# Backup key (green) — swap YubiKeys and run again
 ssh-keygen -t ed25519-sk -O resident -O application=ssh:ncrmro-yubi-green -C "ncrmro-yubi-green" -f ~/.ssh/id_ed25519_sk_yubi_green
 ```
 
@@ -141,7 +289,7 @@ programs.zsh.initExtra = ''
 
 ### Non-Resident Keys (Firmware 5.0+)
 
-For older YubiKeys (firmware < 5.2.3) or backup keys. The "private key" file is just a handle - the actual secret never leaves the YubiKey. Safe to store in dotfiles/home-manager.
+For older YubiKeys (firmware < 5.2.3) or backup keys. The "private key" file is just a handle — the actual secret never leaves the YubiKey. Safe to store in dotfiles/home-manager.
 
 ```bash
 # Firmware 5.2.3+ (preferred)
@@ -155,7 +303,7 @@ You'll need to copy the key files to other machines, or manage via home-manager 
 
 #### Managing Non-Resident Keys with Home Manager
 
-For non-resident keys, you can distribute the key handle via home-manager. The "private key" is just a reference - useless without the physical YubiKey.
+For non-resident keys, you can distribute the key handle via home-manager. The "private key" is just a reference — useless without the physical YubiKey.
 
 ```nix
 # In your home-manager config
@@ -176,7 +324,7 @@ programs.ssh = {
 };
 ```
 
-Store the key files in your config repo (e.g., `home-manager/keys/`). They're safe to commit - the private key handle is useless without your YubiKey.
+Store the key files in your config repo (e.g., `home-manager/keys/`). They're safe to commit — the private key handle is useless without your YubiKey.
 
 ### List Keys on YubiKey
 
@@ -217,36 +365,6 @@ gpg --export-ssh-key <KEY_ID>
 # Add to ~/.ssh/authorized_keys on remote hosts
 ```
 
-## Age Encryption with YubiKey (agenix)
-
-The module includes `age-plugin-yubikey` for encrypting secrets with your YubiKey.
-
-### Setup
-
-```bash
-# Generate age identity on YubiKey
-age-plugin-yubikey
-
-# List YubiKey identities
-age-plugin-yubikey --list
-```
-
-### Use with agenix
-
-Add your YubiKey age public keys to `secrets.nix`. Enroll both primary and backup keys so either can decrypt secrets:
-
-```nix
-let
-  yubikeys = {
-    ncrmro-yubi-black = "age1yubikey1q...";  # Serial: 36854515
-    ncrmro-yubi-green = "age1yubikey1q...";  # Serial: 36862273
-  };
-  adminKeys = [ yubikeys.ncrmro-yubi-black yubikeys.ncrmro-yubi-green ];
-in {
-  "secret.age".publicKeys = adminKeys;
-}
-```
-
 ## Troubleshooting
 
 ### YubiKey not detected
@@ -282,6 +400,19 @@ ssh-add -K -v
 gpgconf --kill gpg-agent
 gpg --card-status
 ```
+
+### age-plugin-yubikey: "Custom unprotected non-TDES management keys are not supported"
+
+The PIV management key needs to be TDES and protected. Fix with:
+
+```bash
+ykman piv access change-management-key -a TDES --protect
+```
+
+If the key is factory-fresh, the default management key is:
+`010203040506070801020304050607080102030405060708`
+
+Then retry `age-plugin-yubikey`.
 
 ## References
 
