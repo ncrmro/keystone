@@ -74,11 +74,10 @@ in
       };
     };
 
-    # Self-configure as client if publicKey and domain are set
-    keystone.binaryCache = lib.mkIf (cfg.publicKey != null && config.keystone.domain != null) {
-      enable = true;
-      url = "https://${cfg.subdomain}.${config.keystone.domain}";
-      publicKey = cfg.publicKey;
+    # Self-configure as substituter if publicKey and domain are set
+    nix.settings = lib.mkIf (cfg.publicKey != null && config.keystone.domain != null) {
+      substituters = [ "https://${cfg.subdomain}.${config.keystone.domain}" ];
+      trusted-public-keys = [ cfg.publicKey ];
     };
   };
 }
