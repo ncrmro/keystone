@@ -191,6 +191,9 @@
 
       # Hardware key module - FIDO2/YubiKey for GPG/SSH agent
       hardwareKey = ./modules/os/hardware-key.nix;
+
+      # Headscale DNS import — consume server DNS records on headscale host
+      headscale-dns = ./modules/server/headscale/dns-import.nix;
     };
 
     # Export home-manager modules (homeModules is the standard flake output name)
