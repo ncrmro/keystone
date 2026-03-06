@@ -186,7 +186,7 @@ let
               on first boot. If the agent has SSH configured, the clone
               waits for ssh-agent to be ready.
             '';
-            example = "git@git.ncrmro.com:drago/agent-space.git";
+            example = "ssh://forgejo@git.example.com:2222/user/repo.git";
           };
         };
       };
@@ -280,9 +280,9 @@ let
       in
       chromeMcpPortBase + 1 + idx;
 
-  # All agents get tailscale
-  tailscaleAgents = cfg;
-  hasTailscaleAgents = cfg != { };
+  # TODO: Re-enable per-agent Tailscale after fixing agenix.service dependency
+  tailscaleAgents = {};
+  hasTailscaleAgents = false;
 
   # fwmark base for per-agent tailscale routing (one per agent)
   tailscaleFwmarkBase = 51820;
@@ -1058,7 +1058,7 @@ in
               path = [ pkgs.openssh ];
 
               environment = {
-                GIT_SSH_COMMAND = "ssh -o StrictHostKeyChecking=accept-new";
+                GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
                 SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
               };
 
@@ -1067,6 +1067,13 @@ in
                 RemainAfterExit = true;
                 User = username;
                 Group = "agents";
+                Restart = "on-failure";
+                RestartSec = "30s";
+              };
+
+              unitConfig = {
+                StartLimitBurst = 10;
+                StartLimitIntervalSec = "600";
               };
 
               script = ''
