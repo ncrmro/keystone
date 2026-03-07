@@ -147,6 +147,9 @@ in
           echo "Cache '${cfg.cacheName}' already exists (or creation failed — check atticd logs)"
         fi
 
+        # Make cache publicly readable so nix substituters work without auth
+        ${attic} cache configure init:${cfg.cacheName} --public
+
         # Extract public key from cache info and write to file
         ${attic} cache info init:${cfg.cacheName} \
           | ${pkgs.gnugrep}/bin/grep "Public Key:" \
