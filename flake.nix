@@ -127,6 +127,8 @@
     # get evaluated in the wrong context when the overlay is applied by a consumer flake
     overlays.default = let
       zesh-src = ./packages/zesh;
+      agent-coding-agent-src = ./packages/agent-coding-agent;
+      fetch-email-source-src = ./packages/fetch-email-source;
       himalaya-flake = himalaya;
       llm-agents-flake = llm-agents;
       browser-previews-flake = browser-previews;
@@ -135,6 +137,8 @@
     in final: prev: {
       keystone = {
         zesh = final.callPackage zesh-src {};
+        agent-coding-agent = final.callPackage agent-coding-agent-src {};
+        fetch-email-source = final.callPackage fetch-email-source-src { himalaya = final.keystone.himalaya; };
         himalaya = himalaya-flake.packages.${final.system}.default;
         # AI coding agents from llm-agents.nix
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
@@ -236,6 +240,10 @@
     in {
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
       zesh = pkgs.callPackage ./packages/zesh {};
+      agent-coding-agent = pkgs.callPackage ./packages/agent-coding-agent {};
+      fetch-email-source = pkgs.callPackage ./packages/fetch-email-source {
+        himalaya = himalaya.packages.x86_64-linux.default;
+      };
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
     };
