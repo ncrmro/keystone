@@ -120,14 +120,15 @@ keystone.os.agents.researcher = {
   # Task loop (FR-010)
   taskLoop = {
     enable = true;
-    schedulerInterval = "daily";     # How often to ingest new work
-    loopInterval = "15min";          # How often to process task queue
+    loopOnCalendar = "*:0/5";            # Every 5 minutes (systemd calendar spec)
+    schedulerOnCalendar = "*-*-* 05:00:00"; # 5 AM daily
     maxTasksPerRun = 5;
     maxWallTime = "2h";
     errorThreshold = 3;              # Stop after N consecutive failures
     models = {
-      ingest = "haiku";              # Fast model for triage
-      execute = "sonnet";            # Capable model for task execution
+      ingest = "haiku";              # Fast model for source ingestion
+      prioritize = "haiku";          # Fast model for task prioritization (separate from ingest)
+      execute = "sonnet";            # Capable model for task execution (overridable per-task)
     };
     sources = {
       github.enable = true;
@@ -136,12 +137,18 @@ keystone.os.agents.researcher = {
     };
   };
 
+  # Cronjob self-management (FR-016)
+  cronjobs = {
+    enable = true;
+    # Managed timers the agent can create/edit/review
+  };
+
   # Coding subagent (FR-013)
   codingAgent = {
     enable = true;
     branchPrefix = "agent-researcher";  # Branch naming: agent-researcher/slug
     provider = "claude";                # claude | gemini | codex
-    autoReview = true;                  # Run linter/tests after each commit
+    maxReviewCycles = 2;                # Up to N review cycles with COMMENT/VERDICT format
     draftPR = true;                     # PRs are draft by default
   };
 
@@ -195,13 +202,17 @@ multi-user.target
   - `tailscale.nix` — FR-006: Tailscale identity + firewall rules
   - `ssh.nix` — FR-007: SSH keypair + ssh-agent service + git signing
   - `secrets.nix` — FR-008: Agenix secret paths + assertions
-  - `agent-space.nix` — FR-009: Workspace scaffold + git init
-  - `task-loop.nix` — FR-010: Systemd timers + task loop script
+  - `agent-space.nix` — FR-009: Workspace scaffold + git init (dual-mode: clone vs scaffold)
+  - `task-loop.nix` — FR-010: Systemd timers pointing to agent-space `run.sh`, 3-tier model config
   - `audit.nix` — FR-011: Audit log service + rotation + Loki forwarding
-  - `coding-agent.nix` — FR-013: Coding subagent script + config
+  - `coding-agent.nix` — FR-013: Adds `pkgs.keystone.agent-coding-agent` to PATH
   - `incidents.nix` — FR-014: Shared incident database + escalation
   - `mcp.nix` — FR-015: .mcp.json generation (Chrome DevTools MCP via stdio + additional servers), human-accessible config fragments at `/etc/keystone/agent-mcp/`
+  - `cronjobs.nix` — FR-016: Managed timer declarations for agent self-management
   - `scripts/` — Shell scripts used by systemd services
+- **Nix packages** (`packages/`):
+  - `packages/agent-coding-agent/` — FR-013: Bash orchestrator + provider scripts, wrapped with git/gh/openssh/jq/forgejo-cli
+  - `packages/fetch-email-source/` — FR-010: Email-to-JSON bridge, wrapped with himalaya/jq
 
 ### Integration Points
 
@@ -245,7 +256,7 @@ tests/module/
 └── agent-isolation.nix             # FR-012: NixOS VM isolation test (19 assertions)
 ```
 
-### Future Files (Phases 3-7)
+### Future Files (Phases 3-8)
 
 As features are added, the consolidated `agents.nix` may be split into sub-modules:
 
@@ -259,17 +270,30 @@ modules/os/
     ├── tailscale.nix               # FR-006: Tailscale identity
     ├── ssh.nix                     # FR-007: SSH keys + ssh-agent
     ├── secrets.nix                 # FR-008: Agenix paths + assertions
-    ├── agent-space.nix             # FR-009: Workspace scaffold
-    ├── task-loop.nix               # FR-010: Systemd timers
+    ├── agent-space.nix             # FR-009: Workspace scaffold (clone or scaffold mode)
+    ├── task-loop.nix               # FR-010: Systemd timers → agent-space run.sh
     ├── audit.nix                   # FR-011: Audit logging
-    ├── coding-agent.nix            # FR-013: Coding subagent
+    ├── coding-agent.nix            # FR-013: Adds pkgs.keystone.agent-coding-agent to PATH
     ├── incidents.nix               # FR-014: Incident log
     ├── mcp.nix                     # FR-015: MCP configuration
+    ├── cronjobs.nix                # FR-016: Managed timer declarations
     └── scripts/
         ├── scaffold-agent-space.sh # Agent-space git init + file creation
-        ├── task-loop.sh            # Task loop runner (ingest/prioritize/execute)
         ├── audit-logger.sh         # Audit event writer
-        └── coding-agent.sh         # Coding subagent wrapper
+        └── run.sh.template         # Task loop runner template (placed in agent-space)
+
+packages/
+├── agent-coding-agent/             # FR-013: Nix-packaged coding subagent
+│   ├── default.nix                 # makeWrapper derivation
+│   └── bin/
+│       ├── agent.coding-agent      # Main orchestrator
+│       ├── agent.coding-agent.claude   # Claude provider
+│       ├── agent.coding-agent.codex    # Codex stub
+│       └── agent.coding-agent.gemini   # Gemini stub
+└── fetch-email-source/             # FR-010: Nix-packaged email source fetcher
+    ├── default.nix                 # makeWrapper derivation
+    └── bin/
+        └── fetch-email-source      # himalaya → JSON bridge
 ```
 
 ### Modified Files
@@ -353,25 +377,24 @@ Set up the agent's workspace and tool access.
 
 ### Phase 5: Task Loop + Audit (FR-010 + FR-011)
 
-Enable autonomous operation with security logging.
+Enable autonomous operation with security logging. The task loop uses a `run.sh` in the agent-space (not Nix store) so the agent can modify its own pipeline behavior.
 
-**Red** — Uncomment assertions: timers active, audit.jsonl exists and is root-owned + append-only.
+**Red** — Uncomment assertions: timers active, `run.sh` exists in agent-space, audit.jsonl exists and is root-owned + append-only.
 
 **Green** — Implement:
-- `modules/os/agents/task-loop.nix` — Systemd timers (scheduler + loop)
-- `modules/os/agents/scripts/task-loop.sh` — Lock management, stop conditions, model dispatch
+- `modules/os/agents/task-loop.nix` — Systemd timers: scheduler at `schedulerOnCalendar` (default `*-*-* 05:00:00`), loop at `loopOnCalendar` (default `*:0/5`). Services point to agent-space `run.sh`. Three separate model configs: `models.ingest`, `models.prioritize`, `models.execute`.
+- Agent-space `run.sh` template — Full pipeline: pre-fetch sources (iterate `PROJECTS.yaml:sources`, run shell commands, collect JSON) → hash-based change detection (skip ingest if unchanged) → ingest (haiku) → prioritize (haiku) → execute loop (per-task model from `TASKS.yaml`). Supports `needs` dependency checking (yq+jq), `workflow` dispatch to DeepWork, TASKS.yaml validation with `yq e '.'` and git restore on failure.
 - `modules/os/agents/audit.nix` — Audit log service, logrotate, Loki forwarding config
 - `modules/os/agents/scripts/audit-logger.sh` — Append events to audit.jsonl
 
 ### Phase 6: Coding Subagent + Incidents (FR-013 + FR-014)
 
-Structured code contribution and operational learning.
+Structured code contribution and operational learning. The coding subagent is a Nix-packaged derivation (Phase 8, Task 19) with provider interface.
 
-**Red** — Uncomment assertions: coding-agent script exists, incident database path exists.
+**Red** — Uncomment assertions: `agent.coding-agent` in PATH, incident database path exists.
 
 **Green** — Implement:
-- `modules/os/agents/coding-agent.nix` — Option + script installation
-- `modules/os/agents/scripts/coding-agent.sh` — Pre-flight, branch naming, agent contract, cleanup
+- `modules/os/agents/coding-agent.nix` — `codingAgent.enable` option, adds `pkgs.keystone.agent-coding-agent` to PATH, configures branch prefix, provider, max review cycles
 - `modules/os/agents/incidents.nix` — ISSUES.yaml schema validation, shared database, escalation
 
 ### Phase 7: Full Security Test Suite (FR-012 complete)
@@ -385,11 +408,32 @@ Final red-green pass: uncomment all remaining security assertions and fill any g
 - Credential scoping (Bitwarden collection, SSH key, IMAP/SMTP)
 - Cgroup resource limits
 
+### Phase 8: Nix Packaging + Scaffolding (FR-013 + FR-010 + FR-016 + FR-017)
+
+Package agent tools as Nix derivations and implement scaffolding conventions.
+
+**Tasks 19 + 20** (can start immediately, no module dependencies):
+- `packages/agent-coding-agent/default.nix` — Wrap the bash orchestrator + provider scripts with `makeWrapper` ensuring git, gh, openssh, jq, forgejo-cli are in PATH. Expose as `keystone.agent-coding-agent` in overlay.
+- `packages/fetch-email-source/default.nix` — Wrap the email-to-JSON bridge with himalaya and jq in PATH. Expose as `keystone.fetch-email-source` in overlay.
+
+**Tasks 17 + 18** (depend on Task 9 scaffold):
+- Cronjob scaffolding: `.cronjobs/shared/{lib.sh,config.sh,setup.sh}` templates, `.deepwork/jobs/cronjobs/` job definition, `keystone.os.agents.{name}.cronjobs` NixOS option
+- Agent-space flake convention: Standard `flake.nix` template with required tools (claude-code, deepwork, git, gh, jq, yq-go), deepwork and llm-agents inputs
+
+**Overlay wiring** — Add to `overlays.default` in `flake.nix`:
+```nix
+keystone = {
+  # ... existing packages ...
+  agent-coding-agent = final.callPackage agent-coding-agent-src {};
+  fetch-email-source = final.callPackage fetch-email-source-src {};
+};
+```
+
 ## Security Considerations
 
 | Spec Requirement | Implementation |
 |---|---|
-| NFR-002: Agent isolation | Separate NixOS users, `chmod 700` home dirs, agenix `owner`/`group` per-agent |
+| NFR-002: Agent isolation | Separate NixOS users, `chmod 750` home dirs (group readable by `agent-admins`), agenix `owner`/`group` per-agent |
 | NFR-002: No root escalation | Assertions: agent users MUST NOT be in `wheel`. No `sudo` config. |
 | FR-011: Tamper-proof audit | Root-owned `/var/log/agent-{name}/`, `chattr +a` on audit.jsonl, NixOS assertion preventing disable |
 | FR-008: Secret scoping | Each secret has explicit `owner = "agent-{name}"` in agenix config |
@@ -406,9 +450,10 @@ All testing is driven by **one growing test file** (`tests/module/agent-isolatio
 | 2 | labwc service active, Wayland socket created, wayvnc active, VNC port open, wlr-randr headless output, config files + ownership, VNC localhost-only, non-desktop agent clean | **Complete** (8 assertions) |
 | 3 | SSH agent running, git signing configured, mail client available | Pending |
 | 4 | Agent-space directory + expected files, `.mcp.json` generated | Pending |
-| 5 | Timers active, audit.jsonl root-owned + append-only | Pending |
-| 6 | Coding-agent script exists, incident database path exists | Pending |
+| 5 | Timers active, run.sh in agent-space, audit.jsonl root-owned + append-only | Pending |
+| 6 | `agent.coding-agent` in PATH (from Nix package), incident database path exists | Pending |
 | 7 | Full cross-cutting security: secret isolation, network egress, credential scoping, cgroup limits | Pending |
+| 8 | Nix packages build (`nix build .#agent-coding-agent`, `.#fetch-email-source`), cronjob scaffold exists, flake.nix provides dev shell | Pending |
 
 CI runs `tests/module/agent-isolation.nix` on PRs touching `modules/os/agents*`.
 
