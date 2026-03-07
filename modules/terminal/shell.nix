@@ -132,6 +132,10 @@ in
       # https://github.com/eza-community/eza
       eza
 
+      # Glow - Render markdown on the CLI with style
+      # https://github.com/charmbracelet/glow
+      glow
+
       # GNU Make - Build automation tool
       # https://www.gnu.org/software/make/
       gnumake
