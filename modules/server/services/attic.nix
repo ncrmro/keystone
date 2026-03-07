@@ -79,7 +79,7 @@ in
         listen = "127.0.0.1:${toString cfg.port}";
         storage = {
           type = "local";
-          path = "/var/lib/atticd";
+          path = "/var/lib/atticd/storage";
         };
         garbage-collection = {
           interval = "12 hours";
