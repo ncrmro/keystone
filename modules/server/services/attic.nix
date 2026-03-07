@@ -5,6 +5,14 @@
 # Default port: 8199
 # Default access: tailscale
 #
+# The atticd-init oneshot service auto-creates the cache and generates
+# push tokens on first boot. For a clean start (e.g. after database
+# corruption or version upgrade), delete state and restart:
+#
+#   sudo systemctl stop atticd atticd-init
+#   sudo rm -rf /var/lib/private/atticd/*
+#   sudo systemctl start atticd atticd-init
+#
 {
   lib,
   config,
@@ -36,6 +44,12 @@ in
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = "Public key for nix substituter verification (optional)";
+      };
+
+      cacheName = lib.mkOption {
+        type = lib.types.str;
+        default = "main";
+        description = "Name of the cache to auto-create on startup.";
       };
     };
 
@@ -72,6 +86,89 @@ in
           default-retention-period = "6 months";
         };
       };
+    };
+
+    systemd.services.atticd-init = {
+      description = "Initialize Attic cache";
+      after = [ "atticd.service" ];
+      requires = [ "atticd.service" ];
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        EnvironmentFile = cfg.environmentFile;
+        # Must match atticd.service: DynamicUser maps /var/lib/atticd to
+        # /var/lib/private/atticd so we see the same database and write
+        # output files (public-key, push-token) to the correct location.
+        DynamicUser = true;
+        User = "atticd";
+        Group = "atticd";
+        StateDirectory = "atticd";
+      };
+
+      script = let
+        # Generate config from the same settings atticd uses. We can't reference
+        # the NixOS module's internal checkedConfigFile, so we regenerate it.
+        serverConfigFile = (pkgs.formats.toml { }).generate "attic-server.toml" config.services.atticd.settings;
+        atticadm = "${pkgs.attic-server}/bin/atticadm -f ${serverConfigFile}";
+        attic = "${pkgs.attic-client}/bin/attic";
+        curl = "${pkgs.curl}/bin/curl";
+      in ''
+        set -eu
+
+        # Wait for atticd to accept connections
+        for i in $(seq 1 30); do
+          if ${curl} -sf http://127.0.0.1:${toString cfg.port}/ >/dev/null 2>&1; then
+            break
+          fi
+          echo "Waiting for atticd... ($i/30)"
+          sleep 1
+        done
+
+        # Generate a short-lived admin token for initialization
+        TOKEN=$(${atticadm} make-token \
+          --sub "init" \
+          --validity "5m" \
+          --push "${cfg.cacheName}" \
+          --pull "${cfg.cacheName}" \
+          --create-cache "${cfg.cacheName}")
+
+        # Temporary config dir for attic CLI login state
+        export XDG_CONFIG_HOME="$(mktemp -d)"
+        trap 'rm -rf "$XDG_CONFIG_HOME"' EXIT
+
+        ${attic} login init http://127.0.0.1:${toString cfg.port} "$TOKEN"
+
+        # Create cache (idempotent — exits 1 if cache already exists)
+        if ${attic} cache create init:${cfg.cacheName}; then
+          echo "Created cache '${cfg.cacheName}'"
+        else
+          echo "Cache '${cfg.cacheName}' already exists (or creation failed — check atticd logs)"
+        fi
+
+        # Extract public key from cache info and write to file
+        ${attic} cache info init:${cfg.cacheName} \
+          | ${pkgs.gnugrep}/bin/grep "Public Key:" \
+          | ${pkgs.gawk}/bin/awk '{print $3}' \
+          > /var/lib/atticd/public-key
+
+        # Generate long-lived push token for builder machines
+        PUSH_TOKEN=$(${atticadm} make-token \
+          --sub "builder" \
+          --validity "10y" \
+          --push "${cfg.cacheName}" \
+          --pull "${cfg.cacheName}")
+
+        echo "$PUSH_TOKEN" > /var/lib/atticd/push-token
+        chmod 600 /var/lib/atticd/push-token
+
+        echo "========================================="
+        echo "Attic public key:"
+        cat /var/lib/atticd/public-key
+        echo "Push token written to /var/lib/atticd/push-token"
+        echo "========================================="
+      '';
     };
 
     # Self-configure as substituter if publicKey and domain are set
