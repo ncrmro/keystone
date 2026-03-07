@@ -2,9 +2,9 @@
 
 ## Overview
 
-**Total Tasks**: 16
-**Phases**: 7
-**Parallelizable**: 8
+**Total Tasks**: 20
+**Phases**: 8
+**Parallelizable**: 10
 
 Note: This spec uses functional requirements (FR-NNN) rather than user stories. Tasks reference FRs directly.
 
@@ -16,8 +16,9 @@ Phase 2:  [3] → [4]  (depends on Phase 1)
 Phase 3:  [5] [P] [6] [P] [7] [P] [8] [P]  (all depend on Phase 1)
 Phase 4:  [9] → [10]  (depends on Phase 1)
 Phase 5:  [11] [P] [12] [P]  (11 depends on Phase 4, 12 depends on Phase 1)
-Phase 6:  [13] [P] [14] [P]  (depend on Phase 4+5)
+Phase 6:  [13] [P] [14] [P]  (depend on Phase 4+5; 13 also depends on 19)
 Phase 7:  [15] → [16]  (depends on all above)
+Phase 8:  [17] [P] [18] [P] [19] [P] [20] [P]  (17,18 depend on Task 9; 19,20 independent)
 ```
 
 ---
@@ -42,7 +43,7 @@ Create the `keystone.os.agents` option set in `modules/os/default.nix` and imple
 - [x] Agent user `agent-researcher` is created with UID >= 4000
 - [x] Agent user belongs to `agents` group
 - [x] Agent user has no password and is not in `wheel`
-- [x] Home directory exists at `/home/agent-researcher` with `chmod 700`
+- [x] Home directory exists at `/home/agent-researcher` with `chmod 750` (group readable by `agent-admins`)
 - [ ] Home-manager config reuses `keystone.terminal` module *(deferred — agents don't use home-manager yet)*
 - [ ] Agenix assertions verify secret ownership *(deferred — secrets.nix not implemented yet)*
 
@@ -317,22 +318,29 @@ Extend VM test: `.mcp.json` exists and contains `chrome-devtools` server entry w
 **Dependencies**: Task 9
 
 **Description:**
-Implement the two-tier systemd timer architecture. Scheduler timer (daily) ingests new work from GitHub/email/schedules. Task-loop timer (configurable, default 15 min) processes the task queue. Lock management prevents concurrent execution. Configurable stop conditions and model strategy.
+Implement the two-tier systemd timer architecture with the refined pipeline from agent-space. Scheduler timer (default `*-*-* 05:00:00` — 5 AM) ingests new work. Task-loop timer (default `*:0/5` — every 5 min) runs the full pipeline: pre-fetch sources → hash-based change detection → ingest (haiku) → prioritize (haiku) → execute loop (per-task model). The `run.sh` script MUST live in the agent-space (not Nix store) so the agent can modify its own loop. Lock management prevents concurrent execution. Supports `needs` dependency ordering, `model` per-task override, and `workflow` DeepWork dispatch. Validates TASKS.yaml with `yq` after each write.
 
 **Files to Create:**
-- `modules/os/agents/task-loop.nix` — Systemd timers (`scheduler.timer`, `task-loop.timer`), service definitions, configurable intervals/stop conditions/models
-- `modules/os/agents/scripts/task-loop.sh` — Lock file management, source ingestion, LLM dispatch (ingest model vs execute model), stop condition checks, failure handling
+- `modules/os/agents/task-loop.nix` — Systemd timers (`scheduler.timer` at `schedulerOnCalendar`, `task-loop.timer` at `loopOnCalendar`), service definitions pointing to agent-space `run.sh`, configurable intervals/stop conditions/models (ingest, prioritize, execute separately)
+- Agent-space `run.sh` template — Pre-fetch pipeline (iterate `PROJECTS.yaml:sources`, run shell commands, collect JSON), hash-based skip, LLM dispatch per step, `needs` dependency checking via yq+jq, per-task model/workflow dispatch, TASKS.yaml validation with git restore on failure
 
 **Acceptance Criteria:**
-- [ ] `scheduler.timer` fires daily by default
-- [ ] `task-loop.timer` fires every 15 minutes by default
+- [ ] `scheduler.timer` fires at `*-*-* 05:00:00` by default
+- [ ] `task-loop.timer` fires at `*:0/5` (every 5 min) by default
+- [ ] `run.sh` lives in agent-space, not Nix store
+- [ ] Pre-fetch step iterates PROJECTS.yaml sources and collects JSON
+- [ ] Hash-based change detection skips ingest when sources unchanged
+- [ ] Three separate model configs: `models.ingest` (haiku), `models.prioritize` (haiku), `models.execute` (sonnet)
+- [ ] Per-task `model` field overrides execute model
+- [ ] Per-task `needs` field enforces dependency ordering
+- [ ] Per-task `workflow` field dispatches to DeepWork workflows
+- [ ] TASKS.yaml validated after each write; restored from git on failure
 - [ ] Lock file prevents concurrent task-loop runs
 - [ ] Stop conditions enforced: max tasks per run, max wall time, error threshold
 - [ ] Failed tasks logged and skipped (loop continues)
-- [ ] Intervals and models configurable per-agent
 
 **Validation:**
-Extend VM test: `systemctl --user -M agent-researcher@ is-active task-loop.timer` succeeds.
+Extend VM test: `systemctl --user -M agent-researcher@ is-active task-loop.timer` succeeds. Verify `run.sh` exists in agent-space.
 
 ---
 
@@ -375,25 +383,28 @@ Extend VM test: `lsattr /var/log/agent-researcher/audit.jsonl` shows `a` flag.
 ### Task 13: Coding Subagent [P] [FR-013]
 
 **Type**: Infrastructure
-**Dependencies**: Task 9, Task 8
+**Dependencies**: Task 9, Task 8, Task 19
 
 **Description:**
-Implement the structured code contribution workflow. A script at `~/bin/agent.coding-agent` performs pre-flight checks, enforces branch naming, applies the agent contract (commits OK, push/PR/branch-switch forbidden), supports review cycles, and cleans up on exit.
+Implement the structured code contribution workflow using the Nix-packaged `agent-coding-agent` derivation (Task 19). The `codingAgent.enable` option adds the package to the agent's PATH. The orchestrator/subagent split means the bash script handles git/push/PR while the LLM only makes commits. Supports provider interface (`agent.coding-agent.{provider} REPO_DIR SYSTEM_PROMPT_FILE TIMEOUT [--model MODEL]`), review cycles (up to N, default 2) with COMMENT/VERDICT format, both GitHub and Forgejo remotes, and `--review-only PR_NUMBER` mode.
 
 **Files to Create:**
-- `modules/os/agents/coding-agent.nix` — `codingAgent.enable` option, installs script to `~/bin/`, configures branch prefix and provider
-- `modules/os/agents/scripts/coding-agent.sh` — Pre-flight (repo exists, clean tree, remote accessible), branch creation (`agent-{name}/{slug}`), git hooks enforcing contract, review cycle (lint/test after commit), cleanup on exit (stash, summary)
+- `modules/os/agents/coding-agent.nix` — `codingAgent.enable` option, adds `pkgs.keystone.agent-coding-agent` to agent's PATH, configures branch prefix, provider, max review cycles, and auto-review settings
 
 **Acceptance Criteria:**
-- [ ] `keystone.os.agents.researcher.codingAgent.enable = true` installs script
-- [ ] Script at `/home/agent-researcher/bin/agent.coding-agent` is executable
-- [ ] Pre-flight checks verify repo state before starting
-- [ ] Branch naming follows `agent-researcher/{slug}` pattern
-- [ ] Agent cannot push, create PRs, or switch branches (contract enforcement)
-- [ ] Working state cleaned up on exit
+- [ ] `keystone.os.agents.researcher.codingAgent.enable = true` adds coding-agent to PATH
+- [ ] `agent.coding-agent` binary is available in agent's PATH (from Nix package)
+- [ ] Provider scripts (`agent.coding-agent.claude`, etc.) also available in PATH
+- [ ] Pre-flight checks verify repo state (exists in `.repos/`, clean tree, remote type detection)
+- [ ] Branch naming follows `{prefix}/{slugified-task}` pattern
+- [ ] Orchestrator handles push: GitHub (token-based URL), Forgejo (SSH)
+- [ ] Draft PRs: `gh pr create --draft` (GitHub), `WIP:` prefix (Forgejo)
+- [ ] Review cycle: up to N cycles, COMMENT/VERDICT format, re-run on FAIL
+- [ ] `--review-only PR_NUMBER` mode skips coding
+- [ ] Working state cleaned up on exit (return to default branch, remove temp files)
 
 **Validation:**
-Extend VM test: `su - agent-researcher -c "test -x ~/bin/agent.coding-agent"` succeeds.
+Extend VM test: `su - agent-researcher -c "which agent.coding-agent"` succeeds.
 
 ---
 
@@ -487,6 +498,118 @@ Configure CI to run the agent security tests on PRs that touch `modules/os/agent
 
 ---
 
+## Phase 8: Nix Packaging
+
+### Task 17: Cronjob Self-Management Scaffolding [FR-016]
+
+**Type**: Infrastructure
+**Dependencies**: Task 9
+
+**Description:**
+Implement the cronjob self-management convention in the agent-space scaffold. When scaffolding a new agent-space, create `.cronjobs/shared/{lib.sh,config.sh,setup.sh}` with standard utilities. Create the `.deepwork/jobs/cronjobs/` job definition with three workflows: create, edit, review. The `setup.sh` script installs cronjobs by symlinking service/timer units into `~/.config/systemd/user/`. Add `keystone.os.agents.{name}.cronjobs` NixOS option for declaring managed timers.
+
+**Files to Create:**
+- `.cronjobs/shared/lib.sh` template — Logging, error handling, lock management functions
+- `.cronjobs/shared/config.sh` template — Environment variables and standard paths
+- `.cronjobs/shared/setup.sh` template — Systemd unit installation via symlinks
+- `.deepwork/jobs/cronjobs/` — Job definition with create/edit/review workflows (can be copied from agent-space reference)
+- `modules/os/agents/cronjobs.nix` — `cronjobs` option set for declaring managed timers
+
+**Acceptance Criteria:**
+- [ ] Scaffold creates `.cronjobs/shared/{lib.sh,config.sh,setup.sh}`
+- [ ] `.deepwork/jobs/cronjobs/` exists with three workflows
+- [ ] `setup.sh` symlinks units into `~/.config/systemd/user/`
+- [ ] `run.sh` scripts use `SCRIPT_DIR` for relative paths
+- [ ] `keystone.os.agents.researcher.cronjobs` option is available
+
+**Validation:**
+Extend VM test: verify `.cronjobs/shared/lib.sh` exists in scaffolded agent-space.
+
+---
+
+### Task 18: Agent-Space Flake Convention [FR-017]
+
+**Type**: Infrastructure
+**Dependencies**: Task 9
+
+**Description:**
+Define the standard `flake.nix` template for agent-space. The flake MUST provide a dev shell with required tools: LLM CLI (via `llm-agents.nix`), DeepWork CLI, git, gh, jq, yq-go. Optional tools based on agent role. Scaffold mode generates this flake.nix from a template. The flake declares `deepwork` and `llm-agents` as inputs.
+
+**Files to Create:**
+- Agent-space `flake.nix` template — Inputs (nixpkgs, flake-utils, deepwork, llm-agents), dev shell with required + optional tools, shell hook setting `VAULT_ROOT`
+- Update scaffold script (Task 9) to generate `flake.nix` from template
+
+**Acceptance Criteria:**
+- [ ] Scaffolded agent-space contains a `flake.nix`
+- [ ] `nix develop` in agent-space provides: claude-code, deepwork, git, gh, jq, yq-go
+- [ ] `flake.nix` declares deepwork and llm-agents as inputs
+- [ ] Dev shell includes shell hook setting `VAULT_ROOT`
+
+**Validation:**
+`nix eval` on the generated flake.nix succeeds without errors.
+
+---
+
+### Task 19: Package `agent-coding-agent` as Nix Derivation [FR-013]
+
+**Type**: Packaging
+**Dependencies**: None (packaging is independent of module work)
+
+**Description:**
+Package the `agent.coding-agent` bash script and its provider scripts as a Nix derivation. Use `writeShellApplication` or `symlinkJoin` + `makeWrapper` to ensure runtime dependencies (git, gh, openssh, jq, forgejo-cli) are in PATH. The package includes: `agent.coding-agent` (main orchestrator), `agent.coding-agent.claude` (Claude provider), `agent.coding-agent.codex` (stub), `agent.coding-agent.gemini` (stub). Expose as `keystone.agent-coding-agent` in the overlay.
+
+**Files to Create:**
+- `packages/agent-coding-agent/default.nix` — Nix derivation wrapping the bash scripts
+- `packages/agent-coding-agent/bin/agent.coding-agent` — Main script (from agent-space reference)
+- `packages/agent-coding-agent/bin/agent.coding-agent.claude` — Claude provider
+- `packages/agent-coding-agent/bin/agent.coding-agent.codex` — Codex stub
+- `packages/agent-coding-agent/bin/agent.coding-agent.gemini` — Gemini stub
+
+**Acceptance Criteria:**
+- [ ] `nix build .#agent-coding-agent` succeeds
+- [ ] Built package contains all 4 scripts in `bin/`
+- [ ] Runtime deps (git, gh, openssh, jq) are in PATH via wrapper
+- [ ] `keystone.agent-coding-agent` available in overlay
+- [ ] Scripts are executable and pass basic syntax check (`bash -n`)
+
+**Validation:**
+`nix build .#agent-coding-agent && ./result/bin/agent.coding-agent --help` shows usage.
+
+---
+
+### Task 20: Package `fetch-email-source` as Nix Derivation [FR-010]
+
+**Type**: Packaging
+**Dependencies**: None
+
+**Description:**
+Package the `fetch-email-source` script as a Nix derivation. The script fetches email envelopes via himalaya and enriches them with message bodies, outputting JSON. Use `writeShellApplication` to wrap with himalaya and jq in PATH. Expose as `keystone.fetch-email-source` in the overlay.
+
+**Files to Create:**
+- `packages/fetch-email-source/default.nix` — Nix derivation
+- `packages/fetch-email-source/bin/fetch-email-source` — Script (from agent-space reference)
+
+**Acceptance Criteria:**
+- [ ] `nix build .#fetch-email-source` succeeds
+- [ ] Built package contains `fetch-email-source` in `bin/`
+- [ ] Runtime deps (himalaya, jq) are in PATH via wrapper
+- [ ] `keystone.fetch-email-source` available in overlay
+
+**Validation:**
+`nix build .#fetch-email-source && ./result/bin/fetch-email-source --help` or basic invocation test.
+
+---
+
+## Checkpoint: Phase 8 Complete
+
+**Verify:**
+- [ ] All Nix packages build successfully
+- [ ] Cronjob scaffolding creates expected directory structure
+- [ ] Agent-space flake.nix provides required dev shell tools
+- [ ] Packages wired into overlay and accessible via `keystone.*` namespace
+
+---
+
 ## Progress Tracking
 
 | Task | Status | FR | Phase | Notes |
@@ -494,16 +617,20 @@ Configure CI to run the agent security tests on PRs that touch `modules/os/agent
 | 1 | [x] | FR-001, FR-008 | 1 | Done via single `agents.nix`. Home-manager and agenix deferred. |
 | 2 | [x] | FR-012 | 1 | Done as `tests/module/agent-isolation.nix` (19 assertions, eval + runtime) |
 | 3 | [x] | FR-002 | 2 | Done with labwc (not Cage), system services with `User=` (not user services) |
-| 4 | [ ] | FR-003 | 2 | Chrome + DevTools MCP (chrome-devtools-mcp Nix derivation, stdio transport) |
-| 5 | [ ] | FR-004 | 3 | Email (parallel with 6,7,8) |
-| 6 | [ ] | FR-005 | 3 | Bitwarden (parallel with 5,7,8) |
-| 7 | [ ] | FR-006 | 3 | Tailscale (parallel with 5,6,8) |
-| 8 | [ ] | FR-007 | 3 | SSH (parallel with 5,6,7) |
+| 4 | [~] | FR-003 | 2 | Chromium service works (cage + chromium + DevTools port), but always-on regardless of enable flag |
+| 5 | [~] | FR-004 | 3 | Himalaya config generated, mail account provisioning pending |
+| 6 | [~] | FR-005 | 3 | bw CLI installed, Vaultwarden collection setup pending |
+| 7 | [~] | FR-006 | 3 | Coded but disabled (TODO: fix agenix.service dependency) |
+| 8 | [x] | FR-007 | 3 | SSH fully implemented: ssh-agent service, SSH_ASKPASS, key generation, git signing |
 | 9 | [ ] | FR-009 | 4 | Agent space scaffold |
 | 10 | [ ] | FR-015 | 4 | MCP config (.mcp.json + human access fragments, stdio transport) |
-| 11 | [ ] | FR-010 | 5 | Task loop (parallel with 12) |
+| 11 | [ ] | FR-010 | 5 | Task loop — refined pipeline with pre-fetch, hash detection, 3-tier models |
 | 12 | [ ] | FR-011 | 5 | Audit trail (parallel with 11) |
-| 13 | [ ] | FR-013 | 6 | Coding subagent (parallel with 14) |
+| 13 | [ ] | FR-013 | 6 | Coding subagent — Nix-packaged, provider interface, review cycles |
 | 14 | [ ] | FR-014 | 6 | Incident log (parallel with 13) |
 | 15 | [ ] | FR-012 | 7 | Full security test suite |
 | 16 | [ ] | FR-012 | 7 | CI integration |
+| 17 | [ ] | FR-016 | 8 | Cronjob self-management scaffolding |
+| 18 | [ ] | FR-017 | 8 | Agent-space flake convention |
+| 19 | [ ] | FR-013 | 8 | Package `agent-coding-agent` as Nix derivation |
+| 20 | [ ] | FR-010 | 8 | Package `fetch-email-source` as Nix derivation |
