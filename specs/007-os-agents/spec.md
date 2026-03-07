@@ -41,6 +41,7 @@ OS agents need a persistent identity and environment that survives reboots, inte
   - A remote machine over Headscale (via the agent's tailnet IP)
 - The desktop MUST auto-start on boot and restart on crash
 - Resolution and display settings SHOULD be configurable per-agent
+- **Known simplification**: The current implementation creates desktop + chromium services for ALL agents regardless of `desktop.enable` / `chromium.enable` flags. The enable options exist in the type definition but are not yet wired into conditional service generation. See Task 4 notes.
 
 ### FR-003: Chrome Browser with DevTools MCP
 
@@ -104,40 +105,62 @@ Secrets:
 
 ### FR-009: Agent Space — Workspace Structure
 
-- The system MUST scaffold `/home/agent-{name}/agent-space/` as the agent's primary working directory
+- The system MUST support two modes of agent-space provisioning:
+  - **Clone mode** (`space.repo`): Clone an existing repository into `/home/agent-{name}/agent-space/`
+  - **Scaffold mode** (default): Create and initialize `/home/agent-{name}/agent-space/` with standard files
 - The agent-space MUST be git-initialized with a Forgejo remote on the host (or configurable remote)
 - The agent-space MUST contain the following standard files:
-  - `TASKS.yaml` — Current task queue
-  - `PROJECTS.yaml` — Projects the agent is responsible for
+  - `TASKS.yaml` — Current task queue (see FR-010 for schema)
+  - `PROJECTS.yaml` — Projects the agent is responsible for, with priority ordering and source definitions
   - `ISSUES.yaml` — Known issues and incident log (see FR-014)
-  - `SCHEDULES.yaml` — Recurring and scheduled work
-  - `SOUL.md` — Agent identity, purpose, and behavioral guidelines
-  - `HUMAN.md` — Human operator contact info, escalation procedures, and preferences
-  - `AGENTS.md` — Operational context, conventions, and bespoke learnings
+  - `SCHEDULES.yaml` — Recurring and scheduled work with DeepWork workflow references
+  - `SOUL.md` — Agent identity: name, display name, email, and accounts table (Service, Host, Username, Auth Method, Credentials)
+  - `HUMAN.md` — Human operator: name and email
+  - `AGENTS.md` — Operational context, conventions, and bespoke learnings; MUST use `{name}` and `{email}` placeholders (values live in `SOUL.md`)
+  - `CLAUDE.md` — MUST be a symlink to `AGENTS.md` (same file, not separate)
   - `ARCHITECTURE.md` — System architecture the agent operates within
   - `REQUIREMENTS.md` — Standing requirements and constraints
-  - `SERVICES.md` — Services the agent can access (URLs, credentials references, MCP endpoints)
+  - `SERVICES.md` — Services the agent can access (intranet table: Service, URL)
 - The agent-space MUST contain a `.repos/` directory for cloned repositories
 - The agent-space MUST contain a `logs/` directory for task execution logs
-- The agent-space SHOULD contain a `flake.nix` providing the agent's dev shell
+- The agent-space MUST contain a `bin/` directory for agent-local scripts (coding subagent, source fetchers)
+- The agent-space MUST contain a `.deepwork/jobs/` directory with at minimum `task_loop/` and `cronjobs/` job definitions
+- The agent-space MUST contain a `flake.nix` providing the agent's dev shell (see FR-017)
 - Identity documents (`SOUL.md`, `HUMAN.md`) MUST be auto-populated from the `keystone.os.agents.{name}` configuration
 - The agent MUST be able to commit and push changes to its agent-space repository
+- Scaffold mode MUST create `.cronjobs/` directory with `shared/{lib.sh,config.sh,setup.sh}` (see FR-016)
 
 ### FR-010: Task Loop — Autonomous Work Orchestration
 
 - The system MUST provide a two-tier systemd timer architecture:
-  - A scheduler timer (daily by default) that ingests new work from external sources
-  - A task-loop timer (configurable interval, default every 15 minutes) that processes the task queue
+  - A scheduler timer (daily, default `*-*-* 05:00:00`) that ingests new work from external sources
+  - A task-loop timer (configurable interval, default `*:0/5` — every 5 minutes) that processes the task queue
+- The task-loop `run.sh` MUST live in the agent-space (not the Nix store), so the agent can modify its own loop behavior
 - The scheduler MUST ingest tasks from configurable sources:
   - GitHub/Forgejo issues assigned to the agent
   - Email (via the agent's Stalwart account)
-  - `SCHEDULES.yaml` recurring entries
-- The task loop MUST follow an ingest → prioritize → execute cycle driven by the LLM
+  - `SCHEDULES.yaml` recurring entries (deduplicated by `source_ref: "schedule-{name}-{YYYY-MM-DD}"`)
+- The task loop MUST include a pre-fetch pipeline step: iterate `PROJECTS.yaml` `sources` entries, run each shell command, collect JSON output for LLM consumption
+- The task loop MUST follow a pre-fetch → ingest → prioritize → execute cycle driven by the LLM
+- The task loop MUST use hash-based change detection: compare source JSON hash to a saved hash and skip ingest if unchanged
 - The task loop MUST use lock management to prevent concurrent executions
 - The task loop MUST implement configurable stop conditions (max tasks per run, max wall time, error threshold)
 - The task loop MUST handle failures gracefully (log failure, mark task as failed, continue to next)
-- The system SHOULD support a two-tier model strategy: a fast model for ingest/prioritize and a capable model for execute
+- The system MUST support a three-tier model strategy:
+  - A fast model for ingest (default: haiku)
+  - A fast model for prioritize (default: haiku) — separate from ingest to allow independent tuning
+  - A capable model for execute (default: sonnet), overridable per-task via the `model` field in `TASKS.yaml`
+- Each task in `TASKS.yaml` MAY specify a `model` field (`haiku`, `sonnet`, `opus`) to override the default execute model
+- Each task in `TASKS.yaml` MAY specify a `needs` field (list of task names) for dependency ordering; the loop MUST skip tasks whose dependencies are not yet completed
+- Each task in `TASKS.yaml` MAY specify a `workflow` field (`job/workflow`) for DeepWork workflow dispatch
+- The task loop MUST validate `TASKS.yaml` after each write using `yq e '.' TASKS.yaml` and restore from git on validation failure
 - The task loop interval, stop conditions, and model configuration MUST be configurable per-agent
+- NixOS options:
+  - `loopOnCalendar` — systemd calendar spec for the task loop timer (default `"*:0/5"`)
+  - `schedulerOnCalendar` — systemd calendar spec for the scheduler timer (default `"*-*-* 05:00:00"`)
+  - `models.ingest` — model for ingest step (default `"haiku"`)
+  - `models.prioritize` — model for prioritize step (default `"haiku"`)
+  - `models.execute` — model for execute step (default `"sonnet"`)
 
 ### FR-011: Audit Trail — Security Logging
 
@@ -177,15 +200,25 @@ Secrets:
 ### FR-013: Coding Subagent — Structured Code Contribution
 
 - The system MUST provide a `keystone.os.agents.{name}.codingAgent.enable` option
-- When enabled, the system MUST install a script at `~/bin/agent.coding-agent`
-- The coding-agent script MUST perform pre-flight checks (repo exists, clean working tree, remote accessible)
-- Branch naming MUST follow a configurable pattern (default: `agent-{name}/{slug}`)
+- When enabled, the system MUST install `agent.coding-agent` and provider scripts in the agent's PATH (Nix-packaged derivation, see Phase 8)
+- The coding-agent MUST implement an orchestrator/subagent split: the bash orchestrator handles git operations, push, and PR creation; the LLM subagent only creates commits within a sandboxed working tree
+- The coding-agent script MUST perform pre-flight checks (repo exists in `.repos/`, clean working tree, remote accessible, detect remote type: github/forgejo)
+- Branch naming MUST follow a configurable pattern (default: `{prefix}/{slugified-task}`, where prefix is `feature|fix|chore|refactor|docs`)
 - The agent contract MUST permit: creating commits, reading files, running tests
 - The agent contract MUST NOT permit: pushing to remote, creating PRs, switching branches (the orchestrator handles these)
-- The system SHOULD support automated review cycles (run linter/tests after each commit, retry on failure)
-- PRs created by the orchestrator MUST be draft by default
-- The coding-agent MUST support provider abstraction (Claude, Gemini, Codex, or other LLM backends)
-- The coding-agent MUST clean up working state on exit (stash uncommitted changes, report summary)
+- The system MUST support automated review cycles:
+  - Up to N cycles (configurable, default 2)
+  - Review output MUST use a structured COMMENT/VERDICT format
+  - On FAIL: re-run coding agent with fix prompt, push fixes
+  - On PASS: mark PR ready (`gh pr ready` for GitHub, remove `WIP:` prefix for Forgejo)
+- PRs created by the orchestrator MUST be draft by default (`gh pr create --draft` for GitHub, `WIP:` title prefix for Forgejo)
+- The coding-agent MUST support provider abstraction via a provider interface:
+  - Provider scripts at `agent.coding-agent.{provider}` (e.g., `agent.coding-agent.claude`)
+  - Provider contract: positional args `REPO_DIR SYSTEM_PROMPT_FILE TIMEOUT`, optional `--model MODEL` flag
+  - Initial providers: Claude (functional), Codex (stub), Gemini (stub)
+- The coding-agent MUST support a `--review-only PR_NUMBER` mode that skips coding and reviews an existing PR
+- The coding-agent MUST clean up working state on exit (return to default branch, remove temp files)
+- Push mechanism MUST support both GitHub (token-based URL) and Forgejo (SSH)
 
 ### FR-014: Incident Log — Operational Learning
 
@@ -213,6 +246,40 @@ Secrets:
 - The system MUST support configurable additional MCP servers via `keystone.os.agents.{name}.mcp.servers`
 - MCP tool calls SHOULD be logged to the audit trail (FR-011)
 - The `.mcp.json` MUST NOT contain secrets inline; credentials MUST be referenced from agenix paths
+
+### FR-016: Cronjob Self-Management
+
+- The agent-space MUST include `.deepwork/jobs/cronjobs/` with workflows for creating, editing, and reviewing cronjobs
+- The agent-space MUST include a `.cronjobs/` directory with the following standard layout:
+  - `.cronjobs/{job-name}/run.sh` — Job execution script
+  - `.cronjobs/{job-name}/service.unit` — Systemd service unit template
+  - `.cronjobs/{job-name}/timer.unit` — Systemd timer unit template
+- The agent-space MUST include `.cronjobs/shared/` with shared utilities:
+  - `lib.sh` — Shared functions (logging, error handling, lock management)
+  - `config.sh` — Environment variables and paths
+  - `setup.sh` — Installation script that symlinks units into `~/.config/systemd/user/`
+- `run.sh` scripts MUST use `SCRIPT_DIR` for relative paths, never hardcode absolute paths
+- `run.sh` scripts MUST source `shared/lib.sh` for common functions
+- The system MUST provide a `keystone.os.agents.{name}.cronjobs` NixOS option for declaring managed timers that the agent can self-manage
+- The `cronjobs` DeepWork job MUST support three workflows:
+  - `create` — Gather requirements, implement job, install via setup.sh
+  - `edit` — Assess current state, apply changes
+  - `review` — Collect logs and diagnose issues, recommend fixes
+
+### FR-017: Agent-Space Development Shell
+
+- The agent-space `flake.nix` MUST provide a dev shell with the following required tools:
+  - LLM CLI (Claude Code or equivalent, via `llm-agents.nix`)
+  - DeepWork CLI
+  - `git`, `gh` (GitHub CLI), `jq`, `yq-go`
+- The agent-space `flake.nix` SHOULD provide additional tools based on the agent's role:
+  - `forgejo-cli` (for Forgejo-hosted repos)
+  - `nodejs` (for MCP servers and web projects)
+  - `bun` (for dashboard and fast scripting)
+  - `glow` (for markdown rendering)
+- Systemd services MUST access the dev shell via `nix develop --command` or direnv integration
+- The dev shell SHOULD include convenience aliases (e.g., `pz` for Zellij sessions, `pclaude` for project-aware Claude)
+- The `flake.nix` MUST declare DeepWork as an input for workflow access
 
 ## Non-Functional Requirements
 
@@ -245,7 +312,7 @@ Secrets:
 
 1. ~~**Compositor choice**: Cage is simplest (single-app kiosk), but Sway headless allows multi-window. Should agents have multi-window desktops or a Chrome-only kiosk?~~ **Resolved**: labwc — better wlroots headless backend support than Cage or Sway. Runs with `WLR_BACKENDS=headless` + `WLR_RENDERER=pixman`. Multi-window capable for future Chrome + other apps.
 2. ~~**VNC vs RDP**: wayvnc is lightweight but RDP (via wlfreerdp) offers better performance. Which protocol to prioritize?~~ **Resolved**: wayvnc (VNC). Lightweight, Wayland-native, localhost-only by default. Remote access via SSH tunnel (`ssh -L 5901:127.0.0.1:5901`) or Tailscale. TLS support available but not yet configured.
-3. ~~**Chrome vs Chromium**: Google Chrome includes proprietary codecs and sync. Chromium is pure open-source but lacks some features. Preference?~~ **Deferred**: Chrome/Chromium not yet implemented (Task 4). Decision will be made when FR-003 work begins.
+3. ~~**Chrome vs Chromium**: Google Chrome includes proprietary codecs and sync. Chromium is pure open-source but lacks some features. Preference?~~ **Resolved**: Chromium. Implemented in `agents.nix` as a systemd service running Chromium under Cage on the agent's Wayland desktop, with `--remote-debugging-port` for DevTools MCP. Profile persists at `~/.config/chromium-agent/`.
 4. **Agent-to-agent communication**: Should agents be able to communicate with each other (e.g., shared mailbox, shared Bitwarden collection)?
 5. **Lifecycle management**: Should there be a CLI (`keystone-agent-os`) for imperative operations (restart desktop, rotate keys, view logs)?
 
