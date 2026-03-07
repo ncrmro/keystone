@@ -178,6 +178,11 @@
           inherit pkgs lib;
           self = keystone;
         };
+
+        test-template-evaluation = import ./module/template-evaluation.nix {
+          inherit pkgs lib;
+          self = keystone;
+        };
       };
 
       # Also expose tests as packages for convenience

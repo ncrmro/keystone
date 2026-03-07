@@ -231,6 +231,10 @@
         inherit pkgs lib nixpkgs;
         self = self;
       };
+      template-evaluation = import ./tests/module/template-evaluation.nix {
+        inherit pkgs lib nixpkgs;
+        self = self;
+      };
     };
 
     # Packages exported for consumption
