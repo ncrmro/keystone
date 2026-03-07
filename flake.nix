@@ -129,6 +129,7 @@
       zesh-src = ./packages/zesh;
       agent-coding-agent-src = ./packages/agent-coding-agent;
       fetch-email-source-src = ./packages/fetch-email-source;
+      keystone-tui-src = ./packages/keystone-tui;
       himalaya-flake = himalaya;
       llm-agents-flake = llm-agents;
       browser-previews-flake = browser-previews;
@@ -139,6 +140,7 @@
         zesh = final.callPackage zesh-src {};
         agent-coding-agent = final.callPackage agent-coding-agent-src {};
         fetch-email-source = final.callPackage fetch-email-source-src { himalaya = final.keystone.himalaya; };
+        keystone-tui = final.callPackage keystone-tui-src {};
         himalaya = himalaya-flake.packages.${final.system}.default;
         # AI coding agents from llm-agents.nix
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
@@ -250,6 +252,7 @@
       };
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
+      keystone-tui = pkgs.callPackage ./packages/keystone-tui {};
     };
 
     # Development shell
@@ -308,7 +311,7 @@
           echo "  ./bin/virtual-machine  - Full stack VM with libvirt"
           echo "  nix flake check        - Validate flake"
           echo ""
-          echo "Rust packages:  packages/keystone-ha/"
+          echo "Rust packages:  packages/keystone-ha/ packages/keystone-tui/"
           echo "Node packages:  packages/keystone-installer-ui/"
         '';
 

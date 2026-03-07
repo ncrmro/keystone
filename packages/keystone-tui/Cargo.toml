@@ -1,0 +1,19 @@
+[package]
+name = "keystone-tui"
+version = "0.1.0"
+edition = "2021"
+description = "TUI for Keystone infrastructure management"
+license = "MIT"
+
+[lib]
+name = "keystone_tui"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+rnix = "0.11"
+
+[dev-dependencies]
+tempfile = "3.8"
