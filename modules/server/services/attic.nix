@@ -132,7 +132,8 @@ in
           --validity "5m" \
           --push "${cfg.cacheName}" \
           --pull "${cfg.cacheName}" \
-          --create-cache "${cfg.cacheName}")
+          --create-cache "${cfg.cacheName}" \
+          --configure-cache "${cfg.cacheName}")
 
         # Temporary config dir for attic CLI login state
         export XDG_CONFIG_HOME="$(mktemp -d)"
