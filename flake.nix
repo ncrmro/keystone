@@ -129,6 +129,7 @@
       zesh-src = ./packages/zesh;
       agent-coding-agent-src = ./packages/agent-coding-agent;
       fetch-email-source-src = ./packages/fetch-email-source;
+      repo-sync-src = ./packages/repo-sync;
       himalaya-flake = himalaya;
       llm-agents-flake = llm-agents;
       browser-previews-flake = browser-previews;
@@ -139,6 +140,7 @@
         zesh = final.callPackage zesh-src {};
         agent-coding-agent = final.callPackage agent-coding-agent-src {};
         fetch-email-source = final.callPackage fetch-email-source-src { himalaya = final.keystone.himalaya; };
+        repo-sync = final.callPackage repo-sync-src {};
         himalaya = himalaya-flake.packages.${final.system}.default;
         # AI coding agents from llm-agents.nix
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
@@ -215,6 +217,7 @@
         ];
         _module.args.keystoneInputs = keystoneInputs;
       };
+      notes = ./modules/notes/default.nix;
     };
 
     # Flake checks — run via `nix flake check` and CI
@@ -248,6 +251,7 @@
       fetch-email-source = pkgs.callPackage ./packages/fetch-email-source {
         himalaya = himalaya.packages.x86_64-linux.default;
       };
+      repo-sync = pkgs.callPackage ./packages/repo-sync {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
     };

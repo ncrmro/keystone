@@ -41,12 +41,18 @@ let
       usersJson = builtins.toJSON (builtins.attrNames result.config.users.users);
       groupsJson = builtins.toJSON (builtins.attrNames result.config.users.groups);
       servicesJson = builtins.toJSON (builtins.attrNames result.config.systemd.services);
+      timersJson = builtins.toJSON (builtins.attrNames result.config.systemd.timers);
+      userServicesJson = builtins.toJSON (builtins.attrNames result.config.systemd.user.services);
+      userTimersJson = builtins.toJSON (builtins.attrNames result.config.systemd.user.timers);
     in
     pkgs.runCommand "eval-${name}" { } ''
       echo "Evaluating ${name}..."
       echo "  Users: ${usersJson}"
       echo "  Groups: ${groupsJson}"
       echo "  Services: ${servicesJson}"
+      echo "  Timers: ${timersJson}"
+      echo "  User Services: ${userServicesJson}"
+      echo "  User Timers: ${userTimersJson}"
       touch $out
     '';
 
@@ -89,6 +95,7 @@ let
           agents.researcher = {
             fullName = "Research Agent";
             email = "researcher@ks.systems";
+            notes.repo = "git@example.com:researcher/notes.git";
           };
         };
         fileSystems."/" = {
@@ -115,10 +122,12 @@ let
             researcher = {
               fullName = "Research Agent";
               email = "researcher@ks.systems";
+              notes.repo = "git@example.com:researcher/notes.git";
             };
             coder = {
               fullName = "Coding Agent";
               email = "coder@ks.systems";
+              notes.repo = "git@example.com:coder/notes.git";
             };
           };
         };
@@ -146,6 +155,7 @@ let
           agents.researcher = {
             uid = 4050;
             fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
           };
         };
         fileSystems."/" = {
@@ -170,9 +180,11 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
           };
           agents.coder = {
             fullName = "Coding Agent";
+            notes.repo = "git@example.com:coder/notes.git";
           };
         };
         fileSystems."/" = {
@@ -197,6 +209,7 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
             desktop = {
               enable = true;
               resolution = "2560x1440";
@@ -226,6 +239,7 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
           };
         };
         fileSystems."/" = {
@@ -250,6 +264,7 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
             chrome = {
               enable = true;
               debugPort = 9300;
@@ -263,8 +278,8 @@ let
       }
     ];
 
-    # Agent with space.repo configured (git clone service)
-    agent-space = eval "agent-space" [
+    # Agent with notes.repo configured (sync user service)
+    agent-notes = eval "agent-notes" [
       {
         keystone.os = {
           enable = true;
@@ -278,7 +293,7 @@ let
           };
           agents.drago = {
             fullName = "Drago";
-            space.repo = "git@git.ncrmro.com:drago/agent-space.git";
+            notes.repo = "git@git.ncrmro.com:drago/agent-space.git";
           };
         };
         fileSystems."/" = {
@@ -288,8 +303,8 @@ let
       }
     ];
 
-    # Agent with space.repo and SSH (clone depends on ssh-agent)
-    agent-space-ssh = eval "agent-space-ssh" [
+    # Agent with notes and SSH
+    agent-notes-ssh = eval "agent-notes-ssh" [
       {
         keystone.os = {
           enable = true;
@@ -303,10 +318,81 @@ let
           };
           agents.drago = {
             fullName = "Drago";
-            space.repo = "git@git.ncrmro.com:drago/agent-space.git";
-            ssh = {
-              enable = true;
-              publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-drago";
+            notes.repo = "git@git.ncrmro.com:drago/agent-space.git";
+            ssh.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-drago";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with custom sync interval
+    agent-notes-sync = eval "agent-notes-sync" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.tester = {
+            fullName = "Test Agent";
+            ssh.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-tester";
+            notes.repo = "git@example.com:test/notes.git";
+            notes.syncOnCalendar = "*:0/15";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with task loop and scheduler
+    agent-notes-task-loop = eval "agent-notes-task-loop" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.drago = {
+            fullName = "Drago";
+            ssh.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-drago";
+            notes.repo = "git@git.example.com:drago/notes.git";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with custom task loop and scheduler schedules
+    agent-notes-task-loop-custom = eval "agent-notes-task-loop-custom" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.tester = {
+            fullName = "Test Agent";
+            ssh.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-tester";
+            notes.repo = "git@example.com:test/notes.git";
+            notes.taskLoop = {
+              onCalendar = "*:0/15";
+              maxTasks = 3;
+            };
+            notes.scheduler = {
+              onCalendar = "*-*-* 06:00:00";
             };
           };
         };
@@ -332,9 +418,11 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
           };
           agents.coder = {
             fullName = "Coding Agent";
+            notes.repo = "git@example.com:coder/notes.git";
           };
         };
         fileSystems."/" = {
