@@ -176,17 +176,45 @@ let
           };
         };
 
-        space = {
+        notes = {
           repo = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = ''
-              Git repository URL for the agent's workspace. When set,
-              a systemd service clones it to /home/agent-{name}/agent-space/
-              on first boot. If the agent has SSH configured, the clone
-              waits for ssh-agent to be ready.
-            '';
-            example = "ssh://forgejo@git.example.com:2222/user/repo.git";
+            type = types.str;
+            description = "Git repository URL for the agent's notes. Cloned to /home/agent-{name}/notes/.";
+            example = "ssh://forgejo@git.example.com:2222/user/notes.git";
+          };
+
+          path = mkOption {
+            type = types.str;
+            default = "/home/agent-${name}/notes";
+            description = "Local checkout path for the notes repo.";
+          };
+
+          syncOnCalendar = mkOption {
+            type = types.str;
+            default = "*:0/5";
+            description = "Systemd calendar spec for notes sync timer. Default: every 5 minutes.";
+          };
+
+          taskLoop = {
+            onCalendar = mkOption {
+              type = types.str;
+              default = "*:0/5";
+              description = "Systemd calendar spec for task loop timer. Default: every 5 minutes.";
+            };
+
+            maxTasks = mkOption {
+              type = types.int;
+              default = 5;
+              description = "Maximum number of pending tasks to execute per run.";
+            };
+          };
+
+          scheduler = {
+            onCalendar = mkOption {
+              type = types.str;
+              default = "*-*-* 05:00:00";
+              description = "Systemd calendar spec for scheduler timer. Default: daily at 5 AM.";
+            };
           };
         };
       };
@@ -226,10 +254,6 @@ let
 
   sshAgents = cfg;
   hasSshAgents = cfg != { };
-
-  # Agents with space.repo configured
-  spaceAgents = filterAttrs (_: a: a.space.repo != null) cfg;
-  hasSpaceAgents = spaceAgents != { };
 
   # Sorted desktop agent names for deterministic VNC port assignment
   sortedDesktopAgentNames = sort lessThan (attrNames desktopAgents);
@@ -371,6 +395,316 @@ let
       chmod 600 /home/${username}/.config/himalaya/config.toml
       chown -R ${username}:agents /home/${username}/.config/himalaya
     '';
+
+  # Task loop script: pre-fetch sources, ingest, prioritize, execute
+  # Runs inside nix develop --command to get the agent's dev shell
+  agentTaskLoopScript =
+    name: agentCfg:
+    let
+      username = "agent-${name}";
+      notesDir = agentCfg.notes.path;
+      maxTasks = agentCfg.notes.taskLoop.maxTasks;
+      yq = "${pkgs.yq-go}/bin/yq";
+      jq = "${pkgs.jq}/bin/jq";
+      date = "${pkgs.coreutils}/bin/date";
+      mkdir = "${pkgs.coreutils}/bin/mkdir";
+      echo = "${pkgs.coreutils}/bin/echo";
+      cat = "${pkgs.coreutils}/bin/cat";
+      tee = "${pkgs.coreutils}/bin/tee";
+      wc = "${pkgs.coreutils}/bin/wc";
+      head = "${pkgs.coreutils}/bin/head";
+      seq = "${pkgs.coreutils}/bin/seq";
+      find = "${pkgs.findutils}/bin/find";
+      sort = "${pkgs.coreutils}/bin/sort";
+      rm = "${pkgs.coreutils}/bin/rm";
+    in
+    pkgs.writeShellScript "agent-task-loop-${name}" ''
+      set -eo pipefail
+
+      NOTES_DIR="${notesDir}"
+      LOGS_DIR="$HOME/.local/state/agent-task-loop/logs"
+      TASK_LOGS_DIR="$LOGS_DIR/tasks"
+      STATE_DIR="$HOME/.local/state/agent-task-loop/state"
+      LOCKFILE="$STATE_DIR/task-loop.lock"
+
+      ${mkdir} -p "$LOGS_DIR" "$TASK_LOGS_DIR" "$STATE_DIR"
+
+      TIMESTAMP=$(${date} +%Y-%m-%d_%H%M%S)
+      LOG_FILE="$LOGS_DIR/$TIMESTAMP.log"
+      START_TIME=$(${date} +%s)
+
+      log() {
+        ${echo} "[$(${date} '+%H:%M:%S')] $*" | ${tee} -a "$LOG_FILE"
+      }
+
+      # Lock to prevent concurrent runs
+      if ${mkdir} "$LOCKFILE" 2>/dev/null; then
+        ${echo} $$ > "$LOCKFILE/pid"
+        trap '${rm} -rf "$LOCKFILE"' EXIT
+      else
+        ${echo} "Task loop already running (lockfile exists), skipping"
+        exit 0
+      fi
+
+      if [ ! -d "$NOTES_DIR" ]; then
+        ${echo} "Notes directory $NOTES_DIR does not exist yet, skipping"
+        exit 0
+      fi
+      cd "$NOTES_DIR"
+      log "Starting agent task loop for ${name}"
+
+      # ── Step 1: Pre-fetch sources ─────────────────────────────────
+      log "Step 1: Pre-fetching sources from PROJECTS.yaml..."
+      SOURCES_JSON="[]"
+
+      if [ -f PROJECTS.yaml ]; then
+        SOURCE_COUNT=$(${yq} '.sources | length' PROJECTS.yaml 2>/dev/null || ${echo} "0")
+
+        for i in $(${seq} 0 $((SOURCE_COUNT - 1))); do
+          SOURCE_NAME=$(${yq} ".sources[$i].name" PROJECTS.yaml)
+          SOURCE_CMD=$(${yq} ".sources[$i].command" PROJECTS.yaml)
+
+          if [ -n "$SOURCE_CMD" ] && [ "$SOURCE_CMD" != "null" ]; then
+            log "  Fetching source: $SOURCE_NAME"
+            # Run via nix develop to get dev shell tools (himalaya, gh, etc.)
+            SOURCE_OUTPUT=$(nix develop --command bash -c "$SOURCE_CMD" 2>>"$LOG_FILE" || ${echo} "[]")
+            SOURCES_JSON=$(${echo} "$SOURCES_JSON" | ${jq} --arg name "$SOURCE_NAME" --argjson data "$SOURCE_OUTPUT" \
+              '. + [{"source": $name, "data": $data}]')
+          fi
+        done
+      fi
+
+      log "  Collected sources: $(${echo} "$SOURCES_JSON" | ${jq} 'length') entries"
+
+      # ── Step 2: Ingest (haiku) ────────────────────────────────────
+      log "Step 2: Ingesting sources via haiku..."
+      if [ "$(${echo} "$SOURCES_JSON" | ${jq} '[.[].data | length] | add // 0')" -gt 0 ]; then
+        nix develop --command claude --print --model haiku \
+          "/deepwork task_loop ingest
+
+      Source data (pre-fetched):
+      $(${echo} "$SOURCES_JSON" | ${jq} '.')" >> "$LOG_FILE" 2>&1 || {
+          log "  WARNING: Ingest step failed, continuing..."
+        }
+      else
+        log "  No source data to ingest, skipping"
+      fi
+
+      # ── Step 3: Prioritize (haiku) ───────────────────────────────
+      log "Step 3: Prioritizing tasks via haiku..."
+      nix develop --command claude --print --model haiku \
+        "/deepwork task_loop prioritize" >> "$LOG_FILE" 2>&1 || {
+        log "  WARNING: Prioritize step failed, continuing..."
+      }
+
+      # ── Step 4: Execute pending tasks ─────────────────────────────
+      log "Step 4: Executing pending tasks (max ${toString maxTasks})..."
+      TASK_COUNT=0
+
+      while [ $TASK_COUNT -lt ${toString maxTasks} ]; do
+        # Read the first pending task from TASKS.yaml
+        TASK_NAME=$(${yq} '[.tasks[] | select(.status == "pending")] | .[0].name' TASKS.yaml 2>/dev/null || ${echo} "null")
+
+        if [ "$TASK_NAME" = "null" ] || [ -z "$TASK_NAME" ]; then
+          log "  No more pending tasks"
+          break
+        fi
+
+        TASK_DESC=$(${yq} "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].description" TASKS.yaml)
+        TASK_WORKFLOW=$(${yq} "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].workflow // \"\"" TASKS.yaml)
+        TASK_MODEL=$(${yq} "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].model // \"\"" TASKS.yaml)
+        TASK_NEEDS=$(${yq} "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].needs // []" TASKS.yaml)
+
+        # Check if task has unmet dependencies
+        if [ "$TASK_NEEDS" != "[]" ] && [ "$TASK_NEEDS" != "null" ]; then
+          NEEDS_MET=true
+          for need in $(${echo} "$TASK_NEEDS" | ${jq} -r '.[]' 2>/dev/null); do
+            NEED_STATUS=$(${yq} "[.tasks[] | select(.name == \"$need\")] | .[0].status // \"pending\"" TASKS.yaml)
+            if [ "$NEED_STATUS" != "completed" ]; then
+              NEEDS_MET=false
+              break
+            fi
+          done
+          if [ "$NEEDS_MET" = "false" ]; then
+            log "  Skipping $TASK_NAME (unmet dependencies)"
+            # Mark as blocked so we don't loop forever
+            ${yq} -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"blocked\"" TASKS.yaml
+            continue
+          fi
+        fi
+
+        TASK_COUNT=$((TASK_COUNT + 1))
+        TASK_TIMESTAMP=$(${date} +%Y-%m-%d_%H%M%S)
+        TASK_LOG="$TASK_LOGS_DIR/''${TASK_TIMESTAMP}_''${TASK_NAME}.log"
+
+        log "  Executing task $TASK_COUNT: $TASK_NAME"
+
+        # Build model flag
+        MODEL_FLAG=""
+        if [ -n "$TASK_MODEL" ] && [ "$TASK_MODEL" != "null" ]; then
+          MODEL_FLAG="--model $TASK_MODEL"
+        fi
+
+        # Build prompt
+        if [ -n "$TASK_WORKFLOW" ] && [ "$TASK_WORKFLOW" != "null" ] && [ "$TASK_WORKFLOW" != "" ]; then
+          PROMPT="/deepwork $TASK_WORKFLOW
+
+      Task: $TASK_NAME
+      Description: $TASK_DESC"
+        else
+          PROMPT="Execute this task and update its status in TASKS.yaml when done.
+
+      Task: $TASK_NAME
+      Description: $TASK_DESC"
+        fi
+
+        # Execute in a separate claude session
+        nix develop --command claude --print $MODEL_FLAG "$PROMPT" > "$TASK_LOG" 2>&1 || {
+          log "  WARNING: Task $TASK_NAME execution failed (see $TASK_LOG)"
+        }
+
+        log "  Task $TASK_NAME finished (log: $TASK_LOG)"
+      done
+
+      # ── Summary ────────────────────────────────────────────────────
+      END_TIME=$(${date} +%s)
+      DURATION=$((END_TIME - START_TIME))
+      log "Task loop finished: executed $TASK_COUNT tasks in ''${DURATION}s"
+
+      # ── Rotate old logs (keep last 20) ─────────────────────────────
+      for ext in log; do
+        ${find} "$LOGS_DIR" -maxdepth 1 -name "*.$ext" -type f | ${sort} -r | while IFS= read -r file; do
+          COUNT=$((''${COUNT:-0} + 1))
+          if [ $COUNT -gt 20 ]; then
+            ${rm} -f "$file"
+          fi
+        done
+      done
+    '';
+
+  # Scheduler script: reads SCHEDULES.yaml, creates due tasks, triggers task loop
+  # Pure bash, no LLM
+  agentSchedulerScript =
+    name: agentCfg:
+    let
+      username = "agent-${name}";
+      notesDir = agentCfg.notes.path;
+      yq = "${pkgs.yq-go}/bin/yq";
+      date = "${pkgs.coreutils}/bin/date";
+      mkdir = "${pkgs.coreutils}/bin/mkdir";
+      echo = "${pkgs.coreutils}/bin/echo";
+      tee = "${pkgs.coreutils}/bin/tee";
+      grep = "${pkgs.gnugrep}/bin/grep";
+      tr = "${pkgs.coreutils}/bin/tr";
+      seq = "${pkgs.coreutils}/bin/seq";
+    in
+    pkgs.writeShellScript "agent-scheduler-${name}" ''
+      set -eo pipefail
+
+      NOTES_DIR="${notesDir}"
+      LOGS_DIR="$HOME/.local/state/agent-scheduler/logs"
+
+      ${mkdir} -p "$LOGS_DIR"
+
+      TIMESTAMP=$(${date} +%Y-%m-%d_%H%M%S)
+      LOG_FILE="$LOGS_DIR/$TIMESTAMP.log"
+      TODAY=$(${date} +%Y-%m-%d)
+      DOW=$(${date} +%A | ${tr} '[:upper:]' '[:lower:]')
+      DOM=$(${date} +%-d)
+
+      log() {
+        ${echo} "[$(${date} '+%H:%M:%S')] $*" | ${tee} -a "$LOG_FILE"
+      }
+
+      if [ ! -d "$NOTES_DIR" ]; then
+        ${echo} "Notes directory $NOTES_DIR does not exist yet, skipping"
+        exit 0
+      fi
+      cd "$NOTES_DIR"
+      log "Starting scheduler for ${name} (date: $TODAY, dow: $DOW, dom: $DOM)"
+
+      if [ ! -f SCHEDULES.yaml ]; then
+        log "No SCHEDULES.yaml found, exiting"
+        exit 0
+      fi
+
+      if [ ! -f TASKS.yaml ]; then
+        log "No TASKS.yaml found, creating empty one"
+        ${echo} "tasks: []" > TASKS.yaml
+      fi
+
+      SCHEDULE_COUNT=$(${yq} '.schedules | length' SCHEDULES.yaml 2>/dev/null || ${echo} "0")
+      CREATED=0
+
+      for i in $(${seq} 0 $((SCHEDULE_COUNT - 1))); do
+        SCHED_NAME=$(${yq} ".schedules[$i].name" SCHEDULES.yaml)
+        SCHED_DESC=$(${yq} ".schedules[$i].description" SCHEDULES.yaml)
+        SCHED_SCHEDULE=$(${yq} ".schedules[$i].schedule" SCHEDULES.yaml)
+        SCHED_WORKFLOW=$(${yq} ".schedules[$i].workflow" SCHEDULES.yaml)
+
+        # Check if schedule is due today
+        IS_DUE=false
+
+        case "$SCHED_SCHEDULE" in
+          daily)
+            IS_DUE=true
+            ;;
+          weekly:*)
+            TARGET_DAY="''${SCHED_SCHEDULE#weekly:}"
+            if [ "$DOW" = "$TARGET_DAY" ]; then
+              IS_DUE=true
+            fi
+            ;;
+          monthly:*)
+            TARGET_DOM="''${SCHED_SCHEDULE#monthly:}"
+            if [ "$DOM" = "$TARGET_DOM" ]; then
+              IS_DUE=true
+            fi
+            ;;
+          *)
+            log "  Unknown schedule format: $SCHED_SCHEDULE for $SCHED_NAME"
+            ;;
+        esac
+
+        if [ "$IS_DUE" = "false" ]; then
+          continue
+        fi
+
+        # Build source_ref for deduplication
+        SOURCE_REF="schedule-''${SCHED_NAME}-''${TODAY}"
+
+        # Check if task already exists
+        EXISTING=$(${yq} "[.tasks[] | select(.source_ref == \"$SOURCE_REF\")] | length" TASKS.yaml 2>/dev/null || ${echo} "0")
+
+        if [ "$EXISTING" -gt 0 ]; then
+          log "  Skipping $SCHED_NAME (already exists: $SOURCE_REF)"
+          continue
+        fi
+
+        # Append new task to TASKS.yaml
+        log "  Creating task: ''${SCHED_NAME}-''${TODAY}"
+        ${yq} -i ".tasks += [{
+          \"name\": \"''${SCHED_NAME}-$(${date} +%Y-%m-%d)\",
+          \"description\": \"$SCHED_DESC\",
+          \"status\": \"pending\",
+          \"source\": \"schedule\",
+          \"source_ref\": \"$SOURCE_REF\",
+          \"workflow\": \"$SCHED_WORKFLOW\"
+        }]" TASKS.yaml
+
+        CREATED=$((CREATED + 1))
+      done
+
+      log "Scheduler finished: created $CREATED tasks"
+
+      # Trigger task loop if we created any tasks
+      if [ $CREATED -gt 0 ]; then
+        log "Triggering agent-task-loop-${name}.service..."
+        systemctl --user start "agent-task-loop-${name}.service" || {
+          log "  WARNING: Failed to trigger task loop"
+        }
+      fi
+    '';
 in
 {
   options.keystone.os.agents = mkOption {
@@ -445,6 +779,7 @@ in
           group = "agents";
           extraGroups = optionals useZfs [ "zfs" ];
           shell = pkgs.zsh;
+          linger = true;
           openssh.authorizedKeys.keys =
             optional (agentCfg.ssh.publicKey != null) agentCfg.ssh.publicKey;
           # No password -- agents are non-interactive
@@ -682,7 +1017,21 @@ in
         pkgs.chromium
       ];
 
-      # Chromium services per chrome agent
+      # Chromium as system services per chrome agent
+      #
+      # Why system services and not systemd.user.services:
+      # 1. NixOS switch-to-configuration does not manage user services — it only
+      #    reloads the user daemon (daemon-reload) but won't start/restart units
+      #    added to default.target.wants after the target is already reached.
+      # 2. system.activationScripts with `systemctl --user -M user@` fails with
+      #    "Transport endpoint is not connected" — machinectl can't reach the
+      #    user's D-Bus from PID 1 context during activation.
+      # 3. A system-level helper using `runuser` can connect to the user bus, but
+      #    the chromium user service's ExecStartPre (Wayland socket poll) times
+      #    out because the environment isn't fully forwarded through runuser.
+      #
+      # System services with User=/Group= work reliably: switch-to-configuration
+      # manages restarts, and After=/Requires= on labwc ensures proper ordering.
       systemd.services = mkMerge (
         mapAttrsToList (
           name: agentCfg:
@@ -695,20 +1044,16 @@ in
             profileDir = "/home/${username}/.config/chromium-agent";
           in
           {
-            # Chromium browser with remote debugging
             "chromium-agent-${name}" = {
-              description = "Chromium browser for agent-${name}";
-
-              wantedBy = [ "agent-desktops.target" ];
+              description = "Chromium browser for ${username}";
               after = [ "labwc-agent-${name}.service" ];
               requires = [ "labwc-agent-${name}.service" ];
-
+              wantedBy = [ "agent-desktops.target" ];
               environment = {
                 WAYLAND_DISPLAY = "wayland-0";
                 XDG_RUNTIME_DIR = xdgRuntimeDir;
                 XDG_CONFIG_HOME = "/home/${username}/.config";
               };
-
               serviceConfig = {
                 Type = "simple";
                 User = username;
@@ -1035,60 +1380,102 @@ in
       );
     })
 
-    # Agent space: clone workspace repo into /home/agent-{name}/agent-space/
-    (mkIf hasSpaceAgents {
-      systemd.services = mkMerge (
+    # Agent notes: sync, task loop, scheduler as systemd.user.services with linger
+    {
+      # Notes sync via repo-sync (user services for all agents)
+      systemd.user.services = mkMerge (
         mapAttrsToList (
           name: agentCfg:
           let
             username = "agent-${name}";
-            spaceDir = "/home/${username}/agent-space";
-            hasSsh = agentCfg.ssh.publicKey != null;
-            homesService =
-              if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service";
           in
           {
-            "clone-agent-space-${name}" = {
-              description = "Clone agent-space repo for ${username}";
-
-              wantedBy = [ "multi-user.target" ];
-              after = [ homesService "ssh-agent-${username}.service" ];
-              requires = [ homesService "ssh-agent-${username}.service" ];
-
-              path = [ pkgs.openssh ];
-
-              environment = {
-                GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
-                SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
-              };
-
+            "sync-agent-notes-${name}" = {
+              description = "Sync notes repo for ${username}";
+              unitConfig.ConditionUser = username;
               serviceConfig = {
                 Type = "oneshot";
-                RemainAfterExit = true;
-                User = username;
-                Group = "agents";
-                Restart = "on-failure";
-                RestartSec = "30s";
+                ExecStart = builtins.concatStringsSep " " [
+                  "${pkgs.keystone.repo-sync}/bin/repo-sync"
+                  "--repo ${escapeShellArg agentCfg.notes.repo}"
+                  "--path ${escapeShellArg agentCfg.notes.path}"
+                  "--commit-prefix \"vault sync\""
+                  "--log-dir /home/${username}/.local/state/notes-sync/logs"
+                ];
               };
-
-              unitConfig = {
-                StartLimitBurst = 10;
-                StartLimitIntervalSec = "600";
+              environment = {
+                SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
               };
+            };
 
+            "agent-task-loop-${name}" = {
+              description = "Autonomous task loop for ${username}";
+              unitConfig.ConditionUser = username;
+              path = [ pkgs.openssh pkgs.nix pkgs.git ];
+              environment = {
+                SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
+                GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
+              };
+              serviceConfig = {
+                Type = "oneshot";
+                TimeoutStartSec = "30min";
+              };
               script = ''
-                if [ ! -d "${spaceDir}" ]; then
-                  ${pkgs.git}/bin/git clone ${escapeShellArg agentCfg.space.repo} "${spaceDir}"
-                else
-                  # Pull latest if repo already exists
-                  cd "${spaceDir}"
-                  ${pkgs.git}/bin/git pull --ff-only || true
-                fi
+                exec ${agentTaskLoopScript name agentCfg}
+              '';
+            };
+
+            "agent-scheduler-${name}" = {
+              description = "Daily scheduler for ${username}";
+              unitConfig.ConditionUser = username;
+              path = [ pkgs.yq-go pkgs.coreutils pkgs.gnugrep ];
+              serviceConfig = {
+                Type = "oneshot";
+              };
+              script = ''
+                exec ${agentSchedulerScript name agentCfg}
               '';
             };
           }
-        ) spaceAgents
+        ) cfg
       );
-    })
+
+      systemd.user.timers = mkMerge (
+        mapAttrsToList (
+          name: agentCfg:
+          let
+            username = "agent-${name}";
+          in
+          {
+            "sync-agent-notes-${name}" = {
+              wantedBy = [ "default.target" ];
+              unitConfig.ConditionUser = username;
+              timerConfig = {
+                OnCalendar = agentCfg.notes.syncOnCalendar;
+                Persistent = true;
+              };
+            };
+
+            "agent-task-loop-${name}" = {
+              wantedBy = [ "default.target" ];
+              unitConfig.ConditionUser = username;
+              timerConfig = {
+                OnCalendar = agentCfg.notes.taskLoop.onCalendar;
+                Persistent = true;
+              };
+            };
+
+            "agent-scheduler-${name}" = {
+              wantedBy = [ "default.target" ];
+              unitConfig.ConditionUser = username;
+              timerConfig = {
+                OnCalendar = agentCfg.notes.scheduler.onCalendar;
+                Persistent = true;
+              };
+            };
+          }
+        ) cfg
+      );
+    }
   ]);
 }
