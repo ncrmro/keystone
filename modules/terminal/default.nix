@@ -14,6 +14,8 @@ in {
     ./age-yubikey.nix
     ./devtools.nix
     ./mail.nix
+    ./agent-mail.nix
+    ./sandbox.nix
   ];
 
   options.keystone.terminal = {

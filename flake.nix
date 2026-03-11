@@ -128,8 +128,10 @@
     overlays.default = let
       zesh-src = ./packages/zesh;
       agent-coding-agent-src = ./packages/agent-coding-agent;
+      agent-mail-src = ./packages/agent-mail;
       fetch-email-source-src = ./packages/fetch-email-source;
       repo-sync-src = ./packages/repo-sync;
+      podman-agent-src = ./packages/podman-agent;
       himalaya-flake = himalaya;
       llm-agents-flake = llm-agents;
       browser-previews-flake = browser-previews;
@@ -139,8 +141,10 @@
       keystone = {
         zesh = final.callPackage zesh-src {};
         agent-coding-agent = final.callPackage agent-coding-agent-src {};
+        agent-mail = final.callPackage agent-mail-src { himalaya = final.keystone.himalaya; };
         fetch-email-source = final.callPackage fetch-email-source-src { himalaya = final.keystone.himalaya; };
         repo-sync = final.callPackage repo-sync-src {};
+        podman-agent = final.callPackage podman-agent-src {};
         himalaya = himalaya-flake.packages.${final.system}.default;
         # AI coding agents from llm-agents.nix
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
@@ -253,10 +257,14 @@
       iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
       zesh = pkgs.callPackage ./packages/zesh {};
       agent-coding-agent = pkgs.callPackage ./packages/agent-coding-agent {};
+      agent-mail = pkgs.callPackage ./packages/agent-mail {
+        himalaya = himalaya.packages.x86_64-linux.default;
+      };
       fetch-email-source = pkgs.callPackage ./packages/fetch-email-source {
         himalaya = himalaya.packages.x86_64-linux.default;
       };
       repo-sync = pkgs.callPackage ./packages/repo-sync {};
+      podman-agent = pkgs.callPackage ./packages/podman-agent {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
     };

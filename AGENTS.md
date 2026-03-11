@@ -558,6 +558,19 @@ keystone.server = {
 };
 ```
 
+## Code Comment Conventions
+
+### File-Level Documentation
+Every non-trivial file starts with a header block explaining what the module does, its
+security model, and usage examples. For Nix files, use a `#` comment block at top of file
+(see `modules/os/agents.nix` as exemplar).
+
+### Inline Comments
+- **Why, not what** — code should be self-documenting; comments explain *why* a choice was made
+- **SECURITY:** prefix — security-critical design decision; name the specific threat being mitigated
+- **CRITICAL:** prefix — cross-module invariant that breaks silently if violated
+- **TODO:** prefix — known gap with consequences explained, not just "fix later"
+
 ## Important Notes
 
 - ZFS pool is always named "rpool" throughout the OS module
