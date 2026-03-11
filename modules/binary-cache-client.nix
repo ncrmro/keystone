@@ -28,8 +28,10 @@ in
 
     url = mkOption {
       type = types.str;
+      default = "https://cache.${config.keystone.domain}";
+      defaultText = literalExpression ''"https://cache.''${config.keystone.domain}"'';
       example = "https://cache.example.com";
-      description = "URL of the Attic binary cache.";
+      description = "Base URL of the Attic binary cache. Defaults to cache.<domain>.";
     };
 
     publicKey = mkOption {
