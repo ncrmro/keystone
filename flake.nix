@@ -190,7 +190,12 @@
       };
 
       # Binary cache client - configures nix substituters for Attic cache
-      binaryCacheClient = ./modules/binary-cache-client.nix;
+      binaryCacheClient = {
+        imports = [
+          ./modules/domain.nix
+          ./modules/binary-cache-client.nix
+        ];
+      };
 
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
