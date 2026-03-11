@@ -6,7 +6,7 @@
 # Usage:
 #   keystone.binaryCache = {
 #     enable = true;
-#     url = "https://cache.example.com";
+#     # url is auto-derived from keystone.domain (https://cache.<domain>)
 #     publicKey = "cache.example.com-1:AAAA...=";
 #
 #     push.enable = true;  # tokenFile defaults to /run/agenix/attic-push-token
@@ -65,6 +65,8 @@ in
     };
 
     nix.settings = {
+      # Append cacheName because nix probes <url>/nix-cache-info, and attic
+      # serves that endpoint at /<cache>/nix-cache-info (not at the root).
       substituters = [ "${cfg.url}/${cfg.push.cacheName}" ];
       trusted-public-keys = mkIf (cfg.publicKey != null) [ cfg.publicKey ];
     };
@@ -85,6 +87,8 @@ in
         ExecStart = pkgs.writeShellScript "attic-watch-store" ''
           set -eu
           export XDG_CONFIG_HOME="/var/lib/attic-watch-store"
+          # attic login takes the base server URL (without cache name), not the
+          # substituter URL — the cache name is only specified in push/pull commands.
           ${pkgs.attic-client}/bin/attic login cache ${cfg.url} $(cat $CREDENTIALS_DIRECTORY/token)
           exec ${pkgs.attic-client}/bin/attic watch-store cache:${cfg.push.cacheName}
         '';

@@ -10,7 +10,7 @@
 # corruption or version upgrade), delete state and restart:
 #
 #   sudo systemctl stop atticd atticd-init
-#   sudo rm -rf /var/lib/private/atticd/*
+#   sudo rm -rf /var/lib/private/atticd
 #   sudo systemctl start atticd atticd-init
 #
 {
@@ -79,6 +79,9 @@ in
         listen = "127.0.0.1:${toString cfg.port}";
         storage = {
           type = "local";
+          # Storage must be a subdirectory, not the StateDirectory root.
+          # Attic shards local storage by path prefix (e.g. s/se/server.db),
+          # which collides with the SQLite database if both share the same directory.
           path = "/var/lib/atticd/storage";
         };
         garbage-collection = {
@@ -179,7 +182,8 @@ in
       '';
     };
 
-    # Self-configure as substituter if publicKey and domain are set
+    # Self-configure the server host as a substituter so it can also pull
+    # from its own cache. Clients use the binary-cache-client module instead.
     nix.settings = lib.mkIf (cfg.publicKey != null && config.keystone.domain != null) {
       substituters = [ "https://${cfg.subdomain}.${config.keystone.domain}" ];
       trusted-public-keys = [ cfg.publicKey ];
