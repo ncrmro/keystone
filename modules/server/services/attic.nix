@@ -126,14 +126,18 @@ in
           sleep 1
         done
 
-        # Generate a short-lived admin token for initialization
+        # Generate a short-lived admin token with full permissions for initialization.
+        # Wildcards are safe here — the token expires in 5 minutes and never leaves localhost.
         TOKEN=$(${atticadm} make-token \
           --sub "init" \
           --validity "5m" \
-          --push "${cfg.cacheName}" \
-          --pull "${cfg.cacheName}" \
-          --create-cache "${cfg.cacheName}" \
-          --configure-cache "${cfg.cacheName}")
+          --push "*" \
+          --pull "*" \
+          --create-cache "*" \
+          --configure-cache "*" \
+          --configure-cache-retention "*" \
+          --delete "*" \
+          --destroy-cache "*")
 
         # Temporary config dir for attic CLI login state
         export XDG_CONFIG_HOME="$(mktemp -d)"
