@@ -3,10 +3,18 @@
 # Shared helpers for server service modules:
 # - Access control presets (tailscale, public, local, tailscaleAndLocal)
 # - mkServiceModule helper for consistent service definitions
+# - Datasource UID constants for Grafana alert/dashboard provisioning
 #
 { lib }:
 
 {
+  # Well-known datasource UIDs for Grafana provisioning
+  # Alert rules and dashboards reference these to find the correct datasource
+  datasourceUids = {
+    prometheus = "prometheus";
+    loki = "loki";
+  };
+
   # Access control presets for nginx extraConfig
   # These restrict access based on client IP ranges
   accessPresets = {

@@ -255,6 +255,12 @@ ENVS+=(--env IS_SANDBOX=1)
 # Optional: headless Chrome for chrome-devtools-mcp
 [[ "$PODMAN_AGENT_CHROME" == "1" ]] && ENVS+=(--env PODMAN_AGENT_CHROME=1)
 
+# Binary cache substituters (set by keystone.terminal.sandbox module)
+[[ -n "${PODMAN_AGENT_EXTRA_SUBSTITUTERS:-}" ]] && \
+  ENVS+=(--env PODMAN_AGENT_EXTRA_SUBSTITUTERS="$PODMAN_AGENT_EXTRA_SUBSTITUTERS")
+[[ -n "${PODMAN_AGENT_EXTRA_TRUSTED_PUBLIC_KEYS:-}" ]] && \
+  ENVS+=(--env PODMAN_AGENT_EXTRA_TRUSTED_PUBLIC_KEYS="$PODMAN_AGENT_EXTRA_TRUSTED_PUBLIC_KEYS")
+
 # Per-project .env file (pyclaude/pygemini set this for GH_TOKEN, etc.)
 [[ -n "${PODMAN_AGENT_ENV_FILE:-}" && -f "$PODMAN_AGENT_ENV_FILE" ]] && \
   ENVS+=(--env-file "$PODMAN_AGENT_ENV_FILE")
@@ -274,6 +280,14 @@ experimental-features = nix-command flakes
 accept-flake-config = true
 sandbox = false
 NIXCONF
+
+  # Append extra binary cache substituters if configured
+  if [ -n "${PODMAN_AGENT_EXTRA_SUBSTITUTERS:-}" ]; then
+    echo "extra-substituters = $PODMAN_AGENT_EXTRA_SUBSTITUTERS" >> /etc/nix/nix.conf
+  fi
+  if [ -n "${PODMAN_AGENT_EXTRA_TRUSTED_PUBLIC_KEYS:-}" ]; then
+    echo "extra-trusted-public-keys = $PODMAN_AGENT_EXTRA_TRUSTED_PUBLIC_KEYS" >> /etc/nix/nix.conf
+  fi
 
   # Get agent binary from llm-agents.nix (cached after first run)
   AGENT_BIN=$(nix build --no-link --print-out-paths "github:numtide/llm-agents.nix#'"$AGENT_PKG"'")

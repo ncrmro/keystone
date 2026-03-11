@@ -7,6 +7,8 @@
 # - Cross-agent, agent-human, and human-agent filesystem isolation
 # - Agents cannot sudo or write to system paths
 # - Users can write to their own home
+# - agentctl safe verbs work, dangerous verbs rejected
+# - Direct systemctl sudo denied (only helper in sudoers)
 # - Desktop agent has labwc/wayvnc services and config files
 # - Non-desktop agent has no desktop services
 #
@@ -164,6 +166,31 @@ pkgs.testers.nixosTest {
     machine.succeed("su - agent-researcher -c 'touch ~/test-file'")
     machine.succeed("su - testuser -c 'touch ~/test-file'")
     print("PASS: Users can write to own home")
+
+    # === agentctl hardening tests ===
+    print("")
+    print("Starting agentctl hardening tests...")
+
+    # Wait for agent user session (needed for systemctl --user to work)
+    machine.wait_for_unit("user@4002.service")
+
+    # 12a. agentctl service management works (status is a safe verb)
+    machine.succeed("su - testuser -c 'agentctl researcher status'")
+    print("PASS: agentctl status verb works")
+
+    # 12b. Dangerous verbs are rejected by the helper
+    machine.fail("su - testuser -c 'agentctl researcher edit some-service'")
+    machine.fail("su - testuser -c 'agentctl researcher set-environment FOO=bar'")
+    machine.fail("su - testuser -c 'agentctl researcher import-environment'")
+    print("PASS: Dangerous verbs rejected by helper")
+
+    # 12c. Direct systemctl sudo is denied (not in sudoers)
+    machine.fail("su - testuser -c 'sudo -n -u agent-researcher systemctl --user status'")
+    print("PASS: Direct systemctl sudo denied")
+
+    # 12d. Unknown agent name is rejected
+    machine.fail("su - testuser -c 'agentctl nonexistent status'")
+    print("PASS: Unknown agent rejected")
 
     # === Desktop runtime validation (FR-002) ===
     print("")
