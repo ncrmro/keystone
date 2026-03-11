@@ -265,6 +265,10 @@ let
     pkgs.writeShellScript "agent-svc-${name}" ''
       set -euo pipefail
       export XDG_RUNTIME_DIR="/run/user/${uid}"
+      # CRITICAL: systemctl --user via sudo cannot auto-discover the dbus
+      # socket. Without this, every agentctl command fails with "Failed to
+      # connect to user scope bus via local transport: No such file or directory".
+      export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus"
 
       if [ $# -lt 1 ]; then
         echo "Usage: agent-svc-${name} <verb> [args...]" >&2
@@ -1219,9 +1223,38 @@ in
           assertion = topDomain != null;
           message = "keystone.domain must be set when agents are defined (mail derives from it)";
         }
-      ] ++ (mapAttrsToList (name: _: {
+      ] ++ (mapAttrsToList (name: agentCfg: let
+        mailAddr =
+          if agentCfg.mail.address != null then agentCfg.mail.address
+          else "agent-${name}@${topDomain}";
+      in {
         assertion = config.age.secrets ? "agent-${name}-mail-password";
-        message = "Agent '${name}' requires age.secrets.\"agent-${name}-mail-password\" to be declared";
+        message = ''
+          Agent '${name}' requires agenix secret "agent-${name}-mail-password".
+
+          1. Create the Stalwart mail account (run on ocean):
+             curl -s -u admin:"$(cat /run/agenix/stalwart-admin-password)" \
+               http://127.0.0.1:8082/api/principal \
+               -H "Content-Type: application/json" \
+               -d '{"type":"individual","name":"agent-${name}","secrets":["PASSWORD"],"emails":["${mailAddr}"]}'
+             curl -s -u admin:"$(cat /run/agenix/stalwart-admin-password)" \
+               http://127.0.0.1:8082/api/principal/agent-${name} -X PATCH \
+               -H "Content-Type: application/json" \
+               -d '[{"action":"set","field":"roles","value":["user"]}]'
+
+          2. Add to agenix-secrets/secrets.nix:
+             "secrets/agent-${name}-mail-password.age".publicKeys = adminKeys ++ [ systems.workstation ];
+
+          3. Create the secret (use the SAME password as step 1):
+             cd agenix-secrets && agenix -e secrets/agent-${name}-mail-password.age
+
+          4. Declare in host config:
+             age.secrets.agent-${name}-mail-password = {
+               file = "${"$"}{inputs.agenix-secrets}/secrets/agent-${name}-mail-password.age";
+               owner = "agent-${name}";
+               mode = "0400";
+             };
+        '';
       }) mailAgents);
 
       # Install himalaya CLI system-wide for mail-enabled agents
@@ -1237,9 +1270,33 @@ in
           assertion = topDomain != null;
           message = "keystone.domain must be set when agents are defined (bitwarden derives from it)";
         }
-      ] ++ (mapAttrsToList (name: _: {
+      ] ++ (mapAttrsToList (name: agentCfg: let
+        agentEmail =
+          if agentCfg.email != null then agentCfg.email
+          else "agent-${name}@${topDomain}";
+      in {
         assertion = config.age.secrets ? "agent-${name}-bitwarden-password";
-        message = "Agent '${name}' requires age.secrets.\"agent-${name}-bitwarden-password\" to be declared";
+        message = ''
+          Agent '${name}' requires agenix secret "agent-${name}-bitwarden-password".
+
+          1. Create a Vaultwarden account:
+             - Open https://vault.${topDomain} in a browser
+             - Register a new account for agent-${name} with email "${agentEmail}"
+             - Choose a strong master password
+
+          2. Add to agenix-secrets/secrets.nix:
+             "secrets/agent-${name}-bitwarden-password.age".publicKeys = adminKeys ++ [ systems.workstation ];
+
+          3. Create the secret (use the SAME master password as step 1):
+             cd agenix-secrets && agenix -e secrets/agent-${name}-bitwarden-password.age
+
+          4. Declare in host config:
+             age.secrets.agent-${name}-bitwarden-password = {
+               file = "${"$"}{inputs.agenix-secrets}/secrets/agent-${name}-bitwarden-password.age";
+               owner = "agent-${name}";
+               mode = "0400";
+             };
+        '';
       }) bitwardenAgents);
 
       # Install bitwarden-cli for agents with bitwarden enabled
@@ -1287,7 +1344,26 @@ in
     (mkIf hasTailscaleAgents {
       assertions = mapAttrsToList (name: _: {
         assertion = config.age.secrets ? "agent-${name}-tailscale-auth-key";
-        message = "Agent '${name}' requires age.secrets.\"agent-${name}-tailscale-auth-key\" to be declared";
+        message = ''
+          Agent '${name}' requires agenix secret "agent-${name}-tailscale-auth-key".
+
+          1. Create a headscale pre-auth key (run on mercury):
+             headscale preauthkeys create --user ${name} --reusable --expiration 87600h
+             # Copy the generated key
+
+          2. Add to agenix-secrets/secrets.nix:
+             "secrets/agent-${name}-tailscale-auth-key.age".publicKeys = adminKeys ++ [ systems.workstation ];
+
+          3. Create the secret (paste the pre-auth key from step 1):
+             cd agenix-secrets && agenix -e secrets/agent-${name}-tailscale-auth-key.age
+
+          4. Declare in host config:
+             age.secrets.agent-${name}-tailscale-auth-key = {
+               file = "${"$"}{inputs.agenix-secrets}/secrets/agent-${name}-tailscale-auth-key.age";
+               owner = "agent-${name}";
+               mode = "0400";
+             };
+        '';
       }) tailscaleAgents;
 
       # Systemd target grouping all agent tailscale services
@@ -1414,11 +1490,50 @@ in
       in [
         {
           assertion = config.age.secrets ? "${username}-ssh-key";
-          message = "Agent '${name}' requires age.secrets.\"${username}-ssh-key\" to be declared";
+          message = ''
+            Agent '${name}' requires agenix secret "${username}-ssh-key".
+
+            1. Generate an SSH key pair for the agent:
+               ssh-keygen -t ed25519 -C "${username}" -f /tmp/${username}-ssh-key
+               # Enter a passphrase when prompted (you'll need it for the passphrase secret too)
+
+            2. Add the PUBLIC key to the agent's config:
+               keystone.os.agents.${name}.ssh.publicKey = "$(cat /tmp/${username}-ssh-key.pub)";
+
+            3. Add to agenix-secrets/secrets.nix:
+               "secrets/${username}-ssh-key.age".publicKeys = adminKeys ++ [ systems.workstation ];
+
+            4. Enroll the PRIVATE key as an agenix secret:
+               cd agenix-secrets && cp /tmp/${username}-ssh-key secrets/${username}-ssh-key.age.plain
+               agenix -e secrets/${username}-ssh-key.age  # paste the private key contents
+               rm /tmp/${username}-ssh-key /tmp/${username}-ssh-key.pub secrets/${username}-ssh-key.age.plain
+
+            5. Declare in host config:
+               age.secrets.${username}-ssh-key = {
+                 file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-ssh-key.age";
+                 owner = "${username}";
+                 mode = "0400";
+               };
+          '';
         }
         {
           assertion = config.age.secrets ? "${username}-ssh-passphrase";
-          message = "Agent '${name}' requires age.secrets.\"${username}-ssh-passphrase\" to be declared";
+          message = ''
+            Agent '${name}' requires agenix secret "${username}-ssh-passphrase".
+
+            1. Add to agenix-secrets/secrets.nix:
+               "secrets/${username}-ssh-passphrase.age".publicKeys = adminKeys ++ [ systems.workstation ];
+
+            2. Create the secret (use the SAME passphrase from ssh-keygen):
+               cd agenix-secrets && agenix -e secrets/${username}-ssh-passphrase.age
+
+            3. Declare in host config:
+               age.secrets.${username}-ssh-passphrase = {
+                 file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-ssh-passphrase.age";
+                 owner = "${username}";
+                 mode = "0400";
+               };
+          '';
         }
       ]) sshAgents);
 
@@ -1511,6 +1626,58 @@ in
         ) sshAgents
       );
     })
+
+    # Forgejo account + notes repo reminder (warnings, not assertions — Forgejo isn't
+    # strictly required for the agent to boot, but notes sync will fail without it)
+    {
+      warnings = concatLists (mapAttrsToList (name: agentCfg:
+        let
+          agentEmail =
+            if agentCfg.email != null then agentCfg.email
+            else "agent-${name}@${topDomain}";
+          pubKey =
+            if agentCfg.ssh.publicKey != null then agentCfg.ssh.publicKey
+            else "SSH_PUBLIC_KEY";
+          repoUrl = agentCfg.notes.repo;
+          # Extract owner/repo from SSH URL like "ssh://forgejo@git.example.com:2222/owner/repo.git"
+          # or "git@git.example.com:owner/repo.git"
+        in
+        (optional (agentCfg.ssh.publicKey != null && topDomain != null) ''
+          Agent '${name}': Remember to create a Forgejo account at git.${topDomain}.
+
+          Via API (run on ocean):
+            TOKEN="$(cat /run/agenix/forgejo-admin-token)"
+            curl -s -H "Authorization: token $TOKEN" \
+              http://localhost:3001/api/v1/admin/users \
+              -H "Content-Type: application/json" \
+              -d '{"username":"${name}","email":"${agentEmail}","password":"RANDOM_PASSWORD","must_change_password":false}'
+
+          Then add the agent's SSH key via Forgejo UI or API:
+            curl -s -H "Authorization: token $TOKEN" \
+              http://localhost:3001/api/v1/admin/users/${name}/keys \
+              -H "Content-Type: application/json" \
+              -d '{"title":"agent-${name}","key":"${pubKey}"}'
+        '')
+        ++ (optional (topDomain != null) ''
+          Agent '${name}': Remember to create the notes repo for sync-agent-notes-${name}.
+          Configured repo URL: ${repoUrl}
+
+          Via API (run on ocean):
+            TOKEN="$(cat /run/agenix/forgejo-admin-token)"
+
+            # Create the repo under the agent's Forgejo user:
+            curl -s -H "Authorization: token $TOKEN" \
+              http://localhost:3001/api/v1/admin/users/${name}/repos \
+              -H "Content-Type: application/json" \
+              -d '{"name":"agent-space","description":"Notes and task workspace for agent-${name}","private":true,"auto_init":true}'
+
+          Or create manually in Forgejo UI at git.${topDomain}.
+
+          The sync-agent-notes-${name} service will fail until this repo exists and
+          the agent's SSH key has push access.
+        '')
+      ) cfg);
+    }
 
     # Agent notes: sync, task loop, scheduler as systemd.user.services with linger
     {
