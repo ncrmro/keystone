@@ -16,10 +16,12 @@ use ratatui::prelude::*;
 
 mod app;
 mod config;
+mod github;
 mod input;
 mod nix;
 mod repo;
 mod screens;
+mod template;
 mod ui;
 
 use app::{App, AppScreen};
@@ -85,6 +87,9 @@ async fn run_app<B: Backend>(
             match &mut app.current_screen {
                 AppScreen::Welcome(welcome_screen) => {
                     welcome_screen.render(frame, area);
+                }
+                AppScreen::CreateConfig(create_config_screen) => {
+                    create_config_screen.render(frame, area);
                 }
                 AppScreen::Hosts(hosts_screen) => {
                     hosts_screen.render(frame, area);
