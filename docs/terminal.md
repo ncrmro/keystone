@@ -71,3 +71,7 @@ The module installs and configures the following language servers automatically:
 
 ### Zellij
 [Zellij](https://zellij.dev/) is configured with sensible keybindings and acts as the default terminal multiplexer.
+
+## Mail
+
+himalaya and agent-mail are available when `keystone.terminal.mail.enable = true`. See [Agents](agents.md) for `agent-mail` usage (structured email templates for OS agents).
