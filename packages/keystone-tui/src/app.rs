@@ -4,6 +4,7 @@ use crate::config::{AppConfig, KeystoneRepo};
 use crate::nix;
 use crate::repo;
 use crate::screens::build::BuildScreen;
+use crate::screens::create_config::CreateConfigScreen;
 use crate::screens::host_detail::HostDetailScreen;
 use crate::screens::hosts::HostsScreen;
 use crate::screens::welcome::WelcomeScreen;
@@ -11,6 +12,7 @@ use crate::screens::welcome::WelcomeScreen;
 /// Represents the different screens/views in the TUI.
 pub enum AppScreen {
     Welcome(WelcomeScreen),
+    CreateConfig(CreateConfigScreen),
     Hosts(HostsScreen),
     HostDetail(HostDetailScreen),
     Build(BuildScreen),
