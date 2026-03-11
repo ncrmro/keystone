@@ -30,10 +30,14 @@
 # for localhost-only. Use firewall rules or Tailscale ACLs to restrict access.
 # wayvnc supports TLS but it is not yet configured here.
 #
+# CRITICAL: docs/agents.md documents the human-side tooling (agentctl, mail
+# templates) for this module. Keep it in sync with any changes here.
+#
 {
   lib,
   config,
   pkgs,
+  options,
   ...
 }:
 with lib;
@@ -83,6 +87,14 @@ let
           default = null;
           description = "Email address for the agent (used for git config and mail provisioning)";
           example = "researcher@ks.systems";
+        };
+
+        terminal = {
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enable terminal environment (zsh, starship, helix, AI tools) via home-manager.";
+          };
         };
 
         desktop = {
@@ -241,6 +253,43 @@ let
 
   agentsWithUids = mapAttrs agentWithUid cfg;
 
+  # SECURITY: Per-agent service helper — sole sudoers target for agent-admins.
+  # Without this, SETENV on direct systemctl allows LD_PRELOAD injection as the
+  # agent user, exposing SSH keys and mail credentials. The helper hardcodes
+  # XDG_RUNTIME_DIR internally and allowlists safe systemctl verbs only.
+  agentSvcHelper = name:
+    let
+      resolved = agentsWithUids.${name};
+      uid = toString resolved.uid;
+    in
+    pkgs.writeShellScript "agent-svc-${name}" ''
+      set -euo pipefail
+      export XDG_RUNTIME_DIR="/run/user/${uid}"
+
+      if [ $# -lt 1 ]; then
+        echo "Usage: agent-svc-${name} <verb> [args...]" >&2
+        exit 1
+      fi
+
+      VERB="$1"; shift
+
+      case "$VERB" in
+        # Safe systemctl verbs
+        status|start|stop|restart|enable|disable|list-units|list-timers|show|cat|is-active|is-enabled|is-failed|daemon-reload|reset-failed)
+          exec systemctl --user "$VERB" "$@"
+          ;;
+        # journalctl passthrough
+        journalctl)
+          exec journalctl --user "$@"
+          ;;
+        *)
+          echo "Error: verb '$VERB' is not allowed." >&2
+          echo "Allowed: status start stop restart enable disable list-units list-timers show cat is-active is-enabled is-failed daemon-reload reset-failed journalctl" >&2
+          exit 1
+          ;;
+      esac
+    '';
+
   # All agents get desktop (labwc + wayvnc)
   desktopAgents = cfg;
   hasDesktopAgents = cfg != { };
@@ -369,7 +418,11 @@ let
       backend.encryption.type = "tls"
       backend.login = "${username}"
       backend.auth.type = "password"
-      backend.auth.command = "cat ${secretPath}"
+      # CRITICAL: agenix secrets and most editors add a trailing newline to
+      # files. Stalwart rejects passwords with trailing whitespace, so we
+      # must strip it. Without this, IMAP/SMTP auth fails with
+      # AUTHENTICATIONFAILED despite the password being correct.
+      backend.auth.command = "tr -d '\\n' < ${secretPath}"
 
       message.send.backend.type = "smtp"
       message.send.backend.host = "${mailHost}"
@@ -377,7 +430,7 @@ let
       message.send.backend.encryption.type = "tls"
       message.send.backend.login = "${username}"
       message.send.backend.auth.type = "password"
-      message.send.backend.auth.command = "cat ${secretPath}"
+      message.send.backend.auth.command = "tr -d '\\n' < ${secretPath}"
 
       # Stalwart folder names (differ from Himalaya defaults)
       folder.aliases.sent = "Sent Items"
@@ -479,7 +532,7 @@ let
       # ── Step 2: Ingest (haiku) ────────────────────────────────────
       log "Step 2: Ingesting sources via haiku..."
       if [ "$(${echo} "$SOURCES_JSON" | ${jq} '[.[].data | length] | add // 0')" -gt 0 ]; then
-        nix develop --command claude --print --model haiku \
+        nix develop --command claude --print --dangerously-skip-permissions --model haiku \
           "/deepwork task_loop ingest
 
       Source data (pre-fetched):
@@ -492,7 +545,7 @@ let
 
       # ── Step 3: Prioritize (haiku) ───────────────────────────────
       log "Step 3: Prioritizing tasks via haiku..."
-      nix develop --command claude --print --model haiku \
+      nix develop --command claude --print --dangerously-skip-permissions --model haiku \
         "/deepwork task_loop prioritize" >> "$LOG_FILE" 2>&1 || {
         log "  WARNING: Prioritize step failed, continuing..."
       }
@@ -559,7 +612,7 @@ let
         fi
 
         # Execute in a separate claude session
-        nix develop --command claude --print $MODEL_FLAG "$PROMPT" > "$TASK_LOG" 2>&1 || {
+        nix develop --command claude --print --dangerously-skip-permissions $MODEL_FLAG "$PROMPT" > "$TASK_LOG" 2>&1 || {
           log "  WARNING: Task $TASK_NAME execution failed (see $TASK_LOG)"
         }
 
@@ -726,7 +779,8 @@ in
     '';
   };
 
-  config = mkIf (osCfg.enable && cfg != { }) (mkMerge [
+  config = mkMerge [
+    (mkIf (osCfg.enable && cfg != { }) (mkMerge [
     # Base agent configuration
     {
       assertions = [
@@ -756,6 +810,79 @@ in
       users.groups.agents = { };
       users.groups.agent-admins = { };
 
+      # Allow agent-admins to access agent user dbus sockets for systemctl --user -M
+      # systemd-logind creates /run/user/<uid> as 0700; we add an ACL so agent-admins
+      # can traverse the directory and connect to the bus socket.
+      systemd.tmpfiles.rules = concatLists (mapAttrsToList (name: _:
+        let
+          username = "agent-${name}";
+          resolved = agentsWithUids.${name};
+        in [
+          "a /run/user/${toString resolved.uid} - - - - g:agent-admins:x"
+          "a /run/user/${toString resolved.uid}/bus - - - - g:agent-admins:rw"
+        ]
+      ) cfg);
+
+      # SECURITY: The helper script is the sole sudoers target. SETENV is NOT
+      # granted — the script hardcodes XDG_RUNTIME_DIR internally. This prevents
+      # LD_PRELOAD injection that SETENV would allow. The helper's verb allowlist
+      # prevents dangerous systemctl verbs (edit, set-environment, import-environment).
+      security.sudo.extraRules = mapAttrsToList (name: _: {
+        groups = [ "agent-admins" ];
+        runAs = "agent-${name}";
+        commands = [
+          { command = "${agentSvcHelper name}"; options = [ "NOPASSWD" ]; }
+        ];
+      }) cfg;
+
+      # agentctl: unified CLI for managing agent services and mail.
+      # Dispatches to the per-agent Nix store helper via sudo (no SETENV needed).
+      environment.systemPackages = let
+        # Nix-generated static lookup: agent name -> helper store path
+        agentHelperCases = concatStringsSep "\n" (mapAttrsToList (name: _:
+          "          ${name}) HELPER=\"${agentSvcHelper name}\" ;;"
+        ) cfg);
+        knownAgents = concatStringsSep ", " (attrNames cfg);
+
+        agentctl = pkgs.writeShellScriptBin "agentctl" ''
+          if [ $# -lt 2 ]; then
+            echo "Usage: agentctl <agent-name> <command> [args...]" >&2
+            echo "" >&2
+            echo "Commands:" >&2
+            echo "  <systemctl-verb>  Run systemctl --user as the agent (status, start, stop, ...)" >&2
+            echo "  journalctl        Run journalctl --user as the agent" >&2
+            echo "  mail              Send structured email to the agent (via agent-mail)" >&2
+            echo "" >&2
+            echo "Examples:" >&2
+            echo "  agentctl drago status agent-task-loop-drago" >&2
+            echo "  agentctl drago journalctl -u agent-task-loop-drago -n 20" >&2
+            echo "  agentctl drago mail task --subject \"Fix CI pipeline\"" >&2
+            exit 1
+          fi
+          AGENT_NAME="$1"; shift
+
+          # Static lookup — no runtime id(1) call needed
+          case "$AGENT_NAME" in
+  ${agentHelperCases}
+            *)
+              echo "Error: unknown agent '$AGENT_NAME'" >&2
+              echo "Known agents: ${knownAgents}" >&2
+              exit 1
+              ;;
+          esac
+
+          CMD="$1"; shift
+          case "$CMD" in
+            mail)
+              exec agent-mail "$@" --to "''${AGENT_NAME}@${topDomain}"
+              ;;
+            *)
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" "$CMD" "$@"
+              ;;
+          esac
+        '';
+      in [ agentctl ];
+
       # Add all keystone.os.users to agent-admins so they can read agent home dirs
       users.users = mkMerge [
         (mapAttrs (_: _: {
@@ -775,7 +902,7 @@ in
           description = agentCfg.fullName;
           home = "/home/${username}";
           createHome = !useZfs;
-          homeMode = "750";
+          homeMode = "2770";
           group = "agents";
           extraGroups = optionals useZfs [ "zfs" ];
           shell = pkgs.zsh;
@@ -790,6 +917,8 @@ in
       # Fix agent home ownership after NixOS user creation (activation runs after useradd)
       # useradd sets group to "agents" (the user's primary group), but we need "agent-admins"
       # so human administrators can read agent home directories.
+      # setgid (2xxx) ensures new files inherit agent-admins group.
+      # Default ACL ensures new files get group write regardless of umask.
       system.activationScripts.agent-home-permissions = {
         deps = [ "users" "groups" ];
         text = ''
@@ -802,7 +931,8 @@ in
               ''
                 if [ -d /home/${username} ]; then
                   chown ${username}:agent-admins /home/${username}
-                  chmod 750 /home/${username}
+                  chmod 2770 /home/${username}
+                  ${pkgs.acl}/bin/setfacl -d -m g::rwx /home/${username}
                 fi
               ''
             ) cfg
@@ -834,7 +964,8 @@ in
                   mkdir -p /home/${username}
                 fi
                 chown ${username}:agent-admins /home/${username}
-                chmod 750 /home/${username}
+                chmod 2770 /home/${username}
+                ${pkgs.acl}/bin/setfacl -d -m g::rwx /home/${username}
 
                 ${labwcConfigScript username agentCfg}
                 ${himalayaConfigScript username agentCfg name}
@@ -880,7 +1011,8 @@ in
                 zfs create -p -o mountpoint=/home/${username} rpool/crypt/home/${username} 2>/dev/null || true
                 zfs set compression=lz4 rpool/crypt/home/${username}
                 chown ${username}:agent-admins /home/${username}
-                chmod 750 /home/${username}
+                chmod 2770 /home/${username}
+                ${pkgs.acl}/bin/setfacl -d -m g::rwx /home/${username}
 
                 ${labwcConfigScript username agentCfg}
                 ${himalayaConfigScript username agentCfg name}
@@ -1477,5 +1609,41 @@ in
         ) cfg
       );
     }
-  ]);
+  ]))
+
+    # Configure home-manager for agents with terminal enabled
+    # This requires home-manager to be imported in the system configuration
+    # NOTE: This must be a separate mkMerge entry, not merged with // into the
+    # mkIf block above. Using // on a mkIf value silently drops the merged keys
+    # because the module system only reads the mkIf's `content` attribute.
+    (optionalAttrs (options ? home-manager) {
+      home-manager = mkIf (osCfg.enable && cfg != {} && any (a: a.terminal.enable) (attrValues cfg)) {
+        users = mapAttrs' (name: agentCfg:
+          let
+            username = "agent-${name}";
+          in
+          nameValuePair username ({ pkgs, ... }: {
+            imports = [ ../terminal/default.nix ];
+
+            # Provide empty keystoneInputs — editor.nix uses it for optional
+            # unstable helix and kinda-nvim theme, both degrade gracefully to
+            # stable defaults when the attrs are absent.
+            _module.args.keystoneInputs = {};
+
+            keystone.terminal = mkIf agentCfg.terminal.enable {
+              enable = true;
+              git = {
+                userName = agentCfg.fullName;
+                userEmail = if agentCfg.email != null
+                  then agentCfg.email
+                  else "${username}@${if topDomain != null then topDomain else "localhost"}";
+              };
+            };
+
+            home.stateVersion = config.system.stateVersion;
+          })
+        ) (filterAttrs (_: a: a.terminal.enable) cfg);
+      };
+    })
+  ];
 }
