@@ -63,7 +63,7 @@ in
     };
 
     nix.settings = {
-      substituters = [ cfg.url ];
+      substituters = [ "${cfg.url}/${cfg.push.cacheName}" ];
       trusted-public-keys = mkIf (cfg.publicKey != null) [ cfg.publicKey ];
     };
 
