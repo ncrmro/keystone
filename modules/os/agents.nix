@@ -397,62 +397,6 @@ let
         chown -R ${username}:agents /home/${username}/.config
     '';
 
-  # Generate himalaya config.toml for a mail-enabled agent
-  himalayaConfig =
-    name: agentCfg:
-    let
-      username = "agent-${name}";
-      mailAddr =
-        if agentCfg.mail.address != null then agentCfg.mail.address
-        else "agent-${name}@${topDomain}";
-      mailHost = "mail.${topDomain}";
-      imapPort = agentCfg.mail.imap.port;
-      smtpPort = agentCfg.mail.smtp.port;
-      secretPath = "/run/agenix/agent-${name}-mail-password";
-    in
-    pkgs.writeText "himalaya-config-agent-${name}.toml" ''
-      [accounts.${name}]
-      email = "${mailAddr}"
-      display-name = "${agentCfg.fullName}"
-      default = true
-
-      backend.type = "imap"
-      backend.host = "${mailHost}"
-      backend.port = ${toString imapPort}
-      backend.encryption.type = "tls"
-      backend.login = "${username}"
-      backend.auth.type = "password"
-      # CRITICAL: agenix secrets and most editors add a trailing newline to
-      # files. Stalwart rejects passwords with trailing whitespace, so we
-      # must strip it. Without this, IMAP/SMTP auth fails with
-      # AUTHENTICATIONFAILED despite the password being correct.
-      backend.auth.command = "tr -d '\\n' < ${secretPath}"
-
-      message.send.backend.type = "smtp"
-      message.send.backend.host = "${mailHost}"
-      message.send.backend.port = ${toString smtpPort}
-      message.send.backend.encryption.type = "tls"
-      message.send.backend.login = "${username}"
-      message.send.backend.auth.type = "password"
-      message.send.backend.auth.command = "tr -d '\\n' < ${secretPath}"
-
-      # Stalwart folder names (differ from Himalaya defaults)
-      folder.aliases.sent = "Sent Items"
-      folder.aliases.drafts = "Drafts"
-      folder.aliases.trash = "Deleted Items"
-    '';
-
-  # Generate himalaya config setup script for home directory creation
-  himalayaConfigScript =
-    username: agentCfg: name:
-    ''
-      # Create himalaya config directory
-      mkdir -p /home/${username}/.config/himalaya
-      cp ${himalayaConfig name agentCfg} /home/${username}/.config/himalaya/config.toml
-      chmod 600 /home/${username}/.config/himalaya/config.toml
-      chown -R ${username}:agents /home/${username}/.config/himalaya
-    '';
-
   # Task loop script: pre-fetch sources, ingest, prioritize, execute
   # Runs inside nix develop --command to get the agent's dev shell
   agentTaskLoopScript =
@@ -972,7 +916,6 @@ in
                 ${pkgs.acl}/bin/setfacl -d -m g::rwx /home/${username}
 
                 ${labwcConfigScript username agentCfg}
-                ${himalayaConfigScript username agentCfg name}
               ''
             ) cfg
           )}
@@ -1019,7 +962,6 @@ in
                 ${pkgs.acl}/bin/setfacl -d -m g::rwx /home/${username}
 
                 ${labwcConfigScript username agentCfg}
-                ${himalayaConfigScript username agentCfg name}
               ''
             ) cfg
           )}
@@ -1629,6 +1571,8 @@ in
 
     # Forgejo account + notes repo reminder (warnings, not assertions — Forgejo isn't
     # strictly required for the agent to boot, but notes sync will fail without it)
+    # TODO: Re-enable once a `provisioned` option exists to suppress for existing agents.
+    /*
     {
       warnings = concatLists (mapAttrsToList (name: agentCfg:
         let
@@ -1639,8 +1583,6 @@ in
             if agentCfg.ssh.publicKey != null then agentCfg.ssh.publicKey
             else "SSH_PUBLIC_KEY";
           repoUrl = agentCfg.notes.repo;
-          # Extract owner/repo from SSH URL like "ssh://forgejo@git.example.com:2222/owner/repo.git"
-          # or "git@git.example.com:owner/repo.git"
         in
         (optional (agentCfg.ssh.publicKey != null && topDomain != null) ''
           Agent '${name}': Remember to create a Forgejo account at git.${topDomain}.
@@ -1678,6 +1620,7 @@ in
         '')
       ) cfg);
     }
+    */
 
     # Agent notes: sync, task loop, scheduler as systemd.user.services with linger
     {
@@ -1804,6 +1747,22 @@ in
                 userEmail = if agentCfg.email != null
                   then agentCfg.email
                   else "${username}@${if topDomain != null then topDomain else "localhost"}";
+              };
+              mail = {
+                enable = true;
+                accountName = name;
+                email = if agentCfg.mail.address != null
+                  then agentCfg.mail.address
+                  else "${username}@${if topDomain != null then topDomain else "localhost"}";
+                displayName = agentCfg.fullName;
+                login = username;
+                host = if topDomain != null then "mail.${topDomain}" else "";
+                # CRITICAL: agenix secrets and most editors add a trailing newline.
+                # Stalwart rejects passwords with trailing whitespace, so we must
+                # strip it. Without this, IMAP/SMTP auth fails.
+                passwordCommand = "tr -d '\\n' < /run/agenix/agent-${name}-mail-password";
+                imap.port = agentCfg.mail.imap.port;
+                smtp.port = agentCfg.mail.smtp.port;
               };
             };
 
