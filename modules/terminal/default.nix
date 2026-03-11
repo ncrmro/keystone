@@ -16,6 +16,7 @@ in {
     ./mail.nix
     ./agent-mail.nix
     ./sandbox.nix
+    ./secrets.nix
   ];
 
   options.keystone.terminal = {

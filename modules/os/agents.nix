@@ -160,14 +160,6 @@ let
           # CalDAV and CardDAV are always provisioned alongside mail
         };
 
-        bitwarden = {
-          collection = mkOption {
-            type = types.str;
-            default = "agent-${name}";
-            description = "Bitwarden collection name scoped to this agent";
-          };
-        };
-
         # Tailscale: each agent gets its own tailscaled instance with unique
         # state dir, socket, and TUN interface. An nftables fwmark rule routes
         # the agent's UID traffic through its dedicated TUN.
@@ -286,9 +278,13 @@ let
         journalctl)
           exec journalctl --user "$@"
           ;;
+        # Run arbitrary command as this agent (for diagnostics)
+        exec)
+          exec "$@"
+          ;;
         *)
           echo "Error: verb '$VERB' is not allowed." >&2
-          echo "Allowed: status start stop restart enable disable list-units list-timers show cat is-active is-enabled is-failed daemon-reload reset-failed journalctl" >&2
+          echo "Allowed: status start stop restart enable disable list-units list-timers show cat is-active is-enabled is-failed daemon-reload reset-failed journalctl exec" >&2
           exit 1
           ;;
       esac
@@ -298,12 +294,9 @@ let
   desktopAgents = cfg;
   hasDesktopAgents = cfg != { };
 
-  # All agents get mail, bitwarden, and SSH
+  # All agents get mail and SSH
   mailAgents = cfg;
   hasMailAgents = cfg != { };
-
-  bitwardenAgents = cfg;
-  hasBitwardenAgents = cfg != { };
 
   sshAgents = cfg;
   hasSshAgents = cfg != { };
@@ -799,11 +792,13 @@ in
             echo "Commands:" >&2
             echo "  <systemctl-verb>  Run systemctl --user as the agent (status, start, stop, ...)" >&2
             echo "  journalctl        Run journalctl --user as the agent" >&2
+            echo "  exec              Run an arbitrary command as the agent" >&2
             echo "  mail              Send structured email to the agent (via agent-mail)" >&2
             echo "" >&2
             echo "Examples:" >&2
             echo "  agentctl drago status agent-task-loop-drago" >&2
             echo "  agentctl drago journalctl -u agent-task-loop-drago -n 20" >&2
+            echo "  agentctl drago exec himalaya envelope list --page-size 5" >&2
             echo "  agentctl drago mail task --subject \"Fix CI pipeline\"" >&2
             exit 1
           fi
@@ -1203,83 +1198,6 @@ in
       environment.systemPackages = [
         pkgs.keystone.himalaya
       ];
-    })
-
-    # Bitwarden/Vaultwarden agent configuration
-    (mkIf hasBitwardenAgents {
-      assertions = [
-        {
-          assertion = topDomain != null;
-          message = "keystone.domain must be set when agents are defined (bitwarden derives from it)";
-        }
-      ] ++ (mapAttrsToList (name: agentCfg: let
-        agentEmail =
-          if agentCfg.email != null then agentCfg.email
-          else "agent-${name}@${topDomain}";
-      in {
-        assertion = config.age.secrets ? "agent-${name}-bitwarden-password";
-        message = ''
-          Agent '${name}' requires agenix secret "agent-${name}-bitwarden-password".
-
-          1. Create a Vaultwarden account:
-             - Open https://vault.${topDomain} in a browser
-             - Register a new account for agent-${name} with email "${agentEmail}"
-             - Choose a strong master password
-
-          2. Add to agenix-secrets/secrets.nix:
-             "secrets/agent-${name}-bitwarden-password.age".publicKeys = adminKeys ++ [ systems.workstation ];
-
-          3. Create the secret (use the SAME master password as step 1):
-             cd agenix-secrets && agenix -e secrets/agent-${name}-bitwarden-password.age
-
-          4. Declare in host config:
-             age.secrets.agent-${name}-bitwarden-password = {
-               file = "${"$"}{inputs.agenix-secrets}/secrets/agent-${name}-bitwarden-password.age";
-               owner = "agent-${name}";
-               mode = "0400";
-             };
-        '';
-      }) bitwardenAgents);
-
-      # Install bitwarden-cli for agents with bitwarden enabled
-      environment.systemPackages = [
-        pkgs.bitwarden-cli
-      ];
-
-      # Configure bw CLI server URL per bitwarden-enabled agent
-      systemd.services = mkMerge (
-        mapAttrsToList (
-          name: agentCfg:
-          let
-            username = "agent-${name}";
-          in
-          {
-            "bitwarden-config-agent-${name}" = {
-              description = "Configure Bitwarden CLI for agent-${name}";
-
-              wantedBy = [ "multi-user.target" ];
-              after = [
-                (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
-              ];
-              requires = [
-                (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
-              ];
-
-              serviceConfig = {
-                Type = "oneshot";
-                RemainAfterExit = true;
-                User = username;
-                Group = "agents";
-              };
-
-              script = ''
-                # Configure bw CLI to use the Vaultwarden server
-                ${pkgs.bitwarden-cli}/bin/bw config server https://vault.${topDomain}
-              '';
-            };
-          }
-        ) bitwardenAgents
-      );
     })
 
     # Per-agent Tailscale instances
@@ -1763,6 +1681,13 @@ in
                 passwordCommand = "tr -d '\\n' < /run/agenix/agent-${name}-mail-password";
                 imap.port = agentCfg.mail.imap.port;
                 smtp.port = agentCfg.mail.smtp.port;
+              };
+              secrets = {
+                enable = true;
+                email = if agentCfg.email != null
+                  then agentCfg.email
+                  else "${username}@${if topDomain != null then topDomain else "localhost"}";
+                baseUrl = if topDomain != null then "https://vaultwarden.${topDomain}" else "";
               };
             };
 
