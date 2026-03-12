@@ -54,7 +54,14 @@ let
   cfg = config.keystone.os.mail;
   topDomain = config.keystone.domain;
 
-  # Agents that want mail provisioning on this host (where Stalwart runs)
+  # Agents that want mail provisioning on this host (where Stalwart runs).
+  # This is NOT filtered by agent.host — provisioning runs on the mail server,
+  # which is typically a different host from the agent's designated host.
+  #
+  # CRITICAL (agenix): agent-{name}-mail-password must list BOTH the agent's
+  # host (for himalaya client) AND this server's host key (for Stalwart
+  # provisioning) in its publicKeys recipients. Otherwise agenix will fail
+  # to decrypt at activation time on this host.
   provisionAgents = filterAttrs (_: a: a.mail.provision) config.keystone.os.agents;
   hasProvisionAgents = provisionAgents != { };
 in

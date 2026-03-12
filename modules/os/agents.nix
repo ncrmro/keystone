@@ -21,6 +21,30 @@
 #     ssh.publicKey = "ssh-ed25519 AAAAC3...";
 #   };
 #
+# Host filtering:
+#   Agent identities are shared across all hosts (via a common import like
+#   agent-identities.nix), but the `host` field controls WHERE feature-specific
+#   resources are created:
+#
+#   ALWAYS created on every importing host (uses `cfg`, the full agent set):
+#   - OS user/group accounts (agents need accounts for SSH access everywhere)
+#   - Home directories
+#   - User services guarded by ConditionUser (won't run unless logged in)
+#
+#   ONLY created on the agent's designated host (uses `localAgents`, filtered
+#   by host == networking.hostName):
+#   - SSH secrets + ssh-agent service (agenix assertions for private key/passphrase)
+#   - Desktop environment (labwc, wayvnc)
+#   - Mail client config (himalaya, mail-password assertion)
+#
+#   Created on SERVER hosts independently of `host` (mail.nix, git-server.nix):
+#   - Mail account provisioning (where Stalwart runs, filtered by mail.provision)
+#   - Git account provisioning (where Forgejo runs, filtered by git.provision)
+#
+#   Agenix implication: secrets like agent-{name}-mail-password may need
+#   recipients on BOTH the agent's host (for himalaya) AND the server host
+#   (for Stalwart provisioning). See agenix-secrets/secrets.nix.
+#
 # SSH: Each agent gets an ssh-agent systemd service that auto-loads its
 # private key from agenix using the passphrase secret. Git is configured
 # to sign commits with the SSH key. The agent's public key is added to
@@ -80,10 +104,18 @@ let
           type = types.nullOr types.str;
           default = null;
           description = ''
-            Hostname where this agent primarily runs. Used by provisioning modules
-            (mail.nix, git-server.nix) to identify which agents to auto-provision
-            service accounts for. All declared agents get OS users and services on
-            every host that imports their definition regardless of this field.
+            Hostname where this agent primarily runs. Controls two things:
+
+            1. Feature filtering — desktop, mail-client, and SSH resources
+               (secrets, assertions, services) are only created on the host
+               whose networking.hostName matches this value.
+
+            2. All hosts still get the agent's OS user/group and home directory
+               so the agent can SSH in everywhere.
+
+            Server-side provisioning (mail.nix, git-server.nix) is independent
+            of this field — it runs wherever Stalwart/Forgejo is enabled and
+            is gated by mail.provision / git.provision instead.
           '';
           example = "ncrmro-workstation";
         };
