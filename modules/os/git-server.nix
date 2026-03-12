@@ -266,7 +266,7 @@ in {
         script = ''
           set -euo pipefail
 
-          FORGEJO="sudo -u ${forgejoUser} forgejo admin"
+          FORGEJO="sudo -u ${forgejoUser} forgejo --work-path ${cfg.stateDir} admin"
           API="${apiUrl}"
 
           # --- User provisioning (via CLI, no token needed) ---
