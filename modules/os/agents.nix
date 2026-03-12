@@ -545,18 +545,26 @@ let
       cd "$NOTES_DIR"
       log "Starting agent task loop for ${name}"
 
-      # Early exit: skip ingest/prioritize/execute when nothing is pending
-      if [ ! -f TASKS.yaml ] || \
-         [ "$(${yq} '[.tasks[] | select(.status == "pending")] | length' TASKS.yaml 2>/dev/null)" = "0" ]; then
-        log "No pending tasks, skipping"
-        exit 0
-      fi
-
       # ── Step 1: Pre-fetch sources ─────────────────────────────────
+      # Always runs — discovers new tasks from email, git, and custom sources.
       CURRENT_STEP="prefetch"
-      log "Step 1: Pre-fetching sources from PROJECTS.yaml..."
+      log "Step 1: Pre-fetching sources..."
       SOURCES_JSON="[]"
 
+      # Built-in source: email inbox (himalaya)
+      # himalaya is installed via home-manager (keystone.terminal.mail), not the dev shell
+      if command -v himalaya &>/dev/null; then
+        log "  Fetching source: email"
+        EMAIL_OUTPUT=$(himalaya envelope list --page-size 20 --output json 2>>"$LOG_FILE" || ${echo} "[]")
+        if [ -n "$EMAIL_OUTPUT" ] && [ "$EMAIL_OUTPUT" != "[]" ]; then
+          SOURCES_JSON=$(${echo} "$SOURCES_JSON" | ${jq} --argjson data "$EMAIL_OUTPUT" \
+            '. + [{"source": "email", "data": $data}]')
+        fi
+      else
+        log "  Skipping email source: himalaya not found"
+      fi
+
+      # Custom sources from PROJECTS.yaml (user-defined commands)
       if [ -f PROJECTS.yaml ]; then
         SOURCE_COUNT=$(${yq} '.sources | length' PROJECTS.yaml 2>/dev/null || ${echo} "0")
 
@@ -566,7 +574,6 @@ let
 
           if [ -n "$SOURCE_CMD" ] && [ "$SOURCE_CMD" != "null" ]; then
             log "  Fetching source: $SOURCE_NAME"
-            # Run via nix develop to get dev shell tools (himalaya, gh, etc.)
             SOURCE_OUTPUT=$(nix develop --command bash -c "$SOURCE_CMD" 2>>"$LOG_FILE" || ${echo} "[]")
             SOURCES_JSON=$(${echo} "$SOURCES_JSON" | ${jq} --arg name "$SOURCE_NAME" --argjson data "$SOURCE_OUTPUT" \
               '. + [{"source": $name, "data": $data}]')
@@ -608,6 +615,13 @@ let
       fi
 
       # ── Step 4: Execute pending tasks ─────────────────────────────
+      # Check for pending tasks after ingest — exit if nothing to execute
+      if [ ! -f TASKS.yaml ] || \
+         [ "$(${yq} '[.tasks[] | select(.status == "pending")] | length' TASKS.yaml 2>/dev/null)" = "0" ]; then
+        log "No pending tasks after ingest, done"
+        exit 0
+      fi
+
       CURRENT_STEP="execute"
       log "Step 4: Executing pending tasks (max ${toString maxTasks})..."
       TASK_COUNT=0
@@ -916,7 +930,77 @@ in
         agentNotesCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
           "          ${name}) NOTES_DIR=\"${agentCfg.notes.path}\" ;;"
         ) cfg);
+        # Nix-generated static lookup: agent name -> VNC port (desktop agents only)
+        agentVncCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
+          "          ${name}) VNC_PORT=\"${toString (agentVncPort name agentCfg)}\" ;;"
+        ) desktopAgents);
         knownAgents = concatStringsSep ", " (attrNames cfg);
+
+        # Render TASKS.yaml as a sorted table (pending/in_progress first, completed last)
+        tasksFormatter = pkgs.writeText "agentctl-tasks-formatter.py" ''
+          import sys, re
+
+          lines = sys.stdin.read()
+
+          tasks = []
+          current = {}
+          in_tasks = False
+          for line in lines.splitlines():
+              if line.strip() == "tasks:":
+                  in_tasks = True
+                  continue
+              if not in_tasks:
+                  continue
+              m = re.match(r"^\s+-\s+([\w_]+):\s*(.*)", line)
+              if m:
+                  if current:
+                      tasks.append(current)
+                  current = {m.group(1): m.group(2).strip().strip('"').strip("'")}
+                  continue
+              m = re.match(r"^\s+([\w_]+):\s*(.*)", line)
+              if m:
+                  current[m.group(1)] = m.group(2).strip().strip('"').strip("'")
+          if current:
+              tasks.append(current)
+
+          if not tasks:
+              print("No tasks found.")
+              sys.exit(0)
+
+          # Active tasks first, then completed in reverse order (latest first)
+          order = {"in_progress": 0, "pending": 1, "blocked": 2, "error": 3, "completed": 4}
+          for i, t in enumerate(tasks):
+              t["_orig_idx"] = i
+          tasks.sort(key=lambda t: (order.get(t.get("status", ""), 5), -t["_orig_idx"]))
+
+          icons = {"completed": "done", "in_progress": "run ", "pending": "wait", "blocked": "blkd", "error": "err "}
+
+          hdr = ["#", "STATUS", "NAME", "PROJECT", "SOURCE", "MODEL", "DESCRIPTION"]
+          rows = []
+          for i, t in enumerate(tasks):
+              rows.append([
+                  str(i + 1),
+                  icons.get(t.get("status", ""), t.get("status", "")[:4]),
+                  t.get("name", "")[:30],
+                  t.get("project", "-")[:15],
+                  t.get("source", "-")[:10],
+                  t.get("model", "-")[:6],
+                  t.get("description", "")[:50],
+              ])
+
+          widths = [len(h) for h in hdr]
+          for row in rows:
+              for j, cell in enumerate(row):
+                  widths[j] = max(widths[j], len(cell))
+
+          def fmt(row):
+              return "  ".join(cell.ljust(widths[j]) for j, cell in enumerate(row))
+
+          print(fmt(hdr))
+          print("  ".join("-" * w for w in widths))
+          for row in rows:
+              print(fmt(row))
+        '';
 
         agentctl = pkgs.writeShellScriptBin "agentctl" ''
           if [ $# -lt 2 ]; then
@@ -927,15 +1011,18 @@ in
             echo "  journalctl        Run journalctl --user as the agent" >&2
             echo "  exec              Run an arbitrary command as the agent" >&2
             echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
+            echo "  email             Show the agent's inbox (recent envelopes)" >&2
             echo "  claude            Start interactive Claude session in agent notes directory" >&2
             echo "  mail              Send structured email to the agent (via agent-mail)" >&2
+            echo "  vnc               Open remote-viewer to the agent's VNC desktop" >&2
             echo "" >&2
             echo "Examples:" >&2
             echo "  agentctl drago status agent-task-loop-drago" >&2
             echo "  agentctl drago journalctl -u agent-task-loop-drago -n 20" >&2
-            echo "  agentctl drago exec himalaya envelope list --page-size 5" >&2
             echo "  agentctl drago tasks" >&2
+            echo "  agentctl drago email" >&2
             echo "  agentctl drago claude" >&2
+            echo "  agentctl drago vnc" >&2
             echo "  agentctl drago mail task --subject \"Fix CI pipeline\"" >&2
             exit 1
           fi
@@ -956,6 +1043,12 @@ in
   ${agentNotesCases}
           esac
 
+          # Static lookup — agent name -> VNC port (desktop agents only)
+          VNC_PORT=""
+          case "$AGENT_NAME" in
+  ${agentVncCases}
+          esac
+
           CMD="$1"; shift
           case "$CMD" in
             tasks)
@@ -964,77 +1057,23 @@ in
                 echo "No TASKS.yaml found in $NOTES_DIR" >&2
                 exit 1
               fi
-              echo "$TASKS_YAML" | ${pkgs.python3}/bin/python3 << 'PYEOF'
-import sys, re
-
-lines = sys.stdin.read()
-
-# Simple YAML list-of-dicts parser for tasks: block
-tasks = []
-current = {}
-in_tasks = False
-for line in lines.splitlines():
-    if line.strip() == "tasks:":
-        in_tasks = True
-        continue
-    if not in_tasks:
-        continue
-    m = re.match(r"^\s+-\s+(\w+):\s*(.*)", line)
-    if m:
-        if current:
-            tasks.append(current)
-        current = {m.group(1): m.group(2).strip().strip('"').strip("'")}
-        continue
-    m = re.match(r"^\s+(\w+):\s*(.*)", line)
-    if m:
-        current[m.group(1)] = m.group(2).strip().strip('"').strip("'")
-if current:
-    tasks.append(current)
-
-if not tasks:
-    print("No tasks found.")
-    sys.exit(0)
-
-# Sort: pending/in_progress/blocked first, completed/error last
-order = {"in_progress": 0, "pending": 1, "blocked": 2, "error": 3, "completed": 4}
-tasks.sort(key=lambda t: order.get(t.get("status", ""), 5))
-
-# Status indicators
-icons = {"completed": "done", "in_progress": "run ", "pending": "wait", "blocked": "blkd", "error": "err "}
-
-# Calculate column widths
-hdr = ["#", "STATUS", "NAME", "PROJECT", "SOURCE", "MODEL", "DESCRIPTION"]
-rows = []
-for i, t in enumerate(tasks):
-    rows.append([
-        str(i + 1),
-        icons.get(t.get("status", ""), t.get("status", "")[:4]),
-        t.get("name", "")[:30],
-        t.get("project", "-")[:15],
-        t.get("source", "-")[:10],
-        t.get("model", "-")[:6],
-        t.get("description", "")[:50],
-    ])
-
-widths = [len(h) for h in hdr]
-for row in rows:
-    for j, cell in enumerate(row):
-        widths[j] = max(widths[j], len(cell))
-
-def fmt(row):
-    return "  ".join(cell.ljust(widths[j]) for j, cell in enumerate(row))
-
-print(fmt(hdr))
-print("  ".join("-" * w for w in widths))
-for row in rows:
-    print(fmt(row))
-PYEOF
+              echo "$TASKS_YAML" | ${pkgs.python3}/bin/python3 ${tasksFormatter}
+              ;;
+            email)
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec himalaya envelope list "$@"
               ;;
             claude)
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && nix develop --command claude --dangerously-skip-permissions $*"
               ;;
             mail)
               exec agent-mail "$@" --to "''${AGENT_NAME}@${topDomain}"
+              ;;
+            vnc)
+              if [ -z "$VNC_PORT" ]; then
+                echo "Error: agent '$AGENT_NAME' has no desktop (VNC not available)" >&2
+                exit 1
+              fi
+              exec ${pkgs.virt-viewer}/bin/remote-viewer "vnc://localhost:$VNC_PORT" "$@"
               ;;
             *)
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" "$CMD" "$@"
@@ -1627,9 +1666,12 @@ PYEOF
 
     # SSH agent configuration (ssh-agent + git signing + agenix secrets)
     (mkIf hasSshAgents {
-      assertions = concatLists (mapAttrsToList (name: _: let
+      # Only assert agenix secrets on the agent's host — other hosts (e.g. ocean)
+      # import agent-identities for provisioning but don't need SSH key secrets.
+      assertions = concatLists (mapAttrsToList (name: agentCfg: let
         username = "agent-${name}";
-      in [
+        isAgentHost = agentCfg.host == config.networking.hostName;
+      in optionals isAgentHost [
         {
           assertion = config.age.secrets ? "${username}-ssh-key";
           message = ''
@@ -1854,8 +1896,12 @@ PYEOF
             "agent-task-loop-${name}" = {
               description = "Autonomous task loop for ${username}";
               unitConfig.ConditionUser = username;
-              path = [ pkgs.openssh pkgs.nix pkgs.git ];
+              # Use the agent's full home-manager profile instead of cherry-picking
+              # packages. /etc/profiles/per-user/ includes everything from keystone.terminal
+              # (himalaya, gh, git, openssh, coreutils, bash, etc.). Nix is added
+              # explicitly since it's a system tool not in the home-manager profile.
               environment = {
+                PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:${lib.makeBinPath [ pkgs.nix ]}";
                 SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
                 GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
               };
@@ -1876,7 +1922,7 @@ PYEOF
             "agent-scheduler-${name}" = {
               description = "Daily scheduler for ${username}";
               unitConfig.ConditionUser = username;
-              path = [ pkgs.yq-go pkgs.coreutils pkgs.gnugrep ];
+              environment.PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:${lib.makeBinPath [ pkgs.nix ]}";
               serviceConfig = {
                 Type = "oneshot";
                 SyslogIdentifier = "agent-scheduler-${name}";
@@ -1948,35 +1994,36 @@ PYEOF
             _module.args.keystoneInputs = {};
 
             keystone.terminal = mkIf agentCfg.terminal.enable {
-              enable = true;
+              enable = mkDefault true;
               git = {
-                userName = agentCfg.fullName;
-                userEmail = if agentCfg.email != null
+                userName = mkDefault agentCfg.fullName;
+                userEmail = mkDefault (if agentCfg.email != null
                   then agentCfg.email
-                  else "${username}@${if topDomain != null then topDomain else "localhost"}";
+                  else "${username}@${if topDomain != null then topDomain else "localhost"}");
               };
               mail = {
-                enable = true;
-                accountName = name;
-                email = if agentCfg.mail.address != null
+                enable = mkDefault true;
+                accountName = mkDefault name;
+                email = mkDefault (if agentCfg.mail.address != null
                   then agentCfg.mail.address
-                  else "${username}@${if topDomain != null then topDomain else "localhost"}";
-                displayName = agentCfg.fullName;
-                login = username;
-                host = if topDomain != null then "mail.${topDomain}" else "";
+                  else "${username}@${if topDomain != null then topDomain else "localhost"}");
+                displayName = mkDefault agentCfg.fullName;
+                login = mkDefault username;
+                host = mkDefault (if topDomain != null then "mail.${topDomain}" else "");
                 # CRITICAL: agenix secrets and most editors add a trailing newline.
                 # Stalwart rejects passwords with trailing whitespace, so we must
                 # strip it. Without this, IMAP/SMTP auth fails.
-                passwordCommand = "tr -d '\\n' < /run/agenix/agent-${name}-mail-password";
-                imap.port = agentCfg.mail.imap.port;
-                smtp.port = agentCfg.mail.smtp.port;
+                # tr is available via the agent's home-manager profile PATH (coreutils).
+                passwordCommand = mkDefault "tr -d '\\n' < /run/agenix/agent-${name}-mail-password";
+                imap.port = mkDefault agentCfg.mail.imap.port;
+                smtp.port = mkDefault agentCfg.mail.smtp.port;
               };
               secrets = {
-                enable = true;
-                email = if agentCfg.email != null
+                enable = mkDefault true;
+                email = mkDefault (if agentCfg.email != null
                   then agentCfg.email
-                  else "${username}@${if topDomain != null then topDomain else "localhost"}";
-                baseUrl = if topDomain != null then "https://vaultwarden.${topDomain}" else "";
+                  else "${username}@${if topDomain != null then topDomain else "localhost"}");
+                baseUrl = mkDefault (if topDomain != null then "https://vaultwarden.${topDomain}" else "");
                 # Agents are unattended — use a custom pinentry that reads the master
                 # password from the agenix secret instead of prompting interactively.
                 pinentry = pkgs.writeShellScriptBin "rbw-pinentry-agenix" ''
