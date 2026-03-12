@@ -92,6 +92,14 @@ with lib; let
         };
       };
 
+      sshAutoLoad = {
+        enable = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Auto-load SSH key into ssh-agent at login using agenix passphrase";
+        };
+      };
+
       desktop = {
         enable = mkOption {
           type = types.bool;

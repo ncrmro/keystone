@@ -17,6 +17,7 @@ in {
     ./agent-mail.nix
     ./sandbox.nix
     ./secrets.nix
+    ./ssh-auto-load.nix
   ];
 
   options.keystone.terminal = {
