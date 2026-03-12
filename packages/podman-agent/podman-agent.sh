@@ -12,6 +12,18 @@
 #   PODMAN_AGENT_MEMORY=8g      - Container memory limit (default: 4g)
 #   PODMAN_AGENT_CPUS=8         - Container CPU limit (default: 4)
 #   GH_TOKEN / GITHUB_TOKEN     - GitHub token forwarded to container
+#
+# Pre-resolved store paths (set by keystone.terminal.sandbox module):
+#   PODMAN_AGENT_CLAUDE_CODE_PATH - Store path for claude-code
+#   PODMAN_AGENT_GEMINI_CLI_PATH  - Store path for gemini-cli
+#   PODMAN_AGENT_CODEX_PATH       - Store path for codex
+#   PODMAN_AGENT_GH_PATH          - Store path for gh CLI
+#   PODMAN_AGENT_RIPGREP_PATH     - Store path for ripgrep
+#   PODMAN_AGENT_PROCPS_PATH      - Store path for procps
+#
+#   When set, these paths are used directly instead of running
+#   `nix build` inside the container, eliminating GitHub flake
+#   resolution on every launch.  Falls back to `nix build` when unset.
 
 set -euo pipefail
 
@@ -31,18 +43,22 @@ shift
 # Map agent name to llm-agents.nix package and CLI command
 AGENT_PKG=""
 AGENT_CMD=()
+AGENT_PATH_VAR=""
 case "$AGENT" in
   claude)
     AGENT_PKG="claude-code"
     AGENT_CMD=(claude --dangerously-skip-permissions)
+    AGENT_PATH_VAR="PODMAN_AGENT_CLAUDE_CODE_PATH"
     ;;
   gemini)
     AGENT_PKG="gemini-cli"
     AGENT_CMD=(gemini --yolo)
+    AGENT_PATH_VAR="PODMAN_AGENT_GEMINI_CLI_PATH"
     ;;
   codex)
     AGENT_PKG="codex"
     AGENT_CMD=(codex --yolo)
+    AGENT_PATH_VAR="PODMAN_AGENT_CODEX_PATH"
     ;;
   *)
     echo "Unknown agent: $AGENT" >&2
@@ -57,22 +73,39 @@ WORKDIR="$(pwd)"
 # IS_SANDBOX=1 is set by both wrapper scripts and podman-agent itself.
 # Skip Podman wrapping -- isolation is already provided by the outer container.
 if [[ "${IS_SANDBOX:-}" == "1" ]]; then
-  # Build agent binary (nix is available in the container)
-  AGENT_BIN=$(nix build --no-link --print-out-paths "github:numtide/llm-agents.nix#$AGENT_PKG")
+  # Use pre-resolved store path if available, fall back to nix build
+  AGENT_PATH="${!AGENT_PATH_VAR:-}"
+  if [[ -n "$AGENT_PATH" && -d "$AGENT_PATH" ]]; then
+    AGENT_BIN="$AGENT_PATH"
+  else
+    AGENT_BIN=$(nix build --no-link --print-out-paths "github:numtide/llm-agents.nix#$AGENT_PKG")
+  fi
   export PATH="$AGENT_BIN/bin:$PATH"
 
-  # Ensure gh CLI and ripgrep are available
+  # Ensure gh CLI and ripgrep are available (pre-resolved or nix build)
   if ! command -v gh &>/dev/null; then
-    GH_BIN=$(nix build --no-link --print-out-paths "nixpkgs#gh")
-    export PATH="$GH_BIN/bin:$PATH"
+    if [[ -n "${PODMAN_AGENT_GH_PATH:-}" && -d "${PODMAN_AGENT_GH_PATH}" ]]; then
+      export PATH="${PODMAN_AGENT_GH_PATH}/bin:$PATH"
+    else
+      GH_BIN=$(nix build --no-link --print-out-paths "nixpkgs#gh")
+      export PATH="$GH_BIN/bin:$PATH"
+    fi
   fi
   if ! command -v rg &>/dev/null; then
-    RG_BIN=$(nix build --no-link --print-out-paths "nixpkgs#ripgrep")
-    export PATH="$RG_BIN/bin:$PATH"
+    if [[ -n "${PODMAN_AGENT_RIPGREP_PATH:-}" && -d "${PODMAN_AGENT_RIPGREP_PATH}" ]]; then
+      export PATH="${PODMAN_AGENT_RIPGREP_PATH}/bin:$PATH"
+    else
+      RG_BIN=$(nix build --no-link --print-out-paths "nixpkgs#ripgrep")
+      export PATH="$RG_BIN/bin:$PATH"
+    fi
   fi
   if ! command -v pgrep &>/dev/null; then
-    PROCPS_BIN=$(nix build --no-link --print-out-paths "nixpkgs#procps")
-    export PATH="$PROCPS_BIN/bin:$PATH"
+    if [[ -n "${PODMAN_AGENT_PROCPS_PATH:-}" && -d "${PODMAN_AGENT_PROCPS_PATH}" ]]; then
+      export PATH="${PODMAN_AGENT_PROCPS_PATH}/bin:$PATH"
+    else
+      PROCPS_BIN=$(nix build --no-link --print-out-paths "nixpkgs#procps")
+      export PATH="$PROCPS_BIN/bin:$PATH"
+    fi
   fi
 
   # Optional: headless Chrome for chrome-devtools-mcp
@@ -238,6 +271,11 @@ MOUNTS+=(--volume "podman-agent-cache-cargo-git:/usr/local/cargo/git")
 # Go -- separates compiled build artifacts from downloaded module source.
 MOUNTS+=(--volume "podman-agent-cache-go-build:/root/.cache/go-build")
 MOUNTS+=(--volume "podman-agent-cache-go-mod:/go/pkg/mod")
+#
+# Nix -- flake eval cache + fetcher cache. Without this, nix re-resolves
+# github: flake refs from the network on every container launch despite
+# store paths already being present in the /nix volume.
+MOUNTS+=(--volume "podman-agent-cache-nix:/root/.cache/nix")
 
 # -- Environment variables ---------------------------------------------------
 ENVS=()
@@ -254,6 +292,14 @@ ENVS+=(--env IS_SANDBOX=1)
 
 # Optional: headless Chrome for chrome-devtools-mcp
 [[ "$PODMAN_AGENT_CHROME" == "1" ]] && ENVS+=(--env PODMAN_AGENT_CHROME=1)
+
+# Pre-resolved store paths (set by keystone.terminal.sandbox module)
+# Forward the selected agent's path and all tool paths into the container
+AGENT_RESOLVED_PATH="${!AGENT_PATH_VAR:-}"
+[[ -n "$AGENT_RESOLVED_PATH" ]] && ENVS+=(--env PODMAN_AGENT_RESOLVED_PATH="$AGENT_RESOLVED_PATH")
+for _var in PODMAN_AGENT_GH_PATH PODMAN_AGENT_RIPGREP_PATH PODMAN_AGENT_PROCPS_PATH; do
+  [[ -n "${!_var:-}" ]] && ENVS+=(--env "$_var=${!_var}")
+done
 
 # Binary cache substituters (set by keystone.terminal.sandbox module)
 [[ -n "${PODMAN_AGENT_EXTRA_SUBSTITUTERS:-}" ]] && \
@@ -289,14 +335,30 @@ NIXCONF
     echo "extra-trusted-public-keys = $PODMAN_AGENT_EXTRA_TRUSTED_PUBLIC_KEYS" >> /etc/nix/nix.conf
   fi
 
-  # Get agent binary from llm-agents.nix (cached after first run)
-  AGENT_BIN=$(nix build --no-link --print-out-paths "github:numtide/llm-agents.nix#'"$AGENT_PKG"'")
+  # Use pre-resolved store path if available, fall back to nix build
+  if [ -n "${PODMAN_AGENT_RESOLVED_PATH:-}" ] && [ -d "$PODMAN_AGENT_RESOLVED_PATH" ]; then
+    AGENT_BIN="$PODMAN_AGENT_RESOLVED_PATH"
+  else
+    AGENT_BIN=$(nix build --no-link --print-out-paths "github:numtide/llm-agents.nix#'"$AGENT_PKG"'")
+  fi
   export PATH="$AGENT_BIN/bin:$PATH"
 
-  # Also get gh CLI, ripgrep, and procps (pgrep) for GitHub ops, code search, and process management
-  GH_BIN=$(nix build --no-link --print-out-paths "nixpkgs#gh")
-  RG_BIN=$(nix build --no-link --print-out-paths "nixpkgs#ripgrep")
-  PROCPS_BIN=$(nix build --no-link --print-out-paths "nixpkgs#procps")
+  # gh CLI, ripgrep, procps — pre-resolved or nix build fallback
+  if [ -n "${PODMAN_AGENT_GH_PATH:-}" ] && [ -d "$PODMAN_AGENT_GH_PATH" ]; then
+    GH_BIN="$PODMAN_AGENT_GH_PATH"
+  else
+    GH_BIN=$(nix build --no-link --print-out-paths "nixpkgs#gh")
+  fi
+  if [ -n "${PODMAN_AGENT_RIPGREP_PATH:-}" ] && [ -d "$PODMAN_AGENT_RIPGREP_PATH" ]; then
+    RG_BIN="$PODMAN_AGENT_RIPGREP_PATH"
+  else
+    RG_BIN=$(nix build --no-link --print-out-paths "nixpkgs#ripgrep")
+  fi
+  if [ -n "${PODMAN_AGENT_PROCPS_PATH:-}" ] && [ -d "$PODMAN_AGENT_PROCPS_PATH" ]; then
+    PROCPS_BIN="$PODMAN_AGENT_PROCPS_PATH"
+  else
+    PROCPS_BIN=$(nix build --no-link --print-out-paths "nixpkgs#procps")
+  fi
   export PATH="$GH_BIN/bin:$RG_BIN/bin:$PROCPS_BIN/bin:$PATH"
 
   # Optional: headless Chrome for chrome-devtools-mcp
