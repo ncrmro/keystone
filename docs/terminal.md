@@ -72,6 +72,52 @@ The module installs and configures the following language servers automatically:
 ### Zellij
 [Zellij](https://zellij.dev/) is configured with sensible keybindings and acts as the default terminal multiplexer.
 
+## hwrekey — Secrets Rekeying
+
+The `hwrekey` command automates re-encrypting agenix secrets with your YubiKey and (optionally) handling the full submodule commit/push/flake-update workflow.
+
+### Enable
+
+`hwrekey` is available when `keystone.terminal.ageYubikey.enable = true`.
+
+```nix
+keystone.terminal.ageYubikey = {
+  enable = true;
+  identities = [ "AGE-PLUGIN-YUBIKEY-..." ];
+  # Optional: enable submodule workflow
+  secretsFlakeInput = "agenix-secrets";
+};
+```
+
+### Usage
+
+```bash
+cd agenix-secrets
+hwrekey
+```
+
+### What It Does
+
+1. Runs `agenix --rekey` using the YubiKey identity file (touch prompt per secret, no SSH password)
+2. If `secretsFlakeInput` is set:
+   - Commits and pushes the rekeyed secrets in the current (submodule) repo
+   - Runs `nix flake update <secretsFlakeInput>` in the parent repo
+   - Commits the submodule pointer + `flake.lock` together in the parent repo
+3. If `secretsFlakeInput` is null, only runs the rekey — you commit manually
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | bool | `false` | Enable age-plugin-yubikey identity management |
+| `identities` | list of str | `[]` | YubiKey identity strings (`AGE-PLUGIN-YUBIKEY-...`) |
+| `identityPath` | str | `~/.age/yubikey-identity.txt` | Path to the combined identity file |
+| `secretsFlakeInput` | null or str | `null` | Flake input name for the secrets submodule |
+
+### When to Use
+
+Run `hwrekey` after any change to `secrets.nix` that adds or removes key recipients (e.g., enrolling a new YubiKey, adding a new host key, removing a decommissioned machine). See [Hardware Keys](hardware-keys.md) for the full YubiKey enrollment workflow.
+
 ## Mail
 
 himalaya and agent-mail are available when `keystone.terminal.mail.enable = true`. See [Agents](agents.md) for `agent-mail` usage (structured email templates for OS agents).
