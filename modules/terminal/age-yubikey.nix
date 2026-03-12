@@ -22,8 +22,10 @@
 # ## hwrekey
 #
 # ```bash
-# cd agenix-secrets && hwrekey   # rekey + commit + push + update flake input
-# hwrekey                        # rekey in-place (no secretsFlakeInput set)
+# hwrekey -m "chore: add ocean host key"     # from anywhere (uses configRepoPath)
+# cd agenix-secrets && hwrekey -m "msg"      # also works from inside submodule
+# hwrekey                                    # rekey only (no secretsFlakeInput set)
+# hwrekey -h                                 # show usage
 # ```
 {
   config,
@@ -45,6 +47,67 @@ let
 
     IDENTITY_PATH="${cfg.identityPath}"
     SECRETS_FLAKE_INPUT="${toString cfg.secretsFlakeInput}"
+    CONFIG_REPO_PATH="${cfg.configRepoPath}"
+
+    # --- Parse arguments ---
+    COMMIT_MSG=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -m)
+          shift
+          if [[ $# -eq 0 ]]; then
+            echo "Error: -m requires a message argument."
+            exit 1
+          fi
+          COMMIT_MSG="$1"
+          shift
+          ;;
+        -h|--help)
+          echo "Usage: hwrekey [-m <message>] [-h|--help]"
+          echo ""
+          echo "Re-encrypt agenix secrets using the connected YubiKey."
+          echo ""
+          if [ -n "$SECRETS_FLAKE_INPUT" ]; then
+            echo "  -m <message>  Commit message (required). Describes what changed in secrets."
+            echo "                The submodule commit uses this message directly."
+            echo "                The parent commit uses: chore($SECRETS_FLAKE_INPUT): relock flake input - <message>"
+          else
+            echo "  -m <message>  Not used (no secretsFlakeInput configured)."
+          fi
+          echo "  -h, --help    Show this help."
+          echo ""
+          echo "Config repo: $CONFIG_REPO_PATH"
+          echo "Secrets dir: $CONFIG_REPO_PATH/$SECRETS_FLAKE_INPUT"
+          exit 0
+          ;;
+        *)
+          echo "Error: Unknown argument: $1"
+          echo "Run 'hwrekey -h' for usage."
+          exit 1
+          ;;
+      esac
+    done
+
+    # Require -m when secretsFlakeInput is set (commits need a message)
+    if [ -n "$SECRETS_FLAKE_INPUT" ] && [ -z "$COMMIT_MSG" ]; then
+      echo "Error: -m <message> is required."
+      echo "  hwrekey -m \"chore: add ocean host key\""
+      echo ""
+      echo "Run 'hwrekey -h' for usage."
+      exit 1
+    fi
+
+    # --- Derive secrets directory from configRepoPath ---
+    if [ -n "$SECRETS_FLAKE_INPUT" ]; then
+      SECRETS_DIR="$CONFIG_REPO_PATH/$SECRETS_FLAKE_INPUT"
+      if [ ! -d "$SECRETS_DIR" ]; then
+        echo "Error: Secrets directory not found: $SECRETS_DIR"
+        echo "Check keystone.terminal.ageYubikey.configRepoPath ($CONFIG_REPO_PATH)"
+        exit 1
+      fi
+      cd "$SECRETS_DIR"
+      echo "==> Working in $SECRETS_DIR"
+    fi
 
     # --- Step 1: Detect connected YubiKey and select matching identity ---
     # age-plugin-yubikey errors (and disrupts pcscd state) when it tries to
@@ -114,7 +177,7 @@ let
     if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
       echo "==> Committing rekeyed secrets..."
       git add -A
-      git commit -m "chore: rekey secrets"
+      git commit -m "$COMMIT_MSG"
       echo "==> Pushing secrets submodule..."
       git push
     else
@@ -122,24 +185,16 @@ let
     fi
 
     # --- Step 4: Update parent flake input ---
-    SUBMODULE_DIR="$(pwd)"
-    PARENT_ROOT="$(git -C "$SUBMODULE_DIR" rev-parse --show-superproject-working-tree 2>/dev/null || true)"
-
-    if [ -z "$PARENT_ROOT" ]; then
-      echo "Warning: Not inside a submodule — skipping flake update."
-      exit 0
-    fi
-
     echo "==> Updating flake input '$SECRETS_FLAKE_INPUT' in parent repo..."
-    cd "$PARENT_ROOT"
+    cd "$CONFIG_REPO_PATH"
     nix flake update "$SECRETS_FLAKE_INPUT"
 
     # Compute relative submodule path for git add
-    RELATIVE_SUBMODULE="$(realpath --relative-to="$PARENT_ROOT" "$SUBMODULE_DIR")"
+    RELATIVE_SUBMODULE="$(realpath --relative-to="$CONFIG_REPO_PATH" "$SECRETS_DIR")"
 
     echo "==> Committing submodule + flake.lock in parent..."
     git add "$RELATIVE_SUBMODULE" flake.lock
-    git commit -m "chore: update $SECRETS_FLAKE_INPUT (rekey)"
+    git commit -m "chore($SECRETS_FLAKE_INPUT): relock flake input - $COMMIT_MSG"
 
     echo "==> Done. Parent repo committed. Push when ready."
   '';
@@ -187,6 +242,17 @@ in
         parent flake input. When null, hwrekey only runs agenix --rekey.
       '';
       example = "agenix-secrets";
+    };
+
+    configRepoPath = mkOption {
+      type = types.str;
+      default = "${config.home.homeDirectory}/nixos-config";
+      description = ''
+        Absolute path to the NixOS config repo checkout. hwrekey derives the
+        secrets submodule path as <configRepoPath>/<secretsFlakeInput> so it
+        can run from any directory.
+      '';
+      example = "/home/user/code/nixos-config";
     };
   };
 
