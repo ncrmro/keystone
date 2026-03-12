@@ -18,6 +18,8 @@ pub enum AppAction {
     GoToHostDetail(HostInfo),
     GoToHosts,
     StartBuild(String),
+    BuildIso,
+    RefreshDashboard,
     Quit,
 }
 
@@ -163,6 +165,8 @@ pub fn handle_hosts_input(
         KeyCode::Enter => hosts
             .selected_host()
             .map(|host| AppAction::GoToHostDetail(host.clone())),
+        KeyCode::Char('i') => Some(AppAction::BuildIso),
+        KeyCode::Char('r') => Some(AppAction::RefreshDashboard),
         _ => None,
     }
 }
@@ -244,6 +248,18 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
                     host_name, repo_path,
                 ));
             }
+        }
+        AppAction::BuildIso => {
+            if let Some(repo_path) = app.active_repo_path() {
+                app.current_screen = AppScreen::Build(screens::build::BuildScreen::new(
+                    "ISO".to_string(),
+                    repo_path,
+                ));
+            }
+        }
+        AppAction::RefreshDashboard => {
+            // Re-load the hosts screen from the active repo
+            app.go_to_hosts(app.active_repo_index.unwrap_or(0)).await;
         }
         AppAction::Quit => {
             app.should_quit = true;
@@ -462,6 +478,42 @@ mod tests {
 
         let action = dispatch_key(&mut app, key(KeyCode::Esc));
         assert!(matches!(action, Some(AppAction::GoToHosts)));
+    }
+
+    #[test]
+    fn test_hosts_i_builds_iso() {
+        let hosts = vec![HostInfo {
+            name: "test-host".to_string(),
+            system: None,
+            keystone_modules: vec![],
+            config_files: vec![],
+        }];
+        let mut app = App::new_for_test();
+        app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
+            "test-repo".to_string(),
+            hosts,
+        ));
+
+        let action = dispatch_key(&mut app, key(KeyCode::Char('i')));
+        assert!(matches!(action, Some(AppAction::BuildIso)));
+    }
+
+    #[test]
+    fn test_hosts_r_refreshes() {
+        let hosts = vec![HostInfo {
+            name: "test-host".to_string(),
+            system: None,
+            keystone_modules: vec![],
+            config_files: vec![],
+        }];
+        let mut app = App::new_for_test();
+        app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
+            "test-repo".to_string(),
+            hosts,
+        ));
+
+        let action = dispatch_key(&mut app, key(KeyCode::Char('r')));
+        assert!(matches!(action, Some(AppAction::RefreshDashboard)));
     }
 
     #[test]

@@ -5,5 +5,6 @@ pub mod input;
 pub mod nix;
 pub mod repo;
 pub mod screens;
+pub mod system;
 pub mod template;
 pub mod ui;
