@@ -25,7 +25,9 @@
 with lib; let
   cfg = config.keystone.os.gitServer;
 
-  # Agents that want git provisioning on this host (where Forgejo runs)
+  # Agents that want git provisioning on this host (where Forgejo runs).
+  # This is NOT filtered by agent.host — provisioning runs on the git server,
+  # which is typically a different host from the agent's designated host.
   provisionAgents = filterAttrs (_: a: a.git.provision) config.keystone.os.agents;
   hasProvisionAgents = provisionAgents != { };
 in {
