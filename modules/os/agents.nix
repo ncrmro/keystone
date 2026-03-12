@@ -76,6 +76,18 @@ let
           description = "User ID. If null, auto-assigned from the 4000+ range.";
         };
 
+        host = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = ''
+            Hostname where this agent primarily runs. Used by provisioning modules
+            (mail.nix, git-server.nix) to identify which agents to auto-provision
+            service accounts for. All declared agents get OS users and services on
+            every host that imports their definition regardless of this field.
+          '';
+          example = "ncrmro-workstation";
+        };
+
         fullName = mkOption {
           type = types.str;
           description = "Display name for the agent";
@@ -138,6 +150,12 @@ let
         };
 
         mail = {
+          provision = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Auto-provision Stalwart mail account on the mail server host.";
+          };
+
           address = mkOption {
             type = types.nullOr types.str;
             default = null;
@@ -180,10 +198,51 @@ let
           };
         };
 
+        git = {
+          provision = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Auto-provision Forgejo user, SSH key, and notes repo on the git server host.";
+          };
+
+          username = mkOption {
+            type = types.str;
+            default = name;
+            description = "Forgejo username. Defaults to agent name.";
+          };
+
+          host = mkOption {
+            type = types.str;
+            default = "git.${topDomain}";
+            description = "Git server hostname. Defaults to git.{keystone.domain}.";
+          };
+
+          sshPort = mkOption {
+            type = types.port;
+            default = 2222;
+            description = "Git SSH port.";
+          };
+
+          repoName = mkOption {
+            type = types.str;
+            default = "agent-space";
+            description = "Name of auto-created notes repository.";
+          };
+        };
+
+        passwordManager = {
+          provision = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Emit provisioning instructions for Vaultwarden (no API available for auto-create).";
+          };
+        };
+
         notes = {
           repo = mkOption {
             type = types.str;
-            description = "Git repository URL for the agent's notes. Cloned to /home/agent-{name}/notes/.";
+            default = "ssh://forgejo@${config.git.host}:${toString config.git.sshPort}/${config.git.username}/${config.git.repoName}.git";
+            description = "Git repository URL for the agent's notes. Auto-derived from git options.";
             example = "ssh://forgejo@git.example.com:2222/user/notes.git";
           };
 
@@ -290,16 +349,21 @@ let
       esac
     '';
 
-  # All agents get desktop (labwc + wayvnc)
-  desktopAgents = cfg;
-  hasDesktopAgents = cfg != { };
+  # All defined agents get OS users, home directories, services, etc.
+  # The `host` field is only used by provisioning modules (mail.nix, git-server.nix)
+  # to know which agents to auto-provision accounts for.
 
-  # All agents get mail and SSH
+  # Aliases for feature-specific agent sets. Currently all agents get all
+  # features, but these exist so we can filter by per-agent flags (e.g.
+  # desktop.enable, chrome.enable) later without touching every callsite.
+  desktopAgents = cfg;
+  hasDesktopAgents = desktopAgents != { };
+
   mailAgents = cfg;
-  hasMailAgents = cfg != { };
+  hasMailAgents = mailAgents != { };
 
   sshAgents = cfg;
-  hasSshAgents = cfg != { };
+  hasSshAgents = sshAgents != { };
 
   # Sorted desktop agent names for deterministic VNC port assignment
   sortedDesktopAgentNames = sort lessThan (attrNames desktopAgents);
@@ -319,7 +383,7 @@ let
 
   # All agents get Chrome with remote debugging
   chromeAgents = cfg;
-  hasChromeAgents = cfg != { };
+  hasChromeAgents = chromeAgents != { };
 
   # Sorted chrome agent names for deterministic debug port assignment
   sortedChromeAgentNames = sort lessThan (attrNames chromeAgents);
@@ -411,6 +475,7 @@ let
       find = "${pkgs.findutils}/bin/find";
       sort = "${pkgs.coreutils}/bin/sort";
       rm = "${pkgs.coreutils}/bin/rm";
+      flock = "${pkgs.util-linux}/bin/flock";
     in
     pkgs.writeShellScript "agent-task-loop-${name}" ''
       set -eo pipefail
@@ -427,16 +492,18 @@ let
       LOG_FILE="$LOGS_DIR/$TIMESTAMP.log"
       START_TIME=$(${date} +%s)
 
+      CURRENT_STEP="init"
+      CURRENT_TASK=""
       log() {
-        ${echo} "[$(${date} '+%H:%M:%S')] $*" | ${tee} -a "$LOG_FILE"
+        local tag="[step=$CURRENT_STEP]"
+        [ -n "$CURRENT_TASK" ] && tag="$tag[task=$CURRENT_TASK]"
+        ${echo} "[$(${date} '+%H:%M:%S')] $tag $*" | ${tee} -a "$LOG_FILE" >&2
       }
 
-      # Lock to prevent concurrent runs
-      if ${mkdir} "$LOCKFILE" 2>/dev/null; then
-        ${echo} $$ > "$LOCKFILE/pid"
-        trap '${rm} -rf "$LOCKFILE"' EXIT
-      else
-        ${echo} "Task loop already running (lockfile exists), skipping"
+      # Lock to prevent concurrent runs (flock auto-releases on process death, even SIGKILL)
+      exec 9>"$LOCKFILE"
+      if ! ${flock} -n 9; then
+        ${echo} "Task loop already running, skipping" >&2
         exit 0
       fi
 
@@ -447,7 +514,15 @@ let
       cd "$NOTES_DIR"
       log "Starting agent task loop for ${name}"
 
+      # Early exit: skip ingest/prioritize/execute when nothing is pending
+      if [ ! -f TASKS.yaml ] || \
+         [ "$(${yq} '[.tasks[] | select(.status == "pending")] | length' TASKS.yaml 2>/dev/null)" = "0" ]; then
+        log "No pending tasks, skipping"
+        exit 0
+      fi
+
       # ── Step 1: Pre-fetch sources ─────────────────────────────────
+      CURRENT_STEP="prefetch"
       log "Step 1: Pre-fetching sources from PROJECTS.yaml..."
       SOURCES_JSON="[]"
 
@@ -471,27 +546,38 @@ let
       log "  Collected sources: $(${echo} "$SOURCES_JSON" | ${jq} 'length') entries"
 
       # ── Step 2: Ingest (haiku) ────────────────────────────────────
+      CURRENT_STEP="ingest"
       log "Step 2: Ingesting sources via haiku..."
       if [ "$(${echo} "$SOURCES_JSON" | ${jq} '[.[].data | length] | add // 0')" -gt 0 ]; then
+        set +o pipefail
         nix develop --command claude --print --dangerously-skip-permissions --model haiku \
           "/deepwork task_loop ingest
 
       Source data (pre-fetched):
-      $(${echo} "$SOURCES_JSON" | ${jq} '.')" >> "$LOG_FILE" 2>&1 || {
+      $(${echo} "$SOURCES_JSON" | ${jq} '.')" 2>&1 | ${tee} -a "$LOG_FILE" >&2
+        INGEST_EXIT=''${PIPESTATUS[0]}
+        set -o pipefail
+        if [ "$INGEST_EXIT" -ne 0 ]; then
           log "  WARNING: Ingest step failed, continuing..."
-        }
+        fi
       else
         log "  No source data to ingest, skipping"
       fi
 
       # ── Step 3: Prioritize (haiku) ───────────────────────────────
+      CURRENT_STEP="prioritize"
       log "Step 3: Prioritizing tasks via haiku..."
+      set +o pipefail
       nix develop --command claude --print --dangerously-skip-permissions --model haiku \
-        "/deepwork task_loop prioritize" >> "$LOG_FILE" 2>&1 || {
+        "/deepwork task_loop prioritize" 2>&1 | ${tee} -a "$LOG_FILE" >&2
+      PRIORITIZE_EXIT=''${PIPESTATUS[0]}
+      set -o pipefail
+      if [ "$PRIORITIZE_EXIT" -ne 0 ]; then
         log "  WARNING: Prioritize step failed, continuing..."
-      }
+      fi
 
       # ── Step 4: Execute pending tasks ─────────────────────────────
+      CURRENT_STEP="execute"
       log "Step 4: Executing pending tasks (max ${toString maxTasks})..."
       TASK_COUNT=0
 
@@ -531,6 +617,7 @@ let
         TASK_TIMESTAMP=$(${date} +%Y-%m-%d_%H%M%S)
         TASK_LOG="$TASK_LOGS_DIR/''${TASK_TIMESTAMP}_''${TASK_NAME}.log"
 
+        CURRENT_TASK="$TASK_NAME"
         log "  Executing task $TASK_COUNT: $TASK_NAME"
 
         # Build model flag
@@ -546,21 +633,30 @@ let
       Task: $TASK_NAME
       Description: $TASK_DESC"
         else
-          PROMPT="Execute this task and update its status in TASKS.yaml when done.
+          PROMPT="Execute this task.
 
       Task: $TASK_NAME
       Description: $TASK_DESC"
         fi
 
         # Execute in a separate claude session
-        nix develop --command claude --print --dangerously-skip-permissions $MODEL_FLAG "$PROMPT" > "$TASK_LOG" 2>&1 || {
-          log "  WARNING: Task $TASK_NAME execution failed (see $TASK_LOG)"
-        }
+        set +o pipefail
+        nix develop --command claude --print --dangerously-skip-permissions $MODEL_FLAG "$PROMPT" 2>&1 | ${tee} "$TASK_LOG" >&2
+        TASK_EXIT=''${PIPESTATUS[0]}
+        set -o pipefail
 
-        log "  Task $TASK_NAME finished (log: $TASK_LOG)"
+        if [ "$TASK_EXIT" -eq 0 ]; then
+          ${yq} -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"completed\"" TASKS.yaml
+          log "  Task $TASK_NAME completed (log: $TASK_LOG)"
+        else
+          ${yq} -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"error\"" TASKS.yaml
+          log "  Task $TASK_NAME errored (exit $TASK_EXIT, log: $TASK_LOG)"
+        fi
       done
 
       # ── Summary ────────────────────────────────────────────────────
+      CURRENT_STEP="summary"
+      CURRENT_TASK=""
       END_TIME=$(${date} +%s)
       DURATION=$((END_TIME - START_TIME))
       log "Task loop finished: executed $TASK_COUNT tasks in ''${DURATION}s"
@@ -607,7 +703,7 @@ let
       DOM=$(${date} +%-d)
 
       log() {
-        ${echo} "[$(${date} '+%H:%M:%S')] $*" | ${tee} -a "$LOG_FILE"
+        ${echo} "[$(${date} '+%H:%M:%S')] $*" | ${tee} -a "$LOG_FILE" >&2
       }
 
       if [ ! -d "$NOTES_DIR" ]; then
@@ -754,6 +850,7 @@ in
       # Allow agent-admins to access agent user dbus sockets for systemctl --user -M
       # systemd-logind creates /run/user/<uid> as 0700; we add an ACL so agent-admins
       # can traverse the directory and connect to the bus socket.
+      # For all defined agents.
       systemd.tmpfiles.rules = concatLists (mapAttrsToList (name: _:
         let
           username = "agent-${name}";
@@ -778,10 +875,15 @@ in
 
       # agentctl: unified CLI for managing agent services and mail.
       # Dispatches to the per-agent Nix store helper via sudo (no SETENV needed).
+      # All defined agents are manageable via agentctl.
       environment.systemPackages = let
         # Nix-generated static lookup: agent name -> helper store path
         agentHelperCases = concatStringsSep "\n" (mapAttrsToList (name: _:
           "          ${name}) HELPER=\"${agentSvcHelper name}\" ;;"
+        ) cfg);
+        # Nix-generated static lookup: agent name -> notes directory path
+        agentNotesCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
+          "          ${name}) NOTES_DIR=\"${agentCfg.notes.path}\" ;;"
         ) cfg);
         knownAgents = concatStringsSep ", " (attrNames cfg);
 
@@ -793,12 +895,16 @@ in
             echo "  <systemctl-verb>  Run systemctl --user as the agent (status, start, stop, ...)" >&2
             echo "  journalctl        Run journalctl --user as the agent" >&2
             echo "  exec              Run an arbitrary command as the agent" >&2
+            echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
+            echo "  claude            Start interactive Claude session in agent notes directory" >&2
             echo "  mail              Send structured email to the agent (via agent-mail)" >&2
             echo "" >&2
             echo "Examples:" >&2
             echo "  agentctl drago status agent-task-loop-drago" >&2
             echo "  agentctl drago journalctl -u agent-task-loop-drago -n 20" >&2
             echo "  agentctl drago exec himalaya envelope list --page-size 5" >&2
+            echo "  agentctl drago tasks" >&2
+            echo "  agentctl drago claude" >&2
             echo "  agentctl drago mail task --subject \"Fix CI pipeline\"" >&2
             exit 1
           fi
@@ -814,8 +920,88 @@ in
               ;;
           esac
 
+          # Static lookup — agent name -> notes directory
+          case "$AGENT_NAME" in
+  ${agentNotesCases}
+          esac
+
           CMD="$1"; shift
           case "$CMD" in
+            tasks)
+              TASKS_YAML=$(sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec cat "$NOTES_DIR/TASKS.yaml" 2>/dev/null)
+              if [ -z "$TASKS_YAML" ]; then
+                echo "No TASKS.yaml found in $NOTES_DIR" >&2
+                exit 1
+              fi
+              echo "$TASKS_YAML" | ${pkgs.python3}/bin/python3 << 'PYEOF'
+import sys, re
+
+lines = sys.stdin.read()
+
+# Simple YAML list-of-dicts parser for tasks: block
+tasks = []
+current = {}
+in_tasks = False
+for line in lines.splitlines():
+    if line.strip() == "tasks:":
+        in_tasks = True
+        continue
+    if not in_tasks:
+        continue
+    m = re.match(r"^\s+-\s+(\w+):\s*(.*)", line)
+    if m:
+        if current:
+            tasks.append(current)
+        current = {m.group(1): m.group(2).strip().strip('"').strip("'")}
+        continue
+    m = re.match(r"^\s+(\w+):\s*(.*)", line)
+    if m:
+        current[m.group(1)] = m.group(2).strip().strip('"').strip("'")
+if current:
+    tasks.append(current)
+
+if not tasks:
+    print("No tasks found.")
+    sys.exit(0)
+
+# Sort: pending/in_progress/blocked first, completed/error last
+order = {"in_progress": 0, "pending": 1, "blocked": 2, "error": 3, "completed": 4}
+tasks.sort(key=lambda t: order.get(t.get("status", ""), 5))
+
+# Status indicators
+icons = {"completed": "done", "in_progress": "run ", "pending": "wait", "blocked": "blkd", "error": "err "}
+
+# Calculate column widths
+hdr = ["#", "STATUS", "NAME", "PROJECT", "SOURCE", "MODEL", "DESCRIPTION"]
+rows = []
+for i, t in enumerate(tasks):
+    rows.append([
+        str(i + 1),
+        icons.get(t.get("status", ""), t.get("status", "")[:4]),
+        t.get("name", "")[:30],
+        t.get("project", "-")[:15],
+        t.get("source", "-")[:10],
+        t.get("model", "-")[:6],
+        t.get("description", "")[:50],
+    ])
+
+widths = [len(h) for h in hdr]
+for row in rows:
+    for j, cell in enumerate(row):
+        widths[j] = max(widths[j], len(cell))
+
+def fmt(row):
+    return "  ".join(cell.ljust(widths[j]) for j, cell in enumerate(row))
+
+print(fmt(hdr))
+print("  ".join("-" * w for w in widths))
+for row in rows:
+    print(fmt(row))
+PYEOF
+              ;;
+            claude)
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && nix develop --command claude --dangerously-skip-permissions $*"
+              ;;
             mail)
               exec agent-mail "$@" --to "''${AGENT_NAME}@${topDomain}"
               ;;
@@ -832,7 +1018,7 @@ in
           extraGroups = [ "agent-admins" ];
         }) config.keystone.os.users)
 
-        # Generate NixOS users for agents
+        # Generate NixOS users for all defined agents
         (mapAttrs' (
         name: agentCfg:
         let
@@ -862,6 +1048,7 @@ in
       # so human administrators can read agent home directories.
       # setgid (2xxx) ensures new files inherit agent-admins group.
       # Default ACL ensures new files get group write regardless of umask.
+      # For all defined agents.
       system.activationScripts.agent-home-permissions = {
         deps = [ "users" "groups" ];
         text = ''
@@ -1619,6 +1806,7 @@ in
               unitConfig.ConditionUser = username;
               serviceConfig = {
                 Type = "oneshot";
+                SyslogIdentifier = "sync-agent-notes-${name}";
                 ExecStart = builtins.concatStringsSep " " [
                   "${pkgs.keystone.repo-sync}/bin/repo-sync"
                   "--repo ${escapeShellArg agentCfg.notes.repo}"
@@ -1642,7 +1830,9 @@ in
               };
               serviceConfig = {
                 Type = "oneshot";
-                TimeoutStartSec = "30min";
+                TimeoutStartSec = "1h";
+                SyslogIdentifier = "agent-task-loop-${name}";
+                LogRateLimitIntervalSec = 0;
               };
               script = ''
                 exec ${agentTaskLoopScript name agentCfg}
@@ -1655,6 +1845,7 @@ in
               path = [ pkgs.yq-go pkgs.coreutils pkgs.gnugrep ];
               serviceConfig = {
                 Type = "oneshot";
+                SyslogIdentifier = "agent-scheduler-${name}";
               };
               script = ''
                 exec ${agentSchedulerScript name agentCfg}
@@ -1752,6 +1943,26 @@ in
                   then agentCfg.email
                   else "${username}@${if topDomain != null then topDomain else "localhost"}";
                 baseUrl = if topDomain != null then "https://vaultwarden.${topDomain}" else "";
+                # Agents are unattended — use a custom pinentry that reads the master
+                # password from the agenix secret instead of prompting interactively.
+                pinentry = pkgs.writeShellScriptBin "rbw-pinentry-agenix" ''
+                  echo "OK Pleased to meet you"
+                  while IFS= read -r line; do
+                    case "$line" in
+                      GETPIN)
+                        printf "D %s\n" "$(tr -d '\n' < /run/agenix/agent-${name}-bitwarden-password)"
+                        echo "OK"
+                        ;;
+                      BYE)
+                        echo "OK closing connection"
+                        exit 0
+                        ;;
+                      *)
+                        echo "OK"
+                        ;;
+                    esac
+                  done
+                '';
               };
             };
 
