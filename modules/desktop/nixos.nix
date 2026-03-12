@@ -73,11 +73,16 @@ in
       portalPackage = mkDefault pkgs.xdg-desktop-portal-hyprland; # Use stable nixpkgs version to fix Qt version mismatch
     };
 
-    # Greetd display manager with auto-login to hyprlock
+    # Greetd display manager with auto-login to Hyprland
+    # CRITICAL: XDG_SESSION_CLASS=user must be in the command environment so pam_systemd.so
+    # sees it before registering the logind session. The PAM class= argument alone is not
+    # sufficient — pam_systemd gives XDG_SESSION_CLASS env var highest precedence.
+    # Without this, the session registers as Class=greeter on seat0, causing polkit's
+    # allow_active=yes policy to deny access — breaking pcscd, YubiKey PIV, and power management.
     services.greetd = mkIf cfg.greetd.enable {
       enable = mkDefault true;
       settings.default_session = {
-        command = mkDefault "uwsm start -F Hyprland";
+        command = mkDefault "env XDG_SESSION_CLASS=user uwsm start -F Hyprland";
         user = cfg.user;
       };
     };
@@ -86,9 +91,8 @@ in
     # This enables loginctl lock-session to work properly
     security.pam.services.greetd.rules.session.systemd.settings = mkIf cfg.greetd.enable {
       type = "wayland";
-      # Setting the session class to 'user' explicitly tells logind that this is a regular user session,
-      # which enables proper lock screen support. Without this, logind might classify the session
-      # as a 'greeter' (login screen), preventing 'loginctl lock-session' from working.
+      # Belt-and-suspenders: also set class=user in PAM for any code path that doesn't
+      # inherit the env var. The env var takes precedence per pam_systemd docs.
       class = "user";
     };
 
