@@ -21,6 +21,7 @@ mod input;
 mod nix;
 mod repo;
 mod screens;
+mod system;
 mod template;
 mod ui;
 
@@ -77,9 +78,11 @@ async fn run_app<B: Backend>(
     app: &mut App,
 ) -> Result<()> {
     loop {
-        // Poll build screen for new output before rendering
-        if let AppScreen::Build(ref mut build) = app.current_screen {
-            build.poll();
+        // Poll active screens for async updates before rendering
+        match &mut app.current_screen {
+            AppScreen::Build(ref mut build) => build.poll(),
+            AppScreen::Hosts(ref mut hosts) => hosts.poll(),
+            _ => {}
         }
 
         terminal.draw(|frame| {
