@@ -205,22 +205,38 @@ keystone.terminal.ageYubikey = {
 
 ### 4. Re-key All Secrets
 
+Use `hwrekey` to re-encrypt all secrets and handle the submodule workflow automatically:
+
+```bash
+cd agenix-secrets
+hwrekey
+```
+
+This runs the full workflow:
+1. `agenix --rekey` using your YubiKey identity (touch prompt per secret, no SSH password)
+2. Commits and pushes the rekeyed secrets in the submodule
+3. Runs `nix flake update <secretsFlakeInput>` in the parent repo
+4. Commits the submodule pointer + `flake.lock` together in the parent repo
+
+`hwrekey` is provided by `keystone.terminal.ageYubikey` — see the [Terminal Module](terminal.md#hwrekey---secrets-rekeying) docs for configuration.
+
+If you prefer the manual workflow:
+
 ```bash
 cd agenix-secrets
 agenix -r
+git add -A && git commit -m "chore: rekey secrets" && git push
+cd ..
+nix flake update agenix-secrets
+git add agenix-secrets flake.lock
+git commit -m "chore: update agenix-secrets (rekey)"
 ```
-
-This re-encrypts every secret for the updated set of public keys. Requires YubiKey touch for each secret.
 
 ### 5. Commit and Rebuild
 
 ```bash
-# In agenix-secrets
-git add -A && git commit -m "enroll new YubiKey: <serial> (<role>)"
-git push
-
-# In nixos-config
-git add agenix-secrets modules/ home-manager/
+# In nixos-config (if not already committed by hwrekey)
+git add modules/ home-manager/
 git commit -m "enroll new YubiKey: <serial>"
 
 # Rebuild
