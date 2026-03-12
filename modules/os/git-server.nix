@@ -24,6 +24,10 @@
 }:
 with lib; let
   cfg = config.keystone.os.gitServer;
+
+  # Agents that want git provisioning on this host (where Forgejo runs)
+  provisionAgents = filterAttrs (_: a: a.git.provision) config.keystone.os.agents;
+  hasProvisionAgents = provisionAgents != { };
 in {
   options.keystone.os.gitServer = {
     enable = mkEnableOption "Git server with Forgejo (self-hosted Gitea fork)";
@@ -228,5 +232,105 @@ in {
       forgejo
       git
     ];
+
+    # Auto-provision Forgejo users and repos for agents with git.provision = true.
+    # Uses `forgejo admin` CLI for user creation (must run as the forgejo system
+    # user — hence sudo -u) and the local API with a short-lived token for SSH
+    # keys and repos. The token is scoped to the agent's own user (--username),
+    # not the global admin. The --raw flag outputs just the token string.
+    systemd.services = mkIf hasProvisionAgents (mapAttrs' (name: agentCfg:
+      let
+        username = agentCfg.git.username;
+        email = if agentCfg.email != null
+          then agentCfg.email
+          else "agent-${name}@${config.keystone.domain}";
+        repoName = agentCfg.git.repoName;
+        apiUrl = "http://127.0.0.1:${toString cfg.httpPort}/api/v1";
+        forgejoUser = config.services.forgejo.user;
+      in
+      nameValuePair "provision-agent-git-${name}" {
+        description = "Provision Forgejo user and repo for agent-${name}";
+        after = [ "forgejo.service" ];
+        requires = [ "forgejo.service" ];
+        wantedBy = [ "multi-user.target" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+
+        path = [ pkgs.forgejo pkgs.curl pkgs.jq pkgs.coreutils pkgs.sudo ];
+
+        script = ''
+          set -euo pipefail
+
+          FORGEJO="sudo -u ${forgejoUser} forgejo admin"
+          API="${apiUrl}"
+
+          # --- User provisioning (via CLI, no token needed) ---
+          if $FORGEJO user list --admin 2>/dev/null | grep -q "^.*\b${username}\b"; then
+            echo "${username}: Forgejo user already exists"
+          else
+            echo "${username}: Creating Forgejo user..."
+            RAND_PASS=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
+            $FORGEJO user create \
+              --username "${username}" \
+              --email "${email}" \
+              --password "$RAND_PASS" \
+              --must-change-password=false
+            echo "${username}: Forgejo user created"
+          fi
+
+          # --- Create short-lived admin token for API operations ---
+          TOKEN=$($FORGEJO user generate-access-token \
+            --username "${username}" \
+            --token-name "provision-$(date +%s)" \
+            --scopes "write:user,write:repository,write:admin" \
+            --raw 2>/dev/null || true)
+
+          if [ -z "$TOKEN" ]; then
+            echo "${username}: Could not generate API token, skipping SSH key and repo provisioning"
+            exit 0
+          fi
+          AUTH="Authorization: token $TOKEN"
+
+          # --- SSH key provisioning ---
+          ${optionalString (agentCfg.ssh.publicKey != null) ''
+            EXISTING_KEYS=$(curl -sf -H "$AUTH" "$API/users/${username}/keys" | jq length)
+            if [ "$EXISTING_KEYS" -gt 0 ]; then
+              echo "${username}: SSH key already registered, skipping"
+            else
+              echo "${username}: Adding SSH public key..."
+              curl -sf -H "$AUTH" "$API/admin/users/${username}/keys" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -n \
+                  --arg title "agent-${name}" \
+                  --arg key ${escapeShellArg agentCfg.ssh.publicKey} \
+                  '{title: $title, key: $key}')"
+              echo "${username}: SSH key added"
+            fi
+          ''}
+
+          # --- Repo provisioning ---
+          REPO_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "$AUTH" "$API/repos/${username}/${repoName}")
+
+          if [ "$REPO_STATUS" = "200" ]; then
+            echo "${username}: Repo ${repoName} already exists"
+          else
+            echo "${username}: Creating repo ${repoName}..."
+            curl -sf -H "$AUTH" "$API/admin/users/${username}/repos" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n \
+                --arg name "${repoName}" \
+                --arg desc "Notes and task workspace for agent-${name}" \
+                '{name: $name, description: $desc, private: true, auto_init: true}')"
+            echo "${username}: Repo ${repoName} created"
+          fi
+
+          echo "${username}: Forgejo provisioning complete"
+        '';
+      }
+    ) provisionAgents);
   };
 }

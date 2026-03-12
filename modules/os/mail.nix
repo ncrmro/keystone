@@ -52,6 +52,11 @@
 with lib;
 let
   cfg = config.keystone.os.mail;
+  topDomain = config.keystone.domain;
+
+  # Agents that want mail provisioning on this host (where Stalwart runs)
+  provisionAgents = filterAttrs (_: a: a.mail.provision) config.keystone.os.agents;
+  hasProvisionAgents = provisionAgents != { };
 in
 {
   options.keystone.os.mail = {
@@ -200,5 +205,87 @@ in
         993 # IMAPS
       ];
     };
+
+    # Auto-provision Stalwart mail accounts for agents with mail.provision = true
+    assertions = mkIf hasProvisionAgents (
+      [
+        {
+          assertion = config.age.secrets ? "stalwart-admin-password";
+          message = "Agent mail provisioning requires agenix secret 'stalwart-admin-password' for Stalwart admin API access.";
+        }
+      ] ++ (mapAttrsToList (name: _: {
+        assertion = config.age.secrets ? "agent-${name}-mail-password";
+        message = ''
+          Agent '${name}' has mail.provision = true but agenix secret "agent-${name}-mail-password" is not declared.
+          This secret must contain the plaintext password for the agent's Stalwart account.
+        '';
+      }) provisionAgents)
+    );
+
+    # Idempotent: GET /api/principal/{name} → 200 means account exists, skip.
+    # NOTE: The systemd unit is "stalwart.service" (not "stalwart-mail.service").
+    # The admin password secret may be a SHA-512 hash ($6$...) — Stalwart
+    # accepts hashed passwords in HTTP basic auth, so provisioning still works.
+    systemd.services = mkIf hasProvisionAgents (mapAttrs' (name: agentCfg:
+      let
+        username = "agent-${name}";
+        mailAddr =
+          if agentCfg.mail.address != null then agentCfg.mail.address
+          else "${username}@${topDomain}";
+        adminPasswordPath = "/run/agenix/stalwart-admin-password";
+        agentPasswordPath = "/run/agenix/${username}-mail-password";
+      in
+      nameValuePair "provision-agent-mail-${name}" {
+        description = "Provision Stalwart mail account for ${username}";
+        after = [ "stalwart.service" ];
+        requires = [ "stalwart.service" ];
+        wantedBy = [ "multi-user.target" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+
+        path = [ pkgs.curl pkgs.jq ];
+
+        script = ''
+          set -euo pipefail
+
+          ADMIN_PASS=$(cat ${adminPasswordPath})
+          AGENT_PASS=$(tr -d '\n' < ${agentPasswordPath})
+          API="http://127.0.0.1:8082/api"
+
+          # Check if account already exists
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -u "admin:$ADMIN_PASS" \
+            "$API/principal/${username}")
+
+          if [ "$STATUS" = "200" ]; then
+            echo "${username}: Stalwart account already exists, skipping creation"
+            exit 0
+          fi
+
+          echo "${username}: Creating Stalwart mail account..."
+
+          # Create the account
+          curl -sf -u "admin:$ADMIN_PASS" \
+            "$API/principal" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg name "${username}" \
+              --arg pass "$AGENT_PASS" \
+              --arg email "${mailAddr}" \
+              '{type: "individual", name: $name, secrets: [$pass], emails: [$email]}')"
+
+          # Set role to user
+          curl -sf -u "admin:$ADMIN_PASS" \
+            "$API/principal/${username}" -X PATCH \
+            -H "Content-Type: application/json" \
+            -d '[{"action":"set","field":"roles","value":["user"]}]'
+
+          echo "${username}: Stalwart mail account created successfully"
+        '';
+      }
+    ) provisionAgents);
   };
 }
