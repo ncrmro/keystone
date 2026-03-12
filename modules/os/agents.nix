@@ -1830,6 +1830,9 @@ PYEOF
               };
               serviceConfig = {
                 Type = "oneshot";
+                # Agent tasks (e.g. Claude) can run for extended periods; the
+                # default 90s timeout would SIGKILL mid-execution, and flock
+                # handles concurrency so the timer safely skips overlapping runs.
                 TimeoutStartSec = "1h";
                 SyslogIdentifier = "agent-task-loop-${name}";
                 LogRateLimitIntervalSec = 0;
