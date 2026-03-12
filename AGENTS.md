@@ -507,6 +507,46 @@ modules/os/
 └── scripts/              # Enrollment and provisioning scripts
 ```
 
+### Agent Environment Architecture
+
+OS agents provisioned via `keystone.os.agents` receive the **full `keystone.terminal` environment** through home-manager — the same shell, editor, and tooling as human keystone users. This is intentional: agents should not have a degraded or divergent environment.
+
+Key principles:
+
+- **Single source of truth**: `keystone.terminal` is the canonical module for a keystone user's terminal environment. Agents use it via the home-manager block in `agents.nix` (imports `../terminal/default.nix`).
+- **Mail via `keystone.terminal.mail`**: All agents with `terminal.enable = true` automatically get `keystone.terminal.mail` enabled in the home-manager block, which provides both the `himalaya` binary in PATH and the config file via `xdg.configFile`.
+- **No cherry-picking**: Don't extract individual pieces from `keystone.terminal` into activation scripts. If a capability exists in the terminal module, enable it there.
+
+### agentctl CLI
+
+`agentctl` is the unified CLI for managing agent services, running diagnostics, and sending mail. It dispatches to per-agent Nix store helpers via sudo.
+
+**Usage:** `agentctl <agent-name> <command> [args...]`
+
+| Command | Description |
+|---------|-------------|
+| `<systemctl-verb>` | Run `systemctl --user` as the agent (status, start, stop, restart, etc.) |
+| `journalctl` | Run `journalctl --user` as the agent |
+| `exec` | Run an arbitrary command as the agent (for diagnostics) |
+| `mail` | Send structured email to the agent (via `agent-mail`) |
+
+**Examples:**
+```bash
+# Service management
+agentctl drago status agent-task-loop-drago
+agentctl drago restart agent-task-loop-drago
+
+# Logs
+agentctl drago journalctl -u agent-task-loop-drago -n 20
+
+# Run commands as agent (diagnostics)
+agentctl drago exec which himalaya
+agentctl drago exec himalaya envelope list --page-size 5
+
+# Send mail
+agentctl drago mail task --subject "Fix CI pipeline"
+```
+
 ### Storage Configuration
 - Always uses "rpool" as the ZFS pool name
 - Supports multiple disks with modes: single, mirror, stripe, raidz1/2/3

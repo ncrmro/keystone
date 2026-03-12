@@ -178,6 +178,25 @@ Secrets:
 - The system SHOULD define alert rules for suspicious patterns (e.g., credential access spikes, unexpected network egress)
 - A NixOS assertion MUST prevent disabling audit logging when any agent is enabled
 
+#### Operational Logging — Journal & Loki Integration
+
+Task loop output (Claude subprocess stdout/stderr) is piped to both the log file and systemd journal via `tee >&2`. This makes agent run output queryable in `journalctl` and Loki without losing the existing file-based logs.
+
+**Structured log tags**: The `log()` helper prefixes messages with `[step=X]` and optionally `[task=Y]` tags. Steps are: `init`, `prefetch`, `ingest`, `prioritize`, `execute`, `summary`.
+
+**SyslogIdentifier convention**: Each agent service sets `SyslogIdentifier` for journal filtering:
+- `agent-task-loop-{name}` — autonomous task loop
+- `agent-scheduler-{name}` — daily scheduler
+- `sync-agent-notes-{name}` — notes sync
+
+**Loki label schema** (via Alloy pipeline):
+- `agent` label — extracted from SyslogIdentifier (e.g., `drago`)
+- `agent_step` label — extracted from `[step=X]` log tag
+- `user_unit` label — systemd user unit name
+- `task` structured metadata — extracted from `[task=Y]` log tag (high cardinality, not a label)
+
+**Rate limiting**: `LogRateLimitIntervalSec = 0` on the task-loop service prevents journal rate limiting from dropping Claude output.
+
 ### FR-012: Security Testing — Isolation Verification
 
 - The system MUST include a NixOS VM test that provisions 2+ agents and verifies:
