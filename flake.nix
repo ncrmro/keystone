@@ -166,12 +166,16 @@
       # Shared domain option (keystone.domain) — used by OS agents and server services
       domain = ./modules/domain.nix;
 
+      # Shared mail host option (keystone.mail.host) — declares which host runs Stalwart
+      mail = ./modules/mail.nix;
+
       # Core OS module - storage, secure boot, TPM, remote unlock, users, services
       operating-system = {
         imports = [
           disko.nixosModules.disko
           lanzaboote.nixosModules.lanzaboote
           ./modules/domain.nix
+          ./modules/mail.nix
           ./modules/os
         ];
       };
@@ -189,6 +193,7 @@
       server = {
         imports = [
           ./modules/domain.nix
+          ./modules/mail.nix
           ./modules/server
         ];
       };

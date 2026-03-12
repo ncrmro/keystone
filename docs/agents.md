@@ -29,7 +29,13 @@ agentctl <agent-name> <command> [args...]
 | `show`, `cat`, `is-active`, `is-enabled`, `is-failed` | Inspect service state |
 | `daemon-reload`, `reset-failed` | Reload/reset agent service manager |
 | `journalctl` | View agent user service logs |
+| `exec` | Run an arbitrary command as the agent (diagnostics) |
+| `tasks` | Show agent tasks in a table (pending/in_progress first) |
+| `email` | Show the agent's inbox (recent envelopes) |
+| `claude` | Start interactive Claude session in agent notes directory |
 | `mail` | Send structured email to the agent |
+| `vnc` | Open remote-viewer to the agent's VNC desktop |
+| `provision` | Generate SSH keypair, mail password, and agenix secrets |
 
 **Examples**:
 
@@ -38,7 +44,11 @@ agentctl drago status agent-task-loop-drago
 agentctl drago journalctl -u agent-task-loop-drago -n 20
 agentctl drago restart agent-task-loop-drago
 agentctl drago list-timers
+agentctl drago tasks
+agentctl drago email
 agentctl drago mail task --subject "Fix CI pipeline"
+agentctl drago provision                  # full flow incl. hwrekey
+agentctl drago provision --skip-rekey     # skip hwrekey at end
 ```
 
 **Security model**: agentctl dispatches through a per-agent Nix-generated helper script that is the sole sudoers target. The helper hardcodes `XDG_RUNTIME_DIR` internally (no `SETENV` needed) and rejects dangerous systemctl verbs (`edit`, `set-environment`, `import-environment`). See the `SECURITY:` comment in `modules/os/agents.nix` for the full threat model.

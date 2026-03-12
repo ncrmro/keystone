@@ -192,13 +192,20 @@ agentctl <agent-name> <command> [args...]
 | `status`, `start`, `stop`, `restart` | `systemctl --user` as the agent |
 | `journalctl` | `journalctl --user` as the agent |
 | `exec` | Run arbitrary command as the agent (diagnostics) |
+| `tasks` | Show agent tasks table (pending/in_progress first) |
+| `email` | Show the agent's inbox (recent envelopes) |
+| `claude` | Start interactive Claude session in agent notes dir |
 | `mail` | Send structured email via `agent-mail` |
+| `vnc` | Open remote-viewer to the agent's VNC desktop |
+| `provision` | Generate SSH keypair, mail password, and agenix secrets |
 
 ```bash
 agentctl drago status agent-task-loop-drago
 agentctl drago journalctl -u agent-task-loop-drago -n 20
 agentctl drago exec which himalaya
 agentctl drago mail task --subject "Fix CI pipeline"
+agentctl drago provision                  # full flow incl. hwrekey
+agentctl drago provision --skip-rekey     # skip hwrekey at end
 ```
 
 **SECURITY**: Per-agent helper scripts hardcode `XDG_RUNTIME_DIR` and allowlist safe systemctl verbs to prevent LD_PRELOAD injection.
@@ -250,7 +257,7 @@ keystone.hardwareKey = {
 | Eternal Terminal | `keystone.os.services.eternalTerminal` | Persistent sessions surviving network changes (port 2022, tailscale-only) |
 | AirPlay | `keystone.os.services.airplay` | Shairport Sync receiver |
 | systemd-resolved | `keystone.os.services.resolved` | DNS resolution for Tailscale MagicDNS |
-| Mail | `keystone.mail` | Stalwart mail server with agent provisioning |
+| Mail | `keystone.mail.host` | Stalwart mail server (auto-enables on matching host) |
 | Git Server | `keystone.os.gitServer` | Forgejo with agent repo provisioning |
 
 ## Terminal Module (`modules/terminal/`)
@@ -729,6 +736,7 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 | hardwareKey | `keystone.nixosModules.hardwareKey` | YubiKey/FIDO2 support |
 | isoInstaller | `keystone.nixosModules.isoInstaller` | Bootable installer |
 | domain | `keystone.nixosModules.domain` | Shared keystone.domain option |
+| mail | `keystone.nixosModules.mail` | Shared keystone.mail.host option (mail server host) |
 
 ### Home-Manager Modules
 
@@ -742,6 +750,7 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 | Option | Description |
 |--------|-------------|
 | `keystone.domain` | Shared TLD for services + agents |
+| `keystone.mail.host` | Hostname of mail server (auto-enables Stalwart) |
 | `keystone.terminal.enable` | Enable terminal tools (zsh, starship, zellij, helix) |
 | `keystone.terminal.git.userName/userEmail` | Required git config |
 | `keystone.desktop.enable` | Enable desktop environment |
