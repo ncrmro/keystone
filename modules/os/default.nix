@@ -377,21 +377,29 @@ in {
 
     # Nix configuration
     nix = {
-      gc = {
-        automatic = mkOption {
+      optimiseStore = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable automatic Nix store optimisation (deduplication)";
+      };
+
+      nh = {
+        enable = mkOption {
           type = types.bool;
           default = true;
-          description = "Enable automatic Nix garbage collection";
+          description = "Enable nh for intelligent generation pruning";
         };
-        dates = mkOption {
-          type = types.str;
-          default = "weekly";
-          description = "Schedule for garbage collection";
-        };
-        options = mkOption {
-          type = types.str;
-          default = "--delete-older-than 30d";
-          description = "Options passed to nix-collect-garbage";
+        clean = {
+          keepSince = mkOption {
+            type = types.str;
+            default = "30d";
+            description = "Keep generations newer than this duration";
+          };
+          keepGenerations = mkOption {
+            type = types.int;
+            default = 10;
+            description = "Always keep at least this many generations";
+          };
         };
       };
 
@@ -501,11 +509,17 @@ in {
 
     # Nix configuration
     nix.settings.experimental-features = mkIf cfg.nix.flakes ["nix-command" "flakes"];
+    nix.settings.auto-optimise-store = cfg.nix.optimiseStore;
 
-    nix.gc = mkIf cfg.nix.gc.automatic {
-      automatic = true;
-      dates = cfg.nix.gc.dates;
-      options = cfg.nix.gc.options;
+    # nh clean replaces nix.gc with generation-count awareness:
+    # nix.gc only prunes by age, so a burst of rebuilds can leave zero rollback
+    # generations. nh always retains keepGenerations regardless of age.
+    programs.nh = mkIf cfg.nix.nh.enable {
+      enable = true;
+      clean = {
+        enable = true;
+        extraArgs = "--keep-since ${cfg.nix.nh.clean.keepSince} --keep ${toString cfg.nix.nh.clean.keepGenerations}";
+      };
     };
 
     # Locale defaults
