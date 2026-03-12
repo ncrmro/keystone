@@ -232,7 +232,7 @@ pub fn match_hosts_to_peers(
 ) -> Vec<HostStatus> {
     let local_hostname = detect_local_hostname();
 
-    hosts
+    let mut statuses: Vec<HostStatus> = hosts
         .iter()
         .map(|host| {
             let tailscale = ts.and_then(|status| {
@@ -252,7 +252,13 @@ pub fn match_hosts_to_peers(
                 is_local,
             }
         })
-        .collect()
+        .collect();
+
+    // Sort local host first so the dashboard defaults to showing its metrics.
+    // stable sort preserves the original flake ordering among non-local hosts.
+    // !is_local: false (0) sorts before true (1), putting local host at index 0.
+    statuses.sort_by_key(|s| !s.is_local);
+    statuses
 }
 
 /// Get the local machine's hostname.
