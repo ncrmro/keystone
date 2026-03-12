@@ -27,6 +27,8 @@
 # hwrekey                                    # rekey only (no secretsFlakeInput set)
 # hwrekey -h                                 # show usage
 # ```
+#
+# Also called by `agentctl <name> provision` to rekey after creating agent secrets.
 {
   config,
   lib,

@@ -938,6 +938,12 @@ in
         agentHostCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
           "          ${name}) AGENT_HOST=\"${toString agentCfg.host}\" ;;"
         ) cfg);
+        # Nix-generated static lookup: agent name -> provision metadata
+        # Bakes agent host, mail.provision flag, and mail server host into the script.
+        mailHost = if config.keystone.mail.host != null then config.keystone.mail.host else "";
+        agentProvisionCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
+          "          ${name}) PROVISION_AGENT_HOST=\"${toString agentCfg.host}\"; MAIL_PROVISION=${boolToString agentCfg.mail.provision} ;;"
+        ) cfg);
         knownAgents = concatStringsSep ", " (attrNames cfg);
 
         # Render TASKS.yaml as a sorted table (pending/in_progress first, completed last)
@@ -1019,6 +1025,7 @@ in
             echo "  claude            Start interactive Claude session in agent notes directory" >&2
             echo "  mail              Send structured email to the agent (via agent-mail)" >&2
             echo "  vnc               Open remote-viewer to the agent's VNC desktop" >&2
+            echo "  provision         Generate SSH keypair, mail password, and agenix secrets" >&2
             echo "" >&2
             echo "Examples:" >&2
             echo "  agentctl drago status agent-task-loop-drago" >&2
@@ -1028,6 +1035,8 @@ in
             echo "  agentctl drago claude" >&2
             echo "  agentctl drago vnc" >&2
             echo "  agentctl drago mail task --subject \"Fix CI pipeline\"" >&2
+            echo "  agentctl drago provision                     # full flow incl. hwrekey" >&2
+            echo "  agentctl drago provision --skip-rekey        # skip hwrekey at end" >&2
             exit 1
           fi
           AGENT_NAME="$1"; shift
@@ -1063,8 +1072,9 @@ in
 
           # Remote dispatch: forward non-local commands via ET over Tailscale.
           # VNC is excluded — it runs locally and connects to the remote host directly.
+          # Provision is excluded — it modifies the local agenix-secrets repo.
           if [ -n "$AGENT_HOST" ] && [ "$AGENT_HOST" != "$THIS_HOST" ]; then
-            if [ "$1" != "vnc" ]; then
+            if [ "$1" != "vnc" ] && [ "$1" != "provision" ]; then
               exec ${pkgs.eternal-terminal}/bin/et "$AGENT_HOST" -c "agentctl $AGENT_NAME $*"
             fi
           fi
@@ -1087,6 +1097,172 @@ in
               ;;
             mail)
               exec agent-mail "$@" --to "''${AGENT_NAME}@${topDomain}"
+              ;;
+            provision)
+              # Resolve provision metadata (compiled-in)
+              PROVISION_AGENT_HOST=""
+              MAIL_PROVISION=false
+              case "$AGENT_NAME" in
+  ${agentProvisionCases}
+              esac
+              MAIL_HOST="${mailHost}"
+
+              # Parse flags
+              SKIP_REKEY=false
+              for arg in "$@"; do
+                case "$arg" in
+                  --skip-rekey) SKIP_REKEY=true ;;
+                  *) echo "Error: unknown provision flag '$arg'" >&2; exit 1 ;;
+                esac
+              done
+
+              USERNAME="agent-''${AGENT_NAME}"
+
+              # Find secrets directory (same convention as hwrekey)
+              NIXOS_CONFIG_DIR="''${NIXOS_CONFIG_DIR:-$HOME/nixos-config}"
+              SECRETS_DIR="$NIXOS_CONFIG_DIR/agenix-secrets"
+              if [ ! -d "$SECRETS_DIR" ]; then
+                echo "Error: secrets directory not found: $SECRETS_DIR" >&2
+                echo "Set NIXOS_CONFIG_DIR to your nixos-config checkout." >&2
+                exit 1
+              fi
+
+              TMPDIR=$(${pkgs.coreutils}/bin/mktemp -d)
+              trap '${pkgs.coreutils}/bin/rm -rf "$TMPDIR"' EXIT
+
+              echo "==> Provisioning secrets for $USERNAME"
+
+              # --- Step 1: Generate SSH keypair ---
+              SSH_KEY="$TMPDIR/ssh-key"
+              SSH_PASSPHRASE=$(${pkgs.openssl}/bin/openssl rand -base64 32)
+              echo -n "$SSH_PASSPHRASE" > "$TMPDIR/ssh-passphrase"
+              ${pkgs.openssh}/bin/ssh-keygen -t ed25519 -C "$USERNAME" \
+                -f "$SSH_KEY" -N "$SSH_PASSPHRASE" -q
+              echo "==> Generated SSH keypair"
+              echo "    Public key: $(cat "$SSH_KEY.pub")"
+
+              # --- Step 2: Generate mail password (if mail.provision) ---
+              if [ "$MAIL_PROVISION" = "true" ]; then
+                MAIL_PASSWORD=$(${pkgs.openssl}/bin/openssl rand -base64 24)
+                echo -n "$MAIL_PASSWORD" > "$TMPDIR/mail-password"
+                echo "==> Generated mail password"
+              fi
+
+              # --- Step 3: Insert entries into secrets.nix ---
+              SECRETS_NIX="$SECRETS_DIR/secrets.nix"
+              if [ ! -f "$SECRETS_NIX" ]; then
+                echo "Error: $SECRETS_NIX not found" >&2
+                exit 1
+              fi
+
+              # Helper: add entry before the final closing brace if not already present
+              add_secret() {
+                local SECRET_NAME="$1"
+                local RECIPIENTS="$2"
+                if ${pkgs.gnugrep}/bin/grep -q "\"$SECRET_NAME\"" "$SECRETS_NIX"; then
+                  echo "    $SECRET_NAME already exists in secrets.nix, skipping"
+                else
+                  # Insert before the last closing brace
+                  ${pkgs.gnused}/bin/sed -i "/^}$/i\\\\  \"$SECRET_NAME\".publicKeys = $RECIPIENTS;" "$SECRETS_NIX"
+                  echo "    Added $SECRET_NAME to secrets.nix"
+                fi
+              }
+
+              # Determine recipient expression pieces
+              # Agent host system key (for himalaya client / ssh-agent)
+              AGENT_HOST_EXPR="systems.''${PROVISION_AGENT_HOST}"
+              # Mail server host system key (for Stalwart provisioning)
+              MAIL_HOST_EXPR=""
+              if [ -n "$MAIL_HOST" ] && [ "$MAIL_HOST" != "$PROVISION_AGENT_HOST" ]; then
+                MAIL_HOST_EXPR="systems.''${MAIL_HOST}"
+              fi
+
+              # SSH key secret: needs admin keys + agent's host
+              add_secret "secrets/$USERNAME-ssh-key.age" \
+                "adminKeys ++ [ $AGENT_HOST_EXPR ]"
+
+              # SSH passphrase: same recipients as SSH key
+              add_secret "secrets/$USERNAME-ssh-passphrase.age" \
+                "adminKeys ++ [ $AGENT_HOST_EXPR ]"
+
+              # Mail password: needs admin keys + agent's host + mail server host
+              if [ "$MAIL_PROVISION" = "true" ]; then
+                if [ -n "$MAIL_HOST_EXPR" ]; then
+                  add_secret "secrets/$USERNAME-mail-password.age" \
+                    "adminKeys ++ [ $AGENT_HOST_EXPR $MAIL_HOST_EXPR ]"
+                else
+                  add_secret "secrets/$USERNAME-mail-password.age" \
+                    "adminKeys ++ [ $AGENT_HOST_EXPR ]"
+                fi
+              fi
+
+              # --- Step 4: Validate secrets.nix ---
+              echo "==> Validating secrets.nix..."
+              if ! ${pkgs.nix}/bin/nix eval --file "$SECRETS_NIX" --json > /dev/null 2>&1; then
+                echo "Error: secrets.nix is invalid after modification!" >&2
+                echo "Please fix manually: $SECRETS_NIX" >&2
+                exit 1
+              fi
+              echo "    secrets.nix is valid"
+
+              # --- Step 5: Create .age files ---
+              echo "==> Creating .age secret files..."
+              cd "$SECRETS_DIR"
+
+              create_age_secret() {
+                local SECRET_PATH="$1"
+                local VALUE_FILE="$2"
+                if [ -f "$SECRET_PATH" ]; then
+                  echo "    $SECRET_PATH already exists, skipping"
+                else
+                  EDITOR="cp $VALUE_FILE" agenix -e "$SECRET_PATH"
+                  echo "    Created $SECRET_PATH"
+                fi
+              }
+
+              create_age_secret "secrets/$USERNAME-ssh-key.age" "$SSH_KEY"
+              create_age_secret "secrets/$USERNAME-ssh-passphrase.age" "$TMPDIR/ssh-passphrase"
+              if [ "$MAIL_PROVISION" = "true" ]; then
+                create_age_secret "secrets/$USERNAME-mail-password.age" "$TMPDIR/mail-password"
+              fi
+
+              # --- Step 6: Print snippets for nixos-config ---
+              echo ""
+              echo "==> SSH public key (add to agent-identities.nix):"
+              echo "    ssh.publicKey = \"$(cat "$SSH_KEY.pub")\";"
+              echo ""
+              echo "==> Agenix declarations (add to host config):"
+              echo "    age.secrets.$USERNAME-ssh-key = {"
+              echo "      file = \"\''${inputs.agenix-secrets}/secrets/$USERNAME-ssh-key.age\";"
+              echo "      owner = \"$USERNAME\";"
+              echo "      mode = \"0400\";"
+              echo "    };"
+              echo "    age.secrets.$USERNAME-ssh-passphrase = {"
+              echo "      file = \"\''${inputs.agenix-secrets}/secrets/$USERNAME-ssh-passphrase.age\";"
+              echo "      owner = \"$USERNAME\";"
+              echo "      mode = \"0400\";"
+              echo "    };"
+              if [ "$MAIL_PROVISION" = "true" ]; then
+                echo "    age.secrets.$USERNAME-mail-password = {"
+                echo "      file = \"\''${inputs.agenix-secrets}/secrets/$USERNAME-mail-password.age\";"
+                echo "      owner = \"$USERNAME\";"
+                echo "      mode = \"0400\";"
+                echo "    };"
+              fi
+
+              # --- Step 7: hwrekey (unless --skip-rekey) ---
+              if [ "$SKIP_REKEY" = "true" ]; then
+                echo ""
+                echo "==> Skipping hwrekey (--skip-rekey). Run manually:"
+                echo "    hwrekey -m \"provision: create $USERNAME secrets\""
+              else
+                echo ""
+                echo "==> Running hwrekey..."
+                hwrekey -m "provision: create $USERNAME secrets"
+              fi
+
+              echo ""
+              echo "==> Provisioning complete for $USERNAME"
               ;;
             vnc)
               if [ -z "$VNC_PORT" ]; then

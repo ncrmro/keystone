@@ -67,8 +67,6 @@ let
 in
 {
   options.keystone.os.mail = {
-    enable = mkEnableOption "Keystone Mail Server (Stalwart)";
-
     allowedIps = mkOption {
       type = types.listOf types.str;
       default = [ ];
@@ -80,7 +78,10 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
+  # Auto-enable when keystone.mail.host matches this machine's hostname.
+  # No manual `enable = true` needed — just set keystone.mail.host once.
+  config = mkIf (config.keystone.mail.host != null
+              && config.keystone.mail.host == config.networking.hostName) {
     services.stalwart-mail = {
       enable = true;
       package = pkgs.stalwart-mail;
