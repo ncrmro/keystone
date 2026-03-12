@@ -50,6 +50,12 @@ in
       description = "Vaultwarden server URL (leave empty for official Bitwarden)";
       example = "https://vaultwarden.example.com";
     };
+
+    pinentry = mkOption {
+      type = types.package;
+      default = pkgs.pinentry-gnome3;
+      description = "Pinentry package for rbw master password entry";
+    };
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
@@ -58,7 +64,7 @@ in
       settings = {
         email = cfg.email;
         base_url = mkIf (cfg.baseUrl != "") cfg.baseUrl;
-        pinentry = pkgs.pinentry-gnome3;
+        pinentry = cfg.pinentry;
       };
     };
   };
