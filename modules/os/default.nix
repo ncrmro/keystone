@@ -40,9 +40,15 @@ with lib; let
 
       email = mkOption {
         type = types.nullOr types.str;
-        default = null;
-        description = "Email address (used for git config)";
-        example = "alice@example.com";
+        default = let
+          domain = config.keystone.domain;
+          # "Alice Smith" → "alice.smith"
+          localPart = builtins.replaceStrings [" "] ["."] (lib.toLower config.keystone.os.users.${name}.fullName);
+        in
+          if domain != null then "${localPart}@${domain}" else null;
+        defaultText = literalExpression ''"''${toLower fullName}@''${keystone.domain}"'';
+        description = "Email address (used for git config and mail). Auto-derived from fullName + keystone.domain.";
+        example = "alice.smith@example.com";
       };
 
       extraGroups = mkOption {
