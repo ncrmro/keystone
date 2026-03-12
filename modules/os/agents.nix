@@ -350,19 +350,18 @@ let
     '';
 
   # All defined agents get OS users, home directories, services, etc.
-  # The `host` field is only used by provisioning modules (mail.nix, git-server.nix)
-  # to know which agents to auto-provision accounts for.
+  # Feature-specific agent sets (desktop, mail, SSH) are filtered to only
+  # agents whose `host` matches this machine, so assertions and services
+  # for secrets/keys/configs don't fire on unrelated hosts.
+  localAgents = filterAttrs (_: agentCfg: agentCfg.host == config.networking.hostName) cfg;
 
-  # Aliases for feature-specific agent sets. Currently all agents get all
-  # features, but these exist so we can filter by per-agent flags (e.g.
-  # desktop.enable, chrome.enable) later without touching every callsite.
-  desktopAgents = cfg;
+  desktopAgents = localAgents;
   hasDesktopAgents = desktopAgents != { };
 
-  mailAgents = cfg;
+  mailAgents = localAgents;
   hasMailAgents = mailAgents != { };
 
-  sshAgents = cfg;
+  sshAgents = localAgents;
   hasSshAgents = sshAgents != { };
 
   # Sorted desktop agent names for deterministic VNC port assignment
