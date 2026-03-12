@@ -93,7 +93,7 @@ in
                     };
                     model = {
                       refId = "A";
-                      expr = ''max by (host) ((node_filesystem_avail_bytes{mountpoint="/nix/store"} / node_filesystem_size_bytes{mountpoint="/nix/store"}) * 100)'';
+                      expr = ''max by (host) ((node_filesystem_avail_bytes{mountpoint="/nix/store", host!=""} / node_filesystem_size_bytes{mountpoint="/nix/store", host!=""}) * 100)'';
                       intervalMs = 1000;
                       maxDataPoints = 43200;
                     };
