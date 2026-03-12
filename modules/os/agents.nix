@@ -934,6 +934,10 @@ in
         agentVncCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
           "          ${name}) VNC_PORT=\"${toString (agentVncPort name agentCfg)}\" ;;"
         ) desktopAgents);
+        # Nix-generated static lookup: agent name -> host (for remote dispatch)
+        agentHostCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
+          "          ${name}) AGENT_HOST=\"${toString agentCfg.host}\" ;;"
+        ) cfg);
         knownAgents = concatStringsSep ", " (attrNames cfg);
 
         # Render TASKS.yaml as a sorted table (pending/in_progress first, completed last)
@@ -1049,6 +1053,22 @@ in
   ${agentVncCases}
           esac
 
+          # Resolve agent's host for remote dispatch
+          AGENT_HOST=""
+          case "$AGENT_NAME" in
+  ${agentHostCases}
+          esac
+
+          THIS_HOST="$(cat /etc/hostname)"
+
+          # Remote dispatch: forward non-local commands via ET over Tailscale.
+          # VNC is excluded — it runs locally and connects to the remote host directly.
+          if [ -n "$AGENT_HOST" ] && [ "$AGENT_HOST" != "$THIS_HOST" ]; then
+            if [ "$1" != "vnc" ]; then
+              exec ${pkgs.eternal-terminal}/bin/et "$AGENT_HOST" -c "agentctl $AGENT_NAME $*"
+            fi
+          fi
+
           CMD="$1"; shift
           case "$CMD" in
             tasks)
@@ -1073,7 +1093,12 @@ in
                 echo "Error: agent '$AGENT_NAME' has no desktop (VNC not available)" >&2
                 exit 1
               fi
-              exec ${pkgs.virt-viewer}/bin/remote-viewer "vnc://localhost:$VNC_PORT" "$@"
+              # Use agent's host for remote agents, localhost for local ones
+              VNC_HOST="localhost"
+              if [ -n "$AGENT_HOST" ] && [ "$AGENT_HOST" != "$THIS_HOST" ]; then
+                VNC_HOST="$AGENT_HOST"
+              fi
+              exec ${pkgs.virt-viewer}/bin/remote-viewer "vnc://$VNC_HOST:$VNC_PORT" "$@"
               ;;
             *)
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" "$CMD" "$@"
