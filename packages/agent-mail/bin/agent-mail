@@ -41,12 +41,16 @@ list_templates() {
 }
 
 detect_sender() {
-  # Try himalaya account list first
-  local email
-  email="$(himalaya account list -o json 2>/dev/null | jq -r '.[0].email // empty' 2>/dev/null)" || true
-  if [[ -n "$email" ]]; then
-    echo "$email"
-    return
+  local email config
+
+  # Try himalaya config file (most reliable — has the email field)
+  config="${XDG_CONFIG_HOME:-$HOME/.config}/himalaya/config.toml"
+  if [[ -f "$config" ]]; then
+    email="$(grep -m1 '^email\s*=' "$config" | sed 's/^email\s*=\s*"\(.*\)"/\1/')" || true
+    if [[ -n "$email" ]]; then
+      echo "$email"
+      return
+    fi
   fi
 
   # Fall back to git config
@@ -56,7 +60,7 @@ detect_sender() {
     return
   fi
 
-  echo "error: could not detect sender email (no himalaya account or git config)" >&2
+  echo "error: could not detect sender email (no himalaya config or git config)" >&2
   exit 1
 }
 
