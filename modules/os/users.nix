@@ -16,6 +16,7 @@ with lib; let
   osCfg = config.keystone.os;
   cfg = osCfg.users;
   hwKeyCfg = config.keystone.hardwareKey;
+  hostname = config.networking.hostName;
 
   # Whether the keystone desktop NixOS module is imported (gates home-manager desktop config)
   hasDesktopModule = options.keystone ? desktop;
@@ -64,6 +65,22 @@ in {
           assertion = hwKeyCfg.keys ? ${name};
           message = "keystone.os.users.${username}.hardwareKeys references '${name}' but no such key exists in keystone.hardwareKey.keys";
         }) userCfg.hardwareKeys
+      ) cfg)
+      # Validate agenix secret exists when sshAutoLoad is enabled
+      ++ concatLists (mapAttrsToList (username: userCfg:
+        optional userCfg.sshAutoLoad.enable {
+          assertion = config.age.secrets ? "${hostname}-ssh-passphrase";
+          message = ''
+            User '${username}' has sshAutoLoad enabled but agenix secret "${hostname}-ssh-passphrase" is missing.
+
+            Add to host config:
+              age.secrets.${hostname}-ssh-passphrase = {
+                file = "${"$"}{inputs.agenix-secrets}/secrets/${hostname}-ssh-passphrase.age";
+                owner = "${username}";
+                mode = "0400";
+              };
+          '';
+        }
       ) cfg);
 
       # Enable zsh system-wide if any user has terminal enabled
@@ -214,14 +231,16 @@ in {
           home.stateVersion = config.system.stateVersion;
 
           # Terminal development environment
-          keystone.terminal = mkIf userCfg.terminal.enable {
+          keystone.terminal = mkIf userCfg.terminal.enable ({
             enable = mkDefault true;
             git = {
               enable = mkDefault (userCfg.email != null);
               userName = mkDefault userCfg.fullName;
               userEmail = mkDefault userCfg.email;
             };
-          };
+          } // optionalAttrs userCfg.sshAutoLoad.enable {
+            sshAutoLoad.enable = mkDefault true;
+          });
         } // optionalAttrs hasDesktopModule {
           # Desktop configuration (Hyprland) — only set when desktop NixOS module is imported
           keystone.desktop = mkIf userCfg.desktop.enable {
