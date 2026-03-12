@@ -1,3 +1,9 @@
+# Podman-based sandboxing for AI coding agents.
+#
+# Exports pre-resolved Nix store paths as session variables so that
+# podman-agent can mount them directly into containers, skipping the
+# GitHub flake-resolution round-trip on every launch.  The env vars
+# are optional — podman-agent falls back to `nix build` when unset.
 {
   config,
   lib,
@@ -55,6 +61,15 @@ in
       PODMAN_AGENT_MEMORY = cfg.memory;
       PODMAN_AGENT_CPUS = cfg.cpus;
       PODMAN_AGENT_VOLUME = cfg.volumeName;
+
+      # Pre-resolved store paths — lets podman-agent skip GitHub
+      # flake resolution and use these paths directly.
+      PODMAN_AGENT_CLAUDE_CODE_PATH = "${pkgs.keystone.claude-code}";
+      PODMAN_AGENT_GEMINI_CLI_PATH = "${pkgs.keystone.gemini-cli}";
+      PODMAN_AGENT_CODEX_PATH = "${pkgs.keystone.codex}";
+      PODMAN_AGENT_GH_PATH = "${pkgs.gh}";
+      PODMAN_AGENT_RIPGREP_PATH = "${pkgs.ripgrep}";
+      PODMAN_AGENT_PROCPS_PATH = "${pkgs.procps}";
     } // optionalAttrs (cfg.extraSubstituters != [ ]) {
       PODMAN_AGENT_EXTRA_SUBSTITUTERS = concatStringsSep " " cfg.extraSubstituters;
     } // optionalAttrs (cfg.extraTrustedPublicKeys != [ ]) {
