@@ -215,21 +215,21 @@ in {
 
           # Terminal development environment
           keystone.terminal = mkIf userCfg.terminal.enable {
-            enable = true;
+            enable = mkDefault true;
             git = {
-              enable = userCfg.email != null;
-              userName = userCfg.fullName;
-              userEmail = userCfg.email;
+              enable = mkDefault (userCfg.email != null);
+              userName = mkDefault userCfg.fullName;
+              userEmail = mkDefault userCfg.email;
             };
           };
         } // optionalAttrs hasDesktopModule {
           # Desktop configuration (Hyprland) — only set when desktop NixOS module is imported
           keystone.desktop = mkIf userCfg.desktop.enable {
-            enable = true;
+            enable = mkDefault true;
             hyprland = {
-              enable = true;
-              modifierKey = userCfg.desktop.hyprland.modifierKey;
-              capslockAsControl = userCfg.desktop.hyprland.capslockAsControl;
+              enable = mkDefault true;
+              modifierKey = mkDefault userCfg.desktop.hyprland.modifierKey;
+              capslockAsControl = mkDefault userCfg.desktop.hyprland.capslockAsControl;
             };
           };
         }) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) cfg);
