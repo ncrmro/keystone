@@ -43,12 +43,20 @@ in {
       example = [ "qemu+ssh://user@server/session" ];
       description = "Additional virt-manager connection URIs (shown as bookmarks)";
     };
+
+    allowedBridges = mkOption {
+      type = types.listOf types.str;
+      default = [ "virbr0" ];
+      example = [ "virbr0" "br0" ];
+      description = "Bridge devices usable by session VMs via qemu-bridge-helper. Written to /etc/qemu/bridge.conf.";
+    };
   };
 
   config = mkMerge [
     (mkIf (osCfg.enable && cfg.enable) {
       virtualisation.libvirtd = {
         enable = true;
+        allowedBridges = cfg.allowedBridges;
         qemu = {
           package = mkDefault qemuPkg;
           runAsRoot = true;
