@@ -22,19 +22,21 @@
 set -euo pipefail
 
 # --- Discover repo root ---
+# All paths are resolved with readlink -f because Nix `path:` flake URIs
+# break on symlinks (e.g. ~/nixos-config -> .repos/ncrmro/nixos-config).
 find_repo() {
   if [[ -n "${NIXOS_CONFIG_DIR:-}" ]] && [[ -f "$NIXOS_CONFIG_DIR/hosts.nix" ]]; then
-    echo "$NIXOS_CONFIG_DIR"
+    readlink -f "$NIXOS_CONFIG_DIR"
     return
   fi
   local dir
   dir=$(git rev-parse --show-toplevel 2>/dev/null || true)
   if [[ -n "$dir" ]] && [[ -f "$dir/hosts.nix" ]]; then
-    echo "$dir"
+    readlink -f "$dir"
     return
   fi
   if [[ -f "$HOME/nixos-config/hosts.nix" ]]; then
-    echo "$HOME/nixos-config"
+    readlink -f "$HOME/nixos-config"
     return
   fi
   echo "Error: Cannot find nixos-config repo." >&2
