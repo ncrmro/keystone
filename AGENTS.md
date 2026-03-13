@@ -179,6 +179,26 @@ keystone.os.agents.drago = {
 
 **CRITICAL**: Mail password secrets must list BOTH the agent's `host` (for himalaya client) AND the mail server's host (for Stalwart provisioning).
 
+#### Forgejo CLI vs API
+
+When running on the same server as Forgejo, the `forgejo admin` CLI does **not** require API tokens. It bypasses the HTTP API entirely and talks directly to the database using credentials from `app.ini`. Security is enforced via local file permissions (the command must run as the Forgejo system user).
+
+The CLI only supports a limited set of subcommands: `user create`, `user list`, `user change-password`, `user delete`, `user generate-access-token`, `user must-change-password`, and `user reset-mfa`. There are **no CLI commands** for SSH key management, repository operations, or token deletion.
+
+The provisioning script in `git-server.nix` uses the CLI for user creation and token generation, then uses the HTTP API (via `curl` with the generated token) for SSH key registration and repo creation. The token is deleted via API after provisioning completes.
+
+```bash
+# CLI operations (no token needed, must run as forgejo user):
+sudo -u forgejo forgejo --work-path /var/lib/forgejo admin user list
+sudo -u forgejo forgejo --work-path /var/lib/forgejo admin user create --username <name> ...
+sudo -u forgejo forgejo --work-path /var/lib/forgejo admin user generate-access-token --username <name> --token-name <name> --scopes "..." --raw
+
+# API operations (require token, used for SSH keys + repos):
+curl -H "Authorization: token $TOKEN" http://127.0.0.1:3000/api/v1/admin/users/<name>/keys
+curl -H "Authorization: token $TOKEN" http://127.0.0.1:3000/api/v1/admin/users/<name>/repos
+curl -X DELETE -H "Authorization: token $TOKEN" http://127.0.0.1:3000/api/v1/users/<name>/tokens/<token-name>
+```
+
 #### agentctl CLI
 
 `agentctl` is the unified CLI for managing agent services. It dispatches to per-agent helpers via sudo.
