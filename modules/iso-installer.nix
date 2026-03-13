@@ -1,13 +1,27 @@
 # ISO installer configuration with TUI installer
+#
+# Provides a bootable NixOS installer with:
+# - SSH daemon for remote access (key-only auth)
+# - TUI installer (keystone-installer-ui) auto-starting on tty1
+# - ZFS, Secure Boot, TPM, and disko tooling pre-installed
+#
+# Usage:
+#   keystone.installer.sshKeys = [ "ssh-ed25519 AAAAC3..." ];
 {
   config,
   pkgs,
   lib,
-  sshKeys ? [],
   ...
 }: let
   keystone-installer-ui = pkgs.callPackage ../packages/keystone-installer-ui {};
 in {
+  options.keystone.installer.sshKeys = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [];
+    description = "SSH public keys for root access on the installer ISO";
+  };
+
+  config = {
   # Enable SSH daemon for remote access
   services.openssh = {
     enable = true;
@@ -24,12 +38,14 @@ in {
 
   # Configure root user with SSH keys
   users.users.root = {
-    openssh.authorizedKeys.keys = sshKeys;
+    openssh.authorizedKeys.keys = config.keystone.installer.sshKeys;
   };
 
   # Enable networking via NetworkManager (for TUI installer network detection)
+  # mkForce needed — installation-cd-minimal.nix enables wpa_supplicant which
+  # conflicts with NetworkManager's own wireless management
   networking = {
-    wireless.enable = false;
+    wireless.enable = lib.mkForce false;
   };
 
   # Include TUI installer and tools for installation
@@ -145,4 +161,5 @@ in {
 
   # Include the keystone modules in the ISO for reference
   environment.etc."keystone-modules".source = ../modules;
+  }; # close config
 }
