@@ -24,13 +24,13 @@
 #   mode = "0400";
 # };
 #
-# services.stalwart-mail = {
+# services.stalwart = {
 #   credentials = {
 #     admin_password = config.age.secrets.stalwart-admin-password.path;
 #   };
 #   settings.authentication.fallback-admin = {
 #     user = "admin";
-#     secret = "%{file:/run/credentials/stalwart-mail.service/admin_password}%";
+#     secret = "%{file:/run/credentials/stalwart.service/admin_password}%";
 #   };
 # };
 # ```
@@ -82,7 +82,7 @@ in
   # No manual `enable = true` needed — just set keystone.mail.host once.
   config = mkIf (config.keystone.mail.host != null
               && config.keystone.mail.host == config.networking.hostName) {
-    services.stalwart-mail = {
+    services.stalwart = {
       enable = true;
       package = pkgs.stalwart-mail;
       openFirewall = true;
@@ -136,11 +136,11 @@ in
         store = {
           db = {
             type = "rocksdb";
-            path = "/var/lib/stalwart-mail/data";
+            path = "/var/lib/stalwart/data";
           };
           blob = {
             type = "rocksdb";
-            path = "/var/lib/stalwart-mail/blob";
+            path = "/var/lib/stalwart/blob";
           };
         };
         storage = {
@@ -190,7 +190,7 @@ in
         };
 
         # Web admin interface is configured automatically by nixpkgs
-        # (sets webadmin.path to /var/cache/stalwart-mail)
+        # (sets webadmin.path to /var/cache/stalwart)
 
         # Spam filter - disabled to avoid missing file error
         # TODO: Spam filter is currently disabled because the default `spamfilter.toml`
