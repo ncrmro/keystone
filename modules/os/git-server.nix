@@ -290,7 +290,7 @@ in {
           TOKEN=$($FORGEJO user generate-access-token \
             --username "${username}" \
             --token-name "$TOKEN_NAME" \
-            --scopes "write:user,write:repository,write:admin" \
+            --scopes "write:user,write:repository" \
             --raw 2>/dev/null || true)
 
           if [ -z "$TOKEN" ]; then
@@ -312,7 +312,7 @@ in {
               echo "${username}: SSH key already registered, skipping"
             else
               echo "${username}: Adding SSH public key..."
-              curl -sf -H "$AUTH" "$API/admin/users/${username}/keys" \
+              curl -sf -H "$AUTH" "$API/user/keys" \
                 -H "Content-Type: application/json" \
                 -d "$(jq -n \
                   --arg title "agent-${name}" \
@@ -330,7 +330,7 @@ in {
             echo "${username}: Repo ${repoName} already exists"
           else
             echo "${username}: Creating repo ${repoName}..."
-            curl -sf -H "$AUTH" "$API/admin/users/${username}/repos" \
+            curl -sf -H "$AUTH" "$API/user/repos" \
               -H "Content-Type: application/json" \
               -d "$(jq -n \
                 --arg name "${repoName}" \
