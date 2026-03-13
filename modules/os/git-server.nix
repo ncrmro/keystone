@@ -299,6 +299,12 @@ in {
           fi
           AUTH="Authorization: token $TOKEN"
 
+          # Cleanup function to delete the provisioning token when done
+          cleanup_token() {
+            curl -sf -X DELETE -H "$AUTH" "$API/users/${username}/tokens/$TOKEN_NAME" || true
+          }
+          trap cleanup_token EXIT
+
           # --- SSH key provisioning ---
           ${optionalString (agentCfg.ssh.publicKey != null) ''
             EXISTING_KEYS=$(curl -sf -H "$AUTH" "$API/users/${username}/keys" | jq length)
