@@ -21,13 +21,13 @@
   lib,
   config,
   pkgs,
-  keystoneInputs,
   ...
 }:
 with lib; let
   osCfg = config.keystone.os;
   hwKeyCfg = config.keystone.hardwareKey;
   installerCfg = osCfg.installer;
+  keystoneInputs = installerCfg._keystoneInputs;
 
   # Resolve hardware key names to SSH public keys
   resolveHwKeys = names:
@@ -47,6 +47,13 @@ with lib; let
   autoCollectedKeys = unique (wheelUserKeys ++ rootHwKeys);
 in {
   options.keystone.os.installer = {
+    _keystoneInputs = mkOption {
+      type = types.raw;
+      default = {};
+      internal = true;
+      description = "Keystone flake inputs for the installer's nested ISO eval. Set by the operating-system nixosModule in flake.nix.";
+    };
+
     sshKeys = mkOption {
       type = types.listOf types.str;
       default = [];
