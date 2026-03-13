@@ -7,6 +7,7 @@ use crate::screens::build::BuildScreen;
 use crate::screens::create_config::CreateConfigScreen;
 use crate::screens::host_detail::HostDetailScreen;
 use crate::screens::hosts::HostsScreen;
+use crate::screens::install::InstallScreen;
 use crate::screens::welcome::WelcomeScreen;
 use crate::system;
 
@@ -17,6 +18,7 @@ pub enum AppScreen {
     Hosts(HostsScreen),
     HostDetail(HostDetailScreen),
     Build(BuildScreen),
+    Install(InstallScreen),
 }
 
 /// Application state for the Keystone TUI.
@@ -121,6 +123,17 @@ impl App {
             config,
             current_screen,
             active_repo_index: if has_repos { Some(0) } else { None },
+        }
+    }
+
+    /// Create an App in installer mode — starts on the InstallScreen with
+    /// pre-baked config from an ISO. Skips repo discovery and Welcome flow.
+    pub fn new_for_installer(installer_config: crate::screens::install::InstallerConfig) -> Self {
+        Self {
+            should_quit: false,
+            config: AppConfig::default(),
+            current_screen: AppScreen::Install(InstallScreen::new(installer_config)),
+            active_repo_index: None,
         }
     }
 

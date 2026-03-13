@@ -27,6 +27,7 @@ mod ui;
 
 use app::{App, AppScreen};
 use input::{dispatch_key, handle_action, AppAction};
+use screens::install::InstallerConfig;
 
 /// Set up the terminal for TUI rendering.
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
@@ -61,7 +62,14 @@ async fn main() -> Result<()> {
     }));
 
     let mut terminal = setup_terminal()?;
-    let mut app = App::new().await;
+
+    // Check for installer mode: pre-baked ISO with embedded config at
+    // /etc/keystone/install-config/. Bypasses the normal Welcome/Hosts flow.
+    let mut app = if let Some(installer_config) = InstallerConfig::detect() {
+        App::new_for_installer(installer_config)
+    } else {
+        App::new().await
+    };
 
     let result = run_app(&mut terminal, &mut app).await;
 
@@ -82,6 +90,7 @@ async fn run_app<B: Backend>(
         match &mut app.current_screen {
             AppScreen::Build(ref mut build) => build.poll(),
             AppScreen::Hosts(ref mut hosts) => hosts.poll(),
+            AppScreen::Install(ref mut install) => install.poll(),
             _ => {}
         }
 
@@ -102,6 +111,9 @@ async fn run_app<B: Backend>(
                 }
                 AppScreen::Build(build_screen) => {
                     build_screen.render(frame, area);
+                }
+                AppScreen::Install(install_screen) => {
+                    install_screen.render(frame, area);
                 }
             }
         })?;

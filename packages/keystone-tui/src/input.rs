@@ -20,6 +20,11 @@ pub enum AppAction {
     StartBuild(String),
     BuildIso,
     RefreshDashboard,
+    InstallProceed,
+    InstallConfirm,
+    InstallBack,
+    InstallCancel,
+    Reboot,
     Quit,
 }
 
@@ -39,6 +44,7 @@ pub fn dispatch_key(app: &mut App, key: KeyEvent) -> Option<AppAction> {
         AppScreen::Hosts(ref mut hosts) => handle_hosts_input(hosts, key),
         AppScreen::HostDetail(ref mut detail) => handle_host_detail_input(detail, key),
         AppScreen::Build(ref mut build) => handle_build_input(build, key),
+        AppScreen::Install(ref mut install) => handle_install_input(install, key),
     }
 }
 
@@ -220,6 +226,60 @@ pub fn handle_build_input(
     }
 }
 
+/// Handle input for the install screen.
+pub fn handle_install_input(
+    install: &mut screens::install::InstallScreen,
+    key: KeyEvent,
+) -> Option<AppAction> {
+    use screens::install::InstallPhase;
+
+    match install.phase() {
+        InstallPhase::Summary => match key.code {
+            KeyCode::Enter => Some(AppAction::InstallProceed),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        InstallPhase::Confirm => match key.code {
+            KeyCode::Enter => Some(AppAction::InstallConfirm),
+            KeyCode::Esc => Some(AppAction::InstallBack),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        InstallPhase::Installing => match key.code {
+            KeyCode::Esc => {
+                install.cancel();
+                None
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                install.scroll_up();
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                install.scroll_down();
+                None
+            }
+            _ => None,
+        },
+        InstallPhase::Done => match key.code {
+            KeyCode::Char('r') => Some(AppAction::Reboot),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        InstallPhase::Failed(_) => match key.code {
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            KeyCode::Up | KeyCode::Char('k') => {
+                install.scroll_up();
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                install.scroll_down();
+                None
+            }
+            _ => None,
+        },
+    }
+}
+
 /// Handle actions that require mutating app state.
 pub async fn handle_action(app: &mut App, action: AppAction) {
     match action {
@@ -260,6 +320,32 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         AppAction::RefreshDashboard => {
             // Re-load the hosts screen from the active repo
             app.go_to_hosts(app.active_repo_index.unwrap_or(0)).await;
+        }
+        AppAction::InstallProceed => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.proceed_to_confirm();
+            }
+        }
+        AppAction::InstallConfirm => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.start_install();
+            }
+        }
+        AppAction::InstallBack => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.go_back();
+            }
+        }
+        AppAction::InstallCancel => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.cancel();
+            }
+        }
+        AppAction::Reboot => {
+            // Attempt to reboot the system
+            let _ = std::process::Command::new("systemctl")
+                .arg("reboot")
+                .spawn();
         }
         AppAction::Quit => {
             app.should_quit = true;
