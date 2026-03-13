@@ -64,10 +64,10 @@ journalctl -xeu clone-agent-space-{name}.service
 |---------|---------------|---------|
 | User account | `agent-{name}` | UID 4001+, group `agents`, no sudo |
 | Home directory | `/home/agent-{name}` | chmod 750, readable by `agent-admins` group |
-| SSH agent | `ssh-agent-agent-{name}.service` | Auto-loads agenix key with passphrase |
-| Git signing | `git-config-agent-{name}.service` | SSH-based commit signing |
-| Desktop | `labwc-agent-{name}.service` | Headless Wayland (labwc + wayvnc) |
-| Browser | `chromium-agent-{name}.service` | Chromium with remote debugging |
+| SSH agent | `agent-{name}-ssh-agent.service` | Auto-loads agenix key with passphrase |
+| Git signing | `agent-{name}-git-config.service` | SSH-based commit signing |
+| Desktop | `agent-{name}-labwc.service` | Headless Wayland (labwc + wayvnc) |
+| Browser | `agent-{name}-chromium.service` | Chromium with remote debugging |
 | Mail | himalaya CLI | Stalwart IMAP/SMTP via agenix password |
 | Bitwarden | `bw` CLI | Configured for Vaultwarden instance |
 | Workspace | `clone-agent-space-{name}.service` | Clones `space.repo` on first boot |
@@ -98,7 +98,7 @@ journalctl -xeu clone-agent-space-{name}.service
 ### Service dependency order
 
 The clone service depends on:
-- `create-agent-homes.service` (or `zfs-agent-datasets.service` on ZFS)
+- `agent-homes.service` (or `zfs-agent-datasets.service` on ZFS)
 
 The SSH agent service runs independently and is not a dependency of the clone service.
 

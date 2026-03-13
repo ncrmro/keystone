@@ -43,7 +43,7 @@ pkgs.testers.nixosTest {
         secureBoot.enable = false;
         tpm.enable = false;
 
-        # ext4 code path (creates create-agent-homes + create-user-homes services)
+        # ext4 code path (creates agent-homes + create-user-homes services)
         storage.type = "ext4";
 
         # Human user
@@ -89,7 +89,7 @@ pkgs.testers.nixosTest {
     print("System booted successfully")
 
     # Wait for home directory services
-    machine.wait_for_unit("create-agent-homes.service")
+    machine.wait_for_unit("agent-homes.service")
     machine.wait_for_unit("create-user-homes.service")
     print("Home directory services completed")
 
@@ -197,7 +197,7 @@ pkgs.testers.nixosTest {
     print("Starting desktop runtime tests...")
 
     # 12. labwc compositor is running
-    machine.wait_for_unit("labwc-agent-researcher.service")
+    machine.wait_for_unit("agent-researcher-labwc.service")
     print("PASS: labwc service active for researcher")
 
     # 13. Wayland socket created (researcher UID=4002)
@@ -205,7 +205,7 @@ pkgs.testers.nixosTest {
     print("PASS: Wayland socket created")
 
     # 14. wayvnc is running
-    machine.wait_for_unit("wayvnc-agent-researcher.service")
+    machine.wait_for_unit("agent-researcher-wayvnc.service")
     print("PASS: wayvnc service active for researcher")
 
     # 15. VNC port accepting connections
@@ -235,7 +235,7 @@ pkgs.testers.nixosTest {
     print("PASS: VNC port not exposed in firewall (localhost-only)")
 
     # 19. Non-desktop agent has none of this
-    machine.fail("systemctl is-enabled labwc-agent-coder.service")
+    machine.fail("systemctl is-enabled agent-coder-labwc.service")
     machine.fail("test -f /home/agent-coder/.config/labwc/autostart")
     print("PASS: Non-desktop agent has no desktop services or config")
 
@@ -244,7 +244,7 @@ pkgs.testers.nixosTest {
     print("Starting Chromium browser tests...")
 
     # 20. Chromium service is running for researcher
-    machine.wait_for_unit("chromium-agent-researcher.service")
+    machine.wait_for_unit("agent-researcher-chromium.service")
     print("PASS: Chromium service active for researcher")
 
     # 21. Chromium process is running under agent-researcher
@@ -267,12 +267,12 @@ pkgs.testers.nixosTest {
     print("PASS: Chromium profile persists at /home/agent-researcher/.config/chromium-agent/")
 
     # 25. Chromium service starts after labwc
-    chromium_after = machine.succeed("systemctl show chromium-agent-researcher.service -p After").strip()
-    assert "labwc-agent-researcher.service" in chromium_after, f"Chromium should start After labwc: {chromium_after}"
-    print("PASS: Chromium service starts After labwc-agent-researcher.service")
+    chromium_after = machine.succeed("systemctl show agent-researcher-chromium.service -p After").strip()
+    assert "agent-researcher-labwc.service" in chromium_after, f"Chromium should start After labwc: {chromium_after}"
+    print("PASS: Chromium service starts After agent-researcher-labwc.service")
 
     # 26. Non-chrome agent (coder) has no chromium service
-    machine.fail("systemctl is-enabled chromium-agent-coder.service")
+    machine.fail("systemctl is-enabled agent-coder-chromium.service")
     print("PASS: Non-chrome agent has no chromium service")
 
     print("")

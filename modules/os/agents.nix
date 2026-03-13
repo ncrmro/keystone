@@ -508,7 +508,7 @@ let
       rm = "${pkgs.coreutils}/bin/rm";
       flock = "${pkgs.util-linux}/bin/flock";
     in
-    pkgs.writeShellScript "agent-task-loop-${name}" ''
+    pkgs.writeShellScript "agent-${name}-task-loop" ''
       set -eo pipefail
 
       NOTES_DIR="${notesDir}"
@@ -733,7 +733,7 @@ let
       tr = "${pkgs.coreutils}/bin/tr";
       seq = "${pkgs.coreutils}/bin/seq";
     in
-    pkgs.writeShellScript "agent-scheduler-${name}" ''
+    pkgs.writeShellScript "agent-${name}-scheduler" ''
       set -eo pipefail
 
       NOTES_DIR="${notesDir}"
@@ -834,8 +834,8 @@ let
 
       # Trigger task loop if we created any tasks
       if [ $CREATED -gt 0 ]; then
-        log "Triggering agent-task-loop-${name}.service..."
-        systemctl --user start "agent-task-loop-${name}.service" || {
+        log "Triggering agent-${name}-task-loop.service..."
+        systemctl --user start "agent-${name}-task-loop.service" || {
           log "  WARNING: Failed to trigger task loop"
         }
       fi
@@ -1028,8 +1028,8 @@ in
             echo "  provision         Generate SSH keypair, mail password, and agenix secrets" >&2
             echo "" >&2
             echo "Examples:" >&2
-            echo "  agentctl drago status agent-task-loop-drago" >&2
-            echo "  agentctl drago journalctl -u agent-task-loop-drago -n 20" >&2
+            echo "  agentctl drago status agent-drago-task-loop" >&2
+            echo "  agentctl drago journalctl -u agent-drago-task-loop -n 20" >&2
             echo "  agentctl drago tasks" >&2
             echo "  agentctl drago email" >&2
             echo "  agentctl drago claude" >&2
@@ -1342,7 +1342,7 @@ in
       };
 
       # Home directory creation for ext4
-      systemd.services.create-agent-homes = mkIf (!useZfs) {
+      systemd.services.agent-homes = mkIf (!useZfs) {
         description = "Create and configure agent home directories";
 
         wantedBy = [ "multi-user.target" ];
@@ -1466,15 +1466,15 @@ in
           in
           {
             # labwc headless compositor
-            "labwc-agent-${name}" = {
+            "agent-${name}-labwc" = {
               description = "Headless Wayland desktop for agent-${name}";
 
               wantedBy = [ "agent-desktops.target" ];
               after = [
-                (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
+                (if useZfs then "zfs-agent-datasets.service" else "agent-homes.service")
               ];
               requires = [
-                (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
+                (if useZfs then "zfs-agent-datasets.service" else "agent-homes.service")
               ];
 
               environment = {
@@ -1499,12 +1499,12 @@ in
             };
 
             # wayvnc remote viewing (localhost only -- see module header for security notes)
-            "wayvnc-agent-${name}" = {
+            "agent-${name}-wayvnc" = {
               description = "VNC server for agent-${name} desktop";
 
               wantedBy = [ "agent-desktops.target" ];
-              after = [ "labwc-agent-${name}.service" ];
-              requires = [ "labwc-agent-${name}.service" ];
+              after = [ "agent-${name}-labwc.service" ];
+              requires = [ "agent-${name}-labwc.service" ];
 
               environment = {
                 WAYLAND_DISPLAY = "wayland-0";
@@ -1575,10 +1575,10 @@ in
             profileDir = "/home/${username}/.config/chromium-agent";
           in
           {
-            "chromium-agent-${name}" = {
+            "agent-${name}-chromium" = {
               description = "Chromium browser for ${username}";
-              after = [ "labwc-agent-${name}.service" ];
-              requires = [ "labwc-agent-${name}.service" ];
+              after = [ "agent-${name}-labwc.service" ];
+              requires = [ "agent-${name}-labwc.service" ];
               wantedBy = [ "agent-desktops.target" ];
               environment = {
                 WAYLAND_DISPLAY = "wayland-0";
@@ -1763,13 +1763,13 @@ in
             resolved = agentsWithUids.${name};
             uid = resolved.uid;
             fwmark = agentFwmark name;
-            stateDir = "/var/lib/tailscale/tailscaled-agent-${name}.state";
-            socketPath = "/run/tailscale/tailscaled-agent-${name}.socket";
+            stateDir = "/var/lib/tailscale/agent-${name}-tailscaled.state";
+            socketPath = "/run/tailscale/agent-${name}-tailscaled.socket";
             tunName = "tailscale-agent-${name}";
             authKeyPath = "/run/agenix/agent-${name}-tailscale-auth-key";
           in
           {
-            "tailscaled-agent-${name}" = {
+            "agent-${name}-tailscaled" = {
               description = "Tailscale daemon for agent-${name}";
 
               wantedBy = [ "agent-tailscale.target" ];
@@ -1793,17 +1793,17 @@ in
             };
 
             # nftables fwmark rule: route agent UID traffic through its TUN
-            "nftables-agent-${name}" = {
+            "agent-${name}-nftables" = {
               description = "nftables fwmark routing for agent-${name} via ${tunName}";
 
               wantedBy = [ "agent-tailscale.target" ];
-              after = [ "tailscaled-agent-${name}.service" ];
-              requires = [ "tailscaled-agent-${name}.service" ];
+              after = [ "agent-${name}-tailscaled.service" ];
+              requires = [ "agent-${name}-tailscaled.service" ];
 
               serviceConfig = {
                 Type = "oneshot";
                 RemainAfterExit = true;
-                ExecStart = pkgs.writeShellScript "nftables-agent-${name}-up" ''
+                ExecStart = pkgs.writeShellScript "agent-${name}-nftables-up" ''
                   set -euo pipefail
                   # Create nftables table and chain for agent UID routing
                   ${pkgs.nftables}/bin/nft add table inet agent-${name} 2>/dev/null || true
@@ -1814,7 +1814,7 @@ in
                   ${pkgs.iproute2}/bin/ip rule add fwmark ${toString fwmark} table ${toString fwmark} priority ${toString fwmark} 2>/dev/null || true
                   ${pkgs.iproute2}/bin/ip route add default dev ${tunName} table ${toString fwmark} 2>/dev/null || true
                 '';
-                ExecStop = pkgs.writeShellScript "nftables-agent-${name}-down" ''
+                ExecStop = pkgs.writeShellScript "agent-${name}-nftables-down" ''
                   ${pkgs.nftables}/bin/nft delete table inet agent-${name} 2>/dev/null || true
                   ${pkgs.iproute2}/bin/ip rule del fwmark ${toString fwmark} table ${toString fwmark} 2>/dev/null || true
                   ${pkgs.iproute2}/bin/ip route del default dev ${tunName} table ${toString fwmark} 2>/dev/null || true
@@ -1830,10 +1830,10 @@ in
 
         wantedBy = [ "agent-tailscale.target" ];
         after = [
-          (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
+          (if useZfs then "zfs-agent-datasets.service" else "agent-homes.service")
         ];
         requires = [
-          (if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service")
+          (if useZfs then "zfs-agent-datasets.service" else "agent-homes.service")
         ];
 
         serviceConfig = {
@@ -1847,7 +1847,7 @@ in
               name: agentCfg:
               let
                 username = "agent-${name}";
-                socketPath = "/run/tailscale/tailscaled-agent-${name}.socket";
+                socketPath = "/run/tailscale/agent-${name}-tailscaled.socket";
               in
               ''
                 mkdir -p /home/${username}/bin
@@ -1936,7 +1936,7 @@ in
             sshKeyPath = "/run/agenix/${username}-ssh-key";
             sshPassphrasePath = "/run/agenix/${username}-ssh-passphrase";
             homesService =
-              if useZfs then "zfs-agent-datasets.service" else "create-agent-homes.service";
+              if useZfs then "zfs-agent-datasets.service" else "agent-homes.service";
             # Script that outputs the passphrase for SSH_ASKPASS
             askpassScript = pkgs.writeShellScript "ssh-askpass-${username}" ''
               ${pkgs.coreutils}/bin/cat ${sshPassphrasePath}
@@ -1945,10 +1945,10 @@ in
             addKeyScript = pkgs.writeShellScript "ssh-add-key-${username}" ''
               # Wait for the ssh-agent socket to be ready
               for i in $(seq 1 50); do
-                [ -S "/run/ssh-agent-${username}/agent.sock" ] && break
+                [ -S "/run/agent-${name}-ssh-agent/agent.sock" ] && break
                 sleep 0.1
               done
-              export SSH_AUTH_SOCK="/run/ssh-agent-${username}/agent.sock"
+              export SSH_AUTH_SOCK="/run/agent-${name}-ssh-agent/agent.sock"
               export SSH_ASKPASS="${askpassScript}"
               export SSH_ASKPASS_REQUIRE="force"
               export DISPLAY="none"
@@ -1957,7 +1957,7 @@ in
           in
           {
             # ssh-agent daemon (foreground mode with -D)
-            "ssh-agent-${username}" = {
+            "agent-${name}-ssh-agent" = {
               description = "SSH agent for ${username}";
 
               wantedBy = [ "multi-user.target" ];
@@ -1965,16 +1965,16 @@ in
               requires = [ homesService ];
 
               environment = {
-                SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
+                SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
               };
 
               serviceConfig = {
                 Type = "simple";
                 User = username;
                 Group = "agents";
-                RuntimeDirectory = "ssh-agent-${username}";
+                RuntimeDirectory = "agent-${name}-ssh-agent";
                 RuntimeDirectoryMode = "0700";
-                ExecStart = "${pkgs.openssh}/bin/ssh-agent -D -a /run/ssh-agent-${username}/agent.sock";
+                ExecStart = "${pkgs.openssh}/bin/ssh-agent -D -a /run/agent-${name}-ssh-agent/agent.sock";
                 ExecStartPost = "${addKeyScript}";
                 Restart = "always";
                 RestartSec = 5;
@@ -1982,7 +1982,7 @@ in
             };
 
             # Git SSH signing configuration
-            "git-config-${username}" = {
+            "agent-${name}-git-config" = {
               description = "Configure git SSH signing for ${username}";
 
               wantedBy = [ "multi-user.target" ];
@@ -2044,7 +2044,7 @@ in
               -d '{"title":"agent-${name}","key":"${pubKey}"}'
         '')
         ++ (optional (topDomain != null) ''
-          Agent '${name}': Remember to create the notes repo for sync-agent-notes-${name}.
+          Agent '${name}': Remember to create the notes repo for agent-${name}-notes-sync.
           Configured repo URL: ${repoUrl}
 
           Via API (run on ocean):
@@ -2058,7 +2058,7 @@ in
 
           Or create manually in Forgejo UI at git.${topDomain}.
 
-          The sync-agent-notes-${name} service will fail until this repo exists and
+          The agent-${name}-notes-sync service will fail until this repo exists and
           the agent's SSH key has push access.
         '')
       ) cfg);
@@ -2075,12 +2075,12 @@ in
             username = "agent-${name}";
           in
           {
-            "sync-agent-notes-${name}" = {
+            "agent-${name}-notes-sync" = {
               description = "Sync notes repo for ${username}";
               unitConfig.ConditionUser = username;
               serviceConfig = {
                 Type = "oneshot";
-                SyslogIdentifier = "sync-agent-notes-${name}";
+                SyslogIdentifier = "agent-${name}-notes-sync";
                 ExecStart = builtins.concatStringsSep " " [
                   "${pkgs.keystone.repo-sync}/bin/repo-sync"
                   "--repo ${escapeShellArg agentCfg.notes.repo}"
@@ -2090,11 +2090,11 @@ in
                 ];
               };
               environment = {
-                SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
+                SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
               };
             };
 
-            "agent-task-loop-${name}" = {
+            "agent-${name}-task-loop" = {
               description = "Autonomous task loop for ${username}";
               unitConfig.ConditionUser = username;
               # Use the agent's full home-manager profile instead of cherry-picking
@@ -2103,7 +2103,7 @@ in
               # explicitly since it's a system tool not in the home-manager profile.
               environment = {
                 PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:${lib.makeBinPath [ pkgs.nix ]}";
-                SSH_AUTH_SOCK = "/run/ssh-agent-${username}/agent.sock";
+                SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
                 GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
               };
               serviceConfig = {
@@ -2112,7 +2112,7 @@ in
                 # default 90s timeout would SIGKILL mid-execution, and flock
                 # handles concurrency so the timer safely skips overlapping runs.
                 TimeoutStartSec = "1h";
-                SyslogIdentifier = "agent-task-loop-${name}";
+                SyslogIdentifier = "agent-${name}-task-loop";
                 LogRateLimitIntervalSec = 0;
               };
               script = ''
@@ -2120,13 +2120,13 @@ in
               '';
             };
 
-            "agent-scheduler-${name}" = {
+            "agent-${name}-scheduler" = {
               description = "Daily scheduler for ${username}";
               unitConfig.ConditionUser = username;
               environment.PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:${lib.makeBinPath [ pkgs.nix ]}";
               serviceConfig = {
                 Type = "oneshot";
-                SyslogIdentifier = "agent-scheduler-${name}";
+                SyslogIdentifier = "agent-${name}-scheduler";
               };
               script = ''
                 exec ${agentSchedulerScript name agentCfg}
@@ -2143,7 +2143,7 @@ in
             username = "agent-${name}";
           in
           {
-            "sync-agent-notes-${name}" = {
+            "agent-${name}-notes-sync" = {
               wantedBy = [ "default.target" ];
               unitConfig.ConditionUser = username;
               timerConfig = {
@@ -2152,7 +2152,7 @@ in
               };
             };
 
-            "agent-task-loop-${name}" = {
+            "agent-${name}-task-loop" = {
               wantedBy = [ "default.target" ];
               unitConfig.ConditionUser = username;
               timerConfig = {
@@ -2161,7 +2161,7 @@ in
               };
             };
 
-            "agent-scheduler-${name}" = {
+            "agent-${name}-scheduler" = {
               wantedBy = [ "default.target" ];
               unitConfig.ConditionUser = username;
               timerConfig = {
