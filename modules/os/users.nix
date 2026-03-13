@@ -67,13 +67,26 @@ in {
         }) userCfg.hardwareKeys
       ) cfg)
       # Validate agenix secret exists when sshAutoLoad is enabled
+      # (auto-declared below when secretsBasePath is set, so this only fires
+      # when secretsBasePath is null and no manual declaration exists)
       ++ concatLists (mapAttrsToList (username: userCfg:
         optional userCfg.sshAutoLoad.enable {
           assertion = config.age.secrets ? "${hostname}-ssh-passphrase";
           message = ''
-            User '${username}' has sshAutoLoad enabled but agenix secret "${hostname}-ssh-passphrase" is missing.
+            User '${username}' has sshAutoLoad enabled but the secret file "${hostname}-ssh-passphrase.age" is missing.
 
-            Add to host config:
+            1. Add to agenix-secrets/secrets.nix:
+               "secrets/${hostname}-ssh-passphrase.age".publicKeys = adminKeys ++ [ systems.${hostname} ];
+
+            2. Create the secret (enter the SSH key passphrase):
+               cd agenix-secrets && agenix -e secrets/${hostname}-ssh-passphrase.age
+
+            3. Commit, push, and update flake:
+               git add -A && git commit -m "Add ${hostname} SSH passphrase" && git push
+               cd .. && nix flake update agenix-secrets
+
+            If keystone.os.secretsBasePath is set, the age.secrets declaration is automatic.
+            Otherwise, add manually to host config:
               age.secrets.${hostname}-ssh-passphrase = {
                 file = "${"$"}{inputs.agenix-secrets}/secrets/${hostname}-ssh-passphrase.age";
                 owner = "${username}";
@@ -82,6 +95,17 @@ in {
           '';
         }
       ) cfg);
+
+      # Auto-declare age.secrets for sshAutoLoad when secretsBasePath is set
+      age.secrets = mkIf (osCfg.secretsBasePath != null) (
+        listToAttrs (concatLists (mapAttrsToList (username: userCfg:
+          optional userCfg.sshAutoLoad.enable (nameValuePair "${hostname}-ssh-passphrase" {
+            file = "${osCfg.secretsBasePath}/secrets/${hostname}-ssh-passphrase.age";
+            owner = username;
+            mode = "0400";
+          })
+        ) cfg))
+      );
 
       # Enable zsh system-wide if any user has terminal enabled
       programs.zsh.enable = mkIf (any (u: u.terminal.enable) (attrValues cfg)) true;
