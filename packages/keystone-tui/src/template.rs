@@ -62,7 +62,8 @@ pub struct GenerateConfig {
     pub hostname: String,
     pub machine_type: MachineType,
     pub storage_type: StorageType,
-    pub disk_device: String,
+    pub disk_device: Option<String>,
+    pub github_username: Option<String>,
     pub user: UserConfig,
     pub remote_unlock: RemoteUnlockConfig,
 }
@@ -173,6 +174,12 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
         _ => r#"[ "wheel" "networkmanager" "video" "audio" ]"#,
     };
 
+    // Use placeholder when no disk device is specified — replaced at install time
+    let disk_device = config
+        .disk_device
+        .as_deref()
+        .unwrap_or("__KEYSTONE_DISK__");
+
     format!(
         r#"{{
   config,
@@ -238,7 +245,7 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
         hostname = config.hostname,
         host_id = host_id,
         storage_type = config.storage_type.nix_value(),
-        disk_device = config.disk_device,
+        disk_device = disk_device,
         username = config.user.username,
         password = config.user.password,
         authorized_keys_nix = authorized_keys_nix,
@@ -299,6 +306,8 @@ pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
           environment.etc."keystone/install-config/configuration.nix".source = ./target-config/configuration.nix;
           environment.etc."keystone/install-config/hardware.nix".source = ./target-config/hardware.nix;
           environment.etc."keystone/install-config/hostname".text = "{hostname}";
+          environment.etc."keystone/install-config/username".text = "{username}";
+          environment.etc."keystone/install-config/github_username".text = "{github_username}";
 
           # Pin kernel to match upstream keystone ISO (6.12)
           boot.kernelPackages = nixpkgs.lib.mkForce pkgs.linuxPackages_6_12;
@@ -309,6 +318,8 @@ pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
 }}
 "#,
         hostname = config.hostname,
+        username = config.user.username,
+        github_username = config.github_username.as_deref().unwrap_or(""),
         ssh_keys_nix = ssh_keys_nix,
     )
 }
@@ -392,7 +403,8 @@ mod tests {
             hostname: "test-host".to_string(),
             machine_type: MachineType::Server,
             storage_type: StorageType::Zfs,
-            disk_device: "/dev/disk/by-id/test-disk".to_string(),
+            disk_device: Some("/dev/disk/by-id/test-disk".to_string()),
+            github_username: None,
             user: UserConfig {
                 username: "admin".to_string(),
                 password: "changeme".to_string(),
@@ -421,7 +433,8 @@ mod tests {
             hostname: "my-laptop".to_string(),
             machine_type: MachineType::Laptop,
             storage_type: StorageType::Ext4,
-            disk_device: "/dev/disk/by-id/nvme-test".to_string(),
+            disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
+            github_username: None,
             user: UserConfig {
                 username: "user".to_string(),
                 password: "pass".to_string(),
@@ -445,7 +458,8 @@ mod tests {
             hostname: "server1".to_string(),
             machine_type: MachineType::Server,
             storage_type: StorageType::Zfs,
-            disk_device: "test".to_string(),
+            disk_device: Some("test".to_string()),
+            github_username: None,
             user: UserConfig {
                 username: "admin".to_string(),
                 password: "pass".to_string(),
@@ -468,7 +482,8 @@ mod tests {
             hostname: "workstation".to_string(),
             machine_type: MachineType::Workstation,
             storage_type: StorageType::Zfs,
-            disk_device: "test".to_string(),
+            disk_device: Some("test".to_string()),
+            github_username: None,
             user: UserConfig {
                 username: "dev".to_string(),
                 password: "pass".to_string(),
@@ -494,12 +509,36 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_configuration_no_disk() {
+        let config = GenerateConfig {
+            hostname: "deferred-host".to_string(),
+            machine_type: MachineType::Laptop,
+            storage_type: StorageType::Ext4,
+            disk_device: None,
+            github_username: None,
+            user: UserConfig {
+                username: "user".to_string(),
+                password: "pass".to_string(),
+                authorized_keys: vec![],
+            },
+            remote_unlock: RemoteUnlockConfig {
+                enable: false,
+                authorized_keys: vec![],
+            },
+        };
+
+        let nix = generate_configuration_nix(&config);
+        assert!(nix.contains("__KEYSTONE_DISK__"));
+    }
+
+    #[test]
     fn test_generate_iso_flake_contains_hostname() {
         let config = GenerateConfig {
             hostname: "my-laptop".to_string(),
             machine_type: MachineType::Laptop,
             storage_type: StorageType::Ext4,
-            disk_device: "/dev/disk/by-id/nvme-test".to_string(),
+            disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
+            github_username: Some("octocat".to_string()),
             user: UserConfig {
                 username: "user".to_string(),
                 password: "pass".to_string(),
@@ -519,5 +558,7 @@ mod tests {
         assert!(iso_flake.contains("keystone/install-config/hardware.nix"));
         assert!(iso_flake.contains("isoInstaller"));
         assert!(iso_flake.contains("target-config/flake.nix"));
+        assert!(iso_flake.contains("keystone/install-config/username"));
+        assert!(iso_flake.contains("keystone/install-config/github_username"));
     }
 }

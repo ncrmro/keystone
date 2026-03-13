@@ -267,7 +267,8 @@ fn make_config(hostname: &str, machine_type: MachineType, storage_type: StorageT
         hostname: hostname.to_string(),
         machine_type,
         storage_type,
-        disk_device: "/dev/disk/by-id/nvme-TEST_DISK_001".to_string(),
+        disk_device: Some("/dev/disk/by-id/nvme-TEST_DISK_001".to_string()),
+        github_username: None,
         user: UserConfig {
             username: "testuser".to_string(),
             password: "testpass".to_string(),
