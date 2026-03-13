@@ -5,9 +5,11 @@ use crate::nix;
 use crate::repo;
 use crate::screens::build::BuildScreen;
 use crate::screens::create_config::CreateConfigScreen;
+use crate::screens::first_boot::FirstBootScreen;
 use crate::screens::host_detail::HostDetailScreen;
 use crate::screens::hosts::HostsScreen;
 use crate::screens::install::InstallScreen;
+use crate::screens::iso::IsoScreen;
 use crate::screens::welcome::WelcomeScreen;
 use crate::system;
 
@@ -18,7 +20,9 @@ pub enum AppScreen {
     Hosts(HostsScreen),
     HostDetail(HostDetailScreen),
     Build(BuildScreen),
+    Iso(IsoScreen),
     Install(InstallScreen),
+    FirstBoot(FirstBootScreen),
 }
 
 /// Application state for the Keystone TUI.
@@ -133,6 +137,19 @@ impl App {
             should_quit: false,
             config: AppConfig::default(),
             current_screen: AppScreen::Install(InstallScreen::new(installer_config)),
+            active_repo_index: None,
+        }
+    }
+
+    /// Create an App in first-boot mode — starts on the FirstBootScreen.
+    /// Runs after a fresh install when `.first-boot-pending` marker exists.
+    pub fn new_for_first_boot(
+        first_boot_config: crate::screens::first_boot::FirstBootConfig,
+    ) -> Self {
+        Self {
+            should_quit: false,
+            config: AppConfig::default(),
+            current_screen: AppScreen::FirstBoot(FirstBootScreen::new(first_boot_config)),
             active_repo_index: None,
         }
     }

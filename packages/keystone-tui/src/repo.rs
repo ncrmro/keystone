@@ -164,9 +164,10 @@ pub async fn create_new_repo_from_config(
     machine_type: crate::template::MachineType,
     hostname: String,
     storage_type: crate::template::StorageType,
-    disk_device: String,
+    disk_device: Option<String>,
     username: String,
     password: String,
+    github_username: Option<String>,
     authorized_keys: Vec<String>,
 ) -> Result<KeystoneRepo> {
     use crate::template;
@@ -195,6 +196,7 @@ pub async fn create_new_repo_from_config(
         machine_type,
         storage_type,
         disk_device,
+        github_username,
         user: template::UserConfig {
             username,
             password,

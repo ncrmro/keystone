@@ -26,17 +26,25 @@ use ratatui::{
 
 use std::process::Stdio;
 
+use crate::disk::DiskEntry;
+
 /// Configuration parsed from embedded install-config files.
 #[derive(Debug, Clone)]
 pub struct InstallerConfig {
     pub config_dir: PathBuf,
     pub hostname: String,
+    pub username: Option<String>,
+    pub github_username: Option<String>,
     pub storage_type: Option<String>,
     pub disk_device: Option<String>,
 }
 
 impl InstallerConfig {
     /// Detect installer mode by checking for embedded config at the well-known path.
+    ///
+    /// The ISO filesystem is read-only (squashfs), so we copy the config to a
+    /// writable tmpdir before returning. This allows disk selection to inject
+    /// the chosen device into configuration.nix at install time.
     pub fn detect() -> Option<Self> {
         let config_dir = Path::new("/etc/keystone/install-config");
         if !config_dir.exists() {
@@ -48,16 +56,53 @@ impl InstallerConfig {
             .map(|s| s.trim().to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
+        let username = std::fs::read_to_string(config_dir.join("username"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        let github_username = std::fs::read_to_string(config_dir.join("github_username"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        // Copy to writable location so we can inject disk selection later
+        let writable_dir = PathBuf::from("/tmp/keystone-install-config");
+        let effective_dir = if Self::copy_to_writable(config_dir, &writable_dir).is_ok() {
+            writable_dir
+        } else {
+            config_dir.to_path_buf()
+        };
+
         // Parse storage type and disk device from configuration.nix
         let (storage_type, disk_device) =
-            Self::parse_configuration_nix(config_dir).unwrap_or((None, None));
+            Self::parse_configuration_nix(&effective_dir).unwrap_or((None, None));
+
+        // Treat the placeholder as "no disk configured"
+        let disk_device = disk_device.filter(|d| d != "__KEYSTONE_DISK__");
 
         Some(Self {
-            config_dir: config_dir.to_path_buf(),
+            config_dir: effective_dir,
             hostname,
+            username,
+            github_username,
             storage_type,
             disk_device,
         })
+    }
+
+    /// Copy config files to a writable tmpdir for disk injection.
+    fn copy_to_writable(src: &Path, dst: &Path) -> std::io::Result<()> {
+        if dst.exists() {
+            std::fs::remove_dir_all(dst)?;
+        }
+        std::fs::create_dir_all(dst)?;
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let dest_file = dst.join(entry.file_name());
+            std::fs::copy(entry.path(), dest_file)?;
+        }
+        Ok(())
     }
 
     /// Extract storage type and disk device from configuration.nix via simple pattern matching.
@@ -75,7 +120,7 @@ impl InstallerConfig {
 
         let disk_device = content
             .lines()
-            .find(|l| l.contains("/dev/disk/by-id/"))
+            .find(|l| l.contains("/dev/disk/by-id/") || l.contains("__KEYSTONE_DISK__"))
             .and_then(|l| {
                 let start = l.find('"')? + 1;
                 let end = l[start..].find('"')? + start;
@@ -84,6 +129,15 @@ impl InstallerConfig {
 
         Some((storage_type, disk_device))
     }
+
+    /// Replace the disk placeholder in the writable configuration.nix.
+    fn inject_disk_device(config_dir: &Path, device: &str) -> std::io::Result<()> {
+        let config_path = config_dir.join("configuration.nix");
+        let content = std::fs::read_to_string(&config_path)?;
+        let updated = content.replace("__KEYSTONE_DISK__", device);
+        std::fs::write(&config_path, updated)?;
+        Ok(())
+    }
 }
 
 /// The phases of the install flow.
@@ -91,6 +145,8 @@ impl InstallerConfig {
 pub enum InstallPhase {
     /// Show config summary, waiting for user to proceed.
     Summary,
+    /// Select a disk device (shown when no disk was pre-configured).
+    DiskSelection,
     /// Confirm disk erasure.
     Confirm,
     /// Running disko + nixos-install.
@@ -106,6 +162,7 @@ pub enum InstallMessage {
     Output(String),
     PhaseComplete(String),
     Finished(InstallResult),
+    DisksDiscovered(Vec<DiskEntry>),
 }
 
 #[derive(Clone, Debug)]
@@ -125,6 +182,11 @@ pub struct InstallScreen {
     /// Channel for receiving install subprocess messages.
     rx: Option<mpsc::UnboundedReceiver<InstallMessage>>,
     cancel_token: CancellationToken,
+    /// Discovered disks for DiskSelection phase.
+    available_disks: Vec<DiskEntry>,
+    selected_disk_index: usize,
+    /// Whether disk discovery is still running.
+    discovering_disks: bool,
 }
 
 impl InstallScreen {
@@ -137,6 +199,9 @@ impl InstallScreen {
             auto_scroll: true,
             rx: None,
             cancel_token: CancellationToken::new(),
+            available_disks: Vec::new(),
+            selected_disk_index: 0,
+            discovering_disks: false,
         }
     }
 
@@ -153,6 +218,9 @@ impl InstallScreen {
             auto_scroll: true,
             rx: Some(rx),
             cancel_token: CancellationToken::new(),
+            available_disks: Vec::new(),
+            selected_disk_index: 0,
+            discovering_disks: false,
         }
     }
 
@@ -168,11 +236,88 @@ impl InstallScreen {
         &self.output_lines
     }
 
-    /// Move from Summary → Confirm.
+    pub fn available_disks(&self) -> &[DiskEntry] {
+        &self.available_disks
+    }
+
+    pub fn selected_disk_index(&self) -> usize {
+        self.selected_disk_index
+    }
+
+    /// Move from Summary → DiskSelection (if no disk configured) or Confirm.
     pub fn proceed_to_confirm(&mut self) {
-        if self.phase == InstallPhase::Summary {
+        if self.phase != InstallPhase::Summary {
+            return;
+        }
+
+        if self.config.disk_device.is_none() {
+            // No disk pre-configured — enter disk selection
+            self.phase = InstallPhase::DiskSelection;
+            self.discovering_disks = true;
+            self.spawn_disk_discovery();
+        } else {
             self.phase = InstallPhase::Confirm;
         }
+    }
+
+    /// Spawn async disk discovery.
+    fn spawn_disk_discovery(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.rx = Some(rx);
+
+        tokio::spawn(async move {
+            match crate::disk::discover_disks().await {
+                Ok(disks) => {
+                    let _ = tx.send(InstallMessage::DisksDiscovered(disks));
+                }
+                Err(e) => {
+                    let _ = tx.send(InstallMessage::Output(format!(
+                        "Disk discovery failed: {}",
+                        e
+                    )));
+                    let _ = tx.send(InstallMessage::DisksDiscovered(Vec::new()));
+                }
+            }
+        });
+    }
+
+    /// Move disk selection cursor up.
+    pub fn disk_up(&mut self) {
+        if !self.available_disks.is_empty() {
+            self.selected_disk_index = if self.selected_disk_index == 0 {
+                self.available_disks.len() - 1
+            } else {
+                self.selected_disk_index - 1
+            };
+        }
+    }
+
+    /// Move disk selection cursor down.
+    pub fn disk_down(&mut self) {
+        if !self.available_disks.is_empty() {
+            self.selected_disk_index =
+                (self.selected_disk_index + 1) % self.available_disks.len();
+        }
+    }
+
+    /// Select the highlighted disk and proceed to Confirm.
+    pub fn select_disk(&mut self) {
+        if self.phase != InstallPhase::DiskSelection || self.available_disks.is_empty() {
+            return;
+        }
+
+        let selected = &self.available_disks[self.selected_disk_index];
+        let device_path = selected.by_id_path.clone();
+
+        // Inject the selected disk into the writable configuration.nix
+        if let Err(e) = InstallerConfig::inject_disk_device(&self.config.config_dir, &device_path) {
+            self.phase = InstallPhase::Failed(format!("Failed to set disk device: {}", e));
+            return;
+        }
+
+        self.config.disk_device = Some(device_path);
+        self.rx = None; // Clean up discovery channel
+        self.phase = InstallPhase::Confirm;
     }
 
     /// Move from Confirm → Installing, spawning the install subprocess.
@@ -189,6 +334,7 @@ impl InstallScreen {
 
         let config_dir = self.config.config_dir.clone();
         let hostname = self.config.hostname.clone();
+        let username = self.config.username.clone();
 
         tokio::spawn(async move {
             // Phase 1: Run disko to partition and format the disk
@@ -201,7 +347,8 @@ impl InstallScreen {
                 &[
                     "--mode",
                     "disko",
-                    &format!("{}/configuration.nix", config_dir.display()),
+                    "--flake",
+                    &format!("{}#{}", config_dir.display(), hostname),
                 ],
                 &config_dir,
                 &tx,
@@ -249,6 +396,21 @@ impl InstallScreen {
 
             match install_result {
                 Ok(()) => {
+                    // Copy config to the installed system for first-boot flow
+                    if let Some(ref user) = username {
+                        let _ = tx.send(InstallMessage::Output(
+                            "Copying config to installed system...".to_string(),
+                        ));
+                        if let Err(e) =
+                            copy_config_to_target(&config_dir, user, &tx).await
+                        {
+                            let _ = tx.send(InstallMessage::Output(format!(
+                                "Warning: failed to copy config: {}",
+                                e
+                            )));
+                        }
+                    }
+
                     let _ = tx.send(InstallMessage::Finished(InstallResult::Success));
                 }
                 Err(e) => {
@@ -261,10 +423,21 @@ impl InstallScreen {
         });
     }
 
-    /// Go back from Confirm → Summary.
+    /// Go back from Confirm → DiskSelection/Summary, or DiskSelection → Summary.
     pub fn go_back(&mut self) {
-        if self.phase == InstallPhase::Confirm {
-            self.phase = InstallPhase::Summary;
+        match self.phase {
+            InstallPhase::Confirm => {
+                // If disk was selected interactively, go back to disk selection
+                if !self.available_disks.is_empty() {
+                    self.phase = InstallPhase::DiskSelection;
+                } else {
+                    self.phase = InstallPhase::Summary;
+                }
+            }
+            InstallPhase::DiskSelection => {
+                self.phase = InstallPhase::Summary;
+            }
+            _ => {}
         }
     }
 
@@ -308,6 +481,11 @@ impl InstallScreen {
                 InstallMessage::PhaseComplete(msg) => {
                     self.output_lines.push(msg);
                 }
+                InstallMessage::DisksDiscovered(disks) => {
+                    self.available_disks = disks;
+                    self.selected_disk_index = 0;
+                    self.discovering_disks = false;
+                }
                 InstallMessage::Finished(result) => match result {
                     InstallResult::Success => {
                         self.output_lines
@@ -332,6 +510,7 @@ impl InstallScreen {
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         match &self.phase {
             InstallPhase::Summary => self.render_summary(frame, area),
+            InstallPhase::DiskSelection => self.render_disk_selection(frame, area),
             InstallPhase::Confirm => self.render_confirm(frame, area),
             InstallPhase::Installing => self.render_installing(frame, area),
             InstallPhase::Done => self.render_done(frame, area),
@@ -404,6 +583,90 @@ impl InstallScreen {
         // Help
         let help = Paragraph::new(Text::styled(
             "Enter: proceed to install • q: quit",
+            Style::default().fg(Color::DarkGray),
+        ))
+        .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
+    }
+
+    fn render_disk_selection(&self, frame: &mut Frame, area: Rect) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // Title
+                Constraint::Min(5),   // Disk list
+                Constraint::Length(3), // Help
+            ])
+            .split(area);
+
+        let title = Paragraph::new(Text::styled(
+            "Select Installation Disk",
+            Style::default().bold().fg(Color::Yellow),
+        ))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(title, chunks[0]);
+
+        if self.discovering_disks {
+            let loading = Paragraph::new(Text::styled(
+                "\n  Discovering disks...",
+                Style::default().fg(Color::DarkGray),
+            ))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            );
+            frame.render_widget(loading, chunks[1]);
+        } else if self.available_disks.is_empty() {
+            let no_disks = Paragraph::new(Text::styled(
+                "\n  No disks found. Ensure drives are connected and detected by the kernel.",
+                Style::default().fg(Color::Red),
+            ))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Red)),
+            );
+            frame.render_widget(no_disks, chunks[1]);
+        } else {
+            let items: Vec<ListItem> = self
+                .available_disks
+                .iter()
+                .enumerate()
+                .map(|(i, disk)| {
+                    let indicator = if i == self.selected_disk_index {
+                        "▸ "
+                    } else {
+                        "  "
+                    };
+                    let style = if i == self.selected_disk_index {
+                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    };
+                    ListItem::new(Line::from(vec![
+                        Span::styled(indicator, style),
+                        Span::styled(&disk.model, style),
+                        Span::styled(
+                            format!("  {}  [{}]", disk.size, disk.transport),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                    ]))
+                })
+                .collect();
+
+            let disk_list = List::new(items).block(
+                Block::default()
+                    .title(" Available Disks ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            );
+            frame.render_widget(disk_list, chunks[1]);
+        }
+
+        let help = Paragraph::new(Text::styled(
+            "↑/↓: navigate • Enter: select disk • Esc: back",
             Style::default().fg(Color::DarkGray),
         ))
         .alignment(Alignment::Center);
@@ -610,6 +873,69 @@ impl InstallScreen {
     }
 }
 
+/// Copy the generated config to the installed system for the first-boot flow.
+///
+/// Creates `~/.keystone/repos/nixos-config/` on the target and copies
+/// flake.nix, configuration.nix, hardware.nix with a `.first-boot-pending`
+/// marker so the TUI knows to run the first-boot wizard on next login.
+async fn copy_config_to_target(
+    config_dir: &Path,
+    username: &str,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
+    let target_home = PathBuf::from(format!("/mnt/home/{}", username));
+    let repo_dir = target_home
+        .join(".keystone")
+        .join("repos")
+        .join("nixos-config");
+
+    tokio::fs::create_dir_all(&repo_dir)
+        .await
+        .map_err(|e| format!("Failed to create config dir: {}", e))?;
+
+    // Copy config files
+    for filename in &["flake.nix", "configuration.nix", "hardware.nix"] {
+        let src = config_dir.join(filename);
+        let dst = repo_dir.join(filename);
+        if src.exists() {
+            tokio::fs::copy(&src, &dst)
+                .await
+                .map_err(|e| format!("Failed to copy {}: {}", filename, e))?;
+        }
+    }
+
+    // Write first-boot marker
+    tokio::fs::write(repo_dir.join(".first-boot-pending"), "")
+        .await
+        .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
+
+    // Fix ownership — look up uid/gid from the installed system's passwd
+    let passwd_path = PathBuf::from("/mnt/etc/passwd");
+    if passwd_path.exists() {
+        let passwd = tokio::fs::read_to_string(&passwd_path)
+            .await
+            .unwrap_or_default();
+        if let Some(line) = passwd.lines().find(|l| l.starts_with(&format!("{}:", username))) {
+            let parts: Vec<&str> = line.split(':').collect();
+            if parts.len() >= 4 {
+                let uid = parts[2];
+                let gid = parts[3];
+                let keystone_dir = target_home.join(".keystone");
+                let _ = Command::new("chown")
+                    .args(["-R", &format!("{}:{}", uid, gid), &keystone_dir.display().to_string()])
+                    .output()
+                    .await;
+            }
+        }
+    }
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Config copied to {}",
+        repo_dir.display()
+    )));
+    Ok(())
+}
+
 /// Run a command, streaming output lines to the channel.
 async fn run_command(
     program: &str,
@@ -691,8 +1017,21 @@ mod tests {
         InstallerConfig {
             config_dir: PathBuf::from("/etc/keystone/install-config"),
             hostname: "test-laptop".to_string(),
+            username: Some("testuser".to_string()),
+            github_username: None,
             storage_type: Some("ext4".to_string()),
             disk_device: Some("/dev/disk/by-id/nvme-TEST".to_string()),
+        }
+    }
+
+    fn test_config_no_disk() -> InstallerConfig {
+        InstallerConfig {
+            config_dir: PathBuf::from("/tmp/keystone-test-config"),
+            hostname: "test-laptop".to_string(),
+            username: Some("testuser".to_string()),
+            github_username: None,
+            storage_type: Some("ext4".to_string()),
+            disk_device: None,
         }
     }
 
@@ -779,5 +1118,77 @@ mod tests {
 
         screen.scroll_down();
         assert!(screen.auto_scroll);
+    }
+
+    #[test]
+    fn test_proceed_with_disk_goes_to_confirm() {
+        let mut screen = InstallScreen::new(test_config());
+        screen.proceed_to_confirm();
+        // Disk is pre-configured, should skip DiskSelection
+        assert_eq!(*screen.phase(), InstallPhase::Confirm);
+    }
+
+    #[tokio::test]
+    async fn test_proceed_without_disk_goes_to_selection() {
+        let mut screen = InstallScreen::new(test_config_no_disk());
+        screen.proceed_to_confirm();
+        assert_eq!(*screen.phase(), InstallPhase::DiskSelection);
+    }
+
+    #[test]
+    fn test_disk_navigation() {
+        let mut screen = InstallScreen::new(test_config_no_disk());
+        screen.available_disks = vec![
+            DiskEntry {
+                by_id_path: "/dev/disk/by-id/nvme-disk1".to_string(),
+                model: "Samsung 980 PRO".to_string(),
+                size: "1T".to_string(),
+                transport: "nvme".to_string(),
+            },
+            DiskEntry {
+                by_id_path: "/dev/disk/by-id/ata-disk2".to_string(),
+                model: "WD Blue".to_string(),
+                size: "2T".to_string(),
+                transport: "sata".to_string(),
+            },
+        ];
+        assert_eq!(screen.selected_disk_index(), 0);
+
+        screen.disk_down();
+        assert_eq!(screen.selected_disk_index(), 1);
+
+        screen.disk_down();
+        assert_eq!(screen.selected_disk_index(), 0); // wrap
+
+        screen.disk_up();
+        assert_eq!(screen.selected_disk_index(), 1); // wrap back
+    }
+
+    #[test]
+    fn test_go_back_from_disk_selection() {
+        let mut screen = InstallScreen::new(test_config_no_disk());
+        screen.phase = InstallPhase::DiskSelection;
+        screen.go_back();
+        assert_eq!(*screen.phase(), InstallPhase::Summary);
+    }
+
+    #[test]
+    fn test_poll_discovers_disks() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = InstallScreen::new_with_channel(test_config_no_disk(), rx);
+        screen.phase = InstallPhase::DiskSelection;
+        screen.discovering_disks = true;
+
+        tx.send(InstallMessage::DisksDiscovered(vec![DiskEntry {
+            by_id_path: "/dev/disk/by-id/nvme-test".to_string(),
+            model: "Test Disk".to_string(),
+            size: "500G".to_string(),
+            transport: "nvme".to_string(),
+        }]))
+        .unwrap();
+
+        screen.poll();
+        assert!(!screen.discovering_disks);
+        assert_eq!(screen.available_disks().len(), 1);
     }
 }

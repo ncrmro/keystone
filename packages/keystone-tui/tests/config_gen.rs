@@ -10,7 +10,8 @@ fn test_authorized_keys_appear_in_generated_nix() {
         hostname: "test-server".to_string(),
         machine_type: MachineType::Server,
         storage_type: StorageType::Zfs,
-        disk_device: "/dev/disk/by-id/nvme-test".to_string(),
+        disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
+        github_username: None,
         user: UserConfig {
             username: "admin".to_string(),
             password: "changeme".to_string(),
@@ -60,7 +61,8 @@ fn test_empty_authorized_keys_generates_empty_list() {
         hostname: "empty-keys".to_string(),
         machine_type: MachineType::Laptop,
         storage_type: StorageType::Ext4,
-        disk_device: "/dev/sda".to_string(),
+        disk_device: Some("/dev/sda".to_string()),
+        github_username: None,
         user: UserConfig {
             username: "user".to_string(),
             password: "pass".to_string(),
@@ -85,7 +87,8 @@ fn test_flake_nix_contains_hostname() {
         hostname: "my-server".to_string(),
         machine_type: MachineType::Server,
         storage_type: StorageType::Zfs,
-        disk_device: "/dev/sda".to_string(),
+        disk_device: Some("/dev/sda".to_string()),
+        github_username: None,
         user: UserConfig {
             username: "admin".to_string(),
             password: "pass".to_string(),
@@ -108,7 +111,8 @@ fn test_laptop_gets_ext4_and_desktop() {
         hostname: "my-laptop".to_string(),
         machine_type: MachineType::Laptop,
         storage_type: StorageType::Ext4,
-        disk_device: "/dev/nvme0n1".to_string(),
+        disk_device: Some("/dev/nvme0n1".to_string()),
+        github_username: None,
         user: UserConfig {
             username: "user".to_string(),
             password: "pass".to_string(),

@@ -16,147 +16,173 @@
   pkgs,
   lib,
   ...
-}: let
-  keystone-tui = pkgs.callPackage ../packages/keystone-tui {};
-in {
+}:
+let
+  keystone-tui = pkgs.callPackage ../packages/keystone-tui { };
+in
+{
   options.keystone.installer.sshKeys = lib.mkOption {
     type = lib.types.listOf lib.types.str;
-    default = [];
+    default = [ ];
     description = "SSH public keys for root access on the installer ISO";
   };
 
   config = {
-  # Enable SSH daemon for remote access
-  # mkForce overrides keystone.os.ssh's "prohibit-password" — the installer
-  # needs key-based root login for remote installation workflows
-  services.openssh = {
-    enable = true;
-    settings = {
-      PermitRootLogin = lib.mkForce "yes";
-      PasswordAuthentication = false;
-      PubkeyAuthentication = true;
+    # Enable SSH daemon for remote access
+    # mkForce overrides keystone.os.ssh's "prohibit-password" — the installer
+    # needs key-based root login for remote installation workflows
+    services.openssh = {
+      enable = true;
+      settings = {
+        PermitRootLogin = lib.mkForce "yes";
+        PasswordAuthentication = false;
+        PubkeyAuthentication = true;
+      };
+      extraConfig = ''
+        UseDNS no
+      '';
     };
-    extraConfig = ''
-      UseDNS no
-    '';
-  };
 
-  # Configure root user with SSH keys
-  users.users.root = {
-    openssh.authorizedKeys.keys = config.keystone.installer.sshKeys;
-  };
+    # Configure root user with SSH keys
+    users.users.root = {
+      openssh.authorizedKeys.keys = config.keystone.installer.sshKeys;
+    };
 
-  # Enable networking via NetworkManager (for TUI installer network detection)
-  # mkForce needed — installation-cd-minimal.nix enables wpa_supplicant which
-  # conflicts with NetworkManager's own wireless management
-  networking = {
-    wireless.enable = lib.mkForce false;
-  };
+    # Enable networking via NetworkManager (for TUI installer network detection)
+    # mkForce needed — installation-cd-minimal.nix enables wpa_supplicant which
+    # conflicts with NetworkManager's own wireless management
+    networking = {
+      wireless.enable = lib.mkForce false;
+    };
 
-  # Include TUI installer and tools for installation
-  environment.systemPackages = with pkgs; [
-    keystone-tui
-    git
-    curl
-    wget
-    htop
-    lsof
-    rsync
-    jq
-    # Tools needed for installation
-    parted
-    cryptsetup
-    util-linux
-    dosfstools
-    e2fsprogs
-    nix
-    nixos-install-tools
-    disko
-    shadow
-    iproute2
-    networkmanager
-    tpm2-tools
-    # ZFS utilities — use the same package boot.supportedFilesystems selects
-    config.boot.zfs.package
-    # Secure Boot key management
-    sbctl
-  ];
-
-  # NetworkManager for network detection (required by TUI installer)
-  networking.networkmanager.enable = true;
-
-  # Disable getty on tty1 so TUI installer can use it
-  systemd.services."getty@tty1".enable = false;
-  systemd.services."autovt@tty1".enable = false;
-
-  # Keystone TUI installer service - auto-starts on boot
-  systemd.services.keystone-installer = {
-    description = "Keystone Installer TUI";
-    after = ["network.target" "NetworkManager.service"];
-    wants = ["NetworkManager.service"];
-    wantedBy = ["multi-user.target"];
-    conflicts = ["getty@tty1.service" "autovt@tty1.service"];
-
-    path = with pkgs; [
-      networkmanager
-      iproute2
-      util-linux
+    # Include TUI installer and tools for installation
+    environment.systemPackages = with pkgs; [
+      keystone-tui
+      git
+      curl
+      wget
+      htop
+      lsof
+      rsync
       jq
-      tpm2-tools
+      # Tools needed for installation
       parted
       cryptsetup
-      config.boot.zfs.package
+      util-linux
       dosfstools
       e2fsprogs
       nix
       nixos-install-tools
       disko
-      git
       shadow
+      iproute2
+      networkmanager
+      tpm2-tools
+      # ZFS utilities — use the same package boot.supportedFilesystems selects
+      config.boot.zfs.package
+      # Secure Boot key management
+      sbctl
     ];
 
-    serviceConfig = {
-      Type = "simple";
-      User = "root";
-      ExecStart = "${keystone-tui}/bin/keystone-tui";
-      Restart = "on-failure";
-      RestartSec = "5s";
-      StandardInput = "tty";
-      StandardOutput = "tty";
-      TTYPath = "/dev/tty1";
-      TTYReset = "yes";
-      TTYVHangup = "yes";
+    # NetworkManager for network detection (required by TUI installer)
+    networking.networkmanager.enable = true;
+
+    # Disable getty on tty1 so TUI installer can use it
+    systemd.services."getty@tty1".enable = false;
+    systemd.services."autovt@tty1".enable = false;
+
+    # Keystone TUI installer service - auto-starts on boot
+    systemd.services.keystone-installer = {
+      description = "Keystone Installer TUI";
+      after = [
+        "network.target"
+        "NetworkManager.service"
+      ];
+      wants = [ "NetworkManager.service" ];
+      wantedBy = [ "multi-user.target" ];
+      conflicts = [
+        "getty@tty1.service"
+        "autovt@tty1.service"
+      ];
+
+      path = with pkgs; [
+        networkmanager
+        iproute2
+        util-linux
+        jq
+        tpm2-tools
+        parted
+        cryptsetup
+        config.boot.zfs.package
+        dosfstools
+        e2fsprogs
+        nix
+        nixos-install-tools
+        disko
+        git
+        shadow
+      ];
+
+      serviceConfig = {
+        Type = "simple";
+        User = "root";
+        # Clear any residual boot output and restore cursor before TUI starts.
+        # Uses /bin/sh because systemd ExecStartPre doesn't support shell redirects.
+        ExecStartPre = "/bin/sh -c '${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1'";
+        ExecStart = "${keystone-tui}/bin/keystone-tui";
+        Restart = "on-failure";
+        RestartSec = "5s";
+        StandardInput = "tty";
+        StandardOutput = "tty";
+        TTYPath = "/dev/tty1";
+        TTYReset = "yes";
+        TTYVHangup = "yes";
+      };
     };
-  };
 
-  # Enable console on both serial (for remote) and tty1 (for TUI installer)
-  boot.kernelParams = ["console=ttyS0,115200" "console=tty1"];
+    # Suppress boot messages so the TUI appears cleanly on tty1.
+    # console=tty1 keeps the display signal active (prevents "no signal" flash
+    # between GRUB and the TUI); quiet + loglevel=0 ensure nothing is printed.
+    # Serial still receives all boot logs for remote debugging.
+    boot.consoleLogLevel = 0;
+    boot.initrd.verbose = false;
+    boot.kernelParams = [
+      "console=ttyS0,115200"
+      "console=tty1"
+      "quiet"
+      "loglevel=0"
+      "rd.udev.log_level=3"
+      "systemd.show_status=false"
+      "vt.global_cursor_default=0"
+    ];
 
-  # Ensure SSH starts on boot
-  systemd.services.sshd.wantedBy = lib.mkForce ["multi-user.target"];
+    # Ensure SSH starts on boot
+    systemd.services.sshd.wantedBy = lib.mkForce [ "multi-user.target" ];
 
-  # Note: kernel is set in flake.nix to override minimal CD default
+    # Note: kernel is set in flake.nix to override minimal CD default
 
-  # Enable ZFS for nixos-anywhere deployments
-  boot.supportedFilesystems = ["zfs"];
-  boot.zfs.forceImportRoot = false;
+    # Enable ZFS for nixos-anywhere deployments
+    boot.supportedFilesystems = [ "zfs" ];
+    boot.zfs.forceImportRoot = false;
 
-  # ZFS kernel modules — boot.supportedFilesystems handles extraModulePackages,
-  # udev, and systemd integration. Only need to ensure the module is loaded.
-  boot.kernelModules = ["zfs"];
+    # ZFS kernel modules — boot.supportedFilesystems handles extraModulePackages,
+    # udev, and systemd integration. Only need to ensure the module is loaded.
+    boot.kernelModules = [ "zfs" ];
 
-  # Set required hostId for ZFS
-  networking.hostId = lib.mkDefault "8425e349";
+    # Set required hostId for ZFS
+    networking.hostId = lib.mkDefault "8425e349";
 
-  # Optimize for installation - less bloat
-  documentation.enable = false;
-  documentation.nixos.enable = false;
+    # Optimize for installation - less bloat
+    documentation.enable = false;
+    documentation.nixos.enable = false;
 
-  # Set the ISO label
-  image.fileName = lib.mkForce "keystone-installer.iso";
-  isoImage.volumeID = lib.mkForce "KEYSTONE";
+    # Set the ISO label and boot splash image
+    image.fileName = lib.mkForce "keystone-installer.iso";
+    isoImage.volumeID = lib.mkForce "KEYSTONE";
+    isoImage.efiSplashImage = ../assets/installer-splash.png;
+    isoImage.splashImage = ../assets/installer-splash.png;
 
-  # Include the keystone modules in the ISO for reference
-  environment.etc."keystone-modules".source = ../modules;
+    # Include the keystone modules in the ISO for reference
+    environment.etc."keystone-modules".source = ../modules;
   }; # close config
 }
