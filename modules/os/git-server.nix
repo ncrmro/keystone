@@ -270,7 +270,9 @@ in {
           API="${apiUrl}"
 
           # --- User provisioning (via CLI, no token needed) ---
-          if $FORGEJO user list --admin 2>/dev/null | grep -q "^.*\b${username}\b"; then
+          # NOTE: Do not use `--admin` flag here — it filters to admin users only,
+          # causing manually-created non-admin accounts to be missed.
+          if $FORGEJO user list 2>/dev/null | grep -q "^.*\b${username}\b"; then
             echo "${username}: Forgejo user already exists"
           else
             echo "${username}: Creating Forgejo user..."
@@ -284,9 +286,10 @@ in {
           fi
 
           # --- Create short-lived admin token for API operations ---
+          TOKEN_NAME="provision-$(date +%s)"
           TOKEN=$($FORGEJO user generate-access-token \
             --username "${username}" \
-            --token-name "provision-$(date +%s)" \
+            --token-name "$TOKEN_NAME" \
             --scopes "write:user,write:repository,write:admin" \
             --raw 2>/dev/null || true)
 
@@ -329,6 +332,11 @@ in {
                 '{name: $name, description: $desc, private: true, auto_init: true}')"
             echo "${username}: Repo ${repoName} created"
           fi
+
+          # --- Clean up provisioning token ---
+          # Token deletes itself via API; no CLI equivalent for token deletion.
+          # Prevents accumulation of provision-* tokens across reboots.
+          curl -sf -X DELETE -H "$AUTH" "$API/users/${username}/tokens/$TOKEN_NAME" || true
 
           echo "${username}: Forgejo provisioning complete"
         '';
