@@ -40,9 +40,9 @@ agentctl <agent-name> <command> [args...]
 **Examples**:
 
 ```bash
-agentctl drago status agent-task-loop-drago
-agentctl drago journalctl -u agent-task-loop-drago -n 20
-agentctl drago restart agent-task-loop-drago
+agentctl drago status agent-drago-task-loop
+agentctl drago journalctl -u agent-drago-task-loop -n 20
+agentctl drago restart agent-drago-task-loop
 agentctl drago list-timers
 agentctl drago tasks
 agentctl drago email

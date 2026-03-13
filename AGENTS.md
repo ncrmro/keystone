@@ -221,8 +221,8 @@ agentctl <agent-name> <command> [args...]
 | `provision` | Generate SSH keypair, mail password, and agenix secrets |
 
 ```bash
-agentctl drago status agent-task-loop-drago
-agentctl drago journalctl -u agent-task-loop-drago -n 20
+agentctl drago status agent-drago-task-loop
+agentctl drago journalctl -u agent-drago-task-loop -n 20
 agentctl drago exec which himalaya
 agentctl drago mail task --subject "Fix CI pipeline"
 agentctl drago provision                  # full flow incl. hwrekey
