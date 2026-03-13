@@ -197,12 +197,10 @@
       hosts = ./modules/hosts.nix;
 
       # Core OS module - storage, secure boot, TPM, remote unlock, users, services
-      # keystoneInputs threaded in for the installer's nested eval (needs disko,
-      # lanzaboote, home-manager, and the keystone overlay to build an ISO with
-      # keystone.os + keystone.terminal).
-      # mkDefault avoids conflict with the desktop module which also sets
-      # _module.args.keystoneInputs at normal priority — hosts importing both
-      # get desktop's definition; server-only hosts get this default.
+      # Pass flake inputs to installer via dedicated option — NOT _module.args,
+      # which would conflict with the desktop module's identical definition.
+      # Only installer.nix needs keystoneInputs at the NixOS level; all other
+      # consumers are in the desktop tree or inside the installer's nested eval.
       operating-system = {
         imports = [
           disko.nixosModules.disko
@@ -213,7 +211,7 @@
           ./modules/os
           ./modules/installer.nix
         ];
-        _module.args.keystoneInputs = nixpkgs.lib.mkDefault keystoneInputs;
+        keystone.os.installer._keystoneInputs = keystoneInputs;
       };
 
       # Desktop module - Hyprland, audio, greetd (no disko/encryption dependencies)
