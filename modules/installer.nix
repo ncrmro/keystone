@@ -87,7 +87,8 @@ in {
           # age.secrets even behind mkIf false, and NixOS checks option paths exist
           keystoneInputs.agenix.nixosModules.default
           ./domain.nix
-          ./mail.nix
+          ./services.nix
+          ./hosts.nix
           ./os
           ./iso-installer.nix
           {

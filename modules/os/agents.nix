@@ -940,7 +940,7 @@ in
         ) cfg);
         # Nix-generated static lookup: agent name -> provision metadata
         # Bakes agent host, mail.provision flag, and mail server host into the script.
-        mailHost = if config.keystone.mail.host != null then config.keystone.mail.host else "";
+        mailHost = if config.keystone.services.mail.host != null then config.keystone.services.mail.host else "";
         agentProvisionCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
           "          ${name}) PROVISION_AGENT_HOST=\"${toString agentCfg.host}\"; MAIL_PROVISION=${boolToString agentCfg.mail.provision} ;;"
         ) cfg);
@@ -2201,6 +2201,7 @@ in
                 userEmail = mkDefault (if agentCfg.email != null
                   then agentCfg.email
                   else "${username}@${if topDomain != null then topDomain else "localhost"}");
+                forgejo.enable = mkDefault (config.keystone.services.git.host != null);
               };
               mail = {
                 enable = mkDefault true;

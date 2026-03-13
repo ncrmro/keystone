@@ -261,6 +261,7 @@ in {
               enable = mkDefault (userCfg.email != null);
               userName = mkDefault userCfg.fullName;
               userEmail = mkDefault userCfg.email;
+              forgejo.enable = mkDefault (config.keystone.services.git.host != null);
             };
           } // optionalAttrs userCfg.sshAutoLoad.enable {
             sshAutoLoad.enable = mkDefault true;
