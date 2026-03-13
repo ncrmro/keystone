@@ -29,11 +29,8 @@ with lib; let
       chmod +x $out
     '';
 
-  # Enrollment check script
-  enrollmentCheckScript = makeExecutableScript "enrollment-check.sh" ./scripts/enrollment-check.sh {
-    cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
-    credstoreDevice = credstoreDevice;
-  };
+  # Enrollment check script (only reads marker file — no cryptsetup needed)
+  enrollmentCheckScript = makeExecutableScript "enrollment-check.sh" ./scripts/enrollment-check.sh {};
 
   # Recovery key enrollment script
   enrollRecoveryScript = makeExecutableScript "enroll-recovery.sh" ./scripts/enroll-recovery.sh {
@@ -78,7 +75,35 @@ in {
       "d /var/lib/keystone 0755 root root -"
     ];
 
-    # Login banner for enrollment status
+    # Boot-time check: inspect LUKS header as root and maintain marker file.
+    # Regular users cannot read block devices, so this must run as a systemd
+    # service rather than in interactiveShellInit.
+    systemd.services.keystone-tpm-check = {
+      description = "Check TPM enrollment status and update marker file";
+      wantedBy = ["multi-user.target"];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [pkgs.cryptsetup];
+      script = ''
+        MARKER_FILE="/var/lib/keystone/tpm-enrollment-complete"
+        mkdir -p /var/lib/keystone
+
+        if cryptsetup luksDump "${credstoreDevice}" 2>/dev/null | grep -q "systemd-tpm2"; then
+          # TPM enrolled — create/update marker
+          cat > "$MARKER_FILE" <<MARKER
+        TPM enrollment verified: $(date -Iseconds)
+        Device: ${credstoreDevice}
+        MARKER
+        else
+          # Not enrolled — remove stale marker if present
+          rm -f "$MARKER_FILE"
+        fi
+      '';
+    };
+
+    # Login banner for enrollment status (reads marker file only)
     environment.interactiveShellInit = ''
       ${pkgs.bash}/bin/bash ${enrollmentCheckScript}
     '';

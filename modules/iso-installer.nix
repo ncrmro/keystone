@@ -1,9 +1,13 @@
 # ISO installer configuration with TUI installer
 #
-# Provides a bootable NixOS installer with:
-# - SSH daemon for remote access (key-only auth)
+# Provides ISO-specific config layered on top of keystone.os (which handles
+# SSH, firewall, flakes, locale) and keystone.terminal (helix, zsh, starship).
+#
+# This module adds:
+# - Root SSH login override (keystone.os defaults to prohibit-password)
 # - TUI installer (keystone-installer-ui) auto-starting on tty1
 # - ZFS, Secure Boot, TPM, and disko tooling pre-installed
+# - NetworkManager for TUI installer network detection
 #
 # Usage:
 #   keystone.installer.sshKeys = [ "ssh-ed25519 AAAAC3..." ];
@@ -23,14 +27,15 @@ in {
 
   config = {
   # Enable SSH daemon for remote access
+  # mkForce overrides keystone.os.ssh's "prohibit-password" — the installer
+  # needs key-based root login for remote installation workflows
   services.openssh = {
     enable = true;
     settings = {
-      PermitRootLogin = "yes";
+      PermitRootLogin = lib.mkForce "yes";
       PasswordAuthentication = false;
       PubkeyAuthentication = true;
     };
-    # Start SSH as early as possible
     extraConfig = ''
       UseDNS no
     '';
@@ -54,7 +59,6 @@ in {
     git
     curl
     wget
-    vim
     htop
     lsof
     rsync
@@ -72,8 +76,8 @@ in {
     iproute2
     networkmanager
     tpm2-tools
-    # ZFS utilities
-    config.boot.kernelPackages.zfs_2_3
+    # ZFS utilities — use the same package boot.supportedFilesystems selects
+    config.boot.zfs.package
     # Secure Boot key management
     sbctl
   ];
@@ -101,7 +105,7 @@ in {
       tpm2-tools
       parted
       cryptsetup
-      config.boot.kernelPackages.zfs_2_3
+      config.boot.zfs.package
       dosfstools
       e2fsprogs
       nix
@@ -137,19 +141,12 @@ in {
   boot.supportedFilesystems = ["zfs"];
   boot.zfs.forceImportRoot = false;
 
-  # Ensure ZFS kernel modules are loaded and available
+  # ZFS kernel modules — boot.supportedFilesystems handles extraModulePackages,
+  # udev, and systemd integration. Only need to ensure the module is loaded.
   boot.kernelModules = ["zfs"];
-  boot.extraModulePackages = [config.boot.kernelPackages.zfs_2_3];
-
-  # Critical: Add ZFS packages to system for nixos-anywhere
-  services.udev.packages = [config.boot.kernelPackages.zfs_2_3];
-  systemd.packages = [config.boot.kernelPackages.zfs_2_3];
 
   # Set required hostId for ZFS
   networking.hostId = lib.mkDefault "8425e349";
-
-  # Enable flakes - required for installation
-  nix.settings.experimental-features = ["nix-command" "flakes"];
 
   # Optimize for installation - less bloat
   documentation.enable = false;

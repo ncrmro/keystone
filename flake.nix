@@ -89,6 +89,9 @@
     keystoneInputs = {
       inherit
         nixpkgs
+        disko
+        lanzaboote
+        home-manager
         hyprland
         himalaya
         llm-agents
@@ -101,6 +104,7 @@
         kinda-nvim-hx
         omarchy
         ;
+      keystoneOverlay = self.overlays.default;
     };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
@@ -189,15 +193,27 @@
       # Shared mail host option (keystone.mail.host) — declares which host runs Stalwart
       mail = ./modules/mail.nix;
 
+      # Shared host registry (keystone.hosts) — host identity and connection metadata
+      hosts = ./modules/hosts.nix;
+
       # Core OS module - storage, secure boot, TPM, remote unlock, users, services
+      # keystoneInputs threaded in for the installer's nested eval (needs disko,
+      # lanzaboote, home-manager, and the keystone overlay to build an ISO with
+      # keystone.os + keystone.terminal).
+      # mkDefault avoids conflict with the desktop module which also sets
+      # _module.args.keystoneInputs at normal priority — hosts importing both
+      # get desktop's definition; server-only hosts get this default.
       operating-system = {
         imports = [
           disko.nixosModules.disko
           lanzaboote.nixosModules.lanzaboote
           ./modules/domain.nix
           ./modules/mail.nix
+          ./modules/hosts.nix
           ./modules/os
+          ./modules/installer.nix
         ];
+        _module.args.keystoneInputs = nixpkgs.lib.mkDefault keystoneInputs;
       };
 
       # Desktop module - Hyprland, audio, greetd (no disko/encryption dependencies)

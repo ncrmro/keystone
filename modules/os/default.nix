@@ -166,7 +166,6 @@ in {
     ./agents.nix
     ./hypervisor.nix
     ./iphone-tether.nix
-    ./installer.nix
   ];
 
   options.keystone.os = {

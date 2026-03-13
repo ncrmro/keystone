@@ -7,6 +7,7 @@ Keystone is a NixOS-based self-sovereign infrastructure platform that enables us
 ```
 modules/
 ├── domain.nix                  Shared keystone.domain option (TLD for services + agents)
+├── hosts.nix                   Shared keystone.hosts option (host identity + connection metadata)
 ├── iso-installer.nix           Bootable NixOS installer with TUI, ZFS, TPM tools
 ├── binary-cache-client.nix     Attic/Nix binary cache client + watch-store push
 ├── mail.nix                    Stalwart mail server + agent account provisioning
@@ -757,6 +758,7 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 | isoInstaller | `keystone.nixosModules.isoInstaller` | Bootable installer |
 | domain | `keystone.nixosModules.domain` | Shared keystone.domain option |
 | mail | `keystone.nixosModules.mail` | Shared keystone.mail.host option (mail server host) |
+| hosts | `keystone.nixosModules.hosts` | Shared keystone.hosts option (host identity + connection metadata) |
 
 ### Home-Manager Modules
 
@@ -771,6 +773,7 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 |--------|-------------|
 | `keystone.domain` | Shared TLD for services + agents |
 | `keystone.mail.host` | Hostname of mail server (auto-enables Stalwart) |
+| `keystone.hosts` | Host identity + connection metadata (hostname, sshTarget, fallbackIP, buildOnRemote) |
 | `keystone.terminal.enable` | Enable terminal tools (zsh, starship, zellij, helix) |
 | `keystone.terminal.git.userName/userEmail` | Required git config |
 | `keystone.desktop.enable` | Enable desktop environment |
@@ -823,9 +826,9 @@ keystone = {
 };
 ```
 
-Use `./bin/keystone-dev` to rebuild with local keystone changes without commits:
+Use `bin/build --dev` and `bin/update --dev` to rebuild with local keystone + agenix-secrets changes without commits:
 ```bash
-./bin/keystone-dev            # nixos-rebuild switch with local keystone
-./bin/keystone-dev --build    # Build only, no switch
-./bin/keystone-dev --boot     # nixos-rebuild boot (applies on next reboot)
+bin/build --dev               # Build only, no switch (no sudo needed)
+bin/update --dev              # nixos-rebuild switch with local overrides
+bin/update --dev --boot       # nixos-rebuild boot (applies on next reboot)
 ```
