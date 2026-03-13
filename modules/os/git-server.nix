@@ -163,6 +163,12 @@ in {
         description = "Restrict SSH access to Tailscale interface only (requires openFirewall = true)";
       };
     };
+
+    adminUsers = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      description = "Forgejo usernames to add as admin collaborators on every provisioned agent repo";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -339,10 +345,20 @@ in {
             echo "${username}: Repo ${repoName} created"
           fi
 
-          # --- Clean up provisioning token ---
-          # Token deletes itself via API; no CLI equivalent for token deletion.
-          # Prevents accumulation of provision-* tokens across reboots.
-          curl -sf -X DELETE -H "$AUTH" "$API/users/${username}/tokens/$TOKEN_NAME" || true
+          # --- Add admin collaborators ---
+          ${concatMapStringsSep "\n" (collab: ''
+            COLLAB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "$AUTH" "$API/repos/${username}/${repoName}/collaborators/${collab}")
+            if [ "$COLLAB_STATUS" = "204" ]; then
+              echo "${username}: ${collab} already a collaborator on ${repoName}"
+            else
+              curl -sf -X PUT -H "$AUTH" \
+                "$API/repos/${username}/${repoName}/collaborators/${collab}" \
+                -H "Content-Type: application/json" \
+                -d '{"permission": "admin"}'
+              echo "${username}: Added ${collab} as admin collaborator on ${repoName}"
+            fi
+          '') cfg.adminUsers}
 
           echo "${username}: Forgejo provisioning complete"
         '';
