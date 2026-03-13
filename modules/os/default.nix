@@ -165,6 +165,7 @@ in {
     ./git-server.nix
     ./agents.nix
     ./hypervisor.nix
+    ./iphone-tether.nix
   ];
 
   options.keystone.os = {
@@ -386,6 +387,15 @@ in {
           default = false;
           description = "Enable systemd-resolved for DNS resolution (enabled automatically by desktop module for Tailscale MagicDNS)";
         };
+      };
+    };
+
+    # iPhone USB tethering
+    iphoneTether = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable iOS USB tethering/hotspot support via libimobiledevice and usbmuxd";
       };
     };
 
