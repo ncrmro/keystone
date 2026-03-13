@@ -1,3 +1,8 @@
+# AI coding assistants (Claude Code, Gemini CLI, Codex)
+#
+# Gated by keystone.terminal.ai.enable (default: true) so environments
+# like the installer ISO can opt out of heavy AI tooling while still
+# using the rest of keystone.terminal.
 {
   config,
   lib,
@@ -9,7 +14,15 @@ let
   cfg = config.keystone.terminal;
 in
 {
-  config = mkIf cfg.enable {
+  options.keystone.terminal.ai = {
+    enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Enable AI coding assistants (Claude Code, Gemini CLI, Codex)";
+    };
+  };
+
+  config = mkIf (cfg.enable && cfg.ai.enable) {
     home.packages = [
       # Claude Code - AI-powered CLI assistant from Anthropic
       # https://claude.com/claude-code

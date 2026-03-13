@@ -1,42 +1,23 @@
 #!/usr/bin/env bash
 # TPM Enrollment Status Check and Warning Banner
-# Called by environment.interactiveShellInit on interactive shell login
-# NixOS ensures this only runs for interactive shells - no PS1 check needed
+# Called by environment.interactiveShellInit on interactive shell login.
+#
+# This script only checks the marker file — the actual LUKS header inspection
+# runs as root via the keystone-tpm-check systemd oneshot service at boot.
+# This avoids the permission issue where regular users cannot read block devices,
+# which caused cryptsetup luksDump to fail silently and show the banner even
+# when TPM was fully enrolled.
 
 set -euo pipefail
 
-# State marker file location
+# Marker file maintained by systemd service (runs as root at boot)
 MARKER_FILE="/var/lib/keystone/tpm-enrollment-complete"
 
-# Credstore device (will be substituted by NixOS module)
-CREDSTORE_DEVICE="@credstoreDevice@"
-
-# T012: Check if marker file exists
 if [[ -f "$MARKER_FILE" ]]; then
-  # Marker exists - validate it against actual LUKS header
-  # T013: Check LUKS header for systemd-tpm2 token
-  if @cryptsetup@ luksDump "$CREDSTORE_DEVICE" 2>/dev/null | grep -q "systemd-tpm2"; then
-    # TPM enrolled and marker valid - suppress banner
-    exit 0
-  else
-    # T014: Marker invalid (TPM removed manually) - delete marker and show banner
-    rm -f "$MARKER_FILE"
-  fi
-fi
-
-# T014: Self-healing - check if TPM is actually enrolled but marker missing
-if @cryptsetup@ luksDump "$CREDSTORE_DEVICE" 2>/dev/null | grep -q "systemd-tpm2"; then
-  # TPM is enrolled but marker wasn't created - create it now (self-healing)
-  mkdir -p "$(dirname "$MARKER_FILE")"
-  cat > "$MARKER_FILE" <<EOF
-TPM enrollment detected: $(date -Iseconds)
-Method: auto-detected
-Note: Marker file was missing but TPM keyslot found in LUKS header
-EOF
   exit 0
 fi
 
-# T015: TPM not enrolled - display warning banner
+# TPM not enrolled — display warning banner
 cat <<'EOF'
 
 +--------------------------------------------------------------------------+
