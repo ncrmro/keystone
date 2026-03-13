@@ -156,6 +156,7 @@
       fetch-email-source-src = ./packages/fetch-email-source;
       repo-sync-src = ./packages/repo-sync;
       podman-agent-src = ./packages/podman-agent;
+      ks-src = ./packages/ks;
       himalaya-flake = himalaya;
       llm-agents-flake = llm-agents;
       browser-previews-flake = browser-previews;
@@ -169,6 +170,7 @@
         fetch-email-source = final.callPackage fetch-email-source-src { himalaya = final.keystone.himalaya; };
         repo-sync = final.callPackage repo-sync-src {};
         podman-agent = final.callPackage podman-agent-src {};
+        ks = final.callPackage ks-src {};
         himalaya = himalaya-flake.packages.${final.system}.default;
         # AI coding agents from llm-agents.nix
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
@@ -304,6 +306,7 @@
       };
       repo-sync = pkgs.callPackage ./packages/repo-sync {};
       podman-agent = pkgs.callPackage ./packages/podman-agent {};
+      ks = pkgs.callPackage ./packages/ks {};
       keystone-installer-ui = pkgs.callPackage ./packages/keystone-installer-ui {};
       keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui {};
     };

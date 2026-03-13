@@ -826,9 +826,9 @@ keystone = {
 };
 ```
 
-Use `bin/build --dev` and `bin/update --dev` to rebuild with local keystone + agenix-secrets changes without commits:
+Use `ks build --dev` and `ks update --dev` to rebuild with local keystone + agenix-secrets changes without commits:
 ```bash
-bin/build --dev               # Build only, no switch (no sudo needed)
-bin/update --dev              # nixos-rebuild switch with local overrides
-bin/update --dev --boot       # nixos-rebuild boot (applies on next reboot)
+ks build --dev               # Build only, no switch (no sudo needed)
+ks update --dev              # nixos-rebuild switch with local overrides
+ks update --dev --boot       # nixos-rebuild boot (applies on next reboot)
 ```

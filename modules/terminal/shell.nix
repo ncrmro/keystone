@@ -164,6 +164,9 @@ in
       # https://github.com/roberte777/zesh
       # Provided via keystone overlay
       pkgs.keystone.zesh
+
+      # ks - Keystone infrastructure CLI (build and deploy NixOS configurations)
+      pkgs.keystone.ks
     ];
   };
 }

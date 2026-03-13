@@ -14,7 +14,7 @@
 #     };
 #   };
 #
-# Shell scripts read this data via: nix eval -f hosts.nix --json <host>
+# The `ks` CLI reads this data at runtime via: nix eval -f hosts.nix --json <host>
 { lib, ... }:
 with lib; {
   options.keystone.hosts = mkOption {
@@ -44,7 +44,7 @@ with lib; {
     default = {};
     description = ''
       Host identity and connection metadata for all NixOS hosts. Keys MUST match
-      nixosConfigurations names in flake.nix. Consumed by bin/build and bin/update scripts.
+      nixosConfigurations names in flake.nix. Consumed by the `ks` CLI (ks build, ks update).
     '';
   };
 }
