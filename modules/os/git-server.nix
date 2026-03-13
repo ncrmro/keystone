@@ -171,7 +171,11 @@ in {
     };
   };
 
-  config = mkIf cfg.enable {
+  # Auto-enable when keystone.services.git.host matches this machine's hostname,
+  # or when explicitly enabled via keystone.os.gitServer.enable.
+  config = mkIf (cfg.enable
+    || (config.keystone.services.git.host != null
+        && config.keystone.services.git.host == config.networking.hostName)) {
     # Forgejo service configuration
     services.forgejo = {
       enable = true;

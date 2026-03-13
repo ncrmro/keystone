@@ -78,10 +78,10 @@ in
     };
   };
 
-  # Auto-enable when keystone.mail.host matches this machine's hostname.
-  # No manual `enable = true` needed — just set keystone.mail.host once.
-  config = mkIf (config.keystone.mail.host != null
-              && config.keystone.mail.host == config.networking.hostName) {
+  # Auto-enable when keystone.services.mail.host matches this machine's hostname.
+  # No manual `enable = true` needed — just set keystone.services.mail.host once.
+  config = mkIf (config.keystone.services.mail.host != null
+              && config.keystone.services.mail.host == config.networking.hostName) {
     services.stalwart-mail = {
       enable = true;
       package = pkgs.stalwart-mail;

@@ -18,6 +18,7 @@ in {
     ./sandbox.nix
     ./secrets.nix
     ./ssh-auto-load.nix
+    ./forgejo.nix
   ];
 
   options.keystone.terminal = {
