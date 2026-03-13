@@ -14,8 +14,6 @@ on:
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       # Check out the repository code to access flake.nix and related files
       - uses: actions/checkout@v4
