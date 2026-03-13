@@ -105,7 +105,28 @@
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
 
-    # ISO configuration without SSH keys (use bin/build-iso for SSH keys)
+    # Build an installer ISO with the given SSH keys baked in.
+    # Consumer flakes call this instead of duplicating the module wiring.
+    lib.mkInstallerIso = {
+      nixpkgs,
+      sshKeys ? [],
+      system ? "x86_64-linux",
+    }:
+      (nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+          ./modules/iso-installer.nix
+          {
+            keystone.installer.sshKeys = sshKeys;
+            # Force kernel 6.12 — must be set here to override minimal CD default
+            boot.kernelPackages = nixpkgs.lib.mkForce
+              nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
+          }
+        ];
+      }).config.system.build.isoImage;
+
+    # ISO configuration without SSH keys (use lib.mkInstallerIso for keys)
     # Note: Test/dev configurations are in ./tests/flake.nix
     nixosConfigurations = {
       keystoneIso = nixpkgs.lib.nixosSystem {
@@ -114,8 +135,7 @@
           "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
           ./modules/iso-installer.nix
           {
-            _module.args.sshKeys = [];
-            # Force kernel 6.12 - must be set here to override minimal CD
+            # Force kernel 6.12 — must be set here to override minimal CD default
             boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.x86_64-linux.linuxPackages_6_12;
           }
         ];
@@ -259,7 +279,7 @@
     packages.x86_64-linux = let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
     in {
-      iso = self.nixosConfigurations.keystoneIso.config.system.build.isoImage;
+      iso = self.lib.mkInstallerIso { inherit nixpkgs; };
       zesh = pkgs.callPackage ./packages/zesh {};
       agent-coding-agent = pkgs.callPackage ./packages/agent-coding-agent {};
       agent-mail = pkgs.callPackage ./packages/agent-mail {

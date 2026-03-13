@@ -197,7 +197,7 @@ if [[ -n "$SSH_KEYS_FILE" ]]; then
           "\${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
           $(pwd)/modules/iso-installer.nix
           {
-            _module.args.sshKeys = $SSH_KEYS_ARRAY;
+            keystone.installer.sshKeys = $SSH_KEYS_ARRAY;
           }
         ];
       };
