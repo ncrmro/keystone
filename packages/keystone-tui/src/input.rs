@@ -13,9 +13,13 @@ use crate::screens;
 #[derive(Debug)]
 pub enum AppAction {
     WelcomeAction(screens::welcome::WelcomeAction),
+    CreateConfigAction(screens::create_config::CreateConfigAction),
+    GoToCreateConfig { repo_name: String },
     GoToHostDetail(HostInfo),
     GoToHosts,
     StartBuild(String),
+    BuildIso,
+    RefreshDashboard,
     Quit,
 }
 
@@ -29,6 +33,9 @@ pub fn dispatch_key(app: &mut App, key: KeyEvent) -> Option<AppAction> {
 
     match &mut app.current_screen {
         AppScreen::Welcome(ref mut welcome) => handle_welcome_input(welcome, key),
+        AppScreen::CreateConfig(ref mut create_config) => {
+            handle_create_config_input(create_config, key)
+        }
         AppScreen::Hosts(ref mut hosts) => handle_hosts_input(hosts, key),
         AppScreen::HostDetail(ref mut detail) => handle_host_detail_input(detail, key),
         AppScreen::Build(ref mut build) => handle_build_input(build, key),
@@ -88,6 +95,58 @@ pub fn handle_welcome_input(
     None
 }
 
+/// Handle input for the create-config form screen.
+pub fn handle_create_config_input(
+    create_config: &mut screens::create_config::CreateConfigScreen,
+    key: KeyEvent,
+) -> Option<AppAction> {
+    let field = create_config.current_form_field();
+
+    if field.is_text_input() {
+        match key.code {
+            KeyCode::Tab => {
+                create_config.next_field();
+            }
+            KeyCode::BackTab => {
+                create_config.prev_field();
+            }
+            KeyCode::Enter => {
+                return Some(AppAction::CreateConfigAction(create_config.submit()));
+            }
+            KeyCode::Esc => {
+                return Some(AppAction::Quit);
+            }
+            _ => {
+                create_config.handle_text_input(key);
+            }
+        }
+    } else {
+        // Selection field (MachineType, StorageType)
+        match key.code {
+            KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => {
+                create_config.next_field();
+            }
+            KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => {
+                create_config.prev_field();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                create_config.cycle_selection_prev();
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                create_config.cycle_selection_next();
+            }
+            KeyCode::Enter => {
+                return Some(AppAction::CreateConfigAction(create_config.submit()));
+            }
+            KeyCode::Esc => {
+                return Some(AppAction::Quit);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Handle input for the hosts screen.
 pub fn handle_hosts_input(
     hosts: &mut screens::hosts::HostsScreen,
@@ -106,6 +165,8 @@ pub fn handle_hosts_input(
         KeyCode::Enter => hosts
             .selected_host()
             .map(|host| AppAction::GoToHostDetail(host.clone())),
+        KeyCode::Char('i') => Some(AppAction::BuildIso),
+        KeyCode::Char('r') => Some(AppAction::RefreshDashboard),
         _ => None,
     }
 }
@@ -165,6 +226,14 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         AppAction::WelcomeAction(wa) => {
             handle_welcome_action(app, wa).await;
         }
+        AppAction::CreateConfigAction(ca) => {
+            handle_create_config_action(app, ca).await;
+        }
+        AppAction::GoToCreateConfig { repo_name } => {
+            app.current_screen = AppScreen::CreateConfig(
+                screens::create_config::CreateConfigScreen::new(repo_name),
+            );
+        }
         AppAction::GoToHostDetail(host) => {
             app.current_screen =
                 AppScreen::HostDetail(screens::host_detail::HostDetailScreen::new(host));
@@ -179,6 +248,18 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
                     host_name, repo_path,
                 ));
             }
+        }
+        AppAction::BuildIso => {
+            if let Some(repo_path) = app.active_repo_path() {
+                app.current_screen = AppScreen::Build(screens::build::BuildScreen::new(
+                    "ISO".to_string(),
+                    repo_path,
+                ));
+            }
+        }
+        AppAction::RefreshDashboard => {
+            // Re-load the hosts screen from the active repo
+            app.go_to_hosts(app.active_repo_index.unwrap_or(0)).await;
         }
         AppAction::Quit => {
             app.should_quit = true;
@@ -205,17 +286,10 @@ async fn handle_welcome_action(app: &mut App, action: screens::welcome::WelcomeA
             }
         }
         WelcomeAction::CreateRepo { name } => {
-            if let AppScreen::Welcome(ref mut welcome) = app.current_screen {
-                match crate::repo::create_new_repo(name.clone()).await {
-                    Ok(repo) => {
-                        app.config.repos.push(repo);
-                        welcome.set_success(format!("Repository '{}' created successfully!", name));
-                    }
-                    Err(e) => {
-                        welcome.set_error(format!("Failed to create repository: {}", e));
-                    }
-                }
-            }
+            // Transition to the CreateConfig form instead of directly creating
+            app.current_screen = AppScreen::CreateConfig(
+                screens::create_config::CreateConfigScreen::new(name),
+            );
         }
         WelcomeAction::Complete => {
             // User completed the welcome flow - transition to hosts screen
@@ -223,6 +297,69 @@ async fn handle_welcome_action(app: &mut App, action: screens::welcome::WelcomeA
             app.go_to_hosts(repo_index).await;
         }
         WelcomeAction::None => {}
+    }
+}
+
+/// Handle actions from the create-config screen.
+async fn handle_create_config_action(
+    app: &mut App,
+    action: screens::create_config::CreateConfigAction,
+) {
+    use screens::create_config::CreateConfigAction;
+
+    match action {
+        CreateConfigAction::Complete {
+            machine_type,
+            hostname,
+            storage_type,
+            disk_device,
+            username,
+            password,
+            github_username,
+        } => {
+            // Fetch GitHub SSH keys if a username was provided
+            let authorized_keys = if !github_username.is_empty() {
+                match crate::github::fetch_ssh_keys(&github_username).await {
+                    Ok(keys) => keys,
+                    Err(_) => {
+                        // Network error — proceed without keys
+                        Vec::new()
+                    }
+                }
+            } else {
+                Vec::new()
+            };
+
+            // Use hostname as repo name
+            let repo_name = hostname.clone();
+
+            match crate::repo::create_new_repo_from_config(
+                repo_name.clone(),
+                machine_type,
+                hostname,
+                storage_type,
+                disk_device,
+                username,
+                password,
+                authorized_keys,
+            )
+            .await
+            {
+                Ok(repo) => {
+                    app.config.repos.push(repo);
+                    // Transition to hosts screen for the new repo
+                    let repo_index = app.config.repos.len().saturating_sub(1);
+                    app.go_to_hosts(repo_index).await;
+                }
+                Err(e) => {
+                    // Go back to welcome screen with error
+                    let mut welcome = screens::welcome::WelcomeScreen::new();
+                    welcome.set_error(format!("Failed to create configuration: {}", e));
+                    app.current_screen = AppScreen::Welcome(welcome);
+                }
+            }
+        }
+        CreateConfigAction::None => {}
     }
 }
 
@@ -341,6 +478,42 @@ mod tests {
 
         let action = dispatch_key(&mut app, key(KeyCode::Esc));
         assert!(matches!(action, Some(AppAction::GoToHosts)));
+    }
+
+    #[test]
+    fn test_hosts_i_builds_iso() {
+        let hosts = vec![HostInfo {
+            name: "test-host".to_string(),
+            system: None,
+            keystone_modules: vec![],
+            config_files: vec![],
+        }];
+        let mut app = App::new_for_test();
+        app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
+            "test-repo".to_string(),
+            hosts,
+        ));
+
+        let action = dispatch_key(&mut app, key(KeyCode::Char('i')));
+        assert!(matches!(action, Some(AppAction::BuildIso)));
+    }
+
+    #[test]
+    fn test_hosts_r_refreshes() {
+        let hosts = vec![HostInfo {
+            name: "test-host".to_string(),
+            system: None,
+            keystone_modules: vec![],
+            config_files: vec![],
+        }];
+        let mut app = App::new_for_test();
+        app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
+            "test-repo".to_string(),
+            hosts,
+        ));
+
+        let action = dispatch_key(&mut app, key(KeyCode::Char('r')));
+        assert!(matches!(action, Some(AppAction::RefreshDashboard)));
     }
 
     #[test]

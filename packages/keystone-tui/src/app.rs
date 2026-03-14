@@ -4,13 +4,16 @@ use crate::config::{AppConfig, KeystoneRepo};
 use crate::nix;
 use crate::repo;
 use crate::screens::build::BuildScreen;
+use crate::screens::create_config::CreateConfigScreen;
 use crate::screens::host_detail::HostDetailScreen;
 use crate::screens::hosts::HostsScreen;
 use crate::screens::welcome::WelcomeScreen;
+use crate::system;
 
 /// Represents the different screens/views in the TUI.
 pub enum AppScreen {
     Welcome(WelcomeScreen),
+    CreateConfig(CreateConfigScreen),
     Hosts(HostsScreen),
     HostDetail(HostDetailScreen),
     Build(BuildScreen),
@@ -64,10 +67,19 @@ impl App {
         }
     }
 
-    /// Load the hosts screen for a given repo.
+    /// Load the hosts screen for a given repo with live dashboard polling.
     pub async fn load_hosts_screen(repo: &KeystoneRepo) -> anyhow::Result<HostsScreen> {
         let flake_info = nix::parse_flake(&repo.path).await?;
-        Ok(HostsScreen::new(repo.name.clone(), flake_info.hosts))
+
+        // Build initial host statuses with local hostname detection
+        let statuses = system::match_hosts_to_peers(&flake_info.hosts, None);
+        let mut screen = HostsScreen::new_with_statuses(repo.name.clone(), statuses);
+
+        // Start background polling for metrics and tailscale
+        let rx = system::spawn_dashboard_poller();
+        screen.set_channel(rx);
+
+        Ok(screen)
     }
 
     /// Transition to the hosts screen for a repo.

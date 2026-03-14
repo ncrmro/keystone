@@ -154,3 +154,83 @@ pub async fn create_new_repo(repo_name: String) -> Result<KeystoneRepo> {
         path: target_path,
     })
 }
+
+/// Create a new repository with programmatically generated Nix configuration.
+///
+/// Instead of using `nix flake init`, this generates flake.nix, configuration.nix,
+/// and hardware.nix from the provided configuration, filling in all values.
+pub async fn create_new_repo_from_config(
+    repo_name: String,
+    machine_type: crate::template::MachineType,
+    hostname: String,
+    storage_type: crate::template::StorageType,
+    disk_device: String,
+    username: String,
+    password: String,
+    authorized_keys: Vec<String>,
+) -> Result<KeystoneRepo> {
+    use crate::template;
+
+    let repos_dir = repos_dir()?;
+    fs::create_dir_all(&repos_dir)
+        .await
+        .context("Failed to create ~/.keystone/repos directory")?;
+
+    let target_path = repos_dir.join(&repo_name);
+
+    if target_path.exists() {
+        anyhow::bail!(
+            "Repository directory already exists: {}",
+            target_path.display()
+        );
+    }
+
+    fs::create_dir(&target_path).await.context(format!(
+        "Failed to create directory for new repo: {}",
+        target_path.display()
+    ))?;
+
+    let config = template::GenerateConfig {
+        hostname,
+        machine_type,
+        storage_type,
+        disk_device,
+        user: template::UserConfig {
+            username,
+            password,
+            authorized_keys: authorized_keys.clone(),
+        },
+        remote_unlock: template::RemoteUnlockConfig {
+            enable: machine_type == template::MachineType::Server,
+            authorized_keys,
+        },
+    };
+
+    // Write generated Nix files
+    let flake_nix = template::generate_flake_nix(&config);
+    let configuration_nix = template::generate_configuration_nix(&config);
+    let hardware_nix = template::generate_hardware_nix();
+
+    fs::write(target_path.join("flake.nix"), flake_nix)
+        .await
+        .context("Failed to write flake.nix")?;
+    fs::write(target_path.join("configuration.nix"), configuration_nix)
+        .await
+        .context("Failed to write configuration.nix")?;
+    fs::write(target_path.join("hardware.nix"), hardware_nix)
+        .await
+        .context("Failed to write hardware.nix")?;
+
+    // Initialize git repository
+    let init_path = target_path.clone();
+    tokio::task::spawn_blocking(move || {
+        git2::Repository::init(&init_path).context("Failed to initialize git repository")
+    })
+    .await
+    .context("Failed to spawn git init task")??;
+
+    Ok(KeystoneRepo {
+        name: repo_name,
+        path: target_path,
+    })
+}
