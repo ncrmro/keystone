@@ -2091,6 +2091,7 @@ in
               };
               environment = {
                 SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
+                GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
               };
             };
 
