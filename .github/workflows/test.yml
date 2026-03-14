@@ -27,7 +27,7 @@ jobs:
               - 'modules/iso-installer.nix'
               - 'packages/keystone-tui/**'
               - 'packages/zesh/**'
-              - 'tests/installer-test.nix'
+              - 'tests/integration/installer.nix'
               - 'flake.lock'
               - 'flake.nix'
 
