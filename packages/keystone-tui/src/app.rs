@@ -20,13 +20,13 @@ impl App {
             eprintln!("Failed to load config: {:?}", e);
             AppConfig::default()
         });
-        
+
         let current_screen = if config.repos.is_empty() {
             AppScreen::Welcome(WelcomeScreen::new())
         } else {
             // For now, if repos exist, just show the welcome screen
             // Later, this will go to a main screen displaying repos
-            AppScreen::Welcome(WelcomeScreen::new()) 
+            AppScreen::Welcome(WelcomeScreen::new())
         };
 
         Self {
@@ -42,5 +42,3 @@ impl App {
         }
     }
 }
-
-

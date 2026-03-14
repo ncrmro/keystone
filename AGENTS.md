@@ -649,7 +649,7 @@ The `keystone.domain` option (defined in `modules/domain.nix`) establishes a sha
 | fetch-email-source | Fetch email envelopes + bodies via himalaya (shell) |
 | repo-sync | Clone-if-absent, fetch/commit/rebase/push sync for git repos (shell) |
 | podman-agent | Run AI coding agents in Podman containers with persistent Nix store (shell) |
-| keystone-installer-ui | Installer TUI using Ink/Node.js |
+| keystone-tui | Installer and configuration TUI (Rust) |
 | keystone-ha | Cross-realm resource management TUI (Rust) |
 
 ### Overlay (`pkgs.keystone.*`)
