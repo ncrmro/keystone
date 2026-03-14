@@ -352,6 +352,7 @@ let
       # socket. Without this, every agentctl command fails with "Failed to
       # connect to user scope bus via local transport: No such file or directory".
       export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus"
+      export SSH_AUTH_SOCK="/run/agent-${name}-ssh-agent/agent.sock"
 
       if [ $# -lt 1 ]; then
         echo "Usage: agent-svc-${name} <verb> [args...]" >&2
@@ -1097,7 +1098,7 @@ in
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec himalaya envelope list "$@"
               ;;
             shell)
-              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "export SSH_AUTH_SOCK=/run/agent-''${AGENT_NAME}-ssh-agent/agent.sock; cd $NOTES_DIR && exec bash -l"
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && exec bash -l"
               ;;
             claude)
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && claude --dangerously-skip-permissions $*"
