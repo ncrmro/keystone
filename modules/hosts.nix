@@ -39,6 +39,10 @@ with lib; {
           default = true;
           description = "Whether to pass --build-host for remote deploys (build on remote machine).";
         };
+        role = mkOption {
+          type = types.enum [ "client" "server" "agent" ];
+          description = "Tailscale network role for this host (mandatory).";
+        };
       };
     });
     default = {};
