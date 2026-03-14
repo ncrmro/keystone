@@ -508,6 +508,7 @@ let
       sort = "${pkgs.coreutils}/bin/sort";
       rm = "${pkgs.coreutils}/bin/rm";
       flock = "${pkgs.util-linux}/bin/flock";
+      sha256sum = "${pkgs.coreutils}/bin/sha256sum";
     in
     pkgs.writeShellScript "agent-${name}-task-loop" ''
       set -eo pipefail
@@ -605,14 +606,34 @@ let
 
       # ── Step 3: Prioritize (haiku) ───────────────────────────────
       CURRENT_STEP="prioritize"
-      log "Step 3: Prioritizing tasks via haiku..."
-      set +o pipefail
-      claude --print --dangerously-skip-permissions --model haiku \
-        "/deepwork task_loop prioritize" 2>&1 | ${tee} -a "$LOG_FILE" >&2
-      PRIORITIZE_EXIT=''${PIPESTATUS[0]}
-      set -o pipefail
-      if [ "$PRIORITIZE_EXIT" -ne 0 ]; then
-        log "  WARNING: Prioritize step failed, continuing..."
+      PRIORITIZE_HASH_FILE="$STATE_DIR/prioritize-inputs.sha256"
+      CURRENT_HASH=""
+      if [ -f TASKS.yaml ] && [ -f PROJECTS.yaml ]; then
+        CURRENT_HASH=$(${cat} TASKS.yaml PROJECTS.yaml | ${sha256sum} | ${head} -c 64)
+      elif [ -f TASKS.yaml ]; then
+        CURRENT_HASH=$(${cat} TASKS.yaml | ${sha256sum} | ${head} -c 64)
+      fi
+
+      PREVIOUS_HASH=""
+      if [ -f "$PRIORITIZE_HASH_FILE" ]; then
+        PREVIOUS_HASH=$(${cat} "$PRIORITIZE_HASH_FILE")
+      fi
+
+      if [ -n "$CURRENT_HASH" ] && [ "$CURRENT_HASH" = "$PREVIOUS_HASH" ]; then
+        log "Step 3: Inputs unchanged, skipping prioritize"
+      else
+        log "Step 3: Prioritizing tasks via haiku..."
+        set +o pipefail
+        claude --print --dangerously-skip-permissions --model haiku \
+          "/deepwork task_loop prioritize" 2>&1 | ${tee} -a "$LOG_FILE" >&2
+        PRIORITIZE_EXIT=''${PIPESTATUS[0]}
+        set -o pipefail
+        if [ "$PRIORITIZE_EXIT" -ne 0 ]; then
+          log "  WARNING: Prioritize step failed, continuing..."
+        else
+          # Save hash only on success so we retry on failure
+          ${echo} -n "$CURRENT_HASH" > "$PRIORITIZE_HASH_FILE"
+        fi
       fi
 
       # ── Step 4: Execute pending tasks ─────────────────────────────
