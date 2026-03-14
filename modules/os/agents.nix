@@ -486,7 +486,7 @@ let
     '';
 
   # Task loop script: pre-fetch sources, ingest, prioritize, execute
-  # Runs inside nix develop --command to get the agent's dev shell
+  # Uses claude from the agent's home-manager profile PATH
   agentTaskLoopScript =
     name: agentCfg:
     let
@@ -574,7 +574,7 @@ let
 
           if [ -n "$SOURCE_CMD" ] && [ "$SOURCE_CMD" != "null" ]; then
             log "  Fetching source: $SOURCE_NAME"
-            SOURCE_OUTPUT=$(nix develop --command bash -c "$SOURCE_CMD" 2>>"$LOG_FILE" || ${echo} "[]")
+            SOURCE_OUTPUT=$(bash -c "$SOURCE_CMD" 2>>"$LOG_FILE" || ${echo} "[]")
             SOURCES_JSON=$(${echo} "$SOURCES_JSON" | ${jq} --arg name "$SOURCE_NAME" --argjson data "$SOURCE_OUTPUT" \
               '. + [{"source": $name, "data": $data}]')
           fi
@@ -588,7 +588,7 @@ let
       log "Step 2: Ingesting sources via haiku..."
       if [ "$(${echo} "$SOURCES_JSON" | ${jq} '[.[].data | length] | add // 0')" -gt 0 ]; then
         set +o pipefail
-        nix develop --command claude --print --dangerously-skip-permissions --model haiku \
+        claude --print --dangerously-skip-permissions --model haiku \
           "/deepwork task_loop ingest
 
       Source data (pre-fetched):
@@ -606,7 +606,7 @@ let
       CURRENT_STEP="prioritize"
       log "Step 3: Prioritizing tasks via haiku..."
       set +o pipefail
-      nix develop --command claude --print --dangerously-skip-permissions --model haiku \
+      claude --print --dangerously-skip-permissions --model haiku \
         "/deepwork task_loop prioritize" 2>&1 | ${tee} -a "$LOG_FILE" >&2
       PRIORITIZE_EXIT=''${PIPESTATUS[0]}
       set -o pipefail
@@ -686,7 +686,7 @@ let
 
         # Execute in a separate claude session
         set +o pipefail
-        nix develop --command claude --print --dangerously-skip-permissions $MODEL_FLAG "$PROMPT" 2>&1 | ${tee} "$TASK_LOG" >&2
+        claude --print --dangerously-skip-permissions $MODEL_FLAG "$PROMPT" 2>&1 | ${tee} "$TASK_LOG" >&2
         TASK_EXIT=''${PIPESTATUS[0]}
         set -o pipefail
 
@@ -1018,7 +1018,8 @@ in
             echo "" >&2
             echo "Commands:" >&2
             echo "  <systemctl-verb>  Run systemctl --user as the agent (status, start, stop, ...)" >&2
-            echo "  journalctl        Run journalctl --user as the agent" >&2
+            echo "  logs              Run journalctl --user as the agent" >&2
+            echo "  cron              List the agent's scheduled timers" >&2
             echo "  exec              Run an arbitrary command as the agent" >&2
             echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
             echo "  email             Show the agent's inbox (recent envelopes)" >&2
@@ -1029,7 +1030,8 @@ in
             echo "" >&2
             echo "Examples:" >&2
             echo "  agentctl drago status agent-drago-task-loop" >&2
-            echo "  agentctl drago journalctl -u agent-drago-task-loop -n 20" >&2
+            echo "  agentctl drago logs -u agent-drago-task-loop -n 20" >&2
+            echo "  agentctl drago cron" >&2
             echo "  agentctl drago tasks" >&2
             echo "  agentctl drago email" >&2
             echo "  agentctl drago claude" >&2
@@ -1070,12 +1072,12 @@ in
 
           THIS_HOST="$(cat /etc/hostname)"
 
-          # Remote dispatch: forward non-local commands via ET over Tailscale.
+          # Remote dispatch: forward non-local commands via SSH over Tailscale.
           # VNC is excluded — it runs locally and connects to the remote host directly.
           # Provision is excluded — it modifies the local agenix-secrets repo.
           if [ -n "$AGENT_HOST" ] && [ "$AGENT_HOST" != "$THIS_HOST" ]; then
             if [ "$1" != "vnc" ] && [ "$1" != "provision" ]; then
-              exec ${pkgs.eternal-terminal}/bin/et "$AGENT_HOST" -c "agentctl $AGENT_NAME $*"
+              exec ${pkgs.openssh}/bin/ssh -t "$AGENT_HOST" agentctl "$AGENT_NAME" "$@"
             fi
           fi
 
@@ -1093,7 +1095,7 @@ in
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec himalaya envelope list "$@"
               ;;
             claude)
-              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && nix develop --command claude --dangerously-skip-permissions $*"
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && claude --dangerously-skip-permissions $*"
               ;;
             mail)
               exec agent-mail "$@" --to "''${AGENT_NAME}@${topDomain}"
@@ -1275,6 +1277,12 @@ in
                 VNC_HOST="$AGENT_HOST"
               fi
               exec ${pkgs.virt-viewer}/bin/remote-viewer "vnc://$VNC_HOST:$VNC_PORT" "$@"
+              ;;
+            logs|journalctl)
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" journalctl -e "$@"
+              ;;
+            cron)
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" list-timers "$@"
               ;;
             *)
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" "$CMD" "$@"
