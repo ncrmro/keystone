@@ -287,7 +287,7 @@
         self = self;
       };
       agent-evaluation = import ./tests/module/agent-evaluation.nix {
-        inherit pkgs lib nixpkgs;
+        inherit pkgs lib nixpkgs agenix;
         self = self;
       };
       template-evaluation = import ./tests/module/template-evaluation.nix {
