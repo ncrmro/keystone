@@ -177,8 +177,8 @@ in
     documentation.nixos.enable = false;
 
     # Set the ISO label and boot splash image
-    image.fileName = lib.mkForce "keystone-installer.iso";
-    isoImage.volumeID = lib.mkForce "KEYSTONE";
+    image.fileName = lib.mkDefault "keystone-installer.iso";
+    isoImage.volumeID = lib.mkDefault "KEYSTONE";
     isoImage.efiSplashImage = ../assets/installer-splash.png;
     isoImage.splashImage = ../assets/installer-splash.png;
 
