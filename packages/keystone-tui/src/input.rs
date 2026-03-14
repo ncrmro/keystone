@@ -19,7 +19,23 @@ pub enum AppAction {
     GoToHosts,
     StartBuild(String),
     BuildIso,
+    IsoTargetUp,
+    IsoTargetDown,
+    IsoTargetSelect,
     RefreshDashboard,
+    InstallProceed,
+    InstallConfirm,
+    InstallBack,
+    InstallCancel,
+    InstallDiskUp,
+    InstallDiskDown,
+    InstallDiskSelect,
+    FirstBootStart,
+    FirstBootSkip,
+    FirstBootContinue,
+    FirstBootSubmitRemote,
+    FirstBootRetry,
+    Reboot,
     Quit,
 }
 
@@ -39,6 +55,9 @@ pub fn dispatch_key(app: &mut App, key: KeyEvent) -> Option<AppAction> {
         AppScreen::Hosts(ref mut hosts) => handle_hosts_input(hosts, key),
         AppScreen::HostDetail(ref mut detail) => handle_host_detail_input(detail, key),
         AppScreen::Build(ref mut build) => handle_build_input(build, key),
+        AppScreen::Iso(ref mut iso) => handle_iso_input(iso, key),
+        AppScreen::Install(ref mut install) => handle_install_input(install, key),
+        AppScreen::FirstBoot(ref mut first_boot) => handle_first_boot_input(first_boot, key),
     }
 }
 
@@ -220,6 +239,158 @@ pub fn handle_build_input(
     }
 }
 
+/// Handle input for the ISO screen.
+pub fn handle_iso_input(
+    iso: &mut screens::iso::IsoScreen,
+    key: KeyEvent,
+) -> Option<AppAction> {
+    use screens::iso::IsoPhase;
+
+    match iso.phase() {
+        IsoPhase::Building => match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => Some(AppAction::GoToHosts),
+            KeyCode::Up | KeyCode::Char('k') => {
+                iso.scroll_up();
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                iso.scroll_down();
+                None
+            }
+            _ => None,
+        },
+        IsoPhase::SelectTarget => match key.code {
+            KeyCode::Up | KeyCode::Char('k') => Some(AppAction::IsoTargetUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(AppAction::IsoTargetDown),
+            KeyCode::Enter => Some(AppAction::IsoTargetSelect),
+            KeyCode::Esc | KeyCode::Char('q') => Some(AppAction::GoToHosts),
+            _ => None,
+        },
+        IsoPhase::Writing => match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                iso.scroll_up();
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                iso.scroll_down();
+                None
+            }
+            _ => None,
+        },
+        IsoPhase::Done | IsoPhase::Failed(_) => match key.code {
+            KeyCode::Esc => Some(AppAction::GoToHosts),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+    }
+}
+
+/// Handle input for the install screen.
+pub fn handle_install_input(
+    install: &mut screens::install::InstallScreen,
+    key: KeyEvent,
+) -> Option<AppAction> {
+    use screens::install::InstallPhase;
+
+    match install.phase() {
+        InstallPhase::Summary => match key.code {
+            KeyCode::Enter => Some(AppAction::InstallProceed),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        InstallPhase::DiskSelection => match key.code {
+            KeyCode::Up | KeyCode::Char('k') => Some(AppAction::InstallDiskUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(AppAction::InstallDiskDown),
+            KeyCode::Enter => Some(AppAction::InstallDiskSelect),
+            KeyCode::Esc => Some(AppAction::InstallBack),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        InstallPhase::Confirm => match key.code {
+            KeyCode::Enter => Some(AppAction::InstallConfirm),
+            KeyCode::Esc => Some(AppAction::InstallBack),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        InstallPhase::Installing => match key.code {
+            KeyCode::Esc => {
+                install.cancel();
+                None
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                install.scroll_up();
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                install.scroll_down();
+                None
+            }
+            _ => None,
+        },
+        InstallPhase::Done => match key.code {
+            KeyCode::Char('r') => Some(AppAction::Reboot),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        InstallPhase::Failed(_) => match key.code {
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            KeyCode::Up | KeyCode::Char('k') => {
+                install.scroll_up();
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                install.scroll_down();
+                None
+            }
+            _ => None,
+        },
+    }
+}
+
+/// Handle input for the first-boot screen.
+pub fn handle_first_boot_input(
+    first_boot: &mut screens::first_boot::FirstBootScreen,
+    key: KeyEvent,
+) -> Option<AppAction> {
+    use screens::first_boot::FirstBootPhase;
+
+    match first_boot.phase() {
+        FirstBootPhase::Welcome => match key.code {
+            KeyCode::Enter => Some(AppAction::FirstBootStart),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        FirstBootPhase::GeneratingHardware | FirstBootPhase::GitSetup | FirstBootPhase::Pushing => {
+            // No user input during async phases
+            None
+        }
+        FirstBootPhase::ShowSshKey => match key.code {
+            KeyCode::Enter => Some(AppAction::FirstBootContinue),
+            KeyCode::Char('s') => Some(AppAction::FirstBootSkip),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        FirstBootPhase::RemoteInput => match key.code {
+            KeyCode::Enter => Some(AppAction::FirstBootSubmitRemote),
+            KeyCode::Esc => Some(AppAction::FirstBootSkip),
+            _ => {
+                first_boot.handle_text_input(key);
+                None
+            }
+        },
+        FirstBootPhase::Done => match key.code {
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        FirstBootPhase::Failed(_) => match key.code {
+            KeyCode::Char('r') => Some(AppAction::FirstBootRetry),
+            KeyCode::Char('s') => Some(AppAction::FirstBootSkip),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+    }
+}
+
 /// Handle actions that require mutating app state.
 pub async fn handle_action(app: &mut App, action: AppAction) {
     match action {
@@ -251,15 +422,94 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         }
         AppAction::BuildIso => {
             if let Some(repo_path) = app.active_repo_path() {
-                app.current_screen = AppScreen::Build(screens::build::BuildScreen::new(
-                    "ISO".to_string(),
-                    repo_path,
-                ));
+                app.current_screen =
+                    AppScreen::Iso(screens::iso::IsoScreen::new(repo_path));
+            }
+        }
+        AppAction::IsoTargetUp => {
+            if let AppScreen::Iso(ref mut iso) = app.current_screen {
+                iso.target_up();
+            }
+        }
+        AppAction::IsoTargetDown => {
+            if let AppScreen::Iso(ref mut iso) = app.current_screen {
+                iso.target_down();
+            }
+        }
+        AppAction::IsoTargetSelect => {
+            if let AppScreen::Iso(ref mut iso) = app.current_screen {
+                iso.select_target();
             }
         }
         AppAction::RefreshDashboard => {
             // Re-load the hosts screen from the active repo
             app.go_to_hosts(app.active_repo_index.unwrap_or(0)).await;
+        }
+        AppAction::InstallProceed => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.proceed_to_confirm();
+            }
+        }
+        AppAction::InstallConfirm => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.start_install();
+            }
+        }
+        AppAction::InstallBack => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.go_back();
+            }
+        }
+        AppAction::InstallCancel => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.cancel();
+            }
+        }
+        AppAction::InstallDiskUp => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.disk_up();
+            }
+        }
+        AppAction::InstallDiskDown => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.disk_down();
+            }
+        }
+        AppAction::InstallDiskSelect => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.select_disk();
+            }
+        }
+        AppAction::FirstBootStart => {
+            if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
+                fb.start();
+            }
+        }
+        AppAction::FirstBootSkip => {
+            if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
+                fb.skip();
+            }
+        }
+        AppAction::FirstBootContinue => {
+            if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
+                fb.continue_to_remote();
+            }
+        }
+        AppAction::FirstBootSubmitRemote => {
+            if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
+                fb.submit_remote();
+            }
+        }
+        AppAction::FirstBootRetry => {
+            if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
+                fb.retry_push();
+            }
+        }
+        AppAction::Reboot => {
+            // Attempt to reboot the system
+            let _ = std::process::Command::new("systemctl")
+                .arg("reboot")
+                .spawn();
         }
         AppAction::Quit => {
             app.should_quit = true;
@@ -333,6 +583,12 @@ async fn handle_create_config_action(
             // Use hostname as repo name
             let repo_name = hostname.clone();
 
+            let gh_username = if github_username.is_empty() {
+                None
+            } else {
+                Some(github_username.clone())
+            };
+
             match crate::repo::create_new_repo_from_config(
                 repo_name.clone(),
                 machine_type,
@@ -341,6 +597,7 @@ async fn handle_create_config_action(
                 disk_device,
                 username,
                 password,
+                gh_username,
                 authorized_keys,
             )
             .await

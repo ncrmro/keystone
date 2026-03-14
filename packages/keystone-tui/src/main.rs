@@ -16,6 +16,7 @@ use ratatui::prelude::*;
 
 mod app;
 mod config;
+mod disk;
 mod github;
 mod input;
 mod nix;
@@ -27,6 +28,8 @@ mod ui;
 
 use app::{App, AppScreen};
 use input::{dispatch_key, handle_action, AppAction};
+use screens::first_boot::FirstBootConfig;
+use screens::install::InstallerConfig;
 
 /// Set up the terminal for TUI rendering.
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
@@ -61,7 +64,18 @@ async fn main() -> Result<()> {
     }));
 
     let mut terminal = setup_terminal()?;
-    let mut app = App::new().await;
+
+    // Priority detection:
+    // 1. Installer mode: pre-baked ISO with config at /etc/keystone/install-config/
+    // 2. First-boot mode: freshly installed system with .first-boot-pending marker
+    // 3. Normal mode: repo management dashboard
+    let mut app = if let Some(installer_config) = InstallerConfig::detect() {
+        App::new_for_installer(installer_config)
+    } else if let Some(first_boot_config) = FirstBootConfig::detect() {
+        App::new_for_first_boot(first_boot_config)
+    } else {
+        App::new().await
+    };
 
     let result = run_app(&mut terminal, &mut app).await;
 
@@ -81,7 +95,10 @@ async fn run_app<B: Backend>(
         // Poll active screens for async updates before rendering
         match &mut app.current_screen {
             AppScreen::Build(ref mut build) => build.poll(),
+            AppScreen::Iso(ref mut iso) => iso.poll(),
             AppScreen::Hosts(ref mut hosts) => hosts.poll(),
+            AppScreen::Install(ref mut install) => install.poll(),
+            AppScreen::FirstBoot(ref mut first_boot) => first_boot.poll(),
             _ => {}
         }
 
@@ -102,6 +119,15 @@ async fn run_app<B: Backend>(
                 }
                 AppScreen::Build(build_screen) => {
                     build_screen.render(frame, area);
+                }
+                AppScreen::Iso(iso_screen) => {
+                    iso_screen.render(frame, area);
+                }
+                AppScreen::Install(install_screen) => {
+                    install_screen.render(frame, area);
+                }
+                AppScreen::FirstBoot(first_boot_screen) => {
+                    first_boot_screen.render(frame, area);
                 }
             }
         })?;

@@ -62,7 +62,8 @@ pub struct GenerateConfig {
     pub hostname: String,
     pub machine_type: MachineType,
     pub storage_type: StorageType,
-    pub disk_device: String,
+    pub disk_device: Option<String>,
+    pub github_username: Option<String>,
     pub user: UserConfig,
     pub remote_unlock: RemoteUnlockConfig,
 }
@@ -72,6 +73,23 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
     let desktop_module = match config.machine_type {
         MachineType::Server => "          # keystone.nixosModules.desktop  # Uncomment for desktop",
         _ => "          keystone.nixosModules.desktop",
+    };
+
+    // The desktop home module already imports terminal, so only include
+    // terminal separately for server configs (no desktop).
+    let shared_modules = match config.machine_type {
+        MachineType::Server => concat!(
+            "              sharedModules = [\n",
+            "                keystone.homeModules.terminal\n",
+            "              ];",
+        ),
+        // Desktop home module already imports terminal internally;
+        // including both would cause a duplicate option declaration.
+        _ => concat!(
+            "              sharedModules = [\n",
+            "                keystone.homeModules.desktop\n",
+            "              ];",
+        ),
     };
 
     format!(
@@ -105,13 +123,11 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
           keystone.nixosModules.operating-system
 {desktop_module}
           {{
+            nixpkgs.overlays = [ keystone.overlays.default ];
             home-manager = {{
               useGlobalPkgs = true;
               useUserPackages = true;
-              sharedModules = [
-                keystone.homeModules.terminal
-                keystone.homeModules.desktop
-              ];
+{shared_modules}
             }};
           }}
           ./configuration.nix
@@ -131,6 +147,7 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
 "#,
         hostname = config.hostname,
         desktop_module = desktop_module,
+        shared_modules = shared_modules,
     )
 }
 
@@ -156,6 +173,12 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
         MachineType::Server => r#"[ "wheel" ]"#,
         _ => r#"[ "wheel" "networkmanager" "video" "audio" ]"#,
     };
+
+    // Use placeholder when no disk device is specified — replaced at install time
+    let disk_device = config
+        .disk_device
+        .as_deref()
+        .unwrap_or("__KEYSTONE_DISK__");
 
     format!(
         r#"{{
@@ -222,7 +245,7 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
         hostname = config.hostname,
         host_id = host_id,
         storage_type = config.storage_type.nix_value(),
-        disk_device = config.disk_device,
+        disk_device = disk_device,
         username = config.user.username,
         password = config.user.password,
         authorized_keys_nix = authorized_keys_nix,
@@ -230,6 +253,74 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
         remote_unlock_keys_nix = remote_unlock_keys_nix,
         extra_groups = extra_groups,
         desktop_enable = desktop_enable,
+    )
+}
+
+/// Generate a flake.nix for a pre-baked installer ISO.
+///
+/// The ISO embeds the user's generated config files (flake.nix, configuration.nix,
+/// hardware.nix) at `/etc/keystone/install-config/` so the TUI installer on the
+/// target machine can run disko + nixos-install without needing the config repo.
+pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
+    let ssh_keys_nix = format_nix_string_list(&config.user.authorized_keys, 12);
+
+    format!(
+        r#"{{
+  description = "Keystone Installer ISO — {hostname}";
+
+  inputs = {{
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    keystone = {{
+      url = "github:ncrmro/keystone";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
+    home-manager = {{
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
+  }};
+
+  outputs = {{
+    self,
+    nixpkgs,
+    keystone,
+    home-manager,
+    ...
+  }}: let
+    system = "x86_64-linux";
+    pkgs = nixpkgs.legacyPackages.${{system}};
+  in {{
+    nixosConfigurations.keystoneIso = nixpkgs.lib.nixosSystem {{
+      inherit system;
+      modules = [
+        "${{nixpkgs}}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+        keystone.nixosModules.isoInstaller
+        {{
+          # SSH keys for remote access during installation
+          keystone.installer.sshKeys = {ssh_keys_nix};
+
+          # Embed the user's NixOS config files into the ISO filesystem.
+          # The TUI installer reads these from /etc/keystone/install-config/
+          # to run disko + nixos-install on the target machine.
+          environment.etc."keystone/install-config/flake.nix".source = ./target-config/flake.nix;
+          environment.etc."keystone/install-config/configuration.nix".source = ./target-config/configuration.nix;
+          environment.etc."keystone/install-config/hardware.nix".source = ./target-config/hardware.nix;
+          environment.etc."keystone/install-config/hostname".text = "{hostname}";
+          environment.etc."keystone/install-config/username".text = "{username}";
+          environment.etc."keystone/install-config/github_username".text = "{github_username}";
+
+          # Pin kernel to match upstream keystone ISO (6.12)
+          boot.kernelPackages = nixpkgs.lib.mkForce pkgs.linuxPackages_6_12;
+        }}
+      ];
+    }};
+  }};
+}}
+"#,
+        hostname = config.hostname,
+        username = config.user.username,
+        github_username = config.github_username.as_deref().unwrap_or(""),
+        ssh_keys_nix = ssh_keys_nix,
     )
 }
 
@@ -312,7 +403,8 @@ mod tests {
             hostname: "test-host".to_string(),
             machine_type: MachineType::Server,
             storage_type: StorageType::Zfs,
-            disk_device: "/dev/disk/by-id/test-disk".to_string(),
+            disk_device: Some("/dev/disk/by-id/test-disk".to_string()),
+            github_username: None,
             user: UserConfig {
                 username: "admin".to_string(),
                 password: "changeme".to_string(),
@@ -341,7 +433,8 @@ mod tests {
             hostname: "my-laptop".to_string(),
             machine_type: MachineType::Laptop,
             storage_type: StorageType::Ext4,
-            disk_device: "/dev/disk/by-id/nvme-test".to_string(),
+            disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
+            github_username: None,
             user: UserConfig {
                 username: "user".to_string(),
                 password: "pass".to_string(),
@@ -365,7 +458,8 @@ mod tests {
             hostname: "server1".to_string(),
             machine_type: MachineType::Server,
             storage_type: StorageType::Zfs,
-            disk_device: "test".to_string(),
+            disk_device: Some("test".to_string()),
+            github_username: None,
             user: UserConfig {
                 username: "admin".to_string(),
                 password: "pass".to_string(),
@@ -388,7 +482,8 @@ mod tests {
             hostname: "workstation".to_string(),
             machine_type: MachineType::Workstation,
             storage_type: StorageType::Zfs,
-            disk_device: "test".to_string(),
+            disk_device: Some("test".to_string()),
+            github_username: None,
             user: UserConfig {
                 username: "dev".to_string(),
                 password: "pass".to_string(),
@@ -411,5 +506,59 @@ mod tests {
         let id = generate_host_id();
         assert_eq!(id.len(), 8);
         assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_generate_configuration_no_disk() {
+        let config = GenerateConfig {
+            hostname: "deferred-host".to_string(),
+            machine_type: MachineType::Laptop,
+            storage_type: StorageType::Ext4,
+            disk_device: None,
+            github_username: None,
+            user: UserConfig {
+                username: "user".to_string(),
+                password: "pass".to_string(),
+                authorized_keys: vec![],
+            },
+            remote_unlock: RemoteUnlockConfig {
+                enable: false,
+                authorized_keys: vec![],
+            },
+        };
+
+        let nix = generate_configuration_nix(&config);
+        assert!(nix.contains("__KEYSTONE_DISK__"));
+    }
+
+    #[test]
+    fn test_generate_iso_flake_contains_hostname() {
+        let config = GenerateConfig {
+            hostname: "my-laptop".to_string(),
+            machine_type: MachineType::Laptop,
+            storage_type: StorageType::Ext4,
+            disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
+            github_username: Some("octocat".to_string()),
+            user: UserConfig {
+                username: "user".to_string(),
+                password: "pass".to_string(),
+                authorized_keys: vec![],
+            },
+            remote_unlock: RemoteUnlockConfig {
+                enable: false,
+                authorized_keys: vec![],
+            },
+        };
+
+        let iso_flake = generate_iso_flake_nix(&config);
+        assert!(iso_flake.contains("my-laptop"));
+        assert!(iso_flake.contains("keystoneIso"));
+        assert!(iso_flake.contains("keystone/install-config/flake.nix"));
+        assert!(iso_flake.contains("keystone/install-config/configuration.nix"));
+        assert!(iso_flake.contains("keystone/install-config/hardware.nix"));
+        assert!(iso_flake.contains("isoInstaller"));
+        assert!(iso_flake.contains("target-config/flake.nix"));
+        assert!(iso_flake.contains("keystone/install-config/username"));
+        assert!(iso_flake.contains("keystone/install-config/github_username"));
     }
 }

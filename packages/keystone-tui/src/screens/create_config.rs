@@ -57,7 +57,7 @@ pub enum CreateConfigAction {
         machine_type: MachineType,
         hostname: String,
         storage_type: StorageType,
-        disk_device: String,
+        disk_device: Option<String>,
         username: String,
         password: String,
         github_username: String,
@@ -90,7 +90,7 @@ impl CreateConfigScreen {
             storage_type: StorageType::Zfs,
             hostname_input: TextInput::new().with_placeholder("my-machine"),
             disk_device_input: TextInput::new()
-                .with_placeholder("/dev/disk/by-id/nvme-..."),
+                .with_placeholder("/dev/disk/by-id/nvme-... (optional)"),
             username_input: TextInput::new().with_placeholder("admin"),
             github_username_input: TextInput::new().with_placeholder("octocat"),
             password_input: TextInput::new().with_placeholder("changeme"),
@@ -162,17 +162,24 @@ impl CreateConfigScreen {
     }
 
     /// Submit the form. Returns Complete if all required fields are filled.
+    /// Disk device is optional — if empty, it will be selected at install time.
     pub fn submit(&mut self) -> CreateConfigAction {
         let hostname = self.hostname_input.value().to_string();
-        let disk_device = self.disk_device_input.value().to_string();
+        let disk_device_raw = self.disk_device_input.value().to_string();
         let username = self.username_input.value().to_string();
         let password = self.password_input.value().to_string();
         let github_username = self.github_username_input.value().to_string();
 
-        // Validate required fields
-        if hostname.is_empty() || disk_device.is_empty() || username.is_empty() || password.is_empty() {
+        // Validate required fields (disk_device is optional)
+        if hostname.is_empty() || username.is_empty() || password.is_empty() {
             return CreateConfigAction::None;
         }
+
+        let disk_device = if disk_device_raw.is_empty() {
+            None
+        } else {
+            Some(disk_device_raw)
+        };
 
         CreateConfigAction::Complete {
             machine_type: self.machine_type,
@@ -449,15 +456,34 @@ mod tests {
         match action {
             CreateConfigAction::Complete {
                 hostname,
+                disk_device,
                 username,
                 github_username,
                 ..
             } => {
                 assert_eq!(hostname, "my-host");
+                assert_eq!(disk_device, Some("/dev/sda".to_string()));
                 assert_eq!(username, "admin");
                 assert_eq!(github_username, "octocat");
             }
             CreateConfigAction::None => panic!("Expected Complete, got None"),
+        }
+    }
+
+    #[test]
+    fn test_submit_without_disk_device() {
+        let mut screen = CreateConfigScreen::new("test-repo".to_string());
+        screen.hostname_input.set_value("my-host");
+        // disk_device left empty — should succeed with None
+        screen.username_input.set_value("admin");
+        screen.password_input.set_value("pass123");
+
+        let action = screen.submit();
+        match action {
+            CreateConfigAction::Complete { disk_device, .. } => {
+                assert!(disk_device.is_none());
+            }
+            CreateConfigAction::None => panic!("Expected Complete"),
         }
     }
 

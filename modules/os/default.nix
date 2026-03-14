@@ -558,6 +558,14 @@ in {
       };
     };
 
+    # Branding — boot entries show "Keystone" instead of "NixOS"
+    system.nixos.distroName = lib.mkDefault "Keystone";
+
+    # TUI installer/first-boot tool available system-wide
+    environment.systemPackages = [
+      (pkgs.callPackage ../../packages/keystone-tui { })
+    ];
+
     # Locale defaults
     time.timeZone = lib.mkDefault "UTC";
     i18n.defaultLocale = lib.mkDefault "en_US.UTF-8";
