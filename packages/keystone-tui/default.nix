@@ -14,7 +14,10 @@ rustPlatform.buildRustPackage {
 
   cargoLock.lockFile = ./Cargo.lock;
 
-  nativeBuildInputs = [pkg-config cmake];
+  nativeBuildInputs = [
+    pkg-config
+    cmake
+  ];
   buildInputs = [
     openssl
     zlib
@@ -26,7 +29,7 @@ rustPlatform.buildRustPackage {
     description = "TUI for Keystone NixOS infrastructure configuration and management";
     homepage = "https://github.com/ncrmro/keystone";
     license = licenses.mit;
-    maintainers = [];
+    maintainers = [ ];
     mainProgram = "keystone-tui";
   };
 }

@@ -61,6 +61,8 @@
       url = "github:strash/kinda_nvim.hx";
       flake = false;
     };
+
+    deepwork.url = "github:Unsupervisedcom/deepwork";
   };
 
   outputs = {
@@ -82,6 +84,7 @@
     nix-flatpak,
     nixos-hardware,
     kinda-nvim-hx,
+    deepwork,
     ...
   }: let
     # Create inputs attrset for keystone modules (named keystoneInputs to avoid
@@ -287,7 +290,7 @@
         self = self;
       };
       agent-evaluation = import ./tests/module/agent-evaluation.nix {
-        inherit pkgs lib nixpkgs agenix;
+        inherit pkgs lib nixpkgs;
         self = self;
       };
       template-evaluation = import ./tests/module/template-evaluation.nix {
@@ -354,6 +357,9 @@
           # General utilities
           jq
           yq-go
+          gettext
+          bash
+          deepwork.packages.${pkgs.system}.default
           gh # GitHub CLI
           python3
         ];
