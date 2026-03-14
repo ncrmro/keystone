@@ -18,7 +18,7 @@ mod app;
 mod config;
 mod screens;
 
-use app::App;
+use app::{App, AppScreen};
 
 /// Set up the terminal for TUI rendering.
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
