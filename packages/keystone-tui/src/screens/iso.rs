@@ -1,8 +1,8 @@
-//! ISO screen — build installer ISO and write to USB or save to ~/Downloads.
+//! ISO screen — select destination, build installer ISO, then write.
 //!
 //! Phases:
-//! 1. Building — runs `nix build .#iso` in the active repo
-//! 2. SelectTarget — choose USB device or ~/Downloads
+//! 1. SelectTarget — choose USB device or ~/Downloads
+//! 2. Building — runs `nix build .#iso` in the active repo
 //! 3. Writing — `dd` to USB or `cp` to ~/Downloads
 //! 4. Done / Failed
 
@@ -41,8 +41,8 @@ pub enum IsoMessage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IsoPhase {
-    Building,
     SelectTarget,
+    Building,
     Writing,
     Done,
     Failed(String),
@@ -60,6 +60,8 @@ pub struct IsoScreen {
     /// Available write targets.
     targets: Vec<IsoTarget>,
     selected_target: usize,
+    /// The target chosen by the user (set when they press Enter on SelectTarget).
+    chosen_target: Option<IsoTarget>,
     /// Async message channel.
     rx: Option<mpsc::UnboundedReceiver<IsoMessage>>,
 }
@@ -68,13 +70,13 @@ impl IsoScreen {
     pub fn new(repo_path: PathBuf) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
 
-        let build_repo = repo_path.clone();
+        // Discover USB devices and ~/Downloads immediately
         tokio::spawn(async move {
-            Self::run_build(tx, build_repo).await;
+            Self::discover_targets(tx).await;
         });
 
         Self {
-            phase: IsoPhase::Building,
+            phase: IsoPhase::SelectTarget,
             repo_path,
             output_lines: Vec::new(),
             scroll_offset: 0,
@@ -82,18 +84,19 @@ impl IsoScreen {
             iso_path: None,
             targets: Vec::new(),
             selected_target: 0,
+            chosen_target: None,
             rx: Some(rx),
         }
     }
 
-    /// For testing — inject a channel instead of spawning a build.
+    /// For testing — inject a channel instead of spawning discovery.
     #[cfg(test)]
     pub fn new_with_channel(
         repo_path: PathBuf,
         rx: mpsc::UnboundedReceiver<IsoMessage>,
     ) -> Self {
         Self {
-            phase: IsoPhase::Building,
+            phase: IsoPhase::SelectTarget,
             repo_path,
             output_lines: Vec::new(),
             scroll_offset: 0,
@@ -101,6 +104,7 @@ impl IsoScreen {
             iso_path: None,
             targets: Vec::new(),
             selected_target: 0,
+            chosen_target: None,
             rx: Some(rx),
         }
     }
@@ -137,29 +141,53 @@ impl IsoScreen {
 
         for msg in messages {
             match msg {
+                IsoMessage::TargetsDiscovered(targets) => {
+                    self.targets = targets;
+                }
                 IsoMessage::BuildOutput(line) => {
                     self.output_lines.push(line);
                 }
                 IsoMessage::BuildFinished(success) => {
                     if success {
-                        // Find the .iso file in the result
                         self.iso_path = Self::find_iso_file(&self.repo_path);
-                        if self.iso_path.is_some() {
-                            self.phase = IsoPhase::SelectTarget;
-                            self.output_lines.clear();
-                            // Discover targets
-                            self.spawn_target_discovery();
+                        if let Some(ref iso_path) = self.iso_path {
+                            // Start writing to the previously chosen target
+                            if let Some(target) = self.chosen_target.take() {
+                                self.phase = IsoPhase::Writing;
+                                self.output_lines.clear();
+                                self.auto_scroll = true;
+
+                                let (tx, rx) = mpsc::unbounded_channel();
+                                self.rx = Some(rx);
+                                let iso = iso_path.clone();
+                                tokio::spawn(async move {
+                                    Self::run_write(tx, iso, target).await;
+                                });
+                            } else {
+                                self.phase = IsoPhase::Done;
+                            }
                         } else {
-                            self.phase = IsoPhase::Failed(
-                                "Build succeeded but no .iso file found in result".to_string(),
-                            );
+                            let result_path = self.repo_path.join("result");
+                            let contents = if result_path.exists() {
+                                std::fs::read_dir(&result_path)
+                                    .map(|entries| {
+                                        entries
+                                            .flatten()
+                                            .map(|e| e.file_name().to_string_lossy().to_string())
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    })
+                                    .unwrap_or_else(|e| format!("(unreadable: {e})"))
+                            } else {
+                                "(no result symlink)".to_string()
+                            };
+                            self.phase = IsoPhase::Failed(format!(
+                                "Build succeeded but no .iso found. result contains: {contents}"
+                            ));
                         }
                     } else {
                         self.phase = IsoPhase::Failed("ISO build failed".to_string());
                     }
-                }
-                IsoMessage::TargetsDiscovered(targets) => {
-                    self.targets = targets;
                 }
                 IsoMessage::WriteOutput(line) => {
                     self.output_lines.push(line);
@@ -187,26 +215,22 @@ impl IsoScreen {
         }
     }
 
+    /// User confirmed a target — save it and start the ISO build.
     pub fn select_target(&mut self) {
         if self.targets.is_empty() || self.phase != IsoPhase::SelectTarget {
             return;
         }
 
-        let target = self.targets[self.selected_target].clone();
-        let iso_path = match &self.iso_path {
-            Some(p) => p.clone(),
-            None => return,
-        };
-
-        self.phase = IsoPhase::Writing;
+        self.chosen_target = Some(self.targets[self.selected_target].clone());
+        self.phase = IsoPhase::Building;
         self.output_lines.clear();
         self.auto_scroll = true;
 
         let (tx, rx) = mpsc::unbounded_channel();
         self.rx = Some(rx);
-
+        let repo = self.repo_path.clone();
         tokio::spawn(async move {
-            Self::run_write(tx, iso_path, target).await;
+            Self::run_build(tx, repo).await;
         });
     }
 
@@ -225,6 +249,63 @@ impl IsoScreen {
     }
 
     // -- async operations --
+
+    async fn discover_targets(tx: mpsc::UnboundedSender<IsoMessage>) {
+        let mut targets = Vec::new();
+
+        // Always offer ~/Downloads
+        let downloads = home::home_dir().unwrap_or_default().join("Downloads");
+        targets.push(IsoTarget {
+            label: format!("Save to {}", downloads.display()),
+            path: downloads.to_string_lossy().to_string(),
+            is_usb: false,
+            size: String::new(),
+        });
+
+        // Discover removable USB devices via lsblk
+        if let Ok(output) = tokio::process::Command::new("lsblk")
+            .args(["--json", "-d", "-o", "NAME,SIZE,MODEL,TRAN,TYPE,RM"])
+            .output()
+            .await
+        {
+            if let Ok(text) = String::from_utf8(output.stdout) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if let Some(devices) = json["blockdevices"].as_array() {
+                        for dev in devices {
+                            let rm = dev["rm"].as_bool().unwrap_or(false);
+                            let dev_type = dev["type"].as_str().unwrap_or("");
+                            let tran = dev["tran"].as_str().unwrap_or("");
+                            let name = dev["name"].as_str().unwrap_or("");
+
+                            // Only removable disks (USB sticks, etc.)
+                            if !rm || dev_type != "disk" || name.is_empty() {
+                                continue;
+                            }
+
+                            let model = dev["model"]
+                                .as_str()
+                                .unwrap_or("Unknown")
+                                .trim()
+                                .to_string();
+                            let size =
+                                dev["size"].as_str().unwrap_or("?").to_string();
+
+                            targets.push(IsoTarget {
+                                label: format!(
+                                    "/dev/{name} — {model} ({size}, {tran})"
+                                ),
+                                path: format!("/dev/{name}"),
+                                is_usb: true,
+                                size,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        let _ = tx.send(IsoMessage::TargetsDiscovered(targets));
+    }
 
     async fn run_build(tx: mpsc::UnboundedSender<IsoMessage>, repo_path: PathBuf) {
         let _ = tx.send(IsoMessage::BuildOutput(
@@ -290,13 +371,14 @@ impl IsoScreen {
     }
 
     fn find_iso_file(repo_path: &PathBuf) -> Option<PathBuf> {
-        // nix build .#iso creates a `result` symlink
+        // nix build .#iso creates a `result` symlink pointing to a nix store
+        // derivation directory containing iso/<name>.iso
         let result = repo_path.join("result");
         if !result.exists() {
             return None;
         }
 
-        // Look for .iso files inside result/iso/
+        // Primary path: result/iso/*.iso (standard NixOS isoImage output)
         let iso_dir = result.join("iso");
         if iso_dir.is_dir() {
             if let Ok(entries) = std::fs::read_dir(&iso_dir) {
@@ -309,74 +391,24 @@ impl IsoScreen {
             }
         }
 
-        // Maybe the result itself is the ISO
-        if result.extension().is_some_and(|e| e == "iso") {
+        // Fallback: .iso file directly in result/
+        if result.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&result) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() && path.extension().is_some_and(|e| e == "iso") {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+
+        // Maybe the result symlink points directly to an .iso file
+        if result.is_file() && result.extension().is_some_and(|e| e == "iso") {
             return Some(result);
         }
 
         None
-    }
-
-    fn spawn_target_discovery(&mut self) {
-        let (tx, rx) = mpsc::unbounded_channel();
-        self.rx = Some(rx);
-
-        tokio::spawn(async move {
-            let mut targets = Vec::new();
-
-            // Always offer ~/Downloads
-            let downloads = home::home_dir().unwrap_or_default().join("Downloads");
-            targets.push(IsoTarget {
-                label: format!("Save to {}", downloads.display()),
-                path: downloads.to_string_lossy().to_string(),
-                is_usb: false,
-                size: String::new(),
-            });
-
-            // Discover removable USB devices via lsblk
-            if let Ok(output) = tokio::process::Command::new("lsblk")
-                .args(["--json", "-d", "-o", "NAME,SIZE,MODEL,TRAN,TYPE,RM"])
-                .output()
-                .await
-            {
-                if let Ok(text) = String::from_utf8(output.stdout) {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if let Some(devices) = json["blockdevices"].as_array() {
-                            for dev in devices {
-                                let rm = dev["rm"].as_bool().unwrap_or(false);
-                                let dev_type = dev["type"].as_str().unwrap_or("");
-                                let tran = dev["tran"].as_str().unwrap_or("");
-                                let name = dev["name"].as_str().unwrap_or("");
-
-                                // Only removable disks (USB sticks, etc.)
-                                if !rm || dev_type != "disk" || name.is_empty() {
-                                    continue;
-                                }
-
-                                let model = dev["model"]
-                                    .as_str()
-                                    .unwrap_or("Unknown")
-                                    .trim()
-                                    .to_string();
-                                let size =
-                                    dev["size"].as_str().unwrap_or("?").to_string();
-
-                                targets.push(IsoTarget {
-                                    label: format!(
-                                        "/dev/{name} — {model} ({size}, {tran})"
-                                    ),
-                                    path: format!("/dev/{name}"),
-                                    is_usb: true,
-                                    size,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-
-            let _ = tx.send(IsoMessage::TargetsDiscovered(targets));
-        });
     }
 
     async fn run_write(
@@ -450,7 +482,7 @@ impl IsoScreen {
             }
             let _ = tx.send(IsoMessage::WriteFinished(success));
         } else {
-            // Copy to ~/Downloads
+            // Copy to ~/Downloads as keystone-installer.iso
             let dest_dir = PathBuf::from(&target.path);
             if let Err(e) = std::fs::create_dir_all(&dest_dir) {
                 let _ = tx.send(IsoMessage::WriteOutput(format!(
@@ -461,16 +493,22 @@ impl IsoScreen {
                 return;
             }
 
-            let filename = iso_path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            let dest = dest_dir.join(&filename);
+            let dest = dest_dir.join("keystone-installer.iso");
+
+            // Remove existing read-only file (nix store copies inherit 444 perms)
+            if dest.exists() {
+                if let Err(e) = std::fs::remove_file(&dest) {
+                    let _ = tx.send(IsoMessage::WriteOutput(format!(
+                        "Failed to remove existing {}: {e}",
+                        dest.display()
+                    )));
+                    let _ = tx.send(IsoMessage::WriteFinished(false));
+                    return;
+                }
+            }
 
             let _ = tx.send(IsoMessage::WriteOutput(format!(
-                "Copying {} to {}...",
-                iso_display,
+                "Copying to {}...",
                 dest.display()
             )));
 
@@ -497,18 +535,14 @@ impl IsoScreen {
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         match &self.phase {
-            IsoPhase::Building => self.render_building(frame, area),
             IsoPhase::SelectTarget => self.render_select_target(frame, area),
-            IsoPhase::Writing => self.render_output(frame, area, "Writing ISO", Color::Yellow),
+            IsoPhase::Building => self.render_output(frame, area, "Building ISO...", Color::Yellow),
+            IsoPhase::Writing => self.render_output(frame, area, "Writing ISO...", Color::Yellow),
             IsoPhase::Done => self.render_output(frame, area, "ISO Complete", Color::Green),
             IsoPhase::Failed(msg) => {
                 self.render_output(frame, area, &format!("Failed: {msg}"), Color::Red)
             }
         }
-    }
-
-    fn render_building(&self, frame: &mut Frame, area: Rect) {
-        self.render_output(frame, area, "Building ISO...", Color::Yellow);
     }
 
     fn render_output(&self, frame: &mut Frame, area: Rect, title: &str, title_color: Color) {
@@ -560,7 +594,7 @@ impl IsoScreen {
         // Help text
         let help_text = match &self.phase {
             IsoPhase::Done | IsoPhase::Failed(_) => "Esc: back • q: quit",
-            _ => "↑/↓: scroll • Esc: cancel",
+            _ => "Esc: cancel",
         };
         let help = Paragraph::new(Text::styled(
             help_text,
@@ -575,7 +609,6 @@ impl IsoScreen {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3),
-                Constraint::Length(4),
                 Constraint::Min(5),
                 Constraint::Length(3),
             ])
@@ -583,30 +616,12 @@ impl IsoScreen {
 
         // Title
         let title = Paragraph::new(Text::styled(
-            "ISO Built — Select Destination",
-            Style::default().bold().fg(Color::Green),
+            "Build ISO — Select Destination",
+            Style::default().bold().fg(Color::Cyan),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
-
-        // ISO info
-        let iso_info = if let Some(ref path) = self.iso_path {
-            let size = std::fs::metadata(path)
-                .map(|m| format!("{} MiB", m.len() / (1024 * 1024)))
-                .unwrap_or_else(|_| "?".to_string());
-            format!(
-                "  ISO: {}\n  Size: {}",
-                path.file_name().unwrap_or_default().to_string_lossy(),
-                size
-            )
-        } else {
-            "  ISO: unknown".to_string()
-        };
-        let info = Paragraph::new(iso_info)
-            .style(Style::default().fg(Color::Cyan))
-            .block(Block::default().borders(Borders::BOTTOM));
-        frame.render_widget(info, chunks[1]);
 
         // Target list
         let items: Vec<ListItem> = self
@@ -647,20 +662,20 @@ impl IsoScreen {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::DarkGray)),
         );
-        frame.render_widget(list, chunks[2]);
+        frame.render_widget(list, chunks[1]);
 
         // Help
         let help_text = if self.targets.is_empty() {
             "Discovering devices..."
         } else {
-            "↑/↓: navigate • Enter: write • Esc: cancel"
+            "↑/↓: navigate • Enter: build & write • Esc: cancel"
         };
         let help = Paragraph::new(Text::styled(
             help_text,
             Style::default().fg(Color::DarkGray),
         ))
         .alignment(Alignment::Center);
-        frame.render_widget(help, chunks[3]);
+        frame.render_widget(help, chunks[2]);
     }
 }
 
@@ -673,16 +688,17 @@ mod tests {
     }
 
     #[test]
-    fn test_initial_phase_is_building() {
+    fn test_initial_phase_is_select_target() {
         let (_, rx) = mpsc::unbounded_channel();
         let screen = IsoScreen::new_with_channel(test_repo_path(), rx);
-        assert_eq!(*screen.phase(), IsoPhase::Building);
+        assert_eq!(*screen.phase(), IsoPhase::SelectTarget);
     }
 
     #[test]
     fn test_poll_collects_build_output() {
         let (tx, rx) = mpsc::unbounded_channel();
         let mut screen = IsoScreen::new_with_channel(test_repo_path(), rx);
+        screen.phase = IsoPhase::Building;
 
         tx.send(IsoMessage::BuildOutput("line 1".to_string())).unwrap();
         tx.send(IsoMessage::BuildOutput("line 2".to_string())).unwrap();
@@ -696,6 +712,7 @@ mod tests {
     fn test_build_failure_goes_to_failed() {
         let (tx, rx) = mpsc::unbounded_channel();
         let mut screen = IsoScreen::new_with_channel(test_repo_path(), rx);
+        screen.phase = IsoPhase::Building;
 
         tx.send(IsoMessage::BuildFinished(false)).unwrap();
         screen.poll();
@@ -707,7 +724,6 @@ mod tests {
     fn test_target_navigation() {
         let (tx, rx) = mpsc::unbounded_channel();
         let mut screen = IsoScreen::new_with_channel(test_repo_path(), rx);
-        screen.phase = IsoPhase::SelectTarget;
 
         tx.send(IsoMessage::TargetsDiscovered(vec![
             IsoTarget {
@@ -747,10 +763,34 @@ mod tests {
     fn test_scroll_disables_auto_scroll() {
         let (_, rx) = mpsc::unbounded_channel();
         let mut screen = IsoScreen::new_with_channel(test_repo_path(), rx);
+        screen.phase = IsoPhase::Building;
         assert!(screen.auto_scroll);
         screen.scroll_up();
         assert!(!screen.auto_scroll);
         screen.scroll_down();
         assert!(screen.auto_scroll);
+    }
+
+    #[test]
+    fn test_find_iso_file_in_result_iso_dir() {
+        let tmp = std::env::temp_dir().join("keystone-tui-test-iso");
+        let iso_dir = tmp.join("result").join("iso");
+        std::fs::create_dir_all(&iso_dir).unwrap();
+        let iso_file = iso_dir.join("nixos-minimal-26.05pre-git-x86_64-linux.iso");
+        std::fs::write(&iso_file, b"fake iso").unwrap();
+
+        let found = IsoScreen::find_iso_file(&tmp);
+        assert!(found.is_some(), "should find .iso in result/iso/");
+        assert_eq!(found.unwrap(), iso_file);
+
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn test_find_iso_file_returns_none_without_result() {
+        let tmp = std::env::temp_dir().join("keystone-tui-test-no-result");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let found = IsoScreen::find_iso_file(&tmp);
+        assert!(found.is_none());
     }
 }
