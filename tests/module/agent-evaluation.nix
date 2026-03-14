@@ -11,7 +11,6 @@
   lib,
   self,
   nixpkgs ? null,
-  agenix,
 }:
 let
   nixosSystem =
@@ -29,7 +28,6 @@ let
       result = nixosSystem {
         system = "x86_64-linux";
         modules = [
-          agenix.nixosModules.default
           self.nixosModules.operating-system
           {
             # Minimal required config for evaluation

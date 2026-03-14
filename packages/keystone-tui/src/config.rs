@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs;
@@ -12,22 +11,20 @@ pub struct KeystoneRepo {
     pub path: PathBuf,
 }
 
-/// Application configuration, stored in XDG config directory.
+/// Application configuration stored at `~/.keystone/config.toml`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AppConfig {
     pub repos: Vec<KeystoneRepo>,
 }
 
 impl AppConfig {
-    /// Returns the path to the configuration file.
+    /// Returns the path to the configuration file (`~/.keystone/config.toml`).
     fn config_file_path() -> Result<PathBuf> {
-        let project_dirs = ProjectDirs::from("com", "Keystone", "KeystoneTUI")
-            .context("Failed to get project directories")?;
-        let config_dir = project_dirs.config_dir();
-        Ok(config_dir.join(CONFIG_FILE_NAME))
+        let home = dirs::home_dir().context("Failed to determine home directory")?;
+        Ok(home.join(".keystone").join(CONFIG_FILE_NAME))
     }
 
-    /// Loads the application configuration from the XDG config directory.
+    /// Loads the application configuration from `~/.keystone/`.
     pub async fn load() -> Result<Self> {
         let config_path = Self::config_file_path()?;
         if !config_path.exists() {
@@ -41,7 +38,7 @@ impl AppConfig {
         toml::from_str(&config_content).context("Failed to deserialize config.toml")
     }
 
-    /// Saves the application configuration to the XDG config directory.
+    /// Saves the application configuration to `~/.keystone/`.
     pub async fn save(&self) -> Result<()> {
         let config_path = Self::config_file_path()?;
         let config_dir = config_path
