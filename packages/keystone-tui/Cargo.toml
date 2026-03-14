@@ -35,8 +35,8 @@ age = { version = "0.11", features = ["cli-common"] }
 # FIDO2
 # ctap-hid-fido2 deferred — shell out to ssh-keygen -t ed25519-sk initially
 
-# XDG paths
-directories = "6"
+# Home directory
+dirs = "6"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

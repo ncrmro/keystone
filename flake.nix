@@ -302,7 +302,7 @@
             self = self;
           };
           template-evaluation = import ./tests/module/template-evaluation.nix {
-            inherit pkgs lib nixpkgs;
+            inherit pkgs lib nixpkgs agenix;
             self = self;
           };
         };
