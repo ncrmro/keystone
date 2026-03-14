@@ -14,6 +14,7 @@
   lib,
   self,
   nixpkgs ? null,
+  agenix ? null,
 }:
 let
   nixosSystem =
@@ -45,6 +46,9 @@ let
     let
       baseModules = [
         self.nixosModules.operating-system
+      ]
+      ++ lib.optionals (agenix != null) [ agenix.nixosModules.default ]
+      ++ [
         {
           networking.hostName = hostname;
           networking.hostId = hostId;
