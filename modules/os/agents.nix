@@ -1023,6 +1023,7 @@ in
             echo "  exec              Run an arbitrary command as the agent" >&2
             echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
             echo "  email             Show the agent's inbox (recent envelopes)" >&2
+            echo "  shell             Open interactive shell as the agent (with SSH agent)" >&2
             echo "  claude            Start interactive Claude session in agent notes directory" >&2
             echo "  mail              Send structured email to the agent (via agent-mail)" >&2
             echo "  vnc               Open remote-viewer to the agent's VNC desktop" >&2
@@ -1034,6 +1035,7 @@ in
             echo "  agentctl drago cron" >&2
             echo "  agentctl drago tasks" >&2
             echo "  agentctl drago email" >&2
+            echo "  agentctl drago shell" >&2
             echo "  agentctl drago claude" >&2
             echo "  agentctl drago vnc" >&2
             echo "  agentctl drago mail task --subject \"Fix CI pipeline\"" >&2
@@ -1093,6 +1095,9 @@ in
               ;;
             email)
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec himalaya envelope list "$@"
+              ;;
+            shell)
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "export SSH_AUTH_SOCK=/run/agent-''${AGENT_NAME}-ssh-agent/agent.sock; cd $NOTES_DIR && exec bash -l"
               ;;
             claude)
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && claude --dangerously-skip-permissions $*"
@@ -2006,7 +2011,7 @@ in
 
               script = ''
                 ${pkgs.git}/bin/git config --global gpg.format ssh
-                ${pkgs.git}/bin/git config --global user.signingkey "${sshKeyPath}"
+                ${pkgs.git}/bin/git config --global user.signingkey "key::${agentCfg.ssh.publicKey}"
                 ${pkgs.git}/bin/git config --global commit.gpgsign true
                 ${pkgs.git}/bin/git config --global tag.gpgsign true
                 ${pkgs.git}/bin/git config --global user.name "${agentCfg.fullName}"
