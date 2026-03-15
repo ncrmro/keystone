@@ -16,8 +16,8 @@ The TUI follows the same architecture as `packages/keystone-ha/tui/`: a main eve
 | ssh-key | 0.6 | SSH key parsing and generation |
 | rnix | 0.11 | Nix file parsing and AST manipulation |
 | age | 0.11 | agenix-compatible encryption/decryption |
-| directories | 6 | XDG config/data paths |
-| serde + toml | 1 / 0.8 | Config serialization |
+| dirs | 5 | Home directory resolution |
+| serde + serde_json | 1 / 1 | Config serialization (JSON) |
 | anyhow + thiserror | 1 / 2 | Error handling |
 
 ### FIDO2
@@ -31,7 +31,7 @@ src/
 ├── main.rs          # Entry point, terminal setup, event loop
 ├── lib.rs           # Module declarations
 ├── app.rs           # App state, screen enum, transitions
-├── config.rs        # XDG config loading/saving (TOML)
+├── config.rs        # Config loading/saving (~/.keystone/keystone.json)
 ├── screens/         # Screen-specific rendering and input
 │   ├── mod.rs
 │   ├── welcome.rs   # First-run / repo selection

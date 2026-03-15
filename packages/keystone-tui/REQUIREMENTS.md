@@ -4,9 +4,9 @@ This document defines the functional requirements for `keystone-tui`, the primar
 
 ## 1. Persistent Configuration
 
-- The TUI MUST store its configuration under XDG paths (`$XDG_CONFIG_HOME/keystone/` or `~/.config/keystone/`).
+- The TUI MUST store its configuration under `~/.keystone/`.
 - The TUI MUST support managing multiple Keystone infrastructure configurations (repos) simultaneously.
-- Configuration MUST be serialized as TOML.
+- Configuration MUST be serialized as JSON.
 
 ## 2. First Run
 

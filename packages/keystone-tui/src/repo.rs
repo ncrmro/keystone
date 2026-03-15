@@ -7,6 +7,23 @@ use tokio::fs;
 
 use crate::config::KeystoneRepo;
 
+/// SECURITY: Validate repo name to prevent path traversal attacks.
+/// Rejects names containing path separators, `..` components, empty strings,
+/// and absolute paths — mitigates directory traversal via crafted repo names.
+fn validate_repo_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("Repository name cannot be empty");
+    }
+    if name.contains('/')
+        || name.contains('\\')
+        || name.contains("..")
+        || std::path::Path::new(name).is_absolute()
+    {
+        anyhow::bail!("Repository name contains invalid characters");
+    }
+    Ok(())
+}
+
 /// Return the base repos directory (~/.keystone/repos/).
 fn repos_dir() -> Result<PathBuf> {
     let home = home_dir().context("Failed to get home directory")?;
@@ -45,6 +62,7 @@ pub async fn discover_repos() -> Result<Vec<KeystoneRepo>> {
 /// Import an existing git repository. If the directory already exists and is
 /// a valid git repo, reuse it instead of failing.
 pub async fn import_repo(repo_name: String, git_url: String) -> Result<KeystoneRepo> {
+    validate_repo_name(&repo_name)?;
     let repos_dir = repos_dir()?;
     fs::create_dir_all(&repos_dir)
         .await
@@ -108,6 +126,7 @@ pub async fn import_repo(repo_name: String, git_url: String) -> Result<KeystoneR
 
 /// Create a new repository from the Keystone flake template.
 pub async fn create_new_repo(repo_name: String) -> Result<KeystoneRepo> {
+    validate_repo_name(&repo_name)?;
     let repos_dir = repos_dir()?;
     fs::create_dir_all(&repos_dir)
         .await
