@@ -162,6 +162,7 @@
       browser-previews-flake = browser-previews;
       ghostty-flake = ghostty;
       yazi-flake = yazi;
+      agenix-flake = agenix;
     in final: prev: {
       keystone = {
         zesh = final.callPackage zesh-src {};
@@ -181,6 +182,7 @@
         # Desktop tools from flake inputs
         ghostty = ghostty-flake.packages.${final.system}.default;
         yazi = yazi-flake.packages.${final.system}.default;
+        agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
       };
       # Top-level overrides so programs.ghostty/yazi use flake versions
       ghostty = ghostty-flake.packages.${final.system}.default;
@@ -207,6 +209,7 @@
         imports = [
           disko.nixosModules.disko
           lanzaboote.nixosModules.lanzaboote
+          agenix.nixosModules.default
           ./modules/domain.nix
           ./modules/services.nix
           ./modules/hosts.nix
@@ -257,7 +260,10 @@
       desktopHyprland = ./home-manager/modules/desktop/hyprland;
       # Keystone-specific home-manager modules
       terminal = {
-        imports = [./modules/terminal/default.nix];
+        imports = [
+          keystoneInputs.nix-index-database.homeModules.nix-index
+          ./modules/terminal/default.nix
+        ];
         _module.args.keystoneInputs = keystoneInputs;
       };
       desktop = {
