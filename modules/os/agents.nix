@@ -1286,7 +1286,7 @@ $ROLE_PROMPT"
               else
                 exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c '
                   cd "'"$NOTES_DIR"'"
-                  exec podman-agent "'"$CMD"'" '"$*"'
+                  exec ${pkgs.keystone.podman-agent}/bin/podman-agent "'"$CMD"'" '"$*"'
                 '
               fi
               ;;
