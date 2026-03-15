@@ -15,7 +15,8 @@ ratatui = "0.29"
 crossterm = "0.28"
 
 # Async
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "fs", "io-util"] }
+tokio-util = "0.7"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -35,13 +36,17 @@ age = { version = "0.11", features = ["cli-common"] }
 # FIDO2
 # ctap-hid-fido2 deferred — shell out to ssh-keygen -t ed25519-sk initially
 
-# Home directory
-dirs = "6"
+# Home directory discovery
+dirs = "5"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+serde_json = "1"
 
 # Error handling
 anyhow = "1"
 thiserror = "2"
+
+[dev-dependencies]
+insta = "1"
+tempfile = "3"

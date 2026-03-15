@@ -1,0 +1,17 @@
+---
+source: tests/render.rs
+expression: output
+---
+                  Welcome to Keystone TUI!                  
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                > Import existing repository                
+                                                            
+                                                            
+                     Create new repository                  
+                                                            
+                                                            
+    ↑/↓ or j/k to navigate • Enter to select • q to quit

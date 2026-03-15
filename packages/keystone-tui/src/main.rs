@@ -8,7 +8,7 @@ use std::io;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -16,9 +16,14 @@ use ratatui::prelude::*;
 
 mod app;
 mod config;
+mod input;
+mod nix;
+mod repo;
 mod screens;
+mod ui;
 
 use app::{App, AppScreen};
+use input::{dispatch_key, handle_action, AppAction};
 
 /// Set up the terminal for TUI rendering.
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
@@ -64,26 +69,49 @@ async fn main() -> Result<()> {
     result
 }
 
-/// Main application loop.
-async fn run_app(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut App,
-) -> Result<()> {
+/// Main application loop. Generic over backend so tests can use TestBackend.
+async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {
     loop {
+        // Poll build screen for new output before rendering
+        if let AppScreen::Build(ref mut build) = app.current_screen {
+            build.poll();
+        }
+
         terminal.draw(|frame| {
             let area = frame.area();
             match &mut app.current_screen {
                 AppScreen::Welcome(welcome_screen) => {
                     welcome_screen.render(frame, area);
                 }
+                AppScreen::Hosts(hosts_screen) => {
+                    hosts_screen.render(frame, area);
+                }
+                AppScreen::HostDetail(detail_screen) => {
+                    detail_screen.render(frame, area);
+                }
+                AppScreen::Build(build_screen) => {
+                    build_screen.render(frame, area);
+                }
             }
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') {
-                    app.should_quit = true;
+            match event::read()? {
+                Event::Key(key) => {
+                    if let Some(action) = dispatch_key(app, key) {
+                        match action {
+                            AppAction::Quit => {
+                                app.should_quit = true;
+                            }
+                            other => {
+                                handle_action(app, other).await;
+                            }
+                        }
+                    }
                 }
+                Event::Resize(_width, _height) => {}
+                Event::Mouse(_mouse_event) => {}
+                _ => {}
             }
         }
 
