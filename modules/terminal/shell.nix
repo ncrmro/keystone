@@ -167,6 +167,10 @@ in
 
       # ks - Keystone infrastructure CLI (build and deploy NixOS configurations)
       pkgs.keystone.ks
+
+      # Nixfmt - Official Nix code formatter (RFC style)
+      # https://github.com/NixOS/nixfmt
+      nixfmt-rfc-style
     ];
   };
 }
