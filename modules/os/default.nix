@@ -166,6 +166,7 @@ in {
     ./agents.nix
     ./hypervisor.nix
     ./iphone-tether.nix
+    ./ollama.nix
     ./tailscale.nix
   ];
 
