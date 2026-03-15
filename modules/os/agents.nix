@@ -168,7 +168,11 @@ let
         };
 
         chrome = {
-          enable = mkEnableOption "Chrome remote debugging";
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enable Chrome remote debugging via Chromium + DevTools MCP.";
+          };
 
           debugPort = mkOption {
             type = types.nullOr types.port;
@@ -469,8 +473,8 @@ let
       in
       vncPortBase + 1 + idx;
 
-  # All agents get Chrome with remote debugging
-  chromeAgents = cfg;
+  # Chrome services run on the agent's host (alongside labwc)
+  chromeAgents = localAgents;
   hasChromeAgents = chromeAgents != { };
 
   # Sorted chrome agent names for deterministic debug port assignment
@@ -486,6 +490,21 @@ let
         idx = findFirst (
           i: elemAt sortedChromeAgentNames i == name
         ) (throw "chrome agent '${name}' not found") (genList (x: x) (length sortedChromeAgentNames));
+      in
+      chromeDebugPortBase + idx;
+
+  # Resolve Chrome debug port for ANY agent by simulating per-host grouping.
+  # Used in MCP configs which are built for all agents, not just local ones.
+  globalAgentChromeDebugPort =
+    name: agentCfg:
+    if agentCfg.chrome.debugPort != null then
+      agentCfg.chrome.debugPort
+    else
+      let
+        sameHostAgentNames = sort lessThan (filter (n: cfg.${n}.host == agentCfg.host) (attrNames cfg));
+        idx = findFirst (
+          i: elemAt sameHostAgentNames i == name
+        ) (throw "agent '${name}' not found in host group") (genList (x: x) (length sameHostAgentNames));
       in
       chromeDebugPortBase + idx;
 
@@ -949,7 +968,7 @@ let
         } // optionalAttrs (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) {
           chrome-devtools = {
             command = "${pkgs.keystone.chrome-devtools-mcp}/bin/chrome-devtools-mcp";
-            args = [ "--browserUrl" "http://127.0.0.1:${toString (agentChromeDebugPort name agentCfg)}" ];
+            args = [ "--browserUrl" "http://127.0.0.1:${toString (globalAgentChromeDebugPort name agentCfg)}" ];
           };
         } // mapAttrs (_: srv: {
           inherit (srv) command args;
