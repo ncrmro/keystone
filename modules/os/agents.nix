@@ -2518,6 +2518,10 @@ $ROLE_PROMPT"
                 enable = mkDefault true;
                 # All credentials auto-derived from mail config above
               };
+              contacts = {
+                enable = mkDefault true;
+                # All credentials auto-derived from mail config above
+              };
               secrets = {
                 enable = mkDefault true;
                 email = mkDefault (if agentCfg.email != null
