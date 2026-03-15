@@ -587,6 +587,7 @@ let
 
       # ── Step 2: Ingest (haiku) ────────────────────────────────────
       CURRENT_STEP="ingest"
+      INGEST_RAN=false
       log "Step 2: Ingesting sources via haiku..."
       if [ "$(${echo} "$SOURCES_JSON" | ${jq} '[.[].data | length] | add // 0')" -gt 0 ]; then
         set +o pipefail
@@ -599,6 +600,8 @@ let
         set -o pipefail
         if [ "$INGEST_EXIT" -ne 0 ]; then
           log "  WARNING: Ingest step failed, continuing..."
+        else
+          INGEST_RAN=true
         fi
       else
         log "  No source data to ingest, skipping"
@@ -606,6 +609,17 @@ let
 
       # ── Step 3: Prioritize (haiku) ───────────────────────────────
       CURRENT_STEP="prioritize"
+
+      # Skip prioritize entirely if ingest didn't run and there are no pending tasks.
+      # This avoids a wasteful haiku call when nothing has changed.
+      PENDING_COUNT=0
+      if [ -f TASKS.yaml ]; then
+        PENDING_COUNT=$(${yq} '[.tasks[] | select(.status == "pending")] | length' TASKS.yaml 2>/dev/null || ${echo} "0")
+      fi
+      if [ "$INGEST_RAN" = "false" ] && [ "$PENDING_COUNT" = "0" ]; then
+        log "Step 3: Skipping prioritize (no new sources, no pending tasks)"
+      else
+
       PRIORITIZE_HASH_FILE="$STATE_DIR/prioritize-inputs.sha256"
       CURRENT_HASH=""
       if [ -f TASKS.yaml ] && [ -f PROJECTS.yaml ]; then
@@ -635,6 +649,7 @@ let
           ${echo} -n "$CURRENT_HASH" > "$PRIORITIZE_HASH_FILE"
         fi
       fi
+      fi # end INGEST_RAN guard
 
       # ── Step 4: Execute pending tasks ─────────────────────────────
       # Check for pending tasks after ingest — exit if nothing to execute
