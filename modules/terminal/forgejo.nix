@@ -1,7 +1,8 @@
 # Keystone Terminal — Forgejo CLI
 #
-# Installs `fj` (forgejo-cli) when enabled, providing CLI access to Forgejo
-# for repository management, issue tracking, and pull requests.
+# Installs `fj` (forgejo-cli) and `tea` (Gitea/Forgejo CLI) when enabled.
+# forgejo-cli handles admin and auth operations; tea covers daily workflow
+# (PRs, issues, releases) that forgejo-cli doesn't support.
 #
 # Auto-enabled via keystone.services.git.host in users.nix and agents.nix
 # home-manager bridges.
@@ -21,6 +22,9 @@ in {
   config = mkIf (cfg.enable && cfg.git.forgejo.enable) {
     home.packages = [
       pkgs.forgejo-cli
+      # tea provides repo/issue/PR operations that forgejo-cli lacks (e.g. tea pr create,
+      # tea issue list). forgejo-cli focuses on admin/auth; tea covers the daily workflow.
+      pkgs.tea
       pkgs.keystone.fetch-forgejo-sources
     ];
   };
