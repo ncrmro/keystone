@@ -9,10 +9,10 @@ buildNpmPackage (finalAttrs: {
 
   src = fetchzip {
     url = "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-${finalAttrs.version}.tgz";
-    hash = "";
+    hash = "sha256-tbi5cmrF1m3uI2fgHg5GgbmKhPaamn2dCeKwS8gRe6w=";
   };
 
-  npmDepsHash = "";
+  npmDepsHash = "sha256-mfd7CsuMgS84NDaT2BEXEXVRFM3zANXhO5D2w3DH/N4=";
 
   postPatch = ''
     cp ${./package-lock.json} package-lock.json
