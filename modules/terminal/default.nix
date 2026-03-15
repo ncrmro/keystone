@@ -15,6 +15,8 @@ in {
     ./devtools.nix
     ./mail.nix
     ./calendar.nix
+    ./contacts.nix
+    ./timer.nix
     ./agent-mail.nix
     ./sandbox.nix
     ./secrets.nix
