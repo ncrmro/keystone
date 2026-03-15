@@ -1062,12 +1062,16 @@ in
             echo "  email             Show the agent's inbox (recent envelopes)" >&2
             echo "  shell             Open interactive shell as the agent (with SSH agent)" >&2
             echo "  claude            Start interactive Claude session in agent notes directory" >&2
+            echo "  gemini            Start interactive Gemini session in agent notes directory" >&2
+            echo "  codex             Start interactive Codex session in agent notes directory" >&2
+            echo "  opencode          Start interactive OpenCode session in agent notes directory" >&2
             echo "  mail              Send structured email to the agent (via agent-mail)" >&2
             echo "  vnc               Open remote-viewer to the agent's VNC desktop" >&2
             echo "  provision         Generate SSH keypair, mail password, and agenix secrets" >&2
             echo "" >&2
-            echo "Flags (for claude command):" >&2
-            echo "  -r, --role <mode>  Compose role-specific prompt via .agents/compose.sh" >&2
+            echo "Flags:" >&2
+            echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh (claude)" >&2
+            echo "  --no-sandbox           Run directly without Podman container (claude/gemini/codex/opencode)" >&2
             echo "" >&2
             echo "Examples:" >&2
             echo "  agentctl drago status agent-drago-task-loop" >&2
@@ -1078,6 +1082,9 @@ in
             echo "  agentctl drago shell" >&2
             echo "  agentctl drago claude" >&2
             echo "  agentctl drago claude -r code-review" >&2
+            echo "  agentctl drago gemini" >&2
+            echo "  agentctl drago codex" >&2
+            echo "  agentctl drago opencode" >&2
             echo "  agentctl drago vnc" >&2
             echo "  agentctl drago mail task --subject \"Fix CI pipeline\"" >&2
             echo "  agentctl drago provision                     # full flow incl. hwrekey" >&2
@@ -1128,10 +1135,12 @@ in
 
           # Parse agentctl-level flags (consumed here, not passed to harness)
           ROLE=""
+          NO_SANDBOX=false
           REMAINING_ARGS=()
           while [[ $# -gt 0 ]]; do
             case "$1" in
               -r|--role) ROLE="$2"; shift 2 ;;
+              --no-sandbox) NO_SANDBOX=true; shift ;;
               *) REMAINING_ARGS+=("$1"); shift ;;
             esac
           done
@@ -1152,38 +1161,62 @@ in
             shell)
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && exec bash -l"
               ;;
-            claude)
-              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c '
-                cd "'"$NOTES_DIR"'"
+            claude|gemini|codex|opencode)
+              if [ "$NO_SANDBOX" = "true" ]; then
+                # Run directly as the agent (no container), entering devshell if available
+                exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c '
+                  cd "'"$NOTES_DIR"'"
 
-                # Build system prompt from AGENTS.md + optional role composition
-                SP=""
-                if [ -f AGENTS.md ]; then
-                  SP="$(cat AGENTS.md)"
-                fi
+                  # Resolve auto-approve flags per tool
+                  TOOL_FLAGS=""
+                  case "'"$CMD"'" in
+                    claude) TOOL_FLAGS="--dangerously-skip-permissions" ;;
+                    gemini) TOOL_FLAGS="--yolo" ;;
+                    codex) TOOL_FLAGS="--full-auto" ;;
+                  esac
 
-                ROLE="'"$ROLE"'"
-                if [ -n "$ROLE" ]; then
-                  if [ -x .agents/compose.sh ] && [ -f manifests/modes.yaml ]; then
-                    ROLE_PROMPT="$(PATH="${pkgs.yq-go}/bin:$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE")"
-                    if [ -n "$SP" ]; then
-                      SP="$SP
+                  # Claude: compose system prompt from AGENTS.md + optional role
+                  SP_FLAGS=""
+                  if [ "'"$CMD"'" = "claude" ]; then
+                    SP=""
+                    if [ -f AGENTS.md ]; then
+                      SP="$(cat AGENTS.md)"
+                    fi
+
+                    ROLE="'"$ROLE"'"
+                    if [ -n "$ROLE" ]; then
+                      if [ -x .agents/compose.sh ] && [ -f manifests/modes.yaml ]; then
+                        ROLE_PROMPT="$(PATH="${pkgs.yq-go}/bin:$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE")"
+                        if [ -n "$SP" ]; then
+                          SP="$SP
 
 $ROLE_PROMPT"
-                    else
-                      SP="$ROLE_PROMPT"
+                        else
+                          SP="$ROLE_PROMPT"
+                        fi
+                      else
+                        echo "Warning: -r $ROLE requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
+                      fi
                     fi
-                  else
-                    echo "Warning: -r $ROLE requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
-                  fi
-                fi
 
-                if [ -n "$SP" ]; then
-                  exec claude --dangerously-skip-permissions --append-system-prompt "$SP" '"$*"'
-                else
-                  exec claude --dangerously-skip-permissions '"$*"'
-                fi
-              '
+                    if [ -n "$SP" ]; then
+                      SP_FLAGS="--append-system-prompt $SP"
+                    fi
+                  fi
+
+                  if [ -f flake.nix ]; then
+                    exec nix develop --no-update-lock-file --accept-flake-config \
+                      --command "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS '"$*"'
+                  else
+                    exec "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS '"$*"'
+                  fi
+                '
+              else
+                exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c '
+                  cd "'"$NOTES_DIR"'"
+                  exec podman-agent "'"$CMD"'" '"$*"'
+                '
+              fi
               ;;
             mail)
               exec agent-mail "$@" --to "''${AGENT_NAME}@${topDomain}"
@@ -1238,6 +1271,11 @@ $ROLE_PROMPT"
                 echo "==> Generated mail password"
               fi
 
+              # --- Step 2b: Generate Bitwarden/Vaultwarden password ---
+              BW_PASSWORD=$(${pkgs.openssl}/bin/openssl rand -base64 24)
+              echo -n "$BW_PASSWORD" > "$TMPDIR/bitwarden-password"
+              echo "==> Generated Bitwarden password"
+
               # --- Step 3: Insert entries into secrets.nix ---
               SECRETS_NIX="$SECRETS_DIR/secrets.nix"
               if [ ! -f "$SECRETS_NIX" ]; then
@@ -1286,6 +1324,10 @@ $ROLE_PROMPT"
                 fi
               fi
 
+              # Bitwarden password: needs admin keys + agent's host
+              add_secret "secrets/$USERNAME-bitwarden-password.age" \
+                "adminKeys ++ [ $AGENT_HOST_EXPR ]"
+
               # --- Step 4: Validate secrets.nix ---
               echo "==> Validating secrets.nix..."
               if ! ${pkgs.nix}/bin/nix eval --file "$SECRETS_NIX" --json > /dev/null 2>&1; then
@@ -1315,6 +1357,7 @@ $ROLE_PROMPT"
               if [ "$MAIL_PROVISION" = "true" ]; then
                 create_age_secret "secrets/$USERNAME-mail-password.age" "$TMPDIR/mail-password"
               fi
+              create_age_secret "secrets/$USERNAME-bitwarden-password.age" "$TMPDIR/bitwarden-password"
 
               # --- Step 6: Print snippets for nixos-config ---
               echo ""
@@ -1339,6 +1382,11 @@ $ROLE_PROMPT"
                 echo "      mode = \"0400\";"
                 echo "    };"
               fi
+              echo "    age.secrets.$USERNAME-bitwarden-password = {"
+              echo "      file = \"\''${inputs.agenix-secrets}/secrets/$USERNAME-bitwarden-password.age\";"
+              echo "      owner = \"$USERNAME\";"
+              echo "      mode = \"0400\";"
+              echo "    };"
 
               # --- Step 7: hwrekey (unless --skip-rekey) ---
               if [ "$SKIP_REKEY" = "true" ]; then
@@ -2020,6 +2068,32 @@ $ROLE_PROMPT"
                  owner = "${username}";
                  mode = "0400";
                };
+          '';
+        }
+        # Bitwarden/Vaultwarden password — rbw pinentry reads from
+        # /run/agenix/agent-{name}-bitwarden-password at runtime. Without
+        # this assertion, the build succeeds but rbw silently fails.
+        {
+          assertion = config.age.secrets ? "${username}-bitwarden-password";
+          message = ''
+            Agent '${name}' requires agenix secret "${username}-bitwarden-password".
+
+            1. Add to agenix-secrets/secrets.nix:
+               "secrets/${username}-bitwarden-password.age".publicKeys = adminKeys ++ [ systems.${agentCfg.host} ];
+
+            2. Create the secret:
+               cd agenix-secrets && agenix -e secrets/${username}-bitwarden-password.age
+
+            3. Declare in host config:
+               age.secrets.${username}-bitwarden-password = {
+                 file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-bitwarden-password.age";
+                 owner = "${username}";
+                 mode = "0400";
+               };
+
+            4. Create a Vaultwarden account for ${username} at
+               https://vaultwarden.${if topDomain != null then topDomain else "example.com"}
+               using the SAME password as the agenix secret.
           '';
         }
       ]) sshAgents);
