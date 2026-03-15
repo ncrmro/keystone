@@ -24,6 +24,10 @@
       url = "github:pimalaya/himalaya";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    calendula = {
+      url = "github:pimalaya/calendula";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     llm-agents = {
       url = "github:numtide/llm-agents.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -74,6 +78,7 @@
     lanzaboote,
     hyprland,
     himalaya,
+    calendula,
     llm-agents,
     browser-previews,
     ghostty,
@@ -162,6 +167,7 @@
       podman-agent-src = ./packages/podman-agent;
       ks-src = ./packages/ks;
       himalaya-flake = himalaya;
+      calendula-flake = calendula;
       llm-agents-flake = llm-agents;
       browser-previews-flake = browser-previews;
       ghostty-flake = ghostty;
@@ -180,6 +186,7 @@
         podman-agent = final.callPackage podman-agent-src {};
         ks = final.callPackage ks-src {};
         himalaya = himalaya-flake.packages.${final.system}.default;
+        calendula = calendula-flake.packages.${final.system}.default;
         # AI coding agents from llm-agents.nix
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
         gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;

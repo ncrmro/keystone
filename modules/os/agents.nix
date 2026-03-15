@@ -1313,7 +1313,12 @@ $ROLE_PROMPT"
                 fi
 
                 if [ -f flake.nix ]; then
-                  exec nix develop --no-update-lock-file --accept-flake-config \
+                  # Use git+file with submodules=1 so nix can see git submodules
+                  FLAKE_REF="."
+                  if [ -f .gitmodules ]; then
+                    FLAKE_REF="git+file:.?submodules=1"
+                  fi
+                  exec nix develop "$FLAKE_REF" --no-update-lock-file --accept-flake-config \
                     --command "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS '"$*"'
                 else
                   exec "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS '"$*"'
@@ -2508,6 +2513,10 @@ $ROLE_PROMPT"
                 passwordCommand = mkDefault "tr -d '\\n' < /run/agenix/agent-${name}-mail-password";
                 imap.port = mkDefault agentCfg.mail.imap.port;
                 smtp.port = mkDefault agentCfg.mail.smtp.port;
+              };
+              calendar = {
+                enable = mkDefault true;
+                # All credentials auto-derived from mail config above
               };
               secrets = {
                 enable = mkDefault true;
