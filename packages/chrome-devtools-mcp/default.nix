@@ -18,6 +18,8 @@ buildNpmPackage (finalAttrs: {
     cp ${./package-lock.json} package-lock.json
   '';
 
+  env.PUPPETEER_SKIP_DOWNLOAD = "1";
+
   dontNpmBuild = true;
 
   meta = {
