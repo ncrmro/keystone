@@ -144,6 +144,10 @@ in
       # https://htop.dev/
       htop
 
+      # GitHub CLI - GitHub's official command line tool
+      # https://cli.github.com/
+      gh
+
       # Lazygit - Simple terminal UI for git commands
       # https://github.com/jesseduffield/lazygit
       lazygit
