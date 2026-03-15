@@ -269,7 +269,14 @@ impl IsoScreen {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
                     if let Some(devices) = json["blockdevices"].as_array() {
                         for dev in devices {
-                            let rm = dev["rm"].as_bool().unwrap_or(false);
+                            // lsblk --json may encode "rm" as bool, integer, or string
+                            // depending on kernel version and util-linux version.
+                            // Extract once and parse all three representations.
+                            let rm_val = &dev["rm"];
+                            let rm = rm_val.as_bool().unwrap_or(false)
+                                || rm_val.as_u64().map(|v| v != 0).unwrap_or(false)
+                                || rm_val.as_i64().map(|v| v != 0).unwrap_or(false)
+                                || rm_val.as_str().map(|v| v == "1" || v == "true").unwrap_or(false);
                             let dev_type = dev["type"].as_str().unwrap_or("");
                             let tran = dev["tran"].as_str().unwrap_or("");
                             let name = dev["name"].as_str().unwrap_or("");

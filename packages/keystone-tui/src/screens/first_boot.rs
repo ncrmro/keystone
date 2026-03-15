@@ -213,9 +213,9 @@ impl FirstBootScreen {
                 "Initializing git repository...".to_string(),
             ));
 
-            // git init
+            // git init with explicit branch name to match subsequent push
             let init = Command::new("git")
-                .args(["init"])
+                .args(["init", "-b", "main"])
                 .current_dir(&config_dir)
                 .output()
                 .await;
