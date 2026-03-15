@@ -19,6 +19,9 @@ in {
   };
 
   config = mkIf (cfg.enable && cfg.git.forgejo.enable) {
-    home.packages = [ pkgs.forgejo-cli ];
+    home.packages = [
+      pkgs.forgejo-cli
+      pkgs.keystone.fetch-forgejo-sources
+    ];
   };
 }
