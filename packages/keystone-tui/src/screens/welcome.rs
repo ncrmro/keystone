@@ -42,8 +42,13 @@ pub enum WelcomeOption {
 #[derive(Debug)]
 pub enum WelcomeAction {
     None,
-    ImportRepo { name: String, git_url: String },
-    CreateRepo { name: String },
+    ImportRepo {
+        name: String,
+        git_url: String,
+    },
+    CreateRepo {
+        name: String,
+    },
     /// User acknowledged success - app should transition to repos view
     Complete,
 }
@@ -88,6 +93,7 @@ impl WelcomeScreen {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_selected_option(&self) -> WelcomeOption {
         self.selected_option
     }
@@ -116,7 +122,8 @@ impl WelcomeScreen {
                     return WelcomeAction::None;
                 }
                 // Extract repo name from URL
-                let name = extract_repo_name(&git_url).unwrap_or_else(|| "keystone-config".to_string());
+                let name =
+                    extract_repo_name(&git_url).unwrap_or_else(|| "keystone-config".to_string());
                 self.state = WelcomeState::Importing;
                 WelcomeAction::ImportRepo { name, git_url }
             }
@@ -187,7 +194,9 @@ impl WelcomeScreen {
             WelcomeState::InputGitUrl => self.render_input_git_url(frame, area),
             WelcomeState::InputRepoName => self.render_input_repo_name(frame, area),
             WelcomeState::Importing => self.render_loading(frame, area, "Cloning repository..."),
-            WelcomeState::Creating => self.render_loading(frame, area, "Creating repository from template..."),
+            WelcomeState::Creating => {
+                self.render_loading(frame, area, "Creating repository from template...")
+            }
             WelcomeState::Success => self.render_success(frame, area),
             WelcomeState::Error => self.render_error(frame, area),
         }
@@ -215,11 +224,17 @@ impl WelcomeScreen {
 
         // Import option
         let import_style = if self.selected_option == WelcomeOption::ImportExisting {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
-        let import_prefix = if self.selected_option == WelcomeOption::ImportExisting { "> " } else { "  " };
+        let import_prefix = if self.selected_option == WelcomeOption::ImportExisting {
+            "> "
+        } else {
+            "  "
+        };
         let import_text = Paragraph::new(format!("{}Import existing repository", import_prefix))
             .style(import_style)
             .alignment(Alignment::Center);
@@ -227,11 +242,17 @@ impl WelcomeScreen {
 
         // Create option
         let create_style = if self.selected_option == WelcomeOption::CreateNew {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
-        let create_prefix = if self.selected_option == WelcomeOption::CreateNew { "> " } else { "  " };
+        let create_prefix = if self.selected_option == WelcomeOption::CreateNew {
+            "> "
+        } else {
+            "  "
+        };
         let create_text = Paragraph::new(format!("{}Create new repository", create_prefix))
             .style(create_style)
             .alignment(Alignment::Center);
@@ -299,7 +320,8 @@ impl WelcomeScreen {
 
         // Input area (centered)
         let input_area = centered_rect(60, 3, chunks[1]);
-        self.repo_name_input.render(frame, input_area, "Repository Name");
+        self.repo_name_input
+            .render(frame, input_area, "Repository Name");
 
         // Help text
         let help = Paragraph::new(Text::styled(
@@ -320,11 +342,8 @@ impl WelcomeScreen {
             ])
             .split(area);
 
-        let loading = Paragraph::new(Text::styled(
-            message,
-            Style::default().fg(Color::Yellow),
-        ))
-        .alignment(Alignment::Center);
+        let loading = Paragraph::new(Text::styled(message, Style::default().fg(Color::Yellow)))
+            .alignment(Alignment::Center);
         frame.render_widget(loading, chunks[1]);
     }
 
@@ -332,7 +351,10 @@ impl WelcomeScreen {
         let popup_area = centered_rect(60, 20, area);
         frame.render_widget(Clear, popup_area);
 
-        let message = self.success_message.as_deref().unwrap_or("Operation completed successfully!");
+        let message = self
+            .success_message
+            .as_deref()
+            .unwrap_or("Operation completed successfully!");
         let lines: Vec<Line> = vec![
             Line::from("").style(Style::default()),
             Line::from("✓ Success!").style(Style::default().fg(Color::Green).bold()),
@@ -342,9 +364,11 @@ impl WelcomeScreen {
             Line::from("Press Enter to continue").style(Style::default().fg(Color::DarkGray)),
         ];
 
-        let paragraph = Paragraph::new(lines)
-            .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Green)));
+        let paragraph = Paragraph::new(lines).alignment(Alignment::Center).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+        );
         frame.render_widget(paragraph, popup_area);
     }
 
@@ -362,9 +386,11 @@ impl WelcomeScreen {
             Line::from("Press Enter or Esc to dismiss").style(Style::default().fg(Color::DarkGray)),
         ];
 
-        let paragraph = Paragraph::new(lines)
-            .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Red)));
+        let paragraph = Paragraph::new(lines).alignment(Alignment::Center).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Red)),
+        );
         frame.render_widget(paragraph, popup_area);
     }
 }
@@ -375,7 +401,8 @@ fn extract_repo_name(url: &str) -> Option<String> {
     // https://github.com/user/repo.git -> repo
     // git@github.com:user/repo.git -> repo
     let url = url.trim_end_matches(".git");
-    url.rsplit('/').next()
+    url.rsplit('/')
+        .next()
         .or_else(|| url.rsplit(':').next())
         .map(|s| s.to_string())
 }
@@ -449,7 +476,7 @@ mod tests {
     fn test_empty_git_url_produces_error() {
         let mut screen = WelcomeScreen::new();
         screen.confirm(); // Go to InputGitUrl
-        // Confirm with empty URL
+                          // Confirm with empty URL
         let action = screen.confirm();
         assert!(matches!(action, WelcomeAction::None));
         assert_eq!(*screen.state(), WelcomeState::Error);

@@ -70,10 +70,7 @@ async fn main() -> Result<()> {
 }
 
 /// Main application loop. Generic over backend so tests can use TestBackend.
-async fn run_app<B: Backend>(
-    terminal: &mut Terminal<B>,
-    app: &mut App,
-) -> Result<()> {
+async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {
     loop {
         // Poll build screen for new output before rendering
         if let AppScreen::Build(ref mut build) = app.current_screen {

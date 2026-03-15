@@ -53,8 +53,9 @@ fn extract_nixos_configurations(root: &SyntaxNode) -> Vec<HostInfo> {
     for node in root.descendants() {
         if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
             // Check if this is nixosConfigurations = { ... }
-            if let Some(attrpath) =
-                node.children().find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
+            if let Some(attrpath) = node
+                .children()
+                .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
             {
                 let path_text: String = attrpath
                     .children()
@@ -65,8 +66,9 @@ fn extract_nixos_configurations(root: &SyntaxNode) -> Vec<HostInfo> {
 
                 if path_text == "nixosConfigurations" {
                     // Found nixosConfigurations, now extract each host entry
-                    if let Some(value) =
-                        node.children().find(|n| n.kind() == SyntaxKind::NODE_ATTR_SET)
+                    if let Some(value) = node
+                        .children()
+                        .find(|n| n.kind() == SyntaxKind::NODE_ATTR_SET)
                     {
                         for attr in value.children() {
                             if attr.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
@@ -312,8 +314,12 @@ mod tests {
         assert_eq!(hosts[0].name, "my-machine");
         assert_eq!(hosts[0].system.as_deref(), Some("x86_64-linux"));
         assert_eq!(hosts[0].keystone_modules, vec!["operating-system"]);
-        assert!(hosts[0].config_files.contains(&"./configuration.nix".to_string()));
-        assert!(hosts[0].config_files.contains(&"./hardware.nix".to_string()));
+        assert!(hosts[0]
+            .config_files
+            .contains(&"./configuration.nix".to_string()));
+        assert!(hosts[0]
+            .config_files
+            .contains(&"./hardware.nix".to_string()));
     }
 
     #[test]

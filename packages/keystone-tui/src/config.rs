@@ -48,15 +48,15 @@ impl AppConfig {
     }
 
     /// Loads config from a specific path (useful for testing).
+    #[allow(dead_code)]
     pub async fn load_from_path(path: &std::path::Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());
         }
 
-        let config_content = fs::read_to_string(path).await.context(format!(
-            "Failed to read config file: {}",
-            path.display()
-        ))?;
+        let config_content = fs::read_to_string(path)
+            .await
+            .context(format!("Failed to read config file: {}", path.display()))?;
         serde_json::from_str(&config_content).context("Failed to deserialize keystone.json")
     }
 
@@ -75,10 +75,7 @@ impl AppConfig {
             serde_json::to_string_pretty(self).context("Failed to serialize config to JSON")?;
         fs::write(path, config_content)
             .await
-            .context(format!(
-                "Failed to write config file: {}",
-                path.display()
-            ))?;
+            .context(format!("Failed to write config file: {}", path.display()))?;
         Ok(())
     }
 }

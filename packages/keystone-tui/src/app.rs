@@ -94,6 +94,7 @@ impl App {
 
     /// Create an App with a given config, starting on the Welcome screen.
     /// Skips filesystem operations (no `discover_repos`, no `AppConfig::load`).
+    #[allow(dead_code)]
     pub fn new_with_config(config: AppConfig) -> Self {
         let has_repos = !config.repos.is_empty();
         let current_screen = if has_repos {
@@ -113,6 +114,7 @@ impl App {
     }
 
     /// Create a minimal App for testing — starts on Welcome with empty config.
+    #[allow(dead_code)]
     pub fn new_for_test() -> Self {
         Self::new_with_config(AppConfig::default())
     }

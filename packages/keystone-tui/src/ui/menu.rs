@@ -56,11 +56,8 @@ impl<T> SelectMenu<T> {
         }
 
         // Create constraints for each item
-        let constraints: Vec<Constraint> = self
-            .items
-            .iter()
-            .map(|_| Constraint::Length(1))
-            .collect();
+        let constraints: Vec<Constraint> =
+            self.items.iter().map(|_| Constraint::Length(1)).collect();
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)

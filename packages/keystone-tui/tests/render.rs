@@ -80,7 +80,10 @@ fn test_render_host_detail() {
         name: "workstation".to_string(),
         system: Some("x86_64-linux".to_string()),
         keystone_modules: vec!["operating-system".to_string(), "desktop".to_string()],
-        config_files: vec!["./configuration.nix".to_string(), "./hardware.nix".to_string()],
+        config_files: vec![
+            "./configuration.nix".to_string(),
+            "./hardware.nix".to_string(),
+        ],
     };
     let screen = HostDetailScreen::new(host);
     let output = render_to_string(60, 18, |frame| {
@@ -110,8 +113,10 @@ fn test_render_build_screen_with_output() {
     ))
     .unwrap();
     tx.send(BuildMessage::Output(String::new())).unwrap();
-    tx.send(BuildMessage::Output("building '/nix/store/...'".to_string()))
-        .unwrap();
+    tx.send(BuildMessage::Output(
+        "building '/nix/store/...'".to_string(),
+    ))
+    .unwrap();
     tx.send(BuildMessage::Finished(BuildResult::Success))
         .unwrap();
     screen.poll();

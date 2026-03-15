@@ -1,7 +1,7 @@
 //! Repository management operations for Keystone TUI.
 
 use anyhow::{Context, Result};
-use home::home_dir;
+use dirs::home_dir;
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -33,10 +33,7 @@ pub async fn discover_repos() -> Result<Vec<KeystoneRepo>> {
         // Check if it's a git repo
         let git_dir = path.join(".git");
         if git_dir.exists() {
-            let name = entry
-                .file_name()
-                .to_string_lossy()
-                .to_string();
+            let name = entry.file_name().to_string_lossy().to_string();
             found.push(KeystoneRepo { name, path });
         }
     }
@@ -58,11 +55,10 @@ pub async fn import_repo(repo_name: String, git_url: String) -> Result<KeystoneR
     if target_path.exists() {
         // If it's already a git repo, reuse it
         let check_path = target_path.clone();
-        let is_repo = tokio::task::spawn_blocking(move || {
-            git2::Repository::open(&check_path).is_ok()
-        })
-        .await
-        .unwrap_or(false);
+        let is_repo =
+            tokio::task::spawn_blocking(move || git2::Repository::open(&check_path).is_ok())
+                .await
+                .unwrap_or(false);
 
         if is_repo {
             return Ok(KeystoneRepo {

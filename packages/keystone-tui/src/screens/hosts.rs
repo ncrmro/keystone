@@ -33,6 +33,7 @@ impl HostsScreen {
         }
     }
 
+    #[allow(dead_code)]
     pub fn hosts(&self) -> &[HostInfo] {
         &self.hosts
     }
@@ -74,7 +75,7 @@ impl HostsScreen {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3), // Title
-                Constraint::Min(5),   // Hosts list
+                Constraint::Min(5),    // Hosts list
                 Constraint::Length(3), // Help
             ])
             .split(area);

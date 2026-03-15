@@ -30,7 +30,7 @@ impl HostDetailScreen {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3), // Title
-                Constraint::Min(5),   // Details
+                Constraint::Min(5),    // Details
                 Constraint::Length(3), // Help
             ])
             .split(area);
@@ -65,7 +65,11 @@ impl HostDetailScreen {
             ]));
         } else {
             for (i, module) in self.host.keystone_modules.iter().enumerate() {
-                let label = if i == 0 { "  Modules:    " } else { "              " };
+                let label = if i == 0 {
+                    "  Modules:    "
+                } else {
+                    "              "
+                };
                 lines.push(Line::from(vec![
                     Span::styled(label, Style::default().fg(Color::DarkGray)),
                     Span::styled(module.as_str(), Style::default().fg(Color::Green)),
@@ -83,7 +87,11 @@ impl HostDetailScreen {
             ]));
         } else {
             for (i, path) in self.host.config_files.iter().enumerate() {
-                let label = if i == 0 { "  Config:     " } else { "              " };
+                let label = if i == 0 {
+                    "  Config:     "
+                } else {
+                    "              "
+                };
                 lines.push(Line::from(vec![
                     Span::styled(label, Style::default().fg(Color::DarkGray)),
                     Span::styled(path.as_str(), Style::default().fg(Color::Cyan)),
@@ -91,8 +99,7 @@ impl HostDetailScreen {
             }
         }
 
-        let details = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::NONE));
+        let details = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
         frame.render_widget(details, chunks[1]);
 
         // Help text

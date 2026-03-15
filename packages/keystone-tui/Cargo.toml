@@ -37,7 +37,7 @@ age = { version = "0.11", features = ["cli-common"] }
 # ctap-hid-fido2 deferred — shell out to ssh-keygen -t ed25519-sk initially
 
 # Home directory discovery
-home = "0.5"
+dirs = "5"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

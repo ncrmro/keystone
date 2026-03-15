@@ -175,9 +175,8 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         }
         AppAction::StartBuild(host_name) => {
             if let Some(repo_path) = app.active_repo_path() {
-                app.current_screen = AppScreen::Build(screens::build::BuildScreen::new(
-                    host_name, repo_path,
-                ));
+                app.current_screen =
+                    AppScreen::Build(screens::build::BuildScreen::new(host_name, repo_path));
             }
         }
         AppAction::Quit => {
@@ -196,7 +195,8 @@ async fn handle_welcome_action(app: &mut App, action: screens::welcome::WelcomeA
                 match crate::repo::import_repo(name.clone(), git_url).await {
                     Ok(repo) => {
                         app.config.repos.push(repo);
-                        welcome.set_success(format!("Repository '{}' imported successfully!", name));
+                        welcome
+                            .set_success(format!("Repository '{}' imported successfully!", name));
                     }
                     Err(e) => {
                         welcome.set_error(format!("Failed to import repository: {}", e));
