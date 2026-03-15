@@ -67,8 +67,8 @@ in {
         }) userCfg.hardwareKeys
       ) cfg)
       # Validate agenix secret exists when sshAutoLoad is enabled
-      # (auto-declared below when secretsBasePath is set, so this only fires
-      # when secretsBasePath is null and no manual declaration exists)
+      # (auto-declared below when secrets.repo is set, so this only fires
+      # when secrets.repo is null and no manual declaration exists)
       ++ concatLists (mapAttrsToList (username: userCfg:
         optional userCfg.sshAutoLoad.enable {
           assertion = config.age.secrets ? "${hostname}-ssh-passphrase";
@@ -85,7 +85,7 @@ in {
                git add -A && git commit -m "Add ${hostname} SSH passphrase" && git push
                cd .. && nix flake update agenix-secrets
 
-            If keystone.os.secretsBasePath is set, the age.secrets declaration is automatic.
+            If keystone.secrets.repo is set, the age.secrets declaration is automatic.
             Otherwise, add manually to host config:
               age.secrets.${hostname}-ssh-passphrase = {
                 file = "${"$"}{inputs.agenix-secrets}/secrets/${hostname}-ssh-passphrase.age";
@@ -96,11 +96,11 @@ in {
         }
       ) cfg);
 
-      # Auto-declare age.secrets for sshAutoLoad when secretsBasePath is set
-      age.secrets = mkIf (osCfg.secretsBasePath != null) (
+      # Auto-declare age.secrets for sshAutoLoad when secrets.repo is set
+      age.secrets = mkIf (config.keystone.secrets.repo != null) (
         listToAttrs (concatLists (mapAttrsToList (username: userCfg:
           optional userCfg.sshAutoLoad.enable (nameValuePair "${hostname}-ssh-passphrase" {
-            file = "${osCfg.secretsBasePath}/secrets/${hostname}-ssh-passphrase.age";
+            file = "${config.keystone.secrets.repo}/secrets/${hostname}-ssh-passphrase.age";
             owner = username;
             mode = "0400";
           })
