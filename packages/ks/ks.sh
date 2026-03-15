@@ -17,7 +17,7 @@
 #   3. ~/nixos-config as fallback
 #
 # The --dev flag overrides keystone and agenix-secrets flake inputs with
-# local submodule paths for testing uncommitted changes.
+# local clone paths for testing uncommitted changes.
 
 set -euo pipefail
 
@@ -140,7 +140,7 @@ pull_repo() {
     target="$existing"
   fi
 
-  if [[ -d "$target/.git" ]]; then
+  if [[ -e "$target/.git" ]]; then
     echo "Pulling $name..."
     git -C "$target" pull --ff-only
   else
