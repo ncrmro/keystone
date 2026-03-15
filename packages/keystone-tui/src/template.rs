@@ -116,7 +116,7 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
     ...
   }}: {{
     nixosConfigurations = {{
-      {hostname} = nixpkgs.lib.nixosSystem {{
+      "{hostname_esc}" = nixpkgs.lib.nixosSystem {{
         system = "x86_64-linux";
         modules = [
           home-manager.nixosModules.home-manager
@@ -145,7 +145,6 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
   }};
 }}
 "#,
-        hostname = config.hostname,
         hostname_esc = escape_nix_string(&config.hostname),
         desktop_module = desktop_module,
         shared_modules = shared_modules,
@@ -221,7 +220,7 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
     }};
 
     users = {{
-      {username} = {{
+      "{username}" = {{
         fullName = "{username}";
         email = "{username}@localhost";
         extraGroups = {extra_groups};
