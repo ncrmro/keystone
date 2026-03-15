@@ -4,8 +4,8 @@
 # Usage: ks <command> [options]
 #
 # Commands:
-#   build  [--dev] [HOST]           Build a NixOS configuration (no deploy)
-#   update [--dev] [--boot] [HOST]  Deploy a NixOS configuration (switch or boot)
+#   build  [--dev] [HOST]                      Build a NixOS configuration (no deploy)
+#   update [--dev] [--boot] [--pull] [--lock] [HOST]  Deploy a NixOS configuration
 #
 # Host resolution:
 #   1. If HOST is provided, use it directly
@@ -76,11 +76,101 @@ resolve_host() {
 # --- Build --dev override args ---
 dev_override_args() {
   local repo_root="$1"
-  local keystone_path="$repo_root/.submodules/keystone"
-  local secrets_path="$repo_root/agenix-secrets"
-  [[ -d "$keystone_path" ]] || { echo "Error: Missing $keystone_path" >&2; exit 1; }
-  [[ -d "$secrets_path" ]] || { echo "Error: Missing $secrets_path" >&2; exit 1; }
+  local keystone_path=""
+  local secrets_path=""
+
+  # Keystone: prefer .repos/keystone, fallback to .submodules/keystone
+  if [[ -d "$repo_root/.repos/keystone" ]]; then
+    keystone_path="$repo_root/.repos/keystone"
+  elif [[ -d "$repo_root/.submodules/keystone" ]]; then
+    keystone_path="$repo_root/.submodules/keystone"
+  else
+    echo "Error: Cannot find keystone repo at .repos/keystone or .submodules/keystone" >&2
+    exit 1
+  fi
+
+  # Secrets: prefer .repos/agenix-secrets, fallback to agenix-secrets/
+  if [[ -d "$repo_root/.repos/agenix-secrets" ]]; then
+    secrets_path="$repo_root/.repos/agenix-secrets"
+  elif [[ -d "$repo_root/agenix-secrets" ]]; then
+    secrets_path="$repo_root/agenix-secrets"
+  else
+    echo "Error: Cannot find agenix-secrets repo at .repos/agenix-secrets or agenix-secrets/" >&2
+    exit 1
+  fi
+
   echo "--override-input keystone path:$keystone_path --override-input agenix-secrets path:$secrets_path"
+}
+
+# --- Repo URLs (for cloning) ---
+KEYSTONE_URL="git@github.com:ncrmro/keystone.git"
+AGENIX_SECRETS_URL="ssh://forgejo@git.ncrmro.com:2222/ncrmro/agenix-secrets.git"
+
+# --- Find local repo path ---
+# Returns the local path for a given repo name, checking .repos/ first, then legacy paths.
+find_local_repo() {
+  local repo_root="$1" name="$2"
+  case "$name" in
+    keystone)
+      if [[ -d "$repo_root/.repos/keystone" ]]; then
+        echo "$repo_root/.repos/keystone"
+      elif [[ -d "$repo_root/.submodules/keystone" ]]; then
+        echo "$repo_root/.submodules/keystone"
+      fi
+      ;;
+    agenix-secrets)
+      if [[ -d "$repo_root/.repos/agenix-secrets" ]]; then
+        echo "$repo_root/.repos/agenix-secrets"
+      elif [[ -d "$repo_root/agenix-secrets" ]]; then
+        echo "$repo_root/agenix-secrets"
+      fi
+      ;;
+  esac
+}
+
+# --- Pull (clone or update) a repo ---
+pull_repo() {
+  local repo_root="$1" name="$2" url="$3"
+  local target="$repo_root/.repos/$name"
+
+  # Check legacy paths first — if found there, pull in-place
+  local existing
+  existing=$(find_local_repo "$repo_root" "$name")
+  if [[ -n "$existing" ]]; then
+    target="$existing"
+  fi
+
+  if [[ -d "$target/.git" ]]; then
+    echo "Pulling $name..."
+    git -C "$target" pull --ff-only
+  else
+    echo "Cloning $name..."
+    mkdir -p "$(dirname "$target")"
+    git clone "$url" "$target"
+  fi
+}
+
+# --- Verify repo is clean and pushed ---
+verify_repo_clean() {
+  local path="$1" name="$2"
+  if [[ ! -d "$path" ]]; then
+    return 0
+  fi
+  if ! git -C "$path" diff --quiet || ! git -C "$path" diff --cached --quiet; then
+    echo "Error: $name has uncommitted changes at $path" >&2
+    exit 1
+  fi
+  if [[ -n "$(git -C "$path" ls-files --others --exclude-standard)" ]]; then
+    echo "Error: $name has untracked files at $path" >&2
+    exit 1
+  fi
+  local local_ref remote_ref
+  local_ref=$(git -C "$path" rev-parse HEAD)
+  remote_ref=$(git -C "$path" rev-parse "@{upstream}" 2>/dev/null || echo "")
+  if [[ -n "$remote_ref" && "$local_ref" != "$remote_ref" ]]; then
+    echo "Error: $name has unpushed commits at $path" >&2
+    exit 1
+  fi
 }
 
 # --- Commands ---
@@ -113,11 +203,13 @@ cmd_build() {
 }
 
 cmd_update() {
-  local dev=false mode="switch" host=""
+  local dev=false mode="switch" host="" pull=false lock=false
   while [[ $# -gt 0 ]]; do
     case $1 in
       --dev) dev=true; shift ;;
       --boot) mode="boot"; shift ;;
+      --pull) pull=true; shift ;;
+      --lock) lock=true; shift ;;
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) host="$1"; shift ;;
     esac
@@ -125,8 +217,63 @@ cmd_update() {
 
   local repo_root
   repo_root=$(find_repo)
+
+  # --- Handle --pull ---
+  if [[ "$pull" == true ]]; then
+    pull_repo "$repo_root" keystone "$KEYSTONE_URL"
+    pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
+    if [[ "$lock" != true ]]; then
+      echo "Pull complete."
+      return
+    fi
+  fi
+
+  # --- Handle --lock ---
+  if [[ "$lock" == true ]]; then
+    # Pull if not already done
+    if [[ "$pull" != true ]]; then
+      pull_repo "$repo_root" keystone "$KEYSTONE_URL"
+      pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
+    fi
+
+    # Verify repos are clean
+    local ks_path secrets_path
+    ks_path=$(find_local_repo "$repo_root" keystone)
+    secrets_path=$(find_local_repo "$repo_root" agenix-secrets)
+    [[ -n "$ks_path" ]] && verify_repo_clean "$ks_path" keystone
+    [[ -n "$secrets_path" ]] && verify_repo_clean "$secrets_path" agenix-secrets
+
+    local hosts_nix="$repo_root/hosts.nix"
+    host=$(resolve_host "$hosts_nix" "$host")
+
+    # Build to verify
+    echo "Building $host to verify..."
+    nix build "$repo_root#nixosConfigurations.$host.config.system.build.toplevel"
+
+    # Lock flake inputs
+    echo "Locking flake inputs..."
+    nix flake update keystone agenix-secrets --flake "$repo_root"
+
+    # Commit flake.lock
+    if ! git -C "$repo_root" diff --quiet flake.lock; then
+      echo "Committing flake.lock..."
+      git -C "$repo_root" add flake.lock
+      git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets"
+    fi
+
+    # Push nixos-config
+    echo "Pushing nixos-config..."
+    git -C "$repo_root" push
+
+    # Deploy
+    echo "Deploying $host ($mode)..."
+  fi
+
   local hosts_nix="$repo_root/hosts.nix"
-  host=$(resolve_host "$hosts_nix" "$host")
+  # Don't re-resolve host if --lock already did it
+  if [[ -z "$host" ]] || [[ "$lock" != true ]]; then
+    host=$(resolve_host "$hosts_nix" "${host:-}")
+  fi
 
   # Read host config
   local host_json ssh_target fallback_ip build_on_remote host_hostname
@@ -183,8 +330,8 @@ if [[ $# -lt 1 ]]; then
   echo "Usage: ks <command> [options]" >&2
   echo "" >&2
   echo "Commands:" >&2
-  echo "  build  [--dev] [HOST]           Build a NixOS configuration" >&2
-  echo "  update [--dev] [--boot] [HOST]  Deploy a NixOS configuration" >&2
+  echo "  build  [--dev] [HOST]                      Build a NixOS configuration" >&2
+  echo "  update [--dev] [--boot] [--pull] [--lock] [HOST]  Deploy a NixOS configuration" >&2
   echo "" >&2
   echo "Repo discovery: \$NIXOS_CONFIG_DIR > git root > ~/nixos-config" >&2
   exit 1

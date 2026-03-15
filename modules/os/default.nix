@@ -152,6 +152,7 @@ with lib; let
   });
 in {
   imports = [
+    ../secrets.nix
     ./storage.nix
     ./secure-boot.nix
     ./tpm.nix
@@ -434,18 +435,6 @@ in {
         default = true;
         description = "Enable Nix flakes and nix-command";
       };
-    };
-
-    # Secrets base path for automatic age.secrets declarations
-    secretsBasePath = mkOption {
-      type = types.nullOr types.path;
-      default = null;
-      description = ''
-        Base path to agenix secrets directory (e.g., inputs.agenix-secrets).
-        When set, keystone auto-declares age.secrets entries for features
-        that require them (sshAutoLoad, etc.), eliminating manual host config.
-      '';
-      example = literalExpression "inputs.agenix-secrets";
     };
 
     # User configuration

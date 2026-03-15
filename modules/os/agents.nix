@@ -142,7 +142,11 @@ let
         };
 
         desktop = {
-          enable = mkEnableOption "Headless Wayland desktop";
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enable headless Wayland desktop (labwc + wayvnc).";
+          };
 
           resolution = mkOption {
             type = types.str;
@@ -436,7 +440,7 @@ let
   # Sorted desktop agent names for deterministic VNC port assignment
   sortedDesktopAgentNames = sort lessThan (attrNames desktopAgents);
 
-  # Resolve VNC port for a desktop agent
+  # Resolve VNC port for a desktop agent (local host perspective)
   agentVncPort =
     name: agentCfg:
     if agentCfg.desktop.vncPort != null then
@@ -446,6 +450,22 @@ let
         idx = findFirst (
           i: elemAt sortedDesktopAgentNames i == name
         ) (throw "desktop agent '${name}' not found") (genList (x: x) (length sortedDesktopAgentNames));
+      in
+      vncPortBase + 1 + idx;
+
+  # Resolve VNC port for ANY agent by simulating per-host grouping.
+  # agentctl needs this for remote VNC connections — the port depends on
+  # how many agents share the same host, not on the local host's agent set.
+  globalAgentVncPort =
+    name: agentCfg:
+    if agentCfg.desktop.vncPort != null then
+      agentCfg.desktop.vncPort
+    else
+      let
+        sameHostAgentNames = sort lessThan (filter (n: cfg.${n}.host == agentCfg.host) (attrNames cfg));
+        idx = findFirst (
+          i: elemAt sameHostAgentNames i == name
+        ) (throw "agent '${name}' not found in host group") (genList (x: x) (length sameHostAgentNames));
       in
       vncPortBase + 1 + idx;
 
@@ -1029,10 +1049,10 @@ in
         agentNotesCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
           "          ${name}) NOTES_DIR=\"${agentCfg.notes.path}\" ;;"
         ) cfg);
-        # Nix-generated static lookup: agent name -> VNC port (desktop agents only)
+        # Nix-generated static lookup: agent name -> VNC port (all agents, for remote VNC)
         agentVncCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
-          "          ${name}) VNC_PORT=\"${toString (agentVncPort name agentCfg)}\" ;;"
-        ) desktopAgents);
+          "          ${name}) VNC_PORT=\"${toString (globalAgentVncPort name agentCfg)}\" ;;"
+        ) cfg);
         # Nix-generated static lookup: agent name -> host (for remote dispatch)
         agentHostCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
           "          ${name}) AGENT_HOST=\"${toString agentCfg.host}\" ;;"
