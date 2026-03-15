@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Fetch Forgejo issues, PRs requesting review, and PR review comments for an agent.
+# Outputs a single JSON object with three keys: forgejo-issues, forgejo-prs, forgejo-pr-reviews.
+# Usage: fetch-forgejo-sources <agent-username>
+set -euo pipefail
+
+FORGEJO_HOST="https://git.ncrmro.com"
+API="$FORGEJO_HOST/api/v1"
+AGENT_USERNAME="${1:?Usage: fetch-forgejo-sources <agent-username>}"
+
+TMPDIR_WORK=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_WORK"' EXIT
+
+# Accumulator files — each holds a JSON array
+echo "[]" > "$TMPDIR_WORK/issues.json"
+echo "[]" > "$TMPDIR_WORK/prs.json"
+echo "[]" > "$TMPDIR_WORK/reviews.json"
+
+# Helper: GET with JSON accept header, returns [] on failure
+api_get() {
+  curl -sf -H "Accept: application/json" "$1" 2>/dev/null || echo "[]"
+}
+
+# Helper: append items to an accumulator file
+acc_append() {
+  local file="$1" items="$2"
+  local current
+  current=$(cat "$file")
+  echo "$current" | jq --argjson items "$items" '. + $items' > "$file"
+}
+
+# ── Discover repos ───────────────────────────────────────────
+# Forgejo repo search wraps results in {"ok": true, "data": [...]}
+REPOS_JSON=$(api_get "$API/repos/search?limit=50&sort=updated&order=desc")
+REPOS=$(echo "$REPOS_JSON" | jq -r '.data[] | .full_name' 2>/dev/null || echo "")
+
+if [ -z "$REPOS" ]; then
+  echo '{"forgejo-issues":[],"forgejo-prs":[],"forgejo-pr-reviews":[]}'
+  exit 0
+fi
+
+# ── Issues assigned to agent ─────────────────────────────────
+for repo in $REPOS; do
+  owner="${repo%%/*}"
+  name="${repo##*/}"
+  repo_issues=$(api_get "$API/repos/$owner/$name/issues?state=open&type=issues&assignee=$AGENT_USERNAME&limit=50")
+  if [ "$repo_issues" != "[]" ] && [ -n "$repo_issues" ]; then
+    items=$(echo "$repo_issues" | jq --arg repo "$repo" \
+      '[.[] | {
+        repo: $repo,
+        number: .number,
+        title: .title,
+        url: .html_url,
+        assignee: (.assignee.login // null),
+        labels: [(.labels // [])[] | .name],
+        created_at: .created_at
+      }]')
+    acc_append "$TMPDIR_WORK/issues.json" "$items"
+  fi
+done
+
+# ── PRs and reviews (single pass per repo) ────────────────────
+for repo in $REPOS; do
+  owner="${repo%%/*}"
+  name="${repo##*/}"
+  repo_pulls=$(api_get "$API/repos/$owner/$name/pulls?state=open&limit=50")
+  if [ "$repo_pulls" = "[]" ] || [ -z "$repo_pulls" ]; then
+    continue
+  fi
+
+  # PRs requesting review from agent (not authored by agent)
+  filtered=$(echo "$repo_pulls" | jq --arg agent "$AGENT_USERNAME" --arg repo "$repo" \
+    '[.[] | select(.user.login != $agent) |
+      select(.requested_reviewers != null and (.requested_reviewers | map(.login) | index($agent) != null)) |
+      {
+        repo: $repo,
+        number: .number,
+        title: .title,
+        url: .html_url,
+        author: .user.login,
+        created_at: .created_at
+      }]')
+  if [ "$filtered" != "[]" ]; then
+    acc_append "$TMPDIR_WORK/prs.json" "$filtered"
+  fi
+
+  # PR reviews on agent-authored PRs
+  agent_pr_numbers=$(echo "$repo_pulls" | jq --arg agent "$AGENT_USERNAME" \
+    '[.[] | select(.user.login == $agent) | .number]')
+  if [ "$agent_pr_numbers" = "[]" ]; then
+    continue
+  fi
+
+  for pr_number in $(echo "$agent_pr_numbers" | jq -r '.[]'); do
+    pr_meta=$(echo "$repo_pulls" | jq --argjson n "$pr_number" '.[] | select(.number == $n) | {title: .title, url: .html_url}')
+    pr_title=$(echo "$pr_meta" | jq -r '.title')
+    pr_url=$(echo "$pr_meta" | jq -r '.url')
+
+    reviews=$(api_get "$API/repos/$owner/$name/pulls/$pr_number/reviews")
+    if [ "$reviews" = "[]" ] || [ -z "$reviews" ]; then
+      continue
+    fi
+
+    # Filter: reviews not by agent, with actionable state
+    relevant=$(echo "$reviews" | jq --arg agent "$AGENT_USERNAME" \
+      '[.[] | select(.user.login != $agent) | select(.state == "REQUEST_CHANGES" or .state == "COMMENT") | {id: .id, reviewer: .user.login, state: .state}]')
+    if [ "$relevant" = "[]" ]; then
+      continue
+    fi
+
+    for review_idx in $(echo "$relevant" | jq -r 'keys[]'); do
+      review_id=$(echo "$relevant" | jq -r ".[$review_idx].id")
+      reviewer=$(echo "$relevant" | jq -r ".[$review_idx].reviewer")
+      review_state=$(echo "$relevant" | jq -r ".[$review_idx].state")
+
+      comments_raw=$(api_get "$API/repos/$owner/$name/pulls/$pr_number/reviews/$review_id/comments")
+      comments=$(echo "$comments_raw" | jq '[.[] | {id: .id, path: .path, body: .body}]' 2>/dev/null || echo "[]")
+
+      item=$(jq -n \
+        --arg repo "$repo" \
+        --argjson pr_number "$pr_number" \
+        --arg pr_title "$pr_title" \
+        --arg pr_url "$pr_url" \
+        --argjson review_id "$review_id" \
+        --arg reviewer "$reviewer" \
+        --arg review_state "$review_state" \
+        --argjson comments "$comments" \
+        '[{
+          repo: $repo,
+          pr_number: $pr_number,
+          pr_title: $pr_title,
+          pr_url: $pr_url,
+          review_id: $review_id,
+          reviewer: $reviewer,
+          review_state: $review_state,
+          comments: $comments
+        }]')
+      acc_append "$TMPDIR_WORK/reviews.json" "$item"
+    done
+  done
+done
+
+# ── Output combined result ────────────────────────────────────
+jq -n \
+  --argjson issues "$(cat "$TMPDIR_WORK/issues.json")" \
+  --argjson prs "$(cat "$TMPDIR_WORK/prs.json")" \
+  --argjson reviews "$(cat "$TMPDIR_WORK/reviews.json")" \
+  '{"forgejo-issues": $issues, "forgejo-prs": $prs, "forgejo-pr-reviews": $reviews}'
