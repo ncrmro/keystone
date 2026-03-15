@@ -5,7 +5,7 @@
 #
 # This module adds:
 # - Root SSH login override (keystone.os defaults to prohibit-password)
-# - TUI installer (keystone-tui) auto-starting on tty1
+# - TUI installer (keystone-installer-ui) auto-starting on tty1
 # - ZFS, Secure Boot, TPM, and disko tooling pre-installed
 # - NetworkManager for TUI installer network detection
 #
@@ -126,6 +126,9 @@ in
       serviceConfig = {
         Type = "simple";
         User = "root";
+        # Clear any residual boot output and restore cursor before TUI starts.
+        # Uses /bin/sh because systemd ExecStartPre doesn't support shell redirects.
+        ExecStartPre = "/bin/sh -c '${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1'";
         ExecStart = "${keystone-tui}/bin/keystone-tui";
         Restart = "on-failure";
         RestartSec = "5s";
@@ -137,10 +140,20 @@ in
       };
     };
 
-    # Enable console on both serial (for remote) and tty1 (for TUI installer)
+    # Suppress boot messages so the TUI appears cleanly on tty1.
+    # console=tty1 keeps the display signal active (prevents "no signal" flash
+    # between GRUB and the TUI); quiet + loglevel=0 ensure nothing is printed.
+    # Serial still receives all boot logs for remote debugging.
+    boot.consoleLogLevel = 0;
+    boot.initrd.verbose = false;
     boot.kernelParams = [
       "console=ttyS0,115200"
       "console=tty1"
+      "quiet"
+      "loglevel=0"
+      "rd.udev.log_level=3"
+      "systemd.show_status=false"
+      "vt.global_cursor_default=0"
     ];
 
     # Ensure SSH starts on boot
@@ -163,9 +176,11 @@ in
     documentation.enable = false;
     documentation.nixos.enable = false;
 
-    # Set the ISO label
-    image.fileName = lib.mkForce "keystone-installer.iso";
-    isoImage.volumeID = lib.mkForce "KEYSTONE";
+    # Set the ISO label and boot splash image
+    image.fileName = lib.mkDefault "keystone-installer.iso";
+    isoImage.volumeID = lib.mkDefault "KEYSTONE";
+    isoImage.efiSplashImage = ../assets/installer-splash.png;
+    isoImage.splashImage = ../assets/installer-splash.png;
 
     # Include the keystone modules in the ISO for reference
     environment.etc."keystone-modules".source = ../modules;

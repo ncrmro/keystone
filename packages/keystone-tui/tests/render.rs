@@ -10,7 +10,12 @@ use keystone_tui::screens::build::{BuildMessage, BuildResult, BuildScreen};
 use keystone_tui::screens::host_detail::HostDetailScreen;
 use keystone_tui::screens::hosts::HostsScreen;
 use keystone_tui::screens::welcome::WelcomeScreen;
+use keystone_tui::system::{
+    CpuHistory, DashboardMessage, DiskInfo, HostStatus, SystemMetrics, TailscalePeer,
+    TailscaleStatus, TempReading,
+};
 
+use std::collections::HashMap;
 use tokio::sync::mpsc;
 
 /// Render a screen to a string using TestBackend.
@@ -122,6 +127,192 @@ fn test_render_build_screen_with_output() {
     screen.poll();
 
     let output = render_to_string(60, 15, |frame| {
+        let area = frame.area();
+        screen.render(frame, area);
+    });
+    insta::assert_snapshot!(output);
+}
+
+// ---------------------------------------------------------------------------
+// T21-T25: Dashboard snapshot tests
+// ---------------------------------------------------------------------------
+
+fn make_dashboard_statuses() -> Vec<HostStatus> {
+    vec![
+        HostStatus {
+            host_info: HostInfo {
+                name: "laptop".to_string(),
+                system: Some("x86_64-linux".to_string()),
+                keystone_modules: vec!["operating-system".to_string()],
+                config_files: vec![],
+            },
+            tailscale: Some(TailscalePeer {
+                hostname: "laptop".to_string(),
+                tailscale_ips: vec!["100.64.0.1".to_string()],
+                online: true,
+                last_seen: String::new(),
+                os: "linux".to_string(),
+            }),
+            metrics: Some(SystemMetrics {
+                cpu_usage: 45.2,
+                cpu_history: CpuHistory::new(60),
+                memory_used: 8_589_934_592,
+                memory_total: 17_179_869_184,
+                swap_used: 536_870_912,
+                swap_total: 4_294_967_296,
+                disks: vec![
+                    DiskInfo {
+                        name: "nvme0n1p2".to_string(),
+                        mount_point: "/".to_string(),
+                        total_bytes: 500_000_000_000,
+                        available_bytes: 110_000_000_000,
+                        filesystem: "ext4".to_string(),
+                    },
+                    DiskInfo {
+                        name: "nvme0n1p3".to_string(),
+                        mount_point: "/nix".to_string(),
+                        total_bytes: 500_000_000_000,
+                        available_bytes: 180_000_000_000,
+                        filesystem: "ext4".to_string(),
+                    },
+                ],
+                temperatures: vec![
+                    TempReading {
+                        label: "CPU".to_string(),
+                        current: 52.0,
+                        critical: Some(100.0),
+                    },
+                    TempReading {
+                        label: "GPU".to_string(),
+                        current: 48.0,
+                        critical: Some(95.0),
+                    },
+                ],
+            }),
+            is_local: true,
+        },
+        HostStatus {
+            host_info: HostInfo {
+                name: "server".to_string(),
+                system: Some("x86_64-linux".to_string()),
+                keystone_modules: vec![],
+                config_files: vec![],
+            },
+            tailscale: Some(TailscalePeer {
+                hostname: "server".to_string(),
+                tailscale_ips: vec!["100.64.0.2".to_string()],
+                online: true,
+                last_seen: String::new(),
+                os: "linux".to_string(),
+            }),
+            metrics: None,
+            is_local: false,
+        },
+        HostStatus {
+            host_info: HostInfo {
+                name: "rpi".to_string(),
+                system: Some("aarch64-linux".to_string()),
+                keystone_modules: vec![],
+                config_files: vec![],
+            },
+            tailscale: Some(TailscalePeer {
+                hostname: "rpi".to_string(),
+                tailscale_ips: vec!["100.64.0.3".to_string()],
+                online: false,
+                last_seen: "2026-03-12T08:00:00Z".to_string(),
+                os: "linux".to_string(),
+            }),
+            metrics: None,
+            is_local: false,
+        },
+    ]
+}
+
+// T21: dashboard with metrics (CPU, memory, disks, gauges)
+#[test]
+fn test_render_dashboard_with_metrics() {
+    let statuses = make_dashboard_statuses();
+    let mut screen = HostsScreen::new_with_statuses("my-infra".to_string(), statuses);
+    // Simulate tailscale being available
+    let output = render_to_string(80, 25, |frame| {
+        let area = frame.area();
+        screen.render(frame, area);
+    });
+    insta::assert_snapshot!(output);
+}
+
+// T22: dashboard with tailscale status indicators
+#[test]
+fn test_render_dashboard_with_tailscale() {
+    let statuses = make_dashboard_statuses();
+    let mut screen = HostsScreen::new_with_statuses("my-infra".to_string(), statuses);
+    let output = render_to_string(80, 20, |frame| {
+        let area = frame.area();
+        screen.render(frame, area);
+    });
+    insta::assert_snapshot!(output);
+}
+
+// T23: dashboard without tailscale (graceful fallback)
+#[test]
+fn test_render_dashboard_no_tailscale() {
+    let statuses = vec![
+        HostStatus {
+            host_info: HostInfo {
+                name: "laptop".to_string(),
+                system: Some("x86_64-linux".to_string()),
+                keystone_modules: vec![],
+                config_files: vec![],
+            },
+            tailscale: None,
+            metrics: None,
+            is_local: true,
+        },
+        HostStatus {
+            host_info: HostInfo {
+                name: "server".to_string(),
+                system: Some("x86_64-linux".to_string()),
+                keystone_modules: vec![],
+                config_files: vec![],
+            },
+            tailscale: None,
+            metrics: None,
+            is_local: false,
+        },
+    ];
+    let mut screen = HostsScreen::new_with_statuses("my-infra".to_string(), statuses);
+    let output = render_to_string(80, 20, |frame| {
+        let area = frame.area();
+        screen.render(frame, area);
+    });
+    insta::assert_snapshot!(output);
+}
+
+// T24: dashboard with temperature readings and color coding
+#[test]
+fn test_render_dashboard_with_temps() {
+    let mut statuses = make_dashboard_statuses();
+    // Add a critical temp to the local host metrics
+    if let Some(ref mut metrics) = statuses[0].metrics {
+        metrics.temperatures.push(TempReading {
+            label: "NVMe".to_string(),
+            current: 95.0,
+            critical: Some(90.0),
+        });
+    }
+    let mut screen = HostsScreen::new_with_statuses("my-infra".to_string(), statuses);
+    let output = render_to_string(80, 25, |frame| {
+        let area = frame.area();
+        screen.render(frame, area);
+    });
+    insta::assert_snapshot!(output);
+}
+
+// T25: dashboard with empty hosts (still works)
+#[test]
+fn test_render_dashboard_empty() {
+    let mut screen = HostsScreen::new_with_statuses("my-infra".to_string(), Vec::new());
+    let output = render_to_string(80, 20, |frame| {
         let area = frame.area();
         screen.render(frame, area);
     });

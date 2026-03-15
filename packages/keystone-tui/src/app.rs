@@ -4,16 +4,25 @@ use crate::config::{AppConfig, KeystoneRepo};
 use crate::nix;
 use crate::repo;
 use crate::screens::build::BuildScreen;
+use crate::screens::create_config::CreateConfigScreen;
+use crate::screens::first_boot::FirstBootScreen;
 use crate::screens::host_detail::HostDetailScreen;
 use crate::screens::hosts::HostsScreen;
+use crate::screens::install::InstallScreen;
+use crate::screens::iso::IsoScreen;
 use crate::screens::welcome::WelcomeScreen;
+use crate::system;
 
 /// Represents the different screens/views in the TUI.
 pub enum AppScreen {
     Welcome(WelcomeScreen),
+    CreateConfig(CreateConfigScreen),
     Hosts(HostsScreen),
     HostDetail(HostDetailScreen),
     Build(BuildScreen),
+    Iso(IsoScreen),
+    Install(InstallScreen),
+    FirstBoot(FirstBootScreen),
 }
 
 /// Application state for the Keystone TUI.
@@ -64,10 +73,19 @@ impl App {
         }
     }
 
-    /// Load the hosts screen for a given repo.
+    /// Load the hosts screen for a given repo with live dashboard polling.
     pub async fn load_hosts_screen(repo: &KeystoneRepo) -> anyhow::Result<HostsScreen> {
         let flake_info = nix::parse_flake(&repo.path).await?;
-        Ok(HostsScreen::new(repo.name.clone(), flake_info.hosts))
+
+        // Build initial host statuses with local hostname detection
+        let statuses = system::match_hosts_to_peers(&flake_info.hosts, None);
+        let mut screen = HostsScreen::new_with_statuses(repo.name.clone(), statuses);
+
+        // Start background polling for metrics and tailscale
+        let rx = system::spawn_dashboard_poller();
+        screen.set_channel(rx);
+
+        Ok(screen)
     }
 
     /// Transition to the hosts screen for a repo.
@@ -94,7 +112,6 @@ impl App {
 
     /// Create an App with a given config, starting on the Welcome screen.
     /// Skips filesystem operations (no `discover_repos`, no `AppConfig::load`).
-    #[allow(dead_code)]
     pub fn new_with_config(config: AppConfig) -> Self {
         let has_repos = !config.repos.is_empty();
         let current_screen = if has_repos {
@@ -113,8 +130,31 @@ impl App {
         }
     }
 
+    /// Create an App in installer mode — starts on the InstallScreen with
+    /// pre-baked config from an ISO. Skips repo discovery and Welcome flow.
+    pub fn new_for_installer(installer_config: crate::screens::install::InstallerConfig) -> Self {
+        Self {
+            should_quit: false,
+            config: AppConfig::default(),
+            current_screen: AppScreen::Install(InstallScreen::new(installer_config)),
+            active_repo_index: None,
+        }
+    }
+
+    /// Create an App in first-boot mode — starts on the FirstBootScreen.
+    /// Runs after a fresh install when `.first-boot-pending` marker exists.
+    pub fn new_for_first_boot(
+        first_boot_config: crate::screens::first_boot::FirstBootConfig,
+    ) -> Self {
+        Self {
+            should_quit: false,
+            config: AppConfig::default(),
+            current_screen: AppScreen::FirstBoot(FirstBootScreen::new(first_boot_config)),
+            active_repo_index: None,
+        }
+    }
+
     /// Create a minimal App for testing — starts on Welcome with empty config.
-    #[allow(dead_code)]
     pub fn new_for_test() -> Self {
         Self::new_with_config(AppConfig::default())
     }

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use home::home_dir;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs;
@@ -19,26 +20,25 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    /// Returns the path to the configuration file (`~/.keystone/keystone.json`).
+    /// Returns the path to the configuration file.
     fn config_file_path() -> Result<PathBuf> {
-        let home = dirs::home_dir().context("Failed to determine home directory")?;
-        Ok(home.join(".keystone").join(CONFIG_FILE_NAME))
+        let home_dir = home_dir().context("Failed to get home directory")?;
+        let keystone_dir = home_dir.join(".keystone");
+        Ok(keystone_dir.join(CONFIG_FILE_NAME))
     }
 
     /// Loads the application configuration from ~/.keystone/keystone.json.
     pub async fn load() -> Result<Self> {
         let config_path = Self::config_file_path()?;
-        match fs::read_to_string(&config_path).await {
-            Ok(content) => {
-                serde_json::from_str(&content).context("Failed to deserialize keystone.json")
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(e) => Err(anyhow::anyhow!(
-                "Failed to read config file {}: {}",
-                config_path.display(),
-                e
-            )),
+        if !config_path.exists() {
+            return Ok(Self::default());
         }
+
+        let config_content = fs::read_to_string(&config_path).await.context(format!(
+            "Failed to read config file: {}",
+            config_path.display()
+        ))?;
+        serde_json::from_str(&config_content).context("Failed to deserialize keystone.json")
     }
 
     /// Saves the application configuration to ~/.keystone/keystone.json.
@@ -48,7 +48,6 @@ impl AppConfig {
     }
 
     /// Loads config from a specific path (useful for testing).
-    #[allow(dead_code)]
     pub async fn load_from_path(path: &std::path::Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());
