@@ -562,5 +562,8 @@ in {
     # Locale defaults
     time.timeZone = lib.mkDefault "UTC";
     i18n.defaultLocale = lib.mkDefault "en_US.UTF-8";
+
+    # agenix CLI
+    environment.systemPackages = [pkgs.keystone.agenix];
   };
 }

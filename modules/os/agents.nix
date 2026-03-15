@@ -1051,6 +1051,9 @@ in
             echo "  vnc               Open remote-viewer to the agent's VNC desktop" >&2
             echo "  provision         Generate SSH keypair, mail password, and agenix secrets" >&2
             echo "" >&2
+            echo "Flags (for claude command):" >&2
+            echo "  -r, --role <mode>  Compose role-specific prompt via .agents/compose.sh" >&2
+            echo "" >&2
             echo "Examples:" >&2
             echo "  agentctl drago status agent-drago-task-loop" >&2
             echo "  agentctl drago logs -u agent-drago-task-loop -n 20" >&2
@@ -1059,6 +1062,7 @@ in
             echo "  agentctl drago email" >&2
             echo "  agentctl drago shell" >&2
             echo "  agentctl drago claude" >&2
+            echo "  agentctl drago claude -r code-review" >&2
             echo "  agentctl drago vnc" >&2
             echo "  agentctl drago mail task --subject \"Fix CI pipeline\"" >&2
             echo "  agentctl drago provision                     # full flow incl. hwrekey" >&2
@@ -1106,6 +1110,18 @@ in
           fi
 
           CMD="$1"; shift
+
+          # Parse agentctl-level flags (consumed here, not passed to harness)
+          ROLE=""
+          REMAINING_ARGS=()
+          while [[ $# -gt 0 ]]; do
+            case "$1" in
+              -r|--role) ROLE="$2"; shift 2 ;;
+              *) REMAINING_ARGS+=("$1"); shift ;;
+            esac
+          done
+          set -- "''${REMAINING_ARGS[@]}"
+
           case "$CMD" in
             tasks)
               TASKS_YAML=$(sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec cat "$NOTES_DIR/TASKS.yaml" 2>/dev/null)
@@ -1122,7 +1138,37 @@ in
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && exec bash -l"
               ;;
             claude)
-              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && claude --dangerously-skip-permissions $*"
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c '
+                cd "'"$NOTES_DIR"'"
+
+                # Build system prompt from AGENTS.md + optional role composition
+                SP=""
+                if [ -f AGENTS.md ]; then
+                  SP="$(cat AGENTS.md)"
+                fi
+
+                ROLE="'"$ROLE"'"
+                if [ -n "$ROLE" ]; then
+                  if [ -x .agents/compose.sh ] && [ -f manifests/modes.yaml ]; then
+                    ROLE_PROMPT="$(PATH="${pkgs.yq-go}/bin:$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE")"
+                    if [ -n "$SP" ]; then
+                      SP="$SP
+
+$ROLE_PROMPT"
+                    else
+                      SP="$ROLE_PROMPT"
+                    fi
+                  else
+                    echo "Warning: -r $ROLE requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
+                  fi
+                fi
+
+                if [ -n "$SP" ]; then
+                  exec claude --dangerously-skip-permissions --append-system-prompt "$SP" '"$*"'
+                else
+                  exec claude --dangerously-skip-permissions '"$*"'
+                fi
+              '
               ;;
             mail)
               exec agent-mail "$@" --to "''${AGENT_NAME}@${topDomain}"
@@ -1316,7 +1362,13 @@ in
               ;;
           esac
         '';
-      in [ agentctl ];
+        # Per-agent wrapper scripts: `drago claude` = `agentctl drago claude`
+        agentAliases = mapAttrsToList (name: _:
+          pkgs.writeShellScriptBin name ''
+            exec agentctl "${name}" "$@"
+          ''
+        ) cfg;
+      in [ agentctl ] ++ agentAliases;
 
       # Add all keystone.os.users to agent-admins so they can read agent home dirs
       users.users = mkMerge [
