@@ -67,6 +67,7 @@ in
       PODMAN_AGENT_CLAUDE_CODE_PATH = "${pkgs.keystone.claude-code}";
       PODMAN_AGENT_GEMINI_CLI_PATH = "${pkgs.keystone.gemini-cli}";
       PODMAN_AGENT_CODEX_PATH = "${pkgs.keystone.codex}";
+      PODMAN_AGENT_OPENCODE_PATH = "${pkgs.keystone.opencode}";
       PODMAN_AGENT_GH_PATH = "${pkgs.gh}";
       PODMAN_AGENT_RIPGREP_PATH = "${pkgs.ripgrep}";
       PODMAN_AGENT_PROCPS_PATH = "${pkgs.procps}";

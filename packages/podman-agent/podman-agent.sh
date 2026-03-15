@@ -5,6 +5,7 @@
 #   podman-agent --chrome claude -p "debug the page"
 #   podman-agent gemini "explain this codebase"
 #   podman-agent codex "add unit tests"
+#   podman-agent opencode
 #
 # Environment variables:
 #   PODMAN_AGENT_INTERACTIVE=1  - Run with TTY (default: auto-detect)
@@ -57,12 +58,17 @@ case "$AGENT" in
     ;;
   codex)
     AGENT_PKG="codex"
-    AGENT_CMD=(codex --yolo)
+    AGENT_CMD=(codex --full-auto)
     AGENT_PATH_VAR="PODMAN_AGENT_CODEX_PATH"
+    ;;
+  opencode)
+    AGENT_PKG="opencode"
+    AGENT_CMD=(opencode)
+    AGENT_PATH_VAR="PODMAN_AGENT_OPENCODE_PATH"
     ;;
   *)
     echo "Unknown agent: $AGENT" >&2
-    echo "Supported: claude, gemini, codex" >&2
+    echo "Supported: claude, gemini, codex, opencode" >&2
     exit 1
     ;;
 esac
@@ -237,6 +243,7 @@ fi
 # When called directly (no pyclaude), home config is mounted as fallback below.
 [[ -d "$HOME/.gemini" ]] && MOUNTS+=(--volume "$HOME/.gemini:/root/.gemini")
 [[ -d "$HOME/.codex" ]] && MOUNTS+=(--volume "$HOME/.codex:/root/.codex")
+[[ -d "$HOME/.opencode" ]] && MOUNTS+=(--volume "$HOME/.opencode:/root/.opencode")
 
 # Mount agent config directories set by callers (pyclaude uses CLAUDE_CONFIG_DIR)
 [[ -n "${CLAUDE_CONFIG_DIR:-}" && -d "${CLAUDE_CONFIG_DIR}" ]] && \

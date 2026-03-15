@@ -167,6 +167,8 @@
       ghostty-flake = ghostty;
       yazi-flake = yazi;
       agenix-flake = agenix;
+      deepwork-flake = deepwork;
+      chrome-devtools-mcp-src = ./packages/chrome-devtools-mcp;
     in final: prev: {
       keystone = {
         zesh = final.callPackage zesh-src {};
@@ -182,12 +184,15 @@
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
         gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;
         codex = llm-agents-flake.packages.${final.system}.codex;
+        opencode = llm-agents-flake.packages.${final.system}.opencode;
         # Browsers from browser-previews
         google-chrome = browser-previews-flake.packages.${final.system}.google-chrome;
         # Desktop tools from flake inputs
         ghostty = ghostty-flake.packages.${final.system}.default;
         yazi = yazi-flake.packages.${final.system}.default;
         agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
+        deepwork = deepwork-flake.packages.${final.system}.default;
+        chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src {};
       };
       # Top-level overrides so programs.ghostty/yazi use flake versions
       ghostty = ghostty-flake.packages.${final.system}.default;

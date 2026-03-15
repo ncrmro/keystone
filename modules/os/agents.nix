@@ -173,6 +173,12 @@ let
           };
 
           mcp = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable Chrome DevTools MCP server for this agent.";
+            };
+
             port = mkOption {
               type = types.nullOr types.port;
               default = null;
@@ -312,6 +318,31 @@ let
             };
           };
         };
+
+        mcp = {
+          servers = mkOption {
+            type = types.attrsOf (types.submodule {
+              options = {
+                command = mkOption {
+                  type = types.str;
+                  description = "Absolute path to the MCP server binary.";
+                };
+                args = mkOption {
+                  type = types.listOf types.str;
+                  default = [];
+                  description = "Arguments to pass to the MCP server.";
+                };
+                env = mkOption {
+                  type = types.attrsOf types.str;
+                  default = {};
+                  description = "Environment variables for the MCP server.";
+                };
+              };
+            });
+            default = {};
+            description = "Additional MCP servers to configure for this agent.";
+          };
+        };
       };
     }
   );
@@ -353,6 +384,11 @@ let
       # connect to user scope bus via local transport: No such file or directory".
       export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus"
       export SSH_AUTH_SOCK="/run/agent-${name}-ssh-agent/agent.sock"
+      # SECURITY: Use the agent's own home-manager profile, not the caller's.
+      # Without this, `agentctl <name> exec` inherits the invoking user's PATH
+      # (e.g. ncrmro's), breaking all home-manager tools (himalaya, direnv, fj,
+      # rbw) and devshell tools (deepwork, gh, node) for the agent.
+      export PATH="/etc/profiles/per-user/agent-${name}/bin:${lib.makeBinPath [ pkgs.nix ]}:/run/current-system/sw/bin"
 
       if [ $# -lt 1 ]; then
         echo "Usage: agent-svc-${name} <verb> [args...]" >&2
@@ -509,6 +545,7 @@ let
       rm = "${pkgs.coreutils}/bin/rm";
       flock = "${pkgs.util-linux}/bin/flock";
       sha256sum = "${pkgs.coreutils}/bin/sha256sum";
+      mcpConfigFile = agentMcpConfig name agentCfg;
     in
     pkgs.writeShellScript "agent-${name}-task-loop" ''
       set -eo pipefail
@@ -591,7 +628,7 @@ let
       log "Step 2: Ingesting sources via haiku..."
       if [ "$(${echo} "$SOURCES_JSON" | ${jq} '[.[].data | length] | add // 0')" -gt 0 ]; then
         set +o pipefail
-        claude --print --dangerously-skip-permissions --model haiku \
+        claude --print --dangerously-skip-permissions --mcp-config "${mcpConfigFile}" --model haiku \
           "/deepwork task_loop ingest
 
       Source data (pre-fetched):
@@ -638,7 +675,7 @@ let
       else
         log "Step 3: Prioritizing tasks via haiku..."
         set +o pipefail
-        claude --print --dangerously-skip-permissions --model haiku \
+        claude --print --dangerously-skip-permissions --mcp-config "${mcpConfigFile}" --model haiku \
           "/deepwork task_loop prioritize" 2>&1 | ${tee} -a "$LOG_FILE" >&2
         PRIORITIZE_EXIT=''${PIPESTATUS[0]}
         set -o pipefail
@@ -723,7 +760,7 @@ let
 
         # Execute in a separate claude session
         set +o pipefail
-        claude --print --dangerously-skip-permissions $MODEL_FLAG "$PROMPT" 2>&1 | ${tee} "$TASK_LOG" >&2
+        claude --print --dangerously-skip-permissions --mcp-config "${mcpConfigFile}" $MODEL_FLAG "$PROMPT" 2>&1 | ${tee} "$TASK_LOG" >&2
         TASK_EXIT=''${PIPESTATUS[0]}
         set -o pipefail
 
@@ -877,6 +914,31 @@ let
         }
       fi
     '';
+
+  # Build per-agent MCP config JSON with absolute Nix store paths.
+  # This ensures MCP servers start reliably regardless of PATH — they use
+  # full store paths baked in at build time.
+  agentMcpConfig = name: agentCfg:
+    let
+      mcpJson = builtins.toJSON {
+        mcpServers = {
+          deepwork = {
+            command = "${pkgs.keystone.deepwork}/bin/deepwork";
+            args = [ "serve" "--path" "." "--external-runner" "claude" "--platform" "claude" ];
+          };
+        } // optionalAttrs (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) {
+          chrome-devtools = {
+            command = "${pkgs.keystone.chrome-devtools-mcp}/bin/chrome-devtools-mcp";
+            args = [ "--browserUrl" "http://127.0.0.1:${toString (agentChromeDebugPort name agentCfg)}" ];
+          };
+        } // mapAttrs (_: srv: {
+          inherit (srv) command args;
+        } // optionalAttrs (srv.env != {}) {
+          env = srv.env;
+        }) agentCfg.mcp.servers;
+      };
+    in
+    pkgs.writeText "agent-${name}-mcp.json" mcpJson;
 in
 {
   options.keystone.os.agents = mkOption {
@@ -980,6 +1042,10 @@ in
         mailHost = if config.keystone.services.mail.host != null then config.keystone.services.mail.host else "";
         agentProvisionCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
           "          ${name}) PROVISION_AGENT_HOST=\"${toString agentCfg.host}\"; MAIL_PROVISION=${boolToString agentCfg.mail.provision} ;;"
+        ) cfg);
+        # Nix-generated static lookup: agent name -> MCP config file (absolute Nix store path)
+        agentMcpCases = concatStringsSep "\n" (mapAttrsToList (name: agentCfg:
+          "          ${name}) MCP_CONFIG=\"${agentMcpConfig name agentCfg}\" ;;"
         ) cfg);
         knownAgents = concatStringsSep ", " (attrNames cfg);
 
@@ -1120,6 +1186,12 @@ in
   ${agentHostCases}
           esac
 
+          # Static lookup — agent name -> MCP config file (Nix store path)
+          MCP_CONFIG=""
+          case "$AGENT_NAME" in
+  ${agentMcpCases}
+          esac
+
           THIS_HOST="$(cat /etc/hostname)"
 
           # Remote dispatch: forward non-local commands via SSH over Tailscale.
@@ -1170,7 +1242,7 @@ in
                   # Resolve auto-approve flags per tool
                   TOOL_FLAGS=""
                   case "'"$CMD"'" in
-                    claude) TOOL_FLAGS="--dangerously-skip-permissions" ;;
+                    claude) TOOL_FLAGS="--dangerously-skip-permissions --mcp-config '"$MCP_CONFIG"'" ;;
                     gemini) TOOL_FLAGS="--yolo" ;;
                     codex) TOOL_FLAGS="--full-auto" ;;
                   esac
@@ -1432,6 +1504,16 @@ $ROLE_PROMPT"
           ''
         ) cfg;
       in [ agentctl ] ++ agentAliases;
+
+      # Discoverable MCP config files for each agent.
+      # Human users can reference these to connect to an agent's MCP servers
+      # (e.g., an agent's Chrome DevTools instance from their own Claude session).
+      environment.etc = mapAttrs' (name: agentCfg:
+        nameValuePair "keystone/agent-mcp/${name}.json" {
+          source = agentMcpConfig name agentCfg;
+          mode = "0444";
+        }
+      ) cfg;
 
       # Add all keystone.os.users to agent-admins so they can read agent home dirs
       users.users = mkMerge [
