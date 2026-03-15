@@ -20,6 +20,8 @@ buildNpmPackage (finalAttrs: {
 
   env.PUPPETEER_SKIP_DOWNLOAD = "1";
 
+  npmFlags = [ "--ignore-scripts" ];
+
   dontNpmBuild = true;
 
   meta = {
