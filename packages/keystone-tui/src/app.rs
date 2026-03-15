@@ -16,10 +16,9 @@ pub struct App {
 
 impl App {
     pub async fn new() -> Self {
-        let config = AppConfig::load().await.unwrap_or_else(|e| {
-            eprintln!("Failed to load config: {:?}", e);
-            AppConfig::default()
-        });
+        // Silently fall back to default config on load failure — missing config
+        // on first run is expected, and eprintln corrupts the TUI in raw mode.
+        let config = AppConfig::load().await.unwrap_or_default();
 
         let current_screen = if config.repos.is_empty() {
             AppScreen::Welcome(WelcomeScreen::new())

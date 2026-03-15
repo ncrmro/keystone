@@ -138,20 +138,12 @@ in
     };
 
     # Python test script
+    #
+    # The current keystone-tui is a scaffold (welcome screen + quit-on-q).
+    # This test verifies the TUI starts, renders the welcome screen, and
+    # exits cleanly when 'q' is pressed.
     testScript = ''
       import time
-      TARGET_DISK = "vdb"
-
-      def wait_for_installer_log(timeout=30):
-          """Wait for installer log to be created"""
-          installer.wait_until_succeeds("test -f /tmp/keystone-install.log", timeout=timeout)
-          print("Installer log created")
-
-      def type_text(text):
-          """Type text character by character"""
-          for char in text:
-              installer.send_chars(char)
-              time.sleep(0.05)
 
       # Start the VM
       print("Starting installer VM...")
@@ -161,129 +153,29 @@ in
       print("Waiting for boot...")
       installer.wait_for_unit("multi-user.target")
 
-      # Ensure an ethernet interface has an IP address before starting installer
-      print("Verifying network connectivity...")
-      installer.wait_until_succeeds("ip -4 addr show | grep -E 'eth[01]' | grep -q 'inet '", timeout=30)
-      installer.succeed("ip -4 addr show")
-
-      # Start the installer service
+      # Start the TUI service
       print("Starting keystone-installer service...")
       installer.succeed("systemctl start keystone-installer")
 
-      # Wait for process to be running
-      print("Waiting for installer process...")
+      # Wait for the TUI process to be running
+      print("Waiting for TUI process...")
       installer.wait_until_succeeds("pgrep -f 'keystone-tui'", timeout=10)
 
-      # Allow TUI to initialize
-      time.sleep(5)
+      # Allow TUI to render the welcome screen
+      time.sleep(3)
 
-      # Screen 1: Network check
-      # We know network is good, so TUI should show "Continue to Installation"
-      print("Step: Network Check -> Continue")
-      installer.send_key("ret")
+      # Verify the process is still running (didn't crash on startup)
+      installer.succeed("pgrep -f 'keystone-tui'")
 
-      # Screen 2: Install Method
-      # Default: "Install from GitHub"
-      # We want: "Local installation" (Down -> Enter)
-      print("Step: Install Method -> Local")
-      time.sleep(1)
-      installer.send_key("down")
-      time.sleep(0.5)
-      installer.send_key("ret")
+      # Send 'q' to quit the TUI
+      print("Sending 'q' to quit...")
+      installer.send_key("q")
 
-      # Screen 3: Disk Selection
-      # Use lsblk order to choose the target data disk (vdb)
-      print("Step: Disk Selection -> vdb")
-      time.sleep(1)
-      disks_output = installer.succeed("lsblk -dn -o NAME,TYPE | awk '$2==\"disk\"{print $1}'")
-      disks = [line.strip() for line in disks_output.splitlines() if line.strip()]
-      if TARGET_DISK not in disks:
-          raise Exception(f"Target disk {TARGET_DISK} not found. Disks: {disks}")
-      for _ in range(disks.index(TARGET_DISK)):
-          installer.send_key("down")
-          time.sleep(0.5)
-      installer.send_key("ret")
-
-      # Screen 4: Confirm Disk
-      # Warning dialog needs confirmation
-      print("Step: Confirm Disk")
-      time.sleep(1)
-      installer.send_key("ret")
-
-      # Screen 5: Encryption Choice
-      # Default: Encrypt
-      # We want: No encryption (Down -> Enter)
-      print("Step: Encryption -> None")
-      time.sleep(2) # Wait for partition scan/transition
-      installer.send_key("down")
-      time.sleep(0.5)
-      installer.send_key("ret")
-
-      # Screen 6: Hostname
-      print("Step: Hostname -> test-machine")
-      time.sleep(1)
-      type_text("test-machine")
-      time.sleep(0.5)
-      installer.send_key("ret")
-
-      # Screen 7: Username
-      print("Step: Username -> testuser")
-      time.sleep(1)
-      type_text("testuser")
-      time.sleep(0.5)
-      installer.send_key("ret")
-
-      # Screen 8: Password
-      print("Step: Password")
-      time.sleep(1)
-      type_text("testpass123")
-      time.sleep(0.5)
-      installer.send_key("ret")
-
-      # Screen 9: Confirm Password
-      print("Step: Confirm Password")
-      time.sleep(1)
-      type_text("testpass123")
-      time.sleep(0.5)
-      installer.send_key("ret")
-
-      # Screen 10: System Type
-      # Default: Server (first option) -> Enter
-      print("Step: System Type -> Server")
-      time.sleep(1)
-      installer.send_key("ret")
-
-      # Screen 11: Summary
-      # We are at the end, press Enter to install
-      print("Step: Summary -> Install")
+      # Verify the TUI exited cleanly
       time.sleep(2)
-      installer.send_key("ret")
+      installer.wait_until_fails("pgrep -f 'keystone-tui'", timeout=10)
 
-      # Monitor Installation
-      print("Installation started! Monitoring progress...")
-
-      # Wait for log file to appear (proof installation script started)
-      wait_for_installer_log()
-
-      # Wait for installation artifacts to appear (signals completion)
-      print("Waiting for installation completion (timeout: 10m)...")
-      installer.wait_until_succeeds("test -f /mnt/etc/nixos/hardware-configuration.nix", timeout=600)
-
-      print("Installer log tail (latest 50 lines):")
-      print(installer.succeed("tail -n 50 /tmp/keystone-install.log"))
-
-      print("Installation artifacts detected, verifying...")
-
-      # Debug: Show disk layout and mounts
-      print(installer.succeed("lsblk"))
-      print(installer.succeed("findmnt -rn -o TARGET,SOURCE,FSTYPE"))
-
-      # Verify artifacts directly on the existing mounts
-      installer.succeed("test -f /mnt/etc/nixos/hardware-configuration.nix")
-      # Basic presence check (hardware config)
-      installer.succeed("test -f /mnt/etc/nixos/hardware-configuration.nix")
-
-      print("All tests passed!")
+      print("TUI started and exited cleanly. All tests passed!")
     '';
 
     # Interactive mode

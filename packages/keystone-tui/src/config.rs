@@ -27,15 +27,15 @@ impl AppConfig {
     /// Loads the application configuration from `~/.keystone/`.
     pub async fn load() -> Result<Self> {
         let config_path = Self::config_file_path()?;
-        if !config_path.exists() {
-            return Ok(Self::default());
+        match fs::read_to_string(&config_path).await {
+            Ok(content) => toml::from_str(&content).context("Failed to deserialize config.toml"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(anyhow::anyhow!(
+                "Failed to read config file {}: {}",
+                config_path.display(),
+                e
+            )),
         }
-
-        let config_content = fs::read_to_string(&config_path).await.context(format!(
-            "Failed to read config file: {}",
-            config_path.display()
-        ))?;
-        toml::from_str(&config_content).context("Failed to deserialize config.toml")
     }
 
     /// Saves the application configuration to `~/.keystone/`.
