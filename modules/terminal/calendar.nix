@@ -82,7 +82,10 @@ in
         [accounts.${cfg.accountName}]
         default = true
 
-        caldav.discover.host = "${cfg.host}"
+        # Use direct home-uri instead of discovery — Stalwart's /.well-known/caldav
+        # redirects to /dav/cal, but calendula's discovery PROPFIND to the root
+        # URL gets a 400 from nginx before following the redirect.
+        caldav.home-uri = "https://${cfg.host}/dav/cal"
         caldav.auth.basic.username = "${cfg.login}"
         caldav.auth.basic.password.command = ["sh", "-c", "${cfg.passwordCommand}"]
       '';
