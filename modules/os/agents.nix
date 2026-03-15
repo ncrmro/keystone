@@ -1137,7 +1137,6 @@ in
             echo "" >&2
             echo "Flags:" >&2
             echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh (claude)" >&2
-            echo "  --no-sandbox           Run directly without Podman container (claude/gemini/codex/opencode)" >&2
             echo "" >&2
             echo "Examples:" >&2
             echo "  agentctl drago status agent-drago-task-loop" >&2
@@ -1207,12 +1206,10 @@ in
 
           # Parse agentctl-level flags (consumed here, not passed to harness)
           ROLE=""
-          NO_SANDBOX=false
           REMAINING_ARGS=()
           while [[ $# -gt 0 ]]; do
             case "$1" in
               -r|--role) ROLE="$2"; shift 2 ;;
-              --no-sandbox) NO_SANDBOX=true; shift ;;
               *) REMAINING_ARGS+=("$1"); shift ;;
             esac
           done
@@ -1234,61 +1231,55 @@ in
               exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && exec bash -l"
               ;;
             claude|gemini|codex|opencode)
-              if [ "$NO_SANDBOX" = "true" ]; then
-                # Run directly as the agent (no container), entering devshell if available
-                exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c '
-                  cd "'"$NOTES_DIR"'"
+              # Run directly as the agent, entering devshell if available.
+              # For sandboxed runs, use: agentctl <name> exec podman-agent claude
+              exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c '
+                cd "'"$NOTES_DIR"'"
 
-                  # Resolve auto-approve flags per tool
-                  TOOL_FLAGS=""
-                  case "'"$CMD"'" in
-                    claude) TOOL_FLAGS="--dangerously-skip-permissions --mcp-config '"$MCP_CONFIG"'" ;;
-                    gemini) TOOL_FLAGS="--yolo" ;;
-                    codex) TOOL_FLAGS="--full-auto" ;;
-                  esac
+                # Resolve auto-approve flags per tool
+                TOOL_FLAGS=""
+                case "'"$CMD"'" in
+                  claude) TOOL_FLAGS="--dangerously-skip-permissions --mcp-config '"$MCP_CONFIG"'" ;;
+                  gemini) TOOL_FLAGS="--yolo" ;;
+                  codex) TOOL_FLAGS="--full-auto" ;;
+                esac
 
-                  # Claude: compose system prompt from AGENTS.md + optional role
-                  SP_FLAGS=""
-                  if [ "'"$CMD"'" = "claude" ]; then
-                    SP=""
-                    if [ -f AGENTS.md ]; then
-                      SP="$(cat AGENTS.md)"
-                    fi
+                # Claude: compose system prompt from AGENTS.md + optional role
+                SP_FLAGS=""
+                if [ "'"$CMD"'" = "claude" ]; then
+                  SP=""
+                  if [ -f AGENTS.md ]; then
+                    SP="$(cat AGENTS.md)"
+                  fi
 
-                    ROLE="'"$ROLE"'"
-                    if [ -n "$ROLE" ]; then
-                      if [ -x .agents/compose.sh ] && [ -f manifests/modes.yaml ]; then
-                        ROLE_PROMPT="$(PATH="${pkgs.yq-go}/bin:$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE")"
-                        if [ -n "$SP" ]; then
-                          SP="$SP
+                  ROLE="'"$ROLE"'"
+                  if [ -n "$ROLE" ]; then
+                    if [ -x .agents/compose.sh ] && [ -f manifests/modes.yaml ]; then
+                      ROLE_PROMPT="$(PATH="${pkgs.yq-go}/bin:$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE")"
+                      if [ -n "$SP" ]; then
+                        SP="$SP
 
 $ROLE_PROMPT"
-                        else
-                          SP="$ROLE_PROMPT"
-                        fi
                       else
-                        echo "Warning: -r $ROLE requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
+                        SP="$ROLE_PROMPT"
                       fi
-                    fi
-
-                    if [ -n "$SP" ]; then
-                      SP_FLAGS="--append-system-prompt $SP"
+                    else
+                      echo "Warning: -r $ROLE requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
                     fi
                   fi
 
-                  if [ -f flake.nix ]; then
-                    exec nix develop --no-update-lock-file --accept-flake-config \
-                      --command "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS '"$*"'
-                  else
-                    exec "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS '"$*"'
+                  if [ -n "$SP" ]; then
+                    SP_FLAGS="--append-system-prompt $SP"
                   fi
-                '
-              else
-                exec sudo -u "agent-''${AGENT_NAME}" "$HELPER" exec bash -c '
-                  cd "'"$NOTES_DIR"'"
-                  exec ${pkgs.keystone.podman-agent}/bin/podman-agent "'"$CMD"'" '"$*"'
-                '
-              fi
+                fi
+
+                if [ -f flake.nix ]; then
+                  exec nix develop --no-update-lock-file --accept-flake-config \
+                    --command "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS '"$*"'
+                else
+                  exec "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS '"$*"'
+                fi
+              '
               ;;
             mail)
               exec agent-mail "$@" --to "''${AGENT_NAME}@${topDomain}"
