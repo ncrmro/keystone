@@ -1,4 +1,4 @@
-# AI coding assistants (Claude Code, Gemini CLI, Codex)
+# AI coding assistants (Claude Code, Gemini CLI, Codex, OpenCode)
 #
 # Gated by keystone.terminal.ai.enable (default: true) so environments
 # like the installer ISO can opt out of heavy AI tooling while still
@@ -18,7 +18,7 @@ in
     enable = mkOption {
       type = types.bool;
       default = true;
-      description = "Enable AI coding assistants (Claude Code, Gemini CLI, Codex)";
+      description = "Enable AI coding assistants (Claude Code, Gemini CLI, Codex, OpenCode)";
     };
   };
 
@@ -33,6 +33,12 @@ in
 
       # Codex - OpenAI's lightweight coding agent
       pkgs.keystone.codex
+
+      # OpenCode - Open-source AI coding agent
+      pkgs.keystone.opencode
+
+      # DeepWork - workflow orchestration MCP server
+      pkgs.keystone.deepwork
     ];
   };
 }

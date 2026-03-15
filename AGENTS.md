@@ -216,6 +216,9 @@ agentctl <agent-name> <command> [args...]
 | `tasks` | Show agent tasks table (pending/in_progress first) |
 | `email` | Show the agent's inbox (recent envelopes) |
 | `claude` | Start interactive Claude session in agent notes dir |
+| `gemini` | Start interactive Gemini session in agent notes dir |
+| `codex` | Start interactive Codex session in agent notes dir |
+| `opencode` | Start interactive OpenCode session in agent notes dir |
 | `mail` | Send structured email via `agent-mail` |
 | `vnc` | Open remote-viewer to the agent's VNC desktop |
 | `provision` | Generate SSH keypair, mail password, and agenix secrets |
@@ -375,6 +378,7 @@ Three AI coding assistants available via `keystone.terminal.enable`:
 | Claude Code | `@anthropic-ai/claude-code` NPM package | Anthropic's CLI agent |
 | Gemini CLI | `pkgs.keystone.gemini-cli` (llm-agents flake) | Google's AI assistant |
 | Codex | `pkgs.keystone.codex` (llm-agents flake) | OpenAI's coding agent |
+| OpenCode | `pkgs.keystone.opencode` (llm-agents flake) | Open-source AI coding agent |
 
 ### Mail (Himalaya)
 
