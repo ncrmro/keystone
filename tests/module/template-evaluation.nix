@@ -45,6 +45,8 @@ let
     let
       baseModules = [
         self.nixosModules.operating-system
+      ]
+      ++ [
         {
           networking.hostName = hostname;
           networking.hostId = hostId;
