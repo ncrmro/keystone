@@ -14,6 +14,7 @@ in {
     ./age-yubikey.nix
     ./devtools.nix
     ./mail.nix
+    ./calendar.nix
     ./agent-mail.nix
     ./sandbox.nix
     ./secrets.nix
