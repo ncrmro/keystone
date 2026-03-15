@@ -261,9 +261,20 @@ cmd_update() {
       git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets"
     fi
 
-    # Push nixos-config
+    # Pull/rebase nixos-config before pushing to handle concurrent commits
     echo "Pushing nixos-config..."
-    git -C "$repo_root" push
+    if ! git -C "$repo_root" pull --rebase origin "$(git -C "$repo_root" branch --show-current)" 2>&1; then
+      echo ""
+      echo "ERROR: Failed to rebase nixos-config against origin."
+      echo "Resolve conflicts manually, then run: git push"
+      exit 1
+    fi
+    if ! git -C "$repo_root" push 2>&1; then
+      echo ""
+      echo "ERROR: Failed to push nixos-config."
+      echo "Run 'git pull --rebase && git push' to retry."
+      exit 1
+    fi
 
     # Deploy
     echo "Deploying $host ($mode)..."
