@@ -689,6 +689,12 @@ let
         else
           INGEST_RAN=true
         fi
+
+        if ! ${yq} '.' TASKS.yaml >/dev/null 2>&1; then
+          log "  ERROR: TASKS.yaml corrupted during ingest. Reverting..."
+          git checkout TASKS.yaml || git restore TASKS.yaml || true
+          INGEST_RAN=false
+        fi
       else
         log "  No source data to ingest, skipping"
       fi
@@ -731,8 +737,13 @@ let
         if [ "$PRIORITIZE_EXIT" -ne 0 ]; then
           log "  WARNING: Prioritize step failed, continuing..."
         else
-          # Save hash only on success so we retry on failure
-          ${echo} -n "$CURRENT_HASH" > "$PRIORITIZE_HASH_FILE"
+          if ! ${yq} '.' TASKS.yaml >/dev/null 2>&1; then
+            log "  ERROR: TASKS.yaml corrupted during prioritize. Reverting..."
+            git checkout TASKS.yaml || git restore TASKS.yaml || true
+          else
+            # Save hash only on success so we retry on failure
+            ${echo} -n "$CURRENT_HASH" > "$PRIORITIZE_HASH_FILE"
+          fi
         fi
       fi
       fi # end INGEST_RAN guard
@@ -748,6 +759,7 @@ let
       CURRENT_STEP="execute"
       log "Step 4: Executing pending tasks (max ${toString maxTasks})..."
       TASK_COUNT=0
+      ATTEMPTED_TASKS=":"
 
       while [ $TASK_COUNT -lt ${toString maxTasks} ]; do
         # Read the first pending task from TASKS.yaml
@@ -757,6 +769,12 @@ let
           log "  No more pending tasks"
           break
         fi
+
+        if [[ "$ATTEMPTED_TASKS" == *":$TASK_NAME:"* ]]; then
+          log "  Task $TASK_NAME already attempted in this run but still pending. Breaking to prevent infinite loop."
+          break
+        fi
+        ATTEMPTED_TASKS="''${ATTEMPTED_TASKS}''${TASK_NAME}:"
 
         TASK_DESC=$(${yq} "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].description" TASKS.yaml)
         TASK_WORKFLOW=$(${yq} "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].workflow // \"\"" TASKS.yaml)
