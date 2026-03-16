@@ -127,6 +127,10 @@ in {
       };
     };
 
+    home.packages = mkIf cfg.git.enable [
+      pkgs.keystone.fetch-github-sources
+    ];
+
     programs.lazygit.enable = mkIf cfg.git.enable (mkDefault true);
   };
 }
