@@ -153,6 +153,7 @@ with lib; let
 in {
   imports = [
     ../secrets.nix
+    ./notifications.nix
     ./storage.nix
     ./secure-boot.nix
     ./tpm.nix
