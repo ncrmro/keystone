@@ -218,10 +218,11 @@ in {
         };
 
         # Server-side commit signing (merge commits, web editor, etc.)
-        # "default" tells Forgejo to use its auto-generated SSH host key
-        # from START_SSH_SERVER, avoiding manual key path management.
+        # SIGNING_KEY must point to the SSH public key file (.pub) — Forgejo
+        # calls ssh.ParseAuthorizedKey() on the file contents, not the private key.
+        # The corresponding private key is used by the built-in SSH server for signing.
         "repository.signing" = {
-          SIGNING_KEY = "default";
+          SIGNING_KEY = "${cfg.stateDir}/ssh/ssh_host_ed25519_key.pub";
           FORMAT = "ssh";
           SIGNING_NAME = "Forgejo";
           SIGNING_EMAIL = "noreply@${cfg.domain}";
