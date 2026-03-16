@@ -58,9 +58,23 @@ in {
       default = 2222;
       description = "SSH port for git operations on the Forgejo instance.";
     };
+
+    immich.host = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "The networking.hostName of the primary Immich server.";
+    };
+
+    immich.backends = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      description = "List of hostnames acting as GPU/ML backends.";
+    };
   };
 
   config.assertions =
     (validateHost "mail" cfg.mail.host)
-    ++ (validateHost "git" cfg.git.host);
+    ++ (validateHost "git" cfg.git.host)
+    ++ (validateHost "immich" cfg.immich.host)
+    ++ (concatMap (h: validateHost "immich.backends" h) cfg.immich.backends);
 }

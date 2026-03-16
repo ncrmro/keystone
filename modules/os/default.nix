@@ -155,6 +155,7 @@ in {
     ./hypervisor.nix
     ./iphone-tether.nix
     ./ollama.nix
+    ./immich.nix
     ./tailscale.nix
   ];
 
