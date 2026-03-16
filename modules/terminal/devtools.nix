@@ -12,10 +12,6 @@ in {
       # Csview - CSV viewer for terminal
       # https://github.com/wfxr/csview
       csview
-
-      # Jq - Lightweight command-line JSON processor
-      # https://stedolan.github.io/jq/
-      jq
     ];
   };
 }
