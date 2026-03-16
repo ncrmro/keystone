@@ -69,6 +69,8 @@ journalctl -xeu clone-agent-space-{name}.service
 | Desktop | `agent-{name}-labwc.service` | Headless Wayland (labwc + wayvnc) |
 | Browser | `agent-{name}-chromium.service` | Chromium with remote debugging |
 | Mail | himalaya CLI | Stalwart IMAP/SMTP via agenix password |
+| Calendar | calendula CLI | Stalwart CalDAV (auto-configured from mail) |
+| Contacts | cardamum CLI | Stalwart CardDAV (auto-configured from mail) |
 | Bitwarden | `bw` CLI | Configured for Vaultwarden instance |
 | Workspace | `clone-agent-space-{name}.service` | Clones `space.repo` on first boot |
 
@@ -483,8 +485,11 @@ After the initial PR, the orchestrator runs up to N review cycles (default 2):
 
 ## Operational Conventions
 
-### Email (himalaya)
+### Email, Calendar, and Contacts
 
+Agents have the full Pimalaya tool suite — himalaya (email), calendula (calendar), and cardamum (contacts). All auto-configured from the agent's mail credentials. See [Personal Information Management](personal-info-management.md) for usage details.
+
+**Email (himalaya):**
 - Always pipe email content via stdin, never use inline body arguments
 - Use ASCII only — no unicode characters in email bodies
 - Use `printf` with `\r\n` line endings (SMTP standard)

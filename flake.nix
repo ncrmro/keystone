@@ -200,7 +200,20 @@
         himalaya = himalaya-flake.packages.${final.system}.default;
         calendula = calendula-flake.packages.${final.system}.default;
         cardamum = cardamum-flake.packages.${final.system}.default;
-        comodoro = comodoro-flake.packages.${final.system}.default;
+        # Comodoro upstream flake is missing dbus from buildInputs/nativeBuildInputs.
+        # The postInstall phase runs the binary (to generate completions) before
+        # fixup patches RPATH, so we also set LD_LIBRARY_PATH during install.
+        comodoro = comodoro-flake.packages.${final.system}.default.overrideAttrs (old: let
+          libPath = final.lib.makeLibraryPath [ final.dbus ];
+        in {
+          nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ final.pkg-config final.makeWrapper ];
+          buildInputs = (old.buildInputs or []) ++ [ final.dbus ];
+          postInstall = ''
+            export LD_LIBRARY_PATH="${libPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          '' + (old.postInstall or "") + ''
+            wrapProgram $out/bin/comodoro --prefix LD_LIBRARY_PATH : "${libPath}"
+          '';
+        });
         # AI coding agents from llm-agents.nix
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
         gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;
