@@ -1,13 +1,12 @@
 # Keystone OS Installer Module
 #
-# Auto-collects SSH keys from configured wheel users and hardware root keys
-# to produce a bootable installer ISO with SSH access pre-configured.
-# The ISO uses keystone.os for shared infrastructure (SSH, firewall, flakes,
-# locale) and keystone.terminal for the editor/shell (helix, zsh, starship).
+# Auto-collects SSH keys from configured wheel users via keystone.keys
+# and hardware root keys to produce a bootable installer ISO with SSH
+# access pre-configured.
 #
 # Keys are collected from:
-# - keystone.os.users with "wheel" in extraGroups (authorizedKeys + hardwareKeys)
-# - keystone.hardwareKey.rootKeys
+# - keystone.keys.<username> for all wheel users (all host + hardware keys)
+# - keystone.hardwareKey.rootKeys (hardware keys for root access)
 #
 # This module lives outside modules/os/ to avoid recursion: the nested ISO
 # eval imports modules/os/ (for keystone.os), so if this file were inside
@@ -26,22 +25,33 @@
 with lib; let
   osCfg = config.keystone.os;
   hwKeyCfg = config.keystone.hardwareKey;
+  keysCfg = config.keystone.keys;
   installerCfg = osCfg.installer;
   keystoneInputs = installerCfg._keystoneInputs;
 
-  # Resolve hardware key names to SSH public keys
-  resolveHwKeys = names:
-    map (name: hwKeyCfg.keys.${name}.sshPublicKey)
-    (filter (name: hwKeyCfg.keys ? ${name}) names);
+  # Resolve "username/keyname" hardware key references to SSH public keys
+  resolveHwKeyRef = ref: let
+    parts = splitString "/" ref;
+    username = elemAt parts 0;
+    keyname = elemAt parts 1;
+  in keysCfg.${username}.hardwareKeys.${keyname}.publicKey;
 
-  # Collect keys from wheel users (authorizedKeys + resolved hardwareKeys)
-  wheelUserKeys = concatLists (mapAttrsToList (_: u:
+  # All public keys for a user (all hosts + all hardware keys) from keystone.keys
+  allKeysFor = username: let
+    u = keysCfg.${username};
+    hostKeys = mapAttrsToList (_: h: h.publicKey) u.hosts;
+    hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
+  in hostKeys ++ hwKeys;
+
+  # Collect keys from wheel users via keystone.keys
+  wheelUserKeys = concatLists (mapAttrsToList (username: u:
     optionals (elem "wheel" u.extraGroups)
-    (u.authorizedKeys ++ resolveHwKeys u.hardwareKeys))
+    (if keysCfg ? ${username} then allKeysFor username else []))
   osCfg.users);
 
   # Collect SSH public keys from hardware root keys
-  rootHwKeys = optionals hwKeyCfg.enable (resolveHwKeys hwKeyCfg.rootKeys);
+  rootHwKeys = optionals (hwKeyCfg.enable && hwKeyCfg.rootKeys != [])
+    (map resolveHwKeyRef hwKeyCfg.rootKeys);
 
   # All auto-collected keys, deduplicated
   autoCollectedKeys = unique (wheelUserKeys ++ rootHwKeys);

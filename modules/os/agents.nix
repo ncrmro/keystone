@@ -18,7 +18,7 @@
 #   keystone.os.agents.researcher = {
 #     fullName = "Research Agent";
 #     email = "researcher@ks.systems";
-#     ssh.publicKey = "ssh-ed25519 AAAAC3...";
+#     # SSH public key declared in keystone.keys."agent-researcher"
 #   };
 #
 # Host filtering:
@@ -68,7 +68,27 @@ with lib;
 let
   osCfg = config.keystone.os;
   cfg = osCfg.agents;
+  keysCfg = config.keystone.keys;
   topDomain = config.keystone.domain;
+
+  # Get an agent's SSH public key from the keystone.keys registry.
+  # Agents have exactly one host key — this returns it (or null if not in registry).
+  agentPublicKey = name: let
+    registryName = "agent-${name}";
+    u = keysCfg.${registryName} or null;
+    hostKeys = if u != null then mapAttrsToList (_: h: h.publicKey) u.hosts else [];
+  in if hostKeys != [] then head hostKeys else null;
+
+  # All public keys for an agent from the keystone.keys registry
+  allKeysForAgent = name: let
+    registryName = "agent-${name}";
+  in if keysCfg ? ${registryName} then
+    let
+      u = keysCfg.${registryName};
+      hostKeys = mapAttrsToList (_: h: h.publicKey) u.hosts;
+      hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
+    in hostKeys ++ hwKeys
+  else [];
 
   # TODO: Re-evaluate agent ZFS home folders. Implementation needs to be reconciled with legacy setups.
   useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
@@ -231,18 +251,8 @@ let
 
         # SSH: each agent gets ssh-agent + git signing + agenix secrets.
         # Requires agenix secrets: agent-{name}-ssh-key, agent-{name}-ssh-passphrase.
-        ssh = {
-          publicKey = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = ''
-              SSH public key for this agent. Added to the agent's
-              ~/.ssh/authorized_keys for sandbox access. Also used as
-              the git signing key.
-            '';
-            example = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... agent-researcher";
-          };
-        };
+        # CRITICAL: SSH public key is now declared in keystone.keys."agent-{name}"
+        # instead of here. The single host key is read from the registry.
 
         git = {
           provision = mkOption {
@@ -993,7 +1003,7 @@ in
         researcher = {
           fullName = "Research Agent";
           email = "researcher@ks.systems";
-          ssh.publicKey = "ssh-ed25519 AAAAC3...";
+          # SSH public key declared in keystone.keys."agent-researcher"
         };
       }
     '';
@@ -1468,8 +1478,8 @@ $ROLE_PROMPT"
 
               # --- Step 6: Print snippets for nixos-config ---
               echo ""
-              echo "==> SSH public key (add to agent-identities.nix):"
-              echo "    ssh.publicKey = \"$(cat "$SSH_KEY.pub")\";"
+              echo "==> SSH public key (add to keystone.keys in modules/keystone.nix):"
+              echo "    keystone.keys.\"$USERNAME\".hosts.<hostname>.publicKey = \"$(cat "$SSH_KEY.pub")\";"
               echo ""
               echo "==> Agenix declarations (add to host config):"
               echo "    age.secrets.$USERNAME-ssh-key = {"
@@ -1574,8 +1584,7 @@ $ROLE_PROMPT"
           extraGroups = optionals useZfs [ "zfs" ];
           shell = pkgs.zsh;
           linger = true;
-          openssh.authorizedKeys.keys =
-            optional (agentCfg.ssh.publicKey != null) agentCfg.ssh.publicKey;
+          openssh.authorizedKeys.keys = allKeysForAgent name;
           # No password -- agents are non-interactive
         }
       ) cfg)
@@ -2149,8 +2158,8 @@ $ROLE_PROMPT"
                ssh-keygen -t ed25519 -C "${username}" -f /tmp/${username}-ssh-key
                # Enter a passphrase when prompted (you'll need it for the passphrase secret too)
 
-            2. Add the PUBLIC key to the agent's config:
-               keystone.os.agents.${name}.ssh.publicKey = "$(cat /tmp/${username}-ssh-key.pub)";
+            2. Add the PUBLIC key to the keys registry:
+               keystone.keys."${username}".hosts.<hostname>.publicKey = "$(cat /tmp/${username}-ssh-key.pub)";
 
             3. Add to agenix-secrets/secrets.nix:
                "secrets/${username}-ssh-key.age".publicKeys = adminKeys ++ [ systems.workstation ];
@@ -2274,32 +2283,8 @@ $ROLE_PROMPT"
               };
             };
 
-            # Git SSH signing configuration
-            "agent-${name}-git-config" = {
-              description = "Configure git SSH signing for ${username}";
-
-              wantedBy = [ "multi-user.target" ];
-              after = [ homesService ];
-              requires = [ homesService ];
-
-              serviceConfig = {
-                Type = "oneshot";
-                RemainAfterExit = true;
-                User = username;
-                Group = "agents";
-              };
-
-              script = ''
-                ${pkgs.git}/bin/git config --global gpg.format ssh
-                ${pkgs.git}/bin/git config --global user.signingkey "key::${agentCfg.ssh.publicKey}"
-                ${pkgs.git}/bin/git config --global commit.gpgsign true
-                ${pkgs.git}/bin/git config --global tag.gpgsign true
-                ${pkgs.git}/bin/git config --global user.name "${agentCfg.fullName}"
-                ${optionalString (agentCfg.email != null) ''
-                  ${pkgs.git}/bin/git config --global user.email "${agentCfg.email}"
-                ''}
-              '';
-            };
+            # Git SSH signing is now handled by keystone.terminal via home-manager
+            # (git.signingKey + allowed_signers). No separate systemd service needed.
           }
         ) sshAgents
       );
@@ -2315,12 +2300,11 @@ $ROLE_PROMPT"
           agentEmail =
             if agentCfg.email != null then agentCfg.email
             else "agent-${name}@${topDomain}";
-          pubKey =
-            if agentCfg.ssh.publicKey != null then agentCfg.ssh.publicKey
-            else "SSH_PUBLIC_KEY";
+          pubKey = let pk = agentPublicKey name;
+            in if pk != null then pk else "SSH_PUBLIC_KEY";
           repoUrl = agentCfg.notes.repo;
         in
-        (optional (agentCfg.ssh.publicKey != null && topDomain != null) ''
+        (optional (agentPublicKey name != null && topDomain != null) ''
           Agent '${name}': Remember to create a Forgejo account at git.${topDomain}.
 
           Via API (run on ocean):
@@ -2490,11 +2474,18 @@ $ROLE_PROMPT"
 
             keystone.terminal = mkIf agentCfg.terminal.enable {
               enable = mkDefault true;
-              git = {
+              git = let
+                pubKey = agentPublicKey name;
+              in {
                 userName = mkDefault agentCfg.fullName;
                 userEmail = mkDefault (if agentCfg.email != null
                   then agentCfg.email
                   else "${username}@${if topDomain != null then topDomain else "localhost"}");
+                # Bridge SSH keys from keystone.keys for allowed_signers + signing
+                sshPublicKeys = mkDefault (allKeysForAgent name);
+                signingKey = mkDefault (
+                  if pubKey != null then "key::${pubKey}" else "~/.ssh/id_ed25519"
+                );
                 forgejo = {
                   enable = mkDefault (config.keystone.services.git.host != null);
                   domain = mkDefault config.keystone.services.git.domain;
