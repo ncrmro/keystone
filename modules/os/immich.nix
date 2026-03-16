@@ -91,8 +91,8 @@ in {
         # Satisfy module defaults and assertions
         redis.host = "localhost";
         database.host = "localhost";
-        # Dummy secrets file to satisfy assertion when database is disabled but host is set
-        secretsFile = pkgs.writeText "immich-dummy-secrets" "DB_PASSWORD=unused";
+        # Dummy secrets file path to satisfy assertion when database is disabled but host is set
+        secretsFile = "${pkgs.writeText "immich-dummy-secrets" "DB_PASSWORD=unused"}";
       })
       # Acceleration
       (mkIf (cfg.acceleration == "rocm") {
