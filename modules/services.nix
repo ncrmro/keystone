@@ -65,10 +65,10 @@ in {
       description = "The networking.hostName of the primary Immich server.";
     };
 
-    immich.backends = mkOption {
+    immich.workers = mkOption {
       type = types.listOf types.str;
       default = [];
-      description = "List of hostnames acting as GPU/ML backends.";
+      description = "List of hostnames acting as GPU/ML workers.";
     };
   };
 
@@ -76,5 +76,5 @@ in {
     (validateHost "mail" cfg.mail.host)
     ++ (validateHost "git" cfg.git.host)
     ++ (validateHost "immich" cfg.immich.host)
-    ++ (concatMap (h: validateHost "immich.backends" h) cfg.immich.backends);
+    ++ (concatMap (h: validateHost "immich.workers" h) cfg.immich.workers);
 }
