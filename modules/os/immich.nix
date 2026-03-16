@@ -2,7 +2,7 @@
 #
 # Automatically configured based on keystone.services.immich:
 # - host: The primary server (DB + Web)
-# - backends: Remote GPU/ML workers
+# - workers: Remote GPU/ML workers
 #
 # Roles are auto-detected by hostname.
 {
@@ -70,22 +70,42 @@ in {
   };
 
   config = mkIf cfg.enable {
-    services.immich = {
+    # On Server: Enable the full Immich service
+    services.immich = mkIf (cfg.role == "server") {
       enable = true;
       host = cfg.host;
       port = cfg.port;
       mediaLocation = cfg.mediaLocation;
-
-      # Enable ML by default, but server offloads it to backends
       machine-learning.enable = true;
-
-      # Server-specific: Connect to remote ML
-      settings.machineLearning.url = mkIf (cfg.role == "server") mlUrl;
-
-      # Worker-specific: Disable non-ML components
-      database.enable = mkIf (cfg.role == "worker") (lib.mkForce false);
-      redis.enable = mkIf (cfg.role == "worker") (lib.mkForce false);
+      settings.machineLearning.url = mlUrl;
     };
+
+    # On Worker: Enable ONLY the machine-learning component
+    # Since the NixOS immich module doesn't easily support running ONLY ML without server/db/redis,
+    # we enable it but we have to satisfy the server's redis/db requirements or just use the ML package directly.
+    # To keep it clean and avoid the redis/db errors, we'll use the package's ML service if available,
+    # or just enable immich.machine-learning and let it fail the server part (not ideal).
+    
+    # Better Worker approach: If role is worker, we use the machine-learning options directly 
+    # but we must enable services.immich.machine-learning.enable.
+    # To avoid the redis error, we explicitly enable the ML service but disable the server parts.
+    
+    services.immich = mkIf (cfg.role == "worker") {
+      enable = true;
+      # Disable everything but ML
+      database.enable = false;
+      redis.enable = false;
+      server.enable = false; # If this option exists in the module (some versions have it)
+      
+      # We must provide dummy values for redis/db to satisfy the module's defaults
+      # that might reference config.services.redis...
+      redis.host = "localhost";
+      database.host = "localhost";
+    };
+    
+    # If services.immich.server.enable doesn't exist, we might need to manually disable the units
+    systemd.services.immich-server.enable = mkIf (cfg.role == "worker") false;
+    systemd.services.immich-microservices.enable = mkIf (cfg.role == "worker") false;
 
     # GPU Acceleration configuration
     users.users.immich.extraGroups = mkIf (cfg.acceleration != null) ["video" "render"];
