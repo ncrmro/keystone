@@ -10,9 +10,14 @@
 #   - ~/.local/share/forgejo-cli/keys.json — SSH:port→HTTPS alias so fj
 #     resolves the correct API URL from SSH git remotes
 #
-# After deployment, fj still needs a one-time `fj -H <domain> auth login`
-# to obtain an API token. The keys.json alias ensures subsequent commands
-# infer the correct HTTPS host from SSH remotes.
+# IMPORTANT: tea's `ssh_agent: true` only authenticates git transport
+# (clone/push/pull), NOT Forgejo REST API calls. All API operations (PRs,
+# issues, releases) require a real token in the `token` field. For agents,
+# tokens are provisioned automatically by git-server.nix. For humans, add
+# a token manually after first deploy — it will be preserved across rebuilds.
+#
+# Both config files use activation scripts (not home.file) so that
+# manually-added or provisioned tokens survive nixos-rebuild.
 #
 # Auto-enabled via keystone.services.git.host in users.nix and agents.nix
 # home-manager bridges.
@@ -66,21 +71,46 @@ in {
     (mkIf hasDomainAndUser {
       # tea config — SSH agent auth, marked as default login so tea doesn't
       # prompt "falling back to login 'forgejo'?" on every invocation.
-      home.file.".config/tea/config.yml".text = ''
-        logins:
-            - name: forgejo
-              url: https://${forgejoCfg.domain}
-              token: ""
-              default: true
-              ssh_host: ${forgejoCfg.domain}
-              ssh_key: ~/.ssh/id_ed25519
-              ssh_agent: true
-              version_check: false
-              user: ${forgejoCfg.username}
-        preferences:
-            editor: false
-            flag_defaults:
-                remote: ""
+      # Uses activation script (not home.file) so manually-added or
+      # provisioned API tokens survive nixos-rebuild.
+      home.activation.teaConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        TEA_DIR="$HOME/.config/tea"
+        TEA_FILE="$TEA_DIR/config.yml"
+        mkdir -p "$TEA_DIR"
+        if [ ! -f "$TEA_FILE" ]; then
+          cat > "$TEA_FILE" << 'SEED'
+        ${builtins.toJSON {
+          logins = [{
+            name = "forgejo";
+            url = "https://${forgejoCfg.domain}";
+            token = "";
+            default = true;
+            ssh_host = forgejoCfg.domain;
+            ssh_key = "~/.ssh/id_ed25519";
+            ssh_agent = true;
+            version_check = false;
+            user = forgejoCfg.username;
+          }];
+          preferences = {
+            editor = false;
+            flag_defaults = {
+              remote = "";
+            };
+          };
+        }}
+        SEED
+        else
+          # Update url/user/ssh fields but preserve existing token value
+          ${pkgs.yq-go}/bin/yq -i '
+            .logins[0].url = "https://${forgejoCfg.domain}" |
+            .logins[0].user = "${forgejoCfg.username}" |
+            .logins[0].ssh_host = "${forgejoCfg.domain}" |
+            .logins[0].name = "forgejo" |
+            .logins[0].default = true |
+            .logins[0].ssh_agent = true |
+            .logins[0].version_check = false
+          ' "$TEA_FILE"
+        fi
       '';
 
       # fj (forgejo-cli) config — alias SSH host:port to HTTPS host so fj

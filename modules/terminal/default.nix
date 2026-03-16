@@ -6,6 +6,11 @@
 with lib;
 let
   cfg = config.keystone.terminal;
+
+  # Generate allowed_signers file content: "<email> <key>" per line
+  allowedSignersContent = concatMapStringsSep "\n" (key:
+    "${cfg.git.userEmail} ${key}"
+  ) cfg.git.sshPublicKeys;
 in {
   imports = [
     ./shell.nix
@@ -59,6 +64,18 @@ in {
         description = "Email address for git commits (required when git.enable is true)";
         example = "john@example.com";
       };
+
+      sshPublicKeys = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        description = "SSH public keys for allowed_signers (git signature verification).";
+      };
+
+      signingKey = mkOption {
+        type = types.str;
+        default = "~/.ssh/id_ed25519";
+        description = "SSH key for signing. Path or 'key::' prefix for inline public key.";
+      };
     };
   };
 
@@ -75,6 +92,11 @@ in {
       }
     ];
 
+    # Generate allowed_signers file when SSH public keys are provided
+    home.file.".ssh/allowed_signers" = mkIf (cfg.git.enable && cfg.git.sshPublicKeys != []) {
+      text = allowedSignersContent;
+    };
+
     # Configure git when enabled
     programs.git = mkIf cfg.git.enable {
       enable = true;
@@ -84,10 +106,12 @@ in {
         user = {
           name = cfg.git.userName;
           email = cfg.git.userEmail;
-          signingkey = "~/.ssh/id_ed25519";
+          signingkey = cfg.git.signingKey;
         };
         gpg.format = "ssh";
+        gpg.ssh.allowedSignersFile = mkIf (cfg.git.sshPublicKeys != []) "~/.ssh/allowed_signers";
         commit.gpgsign = true;
+        tag.gpgsign = true;
         alias = {
           s = "switch";
           f = "fetch";

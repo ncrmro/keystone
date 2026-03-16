@@ -292,8 +292,17 @@
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
 
+      # SSH public key registry — single source of truth for all keys
+      keys = ./modules/keys.nix;
+
       # Hardware key module - FIDO2/YubiKey for GPG/SSH agent
-      hardwareKey = ./modules/os/hardware-key.nix;
+      # Imports keys.nix since rootKeys references keystone.keys
+      hardwareKey = {
+        imports = [
+          ./modules/keys.nix
+          ./modules/os/hardware-key.nix
+        ];
+      };
 
       # Headscale DNS import — consume server DNS records on headscale host
       headscale-dns = ./modules/server/headscale/dns-import.nix;
