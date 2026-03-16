@@ -218,9 +218,10 @@ in {
         };
 
         # Server-side commit signing (merge commits, web editor, etc.)
-        # Uses Forgejo's auto-generated SSH host key from START_SSH_SERVER.
+        # "default" tells Forgejo to use its auto-generated SSH host key
+        # from START_SSH_SERVER, avoiding manual key path management.
         "repository.signing" = {
-          SIGNING_KEY = "${cfg.stateDir}/ssh/ssh_host_ed25519_key";
+          SIGNING_KEY = "default";
           FORMAT = "ssh";
           SIGNING_NAME = "Forgejo";
           SIGNING_EMAIL = "noreply@${cfg.domain}";
@@ -266,17 +267,6 @@ in {
       git
     ];
 
-  }
-  # Ensure the SSH signing key exists before Forgejo validates its config.
-  # Forgejo validates SIGNING_KEY during `forgejo migrate` in preStart, but
-  # only generates SSH host keys when the main process starts — chicken-and-egg.
-  {
-    systemd.services.forgejo.preStart = lib.mkBefore ''
-      if [ ! -f "${cfg.stateDir}/ssh/ssh_host_ed25519_key" ]; then
-        mkdir -p "${cfg.stateDir}/ssh"
-        ${pkgs.openssh}/bin/ssh-keygen -t ed25519 -f "${cfg.stateDir}/ssh/ssh_host_ed25519_key" -N ""
-      fi
-    '';
   }
   {
     # Auto-provision Forgejo users and repos for agents with git.provision = true.
