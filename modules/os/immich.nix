@@ -70,40 +70,31 @@ in {
   };
 
   config = mkIf cfg.enable {
-    # On Server: Enable the full Immich service
-    services.immich = mkIf (cfg.role == "server") {
-      enable = true;
-      host = cfg.host;
-      port = cfg.port;
-      mediaLocation = cfg.mediaLocation;
-      machine-learning.enable = true;
-      settings.machineLearning.url = mlUrl;
-    };
+    services.immich = mkMerge [
+      # Common config
+      {
+        enable = true;
+      }
+      # Server-specific
+      (mkIf (cfg.role == "server") {
+        host = cfg.host;
+        port = cfg.port;
+        mediaLocation = cfg.mediaLocation;
+        machine-learning.enable = true;
+        settings.machineLearning.url = mlUrl;
+      })
+      # Worker-specific
+      (mkIf (cfg.role == "worker") {
+        # Disable non-ML components
+        database.enable = false;
+        redis.enable = false;
+        # Satisfy module defaults that reference redis/db configs
+        redis.host = "localhost";
+        database.host = "localhost";
+      })
+    ];
 
-    # On Worker: Enable ONLY the machine-learning component
-    # Since the NixOS immich module doesn't easily support running ONLY ML without server/db/redis,
-    # we enable it but we have to satisfy the server's redis/db requirements or just use the ML package directly.
-    # To keep it clean and avoid the redis/db errors, we'll use the package's ML service if available,
-    # or just enable immich.machine-learning and let it fail the server part (not ideal).
-    
-    # Better Worker approach: If role is worker, we use the machine-learning options directly 
-    # but we must enable services.immich.machine-learning.enable.
-    # To avoid the redis error, we explicitly enable the ML service but disable the server parts.
-    
-    services.immich = mkIf (cfg.role == "worker") {
-      enable = true;
-      # Disable everything but ML
-      database.enable = false;
-      redis.enable = false;
-      server.enable = false; # If this option exists in the module (some versions have it)
-      
-      # We must provide dummy values for redis/db to satisfy the module's defaults
-      # that might reference config.services.redis...
-      redis.host = "localhost";
-      database.host = "localhost";
-    };
-    
-    # If services.immich.server.enable doesn't exist, we might need to manually disable the units
+    # Manually disable server units on worker
     systemd.services.immich-server.enable = mkIf (cfg.role == "worker") false;
     systemd.services.immich-microservices.enable = mkIf (cfg.role == "worker") false;
 
