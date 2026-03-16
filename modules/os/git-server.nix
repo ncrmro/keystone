@@ -1,3 +1,4 @@
+# Forgejo Configuration Cheat Sheet: https://forgejo.org/docs/next/admin/config-cheat-sheet/
 # Keystone Git Server Module
 #
 # Provides a self-hosted git server using Forgejo (Gitea fork):
@@ -24,12 +25,20 @@
 }:
 with lib; let
   cfg = config.keystone.os.gitServer;
+  keysCfg = config.keystone.keys;
 
   # Agents that want git provisioning on this host (where Forgejo runs).
   # This is NOT filtered by agent.host — provisioning runs on the git server,
   # which is typically a different host from the agent's designated host.
   provisionAgents = filterAttrs (_: a: a.git.provision) config.keystone.os.agents;
   hasProvisionAgents = provisionAgents != { };
+
+  # Get an agent's SSH public key from the keystone.keys registry
+  agentPublicKey = name: let
+    registryName = "agent-${name}";
+    u = keysCfg.${registryName} or null;
+    hostKeys = if u != null then mapAttrsToList (_: h: h.publicKey) u.hosts else [];
+  in if hostKeys != [] then head hostKeys else null;
 in {
   options.keystone.os.gitServer = {
     enable = mkEnableOption "Git server with Forgejo (self-hosted Gitea fork)";
@@ -175,7 +184,7 @@ in {
   # or when explicitly enabled via keystone.os.gitServer.enable.
   config = mkIf (cfg.enable
     || (config.keystone.services.git.host != null
-        && config.keystone.services.git.host == config.networking.hostName)) {
+        && config.keystone.services.git.host == config.networking.hostName)) (mkMerge [{
     # Forgejo service configuration
     services.forgejo = {
       enable = true;
@@ -204,6 +213,17 @@ in {
 
         repository = {
           ROOT = cfg.repositoryRoot;
+          # See: https://forgejo.org/docs/next/admin/config-cheat-sheet/
+          DEFAULT_MERGE_STYLE = "squash";
+        };
+
+        # Server-side commit signing (merge commits, web editor, etc.)
+        # Uses Forgejo's auto-generated SSH host key from START_SSH_SERVER.
+        "repository.signing" = {
+          SIGNING_KEY = "${cfg.stateDir}/ssh/ssh_host_ed25519_key";
+          FORMAT = "ssh";
+          SIGNING_NAME = "Forgejo";
+          SIGNING_EMAIL = "noreply@${cfg.domain}";
         };
 
         lfs = mkIf cfg.lfs.enable {
@@ -230,6 +250,7 @@ in {
       };
     };
 
+
     # Firewall configuration for HTTP (when openFirewall is true)
     networking.firewall.allowedTCPPorts =
       (optionals cfg.openFirewall [ cfg.httpPort cfg.sshPort ])
@@ -245,6 +266,19 @@ in {
       git
     ];
 
+  }
+  # Ensure the SSH signing key exists before Forgejo validates its config.
+  # Forgejo validates SIGNING_KEY during `forgejo migrate` in preStart, but
+  # only generates SSH host keys when the main process starts — chicken-and-egg.
+  {
+    systemd.services.forgejo.preStart = lib.mkBefore ''
+      if [ ! -f "${cfg.stateDir}/ssh/ssh_host_ed25519_key" ]; then
+        mkdir -p "${cfg.stateDir}/ssh"
+        ${pkgs.openssh}/bin/ssh-keygen -t ed25519 -f "${cfg.stateDir}/ssh/ssh_host_ed25519_key" -N ""
+      fi
+    '';
+  }
+  {
     # Auto-provision Forgejo users and repos for agents with git.provision = true.
     # Uses `forgejo admin` CLI for user creation (must run as the forgejo system
     # user — hence sudo -u) and the local API with a short-lived token for SSH
@@ -262,7 +296,7 @@ in {
       in
       nameValuePair "provision-agent-git-${name}" {
         description = "Provision Forgejo user and repo for agent-${name}";
-        after = [ "forgejo.service" ];
+        after = [ "forgejo.service" "home-manager-agent-${name}.service" ];
         requires = [ "forgejo.service" ];
         wantedBy = [ "multi-user.target" ];
 
@@ -271,7 +305,7 @@ in {
           RemainAfterExit = true;
         };
 
-        path = [ pkgs.forgejo pkgs.curl pkgs.jq pkgs.coreutils pkgs.sudo ];
+        path = [ pkgs.forgejo pkgs.curl pkgs.jq pkgs.coreutils pkgs.sudo pkgs.yq-go ];
 
         script = ''
           set -euo pipefail
@@ -316,7 +350,13 @@ in {
           trap cleanup_token EXIT
 
           # --- SSH key provisioning ---
-          ${optionalString (agentCfg.ssh.publicKey != null) ''
+          # Keys registered here are for authentication only. Forgejo requires
+          # SSH signing keys to be separately "verified" before commit signatures
+          # are trusted. There is no REST API for this — agents must verify their
+          # own key once via the web UI (Settings → SSH/GPG Keys → Verify) or
+          # during onboarding. See:
+          # https://forgejo.org/docs/next/admin/advanced/signing/
+          ${let pubKey = agentPublicKey name; in optionalString (pubKey != null) ''
             EXISTING_KEYS=$(curl -sf -H "$AUTH" "$API/users/${username}/keys" | jq length)
             if [ "$EXISTING_KEYS" -gt 0 ]; then
               echo "${username}: SSH key already registered, skipping"
@@ -326,9 +366,10 @@ in {
                 -H "Content-Type: application/json" \
                 -d "$(jq -n \
                   --arg title "agent-${name}" \
-                  --arg key ${escapeShellArg agentCfg.ssh.publicKey} \
+                  --arg key ${escapeShellArg pubKey} \
                   '{title: $title, key: $key}')"
               echo "${username}: SSH key added"
+              echo "${username}: NOTE: To enable signed commit verification, verify the SSH key in Forgejo web UI: Settings → SSH/GPG Keys → Verify"
             fi
           ''}
 
@@ -364,9 +405,53 @@ in {
             fi
           '') cfg.adminUsers}
 
+          # --- Persistent API token for tea/fj CLI access ---
+          # tea's ssh_agent:true only authenticates git transport, not REST API.
+          # Generate a long-lived token so agents can use tea pr/issue commands.
+          API_TOKEN_NAME="api-agent-${name}"
+          EXISTING_API_TOKEN=$(curl -sf -H "$AUTH" "$API/users/${username}/tokens" \
+            | jq -r --arg n "$API_TOKEN_NAME" '.[] | select(.name == $n) | .name' || true)
+
+          if [ -z "$EXISTING_API_TOKEN" ]; then
+            echo "${username}: Generating persistent API token..."
+            API_TOKEN=$($FORGEJO user generate-access-token \
+              --username "${username}" \
+              --token-name "$API_TOKEN_NAME" \
+              --scopes "write:activitypub,write:issue,write:misc,write:notification,write:organization,write:package,write:repository,write:user" \
+              --raw 2>/dev/null || true)
+
+            if [ -n "$API_TOKEN" ]; then
+              AGENT_HOME=$(eval echo ~agent-${name})
+
+              # Write token into tea config
+              TEA_FILE="$AGENT_HOME/.config/tea/config.yml"
+              if [ -f "$TEA_FILE" ]; then
+                API_TOKEN="$API_TOKEN" yq -i '.logins[0].token = strenv(API_TOKEN)' "$TEA_FILE"
+                chown agent-${name}:agents "$TEA_FILE"
+                chmod 0600 "$TEA_FILE"
+                echo "${username}: Wrote API token to tea config"
+              fi
+
+              # Write token into fj keys.json (tagged enum format)
+              FJ_FILE="$AGENT_HOME/.local/share/forgejo-cli/keys.json"
+              if [ -f "$FJ_FILE" ]; then
+                jq --arg host "${cfg.domain}" --arg token "$API_TOKEN" --arg name "$API_TOKEN_NAME" \
+                  '.hosts[$host] = {"type": "Application", "name": $name, "token": $token}' "$FJ_FILE" > "$FJ_FILE.tmp" \
+                  && mv "$FJ_FILE.tmp" "$FJ_FILE"
+                chown agent-${name}:agents "$FJ_FILE"
+                chmod 0600 "$FJ_FILE"
+                echo "${username}: Wrote API token to fj config"
+              fi
+            else
+              echo "${username}: Could not generate persistent API token"
+            fi
+          else
+            echo "${username}: Persistent API token already exists, skipping"
+          fi
+
           echo "${username}: Forgejo provisioning complete"
         '';
       }
     ) provisionAgents);
-  };
+  }]);
 }
