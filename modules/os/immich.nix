@@ -88,9 +88,11 @@ in {
         # Disable non-ML components
         database.enable = false;
         redis.enable = false;
-        # Satisfy module defaults that reference redis/db configs
+        # Satisfy module defaults and assertions
         redis.host = "localhost";
         database.host = "localhost";
+        # Dummy secrets file to satisfy assertion when database is disabled but host is set
+        secretsFile = pkgs.writeText "immich-dummy-secrets" "DB_PASSWORD=unused";
       })
       # Acceleration
       (mkIf (cfg.acceleration == "rocm") {
