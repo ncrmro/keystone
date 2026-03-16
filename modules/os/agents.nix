@@ -2495,7 +2495,13 @@ $ROLE_PROMPT"
                 userEmail = mkDefault (if agentCfg.email != null
                   then agentCfg.email
                   else "${username}@${if topDomain != null then topDomain else "localhost"}");
-                forgejo.enable = mkDefault (config.keystone.services.git.host != null);
+                forgejo = {
+                  enable = mkDefault (config.keystone.services.git.host != null);
+                  domain = mkDefault config.keystone.services.git.domain;
+                  sshPort = mkDefault config.keystone.services.git.sshPort;
+                  # Use agent's Forgejo username, not the system username
+                  username = mkDefault agentCfg.git.username;
+                };
               };
               mail = {
                 enable = mkDefault true;
