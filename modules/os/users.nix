@@ -261,6 +261,12 @@ in {
               enable = mkDefault (userCfg.email != null);
               userName = mkDefault userCfg.fullName;
               userEmail = mkDefault userCfg.email;
+              # TODO: Bridge forgejo.domain/sshPort/username here once the users.nix
+              # home-manager bridge mkIf issue is resolved. Currently the entire mkIf
+              # block is dead code for users whose home-manager config is also defined
+              # in nixos-config (the nixos-config definitions take precedence and this
+              # bridge's mkIf values are never applied — even mkForce has no effect).
+              # See: https://github.com/ncrmro/keystone/issues/XXX
               forgejo.enable = mkDefault (config.keystone.services.git.host != null);
             };
           } // optionalAttrs userCfg.sshAutoLoad.enable {

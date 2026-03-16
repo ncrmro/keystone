@@ -46,6 +46,18 @@ in {
         Auto-enables Forgejo on that host. Used by terminal to install forgejo-cli.
       '';
     };
+
+    git.domain = mkOption {
+      type = types.nullOr types.str;
+      default = if config.keystone.domain != null then "git.${config.keystone.domain}" else null;
+      description = "FQDN of the Forgejo instance (e.g., git.ncrmro.com). Used by terminal/forgejo.nix to generate tea config.";
+    };
+
+    git.sshPort = mkOption {
+      type = types.port;
+      default = 2222;
+      description = "SSH port for git operations on the Forgejo instance.";
+    };
   };
 
   config.assertions =
