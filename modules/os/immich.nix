@@ -92,19 +92,21 @@ in {
         redis.host = "localhost";
         database.host = "localhost";
       })
+      # Acceleration
+      (mkIf (cfg.acceleration == "rocm") {
+        machine-learning.environment = {
+          DEVICE = "rocm";
+          HSA_OVERRIDE_GFX_VERSION = "10.3.0"; # Consumer GPU support
+        };
+      })
     ];
 
     # Manually disable server units on worker
     systemd.services.immich-server.enable = mkIf (cfg.role == "worker") false;
     systemd.services.immich-microservices.enable = mkIf (cfg.role == "worker") false;
 
-    # GPU Acceleration configuration
+    # GPU Acceleration configuration (groups)
     users.users.immich.extraGroups = mkIf (cfg.acceleration != null) ["video" "render"];
-
-    services.immich.machine-learning.environment = mkIf (cfg.acceleration == "rocm") {
-      DEVICE = "rocm";
-      HSA_OVERRIDE_GFX_VERSION = "10.3.0"; # Consumer GPU support
-    };
 
     # Open port for worker access
     networking.firewall.allowedTCPPorts = mkIf (cfg.role == "worker") [3003];
