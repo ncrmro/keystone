@@ -35,7 +35,7 @@ in {
     devTools = mkOption {
       type = types.bool;
       default = false;
-      description = "Enable additional development tools (csview, jq)";
+      description = "Enable additional development tools (csview)";
     };
 
     editor = mkOption {
