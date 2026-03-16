@@ -17,19 +17,19 @@ with lib; let
 
   # Role detection
   isServer = services.immich.host == hostName;
-  isBackend = elem hostName services.immich.backends;
+  isWorker = elem hostName services.immich.workers;
 
-  # Backend URL discovery
-  getBackendUrl = hName: let
+  # Worker URL discovery
+  getWorkerUrl = hName: let
     hostEntry = findFirst (h: h.hostname == hName) null (attrValues config.keystone.hosts);
     target = if hostEntry != null then 
       (if hostEntry.sshTarget != null then hostEntry.sshTarget else hostEntry.fallbackIP) 
       else hName;
   in "http://${target}:3003";
 
-  # Server connects to the first backend if available, otherwise localhost
-  mlUrl = if length services.immich.backends > 0 
-          then getBackendUrl (head services.immich.backends)
+  # Server connects to the first worker if available, otherwise localhost
+  mlUrl = if length services.immich.workers > 0 
+          then getWorkerUrl (head services.immich.workers)
           else "http://localhost:3003";
 
   cfg = config.keystone.os.services.immich;
@@ -37,8 +37,8 @@ in {
   options.keystone.os.services.immich = {
     enable = mkOption {
       type = types.bool;
-      default = isServer || isBackend;
-      description = "Auto-enabled if host matches keystone.services.immich host or backends.";
+      default = isServer || isWorker;
+      description = "Auto-enabled if host matches keystone.services.immich host or workers.";
     };
 
     role = mkOption {
@@ -49,8 +49,8 @@ in {
 
     acceleration = mkOption {
       type = types.nullOr (types.enum ["rocm" "cuda"]);
-      default = if isBackend then "rocm" else null;
-      description = "GPU acceleration for backends. Defaults to rocm if host is a backend.";
+      default = if isWorker then "rocm" else null;
+      description = "GPU acceleration for workers. Defaults to rocm if host is a worker.";
     };
 
     host = mkOption {
