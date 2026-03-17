@@ -321,7 +321,7 @@ let
           agents.drago = {
             fullName = "Drago";
             notes.repo = "git@git.ncrmro.com:drago/agent-space.git";
-            ssh.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-drago";
+            # SSH public key now set via keystone.keys."agent-drago"
           };
         };
         fileSystems."/" = {
@@ -342,7 +342,7 @@ let
           };
           agents.tester = {
             fullName = "Test Agent";
-            ssh.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-tester";
+            # SSH public key now set via keystone.keys."agent-tester"
             notes.repo = "git@example.com:test/notes.git";
             notes.syncOnCalendar = "*:0/15";
           };
@@ -365,7 +365,7 @@ let
           };
           agents.drago = {
             fullName = "Drago";
-            ssh.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-drago";
+            # SSH public key now set via keystone.keys."agent-drago"
             notes.repo = "git@git.example.com:drago/notes.git";
           };
         };
@@ -387,7 +387,7 @@ let
           };
           agents.tester = {
             fullName = "Test Agent";
-            ssh.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForTesting agent-tester";
+            # SSH public key now set via keystone.keys."agent-tester"
             notes.repo = "git@example.com:test/notes.git";
             notes.taskLoop = {
               onCalendar = "*:0/15";

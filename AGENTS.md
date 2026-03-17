@@ -15,7 +15,21 @@ modules/
 │   └── default.nix             Home-manager notes repo sync (repo-sync on timer)
 ├── os/
 │   ├── default.nix             Orchestrator: keystone.os.* options, imports all submodules
-│   ├── agents.nix              OS agent provisioning (UIDs 4000+, desktop, mail, git, tasks)
+│   ├── agents/                 OS agent provisioning (UIDs 4000+, desktop, mail, git, tasks)
+│   │   ├── default.nix        Options declaration + barrel imports
+│   │   ├── lib.nix            Shared helpers, constants, filtered agent sets
+│   │   ├── types.nix          agentSubmodule type definition
+│   │   ├── base.nix           User creation, groups, sudo, home dirs, activation
+│   │   ├── agentctl.nix       agentctl CLI + alias wrappers + MCP config
+│   │   ├── desktop.nix        labwc + wayvnc services
+│   │   ├── chrome.nix         Chromium remote debugging
+│   │   ├── dbus.nix           D-Bus socket race fix
+│   │   ├── mail-client.nix    himalaya + mail assertions
+│   │   ├── tailscale.nix      Per-agent Tailscale (disabled)
+│   │   ├── ssh.nix            ssh-agent + assertions
+│   │   ├── notes.nix          notes-sync, task-loop, scheduler
+│   │   ├── home-manager.nix   Home-manager terminal integration
+│   │   └── scripts/           Extracted shell scripts (@placeholder@ pattern)
 │   ├── storage.nix             ZFS/ext4 + LUKS credstore, disko partitioning
 │   ├── secure-boot.nix         Lanzaboote Secure Boot via sbctl
 │   ├── tpm.nix                 TPM-based automatic disk unlock with PCR binding
