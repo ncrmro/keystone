@@ -8,7 +8,7 @@
 with lib;
 let
   agentsLib = import ./lib.nix { inherit lib config pkgs; };
-  inherit (agentsLib) osCfg cfg;
+  inherit (agentsLib) osCfg localAgents;
 
   # Task loop script: pre-fetch sources, ingest, prioritize, execute
   # Uses claude from the agent's home-manager profile PATH
@@ -60,7 +60,7 @@ let
     };
 in
 {
-  config = mkIf (osCfg.enable && cfg != { }) {
+  config = mkIf (osCfg.enable && localAgents != { }) {
     # Notes sync via repo-sync (user services for all agents)
     systemd.user.services = mkMerge (
       mapAttrsToList (
@@ -128,7 +128,7 @@ in
             '';
           };
         }
-      ) cfg
+      ) localAgents
     );
 
     systemd.user.timers = mkMerge (
@@ -165,7 +165,7 @@ in
             };
           };
         }
-      ) cfg
+      ) localAgents
     );
   };
 }
