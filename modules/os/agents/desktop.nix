@@ -86,7 +86,7 @@ in
             };
           };
 
-          # wayvnc remote viewing (localhost only -- see module header for security notes)
+          # wayvnc remote viewing (binds to agentCfg.desktop.vncBind, default 0.0.0.0)
           "agent-${name}-wayvnc" = {
             description = "VNC server for agent-${name} desktop";
 
