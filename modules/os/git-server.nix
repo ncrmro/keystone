@@ -7,15 +7,13 @@
 # - CI/CD integration (via Actions/Runners)
 # - User authentication and access control
 #
-# TODO: Investigate Forgejo Runner integration
-# - Forgejo Runner is the CI/CD runner for Forgejo Actions (GitHub Actions compatible)
-# - Need to determine compute backend options:
-#   * Native systemd services (simple, local execution)
-#   * Docker containers (isolation, flexibility)
-#   * Kubernetes pods (if keystone.server.vpn or monitoring uses K8s)
-# - Consider security implications of runner execution environments
-# - Evaluate resource allocation and scaling strategies
-# - Research integration with existing keystone infrastructure patterns
+# Forgejo Actions Runner:
+# - Enable via keystone.os.gitServer.runner.enable = true
+# - Provide the runner registration token via runner.tokenFile (e.g. an agenix secret)
+# - Default label "native:host" runs jobs directly on the host without Docker
+# - For Docker isolation, override labels with e.g. [ "ubuntu-latest:docker://node:18" ]
+# - Get registration token: Forgejo web UI → Site Administration → Runners → Create Runner
+#   OR via admin API: POST /api/v1/admin/runners/registration-token
 #
 {
   lib,
@@ -178,6 +176,46 @@ in {
       default = [];
       description = "Forgejo usernames to add as admin collaborators on every provisioned agent repo";
     };
+
+    runner = {
+      enable = mkEnableOption "Forgejo Actions runner (CI/CD job execution)";
+
+      name = mkOption {
+        type = types.str;
+        default = config.networking.hostName;
+        description = "Name of the runner instance as registered in Forgejo";
+      };
+
+      url = mkOption {
+        type = types.str;
+        default = "http://127.0.0.1:${toString cfg.httpPort}";
+        description = "URL of the Forgejo instance the runner connects to";
+      };
+
+      tokenFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        example = "/run/agenix/forgejo-runner-token";
+        description = ''
+          Path to a file containing the runner registration token.
+          Obtain this token from: Forgejo web UI → Site Administration → Runners → Create Runner,
+          or via the admin API: POST /api/v1/admin/runners/registration-token.
+          Store the token as an agenix secret and reference its runtime path here.
+        '';
+      };
+
+      labels = mkOption {
+        type = types.listOf types.str;
+        default = [ "native:host" ];
+        example = [ "ubuntu-latest:docker://node:18-bullseye" "native:host" ];
+        description = ''
+          Runner labels that determine which workflow jobs this runner accepts.
+          The "native:host" label runs jobs directly on the host without Docker.
+          Docker-based labels (e.g. "ubuntu-latest:docker://node:18-bullseye") provide
+          job isolation but require Docker to be available on the host.
+        '';
+      };
+    };
   };
 
   # Auto-enable when keystone.services.git.host matches this machine's hostname,
@@ -269,6 +307,27 @@ in {
     ];
 
   }
+  (mkIf cfg.runner.enable {
+    assertions = [
+      {
+        assertion = cfg.runner.tokenFile != null;
+        message = "keystone.os.gitServer.runner.tokenFile must be set when runner.enable is true. "
+          + "Get the token from: Forgejo web UI → Site Administration → Runners → Create Runner.";
+      }
+    ];
+
+    # Forgejo Actions runner — executes CI/CD jobs submitted by Forgejo Actions.
+    # The runner registers with Forgejo using a one-time token and then polls for jobs.
+    # SECURITY: The runner runs with its own system user and limited privileges.
+    # For stronger isolation, set labels to Docker-based images instead of "native:host".
+    services.gitea-actions-runner.instances.${cfg.runner.name} = {
+      enable = true;
+      name = cfg.runner.name;
+      url = cfg.runner.url;
+      tokenFile = cfg.runner.tokenFile;
+      labels = cfg.runner.labels;
+    };
+  })
   {
     # Auto-provision Forgejo users and repos for agents with git.provision = true.
     # Uses `forgejo admin` CLI for user creation (must run as the forgejo system
