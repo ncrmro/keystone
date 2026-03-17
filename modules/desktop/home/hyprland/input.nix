@@ -29,8 +29,15 @@ in {
         };
       };
 
-      # Note: workspace_swipe was removed in Hyprland 0.51+
-      # Use new gesture syntax if needed: gesture = fingers, direction, action
+      # Touchpad gestures for workspace switching (Hyprland 0.51+ syntax)
+      # Four-finger horizontal swipe switches workspaces (primary gesture)
+      # Three-finger horizontal swipe also switches workspaces (secondary gesture)
+      gestures = {
+        gesture = [
+          "4, horizontal, workspace"
+          "3, horizontal, workspace"
+        ];
+      };
     };
   };
 }
