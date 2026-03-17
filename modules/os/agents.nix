@@ -1203,7 +1203,8 @@ in
             echo "  provision         Generate SSH keypair, mail password, and agenix secrets" >&2
             echo "" >&2
             echo "Flags:" >&2
-            echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh (claude)" >&2
+            echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh (claude/gemini/codex/opencode)" >&2
+            echo "  --roles <role1,...>    Comma-separated extra roles appended after mode roles (claude/gemini/codex/opencode)" >&2
             echo "" >&2
             echo "Examples:" >&2
             echo "  agentctl drago status agent-drago-task-loop" >&2
@@ -1214,6 +1215,8 @@ in
             echo "  agentctl drago shell" >&2
             echo "  agentctl drago claude" >&2
             echo "  agentctl drago claude -r code-review" >&2
+            echo "  agentctl drago claude --roles software-engineer,code-reviewer" >&2
+            echo "  agentctl drago claude -r implementation --roles software-engineer" >&2
             echo "  agentctl drago gemini" >&2
             echo "  agentctl drago codex" >&2
             echo "  agentctl drago opencode" >&2
@@ -1273,10 +1276,12 @@ in
 
           # Parse agentctl-level flags (consumed here, not passed to harness)
           ROLE=""
+          EXTRA_ROLES=""
           REMAINING_ARGS=()
           while [[ $# -gt 0 ]]; do
             case "$1" in
               -r|--role) ROLE="$2"; shift 2 ;;
+              --roles) EXTRA_ROLES="$2"; shift 2 ;;
               *) REMAINING_ARGS+=("$1"); shift ;;
             esac
           done
@@ -1320,9 +1325,14 @@ in
                   fi
 
                   ROLE="'"$ROLE"'"
-                  if [ -n "$ROLE" ]; then
+                  EXTRA_ROLES="'"$EXTRA_ROLES"'"
+                  if [ -n "$ROLE" ] || [ -n "$EXTRA_ROLES" ]; then
                     if [ -x .agents/compose.sh ] && [ -f manifests/modes.yaml ]; then
-                      ROLE_PROMPT="$(PATH="${pkgs.yq-go}/bin:$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE")"
+                      COMPOSE_EXTRA=""
+                      if [ -n "$EXTRA_ROLES" ]; then
+                        COMPOSE_EXTRA="--roles $EXTRA_ROLES"
+                      fi
+                      ROLE_PROMPT="$(PATH="${pkgs.yq-go}/bin:$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE" $COMPOSE_EXTRA)"
                       if [ -n "$SP" ]; then
                         SP="$SP
 
@@ -1331,7 +1341,7 @@ $ROLE_PROMPT"
                         SP="$ROLE_PROMPT"
                       fi
                     else
-                      echo "Warning: -r $ROLE requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
+                      echo "Warning: role/--roles requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
                     fi
                   fi
 
