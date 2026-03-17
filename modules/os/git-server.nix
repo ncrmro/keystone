@@ -199,6 +199,7 @@ in {
           SSH_PORT = cfg.sshPort;
           SSH_LISTEN_HOST = "0.0.0.0";
           START_SSH_SERVER = true;
+          LFS_START_SERVER = true;
         };
 
         database = {
@@ -213,8 +214,11 @@ in {
 
         repository = {
           ROOT = cfg.repositoryRoot;
-          # See: https://forgejo.org/docs/next/admin/config-cheat-sheet/
+        };
+
+        "repository.pull-request" = {
           DEFAULT_MERGE_STYLE = "squash";
+          DEFAULT_DELETE_BRANCH_AFTER_MERGE = true;
         };
 
         # Server-side commit signing (merge commits, web editor, etc.)
@@ -228,7 +232,7 @@ in {
           SIGNING_EMAIL = "noreply@${cfg.domain}";
         };
 
-        lfs = mkIf cfg.lfs.enable {
+        lfs = {
           ENABLE = true;
           CONTENT_PATH = cfg.lfs.contentPath;
         };
