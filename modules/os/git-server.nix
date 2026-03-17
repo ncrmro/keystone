@@ -9,11 +9,14 @@
 #
 # Forgejo Actions Runner:
 # - Enable via keystone.os.gitServer.runner.enable = true
-# - Provide the runner registration token via runner.tokenFile (e.g. an agenix secret)
+# - Option A (auto-provision): set runner.autoProvision.adminUser = "alice"
+#     The module automatically calls the Forgejo admin API to obtain and store
+#     the registration token; no manual steps required.
+# - Option B (manual): provide runner.tokenFile = "/run/agenix/forgejo-runner-token"
+#     Get the token from: Forgejo web UI → Site Administration → Runners → Create Runner
+#     OR via admin API: POST /api/v1/admin/runners/registration-token
 # - Default label "native:host" runs jobs directly on the host without Docker
 # - For Docker isolation, override labels with e.g. [ "ubuntu-latest:docker://node:18" ]
-# - Get registration token: Forgejo web UI → Site Administration → Runners → Create Runner
-#   OR via admin API: POST /api/v1/admin/runners/registration-token
 #
 {
   lib,
@@ -215,6 +218,24 @@ in {
           job isolation but require Docker to be available on the host.
         '';
       };
+
+      autoProvision = {
+        adminUser = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = "alice";
+          description = ''
+            Forgejo admin username used to automatically obtain a runner
+            registration token via the Forgejo admin API.
+            When set, a systemd service will call the Forgejo API (using a
+            short-lived admin token generated via the forgejo CLI) to fetch a
+            runner registration token and write it to a system-managed path.
+            This eliminates the need to manually obtain and store the token
+            as an agenix secret.  Either this option or runner.tokenFile must
+            be set when runner.enable is true.
+          '';
+        };
+      };
     };
   };
 
@@ -307,14 +328,120 @@ in {
     ];
 
   }
-  (mkIf cfg.runner.enable {
+  (mkIf cfg.runner.enable (let
+    # When auto-provisioning, write the token to a persistent system-managed path.
+    # The token is only needed for initial registration; once the runner has its
+    # .runner config file it no longer reads the token file.
+    autoTokenPath = "/var/lib/forgejo-runner-tokens/${cfg.runner.name}";
+    effectiveTokenFile =
+      if cfg.runner.tokenFile != null
+      then cfg.runner.tokenFile
+      else autoTokenPath;
+  in {
     assertions = [
       {
-        assertion = cfg.runner.tokenFile != null;
-        message = "keystone.os.gitServer.runner.tokenFile must be set when runner.enable is true. "
-          + "Get the token from: Forgejo web UI → Site Administration → Runners → Create Runner.";
+        assertion = cfg.runner.tokenFile != null || cfg.runner.autoProvision.adminUser != null;
+        message = "keystone.os.gitServer.runner: either runner.tokenFile or "
+          + "runner.autoProvision.adminUser must be set when runner.enable is true. "
+          + "Set adminUser to auto-provision the token from the local Forgejo instance, "
+          + "or obtain a token manually from: Forgejo web UI → Site Administration → Runners → Create Runner.";
       }
     ];
+
+    # Auto-provision the runner registration token by calling the Forgejo admin API
+    # using a short-lived admin token generated via the forgejo CLI.
+    # SECURITY: The token file is written with mode 0600, owned by the
+    # gitea-actions-runner system user. The admin token is deleted immediately
+    # after the registration token is obtained.
+    systemd.services."provision-runner-token-${cfg.runner.name}" = mkIf
+      (cfg.runner.autoProvision.adminUser != null) {
+        description = "Auto-provision Forgejo runner registration token for ${cfg.runner.name}";
+        # Run before the runner so the token is ready on first start.
+        # After initial registration the runner saves its own credentials and
+        # no longer needs this file.
+        before = [ "gitea-actions-runner-${cfg.runner.name}.service" ];
+        wantedBy = [ "gitea-actions-runner-${cfg.runner.name}.service" ];
+        requires = [ "forgejo.service" ];
+        after = [ "forgejo.service" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+
+        path = [ pkgs.forgejo pkgs.curl pkgs.jq pkgs.coreutils pkgs.sudo ];
+
+        script = ''
+          set -euo pipefail
+
+          RUNNER_STATE="/var/lib/gitea-actions-runner/${cfg.runner.name}/.runner"
+          TOKEN_FILE="${autoTokenPath}"
+
+          # Runner already registered — nothing to provision
+          if [ -f "$RUNNER_STATE" ]; then
+            echo "provision-runner-token: runner already registered, skipping"
+            exit 0
+          fi
+
+          # Token file already present from a previous (failed) registration attempt
+          if [ -f "$TOKEN_FILE" ] && [ -s "$TOKEN_FILE" ]; then
+            echo "provision-runner-token: token file already exists at $TOKEN_FILE"
+            exit 0
+          fi
+
+          echo "provision-runner-token: obtaining runner registration token from Forgejo..."
+
+          FORGEJO_CMD="sudo -u ${config.services.forgejo.user} forgejo --work-path ${cfg.stateDir} admin"
+          API_URL="http://127.0.0.1:${toString cfg.httpPort}/api/v1"
+          ADMIN_USER="${cfg.runner.autoProvision.adminUser}"
+          TEMP_TOKEN_NAME="runner-provision-$(date +%s)"
+
+          # Generate a short-lived admin API token via the forgejo CLI.
+          # The CLI bypasses HTTP auth and talks directly to the database,
+          # so no existing credentials are required.
+          ADMIN_TOKEN=$($FORGEJO_CMD user generate-access-token \
+            --username "$ADMIN_USER" \
+            --token-name "$TEMP_TOKEN_NAME" \
+            --scopes "write:admin" \
+            --raw 2>/dev/null)
+
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "provision-runner-token: ERROR — could not generate admin token for user $ADMIN_USER"
+            exit 1
+          fi
+
+          # Always delete the short-lived admin token on exit
+          cleanup() {
+            curl -sf -X DELETE \
+              -H "Authorization: token $ADMIN_TOKEN" \
+              "$API_URL/users/$ADMIN_USER/tokens/$TEMP_TOKEN_NAME" || true
+          }
+          trap cleanup EXIT
+
+          # Fetch the runner registration token from the Forgejo admin API
+          REGISTRATION_TOKEN=$(curl -sf \
+            -X POST \
+            -H "Authorization: token $ADMIN_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$API_URL/admin/runners/registration-token" \
+            | jq -r '.token')
+
+          if [ -z "$REGISTRATION_TOKEN" ] || [ "$REGISTRATION_TOKEN" = "null" ]; then
+            echo "provision-runner-token: ERROR — Forgejo API did not return a registration token"
+            exit 1
+          fi
+
+          # Write token with secure permissions before populating it
+          mkdir -p "$(dirname "$TOKEN_FILE")"
+          touch "$TOKEN_FILE"
+          chmod 0600 "$TOKEN_FILE"
+          # Transfer ownership to the runner service user if it exists
+          chown gitea-actions-runner "$TOKEN_FILE" 2>/dev/null || true
+          printf '%s' "$REGISTRATION_TOKEN" > "$TOKEN_FILE"
+
+          echo "provision-runner-token: registration token written to $TOKEN_FILE"
+        '';
+      };
 
     # Forgejo Actions runner — executes CI/CD jobs submitted by Forgejo Actions.
     # The runner registers with Forgejo using a one-time token and then polls for jobs.
@@ -324,10 +451,10 @@ in {
       enable = true;
       name = cfg.runner.name;
       url = cfg.runner.url;
-      tokenFile = cfg.runner.tokenFile;
+      tokenFile = effectiveTokenFile;
       labels = cfg.runner.labels;
     };
-  })
+  }))
   {
     # Auto-provision Forgejo users and repos for agents with git.provision = true.
     # Uses `forgejo admin` CLI for user creation (must run as the forgejo system
