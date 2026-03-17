@@ -118,7 +118,7 @@ in
           "agent-${name}-scheduler" = {
             description = "Daily scheduler for ${username}";
             unitConfig.ConditionUser = username;
-            environment.PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:${lib.makeBinPath [ pkgs.nix ]}";
+            environment.PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:${lib.makeBinPath [ pkgs.nix ]}:/run/current-system/sw/bin";
             serviceConfig = {
               Type = "oneshot";
               SyslogIdentifier = "agent-${name}-scheduler";

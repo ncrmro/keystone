@@ -87,7 +87,7 @@ let
   # for secrets/keys/configs don't fire on unrelated hosts.
   localAgents = filterAttrs (_: agentCfg: agentCfg.host == config.networking.hostName) cfg;
 
-  desktopAgents = localAgents;
+  desktopAgents = filterAttrs (_: agentCfg: agentCfg.desktop.enable) localAgents;
   hasDesktopAgents = desktopAgents != { };
 
   mailAgents = localAgents;
@@ -129,7 +129,7 @@ let
       vncPortBase + 1 + idx;
 
   # Chrome services run on the agent's host (alongside labwc)
-  chromeAgents = localAgents;
+  chromeAgents = filterAttrs (_: agentCfg: agentCfg.chrome.enable) localAgents;
   hasChromeAgents = chromeAgents != { };
 
   # Sorted chrome agent names for deterministic debug port assignment
