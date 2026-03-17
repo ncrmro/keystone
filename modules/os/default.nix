@@ -157,6 +157,7 @@ in {
     ./ollama.nix
     ./immich.nix
     ./tailscale.nix
+    ./containers.nix
   ];
 
   options.keystone.os = {

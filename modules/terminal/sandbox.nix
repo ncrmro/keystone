@@ -16,7 +16,11 @@ let
 in
 {
   options.keystone.terminal.sandbox = {
-    enable = mkEnableOption "Podman-based sandboxing for AI coding agents (podman-agent)";
+    enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Enable Podman-based sandboxing for AI coding agents (podman-agent) by default";
+    };
 
     memory = mkOption {
       type = types.str;
