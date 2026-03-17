@@ -1,0 +1,266 @@
+# Agent submodule type definition.
+# Defines the schema for keystone.os.agents.<name>.
+{ lib, config, ... }:
+with lib;
+let
+  topDomain = config.keystone.domain;
+in {
+  agentSubmodule = types.submodule (
+    {
+      name,
+      config,
+      ...
+    }:
+    {
+      options = {
+        uid = mkOption {
+          type = types.nullOr types.int;
+          default = null;
+          description = "User ID. If null, auto-assigned from the 4000+ range.";
+        };
+
+        host = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = ''
+            Hostname where this agent primarily runs. Controls two things:
+
+            1. Feature filtering — desktop, mail-client, and SSH resources
+               (secrets, assertions, services) are only created on the host
+               whose networking.hostName matches this value.
+
+            2. All hosts still get the agent's OS user/group and home directory
+               so the agent can SSH in everywhere.
+
+            Server-side provisioning (mail.nix, git-server.nix) is independent
+            of this field — it runs wherever Stalwart/Forgejo is enabled and
+            is gated by mail.provision / git.provision instead.
+          '';
+          example = "ncrmro-workstation";
+        };
+
+        fullName = mkOption {
+          type = types.str;
+          description = "Display name for the agent";
+          example = "Research Agent";
+        };
+
+        email = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Email address for the agent (used for git config and mail provisioning)";
+          example = "researcher@ks.systems";
+        };
+
+        terminal = {
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enable terminal environment (zsh, starship, helix, AI tools) via home-manager.";
+          };
+        };
+
+        desktop = {
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enable headless Wayland desktop (labwc + wayvnc).";
+          };
+
+          resolution = mkOption {
+            type = types.str;
+            default = "1920x1080";
+            description = "Desktop resolution (WxH)";
+          };
+
+          vncPort = mkOption {
+            type = types.nullOr types.port;
+            default = null;
+            description = "VNC port. If null, auto-assigned starting from 5901.";
+          };
+
+          vncBind = mkOption {
+            type = types.str;
+            default = "0.0.0.0";
+            description = "Address for wayvnc to bind. Use 127.0.0.1 for localhost-only.";
+          };
+        };
+
+        chrome = {
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Enable Chrome remote debugging via Chromium + DevTools MCP.";
+          };
+
+          debugPort = mkOption {
+            type = types.nullOr types.port;
+            default = null;
+            description = "Chrome remote debugging port. If null, auto-assigned starting from 9222.";
+          };
+
+          mcp = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable Chrome DevTools MCP server for this agent.";
+            };
+
+            port = mkOption {
+              type = types.nullOr types.port;
+              default = null;
+              description = "Chrome DevTools MCP server port. If null, auto-assigned starting from 3101.";
+            };
+          };
+        };
+
+        mail = {
+          provision = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Auto-provision Stalwart mail account on the mail server host.";
+          };
+
+          address = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "Full email address. Defaults to agent-{name}@{keystone.domain}.";
+            example = "agent-researcher@ks.systems";
+          };
+
+          imap.port = mkOption {
+            type = types.int;
+            default = 993;
+            description = "IMAP port";
+          };
+
+          smtp.port = mkOption {
+            type = types.int;
+            default = 465;
+            description = "SMTP port";
+          };
+
+          # CalDAV and CardDAV are always provisioned alongside mail
+        };
+
+        # Tailscale: each agent gets its own tailscaled instance with unique
+        # state dir, socket, and TUN interface. An nftables fwmark rule routes
+        # the agent's UID traffic through its dedicated TUN.
+        # Requires an agenix secret at age.secrets."agent-{name}-tailscale-auth-key".
+
+        # SSH: each agent gets ssh-agent + git signing + agenix secrets.
+        # Requires agenix secrets: agent-{name}-ssh-key, agent-{name}-ssh-passphrase.
+        # CRITICAL: SSH public key is now declared in keystone.keys."agent-{name}"
+        # instead of here. The single host key is read from the registry.
+
+        git = {
+          provision = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Auto-provision Forgejo user, SSH key, and notes repo on the git server host.";
+          };
+
+          username = mkOption {
+            type = types.str;
+            default = name;
+            description = "Forgejo username. Defaults to agent name.";
+          };
+
+          host = mkOption {
+            type = types.str;
+            default = "git.${topDomain}";
+            description = "Git server hostname. Defaults to git.{keystone.domain}.";
+          };
+
+          sshPort = mkOption {
+            type = types.port;
+            default = 2222;
+            description = "Git SSH port.";
+          };
+
+          repoName = mkOption {
+            type = types.str;
+            default = "agent-space";
+            description = "Name of auto-created notes repository.";
+          };
+        };
+
+        passwordManager = {
+          provision = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Emit provisioning instructions for Vaultwarden (no API available for auto-create).";
+          };
+        };
+
+        notes = {
+          repo = mkOption {
+            type = types.str;
+            default = "ssh://forgejo@${config.git.host}:${toString config.git.sshPort}/${config.git.username}/${config.git.repoName}.git";
+            description = "Git repository URL for the agent's notes. Auto-derived from git options.";
+            example = "ssh://forgejo@git.example.com:2222/user/notes.git";
+          };
+
+          path = mkOption {
+            type = types.str;
+            default = "/home/agent-${name}/notes";
+            description = "Local checkout path for the notes repo.";
+          };
+
+          syncOnCalendar = mkOption {
+            type = types.str;
+            default = "*:0/5";
+            description = "Systemd calendar spec for notes sync timer. Default: every 5 minutes.";
+          };
+
+          taskLoop = {
+            onCalendar = mkOption {
+              type = types.str;
+              default = "*:0/5";
+              description = "Systemd calendar spec for task loop timer. Default: every 5 minutes.";
+            };
+
+            maxTasks = mkOption {
+              type = types.int;
+              default = 5;
+              description = "Maximum number of pending tasks to execute per run.";
+            };
+          };
+
+          scheduler = {
+            onCalendar = mkOption {
+              type = types.str;
+              default = "*-*-* 05:00:00";
+              description = "Systemd calendar spec for scheduler timer. Default: daily at 5 AM.";
+            };
+          };
+        };
+
+        mcp = {
+          servers = mkOption {
+            type = types.attrsOf (types.submodule {
+              options = {
+                command = mkOption {
+                  type = types.str;
+                  description = "Absolute path to the MCP server binary.";
+                };
+                args = mkOption {
+                  type = types.listOf types.str;
+                  default = [];
+                  description = "Arguments to pass to the MCP server.";
+                };
+                env = mkOption {
+                  type = types.attrsOf types.str;
+                  default = {};
+                  description = "Environment variables for the MCP server.";
+                };
+              };
+            });
+            default = {};
+            description = "Additional MCP servers to configure for this agent.";
+          };
+        };
+      };
+    }
+  );
+}
