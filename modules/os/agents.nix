@@ -1228,12 +1228,6 @@ in
   ${agentHostCases}
           esac
 
-          # Static lookup — agent name -> MCP config file (Nix store path)
-          MCP_CONFIG=""
-          case "$AGENT_NAME" in
-  ${agentMcpCases}
-          esac
-
           THIS_HOST="$(cat /etc/hostname)"
 
           # Remote dispatch: forward non-local commands via SSH over Tailscale.
