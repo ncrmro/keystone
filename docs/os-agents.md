@@ -423,36 +423,73 @@ Both `task-loop.sh` and `scheduler.sh` are shell scripts in `modules/os/agents/s
 
 ### Pipeline Data Flow
 
-```
-task-loop.sh Pipeline:
+```mermaid
+flowchart TD
+    subgraph Prefetch["1. PRE-FETCH"]
+        proj_src["PROJECTS.yaml<br/>source commands"]
+        email_builtin["Built-in: himalaya<br/>envelope list"]
+        fetch_out["Source JSON files"]
+        proj_src --> fetch_out
+        email_builtin --> fetch_out
+    end
 
-1. PRE-FETCH          ──▶  PROJECTS.yaml sources → shell commands → JSON
-                            + built-in: himalaya envelope list (email)
-2. INGEST  (haiku)    ──▶  /deepwork task_loop ingest
-                            Parse source JSON → update TASKS.yaml
-                            Rule: do NOT assign workflows during ingest
-3. HASH CHECK         ──▶  SHA256(TASKS.yaml + PROJECTS.yaml) → skip if unchanged
-4. PRIORITIZE (haiku) ──▶  /deepwork task_loop prioritize
-                            Reorder TASKS.yaml by PROJECTS.yaml priority
-                            + assign model (haiku/sonnet/opus)
-                            + assign workflow (decision tree):
-                              ├── Existing workflow → preserve
-                              ├── schedule source → skip (scheduler sets it)
-                              ├── CAD keywords or ks-systems-hardware → cadeng/cadeng
-                              ├── github-issue/github-pr/forgejo-issue → sweng/sweng
-                              ├── repos project + code keywords → sweng/sweng
-                              ├── "press release"/"working backwards" → press_release/write
-                              └── No match → no workflow (generic execution)
-                            + validate model-workflow coherence (workflow → min sonnet)
-5. EXECUTE LOOP        ──▶  For each pending task (max N per run):
-   │                         ├── Check `needs` dependencies (yq+jq)
-   │                         ├── Read task model + workflow
-   │                         ├── If workflow: claude -p "/deepwork {workflow} ..."
-   │                         ├── If no workflow: claude -p "Execute this task. ..."
-   │                         ├── Model flag from task's model field
-   │                         └── Log to ~/.local/state/agent-task-loop/logs/tasks/
-   │
-   └── Stop conditions: max tasks reached, no more pending tasks, already-attempted guard
+    subgraph Ingest["2. INGEST (haiku)"]
+        ingest_dw["/deepwork task_loop ingest"]
+        ingest_rule["Rule: do NOT assign<br/>workflows during ingest"]
+        ingest_dw --- ingest_rule
+    end
+
+    subgraph HashCheck["3. HASH CHECK"]
+        hash["SHA256(TASKS.yaml + PROJECTS.yaml)"]
+        skip{"Changed?"}
+        hash --> skip
+    end
+
+    subgraph Prioritize["4. PRIORITIZE (haiku)"]
+        pri_dw["/deepwork task_loop prioritize"]
+        reorder["Reorder by<br/>PROJECTS.yaml priority"]
+        assign_model["Assign model:<br/>haiku · sonnet · opus"]
+        assign_wf["Assign workflow<br/>(decision tree)"]
+        coherence["Validate model-workflow<br/>coherence (workflow → min sonnet)"]
+        pri_dw --> reorder --> assign_model --> assign_wf --> coherence
+    end
+
+    subgraph WorkflowTree["Workflow Decision Tree"]
+        direction LR
+        wf_existing["Existing workflow → preserve"]
+        wf_schedule["schedule source → skip"]
+        wf_cad["CAD keywords → cadeng/cadeng"]
+        wf_sweng["github-issue/pr · forgejo-issue<br/>repos + code keywords → sweng/sweng"]
+        wf_press["press release / working<br/>backwards → press_release/write"]
+        wf_none["No match → generic execution"]
+    end
+
+    subgraph Execute["5. EXECUTE LOOP (per-task model)"]
+        check_deps["Check needs<br/>dependencies (yq+jq)"]
+        read_task["Read task<br/>model + workflow"]
+        dispatch{"workflow<br/>field?"}
+        with_wf["claude -p '/deepwork ...'"]
+        without_wf["claude -p 'Execute this task...'"]
+        log["Log to<br/>~/.local/state/agent-task-loop/"]
+        stop["Stop: max tasks · no pending · already-attempted"]
+
+        check_deps --> read_task --> dispatch
+        dispatch -->|"yes"| with_wf --> log
+        dispatch -->|"no"| without_wf --> log
+        log --> stop
+    end
+
+    tasks_yaml[("TASKS.yaml")]
+
+    fetch_out --> Ingest
+    Ingest -->|"creates/updates tasks"| tasks_yaml
+    tasks_yaml --> HashCheck
+    skip -->|"no"| stop_early(("Skip run"))
+    skip -->|"yes"| Prioritize
+    assign_wf -.-> WorkflowTree
+    Prioritize -->|"reorders + assigns"| tasks_yaml
+    tasks_yaml --> Execute
+    Execute -->|"updates status"| tasks_yaml
 ```
 
 ### Scheduler
