@@ -34,75 +34,33 @@ flowchart TB
             dbus["dbus.nix<br/>D-Bus Socket Race Fix"]
         end
 
-        subgraph Timers["Systemd User Timers"]
-            sched_timer["agent-{name}-scheduler.timer<br/>Daily 5 AM"]
-            loop_timer["agent-{name}-task-loop.timer<br/>Every 5 min"]
-            sync_timer["agent-{name}-notes-sync.timer<br/>Every 5 min"]
+        subgraph Timers["Systemd User Timers → Services"]
+            sched["scheduler.timer (daily 5 AM)<br/>→ scheduler.service<br/>→ scheduler.sh"]
+            loop["task-loop.timer (every 5 min)<br/>→ task-loop.service<br/>→ task-loop.sh"]
+            sync["notes-sync.timer (every 5 min)<br/>→ notes-sync.service<br/>→ repo-sync"]
         end
+    end
 
-        subgraph Services["Systemd User Services"]
-            sched_svc["agent-{name}-scheduler.service<br/>scheduler.sh"]
-            loop_svc["agent-{name}-task-loop.service<br/>task-loop.sh"]
-            sync_svc["agent-{name}-notes-sync.service<br/>repo-sync"]
-        end
+    subgraph Platforms["External Platforms"]
+        github["GitHub"]
+        forgejo["Forgejo"]
     end
 
     subgraph AgentSpace["Agent Space (/home/agent-{name}/notes/)"]
-        subgraph YAML["YAML State"]
-            tasks["TASKS.yaml"]
-            projects["PROJECTS.yaml"]
-            schedules["SCHEDULES.yaml"]
-            issues["ISSUES.yaml"]
-        end
-
-        subgraph SharedAgents[".agents/ (submodule)"]
-            conventions["conventions/<br/>27+ RFC 2119 docs"]
-            roles["roles/<br/>10 composable templates"]
-            compose["compose.sh<br/>Prompt composition"]
-            archetypes["archetypes.yaml<br/>engineer / product"]
-            deepwork_jobs[".deepwork/jobs/<br/>9 job definitions"]
-        end
-
-        identity["SOUL.md + TEAM.md + SERVICES.md"]
+        identity["SOUL.md · TEAM.md · SERVICES.md"]
+        yaml["TASKS.yaml · PROJECTS.yaml<br/>SCHEDULES.yaml · ISSUES.yaml"]
+        agents[".agents/ submodule<br/>conventions · roles · .deepwork/jobs/"]
+        repos[".repos/ — cloned repositories"]
         manifests["manifests/modes.yaml"]
-        repos[".repos/<br/>Cloned repositories"]
     end
 
-    subgraph Pipeline["Task Loop Pipeline (task-loop.sh)"]
-        direction LR
-        prefetch["1. Pre-fetch<br/>Sources JSON"]
-        hash["2. Hash Check<br/>Skip if unchanged"]
-        ingest["3. Ingest<br/>(haiku)"]
-        prioritize["4. Prioritize<br/>(haiku)<br/>model + workflow"]
-        execute["5. Execute Loop<br/>(per-task model)"]
-    end
+    Provisioning -->|"creates"| AgentSpace
+    sched -->|"reads SCHEDULES.yaml<br/>creates tasks"| yaml
+    loop -->|"runs pipeline<br/>(see Task Loop Architecture)"| yaml
+    sync -->|"git commit + push"| AgentSpace
 
-    subgraph ExternalSources["External Sources"]
-        email_src["Email<br/>(himalaya)"]
-        github_src["GitHub<br/>(gh CLI)"]
-        forgejo_src["Forgejo<br/>(tea CLI)"]
-    end
-
-    sched_timer --> sched_svc
-    loop_timer --> loop_svc
-    sync_timer --> sync_svc
-
-    sched_svc -->|"reads"| schedules
-    sched_svc -->|"creates tasks"| tasks
-
-    loop_svc --> prefetch
-    prefetch -->|"fetches"| email_src & github_src & forgejo_src
-    prefetch --> hash --> ingest
-    ingest -->|"updates"| tasks
-    ingest --> prioritize
-    prioritize -->|"assigns model + workflow"| tasks
-    prioritize --> execute
-
-    execute -->|"workflow field?"| deepwork_jobs
-    execute -->|"no workflow"| generic["Generic Execution"]
-    execute -->|"updates status"| tasks
-
-    Provisioning --> AgentSpace
+    AgentSpace -->|"gh CLI / SSH"| github
+    AgentSpace -->|"tea CLI / SSH"| forgejo
 ```
 
 ## Two-Agent Coordination
@@ -402,6 +360,43 @@ When a manifest declares `archetype: engineer`, the archetype's conventions are 
 ## Task Loop Architecture
 
 The task loop is a Nix-packaged shell script (`task-loop.sh`) that runs as a systemd user service. It uses a two-timer pipeline for autonomous work orchestration.
+
+```mermaid
+flowchart LR
+    subgraph Sources["External Sources"]
+        email["Email<br/>(himalaya)"]
+        github["GitHub<br/>(gh CLI)"]
+        forgejo["Forgejo<br/>(tea CLI)"]
+    end
+
+    subgraph Pipeline["task-loop.sh Pipeline"]
+        prefetch["1. Pre-fetch<br/>Sources → JSON"]
+        hash["2. Hash Check<br/>Skip if unchanged"]
+        ingest["3. Ingest<br/>(haiku)"]
+        prioritize["4. Prioritize<br/>(haiku)<br/>model + workflow"]
+        execute["5. Execute Loop<br/>(per-task model)"]
+
+        prefetch --> hash --> ingest --> prioritize --> execute
+    end
+
+    subgraph State["YAML State"]
+        projects["PROJECTS.yaml<br/>(source definitions)"]
+        tasks["TASKS.yaml<br/>(task queue)"]
+    end
+
+    subgraph Dispatch["Execution Dispatch"]
+        deepwork["/deepwork job/workflow<br/>Quality gates + steps"]
+        generic["Generic Execution<br/>Free-form LLM prompt"]
+    end
+
+    email & github & forgejo --> prefetch
+    projects -->|"source commands"| prefetch
+    ingest -->|"creates/updates tasks"| tasks
+    prioritize -->|"reorders + assigns<br/>model + workflow"| tasks
+    execute -->|"workflow field set"| deepwork
+    execute -->|"no workflow"| generic
+    execute -->|"updates status"| tasks
+```
 
 ### Two-Timer Design
 
