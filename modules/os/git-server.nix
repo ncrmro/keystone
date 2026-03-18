@@ -598,9 +598,11 @@ in {
       '';
     };
 
-    # Forgejo Actions runner — labels left empty so act_runner uses its own
-    # upstream defaults; DOCKER_HOST above redirects container pulls through
-    # the rootless podman socket.
+    # Use the official Forgejo runner (pkgs.forgejo-runner) rather than the
+    # older gitea act_runner (pkgs.gitea-actions-runner) that the module
+    # defaults to. Labels left empty so the runner uses its upstream defaults;
+    # DOCKER_HOST above redirects container pulls through the rootless podman socket.
+    services.gitea-actions-runner.package = pkgs.forgejo-runner;
     services.gitea-actions-runner.instances.${cfg.runner.name} = {
       enable = true;
       name = cfg.runner.name;
