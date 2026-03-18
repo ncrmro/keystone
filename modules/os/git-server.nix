@@ -600,14 +600,20 @@ in {
 
     # Use the official Forgejo runner (pkgs.forgejo-runner) rather than the
     # older gitea act_runner (pkgs.gitea-actions-runner) that the module
-    # defaults to. Labels left empty so the runner uses its upstream defaults;
-    # DOCKER_HOST above redirects container pulls through the rootless podman socket.
+    # defaults to. Labels follow the standard Forgejo runner label format
+    # (see `forgejo-runner generate-config`); docker:// scheme is satisfied
+    # by the rootless podman socket via DOCKER_HOST above.
     services.gitea-actions-runner.package = pkgs.forgejo-runner;
     services.gitea-actions-runner.instances.${cfg.runner.name} = {
       enable = true;
       name = cfg.runner.name;
       url = "http://127.0.0.1:${toString cfg.httpPort}";
-      labels = [];
+      labels = [
+        "native:host"
+        "ubuntu-latest:docker://node:20-bookworm"
+        "ubuntu-22.04:docker://node:20-bookworm"
+        "ubuntu-20.04:docker://node:20-focal"
+      ];
       tokenFile = "/var/lib/forgejo-runner/runner-token";
     };
   })
