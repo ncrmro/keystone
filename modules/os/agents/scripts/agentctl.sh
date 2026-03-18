@@ -142,7 +142,7 @@ case "$CMD" in
       esac
 
       # Claude: compose system prompt from AGENTS.md + optional role
-      SP_FLAGS=""
+      SP_FLAGS=()
       if [ "'"$CMD"'" = "claude" ]; then
         SP=""
         if [ -f AGENTS.md ]; then
@@ -166,7 +166,7 @@ $ROLE_PROMPT"
         fi
 
         if [ -n "$SP" ]; then
-          SP_FLAGS="--append-system-prompt $SP"
+          SP_FLAGS=("--append-system-prompt" "$SP")
         fi
       fi
 
@@ -177,9 +177,9 @@ $ROLE_PROMPT"
           FLAKE_REF="git+file:.?submodules=1"
         fi
         exec nix develop "$FLAKE_REF" --no-update-lock-file --accept-flake-config \
-          --command "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS "$@"
+          --command "'"$CMD"'" $TOOL_FLAGS "${SP_FLAGS[@]}" "$@"
       else
-        exec "'"$CMD"'" $TOOL_FLAGS $SP_FLAGS "$@"
+        exec "'"$CMD"'" $TOOL_FLAGS "${SP_FLAGS[@]}" "$@"
       fi
     ' -- "$@"
     ;;
