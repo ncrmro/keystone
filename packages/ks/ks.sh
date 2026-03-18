@@ -25,6 +25,30 @@
 #
 # The --dev flag overrides keystone and agenix-secrets flake inputs with
 # local clone paths for testing uncommitted changes.
+#
+# Requirements (RFC 2119)
+#
+# Repo management
+#   MUST pull nixos-config, keystone, and agenix-secrets before building (lock mode).
+#   MUST update flake.lock (nix flake update) before building, not after.
+#   MUST commit and push flake.lock only after a successful build.
+#   MUST verify keystone and agenix-secrets are clean and fully pushed before locking.
+#
+# Build
+#   MUST always use local .repos/keystone and .repos/agenix-secrets as --override-input
+#     when those directories exist, regardless of --dev flag.
+#   MUST build all target hosts before deploying any of them.
+#   SHOULD build all targets in a single nix invocation (nix parallelises internally).
+#
+# Deployment
+#   MUST deploy hosts sequentially (not in parallel) to limit blast radius.
+#   MUST obtain sudo credentials before the build phase when a local host is targeted,
+#     so the user is not interrupted after a long build.
+#   SHOULD keep sudo credentials alive for the duration of the run.
+#
+# --dev mode
+#   MUST skip pull, flake-update, commit, and push phases.
+#   MAY be used with uncommitted local repo changes.
 
 set -euo pipefail
 
@@ -80,33 +104,26 @@ resolve_host() {
   echo "$host"
 }
 
-# --- Build --dev override args ---
-dev_override_args() {
+# --- Local override args (always applied when local repos exist) ---
+# Returns --override-input flags for any local repos found.
+# Silent and exits cleanly if no local repos are present.
+local_override_args() {
   local repo_root="$1"
-  local keystone_path=""
-  local secrets_path=""
+  local args=()
 
-  # Keystone: prefer .repos/keystone, fallback to .submodules/keystone
   if [[ -d "$repo_root/.repos/keystone" ]]; then
-    keystone_path="$repo_root/.repos/keystone"
+    args+=(--override-input keystone "path:$repo_root/.repos/keystone")
   elif [[ -d "$repo_root/.submodules/keystone" ]]; then
-    keystone_path="$repo_root/.submodules/keystone"
-  else
-    echo "Error: Cannot find keystone repo at .repos/keystone or .submodules/keystone" >&2
-    exit 1
+    args+=(--override-input keystone "path:$repo_root/.submodules/keystone")
   fi
 
-  # Secrets: prefer .repos/agenix-secrets, fallback to agenix-secrets/
   if [[ -d "$repo_root/.repos/agenix-secrets" ]]; then
-    secrets_path="$repo_root/.repos/agenix-secrets"
+    args+=(--override-input agenix-secrets "path:$repo_root/.repos/agenix-secrets")
   elif [[ -d "$repo_root/agenix-secrets" ]]; then
-    secrets_path="$repo_root/agenix-secrets"
-  else
-    echo "Error: Cannot find agenix-secrets repo at .repos/agenix-secrets or agenix-secrets/" >&2
-    exit 1
+    args+=(--override-input agenix-secrets "path:$repo_root/agenix-secrets")
   fi
 
-  echo "--override-input keystone path:$keystone_path --override-input agenix-secrets path:$secrets_path"
+  echo "${args[@]}"   # empty string if no repos found — no error, no exit
 }
 
 # --- Repo URLs (for cloning) ---
@@ -286,11 +303,9 @@ cmd_build() {
     done
   fi
 
+  # --dev is kept for backwards compat but is now a no-op (overrides always applied when repos exist)
   local override_args=()
-  if [[ "$dev" == true ]]; then
-    read -ra override_args <<< "$(dev_override_args "$repo_root")"
-    echo "Dev mode: using local keystone + agenix-secrets"
-  fi
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
 
   local build_targets=()
   for h in "${target_hosts[@]}"; do
@@ -330,65 +345,84 @@ cmd_update() {
     done
   fi
 
-  # --- Handle --pull ---
-  if [[ "$pull" == true ]]; then
+  # --- Handle --pull (standalone, no lock) ---
+  if [[ "$pull" == true && "$lock" != true ]]; then
     pull_repo "$repo_root" keystone "$KEYSTONE_URL"
     pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
-    if [[ "$lock" != true ]]; then
-      echo "Pull complete."
-      return
-    fi
+    echo "Pull complete."
+    return
   fi
 
-  # --- Handle locking/clean checks ---
+  # ── UPFRONT PHASE (skipped in --dev mode) ───────────────────────────────────
   if [[ "$lock" == true ]]; then
-    # Pull nixos-config itself first so we build from latest
+    # Step 1: Pull nixos-config so we operate on latest
     echo "Pulling nixos-config..."
     git -C "$repo_root" pull --ff-only
 
-    # Pull submodules if not already done via --pull
-    if [[ "$pull" != true ]]; then
-      pull_repo "$repo_root" keystone "$KEYSTONE_URL"
-      pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
-    fi
+    # Step 2: Pull keystone + agenix-secrets
+    pull_repo "$repo_root" keystone "$KEYSTONE_URL"
+    pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
 
-    # Verify repos are clean
+    # Step 3: Verify repos are clean and fully pushed before locking
     local ks_path secrets_path
     ks_path=$(find_local_repo "$repo_root" keystone)
     secrets_path=$(find_local_repo "$repo_root" agenix-secrets)
     [[ -n "$ks_path" ]] && verify_repo_clean "$ks_path" keystone
     [[ -n "$secrets_path" ]] && verify_repo_clean "$secrets_path" agenix-secrets
-  fi
 
-  local override_args=()
-  if [[ "$dev" == true ]]; then
-    read -ra override_args <<< "$(dev_override_args "$repo_root")"
-    echo "Dev mode: using local keystone + agenix-secrets"
-  fi
-
-  # --- Verify all hosts with local builds ---
-  local build_targets=()
-  for h in "${target_hosts[@]}"; do
-    build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
-  done
-  
-  echo "Verifying builds for: ${target_hosts[*]}..."
-  nix build "${build_targets[@]}" "${override_args[@]}"
-
-  # --- Locking and Pushing ---
-  if [[ "$lock" == true ]]; then
-    # Lock flake inputs
+    # Step 4: Update flake.lock BEFORE building so the build validates what will be committed
     echo "Locking flake inputs..."
     nix flake update keystone agenix-secrets --flake "$repo_root"
 
-    # Commit flake.lock
+    # Step 5: Commit flake.lock (if changed)
     if ! git -C "$repo_root" diff --quiet flake.lock; then
       echo "Committing flake.lock..."
       git -C "$repo_root" add flake.lock
       git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets"
     fi
+  fi
 
-    # Pull/rebase nixos-config before pushing to handle concurrent commits
+  # Step 6: Cache sudo credentials upfront if any target is local
+  # This avoids a sudo prompt interrupting the user after a long build.
+  local needs_sudo=false
+  local current_hostname
+  current_hostname=$(hostname)
+  for h in "${target_hosts[@]}"; do
+    local h_hostname
+    h_hostname=$(nix eval -f "$hosts_nix" "$h.hostname" --raw)
+    if [[ "$h_hostname" == "$current_hostname" ]]; then
+      needs_sudo=true
+      break
+    fi
+  done
+
+  local SUDO_KEEPALIVE_PID=""
+  if [[ "$needs_sudo" == true ]]; then
+    echo "Caching sudo credentials (needed for local deploy)..."
+    sudo -v
+    # Keepalive: refresh every 60 s so a long build doesn't expire the ticket.
+    ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done ) &
+    SUDO_KEEPALIVE_PID=$!
+    trap "kill $SUDO_KEEPALIVE_PID 2>/dev/null; trap - EXIT" EXIT
+  fi
+
+  # Always use local overrides when repos are present (--dev is now a no-op for builds)
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+
+  # ── BUILD PHASE ─────────────────────────────────────────────────────────────
+  # Step 7: Build all targets in a single invocation (nix parallelises internally)
+  local build_targets=()
+  for h in "${target_hosts[@]}"; do
+    build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
+  done
+
+  echo "Building: ${target_hosts[*]}..."
+  nix build "${build_targets[@]}" "${override_args[@]}"
+
+  # ── POST-BUILD PHASE (skipped in --dev mode) ────────────────────────────────
+  # Step 8: Push flake.lock only after a successful build
+  if [[ "$lock" == true ]]; then
     echo "Pushing nixos-config..."
     if ! git -C "$repo_root" pull --rebase origin "$(git -C "$repo_root" branch --show-current)" 2>&1; then
       echo ""
@@ -404,10 +438,9 @@ cmd_update() {
     fi
   fi
 
-  # --- Sequential Deployment ---
-  # Note: Risky hosts should be placed last in the list.
+  # ── DEPLOY PHASE ────────────────────────────────────────────────────────────
+  # Step 9: Sequential deployment — risky hosts should be placed last in the list.
   for host in "${target_hosts[@]}"; do
-    # Read host config
     local host_json ssh_target fallback_ip build_on_remote host_hostname
     host_json=$(nix eval -f "$hosts_nix" "$host" --json)
     ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
@@ -415,8 +448,6 @@ cmd_update() {
     build_on_remote=$(echo "$host_json" | jq -r '.buildOnRemote')
     host_hostname=$(echo "$host_json" | jq -r '.hostname')
 
-    local current_hostname
-    current_hostname=$(hostname)
     if [[ "$host_hostname" == "$current_hostname" ]]; then
       # LOCAL deploy
       echo "Deploying $host locally ($mode)..."
