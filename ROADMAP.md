@@ -2,7 +2,7 @@
 
 NixOS-based self-sovereign infrastructure platform for deploying secure, encrypted systems on any hardware.
 
-> **Specifications**: [requirements.md](specs/001-keystone-os/requirements.md) | [plan.md](specs/001-keystone-os/plan.md)
+> **Specifications**: [REQ-001-keystone-os.md](specs/REQ-001-keystone-os.md)
 
 ---
 
