@@ -484,6 +484,23 @@ After the initial PR, the orchestrator runs up to N review cycles (default 2):
 4. On `FAIL` (not last cycle): re-run coding agent with fix prompt, push fixes
 5. On `PASS`: mark PR ready (`gh pr ready` for GitHub, remove `WIP:` prefix for Forgejo)
 
+## Terminal Environment Requirement
+
+Agent systemd services (`task-loop`, `scheduler`, `notes-sync`) MUST have access to the full home-manager terminal environment. All tools available in an interactive agent shell MUST also be available in systemd service contexts.
+
+### Required Tools on PATH
+
+Services MUST be able to invoke at minimum: `bash`, `git`, `gh`, `himalaya`, `claude`, `fj`, and all coreutils. The `notes.nix` module sets `PATH` to `/etc/profiles/per-user/agent-{name}/bin` which should provide these, but any tool referenced inside scripts (including via `bash -c` in PROJECTS.yaml source commands) must either:
+
+1. Be resolved to a Nix store path via `replaceVars` (preferred), or
+2. Be available on the service's PATH
+
+### Known Issue
+
+`task-loop.sh:88` uses bare `bash -c` to execute custom PROJECTS.yaml source commands, but `bash` may not be on the Nix-restricted PATH. This causes all custom sources to fail silently, leaving tasks in an invalid `error` state. See [keystone#103](https://github.com/ncrmro/keystone/issues/103).
+
+**Fix**: Add `bash` to the `replaceVars` substitutions in `notes.nix` (like `yq`, `jq`, etc.) and use `$BASH` instead of bare `bash` in `task-loop.sh`.
+
 ## Operational Conventions
 
 ### Email, Calendar, and Contacts
