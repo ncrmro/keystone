@@ -111,7 +111,7 @@ in
               LogRateLimitIntervalSec = 0;
             };
             script = ''
-              exec ${agentTaskLoopScript name agentCfg}
+              exec ${pkgs.bash}/bin/bash ${agentTaskLoopScript name agentCfg}
             '';
           };
 
@@ -124,7 +124,7 @@ in
               SyslogIdentifier = "agent-${name}-scheduler";
             };
             script = ''
-              exec ${agentSchedulerScript name agentCfg}
+              exec ${pkgs.bash}/bin/bash ${agentSchedulerScript name agentCfg}
             '';
           };
         }
