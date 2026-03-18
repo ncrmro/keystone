@@ -55,6 +55,8 @@ in
       '';
       ".gemini/skills/deepwork/SKILL.md".text = ''
         # DeepWork Workflow Manager
+        # NOTE: This content should match:
+        # https://github.com/Unsupervisedcom/deepwork/blob/main/plugins/gemini/skills/deepwork/SKILL.md
 
         Execute multi-step workflows with quality gate checkpoints.
 
