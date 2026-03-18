@@ -21,32 +21,30 @@ keystone.os.agents.drago = {
 ## Architecture Overview
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph NixOS["NixOS Host"]
         subgraph Provisioning["keystone.os.agents.{name}"]
-            base["base.nix<br/>User + Home + Groups"]
-            ssh["ssh.nix<br/>SSH Agent + Git Signing"]
-            desktop["desktop.nix<br/>labwc + wayvnc"]
-            chrome["chrome.nix<br/>Chromium + DevTools"]
-            mail["mail-client.nix<br/>himalaya + Stalwart"]
-            hm["home-manager.nix<br/>Terminal Environment"]
-            agentctl["agentctl.nix<br/>CLI + MCP Config"]
-            dbus["dbus.nix<br/>D-Bus Socket Race Fix"]
+            direction TB
+            base["base.nix — User + Home + Groups"]
+            ssh["ssh.nix — SSH Agent + Git Signing"]
+            desktop["desktop.nix — labwc + wayvnc"]
+            chrome["chrome.nix — Chromium + DevTools"]
+            mail["mail-client.nix — himalaya + Stalwart"]
+            hm["home-manager.nix — Terminal Environment"]
+            agentctl["agentctl.nix — CLI + MCP Config"]
+            dbus["dbus.nix — D-Bus Socket Race Fix"]
         end
 
         subgraph Timers["Systemd User Timers → Services"]
-            sched["scheduler.timer (daily 5 AM)<br/>→ scheduler.service<br/>→ scheduler.sh"]
-            loop["task-loop.timer (every 5 min)<br/>→ task-loop.service<br/>→ task-loop.sh"]
-            sync["notes-sync.timer (every 5 min)<br/>→ notes-sync.service<br/>→ repo-sync"]
+            direction TB
+            sched["scheduler.timer (daily 5 AM)<br/>→ scheduler.sh"]
+            loop["task-loop.timer (every 5 min)<br/>→ task-loop.sh"]
+            sync["notes-sync.timer (every 5 min)<br/>→ repo-sync"]
         end
     end
 
-    subgraph Platforms["External Platforms"]
-        github["GitHub"]
-        forgejo["Forgejo"]
-    end
-
     subgraph AgentSpace["Agent Space (/home/agent-{name}/notes/)"]
+        direction TB
         identity["SOUL.md · TEAM.md · SERVICES.md"]
         yaml["TASKS.yaml · PROJECTS.yaml<br/>SCHEDULES.yaml · ISSUES.yaml"]
         agents[".agents/ submodule<br/>conventions · roles · .deepwork/jobs/"]
@@ -54,9 +52,15 @@ flowchart TB
         manifests["manifests/modes.yaml"]
     end
 
+    subgraph Platforms["External Platforms"]
+        direction TB
+        github["GitHub"]
+        forgejo["Forgejo"]
+    end
+
     Provisioning -->|"creates"| AgentSpace
     sched -->|"reads SCHEDULES.yaml<br/>creates tasks"| yaml
-    loop -->|"runs pipeline<br/>(see Task Loop Architecture)"| yaml
+    loop -->|"runs pipeline"| yaml
     sync -->|"git commit + push"| AgentSpace
 
     AgentSpace -->|"gh CLI / SSH"| github
