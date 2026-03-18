@@ -174,18 +174,11 @@ in {
     };
 
     runner = {
-      enable = mkEnableOption ''
-        Forgejo Actions runner.
-        The registration token is provisioned automatically at runtime by
-        discovering the first admin user. Labels and container runtime are
-        managed automatically — rootless podman is enabled for the runner user.
-
-        Usage:
-          keystone.os.gitServer = {
-            enable = true;
-            runner.enable = true;
-          };
-      '';
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable Forgejo Actions runner. Enabled by default when the git server is active.";
+      };
 
       name = mkOption {
         type = types.str;
