@@ -23,6 +23,7 @@ keystone.os.agents.drago = {
 ```mermaid
 flowchart LR
     subgraph NixOS["NixOS Host"]
+        direction TB
         subgraph Provisioning["keystone.os.agents.{name}"]
             direction TB
             base["base.nix — User + Home + Groups"]
