@@ -13,9 +13,11 @@ OS agents are non-interactive NixOS user accounts designed for autonomous LLM-dr
 keystone.os.agents.atlas = {
   fullName = "Atlas";
   email = "atlas@example.com";
-  ssh.publicKey = "ssh-ed25519 AAAAC3... agent-atlas";
   notes.repo = "ssh://forgejo@git.example.com:2222/atlas/notes.git";
 };
+
+# SSH public key is registered in the keys registry, not on the agent
+keystone.keys."agent-atlas".hosts.myhost.publicKey = "ssh-ed25519 AAAAC3...";
 ```
 
 ## Architecture Overview
@@ -28,9 +30,9 @@ flowchart LR
 
         subgraph Timers["Systemd User Timers → Services"]
             direction TB
-            sched["scheduler.timer (daily 5 AM)<br/>→ scheduler.sh"]
-            loop["task-loop.timer (every 5 min)<br/>→ task-loop.sh"]
-            sync["notes-sync.timer (every 5 min)<br/>→ repo-sync"]
+            sched["agent-{name}-scheduler (daily 5 AM)<br/>→ scheduler.sh"]
+            loop["agent-{name}-task-loop (every 5 min)<br/>→ task-loop.sh"]
+            sync["agent-{name}-notes-sync (every 5 min)<br/>→ repo-sync"]
         end
     end
 
@@ -81,7 +83,7 @@ context → lean canvas → KPIs → market analysis → press release
 3. **Engineering agent** picks up issues as task sources during ingest
 4. **Engineering agent** creates branches, PRs, and delivers code via `sweng/sweng` workflow
 
-Both agents share the same composable prompt architecture from the `.agents/` submodule (see [Shared Agents Library](#shared-agents-library)).
+Both agents share the same composable prompt architecture from the `.agents/` submodule (see [Agent Space & Shared Library](os-agents.agent-space.md#shared-agents-library-agents-submodule)).
 
 ### Identity Documents
 
@@ -113,7 +115,7 @@ If using Forgejo with OpenSSH (passthrough mode) instead of the built-in server,
 
 ### SSH Authentication
 
-The clone service uses the agent's agenix SSH key directly (`/run/agenix/agent-{name}-ssh-key`). The key must be registered in the Forgejo user's SSH keys settings.
+The `agent-{name}-notes-sync` service uses the agent's SSH agent socket (`SSH_AUTH_SOCK`) for authentication. The agent's SSH key must be registered in the Forgejo user's SSH keys settings.
 
 ### Required Agenix Secrets
 
@@ -121,13 +123,13 @@ Each agent with SSH configured needs:
 - `agent-{name}-ssh-key` — Private SSH key (ed25519)
 - `agent-{name}-ssh-passphrase` — Passphrase for the key
 
-### Retry Behavior
+### Sync Behavior
 
-The clone service retries on failure (up to 10 attempts over 10 minutes with 30-second intervals). Check status with:
+The notes-sync service runs `repo-sync`, which handles clone-if-absent on first run and fetch/commit/rebase/push on subsequent runs. Check status with:
 
 ```bash
-systemctl status clone-agent-space-{name}.service
-journalctl -xeu clone-agent-space-{name}.service
+systemctl --user status agent-{name}-notes-sync.service
+journalctl --user -u agent-{name}-notes-sync -n 20
 ```
 
 ## What Each Agent Gets
@@ -144,23 +146,25 @@ journalctl -xeu clone-agent-space-{name}.service
 | Calendar | calendula CLI | Stalwart CalDAV (auto-configured from mail) |
 | Contacts | cardamum CLI | Stalwart CardDAV (auto-configured from mail) |
 | Bitwarden | `bw` CLI | Configured for Vaultwarden instance |
-| Workspace | `clone-agent-space-{name}.service` | Clones `notes.repo` on first boot |
+| Workspace | `agent-{name}-notes-sync.service` | Clones `notes.repo` on first run, syncs on timer |
 
 ## Debugging
 
-### Clone fails with "Permission denied (publickey)"
+### Notes sync fails with "Permission denied (publickey)"
 
 1. **Check the SSH username** in `notes.repo` — must be `forgejo@` for Forgejo's built-in SSH server
 2. **Verify the key is registered** in Forgejo under the correct user's SSH keys
-3. **Test manually:**
+3. **Check the SSH agent is running** — notes-sync depends on `SSH_AUTH_SOCK`:
+   ```bash
+   agentctl {name} status agent-{name}-ssh-agent
+   ```
+4. **Test manually:**
    ```bash
    sudo runuser -u agent-{name} -- ssh -vvv \
-     -i /run/agenix/agent-{name}-ssh-key \
      -o StrictHostKeyChecking=accept-new \
-     -o IdentitiesOnly=yes \
      -p 2222 -T forgejo@git.example.com
    ```
-4. **Check key fingerprint matches:**
+5. **Check key fingerprint matches:**
    ```bash
    # Fingerprint of the agenix private key
    ssh-keygen -lf /run/agenix/agent-{name}-ssh-key
@@ -171,16 +175,15 @@ journalctl -xeu clone-agent-space-{name}.service
 
 ### Service dependency order
 
-The clone service depends on:
-- `agent-homes.service` (or `zfs-agent-datasets.service` on ZFS)
-
-The SSH agent service runs independently and is not a dependency of the clone service.
+The notes-sync service requires:
+- The agent's home directory (`agent-homes.service` or `zfs-agent-datasets.service` on ZFS)
+- The agent's SSH agent (`agent-{name}-ssh-agent.service`) for authentication
 
 See [Agent Space & Shared Library](os-agents.agent-space.md) for the agent-space repository structure, identity documents, shared agents library, prompt composition, and archetypes.
 
 ## Task Loop Architecture
 
-The task loop is a Nix-packaged shell script (`task-loop.sh`) that runs as a systemd user service. It uses a two-timer pipeline for autonomous work orchestration.
+The task loop is a Nix-packaged shell script (`task-loop.sh`) that runs as a systemd user service, supported by three timers for autonomous work orchestration.
 
 ```mermaid
 flowchart LR
@@ -192,12 +195,12 @@ flowchart LR
 
     subgraph Pipeline["task-loop.sh Pipeline"]
         prefetch["1. Pre-fetch<br/>Sources → JSON"]
-        hash["2. Hash Check<br/>Skip if unchanged"]
-        ingest["3. Ingest<br/>(haiku)"]
+        ingest["2. Ingest<br/>(haiku)"]
+        hash["3. Hash Check<br/>Skip prioritize if unchanged"]
         prioritize["4. Prioritize<br/>(haiku)<br/>model + workflow"]
         execute["5. Execute Loop<br/>(per-task model)"]
 
-        prefetch --> hash --> ingest --> prioritize --> execute
+        prefetch --> ingest --> hash --> prioritize --> execute
     end
 
     subgraph State["YAML State"]
@@ -219,7 +222,7 @@ flowchart LR
     execute -->|"updates status"| tasks
 ```
 
-### Two-Timer Design
+### Timer Design
 
 ```
                     ┌─────────────────────────────────────────────────┐
@@ -295,7 +298,7 @@ flowchart LR
     fetch_out --> Ingest
     Ingest -->|"creates tasks"| tasks_yaml
     tasks_yaml --> HashCheck
-    skip -->|"no"| stop_early(("Skip"))
+    skip -->|"no, skip prioritize"| Execute
     skip -->|"yes"| Prioritize
     Prioritize -->|"reorders + assigns"| tasks_yaml
     tasks_yaml --> Execute
