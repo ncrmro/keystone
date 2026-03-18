@@ -469,4 +469,4 @@ CI runs `tests/module/agent-isolation.nix` on PRs touching `modules/os/agents*`.
 
 ## Related Documents
 
-- Spec: `spec.md`
+- Spec: `requirements.md`

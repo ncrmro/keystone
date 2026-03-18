@@ -1,6 +1,6 @@
 # Keystone Desktop - Keybindings Implementation Plan
 
-This document outlines the implementation strategy for the keybinding requirements defined in `spec.md` (dt-bind-* requirements).
+This document outlines the implementation strategy for the keybinding requirements defined in `requirements.md` (dt-bind-* requirements).
 
 ## Current State vs Target State
 

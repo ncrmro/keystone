@@ -15,7 +15,7 @@ Sections Removed:
 
 Templates Status:
 - ✅ plan-template.md: No updates required (constitution check remains compatible)
-- ✅ spec-template.md: No updates required (requirements section unaffected)
+- ✅ requirements-template.md: No updates required (requirements section unaffected)
 - ✅ tasks-template.md: No updates required (task structure unaffected)
 
 Follow-up Actions:

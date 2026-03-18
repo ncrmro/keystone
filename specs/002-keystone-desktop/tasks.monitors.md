@@ -1,7 +1,7 @@
 # Tasks: Monitor Management (dt-monitor)
 
 **Feature**: 002-keystone-desktop
-**Spec**: `specs/002-keystone-desktop/spec.md`
+**Spec**: `specs/002-keystone-desktop/requirements.md`
 
 ## Implementation Tasks
 

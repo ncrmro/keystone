@@ -1,6 +1,6 @@
 # Keystone Desktop Implementation Plan
 
-This document outlines the technical implementation details and the NixOS module structure for the Keystone Desktop environment components described in `spec.md`.
+This document outlines the technical implementation details and the NixOS module structure for the Keystone Desktop environment components described in `requirements.md`.
 
 ## Technology Stack
 
