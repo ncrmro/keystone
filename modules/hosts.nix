@@ -11,12 +11,23 @@
 #       sshTarget = "ocean.mercury";
 #       fallbackIP = "192.168.1.10";
 #       buildOnRemote = true;
+#       hostPublicKey = "ssh-ed25519 AAAAC3...";
 #     };
 #   };
 #
+# Hosts with hostPublicKey are auto-added to /etc/ssh/ssh_known_hosts so that
+# inter-host SSH (deploys, ZFS replication, etc.) works without manual keyscan.
+#
+# TODO: Auto-collect hostPublicKey during keystone install/setup (read from
+# /etc/ssh/ssh_host_ed25519_key.pub and populate hosts.nix automatically).
+#
 # The `ks` CLI reads this data at runtime via: nix eval -f hosts.nix --json <host>
-{ lib, ... }:
-with lib; {
+{ config, lib, ... }:
+with lib;
+let
+  hostsWithKeys = filterAttrs (_: h: h.hostPublicKey != null) config.keystone.hosts;
+in
+{
   options.keystone.hosts = mkOption {
     type = types.attrsOf (types.submodule {
       options = {
@@ -76,4 +87,17 @@ with lib; {
       nixosConfigurations names in flake.nix. Consumed by the `ks` CLI (ks build, ks update).
     '';
   };
+
+  # Populate /etc/ssh/ssh_known_hosts from hostPublicKey so inter-host SSH
+  # (deploys, ZFS replication, etc.) verifies without manual ssh-keyscan.
+  config.programs.ssh.knownHosts = mapAttrs' (name: hostCfg:
+    nameValuePair name {
+      publicKey = hostCfg.hostPublicKey;
+      hostNames = filter (x: x != null) [
+        hostCfg.hostname
+        hostCfg.sshTarget
+        hostCfg.fallbackIP
+      ];
+    }
+  ) hostsWithKeys;
 }
