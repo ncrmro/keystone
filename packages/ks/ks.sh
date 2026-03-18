@@ -38,6 +38,7 @@
 #   MUST always use local .repos/keystone and .repos/agenix-secrets as --override-input
 #     when those directories exist, regardless of --dev flag.
 #   MUST build all target hosts before deploying any of them.
+#   MUST pass --no-link to nix build to prevent ./result symlinks in the caller's CWD.
 #   SHOULD build all targets in a single nix invocation (nix parallelises internally).
 #
 # Deployment
@@ -313,7 +314,7 @@ cmd_build() {
   done
 
   echo "Building: ${target_hosts[*]}..."
-  nix build "${build_targets[@]}" "${override_args[@]}"
+  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
   echo "Build complete for: ${target_hosts[*]}"
 }
 
@@ -418,7 +419,7 @@ cmd_update() {
   done
 
   echo "Building: ${target_hosts[*]}..."
-  nix build "${build_targets[@]}" "${override_args[@]}"
+  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
 
   # ── POST-BUILD PHASE (skipped in --dev mode) ────────────────────────────────
   # Step 8: Push flake.lock only after a successful build
