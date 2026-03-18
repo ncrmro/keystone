@@ -43,6 +43,31 @@ with lib; {
           type = types.enum [ "client" "server" "agent" ];
           description = "Tailscale network role for this host (mandatory).";
         };
+        hostPublicKey = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "SSH host public key (/etc/ssh/ssh_host_ed25519_key.pub).";
+        };
+        zfs = mkOption {
+          type = types.nullOr (types.submodule {
+            options = {
+              backups = mkOption {
+                type = types.attrsOf (types.submodule {
+                  options = {
+                    targets = mkOption {
+                      type = types.listOf types.str;
+                      description = "Backup targets as 'host:pool' strings (e.g. 'maia:lake')";
+                    };
+                  };
+                });
+                default = {};
+                description = "Per-pool backup target declarations. Key is source pool name.";
+              };
+            };
+          });
+          default = null;
+          description = "ZFS backup topology for this host.";
+        };
       };
     });
     default = {};

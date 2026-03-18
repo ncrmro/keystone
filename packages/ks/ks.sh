@@ -6,6 +6,7 @@
 # Commands:
 #   build  [--dev] [HOSTS]                      Build a NixOS configuration (no deploy)
 #   update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy a NixOS configuration
+#   sync-host-keys                              Populate hostPublicKey in hosts.nix from live hosts
 #
 # Host resolution:
 #   1. If HOST is provided, use it directly
@@ -180,6 +181,85 @@ verify_repo_clean() {
 }
 
 # --- Commands ---
+
+cmd_sync_host_keys() {
+  local repo_root
+  repo_root=$(find_repo)
+  local hosts_nix="$repo_root/hosts.nix"
+
+  # Get all host keys
+  local all_hosts
+  all_hosts=$(nix eval -f "$hosts_nix" --json --apply 'builtins.attrNames')
+  local host_list
+  host_list=$(echo "$all_hosts" | jq -r '.[]')
+
+  local changed=0 skipped=0 failed=0
+
+  for host in $host_list; do
+    local host_json ssh_target fallback_ip
+    host_json=$(nix eval -f "$hosts_nix" "$host" --json)
+    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+
+    if [[ -z "$ssh_target" ]]; then
+      echo "SKIP $host (no sshTarget)"
+      ((skipped++)) || true
+      continue
+    fi
+
+    fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
+
+    # Resolve SSH target with Tailscale → LAN fallback
+    local resolved="$ssh_target"
+    if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+      if [[ -n "$fallback_ip" ]]; then
+        resolved="$fallback_ip"
+        echo "  Tailscale unavailable for $host, using LAN: $fallback_ip"
+      else
+        echo "FAIL $host (unreachable via $ssh_target)"
+        ((failed++)) || true
+        continue
+      fi
+    fi
+
+    # Fetch host public key
+    local pubkey
+    pubkey=$(ssh -o ConnectTimeout=5 -o BatchMode=yes "root@${resolved}" \
+      'cat /etc/ssh/ssh_host_ed25519_key.pub' 2>/dev/null | awk '{print $1" "$2}') || true
+
+    if [[ -z "$pubkey" ]]; then
+      echo "FAIL $host (could not read host key from $resolved)"
+      ((failed++)) || true
+      continue
+    fi
+
+    # Check current value
+    local current
+    current=$(echo "$host_json" | jq -r '.hostPublicKey // empty')
+
+    if [[ "$pubkey" == "$current" ]]; then
+      echo "  OK $host (unchanged)"
+      continue
+    fi
+
+    # Update hosts.nix — insert or replace hostPublicKey
+    if [[ -n "$current" ]]; then
+      # Replace existing hostPublicKey line
+      sed -i "s|hostPublicKey = \"${current}\";|hostPublicKey = \"${pubkey}\";|" "$hosts_nix"
+    else
+      # Insert hostPublicKey after the role line for this host
+      sed -i "/^  ${host} = {/,/^  };/ s|role = \"[^\"]*\";|&\n    hostPublicKey = \"${pubkey}\";|" "$hosts_nix"
+    fi
+
+    echo "  SET $host → ${pubkey:0:40}..."
+    ((changed++)) || true
+  done
+
+  echo ""
+  echo "Summary: $changed updated, $skipped skipped, $failed failed"
+  if [[ $changed -gt 0 ]]; then
+    echo "Review changes with: git diff hosts.nix"
+  fi
+}
 
 cmd_build() {
   local dev=false hosts_arg=""
@@ -375,6 +455,7 @@ if [[ $# -lt 1 ]]; then
   echo "Commands:" >&2
   echo "  build  [--dev] [HOSTS]                      Build NixOS configurations" >&2
   echo "  update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy NixOS configurations" >&2
+  echo "  sync-host-keys                              Populate hostPublicKey in hosts.nix from live hosts" >&2
   echo "" >&2
   echo "HOSTS: Comma-separated list of host names (e.g. host1,host2). Defaults to current host." >&2
   echo "Note: Risky hosts should be placed last (e.g. workstation,ocean)." >&2
@@ -387,9 +468,10 @@ CMD="$1"; shift
 case "$CMD" in
   build)  cmd_build "$@" ;;
   update) cmd_update "$@" ;;
+  sync-host-keys) cmd_sync_host_keys "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: build, update" >&2
+    echo "Known commands: build, update, sync-host-keys" >&2
     exit 1
     ;;
 esac
