@@ -109,10 +109,10 @@ flowchart TB
 
 The system deploys two agents with complementary roles:
 
-| Agent | Role | Responsibility | Runs On |
-|-------|------|---------------|---------|
-| **Product agent** (CPO) | Business analysis, scoping | Press releases, milestones, user stories | VPS / headless server |
-| **Engineering agent** (CTO) | Implementation, delivery | Code, PRs, deployments, code review | Workstation with dev tooling |
+| Agent | Role | Responsibility |
+|-------|------|---------------|
+| **Product agent** (CPO) | Business analysis, scoping | Press releases, milestones, user stories |
+| **Engineering agent** (CTO) | Implementation, delivery | Code, PRs, deployments, code review |
 
 ### Artifact Handoff Chain
 
