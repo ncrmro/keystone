@@ -280,10 +280,10 @@ cmd_sync_host_keys() {
 }
 
 cmd_build() {
-  local dev=false hosts_arg=""
+  local hosts_arg=""
   while [[ $# -gt 0 ]]; do
     case $1 in
-      --dev) dev=true; shift ;;
+      --dev) shift ;;  # kept for backwards compat, no-op
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) hosts_arg="$1"; shift ;;
     esac
@@ -319,10 +319,10 @@ cmd_build() {
 }
 
 cmd_update() {
-  local dev=false mode="switch" hosts_arg="" pull=false lock=true
+  local mode="switch" hosts_arg="" pull=false lock=true
   while [[ $# -gt 0 ]]; do
     case $1 in
-      --dev) dev=true; lock=false; shift ;;
+      --dev) lock=false; shift ;;
       --boot) mode="boot"; shift ;;
       --pull) pull=true; shift ;;
       --lock) lock=true; shift ;;
@@ -397,14 +397,14 @@ cmd_update() {
     fi
   done
 
-  local SUDO_KEEPALIVE_PID=""
+  SUDO_KEEPALIVE_PID=""
   if [[ "$needs_sudo" == true ]]; then
     echo "Caching sudo credentials (needed for local deploy)..."
     sudo -v
     # Keepalive: refresh every 60 s so a long build doesn't expire the ticket.
     ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done ) &
     SUDO_KEEPALIVE_PID=$!
-    trap "kill $SUDO_KEEPALIVE_PID 2>/dev/null; trap - EXIT" EXIT
+    trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; trap - EXIT' EXIT
   fi
 
   # Always use local overrides when repos are present (--dev is now a no-op for builds)
