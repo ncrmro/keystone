@@ -501,8 +501,10 @@ in {
     # %U is a systemd unit specifier that expands to the service user's numeric
     # UID at runtime, giving us the correct /run/user/<uid> path without
     # needing to know the UID statically.
+    # mkForce overrides the rootful socket set by the gitea-actions-runner module
+    # when virtualisation.podman.enable = true.
     systemd.services.${runnerServiceName}.environment = {
-      DOCKER_HOST = "unix:///run/user/%U/podman/podman.sock";
+      DOCKER_HOST = mkForce "unix:///run/user/%U/podman/podman.sock";
     };
 
     # Token auto-provisioning: discovers the first admin user at runtime,
