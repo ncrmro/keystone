@@ -424,8 +424,9 @@ Both `task-loop.sh` and `scheduler.sh` are shell scripts in `modules/os/agents/s
 ### Pipeline Data Flow
 
 ```mermaid
-flowchart TD
+flowchart LR
     subgraph Prefetch["1. PRE-FETCH"]
+        direction TB
         proj_src["PROJECTS.yaml<br/>source commands"]
         email_builtin["Built-in: himalaya<br/>envelope list"]
         fetch_out["Source JSON files"]
@@ -434,59 +435,47 @@ flowchart TD
     end
 
     subgraph Ingest["2. INGEST (haiku)"]
+        direction TB
         ingest_dw["/deepwork task_loop ingest"]
         ingest_rule["Rule: do NOT assign<br/>workflows during ingest"]
         ingest_dw --- ingest_rule
     end
 
     subgraph HashCheck["3. HASH CHECK"]
-        hash["SHA256(TASKS.yaml + PROJECTS.yaml)"]
+        direction TB
+        hash["SHA256(TASKS + PROJECTS)"]
         skip{"Changed?"}
         hash --> skip
     end
 
     subgraph Prioritize["4. PRIORITIZE (haiku)"]
-        pri_dw["/deepwork task_loop prioritize"]
-        reorder["Reorder by<br/>PROJECTS.yaml priority"]
+        direction TB
+        reorder["Reorder by project priority"]
         assign_model["Assign model:<br/>haiku · sonnet · opus"]
         assign_wf["Assign workflow<br/>(decision tree)"]
-        coherence["Validate model-workflow<br/>coherence (workflow → min sonnet)"]
-        pri_dw --> reorder --> assign_model --> assign_wf --> coherence
+        coherence["Validate coherence<br/>(workflow → min sonnet)"]
+        reorder --> assign_model --> assign_wf --> coherence
     end
 
-    subgraph WorkflowTree["Workflow Decision Tree"]
-        direction LR
-        wf_existing["Existing workflow → preserve"]
-        wf_schedule["schedule source → skip"]
-        wf_cad["CAD keywords → cadeng/cadeng"]
-        wf_sweng["github-issue/pr · forgejo-issue<br/>repos + code keywords → sweng/sweng"]
-        wf_press["press release / working<br/>backwards → press_release/write"]
-        wf_none["No match → generic execution"]
-    end
+    subgraph Execute["5. EXECUTE LOOP"]
+        direction TB
+        check_deps["Check needs deps"]
+        dispatch{"workflow?"}
+        with_wf["claude -p<br/>'/deepwork ...'"]
+        without_wf["claude -p<br/>'Execute ...'"]
 
-    subgraph Execute["5. EXECUTE LOOP (per-task model)"]
-        check_deps["Check needs<br/>dependencies (yq+jq)"]
-        read_task["Read task<br/>model + workflow"]
-        dispatch{"workflow<br/>field?"}
-        with_wf["claude -p '/deepwork ...'"]
-        without_wf["claude -p 'Execute this task...'"]
-        log["Log to<br/>~/.local/state/agent-task-loop/"]
-        stop["Stop: max tasks · no pending · already-attempted"]
-
-        check_deps --> read_task --> dispatch
-        dispatch -->|"yes"| with_wf --> log
-        dispatch -->|"no"| without_wf --> log
-        log --> stop
+        check_deps --> dispatch
+        dispatch -->|"yes"| with_wf
+        dispatch -->|"no"| without_wf
     end
 
     tasks_yaml[("TASKS.yaml")]
 
     fetch_out --> Ingest
-    Ingest -->|"creates/updates tasks"| tasks_yaml
+    Ingest -->|"creates tasks"| tasks_yaml
     tasks_yaml --> HashCheck
-    skip -->|"no"| stop_early(("Skip run"))
+    skip -->|"no"| stop_early(("Skip"))
     skip -->|"yes"| Prioritize
-    assign_wf -.-> WorkflowTree
     Prioritize -->|"reorders + assigns"| tasks_yaml
     tasks_yaml --> Execute
     Execute -->|"updates status"| tasks_yaml
