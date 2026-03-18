@@ -18,6 +18,7 @@ FIND="@find@"
 SORT="@sort@"
 RM="@rm@"
 FLOCK="@flock@"
+BASH_BIN="@bashBin@"
 SHA256SUM="@sha256sum@"
 NOTES_DIR="@notesDir@"
 MAX_TASKS="@maxTasks@"
@@ -85,7 +86,7 @@ if [ -f PROJECTS.yaml ]; then
 
     if [ -n "$SOURCE_CMD" ] && [ "$SOURCE_CMD" != "null" ]; then
       log "  Fetching source: $SOURCE_NAME"
-      SOURCE_OUTPUT=$(bash -c "$SOURCE_CMD" 2>>"$LOG_FILE" || $ECHO "[]")
+      SOURCE_OUTPUT=$($BASH_BIN -c "$SOURCE_CMD" 2>>"$LOG_FILE" || $ECHO "[]")
       SOURCES_JSON=$($ECHO "$SOURCES_JSON" | $JQ --arg name "$SOURCE_NAME" --argjson data "$SOURCE_OUTPUT" \
         '. + [{"source": $name, "data": $data}]')
     fi

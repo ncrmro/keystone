@@ -33,6 +33,7 @@ let
       sort = "${pkgs.coreutils}/bin/sort";
       rm = "${pkgs.coreutils}/bin/rm";
       flock = "${pkgs.util-linux}/bin/flock";
+      bashBin = "${pkgs.bash}/bin/bash";
       sha256sum = "${pkgs.coreutils}/bin/sha256sum";
       notesDir = notesDir;
       inherit maxTasks;
