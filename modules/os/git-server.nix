@@ -119,12 +119,6 @@ in {
         default = true;
         description = "Enable Git LFS (Large File Storage) support";
       };
-
-      contentPath = mkOption {
-        type = types.path;
-        default = "${cfg.stateDir}/lfs";
-        description = "Directory for LFS objects";
-      };
     };
 
     mailer = {
@@ -190,6 +184,7 @@ in {
       enable = true;
       package = pkgs.forgejo;
       stateDir = cfg.stateDir;
+      lfs.enable = cfg.lfs.enable;
 
       settings = {
         server = {
@@ -199,7 +194,6 @@ in {
           SSH_PORT = cfg.sshPort;
           SSH_LISTEN_HOST = "0.0.0.0";
           START_SSH_SERVER = true;
-          LFS_START_SERVER = true;
         };
 
         database = {
@@ -230,11 +224,6 @@ in {
           FORMAT = "ssh";
           SIGNING_NAME = "Forgejo";
           SIGNING_EMAIL = "noreply@${cfg.domain}";
-        };
-
-        lfs = {
-          ENABLE = true;
-          CONTENT_PATH = cfg.lfs.contentPath;
         };
 
         mailer = mkIf cfg.mailer.enable {
