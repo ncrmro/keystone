@@ -16,6 +16,7 @@ COREUTILS="@coreutils@"
 GNUGREP="@gnugrep@"
 GNUSED="@gnused@"
 NIX="@nix@"
+ZELLIJ="@zellij@"
 
 if [ $# -lt 2 ]; then
   echo "Usage: agentctl <agent-name> <command> [args...]" >&2
@@ -28,7 +29,7 @@ if [ $# -lt 2 ]; then
   echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
   echo "  email             Show the agent's inbox (recent envelopes)" >&2
   echo "  shell             Open interactive shell as the agent (with SSH agent)" >&2
-  echo "  claude            Start interactive Claude session in agent notes directory" >&2
+  echo "  claude            Start interactive Claude session (supports --project)" >&2
   echo "  gemini            Start interactive Gemini session in agent notes directory" >&2
   echo "  codex             Start interactive Codex session in agent notes directory" >&2
   echo "  opencode          Start interactive OpenCode session in agent notes directory" >&2
@@ -38,6 +39,7 @@ if [ $# -lt 2 ]; then
   echo "" >&2
   echo "Flags:" >&2
   echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh (claude)" >&2
+  echo "  -p, --project <slug>   Run in project context with zellij session (claude)" >&2
   echo "" >&2
   echo "Examples:" >&2
   echo "  agentctl drago status agent-drago-task-loop" >&2
@@ -48,6 +50,8 @@ if [ $# -lt 2 ]; then
   echo "  agentctl drago shell" >&2
   echo "  agentctl drago claude" >&2
   echo "  agentctl drago claude -r code-review" >&2
+  echo "  agentctl drago claude --project nixos-config fix-auth" >&2
+  echo "  agentctl drago claude --project nixos-config              # list sessions" >&2
   echo "  agentctl drago gemini" >&2
   echo "  agentctl drago codex" >&2
   echo "  agentctl drago opencode" >&2
@@ -101,10 +105,12 @@ CMD="$1"; shift
 
 # Parse agentctl-level flags (consumed here, not passed to harness)
 ROLE=""
+PROJECT=""
 REMAINING_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -r|--role) ROLE="$2"; shift 2 ;;
+    -p|--project) PROJECT="$2"; shift 2 ;;
     *) REMAINING_ARGS+=("$1"); shift ;;
   esac
 done
@@ -126,10 +132,76 @@ case "$CMD" in
     exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && exec bash -l"
     ;;
   claude|gemini|codex|opencode)
+    # --- Project + zellij session wrapping (claude only) ---
+    if [ -n "$PROJECT" ] && [ "$CMD" = "claude" ]; then
+      # Session slug is the first positional argument
+      SESSION_SLUG="${1:-}"
+      if [ -z "$SESSION_SLUG" ]; then
+        echo "Usage: agentctl $AGENT_NAME claude --project <slug> <session-slug>" >&2
+        echo "" >&2
+        echo "Existing sessions for '$PROJECT':" >&2
+        "$ZELLIJ" list-sessions -n 2>/dev/null | "$GNUGREP"/bin/grep "^${PROJECT}-" || echo "  (none)" >&2
+        exit 1
+      fi
+      shift  # consume session slug
+
+      # Lookup project in PROJECTS.yaml
+      PROJECT_PATH=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
+        ".projects[] | select(.slug == \"$PROJECT\") | .path" "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null)
+      PROJECT_NAME=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
+        ".projects[] | select(.slug == \"$PROJECT\") | .name" "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null)
+      PROJECT_DESC=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
+        ".projects[] | select(.slug == \"$PROJECT\") | .description" "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null)
+
+      if [ -z "$PROJECT_PATH" ] || [ "$PROJECT_PATH" = "null" ]; then
+        echo "Error: project '$PROJECT' not found in PROJECTS.yaml" >&2
+        echo "" >&2
+        echo "Available projects:" >&2
+        sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
+          '.projects[].slug' "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null | "$GNUSED"/bin/sed 's/^/  /' >&2
+        exit 1
+      fi
+
+      # Validate project path exists
+      if ! sudo -u "agent-${AGENT_NAME}" "$HELPER" exec test -d "$PROJECT_PATH"; then
+        echo "Error: project path does not exist: $PROJECT_PATH" >&2
+        exit 1
+      fi
+
+      SESSION_NAME="${PROJECT}-${SESSION_SLUG}"
+
+      # Check if zellij session already exists → attach
+      if "$ZELLIJ" list-sessions -s -n 2>/dev/null | "$GNUGREP"/bin/grep -q "^${SESSION_NAME}$"; then
+        exec "$ZELLIJ" attach "$SESSION_NAME"
+      fi
+
+      # Create new zellij session, re-invoking self with env vars.
+      # Env vars carry project context through zellij but are consumed before
+      # sudo (no SETENV), so they're interpolated into the inner bash -c string.
+      exec "$ZELLIJ" -s "$SESSION_NAME" -- \
+        "$COREUTILS"/bin/env \
+            "_AGENTCTL_PROJECT_PATH=$PROJECT_PATH" \
+            "_AGENTCTL_PROJECT_NAME=$PROJECT_NAME" \
+            "_AGENTCTL_PROJECT_DESC=$PROJECT_DESC" \
+        agentctl "$AGENT_NAME" claude ${ROLE:+-r "$ROLE"} "$@"
+    fi
+
+    # Determine working directory and project context (from zellij re-entry)
+    WORK_DIR="$NOTES_DIR"
+    PROJECT_CONTEXT=""
+    if [ -n "${_AGENTCTL_PROJECT_PATH:-}" ]; then
+      WORK_DIR="$_AGENTCTL_PROJECT_PATH"
+      PROJECT_CONTEXT="
+# Project Context
+**Project:** ${_AGENTCTL_PROJECT_NAME}
+**Description:** ${_AGENTCTL_PROJECT_DESC}
+**Working Directory:** ${_AGENTCTL_PROJECT_PATH}"
+    fi
+
     # Run directly as the agent, entering devshell if available.
     # For sandboxed runs, use: agentctl <name> exec podman-agent claude
     exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -c '
-      cd "'"$NOTES_DIR"'"
+      cd "'"$WORK_DIR"'"
 
       # Resolve auto-approve flags per tool
       # CRITICAL: Claude gets --dangerously-skip-permissions only,
@@ -141,12 +213,35 @@ case "$CMD" in
         codex) TOOL_FLAGS="--full-auto" ;;
       esac
 
-      # Claude: compose system prompt from AGENTS.md + optional role
+      # Claude: compose system prompt from AGENTS.md + optional role + project context
       SP_FLAGS=()
       if [ "'"$CMD"'" = "claude" ]; then
         SP=""
-        if [ -f AGENTS.md ]; then
-          SP="$(cat AGENTS.md)"
+        # Always load agent identity from notes directory
+        NOTES_AGENTS_MD="'"$NOTES_DIR"'/AGENTS.md"
+        if [ -f "$NOTES_AGENTS_MD" ]; then
+          SP="$(cat "$NOTES_AGENTS_MD")"
+        fi
+
+        # If working in a project directory, also load project-local AGENTS.md
+        if [ "'"$WORK_DIR"'" != "'"$NOTES_DIR"'" ] && [ -f AGENTS.md ]; then
+          if [ -n "$SP" ]; then
+            SP="$SP
+
+$(cat AGENTS.md)"
+          else
+            SP="$(cat AGENTS.md)"
+          fi
+        fi
+
+        # Append project context
+        PROJECT_CTX="'"$PROJECT_CONTEXT"'"
+        if [ -n "$PROJECT_CTX" ]; then
+          if [ -n "$SP" ]; then
+            SP="$SP$PROJECT_CTX"
+          else
+            SP="$PROJECT_CTX"
+          fi
         fi
 
         ROLE="'"$ROLE"'"

@@ -286,6 +286,7 @@ projects:
     status: active                # REQUIRED: active|archived
     priority: 1                   # REQUIRED: numeric (list order = priority)
     updated: "2026-02-15"         # REQUIRED: last updated date
+    path: "/home/agent-drago/projects/project-name"  # MAY: working directory for agentctl --project
     repos:                        # MAY: associated repositories
       - "owner/repo-name"
 

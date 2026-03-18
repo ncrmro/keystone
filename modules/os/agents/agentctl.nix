@@ -123,6 +123,7 @@ in
         gnugrep = "${pkgs.gnugrep}";
         gnused = "${pkgs.gnused}";
         nix = "${pkgs.nix}";
+        zellij = "${pkgs.zellij}/bin/zellij";
       }));
 
       # Per-agent wrapper scripts: `drago claude` = `agentctl drago claude`
