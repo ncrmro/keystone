@@ -43,8 +43,8 @@
 #
 # Deployment
 #   MUST deploy hosts sequentially (not in parallel) to limit blast radius.
-#   MUST obtain sudo credentials before the build phase when a local host is targeted,
-#     so the user is not interrupted after a long build.
+#   MUST obtain sudo credentials before any other work (pull, lock, build) when a local
+#     host is targeted, so the user is not interrupted mid-run.
 #   SHOULD keep sudo credentials alive for the duration of the run.
 #
 # --dev mode
@@ -354,6 +354,31 @@ cmd_update() {
     return
   fi
 
+  # Step 1: Cache sudo credentials immediately — before any pull, lock, or build.
+  # Any update that reaches this point may deploy locally; prompt upfront so the
+  # user is not interrupted later.
+  local needs_sudo=false
+  local current_hostname
+  current_hostname=$(hostname)
+  for h in "${target_hosts[@]}"; do
+    local h_hostname
+    h_hostname=$(nix eval -f "$hosts_nix" "$h.hostname" --raw)
+    if [[ "$h_hostname" == "$current_hostname" ]]; then
+      needs_sudo=true
+      break
+    fi
+  done
+
+  SUDO_KEEPALIVE_PID=""
+  if [[ "$needs_sudo" == true ]]; then
+    echo "Caching sudo credentials (needed for local deploy)..."
+    sudo -v
+    # Keepalive: refresh every 60 s so a long pull/lock/build doesn't expire the ticket.
+    ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done ) &
+    SUDO_KEEPALIVE_PID=$!
+    trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; trap - EXIT' EXIT
+  fi
+
   # ── UPFRONT PHASE (skipped in --dev mode) ───────────────────────────────────
   if [[ "$lock" == true ]]; then
     # Step 1: Pull nixos-config so we operate on latest
@@ -381,30 +406,6 @@ cmd_update() {
       git -C "$repo_root" add flake.lock
       git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets"
     fi
-  fi
-
-  # Step 6: Cache sudo credentials upfront if any target is local
-  # This avoids a sudo prompt interrupting the user after a long build.
-  local needs_sudo=false
-  local current_hostname
-  current_hostname=$(hostname)
-  for h in "${target_hosts[@]}"; do
-    local h_hostname
-    h_hostname=$(nix eval -f "$hosts_nix" "$h.hostname" --raw)
-    if [[ "$h_hostname" == "$current_hostname" ]]; then
-      needs_sudo=true
-      break
-    fi
-  done
-
-  SUDO_KEEPALIVE_PID=""
-  if [[ "$needs_sudo" == true ]]; then
-    echo "Caching sudo credentials (needed for local deploy)..."
-    sudo -v
-    # Keepalive: refresh every 60 s so a long build doesn't expire the ticket.
-    ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done ) &
-    SUDO_KEEPALIVE_PID=$!
-    trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; trap - EXIT' EXIT
   fi
 
   # Always use local overrides when repos are present (--dev is now a no-op for builds)
