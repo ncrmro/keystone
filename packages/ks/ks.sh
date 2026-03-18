@@ -342,7 +342,11 @@ cmd_update() {
 
   # --- Handle locking/clean checks ---
   if [[ "$lock" == true ]]; then
-    # Pull if not already done
+    # Pull nixos-config itself first so we build from latest
+    echo "Pulling nixos-config..."
+    git -C "$repo_root" pull --ff-only
+
+    # Pull submodules if not already done via --pull
     if [[ "$pull" != true ]]; then
       pull_repo "$repo_root" keystone "$KEYSTONE_URL"
       pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
