@@ -17,6 +17,7 @@ in {
     ./shell.nix
     ./editor.nix
     ./ai.nix
+    ./deepwork.nix
     ./age-yubikey.nix
     ./devtools.nix
     ./mail.nix

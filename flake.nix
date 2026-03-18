@@ -228,6 +228,11 @@
         yazi = yazi-flake.packages.${final.system}.default;
         agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
         deepwork = deepwork-flake.packages.${final.system}.default;
+        # DeepWork library jobs — exposed as a standalone store path so modules
+        # can set DEEPWORK_ADDITIONAL_JOBS_FOLDERS without needing keystoneInputs.
+        deepwork-library-jobs = final.runCommand "deepwork-library-jobs" {} ''
+          cp -r ${deepwork-flake}/library/jobs $out
+        '';
         chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src {};
       };
       # Top-level overrides so programs.ghostty/yazi use flake versions
