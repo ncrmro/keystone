@@ -10,11 +10,11 @@ OS agents are non-interactive NixOS user accounts designed for autonomous LLM-dr
 ## Quick Start
 
 ```nix
-keystone.os.agents.drago = {
-  fullName = "Drago";
-  email = "drago@example.com";
-  ssh.publicKey = "ssh-ed25519 AAAAC3... agent-drago";
-  notes.repo = "ssh://forgejo@git.example.com:2222/drago/notes.git";
+keystone.os.agents.atlas = {
+  fullName = "Atlas";
+  email = "atlas@example.com";
+  ssh.publicKey = "ssh-ed25519 AAAAC3... agent-atlas";
+  notes.repo = "ssh://forgejo@git.example.com:2222/atlas/notes.git";
 };
 ```
 
@@ -252,16 +252,16 @@ The agent-space is the agent's primary working directory (`/home/agent-{name}/no
 ```markdown
 # Soul
 
-**Name:** Kumquat Drago
-**Goes by:** Drago
-**Email:** drago@example.com
+**Name:** Emerald Atlas
+**Goes by:** Atlas
+**Email:** atlas@example.com
 
 ## Accounts
 
 | Service | Host | Username | Auth Method | Credentials |
 |---------|------|----------|-------------|-------------|
-| GitHub  | github.com | kdrgo | OAuth device flow | `~/.config/gh/hosts.yml` |
-| Forgejo | git.example.com | drago | API token | fj keyfile |
+| GitHub  | github.com | atls | OAuth device flow | `~/.config/gh/hosts.yml` |
+| Forgejo | git.example.com | atlas | API token | fj keyfile |
 ```
 
 **TEAM.md** — Full roster of humans and agents:
@@ -273,14 +273,14 @@ The agent-space is the agent's primary working directory (`/home/agent-{name}/no
 
 | Name | Role | GitHub | Forgejo | Email |
 |------|------|--------|---------|-------|
-| Nicholas Romero | CEO | ncrmro | ncrmro | nicholas.romero@example.com |
+| Alex Morgan | CEO | amorgan | amorgan | alex.morgan@example.com |
 
 ## Agents
 
 | Name | Role | GitHub | Forgejo | Email |
 |------|------|--------|---------|-------|
-| Luce | CPO | luce-ncrmro | luce | luce@example.com |
-| Drago | CTO | kdrgo | drago | drago@example.com |
+| Nova | CPO | nova-acme | nova | nova@example.com |
+| Atlas | CTO | atls | atlas | atlas@example.com |
 ```
 
 **SERVICES.md** — Intranet services accessible via Tailscale:
@@ -299,8 +299,8 @@ The agent-space is the agent's primary working directory (`/home/agent-{name}/no
 ```markdown
 # Human
 
-**Name:** Nicholas Romero
-**Email:** nicholas.romero@example.com
+**Name:** Alex Morgan
+**Email:** alex.morgan@example.com
 ```
 
 ## Shared Agents Library (`.agents/` submodule)
