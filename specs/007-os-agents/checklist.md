@@ -114,9 +114,9 @@ All 15 FRs use RFC 2119 keywords (MUST, MUST NOT, SHALL, SHOULD, MAY) in upperca
 
 | File | Location | Marker | Context |
 |------|----------|--------|---------|
-| spec.md | Open Questions §1-3 | Open Question | Resolved in plan.md (labwc, wayvnc, Chrome deferred) |
-| spec.md | Open Questions §4 | Open Question | Agent-to-agent communication — future scope |
-| spec.md | Open Questions §5 | Open Question | Lifecycle CLI — future scope |
+| requirements.md | Open Questions §1-3 | Open Question | Resolved in plan.md (labwc, wayvnc, Chrome deferred) |
+| requirements.md | Open Questions §4 | Open Question | Agent-to-agent communication — future scope |
+| requirements.md | Open Questions §5 | Open Question | Lifecycle CLI — future scope |
 
 No `[TBD]`, `[TODO]`, `???`, or empty sections found. No stale references to "systemd MCP service" remain in any file.
 
@@ -141,6 +141,6 @@ No gold-plating detected. The human-accessible config fragments are explicitly r
 ## Recommendations
 
 1. **NFR-004**: Same as prior — add resource limit wiring to Task 1 acceptance criteria.
-2. **Open Questions 1-3**: Optionally close in spec.md by documenting decisions inline. Not blocking.
+2. **Open Questions 1-3**: Optionally close in requirements.md by documenting decisions inline. Not blocking.
 3. **Open Questions 4-5**: Leave as-is — future scope.
 4. **Overlay derivation path**: Task 4 mentions "Keystone overlay derivation" without specifying the exact file path. Implementer should decide placement (e.g., `overlays/chrome-devtools-mcp/default.nix`). Minor — does not block implementation.

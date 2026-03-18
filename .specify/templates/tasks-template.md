@@ -6,7 +6,10 @@ description: "Task list template for feature implementation"
 # Tasks: [FEATURE NAME]
 
 **Input**: Design documents from `/specs/[###-feature-name]/`
-**Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
+**Prerequisites**: plan.md (required), requirements.md (required for user stories), docs/research/[###-feature-name]/
+
+**GitHub Issues**: Run `.specify/scripts/bash/sync-issues.sh specs/[###-feature-name]/tasks.md` to create
+GitHub issues for all uncompleted tasks. Re-run anytime to sync new incomplete tasks.
 
 **Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
 
@@ -30,10 +33,9 @@ description: "Task list template for feature implementation"
   IMPORTANT: The tasks below are SAMPLE TASKS for illustration purposes only.
   
   The /speckit.tasks command MUST replace these with actual tasks based on:
-  - User stories from spec.md (with their priorities P1, P2, P3...)
+  - User stories from requirements.md (with their priorities P1, P2, P3...)
   - Feature requirements from plan.md
-  - Entities from data-model.md
-  - Endpoints from contracts/
+  - Research from docs/research/[###-feature-name]/
   
   Tasks MUST be organized by user story so each story can be:
   - Implemented independently

@@ -39,7 +39,7 @@ Given that feature description, do this:
    - You must only ever run this script once
    - The JSON is provided in the terminal as output - always refer to it to get the actual content you're looking for
 
-3. Load `.specify/templates/spec-template.md` to understand required sections.
+3. Load `.specify/templates/requirements-template.md` to understand required sections.
 
 4. Follow this execution flow:
 
@@ -78,7 +78,7 @@ Given that feature description, do this:
       
       **Purpose**: Validate specification completeness and quality before proceeding to planning
       **Created**: [DATE]
-      **Feature**: [Link to spec.md]
+      **Feature**: [Link to requirements.md]
       
       ## Content Quality
       

@@ -19,7 +19,7 @@
 | FR-004 | Verified Boot Chain | ❌ No UEFI | ✅ Secure Boot |
 | FR-005 | Copy-on-Write Storage | ❌ | ✅ ZFS pool |
 
-See: `specs/001-keystone-os/spec.md` for full requirements
+See: `specs/001-keystone-os/requirements.md` for full requirements
 
 ---
 

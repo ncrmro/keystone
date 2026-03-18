@@ -59,7 +59,7 @@ The implementation follows a phased approach, starting with a spike to validate 
 keystone/
 ├── specs/
 │   └── 006-clusters/
-│       ├── spec.md                         # Functional requirements
+│       ├── requirements.md                         # Functional requirements
 │       ├── PLAN.md                         # This file
 │       ├── tasks.md                        # Phased task breakdown
 │       └── research.*.md                   # Research documents

@@ -1,7 +1,7 @@
 # Implementation Plan: [FEATURE]
 
 **Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+**Input**: Feature requirements from `/specs/[###-feature-name]/requirements.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
@@ -39,12 +39,12 @@
 
 ```text
 specs/[###-feature]/
+├── requirements.md      # User stories + RFC 2119 requirements (/speckit.specify command output)
 ├── plan.md              # This file (/speckit.plan command output)
-├── research.md          # Phase 0 output (/speckit.plan command)
-├── data-model.md        # Phase 1 output (/speckit.plan command)
-├── quickstart.md        # Phase 1 output (/speckit.plan command)
-├── contracts/           # Phase 1 output (/speckit.plan command)
-└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
+└── tasks.md             # Implementation tasks with GitHub issue tracking (/speckit.tasks command)
+
+docs/research/[###-feature]/
+└── *.md                 # Research documents (/speckit.plan Phase 0 output)
 ```
 
 ### Source Code (repository root)
