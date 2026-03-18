@@ -8,13 +8,16 @@
 # - User authentication and access control
 #
 # Forgejo Actions runner is supported via keystone.os.gitServer.runner.
-# Enable with runner.tokenFile (manual token) or runner.autoProvision.enable
-# (auto-discovers the first admin user at runtime to fetch a registration token).
+# Enable with runner.enable = true — the token is auto-provisioned at runtime
+# by discovering the first admin user and fetching a registration token from
+# the Forgejo API. A rootless podman socket is set up for the runner user so
+# actions run in rootless containers via DOCKER_HOST.
 #
 {
   lib,
   config,
   pkgs,
+  utils,
   ...
 }:
 with lib; let
@@ -26,6 +29,9 @@ with lib; let
   # which is typically a different host from the agent's designated host.
   provisionAgents = filterAttrs (_: a: a.git.provision) config.keystone.os.agents;
   hasProvisionAgents = provisionAgents != { };
+
+  # Systemd service name for the gitea-actions-runner instance
+  runnerServiceName = "gitea-runner-${utils.escapeSystemdPath cfg.runner.name}";
 
   # Get an agent's SSH public key from the keystone.keys registry
   agentPublicKey = name: let
@@ -168,44 +174,23 @@ in {
     };
 
     runner = {
-      enable = mkEnableOption "Forgejo Actions runner";
+      enable = mkEnableOption ''
+        Forgejo Actions runner.
+        The registration token is provisioned automatically at runtime by
+        discovering the first admin user. Labels and container runtime are
+        managed automatically — rootless podman is enabled for the runner user.
+
+        Usage:
+          keystone.os.gitServer = {
+            enable = true;
+            runner.enable = true;
+          };
+      '';
 
       name = mkOption {
         type = types.str;
         default = config.networking.hostName;
         description = "Runner name shown in Forgejo UI";
-      };
-
-      tokenFile = mkOption {
-        type = types.nullOr types.path;
-        default = null;
-        example = "/run/agenix/forgejo-runner-token";
-        description = ''
-          Path to a file containing the runner registration token.
-          Mutually exclusive with runner.autoProvision.enable.
-        '';
-      };
-
-      autoProvision = {
-        enable = mkEnableOption ''
-          automatic runner token provisioning via Forgejo admin API.
-          Auto-discovers the first admin user at runtime — no adminUser config needed.
-
-          Usage:
-            keystone.os.gitServer = {
-              enable = true;
-              runner = {
-                enable = true;
-                autoProvision.enable = true;
-              };
-            };
-        '';
-      };
-
-      labels = mkOption {
-        type = types.listOf types.str;
-        default = [ "native:host" ];
-        description = "Runner labels (execution environments)";
       };
     };
   };
@@ -474,32 +459,71 @@ in {
       }
     ) provisionAgents);
   }
-  {
-    # Runner assertions: exactly one of tokenFile or autoProvision.enable must be set
-    # when runner.enable is true.
-    assertions = mkIf cfg.runner.enable [
-      {
-        assertion = cfg.runner.tokenFile != null || cfg.runner.autoProvision.enable;
-        message = "keystone.os.gitServer.runner: either runner.tokenFile or runner.autoProvision.enable must be set when runner.enable = true";
-      }
-      {
-        assertion = !(cfg.runner.tokenFile != null && cfg.runner.autoProvision.enable);
-        message = "keystone.os.gitServer.runner: runner.tokenFile and runner.autoProvision.enable are mutually exclusive";
-      }
+  (mkIf cfg.runner.enable {
+    # Rootless podman for the runner user.
+    # The gitea-actions-runner module uses DynamicUser=true with User="gitea-runner".
+    # Declaring a static user with the same name causes systemd to reuse it
+    # (per the DynamicUser docs), giving us a stable user we can set up linger for.
+    virtualisation.podman.enable = true;
+
+    users.users.gitea-runner = {
+      isSystemUser = true;
+      group = "gitea-runner";
+      home = "/var/lib/gitea-runner";
+    };
+    users.groups.gitea-runner = {};
+
+    # Linger keeps the gitea-runner user session alive across boots so that
+    # user-level systemd units (including podman.socket) start without login.
+    systemd.tmpfiles.rules = [
+      "f /var/lib/systemd/linger/gitea-runner 0644 root root -"
     ];
 
-    # Auto-provision service: discovers admin user at runtime and fetches a
-    # short-lived registration token, then writes it to a state file consumed
-    # by the forgejo-runner service.
+    # Start the rootless podman socket for the runner user before the runner
+    # starts. Uses `systemctl --user -M gitea-runner@` to talk to the user
+    # manager that linger keeps alive, matching the user instruction:
+    #   systemctl --user enable --now podman.socket
+    systemd.services."forgejo-runner-podman-socket" = {
+      description = "Start rootless podman socket for Forgejo runner";
+      wantedBy = [ "multi-user.target" ];
+      before = [ "${runnerServiceName}.service" ];
+      after = [ "systemd-user-sessions.service" ];
+      path = [ pkgs.systemd ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        # Wait for the gitea-runner user manager to be ready (linger starts it
+        # asynchronously at boot). Retry for up to 30 s.
+        for i in $(seq 1 30); do
+          systemctl --user -M gitea-runner@ is-system-running 2>/dev/null && break || true
+          sleep 1
+        done
+        systemctl --user -M gitea-runner@ enable --now podman.socket
+      '';
+    };
+
+    # Point the runner at the rootless podman socket.
+    # %U is a systemd unit specifier that expands to the service user's numeric
+    # UID at runtime, giving us the correct /run/user/<uid> path without
+    # needing to know the UID statically.
+    systemd.services.${runnerServiceName}.environment = {
+      DOCKER_HOST = "unix:///run/user/%U/podman/podman.sock";
+    };
+
+    # Token auto-provisioning: discovers the first admin user at runtime,
+    # generates a short-lived write:admin token, fetches the runner
+    # registration token, then deletes the temp token.
     #
-    # SECURITY: The generated token is scoped to write:admin and is deleted
-    # immediately after the runner token is extracted. The runner token file
-    # is written to a root-owned path under /var/lib/forgejo-runner.
-    systemd.services."provision-runner-token-${cfg.runner.name}" = mkIf cfg.runner.autoProvision.enable {
+    # SECURITY: The temp token is scoped to write:admin and deleted on exit.
+    # The TOKEN env-file is written to a root-owned path under
+    # /var/lib/forgejo-runner and read by the runner via EnvironmentFile=.
+    systemd.services."provision-runner-token-${cfg.runner.name}" = {
       description = "Provision Forgejo Actions runner registration token for ${cfg.runner.name}";
       after = [ "forgejo.service" ];
       requires = [ "forgejo.service" ];
-      before = [ "forgejo-runner.service" ];
+      before = [ "${runnerServiceName}.service" ];
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
@@ -516,7 +540,7 @@ in {
 
         TOKEN_FILE="/var/lib/forgejo-runner/runner-token"
 
-        # Skip if token already provisioned
+        # Idempotent: skip if token env-file already exists
         if [ -f "$TOKEN_FILE" ]; then
           echo "provision-runner-token: runner token already exists, skipping"
           exit 0
@@ -526,8 +550,7 @@ in {
         API="http://127.0.0.1:${toString cfg.httpPort}/api/v1"
 
         # Auto-discover the first Forgejo admin user.
-        # --admin flag filters the list to admin accounts only (see forgejo admin user list --help).
-        # NR==2 skips the header row; $2 is the username column.
+        # --admin filters to admin accounts only; NR==2 skips the header row.
         ADMIN_USER=$($FORGEJO_CMD user list --admin 2>/dev/null | awk 'NR==2{print $2}')
 
         if [ -z "$ADMIN_USER" ]; then
@@ -537,7 +560,6 @@ in {
 
         echo "provision-runner-token: using admin user '$ADMIN_USER'"
 
-        # Generate a short-lived admin token to call the runner registration API
         TEMP_TOKEN_NAME="provision-runner-$(date +%s)"
         ADMIN_TOKEN=$($FORGEJO_CMD user generate-access-token \
           --username "$ADMIN_USER" \
@@ -552,14 +574,13 @@ in {
 
         AUTH="Authorization: token $ADMIN_TOKEN"
 
-        # Always delete the short-lived admin token on exit
+        # Delete the short-lived admin token on exit (success or failure)
         cleanup_token() {
           curl -sf -X DELETE -H "$AUTH" \
             "$API/users/$ADMIN_USER/tokens/$TEMP_TOKEN_NAME" || true
         }
         trap cleanup_token EXIT
 
-        # Fetch a runner registration token from the Forgejo API
         RUNNER_TOKEN=$(curl -sf -H "$AUTH" \
           -X POST "$API/admin/runners/registration-token" \
           | jq -r '.token')
@@ -569,22 +590,24 @@ in {
           exit 1
         fi
 
-        # Write to state file (picked up by forgejo-runner service)
-        echo -n "$RUNNER_TOKEN" > "$TOKEN_FILE"
+        # Write as systemd EnvironmentFile (KEY=VALUE format) so the runner
+        # service can load it via EnvironmentFile=
+        echo "TOKEN=$RUNNER_TOKEN" > "$TOKEN_FILE"
         chmod 0600 "$TOKEN_FILE"
-        echo "provision-runner-token: runner token written to $TOKEN_FILE"
+        echo "provision-runner-token: token written to $TOKEN_FILE"
       '';
     };
 
-    # Forgejo Actions runner service
-    services.gitea-actions-runner.instances.${cfg.runner.name} = mkIf cfg.runner.enable {
+    # Forgejo Actions runner — labels left empty so act_runner uses its own
+    # upstream defaults; DOCKER_HOST above redirects container pulls through
+    # the rootless podman socket.
+    services.gitea-actions-runner.instances.${cfg.runner.name} = {
       enable = true;
       name = cfg.runner.name;
       url = "http://127.0.0.1:${toString cfg.httpPort}";
-      labels = cfg.runner.labels;
-      tokenFile = if cfg.runner.tokenFile != null
-        then cfg.runner.tokenFile
-        else "/var/lib/forgejo-runner/runner-token";
+      labels = [];
+      tokenFile = "/var/lib/forgejo-runner/runner-token";
     };
-  }]);
+  })
+]);
 }
