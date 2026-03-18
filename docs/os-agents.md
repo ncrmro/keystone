@@ -24,17 +24,7 @@ keystone.os.agents.atlas = {
 flowchart LR
     subgraph NixOS["NixOS Host"]
         direction TB
-        subgraph Provisioning["keystone.os.agents.{name}"]
-            direction TB
-            base["base.nix — User + Home + Groups"]
-            ssh["ssh.nix — SSH Agent + Git Signing"]
-            desktop["desktop.nix — labwc + wayvnc"]
-            chrome["chrome.nix — Chromium + DevTools"]
-            mail["mail-client.nix — himalaya + Stalwart"]
-            hm["home-manager.nix — Terminal Environment"]
-            agentctl["agentctl.nix — CLI + MCP Config"]
-            dbus["dbus.nix — D-Bus Socket Race Fix"]
-        end
+        Provisioning["keystone.os.agents.{name}<br/>base · ssh · desktop · chrome<br/>mail-client · home-manager<br/>agentctl · dbus"]
 
         subgraph Timers["Systemd User Timers → Services"]
             direction TB
