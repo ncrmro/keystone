@@ -17,6 +17,7 @@ GNUGREP="@gnugrep@"
 GNUSED="@gnused@"
 NIX="@nix@"
 ZELLIJ="@zellij@"
+OLLAMA_DEFAULT_MODEL="@ollamaDefaultModel@"
 
 if [ $# -lt 2 ]; then
   echo "Usage: agentctl <agent-name> <command> [args...]" >&2
@@ -41,6 +42,7 @@ if [ $# -lt 2 ]; then
   echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh" >&2
   echo "  --roles <role1,...>    Comma-separated extra roles appended after mode roles" >&2
   echo "  -p, --project <slug>   Run in project context with zellij session" >&2
+  echo "  --local [model]        Use Ollama instead of cloud API (optional model name)" >&2
   echo "" >&2
   echo "Examples:" >&2
   echo "  agentctl drago status agent-drago-task-loop" >&2
@@ -114,12 +116,23 @@ CMD="$1"; shift
 ROLE=""
 EXTRA_ROLES=""
 PROJECT=""
+USE_LOCAL=false
+LOCAL_MODEL=""
 REMAINING_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -r|--role) ROLE="$2"; shift 2 ;;
     --roles) EXTRA_ROLES="$2"; shift 2 ;;
     -p|--project) PROJECT="$2"; shift 2 ;;
+    --local)
+      USE_LOCAL=true
+      # Optional next arg: model name (consumed only if it doesn't look like a flag)
+      if [[ $# -gt 1 && "${2:-}" != -* && -n "${2:-}" ]]; then
+        LOCAL_MODEL="$2"; shift 2
+      else
+        shift
+      fi
+      ;;
     *) REMAINING_ARGS+=("$1"); shift ;;
   esac
 done
@@ -187,12 +200,22 @@ case "$CMD" in
       # Create new zellij session, re-invoking self with env vars.
       # Env vars carry project context through zellij but are consumed before
       # sudo (no SETENV), so they're interpolated into the inner bash -c string.
+      # Build local model args for re-invocation
+      LOCAL_REINVOKE_ARGS=()
+      if [ "$USE_LOCAL" = "true" ]; then
+        LOCAL_REINVOKE_ARGS+=("--local")
+        if [ -n "$LOCAL_MODEL" ]; then
+          LOCAL_REINVOKE_ARGS+=("$LOCAL_MODEL")
+        fi
+      fi
+
       exec "$ZELLIJ" -s "$SESSION_NAME" -- \
         "$COREUTILS"/bin/env \
             "_AGENTCTL_PROJECT_PATH=$PROJECT_PATH" \
             "_AGENTCTL_PROJECT_NAME=$PROJECT_NAME" \
             "_AGENTCTL_PROJECT_DESC=$PROJECT_DESC" \
-        agentctl "$AGENT_NAME" "$CMD" ${ROLE:+-r "$ROLE"} ${EXTRA_ROLES:+--roles "$EXTRA_ROLES"} "$@"
+        agentctl "$AGENT_NAME" "$CMD" ${ROLE:+-r "$ROLE"} ${EXTRA_ROLES:+--roles "$EXTRA_ROLES"} \
+            "${LOCAL_REINVOKE_ARGS[@]}" "$@"
     fi
 
     # Determine working directory and project context (from zellij re-entry)
@@ -205,6 +228,14 @@ case "$CMD" in
 **Project:** ${_AGENTCTL_PROJECT_NAME}
 **Description:** ${_AGENTCTL_PROJECT_DESC}
 **Working Directory:** ${_AGENTCTL_PROJECT_PATH}"
+    fi
+
+    # Validate ollama is on PATH before descending into the agent context
+    if [ "$USE_LOCAL" = "true" ]; then
+      if ! command -v ollama >/dev/null 2>&1; then
+        echo "Error: ollama is not on PATH (required by --local)" >&2
+        exit 1
+      fi
     fi
 
     # Run directly as the agent, entering devshell if available.
@@ -296,6 +327,23 @@ $ROLE_PROMPT"
             # opencode reads AGENTS.md natively from the working directory
             ;;
         esac
+      fi
+
+      # Local model execution via Ollama (short-circuits cloud tool launch)
+      USE_LOCAL="'"$USE_LOCAL"'"
+      LOCAL_MODEL="'"$LOCAL_MODEL"'"
+      OLLAMA_DEFAULT_MODEL="'"$OLLAMA_DEFAULT_MODEL"'"
+      if [ "$USE_LOCAL" = "true" ]; then
+        MODEL="${LOCAL_MODEL:-$OLLAMA_DEFAULT_MODEL}"
+        if [ -z "$MODEL" ]; then
+          echo "Error: --local requires a model name or a configured default (keystone.os.agents.defaultOllamaModel)" >&2
+          exit 1
+        fi
+        OLLAMA_ARGS=("run" "$MODEL")
+        if [ -n "$SP" ]; then
+          OLLAMA_ARGS+=("--system" "$SP")
+        fi
+        exec ollama "${OLLAMA_ARGS[@]}" "$@"
       fi
 
       if [ -f flake.nix ]; then

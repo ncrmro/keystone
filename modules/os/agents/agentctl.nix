@@ -13,6 +13,17 @@ let
   inherit (agentsLib) globalAgentVncPort agentSvcHelper;
 in
 {
+  options.keystone.os.agents.defaultOllamaModel = mkOption {
+    type = types.nullOr types.str;
+    default = null;
+    description = ''
+      Default Ollama model for the --local flag in agentctl.
+      Used when --local is passed without an explicit model name.
+      Example: "qwen3:32b".
+    '';
+    example = "qwen3:32b";
+  };
+
   config = mkIf (osCfg.enable && cfg != { }) {
     environment.systemPackages = let
       # Nix-generated static lookup: agent name -> helper store path
@@ -124,6 +135,9 @@ in
         gnused = "${pkgs.gnused}";
         nix = "${pkgs.nix}";
         zellij = "${pkgs.zellij}/bin/zellij";
+        ollamaDefaultModel = lib.optionalString
+          (config.keystone.os.agents.defaultOllamaModel != null)
+          config.keystone.os.agents.defaultOllamaModel;
       }));
 
       # Per-agent wrapper scripts: `drago claude` = `agentctl drago claude`
