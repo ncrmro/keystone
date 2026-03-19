@@ -65,6 +65,9 @@ in {
         # tea issue list). forgejo-cli focuses on admin/auth; tea covers the daily workflow.
         pkgs.tea
         pkgs.keystone.fetch-forgejo-sources
+        # forgejo-project: project board management via web routes (no REST API exists).
+        # Uses session cookie auth; login once with `forgejo-project login --password-cmd ...`
+        pkgs.keystone.forgejo-project
       ];
     }
 
