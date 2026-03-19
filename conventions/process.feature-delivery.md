@@ -41,8 +41,8 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 ## Review and Merge
 
 21. Appropriate reviewers MUST be assigned before marking the PR ready for review.
-22. On Forgejo, the repo owner MUST be assigned as reviewer per `tool.forgejo`; on GitHub, Copilot SHOULD be requested per `process.copilot-agent`.
-23. Human reviewers SHOULD be assigned for public APIs, security-sensitive, or architectural changes.
+22. Reviewers MUST be assigned per the ownership matrix in `process.code-review-ownership`. On both GitHub and Forgejo, CODEOWNERS handles automatic reviewer assignment when a PR is created or undrafted.
+23. Copilot SHOULD also be requested as a supplementary reviewer per `process.copilot-agent`.
 24. Review feedback MUST be addressed per `process.copilot-agent` conversation resolution rules (fix or explain every comment).
 25. PRs MUST be squash-merged per `process.pull-request`.
 
