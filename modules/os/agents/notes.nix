@@ -18,10 +18,12 @@ let
     let
       notesDir = agentCfg.notes.path;
       maxTasks = agentCfg.notes.taskLoop.maxTasks;
+      githubUsername = if agentCfg.github.username != null then agentCfg.github.username else "";
+      forgejoUsername = if agentCfg.forgejo.username != null then agentCfg.forgejo.username else "";
     in
     pkgs.replaceVars ./scripts/task-loop.sh {
       notesDir = notesDir;
-      inherit maxTasks;
+      inherit maxTasks githubUsername forgejoUsername;
       agentName = name;
     };
 
