@@ -1,56 +1,92 @@
 #!/usr/bin/env bash
-# Fetch GitHub issues, PRs requesting review, PR review comments, and recent
-# issue comments for an agent.
-# Outputs a single JSON object with four keys: github-issues, github-prs,
-# github-pr-reviews, github-issue-comments.
-# Usage: fetch-github-sources <agent-username>
+# Fetch GitHub activity for an agent via the Notifications API.
+# Uses notifications as the discovery layer — one API call to find all relevant
+# issues and PRs, then targeted follow-ups for details.
+# Output: {"github-issues": [...], "github-prs": [...], "github-pr-reviews": [...], "github-issue-comments": [...]}
 set -euo pipefail
 
 AGENT_USERNAME="${1:?Usage: fetch-github-sources <agent-username>}"
-
 TMPDIR_WORK=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 
-echo "[]" > "$TMPDIR_WORK/issues.json"
-echo "[]" > "$TMPDIR_WORK/prs.json"
-echo "[]" > "$TMPDIR_WORK/reviews.json"
+for f in issues prs reviews issue_comments; do echo "[]" > "$TMPDIR_WORK/$f.json"; done
 
-# Issues assigned to the agent
-gh search issues --assignee "$AGENT_USERNAME" --state open --json repository,number,title,url,assignees,labels,createdAt > "$TMPDIR_WORK/issues_raw.json" || echo "[]" > "$TMPDIR_WORK/issues_raw.json"
-jq '[.[] | {repo: .repository.nameWithOwner, number: .number, title: .title, url: .url, assignees: [.assignees[].login], labels: [(.labels // [])[] | .name], created_at: .createdAt}]' "$TMPDIR_WORK/issues_raw.json" > "$TMPDIR_WORK/issues.json"
+acc_append() {
+  local file="$1" item="$2"
+  jq --argjson item "$item" '. + [$item]' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+}
 
-# PRs requesting review from the agent
-gh search prs --review-requested "$AGENT_USERNAME" --state open --json repository,number,title,url,author,createdAt > "$TMPDIR_WORK/prs_raw.json" || echo "[]" > "$TMPDIR_WORK/prs_raw.json"
-jq '[.[] | {repo: .repository.nameWithOwner, number: .number, title: .title, url: .url, author: .author.login, created_at: .createdAt}]' "$TMPDIR_WORK/prs_raw.json" > "$TMPDIR_WORK/prs.json"
+# ── Phase 1: Discover via notifications (single API call) ───────────
+gh api '/notifications?participating=true&all=true&per_page=100' \
+  > "$TMPDIR_WORK/raw.json" 2>/dev/null || echo "[]" > "$TMPDIR_WORK/raw.json"
 
-# PR reviews (comments on PRs authored by agent, requesting changes or commenting)
-gh search prs --author "$AGENT_USERNAME" --state open --json repository,number,title,url > "$TMPDIR_WORK/authored_prs.json" || echo "[]" > "$TMPDIR_WORK/authored_prs.json"
+# Deduplicate by subject URL, keep most recently updated per subject
+jq '[.[] | select(.subject.type == "Issue" or .subject.type == "PullRequest")]
+  | sort_by(.updated_at) | reverse | unique_by(.subject.url)' \
+  "$TMPDIR_WORK/raw.json" > "$TMPDIR_WORK/notifications.json"
 
-for row in $(jq -c '.[]' "$TMPDIR_WORK/authored_prs.json"); do
-  repo=$(echo "$row" | jq -r '.repository.nameWithOwner')
-  pr_number=$(echo "$row" | jq -r '.number')
-  pr_title=$(echo "$row" | jq -r '.title')
-  pr_url=$(echo "$row" | jq -r '.url')
-  
-  reviews_raw=$(gh api repos/"$repo"/pulls/"$pr_number"/reviews 2>/dev/null || echo "[]")
-  
-  if [ "$reviews_raw" = "[]" ] || [ -z "$reviews_raw" ]; then
-    continue
+# ── Phase 2: Issues ─────────────────────────────────────────────────
+while IFS= read -r row; do
+  subject_url=$(echo "$row" | jq -r '.subject.url')
+  comment_url=$(echo "$row" | jq -r '.subject.latest_comment_url')
+  repo=$(echo "$row" | jq -r '.repository.full_name')
+
+  # Single API call for both state check and field extraction
+  issue_raw=$(gh api "$subject_url" 2>/dev/null) || continue
+  state=$(echo "$issue_raw" | jq -r '.state')
+  if [ "$state" != "open" ]; then continue; fi
+
+  issue=$(echo "$issue_raw" | jq --arg repo "$repo" '{
+    repo: $repo, number: .number, title: .title, url: .html_url,
+    assignees: [.assignees[].login], labels: [(.labels // [])[] | .name],
+    created_at: .created_at}')
+  acc_append "$TMPDIR_WORK/issues.json" "$issue"
+
+  # Fetch latest comment if present
+  if [ "$comment_url" != "null" ] && [ -n "$comment_url" ]; then
+    number=$(echo "$issue" | jq '.number')
+    comment=$(gh api "$comment_url" --jq '{
+      comment_id: .id, author: .user.login, body: .body, created_at: .created_at}' 2>/dev/null) || continue
+    comment=$(echo "$comment" | jq --arg repo "$repo" --argjson number "$number" \
+      '. + {repo: $repo, issue_number: $number}')
+    acc_append "$TMPDIR_WORK/issue_comments.json" "$comment"
   fi
+done < <(jq -c '.[] | select(.subject.type == "Issue")' "$TMPDIR_WORK/notifications.json")
 
+# ── Phase 3: PRs requesting review ──────────────────────────────────
+while IFS= read -r row; do
+  subject_url=$(echo "$row" | jq -r '.subject.url')
+  repo=$(echo "$row" | jq -r '.repository.full_name')
+
+  pr=$(gh api "$subject_url" --jq '{
+    number: .number, title: .title, url: .html_url,
+    author: .user.login, created_at: .created_at}' 2>/dev/null) || continue
+  pr=$(echo "$pr" | jq --arg repo "$repo" '. + {repo: $repo}')
+  acc_append "$TMPDIR_WORK/prs.json" "$pr"
+done < <(jq -c '.[] | select(.subject.type == "PullRequest") | select(.reason == "review_requested")' "$TMPDIR_WORK/notifications.json")
+
+# ── Phase 4: Reviews on agent-authored PRs ───────────────────────────
+while IFS= read -r row; do
+  subject_url=$(echo "$row" | jq -r '.subject.url')
+  repo=$(echo "$row" | jq -r '.repository.full_name')
+
+  pr_data=$(gh api "$subject_url" --jq '{number: .number, title: .title, html_url: .html_url}' 2>/dev/null) || continue
+  pr_number=$(echo "$pr_data" | jq -r '.number')
+  pr_title=$(echo "$pr_data" | jq -r '.title')
+  pr_url=$(echo "$pr_data" | jq -r '.html_url')
+
+  reviews_raw=$(gh api "repos/$repo/pulls/$pr_number/reviews" 2>/dev/null || echo "[]")
   relevant=$(echo "$reviews_raw" | jq --arg agent "$AGENT_USERNAME" \
     '[.[] | select(.user.login != $agent) | select(.state == "CHANGES_REQUESTED" or .state == "COMMENTED") | {id: .id, reviewer: .user.login, state: .state}]')
-  
-  if [ "$relevant" = "[]" ]; then
-    continue
-  fi
+
+  if [ "$relevant" = "[]" ]; then continue; fi
 
   for review_idx in $(echo "$relevant" | jq -r 'keys[]'); do
     review_id=$(echo "$relevant" | jq -r ".[$review_idx].id")
     reviewer=$(echo "$relevant" | jq -r ".[$review_idx].reviewer")
     review_state=$(echo "$relevant" | jq -r ".[$review_idx].state")
 
-    comments_raw=$(gh api repos/"$repo"/pulls/"$pr_number"/reviews/"$review_id"/comments 2>/dev/null || echo "[]")
+    comments_raw=$(gh api "repos/$repo/pulls/$pr_number/reviews/$review_id/comments" 2>/dev/null || echo "[]")
     comments=$(echo "$comments_raw" | jq '[.[] | {id: .id, path: .path, body: .body}]' 2>/dev/null || echo "[]")
 
     item=$(jq -n \
@@ -72,32 +108,13 @@ for row in $(jq -c '.[]' "$TMPDIR_WORK/authored_prs.json"); do
         review_state: $review_state,
         comments: $comments
       }]')
-    
+
     current=$(cat "$TMPDIR_WORK/reviews.json")
     echo "$current" | jq --argjson items "$item" '. + $items' > "$TMPDIR_WORK/reviews.json"
   done
-done
+done < <(jq -c '.[] | select(.subject.type == "PullRequest") | select(.reason == "author")' "$TMPDIR_WORK/notifications.json")
 
-# Issue comments (recent, for /approve detection)
-echo "[]" > "$TMPDIR_WORK/issue_comments.json"
-for row in $(jq -c '.[]' "$TMPDIR_WORK/issues.json"); do
-  repo=$(echo "$row" | jq -r '.repo')
-  issue_number=$(echo "$row" | jq -r '.number')
-
-  # Fetch comments from the last 6 hours
-  since=$(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-6H +%Y-%m-%dT%H:%M:%SZ)
-  comments_raw=$(gh api "repos/$repo/issues/$issue_number/comments?since=$since" 2>/dev/null || echo "[]")
-
-  comments=$(echo "$comments_raw" | jq --arg repo "$repo" --argjson number "$issue_number" \
-    '[.[] | {repo: $repo, issue_number: $number, comment_id: .id, author: .user.login, body: .body, created_at: .created_at}]')
-
-  if [ "$comments" != "[]" ]; then
-    current=$(cat "$TMPDIR_WORK/issue_comments.json")
-    echo "$current" | jq --argjson items "$comments" '. + $items' > "$TMPDIR_WORK/issue_comments.json"
-  fi
-done
-
-# Output combined result
+# ── Output combined result ───────────────────────────────────────────
 jq -n \
   --argjson issues "$(cat "$TMPDIR_WORK/issues.json")" \
   --argjson prs "$(cat "$TMPDIR_WORK/prs.json")" \
