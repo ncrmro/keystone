@@ -435,6 +435,7 @@ let
     ];
 
     # Agent with GitHub and Forgejo source usernames
+    # forgejo.username defaults to agent name; github.username must be set explicitly
     agent-source-usernames = eval "agent-source-usernames" [
       {
         keystone.os = {
@@ -443,19 +444,19 @@ let
             type = "ext4";
             devices = [ "/dev/vda" ];
           };
+          # Both set: github explicit, forgejo defaults to "luce"
           agents.luce = {
             fullName = "Luce";
             notes.repo = "git@example.com:luce/notes.git";
             github.username = "luce-gh";
-            forgejo.username = "luce";
           };
-          # Agent with only GitHub username (Forgejo left null)
+          # GitHub set, forgejo defaults to "solo"
           agents.solo = {
             fullName = "Solo";
             notes.repo = "git@example.com:solo/notes.git";
             github.username = "solo-gh";
           };
-          # Agent with no source usernames (both null, should still evaluate)
+          # No github username (null), forgejo defaults to "quiet"
           agents.quiet = {
             fullName = "Quiet";
             notes.repo = "git@example.com:quiet/notes.git";
