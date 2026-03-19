@@ -2,13 +2,13 @@
   config,
   lib,
   pkgs,
-  inputs,
+  keystoneInputs,
   ...
 }:
 with lib;
 let
   cfg = config.keystone.desktop;
-  hyprlandPkg = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
+  hyprlandPkg = keystoneInputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
 
   # Screen recording script using gpu-screen-recorder
   #
@@ -235,5 +235,29 @@ in
       pkgs.libxkbcommon # for xkbcli in keybindings menu
       pkgs.hypridle
     ];
+
+    # Periodically check battery level and send a notification when low
+    systemd.user.services.keystone-battery-monitor = {
+      Unit = {
+        Description = "Keystone low battery notification";
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${keystoneBatteryMonitor}/bin/keystone-battery-monitor";
+      };
+    };
+
+    systemd.user.timers.keystone-battery-monitor = {
+      Unit = {
+        Description = "Timer for low battery notification";
+      };
+      Timer = {
+        OnBootSec = "1min";
+        OnUnitActiveSec = "1min";
+      };
+      Install = {
+        WantedBy = [ "timers.target" ];
+      };
+    };
   };
 }

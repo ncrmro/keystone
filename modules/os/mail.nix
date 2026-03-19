@@ -1,3 +1,4 @@
+# TODO this should move to a dedicated server-os module at some point to delinate it from deskop (maybe)
 # Keystone Mail Server (Stalwart)
 #
 # This module provides a basic Stalwart mail server configuration.
@@ -48,14 +49,39 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.os.mail;
-in {
+  topDomain = config.keystone.domain;
+
+  # Agents that want mail provisioning on this host (where Stalwart runs).
+  # This is NOT filtered by agent.host — provisioning runs on the mail server,
+  # which is typically a different host from the agent's designated host.
+  #
+  # CRITICAL (agenix): agent-{name}-mail-password must list BOTH the agent's
+  # host (for himalaya client) AND this server's host key (for Stalwart
+  # provisioning) in its publicKeys recipients. Otherwise agenix will fail
+  # to decrypt at activation time on this host.
+  provisionAgents = filterAttrs (_: a: a.mail.provision) config.keystone.os.agents;
+  hasProvisionAgents = provisionAgents != { };
+in
+{
   options.keystone.os.mail = {
-    enable = mkEnableOption "Keystone Mail Server (Stalwart)";
+    allowedIps = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "IP ranges to whitelist from fail2ban blocking (e.g., Tailscale ranges)";
+      example = [
+        "100.64.0.0/10"
+        "fd7a:115c:a1e0::/48"
+      ];
+    };
   };
 
-  config = mkIf cfg.enable {
+  # Auto-enable when keystone.services.mail.host matches this machine's hostname.
+  # No manual `enable = true` needed — just set keystone.services.mail.host once.
+  config = mkIf (config.keystone.services.mail.host != null
+              && config.keystone.services.mail.host == config.networking.hostName) {
     services.stalwart-mail = {
       enable = true;
       package = pkgs.stalwart-mail;
@@ -65,6 +91,10 @@ in {
         # Server configuration
         server = {
           hostname = config.networking.hostName;
+
+          # Allow IPs to bypass fail2ban blocking
+          # Using table syntax instead of set notation (NixOS can't generate { "ip" } sets)
+          "allowed-ip" = lib.listToAttrs (map (ip: lib.nameValuePair ip "") cfg.allowedIps);
           tls = {
             enable = true;
             implicit = true;
@@ -73,23 +103,23 @@ in {
             # SMTP for mail delivery (port 25)
             smtp = {
               protocol = "smtp";
-              bind = ["[::]:25"];
+              bind = [ "[::]:25" ];
             };
             # SMTP Submission with TLS (port 465)
             submissions = {
               protocol = "smtp";
-              bind = ["[::]:465"];
+              bind = [ "[::]:465" ];
               tls.implicit = true;
             };
             # SMTP Submission (port 587)
             submission = {
               protocol = "smtp";
-              bind = ["[::]:587"];
+              bind = [ "[::]:587" ];
             };
             # IMAPS (port 993)
             imaps = {
               protocol = "imap";
-              bind = ["[::]:993"];
+              bind = [ "[::]:993" ];
               tls.implicit = true;
             };
             # JMAP/Management interface (localhost only)
@@ -97,7 +127,7 @@ in {
             # TODO: Can revert to 8080 after removing k8s ingress-nginx
             jmap = {
               protocol = "http";
-              bind = ["127.0.0.1:8082"];
+              bind = [ "127.0.0.1:8082" ];
             };
           };
         };
@@ -183,5 +213,87 @@ in {
         993 # IMAPS
       ];
     };
+
+    # Auto-provision Stalwart mail accounts for agents with mail.provision = true
+    assertions = mkIf hasProvisionAgents (
+      [
+        {
+          assertion = config.age.secrets ? "stalwart-admin-password";
+          message = "Agent mail provisioning requires agenix secret 'stalwart-admin-password' for Stalwart admin API access.";
+        }
+      ] ++ (mapAttrsToList (name: _: {
+        assertion = config.age.secrets ? "agent-${name}-mail-password";
+        message = ''
+          Agent '${name}' has mail.provision = true but agenix secret "agent-${name}-mail-password" is not declared.
+          This secret must contain the plaintext password for the agent's Stalwart account.
+        '';
+      }) provisionAgents)
+    );
+
+    # Idempotent: GET /api/principal/{name} → 200 means account exists, skip.
+    # NOTE: The systemd unit is "stalwart.service" (not "stalwart-mail.service").
+    # The admin password secret may be a SHA-512 hash ($6$...) — Stalwart
+    # accepts hashed passwords in HTTP basic auth, so provisioning still works.
+    systemd.services = mkIf hasProvisionAgents (mapAttrs' (name: agentCfg:
+      let
+        username = "agent-${name}";
+        mailAddr =
+          if agentCfg.mail.address != null then agentCfg.mail.address
+          else "${username}@${topDomain}";
+        adminPasswordPath = "/run/agenix/stalwart-admin-password";
+        agentPasswordPath = "/run/agenix/${username}-mail-password";
+      in
+      nameValuePair "provision-agent-mail-${name}" {
+        description = "Provision Stalwart mail account for ${username}";
+        after = [ "stalwart.service" ];
+        requires = [ "stalwart.service" ];
+        wantedBy = [ "multi-user.target" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+
+        path = [ pkgs.curl pkgs.jq ];
+
+        script = ''
+          set -euo pipefail
+
+          ADMIN_PASS=$(cat ${adminPasswordPath})
+          AGENT_PASS=$(tr -d '\n' < ${agentPasswordPath})
+          API="http://127.0.0.1:8082/api"
+
+          # Check if account already exists
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -u "admin:$ADMIN_PASS" \
+            "$API/principal/${username}")
+
+          if [ "$STATUS" = "200" ]; then
+            echo "${username}: Stalwart account already exists, skipping creation"
+            exit 0
+          fi
+
+          echo "${username}: Creating Stalwart mail account..."
+
+          # Create the account
+          curl -sf -u "admin:$ADMIN_PASS" \
+            "$API/principal" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg name "${username}" \
+              --arg pass "$AGENT_PASS" \
+              --arg email "${mailAddr}" \
+              '{type: "individual", name: $name, secrets: [$pass], emails: [$email]}')"
+
+          # Set role to user
+          curl -sf -u "admin:$ADMIN_PASS" \
+            "$API/principal/${username}" -X PATCH \
+            -H "Content-Type: application/json" \
+            -d '[{"action":"set","field":"roles","value":["user"]}]'
+
+          echo "${username}: Stalwart mail account created successfully"
+        '';
+      }
+    ) provisionAgents);
   };
 }

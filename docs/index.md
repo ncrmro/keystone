@@ -31,9 +31,11 @@ Welcome to the Keystone documentation. Keystone is a NixOS-based self-sovereign 
 
 ### Module Documentation
 - **[Terminal](terminal.md)** (`keystone.terminal`) - Shell, editor, and development tools (Zsh, Helix, Zellij, etc.)
+  - **[Personal Information Management](personal-info-management.md)** - Email, calendars, contacts, and timers (Pimalaya suite)
 - **Desktop** (`keystone.desktop`) - Hyprland desktop environment
   - **[Screen Recording](screen-recording.md)** - GPU-accelerated screen recording with audio capture
-- **[Agent Sandbox](agent-sandbox.md)** - Run AI agents in isolated MicroVM environments
+- **[Server](server.md)** (`keystone.server`) - Server services with unified nginx/ACME/DNS configuration
+  - **[SSH Agent](ssh-agent.md)** - SSH agent setup for hardware keys
 
 ### Advanced Topics
 - **[Build Platforms](build-platforms.md)** - Cross-platform build configuration

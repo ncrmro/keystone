@@ -5,6 +5,9 @@
 # - ZFS home directories with delegated permissions and quotas
 # - Optional home-manager integration for terminal/desktop config
 #
+# SSH keys are read from keystone.keys.<username> — all host keys
+# plus all hardware keys are added to authorized_keys.
+#
 {
   lib,
   config,
@@ -15,12 +18,33 @@
 with lib; let
   osCfg = config.keystone.os;
   cfg = osCfg.users;
+  keysCfg = config.keystone.keys;
+  hostname = config.networking.hostName;
+
+  # Whether the keystone desktop NixOS module is imported (gates home-manager desktop config)
+  hasDesktopModule = options.keystone ? desktop;
 
   # Check if ZFS is being used
-  useZfs = osCfg.storage.type == "zfs";
+  # TODO: Re-evaluate ZFS home folder management. Current implementation can interfere with legacy setups.
+  useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
+
+  # All public keys for a user (all hosts + all hardware keys)
+  allKeysFor = username: let
+    u = keysCfg.${username};
+    hostKeys = mapAttrsToList (_: h: h.publicKey) u.hosts;
+    hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
+  in hostKeys ++ hwKeys;
+
+  # Public keys valid on a specific host for a user
+  # (that host's software key + all hardware keys)
+  keysForUserOnHost = username: hn: let
+    u = keysCfg.${username};
+    hostKey = optional (u.hosts ? ${hn}) u.hosts.${hn}.publicKey;
+    hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
+  in hostKey ++ hwKeys;
 in {
-  config =
-    mkIf (osCfg.enable && cfg != {}) {
+  config = mkMerge [
+    (mkIf (osCfg.enable && cfg != {}) {
       # Enable ZFS delegation for non-root users (only if using ZFS)
       boot.extraModprobeConfig = mkIf useZfs ''
         options zfs zfs_admin_snapshot=1
@@ -48,11 +72,47 @@ in {
             length uids == length uniqueUids;
           message = "All user UIDs must be unique";
         }
-        {
-          assertion = all (user: user.initialPassword != null || user.hashedPassword != null) (attrValues cfg);
-          message = "All users must have either initialPassword or hashedPassword set";
+      ]
+      # Validate agenix secret exists when sshAutoLoad is enabled
+      # (auto-declared below when secrets.repo is set, so this only fires
+      # when secrets.repo is null and no manual declaration exists)
+      ++ concatLists (mapAttrsToList (username: userCfg:
+        optional userCfg.sshAutoLoad.enable {
+          assertion = config.age.secrets ? "${hostname}-ssh-passphrase";
+          message = ''
+            User '${username}' has sshAutoLoad enabled but the secret file "${hostname}-ssh-passphrase.age" is missing.
+
+            1. Add to agenix-secrets/secrets.nix:
+               "secrets/${hostname}-ssh-passphrase.age".publicKeys = adminKeys ++ [ systems.${hostname} ];
+
+            2. Create the secret (enter the SSH key passphrase):
+               cd agenix-secrets && agenix -e secrets/${hostname}-ssh-passphrase.age
+
+            3. Commit, push, and update flake:
+               git add -A && git commit -m "Add ${hostname} SSH passphrase" && git push
+               cd .. && nix flake update agenix-secrets
+
+            If keystone.secrets.repo is set, the age.secrets declaration is automatic.
+            Otherwise, add manually to host config:
+              age.secrets.${hostname}-ssh-passphrase = {
+                file = "${"$"}{inputs.agenix-secrets}/secrets/${hostname}-ssh-passphrase.age";
+                owner = "${username}";
+                mode = "0400";
+              };
+          '';
         }
-      ];
+      ) cfg);
+
+      # Auto-declare age.secrets for sshAutoLoad when secrets.repo is set
+      age.secrets = mkIf (config.keystone.secrets.repo != null) (
+        listToAttrs (concatLists (mapAttrsToList (username: userCfg:
+          optional userCfg.sshAutoLoad.enable (nameValuePair "${hostname}-ssh-passphrase" {
+            file = "${config.keystone.secrets.repo}/secrets/${hostname}-ssh-passphrase.age";
+            owner = username;
+            mode = "0400";
+          })
+        ) cfg))
+      );
 
       # Enable zsh system-wide if any user has terminal enabled
       programs.zsh.enable = mkIf (any (u: u.terminal.enable) (attrValues cfg)) true;
@@ -68,95 +128,12 @@ in {
           extraGroups = unique (userCfg.extraGroups ++ (optionals useZfs ["zfs"]));
           initialPassword = userCfg.initialPassword;
           hashedPassword = userCfg.hashedPassword;
-          openssh.authorizedKeys.keys = userCfg.authorizedKeys;
+          # Read all keys from keystone.keys registry
+          openssh.authorizedKeys.keys =
+            if keysCfg ? ${username} then allKeysFor username else [];
           shell = mkIf userCfg.terminal.enable pkgs.zsh;
         })
         cfg;
-
-      # ZFS dataset creation service (only if using ZFS)
-      systemd.services.zfs-user-datasets = mkIf useZfs {
-        description = "Create ZFS datasets for user home directories";
-
-        wantedBy = ["multi-user.target"];
-        after = ["zfs-mount.service"];
-        before = ["display-manager.service" "systemd-user-sessions.service"];
-        requires = ["zfs-mount.service"];
-
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-        };
-
-        path = [config.boot.zfs.package];
-
-        script = ''
-          set -euo pipefail
-
-          log() {
-            echo "[zfs-user-datasets] $*"
-          }
-
-          error() {
-            echo "[zfs-user-datasets] ERROR: $*" >&2
-            exit 1
-          }
-
-          # Validate rpool is imported
-          if ! zpool list rpool > /dev/null 2>&1; then
-            error "ZFS pool 'rpool' not found or not imported"
-          fi
-
-          log "ZFS pool 'rpool' is available"
-
-          # Validate encrypted parent dataset exists
-          if ! zfs list -H -o name rpool/crypt > /dev/null 2>&1; then
-            error "Encrypted root dataset 'rpool/crypt' not found"
-          fi
-
-          log "Encrypted root dataset 'rpool/crypt' found"
-
-          # Create parent home dataset if needed
-          if ! zfs list -H -o name rpool/crypt/home > /dev/null 2>&1; then
-            log "Creating home dataset parent: rpool/crypt/home"
-            zfs create -o mountpoint=/home rpool/crypt/home
-          else
-            log "Home dataset parent already exists: rpool/crypt/home"
-          fi
-
-          # Create datasets for each configured user
-          ${concatStringsSep "\n" (mapAttrsToList (username: userCfg: ''
-              echo "Configuring ZFS dataset for user: ${username}"
-
-              # Create dataset with mountpoint
-              zfs create -p -o mountpoint=/home/${username} rpool/crypt/home/${username} 2>/dev/null || true
-
-              # Set ZFS properties
-              zfs set compression=${userCfg.zfs.compression} rpool/crypt/home/${username}
-              ${optionalString (userCfg.zfs.quota != null) ''
-                zfs set quota=${userCfg.zfs.quota} rpool/crypt/home/${username}
-              ''}
-              ${optionalString (userCfg.zfs.recordsize != null) ''
-                zfs set recordsize=${userCfg.zfs.recordsize} rpool/crypt/home/${username}
-              ''}
-              zfs set atime=${userCfg.zfs.atime} rpool/crypt/home/${username}
-
-              # Grant delegation permissions
-              zfs allow -u ${username} create,mount,mountpoint,snapshot,rollback,diff,send,receive,hold,release,bookmark,compression,quota,refquota,recordsize,atime,readonly,userprop rpool/crypt/home/${username}
-
-              # Allow destroy only on descendants
-              zfs allow -d -u ${username} destroy rpool/crypt/home/${username}
-
-              # Set filesystem ownership
-              chown ${username}:users /home/${username}
-              chmod 700 /home/${username}
-
-              echo "  ✓ Dataset configured: rpool/crypt/home/${username}"
-            '')
-            cfg)}
-
-          echo "All ZFS user datasets configured successfully"
-        '';
-      };
 
       # Home directory ownership for ext4 (ZFS handles this in its service)
       systemd.services.create-user-homes = mkIf (!useZfs) {
@@ -181,11 +158,15 @@ in {
             cfg)}
         '';
       };
-    }
-    // optionalAttrs (options ? home-manager) {
-      # Configure home-manager for users with terminal/desktop enabled
-      # This requires home-manager to be imported in the system configuration
-      home-manager = mkIf (any (u: u.terminal.enable || u.desktop.enable) (attrValues cfg)) {
+    })
+
+    # Configure home-manager for users with terminal/desktop enabled
+    # This requires home-manager to be imported in the system configuration
+    # NOTE: This must be a separate mkMerge entry, not merged with // into the
+    # mkIf block above. Using // on a mkIf value silently drops the merged keys
+    # because the module system only reads the mkIf's `content` attribute.
+    (optionalAttrs (options ? home-manager) {
+      home-manager = mkIf (osCfg.enable && cfg != {} && any (u: u.terminal.enable || u.desktop.enable) (attrValues cfg)) {
         useGlobalPkgs = mkDefault true;
         useUserPackages = mkDefault true;
 
@@ -195,25 +176,39 @@ in {
           home.stateVersion = config.system.stateVersion;
 
           # Terminal development environment
-          keystone.terminal = mkIf userCfg.terminal.enable {
-            enable = true;
+          keystone.terminal = mkIf userCfg.terminal.enable ({
+            enable = mkDefault true;
             git = {
-              enable = userCfg.email != null;
-              userName = userCfg.fullName;
-              userEmail = userCfg.email;
+              enable = mkDefault (userCfg.email != null);
+              userName = mkDefault userCfg.fullName;
+              userEmail = mkDefault userCfg.email;
+              # Bridge SSH public keys from keystone.keys for allowed_signers
+              sshPublicKeys = mkDefault (
+                if keysCfg ? ${username} then allKeysFor username else []
+              );
+              # TODO: Bridge forgejo.domain/sshPort/username here once the users.nix
+              # home-manager bridge mkIf issue is resolved. Currently the entire mkIf
+              # block is dead code for users whose home-manager config is also defined
+              # in nixos-config (the nixos-config definitions take precedence and this
+              # bridge's mkIf values are never applied — even mkForce has no effect).
+              # See: https://github.com/ncrmro/keystone/issues/XXX
+              forgejo.enable = mkDefault (config.keystone.services.git.host != null);
             };
-          };
-
-          # Desktop configuration (Hyprland)
+          } // optionalAttrs userCfg.sshAutoLoad.enable {
+            sshAutoLoad.enable = mkDefault true;
+          });
+        } // optionalAttrs hasDesktopModule {
+          # Desktop configuration (Hyprland) — only set when desktop NixOS module is imported
           keystone.desktop = mkIf userCfg.desktop.enable {
-            enable = true;
+            enable = mkDefault true;
             hyprland = {
-              enable = true;
-              modifierKey = userCfg.desktop.hyprland.modifierKey;
-              capslockAsControl = userCfg.desktop.hyprland.capslockAsControl;
+              enable = mkDefault true;
+              modifierKey = mkDefault userCfg.desktop.hyprland.modifierKey;
+              capslockAsControl = mkDefault userCfg.desktop.hyprland.capslockAsControl;
             };
           };
         }) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) cfg);
       };
-    };
+    })
+  ];
 }

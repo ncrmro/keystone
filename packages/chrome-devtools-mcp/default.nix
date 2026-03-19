@@ -1,0 +1,34 @@
+{
+  lib,
+  buildNpmPackage,
+  fetchzip,
+}:
+buildNpmPackage (finalAttrs: {
+  pname = "chrome-devtools-mcp";
+  version = "0.20.0";
+
+  src = fetchzip {
+    url = "https://registry.npmjs.org/chrome-devtools-mcp/-/chrome-devtools-mcp-${finalAttrs.version}.tgz";
+    hash = "sha256-tbi5cmrF1m3uI2fgHg5GgbmKhPaamn2dCeKwS8gRe6w=";
+  };
+
+  npmDepsHash = "sha256-mfd7CsuMgS84NDaT2BEXEXVRFM3zANXhO5D2w3DH/N4=";
+
+  postPatch = ''
+    cp ${./package-lock.json} package-lock.json
+  '';
+
+  env.PUPPETEER_SKIP_DOWNLOAD = "1";
+
+  npmFlags = [ "--ignore-scripts" ];
+
+  dontNpmBuild = true;
+
+  meta = {
+    description = "Chrome DevTools MCP server for browser automation";
+    homepage = "https://github.com/nicolo-ribaudo/chrome-devtools-mcp";
+    downloadPage = "https://www.npmjs.com/package/chrome-devtools-mcp";
+    license = lib.licenses.asl20;
+    mainProgram = "chrome-devtools-mcp";
+  };
+})

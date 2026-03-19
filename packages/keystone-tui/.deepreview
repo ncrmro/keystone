@@ -1,0 +1,31 @@
+# =====================================================================
+# Rust TUI: Format, Lint, and Test
+# Runs cargo fmt --check, clippy, and tests when Rust source changes.
+# Mirrors the CI pipeline in .github/workflows/validate.tui.yml.
+# =====================================================================
+tui_validate:
+  description: "Run cargo fmt check, clippy, and tests on TUI Rust source changes."
+  match:
+    include:
+      - "**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+    exclude:
+      - "target/**"
+  review:
+    strategy: matches_together
+    instructions: |
+      Rust source files changed in the keystone-tui package. Run these checks
+      from the packages/keystone-tui directory and report any failures:
+
+      1. **Formatting** — Run `cargo fmt --all -- --check` and report any
+         unformatted files. Do NOT auto-fix; just list which files need formatting.
+
+      2. **Clippy** — Run `cargo clippy --all-targets --all-features -- -D warnings`
+         and report any warnings or errors with their full diagnostic messages.
+
+      3. **Tests** — Run `cargo test --verbose` and report any test failures
+         with the failing test name and error output.
+
+      If all three pass, report "All checks passed." with a brief summary of
+      what was validated (file count, test count).

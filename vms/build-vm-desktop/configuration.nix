@@ -89,8 +89,6 @@
 
   # System packages
   environment.systemPackages = [
-    # Keystone agent CLI for sandbox management
-    keystone.packages.x86_64-linux.keystone-agent
   ];
 
   # Nix settings

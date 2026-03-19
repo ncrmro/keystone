@@ -40,9 +40,15 @@ with lib; let
 
       email = mkOption {
         type = types.nullOr types.str;
-        default = null;
-        description = "Email address (used for git config)";
-        example = "alice@example.com";
+        default = let
+          domain = config.keystone.domain;
+          # "Alice Smith" → "alice.smith"
+          localPart = builtins.replaceStrings [" "] ["."] (lib.toLower config.keystone.os.users.${name}.fullName);
+        in
+          if domain != null then "${localPart}@${domain}" else null;
+        defaultText = literalExpression ''"''${toLower fullName}@''${keystone.domain}"'';
+        description = "Email address (used for git config and mail). Auto-derived from fullName + keystone.domain.";
+        example = "alice.smith@example.com";
       };
 
       extraGroups = mkOption {
@@ -50,13 +56,6 @@ with lib; let
         default = [];
         description = "Additional groups the user should be a member of";
         example = ["wheel" "networkmanager"];
-      };
-
-      authorizedKeys = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "SSH public keys for the user. Also used for remote unlock if enabled.";
-        example = ["ssh-ed25519 AAAAC3... alice@laptop"];
       };
 
       initialPassword = mkOption {
@@ -76,6 +75,14 @@ with lib; let
           type = types.bool;
           default = true;
           description = "Enable terminal development environment (zsh, helix, zellij, starship, git)";
+        };
+      };
+
+      sshAutoLoad = {
+        enable = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Auto-load SSH key into ssh-agent at login using agenix passphrase";
         };
       };
 
@@ -131,9 +138,13 @@ with lib; let
   });
 in {
   imports = [
+    ../keys.nix
+    ../secrets.nix
+    ./notifications.nix
     ./storage.nix
     ./secure-boot.nix
     ./tpm.nix
+    ./hardware-key.nix
     ./remote-unlock.nix
     ./users.nix
     ./ssh.nix
@@ -141,6 +152,13 @@ in {
     ./airplay.nix
     ./mail.nix
     ./git-server.nix
+    ./agents
+    ./hypervisor.nix
+    ./iphone-tether.nix
+    ./ollama.nix
+    ./immich.nix
+    ./tailscale.nix
+    ./containers.nix
   ];
 
   options.keystone.os = {
@@ -365,23 +383,40 @@ in {
       };
     };
 
+    # iPhone USB tethering
+    iphoneTether = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable iOS USB tethering/hotspot support via libimobiledevice and usbmuxd";
+      };
+    };
+
     # Nix configuration
     nix = {
-      gc = {
-        automatic = mkOption {
+      optimiseStore = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable automatic Nix store optimisation (deduplication)";
+      };
+
+      nh = {
+        enable = mkOption {
           type = types.bool;
           default = true;
-          description = "Enable automatic Nix garbage collection";
+          description = "Enable nh for intelligent generation pruning";
         };
-        dates = mkOption {
-          type = types.str;
-          default = "weekly";
-          description = "Schedule for garbage collection";
-        };
-        options = mkOption {
-          type = types.str;
-          default = "--delete-older-than 30d";
-          description = "Options passed to nix-collect-garbage";
+        clean = {
+          keepSince = mkOption {
+            type = types.str;
+            default = "30d";
+            description = "Keep generations newer than this duration";
+          };
+          keepGenerations = mkOption {
+            type = types.int;
+            default = 10;
+            description = "Always keep at least this many generations";
+          };
         };
       };
 
@@ -406,7 +441,6 @@ in {
             fullName = "Alice Smith";
             email = "alice@example.com";
             extraGroups = [ "wheel" "networkmanager" ];
-            authorizedKeys = [ "ssh-ed25519 AAAAC3... alice@laptop" ];
             terminal.enable = true;
             desktop.enable = true;
             zfs.quota = "100G";
@@ -447,7 +481,7 @@ in {
       # Non-storage assertions
       {
         assertion = cfg.remoteUnlock.enable -> (cfg.remoteUnlock.authorizedKeys != [] || cfg.users != {});
-        message = "Remote unlock requires authorizedKeys or at least one configured user with SSH keys";
+        message = "Remote unlock requires authorizedKeys or at least one configured user with keys in keystone.keys";
       }
       {
         assertion = cfg.tpm.enable -> cfg.secureBoot.enable;
@@ -456,10 +490,6 @@ in {
       {
         assertion = all (pcr: pcr >= 0 && pcr <= 23) cfg.tpm.pcrs;
         message = "TPM PCR values must be in the range 0-23";
-      }
-      {
-        assertion = cfg.users != {} -> all (u: u.initialPassword != null || u.hashedPassword != null) (attrValues cfg.users);
-        message = "All users must have either initialPassword or hashedPassword set";
       }
       # Hibernation assertions
       {
@@ -495,15 +525,24 @@ in {
 
     # Nix configuration
     nix.settings.experimental-features = mkIf cfg.nix.flakes ["nix-command" "flakes"];
+    nix.settings.auto-optimise-store = cfg.nix.optimiseStore;
 
-    nix.gc = mkIf cfg.nix.gc.automatic {
-      automatic = true;
-      dates = cfg.nix.gc.dates;
-      options = cfg.nix.gc.options;
+    # nh clean replaces nix.gc with generation-count awareness:
+    # nix.gc only prunes by age, so a burst of rebuilds can leave zero rollback
+    # generations. nh always retains keepGenerations regardless of age.
+    programs.nh = mkIf cfg.nix.nh.enable {
+      enable = true;
+      clean = {
+        enable = true;
+        extraArgs = "--keep-since ${cfg.nix.nh.clean.keepSince} --keep ${toString cfg.nix.nh.clean.keepGenerations}";
+      };
     };
 
     # Locale defaults
     time.timeZone = lib.mkDefault "UTC";
     i18n.defaultLocale = lib.mkDefault "en_US.UTF-8";
+
+    # agenix CLI
+    environment.systemPackages = [pkgs.keystone.agenix];
   };
 }

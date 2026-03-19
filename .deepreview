@@ -1,0 +1,75 @@
+# =====================================================================
+# Nix: Format and Flake Check
+# Runs nixfmt check and nix flake check when Nix files change.
+# Mirrors the CI pipeline in .github/workflows/test.yml (flake-check).
+# =====================================================================
+nix_validate:
+  description: "Run nixfmt check and nix flake check when Nix files change."
+  match:
+    include:
+      - "**/*.nix"
+      - "flake.lock"
+    exclude:
+      - "tests/**"
+  review:
+    strategy: matches_together
+    instructions: |
+      Nix files changed. Run these checks from the project root and report failures:
+
+      1. **Formatting** — Run `nix fmt -- --check **/*.nix` and report any
+         unformatted files. Do NOT auto-fix; just list which files need formatting.
+
+      2. **Flake check** — Run `nix flake check` and report any evaluation
+         errors, broken module imports, or type mismatches.
+
+      If both pass, report "All checks passed." with a brief summary.
+
+# =====================================================================
+# Docs Sync: CLAUDE.md and docs/ stay current with module changes
+# When NixOS modules or flake.nix change, verify documentation matches.
+# =====================================================================
+update_keystone_docs:
+  description: "Ensure AGENTS.md and docs/ stay current when NixOS modules, flake outputs, or options change."
+  match:
+    include:
+      - "modules/**/*.nix"
+      - "flake.nix"
+      - "AGENTS.md"
+      - "docs/**"
+      - "templates/**"
+    exclude:
+      - "modules/**/scripts/**"
+      - "tests/**"
+  review:
+    strategy: matches_together
+    instructions: |
+      When NixOS module files or flake.nix change, check whether AGENTS.md and docs/ need updating.
+      Read AGENTS.md and the relevant docs/*.md files, then compare against the changed source files.
+      Note: CLAUDE.md is a symlink to AGENTS.md — they are the same file.
+
+      **AGENTS.md checks:**
+      - Module File Tree: Does the directory tree listing match the actual filesystem layout?
+      - Module descriptions: Do inline descriptions match what the modules actually do?
+      - Server Services table: Does it list all services in modules/server/services/?
+      - nixosModules/homeModules exports: Do they match flake.nix?
+      - Key Options: Does the options list match actual module options?
+      - Deployment Patterns: Do example config snippets use correct option names/structure?
+      - Domain Architecture: Does the server domain docs match actual domain/port defaults?
+      - Packages table: Does it list all packages in packages/?
+
+      **docs/ checks:**
+      - docs/index.md: Does the overview match current module structure and features?
+      - docs/installation.md: Do installation steps reference correct module names and options?
+      - docs/users.md: Does it match keystone.os.users options?
+      - docs/terminal.md: Does it match keystone.terminal options?
+      - docs/hardware-keys.md: Does it match keystone.os.hardwareKey options?
+      - docs/testing-vm.md: Does it match current VM testing workflow?
+      - docs/examples.md: Do code examples use correct option paths?
+
+      For any doc that references module options, NixOS config snippets, or CLI commands,
+      verify they still match the actual implementation. Flag outdated sections.
+
+      If a module change adds new user-facing features or options that are not yet
+      documented in any docs/ file, flag this as "missing documentation".
+    additional_context:
+      unchanged_matching_files: true

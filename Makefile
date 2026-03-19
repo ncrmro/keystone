@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help ci fmt check-lockfile test test-checks test-module test-integration test-template
+.PHONY: help ci fmt check-lockfile test test-checks test-module test-integration test-template test-template-eval
+.PHONY: test-tui-eval test-tui-build
 .PHONY: vm-create vm-start vm-stop vm-destroy vm-reset vm-ssh vm-console vm-display vm-status vm-post-install vm-reset-secureboot
 .PHONY: build-vm-terminal build-vm-desktop build-iso build-iso-ssh
 .PHONY: test-deploy test-desktop test-hm
@@ -49,6 +50,18 @@ test-template: ## Validate flake template evaluates correctly
 	@echo "🧪 Testing flake template..."
 	@cd templates/default && nix flake check --no-build
 	@echo "✅ Template validation passed"
+
+test-template-eval: ## Evaluate template configs (TUI output contract)
+	nix build .#checks.x86_64-linux.template-evaluation --print-build-logs
+
+## TUI Config Generation Tests
+## Rust integration tests that generate configs and validate against local modules
+
+test-tui-eval: ## Evaluate TUI-generated configs against local modules
+	cd packages/keystone-tui && nix develop ../../ --command cargo test config_evaluates -- --ignored
+
+test-tui-build: ## Build-test TUI-generated configs + ISO (slow, on-demand only)
+	cd packages/keystone-tui && nix develop ../../ --command cargo test _builds -- --ignored
 
 ## ISO Building
 

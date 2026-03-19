@@ -5,9 +5,11 @@
   inputs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.terminal;
-in {
+in
+{
   config = mkIf cfg.enable {
     # Starship - A minimal, blazing-fast, and infinitely customizable prompt for any shell
     # Shows git status, language versions, execution time, and more in your terminal prompt
@@ -46,36 +48,36 @@ in {
           normal = {
             # Previous tab: Ctrl+PgUp
             "bind \"Ctrl PageUp\"" = {
-              GoToPreviousTab = {};
+              GoToPreviousTab = { };
             };
             # Next tab: Ctrl+PgDn
             "bind \"Ctrl PageDown\"" = {
-              GoToNextTab = {};
+              GoToNextTab = { };
             };
             # Previous tab (alternative): Ctrl+Shift+Tab
             "bind \"Ctrl Shift Tab\"" = {
-              GoToPreviousTab = {};
+              GoToPreviousTab = { };
             };
             # Next tab (alternative): Ctrl+Tab
             "bind \"Ctrl Tab\"" = {
-              GoToNextTab = {};
+              GoToNextTab = { };
             };
             # New tab: Ctrl+T
             "bind \"Ctrl t\"" = {
-              NewTab = {};
+              NewTab = { };
             };
             # Close tab: Ctrl+W
             "bind \"Ctrl w\"" = {
-              CloseTab = {};
+              CloseTab = { };
             };
             # Unbind default Ctrl+G (conflict with Claude Code)
-            "unbind \"Ctrl g\"" = [];
+            "unbind \"Ctrl g\"" = [ ];
             # Lock mode: Ctrl+Shift+G
             "bind \"Ctrl Shift g\"" = {
               SwitchToMode = "locked";
             };
             # Unbind default Ctrl+O (conflict with Claude Code and lazygit)
-            "unbind \"Ctrl o\"" = [];
+            "unbind \"Ctrl o\"" = [ ];
             # Session mode: Ctrl+Shift+O
             "bind \"Ctrl Shift o\"" = {
               SwitchToMode = "session";
@@ -83,6 +85,19 @@ in {
           };
         };
       };
+    };
+
+    # Fzf - A command-line fuzzy finder
+    # https://github.com/junegunn/fzf
+    programs.fzf = {
+      enable = true;
+      enableZshIntegration = true;
+    };
+
+    # Bat - A cat(1) clone with wings (syntax highlighting and Git integration)
+    # https://github.com/sharkdp/bat
+    programs.bat = {
+      enable = true;
     };
 
     programs.zsh = {
@@ -107,19 +122,56 @@ in {
       zplug.enable = lib.mkForce false;
       oh-my-zsh = {
         enable = true;
-        plugins = ["git" "colored-man-pages"];
+        plugins = [
+          "git"
+          "colored-man-pages"
+        ];
         theme = "robbyrussell";
       };
     };
 
     home.packages = with pkgs; [
+      # Bottom - Graphical process/system monitor
+      # https://github.com/ClementTsang/bottom
+      bottom
+
+      # Dust - A more intuitive version of du in rust
+      # https://github.com/bootandy/dust
+      dust
+
+      # Fd - A simple, fast and user-friendly alternative to 'find'
+      # https://github.com/sharkdp/fd
+      fd
+
+      # Ncdu - NCurses Disk Usage
+      # https://dev.yorhel.nl/ncdu
+      ncdu
+
+      # Sd - Intuitive find & replace CLI (sed alternative)
+      # https://github.com/chmln/sd
+      sd
+
+      # Tealdeer - A fast tldr client in Rust (simplified man pages)
+      # https://github.com/dbrgn/tealdeer
+      tealdeer
+
       # Direnv - Unclutter your .profile
       # https://direnv.net/
       direnv
 
+      # Ghostty terminfo - Required for SSH connections from Ghostty terminal
+      # Without this, remote systems don't recognize TERM="xterm-ghostty" and
+      # ncurses applications fail with "cannot initialize terminal type" errors.
+      # This enables proper terminal handling when SSHing into this machine from Ghostty.
+      ghostty.terminfo
+
       # Eza - Modern replacement for ls with colors and git integration
       # https://github.com/eza-community/eza
       eza
+
+      # Glow - Render markdown on the CLI with style
+      # https://github.com/charmbracelet/glow
+      glow
 
       # GNU Make - Build automation tool
       # https://www.gnu.org/software/make/
@@ -128,6 +180,10 @@ in {
       # Htop - Interactive process viewer
       # https://htop.dev/
       htop
+
+      # GitHub CLI - GitHub's official command line tool
+      # https://cli.github.com/
+      gh
 
       # Lazygit - Simple terminal UI for git commands
       # https://github.com/jesseduffield/lazygit
@@ -149,6 +205,21 @@ in {
       # https://github.com/roberte777/zesh
       # Provided via keystone overlay
       pkgs.keystone.zesh
+
+      # ks - Keystone infrastructure CLI (build and deploy NixOS configurations)
+      pkgs.keystone.ks
+
+      # Jq - Lightweight command-line JSON processor
+      # https://jqlang.github.io/jq/
+      jq
+
+      # Yq - Portable command-line YAML processor
+      # https://github.com/mikefarah/yq
+      yq-go
+
+      # Nixfmt - Official Nix code formatter (RFC style)
+      # https://github.com/NixOS/nixfmt
+      nixfmt-rfc-style
     ];
   };
 }

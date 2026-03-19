@@ -1,0 +1,20 @@
+---
+source: tests/render.rs
+assertion_line: 105
+expression: output
+---
+               Hosts Dashboard - empty-repo                 
+                                                            
+────────────────────────────────────────────────────────────
+                 No hosts found in flake.nix                
+                                                            
+                 Press 'a' to add a new host                
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                    a: add host • q: quit

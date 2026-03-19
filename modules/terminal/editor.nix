@@ -2,18 +2,18 @@
   config,
   lib,
   pkgs,
-  inputs ? {},
+  keystoneInputs ? {},
   ...
 }:
 with lib;
 let
   cfg = config.keystone.terminal;
-  # Use unstable helix if inputs.nixpkgs-unstable is available, otherwise use stable
-  helix-pkg = if inputs ? nixpkgs-unstable
-    then (import inputs.nixpkgs-unstable { system = pkgs.stdenv.hostPlatform.system; config.allowUnfree = true; }).helix
+  # Use unstable helix if keystoneInputs.nixpkgs-unstable is available, otherwise use stable
+  helix-pkg = if keystoneInputs ? nixpkgs-unstable
+    then (import keystoneInputs.nixpkgs-unstable { system = pkgs.stdenv.hostPlatform.system; config.allowUnfree = true; }).helix
     else pkgs.helix;
   # Kinda-nvim theme if available
-  hasKindaNvim = inputs ? kinda-nvim-hx;
+  hasKindaNvim = keystoneInputs ? kinda-nvim-hx;
 in
 {
   config = mkIf cfg.enable {
@@ -355,10 +355,10 @@ in
 
     # Copy helix theme files from the flake input (if available)
     xdg.configFile."helix/themes/kinda_nvim.toml" = mkIf hasKindaNvim {
-      source = "${inputs.kinda-nvim-hx}/kinda_nvim.toml";
+      source = "${keystoneInputs.kinda-nvim-hx}/kinda_nvim.toml";
     };
     xdg.configFile."helix/themes/kinda_nvim_light.toml" = mkIf hasKindaNvim {
-      source = "${inputs.kinda-nvim-hx}/kinda_nvim_light.toml";
+      source = "${keystoneInputs.kinda-nvim-hx}/kinda_nvim_light.toml";
     };
   };
 }

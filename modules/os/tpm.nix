@@ -29,12 +29,6 @@ with lib; let
       chmod +x $out
     '';
 
-  # Enrollment check script
-  enrollmentCheckScript = makeExecutableScript "enrollment-check.sh" ./scripts/enrollment-check.sh {
-    cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
-    credstoreDevice = credstoreDevice;
-  };
-
   # Recovery key enrollment script
   enrollRecoveryScript = makeExecutableScript "enroll-recovery.sh" ./scripts/enroll-recovery.sh {
     systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
@@ -78,10 +72,69 @@ in {
       "d /var/lib/keystone 0755 root root -"
     ];
 
-    # Login banner for enrollment status
-    environment.interactiveShellInit = ''
-      ${pkgs.bash}/bin/bash ${enrollmentCheckScript}
-    '';
+    # Boot-time check: inspect LUKS header as root and maintain marker file.
+    # Regular users cannot read block devices, so this must run as a systemd
+    # service rather than in interactiveShellInit.
+    systemd.services.keystone-tpm-check = {
+      description = "Check TPM enrollment status and update marker file";
+      wantedBy = ["multi-user.target"];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [pkgs.cryptsetup];
+      script = ''
+        MARKER_FILE="/var/lib/keystone/tpm-enrollment-complete"
+        mkdir -p /var/lib/keystone
+
+        if cryptsetup luksDump "${credstoreDevice}" 2>/dev/null | grep -q "systemd-tpm2"; then
+          # TPM enrolled — create/update marker
+          cat > "$MARKER_FILE" <<MARKER
+        TPM enrollment verified: $(date -Iseconds)
+        Device: ${credstoreDevice}
+        MARKER
+        else
+          # Not enrolled — remove stale marker if present
+          rm -f "$MARKER_FILE"
+        fi
+      '';
+    };
+
+    # Register TPM enrollment notification via the keystone notification system.
+    # The keystone-tpm-check service writes the marker file when TPM is enrolled;
+    # the notification is suppressed automatically once enrollment is complete.
+    keystone.os.notifications.items = [
+      {
+        id = "tpm-enrollment";
+        title = "TPM Enrollment Required";
+        body = ''
++--------------------------------------------------------------------------+
+| [!] WARNING: TPM ENROLLMENT NOT CONFIGURED                              |
++--------------------------------------------------------------------------+
+|                                                                          |
+| Your system is using the default LUKS password "keystone" which is      |
+| publicly known and provides NO security.                                |
+|                                                                          |
+| To secure your encrypted disk, you MUST complete TPM enrollment:        |
+|                                                                          |
+|   Option 1: Generate recovery key (recommended)                         |
+|      $ sudo keystone-enroll-recovery                                    |
+|                                                                          |
+|   Option 2: Set custom password                                         |
+|      $ sudo keystone-enroll-password                                    |
+|                                                                          |
+| After enrollment:                                                        |
+|   * Default "keystone" password will be removed                         |
+|   * Disk will unlock automatically via TPM on boot                      |
+|   * Recovery credential available if TPM fails                          |
+|                                                                          |
+| Documentation: /usr/share/doc/keystone/tpm-enrollment.md                |
+|                                                                          |
++--------------------------------------------------------------------------+
+'';
+        markerFile = "/var/lib/keystone/tpm-enrollment-complete";
+      }
+    ];
 
     # Enrollment commands
     environment.systemPackages = [
