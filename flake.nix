@@ -173,6 +173,7 @@
       agent-mail-src = ./packages/agent-mail;
       fetch-email-source-src = ./packages/fetch-email-source;
       fetch-forgejo-sources-src = ./packages/fetch-forgejo-sources;
+      forgejo-project-src = ./packages/forgejo-project;
       fetch-github-sources-src = ./packages/fetch-github-sources;
       repo-sync-src = ./packages/repo-sync;
       podman-agent-src = ./packages/podman-agent;
@@ -196,6 +197,7 @@
         agent-mail = final.callPackage agent-mail-src { himalaya = final.keystone.himalaya; };
         fetch-email-source = final.callPackage fetch-email-source-src { himalaya = final.keystone.himalaya; };
         fetch-forgejo-sources = final.callPackage fetch-forgejo-sources-src {};
+        forgejo-project = final.callPackage forgejo-project-src {};
         fetch-github-sources = final.callPackage fetch-github-sources-src {};
         repo-sync = final.callPackage repo-sync-src {};
         podman-agent = final.callPackage podman-agent-src {};
@@ -368,6 +370,7 @@
         himalaya = himalaya.packages.x86_64-linux.default;
       };
       fetch-forgejo-sources = pkgs.callPackage ./packages/fetch-forgejo-sources {};
+      forgejo-project = pkgs.callPackage ./packages/forgejo-project {};
       fetch-github-sources = pkgs.callPackage ./packages/fetch-github-sources {};
       repo-sync = pkgs.callPackage ./packages/repo-sync {};
       podman-agent = pkgs.callPackage ./packages/podman-agent {};
