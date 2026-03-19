@@ -486,7 +486,7 @@ cmd_update() {
   done
 }
 
-# --- Find keystone repo (where conventions/ lives) ---
+# --- Find keystone repo (where .agents/conventions/ lives) ---
 # Returns the path to the local keystone repo clone, or empty string if not found.
 find_keystone_repo() {
   local repo_root="$1"
@@ -496,15 +496,15 @@ find_keystone_repo() {
 }
 
 # --- Load conventions from keystone repo ---
-# Concatenates all *.md files from conventions/ in the keystone repo.
+# Concatenates all *.md files from .agents/conventions/ in the keystone repo.
 # Prints nothing (no error) if the directory is not found.
 load_conventions() {
   local ks_repo="$1"
-  if [[ -z "$ks_repo" || ! -d "$ks_repo/conventions" ]]; then
+  if [[ -z "$ks_repo" || ! -d "$ks_repo/.agents/conventions" ]]; then
     return 0
   fi
   local first=true
-  for f in "$ks_repo/conventions"/*.md; do
+  for f in "$ks_repo/.agents/conventions"/*.md; do
     [[ -f "$f" ]] || continue
     if [[ "$first" == true ]]; then
       first=false
