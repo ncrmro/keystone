@@ -29,36 +29,11 @@ let
 in
 {
   options.keystone.hosts = mkOption {
-    type = types.attrsOf (
-      types.submodule {
-        options = {
-          hostname = mkOption {
-            type = types.str;
-            description = "The networking.hostName of this host (may differ from flake config name).";
-          };
-          sshTarget = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "SSH target for remote deploys (Tailscale hostname or IP). null = local-only host.";
-          };
-          fallbackIP = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "LAN IP fallback when sshTarget is unreachable via Tailscale.";
-          };
-          buildOnRemote = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Whether to pass --build-host for remote deploys (build on remote machine).";
-          };
-          role = mkOption {
-            type = types.enum [
-              "client"
-              "server"
-              "agent"
-            ];
-            description = "Tailscale network role for this host (mandatory).";
-          };
+    type = types.attrsOf (types.submodule {
+      options = {
+        hostname = mkOption {
+          type = types.str;
+          description = "The networking.hostName of this host (may differ from flake config name).";
         };
         sshTarget = mkOption {
           type = types.nullOr types.str;
