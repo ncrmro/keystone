@@ -11,9 +11,7 @@ use ratatui::{
 use tokio::sync::mpsc;
 
 use crate::nix::HostInfo;
-use crate::system::{
-    CpuHistory, DashboardMessage, HostStatus, SystemMetrics, TailscalePeer, TailscaleStatus,
-};
+use crate::system::{CpuHistory, DashboardMessage, HostStatus, SystemMetrics, TailscaleStatus};
 
 /// Screen for the hosts dashboard with live system metrics.
 pub struct HostsScreen {
@@ -539,7 +537,7 @@ fn format_last_seen(ts: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::system::{DiskInfo, TempReading};
+    use crate::system::{DiskInfo, TailscalePeer, TempReading};
     use std::collections::HashMap;
 
     fn sample_statuses() -> Vec<HostStatus> {

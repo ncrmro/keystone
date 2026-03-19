@@ -9,7 +9,7 @@
 //! 3. Showing the SSH public key for GitHub
 //! 4. Setting up a git remote and pushing
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use tokio::process::Command;
 use tokio::sync::mpsc;
