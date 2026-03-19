@@ -29,16 +29,17 @@ if [ $# -lt 2 ]; then
   echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
   echo "  email             Show the agent's inbox (recent envelopes)" >&2
   echo "  shell             Open interactive shell as the agent (with SSH agent)" >&2
-  echo "  claude            Start interactive Claude session (supports --project, --role)" >&2
-  echo "  gemini            Start interactive Gemini session (supports --project, --role)" >&2
-  echo "  codex             Start interactive Codex session (supports --project, --role)" >&2
-  echo "  opencode          Start interactive OpenCode session (supports --project, --role)" >&2
+  echo "  claude            Start interactive Claude session (supports --project, --role, --roles)" >&2
+  echo "  gemini            Start interactive Gemini session (supports --project, --role, --roles)" >&2
+  echo "  codex             Start interactive Codex session (supports --project, --role, --roles)" >&2
+  echo "  opencode          Start interactive OpenCode session (supports --project, --role, --roles)" >&2
   echo "  mail              Send structured email to the agent (via agent-mail)" >&2
   echo "  vnc               Open remote-viewer to the agent's VNC desktop" >&2
   echo "  provision         Generate SSH keypair, mail password, and agenix secrets" >&2
   echo "" >&2
   echo "Flags:" >&2
   echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh" >&2
+  echo "  --roles <role1,...>    Comma-separated extra roles appended after mode roles" >&2
   echo "  -p, --project <slug>   Run in project context with zellij session" >&2
   echo "" >&2
   echo "Examples:" >&2
@@ -50,6 +51,8 @@ if [ $# -lt 2 ]; then
   echo "  agentctl drago shell" >&2
   echo "  agentctl drago claude" >&2
   echo "  agentctl drago claude -r code-review" >&2
+  echo "  agentctl drago claude --roles software-engineer,code-reviewer" >&2
+  echo "  agentctl drago claude -r implementation --roles software-engineer" >&2
   echo "  agentctl drago claude --project nixos-config fix-auth" >&2
   echo "  agentctl drago claude --project nixos-config              # list sessions" >&2
   echo "  agentctl drago gemini -r code-review" >&2
@@ -109,11 +112,13 @@ CMD="$1"; shift
 
 # Parse agentctl-level flags (consumed here, not passed to harness)
 ROLE=""
+EXTRA_ROLES=""
 PROJECT=""
 REMAINING_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -r|--role) ROLE="$2"; shift 2 ;;
+    --roles) EXTRA_ROLES="$2"; shift 2 ;;
     -p|--project) PROJECT="$2"; shift 2 ;;
     *) REMAINING_ARGS+=("$1"); shift ;;
   esac
@@ -187,7 +192,7 @@ case "$CMD" in
             "_AGENTCTL_PROJECT_PATH=$PROJECT_PATH" \
             "_AGENTCTL_PROJECT_NAME=$PROJECT_NAME" \
             "_AGENTCTL_PROJECT_DESC=$PROJECT_DESC" \
-        agentctl "$AGENT_NAME" "$CMD" ${ROLE:+-r "$ROLE"} "$@"
+        agentctl "$AGENT_NAME" "$CMD" ${ROLE:+-r "$ROLE"} ${EXTRA_ROLES:+--roles "$EXTRA_ROLES"} "$@"
     fi
 
     # Determine working directory and project context (from zellij re-entry)
@@ -254,9 +259,14 @@ $(cat AGENTS.md)"
       fi
 
       ROLE="'"$ROLE"'"
-      if [ -n "$ROLE" ]; then
+      EXTRA_ROLES="'"$EXTRA_ROLES"'"
+      if [ -n "$ROLE" ] || [ -n "$EXTRA_ROLES" ]; then
         if [ -x .agents/compose.sh ] && [ -f manifests/modes.yaml ]; then
-          ROLE_PROMPT="$(PATH="'"$YQ_BIN"':$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE")"
+          COMPOSE_EXTRA=""
+          if [ -n "$EXTRA_ROLES" ]; then
+            COMPOSE_EXTRA="--roles $EXTRA_ROLES"
+          fi
+          ROLE_PROMPT="$(PATH="'"$YQ_BIN"':$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE" $COMPOSE_EXTRA)"
           if [ -n "$SP" ]; then
             SP="$SP
 
@@ -265,7 +275,7 @@ $ROLE_PROMPT"
             SP="$ROLE_PROMPT"
           fi
         else
-          echo "Warning: -r $ROLE requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
+          echo "Warning: role/--roles requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
         fi
       fi
 
