@@ -1,7 +1,7 @@
 # REQ-012: agentctl Project Sessions
 
 Extend agentctl with project context, worktree isolation, sandboxed execution,
-and local model support across all AI tools. Replaces the originally proposed
+and local model support across all AI tools. Integrates with `pz agent` to replace the originally proposed
 `pclaude` CLI.
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,

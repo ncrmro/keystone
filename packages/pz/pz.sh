@@ -7,6 +7,7 @@
 # Commands:
 #   <project>   Create or attach to a Zellij session for the given project slug
 #   list        List active project sessions
+#   agent       Run agentctl within the project context
 #
 # Options:
 #   --help, -h  Show this help message
@@ -39,9 +40,10 @@ usage() {
 pz — Projctl Zellij session manager
 
 Usage:
-  pz <project>    Create or attach to a Zellij session for <project>
-  pz list         List active project sessions
-  pz --help       Show this help message
+  pz <project>                    Create or attach to a Zellij session for <project>
+  pz list                         List active project sessions
+  pz agent <agent> <cmd> [args]   Run agentctl within the project context
+  pz --help                       Show this help message
 
 Options:
   -h, --help      Show this help message
@@ -118,6 +120,30 @@ cmd_session() {
   fi
 }
 
+# Run agentctl with project context
+cmd_agent() {
+  if ! command -v agentctl >/dev/null 2>&1; then
+    echo "error: agentctl command not found. Ensure you are in a keystone environment." >&2
+    exit 1
+  fi
+
+  if [[ $# -lt 2 ]]; then
+    echo "error: 'agent' requires <agent_name> and <cmd>" >&2
+    echo "Usage: pz agent <agent_name> <cmd> [args]" >&2
+    exit 1
+  fi
+
+  local agent_name="$1"; shift
+  local agent_cmd="$1"; shift
+
+  if [[ -n "${PROJECT_NAME:-}" ]]; then
+    exec agentctl "$agent_name" "$agent_cmd" --project "$PROJECT_NAME" "$@"
+  else
+    # Fallback to normal agentctl execution if not inside a project session
+    exec agentctl "$agent_name" "$agent_cmd" "$@"
+  fi
+}
+
 # --- Argument parsing ---
 if [[ $# -eq 0 ]]; then
   usage
@@ -131,6 +157,10 @@ case "$1" in
     ;;
   list)
     cmd_list
+    ;;
+  agent)
+    shift
+    cmd_agent "$@"
     ;;
   -*)
     echo "error: unknown option: $1" >&2
