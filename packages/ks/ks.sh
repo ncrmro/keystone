@@ -7,6 +7,7 @@
 #   build  [--dev] [HOSTS]                      Build a NixOS configuration (no deploy)
 #   update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy a NixOS configuration
 #   sync-host-keys                              Populate hostPublicKey in hosts.nix from live hosts
+#   agent  [--local [MODEL]] [args...]          Launch AI agent with keystone OS context
 #
 # Host resolution:
 #   1. If HOST is provided, use it directly
@@ -485,6 +486,161 @@ cmd_update() {
   done
 }
 
+# --- Find keystone repo (where conventions/ lives) ---
+# Returns the path to the local keystone repo clone, or empty string if not found.
+find_keystone_repo() {
+  local repo_root="$1"
+  local ks_path
+  ks_path=$(find_local_repo "$repo_root" keystone)
+  echo "${ks_path:-}"
+}
+
+# --- Load conventions from keystone repo ---
+# Concatenates all *.md files from conventions/ in the keystone repo.
+# Prints nothing (no error) if the directory is not found.
+load_conventions() {
+  local ks_repo="$1"
+  if [[ -z "$ks_repo" || ! -d "$ks_repo/conventions" ]]; then
+    return 0
+  fi
+  local first=true
+  for f in "$ks_repo/conventions"/*.md; do
+    [[ -f "$f" ]] || continue
+    if [[ "$first" == true ]]; then
+      first=false
+    else
+      echo ""
+      echo "---"
+      echo ""
+    fi
+    cat "$f"
+  done
+}
+
+# --- Build host table from hosts.nix ---
+build_host_table() {
+  local hosts_nix="$1"
+  local current_hostname
+  current_hostname=$(hostname)
+
+  local all_hosts
+  all_hosts=$(nix eval -f "$hosts_nix" --json --apply 'builtins.attrNames' 2>/dev/null) || return 0
+  local host_list
+  host_list=$(echo "$all_hosts" | jq -r '.[]')
+
+  echo "| Host | Hostname | Role | SSH Target | Fallback IP | Build Remote |"
+  echo "|------|----------|------|------------|-------------|--------------|"
+  for host in $host_list; do
+    local host_json hostname role ssh_target fallback_ip build_on_remote marker
+    host_json=$(nix eval -f "$hosts_nix" "$host" --json 2>/dev/null) || continue
+    hostname=$(echo "$host_json" | jq -r '.hostname // ""')
+    role=$(echo "$host_json" | jq -r '.role // ""')
+    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // ""')
+    fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // ""')
+    build_on_remote=$(echo "$host_json" | jq -r '.buildOnRemote // false')
+    marker=""
+    [[ "$hostname" == "$current_hostname" ]] && marker=" ← current"
+    echo "| $host$marker | $hostname | $role | ${ssh_target:-—} | ${fallback_ip:-—} | $build_on_remote |"
+  done
+}
+
+cmd_agent() {
+  local local_model=""
+  local passthrough_args=()
+
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --local)
+        shift
+        # Optional model name following --local
+        if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
+          local_model="$1"; shift
+        else
+          local_model="default"
+        fi
+        ;;
+      *) passthrough_args+=("$1"); shift ;;
+    esac
+  done
+
+  local repo_root
+  repo_root=$(find_repo)
+  local hosts_nix="$repo_root/hosts.nix"
+
+  # Find local keystone repo for conventions
+  local ks_repo
+  ks_repo=$(find_keystone_repo "$repo_root")
+
+  # Build system prompt
+  local prompt=""
+
+  # 1. Load conventions from keystone repo (REQ-014.8, REQ-014.14, REQ-014.16)
+  if [[ -n "$ks_repo" ]]; then
+    local conventions
+    conventions=$(load_conventions "$ks_repo")
+    if [[ -n "$conventions" ]]; then
+      prompt="$conventions"
+    fi
+  fi
+
+  # 2. Inject current host identity (REQ-014.4)
+  local current_hostname
+  current_hostname=$(hostname)
+  local nixos_gen=""
+  if command -v nixos-version >/dev/null 2>&1; then
+    nixos_gen=$(nixos-version 2>/dev/null || true)
+  fi
+
+  local host_section
+  host_section="## Current Host
+
+- **Hostname**: $current_hostname"
+  [[ -n "$nixos_gen" ]] && host_section="$host_section
+- **NixOS generation**: $nixos_gen"
+
+  if [[ -n "$prompt" ]]; then
+    prompt="$prompt
+
+---
+
+$host_section"
+  else
+    prompt="$host_section"
+  fi
+
+  # 3. Inject host table (REQ-014.2, REQ-014.17-19)
+  local host_table
+  host_table=$(build_host_table "$hosts_nix")
+  if [[ -n "$host_table" ]]; then
+    prompt="$prompt
+
+## Hosts
+
+$host_table"
+  fi
+
+  # Launch agent — prefer agentctl if available, fall back to claude (REQ-014 edge cases)
+  if [[ -n "$local_model" ]]; then
+    # Local model via ollama (REQ-014.12)
+    local model_arg="${local_model}"
+    [[ "$model_arg" == "default" ]] && model_arg=""
+    if command -v ollama >/dev/null 2>&1; then
+      exec ollama run ${model_arg:+"$model_arg"} "${passthrough_args[@]+"${passthrough_args[@]}"}"
+    else
+      echo "Error: --local requires ollama to be installed." >&2
+      exit 1
+    fi
+  elif command -v agentctl >/dev/null 2>&1; then
+    exec agentctl claude --append-system-prompt "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
+  elif command -v claude >/dev/null 2>&1; then
+    exec claude --dangerously-skip-permissions --append-system-prompt "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
+  else
+    echo "Error: Neither agentctl nor claude is available." >&2
+    echo "Install Claude Code or run from a keystone NixOS host." >&2
+    exit 1
+  fi
+}
+
 # --- Main dispatch ---
 if [[ $# -lt 1 ]]; then
   echo "Usage: ks <command> [options]" >&2
@@ -493,6 +649,7 @@ if [[ $# -lt 1 ]]; then
   echo "  build  [--dev] [HOSTS]                      Build NixOS configurations" >&2
   echo "  update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy NixOS configurations" >&2
   echo "  sync-host-keys                              Populate hostPublicKey in hosts.nix from live hosts" >&2
+  echo "  agent  [--local [MODEL]] [args...]          Launch AI agent with keystone OS context" >&2
   echo "" >&2
   echo "HOSTS: Comma-separated list of host names (e.g. host1,host2). Defaults to current host." >&2
   echo "Note: Risky hosts should be placed last (e.g. workstation,ocean)." >&2
@@ -506,9 +663,10 @@ case "$CMD" in
   build)  cmd_build "$@" ;;
   update) cmd_update "$@" ;;
   sync-host-keys) cmd_sync_host_keys "$@" ;;
+  agent) cmd_agent "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: build, update, sync-host-keys" >&2
+    echo "Known commands: build, update, sync-host-keys, agent" >&2
     exit 1
     ;;
 esac

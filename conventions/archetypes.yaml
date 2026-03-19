@@ -1,0 +1,172 @@
+# archetypes.yaml — Centralized Agent Definitions
+#
+# This file defines the core operating environment and behaviors for different
+# types of agents (archetypes) across the system. By centralizing this here,
+# local agent repositories no longer need a local manifest; they simply pass
+# their archetype to the composition scripts.
+#
+# Architecture Breakdown:
+#
+# 1. inlined_conventions vs referenced_conventions:
+#    These lists define the static AGENTS.md context.
+#    - inlined_conventions: Critical operational processes (e.g., git rules)
+#      that are printed in full into the agent's AGENTS.md so they are always
+#      in the immediate context window.
+#    - referenced_conventions: Manuals and advanced guides (e.g., CLI docs)
+#      that are provided as markdown links `[name](path)`. The agent knows they
+#      exist but they don't consume context tokens until explicitly read.
+#
+# 2. roles (Behavioral Modes & Dynamic Conventions):
+#    Roles define the specific behavioral "hats" an agent wears to execute
+#    a specific task (e.g., `code-reviewer`, `project-manager`).
+#    When an agent performs a specific task, it is invoked with that role.
+#    The `compose.sh` script dynamically combines the role's instructions
+#    and its associated conventions to create a tailored system prompt.
+#    NOTE: These roles map cleanly to the concept of "Subagents" and could
+#    be used to generate subagent definitions for various platforms (e.g.,
+#    OpenAI Swarm, AutoGen) in the future.
+#
+# RFC 2119 Requirements:
+# All roles and conventions MUST adhere to RFC 2119 semantics (MUST, MUST NOT,
+# SHOULD, SHOULD NOT, MAY) to provide unambiguous, deterministically interpretable
+# instructions to the LLM.
+
+archetypes:
+  engineer:
+    description: "Engineering agents — implementation, code review, architecture"
+    inlined_conventions:
+      - process.version-control
+      - process.feature-delivery
+      - process.continuous-integration
+      - process.copilot-agent
+      - tool.nix-devshell
+    referenced_conventions:
+      - os.requirements
+      - process.agent-cronjobs
+      - process.project-board
+      - tool.bitwarden
+      - tool.forgejo
+      - tool.himalaya
+      - process.version-control-advanced
+      - tool.github
+    roles:
+      # Role: code-reviewer
+      # Used when the agent is strictly reviewing PRs authored by others (or subagents).
+      # Focuses on finding flaws, security issues, and style violations rather than writing code.
+      code-reviewer:
+        conventions:
+          - process.continuous-integration
+          - tool.typescript
+          - process.copilot-agent
+          - tool.forgejo
+          - tool.github
+          - process.version-control
+          - process.version-control-advanced
+          
+      # Role: software-engineer
+      # The primary role for writing code, fixing bugs, and executing technical tasks.
+      # Serves as the core implementation subagent.
+      software-engineer:
+        conventions:
+          - process.continuous-integration
+          - process.feature-delivery
+          - process.pull-request
+          - tool.typescript
+          - process.coding-agent
+          - tool.nix-devshell
+          - process.version-control
+          - process.version-control-advanced
+          
+      # Role: architect
+      # Used for high-level system design, evaluating trade-offs, and writing technical specs.
+      # Focuses on structure and dependencies before implementation begins.
+      architect:
+        conventions:
+          - process.feature-delivery
+          - process.pull-request
+          - tool.forgejo
+          - process.version-control
+          - process.version-control-advanced
+          
+      # Role: project-manager
+      # Used for breaking down large issues, epics, or specs into actionable, sequential tasks.
+      project-manager:
+        conventions:
+          - process.feature-delivery
+          - process.project-board
+          - tool.forgejo
+          - process.task-tracking
+
+      # Role: task-decomposer
+      # A supplementary subagent role used specifically to chunk work into smaller PRs.
+      task-decomposer:
+        conventions:
+          - process.feature-delivery
+          - tool.forgejo
+          - process.task-tracking
+          
+      # Role: default
+      # The default "idle" or administrative role. Used for checking email, triaging notifications,
+      # running scheduled cronjobs, and managing the agent's internal state.
+      default:
+        conventions:
+          - tool.bitwarden
+          - process.claude-sessions
+          - process.copilot-agent
+          - tool.forgejo
+          - tool.github
+          - tool.himalaya
+          - tool.nix-devshell
+          - process.task-tracking
+
+  product:
+    description: "Product agents — planning, stakeholder communication, task management"
+    inlined_conventions:
+      - process.product-engineering-handoff
+      - process.press-release
+    referenced_conventions:
+      - process.task-tracking
+      - process.project-board
+      - os.requirements
+      - process.agent-cronjobs
+      - tool.bitwarden
+      - tool.forgejo
+      - tool.himalaya
+      - tool.github
+    roles:
+      # Role: business-analyst
+      # Used for evaluating market opportunities, competitor products, and defining KPIs.
+      business-analyst:
+        conventions:
+          - process.competitive-analysis
+          - tool.himalaya
+          - tool.forgejo
+          
+      # Role: press-release-writer
+      # Used specifically for drafting and refining "Working Backwards" style press releases
+      # which serve as the primary handoff mechanism to engineering.
+      press-release-writer:
+        conventions:
+          - process.press-release
+          - tool.forgejo
+          
+      # Role: project-manager
+      # Used for taking an approved press release and turning it into milestones and user stories
+      # to be published on the git service for engineering consumption.
+      project-manager:
+        conventions:
+          - process.project-board
+          - tool.forgejo
+          - process.task-tracking
+
+      # Role: task-decomposer
+      # A supplementary subagent role used specifically to chunk work.
+      task-decomposer:
+        conventions:
+          - tool.forgejo
+          - process.task-tracking
+          
+      # Role: designer
+      # Used to review UX/UI proposals, user flows, and ensure alignment with the product vision.
+      designer:
+        conventions: []
