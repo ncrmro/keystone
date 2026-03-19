@@ -1,12 +1,14 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
 # Convention: Code Review Ownership (process.code-review-ownership)
 
-This convention defines code ownership areas, maps them to team roles from `TEAM.md`, and ensures the right reviewers are automatically notified when a PR is ready for review. It relies on CODEOWNERS files for both GitHub and Forgejo, with the task loop's notification-driven ingestion as the discovery mechanism.
+This convention defines code ownership areas, maps them to team roles from `TEAM.md`, and ensures the right reviewers are automatically notified when a PR is ready for review. It relies on CODEOWNERS files with the task loop's notification-driven ingestion as the discovery mechanism.
+
+**Platform** refers to the git hosting service (GitHub, Forgejo, or other CODEOWNERS-compatible git service).
 
 ## Ownership Matrix
 
 1. Code ownership MUST be defined by team role (CPO, CTO, CEO), not by hardcoded usernames.
-2. Usernames for each role MUST be resolved from `TEAM.md` using the platform-appropriate column (GitHub column for GitHub repos, Forgejo column for Forgejo repos).
+2. Usernames for each role MUST be resolved from `TEAM.md` using the platform-appropriate column.
 3. The ownership areas MUST follow this matrix:
 
 | Area | File Patterns | Reviewer Role(s) |
@@ -31,8 +33,8 @@ This convention defines code ownership areas, maps them to team roles from `TEAM
 
 ## Notification-Driven Discovery
 
-12. On both GitHub and Forgejo, CODEOWNERS MUST be relied upon to auto-request reviews when a PR is created or undrafted.
-13. The task loop's pre-fetch phase discovers review requests via the platform notifications API (GitHub: `gh api /notifications`, Forgejo: notifications endpoint), filtering for review-requested notifications — see `process.agent-cronjobs` for task loop details.
+12. CODEOWNERS MUST be relied upon to auto-request reviews when a PR is created or undrafted.
+13. The task loop's pre-fetch phase discovers review requests via the platform's notifications API, filtering for review-requested notifications — see `process.agent-cronjobs` for task loop details.
 14. Agents MUST NOT poll for review assignments outside the task loop.
 15. The notification-driven flow via CODEOWNERS is the sole discovery mechanism for PR review requests.
 
@@ -46,94 +48,84 @@ This convention defines code ownership areas, maps them to team roles from `TEAM
 
 ### GitHub CODEOWNERS (`.github/CODEOWNERS`)
 
-Usernames resolved from `TEAM.md` GitHub column:
+Resolve `{ceo}`, `{cpo}`, `{cto}` from the GitHub column of `TEAM.md`:
 
 ```
 # CODEOWNERS — Source of truth: TEAM.md
 # Convention: process.code-review-ownership
-#
-# Roles → GitHub usernames (from TEAM.md):
-#   CEO: ncrmro
-#   CPO: luce-ncrmro
-#   CTO: kdrgo
 
 # Documentation & content — CPO reviews
-docs/                    @luce-ncrmro
-specs/                   @luce-ncrmro
-blog/                    @luce-ncrmro
+docs/                    @{cpo}
+specs/                   @{cpo}
+blog/                    @{cpo}
 
 # Infrastructure & Nix — CTO + CEO review
-*.nix                    @kdrgo @ncrmro
-flake.*                  @kdrgo @ncrmro
-modules/                 @kdrgo @ncrmro
-hosts/                   @kdrgo @ncrmro
+*.nix                    @{cto} @{ceo}
+flake.*                  @{cto} @{ceo}
+modules/                 @{cto} @{ceo}
+hosts/                   @{cto} @{ceo}
 
 # CI/CD — CTO + CEO review
-.github/                 @kdrgo @ncrmro
-Makefile                 @kdrgo @ncrmro
-Dockerfile               @kdrgo @ncrmro
-docker-compose*          @kdrgo @ncrmro
+.github/                 @{cto} @{ceo}
+Makefile                 @{cto} @{ceo}
+Dockerfile               @{cto} @{ceo}
+docker-compose*          @{cto} @{ceo}
 
 # Application source — CTO reviews
-src/                     @kdrgo
-packages/                @kdrgo
+src/                     @{cto}
+packages/                @{cto}
 
 # Agent & root config — CEO reviews
-/CLAUDE.md               @ncrmro
-/TEAM.md                 @ncrmro
-/SOUL.md                 @ncrmro
-/AGENTS.md               @ncrmro
+/CLAUDE.md               @{ceo}
+/TEAM.md                 @{ceo}
+/SOUL.md                 @{ceo}
+/AGENTS.md               @{ceo}
 ```
 
 ### Forgejo CODEOWNERS (`.forgejo/CODEOWNERS`)
 
-Usernames resolved from `TEAM.md` Forgejo column. Uses Go regex patterns:
+Same ownership matrix but uses Go regex patterns. Resolve `{ceo}`, `{cpo}`, `{cto}` from the Forgejo column of `TEAM.md`:
 
 ```
 # CODEOWNERS — Source of truth: TEAM.md
 # Convention: process.code-review-ownership
-#
-# Roles → Forgejo usernames (from TEAM.md):
-#   CEO: ncrmro
-#   CPO: luce
-#   CTO: drago
 
 # Documentation & content — CPO reviews
-docs/.* @luce
-specs/.* @luce
-blog/.* @luce
+docs/.* @{cpo}
+specs/.* @{cpo}
+blog/.* @{cpo}
 
 # Infrastructure & Nix — CTO + CEO review
-.*\.nix$ @drago @ncrmro
-flake\..* @drago @ncrmro
-modules/.* @drago @ncrmro
-hosts/.* @drago @ncrmro
+.*\.nix$ @{cto} @{ceo}
+flake\..* @{cto} @{ceo}
+modules/.* @{cto} @{ceo}
+hosts/.* @{cto} @{ceo}
 
 # CI/CD — CTO + CEO review
-\.forgejo/workflows/.* @drago @ncrmro
-Makefile @drago @ncrmro
-Dockerfile @drago @ncrmro
-docker-compose.* @drago @ncrmro
+\.forgejo/workflows/.* @{cto} @{ceo}
+Makefile @{cto} @{ceo}
+Dockerfile @{cto} @{ceo}
+docker-compose.* @{cto} @{ceo}
 
 # Application source — CTO reviews
-src/.* @drago
-packages/.* @drago
+src/.* @{cto}
+packages/.* @{cto}
 
 # Agent & root config — CEO reviews
-^CLAUDE\.md$ @ncrmro
-^TEAM\.md$ @ncrmro
-^SOUL\.md$ @ncrmro
-^AGENTS\.md$ @ncrmro
+^CLAUDE\.md$ @{ceo}
+^TEAM\.md$ @{ceo}
+^SOUL\.md$ @{ceo}
+^AGENTS\.md$ @{ceo}
 ```
 
 ### End-to-End Flow
 
 ```
 1. Developer pushes PR touching src/api/handler.ts
-2. GitHub reads CODEOWNERS → matches src/ → @kdrgo (CTO)
-3. GitHub auto-requests review from @kdrgo
-4. GitHub creates notification: reason=review_requested
-5. Task loop pre-fetch: gh api /notifications → finds review request
+2. Platform reads CODEOWNERS → matches src/ → CTO
+3. Platform auto-requests review from CTO's username
+4. Notification generated: reason=review_requested
+5. Task loop pre-fetch: notifications API → finds review request
 6. Task loop ingest: creates task in TASKS.yaml
 7. Agent executes review in code-reviewer role
 ```
