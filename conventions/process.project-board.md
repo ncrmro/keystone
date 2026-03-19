@@ -81,7 +81,7 @@ gh project view {number} --owner {owner} --format json
 
 13. Forgejo has **no project board REST API**, but all board operations are automatable via the `forgejo-project` CLI which calls the web UI's internal HTTP routes with session cookie auth.
 14. Agents MUST use `forgejo-project` for all board operations on Forgejo repos — see `tool.forgejo` for full CLI reference.
-15. Before using `forgejo-project`, agents MUST call `forgejo-project login` with appropriate credentials.
+15. Agents MUST set `FORGEJO_HOST`, `FORGEJO_USER`, and `FORGEJO_PASSWORD_CMD` environment variables. The script auto-authenticates on first use.
 16. Unlike GitHub, Forgejo has **no built-in board automations** — agents MUST handle all transitions (including issue close → Done) explicitly.
 
 ## Doctor Checklist

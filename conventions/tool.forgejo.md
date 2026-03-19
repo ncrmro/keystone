@@ -198,10 +198,12 @@ curl -s -X POST \
 The `forgejo-project` script wraps Forgejo web routes into a `gh project`-like interface. It is a single Bash script depending only on `curl` and `jq`.
 
 ```bash
-# Auth — login once, session cookie cached at ~/.local/state/forgejo-project/cookies.txt
-forgejo-project login --host git.ncrmro.com --user drago --password-cmd "rbw get mail.ncrmro.com --field password"
+# Environment (set once, e.g. in .envrc or shell profile)
+export FORGEJO_HOST=git.ncrmro.com
+export FORGEJO_USER=drago
+export FORGEJO_PASSWORD_CMD="rbw get mail.ncrmro.com --field password"
 
-# Project CRUD
+# Project CRUD (auto-authenticates on first use)
 forgejo-project create --repo owner/repo --title "v1.0" --template basic-kanban
 forgejo-project list   --repo owner/repo
 forgejo-project close  --repo owner/repo --project 5
@@ -220,9 +222,9 @@ forgejo-project item move --repo owner/repo --project 5 --issue 42 --column 3
 forgejo-project item list --repo owner/repo --project 5
 ```
 
-27. Agents MUST set `FORGEJO_HOST` and `FORGEJO_USER` environment variables (or pass `--host`/`--user` flags) before using `forgejo-project`.
-28. The `login` subcommand MUST be called before any other subcommand. The session cookie is cached and reused; the script auto-retries login on session expiry.
-29. The `--password-cmd` flag MUST delegate to a credential manager (`rbw`, `pass`, etc.) — passwords MUST NOT be passed inline or stored in plaintext.
+27. Agents MUST set `FORGEJO_HOST`, `FORGEJO_USER`, and `FORGEJO_PASSWORD_CMD` environment variables (or pass equivalent flags).
+28. The script auto-authenticates on first use and re-authenticates transparently on session expiry — no explicit `login` step is needed.
+29. `FORGEJO_PASSWORD_CMD` MUST delegate to a credential manager (`rbw`, `pass`, etc.) — passwords MUST NOT be passed inline or stored in plaintext.
 
 ### Web Route Reference
 
