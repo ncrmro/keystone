@@ -360,6 +360,10 @@
         inherit pkgs lib nixpkgs;
         self = self;
       };
+      server-evaluation = import ./tests/module/server-evaluation.nix {
+        inherit pkgs lib nixpkgs;
+        self = self;
+      };
     };
 
     # Packages exported for consumption
