@@ -1,0 +1,157 @@
+name: project_milestone
+version: "1.0.0"
+summary: "Plan, track, and complete project milestones with clear goals and deliverables."
+common_job_info_provided_to_all_steps_at_runtime: |
+  A milestone represents a meaningful checkpoint in a project — a named, time-bounded
+  set of goals that, when achieved, marks real progress for stakeholders.
+
+  This job helps agents plan what needs to happen before a milestone, review whether the
+  work is on track, and document completion when the milestone is reached.
+
+  Milestone artifacts live in the project notes under `milestones/<milestone-name>/`.
+
+workflows:
+  - name: plan
+    summary: "Define the goals, scope, and task breakdown for an upcoming milestone."
+    steps:
+      - define_goals
+      - breakdown_tasks
+
+  - name: review
+    summary: "Review progress against milestone goals and surface any blockers."
+    steps:
+      - assess_progress
+      - identify_blockers
+
+  - name: complete
+    summary: "Document milestone completion, capture outcomes, and record learnings."
+    steps:
+      - document_outcomes
+      - capture_learnings
+
+steps:
+  - id: define_goals
+    name: "Define Milestone Goals"
+    description: "Establish the name, target date, success criteria, and scope for the milestone."
+    instructions_file: steps/define_goals.md
+    inputs:
+      - name: milestone_name
+        description: "Short name for the milestone (lowercase, hyphens for spaces)"
+      - name: target_date
+        description: "Target completion date (YYYY-MM-DD or relative, e.g. 'end of sprint')"
+      - name: context
+        description: "Background on what the project is trying to achieve"
+    outputs:
+      milestone.md:
+        type: file
+        description: "Milestone definition with name, goals, success criteria, and scope"
+        required: true
+    dependencies: []
+    quality_criteria:
+      - "**Name Defined**: Is the milestone name clear and meaningful?"
+      - "**Goals Stated**: Are 2-5 specific, measurable goals listed?"
+      - "**Success Criteria**: Is it clear what 'done' looks like for each goal?"
+      - "**Scope Bounded**: Is it clear what is in and out of scope?"
+      - "**File Created**: Has milestone.md been created in `milestones/<milestone-name>/`?"
+
+  - id: breakdown_tasks
+    name: "Break Down Tasks"
+    description: "Decompose milestone goals into concrete, actionable tasks in TASKS.yaml."
+    instructions_file: steps/breakdown_tasks.md
+    inputs:
+      - file: milestone.md
+        from_step: define_goals
+    outputs:
+      TASKS.yaml:
+        type: file
+        description: "Task list with status, priority, and assignments for each milestone goal"
+        required: true
+    dependencies:
+      - define_goals
+    quality_criteria:
+      - "**Coverage**: Does every milestone goal have at least one task?"
+      - "**Actionable**: Are tasks specific enough to be acted on without further clarification?"
+      - "**Prioritized**: Is there a clear execution order?"
+      - "**File Updated**: Has TASKS.yaml been created or updated with the new tasks?"
+
+  - id: assess_progress
+    name: "Assess Progress"
+    description: "Check task status and summarise what has been completed toward the milestone."
+    instructions_file: steps/assess_progress.md
+    inputs:
+      - file: milestone.md
+        from_step: define_goals
+      - name: tasks_yaml_path
+        description: "Path to TASKS.yaml (default: milestones/<milestone-name>/TASKS.yaml)"
+    outputs:
+      progress_report.md:
+        type: file
+        description: "Summary of completed work, open tasks, and overall milestone health"
+        required: true
+    dependencies: []
+    quality_criteria:
+      - "**Status Tallied**: Are completed vs. remaining tasks counted?"
+      - "**Goals Mapped**: Is progress mapped back to milestone goals?"
+      - "**Health Signal**: Is there a clear signal (on-track / at-risk / blocked)?"
+      - "**File Created**: Has progress_report.md been written?"
+
+  - id: identify_blockers
+    name: "Identify Blockers"
+    description: "Surface tasks that are blocked, overdue, or at risk, and propose mitigations."
+    instructions_file: steps/identify_blockers.md
+    inputs:
+      - file: progress_report.md
+        from_step: assess_progress
+    outputs:
+      blockers.md:
+        type: file
+        description: "List of blockers with proposed mitigations or escalation notes"
+        required: true
+    dependencies:
+      - assess_progress
+    quality_criteria:
+      - "**Blockers Enumerated**: Is each blocker listed with its impact?"
+      - "**Mitigations Proposed**: Does each blocker have an actionable mitigation?"
+      - "**Owner Identified**: Is there a clear owner for resolving each blocker?"
+      - "**File Created**: Has blockers.md been written?"
+
+  - id: document_outcomes
+    name: "Document Outcomes"
+    description: "Record what was delivered, what was deferred, and how it compares to the original goals."
+    instructions_file: steps/document_outcomes.md
+    inputs:
+      - file: milestone.md
+        from_step: define_goals
+      - name: tasks_yaml_path
+        description: "Path to TASKS.yaml"
+    outputs:
+      outcomes.md:
+        type: file
+        description: "Milestone completion report comparing delivered work to original goals"
+        required: true
+    dependencies: []
+    quality_criteria:
+      - "**Goals Reviewed**: Is each original goal marked as met, partially met, or deferred?"
+      - "**Deferred Items Captured**: Are deferred items recorded for the next milestone?"
+      - "**Stakeholder Ready**: Is the report suitable to share with stakeholders?"
+      - "**File Created**: Has outcomes.md been written in `milestones/<milestone-name>/`?"
+
+  - id: capture_learnings
+    name: "Capture Learnings"
+    description: "Extract process improvements and key learnings from the milestone to inform the next one."
+    instructions_file: steps/capture_learnings.md
+    inputs:
+      - file: outcomes.md
+        from_step: document_outcomes
+    outputs:
+      learnings.md:
+        type: file
+        description: "Retrospective notes with what worked, what didn't, and process improvements"
+        required: true
+    dependencies:
+      - document_outcomes
+    quality_criteria:
+      - "**What Worked**: Are positive patterns captured so they can be repeated?"
+      - "**What Didn't Work**: Are friction points identified with root causes?"
+      - "**Action Items**: Are concrete process improvements listed?"
+      - "**File Created**: Has learnings.md been written?"
