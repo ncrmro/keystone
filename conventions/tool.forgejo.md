@@ -182,7 +182,60 @@ curl -s -X POST \
 
 ## Project Boards
 
-23. Forgejo 14.0.2 has **no project board REST API** (verified against the swagger spec).
-24. Boards are managed via web UI only at `https://{host}/{owner}/{repo}/projects`.
-25. Agents MUST document board URLs in milestone or issue descriptions for easy access.
+23. Forgejo has **no project board REST API** — the swagger spec exposes zero project endpoints.
+24. However, all board operations **can be automated** via the web UI's internal HTTP routes using session cookie authentication.
+25. Agents MUST use the `forgejo-project` CLI (provided by keystone) for all board operations instead of manual web UI steps.
 26. See `process.project-board` for full board lifecycle and Forgejo-specific guidance.
+
+### Why Session Cookies Work
+
+- API tokens (Basic auth, OAuth2 Bearer) are explicitly rejected on web routes (`services/auth/basic.go` line 47, `services/auth/oauth2.go` line 221 skip non-`/api/` paths).
+- CSRF is not a barrier — Go's `net/http.CrossOriginProtection` only blocks browser cross-origin requests; plain curl passes by design.
+- Session auth: `POST /user/login` with `user_name` + `password` → session cookie.
+
+### `forgejo-project` CLI
+
+The `forgejo-project` script wraps Forgejo web routes into a `gh project`-like interface. It is a single Bash script depending only on `curl` and `jq`.
+
+```bash
+# Auth — login once, session cookie cached at ~/.local/state/forgejo-project/cookies.txt
+forgejo-project login --host git.ncrmro.com --user drago --password-cmd "rbw get mail.ncrmro.com --field password"
+
+# Project CRUD
+forgejo-project create --repo owner/repo --title "v1.0" --template basic-kanban
+forgejo-project list   --repo owner/repo
+forgejo-project close  --repo owner/repo --project 5
+forgejo-project delete --repo owner/repo --project 5
+
+# Column CRUD
+forgejo-project column add     --repo owner/repo --project 5 --title "In Review" --color "#0075ca"
+forgejo-project column list    --repo owner/repo --project 5
+forgejo-project column edit    --repo owner/repo --project 5 --column 3 --title "Reviewing"
+forgejo-project column default --repo owner/repo --project 5 --column 1
+forgejo-project column delete  --repo owner/repo --project 5 --column 3
+
+# Issue management (resolves issue numbers → internal IDs transparently)
+forgejo-project item add  --repo owner/repo --project 5 --issue 42
+forgejo-project item move --repo owner/repo --project 5 --issue 42 --column 3
+forgejo-project item list --repo owner/repo --project 5
+```
+
+27. Agents MUST set `FORGEJO_HOST` and `FORGEJO_USER` environment variables (or pass `--host`/`--user` flags) before using `forgejo-project`.
+28. The `login` subcommand MUST be called before any other subcommand. The session cookie is cached and reused; the script auto-retries login on session expiry.
+29. The `--password-cmd` flag MUST delegate to a credential manager (`rbw`, `pass`, etc.) — passwords MUST NOT be passed inline or stored in plaintext.
+
+### Web Route Reference
+
+| Operation | Method | Endpoint | Response |
+|-----------|--------|----------|----------|
+| Create project | POST | `/{owner}/{repo}/projects/new` | 303 redirect |
+| Add column | POST | `/{owner}/{repo}/projects/{id}` | `{"ok":true}` |
+| Assign issue | POST | `/{owner}/{repo}/issues/projects` | `{"ok":true}` |
+| Move issue | POST | `/{owner}/{repo}/projects/{id}/{colID}/move` | `{"ok":true}` |
+| Edit column | PUT | `/{owner}/{repo}/projects/{id}/{colID}` | `{"ok":true}` |
+| Set default column | POST | `/{owner}/{repo}/projects/{id}/{colID}/default` | `{"ok":true}` |
+| Delete column | DELETE | `/{owner}/{repo}/projects/{id}/{colID}` | JSON |
+| Close/open project | POST | `/{owner}/{repo}/projects/{id}/{open\|close}` | JSON redirect |
+| Delete project | POST | `/{owner}/{repo}/projects/{id}/delete` | `{"redirect":"..."}` |
+
+30. The `issue_ids` parameter for issue assignment uses **internal DB IDs**, not issue numbers. Agents MUST resolve numbers via `GET /api/v1/repos/{owner}/{repo}/issues/{number}` first (the `forgejo-project` CLI does this transparently).
