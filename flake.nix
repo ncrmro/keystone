@@ -24,6 +24,18 @@
       url = "github:pimalaya/himalaya";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    calendula = {
+      url = "github:pimalaya/calendula";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    cardamum = {
+      url = "github:pimalaya/cardamum";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    comodoro = {
+      url = "github:pimalaya/comodoro";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     llm-agents = {
       url = "github:numtide/llm-agents.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -74,6 +86,9 @@
     lanzaboote,
     hyprland,
     himalaya,
+    calendula,
+    cardamum,
+    comodoro,
     llm-agents,
     browser-previews,
     ghostty,
@@ -158,10 +173,14 @@
       agent-mail-src = ./packages/agent-mail;
       fetch-email-source-src = ./packages/fetch-email-source;
       fetch-forgejo-sources-src = ./packages/fetch-forgejo-sources;
+      fetch-github-sources-src = ./packages/fetch-github-sources;
       repo-sync-src = ./packages/repo-sync;
       podman-agent-src = ./packages/podman-agent;
       ks-src = ./packages/ks;
       himalaya-flake = himalaya;
+      calendula-flake = calendula;
+      cardamum-flake = cardamum;
+      comodoro-flake = comodoro;
       llm-agents-flake = llm-agents;
       browser-previews-flake = browser-previews;
       ghostty-flake = ghostty;
@@ -176,10 +195,27 @@
         agent-mail = final.callPackage agent-mail-src { himalaya = final.keystone.himalaya; };
         fetch-email-source = final.callPackage fetch-email-source-src { himalaya = final.keystone.himalaya; };
         fetch-forgejo-sources = final.callPackage fetch-forgejo-sources-src {};
+        fetch-github-sources = final.callPackage fetch-github-sources-src {};
         repo-sync = final.callPackage repo-sync-src {};
         podman-agent = final.callPackage podman-agent-src {};
         ks = final.callPackage ks-src {};
         himalaya = himalaya-flake.packages.${final.system}.default;
+        calendula = calendula-flake.packages.${final.system}.default;
+        cardamum = cardamum-flake.packages.${final.system}.default;
+        # Comodoro upstream flake is missing dbus from buildInputs/nativeBuildInputs.
+        # The postInstall phase runs the binary (to generate completions) before
+        # fixup patches RPATH, so we also set LD_LIBRARY_PATH during install.
+        comodoro = comodoro-flake.packages.${final.system}.default.overrideAttrs (old: let
+          libPath = final.lib.makeLibraryPath [ final.dbus ];
+        in {
+          nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ final.pkg-config final.makeWrapper ];
+          buildInputs = (old.buildInputs or []) ++ [ final.dbus ];
+          postInstall = ''
+            export LD_LIBRARY_PATH="${libPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          '' + (old.postInstall or "") + ''
+            wrapProgram $out/bin/comodoro --prefix LD_LIBRARY_PATH : "${libPath}"
+          '';
+        });
         # AI coding agents from llm-agents.nix
         claude-code = llm-agents-flake.packages.${final.system}.claude-code;
         gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;
@@ -258,8 +294,17 @@
       # ISO installer module
       isoInstaller = ./modules/iso-installer.nix;
 
+      # SSH public key registry — single source of truth for all keys
+      keys = ./modules/keys.nix;
+
       # Hardware key module - FIDO2/YubiKey for GPG/SSH agent
-      hardwareKey = ./modules/os/hardware-key.nix;
+      # Imports keys.nix since rootKeys references keystone.keys
+      hardwareKey = {
+        imports = [
+          ./modules/keys.nix
+          ./modules/os/hardware-key.nix
+        ];
+      };
 
       # Headscale DNS import — consume server DNS records on headscale host
       headscale-dns = ./modules/server/headscale/dns-import.nix;
@@ -321,6 +366,7 @@
         himalaya = himalaya.packages.x86_64-linux.default;
       };
       fetch-forgejo-sources = pkgs.callPackage ./packages/fetch-forgejo-sources {};
+      fetch-github-sources = pkgs.callPackage ./packages/fetch-github-sources {};
       repo-sync = pkgs.callPackage ./packages/repo-sync {};
       podman-agent = pkgs.callPackage ./packages/podman-agent {};
       ks = pkgs.callPackage ./packages/ks {};

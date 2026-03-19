@@ -191,11 +191,8 @@ let
     cd "$CONFIG_REPO_PATH"
     nix flake update "$SECRETS_FLAKE_INPUT"
 
-    # Compute relative submodule path for git add
-    RELATIVE_SUBMODULE="$(realpath --relative-to="$CONFIG_REPO_PATH" "$SECRETS_DIR")"
-
-    echo "==> Committing submodule + flake.lock in parent..."
-    git add "$RELATIVE_SUBMODULE" flake.lock
+    echo "==> Committing flake.lock in parent..."
+    git add flake.lock
     git commit -m "chore($SECRETS_FLAKE_INPUT): relock flake input - $COMMIT_MSG"
 
     echo "==> Done. Parent repo committed. Push when ready."

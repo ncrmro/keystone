@@ -148,7 +148,6 @@ let
         email = "admin@example.com";
         extraGroups = [ "wheel" ];
         initialPassword = "changeme";
-        authorizedKeys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeTestKey001 admin@workstation" ];
         terminal.enable = true;
       };
     });

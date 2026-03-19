@@ -58,20 +58,6 @@ with lib; let
         example = ["wheel" "networkmanager"];
       };
 
-      authorizedKeys = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "SSH public keys for the user. Also used for remote unlock if enabled.";
-        example = ["ssh-ed25519 AAAAC3... alice@laptop"];
-      };
-
-      hardwareKeys = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Names of hardware keys (from keystone.hardwareKey.keys) whose SSH public keys are added to this user's authorizedKeys.";
-        example = ["yubi-black"];
-      };
-
       initialPassword = mkOption {
         type = types.nullOr types.str;
         default = null;
@@ -152,6 +138,8 @@ with lib; let
   });
 in {
   imports = [
+    ../keys.nix
+    ../secrets.nix
     ./storage.nix
     ./secure-boot.nix
     ./tpm.nix
@@ -163,10 +151,13 @@ in {
     ./airplay.nix
     ./mail.nix
     ./git-server.nix
-    ./agents.nix
+    ./agents
     ./hypervisor.nix
     ./iphone-tether.nix
+    ./ollama.nix
+    ./immich.nix
     ./tailscale.nix
+    ./containers.nix
   ];
 
   options.keystone.os = {
@@ -435,18 +426,6 @@ in {
       };
     };
 
-    # Secrets base path for automatic age.secrets declarations
-    secretsBasePath = mkOption {
-      type = types.nullOr types.path;
-      default = null;
-      description = ''
-        Base path to agenix secrets directory (e.g., inputs.agenix-secrets).
-        When set, keystone auto-declares age.secrets entries for features
-        that require them (sshAutoLoad, etc.), eliminating manual host config.
-      '';
-      example = literalExpression "inputs.agenix-secrets";
-    };
-
     # User configuration
     users = mkOption {
       type = types.attrsOf userSubmodule;
@@ -461,7 +440,6 @@ in {
             fullName = "Alice Smith";
             email = "alice@example.com";
             extraGroups = [ "wheel" "networkmanager" ];
-            authorizedKeys = [ "ssh-ed25519 AAAAC3... alice@laptop" ];
             terminal.enable = true;
             desktop.enable = true;
             zfs.quota = "100G";
@@ -502,7 +480,7 @@ in {
       # Non-storage assertions
       {
         assertion = cfg.remoteUnlock.enable -> (cfg.remoteUnlock.authorizedKeys != [] || cfg.users != {});
-        message = "Remote unlock requires authorizedKeys or at least one configured user with SSH keys";
+        message = "Remote unlock requires authorizedKeys or at least one configured user with keys in keystone.keys";
       }
       {
         assertion = cfg.tpm.enable -> cfg.secureBoot.enable;

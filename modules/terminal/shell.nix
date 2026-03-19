@@ -87,6 +87,19 @@ in
       };
     };
 
+    # Fzf - A command-line fuzzy finder
+    # https://github.com/junegunn/fzf
+    programs.fzf = {
+      enable = true;
+      enableZshIntegration = true;
+    };
+
+    # Bat - A cat(1) clone with wings (syntax highlighting and Git integration)
+    # https://github.com/sharkdp/bat
+    programs.bat = {
+      enable = true;
+    };
+
     programs.zsh = {
       enable = true;
       enableCompletion = mkDefault true;
@@ -118,6 +131,30 @@ in
     };
 
     home.packages = with pkgs; [
+      # Bottom - Graphical process/system monitor
+      # https://github.com/ClementTsang/bottom
+      bottom
+
+      # Dust - A more intuitive version of du in rust
+      # https://github.com/bootandy/dust
+      dust
+
+      # Fd - A simple, fast and user-friendly alternative to 'find'
+      # https://github.com/sharkdp/fd
+      fd
+
+      # Ncdu - NCurses Disk Usage
+      # https://dev.yorhel.nl/ncdu
+      ncdu
+
+      # Sd - Intuitive find & replace CLI (sed alternative)
+      # https://github.com/chmln/sd
+      sd
+
+      # Tealdeer - A fast tldr client in Rust (simplified man pages)
+      # https://github.com/dbrgn/tealdeer
+      tealdeer
+
       # Direnv - Unclutter your .profile
       # https://direnv.net/
       direnv
@@ -144,6 +181,10 @@ in
       # https://htop.dev/
       htop
 
+      # GitHub CLI - GitHub's official command line tool
+      # https://cli.github.com/
+      gh
+
       # Lazygit - Simple terminal UI for git commands
       # https://github.com/jesseduffield/lazygit
       lazygit
@@ -167,6 +208,18 @@ in
 
       # ks - Keystone infrastructure CLI (build and deploy NixOS configurations)
       pkgs.keystone.ks
+
+      # Jq - Lightweight command-line JSON processor
+      # https://jqlang.github.io/jq/
+      jq
+
+      # Yq - Portable command-line YAML processor
+      # https://github.com/mikefarah/yq
+      yq-go
+
+      # Nixfmt - Official Nix code formatter (RFC style)
+      # https://github.com/NixOS/nixfmt
+      nixfmt-rfc-style
     ];
   };
 }

@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Fetch GitHub issues, PRs requesting review, and PR review comments for an agent.
+# Outputs a single JSON object with three keys: github-issues, github-prs, github-pr-reviews.
+# Usage: fetch-github-sources <agent-username>
+set -euo pipefail
+
+AGENT_USERNAME="${1:?Usage: fetch-github-sources <agent-username>}"
+
+TMPDIR_WORK=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_WORK"' EXIT
+
+echo "[]" > "$TMPDIR_WORK/issues.json"
+echo "[]" > "$TMPDIR_WORK/prs.json"
+echo "[]" > "$TMPDIR_WORK/reviews.json"
+
+# Issues assigned to the agent
+gh search issues --assignee "$AGENT_USERNAME" --state open --json repository,number,title,url,assignee,labels,createdAt > "$TMPDIR_WORK/issues_raw.json" || echo "[]" > "$TMPDIR_WORK/issues_raw.json"
+jq '[.[] | {repo: .repository.nameWithOwner, number: .number, title: .title, url: .url, assignee: .assignee.login, labels: [(.labels // [])[] | .name], created_at: .createdAt}]' "$TMPDIR_WORK/issues_raw.json" > "$TMPDIR_WORK/issues.json"
+
+# PRs requesting review from the agent
+gh search prs --review-requested "$AGENT_USERNAME" --state open --json repository,number,title,url,author,createdAt > "$TMPDIR_WORK/prs_raw.json" || echo "[]" > "$TMPDIR_WORK/prs_raw.json"
+jq '[.[] | {repo: .repository.nameWithOwner, number: .number, title: .title, url: .url, author: .author.login, created_at: .createdAt}]' "$TMPDIR_WORK/prs_raw.json" > "$TMPDIR_WORK/prs.json"
+
+# PR reviews (comments on PRs authored by agent, requesting changes or commenting)
+gh search prs --author "$AGENT_USERNAME" --state open --json repository,number,title,url > "$TMPDIR_WORK/authored_prs.json" || echo "[]" > "$TMPDIR_WORK/authored_prs.json"
+
+for row in $(jq -c '.[]' "$TMPDIR_WORK/authored_prs.json"); do
+  repo=$(echo "$row" | jq -r '.repository.nameWithOwner')
+  pr_number=$(echo "$row" | jq -r '.number')
+  pr_title=$(echo "$row" | jq -r '.title')
+  pr_url=$(echo "$row" | jq -r '.url')
+  
+  reviews_raw=$(gh api repos/"$repo"/pulls/"$pr_number"/reviews 2>/dev/null || echo "[]")
+  
+  if [ "$reviews_raw" = "[]" ] || [ -z "$reviews_raw" ]; then
+    continue
+  fi
+
+  relevant=$(echo "$reviews_raw" | jq --arg agent "$AGENT_USERNAME" \
+    '[.[] | select(.user.login != $agent) | select(.state == "CHANGES_REQUESTED" or .state == "COMMENTED") | {id: .id, reviewer: .user.login, state: .state}]')
+  
+  if [ "$relevant" = "[]" ]; then
+    continue
+  fi
+
+  for review_idx in $(echo "$relevant" | jq -r 'keys[]'); do
+    review_id=$(echo "$relevant" | jq -r ".[$review_idx].id")
+    reviewer=$(echo "$relevant" | jq -r ".[$review_idx].reviewer")
+    review_state=$(echo "$relevant" | jq -r ".[$review_idx].state")
+
+    comments_raw=$(gh api repos/"$repo"/pulls/"$pr_number"/reviews/"$review_id"/comments 2>/dev/null || echo "[]")
+    comments=$(echo "$comments_raw" | jq '[.[] | {id: .id, path: .path, body: .body}]' 2>/dev/null || echo "[]")
+
+    item=$(jq -n \
+      --arg repo "$repo" \
+      --argjson pr_number "$pr_number" \
+      --arg pr_title "$pr_title" \
+      --arg pr_url "$pr_url" \
+      --argjson review_id "$review_id" \
+      --arg reviewer "$reviewer" \
+      --arg review_state "$review_state" \
+      --argjson comments "$comments" \
+      '[{
+        repo: $repo,
+        pr_number: $pr_number,
+        pr_title: $pr_title,
+        pr_url: $pr_url,
+        review_id: $review_id,
+        reviewer: $reviewer,
+        review_state: $review_state,
+        comments: $comments
+      }]')
+    
+    current=$(cat "$TMPDIR_WORK/reviews.json")
+    echo "$current" | jq --argjson items "$item" '. + $items' > "$TMPDIR_WORK/reviews.json"
+  done
+done
+
+# Output combined result
+jq -n \
+  --argjson issues "$(cat "$TMPDIR_WORK/issues.json")" \
+  --argjson prs "$(cat "$TMPDIR_WORK/prs.json")" \
+  --argjson reviews "$(cat "$TMPDIR_WORK/reviews.json")" \
+  '{"github-issues": $issues, "github-prs": $prs, "github-pr-reviews": $reviews}'
