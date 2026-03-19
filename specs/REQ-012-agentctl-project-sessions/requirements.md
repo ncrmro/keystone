@@ -70,27 +70,52 @@ MUST NOT be sandboxed.
 **REQ-012.14** The sandbox MUST use the existing `podman-agent`
 infrastructure (Nix store volume, SSH forwarding, cache volumes).
 
+### Sandbox Port Exposure
+
+**REQ-012.15** The sandbox container MUST expose a default port for
+the agent to use when starting development servers. This port MUST be
+auto-assigned from a non-conflicting range to avoid collisions with
+other sandbox instances or host services.
+
+**REQ-012.16** The default port MUST be communicated to the AI tool
+via an environment variable (e.g., `SANDBOX_PORT`) so the system
+prompt can instruct the agent to bind servers to it.
+
+**REQ-012.17** The system prompt MUST instruct the agent to use
+`$SANDBOX_PORT` when starting servers, unless the project already
+exposes a specific port in its configuration.
+
+**REQ-012.18** agentctl MUST support a `--port <host:container>` flag
+that can be specified multiple times to expose additional ports from
+the sandbox container to the host.
+
+**REQ-012.19** When `--port` is specified, the ports MUST be forwarded
+from the host to the container using Podman's `-p` flag.
+
+**REQ-012.20** The `--port` flag MUST be ignored when `--nosandbox`
+is set (no container to forward to).
+
 ### Local Model Support
 
-**REQ-012.15** agentctl MUST support a `--local [model]` flag that uses
+**REQ-012.21** agentctl MUST support a `--local [model]` flag that uses
 Ollama instead of a cloud API.
 
-**REQ-012.16** When `--local` is set, agentctl MUST run
+**REQ-012.22** When `--local` is set, agentctl MUST run
 `ollama run <model>` with the same system prompt and project context
 that would be passed to the cloud tool.
 
-**REQ-012.17** The `--local` flag MAY accept an optional model name.
+**REQ-012.23** The `--local` flag MAY accept an optional model name.
 If omitted, a configurable default model SHOULD be used.
 
-**REQ-012.18** The `--local` flag MUST be compatible with `--project`,
+**REQ-012.24** The `--local` flag MUST be compatible with `--project`,
 `--role`, `--worktree`, and `--nosandbox` flags.
 
 ### System Prompt Composition
 
-**REQ-012.19** System prompt composition (loading AGENTS.md, project
+**REQ-012.25** System prompt composition (loading AGENTS.md, project
 context, role prompt) MUST be computed for all AI tools.
 
-**REQ-012.20** Per-tool prompt injection MUST use each tool's native
+**REQ-012.26** Per-tool prompt injection MUST use each tool's native
 mechanism:
   - Claude: `--append-system-prompt`
   - Gemini: reads GEMINI.md from `~/` (mounted by sandbox)
@@ -98,7 +123,7 @@ mechanism:
   - OpenCode: reads config from `~/` (mounted by sandbox)
   - Ollama (--local): system prompt passed via stdin or `--system`
 
-**REQ-012.21** When running in sandbox mode (default), context files
+**REQ-012.27** When running in sandbox mode (default), context files
 mounted at `~/` provide the system prompt. The `--append-system-prompt`
 mechanism is OPTIONAL for sandboxed tools since they read `~/AGENT.md`
 natively.
