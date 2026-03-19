@@ -18,8 +18,8 @@ let
     let
       notesDir = agentCfg.notes.path;
       maxTasks = agentCfg.notes.taskLoop.maxTasks;
-      githubUsername = if agentCfg.github.username != null then agentCfg.github.username else "";
-      forgejoUsername = if agentCfg.forgejo.username != null then agentCfg.forgejo.username else "";
+      githubUsername = agentCfg.github.username;
+      forgejoUsername = agentCfg.forgejo.username;
     in
     pkgs.replaceVars ./scripts/task-loop.sh {
       notesDir = notesDir;
