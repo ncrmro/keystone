@@ -10,10 +10,10 @@
 # ## Example Usage
 #
 # ```nix
-# keystone.notes.enable = true;
+# keystone.notes = { enable = true; repo = "..."; path = "/home/user/notes"; };
 # keystone.projects = {
 #   enable = true;
-#   sessionPrefix = "obs";
+#   # sessionPrefix defaults to basename of notes path (e.g., "notes")
 # };
 # ```
 #
@@ -21,7 +21,7 @@
 #
 # REQ-010.4  Discovers projects by scanning {notes_path}/projects/*/README.md
 # REQ-010.5  keystone.notes.enable MUST be true when projects.enable is true
-# REQ-010.7  sessionPrefix defaults to "obs" for Zellij session names
+# REQ-010.7  sessionPrefix for Zellij session names, auto-derived from notes path
 {
   config,
   lib,
@@ -42,9 +42,9 @@ in
 
     sessionPrefix = mkOption {
       type = types.str;
-      default = "obs";
-      description = "Prefix for Zellij session names created by `pz` (e.g., '{prefix}-{slug}').";
-      example = "work";
+      default = builtins.baseNameOf config.keystone.notes.path;
+      description = "Prefix for Zellij session names created by `pz` (e.g., '{prefix}-{slug}'). Defaults to the basename of keystone.notes.path.";
+      example = "notes";
     };
   };
 
