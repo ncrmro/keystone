@@ -41,16 +41,17 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 ## Review and Merge
 
 21. Appropriate reviewers MUST be assigned before marking the PR ready for review.
-22. Reviewers MUST be assigned per the ownership matrix in `process.code-review-ownership`. On both GitHub and Forgejo, CODEOWNERS handles automatic reviewer assignment when a PR is created or undrafted.
-23. Copilot SHOULD also be requested as a supplementary reviewer per `process.copilot-agent`.
-24. Review feedback MUST be addressed per `process.copilot-agent` conversation resolution rules (fix or explain every comment).
-25. PRs MUST be squash-merged per `process.pull-request`.
+22. Reviewers MUST be assigned per the ownership matrix in `process.code-review-ownership`. On both GitHub and Forgejo, CODEOWNERS handles automatic reviewer assignment when a PR is created or undrafted, provided the repo has branch protection requiring code owner review enabled. If auto-request is not enabled, the authoring agent MUST manually request reviewers per the ownership matrix.
+23. On Forgejo, `tool.forgejo` rule 18 (repo owner as reviewer) is satisfied by including the repo owner in the CODEOWNERS file. Forgejo supports CODEOWNERS natively; no separate manual assignment is needed when CODEOWNERS is configured.
+24. Copilot SHOULD also be requested as a supplementary reviewer per `process.copilot-agent`.
+25. Review feedback MUST be addressed per `process.copilot-agent` conversation resolution rules (fix or explain every comment).
+26. PRs MUST be squash-merged per `process.pull-request`.
 
 ## Traceability
 
-26. Every PR MUST reference its issue; every issue MUST belong to a milestone.
-27. Issues MUST be closed via PR merge keywords (`Closes`, `Fixes`) — not manually.
-28. After merge, demo artifacts MUST be posted on the issue per `process.product-engineering-handoff`.
+27. Every PR MUST reference its issue; every issue MUST belong to a milestone.
+28. Issues MUST be closed via PR merge keywords (`Closes`, `Fixes`) — not manually.
+29. After merge, demo artifacts MUST be posted on the issue per `process.product-engineering-handoff`.
 
 ## Golden Example
 

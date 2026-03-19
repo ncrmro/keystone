@@ -13,7 +13,7 @@ This convention defines code ownership areas, maps them to team roles from `TEAM
 
 | Area | File Patterns | Reviewer Role(s) |
 |------|--------------|-------------------|
-| Documentation & content | `docs/`, `specs/`, `blog/`, non-root `*.md` | CPO |
+| Documentation & content | `docs/`, `specs/`, `blog/` | CPO |
 | Infrastructure & Nix | `*.nix`, `flake.*`, `modules/`, `hosts/` | CTO, CEO |
 | CI/CD pipelines | `.github/workflows/`, `.forgejo/workflows/`, `Makefile`, `Dockerfile`, `docker-compose.*` | CTO, CEO |
 | Application source code | `src/`, `packages/`, `*.ts`, `*.rs`, `*.py`, `*.go` | CTO |
@@ -30,19 +30,21 @@ This convention defines code ownership areas, maps them to team roles from `TEAM
 9. CODEOWNERS files MUST use usernames resolved from `TEAM.md` for the target platform.
 10. CODEOWNERS files MUST be regenerated when `TEAM.md` role assignments or usernames change.
 11. CODEOWNERS files SHOULD include a comment header referencing this convention and `TEAM.md` as the source of truth.
+12. Repos SHOULD enable branch protection requiring code owner review so that CODEOWNERS auto-requests reviewers on PR creation/undraft. If branch protection is not enabled, the authoring agent MUST manually request reviewers per the ownership matrix.
 
 ## Notification-Driven Discovery
 
-12. CODEOWNERS MUST be relied upon to auto-request reviews when a PR is created or undrafted.
-13. The task loop's pre-fetch phase discovers review requests via the platform's notifications API, filtering for review-requested notifications — see `process.agent-cronjobs` for task loop details.
-14. Agents MUST NOT poll for review assignments outside the task loop.
-15. The notification-driven flow via CODEOWNERS is the sole discovery mechanism for PR review requests.
+13. CODEOWNERS MUST be relied upon to auto-request reviews when a PR is created or undrafted, provided branch protection is configured per rule 12.
+14. The task loop's pre-fetch phase discovers review requests via the platform's notifications API, filtering for review-requested notifications — see `process.agent-cronjobs` for task loop details.
+15. Agents MUST NOT poll for review assignments outside the task loop.
+16. The notification-driven flow via CODEOWNERS is the sole discovery mechanism for PR review requests.
 
 ## Interaction with Existing Conventions
 
-16. This convention extends `process.feature-delivery` rules 21-23 by codifying which reviewers are "appropriate" for each file area.
-17. Copilot reviews per `process.copilot-agent` remain supplementary and MAY be requested in addition to ownership-based reviewers.
-18. The `code-reviewer` role in `archetypes.yaml` SHOULD list this convention so agents in code-review mode have the ownership matrix available.
+17. This convention extends `process.feature-delivery` rules 21-23 by codifying which reviewers are "appropriate" for each file area.
+18. Copilot reviews per `process.copilot-agent` remain supplementary and MAY be requested in addition to ownership-based reviewers.
+19. The `code-reviewer` role in `archetypes.yaml` SHOULD list this convention so agents in code-review mode have the ownership matrix available.
+20. On Forgejo, `tool.forgejo` rule 18 (repo owner as reviewer) is satisfied by including the repo owner in the CODEOWNERS file's ownership matrix. Forgejo supports CODEOWNERS natively.
 
 ## Golden Example
 
