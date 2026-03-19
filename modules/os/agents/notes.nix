@@ -76,7 +76,7 @@ in
             # bash, git, claude, himalaya, etc.). Nix and /run/current-system/sw/bin
             # are added as fallbacks for system tools not in the profile.
             environment = {
-              PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:${lib.makeBinPath [ pkgs.nix ]}:/run/current-system/sw/bin";
+              PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.nix ]}";
               SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
               GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
             };
@@ -97,7 +97,7 @@ in
           "agent-${name}-scheduler" = {
             description = "Daily scheduler for ${username}";
             unitConfig.ConditionUser = username;
-            environment.PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:${lib.makeBinPath [ pkgs.nix ]}:/run/current-system/sw/bin";
+            environment.PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.nix ]}";
             serviceConfig = {
               Type = "oneshot";
               SyslogIdentifier = "agent-${name}-scheduler";
