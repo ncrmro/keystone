@@ -145,19 +145,19 @@ in {
 
         github = {
           username = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "GitHub username. When set, the task loop automatically fetches GitHub issues and PRs assigned to this user.";
+            type = types.str;
+            default = name;
+            description = "GitHub username. Defaults to the agent name. The task loop automatically fetches GitHub issues and PRs assigned to this user.";
             example = "octocat";
           };
         };
 
         forgejo = {
           username = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "Forgejo username. When set, the task loop automatically fetches Forgejo issues and PRs assigned to this user.";
-            example = "agent-luce";
+            type = types.str;
+            default = name;
+            description = "Forgejo username. Defaults to the agent name. The task loop automatically fetches Forgejo issues and PRs assigned to this user.";
+            example = "luce";
           };
         };
 
