@@ -59,10 +59,12 @@ in
   };
 
   config = mkIf cfg.enable {
-    assertions = lib.optional (cfg.push.enable && cfg.push.tokenFile == "/run/agenix/attic-push-token") {
-      assertion = config.age.secrets ? "attic-push-token";
-      message = "keystone.binaryCache.push requires age.secrets.\"attic-push-token\" to be declared.";
-    };
+    assertions =
+      lib.optional (cfg.push.enable && cfg.push.tokenFile == "/run/agenix/attic-push-token")
+        {
+          assertion = config.age.secrets ? "attic-push-token";
+          message = "keystone.binaryCache.push requires age.secrets.\"attic-push-token\" to be declared.";
+        };
 
     nix.settings = {
       # Append cacheName because nix probes <url>/nix-cache-info, and attic
