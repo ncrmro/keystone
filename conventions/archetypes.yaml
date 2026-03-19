@@ -43,7 +43,11 @@ archetypes:
     referenced_conventions:
       - os.requirements
       - process.agent-cronjobs
+      - process.blocker
+      - process.code-review-ownership
+      - process.deepwork-job
       - process.project-board
+      - process.refactor
       - tool.bitwarden
       - tool.forgejo
       - tool.himalaya
@@ -55,6 +59,7 @@ archetypes:
       # Focuses on finding flaws, security issues, and style violations rather than writing code.
       code-reviewer:
         conventions:
+          - process.code-review-ownership
           - process.continuous-integration
           - tool.typescript
           - process.copilot-agent
@@ -68,9 +73,11 @@ archetypes:
       # Serves as the core implementation subagent.
       software-engineer:
         conventions:
+          - process.blocker
           - process.continuous-integration
           - process.feature-delivery
           - process.pull-request
+          - process.refactor
           - tool.typescript
           - process.coding-agent
           - tool.nix-devshell
