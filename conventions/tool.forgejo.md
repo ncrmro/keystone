@@ -182,28 +182,14 @@ curl -s -X POST \
 
 ## Project Boards
 
-23. Forgejo has **no project board REST API** — the swagger spec exposes zero project endpoints.
-24. However, all board operations **can be automated** via the web UI's internal HTTP routes using session cookie authentication.
-25. Agents MUST use the `forgejo-project` CLI (provided by keystone) for all board operations instead of manual web UI steps.
-26. See `process.project-board` for full board lifecycle and Forgejo-specific guidance.
-
-### Why Session Cookies Work
-
-- API tokens (Basic auth, OAuth2 Bearer) are explicitly rejected on web routes (`services/auth/basic.go` line 47, `services/auth/oauth2.go` line 221 skip non-`/api/` paths).
-- CSRF is not a barrier — Go's `net/http.CrossOriginProtection` only blocks browser cross-origin requests; plain curl passes by design.
-- Session auth: `POST /user/login` with `user_name` + `password` → session cookie.
-
-### `forgejo-project` CLI
-
-The `forgejo-project` script wraps Forgejo web routes into a `gh project`-like interface. It is a single Bash script depending only on `curl` and `jq`.
+23. Forgejo has no project board REST API. Agents MUST use the `forgejo-project` CLI (provided by keystone) for all board operations.
+24. See `process.project-board` for full board lifecycle and Forgejo-specific guidance.
+25. Agents MUST set `FORGEJO_HOST`, `FORGEJO_USER`, and `FORGEJO_PASSWORD_CMD` environment variables.
+26. The script auto-authenticates on first use and re-authenticates on session expiry.
+27. `FORGEJO_PASSWORD_CMD` MUST delegate to a credential manager (`rbw`, `pass`, etc.) — passwords MUST NOT be stored in plaintext.
 
 ```bash
-# Environment (set once, e.g. in .envrc or shell profile)
-export FORGEJO_HOST=git.ncrmro.com
-export FORGEJO_USER=drago
-export FORGEJO_PASSWORD_CMD="rbw get mail.ncrmro.com --field password"
-
-# Project CRUD (auto-authenticates on first use)
+# Project CRUD
 forgejo-project create --repo owner/repo --title "v1.0" --template basic-kanban
 forgejo-project list   --repo owner/repo
 forgejo-project close  --repo owner/repo --project 5
@@ -216,28 +202,8 @@ forgejo-project column edit    --repo owner/repo --project 5 --column 3 --title 
 forgejo-project column default --repo owner/repo --project 5 --column 1
 forgejo-project column delete  --repo owner/repo --project 5 --column 3
 
-# Issue management (resolves issue numbers → internal IDs transparently)
+# Issue management
 forgejo-project item add  --repo owner/repo --project 5 --issue 42
 forgejo-project item move --repo owner/repo --project 5 --issue 42 --column 3
 forgejo-project item list --repo owner/repo --project 5
 ```
-
-27. Agents MUST set `FORGEJO_HOST`, `FORGEJO_USER`, and `FORGEJO_PASSWORD_CMD` environment variables (or pass equivalent flags).
-28. The script auto-authenticates on first use and re-authenticates transparently on session expiry — no explicit `login` step is needed.
-29. `FORGEJO_PASSWORD_CMD` MUST delegate to a credential manager (`rbw`, `pass`, etc.) — passwords MUST NOT be passed inline or stored in plaintext.
-
-### Web Route Reference
-
-| Operation | Method | Endpoint | Response |
-|-----------|--------|----------|----------|
-| Create project | POST | `/{owner}/{repo}/projects/new` | 303 redirect |
-| Add column | POST | `/{owner}/{repo}/projects/{id}` | `{"ok":true}` |
-| Assign issue | POST | `/{owner}/{repo}/issues/projects` | `{"ok":true}` |
-| Move issue | POST | `/{owner}/{repo}/projects/{id}/{colID}/move` | `{"ok":true}` |
-| Edit column | PUT | `/{owner}/{repo}/projects/{id}/{colID}` | `{"ok":true}` |
-| Set default column | POST | `/{owner}/{repo}/projects/{id}/{colID}/default` | `{"ok":true}` |
-| Delete column | DELETE | `/{owner}/{repo}/projects/{id}/{colID}` | JSON |
-| Close/open project | POST | `/{owner}/{repo}/projects/{id}/{open\|close}` | JSON redirect |
-| Delete project | POST | `/{owner}/{repo}/projects/{id}/delete` | `{"redirect":"..."}` |
-
-30. The `issue_ids` parameter for issue assignment uses **internal DB IDs**, not issue numbers. Agents MUST resolve numbers via `GET /api/v1/repos/{owner}/{repo}/issues/{number}` first (the `forgejo-project` CLI does this transparently).
