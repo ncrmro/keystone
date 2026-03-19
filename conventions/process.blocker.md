@@ -7,18 +7,18 @@ This convention defines how agents identify, report, and recover from platform a
 
 1. A blocker MUST be declared when an agent cannot proceed due to a platform, infrastructure, or ops issue outside the task's feature scope.
 2. Blocker categories include:
-   - **Keystone OS**: missing package, config change, service misconfiguration, environment issue.
+   - **Infrastructure/OS**: missing package, config change, service misconfiguration, environment issue.
    - **Project ops**: broken CI pipeline, dependency conflict, build tooling failure, database migration issue.
-   - **External dependency**: upstream bug or incompatibility in a public repo that affects our project.
+   - **External dependency**: upstream bug or incompatibility in a public repo that affects a project.
 3. Blockers MUST NOT be declared for feature-scope issues — implementation failures are task failures (max 3 attempts per `process.feature-delivery`), not blockers.
 
 ## Filing Blocker Issues
 
 4. Blocker issues MUST be filed in a repo we control — never directly in external or public repos.
 5. Target repo MUST be selected as follows:
-   - Keystone OS issues → `ncrmro/keystone`.
+   - Infrastructure/OS issues → the infrastructure repo (e.g., `{org}/{infra-repo}`).
    - Project-specific ops issues → the project's own repo.
-   - External dependency issues → our repo that depends on it, with a reference to the upstream repo.
+   - External dependency issues → the repo that depends on it, with a reference to the upstream repo.
 6. The issue title MUST follow conventional format: `fix(scope): description of blocker`.
 7. The issue body MUST include:
    - **What is blocked**: link to the task, PR, or issue that cannot proceed.
@@ -36,7 +36,7 @@ This convention defines how agents identify, report, and recover from platform a
 
 ## Handoff and Notification
 
-12. The blocker issue MUST be assigned to the appropriate person — Keystone OS issues to the human operator (see `TEAM.md`), project ops issues to the repo owner.
+12. The blocker issue MUST be assigned to the appropriate person — infrastructure issues to the human operator (see `TEAM.md`), project ops issues to the repo owner.
 13. A comment MUST be posted on the blocked task's issue (if it has one) linking to the blocker issue and explaining the dependency.
 14. The agent SHOULD send a brief email notification to the assignee via himalaya per `tool.himalaya`.
 
@@ -52,67 +52,60 @@ This convention defines how agents identify, report, and recover from platform a
 
 ## Golden Example
 
-Agent running inside an `agentctl` podman container cannot access the host's GitHub
-token, blocking issue creation for task #42 on `ncrmro/catalyst`:
+Agent cannot access the platform CLI token from its environment, blocking issue creation for task #42 on `{org}/{project}`:
 
 ```bash
-# 1. Agent hits blocker: gh CLI fails inside podman container
-#    Error: "gh: authentication required — run gh auth login"
-#    The container does not have access to the host's gh auth token.
+# 1. Agent hits blocker: CLI fails due to missing auth
+#    Error: "authentication required"
 
-# 2. File blocker issue on keystone (rule 5)
-gh issue create --repo ncrmro/keystone \
-  --title "fix(agentctl): mount gh auth token into podman container" \
+# 2. File blocker issue on the infrastructure repo (rule 5)
+gh issue create --repo {org}/{infra-repo} \
+  --title "fix(agent-env): mount CLI auth token into agent environment" \
   --label "blocked" \
-  --assignee ncrmro \
+  --assignee {operator} \
   --body "$(cat <<'EOF'
 ## What is blocked
 
-[Issue #42](https://github.com/ncrmro/catalyst/issues/42) — agent cannot
-create issues or PRs from inside the agentctl podman container.
+[Issue #42]({org}/{project}/issues/42) — agent cannot
+create issues or PRs due to missing CLI credentials.
 
 ## Root cause
 
-The agentctl podman container does not mount the host's GitHub CLI
-auth token (`~/.config/gh/hosts.yml`). The `gh` CLI inside the
-container has no credentials and cannot authenticate to GitHub.
+The agent environment does not have access to the CLI auth token.
 
 ## Error evidence
 
 ```
-$ gh issue create --repo ncrmro/catalyst --title "test"
+$ gh issue create --repo {org}/{project} --title "test"
 error: authentication required
-hint: run `gh auth login` to authenticate
 ```
 
 ## Suggested fix
 
-Mount the host's gh config into the container read-only:
-`-v ~/.config/gh:/home/agent/.config/gh:ro`
-in the agentctl podman run command.
+Mount the CLI config into the agent environment read-only.
 EOF
 )"
 
 # 3. Label the original task issue as blocked (rule 9)
-gh issue edit 42 --repo ncrmro/catalyst --add-label "blocked"
+gh issue edit 42 --repo {org}/{project} --add-label "blocked"
 
 # 4. Comment on the original task issue (rule 13)
-gh issue comment 42 --repo ncrmro/catalyst \
-  --body "Blocked by ncrmro/keystone#NEW — gh auth not available in agentctl container."
+gh issue comment 42 --repo {org}/{project} \
+  --body "Blocked by {org}/{infra-repo}#NEW — CLI auth not available in agent environment."
 
 # 5. Move task board item to Backlog (rule 10)
 # gh project item-edit ...
 
 # 6. Update TASKS.yaml (rule 11)
-# status: blocked, blocker_ref: https://github.com/ncrmro/keystone/issues/NEW
+# status: blocked, blocker_ref: {org}/{infra-repo}/issues/NEW
 
-# --- After the human merges the keystone fix and rebuilds ---
+# --- After the fix is merged and deployed ---
 
 # 7. Verify fix (rule 15)
-gh auth status  # confirms gh is now authenticated inside container
+gh auth status  # confirms CLI is now authenticated
 
 # 8. Resume (rule 16)
-gh issue edit 42 --repo ncrmro/catalyst --remove-label "blocked"
+gh issue edit 42 --repo {org}/{project} --remove-label "blocked"
 # Update TASKS.yaml status: pending
 # Move board item to "To Do"
 # Task picked up in next task loop run
