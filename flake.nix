@@ -177,6 +177,7 @@
       repo-sync-src = ./packages/repo-sync;
       podman-agent-src = ./packages/podman-agent;
       ks-src = ./packages/ks;
+      pz-src = ./packages/pz;
       himalaya-flake = himalaya;
       calendula-flake = calendula;
       cardamum-flake = cardamum;
@@ -199,6 +200,7 @@
         repo-sync = final.callPackage repo-sync-src {};
         podman-agent = final.callPackage podman-agent-src {};
         ks = final.callPackage ks-src {};
+        pz = final.callPackage pz-src {};
         himalaya = himalaya-flake.packages.${final.system}.default;
         calendula = calendula-flake.packages.${final.system}.default;
         cardamum = cardamum-flake.packages.${final.system}.default;
