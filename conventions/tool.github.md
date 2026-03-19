@@ -38,3 +38,16 @@
 21. Key commands: `gh project create`, `gh project link`, `gh project item-add`, `gh project item-edit`, `gh project field-list`, `gh project item-list`, `gh project view`.
 22. Built-in project workflows (Item closed → Done, PR merged → Done) handle Done transitions automatically — agents MUST NOT duplicate these.
 23. See `process.project-board` for full board lifecycle and CLI reference.
+
+## Issue Comments
+
+24. Issue comments MUST be posted with: `gh issue comment {number} --repo {owner}/{repo} --body "..."`.
+25. Multi-line comment bodies MUST use a HEREDOC to preserve formatting:
+    ```
+    gh issue comment {number} --repo {owner}/{repo} --body "$(cat <<'EOF'
+    ## Comment Title
+
+    Body content here.
+    EOF
+    )"
+    ```
