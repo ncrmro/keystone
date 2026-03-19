@@ -99,7 +99,7 @@ fn test_flake_nix_contains_hostname() {
     };
 
     let flake = keystone_tui::template::generate_flake_nix(&config);
-    assert!(flake.contains("my-server = nixpkgs.lib.nixosSystem"));
+    assert!(flake.contains("\"my-server\" = nixpkgs.lib.nixosSystem"));
     assert!(flake.contains("keystone.nixosModules.operating-system"));
 }
 

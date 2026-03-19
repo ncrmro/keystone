@@ -515,10 +515,11 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max {
+    let char_count = s.chars().count();
+    if char_count <= max {
         s.to_string()
     } else {
-        format!("{}…", &s[..max - 1])
+        format!("{}…", s.chars().take(max - 1).collect::<String>())
     }
 }
 
@@ -792,5 +793,38 @@ mod tests {
         screen.next();
         screen.previous();
         assert!(screen.selected_host().is_none());
+    }
+
+    #[test]
+    fn test_truncate_str_ascii_no_truncation() {
+        assert_eq!(truncate_str("hello", 10), "hello");
+        assert_eq!(truncate_str("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_ascii_truncated() {
+        let result = truncate_str("hello world", 6);
+        assert_eq!(result, "hello…");
+    }
+
+    #[test]
+    fn test_truncate_str_multibyte_no_truncation() {
+        // "日本語" = 3 chars, each 3 bytes
+        assert_eq!(truncate_str("日本語", 10), "日本語");
+        assert_eq!(truncate_str("日本語", 3), "日本語");
+    }
+
+    #[test]
+    fn test_truncate_str_multibyte_truncated() {
+        // "日本語テスト" = 6 chars; truncate at max=4 → take 3 chars + ellipsis
+        let result = truncate_str("日本語テスト", 4);
+        assert_eq!(result, "日本語…");
+    }
+
+    #[test]
+    fn test_truncate_str_emoji_truncated() {
+        // Each emoji is >1 byte but 1 char
+        let result = truncate_str("😀😁😂😃😄", 3);
+        assert_eq!(result, "😀😁…");
     }
 }
