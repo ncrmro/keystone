@@ -45,9 +45,9 @@
 25. Multi-line comment bodies MUST use a HEREDOC to preserve formatting:
     ```
     gh issue comment {number} --repo {owner}/{repo} --body "$(cat <<'EOF'
-    ## Comment Title
+## Comment Title
 
-    Body content here.
-    EOF
+Body content here.
+EOF
     )"
     ```
