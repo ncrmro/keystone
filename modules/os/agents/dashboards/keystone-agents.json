@@ -1,11 +1,33 @@
 {
+  "templating": {
+    "list": [
+      {
+        "allValue": ".+",
+        "current": { "selected": true, "text": "All", "value": ".+" },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "definition": "label_values(agent)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Agent",
+        "multi": true,
+        "name": "agent",
+        "options": [],
+        "query": "label_values(agent)",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
   "panels": [
     {
       "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum(count_over_time({agent!=\"\"} |= \"Finished successfully\" [1h]))",
+          "expr": "sum(count_over_time({agent=~\"$agent\"} |= \"Finished successfully\" [1h]))",
           "refId": "A"
         }
       ],
@@ -17,7 +39,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum(count_over_time({agent!=\"\"} |~ \"(?i)block\" [1h]))",
+          "expr": "sum(count_over_time({agent=~\"$agent\"} |~ \"(?i)block\" [1h]))",
           "refId": "A"
         }
       ],
@@ -29,7 +51,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum(count_over_time({agent!=\"\"} |~ \"(?i)error|fail|exception\" [1h]))",
+          "expr": "sum(count_over_time({agent=~\"$agent\"} |~ \"(?i)error|fail|exception\" [1h]))",
           "refId": "A"
         }
       ],
@@ -41,7 +63,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{agent!=\"\"} |~ \"(?i)error|fail|exception\"",
+          "expr": "{agent=~\"$agent\"} |~ \"(?i)error|fail|exception\"",
           "refId": "A"
         }
       ],
@@ -53,7 +75,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{agent!=\"\"} |~ \"(?i)block\"",
+          "expr": "{agent=~\"$agent\"} |~ \"(?i)block\"",
           "refId": "A"
         }
       ],
@@ -65,7 +87,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum by(agent) (rate({agent!=\"\"} |= \"Finished successfully\" [$__rate_interval]))",
+          "expr": "sum by(agent) (rate({agent=~\"$agent\"} |= \"Finished successfully\" [$__rate_interval]))",
           "refId": "A"
         }
       ],
