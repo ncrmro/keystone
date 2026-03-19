@@ -27,11 +27,11 @@ This convention defines how project boards (Kanban boards) are created, populate
 
 | Event | From → To | GitHub | Forgejo |
 |-------|-----------|--------|---------|
-| Issue added to milestone | → Backlog | Agent: `gh project item-add` + set status | Manual: web UI |
-| Issue prioritized for work | Backlog → To Do | Agent: `gh project item-edit` | Manual: web UI |
-| Branch created, work starts | To Do → In Progress | Agent: `gh project item-edit` | Manual: web UI |
-| PR marked ready for review | In Progress → In Review | Agent: `gh project item-edit` | Manual: web UI |
-| PR merged / issue closed | → Done | **Automatic** (built-in workflow) | Manual: web UI |
+| Issue added to milestone | → Backlog | Agent: `gh project item-add` + set status | Agent: `forgejo-project item add` |
+| Issue prioritized for work | Backlog → To Do | Agent: `gh project item-edit` | Agent: `forgejo-project item move` |
+| Branch created, work starts | To Do → In Progress | Agent: `gh project item-edit` | Agent: `forgejo-project item move` |
+| PR marked ready for review | In Progress → In Review | Agent: `gh project item-edit` | Agent: `forgejo-project item move` |
+| PR merged / issue closed | → Done | **Automatic** (built-in workflow) | Agent: `forgejo-project item move` |
 
 6. Agents MUST NOT duplicate automatic transitions — if the platform handles a transition, the agent MUST NOT also fire it.
 
@@ -77,12 +77,12 @@ gh project view {number} --owner {owner} --format json
 
 12. The status field ID and option IDs MUST be looked up via `gh project field-list` before setting statuses. These IDs are project-specific and MUST NOT be hardcoded.
 
-## Forgejo Limitations
+## Forgejo Automation
 
-13. Forgejo 14.0.2 has **no project board REST API** (verified against the swagger spec).
-14. Boards are managed via web UI only at `https://{host}/{owner}/{repo}/projects`.
-15. Agents MUST document board URLs in milestone or issue descriptions for easy access.
-16. When Forgejo adds project board API support, this section SHOULD be updated.
+13. Forgejo has **no project board REST API**, but all board operations are automatable via the `forgejo-project` CLI which calls the web UI's internal HTTP routes with session cookie auth.
+14. Agents MUST use `forgejo-project` for all board operations on Forgejo repos — see `tool.forgejo` for full CLI reference.
+15. Before using `forgejo-project`, agents MUST call `forgejo-project login` with appropriate credentials.
+16. Unlike GitHub, Forgejo has **no built-in board automations** — agents MUST handle all transitions (including issue close → Done) explicitly.
 
 ## Doctor Checklist
 
