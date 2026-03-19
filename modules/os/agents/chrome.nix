@@ -26,9 +26,11 @@ in
       }
     ];
 
-    # Chromium package available system-wide for chrome agents
+    # Chromium and Node.js available system-wide for chrome agents.
+    # Node.js is required for the chrome-devtools-mcp server (stdio transport via npx/node).
     environment.systemPackages = [
       pkgs.chromium
+      pkgs.nodejs
     ];
 
     # Chromium as system services per chrome agent
