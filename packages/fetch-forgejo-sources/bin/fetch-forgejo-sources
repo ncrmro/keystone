@@ -1,112 +1,105 @@
 #!/usr/bin/env bash
-# Fetch Forgejo issues, PRs requesting review, and PR review comments for an agent.
-# Outputs a single JSON object with three keys: forgejo-issues, forgejo-prs, forgejo-pr-reviews.
-# Usage: fetch-forgejo-sources <agent-username>
+# Fetch Forgejo activity for an agent via the Notifications API.
+# Uses notifications as the discovery layer — one API call to find all relevant
+# issues and PRs, then targeted follow-ups for details.
+# Requires FORGEJO_TOKEN environment variable for authentication.
+# Output: {"forgejo-issues": [...], "forgejo-prs": [...], "forgejo-pr-reviews": [...]}
 set -euo pipefail
 
 FORGEJO_HOST="https://git.ncrmro.com"
 API="$FORGEJO_HOST/api/v1"
 AGENT_USERNAME="${1:?Usage: fetch-forgejo-sources <agent-username>}"
+FORGEJO_TOKEN="${FORGEJO_TOKEN:?FORGEJO_TOKEN environment variable must be set}"
 
 TMPDIR_WORK=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 
-# Accumulator files — each holds a JSON array
-echo "[]" > "$TMPDIR_WORK/issues.json"
-echo "[]" > "$TMPDIR_WORK/prs.json"
-echo "[]" > "$TMPDIR_WORK/reviews.json"
+for f in issues prs reviews; do echo "[]" > "$TMPDIR_WORK/$f.json"; done
 
-# Helper: GET with JSON accept header, returns [] on failure
+# Helper: authenticated GET, returns [] on failure
 api_get() {
-  curl -sf -H "Accept: application/json" "$1" 2>/dev/null || echo "[]"
+  curl -sf -H "Accept: application/json" -H "Authorization: token $FORGEJO_TOKEN" "$1" 2>/dev/null || echo "[]"
 }
 
-# Helper: append items to an accumulator file
 acc_append() {
-  local file="$1" items="$2"
-  local current
-  current=$(cat "$file")
-  echo "$current" | jq --argjson items "$items" '. + $items' > "$file"
+  local file="$1" item="$2"
+  jq --argjson item "$item" '. + [$item]' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
 }
 
-# ── Discover repos ───────────────────────────────────────────
-# Forgejo repo search wraps results in {"ok": true, "data": [...]}
-REPOS_JSON=$(api_get "$API/repos/search?limit=50&sort=updated&order=desc")
-REPOS=$(echo "$REPOS_JSON" | jq -r '.data[] | .full_name' 2>/dev/null || echo "")
+# ── Phase 1: Discover via notifications (single API call) ───────────
+api_get "$API/notifications?limit=100" > "$TMPDIR_WORK/raw.json"
 
-if [ -z "$REPOS" ]; then
-  echo '{"forgejo-issues":[],"forgejo-prs":[],"forgejo-pr-reviews":[]}'
-  exit 0
-fi
+# Filter to Issue/Pull types, deduplicate by subject URL
+jq '[.[] | select(.subject.type == "Issue" or .subject.type == "Pull")]
+  | sort_by(.updated_at) | reverse | unique_by(.subject.url)' \
+  "$TMPDIR_WORK/raw.json" > "$TMPDIR_WORK/notifications.json"
 
-# ── Issues assigned to agent ─────────────────────────────────
-for repo in $REPOS; do
+# ── Phase 2: Issues ─────────────────────────────────────────────────
+while IFS= read -r row; do
+  subject_url=$(echo "$row" | jq -r '.subject.url')
+  repo=$(echo "$row" | jq -r '.repository.full_name')
+
+  issue_raw=$(api_get "$subject_url")
+  if [ "$issue_raw" = "[]" ] || [ -z "$issue_raw" ]; then continue; fi
+
+  state=$(echo "$issue_raw" | jq -r '.state')
+  if [ "$state" != "open" ]; then continue; fi
+
+  issue=$(echo "$issue_raw" | jq --arg repo "$repo" '{
+    repo: $repo,
+    number: .number,
+    title: .title,
+    url: .html_url,
+    assignee: (.assignee.login // null),
+    labels: [(.labels // [])[] | .name],
+    created_at: .created_at
+  }')
+  acc_append "$TMPDIR_WORK/issues.json" "$issue"
+done < <(jq -c '.[] | select(.subject.type == "Issue")' "$TMPDIR_WORK/notifications.json")
+
+# ── Phase 3: Pull requests ──────────────────────────────────────────
+while IFS= read -r row; do
+  subject_url=$(echo "$row" | jq -r '.subject.url')
+  repo=$(echo "$row" | jq -r '.repository.full_name')
   owner="${repo%%/*}"
   name="${repo##*/}"
-  repo_issues=$(api_get "$API/repos/$owner/$name/issues?state=open&type=issues&assignee=$AGENT_USERNAME&limit=50")
-  if [ "$repo_issues" != "[]" ] && [ -n "$repo_issues" ]; then
-    items=$(echo "$repo_issues" | jq --arg repo "$repo" \
-      '[.[] | {
-        repo: $repo,
-        number: .number,
-        title: .title,
-        url: .html_url,
-        assignee: (.assignee.login // null),
-        labels: [(.labels // [])[] | .name],
-        created_at: .created_at
-      }]')
-    acc_append "$TMPDIR_WORK/issues.json" "$items"
-  fi
-done
 
-# ── PRs and reviews (single pass per repo) ────────────────────
-for repo in $REPOS; do
-  owner="${repo%%/*}"
-  name="${repo##*/}"
-  repo_pulls=$(api_get "$API/repos/$owner/$name/pulls?state=open&limit=50")
-  if [ "$repo_pulls" = "[]" ] || [ -z "$repo_pulls" ]; then
-    continue
-  fi
+  pr_raw=$(api_get "$subject_url")
+  if [ "$pr_raw" = "[]" ] || [ -z "$pr_raw" ]; then continue; fi
+
+  state=$(echo "$pr_raw" | jq -r '.state')
+  if [ "$state" != "open" ]; then continue; fi
+
+  pr_author=$(echo "$pr_raw" | jq -r '.user.login')
+  pr_number=$(echo "$pr_raw" | jq -r '.number')
+  pr_title=$(echo "$pr_raw" | jq -r '.title')
+  pr_url=$(echo "$pr_raw" | jq -r '.html_url')
 
   # PRs requesting review from agent (not authored by agent)
-  filtered=$(echo "$repo_pulls" | jq --arg agent "$AGENT_USERNAME" --arg repo "$repo" \
-    '[.[] | select(.user.login != $agent) |
-      select(.requested_reviewers != null and (.requested_reviewers | map(.login) | index($agent) != null)) |
-      {
+  if [ "$pr_author" != "$AGENT_USERNAME" ]; then
+    is_reviewer=$(echo "$pr_raw" | jq --arg agent "$AGENT_USERNAME" \
+      '.requested_reviewers // [] | map(.login) | index($agent) != null')
+    if [ "$is_reviewer" = "true" ]; then
+      pr=$(echo "$pr_raw" | jq --arg repo "$repo" '{
         repo: $repo,
         number: .number,
         title: .title,
         url: .html_url,
         author: .user.login,
         created_at: .created_at
-      }]')
-  if [ "$filtered" != "[]" ]; then
-    acc_append "$TMPDIR_WORK/prs.json" "$filtered"
-  fi
-
-  # PR reviews on agent-authored PRs
-  agent_pr_numbers=$(echo "$repo_pulls" | jq --arg agent "$AGENT_USERNAME" \
-    '[.[] | select(.user.login == $agent) | .number]')
-  if [ "$agent_pr_numbers" = "[]" ]; then
-    continue
-  fi
-
-  for pr_number in $(echo "$agent_pr_numbers" | jq -r '.[]'); do
-    pr_meta=$(echo "$repo_pulls" | jq --argjson n "$pr_number" '.[] | select(.number == $n) | {title: .title, url: .html_url}')
-    pr_title=$(echo "$pr_meta" | jq -r '.title')
-    pr_url=$(echo "$pr_meta" | jq -r '.url')
-
-    reviews=$(api_get "$API/repos/$owner/$name/pulls/$pr_number/reviews")
-    if [ "$reviews" = "[]" ] || [ -z "$reviews" ]; then
-      continue
+      }')
+      acc_append "$TMPDIR_WORK/prs.json" "$pr"
     fi
+  fi
 
-    # Filter: reviews not by agent, with actionable state
+  # Reviews on agent-authored PRs
+  if [ "$pr_author" = "$AGENT_USERNAME" ]; then
+    reviews=$(api_get "$API/repos/$owner/$name/pulls/$pr_number/reviews")
+    if [ "$reviews" = "[]" ] || [ -z "$reviews" ]; then continue; fi
+
     relevant=$(echo "$reviews" | jq --arg agent "$AGENT_USERNAME" \
       '[.[] | select(.user.login != $agent) | select(.state == "REQUEST_CHANGES" or .state == "COMMENT") | {id: .id, reviewer: .user.login, state: .state}]')
-    if [ "$relevant" = "[]" ]; then
-      continue
-    fi
+    if [ "$relevant" = "[]" ]; then continue; fi
 
     for review_idx in $(echo "$relevant" | jq -r 'keys[]'); do
       review_id=$(echo "$relevant" | jq -r ".[$review_idx].id")
@@ -135,12 +128,14 @@ for repo in $REPOS; do
           review_state: $review_state,
           comments: $comments
         }]')
-      acc_append "$TMPDIR_WORK/reviews.json" "$item"
-    done
-  done
-done
 
-# ── Output combined result ────────────────────────────────────
+      current=$(cat "$TMPDIR_WORK/reviews.json")
+      echo "$current" | jq --argjson items "$item" '. + $items' > "$TMPDIR_WORK/reviews.json"
+    done
+  fi
+done < <(jq -c '.[] | select(.subject.type == "Pull")' "$TMPDIR_WORK/notifications.json")
+
+# ── Output combined result ───────────────────────────────────────────
 jq -n \
   --argjson issues "$(cat "$TMPDIR_WORK/issues.json")" \
   --argjson prs "$(cat "$TMPDIR_WORK/prs.json")" \

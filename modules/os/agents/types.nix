@@ -52,14 +52,6 @@ in {
           example = "researcher@ks.systems";
         };
 
-        terminal = {
-          enable = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Enable terminal environment (zsh, starship, helix, AI tools) via home-manager.";
-          };
-        };
-
         desktop = {
           enable = mkOption {
             type = types.bool;

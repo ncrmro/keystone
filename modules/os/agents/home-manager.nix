@@ -16,7 +16,7 @@ let
 in
 {
   config = optionalAttrs (options ? home-manager) {
-    home-manager = mkIf (osCfg.enable && cfg != {} && any (a: a.terminal.enable) (attrValues cfg)) {
+    home-manager = mkIf (osCfg.enable && cfg != {}) {
       users = mapAttrs' (name: agentCfg:
         let
           username = "agent-${name}";
@@ -29,7 +29,7 @@ in
           # stable defaults when the attrs are absent.
           _module.args.keystoneInputs = {};
 
-          keystone.terminal = mkIf agentCfg.terminal.enable {
+          keystone.terminal = {
             enable = mkDefault true;
             git = let
               pubKey = agentPublicKey name;
@@ -107,7 +107,7 @@ in
 
           home.stateVersion = config.system.stateVersion;
         })
-      ) (filterAttrs (_: a: a.terminal.enable) cfg);
+      ) cfg;
     };
   };
 }

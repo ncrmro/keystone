@@ -604,6 +604,22 @@ After the initial PR, the orchestrator runs up to N review cycles (default 2):
 4. On `FAIL` (not last cycle): re-run coding agent with fix prompt, push fixes
 5. On `PASS`: mark PR ready (`gh pr ready` for GitHub, remove `WIP:` prefix for Forgejo)
 
+## Terminal Environment Requirement
+
+Agent systemd services (`task-loop`, `scheduler`, `notes-sync`) MUST have access to the full home-manager terminal environment. All tools available in an interactive agent shell MUST also be available in systemd service contexts.
+
+### Design
+
+The `notes.nix` module sets each service's PATH to the agent's full home-manager profile:
+
+```
+/etc/profiles/per-user/agent-{name}/bin:<nix>/bin:/run/current-system/sw/bin
+```
+
+Scripts (`task-loop.sh`, `scheduler.sh`) use bare commands (`yq`, `jq`, `bash`, `git`, `claude`, etc.) that resolve via this PATH. Only config values (`notesDir`, `maxTasks`, `agentName`) are substituted at build time via `pkgs.replaceVars` — tool paths are NOT individually resolved.
+
+This matches the pattern used by `agentSvcHelper` in `lib.nix` and ensures that any tool available in an interactive shell is also available to agent services.
+
 ## Operational Conventions
 
 ### Email, Calendar, and Contacts
