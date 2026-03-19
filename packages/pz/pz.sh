@@ -136,12 +136,12 @@ cmd_agent() {
   local agent_name="$1"; shift
   local agent_cmd="$1"; shift
 
-  if [[ -n "${PROJECT_NAME:-}" ]]; then
-    exec agentctl "$agent_name" "$agent_cmd" --project "$PROJECT_NAME" "$@"
-  else
-    # Fallback to normal agentctl execution if not inside a project session
-    exec agentctl "$agent_name" "$agent_cmd" "$@"
+  if [[ -z "${PROJECT_NAME:-}" ]]; then
+    echo "error: not in a project session. Use 'pz <project>' first." >&2
+    exit 1
   fi
+
+  exec agentctl "$agent_name" "$agent_cmd" --project "$PROJECT_NAME" "$@"
 }
 
 # --- Argument parsing ---
