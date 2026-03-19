@@ -46,9 +46,35 @@ in {
         Auto-enables Forgejo on that host. Used by terminal to install forgejo-cli.
       '';
     };
+
+    git.domain = mkOption {
+      type = types.nullOr types.str;
+      default = if config.keystone.domain != null then "git.${config.keystone.domain}" else null;
+      description = "FQDN of the Forgejo instance (e.g., git.ncrmro.com). Used by terminal/forgejo.nix to generate tea config.";
+    };
+
+    git.sshPort = mkOption {
+      type = types.port;
+      default = 2222;
+      description = "SSH port for git operations on the Forgejo instance.";
+    };
+
+    immich.host = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "The networking.hostName of the primary Immich server.";
+    };
+
+    immich.workers = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      description = "List of hostnames acting as GPU/ML workers.";
+    };
   };
 
   config.assertions =
     (validateHost "mail" cfg.mail.host)
-    ++ (validateHost "git" cfg.git.host);
+    ++ (validateHost "git" cfg.git.host)
+    ++ (validateHost "immich" cfg.immich.host)
+    ++ (concatMap (h: validateHost "immich.workers" h) cfg.immich.workers);
 }

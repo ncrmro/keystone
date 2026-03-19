@@ -5,6 +5,10 @@
 # - GPG/SSH agent with hardware key support
 # - age-plugin-yubikey for agenix secrets
 #
+# Hardware key SSH public keys and age identities are declared in
+# keystone.keys.<user>.hardwareKeys — this module only handles
+# hardware enablement (pcscd, udev, GPG agent) and rootKeys wiring.
+#
 # TODO: Physical touch for sudo authentication (PAM U2F)
 # TODO: LUKS disk encryption enrollment (slot configuration)
 #
@@ -16,63 +20,27 @@
 }:
 with lib; let
   cfg = config.keystone.hardwareKey;
+  keysCfg = config.keystone.keys;
+
+  # Resolve "username/keyname" references to SSH public keys
+  resolveRootKey = ref: let
+    parts = splitString "/" ref;
+    username = elemAt parts 0;
+    keyname = elemAt parts 1;
+  in keysCfg.${username}.hardwareKeys.${keyname}.publicKey;
 in {
   options.keystone.hardwareKey = {
     enable = mkEnableOption "Hardware key (FIDO2/YubiKey) system integration";
-
-    keys = mkOption {
-      type = types.attrsOf (types.submodule {
-        options = {
-          description = mkOption {
-            type = types.str;
-            default = "";
-            description = "Human-readable description of this hardware key. Use color names to distinguish primary and backup keys (e.g., black for primary, green sticker for backup).";
-            example = "Primary YubiKey 5 NFC (USB-A, black)";
-          };
-
-          sshPublicKey = mkOption {
-            type = types.str;
-            description = "SSH public key for this hardware key (e.g., sk-ssh-ed25519 or sk-ecdsa-sha2-nistp256)";
-            example = "sk-ssh-ed25519@openssh.com AAAAGnNr... user@host";
-          };
-
-          ageIdentity = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "age-plugin-yubikey identity string for age encryption/decryption";
-            example = "AGE-PLUGIN-YUBIKEY-...";
-          };
-        };
-      });
-      default = {};
-      description = ''
-        Named hardware keys with their SSH and age key material.
-        Declare once, reference by name from users and rootKeys.
-        Use color-based names (e.g., yubi-black, yubi-green) to
-        distinguish primary and backup keys.
-      '';
-      example = lib.literalExpression ''
-        {
-          yubi-black = {
-            description = "Primary YubiKey 5 NFC (USB-A, black)";
-            sshPublicKey = "sk-ssh-ed25519@openssh.com AAAAGnNr... ncrmro-yubi-black";
-          };
-          yubi-green = {
-            description = "Backup YubiKey 5C NFC (USB-C, green sticker)";
-            sshPublicKey = "sk-ssh-ed25519@openssh.com AAAAGnNr... ncrmro-yubi-green";
-          };
-        }
-      '';
-    };
 
     rootKeys = mkOption {
       type = types.listOf types.str;
       default = [];
       description = ''
-        Names of hardware keys (from keys.<name>) whose SSH public keys
-        should be added to root's authorized_keys.
+        References to hardware keys (format: "username/keyname") whose SSH
+        public keys should be added to root's authorized_keys. Keys are
+        looked up from keystone.keys.<username>.hardwareKeys.<keyname>.
       '';
-      example = ["yubi-black" "yubi-green"];
+      example = ["ncrmro/yubi-black" "ncrmro/yubi-green"];
     };
 
     # TODO: LUKS support
@@ -101,23 +69,21 @@ in {
   };
 
   config = mkIf cfg.enable {
-    # Validate rootKeys references exist in keys
-    assertions = map (name: {
-      assertion = cfg.keys ? ${name};
-      message = "keystone.hardwareKey.rootKeys references '${name}' but no such key exists in keystone.hardwareKey.keys";
+    # Validate rootKeys references resolve in keystone.keys
+    assertions = map (ref: let
+      parts = splitString "/" ref;
+      username = elemAt parts 0;
+      keyname = elemAt parts 1;
+    in {
+      assertion = length parts == 2
+        && keysCfg ? ${username}
+        && keysCfg.${username}.hardwareKeys ? ${keyname};
+      message = "keystone.hardwareKey.rootKeys references '${ref}' but no such key exists in keystone.keys.${username}.hardwareKeys.${keyname}";
     }) cfg.rootKeys;
 
     # Wire hardware key SSH keys into root's authorized_keys
     users.users.root.openssh.authorizedKeys.keys =
-      map (name: cfg.keys.${name}.sshPublicKey) cfg.rootKeys;
-
-    # TODO: LUKS slot assertion
-    # assertions = [
-    #   {
-    #     assertion = cfg.luksSlot >= 0 && cfg.luksSlot <= 7;
-    #     message = "LUKS keyslot must be in the range 0-7";
-    #   }
-    # ];
+      map resolveRootKey cfg.rootKeys;
 
     # Enable smart card daemon for hardware key communication
     services.pcscd.enable = true;

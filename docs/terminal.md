@@ -118,6 +118,15 @@ hwrekey
 
 Run `hwrekey` after any change to `secrets.nix` that adds or removes key recipients (e.g., enrolling a new YubiKey, adding a new host key, removing a decommissioned machine). See [Hardware Keys](hardware-keys.md) for the full YubiKey enrollment workflow.
 
-## Mail
+## Personal Information Management
 
-himalaya and agent-mail are available when `keystone.terminal.mail.enable = true`. See [Agents](agents.md) for `agent-mail` usage (structured email templates for OS agents).
+Keystone integrates the [Pimalaya](https://pimalaya.org/) CLI suite for email, calendars, contacts, and timers:
+
+| Tool | Enable | Purpose |
+|------|--------|---------|
+| himalaya | `keystone.terminal.mail.enable = true` | Email (IMAP/SMTP) |
+| calendula | `keystone.terminal.calendar.enable = true` | Calendars (CalDAV) |
+| cardamum | `keystone.terminal.contacts.enable = true` | Contacts (CardDAV) |
+| comodoro | `keystone.terminal.timer.enable = true` | Pomodoro timers |
+
+Calendar and contacts auto-default credentials from the mail config. See [Personal Information Management](personal-info-management.md) for full usage documentation and [Agents](agents.md) for `agent-mail` usage (structured email templates for OS agents).
