@@ -232,6 +232,13 @@
         yazi = yazi-flake.packages.${final.system}.default;
         agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
         deepwork = deepwork-flake.packages.${final.system}.default;
+        # Curated selection of DeepWork library jobs from the deepwork flake.
+        # Only explicitly listed jobs are included — to add a new job, append a
+        # cp -r line below once that job exists in the upstream library/jobs.
+        deepwork-library-jobs = final.runCommand "deepwork-library-jobs" {} ''
+          mkdir -p $out
+          cp -r ${deepwork-flake}/library/jobs/spec_driven_development $out/
+        '';
         chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src {};
       };
       # Top-level overrides so programs.ghostty/yazi use flake versions
