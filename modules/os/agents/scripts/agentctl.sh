@@ -29,17 +29,17 @@ if [ $# -lt 2 ]; then
   echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
   echo "  email             Show the agent's inbox (recent envelopes)" >&2
   echo "  shell             Open interactive shell as the agent (with SSH agent)" >&2
-  echo "  claude            Start interactive Claude session (supports --project)" >&2
-  echo "  gemini            Start interactive Gemini session in agent notes directory" >&2
-  echo "  codex             Start interactive Codex session in agent notes directory" >&2
-  echo "  opencode          Start interactive OpenCode session in agent notes directory" >&2
+  echo "  claude            Start interactive Claude session (supports --project, --role)" >&2
+  echo "  gemini            Start interactive Gemini session (supports --project, --role)" >&2
+  echo "  codex             Start interactive Codex session (supports --project, --role)" >&2
+  echo "  opencode          Start interactive OpenCode session (supports --project, --role)" >&2
   echo "  mail              Send structured email to the agent (via agent-mail)" >&2
   echo "  vnc               Open remote-viewer to the agent's VNC desktop" >&2
   echo "  provision         Generate SSH keypair, mail password, and agenix secrets" >&2
   echo "" >&2
   echo "Flags:" >&2
-  echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh (claude)" >&2
-  echo "  -p, --project <slug>   Run in project context with zellij session (claude)" >&2
+  echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh" >&2
+  echo "  -p, --project <slug>   Run in project context with zellij session" >&2
   echo "" >&2
   echo "Examples:" >&2
   echo "  agentctl drago status agent-drago-task-loop" >&2
@@ -52,6 +52,10 @@ if [ $# -lt 2 ]; then
   echo "  agentctl drago claude -r code-review" >&2
   echo "  agentctl drago claude --project nixos-config fix-auth" >&2
   echo "  agentctl drago claude --project nixos-config              # list sessions" >&2
+  echo "  agentctl drago gemini -r code-review" >&2
+  echo "  agentctl drago gemini --project nixos-config fix-auth" >&2
+  echo "  agentctl drago codex --project nixos-config fix-auth" >&2
+  echo "  agentctl drago opencode --project nixos-config fix-auth" >&2
   echo "  agentctl drago gemini" >&2
   echo "  agentctl drago codex" >&2
   echo "  agentctl drago opencode" >&2
@@ -132,12 +136,12 @@ case "$CMD" in
     exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && exec bash -l"
     ;;
   claude|gemini|codex|opencode)
-    # --- Project + zellij session wrapping (claude only) ---
-    if [ -n "$PROJECT" ] && [ "$CMD" = "claude" ]; then
+    # --- Project + zellij session wrapping (all AI tools) ---
+    if [ -n "$PROJECT" ]; then
       # Session slug is the first positional argument
       SESSION_SLUG="${1:-}"
       if [ -z "$SESSION_SLUG" ]; then
-        echo "Usage: agentctl $AGENT_NAME claude --project <slug> <session-slug>" >&2
+        echo "Usage: agentctl $AGENT_NAME $CMD --project <slug> <session-slug>" >&2
         echo "" >&2
         echo "Existing sessions for '$PROJECT':" >&2
         "$ZELLIJ" list-sessions -n 2>/dev/null | "$GNUGREP"/bin/grep "^${PROJECT}-" || echo "  (none)" >&2
@@ -183,7 +187,7 @@ case "$CMD" in
             "_AGENTCTL_PROJECT_PATH=$PROJECT_PATH" \
             "_AGENTCTL_PROJECT_NAME=$PROJECT_NAME" \
             "_AGENTCTL_PROJECT_DESC=$PROJECT_DESC" \
-        agentctl "$AGENT_NAME" claude ${ROLE:+-r "$ROLE"} "$@"
+        agentctl "$AGENT_NAME" "$CMD" ${ROLE:+-r "$ROLE"} "$@"
     fi
 
     # Determine working directory and project context (from zellij re-entry)
@@ -203,6 +207,12 @@ case "$CMD" in
     exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -c '
       cd "'"$WORK_DIR"'"
 
+      # Export project context as standard environment variables for all tools
+      if [ -n "'"${_AGENTCTL_PROJECT_PATH:-}"'" ]; then
+        export PROJECT_NAME="'"${_AGENTCTL_PROJECT_NAME:-}"'"
+        export PROJECT_PATH="'"${_AGENTCTL_PROJECT_PATH:-}"'"
+      fi
+
       # Resolve auto-approve flags per tool
       # CRITICAL: Claude gets --dangerously-skip-permissions only,
       # Gemini gets --yolo only. These are mutually exclusive per-tool.
@@ -213,56 +223,69 @@ case "$CMD" in
         codex) TOOL_FLAGS="--full-auto" ;;
       esac
 
-      # Claude: compose system prompt from AGENTS.md + optional role + project context
-      SP_FLAGS=()
-      if [ "'"$CMD"'" = "claude" ]; then
-        SP=""
-        # Always load agent identity from notes directory
-        NOTES_AGENTS_MD="'"$NOTES_DIR"'/AGENTS.md"
-        if [ -f "$NOTES_AGENTS_MD" ]; then
-          SP="$(cat "$NOTES_AGENTS_MD")"
-        fi
+      # Compose system prompt from AGENTS.md + optional role + project context
+      # (applies to all AI tools; injection mechanism is per-tool below)
+      SP=""
+      # Always load agent identity from notes directory
+      NOTES_AGENTS_MD="'"$NOTES_DIR"'/AGENTS.md"
+      if [ -f "$NOTES_AGENTS_MD" ]; then
+        SP="$(cat "$NOTES_AGENTS_MD")"
+      fi
 
-        # If working in a project directory, also load project-local AGENTS.md
-        if [ "'"$WORK_DIR"'" != "'"$NOTES_DIR"'" ] && [ -f AGENTS.md ]; then
+      # If working in a project directory, also load project-local AGENTS.md
+      if [ "'"$WORK_DIR"'" != "'"$NOTES_DIR"'" ] && [ -f AGENTS.md ]; then
+        if [ -n "$SP" ]; then
+          SP="$SP
+
+$(cat AGENTS.md)"
+        else
+          SP="$(cat AGENTS.md)"
+        fi
+      fi
+
+      # Append project context
+      PROJECT_CTX="'"$PROJECT_CONTEXT"'"
+      if [ -n "$PROJECT_CTX" ]; then
+        if [ -n "$SP" ]; then
+          SP="$SP$PROJECT_CTX"
+        else
+          SP="$PROJECT_CTX"
+        fi
+      fi
+
+      ROLE="'"$ROLE"'"
+      if [ -n "$ROLE" ]; then
+        if [ -x .agents/compose.sh ] && [ -f manifests/modes.yaml ]; then
+          ROLE_PROMPT="$(PATH="'"$YQ_BIN"':$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE")"
           if [ -n "$SP" ]; then
             SP="$SP
 
-$(cat AGENTS.md)"
-          else
-            SP="$(cat AGENTS.md)"
-          fi
-        fi
-
-        # Append project context
-        PROJECT_CTX="'"$PROJECT_CONTEXT"'"
-        if [ -n "$PROJECT_CTX" ]; then
-          if [ -n "$SP" ]; then
-            SP="$SP$PROJECT_CTX"
-          else
-            SP="$PROJECT_CTX"
-          fi
-        fi
-
-        ROLE="'"$ROLE"'"
-        if [ -n "$ROLE" ]; then
-          if [ -x .agents/compose.sh ] && [ -f manifests/modes.yaml ]; then
-            ROLE_PROMPT="$(PATH="'"$YQ_BIN"':$PATH" .agents/compose.sh manifests/modes.yaml "$ROLE")"
-            if [ -n "$SP" ]; then
-              SP="$SP
-
 $ROLE_PROMPT"
-            else
-              SP="$ROLE_PROMPT"
-            fi
           else
-            echo "Warning: -r $ROLE requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
+            SP="$ROLE_PROMPT"
           fi
+        else
+          echo "Warning: -r $ROLE requested but .agents/compose.sh or manifests/modes.yaml not found" >&2
         fi
+      fi
 
-        if [ -n "$SP" ]; then
-          SP_FLAGS=("--append-system-prompt" "$SP")
-        fi
+      # Per-tool prompt injection using each tool'\''s native mechanism
+      SP_FLAGS=()
+      if [ -n "$SP" ]; then
+        case "'"$CMD"'" in
+          claude)
+            SP_FLAGS=("--append-system-prompt" "$SP")
+            ;;
+          gemini)
+            SP_FLAGS=("--prompt-interactive" "$SP")
+            ;;
+          codex)
+            SP_FLAGS=("--instructions" "$SP")
+            ;;
+          opencode)
+            # opencode reads AGENTS.md natively from the working directory
+            ;;
+        esac
       fi
 
       if [ -f flake.nix ]; then
