@@ -28,6 +28,7 @@ in {
     ./secrets.nix
     ./ssh-auto-load.nix
     ./forgejo.nix
+    ./projects.nix
   ];
 
   options.keystone.terminal = {
