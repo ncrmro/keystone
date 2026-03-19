@@ -143,6 +143,24 @@ in {
           # CalDAV and CardDAV are always provisioned alongside mail
         };
 
+        github = {
+          username = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "GitHub username. When set, the task loop automatically fetches GitHub issues and PRs assigned to this user.";
+            example = "octocat";
+          };
+        };
+
+        forgejo = {
+          username = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "Forgejo username. When set, the task loop automatically fetches Forgejo issues and PRs assigned to this user.";
+            example = "agent-luce";
+          };
+        };
+
         # Tailscale: each agent gets its own tailscaled instance with unique
         # state dir, socket, and TUN interface. An nftables fwmark rule routes
         # the agent's UID traffic through its dedicated TUN.

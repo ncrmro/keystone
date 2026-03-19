@@ -8,6 +8,8 @@ set -eo pipefail
 NOTES_DIR="@notesDir@"
 MAX_TASKS="@maxTasks@"
 AGENT_NAME="@agentName@"
+GITHUB_USERNAME="@githubUsername@"
+FORGEJO_USERNAME="@forgejoUsername@"
 
 LOGS_DIR="$HOME/.local/state/agent-task-loop/logs"
 TASK_LOGS_DIR="$LOGS_DIR/tasks"
@@ -59,6 +61,30 @@ if command -v himalaya &>/dev/null; then
   fi
 else
   log "  Skipping email source: himalaya not found"
+fi
+
+# Built-in source: GitHub (issues, PRs, reviews)
+if [ -n "$GITHUB_USERNAME" ] && command -v fetch-github-sources &>/dev/null; then
+  log "  Fetching source: github"
+  GITHUB_OUTPUT=$(fetch-github-sources "$GITHUB_USERNAME" 2>>"$LOG_FILE" || echo "{}")
+  if [ -n "$GITHUB_OUTPUT" ] && [ "$GITHUB_OUTPUT" != "{}" ]; then
+    SOURCES_JSON=$(echo "$SOURCES_JSON" | jq --argjson data "$GITHUB_OUTPUT" \
+      '. + [{"source": "github", "data": $data}]')
+  fi
+elif [ -n "$GITHUB_USERNAME" ]; then
+  log "  Skipping github source: fetch-github-sources not found"
+fi
+
+# Built-in source: Forgejo (issues, PRs, reviews)
+if [ -n "$FORGEJO_USERNAME" ] && command -v fetch-forgejo-sources &>/dev/null; then
+  log "  Fetching source: forgejo"
+  FORGEJO_OUTPUT=$(fetch-forgejo-sources "$FORGEJO_USERNAME" 2>>"$LOG_FILE" || echo "{}")
+  if [ -n "$FORGEJO_OUTPUT" ] && [ "$FORGEJO_OUTPUT" != "{}" ]; then
+    SOURCES_JSON=$(echo "$SOURCES_JSON" | jq --argjson data "$FORGEJO_OUTPUT" \
+      '. + [{"source": "forgejo", "data": $data}]')
+  fi
+elif [ -n "$FORGEJO_USERNAME" ]; then
+  log "  Skipping forgejo source: fetch-forgejo-sources not found"
 fi
 
 # Custom sources from PROJECTS.yaml (user-defined commands)
