@@ -140,6 +140,7 @@ in {
   imports = [
     ../keys.nix
     ../secrets.nix
+    ./notifications.nix
     ./storage.nix
     ./secure-boot.nix
     ./tpm.nix
@@ -151,7 +152,7 @@ in {
     ./airplay.nix
     ./mail.nix
     ./git-server.nix
-    ./agents.nix
+    ./agents
     ./hypervisor.nix
     ./iphone-tether.nix
     ./ollama.nix

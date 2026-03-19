@@ -1,13 +1,13 @@
 # Keystone Terminal Contacts (Cardamum)
 #
 # This module provides cardamum (Pimalaya CardDAV CLI) configuration.
-# When enabled with a host configured, it generates a cardamum config.toml
-# that connects to Stalwart's CardDAV endpoint.
+# When enabled with a host or URL configured, it generates a
+# cardamum/config.toml that connects to a CardDAV endpoint.
 #
 # Credentials default from the mail module — if mail is already configured,
-# only `contacts.enable = true` is needed.
+# only `contacts.enable = true` is needed for Stalwart.
 #
-# ## Example Usage
+# ## Stalwart (self-hosted) Example
 #
 # ```nix
 # keystone.terminal.contacts = {
@@ -15,6 +15,25 @@
 #   # All other options auto-default from keystone.terminal.mail
 # };
 # ```
+#
+# ## iCloud Example
+#
+# Uses the same App-Specific Password as iCloud mail.
+#
+# ```nix
+# keystone.terminal.contacts = {
+#   enable = true;
+#   accountName = "icloud";
+#   url = "https://contacts.icloud.com";
+#   login = "user@icloud.com";
+#   passwordCommand = "rbw get icloud-app-password";
+# };
+# ```
+#
+# ## Gmail Note
+#
+# Google deprecated CardDAV for new apps. Use the Google People API or
+# export contacts as vCard from contacts.google.com instead.
 {
   config,
   lib,
@@ -57,6 +76,16 @@ in
       default = mailCfg.passwordCommand;
       description = "Command to retrieve the password (defaults to mail passwordCommand)";
     };
+
+    url = mkOption {
+      type = types.str;
+      default = "";
+      description = ''
+        CardDAV home URI. When empty, defaults to https://{host}/dav/card (Stalwart).
+        Set explicitly for external providers:
+          iCloud: https://contacts.icloud.com
+      '';
+    };
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
@@ -64,18 +93,24 @@ in
       pkgs.keystone.cardamum
     ];
 
-    # Generate cardamum config only when host is configured
-    xdg.configFile."cardamum/config.toml" = mkIf (cfg.host != "") {
-      text = ''
-        [accounts.${cfg.accountName}]
-        default = true
+    # Generate cardamum config only when host or url is configured
+    xdg.configFile."cardamum/config.toml" = mkIf (cfg.host != "" || cfg.url != "") {
+      text =
+        let
+          # Use explicit url if set; otherwise build Stalwart's default path.
+          # Stalwart's /.well-known/carddav redirects to /dav/card, but cardamum's
+          # discovery PROPFIND to the root URL gets a 400 from nginx — use direct
+          # path instead of discovery (same issue as CalDAV, see calendar.nix).
+          cardDavUri = if cfg.url != "" then cfg.url else "https://${cfg.host}/dav/card";
+        in
+        ''
+          [accounts.${cfg.accountName}]
+          default = true
 
-        # Use direct home-uri instead of discovery — same nginx PROPFIND issue
-        # as CalDAV (see calendar.nix). Stalwart CardDAV lives at /dav/card.
-        carddav.home-uri = "https://${cfg.host}/dav/card"
-        carddav.auth.basic.username = "${cfg.login}"
-        carddav.auth.basic.password.command = ["sh", "-c", "${cfg.passwordCommand}"]
-      '';
+          carddav.home-uri = "${cardDavUri}"
+          carddav.auth.basic.username = "${cfg.login}"
+          carddav.auth.basic.password.command = ["sh", "-c", "${cfg.passwordCommand}"]
+        '';
     };
   };
 }

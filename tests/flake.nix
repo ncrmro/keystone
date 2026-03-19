@@ -192,6 +192,10 @@
           inherit pkgs lib;
           self = keystone;
         };
+
+        test-iso-evaluation = import ./module/iso-evaluation.nix {
+          inherit pkgs lib;
+        };
       };
 
       # Also expose tests as packages for convenience

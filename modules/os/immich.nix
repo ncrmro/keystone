@@ -80,8 +80,9 @@ in {
         host = cfg.host;
         port = cfg.port;
         mediaLocation = cfg.mediaLocation;
-        machine-learning.enable = true;
+        machine-learning.enable = length services.immich.workers == 0;
         settings.machineLearning.url = mlUrl;
+        environment.IMMICH_MACHINE_LEARNING_URL = lib.mkForce mlUrl;
       })
       # Worker-specific
       (mkIf (cfg.role == "worker") {

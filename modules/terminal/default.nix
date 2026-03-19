@@ -17,6 +17,7 @@ in {
     ./shell.nix
     ./editor.nix
     ./ai.nix
+    ./deepwork.nix
     ./age-yubikey.nix
     ./devtools.nix
     ./mail.nix
@@ -28,6 +29,7 @@ in {
     ./secrets.nix
     ./ssh-auto-load.nix
     ./forgejo.nix
+    ./projects.nix
   ];
 
   options.keystone.terminal = {

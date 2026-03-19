@@ -438,8 +438,8 @@ gpu-screen-recorder \
 
 ## See Also
 
-- [Desktop Specification](../specs/002-keystone-desktop/spec.md) - Full requirements for screen recording (dt-record-001)
-- [Screenshots Guide](../specs/002-keystone-desktop/spec.md#screenshots-dt-shot-001) - Related capture functionality
+- [Desktop Specification](../specs/002-keystone-desktop/requirements.md) - Full requirements for screen recording (dt-record-001)
+- [Screenshots Guide](../specs/002-keystone-desktop/requirements.md#screenshots-dt-shot-001) - Related capture functionality
 - [Waybar Configuration](../modules/desktop/home/components/waybar.nix) - Status bar integration
 - [gpu-screen-recorder GitHub](https://github.com/mateosss/gpu-screen-recorder) - Upstream project
 

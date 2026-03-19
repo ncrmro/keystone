@@ -93,7 +93,6 @@ impl WelcomeScreen {
         }
     }
 
-    #[allow(dead_code)]
     pub fn get_selected_option(&self) -> WelcomeOption {
         self.selected_option
     }

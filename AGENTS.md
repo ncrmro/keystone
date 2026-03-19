@@ -15,7 +15,21 @@ modules/
 │   └── default.nix             Home-manager notes repo sync (repo-sync on timer)
 ├── os/
 │   ├── default.nix             Orchestrator: keystone.os.* options, imports all submodules
-│   ├── agents.nix              OS agent provisioning (UIDs 4000+, desktop, mail, git, tasks)
+│   ├── agents/                 OS agent provisioning (UIDs 4000+, desktop, mail, git, tasks)
+│   │   ├── default.nix        Options declaration + barrel imports
+│   │   ├── lib.nix            Shared helpers, constants, filtered agent sets
+│   │   ├── types.nix          agentSubmodule type definition
+│   │   ├── base.nix           User creation, groups, sudo, home dirs, activation
+│   │   ├── agentctl.nix       agentctl CLI + alias wrappers + MCP config
+│   │   ├── desktop.nix        labwc + wayvnc services
+│   │   ├── chrome.nix         Chromium remote debugging
+│   │   ├── dbus.nix           D-Bus socket race fix
+│   │   ├── mail-client.nix    himalaya + mail assertions
+│   │   ├── tailscale.nix      Per-agent Tailscale (disabled)
+│   │   ├── ssh.nix            ssh-agent + assertions
+│   │   ├── notes.nix          notes-sync, task-loop, scheduler
+│   │   ├── home-manager.nix   Home-manager terminal integration
+│   │   └── scripts/           Extracted shell scripts (@placeholder@ pattern)
 │   ├── storage.nix             ZFS/ext4 + LUKS credstore, disko partitioning
 │   ├── secure-boot.nix         Lanzaboote Secure Boot via sbctl
 │   ├── tpm.nix                 TPM-based automatic disk unlock with PCR binding
@@ -199,6 +213,40 @@ curl -H "Authorization: token $TOKEN" http://127.0.0.1:3000/api/v1/admin/users/<
 curl -H "Authorization: token $TOKEN" http://127.0.0.1:3000/api/v1/admin/users/<name>/repos
 curl -X DELETE -H "Authorization: token $TOKEN" http://127.0.0.1:3000/api/v1/users/<name>/tokens/<token-name>
 ```
+
+#### Forgejo Project Boards
+
+Forgejo has **no REST API for project boards** (as of 14.x; upstream PR open since Nov 2023). All board operations are automated via the web UI's internal HTTP endpoints using session cookie auth. API tokens and OAuth2 tokens do **not** work for web routes — only session cookies.
+
+The `forgejo-project` CLI wraps these web routes into a `gh project`-like interface. It is available when `keystone.terminal.git.forgejo.enable = true`.
+
+```bash
+# Auth — login once, session cookie cached at ~/.local/state/forgejo-project/cookies.txt
+# FORGEJO_HOST and FORGEJO_USER can also be set as environment variables
+forgejo-project login --host git.example.com --user alice \
+  --password-cmd "rbw get git.example.com --field password"
+
+# Project CRUD
+forgejo-project create --repo owner/repo --title "v1.0" --template basic-kanban
+forgejo-project list   --repo owner/repo                 # outputs JSON
+forgejo-project close  --repo owner/repo --project 5
+forgejo-project open   --repo owner/repo --project 5
+forgejo-project delete --repo owner/repo --project 5
+
+# Column CRUD
+forgejo-project column add     --repo owner/repo --project 5 --title "In Review" --color "#0075ca"
+forgejo-project column list    --repo owner/repo --project 5  # outputs JSON
+forgejo-project column edit    --repo owner/repo --project 5 --column 3 --title "Reviewing"
+forgejo-project column default --repo owner/repo --project 5 --column 1
+forgejo-project column delete  --repo owner/repo --project 5 --column 3
+
+# Issue management
+forgejo-project item add  --repo owner/repo --project 5 --issue 42
+forgejo-project item move --repo owner/repo --project 5 --issue 42 --column 3
+forgejo-project item list --repo owner/repo --project 5   # outputs JSON
+```
+
+Issue numbers are automatically resolved to internal DB IDs via the REST API (`/api/v1/repos/{owner}/{repo}/issues/{number}`), which does accept session cookies.
 
 #### agentctl CLI
 
