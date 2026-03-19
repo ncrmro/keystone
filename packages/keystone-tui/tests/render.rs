@@ -11,11 +11,8 @@ use keystone_tui::screens::host_detail::HostDetailScreen;
 use keystone_tui::screens::hosts::HostsScreen;
 use keystone_tui::screens::welcome::WelcomeScreen;
 use keystone_tui::system::{
-    CpuHistory, DashboardMessage, DiskInfo, HostStatus, SystemMetrics, TailscalePeer,
-    TailscaleStatus, TempReading,
+    CpuHistory, DiskInfo, HostStatus, SystemMetrics, TailscalePeer, TempReading,
 };
-
-use std::collections::HashMap;
 use tokio::sync::mpsc;
 
 /// Render a screen to a string using TestBackend.
