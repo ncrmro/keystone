@@ -124,6 +124,7 @@ in
         gnused = "${pkgs.gnused}";
         nix = "${pkgs.nix}";
         zellij = "${pkgs.zellij}/bin/zellij";
+        podmanAgent = "${pkgs.keystone.podman-agent}/bin/podman-agent";
       }));
 
       # Per-agent wrapper scripts: `drago claude` = `agentctl drago claude`
