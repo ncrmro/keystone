@@ -13,11 +13,13 @@ The Bluetooth Proximity Lock feature automatically locks your screen when a trus
 
 ### Finding Your Device Address
 
-First, find your phone's Bluetooth MAC address:
+First, find your phone's Bluetooth MAC address. There are two methods:
+
+#### Method 1: From Your Computer (Recommended)
+
+After pairing your phone with your computer, list the paired devices:
 
 ```bash
-# Pair your phone with your computer via Bluetooth settings
-# Then list paired devices:
 bluetoothctl devices
 ```
 
@@ -26,6 +28,24 @@ This will output something like:
 Device AA:BB:CC:DD:EE:FF My Phone
 Device 11:22:33:44:55:66 My Headphones
 ```
+
+#### Method 2: From Your Phone
+
+**iPhone:**
+
+1. Open **Settings** → **General** → **About**
+2. Scroll down to find **Bluetooth** or **Wi-Fi Address**
+3. The Bluetooth address is shown as a MAC address (e.g., `AA:BB:CC:DD:EE:FF`)
+4. Note: On newer iOS versions, you may need to pair with your computer first, then use Method 1 above
+
+**Android:**
+
+1. Open **Settings** → **About phone** (or **About device**)
+2. Tap **Status** or **Status information**
+3. Look for **Bluetooth address** or **Bluetooth MAC address**
+4. The address will be in the format `AA:BB:CC:DD:EE:FF`
+
+*Note: The exact menu path may vary depending on your Android version and manufacturer.*
 
 ### Enabling the Feature
 
