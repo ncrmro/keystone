@@ -266,8 +266,7 @@ pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
     let ssh_keys_nix = format_nix_string_list(&config.user.authorized_keys, 12);
     let hostname_esc = escape_nix_string(&config.hostname);
     let username_esc = escape_nix_string(&config.user.username);
-    let github_username_esc =
-        escape_nix_string(config.github_username.as_deref().unwrap_or(""));
+    let github_username_esc = escape_nix_string(config.github_username.as_deref().unwrap_or(""));
 
     format!(
         r#"{{
