@@ -1,0 +1,80 @@
+{
+  "panels": [
+    {
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({agent!=\"\"} |= \"Finished successfully\" [1h]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Completed Tasks (1h)",
+      "type": "stat"
+    },
+    {
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({agent!=\"\"} |~ \"(?i)block\" [1h]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Blocked Tasks (1h)",
+      "type": "stat"
+    },
+    {
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({agent!=\"\"} |~ \"(?i)error|fail|exception\" [1h]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors & Failures (1h)",
+      "type": "stat"
+    },
+    {
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{agent!=\"\"} |~ \"(?i)error|fail|exception\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors & Issues Logs",
+      "type": "logs"
+    },
+    {
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{agent!=\"\"} |~ \"(?i)block\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Blocked Tasks Logs",
+      "type": "logs"
+    },
+    {
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum by(agent) (rate({agent!=\"\"} |= \"Finished successfully\" [$__rate_interval]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Task Completion Rate",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "1m",
+  "tags": ["keystone", "agents"],
+  "timezone": "browser",
+  "title": "Keystone OS Agents"
+}

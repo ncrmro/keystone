@@ -667,6 +667,25 @@ Description: do the thing"
 claude --print -p "Do the task. /deepwork task_loop run"
 ```
 
+## Monitoring & Observability
+
+Agents are monitored via Loki logs. A standard "Keystone OS Agents" dashboard is provisioned when `services.grafana.enable` is true.
+
+### Key Metrics (Loki LogQL)
+
+| Metric | LogQL Expression |
+|--------|------------------|
+| **Completed Tasks** | `sum(count_over_time({agent!=""} |= "Finished successfully" [1h]))` |
+| **Blocked Tasks** | `sum(count_over_time({agent!=""} |~ "(?i)block" [1h]))` |
+| **Error Rate** | `sum by(agent) (rate({agent!=""} |~ "(?i)error|fail|exception" [5m]))` |
+| **Step Activity** | `sum by(agent_step) (rate({agent!=""} != "" [5m]))` |
+
+### Alerting Recommendations
+
+1. **Agent Error Spike**: Trigger if error rate > 0.5/s over 5m.
+2. **Agent Stalled**: Trigger if no logs are received for 15m (`rate({agent!=""}[15m]) == 0`).
+3. **Task Blocked**: Trigger on a surge of "blocked" log patterns.
+
 ## Implementation Status
 
 ### Implemented

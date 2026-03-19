@@ -78,6 +78,7 @@ in
     ./ssh.nix
     ./notes.nix
     ./home-manager.nix
+    ./observability.nix
   ];
 
   options.keystone.os.agents = mkOption {
