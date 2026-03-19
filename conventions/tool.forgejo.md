@@ -182,7 +182,28 @@ curl -s -X POST \
 
 ## Project Boards
 
-23. Forgejo 14.0.2 has **no project board REST API** (verified against the swagger spec).
-24. Boards are managed via web UI only at `https://{host}/{owner}/{repo}/projects`.
-25. Agents MUST document board URLs in milestone or issue descriptions for easy access.
-26. See `process.project-board` for full board lifecycle and Forgejo-specific guidance.
+23. Forgejo has no project board REST API. Agents MUST use the `forgejo-project` CLI (provided by keystone) for all board operations.
+24. See `process.project-board` for full board lifecycle and Forgejo-specific guidance.
+25. Agents MUST set `FORGEJO_HOST`, `FORGEJO_USER`, and `FORGEJO_PASSWORD_CMD` environment variables.
+26. The script auto-authenticates on first use and re-authenticates on session expiry.
+27. `FORGEJO_PASSWORD_CMD` MUST delegate to a credential manager (`rbw`, `pass`, etc.) — passwords MUST NOT be stored in plaintext.
+
+```bash
+# Project CRUD
+forgejo-project create --repo owner/repo --title "v1.0" --template basic-kanban
+forgejo-project list   --repo owner/repo
+forgejo-project close  --repo owner/repo --project 5
+forgejo-project delete --repo owner/repo --project 5
+
+# Column CRUD
+forgejo-project column add     --repo owner/repo --project 5 --title "In Review" --color "#0075ca"
+forgejo-project column list    --repo owner/repo --project 5
+forgejo-project column edit    --repo owner/repo --project 5 --column 3 --title "Reviewing"
+forgejo-project column default --repo owner/repo --project 5 --column 1
+forgejo-project column delete  --repo owner/repo --project 5 --column 3
+
+# Issue management
+forgejo-project item add  --repo owner/repo --project 5 --issue 42
+forgejo-project item move --repo owner/repo --project 5 --issue 42 --column 3
+forgejo-project item list --repo owner/repo --project 5
+```
