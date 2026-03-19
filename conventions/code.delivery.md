@@ -7,7 +7,7 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 
 1. Feature delivery MUST originate from an issue belonging to a milestone.
 2. Requirements MUST be documented as specs before implementation begins.
-3. If no milestone exists, one MUST be created per `biz.product-engineering-handoff`.
+3. If no milestone exists, one MUST be created per `process.product-engineering-handoff`.
 
 ## Issue as Plan
 
@@ -19,22 +19,22 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 
 ## Branch and Early PR
 
-9. A branch MUST be created from the default branch using `ops.vcs` naming conventions (semantic prefix + short description).
+9. A branch MUST be created from the default branch using `process.version-control` naming conventions (semantic prefix + short description).
 10. When starting work on an issue that belongs to a milestone with a project board, the issue's board status MUST be updated to "In Progress" — on GitHub via `gh project item-edit` per `process.project-board`, on Forgejo via the web UI.
 11. A dummy commit MUST be created immediately after branching (e.g., empty commit or minimal scaffold) to enable opening a PR.
-12. A draft PR MUST be opened immediately after the dummy commit (Forgejo: `WIP:` title prefix per `ops.forgejo`; GitHub: `--draft` flag).
+12. A draft PR MUST be opened immediately after the dummy commit (Forgejo: `WIP:` title prefix per `tool.forgejo`; GitHub: `--draft` flag).
 13. The PR body MUST include a `# Tasks` section containing the task breakdown as markdown checkboxes mirroring the issue's deliverable checklist.
 14. The draft PR SHOULD make the plan visible to reviewers before implementation begins.
 
 ## PR Body Format
 
-15. The PR body MUST follow the `code.pull-request` convention (`# Goal`, `# Changes`, `# Demo` sections) plus the `# Tasks` section from rule 13.
-16. The PR title MUST follow conventional commit format per `ops.vcs` (e.g., `feat(api): add search endpoint`).
+15. The PR body MUST follow the `process.pull-request` convention (`# Goal`, `# Changes`, `# Demo` sections) plus the `# Tasks` section from rule 13.
+16. The PR title MUST follow conventional commit format per `process.version-control` (e.g., `feat(api): add search endpoint`).
 17. The PR body MUST include `Closes #N` or `Fixes #N` to auto-close the originating issue on merge.
 
 ## Implementation
 
-18. Commits MUST follow `ops.vcs` commit discipline (early, often, one logical change per commit).
+18. Commits MUST follow `process.version-control` commit discipline (early, often, one logical change per commit).
 19. Changes MUST NOT exceed the scope of the issue's acceptance criteria.
 20. All tasks in the PR body's `# Tasks` section MUST be checked off before marking the PR ready for review.
 
@@ -44,14 +44,14 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 22. Appropriate reviewers MUST be assigned before marking the PR ready for review.
 23. Reviewers MUST be assigned per the ownership matrix in `process.code-review-ownership`. On both GitHub and Forgejo, CODEOWNERS handles automatic reviewer assignment when a PR is created or undrafted.
 24. Copilot SHOULD also be requested as a supplementary reviewer per `process.copilot-agent`.
-25. Review feedback MUST be addressed per `ops.copilot-agent` conversation resolution rules (fix or explain every comment).
-26. PRs MUST be squash-merged per `code.pull-request`.
+25. Review feedback MUST be addressed per `process.copilot-agent` conversation resolution rules (fix or explain every comment).
+26. PRs MUST be squash-merged per `process.pull-request`.
 
 ## Traceability
 
 27. Every PR MUST reference its issue; every issue MUST belong to a milestone.
 28. Issues MUST be closed via PR merge keywords (`Closes`, `Fixes`) — not manually.
-29. After merge, demo artifacts MUST be posted on the issue per `biz.product-engineering-handoff`.
+29. After merge, demo artifacts MUST be posted on the issue per `process.product-engineering-handoff`.
 
 ## Golden Example
 
