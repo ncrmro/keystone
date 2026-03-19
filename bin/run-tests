@@ -78,6 +78,10 @@ run_module_tests() {
     log_info "Running: test-os-evaluation"
     nix build "$TESTS_DIR#test-os-evaluation" --no-link
     log_success "test-os-evaluation passed"
+
+    log_info "Running: test-iso-evaluation"
+    nix build "$TESTS_DIR#test-iso-evaluation" --no-link
+    log_success "test-iso-evaluation passed"
 }
 
 run_integration_tests() {
@@ -123,6 +127,7 @@ Available Tests:
         test-server-isolation   - Server services in isolation
         test-desktop-isolation  - Desktop environment in isolation
         test-os-evaluation      - OS module configuration evaluation
+        test-iso-evaluation     - ISO installer module evaluation
 
     Integration Tests:
         test-installer          - Full installer TUI walkthrough

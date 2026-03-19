@@ -16,6 +16,9 @@ keystone.os.agents.drago = {
   ssh.publicKey = "ssh-ed25519 AAAAC3... agent-drago";
   notes.repo = "ssh://forgejo@git.example.com:2222/drago/notes.git";
 };
+
+# SSH public key is registered in the keys registry, not on the agent
+keystone.keys."agent-atlas".hosts.myhost.publicKey = "ssh-ed25519 AAAAC3...";
 ```
 
 ## Architecture Overview
@@ -160,7 +163,7 @@ If using Forgejo with OpenSSH (passthrough mode) instead of the built-in server,
 
 ### SSH Authentication
 
-The clone service uses the agent's agenix SSH key directly (`/run/agenix/agent-{name}-ssh-key`). The key must be registered in the Forgejo user's SSH keys settings.
+The `agent-{name}-notes-sync` service uses the agent's SSH agent socket (`SSH_AUTH_SOCK`) for authentication. The agent's SSH key must be registered in the Forgejo user's SSH keys settings.
 
 ### Required Agenix Secrets
 
@@ -168,13 +171,13 @@ Each agent with SSH configured needs:
 - `agent-{name}-ssh-key` — Private SSH key (ed25519)
 - `agent-{name}-ssh-passphrase` — Passphrase for the key
 
-### Retry Behavior
+### Sync Behavior
 
-The clone service retries on failure (up to 10 attempts over 10 minutes with 30-second intervals). Check status with:
+The notes-sync service runs `repo-sync`, which handles clone-if-absent on first run and fetch/commit/rebase/push on subsequent runs. Check status with:
 
 ```bash
-systemctl status clone-agent-space-{name}.service
-journalctl -xeu clone-agent-space-{name}.service
+systemctl --user status agent-{name}-notes-sync.service
+journalctl --user -u agent-{name}-notes-sync -n 20
 ```
 
 ## What Each Agent Gets
@@ -195,19 +198,21 @@ journalctl -xeu clone-agent-space-{name}.service
 
 ## Debugging
 
-### Clone fails with "Permission denied (publickey)"
+### Notes sync fails with "Permission denied (publickey)"
 
 1. **Check the SSH username** in `notes.repo` — must be `forgejo@` for Forgejo's built-in SSH server
 2. **Verify the key is registered** in Forgejo under the correct user's SSH keys
-3. **Test manually:**
+3. **Check the SSH agent is running** — notes-sync depends on `SSH_AUTH_SOCK`:
+   ```bash
+   agentctl {name} status agent-{name}-ssh-agent
+   ```
+4. **Test manually:**
    ```bash
    sudo runuser -u agent-{name} -- ssh -vvv \
-     -i /run/agenix/agent-{name}-ssh-key \
      -o StrictHostKeyChecking=accept-new \
-     -o IdentitiesOnly=yes \
      -p 2222 -T forgejo@git.example.com
    ```
-4. **Check key fingerprint matches:**
+5. **Check key fingerprint matches:**
    ```bash
    # Fingerprint of the agenix private key
    ssh-keygen -lf /run/agenix/agent-{name}-ssh-key
@@ -218,8 +223,9 @@ journalctl -xeu clone-agent-space-{name}.service
 
 ### Service dependency order
 
-The clone service depends on:
-- `agent-homes.service` (or `zfs-agent-datasets.service` on ZFS)
+The notes-sync service requires:
+- The agent's home directory (`agent-homes.service` or `zfs-agent-datasets.service` on ZFS)
+- The agent's SSH agent (`agent-{name}-ssh-agent.service`) for authentication
 
 The SSH agent service runs independently and is not a dependency of the clone service.
 
@@ -403,7 +409,44 @@ When a manifest declares `archetype: engineer`, the archetype's conventions are 
 
 The task loop is a Nix-packaged shell script (`task-loop.sh`) that runs as a systemd user service. It uses a two-timer pipeline for autonomous work orchestration.
 
-### Two-Timer Design
+```mermaid
+flowchart LR
+    subgraph Sources["External Sources"]
+        email["Email<br/>(himalaya)"]
+        github["GitHub<br/>(gh CLI)"]
+        forgejo["Forgejo<br/>(tea CLI)"]
+    end
+
+    subgraph Pipeline["task-loop.sh Pipeline"]
+        prefetch["1. Pre-fetch<br/>Sources → JSON"]
+        ingest["2. Ingest<br/>(haiku)"]
+        hash["3. Hash Check<br/>Skip prioritize if unchanged"]
+        prioritize["4. Prioritize<br/>(haiku)<br/>model + workflow"]
+        execute["5. Execute Loop<br/>(per-task model)"]
+
+        prefetch --> ingest --> hash --> prioritize --> execute
+    end
+
+    subgraph State["YAML State"]
+        projects["PROJECTS.yaml<br/>(source definitions)"]
+        tasks["TASKS.yaml<br/>(task queue)"]
+    end
+
+    subgraph Dispatch["Execution Dispatch"]
+        deepwork["/deepwork job/workflow<br/>Quality gates + steps"]
+        generic["Generic Execution<br/>Free-form LLM prompt"]
+    end
+
+    email & github & forgejo --> prefetch
+    projects -->|"source commands"| prefetch
+    ingest -->|"creates/updates tasks"| tasks
+    prioritize -->|"reorders + assigns<br/>model + workflow"| tasks
+    execute -->|"workflow field set"| deepwork
+    execute -->|"no workflow"| generic
+    execute -->|"updates status"| tasks
+```
+
+### Timer Design
 
 ```
                     ┌─────────────────────────────────────────────────┐
@@ -758,6 +801,22 @@ After the initial PR, the orchestrator runs up to N review cycles (default 2):
 3. Comments posted to the PR
 4. On `FAIL` (not last cycle): re-run coding agent with fix prompt, push fixes
 5. On `PASS`: mark PR ready (`gh pr ready` for GitHub, remove `WIP:` prefix for Forgejo)
+
+## Terminal Environment Requirement
+
+Agent systemd services (`task-loop`, `scheduler`, `notes-sync`) MUST have access to the full home-manager terminal environment. All tools available in an interactive agent shell MUST also be available in systemd service contexts.
+
+### Design
+
+The `notes.nix` module sets each service's PATH to the agent's full home-manager profile:
+
+```
+/etc/profiles/per-user/agent-{name}/bin:<nix>/bin:/run/current-system/sw/bin
+```
+
+Scripts (`task-loop.sh`, `scheduler.sh`) use bare commands (`yq`, `jq`, `bash`, `git`, `claude`, etc.) that resolve via this PATH. Only config values (`notesDir`, `maxTasks`, `agentName`) are substituted at build time via `pkgs.replaceVars` — tool paths are NOT individually resolved.
+
+This matches the pattern used by `agentSvcHelper` in `lib.nix` and ensures that any tool available in an interactive shell is also available to agent services.
 
 ## Operational Conventions
 
