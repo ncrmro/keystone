@@ -52,39 +52,44 @@ This convention defines how agents identify, report, and recover from platform a
 
 ## Golden Example
 
-Agent discovers a missing Nix package while implementing a task on `ncrmro/catalyst`:
+Agent running inside an `agentctl` podman container cannot access the host's GitHub
+token, blocking issue creation for task #42 on `ncrmro/catalyst`:
 
 ```bash
-# 1. Agent hits blocker: `wrangler` not available in devshell
-#    Error: "command not found: wrangler"
+# 1. Agent hits blocker: gh CLI fails inside podman container
+#    Error: "gh: authentication required — run gh auth login"
+#    The container does not have access to the host's gh auth token.
 
 # 2. File blocker issue on keystone (rule 5)
 gh issue create --repo ncrmro/keystone \
-  --title "fix(devshell): add wrangler to agent-drago devshell" \
+  --title "fix(agentctl): mount gh auth token into podman container" \
   --label "blocked" \
   --assignee ncrmro \
   --body "$(cat <<'EOF'
 ## What is blocked
 
-[Issue #42](https://github.com/ncrmro/catalyst/issues/42) — deploy Cloudflare Worker.
-Task cannot proceed because `wrangler` CLI is not available in the agent's Nix devshell.
+[Issue #42](https://github.com/ncrmro/catalyst/issues/42) — agent cannot
+create issues or PRs from inside the agentctl podman container.
 
 ## Root cause
 
-`wrangler` (Cloudflare Workers CLI) is not included in the agent-drago
-devshell packages in `modules/agents/drago.nix`.
+The agentctl podman container does not mount the host's GitHub CLI
+auth token (`~/.config/gh/hosts.yml`). The `gh` CLI inside the
+container has no credentials and cannot authenticate to GitHub.
 
 ## Error evidence
 
 ```
-$ wrangler deploy
-zsh: command not found: wrangler
+$ gh issue create --repo ncrmro/catalyst --title "test"
+error: authentication required
+hint: run `gh auth login` to authenticate
 ```
 
 ## Suggested fix
 
-Add `pkgs.wrangler` to `devShells.default.buildInputs` in the agent's
-Nix module, then rebuild.
+Mount the host's gh config into the container read-only:
+`-v ~/.config/gh:/home/agent/.config/gh:ro`
+in the agentctl podman run command.
 EOF
 )"
 
@@ -93,7 +98,7 @@ gh issue edit 42 --repo ncrmro/catalyst --add-label "blocked"
 
 # 4. Comment on the original task issue (rule 13)
 gh issue comment 42 --repo ncrmro/catalyst \
-  --body "Blocked by ncrmro/keystone#NEW — wrangler CLI not in devshell."
+  --body "Blocked by ncrmro/keystone#NEW — gh auth not available in agentctl container."
 
 # 5. Move task board item to Backlog (rule 10)
 # gh project item-edit ...
@@ -104,7 +109,7 @@ gh issue comment 42 --repo ncrmro/catalyst \
 # --- After the human merges the keystone fix and rebuilds ---
 
 # 7. Verify fix (rule 15)
-which wrangler  # confirms wrangler is now available
+gh auth status  # confirms gh is now authenticated inside container
 
 # 8. Resume (rule 16)
 gh issue edit 42 --repo ncrmro/catalyst --remove-label "blocked"
