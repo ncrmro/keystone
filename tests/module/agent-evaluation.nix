@@ -433,6 +433,40 @@ let
         };
       }
     ];
+
+    # Agent with GitHub and Forgejo source usernames
+    agent-source-usernames = eval "agent-source-usernames" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.luce = {
+            fullName = "Luce";
+            notes.repo = "git@example.com:luce/notes.git";
+            github.username = "luce-gh";
+            forgejo.username = "luce";
+          };
+          # Agent with only GitHub username (Forgejo left null)
+          agents.solo = {
+            fullName = "Solo";
+            notes.repo = "git@example.com:solo/notes.git";
+            github.username = "solo-gh";
+          };
+          # Agent with no source usernames (both null, should still evaluate)
+          agents.quiet = {
+            fullName = "Quiet";
+            notes.repo = "git@example.com:quiet/notes.git";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-agent-evaluation"
