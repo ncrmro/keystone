@@ -155,6 +155,7 @@ pub async fn create_new_repo(repo_name: String) -> Result<KeystoneRepo> {
 ///
 /// Instead of using `nix flake init`, this generates flake.nix, configuration.nix,
 /// and hardware.nix from the provided configuration, filling in all values.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_new_repo_from_config(
     repo_name: String,
     machine_type: crate::template::MachineType,

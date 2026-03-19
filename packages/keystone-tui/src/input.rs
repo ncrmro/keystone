@@ -563,13 +563,9 @@ async fn handle_create_config_action(
         } => {
             // Fetch GitHub SSH keys if a username was provided
             let authorized_keys = if !github_username.is_empty() {
-                match crate::github::fetch_ssh_keys(&github_username).await {
-                    Ok(keys) => keys,
-                    Err(_) => {
-                        // Network error — proceed without keys
-                        Vec::new()
-                    }
-                }
+                crate::github::fetch_ssh_keys(&github_username)
+                    .await
+                    .unwrap_or_default()
             } else {
                 Vec::new()
             };

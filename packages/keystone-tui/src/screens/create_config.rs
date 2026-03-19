@@ -3,8 +3,8 @@
 use crossterm::event::KeyEvent;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
-    text::{Line, Text},
+    style::{Color, Style, Stylize},
+    text::Text,
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
@@ -384,7 +384,7 @@ mod tests {
         let mut screen = CreateConfigScreen::new("test-repo".to_string());
 
         // Walk through all fields
-        let expected = vec![
+        let expected = [
             FormField::MachineType,
             FormField::Hostname,
             FormField::StorageType,

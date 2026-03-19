@@ -4,6 +4,8 @@
 //! and management. Handles repo setup, secrets, key enrollment, host
 //! configuration, building, and git operations.
 
+#![allow(dead_code)]
+
 use std::io;
 
 use anyhow::Result;

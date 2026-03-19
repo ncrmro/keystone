@@ -7,4 +7,5 @@ mod input;
 mod menu;
 
 pub use input::TextInput;
+#[allow(unused_imports)]
 pub use menu::SelectMenu;

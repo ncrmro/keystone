@@ -362,7 +362,7 @@ impl IsoScreen {
         let _ = tx.send(IsoMessage::BuildFinished(success));
     }
 
-    fn find_iso_file(repo_path: &PathBuf) -> Option<PathBuf> {
+    fn find_iso_file(repo_path: &std::path::Path) -> Option<PathBuf> {
         // nix build .#iso creates a `result` symlink pointing to a nix store
         // derivation directory containing iso/<name>.iso
         let result = repo_path.join("result");
