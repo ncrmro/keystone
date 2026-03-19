@@ -94,7 +94,7 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
 
     format!(
         r#"{{
-  description = "Keystone Infrastructure — {hostname}";
+  description = "Keystone Infrastructure — {hostname_esc}";
 
   inputs = {{
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -116,7 +116,7 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
     ...
   }}: {{
     nixosConfigurations = {{
-      {hostname} = nixpkgs.lib.nixosSystem {{
+      "{hostname_esc}" = nixpkgs.lib.nixosSystem {{
         system = "x86_64-linux";
         modules = [
           home-manager.nixosModules.home-manager
@@ -145,7 +145,7 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
   }};
 }}
 "#,
-        hostname = config.hostname,
+        hostname_esc = escape_nix_string(&config.hostname),
         desktop_module = desktop_module,
         shared_modules = shared_modules,
     )
@@ -163,9 +163,10 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
         _ => "true",
     };
 
-    let remote_unlock_enable = match config.machine_type {
-        MachineType::Server => "true",
-        _ => "false",
+    let remote_unlock_enable = if config.remote_unlock.enable {
+        "true"
+    } else {
+        "false"
     };
 
     let extra_groups = match config.machine_type {
@@ -174,7 +175,11 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
     };
 
     // Use placeholder when no disk device is specified — replaced at install time
-    let disk_device = config.disk_device.as_deref().unwrap_or("__KEYSTONE_DISK__");
+    let raw_disk = config.disk_device.as_deref().unwrap_or("__KEYSTONE_DISK__");
+    let hostname = escape_nix_string(&config.hostname);
+    let username = escape_nix_string(&config.user.username);
+    let password = escape_nix_string(&config.user.password);
+    let disk_device = escape_nix_string(raw_disk);
 
     format!(
         r#"{{
@@ -215,7 +220,7 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
     }};
 
     users = {{
-      {username} = {{
+      "{username}" = {{
         fullName = "{username}";
         email = "{username}@localhost";
         extraGroups = {extra_groups};
@@ -238,12 +243,12 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
   environment.systemPackages = with pkgs; [ sbctl ];
 }}
 "#,
-        hostname = config.hostname,
+        hostname = hostname,
         host_id = host_id,
         storage_type = config.storage_type.nix_value(),
         disk_device = disk_device,
-        username = config.user.username,
-        password = config.user.password,
+        username = username,
+        password = password,
         authorized_keys_nix = authorized_keys_nix,
         remote_unlock_enable = remote_unlock_enable,
         remote_unlock_keys_nix = remote_unlock_keys_nix,
@@ -259,10 +264,14 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
 /// target machine can run disko + nixos-install without needing the config repo.
 pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
     let ssh_keys_nix = format_nix_string_list(&config.user.authorized_keys, 12);
+    let hostname_esc = escape_nix_string(&config.hostname);
+    let username_esc = escape_nix_string(&config.user.username);
+    let github_username_esc =
+        escape_nix_string(config.github_username.as_deref().unwrap_or(""));
 
     format!(
         r#"{{
-  description = "Keystone Installer ISO — {hostname}";
+  description = "Keystone Installer ISO — {hostname_esc}";
 
   inputs = {{
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -301,9 +310,9 @@ pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
           environment.etc."keystone/install-config/flake.nix".source = ./target-config/flake.nix;
           environment.etc."keystone/install-config/configuration.nix".source = ./target-config/configuration.nix;
           environment.etc."keystone/install-config/hardware.nix".source = ./target-config/hardware.nix;
-          environment.etc."keystone/install-config/hostname".text = "{hostname}";
-          environment.etc."keystone/install-config/username".text = "{username}";
-          environment.etc."keystone/install-config/github_username".text = "{github_username}";
+          environment.etc."keystone/install-config/hostname".text = "{hostname_esc}";
+          environment.etc."keystone/install-config/username".text = "{username_esc}";
+          environment.etc."keystone/install-config/github_username".text = "{github_username_esc}";
 
           # Pin kernel to match upstream keystone ISO (6.12)
           boot.kernelPackages = nixpkgs.lib.mkForce pkgs.linuxPackages_6_12;
@@ -313,9 +322,9 @@ pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
   }};
 }}
 "#,
-        hostname = config.hostname,
-        username = config.user.username,
-        github_username = config.github_username.as_deref().unwrap_or(""),
+        hostname_esc = hostname_esc,
+        username_esc = username_esc,
+        github_username_esc = github_username_esc,
         ssh_keys_nix = ssh_keys_nix,
     )
 }
@@ -357,6 +366,17 @@ fn generate_host_id() -> String {
     format!("{:02x}{:02x}{:02x}{:02x}", buf[0], buf[1], buf[2], buf[3])
 }
 
+/// Escape a string for safe embedding inside a Nix double-quoted string literal.
+///
+/// Escapes: `\` → `\\`, `"` → `\"`, `${` → `\${`
+/// Newlines are also escaped so multi-line values don't break the generated Nix.
+fn escape_nix_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace("${", "\\${")
+        .replace('\n', "\\n")
+}
+
 /// Format a Vec<String> as a Nix list of strings with proper indentation.
 fn format_nix_string_list(items: &[String], indent: usize) -> String {
     if items.is_empty() {
@@ -365,7 +385,7 @@ fn format_nix_string_list(items: &[String], indent: usize) -> String {
     let pad = " ".repeat(indent);
     let mut result = String::from("[\n");
     for item in items {
-        result.push_str(&format!("{}  \"{}\"\n", pad, item));
+        result.push_str(&format!("{}  \"{}\"\n", pad, escape_nix_string(item)));
     }
     result.push_str(&format!("{}]", pad));
     result
@@ -374,6 +394,15 @@ fn format_nix_string_list(items: &[String], indent: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_escape_nix_string() {
+        assert_eq!(escape_nix_string(r#"hello"world"#), r#"hello\"world"#);
+        assert_eq!(escape_nix_string(r"back\slash"), r"back\\slash");
+        assert_eq!(escape_nix_string("${inject}"), r"\${inject}");
+        assert_eq!(escape_nix_string("line1\nline2"), r"line1\nline2");
+        assert_eq!(escape_nix_string("plain"), "plain");
+    }
 
     #[test]
     fn test_format_nix_string_list_empty() {

@@ -269,7 +269,7 @@ impl IsoScreen {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
                     if let Some(devices) = json["blockdevices"].as_array() {
                         for dev in devices {
-                            let rm = dev["rm"].as_bool().unwrap_or(false);
+                            let rm = parse_rm(&dev["rm"]);
                             let dev_type = dev["type"].as_str().unwrap_or("");
                             let tran = dev["tran"].as_str().unwrap_or("");
                             let name = dev["name"].as_str().unwrap_or("");
@@ -668,6 +668,22 @@ impl IsoScreen {
     }
 }
 
+/// Interpret the `"rm"` field from `lsblk --json` output as a boolean.
+///
+/// `lsblk` may encode the removable flag as a JSON bool, integer (0/1), or
+/// string ("0"/"1"/"true"/"false") depending on the kernel and util-linux
+/// version.  Try each representation in turn so USB sticks are detected on all
+/// supported platforms.
+pub(crate) fn parse_rm(value: &serde_json::Value) -> bool {
+    value.as_bool().unwrap_or(false)
+        || value.as_u64().map(|v| v != 0).unwrap_or(false)
+        || value.as_i64().map(|v| v != 0).unwrap_or(false)
+        || value
+            .as_str()
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -783,5 +799,45 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         let found = IsoScreen::find_iso_file(&tmp);
         assert!(found.is_none());
+    }
+
+    #[test]
+    fn test_parse_rm_bool_true() {
+        assert!(parse_rm(&serde_json::Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_parse_rm_bool_false() {
+        assert!(!parse_rm(&serde_json::Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_parse_rm_integer_one() {
+        assert!(parse_rm(&serde_json::json!(1)));
+    }
+
+    #[test]
+    fn test_parse_rm_integer_zero() {
+        assert!(!parse_rm(&serde_json::json!(0)));
+    }
+
+    #[test]
+    fn test_parse_rm_string_one() {
+        assert!(parse_rm(&serde_json::Value::String("1".to_string())));
+    }
+
+    #[test]
+    fn test_parse_rm_string_true() {
+        assert!(parse_rm(&serde_json::Value::String("true".to_string())));
+    }
+
+    #[test]
+    fn test_parse_rm_string_zero() {
+        assert!(!parse_rm(&serde_json::Value::String("0".to_string())));
+    }
+
+    #[test]
+    fn test_parse_rm_null() {
+        assert!(!parse_rm(&serde_json::Value::Null));
     }
 }
