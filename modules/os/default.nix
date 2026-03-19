@@ -140,6 +140,7 @@ in {
   imports = [
     ../keys.nix
     ../secrets.nix
+    ./notifications.nix
     ./storage.nix
     ./secure-boot.nix
     ./tpm.nix
