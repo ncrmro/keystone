@@ -1,36 +1,29 @@
 #!/usr/bin/env bash
 # Agent scheduler: reads SCHEDULES.yaml, creates due tasks, triggers task loop.
+# All tools come from the agent's home-manager profile PATH set in notes.nix.
 # Pure bash, no LLM.
 set -eo pipefail
 
-# Paths substituted by NixOS module via pkgs.replaceVars
-YQ="@yq@"
-DATE="@date@"
-MKDIR="@mkdir@"
-ECHO="@echo@"
-TEE="@tee@"
-# GREP not currently used but reserved for future use
-TR="@tr@"
-SEQ="@seq@"
+# Config values substituted by NixOS module via pkgs.replaceVars
 NOTES_DIR="@notesDir@"
 AGENT_NAME="@agentName@"
 
 LOGS_DIR="$HOME/.local/state/agent-scheduler/logs"
 
-$MKDIR -p "$LOGS_DIR"
+mkdir -p "$LOGS_DIR"
 
-TIMESTAMP=$($DATE +%Y-%m-%d_%H%M%S)
+TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 LOG_FILE="$LOGS_DIR/$TIMESTAMP.log"
-TODAY=$($DATE +%Y-%m-%d)
-DOW=$($DATE +%A | $TR '[:upper:]' '[:lower:]')
-DOM=$($DATE +%-d)
+TODAY=$(date +%Y-%m-%d)
+DOW=$(date +%A | tr '[:upper:]' '[:lower:]')
+DOM=$(date +%-d)
 
 log() {
-  $ECHO "[$($DATE '+%H:%M:%S')] $*" | $TEE -a "$LOG_FILE" >&2
+  echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_FILE" >&2
 }
 
 if [ ! -d "$NOTES_DIR" ]; then
-  $ECHO "Notes directory $NOTES_DIR does not exist yet, skipping"
+  echo "Notes directory $NOTES_DIR does not exist yet, skipping"
   exit 0
 fi
 cd "$NOTES_DIR"
@@ -43,17 +36,17 @@ fi
 
 if [ ! -f TASKS.yaml ]; then
   log "No TASKS.yaml found, creating empty one"
-  $ECHO "tasks: []" > TASKS.yaml
+  echo "tasks: []" > TASKS.yaml
 fi
 
-SCHEDULE_COUNT=$($YQ '.schedules | length' SCHEDULES.yaml 2>/dev/null || $ECHO "0")
+SCHEDULE_COUNT=$(yq '.schedules | length' SCHEDULES.yaml 2>/dev/null || echo "0")
 CREATED=0
 
-for i in $($SEQ 0 $((SCHEDULE_COUNT - 1))); do
-  SCHED_NAME=$($YQ ".schedules[$i].name" SCHEDULES.yaml)
-  SCHED_DESC=$($YQ ".schedules[$i].description" SCHEDULES.yaml)
-  SCHED_SCHEDULE=$($YQ ".schedules[$i].schedule" SCHEDULES.yaml)
-  SCHED_WORKFLOW=$($YQ ".schedules[$i].workflow" SCHEDULES.yaml)
+for i in $(seq 0 $((SCHEDULE_COUNT - 1))); do
+  SCHED_NAME=$(yq ".schedules[$i].name" SCHEDULES.yaml)
+  SCHED_DESC=$(yq ".schedules[$i].description" SCHEDULES.yaml)
+  SCHED_SCHEDULE=$(yq ".schedules[$i].schedule" SCHEDULES.yaml)
+  SCHED_WORKFLOW=$(yq ".schedules[$i].workflow" SCHEDULES.yaml)
 
   # Check if schedule is due today
   IS_DUE=false
@@ -87,7 +80,7 @@ for i in $($SEQ 0 $((SCHEDULE_COUNT - 1))); do
   SOURCE_REF="schedule-${SCHED_NAME}-${TODAY}"
 
   # Check if task already exists
-  EXISTING=$($YQ "[.tasks[] | select(.source_ref == \"$SOURCE_REF\")] | length" TASKS.yaml 2>/dev/null || $ECHO "0")
+  EXISTING=$(yq "[.tasks[] | select(.source_ref == \"$SOURCE_REF\")] | length" TASKS.yaml 2>/dev/null || echo "0")
 
   if [ "$EXISTING" -gt 0 ]; then
     log "  Skipping $SCHED_NAME (already exists: $SOURCE_REF)"
@@ -96,8 +89,8 @@ for i in $($SEQ 0 $((SCHEDULE_COUNT - 1))); do
 
   # Append new task to TASKS.yaml
   log "  Creating task: ${SCHED_NAME}-${TODAY}"
-  $YQ -i ".tasks += [{
-    \"name\": \"${SCHED_NAME}-$($DATE +%Y-%m-%d)\",
+  yq -i ".tasks += [{
+    \"name\": \"${SCHED_NAME}-$(date +%Y-%m-%d)\",
     \"description\": \"$SCHED_DESC\",
     \"status\": \"pending\",
     \"source\": \"schedule\",
