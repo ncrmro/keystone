@@ -1,13 +1,15 @@
-# DeepWork job library integration for the terminal environment.
+# DeepWork job integration for the terminal environment.
 #
-# Exposes the curated job library shipped with the DeepWork flake by setting
-# DEEPWORK_ADDITIONAL_JOBS_FOLDERS to the Nix store path of the library/jobs
-# directory.  This makes the library jobs discoverable in every deepwork MCP
-# session — for both human users and OS agents — without copying anything into
-# the user's home directory.
+# Sets DEEPWORK_ADDITIONAL_JOBS_FOLDERS to the Nix store path of
+# pkgs.keystone.deepwork-keystone-jobs — a curated set of job definitions
+# maintained in modules/terminal/deepwork-jobs/.  Only jobs that are
+# explicitly listed in that derivation are included; no jobs are pulled in
+# automatically from the upstream deepwork library.
 #
-# The library/jobs derivation (pkgs.keystone.deepwork-library-jobs) is built
-# from the deepwork flake input in the keystone overlay (flake.nix).
+# To add a new job:
+#   1. Create modules/terminal/deepwork-jobs/<job-name>/ with job.yml + steps/
+#   2. Add a `cp -r ... $out/` line in the deepwork-keystone-jobs derivation
+#      inside the keystone overlay (flake.nix).
 {
   config,
   lib,
@@ -24,23 +26,23 @@ in
       type = types.bool;
       default = true;
       description = ''
-        Enable DeepWork job library integration.
+        Enable DeepWork job integration.
 
-        When enabled, sets DEEPWORK_ADDITIONAL_JOBS_FOLDERS to include the
-        curated job library from the DeepWork flake, making those jobs
-        available in all deepwork MCP sessions.
+        When enabled, sets DEEPWORK_ADDITIONAL_JOBS_FOLDERS to the keystone
+        managed job store path, making those jobs available in all deepwork
+        MCP sessions for both human users and OS agents.
       '';
     };
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
-    # Append the keystone-managed DeepWork library jobs to the additional job
-    # folders search path.  This is a colon-delimited list of absolute paths
-    # (see deepwork/src/deepwork/jobs/discovery.py).  The library jobs are
-    # read-only Nix store paths — deepwork writes instances/runs into the
-    # project's own .deepwork/jobs directory, not here.
+    # Append the keystone-managed DeepWork jobs to the additional job folders
+    # search path.  This is a colon-delimited list of absolute paths consumed
+    # by deepwork's discovery module (see deepwork/src/deepwork/jobs/discovery.py).
+    # The store path is read-only; deepwork writes instances/runs into the
+    # project's own .deepwork/jobs directory.
     home.sessionVariables = {
-      DEEPWORK_ADDITIONAL_JOBS_FOLDERS = "${pkgs.keystone.deepwork-library-jobs}";
+      DEEPWORK_ADDITIONAL_JOBS_FOLDERS = "${pkgs.keystone.deepwork-keystone-jobs}";
     };
   };
 }

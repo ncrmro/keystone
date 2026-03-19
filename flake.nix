@@ -187,6 +187,7 @@
       yazi-flake = yazi;
       agenix-flake = agenix;
       deepwork-flake = deepwork;
+      deepwork-keystone-jobs-src = ./modules/terminal/deepwork-jobs;
       chrome-devtools-mcp-src = ./packages/chrome-devtools-mcp;
     in final: prev: {
       keystone = {
@@ -228,10 +229,12 @@
         yazi = yazi-flake.packages.${final.system}.default;
         agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
         deepwork = deepwork-flake.packages.${final.system}.default;
-        # DeepWork library jobs — exposed as a standalone store path so modules
-        # can set DEEPWORK_ADDITIONAL_JOBS_FOLDERS without needing keystoneInputs.
-        deepwork-library-jobs = final.runCommand "deepwork-library-jobs" {} ''
-          cp -r ${deepwork-flake}/library/jobs $out
+        # Curated DeepWork jobs maintained by keystone.
+        # Only explicitly listed jobs are included — add new entries here when
+        # adopting a job from the deepwork library or creating a local one.
+        deepwork-keystone-jobs = final.runCommand "deepwork-keystone-jobs" {} ''
+          mkdir -p $out
+          cp -r ${deepwork-keystone-jobs-src}/project_milestone $out/
         '';
         chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src {};
       };
