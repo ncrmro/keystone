@@ -1,8 +1,8 @@
 # Keystone Terminal Contacts (Cardamum)
 #
 # This module provides cardamum (Pimalaya CardDAV CLI) configuration.
-# When enabled with a host configured, it generates a cardamum config.toml
-# that connects to a CardDAV endpoint.
+# When enabled with a host or URL configured, it generates a
+# cardamum/config.toml that connects to a CardDAV endpoint.
 #
 # Credentials default from the mail module — if mail is already configured,
 # only `contacts.enable = true` is needed for Stalwart.
