@@ -21,6 +21,7 @@ SSH_KEYS_INPUT=""
 NO_SSH_KEYS=false
 OUTPUT_DIR="result"
 SHOW_HELP=false
+CONFIG_DIR=""
 
 # Help function
 show_help() {
@@ -31,6 +32,8 @@ Usage: $0 [OPTIONS]
 
 OPTIONS:
     -k, --ssh-key INPUT     SSH public key as file path or key string directly
+    -c, --config-dir DIR    Directory containing NixOS config to embed in ISO
+                            (must contain flake.nix, configuration.nix, hardware.nix)
     --no-ssh-key            Build ISO without SSH keys (⚠️  creates inaccessible installer)
     -o, --output DIR        Output directory (default: result)
     -h, --help              Show this help message
@@ -44,6 +47,9 @@ EXAMPLES:
 
     # Build ISO with SSH key string directly
     $0 --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host"
+
+    # Build pre-baked ISO with embedded NixOS config
+    $0 --ssh-key ~/.ssh/id_ed25519.pub --config-dir ./my-machine-config
 
     # Build with custom output directory
     $0 --ssh-key ~/.ssh/id_ed25519.pub --output my-iso
