@@ -1,15 +1,10 @@
 # DeepWork job integration for the terminal environment.
 #
-# Sets DEEPWORK_ADDITIONAL_JOBS_FOLDERS to the Nix store path of
-# pkgs.keystone.deepwork-keystone-jobs — a curated set of job definitions
-# maintained in modules/terminal/deepwork-jobs/.  Only jobs that are
-# explicitly listed in that derivation are included; no jobs are pulled in
-# automatically from the upstream deepwork library.
-#
-# To add a new job:
-#   1. Create modules/terminal/deepwork-jobs/<job-name>/ with job.yml + steps/
-#   2. Add a `cp -r ... $out/` line in the deepwork-keystone-jobs derivation
-#      inside the keystone overlay (flake.nix).
+# Sets DEEPWORK_ADDITIONAL_JOBS_FOLDERS to a curated selection of jobs from
+# the deepwork flake's library/jobs directory (pkgs.keystone.deepwork-library-jobs).
+# Jobs are explicitly listed in the derivation in flake.nix — no jobs are
+# included automatically.  To add a new job, add a cp -r entry in the
+# deepwork-library-jobs runCommand once the job exists in the upstream repo.
 {
   config,
   lib,
@@ -28,21 +23,21 @@ in
       description = ''
         Enable DeepWork job integration.
 
-        When enabled, sets DEEPWORK_ADDITIONAL_JOBS_FOLDERS to the keystone
-        managed job store path, making those jobs available in all deepwork
-        MCP sessions for both human users and OS agents.
+        When enabled, sets DEEPWORK_ADDITIONAL_JOBS_FOLDERS to the curated
+        selection of library jobs from the DeepWork flake, making them
+        available in all deepwork MCP sessions for both human users and OS
+        agents.
       '';
     };
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
-    # Append the keystone-managed DeepWork jobs to the additional job folders
-    # search path.  This is a colon-delimited list of absolute paths consumed
-    # by deepwork's discovery module (see deepwork/src/deepwork/jobs/discovery.py).
-    # The store path is read-only; deepwork writes instances/runs into the
-    # project's own .deepwork/jobs directory.
+    # Append the keystone-curated DeepWork library jobs to the additional job
+    # folders search path.  This is a colon-delimited list of absolute paths
+    # consumed by deepwork's discovery module.  The store path is read-only;
+    # deepwork writes instances/runs into the project's own .deepwork/jobs.
     home.sessionVariables = {
-      DEEPWORK_ADDITIONAL_JOBS_FOLDERS = "${pkgs.keystone.deepwork-keystone-jobs}";
+      DEEPWORK_ADDITIONAL_JOBS_FOLDERS = "${pkgs.keystone.deepwork-library-jobs}";
     };
   };
 }
