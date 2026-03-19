@@ -26,7 +26,6 @@ pub enum BuildMessage {
 
 /// The result of a build.
 #[derive(Clone)]
-#[allow(dead_code)]
 pub enum BuildResult {
     Success,
     Failed(i32),
@@ -157,7 +156,6 @@ impl BuildScreen {
 
     /// Create a BuildScreen with a pre-created channel (no subprocess spawned).
     /// Useful for testing — inject synthetic BuildMessages via the sender.
-    #[allow(dead_code)]
     pub fn new_with_channel(host_name: String, rx: mpsc::UnboundedReceiver<BuildMessage>) -> Self {
         Self {
             host_name,
@@ -171,19 +169,16 @@ impl BuildScreen {
     }
 
     /// Get the current output lines.
-    #[allow(dead_code)]
     pub fn output_lines(&self) -> &[String] {
         &self.output_lines
     }
 
     /// Get the build result, if finished.
-    #[allow(dead_code)]
     pub fn result(&self) -> Option<&BuildResult> {
         self.result.as_ref()
     }
 
     /// Whether auto-scroll is active.
-    #[allow(dead_code)]
     pub fn is_auto_scroll(&self) -> bool {
         self.auto_scroll
     }
