@@ -4,7 +4,7 @@ branch: feat/agentctl-sandbox-podman
 agent: claude
 platform: github
 issue: 123
-status: ready
+status: assigned
 created: 2026-03-19
 ---
 
