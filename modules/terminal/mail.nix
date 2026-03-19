@@ -3,7 +3,7 @@
 # This module provides himalaya email client configuration.
 # When enabled with a host configured, it generates a full config.toml.
 #
-# ## Example Usage
+# ## Stalwart (self-hosted) Example
 #
 # ```nix
 # keystone.terminal.mail = {
@@ -17,11 +17,56 @@
 # };
 # ```
 #
+# ## Gmail Example
+#
+# Requires an App Password (Google Account > Security > 2-Step Verification > App passwords).
+# Store it in rbw: `rbw add gmail-app-password`
+#
+# ```nix
+# keystone.terminal.mail = {
+#   enable = true;
+#   accountName = "gmail";
+#   email = "user@gmail.com";
+#   displayName = "User Name";
+#   login = "user@gmail.com";  # Gmail uses full email as login
+#   host = "imap.gmail.com";
+#   passwordCommand = "rbw get gmail-app-password";
+#   smtp = { host = "smtp.gmail.com"; port = 465; encryption = "tls"; };
+#   folders = {
+#     sent = "[Gmail]/Sent Mail";
+#     drafts = "[Gmail]/Drafts";
+#     trash = "[Gmail]/Trash";
+#   };
+# };
+# ```
+#
+# ## iCloud Example
+#
+# Requires an App-Specific Password (appleid.apple.com > Security > App-Specific Passwords).
+# Store it in rbw: `rbw add icloud-app-password`
+#
+# ```nix
+# keystone.terminal.mail = {
+#   enable = true;
+#   accountName = "icloud";
+#   email = "user@icloud.com";
+#   displayName = "User Name";
+#   login = "user@icloud.com";
+#   host = "imap.mail.me.com";
+#   passwordCommand = "rbw get icloud-app-password";
+#   smtp = { host = "smtp.mail.me.com"; port = 587; encryption = "start-tls"; };
+#   folders = {
+#     sent = "Sent Messages";
+#     drafts = "Drafts";
+#     trash = "Deleted Messages";
+#   };
+# };
+# ```
+#
 # ## Authentication Note
 #
-# When connecting with IMAP/SMTP to Stalwart, the login username is the
-# Stalwart account **name** (e.g. "ncrmro"), NOT the email address.
-# The email is only used as the envelope/from address.
+# For Stalwart, the login username is the account **name** (e.g. "ncrmro"),
+# NOT the email address. For Gmail and iCloud, use the full email address.
 {
   config,
   lib,
@@ -85,10 +130,22 @@ in
     };
 
     smtp = {
+      host = mkOption {
+        type = types.str;
+        default = "";
+        description = "SMTP hostname (defaults to imap host when empty)";
+      };
+
       port = mkOption {
         type = types.int;
         default = 465;
-        description = "SMTP port";
+        description = "SMTP port (465 for TLS, 587 for STARTTLS)";
+      };
+
+      encryption = mkOption {
+        type = types.enum [ "tls" "start-tls" "none" ];
+        default = "tls";
+        description = "SMTP encryption type: tls (port 465), start-tls (port 587), or none";
       };
     };
 
@@ -138,14 +195,13 @@ in
         backend.auth.command = "${cfg.passwordCommand}"
 
         message.send.backend.type = "smtp"
-        message.send.backend.host = "${cfg.host}"
+        message.send.backend.host = "${if cfg.smtp.host != "" then cfg.smtp.host else cfg.host}"
         message.send.backend.port = ${toString cfg.smtp.port}
-        message.send.backend.encryption.type = "tls"
+        message.send.backend.encryption.type = "${cfg.smtp.encryption}"
         message.send.backend.login = "${cfg.login}"
         message.send.backend.auth.type = "password"
         message.send.backend.auth.command = "${cfg.passwordCommand}"
 
-        # Stalwart folder names (differ from Himalaya defaults)
         folder.aliases.sent = "${cfg.folders.sent}"
         folder.aliases.drafts = "${cfg.folders.drafts}"
         folder.aliases.trash = "${cfg.folders.trash}"
