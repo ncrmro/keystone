@@ -1,8 +1,8 @@
 # Keystone Terminal Calendar (Calendula)
 #
 # This module provides calendula (Pimalaya CalDAV CLI) configuration.
-# When enabled with a host configured, it generates a calendula.toml
-# that connects to a CalDAV endpoint.
+# When enabled with either a host or url configured, it generates
+# calendula/config.toml that connects to a CalDAV endpoint.
 #
 # Credentials default from the mail module — if mail is already configured,
 # only `calendar.enable = true` is needed for Stalwart.
