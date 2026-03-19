@@ -151,7 +151,7 @@ in {
     ./eternal-terminal.nix
     ./airplay.nix
     ./mail.nix
-    ./git-server.nix
+    ./git-server
     ./agents
     ./hypervisor.nix
     ./iphone-tether.nix
