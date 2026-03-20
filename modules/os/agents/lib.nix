@@ -77,7 +77,6 @@ let
         agentName = name;
         uid = uid;
         pathPrefix = "/etc/profiles/per-user/agent-${name}/bin:${lib.makeBinPath [ pkgs.nix ]}:/run/current-system/sw/bin";
-        editor = "hx";
       }} $out
       chmod +x $out
     '';
