@@ -3,15 +3,15 @@
 
 ## MCP Server Configuration
 
-1. Every agent-space `.mcp.json` MUST include a `chrome-devtools` MCP server entry.
-2. The server MUST use `npx -y chrome-devtools-mcp@latest` as the command.
-3. The `--browserUrl` argument MUST point to `http://localhost:9222`.
-4. The `.mcp.json` entry MUST follow this format:
+1. The `chrome-devtools` MCP server is provisioned automatically by the keystone agent home-manager module when `chrome.mcp.enable = true` — no manual `.mcp.json` edits are required.
+2. The server MUST use the Nix-built `chrome-devtools-mcp` binary directly. The binary is added to the agent's PATH via `home.packages` and its absolute store path is written into the global MCP configs (`~/.claude.json`, `~/.gemini/settings.json`, `~/.config/opencode/opencode.json`).
+3. The `--browserUrl` argument MUST point to `http://127.0.0.1:<debugPort>` where `<debugPort>` is the agent's auto-assigned or explicit Chrome debug port (default: 9222).
+4. When manually adding a `chrome-devtools` entry (e.g. per-project `.mcp.json` override), use the binary name directly — do NOT use `npx`:
    ```json
    {
      "chrome-devtools": {
-       "command": "npx",
-       "args": ["-y", "chrome-devtools-mcp@latest", "--browserUrl", "http://localhost:9222"]
+       "command": "chrome-devtools-mcp",
+       "args": ["--browserUrl", "http://127.0.0.1:9222"]
      }
    }
    ```
