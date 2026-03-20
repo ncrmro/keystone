@@ -151,9 +151,12 @@ When an agent runs inside a Podman container via `podman-agent`:
 
 - The host's `~/.claude.json`, `~/.gemini/settings.json`, etc. are mounted read-only
 - MCP server commands in configs reference absolute Nix store paths — these resolve correctly only if the store closure is available in the container's persistent Nix volume
-- `~/.config/keystone/conventions/` is NOT currently mounted (gap — referenced conventions can't be read on-demand)
 - Tool-native instruction files (`~/.claude/CLAUDE.md`, etc.) ARE mounted since the host tool dirs are already mounted
 - The `SP_FLAGS` prompt injection from agentctl works regardless of sandbox — it passes additional context as CLI args
+
+### Convention Directory Access
+
+`agentctl` / `podman-agent` MUST mount only `~/.config/keystone/conventions/` (read-only) into the container — NOT the full nixos-config repo or keystone submodule. This prevents agents from needlessly exploring infrastructure code that is outside their task scope. When a user needs to work with nixos-config or keystone modules directly, they MUST use `ks agent` or `ks doctor` instead, which have full repo context.
 
 ## Rules for Adding New Tools
 
