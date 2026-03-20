@@ -39,16 +39,26 @@ Parse and clean external research material (markdown copies of deep research, re
 4. **Clean and normalize the content**
 
    - Remove HTML artifacts, broken formatting, navigation elements, ads
-   - Normalize heading levels (ensure consistent hierarchy)
    - Fix broken links where possible
    - Preserve code blocks, tables, and structured data
-   - Ensure consistent markdown formatting
+
+   **CRITICAL: Preserve original formatting.** Do NOT reformat, rephrase, or restructure the author's content. Specifically:
+   - Keep the original heading hierarchy — do not renumber or re-level headings
+   - Keep special characters and notation (tree diagrams like `├──`/`└──`, arrows `→`, emoji markers, `§` prefixes) exactly as they appear
+   - Keep the original structure of lists, tables, and code blocks
+   - If the material contains multiple reports or sections, preserve ALL of them in full
+
+   **CRITICAL: Never truncate or summarize away content.** The full original text must appear in the output. Do not replace sections with "see above" or "remaining content follows the same pattern." If the material is very large, that is fine — write the full content.
 
 5. **Extract key findings**
 
    Write a summary section (3-5 bullet points) capturing the most important findings or contributions from the material. This helps with future discoverability.
 
-6. **Write parsed.md**
+6. **Consider companion data files**
+
+   If the material contains structured data (catalogs, job lists, inventories, specifications), ask the user whether to extract it into a companion file (e.g., `jobs.yaml`, `data.csv`) alongside the main parsed.md. Structured data in YAML/JSON is easier to query with tools like `yq`/`jq` than embedded markdown.
+
+7. **Write parsed.md**
 
    Create the output in a temporary location (`research/[topic_slug]/parsed.md`) with frontmatter metadata.
 
@@ -124,7 +134,9 @@ slug: "attention-revisited"
 - Content is well-formatted markdown with no HTML artifacts or broken formatting
 - A summary section extracts the key findings or contributions from the material
 - Tags are descriptive and useful for future search
-- Original content is preserved (not truncated or summarized away)
+- Original content is preserved in full — no truncation, no summarization, no "see above" shortcuts
+- Original formatting is preserved — special characters, tree diagrams, notation kept exactly as authored
+- If structured data was extracted to a companion file, it is queryable and complete
 
 ## Context
 

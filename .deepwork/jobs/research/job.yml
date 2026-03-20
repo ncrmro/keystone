@@ -1,5 +1,5 @@
 name: research
-version: "2.0.0"
+version: "2.1.0"
 summary: "Research suite: deep investigation, quick summary, material ingestion, and reproduction planning"
 common_job_info_provided_to_all_steps_at_runtime: |
   A multi-workflow research suite supporting deep investigation, quick summaries,
@@ -284,6 +284,8 @@ steps:
           "Metadata Extracted": "Frontmatter includes title, authors (if available), date, source URL or origin, and tags."
           "Clean Markdown": "Content is well-formatted markdown with no HTML artifacts or broken formatting."
           "Key Findings": "A summary section extracts the key findings or contributions from the material."
+          "Content Preserved": "The full original content is present — no sections truncated, summarized away, or replaced with references like 'see above'."
+          "Formatting Preserved": "Original notation and formatting (tree diagrams, special characters, code blocks, tables) are kept exactly as authored — not reformatted."
 
   - id: file
     name: "File to Notes"
