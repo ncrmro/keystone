@@ -173,7 +173,8 @@ push_keystone_with_fork_fallback() {
       echo "No push access to $owner_repo, pushing to fork..."
       # Ensure fork exists
       gh repo fork "$owner_repo" --clone=false 2>/dev/null || true
-      local fork_remote="git@github.com:$current_user/$(basename "$owner_repo").git"
+      local fork_remote
+      fork_remote="git@github.com:$current_user/$(basename "$owner_repo").git"
       # Set origin to fork for this push (will be restored by user if needed)
       git -C "$ks_path" remote set-url origin "$fork_remote"
       git -C "$ks_path" push -u origin "$(git -C "$ks_path" branch --show-current)"
@@ -291,6 +292,7 @@ deploy_home_manager_only() {
         echo "Activating home-manager for $user on $host (remote: $resolved)..."
         # Copy the closure to the remote host, then activate
         nix copy --to "ssh://root@$resolved" "$activation_path" "${override_args[@]}" 2>/dev/null || true
+        # shellcheck disable=SC2029 -- $user and $activation_path are intentionally expanded client-side
         ssh "root@$resolved" "sudo -u '$user' '$activation_path/activate'" || {
           echo "Error: Remote activation failed for $user on $host" >&2
         }
