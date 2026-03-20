@@ -24,6 +24,12 @@ with lib;
 let
   cfg = config.keystone.os;
 
+  # Look up the current host in the registry to access per-host metadata (e.g. baremetal).
+  currentHost = findFirst (h: h.hostname == config.networking.hostName) null (
+    attrValues config.keystone.hosts
+  );
+  isBaremetal = currentHost != null && currentHost.baremetal;
+
   # User submodule type definition
   userSubmodule = types.submodule (
     { name, ... }:
@@ -600,7 +606,7 @@ in
 
     environment.systemPackages = [
       pkgs.keystone.agenix
-      pkgs.lm_sensors
-    ];
+    ]
+    ++ lib.optionals isBaremetal [ pkgs.lm_sensors ];
   };
 }
