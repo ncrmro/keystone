@@ -48,16 +48,16 @@ be migrated in a separate future PR for review.
 **REQ-015.8** After successful migration, the source repos SHOULD have
 their deepwork jobs removed to eliminate duplication.
 
-**REQ-015.8** Migrated jobs MUST follow the existing naming convention:
+**REQ-015.9** Migrated jobs MUST follow the existing naming convention:
 `lowercase_snake_case` directory names starting with a letter.
 
 ### Availability
 
-**REQ-015.9** Consolidated jobs MUST be available to all OS agents and
+**REQ-015.10** Consolidated jobs MUST be available to all OS agents and
 human users with `keystone.terminal.enable = true` — no per-agent
 opt-in required.
 
-**REQ-015.10** Collaborators on the keystone repo MUST be able to develop
+**REQ-015.11** Collaborators on the keystone repo MUST be able to develop
 and push new DeepWork jobs by adding them to `.deepwork/jobs/` and
 submitting a PR. Changes propagate to all agents on the next
 `ks update --lock`.

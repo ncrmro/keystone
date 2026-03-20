@@ -21,17 +21,23 @@ let
   terminalCfg = config.keystone.terminal;
   conventionsPath = pkgs.keystone.keystone-conventions;
 
-  # Read archetypes.yaml from the conventions derivation
+  # Read archetypes.yaml from the conventions derivation.
+  # Guard: if the file doesn't exist, produce empty config (graceful degradation).
   archetypesFile = "${conventionsPath}/archetypes.yaml";
+  hasArchetypes = builtins.pathExists archetypesFile;
 
   # Parse archetypes.yaml to determine which conventions to inline
-  archetypesYaml = builtins.fromJSON (
-    builtins.readFile (
-      pkgs.runCommand "archetypes-json" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
-        yq -o=json '.' ${archetypesFile} > $out
-      ''
-    )
-  );
+  archetypesYaml =
+    if hasArchetypes then
+      builtins.fromJSON (
+        builtins.readFile (
+          pkgs.runCommand "archetypes-json" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+            yq -o=json '.' ${archetypesFile} > $out
+          ''
+        )
+      )
+    else
+      { archetypes = { }; };
 
   # Get the archetype config
   archetypeConfig = archetypesYaml.archetypes.${cfg.archetype} or { };

@@ -80,7 +80,7 @@ nixos-config, to prevent pushing a broken flake.lock.
 
 **REQ-016.13** The dev mode section MUST document the dev-mode convention:
 - `ks build` / `ks update --dev` rebuilds home-manager profiles only (fast)
-- `ks build --lock` / `ks update --lock` performs full system rebuild
+- `ks build --lock` / `ks update` (default) performs full system rebuild
 - Lock flow: commit + push keystone → lock flake → build → push nixos-config
 
 ## Edge Cases
