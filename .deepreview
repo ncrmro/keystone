@@ -147,3 +147,48 @@ tests_sync:
       4. If test files change, verify they still evaluate cleanly.
 
       Report which tests cover which changes, and flag any gaps.
+
+# =====================================================================
+# Requirements Traceability
+# Every Nix module header comment should link to its relevant
+# conventions (conventions/*.md) and spec requirements (specs/REQ-*).
+# Enables: `rg "tool.cli-coding-agents"` or `rg "REQ-007"` to find related modules.
+# =====================================================================
+requirements_traceability:
+  description: "Verify Nix module headers link to relevant conventions and spec requirements."
+  match:
+    include:
+      - "modules/**/*.nix"
+    exclude:
+      - "modules/**/scripts/**"
+      - "tests/**"
+  review:
+    strategy: per_file
+    instructions: |
+      Each Nix module file MUST have a header comment block that includes:
+
+      1. **Convention references** — If the module implements behavior documented
+         in a conventions/ file, the header MUST contain a comment linking to it.
+         Format: `# See conventions/<name>.md` (one per line).
+         Example: `# See conventions/tool.cli-coding-agents.md`
+
+      2. **Spec references** — If the module implements requirements from a spec,
+         the header MUST reference the spec ID.
+         Format: `# Implements REQ-XXX` or `# See specs/REQ-XXX-<name>.md`
+         Example: `# Implements REQ-007 (OS Agents)`
+
+      These MUST be links/references only — do NOT inline convention content
+      into the comment. The goal is grep-ability: `rg "conventions/tool.cli"` or
+      `rg "REQ-007"` should find every module that touches that concern.
+
+      **How to check:**
+      - Read the module's header comment (first comment block before the opening `{`)
+      - Read the module body to understand what it does
+      - Check conventions/ for any convention that covers this module's domain
+      - Check specs/ for any REQ that lists this file in its "Affected Modules"
+      - Flag missing references as "missing convention link" or "missing spec reference"
+
+      **Exceptions** (do not flag):
+      - Trivial modules that only re-export or barrel-import other modules
+      - Module files under 20 lines
+      - Files that genuinely have no matching convention or spec
