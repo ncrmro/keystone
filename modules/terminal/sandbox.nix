@@ -1,5 +1,8 @@
 # Podman-based sandboxing for AI coding agents.
 #
+# See conventions/process.sandbox-agent.md
+# See conventions/tool.cli-coding-agents.md
+#
 # Exports pre-resolved Nix store paths as session variables so that
 # podman-agent can mount them directly into containers, skipping the
 # GitHub flake-resolution round-trip on every launch.  The env vars
