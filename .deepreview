@@ -73,3 +73,44 @@ update_keystone_docs:
       documented in any docs/ file, flag this as "missing documentation".
     additional_context:
       unchanged_matching_files: true
+
+# =====================================================================
+# Specs Sync: Requirements specs stay current with implementation
+# When modules, packages, or CLI scripts change, verify the relevant
+# specs in specs/ still accurately describe the implementation.
+# =====================================================================
+specs_sync:
+  description: "Ensure specs/ requirements stay in sync with implementation when code changes."
+  match:
+    include:
+      - "modules/**/*.nix"
+      - "packages/**/*.sh"
+      - "packages/**/*.nix"
+      - "flake.nix"
+      - "specs/**"
+      - ".deepwork/jobs/**"
+    exclude:
+      - "tests/**"
+      - "modules/**/scripts/**"
+  review:
+    strategy: matches_together
+    instructions: |
+      When implementation files change, check whether the corresponding specs
+      in specs/ still accurately describe the behavior.
+
+      For each spec (REQ-XXX):
+      1. Read the requirements.md file
+      2. Identify which source files implement those requirements (listed in
+         "Affected Modules" section)
+      3. Compare the spec's requirements against the actual implementation
+      4. Flag any mismatches:
+         - Requirements that describe behavior the code doesn't implement
+         - Code behavior not covered by any requirement
+         - Outdated file paths, option names, or CLI flags in the spec
+
+      When spec files change without corresponding code changes, verify the
+      spec still matches what the code actually does.
+
+      Check the "Affected Modules" section lists all relevant files.
+    additional_context:
+      unchanged_matching_files: true
