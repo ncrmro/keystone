@@ -255,6 +255,12 @@ if [[ -z "${CLAUDE_CONFIG_DIR:-}" ]]; then
   [[ -d "$HOME/.claude" ]] && MOUNTS+=(--volume "$HOME/.claude:/root/.claude")
 fi
 
+# Keystone conventions directory (read-only) for on-demand convention reading.
+# Only mount the conventions dir, NOT the full nixos-config or keystone repo —
+# agents should use ks agent/doctor for infrastructure work.
+[[ -d "$HOME/.config/keystone/conventions" ]] && \
+  MOUNTS+=(--volume "$HOME/.config/keystone/conventions:/root/.config/keystone/conventions:ro")
+
 # -- Package manager cache volumes ------------------------------------------
 # Named volumes persist across container runs, slashing build times and
 # avoiding redundant network downloads. Without these, every `npm install`

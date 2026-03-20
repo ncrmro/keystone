@@ -50,6 +50,7 @@ in
 
             keystone.terminal = mkIf agentCfg.terminal.enable {
               enable = mkDefault true;
+              conventions.archetype = mkDefault agentCfg.archetype;
               git =
                 let
                   pubKey = agentPublicKey name;
