@@ -4,7 +4,7 @@ branch: fix/chrome-devtools-mcp-path
 agent: claude
 platform: github
 issue: 166
-status: ready
+status: assigned
 created: 2026-03-19
 ---
 
