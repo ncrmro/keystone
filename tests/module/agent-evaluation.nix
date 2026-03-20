@@ -434,6 +434,37 @@ let
       }
     ];
 
+    # Agent with chrome MCP enabled — verifies evaluation succeeds and the
+    # chrome-devtools-mcp package path is resolvable (home.packages added in
+    # home-manager.nix when chrome.mcp.enable = true).
+    agent-chrome-mcp = eval "agent-chrome-mcp" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
+            chrome = {
+              enable = true;
+              mcp.enable = true;
+            };
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
     # Agent with GitHub and Forgejo source usernames
     # forgejo.username defaults to agent name; github.username must be set explicitly
     agent-source-usernames = eval "agent-source-usernames" [
