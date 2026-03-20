@@ -2,85 +2,81 @@
 
 ## Objective
 
-Ask the user where they would like deep research to be conducted. This step determines which AI platforms and tools will be used for the research gathering phase.
+Select which AI research platforms to use for deep research and create an execution plan for the gather step.
 
 ## Task
 
 ### Process
 
-1. **Present platform options to the user**
+1. **Read the scope**
 
-   Use the AskUserQuestion tool with multiSelect enabled to let the user choose one or more platforms:
+   Read `scope.md` from the prior step to understand the research question, type, and depth.
 
-   - **Local only** - Use Claude's built-in WebSearch and WebFetch tools. Fast, stays in this session, good for quick/standard depth.
-   - **Gemini Deep Research** - Open Gemini in Chrome and use its Deep Research feature. Best for comprehensive, multi-source investigations. Note: Gemini will ask clarifying questions and show a research plan before starting.
-   - **ChatGPT Deep Research** - Open ChatGPT in Chrome and use its research capabilities. Good for thorough web research with citations. Note: ChatGPT may ask clarifying questions before starting deep research.
-   - **Grok** - Open Grok (X/Twitter) in Chrome. Best for real-time information and social media context.
-   - **Perplexity** - Open Perplexity in Chrome. Excellent for research with inline citations and source quality.
+2. **Present platform options**
 
-   **Parallel research**: If the user selects multiple platforms, research will be conducted on all of them in parallel (using separate browser tabs) and results synthesized together. This provides broader coverage and cross-validation.
+   Ask structured questions using the AskUserQuestion tool with multiSelect enabled to let the user choose one or more platforms:
 
-2. **Record the platform selection**
+   - **Local only** — Use Claude's built-in WebSearch and WebFetch tools. Fast, stays in session.
+   - **Gemini Deep Research** — Comprehensive web crawling via Chrome. Best for broad topic coverage and discovering sources. Note: Gemini asks clarifying questions and shows a research plan before starting.
+   - **ChatGPT Deep Research** — Thorough investigation with citations. Good for structured analysis and academic topics. Note: ChatGPT may ask clarifying questions before starting.
+   - **Grok** — Real-time information and social media context via X/Twitter. Best for current events and public sentiment.
+   - **Perplexity** — Research with inline citations and source quality indicators. Good for fact-checking and well-sourced summaries.
 
-   Create a `platforms.md` file in the research directory that documents:
-   - Which platforms were selected
-   - Whether parallel research mode is enabled (2+ platforms)
-   - Any platform-specific instructions or preferences noted by the user
+   **Parallel research**: If 2+ platforms are selected, research runs in parallel across all of them and results are cross-validated in the gather step.
 
-3. **Handle browser automation context**
+3. **Verify browser availability**
 
    If any external platform is selected (not "Local only"):
-   - Verify Claude in Chrome MCP tools are available by checking tabs_context_mcp
+   - Check that browser automation tools are available
    - If not available, warn the user and suggest falling back to "Local only"
-   - If available, confirm browser automation is ready for the gather step
+   - Ask the user what browser tools they have if unclear
+
+4. **Write platforms.md**
+
+   Document the selection and create an execution plan for the gather step.
 
 ## Output Format
 
-### research/[topic_slug]/platforms.md
+### platforms.md
+
+**Location**: `research/[topic_slug]/platforms.md`
 
 ```markdown
-# Research Platforms
+# Platform Execution Plan: [Topic Name]
 
-**Selected**: [comma-separated list of platforms]
-**Parallel Mode**: [Yes if 2+ platforms, No otherwise]
 **Date**: [YYYY-MM-DD]
+**Mode**: [single | parallel]
 
-## Platform Details
+## Selected Platforms
 
 ### [Platform Name]
-- **Type**: [local | browser-automated]
-- **Best for**: [what this platform excels at]
-- **Notes**: [any user-specified preferences or instructions]
+- **Role**: [What this platform contributes — e.g., "broad source discovery", "academic focus"]
+- **Query approach**: [How to query this platform for best results]
+- **Expected output**: [What kind of sources/findings to extract]
 
 [Repeat for each selected platform]
 
-## Execution Plan
+## Execution Order
 
-[Brief description of how the gather step should use these platforms:
-- For local only: use WebSearch and WebFetch
-- For single external: open that platform, conduct research, extract findings
-- For parallel: open multiple tabs, conduct research in each, then synthesize]
+1. [First platform and why it goes first]
+2. [Second platform, if applicable]
+
+## Cross-Validation Plan
+
+[If parallel mode: how to compare findings across platforms]
+[If single: "N/A — single platform mode"]
 ```
 
 ## Quality Criteria
 
 - At least one platform is selected
+- If external platforms are selected, browser automation availability is confirmed
+- Execution plan provides clear guidance for the gather step
+- Platform selection is appropriate for the research type and topic
 - Selection is confirmed by the user via AskUserQuestion
-- If external platforms selected, browser automation availability is verified
-- platforms.md is created in the research directory (or a temp location if scope hasn't run yet)
-- Execution plan clearly describes how platforms will be used in gather step
-
 
 ## Context
 
-This is the first step before scoping. By choosing platforms upfront, the user controls the research methodology. External AI platforms like Gemini Deep Research can provide more thorough web crawling and synthesis than local tools alone. Parallel research across multiple platforms increases coverage and allows cross-validation of findings.
+This step only runs in the **deep** workflow. The **quick** workflow skips platform selection entirely and uses local tools only. The platform execution plan directly guides the gather step's source collection strategy.
 
-**Important: Clarifying Questions Flow**
-
-When using Gemini or ChatGPT for deep research, these platforms follow a two-phase approach:
-1. **Initial review**: After receiving the research question, they analyze it and may ask clarifying questions to refine scope, understand intent, or identify specific angles to explore.
-2. **Approval gate**: They present a research plan or summary of understanding and ask for confirmation before beginning the actual deep research.
-
-This mirrors good research practice — clarify the question before diving in. During the gather step, be prepared to answer these clarifying questions (consulting the user if needed) and approve the research plan before the platform begins its work.
-
-The gather step will read this file to know which tools and platforms to use for source collection.
+**Clarifying questions flow**: When using Gemini or ChatGPT for deep research, these platforms follow a two-phase approach: (1) they analyze the query and may ask clarifying questions, then (2) they present a research plan for approval. The gather step handles this interaction — document it in the execution plan so the gather step knows what to expect.
