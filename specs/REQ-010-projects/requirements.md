@@ -65,18 +65,14 @@ available at `$AGENTS_MD`.
 
 ### AI Agent Integration
 
-**REQ-010.13** The module MUST provide a `pclaude` command that launches
-Claude Code scoped to the current project context (environment variables,
-configuration directory, and system prompt).
+**REQ-010.13** The module MUST provide a `pz agent` command that wraps
+`agentctl`, automatically injecting the current project's slug via the
+`--project` flag when executed within a project session.
 
-**REQ-010.14** The `pclaude` command MUST support a `--resume <session-id>`
-flag to continue an existing Claude Code session.
+**REQ-010.14** The `pz agent` command MUST support passing arbitrary
+arguments and subcommands to the underlying `agentctl` execution.
 
-**REQ-010.15** The `pclaude` command MUST render a project-specific system
-prompt template via `envsubst`, using the environment variables from
-REQ-010.9.
-
-**REQ-010.16** OS agents (see SPEC-007) MUST be able to use the same project
+**REQ-010.15** OS agents (see SPEC-007) MUST be able to use the same project
 system without desktop integration, operating in headless mode.
 
 ### Tab Completion

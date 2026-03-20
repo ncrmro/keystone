@@ -134,6 +134,16 @@ All system features MUST be testable via standard flake check mechanism.
 - The system MUST support Secure Boot verification in emulated environment
 - Tests MUST support headless execution for CI/CD pipelines
 
+### FR-013: Identity & UID Management
+
+The system MUST enforce a clear partition between human users, service accounts, and AI agents through reserved UID ranges.
+
+- **Human Users**: MUST use the standard range `1000 - 2999`.
+- **Service Accounts**: MUST use the range `3000 - 3999`. This range is reserved for system services that require `isNormalUser = true` for features like rootless Podman subuids or systemd linger (e.g., Forgejo runners).
+- **AI Agents**: MUST use the range `4000+`.
+- The system MUST ensure that UIDs are assigned deterministically within these ranges to maintain stable file ownership across deployments.
+- A NixOS assertion SHOULD verify that no UID collisions exist between these partitions.
+
 ## Non-Functional Requirements
 
 ### NFR-001: Reproducibility

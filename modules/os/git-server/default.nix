@@ -305,150 +305,20 @@ in {
 
         path = [ pkgs.forgejo pkgs.curl pkgs.jq pkgs.coreutils pkgs.sudo pkgs.yq-go ];
 
-        script = ''
-          set -euo pipefail
+        environment = {
+          FORGEJO_USER = forgejoUser;
+          STATE_DIR = cfg.stateDir;
+          API_URL = apiUrl;
+          USERNAME = username;
+          EMAIL = email;
+          REPO_NAME = repoName;
+          AGENT_NAME = name;
+          DOMAIN = cfg.domain;
+          AGENT_PUBKEY = let pubKey = agentPublicKey name; in if pubKey != null then pubKey else "";
+          ADMIN_USERS_JSON = builtins.toJSON cfg.adminUsers;
+        };
 
-          FORGEJO="sudo -u ${forgejoUser} forgejo --work-path ${cfg.stateDir} admin"
-          API="${apiUrl}"
-
-          # --- User provisioning (via CLI, no token needed) ---
-          # NOTE: Do not use `--admin` flag here — it filters to admin users only,
-          # causing manually-created non-admin accounts to be missed.
-          if $FORGEJO user list 2>/dev/null | grep -q "^.*\b${username}\b"; then
-            echo "${username}: Forgejo user already exists"
-          else
-            echo "${username}: Creating Forgejo user..."
-            RAND_PASS=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
-            $FORGEJO user create \
-              --username "${username}" \
-              --email "${email}" \
-              --password "$RAND_PASS" \
-              --must-change-password=false
-            echo "${username}: Forgejo user created"
-          fi
-
-          # --- Create short-lived admin token for API operations ---
-          TOKEN_NAME="provision-$(date +%s)"
-          TOKEN=$($FORGEJO user generate-access-token \
-            --username "${username}" \
-            --token-name "$TOKEN_NAME" \
-            --scopes "write:user,write:repository" \
-            --raw 2>/dev/null || true)
-
-          if [ -z "$TOKEN" ]; then
-            echo "${username}: Could not generate API token, skipping SSH key and repo provisioning"
-            exit 0
-          fi
-          AUTH="Authorization: token $TOKEN"
-
-          # Cleanup function to delete the provisioning token when done
-          cleanup_token() {
-            curl -sf -X DELETE -H "$AUTH" "$API/users/${username}/tokens/$TOKEN_NAME" || true
-          }
-          trap cleanup_token EXIT
-
-          # --- SSH key provisioning ---
-          # Keys registered here are for authentication only. Forgejo requires
-          # SSH signing keys to be separately "verified" before commit signatures
-          # are trusted. There is no REST API for this — agents must verify their
-          # own key once via the web UI (Settings → SSH/GPG Keys → Verify) or
-          # during onboarding. See:
-          # https://forgejo.org/docs/next/admin/advanced/signing/
-          ${let pubKey = agentPublicKey name; in optionalString (pubKey != null) ''
-            EXISTING_KEYS=$(curl -sf -H "$AUTH" "$API/users/${username}/keys" | jq length)
-            if [ "$EXISTING_KEYS" -gt 0 ]; then
-              echo "${username}: SSH key already registered, skipping"
-            else
-              echo "${username}: Adding SSH public key..."
-              curl -sf -H "$AUTH" "$API/user/keys" \
-                -H "Content-Type: application/json" \
-                -d "$(jq -n \
-                  --arg title "agent-${name}" \
-                  --arg key ${escapeShellArg pubKey} \
-                  '{title: $title, key: $key}')"
-              echo "${username}: SSH key added"
-              echo "${username}: NOTE: To enable signed commit verification, verify the SSH key in Forgejo web UI: Settings → SSH/GPG Keys → Verify"
-            fi
-          ''}
-
-          # --- Repo provisioning ---
-          REPO_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "$AUTH" "$API/repos/${username}/${repoName}")
-
-          if [ "$REPO_STATUS" = "200" ]; then
-            echo "${username}: Repo ${repoName} already exists"
-          else
-            echo "${username}: Creating repo ${repoName}..."
-            curl -sf -H "$AUTH" "$API/user/repos" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -n \
-                --arg name "${repoName}" \
-                --arg desc "Notes and task workspace for agent-${name}" \
-                '{name: $name, description: $desc, private: true, auto_init: true}')"
-            echo "${username}: Repo ${repoName} created"
-          fi
-
-          # --- Add admin collaborators ---
-          ${concatMapStringsSep "\n" (collab: ''
-            COLLAB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              -H "$AUTH" "$API/repos/${username}/${repoName}/collaborators/${collab}")
-            if [ "$COLLAB_STATUS" = "204" ]; then
-              echo "${username}: ${collab} already a collaborator on ${repoName}"
-            else
-              curl -sf -X PUT -H "$AUTH" \
-                "$API/repos/${username}/${repoName}/collaborators/${collab}" \
-                -H "Content-Type: application/json" \
-                -d '{"permission": "admin"}'
-              echo "${username}: Added ${collab} as admin collaborator on ${repoName}"
-            fi
-          '') cfg.adminUsers}
-
-          # --- Persistent API token for tea/fj CLI access ---
-          # tea's ssh_agent:true only authenticates git transport, not REST API.
-          # Generate a long-lived token so agents can use tea pr/issue commands.
-          API_TOKEN_NAME="api-agent-${name}"
-          EXISTING_API_TOKEN=$(curl -sf -H "$AUTH" "$API/users/${username}/tokens" \
-            | jq -r --arg n "$API_TOKEN_NAME" '.[] | select(.name == $n) | .name' || true)
-
-          if [ -z "$EXISTING_API_TOKEN" ]; then
-            echo "${username}: Generating persistent API token..."
-            API_TOKEN=$($FORGEJO user generate-access-token \
-              --username "${username}" \
-              --token-name "$API_TOKEN_NAME" \
-              --scopes "write:activitypub,write:issue,write:misc,write:notification,write:organization,write:package,write:repository,write:user" \
-              --raw 2>/dev/null || true)
-
-            if [ -n "$API_TOKEN" ]; then
-              AGENT_HOME=$(eval echo ~agent-${name})
-
-              # Write token into tea config
-              TEA_FILE="$AGENT_HOME/.config/tea/config.yml"
-              if [ -f "$TEA_FILE" ]; then
-                API_TOKEN="$API_TOKEN" yq -i '.logins[0].token = strenv(API_TOKEN)' "$TEA_FILE"
-                chown agent-${name}:agents "$TEA_FILE"
-                chmod 0600 "$TEA_FILE"
-                echo "${username}: Wrote API token to tea config"
-              fi
-
-              # Write token into fj keys.json (tagged enum format)
-              FJ_FILE="$AGENT_HOME/.local/share/forgejo-cli/keys.json"
-              if [ -f "$FJ_FILE" ]; then
-                jq --arg host "${cfg.domain}" --arg token "$API_TOKEN" --arg name "$API_TOKEN_NAME" \
-                  '.hosts[$host] = {"type": "Application", "name": $name, "token": $token}' "$FJ_FILE" > "$FJ_FILE.tmp" \
-                  && mv "$FJ_FILE.tmp" "$FJ_FILE"
-                chown agent-${name}:agents "$FJ_FILE"
-                chmod 0600 "$FJ_FILE"
-                echo "${username}: Wrote API token to fj config"
-              fi
-            else
-              echo "${username}: Could not generate persistent API token"
-            fi
-          else
-            echo "${username}: Persistent API token already exists, skipping"
-          fi
-
-          echo "${username}: Forgejo provisioning complete"
-        '';
+        script = builtins.readFile ./scripts/provision-agent-git.sh;
       }
     ) provisionAgents);
   }
@@ -460,7 +330,9 @@ in {
     virtualisation.podman.enable = true;
 
     users.users.gitea-runner = {
-      isSystemUser = true;
+      isNormalUser = true;
+      uid = 3000; # Service-level normal user range (3000-3999)
+      createHome = true;
       group = "gitea-runner";
       home = "/var/lib/gitea-runner";
     };
@@ -503,8 +375,15 @@ in {
     # needing to know the UID statically.
     # mkForce overrides the rootful socket set by the gitea-actions-runner module
     # when virtualisation.podman.enable = true.
-    systemd.services.${runnerServiceName}.environment = {
-      DOCKER_HOST = mkForce "unix:///run/user/%U/podman/podman.sock";
+    systemd.services.${runnerServiceName} = {
+      environment = {
+        DOCKER_HOST = mkForce "unix:///run/user/%U/podman/podman.sock";
+      };
+      serviceConfig = {
+        DynamicUser = mkForce false;
+        User = "gitea-runner";
+        Group = "gitea-runner";
+      };
     };
 
     # Token auto-provisioning: discovers the first admin user at runtime,
@@ -528,69 +407,16 @@ in {
         StateDirectoryMode = "0700";
       };
 
-      path = [ pkgs.forgejo pkgs.curl pkgs.jq pkgs.coreutils pkgs.sudo ];
+      path = [ pkgs.forgejo pkgs.curl pkgs.jq pkgs.coreutils pkgs.sudo pkgs.gawk ];
 
-      script = ''
-        set -euo pipefail
+      environment = {
+        FORGEJO_USER = config.services.forgejo.user;
+        STATE_DIR = cfg.stateDir;
+        API_URL = "http://127.0.0.1:${toString cfg.httpPort}/api/v1";
+        TOKEN_FILE = "/var/lib/forgejo-runner/runner-token";
+      };
 
-        TOKEN_FILE="/var/lib/forgejo-runner/runner-token"
-
-        # Idempotent: skip if token env-file already exists
-        if [ -f "$TOKEN_FILE" ]; then
-          echo "provision-runner-token: runner token already exists, skipping"
-          exit 0
-        fi
-
-        FORGEJO_CMD="sudo -u ${config.services.forgejo.user} forgejo --work-path ${cfg.stateDir} admin"
-        API="http://127.0.0.1:${toString cfg.httpPort}/api/v1"
-
-        # Auto-discover the first Forgejo admin user.
-        # --admin filters to admin accounts only; NR==2 skips the header row.
-        ADMIN_USER=$($FORGEJO_CMD user list --admin 2>/dev/null | awk 'NR==2{print $2}')
-
-        if [ -z "$ADMIN_USER" ]; then
-          echo "provision-runner-token: ERROR — no admin user found in Forgejo"
-          exit 1
-        fi
-
-        echo "provision-runner-token: using admin user '$ADMIN_USER'"
-
-        TEMP_TOKEN_NAME="provision-runner-$(date +%s)"
-        ADMIN_TOKEN=$($FORGEJO_CMD user generate-access-token \
-          --username "$ADMIN_USER" \
-          --token-name "$TEMP_TOKEN_NAME" \
-          --scopes "write:admin" \
-          --raw 2>/dev/null)
-
-        if [ -z "$ADMIN_TOKEN" ]; then
-          echo "provision-runner-token: ERROR — could not generate admin API token"
-          exit 1
-        fi
-
-        AUTH="Authorization: token $ADMIN_TOKEN"
-
-        # Delete the short-lived admin token on exit (success or failure)
-        cleanup_token() {
-          curl -sf -X DELETE -H "$AUTH" \
-            "$API/users/$ADMIN_USER/tokens/$TEMP_TOKEN_NAME" || true
-        }
-        trap cleanup_token EXIT
-
-        RUNNER_TOKEN=$(curl -sf -H "$AUTH" \
-          -X POST "$API/admin/runners/registration-token" \
-          | jq -r '.token')
-
-        if [ -z "$RUNNER_TOKEN" ] || [ "$RUNNER_TOKEN" = "null" ]; then
-          echo "provision-runner-token: ERROR — could not fetch runner registration token"
-          exit 1
-        fi
-
-        # Write as systemd EnvironmentFile (KEY=VALUE format) so the runner
-        # service can load it via EnvironmentFile=
-        echo "TOKEN=$RUNNER_TOKEN" > "$TOKEN_FILE"
-        chmod 0600 "$TOKEN_FILE"
-        echo "provision-runner-token: token written to $TOKEN_FILE"
-      '';
+      script = builtins.readFile ./scripts/provision-runner-token.sh;
     };
 
     # Use the official Forgejo runner (pkgs.forgejo-runner) rather than the

@@ -30,6 +30,7 @@ in {
     ./ssh-auto-load.nix
     ./forgejo.nix
     ./projects.nix
+    ./cli-coding-agent-configs.nix
   ];
 
   options.keystone.terminal = {

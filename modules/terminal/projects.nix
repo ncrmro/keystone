@@ -4,8 +4,8 @@
 # with terminal sessions, AI agent integration, and optional desktop launcher
 # support. Portable across NixOS and macOS.
 #
-# This module defines the foundational options consumed by the `pz` and
-# `pclaude` CLI tools (REQ-010, REQ-011).
+# This module defines the foundational options consumed by the `pz`
+# CLI tool (REQ-010, REQ-011).
 #
 # ## Example Usage
 #

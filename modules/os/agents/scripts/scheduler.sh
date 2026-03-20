@@ -4,6 +4,14 @@
 # Pure bash, no LLM.
 set -eo pipefail
 
+# Sanity check: Ensure required system utilities are available
+for cmd in bash tr systemctl; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "ERROR: Required command '$cmd' not found in PATH" >&2
+    exit 1
+  fi
+done
+
 # Config values substituted by NixOS module via pkgs.replaceVars
 NOTES_DIR="@notesDir@"
 AGENT_NAME="@agentName@"
