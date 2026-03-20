@@ -75,6 +75,12 @@
     };
 
     deepwork.url = "github:Unsupervisedcom/deepwork";
+
+    # MCP servers
+    grafana-mcp-src = {
+      url = "github:grafana/mcp-grafana";
+      flake = false;
+    };
   };
 
   outputs = {
@@ -100,6 +106,7 @@
     nixos-hardware,
     kinda-nvim-hx,
     deepwork,
+    grafana-mcp-src,
     ...
   }: let
     # Create inputs attrset for keystone modules (named keystoneInputs to avoid
@@ -142,7 +149,8 @@
           {
             keystone.installer.sshKeys = sshKeys;
             # Force kernel 6.12 — must be set here to override minimal CD default
-            boot.kernelPackages = nixpkgs.lib.mkForce
+            boot.kernelPackages =
+              nixpkgs.lib.mkForce
               nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
           }
         ];
@@ -190,61 +198,93 @@
       agenix-flake = agenix;
       deepwork-flake = deepwork;
       chrome-devtools-mcp-src = ./packages/chrome-devtools-mcp;
-    in final: prev: {
-      keystone = {
-        zesh = final.callPackage zesh-src {};
-        agent-coding-agent = final.callPackage agent-coding-agent-src {};
-        agent-mail = final.callPackage agent-mail-src { himalaya = final.keystone.himalaya; };
-        fetch-email-source = final.callPackage fetch-email-source-src { himalaya = final.keystone.himalaya; };
-        fetch-forgejo-sources = final.callPackage fetch-forgejo-sources-src {};
-        forgejo-project = final.callPackage forgejo-project-src {};
-        fetch-github-sources = final.callPackage fetch-github-sources-src {};
-        repo-sync = final.callPackage repo-sync-src {};
-        podman-agent = final.callPackage podman-agent-src {};
-        ks = final.callPackage ks-src {};
-        pz = final.callPackage pz-src {};
-        himalaya = himalaya-flake.packages.${final.system}.default;
-        calendula = calendula-flake.packages.${final.system}.default;
-        cardamum = cardamum-flake.packages.${final.system}.default;
-        # Comodoro upstream flake is missing dbus from buildInputs/nativeBuildInputs.
-        # The postInstall phase runs the binary (to generate completions) before
-        # fixup patches RPATH, so we also set LD_LIBRARY_PATH during install.
-        comodoro = comodoro-flake.packages.${final.system}.default.overrideAttrs (old: let
-          libPath = final.lib.makeLibraryPath [ final.dbus ];
-        in {
-          nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ final.pkg-config final.makeWrapper ];
-          buildInputs = (old.buildInputs or []) ++ [ final.dbus ];
-          postInstall = ''
-            export LD_LIBRARY_PATH="${libPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          '' + (old.postInstall or "") + ''
-            wrapProgram $out/bin/comodoro --prefix LD_LIBRARY_PATH : "${libPath}"
+    in
+      final: prev: {
+        keystone = {
+          zesh = final.callPackage zesh-src {};
+          agent-coding-agent = final.callPackage agent-coding-agent-src {};
+          agent-mail = final.callPackage agent-mail-src {himalaya = final.keystone.himalaya;};
+          fetch-email-source = final.callPackage fetch-email-source-src {himalaya = final.keystone.himalaya;};
+          fetch-forgejo-sources = final.callPackage fetch-forgejo-sources-src {};
+          forgejo-project = final.callPackage forgejo-project-src {};
+          fetch-github-sources = final.callPackage fetch-github-sources-src {};
+          repo-sync = final.callPackage repo-sync-src {};
+          podman-agent = final.callPackage podman-agent-src {};
+          ks = final.callPackage ks-src {};
+          pz = final.callPackage pz-src {};
+          himalaya = himalaya-flake.packages.${final.system}.default;
+          calendula = calendula-flake.packages.${final.system}.default;
+          cardamum = cardamum-flake.packages.${final.system}.default;
+          # Comodoro upstream flake is missing dbus from buildInputs/nativeBuildInputs.
+          # The postInstall phase runs the binary (to generate completions) before
+          # fixup patches RPATH, so we also set LD_LIBRARY_PATH during install.
+          comodoro = comodoro-flake.packages.${final.system}.default.overrideAttrs (old: let
+            libPath = final.lib.makeLibraryPath [final.dbus];
+          in {
+            nativeBuildInputs = (old.nativeBuildInputs or []) ++ [final.pkg-config final.makeWrapper];
+            buildInputs = (old.buildInputs or []) ++ [final.dbus];
+            postInstall =
+              ''
+                export LD_LIBRARY_PATH="${libPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              ''
+              + (old.postInstall or "")
+              + ''
+                wrapProgram $out/bin/comodoro --prefix LD_LIBRARY_PATH : "${libPath}"
+              '';
+          });
+          # AI coding agents from llm-agents.nix
+          claude-code = llm-agents-flake.packages.${final.system}.claude-code;
+          gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;
+          codex = llm-agents-flake.packages.${final.system}.codex;
+          opencode = llm-agents-flake.packages.${final.system}.opencode;
+          # Browsers from browser-previews
+          google-chrome = browser-previews-flake.packages.${final.system}.google-chrome;
+          # Desktop tools from flake inputs
+          ghostty = ghostty-flake.packages.${final.system}.default;
+          yazi = yazi-flake.packages.${final.system}.default;
+          agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
+          deepwork = deepwork-flake.packages.${final.system}.default;
+          # Curated selection of DeepWork library jobs from the deepwork flake.
+          # Only explicitly listed jobs are included — to add a new job, append a
+          # cp -r line below once that job exists in the upstream library/jobs.
+          deepwork-library-jobs = final.runCommand "deepwork-library-jobs" {} ''
+            mkdir -p $out
+            cp -r ${deepwork-flake}/library/jobs/spec_driven_development $out/
           '';
-        });
-        # AI coding agents from llm-agents.nix
-        claude-code = llm-agents-flake.packages.${final.system}.claude-code;
-        gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;
-        codex = llm-agents-flake.packages.${final.system}.codex;
-        opencode = llm-agents-flake.packages.${final.system}.opencode;
-        # Browsers from browser-previews
-        google-chrome = browser-previews-flake.packages.${final.system}.google-chrome;
-        # Desktop tools from flake inputs
+          # Keystone-native DeepWork jobs from .deepwork/jobs/ in this repo.
+          # Jobs migrated from ncrmro/agents, luce/drago, and ncrmro/notes land
+          # here and become available to all agents via DEEPWORK_ADDITIONAL_JOBS_FOLDERS.
+          keystone-deepwork-jobs = final.runCommand "keystone-deepwork-jobs" {} ''
+            mkdir -p $out
+            if [ -d ${self}/.deepwork/jobs ] && [ "$(ls -A ${self}/.deepwork/jobs 2>/dev/null)" ]; then
+              for d in ${self}/.deepwork/jobs/*/; do
+                [ -d "$d" ] && cp -r "$d" $out/
+              done
+            fi
+          '';
+          # Keystone conventions (tool manuals, process docs, archetypes) packaged
+          # for home-manager to generate system-wide AGENTS.md at build time.
+          keystone-conventions = final.runCommand "keystone-conventions" {} ''
+            mkdir -p $out
+            cp -r ${self}/conventions/* $out/
+          '';
+          chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src {};
+          # Grafana MCP server — provides Prometheus/Loki query access to agents.
+          grafana-mcp = final.buildGoModule {
+            pname = "mcp-grafana";
+            version = "unstable";
+            src = grafana-mcp-src;
+            vendorHash = "sha256-NUarbuK3Eg8LflToR35Oaw3lJLjXCJLYukpJ7G4q5FI=";
+            meta = {
+              description = "Grafana MCP server for querying metrics and logs";
+              homepage = "https://github.com/grafana/mcp-grafana";
+            };
+          };
+        };
+        # Top-level overrides so programs.ghostty/yazi use flake versions
         ghostty = ghostty-flake.packages.${final.system}.default;
         yazi = yazi-flake.packages.${final.system}.default;
-        agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
-        deepwork = deepwork-flake.packages.${final.system}.default;
-        # Curated selection of DeepWork library jobs from the deepwork flake.
-        # Only explicitly listed jobs are included — to add a new job, append a
-        # cp -r line below once that job exists in the upstream library/jobs.
-        deepwork-library-jobs = final.runCommand "deepwork-library-jobs" {} ''
-          mkdir -p $out
-          cp -r ${deepwork-flake}/library/jobs/spec_driven_development $out/
-        '';
-        chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src {};
       };
-      # Top-level overrides so programs.ghostty/yazi use flake versions
-      ghostty = ghostty-flake.packages.${final.system}.default;
-      yazi = yazi-flake.packages.${final.system}.default;
-    };
 
     # Export Keystone modules for use in other flakes
     nixosModules = {
@@ -371,7 +411,7 @@
     packages.x86_64-linux = let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
     in {
-      iso = self.lib.mkInstallerIso { inherit nixpkgs; };
+      iso = self.lib.mkInstallerIso {inherit nixpkgs;};
       zesh = pkgs.callPackage ./packages/zesh {};
       agent-coding-agent = pkgs.callPackage ./packages/agent-coding-agent {};
       agent-mail = pkgs.callPackage ./packages/agent-mail {

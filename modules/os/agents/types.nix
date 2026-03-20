@@ -1,8 +1,11 @@
 # Agent submodule type definition.
 # Defines the schema for keystone.os.agents.<name>.
-{ lib, config, ... }:
-with lib;
-let
+{
+  lib,
+  config,
+  ...
+}:
+with lib; let
   topDomain = config.keystone.domain;
 in {
   agentSubmodule = types.submodule (
@@ -10,8 +13,7 @@ in {
       name,
       config,
       ...
-    }:
-    {
+    }: {
       options = {
         uid = mkOption {
           type = types.nullOr types.int;
@@ -110,6 +112,26 @@ in {
               type = types.nullOr types.port;
               default = null;
               description = "Chrome DevTools MCP server port. If null, auto-assigned starting from 3101.";
+            };
+          };
+        };
+
+        # Grafana MCP server for querying metrics and logs (REQ-017.9)
+        grafana = {
+          mcp = {
+            enable = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Enable Grafana MCP server for this agent, providing access to Prometheus metrics and Loki logs.";
+            };
+
+            url = mkOption {
+              type = types.str;
+              default =
+                if topDomain != null
+                then "https://grafana.${topDomain}"
+                else "";
+              description = "Grafana URL for the MCP server connection.";
             };
           };
         };

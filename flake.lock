@@ -535,6 +535,22 @@
         "type": "github"
       }
     },
+    "grafana-mcp-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1773939701,
+        "narHash": "sha256-+GHFbkQAswNE9Qi6fySPWnosLGny6QMX0qyQbZfizrM=",
+        "owner": "grafana",
+        "repo": "mcp-grafana",
+        "rev": "91fbffb4d118f961ac20d421e4b2cf3ed883b030",
+        "type": "github"
+      },
+      "original": {
+        "owner": "grafana",
+        "repo": "mcp-grafana",
+        "type": "github"
+      }
+    },
     "himalaya": {
       "inputs": {
         "fenix": "fenix_4",
@@ -1293,6 +1309,7 @@
         "deepwork": "deepwork",
         "disko": "disko",
         "ghostty": "ghostty",
+        "grafana-mcp-src": "grafana-mcp-src",
         "himalaya": "himalaya",
         "home-manager": "home-manager_2",
         "hyprland": "hyprland",
