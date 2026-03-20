@@ -161,13 +161,12 @@ in
                 }
                 // optionalAttrs (agentCfg.grafana.mcp.enable) {
                   # Grafana MCP server (REQ-017.10) — provides Prometheus/Loki query access
+                  # GRAFANA_API_KEY is exported via programs.zsh.initExtra below.
                   grafana = {
                     command = "${sysPkgs.keystone.grafana-mcp}/bin/mcp-grafana";
                     args = [ ];
                     env = {
                       GRAFANA_URL = agentCfg.grafana.mcp.url;
-                      # GRAFANA_API_KEY is loaded from the agenix secret at runtime.
-                      # The agent's shell profile should export it from /run/agenix/grafana-mcp-api-key.
                     };
                   };
                 }
@@ -182,6 +181,14 @@ in
                 ) agentCfg.mcp.servers;
               };
             };
+
+            # Export GRAFANA_API_KEY from agenix secret at shell login (REQ-017.11).
+            # Can't use home.sessionVariables — the secret is a runtime file, not a Nix store path.
+            programs.zsh.initExtra = mkIf agentCfg.grafana.mcp.enable ''
+              if [ -f /run/agenix/grafana-mcp-api-key ]; then
+                export GRAFANA_API_KEY="$(tr -d '\n' < /run/agenix/grafana-mcp-api-key)"
+              fi
+            '';
 
             # Add chrome-devtools-mcp to PATH when chrome MCP is enabled.
             # The MCP server command in cliCodingAgents uses an absolute Nix store
