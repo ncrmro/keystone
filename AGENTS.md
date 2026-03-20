@@ -547,7 +547,7 @@ keystone.terminal.conventions = {
 };
 ```
 
-Generates `~/.config/keystone/AGENTS.md` at build time from keystone conventions. The archetype controls which convention set is applied.
+Writes keystone conventions to each CLI coding tool's native instruction file (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`) at build time. The archetype controls which convention set is applied. See `conventions/tool.cli-coding-agents.md`.
 
 ### DeepWork
 

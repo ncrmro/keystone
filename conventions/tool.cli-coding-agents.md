@@ -118,8 +118,8 @@ when OpenCode-specific configuration is needed.
 ### `modules/terminal/conventions.nix`
 
 1. MUST generate the system-wide conventions content from `keystone-conventions` derivation
-2. MUST write to ALL tool-native user-level paths listed in the summary table above
-3. MUST keep `~/.config/keystone/AGENTS.md` as the canonical reference copy
+2. MUST write to ALL tool-native user-level paths listed in the summary table above (Claude, Gemini, Codex)
+3. MUST NOT write a separate canonical copy — the tool-native files ARE the source of truth
 4. MUST symlink `~/.config/keystone/conventions/` to the conventions store path for on-demand reading
 
 ### `modules/terminal/cli-coding-agent-configs.nix`
@@ -151,8 +151,9 @@ When an agent runs inside a Podman container via `podman-agent`:
 
 - The host's `~/.claude.json`, `~/.gemini/settings.json`, etc. are mounted read-only
 - MCP server commands in configs reference absolute Nix store paths — these resolve correctly only if the store closure is available in the container's persistent Nix volume
-- `~/.config/keystone/` is NOT currently mounted (gap — see issue #172)
-- The `SP_FLAGS` prompt injection from agentctl works regardless of sandbox — it passes the conventions content as CLI args
+- `~/.config/keystone/conventions/` is NOT currently mounted (gap — referenced conventions can't be read on-demand)
+- Tool-native instruction files (`~/.claude/CLAUDE.md`, etc.) ARE mounted since the host tool dirs are already mounted
+- The `SP_FLAGS` prompt injection from agentctl works regardless of sandbox — it passes additional context as CLI args
 
 ## Rules for Adding New Tools
 
