@@ -292,7 +292,8 @@ deploy_home_manager_only() {
         echo "Activating home-manager for $user on $host (remote: $resolved)..."
         # Copy the closure to the remote host, then activate
         nix copy --to "ssh://root@$resolved" "$activation_path" "${override_args[@]}" 2>/dev/null || true
-        # shellcheck disable=SC2029 -- $user and $activation_path are intentionally expanded client-side
+        # $user and $activation_path are intentionally expanded client-side
+        # shellcheck disable=SC2029
         ssh "root@$resolved" "sudo -u '$user' '$activation_path/activate'" || {
           echo "Error: Remote activation failed for $user on $host" >&2
         }
