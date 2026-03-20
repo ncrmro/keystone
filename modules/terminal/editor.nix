@@ -2,16 +2,21 @@
   config,
   lib,
   pkgs,
-  keystoneInputs ? {},
+  keystoneInputs ? { },
   ...
 }:
 with lib;
 let
   cfg = config.keystone.terminal;
   # Use unstable helix if keystoneInputs.nixpkgs-unstable is available, otherwise use stable
-  helix-pkg = if keystoneInputs ? nixpkgs-unstable
-    then (import keystoneInputs.nixpkgs-unstable { system = pkgs.stdenv.hostPlatform.system; config.allowUnfree = true; }).helix
-    else pkgs.helix;
+  helix-pkg =
+    if keystoneInputs ? nixpkgs-unstable then
+      (import keystoneInputs.nixpkgs-unstable {
+        system = pkgs.stdenv.hostPlatform.system;
+        config.allowUnfree = true;
+      }).helix
+    else
+      pkgs.helix;
   # Kinda-nvim theme if available
   hasKindaNvim = keystoneInputs ? kinda-nvim-hx;
 in
@@ -23,57 +28,60 @@ in
       VISUAL = cfg.editor;
     };
 
-    home.packages = with pkgs; [
-      # LSP packages for Helix
-      bash-language-server
-      docker-compose-language-service
-      yaml-language-server
-      dockerfile-language-server
-      vscode-langservers-extracted
-      helm-ls
-      ruby-lsp
-      solargraph
-      nodePackages.prettier
-      harper
-      pandoc
-      marksman
-      xdg-utils
-      # Helper script for Markdown preview in Helix
-      # We use a script with :pipe because:
-      # 1. Helix's % expansion in :sh commands is finicky (requires %% escaping in Nix, but sometimes fails in Helix)
-      # 2. It allows previewing unsaved buffers (streaming content via stdin)
-      # 3. It creates a robust environment with absolute paths for pandoc/xdg-open
-      (writeShellScriptBin "helix-preview-markdown" ''
-        LOG="/tmp/helix-preview.log"
-        echo "--- $(date) ---" >> "$LOG"
-        temp_file=$(mktemp)
-        cat > "$temp_file"
-        
-        ${pkgs.pandoc}/bin/pandoc -f markdown "$temp_file" -o /tmp/helix-preview.html 2>> "$LOG"
-        
-        if [ $? -eq 0 ]; then
-          echo "Pandoc success" >> "$LOG"
-          URL="file:///tmp/helix-preview.html"
-          
-          # Copy to clipboard
-          CMD="${if pkgs.stdenv.isDarwin then "pbcopy" else "${pkgs.wl-clipboard}/bin/wl-copy"}"
-          if command -v $CMD >/dev/null 2>&1 || [ -x "$CMD" ]; then
-             echo -n "$URL" | $CMD
-             echo "Copied to clipboard: $URL" >> "$LOG"
+    home.packages =
+      with pkgs;
+      [
+        # LSP packages for Helix
+        bash-language-server
+        docker-compose-language-service
+        yaml-language-server
+        dockerfile-language-server
+        vscode-langservers-extracted
+        helm-ls
+        ruby-lsp
+        solargraph
+        nodePackages.prettier
+        harper
+        pandoc
+        marksman
+        xdg-utils
+        # Helper script for Markdown preview in Helix
+        # We use a script with :pipe because:
+        # 1. Helix's % expansion in :sh commands is finicky (requires %% escaping in Nix, but sometimes fails in Helix)
+        # 2. It allows previewing unsaved buffers (streaming content via stdin)
+        # 3. It creates a robust environment with absolute paths for pandoc/xdg-open
+        (writeShellScriptBin "helix-preview-markdown" ''
+          LOG="/tmp/helix-preview.log"
+          echo "--- $(date) ---" >> "$LOG"
+          temp_file=$(mktemp)
+          cat > "$temp_file"
+
+          ${pkgs.pandoc}/bin/pandoc -f markdown "$temp_file" -o /tmp/helix-preview.html 2>> "$LOG"
+
+          if [ $? -eq 0 ]; then
+            echo "Pandoc success" >> "$LOG"
+            URL="file:///tmp/helix-preview.html"
+            
+            # Copy to clipboard
+            CMD="${if pkgs.stdenv.isDarwin then "pbcopy" else "${pkgs.wl-clipboard}/bin/wl-copy"}"
+            if command -v $CMD >/dev/null 2>&1 || [ -x "$CMD" ]; then
+               echo -n "$URL" | $CMD
+               echo "Copied to clipboard: $URL" >> "$LOG"
+            else
+               echo "Clipboard command not found: $CMD" >> "$LOG"
+            fi
+
+            # Open in browser
+            ${pkgs.xdg-utils}/bin/xdg-open /tmp/helix-preview.html >> "$LOG" 2>&1 &
           else
-             echo "Clipboard command not found: $CMD" >> "$LOG"
+            echo "Pandoc failed" >> "$LOG"
           fi
 
-          # Open in browser
-          ${pkgs.xdg-utils}/bin/xdg-open /tmp/helix-preview.html >> "$LOG" 2>&1 &
-        else
-          echo "Pandoc failed" >> "$LOG"
-        fi
-
-        cat "$temp_file"
-        rm "$temp_file"
-      '')
-    ] ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.wl-clipboard ];
+          cat "$temp_file"
+          rm "$temp_file"
+        '')
+      ]
+      ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.wl-clipboard ];
 
     # Helix - Modal text editor
     # https://helix-editor.com/
@@ -102,7 +110,11 @@ in
           ret = ":write";
           # Keystone Helix Commands
           # Tutorial: https://helix-editor-tutorials.com/tutorials/writing-documentation-and-prose-in-markdown-using-helix/
-          F6 = [ "select_all" ":pipe helix-preview-markdown" "collapse_selection" ];
+          F6 = [
+            "select_all"
+            ":pipe helix-preview-markdown"
+            "collapse_selection"
+          ];
           F7 = ":toggle soft-wrap.enable";
         };
       };

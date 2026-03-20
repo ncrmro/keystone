@@ -9,7 +9,8 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   osCfg = config.keystone.os;
   cfg = osCfg.tpm;
 
@@ -18,13 +19,15 @@ with lib; let
 
   # Credstore device path (always ZFS zvol when using ZFS storage)
   credstoreDevice =
-    if osCfg.storage.type == "zfs"
-    then "/dev/zvol/rpool/credstore"
-    else "/dev/disk/by-partlabel/disk-root-root";
+    if osCfg.storage.type == "zfs" then
+      "/dev/zvol/rpool/credstore"
+    else
+      "/dev/disk/by-partlabel/disk-root-root";
 
   # Helper to create executable substituted scripts
-  makeExecutableScript = name: src: substitutions:
-    pkgs.runCommand name {} ''
+  makeExecutableScript =
+    name: src: substitutions:
+    pkgs.runCommand name { } ''
       cp ${pkgs.replaceVars src substitutions} $out
       chmod +x $out
     '';
@@ -54,7 +57,8 @@ with lib; let
     credstoreDevice = credstoreDevice;
     tpmPCRs = tpmPCRString;
   };
-in {
+in
+{
   config = mkIf (osCfg.enable && cfg.enable) {
     assertions = [
       {
@@ -77,12 +81,12 @@ in {
     # service rather than in interactiveShellInit.
     systemd.services.keystone-tpm-check = {
       description = "Check TPM enrollment status and update marker file";
-      wantedBy = ["multi-user.target"];
+      wantedBy = [ "multi-user.target" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
       };
-      path = [pkgs.cryptsetup];
+      path = [ pkgs.cryptsetup ];
       script = ''
         MARKER_FILE="/var/lib/keystone/tpm-enrollment-complete"
         mkdir -p /var/lib/keystone
@@ -108,30 +112,30 @@ in {
         id = "tpm-enrollment";
         title = "TPM Enrollment Required";
         body = ''
-+--------------------------------------------------------------------------+
-| [!] WARNING: TPM ENROLLMENT NOT CONFIGURED                              |
-+--------------------------------------------------------------------------+
-|                                                                          |
-| Your system is using the default LUKS password "keystone" which is      |
-| publicly known and provides NO security.                                |
-|                                                                          |
-| To secure your encrypted disk, you MUST complete TPM enrollment:        |
-|                                                                          |
-|   Option 1: Generate recovery key (recommended)                         |
-|      $ sudo keystone-enroll-recovery                                    |
-|                                                                          |
-|   Option 2: Set custom password                                         |
-|      $ sudo keystone-enroll-password                                    |
-|                                                                          |
-| After enrollment:                                                        |
-|   * Default "keystone" password will be removed                         |
-|   * Disk will unlock automatically via TPM on boot                      |
-|   * Recovery credential available if TPM fails                          |
-|                                                                          |
-| Documentation: /usr/share/doc/keystone/tpm-enrollment.md                |
-|                                                                          |
-+--------------------------------------------------------------------------+
-'';
+          +--------------------------------------------------------------------------+
+          | [!] WARNING: TPM ENROLLMENT NOT CONFIGURED                              |
+          +--------------------------------------------------------------------------+
+          |                                                                          |
+          | Your system is using the default LUKS password "keystone" which is      |
+          | publicly known and provides NO security.                                |
+          |                                                                          |
+          | To secure your encrypted disk, you MUST complete TPM enrollment:        |
+          |                                                                          |
+          |   Option 1: Generate recovery key (recommended)                         |
+          |      $ sudo keystone-enroll-recovery                                    |
+          |                                                                          |
+          |   Option 2: Set custom password                                         |
+          |      $ sudo keystone-enroll-password                                    |
+          |                                                                          |
+          | After enrollment:                                                        |
+          |   * Default "keystone" password will be removed                         |
+          |   * Disk will unlock automatically via TPM on boot                      |
+          |   * Recovery credential available if TPM fails                          |
+          |                                                                          |
+          | Documentation: /usr/share/doc/keystone/tpm-enrollment.md                |
+          |                                                                          |
+          +--------------------------------------------------------------------------+
+        '';
         markerFile = "/var/lib/keystone/tpm-enrollment-complete";
       }
     ];

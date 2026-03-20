@@ -36,7 +36,7 @@ buildNpmPackage (finalAttrs: {
     versionCheckHook
   ];
   versionCheckProgram = "${placeholder "out"}/bin/claude";
-  versionCheckKeepEnvironment = ["HOME"];
+  versionCheckKeepEnvironment = [ "HOME" ];
   versionCheckProgramArg = "--version";
 
   meta = {

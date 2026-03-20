@@ -30,68 +30,85 @@
   config,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.keys;
-in {
+in
+{
   options.keystone.keys = mkOption {
-    type = types.attrsOf (types.submodule ({ name, ... }: {
-      options = {
-        hosts = mkOption {
-          type = types.attrsOf (types.submodule {
-            options.publicKey = mkOption {
-              type = types.str;
-              description = "SSH ed25519 public key for this host.";
-              example = "ssh-ed25519 AAAAC3... user@hostname";
+    type = types.attrsOf (
+      types.submodule (
+        { name, ... }:
+        {
+          options = {
+            hosts = mkOption {
+              type = types.attrsOf (
+                types.submodule {
+                  options.publicKey = mkOption {
+                    type = types.str;
+                    description = "SSH ed25519 public key for this host.";
+                    example = "ssh-ed25519 AAAAC3... user@hostname";
+                  };
+                }
+              );
+              default = { };
+              description = "Per-host software SSH keys. One key per host, password-protected, loaded via ssh-agent.";
             };
-          });
-          default = {};
-          description = "Per-host software SSH keys. One key per host, password-protected, loaded via ssh-agent.";
-        };
 
-        hardwareKeys = mkOption {
-          type = types.attrsOf (types.submodule {
-            options = {
-              publicKey = mkOption {
-                type = types.str;
-                description = "SSH public key (sk-ssh-ed25519 or sk-ecdsa-sha2-nistp256).";
-              };
-              description = mkOption {
-                type = types.str;
-                default = "";
-                description = "Human-readable description (e.g. color, form factor).";
-              };
-              ageIdentity = mkOption {
-                type = types.nullOr types.str;
-                default = null;
-                description = "age-plugin-yubikey identity string for agenix secrets.";
-              };
+            hardwareKeys = mkOption {
+              type = types.attrsOf (
+                types.submodule {
+                  options = {
+                    publicKey = mkOption {
+                      type = types.str;
+                      description = "SSH public key (sk-ssh-ed25519 or sk-ecdsa-sha2-nistp256).";
+                    };
+                    description = mkOption {
+                      type = types.str;
+                      default = "";
+                      description = "Human-readable description (e.g. color, form factor).";
+                    };
+                    ageIdentity = mkOption {
+                      type = types.nullOr types.str;
+                      default = null;
+                      description = "age-plugin-yubikey identity string for agenix secrets.";
+                    };
+                  };
+                }
+              );
+              default = { };
+              description = "Portable hardware keys (FIDO2/YubiKey). Work across all hosts, require physical touch.";
             };
-          });
-          default = {};
-          description = "Portable hardware keys (FIDO2/YubiKey). Work across all hosts, require physical touch.";
-        };
-      };
-    }));
-    default = {};
+          };
+        }
+      )
+    );
+    default = { };
     description = "SSH public key registry. Declare keys once per user/agent, consume everywhere.";
   };
 
   config = {
     assertions =
       # Agents must have exactly one host key
-      (concatLists (mapAttrsToList (name: u:
-        optional (hasPrefix "agent-" name && length (attrNames u.hosts) != 1) {
-          assertion = false;
-          message = "Agent '${name}' must have exactly one host key in keystone.keys, found ${toString (length (attrNames u.hosts))}";
-        }
-      ) cfg))
+      (concatLists (
+        mapAttrsToList (
+          name: u:
+          optional (hasPrefix "agent-" name && length (attrNames u.hosts) != 1) {
+            assertion = false;
+            message = "Agent '${name}' must have exactly one host key in keystone.keys, found ${toString (length (attrNames u.hosts))}";
+          }
+        ) cfg
+      ))
       ++
-      # Agents should not have hardware keys
-      (concatLists (mapAttrsToList (name: u:
-        optional (hasPrefix "agent-" name && u.hardwareKeys != {}) {
-          assertion = false;
-          message = "Agent '${name}' should not have hardware keys in keystone.keys";
-        }
-      ) cfg));
+        # Agents should not have hardware keys
+        (concatLists (
+          mapAttrsToList (
+            name: u:
+            optional (hasPrefix "agent-" name && u.hardwareKeys != { }) {
+              assertion = false;
+              message = "Agent '${name}' should not have hardware keys in keystone.keys";
+            }
+          ) cfg
+        ));
   };
 }

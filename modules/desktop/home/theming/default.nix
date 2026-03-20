@@ -332,7 +332,8 @@ in
       ++ (map mkCustomThemeFiles customThemes)
       ++ [
         {
-          ".local/share/omarchy/default/mako/core.ini".source = "${keystoneInputs.omarchy}/default/mako/core.ini";
+          ".local/share/omarchy/default/mako/core.ini".source =
+            "${keystoneInputs.omarchy}/default/mako/core.ini";
         }
       ]
     );

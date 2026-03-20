@@ -110,76 +110,80 @@ in
         StateDirectory = "atticd";
       };
 
-      script = let
-        # Generate config from the same settings atticd uses. We can't reference
-        # the NixOS module's internal checkedConfigFile, so we regenerate it.
-        serverConfigFile = (pkgs.formats.toml { }).generate "attic-server.toml" config.services.atticd.settings;
-        atticadm = "${pkgs.attic-server}/bin/atticadm -f ${serverConfigFile}";
-        attic = "${pkgs.attic-client}/bin/attic";
-        curl = "${pkgs.curl}/bin/curl";
-      in ''
-        set -eu
+      script =
+        let
+          # Generate config from the same settings atticd uses. We can't reference
+          # the NixOS module's internal checkedConfigFile, so we regenerate it.
+          serverConfigFile =
+            (pkgs.formats.toml { }).generate "attic-server.toml"
+              config.services.atticd.settings;
+          atticadm = "${pkgs.attic-server}/bin/atticadm -f ${serverConfigFile}";
+          attic = "${pkgs.attic-client}/bin/attic";
+          curl = "${pkgs.curl}/bin/curl";
+        in
+        ''
+          set -eu
 
-        # Wait for atticd to accept connections
-        for i in $(seq 1 30); do
-          if ${curl} -sf http://127.0.0.1:${toString cfg.port}/ >/dev/null 2>&1; then
-            break
+          # Wait for atticd to accept connections
+          for i in $(seq 1 30); do
+            if ${curl} -sf http://127.0.0.1:${toString cfg.port}/ >/dev/null 2>&1; then
+              break
+            fi
+            echo "Waiting for atticd... ($i/30)"
+            sleep 1
+          done
+
+          # Generate a short-lived admin token with full permissions for initialization.
+          # Wildcards are safe here — the token expires in 5 minutes and never leaves localhost.
+          TOKEN=$(${atticadm} make-token \
+            --sub "init" \
+            --validity "5m" \
+            --push "*" \
+            --pull "*" \
+            --create-cache "*" \
+            --configure-cache "*" \
+            --configure-cache-retention "*" \
+            --delete "*" \
+            --destroy-cache "*")
+
+          # Temporary config dir for attic CLI login state
+          export XDG_CONFIG_HOME="$(mktemp -d)"
+          trap 'rm -rf "$XDG_CONFIG_HOME"' EXIT
+
+          ${attic} login init http://127.0.0.1:${toString cfg.port} "$TOKEN"
+
+          # Create cache (idempotent — exits 1 if cache already exists)
+          if ${attic} cache create init:${cfg.cacheName}; then
+            echo "Created cache '${cfg.cacheName}'"
+          else
+            echo "Cache '${cfg.cacheName}' already exists (or creation failed — check atticd logs)"
           fi
-          echo "Waiting for atticd... ($i/30)"
-          sleep 1
-        done
 
-        # Generate a short-lived admin token with full permissions for initialization.
-        # Wildcards are safe here — the token expires in 5 minutes and never leaves localhost.
-        TOKEN=$(${atticadm} make-token \
-          --sub "init" \
-          --validity "5m" \
-          --push "*" \
-          --pull "*" \
-          --create-cache "*" \
-          --configure-cache "*" \
-          --configure-cache-retention "*" \
-          --delete "*" \
-          --destroy-cache "*")
+          # Make cache publicly readable so nix substituters work without auth
+          ${attic} cache configure init:${cfg.cacheName} --public
 
-        # Temporary config dir for attic CLI login state
-        export XDG_CONFIG_HOME="$(mktemp -d)"
-        trap 'rm -rf "$XDG_CONFIG_HOME"' EXIT
+          # Extract public key from cache info and write to file
+          ${attic} cache info init:${cfg.cacheName} \
+            | ${pkgs.gnugrep}/bin/grep "Public Key:" \
+            | ${pkgs.gawk}/bin/awk '{print $3}' \
+            > /var/lib/atticd/public-key
 
-        ${attic} login init http://127.0.0.1:${toString cfg.port} "$TOKEN"
+          # Generate long-lived push token for builder machines
+          PUSH_TOKEN=$(${atticadm} make-token \
+            --sub "builder" \
+            --validity "10y" \
+            --push "${cfg.cacheName}" \
+            --pull "${cfg.cacheName}")
 
-        # Create cache (idempotent — exits 1 if cache already exists)
-        if ${attic} cache create init:${cfg.cacheName}; then
-          echo "Created cache '${cfg.cacheName}'"
-        else
-          echo "Cache '${cfg.cacheName}' already exists (or creation failed — check atticd logs)"
-        fi
+          echo "$PUSH_TOKEN" > /var/lib/atticd/push-token
+          chmod 600 /var/lib/atticd/push-token
 
-        # Make cache publicly readable so nix substituters work without auth
-        ${attic} cache configure init:${cfg.cacheName} --public
-
-        # Extract public key from cache info and write to file
-        ${attic} cache info init:${cfg.cacheName} \
-          | ${pkgs.gnugrep}/bin/grep "Public Key:" \
-          | ${pkgs.gawk}/bin/awk '{print $3}' \
-          > /var/lib/atticd/public-key
-
-        # Generate long-lived push token for builder machines
-        PUSH_TOKEN=$(${atticadm} make-token \
-          --sub "builder" \
-          --validity "10y" \
-          --push "${cfg.cacheName}" \
-          --pull "${cfg.cacheName}")
-
-        echo "$PUSH_TOKEN" > /var/lib/atticd/push-token
-        chmod 600 /var/lib/atticd/push-token
-
-        echo "========================================="
-        echo "Attic public key:"
-        cat /var/lib/atticd/public-key
-        echo "Push token written to /var/lib/atticd/push-token"
-        echo "========================================="
-      '';
+          echo "========================================="
+          echo "Attic public key:"
+          cat /var/lib/atticd/public-key
+          echo "Push token written to /var/lib/atticd/push-token"
+          echo "========================================="
+        '';
     };
 
     # Self-configure the server host as a substituter so it can also pull

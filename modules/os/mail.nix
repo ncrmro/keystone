@@ -80,220 +80,231 @@ in
 
   # Auto-enable when keystone.services.mail.host matches this machine's hostname.
   # No manual `enable = true` needed — just set keystone.services.mail.host once.
-  config = mkIf (config.keystone.services.mail.host != null
-              && config.keystone.services.mail.host == config.networking.hostName) {
-    services.stalwart-mail = {
-      enable = true;
-      package = pkgs.stalwart-mail;
-      openFirewall = true;
+  config =
+    mkIf
+      (
+        config.keystone.services.mail.host != null
+        && config.keystone.services.mail.host == config.networking.hostName
+      )
+      {
+        services.stalwart-mail = {
+          enable = true;
+          package = pkgs.stalwart-mail;
+          openFirewall = true;
 
-      settings = {
-        # Server configuration
-        server = {
-          hostname = config.networking.hostName;
+          settings = {
+            # Server configuration
+            server = {
+              hostname = config.networking.hostName;
 
-          # Allow IPs to bypass fail2ban blocking
-          # Using table syntax instead of set notation (NixOS can't generate { "ip" } sets)
-          "allowed-ip" = lib.listToAttrs (map (ip: lib.nameValuePair ip "") cfg.allowedIps);
-          tls = {
-            enable = true;
-            implicit = true;
-          };
-          listener = {
-            # SMTP for mail delivery (port 25)
-            smtp = {
-              protocol = "smtp";
-              bind = [ "[::]:25" ];
+              # Allow IPs to bypass fail2ban blocking
+              # Using table syntax instead of set notation (NixOS can't generate { "ip" } sets)
+              "allowed-ip" = lib.listToAttrs (map (ip: lib.nameValuePair ip "") cfg.allowedIps);
+              tls = {
+                enable = true;
+                implicit = true;
+              };
+              listener = {
+                # SMTP for mail delivery (port 25)
+                smtp = {
+                  protocol = "smtp";
+                  bind = [ "[::]:25" ];
+                };
+                # SMTP Submission with TLS (port 465)
+                submissions = {
+                  protocol = "smtp";
+                  bind = [ "[::]:465" ];
+                  tls.implicit = true;
+                };
+                # SMTP Submission (port 587)
+                submission = {
+                  protocol = "smtp";
+                  bind = [ "[::]:587" ];
+                };
+                # IMAPS (port 993)
+                imaps = {
+                  protocol = "imap";
+                  bind = [ "[::]:993" ];
+                  tls.implicit = true;
+                };
+                # JMAP/Management interface (localhost only)
+                # Using 8082 to avoid conflict with common ingress port 8080
+                # TODO: Can revert to 8080 after removing k8s ingress-nginx
+                jmap = {
+                  protocol = "http";
+                  bind = [ "127.0.0.1:8082" ];
+                };
+              };
             };
-            # SMTP Submission with TLS (port 465)
-            submissions = {
-              protocol = "smtp";
-              bind = [ "[::]:465" ];
-              tls.implicit = true;
+
+            # Storage configuration - use RocksDB for persistence
+            store = {
+              db = {
+                type = "rocksdb";
+                path = "/var/lib/stalwart-mail/data";
+              };
+              blob = {
+                type = "rocksdb";
+                path = "/var/lib/stalwart-mail/blob";
+              };
             };
-            # SMTP Submission (port 587)
-            submission = {
-              protocol = "smtp";
-              bind = [ "[::]:587" ];
+            storage = {
+              data = "db";
+              blob = "blob";
+              fts = "db";
+              lookup = "db";
             };
-            # IMAPS (port 993)
-            imaps = {
-              protocol = "imap";
-              bind = [ "[::]:993" ];
-              tls.implicit = true;
+
+            # Directory for user authentication
+            directory = {
+              internal = {
+                type = "internal";
+                store = "db";
+              };
             };
-            # JMAP/Management interface (localhost only)
-            # Using 8082 to avoid conflict with common ingress port 8080
-            # TODO: Can revert to 8080 after removing k8s ingress-nginx
-            jmap = {
-              protocol = "http";
-              bind = [ "127.0.0.1:8082" ];
+
+            # Session configuration
+            # Note: Directory references need single quotes for Stalwart TOML
+            session = {
+              rcpt = {
+                directory = "'internal'";
+              };
+              auth = {
+                directory = "'internal'";
+                mechanisms = "[plain, login]";
+              };
+            };
+
+            # Queue configuration - route all mail locally
+            # (next-hop deprecated in v0.13.0, replaced by queue.strategy.route)
+            queue.strategy.route = "'local'";
+
+            # Resolver configuration
+            resolver = {
+              type = "system";
+            };
+
+            # Tracing/logging
+            tracer = {
+              stdout = {
+                type = "stdout";
+                level = "info";
+                ansi = false;
+                enable = true;
+              };
+            };
+
+            # Web admin interface is configured automatically by nixpkgs
+            # (sets webadmin.path to /var/cache/stalwart-mail)
+
+            # Spam filter - disabled to avoid missing file error
+            # TODO: Spam filter is currently disabled because the default `spamfilter.toml`
+            # resource was not found in the Stalwart Mail package. To re-enable, either:
+            # 1. Find or create a `spamfilter.toml` file and point the `resource`
+            #    option to its path.
+            # 2. Configure spam filtering directly within the `spam-filter` section.
+            spam-filter = {
+              resource = "";
             };
           };
         };
 
-        # Storage configuration - use RocksDB for persistence
-        store = {
-          db = {
-            type = "rocksdb";
-            path = "/var/lib/stalwart-mail/data";
-          };
-          blob = {
-            type = "rocksdb";
-            path = "/var/lib/stalwart-mail/blob";
-          };
-        };
-        storage = {
-          data = "db";
-          blob = "blob";
-          fts = "db";
-          lookup = "db";
+        # Firewall configuration for mail ports
+        networking.firewall = {
+          allowedTCPPorts = [
+            25 # SMTP
+            465 # SMTPS (Submission over TLS)
+            587 # Submission
+            993 # IMAPS
+          ];
         };
 
-        # Directory for user authentication
-        directory = {
-          internal = {
-            type = "internal";
-            store = "db";
-          };
-        };
+        # Auto-provision Stalwart mail accounts for agents with mail.provision = true
+        assertions = mkIf hasProvisionAgents (
+          [
+            {
+              assertion = config.age.secrets ? "stalwart-admin-password";
+              message = "Agent mail provisioning requires agenix secret 'stalwart-admin-password' for Stalwart admin API access.";
+            }
+          ]
+          ++ (mapAttrsToList (name: _: {
+            assertion = config.age.secrets ? "agent-${name}-mail-password";
+            message = ''
+              Agent '${name}' has mail.provision = true but agenix secret "agent-${name}-mail-password" is not declared.
+              This secret must contain the plaintext password for the agent's Stalwart account.
+            '';
+          }) provisionAgents)
+        );
 
-        # Session configuration
-        # Note: Directory references need single quotes for Stalwart TOML
-        session = {
-          rcpt = {
-            directory = "'internal'";
-          };
-          auth = {
-            directory = "'internal'";
-            mechanisms = "[plain, login]";
-          };
-        };
+        # Idempotent: GET /api/principal/{name} → 200 means account exists, skip.
+        # NOTE: The systemd unit is "stalwart.service" (not "stalwart-mail.service").
+        # The admin password secret may be a SHA-512 hash ($6$...) — Stalwart
+        # accepts hashed passwords in HTTP basic auth, so provisioning still works.
+        systemd.services = mkIf hasProvisionAgents (
+          mapAttrs' (
+            name: agentCfg:
+            let
+              username = "agent-${name}";
+              mailAddr =
+                if agentCfg.mail.address != null then agentCfg.mail.address else "${username}@${topDomain}";
+              adminPasswordPath = "/run/agenix/stalwart-admin-password";
+              agentPasswordPath = "/run/agenix/${username}-mail-password";
+            in
+            nameValuePair "provision-agent-mail-${name}" {
+              description = "Provision Stalwart mail account for ${username}";
+              after = [ "stalwart.service" ];
+              requires = [ "stalwart.service" ];
+              wantedBy = [ "multi-user.target" ];
 
-        # Queue configuration - route all mail locally
-        # (next-hop deprecated in v0.13.0, replaced by queue.strategy.route)
-        queue.strategy.route = "'local'";
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+              };
 
-        # Resolver configuration
-        resolver = {
-          type = "system";
-        };
+              path = [
+                pkgs.curl
+                pkgs.jq
+              ];
 
-        # Tracing/logging
-        tracer = {
-          stdout = {
-            type = "stdout";
-            level = "info";
-            ansi = false;
-            enable = true;
-          };
-        };
+              script = ''
+                set -euo pipefail
 
-        # Web admin interface is configured automatically by nixpkgs
-        # (sets webadmin.path to /var/cache/stalwart-mail)
+                ADMIN_PASS=$(cat ${adminPasswordPath})
+                AGENT_PASS=$(tr -d '\n' < ${agentPasswordPath})
+                API="http://127.0.0.1:8082/api"
 
-        # Spam filter - disabled to avoid missing file error
-        # TODO: Spam filter is currently disabled because the default `spamfilter.toml`
-        # resource was not found in the Stalwart Mail package. To re-enable, either:
-        # 1. Find or create a `spamfilter.toml` file and point the `resource`
-        #    option to its path.
-        # 2. Configure spam filtering directly within the `spam-filter` section.
-        spam-filter = {
-          resource = "";
-        };
+                # Check if account already exists
+                STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                  -u "admin:$ADMIN_PASS" \
+                  "$API/principal/${username}")
+
+                if [ "$STATUS" = "200" ]; then
+                  echo "${username}: Stalwart account already exists, skipping creation"
+                  exit 0
+                fi
+
+                echo "${username}: Creating Stalwart mail account..."
+
+                # Create the account
+                curl -sf -u "admin:$ADMIN_PASS" \
+                  "$API/principal" \
+                  -H "Content-Type: application/json" \
+                  -d "$(jq -n \
+                    --arg name "${username}" \
+                    --arg pass "$AGENT_PASS" \
+                    --arg email "${mailAddr}" \
+                    '{type: "individual", name: $name, secrets: [$pass], emails: [$email]}')"
+
+                # Set role to user
+                curl -sf -u "admin:$ADMIN_PASS" \
+                  "$API/principal/${username}" -X PATCH \
+                  -H "Content-Type: application/json" \
+                  -d '[{"action":"set","field":"roles","value":["user"]}]'
+
+                echo "${username}: Stalwart mail account created successfully"
+              '';
+            }
+          ) provisionAgents
+        );
       };
-    };
-
-    # Firewall configuration for mail ports
-    networking.firewall = {
-      allowedTCPPorts = [
-        25 # SMTP
-        465 # SMTPS (Submission over TLS)
-        587 # Submission
-        993 # IMAPS
-      ];
-    };
-
-    # Auto-provision Stalwart mail accounts for agents with mail.provision = true
-    assertions = mkIf hasProvisionAgents (
-      [
-        {
-          assertion = config.age.secrets ? "stalwart-admin-password";
-          message = "Agent mail provisioning requires agenix secret 'stalwart-admin-password' for Stalwart admin API access.";
-        }
-      ] ++ (mapAttrsToList (name: _: {
-        assertion = config.age.secrets ? "agent-${name}-mail-password";
-        message = ''
-          Agent '${name}' has mail.provision = true but agenix secret "agent-${name}-mail-password" is not declared.
-          This secret must contain the plaintext password for the agent's Stalwart account.
-        '';
-      }) provisionAgents)
-    );
-
-    # Idempotent: GET /api/principal/{name} → 200 means account exists, skip.
-    # NOTE: The systemd unit is "stalwart.service" (not "stalwart-mail.service").
-    # The admin password secret may be a SHA-512 hash ($6$...) — Stalwart
-    # accepts hashed passwords in HTTP basic auth, so provisioning still works.
-    systemd.services = mkIf hasProvisionAgents (mapAttrs' (name: agentCfg:
-      let
-        username = "agent-${name}";
-        mailAddr =
-          if agentCfg.mail.address != null then agentCfg.mail.address
-          else "${username}@${topDomain}";
-        adminPasswordPath = "/run/agenix/stalwart-admin-password";
-        agentPasswordPath = "/run/agenix/${username}-mail-password";
-      in
-      nameValuePair "provision-agent-mail-${name}" {
-        description = "Provision Stalwart mail account for ${username}";
-        after = [ "stalwart.service" ];
-        requires = [ "stalwart.service" ];
-        wantedBy = [ "multi-user.target" ];
-
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-        };
-
-        path = [ pkgs.curl pkgs.jq ];
-
-        script = ''
-          set -euo pipefail
-
-          ADMIN_PASS=$(cat ${adminPasswordPath})
-          AGENT_PASS=$(tr -d '\n' < ${agentPasswordPath})
-          API="http://127.0.0.1:8082/api"
-
-          # Check if account already exists
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -u "admin:$ADMIN_PASS" \
-            "$API/principal/${username}")
-
-          if [ "$STATUS" = "200" ]; then
-            echo "${username}: Stalwart account already exists, skipping creation"
-            exit 0
-          fi
-
-          echo "${username}: Creating Stalwart mail account..."
-
-          # Create the account
-          curl -sf -u "admin:$ADMIN_PASS" \
-            "$API/principal" \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg name "${username}" \
-              --arg pass "$AGENT_PASS" \
-              --arg email "${mailAddr}" \
-              '{type: "individual", name: $name, secrets: [$pass], emails: [$email]}')"
-
-          # Set role to user
-          curl -sf -u "admin:$ADMIN_PASS" \
-            "$API/principal/${username}" -X PATCH \
-            -H "Content-Type: application/json" \
-            -d '[{"action":"set","field":"roles","value":["user"]}]'
-
-          echo "${username}: Stalwart mail account created successfully"
-        '';
-      }
-    ) provisionAgents);
-  };
 }

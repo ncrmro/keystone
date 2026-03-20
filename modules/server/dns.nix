@@ -14,7 +14,9 @@ let
   domain = config.keystone.domain;
 
   # Build DNS records from enabled services
-  enabledServices = lib.filterAttrs (n: v: (v.enable or false) && (v.registerDNS or true)) cfg._enabledServices;
+  enabledServices = lib.filterAttrs (
+    n: v: (v.enable or false) && (v.registerDNS or true)
+  ) cfg._enabledServices;
 
   mkDNSRecord = name: svc: {
     name = "${svc.subdomain}.${domain}";

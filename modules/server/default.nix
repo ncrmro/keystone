@@ -104,7 +104,9 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    warnings = lib.optional (config.keystone.domain == null) "keystone.domain is not set. Sub-services cannot auto-derive their subdomains.";
+    warnings = lib.optional (
+      config.keystone.domain == null
+    ) "keystone.domain is not set. Sub-services cannot auto-derive their subdomains.";
 
     assertions = [
       {

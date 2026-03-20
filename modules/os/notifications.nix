@@ -25,9 +25,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.os.notifications;
-in {
+in
+{
   options.keystone.os.notifications = {
     enable = mkOption {
       type = types.bool;
@@ -36,33 +38,35 @@ in {
     };
 
     items = mkOption {
-      type = types.listOf (types.submodule {
-        options = {
-          id = mkOption {
-            type = types.str;
-            description = "Unique notification identifier (used for the Nix store path)";
-            example = "tpm-enrollment";
-          };
+      type = types.listOf (
+        types.submodule {
+          options = {
+            id = mkOption {
+              type = types.str;
+              description = "Unique notification identifier (used for the Nix store path)";
+              example = "tpm-enrollment";
+            };
 
-          title = mkOption {
-            type = types.str;
-            description = "Short human-readable notification title";
-            example = "TPM Enrollment Required";
-          };
+            title = mkOption {
+              type = types.str;
+              description = "Short human-readable notification title";
+              example = "TPM Enrollment Required";
+            };
 
-          body = mkOption {
-            type = types.str;
-            description = "Full notification text displayed in the terminal. Use plain text or ASCII art.";
-          };
+            body = mkOption {
+              type = types.str;
+              description = "Full notification text displayed in the terminal. Use plain text or ASCII art.";
+            };
 
-          markerFile = mkOption {
-            type = types.addCheck types.str (p: lib.hasPrefix "/" p);
-            description = "Absolute path to a marker file. When this file exists, the notification is suppressed.";
-            example = "/var/lib/keystone/tpm-enrollment-complete";
+            markerFile = mkOption {
+              type = types.addCheck types.str (p: lib.hasPrefix "/" p);
+              description = "Absolute path to a marker file. When this file exists, the notification is suppressed.";
+              example = "/var/lib/keystone/tpm-enrollment-complete";
+            };
           };
-        };
-      });
-      default = [];
+        }
+      );
+      default = [ ];
       description = "Notifications shown at interactive shell login when their marker file is absent.";
     };
   };
@@ -71,10 +75,12 @@ in {
     # Display each pending notification at interactive shell login.
     # Each notification's body is stored as a separate file in the Nix store so
     # that multi-line text and special characters are handled correctly.
-    environment.interactiveShellInit = concatMapStringsSep "\n" (item:
+    environment.interactiveShellInit = concatMapStringsSep "\n" (
+      item:
       let
         bodyFile = pkgs.writeText "keystone-notification-${item.id}" item.body;
-      in ''
+      in
+      ''
         # Keystone notification: ${item.id}
         if [[ ! -f ${lib.escapeShellArg item.markerFile} ]]; then
           cat ${bodyFile}

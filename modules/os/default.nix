@@ -20,123 +20,148 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.os;
 
   # User submodule type definition
-  userSubmodule = types.submodule ({name, ...}: {
-    options = {
-      uid = mkOption {
-        type = types.nullOr types.int;
-        default = null;
-        description = "User ID. If null, NixOS will auto-assign.";
-      };
-
-      fullName = mkOption {
-        type = types.str;
-        description = "Full name of the user (used for GECOS and git config)";
-        example = "Alice Smith";
-      };
-
-      email = mkOption {
-        type = types.nullOr types.str;
-        default = let
-          domain = config.keystone.domain;
-          # "Alice Smith" → "alice.smith"
-          localPart = builtins.replaceStrings [" "] ["."] (lib.toLower config.keystone.os.users.${name}.fullName);
-        in
-          if domain != null then "${localPart}@${domain}" else null;
-        defaultText = literalExpression ''"''${toLower fullName}@''${keystone.domain}"'';
-        description = "Email address (used for git config and mail). Auto-derived from fullName + keystone.domain.";
-        example = "alice.smith@example.com";
-      };
-
-      extraGroups = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Additional groups the user should be a member of";
-        example = ["wheel" "networkmanager"];
-      };
-
-      initialPassword = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Initial plaintext password. WARNING: Stored in Nix store. Use hashedPassword for production.";
-      };
-
-      hashedPassword = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Hashed password (generate with mkpasswd -m sha-512)";
-      };
-
-      terminal = {
-        enable = mkOption {
-          type = types.bool;
-          default = true;
-          description = "Enable terminal development environment (zsh, helix, zellij, starship, git)";
-        };
-      };
-
-      sshAutoLoad = {
-        enable = mkOption {
-          type = types.bool;
-          default = false;
-          description = "Auto-load SSH key into ssh-agent at login using agenix passphrase";
-        };
-      };
-
-      desktop = {
-        enable = mkOption {
-          type = types.bool;
-          default = false;
-          description = "Enable desktop environment (Hyprland, waybar, etc.)";
+  userSubmodule = types.submodule (
+    { name, ... }:
+    {
+      options = {
+        uid = mkOption {
+          type = types.nullOr types.int;
+          default = null;
+          description = "User ID. If null, NixOS will auto-assign.";
         };
 
-        hyprland = {
-          modifierKey = mkOption {
-            type = types.enum ["SUPER" "ALT"];
-            default = "SUPER";
-            description = "Primary modifier key for Hyprland keybindings";
-          };
+        fullName = mkOption {
+          type = types.str;
+          description = "Full name of the user (used for GECOS and git config)";
+          example = "Alice Smith";
+        };
 
-          capslockAsControl = mkOption {
+        email = mkOption {
+          type = types.nullOr types.str;
+          default =
+            let
+              domain = config.keystone.domain;
+              # "Alice Smith" → "alice.smith"
+              localPart = builtins.replaceStrings [ " " ] [ "." ] (
+                lib.toLower config.keystone.os.users.${name}.fullName
+              );
+            in
+            if domain != null then "${localPart}@${domain}" else null;
+          defaultText = literalExpression ''"''${toLower fullName}@''${keystone.domain}"'';
+          description = "Email address (used for git config and mail). Auto-derived from fullName + keystone.domain.";
+          example = "alice.smith@example.com";
+        };
+
+        extraGroups = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Additional groups the user should be a member of";
+          example = [
+            "wheel"
+            "networkmanager"
+          ];
+        };
+
+        initialPassword = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Initial plaintext password. WARNING: Stored in Nix store. Use hashedPassword for production.";
+        };
+
+        hashedPassword = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Hashed password (generate with mkpasswd -m sha-512)";
+        };
+
+        terminal = {
+          enable = mkOption {
             type = types.bool;
             default = true;
-            description = "Remap Caps Lock to Control";
+            description = "Enable terminal development environment (zsh, helix, zellij, starship, git)";
+          };
+        };
+
+        sshAutoLoad = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Auto-load SSH key into ssh-agent at login using agenix passphrase";
+          };
+        };
+
+        desktop = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Enable desktop environment (Hyprland, waybar, etc.)";
+          };
+
+          hyprland = {
+            modifierKey = mkOption {
+              type = types.enum [
+                "SUPER"
+                "ALT"
+              ];
+              default = "SUPER";
+              description = "Primary modifier key for Hyprland keybindings";
+            };
+
+            capslockAsControl = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Remap Caps Lock to Control";
+            };
+          };
+        };
+
+        zfs = {
+          quota = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "ZFS quota for user's home dataset (e.g., '100G', '1T')";
+            example = "100G";
+          };
+
+          compression = mkOption {
+            type = types.enum [
+              "off"
+              "on"
+              "lz4"
+              "gzip"
+              "zstd"
+              "zstd-fast"
+              "lzjb"
+            ];
+            default = "lz4";
+            description = "Compression algorithm for user's home dataset";
+          };
+
+          recordsize = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "Block size for the dataset (128K default, 1M for large files, 16K for databases)";
+          };
+
+          atime = mkOption {
+            type = types.enum [
+              "on"
+              "off"
+            ];
+            default = "off";
+            description = "Whether to update access time on file reads";
           };
         };
       };
-
-      zfs = {
-        quota = mkOption {
-          type = types.nullOr types.str;
-          default = null;
-          description = "ZFS quota for user's home dataset (e.g., '100G', '1T')";
-          example = "100G";
-        };
-
-        compression = mkOption {
-          type = types.enum ["off" "on" "lz4" "gzip" "zstd" "zstd-fast" "lzjb"];
-          default = "lz4";
-          description = "Compression algorithm for user's home dataset";
-        };
-
-        recordsize = mkOption {
-          type = types.nullOr types.str;
-          default = null;
-          description = "Block size for the dataset (128K default, 1M for large files, 16K for databases)";
-        };
-
-        atime = mkOption {
-          type = types.enum ["on" "off"];
-          default = "off";
-          description = "Whether to update access time on file reads";
-        };
-      };
-    };
-  });
-in {
+    }
+  );
+in
+{
   imports = [
     ../keys.nix
     ../secrets.nix
@@ -173,7 +198,10 @@ in {
       };
 
       type = mkOption {
-        type = types.enum ["zfs" "ext4"];
+        type = types.enum [
+          "zfs"
+          "ext4"
+        ];
         default = "zfs";
         description = ''
           Filesystem type for the root pool.
@@ -184,8 +212,8 @@ in {
 
       devices = mkOption {
         type = types.listOf types.str;
-        default = [];
-        example = ["/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB"];
+        default = [ ];
+        example = [ "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB" ];
         description = ''
           Disk devices for the storage pool. Use by-id paths for stability.
           For multi-disk configurations, specify multiple devices and set mode.
@@ -193,7 +221,14 @@ in {
       };
 
       mode = mkOption {
-        type = types.enum ["single" "mirror" "stripe" "raidz1" "raidz2" "raidz3"];
+        type = types.enum [
+          "single"
+          "mirror"
+          "stripe"
+          "raidz1"
+          "raidz2"
+          "raidz3"
+        ];
         default = "single";
         description = ''
           Redundancy mode for multi-disk ZFS configurations:
@@ -236,13 +271,23 @@ in {
 
       zfs = {
         compression = mkOption {
-          type = types.enum ["off" "lz4" "zstd" "gzip" "gzip-1" "gzip-9"];
+          type = types.enum [
+            "off"
+            "lz4"
+            "zstd"
+            "gzip"
+            "gzip-1"
+            "gzip-9"
+          ];
           default = "zstd";
           description = "Default compression algorithm for ZFS datasets";
         };
 
         atime = mkOption {
-          type = types.enum ["on" "off"];
+          type = types.enum [
+            "on"
+            "off"
+          ];
           default = "off";
           description = "Whether to update access time on file reads";
         };
@@ -287,7 +332,10 @@ in {
 
       pcrs = mkOption {
         type = types.listOf types.int;
-        default = [1 7];
+        default = [
+          1
+          7
+        ];
         description = ''
           TPM PCRs to bind disk unlock to:
           - PCR 1: Firmware configuration
@@ -303,7 +351,7 @@ in {
 
       authorizedKeys = mkOption {
         type = types.listOf types.str;
-        default = [];
+        default = [ ];
         description = ''
           SSH public keys for remote unlock.
           If empty, keys are collected from all configured users.
@@ -430,7 +478,7 @@ in {
     # User configuration
     users = mkOption {
       type = types.attrsOf userSubmodule;
-      default = {};
+      default = { };
       description = ''
         Users with automatic NixOS user creation, home-manager integration,
         and ZFS home directories with delegated permissions.
@@ -455,11 +503,15 @@ in {
     assertions = [
       # Storage assertions (only when storage is enabled)
       {
-        assertion = !cfg.storage.enable || cfg.storage.devices != [];
+        assertion = !cfg.storage.enable || cfg.storage.devices != [ ];
         message = "keystone.os.storage.devices must contain at least one disk device";
       }
       {
-        assertion = !cfg.storage.enable || cfg.storage.type == "ext4" || cfg.storage.mode == "single" || length cfg.storage.devices >= 2;
+        assertion =
+          !cfg.storage.enable
+          || cfg.storage.type == "ext4"
+          || cfg.storage.mode == "single"
+          || length cfg.storage.devices >= 2;
         message = "Multi-disk modes (mirror, stripe, raidz*) require at least 2 devices";
       }
       {
@@ -480,7 +532,7 @@ in {
       }
       # Non-storage assertions
       {
-        assertion = cfg.remoteUnlock.enable -> (cfg.remoteUnlock.authorizedKeys != [] || cfg.users != {});
+        assertion = cfg.remoteUnlock.enable -> (cfg.remoteUnlock.authorizedKeys != [ ] || cfg.users != { });
         message = "Remote unlock requires authorizedKeys or at least one configured user with keys in keystone.keys";
       }
       {
@@ -497,7 +549,8 @@ in {
         message = "Hibernation requires ext4 storage backend. ZFS cannot support hibernation because dirty writes after freeze corrupt pools.";
       }
       {
-        assertion = !cfg.storage.hibernate.enable || cfg.storage.swap.size != "0" && cfg.storage.swap.size != "";
+        assertion =
+          !cfg.storage.hibernate.enable || cfg.storage.swap.size != "0" && cfg.storage.swap.size != "";
         message = "Hibernation requires swap to be enabled (storage.swap.size must not be '0' or empty)";
       }
     ];
@@ -524,7 +577,10 @@ in {
     services.resolved.enable = cfg.services.resolved.enable;
 
     # Nix configuration
-    nix.settings.experimental-features = mkIf cfg.nix.flakes ["nix-command" "flakes"];
+    nix.settings.experimental-features = mkIf cfg.nix.flakes [
+      "nix-command"
+      "flakes"
+    ];
     nix.settings.auto-optimise-store = cfg.nix.optimiseStore;
 
     # nh clean replaces nix.gc with generation-count awareness:
@@ -543,6 +599,6 @@ in {
     i18n.defaultLocale = lib.mkDefault "en_US.UTF-8";
 
     # agenix CLI
-    environment.systemPackages = [pkgs.keystone.agenix];
+    environment.systemPackages = [ pkgs.keystone.agenix ];
   };
 }

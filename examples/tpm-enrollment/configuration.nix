@@ -14,7 +14,8 @@
   pkgs,
   lib,
   ...
-}: {
+}:
+{
   # Import required Keystone modules
   imports = [
     # These would be imported from the Keystone flake in a real deployment:
@@ -32,7 +33,7 @@
     # Storage configuration
     storage = {
       type = "zfs";
-      devices = ["/dev/vda"]; # Or /dev/disk/by-id/... for bare metal
+      devices = [ "/dev/vda" ]; # Or /dev/disk/by-id/... for bare metal
       swap.size = "8G";
     };
 
@@ -44,7 +45,10 @@
       enable = true;
       # Optional: Customize PCR list
       # Default [1 7] is recommended for most users
-      pcrs = [1 7]; # Default: Firmware config + Secure Boot
+      pcrs = [
+        1
+        7
+      ]; # Default: Firmware config + Secure Boot
       # pcrs = [ 7 ];    # More update-resilient: Secure Boot only
       # pcrs = [ 0 1 7 ]; # More restrictive: Firmware code + config + Secure Boot
     };

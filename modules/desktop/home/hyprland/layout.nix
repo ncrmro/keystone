@@ -4,9 +4,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.desktop.hyprland;
-in {
+in
+{
   config = mkIf cfg.enable {
     wayland.windowManager.hyprland.settings = {
       general = {

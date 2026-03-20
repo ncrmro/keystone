@@ -8,7 +8,13 @@
 # - Sets uri_default in ~/.config/libvirt/libvirt.conf
 # - Configures virt-manager dconf connection bookmarks
 #
-{ config, lib, pkgs, options, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  options,
+  ...
+}:
 with lib;
 let
   osCfg = config.keystone.os;
@@ -27,7 +33,8 @@ let
 
   # Desktop users who should get virt-manager home-manager config
   desktopUsers = filterAttrs (_: u: u.desktop.enable) osCfg.users;
-in {
+in
+{
   options.keystone.os.hypervisor = {
     enable = mkEnableOption "Libvirt/KVM hypervisor with OVMF, TPM, and SPICE support";
 
@@ -39,7 +46,7 @@ in {
 
     connections = mkOption {
       type = types.listOf types.str;
-      default = [];
+      default = [ ];
       example = [ "qemu+ssh://user@server/session" ];
       description = "Additional virt-manager connection URIs (shown as bookmarks)";
     };
@@ -47,7 +54,10 @@ in {
     allowedBridges = mkOption {
       type = types.listOf types.str;
       default = [ "virbr0" ];
-      example = [ "virbr0" "br0" ];
+      example = [
+        "virbr0"
+        "br0"
+      ];
       description = "Bridge devices usable by session VMs via qemu-bridge-helper. Written to /etc/qemu/bridge.conf.";
     };
   };
@@ -65,7 +75,11 @@ in {
       };
 
       # Add passt for user-mode networking
-      systemd.services.libvirtd.path = [ qemuPkg pkgs.netcat pkgs.passt ];
+      systemd.services.libvirtd.path = [
+        qemuPkg
+        pkgs.netcat
+        pkgs.passt
+      ];
 
       # Polkit: allow libvirtd group members to manage VMs
       security.polkit.enable = true;
@@ -108,29 +122,36 @@ in {
       ];
 
       # Server-only: extra packages for headless management
-      environment.systemPackages = mkIf (!hasDesktop) (with pkgs; [
-        virt-viewer
-        libguestfs
-      ]);
+      environment.systemPackages = mkIf (!hasDesktop) (
+        with pkgs;
+        [
+          virt-viewer
+          libguestfs
+        ]
+      );
     })
 
     # Home-manager: virt-manager defaults for desktop users
     # Separate mkMerge entry — see users.nix for why optionalAttrs must not
     # be merged with // into a mkIf block.
     (optionalAttrs (options ? home-manager) {
-      home-manager.users = mkIf (osCfg.enable && cfg.enable && hasDesktop && desktopUsers != {}) (
-        mapAttrs (username: _: { ... }: {
-          # Default libvirt connection URI
-          xdg.configFile."libvirt/libvirt.conf".text = ''
-            uri_default = "${cfg.defaultUri}"
-          '';
+      home-manager.users = mkIf (osCfg.enable && cfg.enable && hasDesktop && desktopUsers != { }) (
+        mapAttrs (
+          username: _:
+          { ... }:
+          {
+            # Default libvirt connection URI
+            xdg.configFile."libvirt/libvirt.conf".text = ''
+              uri_default = "${cfg.defaultUri}"
+            '';
 
-          # virt-manager connection bookmarks via dconf
-          dconf.settings."org/virt-manager/virt-manager/connections" = {
-            uris = allUris;
-            autoconnect = allUris;
-          };
-        }) desktopUsers
+            # virt-manager connection bookmarks via dconf
+            dconf.settings."org/virt-manager/virt-manager/connections" = {
+              uris = allUris;
+              autoconnect = allUris;
+            };
+          }
+        ) desktopUsers
       );
     })
   ];

@@ -40,9 +40,8 @@ let
   cfg = config.keystone.terminal.ageYubikey;
 
   # Generate identity file with serial comments so hwrekey can filter
-  identityFileText = concatStringsSep "\n" (
-    map (id: "# serial:${id.serial}\n${id.identity}") cfg.identities
-  ) + "\n";
+  identityFileText =
+    concatStringsSep "\n" (map (id: "# serial:${id.serial}\n${id.identity}") cfg.identities) + "\n";
 
   hwrekeyScript = pkgs.writeShellScriptBin "hwrekey" ''
     set -euo pipefail
@@ -203,20 +202,22 @@ in
     enable = mkEnableOption "age-plugin-yubikey identity file management";
 
     identities = mkOption {
-      type = types.listOf (types.submodule {
-        options = {
-          serial = mkOption {
-            type = types.str;
-            description = "YubiKey serial number (from `ykman info`)";
-            example = "36854515";
+      type = types.listOf (
+        types.submodule {
+          options = {
+            serial = mkOption {
+              type = types.str;
+              description = "YubiKey serial number (from `ykman info`)";
+              example = "36854515";
+            };
+            identity = mkOption {
+              type = types.str;
+              description = "AGE-PLUGIN-YUBIKEY identity string (from `age-plugin-yubikey`)";
+              example = "AGE-PLUGIN-YUBIKEY-17DDRYQ5ZFMHALWQJTKHAV";
+            };
           };
-          identity = mkOption {
-            type = types.str;
-            description = "AGE-PLUGIN-YUBIKEY identity string (from `age-plugin-yubikey`)";
-            example = "AGE-PLUGIN-YUBIKEY-17DDRYQ5ZFMHALWQJTKHAV";
-          };
-        };
-      });
+        }
+      );
       default = [ ];
       description = ''
         Age-plugin-yubikey identities with serial numbers. Generate identity with:

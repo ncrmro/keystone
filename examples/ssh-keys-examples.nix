@@ -17,7 +17,6 @@
   #   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGJlZ... developer@laptop"
   # ];
 
-
   # Example 2: Multiple Keys for One Person (Recommended)
   # ======================================================
   # Best practice: separate keys for different devices/purposes
@@ -37,7 +36,6 @@
   #   # Emergency access (offline backup key)
   #   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGVtZ... alice@emergency"
   # ];
-
 
   # Example 3: Team Access (Small Team)
   # ====================================
@@ -59,7 +57,6 @@
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGNhcm9sIHNyZSBlbmdpbmVlciBrZXk= carol@workstation"
   ];
 
-
   # Example 4: Service Accounts and Automation
   # ===========================================
   # Add keys for automated systems and monitoring
@@ -77,7 +74,6 @@
   #   # CI/CD deployment (GitHub Actions)
   #   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGdpdGh1YiBhY3Rpb25zIGRlcGxveSBrZXk= deploy@github-actions"
   # ];
-
 
   # Example 5: Hardware Security Keys (YubiKey)
   # ============================================
@@ -102,7 +98,6 @@
   #   "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9w... alice-yubi-green"
   # ];
 
-
   # Example 6: Restricted Keys (Advanced)
   # ======================================
   # Apply restrictions to specific keys
@@ -120,7 +115,6 @@
   #   # Restricted key - from specific IP only
   #   ''from="192.168.1.100" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... monitoring@internal''
   # ];
-
 
   # SSH Key Management Best Practices
   # ==================================
@@ -155,7 +149,6 @@
   #    - Document emergency access procedures
   #    - Test emergency access quarterly
 
-
   # Common Mistakes to Avoid
   # =========================
 
@@ -177,7 +170,6 @@
   # ❌ DON'T: Forget to remove keys of departed team members
   # ✅ DO: Regular access audits and key cleanup
 
-
   # Testing SSH Key Access
   # =======================
 
@@ -194,7 +186,6 @@
   #
   # 4. Check authorized keys on server:
   #    cat /root/.ssh/authorized_keys
-
 
   # Troubleshooting
   # ===============
@@ -215,7 +206,6 @@
   #   - Check SSH agent: ssh-add -l
   #   - Remove unwanted keys from agent: ssh-add -d ~/.ssh/unwanted_key
 
-
   # Additional Configuration
   # ========================
 
@@ -227,7 +217,7 @@
   keystone = {
     disko = {
       enable = true;
-      device = "/dev/vda";  # Adjust for your environment
+      device = "/dev/vda"; # Adjust for your environment
     };
     server.enable = true;
   };
@@ -235,7 +225,6 @@
   time.timeZone = "UTC";
   system.stateVersion = "24.11";
 }
-
 
 # How to Use This Example
 # ========================

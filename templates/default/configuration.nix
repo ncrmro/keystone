@@ -3,7 +3,8 @@
   pkgs,
   lib,
   ...
-}: {
+}:
+{
   # ============================================================================
   # REQUIRED CONFIGURATION
   # ============================================================================
@@ -86,7 +87,10 @@
     # TPM - automatic disk unlock using hardware TPM
     tpm = {
       enable = true; # Disable if no TPM2 chip available
-      pcrs = [1 7]; # PCRs to bind to (1=firmware, 7=secure boot state)
+      pcrs = [
+        1
+        7
+      ]; # PCRs to bind to (1=firmware, 7=secure boot state)
       # Use [7] only for more update-resilient binding
     };
 
@@ -235,7 +239,10 @@
   time.timeZone = "UTC"; # TODO: Change to your timezone (e.g., "America/New_York")
 
   # Nix settings - keystone.os handles flakes and GC automatically
-  nix.settings.trusted-users = ["root" "@wheel"];
+  nix.settings.trusted-users = [
+    "root"
+    "@wheel"
+  ];
 
   # ============================================================================
   # ADDITIONAL PACKAGES (Optional)

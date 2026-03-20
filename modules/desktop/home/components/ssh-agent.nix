@@ -3,9 +3,11 @@
   lib,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.desktop;
-in {
+in
+{
   config = mkIf cfg.enable {
     # SSH agent as a systemd user service
     # Runs ssh-agent -D -a $SSH_AUTH_SOCK, sets SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent

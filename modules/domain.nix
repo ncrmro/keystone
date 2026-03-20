@@ -1,5 +1,6 @@
 { lib, ... }:
-with lib; {
+with lib;
+{
   options.keystone.domain = mkOption {
     type = types.nullOr types.str;
     default = null;

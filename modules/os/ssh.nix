@@ -9,9 +9,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   osCfg = config.keystone.os;
-in {
+in
+{
   config = mkIf (osCfg.enable && osCfg.ssh.enable) {
     # Enable SSH server with secure defaults
     services.openssh = {
@@ -29,7 +31,7 @@ in {
     };
 
     # Open SSH port in firewall
-    networking.firewall.allowedTCPPorts = [22];
+    networking.firewall.allowedTCPPorts = [ 22 ];
 
     # Add SSH to system packages for client utilities
     environment.systemPackages = with pkgs; [

@@ -29,10 +29,12 @@ let
           accessConfig = serverLib.accessPresets.${svc.access};
           bodySize = lib.optionalString (svc.maxBodySize != null) "client_max_body_size ${svc.maxBodySize};";
         in
-        lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-          accessConfig
-          bodySize
-        ]);
+        lib.concatStringsSep "\n" (
+          lib.filter (s: s != "") [
+            accessConfig
+            bodySize
+          ]
+        );
       locations."/" = {
         proxyPass = "http://127.0.0.1:${toString svc.port}";
         proxyWebsockets = svc.websockets;

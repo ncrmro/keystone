@@ -4,9 +4,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.desktop;
-in {
+in
+{
   config = mkIf cfg.enable {
     # SwayOSD for volume/brightness on-screen display
     services.swayosd = {

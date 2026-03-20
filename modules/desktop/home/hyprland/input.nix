@@ -4,7 +4,8 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.desktop.hyprland;
   # Build kb_options based on configuration
   # - altwin:swap_alt_win: Swap Alt and Super keys for ergonomic window management
@@ -13,7 +14,8 @@ with lib; let
   # - ctrl:nocaps or compose:caps: Caps Lock behavior
   capsOption = if cfg.capslockAsControl then "ctrl:nocaps" else "compose:caps";
   kbOptions = "${capsOption},altwin:swap_alt_win";
-in {
+in
+{
   config = mkIf cfg.enable {
     wayland.windowManager.hyprland.settings = {
       input = mkDefault {

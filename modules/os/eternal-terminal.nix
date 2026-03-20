@@ -10,10 +10,12 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   osCfg = config.keystone.os;
   cfg = osCfg.services.eternalTerminal;
-in {
+in
+{
   config = mkIf (osCfg.enable && cfg.enable) {
     services.eternal-terminal = {
       enable = true;
@@ -22,7 +24,7 @@ in {
 
     # Open ET port only on tailscale interface for security
     networking.firewall.interfaces."tailscale0" = {
-      allowedTCPPorts = [cfg.port];
+      allowedTCPPorts = [ cfg.port ];
     };
   };
 }

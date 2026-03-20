@@ -18,29 +18,37 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.hardwareKey;
   keysCfg = config.keystone.keys;
 
   # Resolve "username/keyname" references to SSH public keys
-  resolveRootKey = ref: let
-    parts = splitString "/" ref;
-    username = elemAt parts 0;
-    keyname = elemAt parts 1;
-  in keysCfg.${username}.hardwareKeys.${keyname}.publicKey;
-in {
+  resolveRootKey =
+    ref:
+    let
+      parts = splitString "/" ref;
+      username = elemAt parts 0;
+      keyname = elemAt parts 1;
+    in
+    keysCfg.${username}.hardwareKeys.${keyname}.publicKey;
+in
+{
   options.keystone.hardwareKey = {
     enable = mkEnableOption "Hardware key (FIDO2/YubiKey) system integration";
 
     rootKeys = mkOption {
       type = types.listOf types.str;
-      default = [];
+      default = [ ];
       description = ''
         References to hardware keys (format: "username/keyname") whose SSH
         public keys should be added to root's authorized_keys. Keys are
         looked up from keystone.keys.<username>.hardwareKeys.<keyname>.
       '';
-      example = ["ncrmro/yubi-black" "ncrmro/yubi-green"];
+      example = [
+        "ncrmro/yubi-black"
+        "ncrmro/yubi-green"
+      ];
     };
 
     # TODO: LUKS support
@@ -70,20 +78,22 @@ in {
 
   config = mkIf cfg.enable {
     # Validate rootKeys references resolve in keystone.keys
-    assertions = map (ref: let
-      parts = splitString "/" ref;
-      username = elemAt parts 0;
-      keyname = elemAt parts 1;
-    in {
-      assertion = length parts == 2
-        && keysCfg ? ${username}
-        && keysCfg.${username}.hardwareKeys ? ${keyname};
-      message = "keystone.hardwareKey.rootKeys references '${ref}' but no such key exists in keystone.keys.${username}.hardwareKeys.${keyname}";
-    }) cfg.rootKeys;
+    assertions = map (
+      ref:
+      let
+        parts = splitString "/" ref;
+        username = elemAt parts 0;
+        keyname = elemAt parts 1;
+      in
+      {
+        assertion =
+          length parts == 2 && keysCfg ? ${username} && keysCfg.${username}.hardwareKeys ? ${keyname};
+        message = "keystone.hardwareKey.rootKeys references '${ref}' but no such key exists in keystone.keys.${username}.hardwareKeys.${keyname}";
+      }
+    ) cfg.rootKeys;
 
     # Wire hardware key SSH keys into root's authorized_keys
-    users.users.root.openssh.authorizedKeys.keys =
-      map resolveRootKey cfg.rootKeys;
+    users.users.root.openssh.authorizedKeys.keys = map resolveRootKey cfg.rootKeys;
 
     # Enable smart card daemon for hardware key communication
     services.pcscd.enable = true;
@@ -96,10 +106,10 @@ in {
 
     # Required packages for hardware key management
     environment.systemPackages = with pkgs; [
-      yubikey-manager         # ykman CLI for YubiKey configuration
-      age-plugin-yubikey      # age encryption with YubiKey (for agenix)
-      pam_u2f                 # PAM module for FIDO2 authentication
-      yubico-piv-tool         # PIV operations
+      yubikey-manager # ykman CLI for YubiKey configuration
+      age-plugin-yubikey # age encryption with YubiKey (for agenix)
+      pam_u2f # PAM module for FIDO2 authentication
+      yubico-piv-tool # PIV operations
       yubikey-personalization # Personalization tools
     ];
 

@@ -36,16 +36,13 @@
   config,
   lib,
   pkgs,
-  osConfig ? {},
+  osConfig ? { },
   ...
 }:
 with lib;
 let
   cfg = config.keystone.terminal.sshAutoLoad;
-  hostname =
-    if osConfig ? networking.hostName
-    then osConfig.networking.hostName
-    else "unknown";
+  hostname = if osConfig ? networking.hostName then osConfig.networking.hostName else "unknown";
 in
 {
   options.keystone.terminal.sshAutoLoad = {
@@ -70,49 +67,56 @@ in
     };
   };
 
-  config = mkIf (config.keystone.terminal.enable && cfg.enable) (let
-    # Script that outputs the passphrase for SSH_ASKPASS
-    # Converges with agents.nix askpassScript pattern
-    askpassScript = pkgs.writeShellScript "ssh-askpass" ''
-      ${pkgs.coreutils}/bin/cat ${cfg.passphrasePath}
-    '';
-  in {
-    # Ensure ssh-agent and ssh client are configured
-    services.ssh-agent.enable = true;
-    programs.ssh.enable = true;
+  config = mkIf (config.keystone.terminal.enable && cfg.enable) (
+    let
+      # Script that outputs the passphrase for SSH_ASKPASS
+      # Converges with agents.nix askpassScript pattern
+      askpassScript = pkgs.writeShellScript "ssh-askpass" ''
+        ${pkgs.coreutils}/bin/cat ${cfg.passphrasePath}
+      '';
+    in
+    {
+      # Ensure ssh-agent and ssh client are configured
+      services.ssh-agent.enable = true;
+      programs.ssh.enable = true;
 
-    systemd.user.services.ssh-auto-load = {
-      Unit = {
-        Description = "Auto-load SSH key into ssh-agent";
-        After = [ "ssh-agent.service" ];
-        Requires = [ "ssh-agent.service" ];
+      systemd.user.services.ssh-auto-load = {
+        Unit = {
+          Description = "Auto-load SSH key into ssh-agent";
+          After = [ "ssh-agent.service" ];
+          Requires = [ "ssh-agent.service" ];
+        };
+
+        Service = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+
+          # Poll for ssh-agent socket readiness (converges with agents.nix:1746-1749)
+          ExecStartPre = toString (
+            pkgs.writeShellScript "wait-for-ssh-agent" ''
+              for i in $(seq 1 50); do
+                [ -S "$SSH_AUTH_SOCK" ] && exit 0
+                sleep 0.1
+              done
+              echo "ssh-agent socket not ready after 5s" >&2
+              exit 1
+            ''
+          );
+
+          ExecStart = toString (
+            pkgs.writeShellScript "ssh-auto-load" ''
+              export SSH_ASKPASS="${askpassScript}"
+              export SSH_ASKPASS_REQUIRE="force"
+              export DISPLAY="none"
+              ${pkgs.openssh}/bin/ssh-add ${cfg.keyFile}
+            ''
+          );
+        };
+
+        Install = {
+          WantedBy = [ "default.target" ];
+        };
       };
-
-      Service = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-
-        # Poll for ssh-agent socket readiness (converges with agents.nix:1746-1749)
-        ExecStartPre = toString (pkgs.writeShellScript "wait-for-ssh-agent" ''
-          for i in $(seq 1 50); do
-            [ -S "$SSH_AUTH_SOCK" ] && exit 0
-            sleep 0.1
-          done
-          echo "ssh-agent socket not ready after 5s" >&2
-          exit 1
-        '');
-
-        ExecStart = toString (pkgs.writeShellScript "ssh-auto-load" ''
-          export SSH_ASKPASS="${askpassScript}"
-          export SSH_ASKPASS_REQUIRE="force"
-          export DISPLAY="none"
-          ${pkgs.openssh}/bin/ssh-add ${cfg.keyFile}
-        '');
-      };
-
-      Install = {
-        WantedBy = [ "default.target" ];
-      };
-    };
-  });
+    }
+  );
 }

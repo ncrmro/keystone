@@ -15,7 +15,8 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.terminal.conventions;
   terminalCfg = config.keystone.terminal;
   conventionsPath = pkgs.keystone.keystone-conventions;
@@ -24,34 +25,40 @@ with lib; let
   archetypesFile = "${conventionsPath}/archetypes.yaml";
 
   # Parse archetypes.yaml to determine which conventions to inline
-  archetypesYaml = builtins.fromJSON (builtins.readFile (
-    pkgs.runCommand "archetypes-json" {nativeBuildInputs = [pkgs.yq-go];} ''
-      yq -o=json '.' ${archetypesFile} > $out
-    ''
-  ));
+  archetypesYaml = builtins.fromJSON (
+    builtins.readFile (
+      pkgs.runCommand "archetypes-json" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+        yq -o=json '.' ${archetypesFile} > $out
+      ''
+    )
+  );
 
   # Get the archetype config
-  archetypeConfig = archetypesYaml.archetypes.${cfg.archetype} or {};
+  archetypeConfig = archetypesYaml.archetypes.${cfg.archetype} or { };
 
   # Build inlined conventions content
   inlinedConventions = map (
-    name: let
+    name:
+    let
       # Convention names use dots (e.g., "process.version-control") but files
       # use the full name as filename (e.g., "process.version-control.md")
       filename = "${name}.md";
       filepath = "${conventionsPath}/${filename}";
     in
-      if builtins.pathExists filepath
-      then builtins.readFile filepath
-      else "<!-- Convention ${name} not found -->"
-  ) (archetypeConfig.inlined_conventions or []);
+    if builtins.pathExists filepath then
+      builtins.readFile filepath
+    else
+      "<!-- Convention ${name} not found -->"
+  ) (archetypeConfig.inlined_conventions or [ ]);
 
   # Build referenced conventions as markdown links
   referencedConventions = map (
-    name: let
+    name:
+    let
       filename = "${name}.md";
-    in "- [${name}](${conventionsPath}/${filename})"
-  ) (archetypeConfig.referenced_conventions or []);
+    in
+    "- [${name}](${conventionsPath}/${filename})"
+  ) (archetypeConfig.referenced_conventions or [ ]);
 
   # Compose the AGENTS.md content
   agentsMdContent = concatStringsSep "\n\n---\n\n" (
@@ -64,7 +71,7 @@ with lib; let
       ''
     ]
     ++ inlinedConventions
-    ++ optional (referencedConventions != []) ''
+    ++ optional (referencedConventions != [ ]) ''
       ## Reference Conventions
 
       The following conventions are available for on-demand context:
@@ -72,7 +79,8 @@ with lib; let
       ${concatStringsSep "\n" referencedConventions}
     ''
   );
-in {
+in
+{
   options.keystone.terminal.conventions = {
     enable = mkOption {
       type = types.bool;
