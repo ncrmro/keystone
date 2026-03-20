@@ -59,6 +59,11 @@ in
             ];
             description = "Tailscale network role for this host (mandatory).";
           };
+          baremetal = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Whether this host runs on physical hardware. False for VPS/cloud instances and VMs. Gates hardware-specific packages like lm_sensors.";
+          };
           hostPublicKey = mkOption {
             type = types.nullOr types.str;
             default = null;
