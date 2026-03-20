@@ -21,6 +21,14 @@ in
 {
   config = mkMerge [
     (mkIf (osCfg.enable && cfg != { }) {
+      # REQ-017.11: warn when Grafana MCP is enabled but no secret is provisioned
+      warnings = concatLists (
+        mapAttrsToList (
+          name: agentCfg:
+          optional agentCfg.grafana.mcp.enable "Agent '${name}' has grafana.mcp.enable = true. Ensure the agenix secret 'grafana-mcp-api-key' is provisioned and decryptable on this host."
+        ) cfg
+      );
+
       assertions = [
         # All agent UIDs must be unique
         {
