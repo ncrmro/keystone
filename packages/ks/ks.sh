@@ -586,9 +586,15 @@ build_user_table() {
 }
 
 # --- ks update workflow documentation (REQ-014.5) ---
+# NOTE: ks update requires sudo. Agents MUST NOT run it directly.
+# This documentation is injected as reference knowledge so the agent can
+# explain the workflow to humans or understand the deploy pipeline.
 ks_update_workflow_docs() {
   cat <<'WFDOC'
-## ks update Workflow
+## ks update Workflow (Reference Only — requires sudo, human-only)
+
+> **WARNING**: `ks update` calls `sudo nixos-rebuild switch`. Agents MUST NOT
+> run this command. Use `ks build` to test changes, then ask a human to deploy.
 
 `ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]`
 
@@ -648,8 +654,8 @@ nix build .#nixosConfigurations.HOSTNAME.config.system.build.toplevel \
 
 1. Edit files in `.repos/keystone/` (or `.submodules/keystone/`)
 2. Test with `ks build --dev` (builds with local overrides, no deploy)
-3. Deploy locally with `ks update --dev` (skips pull/lock/push)
-4. Once satisfied, commit + push keystone, then `ks update` (full cycle with locking)
+3. Once satisfied, commit + push keystone
+4. Ask a human to run `ks update` (requires sudo) for deployment
 OFDOC
 }
 
