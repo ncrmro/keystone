@@ -1,0 +1,308 @@
+# Review and Merge
+
+## Objective
+
+Collect agent results from the worktree. Review the diff against TASK.md acceptance
+criteria. Push changes. Gate on CI. Request review. Auto-merge on PASS (squash).
+Max 3 fix attempts on FAIL.
+
+## Task
+
+### Process
+
+#### Step 1: Collect Results
+
+Read run.md to get the worktree path, then collect agent output:
+
+```bash
+WORKTREE=.repos/OWNER/REPO/.worktrees/BRANCH
+
+# Check agent committed work
+git -C $WORKTREE log --oneline -10
+
+# Read the updated TASK.md (agent checked off criteria + added notes)
+cat $WORKTREE/TASK.md
+
+# See what changed
+git -C $WORKTREE diff main..HEAD --stat
+git -C $WORKTREE diff main..HEAD
+```
+
+#### Step 2: Review the Diff
+
+Review the diff against TASK.md acceptance criteria. For each criterion:
+
+1. **Check requirement met**: Is there code that satisfies this criterion?
+2. **Check evidence**: Are tests, output, or other evidence present?
+3. **Check scope**: Does every changed file/hunk trace back to an acceptance criterion?
+
+**Scope validation is critical.** Flag changes NOT required by any acceptance criterion:
+- Reformatting/linting code not part of the task
+- Refactoring existing code (extracting, renaming, restructuring)
+- Adding features or elements not in acceptance criteria
+- Modifying files not related to the task
+
+If out-of-scope changes exist, verdict is **FAIL** with instructions to revert them.
+
+Verdict: **PASS** (all requirements met AND no out-of-scope changes) or **FAIL**.
+
+#### Step 3: Push Changes
+
+```bash
+cd $WORKTREE
+git push origin $BRANCH
+```
+
+Update TASK.md status to `in-review`.
+
+#### Step 4: CI Gate
+
+**GitHub:**
+```bash
+# Verify CI exists
+CI_COUNT=$(gh pr view $PR_NUM --repo OWNER/REPO --json statusCheckRollup --jq '.statusCheckRollup | length')
+
+if [ "$CI_COUNT" -gt 0 ]; then
+  # Watch CI to completion — do NOT read logs into chat
+  gh pr checks $PR_NUM --repo OWNER/REPO --watch
+fi
+```
+
+If CI fails, download and search logs per `process.continuous-integration`:
+```bash
+RUN_ID=$(gh run list --repo OWNER/REPO --branch $BRANCH -L 1 --json databaseId --jq '.[0].databaseId')
+gh run view "$RUN_ID" --repo OWNER/REPO --log > /tmp/ci-$RUN_ID.log
+rg -i 'error|fail|fatal|exit code' /tmp/ci-$RUN_ID.log
+```
+
+**Forgejo:**
+```bash
+SHA=$(git -C $WORKTREE rev-parse HEAD)
+
+# Poll commit status until terminal
+tea api --login forgejo /repos/OWNER/REPO/commits/$SHA/status
+# Repeat until all statuses reach success/failure
+```
+
+If CI fails on Forgejo:
+```bash
+# Find job ID
+tea api --login forgejo /repos/OWNER/REPO/actions/runs
+JOB_ID=123
+tea api --login forgejo /repos/OWNER/REPO/actions/jobs/$JOB_ID/logs > /tmp/ci-$JOB_ID.log
+rg -i 'error|fail|fatal|exit code' /tmp/ci-$JOB_ID.log
+```
+
+**CRITICAL**: Never read full CI logs into conversation context. Download to file, search with rg.
+
+#### Step 5: Request Review and Update Project Board
+
+**Request review:**
+
+**GitHub:**
+```bash
+# Mark PR ready for review
+gh pr ready $PR_NUM --repo OWNER/REPO
+
+# Request Copilot review per process.copilot-agent
+gh pr edit $PR_NUM --repo OWNER/REPO --add-reviewer copilot 2>/dev/null || \
+  gh pr comment $PR_NUM --repo OWNER/REPO --body "@copilot review this PR"
+```
+
+**Forgejo:**
+```bash
+# Remove WIP: prefix to mark ready
+fj pr edit $PR_NUM --repo OWNER/REPO --title "feat(scope): task title"
+
+# Assign repo owner as reviewer per tool.forgejo
+fj pr edit $PR_NUM --repo OWNER/REPO --add-reviewer REPO_OWNER
+```
+
+**Move issue to "In Review"** on the project board per `code.delivery` rule 21:
+
+**GitHub:**
+```bash
+gh project item-edit --id $ITEM_ID --project-id $PROJECT_ID \
+  --field-id $STATUS_FIELD_ID --single-select-option-id $IN_REVIEW_OPTION_ID
+```
+
+**Forgejo:**
+```bash
+forgejo-project item move --project $PROJECT_NUM --issue $ISSUE_NUMBER --column "In Review"
+```
+
+**Skip board update** if the task has no associated issue or no project board.
+
+#### Step 6: Auto-Merge (PASS Verdict)
+
+**GitHub:**
+```bash
+gh pr merge $PR_NUM --repo OWNER/REPO --auto --squash --delete-branch
+```
+
+**Forgejo:**
+```bash
+# Poll until CI passes, then merge
+fj pr merge $PR_NUM --repo OWNER/REPO --method squash --delete
+```
+
+Update TASK.md status to `merged`.
+
+#### Step 7: Handle Failures (Fix Loop)
+
+If review verdict is FAIL or CI fails, send work back to the same agent.
+
+**Track attempts in run.md:**
+```yaml
+fix_attempts: 1  # Increment on each failure
+```
+
+**Send fix instructions:**
+```bash
+cd $WORKTREE
+
+# Append fix requirements to TASK.md
+cat >> TASK.md << 'EOF'
+
+## Fix Required (Attempt N/3)
+
+### Issues Found
+- [specific issues from review]
+
+### CI Failures
+- [error details from log search]
+
+### Files to Modify
+- [specific guidance]
+EOF
+
+git add TASK.md
+git commit -m "chore: add fix requirements (attempt N/3)"
+git push
+```
+
+Re-launch the agent via agentctl:
+```bash
+agentctl drago AGENT --project SLUG --worktree $WORKTREE
+```
+
+After fixes, loop back to Step 1 (collect → review → CI → merge or fix again).
+
+**Max 3 fix attempts.** After 3 failures:
+1. Update TASK.md status to `failed`
+2. Update TASKS.yaml with status `blocked`
+3. Move issue to "Blocked" on the project board (if applicable):
+   - **GitHub:** `gh project item-edit` to set status to a blocked/backlog column
+   - **Forgejo:** `forgejo-project item move --column "Backlog"`
+4. Comment on the issue with failure summary
+5. Report the failure summary to the user
+
+```
+collect → review → CI → pass? → auto-merge
+                       │
+                       fail? → send back to SAME agent → collect (loop)
+                       │
+                       3 failures? → mark failed, report to user
+```
+
+#### Step 8: Write review.md
+
+Write the review document to `.deepwork/tmp/sweng/review.md`:
+
+## Output Format
+
+### review.md (PASS)
+
+```markdown
+---
+verdict: PASS
+pr_number: 42
+pr_url: https://github.com/ncrmro/catalyst/pull/42
+auto_merge: enabled
+fix_attempts: 0
+reviewed: 2026-03-18T15:30:00Z
+platform: github
+---
+
+# Review: feat/add-search-endpoint
+
+## Verdict: PASS
+
+## Acceptance Criteria
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| GET /api/search returns results | Pass | src/routes/search.ts:45 |
+| Input validation | Pass | src/routes/search.ts:12 |
+| Integration tests | Pass | tests/search.test.ts — 8/8 passed |
+| Existing tests pass | Pass | CI green |
+
+## Scope Check
+
+All changes are in-scope. Each modified file traces to acceptance criteria:
+- `src/routes/search.ts` — search endpoint (criteria 1, 2)
+- `tests/search.test.ts` — test coverage (criterion 3)
+
+## Diff Summary
+
+- **Commits**: 3
+- **Files changed**: 2
+- **Insertions**: +85
+- **Deletions**: -0
+
+## CI Status
+
+All checks passed.
+
+## Auto-Merge
+
+Enabled. PR will merge when CI passes and review is approved.
+```
+
+### review.md (FAIL)
+
+```markdown
+---
+verdict: FAIL
+pr_number: 42
+fix_attempts: 2
+reviewed: 2026-03-18T15:30:00Z
+platform: github
+---
+
+# Review: feat/add-search-endpoint
+
+## Verdict: FAIL (Attempt 2/3)
+
+## Issues Found
+
+- [ ] Missing null check in search.ts:34
+- [ ] Test search.test.ts:12 failing with TypeError
+
+## Action
+
+Sending back to claude for fixes. TASK.md updated with fix requirements.
+```
+
+## Quality Criteria
+
+- Agent's updated TASK.md reviewed against each acceptance criterion
+- Diff reviewed for scope — all changes trace to acceptance criteria
+- If PASS: changes pushed, CI gated, review requested, auto-merge enabled (squash), issue moved to "In Review" on project board
+- If FAIL: work sent back to same agent with specific fix instructions via TASK.md
+- If 3 failures: issue moved back to "Backlog" on project board, comment posted on issue
+- Max 3 fix attempts enforced before marking failed
+- review.md written with verdict, evidence, and merge status
+- run.md updated with fix_attempts and timing
+- **CRITICAL**: CI logs never read into chat — download to file, search with rg
+- Platform-appropriate commands used throughout (gh vs fj)
+
+## Context
+
+This is the most complex phase. The key design principle: **keep the human OUT
+of the loop for successful tasks.** CI passes + review approval = merged.
+
+If a task can't be fixed in 3 attempts, that's a signal the task needs replanning:
+- Task description was ambiguous → fix in planning
+- Acceptance criteria didn't cover the failure case → fix in planning
+- Agent choice wasn't capable enough → try a different agent

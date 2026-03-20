@@ -1,0 +1,115 @@
+name: marketing
+version: "1.1.0"
+summary: "Marketing workflows: social media setup, credential collection, and content strategy"
+common_job_info_provided_to_all_steps_at_runtime: |
+  A per-project marketing job that helps set up and manage social media presence.
+  Supported platforms: X (Twitter), LinkedIn, Instagram/Facebook, and Bluesky.
+  Accounts may be business or personal depending on the project.
+
+  Credential storage: All API keys, tokens, and passwords are stored in
+  Bitwarden/Vaultwarden via the `rbw` CLI. Never write credentials to plain
+  files or commit them to git.
+
+  Project tracking: Social media setup status and strategy are recorded in the
+  project's PROJECTS.yaml file under a `social_media` key.
+
+  Browser automation: For platform sign-in and API app creation, use Chrome
+  DevTools MCP (the tested browser automation tool in this environment).
+  Prerequisite: Chrome DevTools MCP must be connected before running this workflow.
+
+  Output file paths: All workflow outputs must be saved to the project directory,
+  not to `.deepwork/tmp/`. Use the path pattern:
+    projects/[project_name]/marketing/[filename]
+  For example: projects/plant-caravan/marketing/content_strategy.md
+  Create the directory if it doesn't exist.
+
+workflows:
+  - name: social_media_setup
+    summary: "Set up social media credentials and content strategy for a project"
+    steps:
+      - discover_project
+      - setup_platforms
+      - define_strategy
+      - update_tracking
+
+steps:
+  - id: discover_project
+    name: "Discover Project Context"
+    description: "Read project YAML and check Bitwarden for existing social media credentials"
+    instructions_file: steps/discover_project.md
+    inputs:
+      - name: project_name
+        description: "Name of the project to set up social media for (must match a key in PROJECTS.yaml)"
+    outputs:
+      discovery_report.md:
+        type: file
+        description: "Summary of project context, existing credentials found in Bitwarden, and platforms still needing setup"
+        required: true
+    dependencies: []
+    reviews: []
+
+  - id: setup_platforms
+    name: "Set Up Platform Credentials"
+    description: "Sign into each platform, create API apps/keys, and store credentials in Bitwarden"
+    instructions_file: steps/setup_platforms.md
+    inputs:
+      - file: discovery_report.md
+        from_step: discover_project
+    outputs:
+      platform_status.md:
+        type: file
+        description: "Per-platform status report: credentials created, Bitwarden item names, any issues encountered"
+        required: true
+    dependencies:
+      - discover_project
+    reviews:
+      - run_each: platform_status.md
+        quality_criteria:
+          "All Platforms Addressed": "Every platform (X, LinkedIn, Instagram/Facebook, Bluesky) has a status entry — either newly set up, already existing, or skipped with a reason."
+          "Credentials Stored": "All new credentials are confirmed stored in Bitwarden with clear item names."
+          "No Plaintext Secrets": "No API keys, tokens, or passwords appear in the output file."
+
+  - id: define_strategy
+    name: "Define Content Strategy"
+    description: "Define posting schedule, content pillars, and brand voice for each platform"
+    instructions_file: steps/define_strategy.md
+    inputs:
+      - file: platform_status.md
+        from_step: setup_platforms
+    outputs:
+      content_strategy.md:
+        type: file
+        description: "Content strategy document covering pillars, posting cadence, brand voice, and platform-specific guidelines"
+        required: true
+    dependencies:
+      - setup_platforms
+    reviews:
+      - run_each: content_strategy.md
+        quality_criteria:
+          "Platform Coverage": "Strategy covers all platforms that were successfully set up."
+          "Actionable Cadence": "Posting schedule is specific (days/times) and realistic."
+          "Clear Voice": "Brand voice guidelines are concrete enough to follow, not generic platitudes."
+
+  - id: update_tracking
+    name: "Update Project Tracking"
+    description: "Update PROJECTS.yaml with social media credentials status and strategy summary"
+    instructions_file: steps/update_tracking.md
+    inputs:
+      - file: platform_status.md
+        from_step: setup_platforms
+      - file: content_strategy.md
+        from_step: define_strategy
+    outputs:
+      projects_yaml_diff.md:
+        type: file
+        description: "Summary of changes made to PROJECTS.yaml including the social_media section added"
+        required: true
+    dependencies:
+      - setup_platforms
+      - define_strategy
+    reviews:
+      - run_each: projects_yaml_diff.md
+        additional_review_guidance: "Read the project's PROJECTS.yaml to verify the social_media section was actually written correctly."
+        quality_criteria:
+          "YAML Updated": "PROJECTS.yaml contains a social_media section for the target project with platform entries and strategy summary."
+          "Consistent With Outputs": "The YAML content matches the platform_status.md and content_strategy.md deliverables."

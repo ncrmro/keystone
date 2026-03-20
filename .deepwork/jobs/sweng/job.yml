@@ -1,0 +1,172 @@
+name: sweng
+version: "1.1.0"
+summary: "Single-task software engineering lifecycle: plan, assign agent, review, merge, clean up"
+common_job_info_provided_to_all_steps_at_runtime: |
+  Software engineering workflow for Drago's agent space. Handles the full lifecycle
+  of delivering one code change per run: task intake, agent launch, review, CI gating,
+  merge, and cleanup.
+
+  Key design principles:
+  1. One task per workflow run — the task loop (TASKS.yaml) handles concurrency
+  2. TASKS.yaml is the source of truth for task status — no queue.json
+  3. Dual-platform: GitHub (gh) and Forgejo (fj), auto-detected from git remote URL
+  4. Agents launched via agentctl: `agentctl drago <agent> --project <slug> --worktree <path>`
+  5. Convention compliance: process.feature-delivery from keystone governs the workflow
+
+  Agent types supported:
+  - claude: Claude Code CLI agent
+  - gemini: Gemini CLI agent
+  - opencode: OpenCode CLI agent
+  - claude-local: Claude Code with local Ollama models
+
+  Platform detection (from git remote URL):
+  - *github.com* → github → use `gh` CLI
+  - *git.ncrmro.com* → forgejo → use `fj` CLI
+
+  Directory layout:
+  - .repos/{owner}/{repo}/ — main checkout (stays on default branch)
+  - .repos/{owner}/{repo}/.worktrees/{branch}/ — implementation worktree
+  - TASKS.yaml — task status tracking (agent-space root)
+
+  Repository conventions (from CLAUDE.md / keystone):
+  - Internal Forgejo repos: SSH clone to .repos/{owner}/{repo}
+  - GitHub repos: gh repo clone to .repos/{owner}/{repo}
+  - Worktrees at .repos/{owner}/{repo}/.worktrees/{branch}
+  - Conventional commits: type(scope): subject
+  - PRs must reference issues with Closes/Fixes keywords
+  - Squash merge is the default merge strategy
+  - Draft PRs opened immediately (GitHub: --draft, Forgejo: WIP: prefix)
+
+  TASK.md frontmatter schema (written to worktree root):
+  ```yaml
+  ---
+  repo: owner/repo
+  branch: feat/task-slug
+  agent: claude          # claude | gemini | opencode | claude-local
+  platform: github       # auto-detected from remote URL
+  issue: 42              # optional, GitHub/Forgejo issue number
+  status: ready          # planning | ready | assigned | completed | merged
+  created: 2026-03-18
+  ---
+  ```
+
+workflows:
+  - name: sweng
+    summary: "Full lifecycle: plan task, launch agent, review work, merge, clean up"
+    steps:
+      - plan
+      - assign
+      - review
+      - postflight
+
+  - name: plan
+    summary: "Task intake and worktree setup only"
+    steps:
+      - plan
+
+  - name: review
+    summary: "Review completed work, merge, and clean up"
+    steps:
+      - review
+      - postflight
+
+steps:
+  - id: plan
+    name: "Task Intake"
+    description: >
+      Accept a task (TASKS.yaml entry, user prompt, or issue URL). Identify repo
+      and platform. Create branch and worktree per process.feature-delivery. Write
+      TASK.md with acceptance criteria. Create draft PR. Update TASKS.yaml.
+    instructions_file: steps/plan.md
+    inputs:
+      - name: task_source
+        description: "Task source: TASKS.yaml entry name, user description, or issue URL (e.g., gh#42 or fj#12)"
+      - name: repo
+        description: "Target repository as owner/repo (e.g., ncrmro/catalyst)"
+      - name: agent
+        description: "Agent to assign: claude, gemini, opencode, or claude-local"
+    outputs:
+      task_md:
+        type: file
+        description: "TASK.md written to worktree root with frontmatter and acceptance criteria"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: task_md
+        quality_criteria:
+          "Clear Acceptance Criteria": "Does TASK.md have specific, testable acceptance criteria as checkboxes?"
+          "Valid Frontmatter": "Does TASK.md have valid YAML frontmatter with repo, branch, agent, platform, status, and created fields?"
+          "Scoped Description": "Is the description focused on what needs to change and why?"
+          "Draft PR Created": "Was a draft PR created (GitHub: --draft, Forgejo: WIP: prefix) with Goal/Tasks/Changes/Demo sections?"
+          "Worktree Setup": "Was a git worktree created at .repos/{owner}/{repo}/.worktrees/{branch}?"
+
+  - id: assign
+    name: "Launch Agent"
+    description: >
+      Launch a coding agent in the worktree via agentctl. The agent reads TASK.md,
+      implements the task, and commits work. Record run metadata in run.md.
+    instructions_file: steps/assign.md
+    inputs:
+      - file: task_md
+        from_step: plan
+    outputs:
+      run_md:
+        type: file
+        description: "Run metadata at .deepwork/tmp/sweng/run.md with agent info, worktree path, and launch command"
+        required: true
+    dependencies:
+      - plan
+    reviews:
+      - run_each: run_md
+        quality_criteria:
+          "Agent Launched": "Does run.md confirm the agent was launched via agentctl with correct parameters?"
+          "TASK.md Copied": "Was TASK.md present in the worktree before launch?"
+          "Status Updated": "Was TASK.md status updated to assigned?"
+
+  - id: review
+    name: "Review and Merge"
+    description: >
+      Collect agent results from worktree. Review diff against TASK.md acceptance
+      criteria. Push changes. CI gate. Request review (GitHub: Copilot, Forgejo:
+      repo owner). Auto-merge on PASS (squash). Max 3 fix attempts on FAIL.
+    instructions_file: steps/review.md
+    inputs:
+      - file: run_md
+        from_step: assign
+    outputs:
+      review_md:
+        type: file
+        description: "Review document at .deepwork/tmp/sweng/review.md with verdict, evidence, and merge status"
+        required: true
+    dependencies:
+      - assign
+    reviews:
+      - run_each: review_md
+        additional_review_guidance: >
+          Read the TASK.md from the worktree to verify each acceptance criterion was checked.
+          Verify scope: every changed file and hunk in the diff must trace back to a specific
+          acceptance criterion. Flag any cosmetic reformatting, refactoring, or additions not
+          required by the task.
+        quality_criteria:
+          "Requirements Checked": "Does the review verify each acceptance criterion from TASK.md?"
+          "Scope Validated": "Does the review confirm ALL changes are in-scope? Were out-of-scope changes flagged as FAIL?"
+          "Clear Verdict": "Does the review state PASS or FAIL with rationale?"
+          "CI Gated": "Was CI checked (GitHub: gh pr checks --watch, Forgejo: commit status poll)?"
+          "Auto-Merge Used": "For PASS, was squash merge used (GitHub: --auto --squash, Forgejo: fj pr merge --method squash)?"
+
+  - id: postflight
+    name: "Clean Up"
+    description: >
+      Remove worktree and local branch. Update TASKS.yaml status to completed.
+    instructions_file: steps/postflight.md
+    inputs:
+      - file: review_md
+        from_step: review
+    outputs:
+      tasks_yaml:
+        type: file
+        description: "Updated TASKS.yaml with task status set to completed"
+        required: true
+    dependencies:
+      - review
+    reviews: []

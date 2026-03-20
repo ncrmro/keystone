@@ -1,0 +1,153 @@
+name: task_loop
+version: "3.3.2"
+summary: "Ingest tasks from sources, prioritize by project, and execute tasks individually"
+common_job_info_provided_to_all_steps_at_runtime: |
+  TASKS.yaml at the repo root tracks work items with fields: name, description, status,
+  project, source, source_ref, model, workflow, needs. Status values: pending, in_progress, completed, blocked.
+  Tasks with a workflow field should invoke that DeepWork workflow instead of interpreting the description freely.
+  Tasks with a needs field (array of task names) MUST NOT execute until all named tasks are completed.
+
+  PROJECTS.yaml at the repo root defines active projects (listed in priority order, first = highest)
+  and declarative source commands that output JSON.
+
+  ISSUES.yaml at the repo root documents blockers discovered during task execution.
+
+  CLAUDE.md and AGENTS.md at the repo root contain REQUIRED tool-specific conventions.
+  You MUST read these before using any external tool. Failure to follow conventions
+  (e.g., using wrong himalaya subcommand) can cause commands to hang in automated contexts.
+
+  Model separation: Ingest and prioritize run with haiku (cheap, just parsing/organizing).
+  The prioritize step assigns a model field to every pending task based on complexity:
+  haiku for simple mechanical tasks, sonnet for standard multi-step work, opus for advanced
+  tasks requiring deep reasoning or complex architecture. The keystone task loop reads this field
+  and selects the model for each task's execution session. Tasks MAY have their model pre-set
+  (e.g., by ingest or manually); prioritize preserves those.
+
+  Core rule: Any "ping" message from any source MUST generate a "pong" reply task.
+
+workflows:
+  - name: ingest
+    summary: "Parse pre-fetched source JSON and create/update tasks in TASKS.yaml"
+    steps:
+      - parse_sources
+
+  - name: prioritize
+    summary: "Order pending tasks by project priority from PROJECTS.yaml"
+    steps:
+      - reorder_tasks
+
+  - name: run
+    summary: "Execute a single pending task"
+    steps:
+      - execute
+      - report
+
+steps:
+  # ── ingest workflow ──────────────────────────────────────────────────────
+
+  - id: parse_sources
+    name: "Parse Sources"
+    description: "Parse pre-fetched source JSON injected into the prompt, compare with current TASKS.yaml, and create/update tasks"
+    instructions_file: steps/parse_sources.md
+    inputs:
+      - name: source_json
+        description: "Pre-fetched source data as JSON, injected into the prompt by the task loop orchestrator"
+    outputs:
+      TASKS.yaml:
+        type: file
+        description: "Updated TASKS.yaml with new tasks from sources"
+        required: true
+      ingest_report.md:
+        type: file
+        description: "Summary of ingestion: new tasks created, existing tasks updated, duplicates skipped"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: TASKS.yaml
+        additional_review_guidance: "Verify that new tasks have name, description, status, source, and source_ref fields. Check that no duplicate tasks were created for items already tracked."
+        quality_criteria:
+          "No Duplicates": "No task in TASKS.yaml is a duplicate of another task representing the same source item."
+          "Required Fields": "Every new task has name, description, status (set to pending), source, and source_ref fields."
+          "Project Association": "Tasks are associated with a project from PROJECTS.yaml when the relationship is clear from the source data."
+          "Core Rules Applied": "Core rules (e.g., ping/pong) are applied — any source item matching a core rule has a corresponding task."
+          "Reply Emails Parsed": "Emails that are replies (Re: ...) to agent-sent messages are evaluated for new task content in the reply body above the quoted text. A reply containing instructions is NOT 'not actionable'."
+          "Schema Preserved": "TASKS.yaml has exactly one top-level key ('tasks') containing a list. No other top-level keys (summary, metadata, etc.) exist. Task fields use the canonical names (name, description, status, project, source, source_ref, model, workflow, needs) -- no renamed or invented fields."
+
+  # ── prioritize workflow ──────────────────────────────────────────────────
+
+  - id: reorder_tasks
+    name: "Reorder Tasks by Priority"
+    description: "Read TASKS.yaml and PROJECTS.yaml, reorder pending tasks by project priority"
+    instructions_file: steps/reorder_tasks.md
+    inputs: []
+    outputs:
+      TASKS.yaml:
+        type: file
+        description: "TASKS.yaml with pending tasks reordered by project priority"
+        required: true
+      priority_report.md:
+        type: file
+        description: "Brief explanation of ordering decisions"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: TASKS.yaml
+        additional_review_guidance: "Read PROJECTS.yaml to verify that pending tasks are ordered according to project priority (first project = highest priority)."
+        quality_criteria:
+          "Priority Order": "Pending tasks are ordered by their project's position in PROJECTS.yaml (first project = highest priority)."
+          "Non-Pending Preserved": "Completed, blocked, and in_progress tasks are not reordered or removed."
+          "Unaffiliated Tasks Last": "Pending tasks without a project association appear after all project-associated pending tasks."
+          "Model Assigned": "Every pending task has a model field. Simple mechanical tasks (reply pong, forward message) use haiku. Standard tasks requiring judgment or multi-step work use sonnet. Advanced tasks requiring deep reasoning, complex architecture, or novel problem-solving use opus. Pre-existing model fields are preserved."
+          "Schema Preserved": "TASKS.yaml has exactly one top-level key ('tasks'). Task entries use the canonical field names from steps/shared/tasks_schema.md. No fields were renamed (e.g., name->id), no fields were invented (e.g., priority, urgency, effort, depends_on), and no extra sections (e.g., summary:) were added."
+
+  # ── run workflow ─────────────────────────────────────────────────────────
+
+  - id: execute
+    name: "Execute Task"
+    description: "Perform the work for the specified task, checking feasibility first"
+    instructions_file: steps/execute.md
+    inputs:
+      - name: task_name
+        description: "The name of the task to execute (passed via prompt by the task loop orchestrator)"
+      - name: task_description
+        description: "The description of the task (passed via prompt by the task loop orchestrator)"
+    outputs:
+      TASKS.yaml:
+        type: file
+        description: "Updated TASKS.yaml with the task's status changed to completed or blocked"
+        required: true
+      ISSUES.yaml:
+        type: file
+        description: "Updated ISSUES.yaml if the task was blocked"
+        required: false
+    dependencies: []
+    reviews:
+      - run_each: TASKS.yaml
+        quality_criteria:
+          "Work Performed": "If the task is marked completed, there is concrete evidence that actual work was done (files created/modified, commands executed with output, emails sent, repos cloned, etc.). A task that was only read or understood but not acted on must NOT be marked completed."
+          "Status Updated": "The specified task's status has been changed from pending/in_progress to completed or blocked."
+          "Blocked Documented": "If the task is blocked, a corresponding entry exists in ISSUES.yaml with the reason."
+          "Conventions Followed": "External tools were used according to AGENTS.md conventions (e.g., printf ... | himalaya message send for email)."
+
+  - id: report
+    name: "Report Results"
+    description: "Write a brief execution report for this task"
+    instructions_file: steps/report.md
+    inputs:
+      - file: TASKS.yaml
+        from_step: execute
+      - file: ISSUES.yaml
+        from_step: execute
+    outputs:
+      task_report.json:
+        type: file
+        description: "Execution report in JSON format: what was done, outcome, issues, PRs, issues created"
+        required: true
+    dependencies:
+      - execute
+    reviews:
+      - run_each: task_report.json
+        additional_review_guidance: "Read TASKS.yaml and ISSUES.yaml to verify the report accurately reflects the task outcome. Ensure the output is strictly valid JSON matching the schema."
+        quality_criteria:
+          "Accurate Outcome": "The report correctly states whether the task was completed or blocked."
+          "Actionable Detail": "If blocked, the report includes enough detail for a human to understand and resolve the blocker."

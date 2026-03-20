@@ -1,0 +1,73 @@
+name: daily_status
+version: "1.2.1"
+summary: "Compile and send a daily status digest email to the human operator"
+common_job_info_provided_to_all_steps_at_runtime: |
+  This job produces a daily status email sent from the agent to its human operator
+  each morning. Read SOUL.md for the agent's identity (name, email) and HUMAN.md for the recipient.
+
+  The email summarizes:
+  - Current priorities (pending tasks from TASKS.yaml, ordered by project priority)
+  - Open PRs created by the agent across all project repos (via gh CLI)
+  - Recently completed tasks
+  - Open blockers/issues from ISSUES.yaml
+
+  Priorities include both pending AND blocked tasks (blocked tasks are still active work).
+
+  Data sources:
+  - TASKS.yaml: task list with status (pending, in_progress, completed, blocked)
+  - PROJECTS.yaml: project definitions with priority ordering and repo list
+  - ISSUES.yaml: open blockers discovered during task execution
+  - GitHub CLI (gh): PRs on GitHub repos
+  - Forgejo CLI (fj): PRs on git.ncrmro.com repos
+  If a CLI tool is not authenticated, skip that source gracefully and note it in the output.
+
+  Email convention (CRITICAL — read CLAUDE.md before sending):
+  Emails MUST be sent via: printf "From: ...\r\nTo: ...\r\n\r\nBody" | himalaya message send
+  Never use himalaya message write, reply, or template send — they hang without a TTY.
+  Use PLAIN ASCII ONLY in subject and body — no em dashes, curly quotes, or other non-ASCII.
+  Non-ASCII causes MIME type to default to application/octet-stream, breaking email display.
+
+workflows:
+  - name: send
+    summary: "Gather status data, compose digest, and send email to the human operator"
+    steps:
+      - gather_status
+      - send_email
+
+steps:
+  - id: gather_status
+    name: "Gather Status Data"
+    description: "Read all data sources and compose the status digest as a draft email body"
+    instructions_file: steps/gather_status.md
+    inputs: []
+    outputs:
+      status_draft.md:
+        type: file
+        description: "Draft email body in plain text, ready to send"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: status_draft.md
+        additional_review_guidance: "Read TASKS.yaml, PROJECTS.yaml, and ISSUES.yaml to verify the draft accurately reflects current state."
+        quality_criteria:
+          "Accurate Priorities": "Pending and blocked tasks listed match what is in TASKS.yaml, ordered by project priority. Blocked tasks are annotated with their blocker."
+          "PRs Included": "Open PRs authored by the agent are listed, or the draft explicitly states there are none."
+          "Blockers Surfaced": "Open issues from ISSUES.yaml are mentioned, or the draft states there are none."
+          "Concise and Scannable": "The email is concise, uses short sections with headers, and can be scanned in under 30 seconds."
+          "ASCII Only": "The draft contains only plain ASCII characters - no em dashes, curly quotes, or other non-ASCII. Use - instead of em dash, ' instead of curly quote."
+
+  - id: send_email
+    name: "Send Status Email"
+    description: "Send the composed status digest to the human operator via himalaya"
+    instructions_file: steps/send_email.md
+    inputs:
+      - file: status_draft.md
+        from_step: gather_status
+    outputs:
+      send_confirmation.md:
+        type: file
+        description: "Confirmation that the email was sent, including any errors"
+        required: true
+    dependencies:
+      - gather_status
+    reviews: []

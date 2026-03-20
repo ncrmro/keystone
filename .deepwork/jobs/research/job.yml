@@ -1,0 +1,170 @@
+name: research
+version: 1.1.0
+summary: Conduct structured research on any topic, producing findings and cited bibliography
+common_job_info_provided_to_all_steps_at_runtime: |
+  A multi-step research workflow supporting science, business, competitive, market,
+  and technical research. Produces a structured README.md with findings and an optional
+  bibliography of cited sources.
+
+  Platform Selection: At the start, choose where to conduct research:
+  - Local only: Use Claude's built-in WebSearch and WebFetch tools
+  - Gemini Deep Research: Open Gemini in Chrome for comprehensive web crawling
+  - ChatGPT: Use ChatGPT's research capabilities with citations
+  - Grok: Best for real-time information and social media context
+  - Perplexity: Excellent for research with inline citations
+  - Parallel mode: Select multiple platforms for broader coverage and cross-validation
+
+  The workflow supports three depth levels:
+  - Quick: web search summary with key findings
+  - Standard: multi-source web research with synthesis
+  - Deep: thorough investigation using selected platforms
+
+  Outputs are saved to research/NAME/ directories. When a project is detected, a symlink
+  is created at projects/ProjectName/research/NAME pointing to the research directory.
+workflows:
+- name: research
+  summary: Structured research from scoping through final report
+  steps:
+  - choose_platforms
+  - scope
+  - gather
+  - synthesize
+  - report
+steps:
+- id: choose_platforms
+  name: Choose Research Platforms
+  description: Ask the user where they want deep research conducted (local, Gemini, ChatGPT, Grok, Perplexity, or parallel across multiple)
+  instructions_file: steps/choose_platforms.md
+  inputs:
+  - name: platforms
+    description: 'Which AI platforms to use: local, gemini, chatgpt, grok, perplexity (can select multiple for parallel research)'
+  outputs:
+    platforms:
+      type: file
+      description: Platform selection and execution plan for the gather step
+      required: true
+  dependencies: []
+  reviews: []
+- id: scope
+  name: Define Research Scope
+  description: Define the research question, type, depth level, and detect associated project
+  instructions_file: steps/scope.md
+  inputs:
+  - name: topic
+    description: The research topic or question to investigate
+  - name: type
+    description: 'Research type: science, business, competitive, market, or technical'
+  - name: depth
+    description: 'Depth level: quick, standard, or deep'
+  - name: project
+    description: Associated project tag (optional, auto-detected from context)
+  - file: platforms.md
+    from_step: choose_platforms
+  outputs:
+    scope:
+      type: file
+      description: Output from Define Research Scope step
+      required: true
+  dependencies:
+  - choose_platforms
+  reviews: []
+- id: gather
+  name: Gather Sources
+  description: Search and collect information using the selected platforms (local, Gemini, ChatGPT, Grok, Perplexity, or parallel)
+  instructions_file: steps/gather.md
+  inputs:
+  - file: research/[topic_slug]/scope.md
+    from_step: scope
+  - file: research/[topic_slug]/platforms.md
+    from_step: choose_platforms
+  outputs:
+    sources:
+      type: file
+      description: Output from Gather Sources step
+      required: true
+  dependencies:
+  - scope
+  - choose_platforms
+  hooks:
+    after_agent:
+    - prompt: 'Verify the gathered sources meet criteria based on the depth level:
+
+        - Quick: at least 3 sources consulted
+
+        - Standard: at least 5 sources from diverse types (news, docs, reports)
+
+        - Deep: at least 8 sources including interactive browser research
+
+        Each source must have a URL and key excerpt or finding noted.
+
+        '
+  reviews: []
+- id: synthesize
+  name: Synthesize Findings
+  description: Analyze gathered sources to identify key findings, themes, and insights
+  instructions_file: steps/synthesize.md
+  inputs:
+  - file: research/[topic_slug]/sources.md
+    from_step: gather
+  - file: research/[topic_slug]/scope.md
+    from_step: scope
+  outputs:
+    analysis:
+      type: file
+      description: Output from Synthesize Findings step
+      required: true
+  dependencies:
+  - gather
+  - scope
+  hooks:
+    after_agent:
+    - prompt: 'Verify the analysis:
+
+        1. Directly addresses the research question from scope.md
+
+        2. Synthesizes across multiple sources, not just summarizes each
+
+        3. Identifies patterns, contradictions, or gaps in the evidence
+
+        '
+  reviews: []
+- id: report
+  name: Write Research Report
+  description: Produce the final README.md, bibliography if sources were cited, and project symlink if applicable
+  instructions_file: steps/report.md
+  inputs:
+  - file: research/[topic_slug]/analysis.md
+    from_step: synthesize
+  - file: research/[topic_slug]/scope.md
+    from_step: scope
+  - file: research/[topic_slug]/sources.md
+    from_step: gather
+  outputs:
+    README:
+      type: file
+      description: Output from Write Research Report step
+      required: true
+    bibliography:
+      type: file
+      description: Output from Write Research Report step
+      required: true
+  dependencies:
+  - synthesize
+  - scope
+  - gather
+  hooks:
+    after_agent:
+    - prompt: 'Verify the report:
+
+        1. README.md follows the research_report doc spec structure
+
+        2. All findings cite sources with inline markdown links
+
+        3. Bibliography exists if external sources were cited, with categorized entries
+
+        4. If a project was specified in scope.md, a symlink exists at projects/ProjectName/research/[topic_slug]
+
+        5. Key takeaways section has 3-5 actionable conclusions
+
+        '
+  reviews: []
