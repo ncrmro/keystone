@@ -1,7 +1,8 @@
 # Home-manager terminal integration for agents.
 #
-# See conventions/tool.cli-coding-agents.md for instruction file paths,
-# MCP config paths, and sandbox nuances for each CLI coding tool.
+# See conventions/tool.cli-coding-agents.md
+# Implements REQ-007 (OS Agents)
+# Implements REQ-017 (Conventions and Grafana MCP)
 #
 # NOTE: This must be a separate mkMerge entry, not merged with // into the
 # mkIf block above. Using // on a mkIf value silently drops the merged keys
