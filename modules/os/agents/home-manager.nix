@@ -13,6 +13,7 @@ with lib;
 let
   agentsLib = import ./lib.nix { inherit lib config pkgs; };
   inherit (agentsLib) osCfg cfg topDomain agentPublicKey allKeysForAgent;
+  inherit (agentsLib) globalAgentChromeDebugPort;
 in
 {
   config = optionalAttrs (options ? home-manager) {
@@ -20,6 +21,10 @@ in
       users = mapAttrs' (name: agentCfg:
         let
           username = "agent-${name}";
+          # Capture NixOS system pkgs before they're shadowed by home-manager's pkgs
+          # argument. The keystone overlay is applied at the system level, so we use
+          # this to resolve keystone package store paths for MCP server commands.
+          sysPkgs = pkgs;
         in
         nameValuePair username ({ pkgs, ... }: {
           imports = [ ../../terminal/default.nix ];
@@ -103,7 +108,35 @@ in
                 done
               '';
             };
+            cliCodingAgents = {
+              enable = mkDefault true;
+              # Agents need to see ignored files (e.g. .agents submodule)
+              respectGitIgnore = mkDefault false;
+              mcpServers = {
+                deepwork = {
+                  command = "${sysPkgs.keystone.deepwork}/bin/deepwork";
+                  args = [ "serve" "--path" "." "--external-runner" "claude" "--platform" "claude" ];
+                };
+              } // optionalAttrs (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) {
+                chrome-devtools = {
+                  command = "${sysPkgs.keystone.chrome-devtools-mcp}/bin/chrome-devtools-mcp";
+                  args = [ "--browserUrl" "http://127.0.0.1:${toString (globalAgentChromeDebugPort name agentCfg)}" ];
+                };
+              } // mapAttrs (_: srv: {
+                inherit (srv) command args;
+              } // optionalAttrs (srv.env != {}) {
+                inherit (srv) env;
+              }) agentCfg.mcp.servers;
+            };
           };
+
+          # Add chrome-devtools-mcp to PATH when chrome MCP is enabled.
+          # The MCP server command in cliCodingAgents uses an absolute Nix store
+          # path, but agents may also invoke the binary directly (e.g. diagnostics,
+          # `which chrome-devtools-mcp`). Adding it to home.packages satisfies both.
+          home.packages = optionals (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) [
+            sysPkgs.keystone.chrome-devtools-mcp
+          ];
 
           home.stateVersion = config.system.stateVersion;
         })
