@@ -4,10 +4,11 @@
 # Usage: ks <command> [options]
 #
 # Commands:
-#   build  [--dev] [HOSTS]                      Build a NixOS configuration (no deploy)
+#   build  [--dev] [HOSTS]                           Build a NixOS configuration (no deploy)
 #   update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy a NixOS configuration
-#   sync-host-keys                              Populate hostPublicKey in hosts.nix from live hosts
-#   agent  [--local [MODEL]] [args...]          Launch AI agent with keystone OS context
+#   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
+#   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
+#   doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state
 #
 # Host resolution:
 #   1. If HOST is provided, use it directly
@@ -544,6 +545,287 @@ build_host_table() {
   done
 }
 
+# --- Build user/agent table from nixos-config flake ---
+# Evaluates keystone.os.users and keystone.os.agents for the given host.
+# Prints nothing on failure or timeout (graceful degradation).
+# NOTE: First-call may take 30-60s on a cold Nix eval cache; subsequent calls
+# are fast due to Nix's built-in evaluation cache.
+build_user_table() {
+  local repo_root="$1"
+  local current_host="$2"
+
+  [[ -z "$current_host" ]] && return 0
+
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+
+  local users_json agents_json
+  users_json=$(timeout 60 nix eval \
+    "$repo_root#nixosConfigurations.${current_host}.config.keystone.os.users" \
+    --json \
+    --apply 'u: builtins.mapAttrs (_: v: { fullName = v.fullName or ""; }) u' \
+    "${override_args[@]}" \
+    2>/dev/null) || users_json=""
+  agents_json=$(timeout 60 nix eval \
+    "$repo_root#nixosConfigurations.${current_host}.config.keystone.os.agents" \
+    --json \
+    --apply 'a: builtins.mapAttrs (_: v: { fullName = v.fullName or ""; email = v.email or ""; host = v.host or ""; }) a' \
+    "${override_args[@]}" \
+    2>/dev/null) || agents_json=""
+
+  [[ -z "$users_json" && -z "$agents_json" ]] && return 0
+
+  echo "| Name | Type | Full Name | Email | Host |"
+  echo "|------|------|-----------|-------|------|"
+  if [[ -n "$users_json" ]]; then
+    echo "$users_json" | jq -r 'to_entries[] | "| \(.key) | user | \(.value.fullName) | | |"'
+  fi
+  if [[ -n "$agents_json" ]]; then
+    echo "$agents_json" | jq -r 'to_entries[] | "| \(.key) | agent | \(.value.fullName) | \(.value.email) | \(.value.host) |"'
+  fi
+}
+
+# --- ks update workflow documentation (REQ-014.5) ---
+# NOTE: ks update requires sudo. Agents MUST NOT run it directly.
+# This documentation is injected as reference knowledge so the agent can
+# explain the workflow to humans or understand the deploy pipeline.
+ks_update_workflow_docs() {
+  cat <<'WFDOC'
+## ks update Workflow (Reference Only — requires sudo, human-only)
+
+> **WARNING**: `ks update` calls `sudo nixos-rebuild switch`. Agents MUST NOT
+> run this command. Use `ks build` to test changes, then ask a human to deploy.
+
+`ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]`
+
+Steps executed in order:
+
+1. **Pull** nixos-config (`git pull --ff-only`)
+2. **Pull** keystone and agenix-secrets repos (clone if absent)
+3. **Verify** keystone and agenix-secrets are clean and fully pushed
+4. **Lock** flake inputs (`nix flake update keystone agenix-secrets`)
+5. **Commit** flake.lock if changed (`git commit flake.lock -m "chore: relock ..."`)
+6. **Build** all target hosts in a single `nix build` invocation (Nix parallelises internally)
+7. **Push** nixos-config (rebase + push)
+8. **Deploy** hosts sequentially: local hosts via `sudo nixos-rebuild switch`,
+   remote hosts via `nixos-rebuild switch --target-host root@<sshTarget>`
+
+### Flags
+
+| Flag | Effect |
+|------|--------|
+| `--dev` | Skip pull, lock, commit, and push phases; useful with uncommitted local changes |
+| `--boot` | Use `nixos-rebuild boot` instead of `switch` (reboot required to apply) |
+| `--pull` | Pull repos only — no build or deploy |
+| `--lock` | Force locking (default when `--dev` is not set) |
+
+### HOSTS
+
+Comma-separated list of host names (e.g. `ocean,maia`). Defaults to current hostname.
+Risky hosts should be placed last: `workstation,ocean`.
+WFDOC
+}
+
+# --- Local flake override documentation (REQ-014.7) ---
+local_flake_override_docs() {
+  cat <<'OFDOC'
+## Local Flake Overrides
+
+`ks` auto-detects local keystone and agenix-secrets clones and passes
+`--override-input` flags to every `nix build` / `nixos-rebuild` call —
+no manual flags needed.
+
+### Detected Paths (in order)
+
+| Input | Paths checked |
+|-------|---------------|
+| keystone | `<repo>/.repos/keystone`, `<repo>/.submodules/keystone` |
+| agenix-secrets | `<repo>/.repos/agenix-secrets`, `<repo>/agenix-secrets/` |
+
+### Equivalent Manual Command
+
+```bash
+nix build .#nixosConfigurations.HOSTNAME.config.system.build.toplevel \
+  --override-input keystone path:$(pwd)/.repos/keystone \
+  --no-link
+```
+
+### Workflow for Keystone Changes
+
+1. Edit files in `.repos/keystone/` (or `.submodules/keystone/`)
+2. Test with `ks build --dev` (builds with local overrides, no deploy)
+3. Once satisfied, commit + push keystone
+4. Ask a human to run `ks update` (requires sudo) for deployment
+OFDOC
+}
+
+# --- Gather current system state (for ks doctor) ---
+gather_system_state() {
+  local repo_root="$1"
+
+  echo "## System State"
+  echo ""
+
+  # NixOS generation
+  local gen=""
+  if command -v nixos-version >/dev/null 2>&1; then
+    gen=$(nixos-version 2>/dev/null || true)
+  fi
+  [[ -n "$gen" ]] && echo "**NixOS generation**: $gen"
+  echo ""
+
+  # Systemd failed units
+  echo "### Failed systemd units"
+  local failed=""
+  if command -v systemctl >/dev/null 2>&1; then
+    failed=$(systemctl --failed --no-legend 2>/dev/null | awk '{print $1}' || true)
+  fi
+  if [[ -z "$failed" ]]; then
+    echo "_None_"
+  else
+    while IFS= read -r unit; do
+      echo "- $unit"
+    done <<< "$failed"
+  fi
+  echo ""
+
+  # Disk usage
+  echo "### Disk usage"
+  echo '```'
+  df -h 2>/dev/null | head -20 || echo "_unavailable_"
+  echo '```'
+  echo ""
+
+  # Flake lock age
+  echo "### flake.lock age"
+  if [[ -f "$repo_root/flake.lock" ]]; then
+    local lock_age
+    lock_age=$(git -C "$repo_root" log -1 --format="%ar" -- flake.lock 2>/dev/null || true)
+    if [[ -n "$lock_age" ]]; then
+      echo "_Last updated: ${lock_age}_"
+    else
+      echo "_unknown_"
+    fi
+  else
+    echo "_flake.lock not found_"
+  fi
+}
+
+# --- Build shared agent system prompt (REQ-014.2-8) ---
+# Usage: build_agent_prompt repo_root hosts_nix ks_repo current_host
+build_agent_prompt() {
+  local repo_root="$1"
+  local hosts_nix="$2"
+  local ks_repo="$3"
+  local current_host="$4"
+
+  local prompt=""
+
+  # 1. Conventions from keystone repo (REQ-014.8, REQ-014.14, REQ-014.16)
+  if [[ -n "$ks_repo" ]]; then
+    local conventions
+    conventions=$(load_conventions "$ks_repo")
+    if [[ -n "$conventions" ]]; then
+      prompt="$conventions"
+    fi
+  fi
+
+  # 2. ks update workflow (REQ-014.5)
+  local workflow
+  workflow=$(ks_update_workflow_docs)
+  if [[ -n "$prompt" ]]; then
+    prompt="$prompt
+
+---
+
+$workflow"
+  else
+    prompt="$workflow"
+  fi
+
+  # 3. Local flake override docs (REQ-014.7)
+  local override_docs
+  override_docs=$(local_flake_override_docs)
+  prompt="$prompt
+
+---
+
+$override_docs"
+
+  # 4. Current host identity (REQ-014.4)
+  local current_hostname
+  current_hostname=$(hostname)
+  local nixos_gen=""
+  if command -v nixos-version >/dev/null 2>&1; then
+    nixos_gen=$(nixos-version 2>/dev/null || true)
+  fi
+  local host_section
+  host_section="## Current Host
+
+- **Hostname**: $current_hostname"
+  [[ -n "$nixos_gen" ]] && host_section="$host_section
+- **NixOS generation**: $nixos_gen"
+  prompt="$prompt
+
+---
+
+$host_section"
+
+  # 5. Host table (REQ-014.2, REQ-014.17-19)
+  local host_table
+  host_table=$(build_host_table "$hosts_nix")
+  if [[ -n "$host_table" ]]; then
+    prompt="$prompt
+
+## Hosts
+
+$host_table"
+  fi
+
+  # 6. Users/agents table (REQ-014.3) — best-effort, skipped on cold cache timeout
+  local user_table
+  user_table=$(build_user_table "$repo_root" "$current_host")
+  if [[ -n "$user_table" ]]; then
+    prompt="$prompt
+
+## Users & Agents
+
+$user_table"
+  fi
+
+  printf '%s' "$prompt"
+}
+
+# --- Launch AI agent with system prompt ---
+# Usage: launch_agent local_model prompt [passthrough args...]
+launch_agent() {
+  local local_model="$1"; shift
+  local prompt="$1"; shift
+
+  if [[ -n "$local_model" ]]; then
+    # Local model via Ollama (REQ-014.12-13)
+    local model_arg="$local_model"
+    [[ "$model_arg" == "default" ]] && model_arg=""
+    if command -v ollama >/dev/null 2>&1; then
+      local ollama_args=("run")
+      [[ -n "$model_arg" ]] && ollama_args+=("$model_arg")
+      [[ -n "$prompt" ]] && ollama_args+=("--system" "$prompt")
+      exec ollama "${ollama_args[@]}" "$@"
+    else
+      echo "Error: --local requires ollama to be installed." >&2
+      exit 1
+    fi
+  elif command -v agentctl >/dev/null 2>&1; then
+    exec agentctl claude --append-system-prompt "$prompt" "$@"
+  elif command -v claude >/dev/null 2>&1; then
+    exec claude --dangerously-skip-permissions --append-system-prompt "$prompt" "$@"
+  else
+    echo "Error: Neither agentctl nor claude is available." >&2
+    echo "Install Claude Code or run from a keystone NixOS host." >&2
+    exit 1
+  fi
+}
+
 cmd_agent() {
   local local_model=""
   local passthrough_args=()
@@ -552,7 +834,6 @@ cmd_agent() {
     case $1 in
       --local)
         shift
-        # Optional model name following --local
         if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
           local_model="$1"; shift
         else
@@ -566,79 +847,87 @@ cmd_agent() {
   local repo_root
   repo_root=$(find_repo)
   local hosts_nix="$repo_root/hosts.nix"
-
-  # Find local keystone repo for conventions
   local ks_repo
   ks_repo=$(find_keystone_repo "$repo_root")
 
-  # Build system prompt
-  local prompt=""
-
-  # 1. Load conventions from keystone repo (REQ-014.8, REQ-014.14, REQ-014.16)
-  if [[ -n "$ks_repo" ]]; then
-    local conventions
-    conventions=$(load_conventions "$ks_repo")
-    if [[ -n "$conventions" ]]; then
-      prompt="$conventions"
-    fi
-  fi
-
-  # 2. Inject current host identity (REQ-014.4)
-  local current_hostname
+  # Resolve current host key in hosts.nix for user table eval (REQ-014.3)
+  local current_hostname current_host=""
   current_hostname=$(hostname)
-  local nixos_gen=""
-  if command -v nixos-version >/dev/null 2>&1; then
-    nixos_gen=$(nixos-version 2>/dev/null || true)
-  fi
+  current_host=$(nix eval -f "$hosts_nix" --raw \
+    --apply "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"$current_hostname\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m" \
+    2>/dev/null) || current_host=""
 
-  local host_section
-  host_section="## Current Host
+  local prompt
+  prompt=$(build_agent_prompt "$repo_root" "$hosts_nix" "$ks_repo" "$current_host")
 
-- **Hostname**: $current_hostname"
-  [[ -n "$nixos_gen" ]] && host_section="$host_section
-- **NixOS generation**: $nixos_gen"
+  launch_agent "$local_model" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
+}
 
-  if [[ -n "$prompt" ]]; then
-    prompt="$prompt
+cmd_doctor() {
+  local local_model=""
+  local passthrough_args=()
+
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --local)
+        shift
+        if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
+          local_model="$1"; shift
+        else
+          local_model="default"
+        fi
+        ;;
+      *) passthrough_args+=("$1"); shift ;;
+    esac
+  done
+
+  local repo_root
+  repo_root=$(find_repo)
+  local hosts_nix="$repo_root/hosts.nix"
+  local ks_repo
+  ks_repo=$(find_keystone_repo "$repo_root")
+
+  local current_hostname current_host=""
+  current_hostname=$(hostname)
+  current_host=$(nix eval -f "$hosts_nix" --raw \
+    --apply "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"$current_hostname\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m" \
+    2>/dev/null) || current_host=""
+
+  # Build shared context (REQ-014.10 — same agent as ks agent)
+  local base_prompt
+  base_prompt=$(build_agent_prompt "$repo_root" "$hosts_nix" "$ks_repo" "$current_host")
+
+  # Gather current system state (REQ-014.11)
+  local system_state
+  system_state=$(gather_system_state "$repo_root")
+
+  # Diagnostic-focused prefix (REQ-014.10)
+  local doctor_prefix
+  doctor_prefix="You are a diagnostic agent for a keystone NixOS infrastructure system.
+Your primary goal is to check host health, identify configuration issues, and suggest actionable fixes.
+
+Focus areas:
+- Failed or degraded systemd units (check with: systemctl --failed)
+- Disk pressure (check with: df -h)
+- Stale flake locks (run ks update to refresh)
+- Unreachable hosts (check sshTarget connectivity via ssh)
+- Configuration drift between hosts
+- NixOS generation mismatches across the fleet
+
+Always suggest concrete remediation commands. Prefer ks commands over raw nix commands."
+
+  local prompt
+  prompt="$doctor_prefix
 
 ---
 
-$host_section"
-  else
-    prompt="$host_section"
-  fi
+$system_state
 
-  # 3. Inject host table (REQ-014.2, REQ-014.17-19)
-  local host_table
-  host_table=$(build_host_table "$hosts_nix")
-  if [[ -n "$host_table" ]]; then
-    prompt="$prompt
+---
 
-## Hosts
+$base_prompt"
 
-$host_table"
-  fi
-
-  # Launch agent — prefer agentctl if available, fall back to claude (REQ-014 edge cases)
-  if [[ -n "$local_model" ]]; then
-    # Local model via ollama (REQ-014.12)
-    local model_arg="${local_model}"
-    [[ "$model_arg" == "default" ]] && model_arg=""
-    if command -v ollama >/dev/null 2>&1; then
-      exec ollama run ${model_arg:+"$model_arg"} "${passthrough_args[@]+"${passthrough_args[@]}"}"
-    else
-      echo "Error: --local requires ollama to be installed." >&2
-      exit 1
-    fi
-  elif command -v agentctl >/dev/null 2>&1; then
-    exec agentctl claude --append-system-prompt "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
-  elif command -v claude >/dev/null 2>&1; then
-    exec claude --dangerously-skip-permissions --append-system-prompt "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
-  else
-    echo "Error: Neither agentctl nor claude is available." >&2
-    echo "Install Claude Code or run from a keystone NixOS host." >&2
-    exit 1
-  fi
+  launch_agent "$local_model" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
 }
 
 # --- Main dispatch ---
@@ -646,10 +935,11 @@ if [[ $# -lt 1 ]]; then
   echo "Usage: ks <command> [options]" >&2
   echo "" >&2
   echo "Commands:" >&2
-  echo "  build  [--dev] [HOSTS]                      Build NixOS configurations" >&2
+  echo "  build  [--dev] [HOSTS]                           Build NixOS configurations" >&2
   echo "  update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy NixOS configurations" >&2
-  echo "  sync-host-keys                              Populate hostPublicKey in hosts.nix from live hosts" >&2
-  echo "  agent  [--local [MODEL]] [args...]          Launch AI agent with keystone OS context" >&2
+  echo "  sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts" >&2
+  echo "  agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context" >&2
+  echo "  doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state" >&2
   echo "" >&2
   echo "HOSTS: Comma-separated list of host names (e.g. host1,host2). Defaults to current host." >&2
   echo "Note: Risky hosts should be placed last (e.g. workstation,ocean)." >&2
@@ -663,10 +953,11 @@ case "$CMD" in
   build)  cmd_build "$@" ;;
   update) cmd_update "$@" ;;
   sync-host-keys) cmd_sync_host_keys "$@" ;;
-  agent) cmd_agent "$@" ;;
+  agent)  cmd_agent "$@" ;;
+  doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: build, update, sync-host-keys, agent" >&2
+    echo "Known commands: build, update, sync-host-keys, agent, doctor" >&2
     exit 1
     ;;
 esac
