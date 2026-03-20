@@ -11,6 +11,7 @@ modules/
 ├── iso-installer.nix           Bootable NixOS installer with TUI, ZFS, TPM tools
 ├── binary-cache-client.nix     Attic/Nix binary cache client + watch-store push
 ├── mail.nix                    Stalwart mail server + agent account provisioning
+├── services.nix                Shared service registry (keystone.services.*)
 ├── notes/
 │   └── default.nix             Home-manager notes repo sync (repo-sync on timer)
 ├── os/
@@ -29,6 +30,8 @@ modules/
 │   │   ├── ssh.nix            ssh-agent + assertions
 │   │   ├── notes.nix          notes-sync, task-loop, scheduler
 │   │   ├── home-manager.nix   Home-manager terminal integration
+│   │   ├── observability.nix  Agent observability (Grafana dashboards)
+│   │   ├── dashboards/        Agent health dashboards
 │   │   └── scripts/           Extracted shell scripts (@placeholder@ pattern)
 │   ├── storage.nix             ZFS/ext4 + LUKS credstore, disko partitioning
 │   ├── secure-boot.nix         Lanzaboote Secure Boot via sbctl
@@ -54,6 +57,14 @@ modules/
 │   ├── sandbox.nix             Podman-based AI agent sandboxing
 │   ├── secrets.nix             rbw (Bitwarden CLI) configuration
 │   ├── devtools.nix            csview, jq
+│   ├── conventions.nix         System-wide AGENTS.md generation from keystone conventions
+│   ├── deepwork.nix            DeepWork job integration (DEEPWORK_ADDITIONAL_JOBS_FOLDERS)
+│   ├── calendar.nix            CalDAV calendar client (calendula)
+│   ├── contacts.nix            CardDAV contacts client (cardamum)
+│   ├── timer.nix               Pomodoro timer (comodoro)
+│   ├── forgejo.nix             Forgejo git integration (forgejo-project CLI)
+│   ├── projects.nix            Project management features
+│   ├── cli-coding-agent-configs.nix  AI coding agent MCP/config generation
 │   └── claude-code/            Claude Code NPM package + update script
 ├── desktop/
 │   ├── nixos.nix               NixOS-level: Hyprland+UWSM, greetd, PipeWire, bluetooth
@@ -163,6 +174,13 @@ keystone.os.agents.drago = {
     mcp.port = null;             # Chrome DevTools MCP, auto-assign from 3101
   };
 
+  grafana = {
+    mcp = {
+      enable = false;            # Enable Grafana MCP for metrics/logs access
+      url = "https://grafana.example.com";
+    };
+  };
+
   mail = {
     provision = false;           # Auto-provision on Stalwart host
     address = "agent-drago@example.com";
@@ -174,7 +192,7 @@ keystone.os.agents.drago = {
     repoName = "agent-space";    # Auto-created notes repo
   };
 
-  ssh.publicKey = "ssh-ed25519 AAAAC3...";
+  # SSH keys are managed via keystone.keys."agent-{name}"
 
   notes = {
     syncOnCalendar = "*:0/5";    # Every 5 minutes
@@ -520,6 +538,27 @@ keystone.terminal.secrets = {
 
 Bitwarden CLI (`rbw`) for password management. Uses `pinentry-gnome3` by default.
 
+### Conventions
+
+```nix
+keystone.terminal.conventions = {
+  enable = true;            # Default: true
+  archetype = "engineer";   # Default: "engineer"
+};
+```
+
+Generates `~/.config/keystone/AGENTS.md` at build time from keystone conventions. The archetype controls which convention set is applied.
+
+### DeepWork
+
+```nix
+keystone.terminal.deepwork = {
+  enable = true;            # Default: true
+};
+```
+
+Sets the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable for DeepWork job integration, enabling workflow-driven development with quality gates.
+
 ### Dev Tools
 
 Enabled via `keystone.terminal.devTools = true`: `csview` (CSV viewer), `jq` (JSON processor).
@@ -699,10 +738,16 @@ The `keystone.domain` option (defined in `modules/domain.nix`) establishes a sha
 | agent-mail | Structured email templates for OS agents (shell) |
 | agent-coding-agent | Coding task orchestrator: branch, invoke subagent, push, PR, review (shell) |
 | fetch-email-source | Fetch email envelopes + bodies via himalaya (shell) |
+| fetch-forgejo-sources | Fetch Forgejo issue/PR data for agent context (shell) |
+| fetch-github-sources | Fetch GitHub issue/PR data for agent context (shell) |
 | repo-sync | Clone-if-absent, fetch/commit/rebase/push sync for git repos (shell) |
 | podman-agent | Run AI coding agents in Podman containers with persistent Nix store (shell) |
 | keystone-tui | Installer and configuration TUI (Rust) |
 | keystone-ha | Cross-realm resource management TUI (Rust) |
+| ks | NixOS configuration build/update CLI (shell) |
+| pz | Project management CLI (shell) |
+| forgejo-project | Forgejo project board CLI via web routes (shell) |
+| chrome-devtools-mcp | Chrome DevTools Protocol MCP server (shell) |
 
 ### Overlay (`pkgs.keystone.*`)
 
@@ -711,10 +756,20 @@ The `keystone.domain` option (defined in `modules/domain.nix`) establishes a sha
 | claude-code | llm-agents flake |
 | gemini-cli | llm-agents flake |
 | codex | llm-agents flake |
+| opencode | llm-agents flake |
+| deepwork | deepwork flake |
+| keystone-deepwork-jobs | local derivation (.deepwork/jobs/) |
+| keystone-conventions | local derivation (conventions/) |
+| chrome-devtools-mcp | packages/chrome-devtools-mcp |
+| grafana-mcp | grafana/mcp-grafana (Go) |
 | google-chrome | browser-previews flake |
 | ghostty | ghostty flake |
 | yazi | yazi flake |
 | himalaya | himalaya flake |
+| calendula | pimalaya/calendula flake |
+| cardamum | pimalaya/cardamum flake |
+| comodoro | pimalaya/comodoro flake |
+| agenix | agenix flake |
 
 ## Deployment Patterns
 
@@ -811,6 +866,7 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 | domain | `keystone.nixosModules.domain` | Shared keystone.domain option |
 | mail | `keystone.nixosModules.mail` | Shared keystone.mail.host option (mail server host) |
 | hosts | `keystone.nixosModules.hosts` | Shared keystone.hosts option (host identity + connection metadata) |
+| services | `keystone.nixosModules.services` | Shared service registry (keystone.services.*) |
 
 ### Home-Manager Modules
 
@@ -878,9 +934,11 @@ keystone = {
 };
 ```
 
-Use `ks build --dev` and `ks update --dev` to rebuild with local keystone + agenix-secrets changes without commits:
+Use `ks build` and `ks update` to manage builds and deployments:
 ```bash
-ks build --dev               # Build only, no switch (no sudo needed)
-ks update --dev              # nixos-rebuild switch with local overrides
-ks update --dev --boot       # nixos-rebuild boot (applies on next reboot)
+ks build                     # Build home-manager profiles only (fast, no sudo)
+ks build --lock              # Full system build + lock + push
+ks update --dev              # Deploy home-manager profiles only
+ks update                    # Full system: pull, lock, build, push, deploy
+ks update --dev --boot       # Not applicable (home-manager only, no boot needed)
 ```

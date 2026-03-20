@@ -118,6 +118,31 @@ hwrekey
 
 Run `hwrekey` after any change to `secrets.nix` that adds or removes key recipients (e.g., enrolling a new YubiKey, adding a new host key, removing a decommissioned machine). See [Hardware Keys](hardware-keys.md) for the full YubiKey enrollment workflow.
 
+## Conventions
+
+The conventions module generates `~/.config/keystone/AGENTS.md` at build time from keystone conventions, providing consistent project guidance for AI coding agents and developers.
+
+```nix
+keystone.terminal.conventions = {
+  enable = true;            # Default: true
+  archetype = "engineer";   # Default: "engineer"
+};
+```
+
+The `archetype` option controls which convention set is applied. The generated file is available to all tools that read `AGENTS.md` or `CLAUDE.md`.
+
+## DeepWork
+
+The DeepWork module integrates workflow-driven development with quality gates into the terminal environment.
+
+```nix
+keystone.terminal.deepwork = {
+  enable = true;            # Default: true
+};
+```
+
+When enabled, the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable is set, allowing the DeepWork MCP server to discover project-specific job definitions alongside the built-in ones.
+
 ## Personal Information Management
 
 Keystone integrates the [Pimalaya](https://pimalaya.org/) CLI suite for email, calendars, contacts, and timers:
