@@ -99,11 +99,19 @@ fi
 if [ -f PROJECTS.yaml ]; then
   SOURCE_COUNT=$(yq '.sources | length' PROJECTS.yaml 2>/dev/null || echo "0")
 
+  # Build a colon-delimited list of already-fetched source names for deduplication
+  BUILTIN_SOURCE_NAMES=":$(echo "$SOURCES_JSON" | jq -r '.[].source' | tr '\n' ':'):"
+
   for i in $(seq 0 $((SOURCE_COUNT - 1))); do
     SOURCE_NAME=$(yq ".sources[$i].name" PROJECTS.yaml)
     SOURCE_CMD=$(yq ".sources[$i].command" PROJECTS.yaml)
 
     if [ -n "$SOURCE_CMD" ] && [ "$SOURCE_CMD" != "null" ]; then
+      # Skip sources already fetched by the built-in block (deduplication)
+      if [[ "$BUILTIN_SOURCE_NAMES" == *":${SOURCE_NAME}:"* ]]; then
+        log "  Skipping source: $SOURCE_NAME (already fetched as built-in)"
+        continue
+      fi
       log "  Fetching source: $SOURCE_NAME"
       SOURCE_OUTPUT=$(bash -c "$SOURCE_CMD" 2>>"$LOG_FILE" || echo "[]")
       SOURCES_JSON=$(echo "$SOURCES_JSON" | jq --arg name "$SOURCE_NAME" --argjson data "$SOURCE_OUTPUT" \
@@ -120,7 +128,7 @@ INGEST_RAN=false
 log "Step 2: Ingesting sources via haiku..."
 if [ "$(echo "$SOURCES_JSON" | jq '[.[].data | length] | add // 0')" -gt 0 ]; then
   set +o pipefail
-  claude --print --dangerously-skip-permissions --model haiku \
+  timeout 300 claude --print --dangerously-skip-permissions --model haiku \
     "/deepwork task_loop ingest
 
 Source data (pre-fetched):
@@ -173,7 +181,7 @@ if [ -n "$CURRENT_HASH" ] && [ "$CURRENT_HASH" = "$PREVIOUS_HASH" ]; then
 else
   log "Step 3: Prioritizing tasks via haiku..."
   set +o pipefail
-  claude --print --dangerously-skip-permissions --model haiku \
+  timeout 300 claude --print --dangerously-skip-permissions --model haiku \
     "/deepwork task_loop prioritize" 2>&1 | tee -a "$LOG_FILE" >&2
   PRIORITIZE_EXIT=${PIPESTATUS[0]}
   set -o pipefail
