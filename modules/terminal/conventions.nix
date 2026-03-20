@@ -1,9 +1,14 @@
-# System-wide AGENTS.md generation from keystone conventions.
+# Tool-native instruction file generation from keystone conventions.
+#
+# See conventions/tool.cli-coding-agents.md
+# Implements REQ-017 (Conventions and Grafana MCP)
 #
 # Reads archetypes.yaml from the keystone-conventions Nix store derivation and
-# generates ~/.config/keystone/AGENTS.md at build time. This provides a base
-# layer of conventions, tool manuals, and process docs to all AI tool sessions
-# (Claude, Gemini, Codex, OpenCode) without requiring the keystone repo at runtime.
+# writes conventions to each CLI coding tool's native instruction file path:
+#   - ~/.claude/CLAUDE.md   (Claude Code)
+#   - ~/.gemini/GEMINI.md   (Gemini CLI)
+#   - ~/.codex/AGENTS.md    (Codex)
+#   - OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file needed
 #
 # Content separation:
 #   - Keystone repo (conventions/): tool manuals, process docs, archetypes — shared
@@ -92,11 +97,9 @@ in
       type = types.bool;
       default = true;
       description = ''
-        Enable system-wide AGENTS.md generation from keystone conventions.
-
-        When enabled, generates ~/.config/keystone/AGENTS.md at build time
-        from the keystone-conventions Nix derivation. This provides a base
-        layer of conventions to all AI tool sessions.
+        Enable convention generation at each CLI coding tool's native
+        instruction file path (~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md,
+        ~/.codex/AGENTS.md). See conventions/tool.cli-coding-agents.md.
       '';
     };
 
@@ -112,10 +115,14 @@ in
   };
 
   config = mkIf (terminalCfg.enable && cfg.enable) {
-    # Generate the system-wide AGENTS.md from conventions
-    home.file.".config/keystone/AGENTS.md".text = agentsMdContent;
+    # Write conventions to each tool's native instruction file path.
+    # OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file.
+    home.file.".claude/CLAUDE.md".text = agentsMdContent;
+    home.file.".gemini/GEMINI.md".text = agentsMdContent;
+    home.file.".codex/AGENTS.md".text = agentsMdContent;
 
-    # Also expose the full conventions directory for on-demand reading
+    # Expose the full conventions directory for on-demand reading
+    # (referenced conventions link to Nix store paths in this directory)
     home.file.".config/keystone/conventions".source = conventionsPath;
   };
 }

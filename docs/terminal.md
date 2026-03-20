@@ -120,7 +120,11 @@ Run `hwrekey` after any change to `secrets.nix` that adds or removes key recipie
 
 ## Conventions
 
-The conventions module generates `~/.config/keystone/AGENTS.md` at build time from keystone conventions, providing consistent project guidance for AI coding agents and developers.
+The conventions module writes keystone conventions to each CLI coding tool's native instruction file path at build time:
+- `~/.claude/CLAUDE.md` (Claude Code)
+- `~/.gemini/GEMINI.md` (Gemini CLI)
+- `~/.codex/AGENTS.md` (Codex)
+- OpenCode reads `~/.claude/CLAUDE.md` via legacy compatibility
 
 ```nix
 keystone.terminal.conventions = {
@@ -129,7 +133,7 @@ keystone.terminal.conventions = {
 };
 ```
 
-The `archetype` option controls which convention set is applied. The generated file is available to all tools that read `AGENTS.md` or `CLAUDE.md`.
+The `archetype` option controls which convention set is applied. See `conventions/tool.cli-coding-agents.md` for details on each tool's file discovery.
 
 ## DeepWork
 
