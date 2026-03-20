@@ -4,9 +4,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.desktop.hyprland;
-in {
+in
+{
   # hyprsunset is started via autostart.nix exec-once
   # This module provides the configuration file
 

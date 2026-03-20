@@ -90,52 +90,49 @@ in
       '';
     };
 
-    home.packages =
-      [
-        # Claude Code - AI-powered CLI assistant from Anthropic
-        # https://claude.com/claude-code
-        pkgs.keystone.claude-code
+    home.packages = [
+      # Claude Code - AI-powered CLI assistant from Anthropic
+      # https://claude.com/claude-code
+      pkgs.keystone.claude-code
 
-        # Gemini CLI - Google's AI assistant
-        pkgs.keystone.gemini-cli
+      # Gemini CLI - Google's AI assistant
+      pkgs.keystone.gemini-cli
 
-        # Codex - OpenAI's lightweight coding agent
-        pkgs.keystone.codex
+      # Codex - OpenAI's lightweight coding agent
+      pkgs.keystone.codex
 
-        # OpenCode - Open-source AI coding agent
-        pkgs.keystone.opencode
+      # OpenCode - Open-source AI coding agent
+      pkgs.keystone.opencode
 
-        # DeepWork - workflow orchestration MCP server
-        pkgs.keystone.deepwork
-      ]
-      ++ optionals ollamaCfg.enable [
-        # Ollama CLI for model management (ollama pull, list, run)
-        pkgs.ollama
-      ];
+      # DeepWork - workflow orchestration MCP server
+      pkgs.keystone.deepwork
+    ]
+    ++ optionals ollamaCfg.enable [
+      # Ollama CLI for model management (ollama pull, list, run)
+      pkgs.ollama
+    ];
 
-    programs.zsh.initContent = mkIf ollamaCfg.enable (let
-      modelFlag =
-        if ollamaCfg.defaultModel != null
-        then " --model ${ollamaCfg.defaultModel}"
-        else "";
-    in ''
-      # Local Ollama wrappers — cloud commands (claude, opencode) remain unchanged
-      claude-local() {
-        ANTHROPIC_BASE_URL="${ollamaCfg.host}" \
-        ANTHROPIC_AUTH_TOKEN="ollama" \
-          claude${modelFlag} "$@"
-      }
+    programs.zsh.initContent = mkIf ollamaCfg.enable (
+      let
+        modelFlag = if ollamaCfg.defaultModel != null then " --model ${ollamaCfg.defaultModel}" else "";
+      in
+      ''
+        # Local Ollama wrappers — cloud commands (claude, opencode) remain unchanged
+        claude-local() {
+          ANTHROPIC_BASE_URL="${ollamaCfg.host}" \
+          ANTHROPIC_AUTH_TOKEN="ollama" \
+            claude${modelFlag} "$@"
+        }
 
-      opencode-local() {
-        OPENCODE_PROVIDER="ollama" \
-        OPENCODE_MODEL="${
-        if ollamaCfg.defaultModel != null
-        then ollamaCfg.defaultModel
-        else "llama3.1:8b"
-      }" \
-        OLLAMA_HOST="${ollamaCfg.host}" \
-          opencode "$@"
-      }
-    '');
+        opencode-local() {
+          OPENCODE_PROVIDER="ollama" \
+          OPENCODE_MODEL="${
+            if ollamaCfg.defaultModel != null then ollamaCfg.defaultModel else "llama3.1:8b"
+          }" \
+          OLLAMA_HOST="${ollamaCfg.host}" \
+            opencode "$@"
+        }
+      ''
+    );
   };
 }

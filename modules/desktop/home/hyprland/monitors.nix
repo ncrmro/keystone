@@ -24,7 +24,7 @@ in
 
     settings = mkOption {
       type = types.listOf types.str;
-      default = [ 
+      default = [
         ", preferred, auto, 1"
       ];
       description = "List of static monitor configurations (Hyprland syntax).";
@@ -33,7 +33,8 @@ in
 
   config = mkIf hyprlandCfg.enable {
     wayland.windowManager.hyprland.settings = {
-      monitor = cfg.settings ++ (optional cfg.autoMirror ", preferred, auto, 1, mirror, ${cfg.primaryDisplay}");
+      monitor =
+        cfg.settings ++ (optional cfg.autoMirror ", preferred, auto, 1, mirror, ${cfg.primaryDisplay}");
     };
   };
 }

@@ -10,7 +10,12 @@
 # - Timezone configuration
 # - Additional security hardening options
 
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 {
   # System Identity
@@ -38,7 +43,7 @@
       #   nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W127373V
       #
       # Example NVMe disk:
-      devices = ["/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W127373V"];
+      devices = [ "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W127373V" ];
 
       # Example SATA SSD disk:
       # devices = ["/dev/disk/by-id/ata-Samsung_SSD_870_EVO_2TB_S62ANL0W123456"];
@@ -69,7 +74,10 @@
     # Enable TPM-based automatic disk unlock
     tpm = {
       enable = true;
-      pcrs = [1 7]; # Firmware config + Secure Boot
+      pcrs = [
+        1
+        7
+      ]; # Firmware config + Secure Boot
     };
   };
 
@@ -137,7 +145,7 @@
   # '';
 
   # Description (appears in /etc/nixos/configuration.nix)
-  system.stateVersion = "24.11";  # Don't change this after initial deployment
+  system.stateVersion = "24.11"; # Don't change this after initial deployment
 }
 
 # Deployment Instructions

@@ -4,7 +4,8 @@
   lib,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.os.services.airplay;
 in
 {
@@ -89,7 +90,7 @@ in
           RestartSec = "5s";
         };
       };
-      
+
       shairport-sync = {
         description = "Shairport Sync AirPlay Receiver";
         wantedBy = [ "multi-user.target" ];

@@ -62,7 +62,8 @@ in
         assertion = cfg.acme.credentialsFile != null;
         message = "keystone.server.acme.credentialsFile must be set for ACME DNS-01 challenge";
       }
-    ] ++ lib.optional (cfg.acme.credentialsFile == "/run/agenix/cloudflare-api-token") {
+    ]
+    ++ lib.optional (cfg.acme.credentialsFile == "/run/agenix/cloudflare-api-token") {
       assertion = config.age.secrets ? "cloudflare-api-token";
       message = "keystone.server.acme requires age.secrets.\"cloudflare-api-token\" to be declared.";
     };

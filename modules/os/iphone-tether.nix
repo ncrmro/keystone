@@ -9,10 +9,12 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   osCfg = config.keystone.os;
   cfg = osCfg.iphoneTether;
-in {
+in
+{
   config = mkIf (osCfg.enable && cfg.enable) {
     # iPhone USB tethering support
     environment.systemPackages = [

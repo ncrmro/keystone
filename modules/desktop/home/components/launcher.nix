@@ -5,19 +5,20 @@
   keystoneInputs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.desktop;
   themeDir = "${config.xdg.configHome}/keystone/current/theme";
 
   # Read and substitute the walker style.css template
-  walkerStyleCss = builtins.replaceStrings
-    ["\${themeDir}"]
-    [themeDir]
-    (builtins.readFile ./walker-style.css);
+  walkerStyleCss = builtins.replaceStrings [ "\${themeDir}" ] [ themeDir ] (
+    builtins.readFile ./walker-style.css
+  );
 
   # Read the layout XML
   walkerLayoutXml = builtins.readFile ./walker-layout.xml;
-in {
+in
+{
   # walker is imported via flake.nix homeModules.desktop (hoisted to avoid
   # _module.args infinite recursion when keystoneInputs is used in imports)
 
@@ -59,7 +60,7 @@ in {
         };
 
         keybinds = {
-          quick_activate = [];
+          quick_activate = [ ];
         };
 
         providers = {

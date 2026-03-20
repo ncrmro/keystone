@@ -3,7 +3,8 @@
   pkgs,
   lib,
   ...
-}: {
+}:
+{
   # Minimal Keystone client configuration for Hyprland desktop testing
   # This configuration enables testing of the Hyprland desktop environment
 
@@ -24,7 +25,7 @@
     # Storage configuration with ZFS and encryption
     storage = {
       type = "zfs";
-      devices = ["/dev/vda"];
+      devices = [ "/dev/vda" ];
     };
 
     # Enable Secure Boot with lanzaboote
@@ -33,7 +34,10 @@
     # Enable TPM-based automatic unlock
     tpm = {
       enable = true;
-      pcrs = [1 7];
+      pcrs = [
+        1
+        7
+      ];
     };
 
     # SSH-based remote disk unlocking for VMs
@@ -86,10 +90,17 @@
   boot.initrd.systemd.emergencyAccess = true;
 
   # Ensure virtio modules are available in initrd
-  boot.initrd.availableKernelModules = ["virtio_blk" "virtio_pci" "virtio_net"];
+  boot.initrd.availableKernelModules = [
+    "virtio_blk"
+    "virtio_pci"
+    "virtio_net"
+  ];
 
   # Allow testuser to receive nix store paths over SSH
-  nix.settings.trusted-users = ["root" "testuser"];
+  nix.settings.trusted-users = [
+    "root"
+    "testuser"
+  ];
 
   # SSH access for testing
   users.users.root.openssh.authorizedKeys.keys = [

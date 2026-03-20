@@ -13,9 +13,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.server.headscale;
-in {
+in
+{
   options.keystone.server.headscale = {
     # Exit node configuration options will be added here
     advertiseExitNode = mkOption {
@@ -33,7 +35,7 @@ in {
     # - Configure NAT/masquerading
     # - Set up Headscale client
     # - Advertise as exit node
-    
+
     warnings = [
       "keystone.server.headscale is not yet implemented - this is a placeholder for future functionality"
     ];

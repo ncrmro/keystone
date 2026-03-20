@@ -8,7 +8,12 @@
 with lib;
 let
   agentsLib = import ./lib.nix { inherit lib config pkgs; };
-  inherit (agentsLib) osCfg cfg agentsWithUids useZfs;
+  inherit (agentsLib)
+    osCfg
+    cfg
+    agentsWithUids
+    useZfs
+    ;
   inherit (agentsLib) desktopAgents hasDesktopAgents agentVncPort;
 in
 {

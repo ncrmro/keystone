@@ -9,78 +9,77 @@
   options,
   ...
 }:
-with lib; let
-  agentsLib = import ./lib.nix {inherit lib config pkgs;};
-  inherit (agentsLib) osCfg cfg topDomain agentPublicKey allKeysForAgent;
+with lib;
+let
+  agentsLib = import ./lib.nix { inherit lib config pkgs; };
+  inherit (agentsLib)
+    osCfg
+    cfg
+    topDomain
+    agentPublicKey
+    allKeysForAgent
+    ;
   inherit (agentsLib) globalAgentChromeDebugPort;
-in {
+in
+{
   config = optionalAttrs (options ? home-manager) {
-    home-manager = mkIf (osCfg.enable && cfg != {} && any (a: a.terminal.enable) (attrValues cfg)) {
+    home-manager = mkIf (osCfg.enable && cfg != { } && any (a: a.terminal.enable) (attrValues cfg)) {
       users = mapAttrs' (
-        name: agentCfg: let
+        name: agentCfg:
+        let
           username = "agent-${name}";
           # Capture NixOS system pkgs before they're shadowed by home-manager's pkgs
           # argument. The keystone overlay is applied at the system level, so we use
           # this to resolve keystone package store paths for MCP server commands.
           sysPkgs = pkgs;
         in
-          nameValuePair username ({pkgs, ...}: {
-            imports = [../../terminal/default.nix];
+        nameValuePair username (
+          { pkgs, ... }:
+          {
+            imports = [ ../../terminal/default.nix ];
 
             # Provide empty keystoneInputs — editor.nix uses it for optional
             # unstable helix and kinda-nvim theme, both degrade gracefully to
             # stable defaults when the attrs are absent.
-            _module.args.keystoneInputs = {};
+            _module.args.keystoneInputs = { };
 
             keystone.terminal = mkIf agentCfg.terminal.enable {
               enable = mkDefault true;
-              git = let
-                pubKey = agentPublicKey name;
-              in {
-                userName = mkDefault agentCfg.fullName;
-                userEmail = mkDefault (
-                  if agentCfg.email != null
-                  then agentCfg.email
-                  else "${username}@${
-                    if topDomain != null
-                    then topDomain
-                    else "localhost"
-                  }"
-                );
-                # Bridge SSH keys from keystone.keys for allowed_signers + signing
-                sshPublicKeys = mkDefault (allKeysForAgent name);
-                signingKey = mkDefault (
-                  if pubKey != null
-                  then "key::${pubKey}"
-                  else "~/.ssh/id_ed25519"
-                );
-                forgejo = {
-                  enable = mkDefault (config.keystone.services.git.host != null);
-                  domain = mkDefault config.keystone.services.git.domain;
-                  sshPort = mkDefault config.keystone.services.git.sshPort;
-                  # Use agent's Forgejo username, not the system username
-                  username = mkDefault agentCfg.git.username;
+              git =
+                let
+                  pubKey = agentPublicKey name;
+                in
+                {
+                  userName = mkDefault agentCfg.fullName;
+                  userEmail = mkDefault (
+                    if agentCfg.email != null then
+                      agentCfg.email
+                    else
+                      "${username}@${if topDomain != null then topDomain else "localhost"}"
+                  );
+                  # Bridge SSH keys from keystone.keys for allowed_signers + signing
+                  sshPublicKeys = mkDefault (allKeysForAgent name);
+                  signingKey = mkDefault (if pubKey != null then "key::${pubKey}" else "~/.ssh/id_ed25519");
+                  forgejo = {
+                    enable = mkDefault (config.keystone.services.git.host != null);
+                    domain = mkDefault config.keystone.services.git.domain;
+                    sshPort = mkDefault config.keystone.services.git.sshPort;
+                    # Use agent's Forgejo username, not the system username
+                    username = mkDefault agentCfg.git.username;
+                  };
                 };
-              };
               mail = {
                 enable = mkDefault true;
                 accountName = mkDefault name;
                 email = mkDefault (
-                  if agentCfg.mail.address != null
-                  then agentCfg.mail.address
-                  else "${username}@${
-                    if topDomain != null
-                    then topDomain
-                    else "localhost"
-                  }"
+                  if agentCfg.mail.address != null then
+                    agentCfg.mail.address
+                  else
+                    "${username}@${if topDomain != null then topDomain else "localhost"}"
                 );
                 displayName = mkDefault agentCfg.fullName;
                 login = mkDefault username;
-                host = mkDefault (
-                  if topDomain != null
-                  then "mail.${topDomain}"
-                  else ""
-                );
+                host = mkDefault (if topDomain != null then "mail.${topDomain}" else "");
                 # CRITICAL: agenix secrets and most editors add a trailing newline.
                 # Stalwart rejects passwords with trailing whitespace, so we must
                 # strip it. Without this, IMAP/SMTP auth fails.
@@ -100,19 +99,12 @@ in {
               secrets = {
                 enable = mkDefault true;
                 email = mkDefault (
-                  if agentCfg.email != null
-                  then agentCfg.email
-                  else "${username}@${
-                    if topDomain != null
-                    then topDomain
-                    else "localhost"
-                  }"
+                  if agentCfg.email != null then
+                    agentCfg.email
+                  else
+                    "${username}@${if topDomain != null then topDomain else "localhost"}"
                 );
-                baseUrl = mkDefault (
-                  if topDomain != null
-                  then "https://vaultwarden.${topDomain}"
-                  else ""
-                );
+                baseUrl = mkDefault (if topDomain != null then "https://vaultwarden.${topDomain}" else "");
                 # Agents are unattended — use a custom pinentry that reads the master
                 # password from the agenix secret instead of prompting interactively.
                 pinentry = pkgs.writeShellScriptBin "rbw-pinentry-agenix" ''
@@ -138,39 +130,50 @@ in {
                 enable = mkDefault true;
                 # Agents need to see ignored files (e.g. .agents submodule)
                 respectGitIgnore = mkDefault false;
-                mcpServers =
+                mcpServers = {
+                  deepwork = {
+                    command = "${sysPkgs.keystone.deepwork}/bin/deepwork";
+                    args = [
+                      "serve"
+                      "--path"
+                      "."
+                      "--external-runner"
+                      "claude"
+                      "--platform"
+                      "claude"
+                    ];
+                  };
+                }
+                // optionalAttrs (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) {
+                  chrome-devtools = {
+                    command = "${sysPkgs.keystone.chrome-devtools-mcp}/bin/chrome-devtools-mcp";
+                    args = [
+                      "--browserUrl"
+                      "http://127.0.0.1:${toString (globalAgentChromeDebugPort name agentCfg)}"
+                    ];
+                  };
+                }
+                // optionalAttrs (agentCfg.grafana.mcp.enable) {
+                  # Grafana MCP server (REQ-017.10) — provides Prometheus/Loki query access
+                  grafana = {
+                    command = "${sysPkgs.keystone.grafana-mcp}/bin/mcp-grafana";
+                    args = [ ];
+                    env = {
+                      GRAFANA_URL = agentCfg.grafana.mcp.url;
+                      # GRAFANA_API_KEY is loaded from the agenix secret at runtime.
+                      # The agent's shell profile should export it from /run/agenix/grafana-mcp-api-key.
+                    };
+                  };
+                }
+                // mapAttrs (
+                  _: srv:
                   {
-                    deepwork = {
-                      command = "${sysPkgs.keystone.deepwork}/bin/deepwork";
-                      args = ["serve" "--path" "." "--external-runner" "claude" "--platform" "claude"];
-                    };
+                    inherit (srv) command args;
                   }
-                  // optionalAttrs (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) {
-                    chrome-devtools = {
-                      command = "${sysPkgs.keystone.chrome-devtools-mcp}/bin/chrome-devtools-mcp";
-                      args = ["--browserUrl" "http://127.0.0.1:${toString (globalAgentChromeDebugPort name agentCfg)}"];
-                    };
+                  // optionalAttrs (srv.env != { }) {
+                    inherit (srv) env;
                   }
-                  // optionalAttrs (agentCfg.grafana.mcp.enable) {
-                    # Grafana MCP server (REQ-017.10) — provides Prometheus/Loki query access
-                    grafana = {
-                      command = "${sysPkgs.keystone.grafana-mcp}/bin/mcp-grafana";
-                      args = [];
-                      env = {
-                        GRAFANA_URL = agentCfg.grafana.mcp.url;
-                        # GRAFANA_API_KEY is loaded from the agenix secret at runtime.
-                        # The agent's shell profile should export it from /run/agenix/grafana-mcp-api-key.
-                      };
-                    };
-                  }
-                  // mapAttrs (_: srv:
-                    {
-                      inherit (srv) command args;
-                    }
-                    // optionalAttrs (srv.env != {}) {
-                      inherit (srv) env;
-                    })
-                  agentCfg.mcp.servers;
+                ) agentCfg.mcp.servers;
               };
             };
 
@@ -183,7 +186,8 @@ in {
             ];
 
             home.stateVersion = config.system.stateVersion;
-          })
+          }
+        )
       ) (filterAttrs (_: a: a.terminal.enable) cfg);
     };
   };

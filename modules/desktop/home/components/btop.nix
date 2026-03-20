@@ -4,9 +4,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.desktop;
-in {
+in
+{
   config = mkIf cfg.enable {
     # Install btop
     home.packages = with pkgs; [

@@ -9,14 +9,16 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   osCfg = config.keystone.os;
   cfg = osCfg.remoteUnlock;
-in {
+in
+{
   config = mkIf (osCfg.enable && cfg.enable) {
     assertions = [
       {
-        assertion = cfg.authorizedKeys != [];
+        assertion = cfg.authorizedKeys != [ ];
         message = "keystone.os.remoteUnlock.authorizedKeys must not be empty when remote unlock is enabled";
       }
     ];
@@ -29,7 +31,7 @@ in {
           enable = true;
           port = cfg.port;
           authorizedKeys = cfg.authorizedKeys;
-          hostKeys = ["/etc/ssh/initrd_ssh_host_ed25519_key"];
+          hostKeys = [ "/etc/ssh/initrd_ssh_host_ed25519_key" ];
         };
       };
 
@@ -37,11 +39,11 @@ in {
       systemd.users.root.shell = "/bin/systemd-tty-ask-password-agent";
 
       # Network card kernel module
-      availableKernelModules = [cfg.networkModule];
+      availableKernelModules = [ cfg.networkModule ];
     };
 
     # Kernel parameters for network configuration
-    boot.kernelParams = lib.optionals cfg.dhcp ["ip=dhcp"];
+    boot.kernelParams = lib.optionals cfg.dhcp [ "ip=dhcp" ];
 
     # Ensure host key exists for initrd SSH
     # This key should be pre-generated during deployment
@@ -52,7 +54,7 @@ in {
           echo "Generate with: ssh-keygen -t ed25519 -N '''' -f /etc/ssh/initrd_ssh_host_ed25519_key"
         fi
       '';
-      deps = [];
+      deps = [ ];
     };
   };
 }

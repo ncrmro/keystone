@@ -12,9 +12,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.server.monitoring;
-in {
+in
+{
   options.keystone.server.monitoring = {
     prometheus = {
       port = mkOption {
@@ -86,7 +88,7 @@ in {
       enable = true;
       port = cfg.prometheus.port;
       retentionTime = cfg.prometheus.retention;
-      
+
       globalConfig = {
         scrape_interval = cfg.prometheus.scrapeInterval;
       };
@@ -95,16 +97,20 @@ in {
         # Scrape Prometheus itself
         {
           job_name = "prometheus";
-          static_configs = [{
-            targets = ["localhost:${toString cfg.prometheus.port}"];
-          }];
+          static_configs = [
+            {
+              targets = [ "localhost:${toString cfg.prometheus.port}" ];
+            }
+          ];
         }
         # Scrape node exporter if enabled
         (mkIf cfg.nodeExporter.enable {
           job_name = "node";
-          static_configs = [{
-            targets = ["localhost:${toString cfg.nodeExporter.port}"];
-          }];
+          static_configs = [
+            {
+              targets = [ "localhost:${toString cfg.nodeExporter.port}" ];
+            }
+          ];
         })
       ];
     };
@@ -130,7 +136,8 @@ in {
             url = "http://localhost:${toString cfg.prometheus.port}";
             isDefault = true;
           }
-        ] ++ (optional cfg.loki.enable {
+        ]
+        ++ (optional cfg.loki.enable {
           name = "Loki";
           type = "loki";
           access = "proxy";
@@ -171,16 +178,18 @@ in {
         };
 
         schema_config = {
-          configs = [{
-            from = "2024-01-01";
-            store = "tsdb";
-            object_store = "filesystem";
-            schema = "v13";
-            index = {
-              prefix = "index_";
-              period = "24h";
-            };
-          }];
+          configs = [
+            {
+              from = "2024-01-01";
+              store = "tsdb";
+              object_store = "filesystem";
+              schema = "v13";
+              index = {
+                prefix = "index_";
+                period = "24h";
+              };
+            }
+          ];
         };
 
         storage_config = {
@@ -213,8 +222,9 @@ in {
     networking.firewall.allowedTCPPorts = [
       cfg.prometheus.port
       cfg.grafana.port
-    ] ++ (optional cfg.nodeExporter.enable cfg.nodeExporter.port)
-      ++ (optional cfg.loki.enable cfg.loki.port);
+    ]
+    ++ (optional cfg.nodeExporter.enable cfg.nodeExporter.port)
+    ++ (optional cfg.loki.enable cfg.loki.port);
 
     # Add helpful packages
     environment.systemPackages = with pkgs; [

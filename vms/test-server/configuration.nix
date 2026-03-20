@@ -3,7 +3,8 @@
   pkgs,
   lib,
   ...
-}: {
+}:
+{
   # Minimal Keystone server configuration for VM testing
   # This configuration enables nixos-anywhere deployment to VMs
 
@@ -25,7 +26,7 @@
       type = "zfs";
       # Disk device for VM testing
       # Note: VMs use /dev/vda - disk-by-id serial doesn't work reliably with quickemu
-      devices = ["/dev/vda"];
+      devices = [ "/dev/vda" ];
 
       # Partition sizes
       swap.size = "8G";
@@ -37,7 +38,10 @@
     # Enable TPM-based automatic unlock
     tpm = {
       enable = true;
-      pcrs = [1 7];
+      pcrs = [
+        1
+        7
+      ];
     };
 
     # SSH-based remote disk unlocking for VMs
@@ -79,7 +83,11 @@
   boot.initrd.systemd.emergencyAccess = true; # Allow emergency access via serial
 
   # Ensure virtio modules are available in initrd (required for QEMU/KVM VMs)
-  boot.initrd.availableKernelModules = ["virtio_blk" "virtio_pci" "virtio_net"];
+  boot.initrd.availableKernelModules = [
+    "virtio_blk"
+    "virtio_pci"
+    "virtio_net"
+  ];
 
   # SSH access configuration
   # IMPORTANT: Replace with your actual SSH public key(s)
@@ -88,7 +96,10 @@
   ];
 
   # Allow testuser to receive nix store paths over SSH (for home-manager testing)
-  nix.settings.trusted-users = ["root" "testuser"];
+  nix.settings.trusted-users = [
+    "root"
+    "testuser"
+  ];
 
   # Additional packages for Secure Boot provisioning
   environment.systemPackages = with pkgs; [

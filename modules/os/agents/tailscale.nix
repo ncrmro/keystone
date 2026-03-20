@@ -8,7 +8,12 @@
 with lib;
 let
   agentsLib = import ./lib.nix { inherit lib config pkgs; };
-  inherit (agentsLib) osCfg cfg agentsWithUids useZfs;
+  inherit (agentsLib)
+    osCfg
+    cfg
+    agentsWithUids
+    useZfs
+    ;
   inherit (agentsLib) tailscaleAgents hasTailscaleAgents agentFwmark;
 in
 {
@@ -44,8 +49,8 @@ in
     };
 
     # Per-agent tailscaled services + wrapper installer
-    systemd.services = mkMerge ((
-      mapAttrsToList (
+    systemd.services = mkMerge (
+      (mapAttrsToList (
         name: agentCfg:
         let
           username = "agent-${name}";
@@ -111,46 +116,49 @@ in
             };
           };
         }
-      ) tailscaleAgents
-    ) ++ [{
-      # Install the wrapper into each agent's PATH via /home/agent-{name}/bin
-      agent-tailscale-wrappers = {
-      description = "Install tailscale CLI wrappers into agent home directories";
+      ) tailscaleAgents)
+      ++ [
+        {
+          # Install the wrapper into each agent's PATH via /home/agent-{name}/bin
+          agent-tailscale-wrappers = {
+            description = "Install tailscale CLI wrappers into agent home directories";
 
-      wantedBy = [ "agent-tailscale.target" ];
-      after = [
-        (if useZfs then "zfs-agent-datasets.service" else "agent-homes.service")
-      ];
-      requires = [
-        (if useZfs then "zfs-agent-datasets.service" else "agent-homes.service")
-      ];
+            wantedBy = [ "agent-tailscale.target" ];
+            after = [
+              (if useZfs then "zfs-agent-datasets.service" else "agent-homes.service")
+            ];
+            requires = [
+              (if useZfs then "zfs-agent-datasets.service" else "agent-homes.service")
+            ];
 
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+            };
 
-      script = ''
-        ${concatStringsSep "\n" (
-          mapAttrsToList (
-            name: agentCfg:
-            let
-              username = "agent-${name}";
-              socketPath = "/run/tailscale/agent-${name}-tailscaled.socket";
-            in
-            ''
-              mkdir -p /home/${username}/bin
-              cat > /home/${username}/bin/tailscale <<'WRAPPER'
-              #!/bin/sh
-              exec ${pkgs.tailscale}/bin/tailscale --socket=${socketPath} "$@"
-              WRAPPER
-              chmod +x /home/${username}/bin/tailscale
-              chown -R ${username}:agents /home/${username}/bin
-            ''
-          ) tailscaleAgents
-        )}
-      '';
-      };
-    }]);
+            script = ''
+              ${concatStringsSep "\n" (
+                mapAttrsToList (
+                  name: agentCfg:
+                  let
+                    username = "agent-${name}";
+                    socketPath = "/run/tailscale/agent-${name}-tailscaled.socket";
+                  in
+                  ''
+                    mkdir -p /home/${username}/bin
+                    cat > /home/${username}/bin/tailscale <<'WRAPPER'
+                    #!/bin/sh
+                    exec ${pkgs.tailscale}/bin/tailscale --socket=${socketPath} "$@"
+                    WRAPPER
+                    chmod +x /home/${username}/bin/tailscale
+                    chown -R ${username}:agents /home/${username}/bin
+                  ''
+                ) tailscaleAgents
+              )}
+            '';
+          };
+        }
+      ]
+    );
   };
 }

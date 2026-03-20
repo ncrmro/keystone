@@ -4,16 +4,16 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.terminal;
 
   # Generate allowed_signers file content: "<email> <key>" per line
-  allowedSignersContent =
-    concatMapStringsSep "\n" (
-      key: "${cfg.git.userEmail} ${key}"
-    )
-    cfg.git.sshPublicKeys;
-in {
+  allowedSignersContent = concatMapStringsSep "\n" (
+    key: "${cfg.git.userEmail} ${key}"
+  ) cfg.git.sshPublicKeys;
+in
+{
   imports = [
     ./shell.nix
     ./editor.nix
@@ -73,7 +73,7 @@ in {
 
       sshPublicKeys = mkOption {
         type = types.listOf types.str;
-        default = [];
+        default = [ ];
         description = "SSH public keys for allowed_signers (git signature verification).";
       };
 
@@ -99,7 +99,7 @@ in {
     ];
 
     # Generate allowed_signers file when SSH public keys are provided
-    home.file.".ssh/allowed_signers" = mkIf (cfg.git.enable && cfg.git.sshPublicKeys != []) {
+    home.file.".ssh/allowed_signers" = mkIf (cfg.git.enable && cfg.git.sshPublicKeys != [ ]) {
       text = allowedSignersContent;
     };
 
@@ -115,7 +115,7 @@ in {
           signingkey = cfg.git.signingKey;
         };
         gpg.format = "ssh";
-        gpg.ssh.allowedSignersFile = mkIf (cfg.git.sshPublicKeys != []) "~/.ssh/allowed_signers";
+        gpg.ssh.allowedSignersFile = mkIf (cfg.git.sshPublicKeys != [ ]) "~/.ssh/allowed_signers";
         commit.gpgsign = true;
         tag.gpgsign = true;
         alias = {

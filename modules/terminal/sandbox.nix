@@ -75,9 +75,11 @@ in
       PODMAN_AGENT_GH_PATH = "${pkgs.gh}";
       PODMAN_AGENT_RIPGREP_PATH = "${pkgs.ripgrep}";
       PODMAN_AGENT_PROCPS_PATH = "${pkgs.procps}";
-    } // optionalAttrs (cfg.extraSubstituters != [ ]) {
+    }
+    // optionalAttrs (cfg.extraSubstituters != [ ]) {
       PODMAN_AGENT_EXTRA_SUBSTITUTERS = concatStringsSep " " cfg.extraSubstituters;
-    } // optionalAttrs (cfg.extraTrustedPublicKeys != [ ]) {
+    }
+    // optionalAttrs (cfg.extraTrustedPublicKeys != [ ]) {
       PODMAN_AGENT_EXTRA_TRUSTED_PUBLIC_KEYS = concatStringsSep " " cfg.extraTrustedPublicKeys;
     };
   };

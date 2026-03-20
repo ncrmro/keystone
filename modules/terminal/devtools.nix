@@ -4,9 +4,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.terminal;
-in {
+in
+{
   config = mkIf (cfg.enable && cfg.devTools) {
     home.packages = with pkgs; [
       # Csview - CSV viewer for terminal

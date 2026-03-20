@@ -19,12 +19,14 @@ with lib;
 let
   cfg = config.keystone.services;
   hostNames = mapAttrsToList (_: h: h.hostname) config.keystone.hosts;
-  validateHost = name: host:
-    optional (host != null && config.keystone.hosts != {} && !elem host hostNames) {
+  validateHost =
+    name: host:
+    optional (host != null && config.keystone.hosts != { } && !elem host hostNames) {
       assertion = false;
       message = "keystone.services.${name}.host = \"${host}\" does not match any hostname in keystone.hosts. Valid hostnames: ${concatStringsSep ", " hostNames}";
     };
-in {
+in
+{
   options.keystone.services = {
     mail.host = mkOption {
       type = types.nullOr types.str;
@@ -67,7 +69,7 @@ in {
 
     immich.workers = mkOption {
       type = types.listOf types.str;
-      default = [];
+      default = [ ];
       description = "List of hostnames acting as GPU/ML workers.";
     };
   };

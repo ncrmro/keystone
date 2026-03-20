@@ -8,7 +8,8 @@
 # Usage:
 #   keystone.secrets.repo = inputs.agenix-secrets;
 { lib, ... }:
-with lib; {
+with lib;
+{
   options.keystone.secrets.repo = mkOption {
     type = types.nullOr types.path;
     default = null;

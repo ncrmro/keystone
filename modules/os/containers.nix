@@ -1,11 +1,18 @@
-{ config, lib, pkgs, options, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  options,
+  ...
+}:
 with lib;
 let
   osCfg = config.keystone.os;
   cfg = osCfg.containers;
   # Check if terminal sandbox is enabled (home-manager module)
   hasSandbox = options ? keystone && config.keystone.terminal.sandbox.enable or false;
-in {
+in
+{
   options.keystone.os.containers = {
     enable = mkOption {
       type = types.bool;
@@ -23,12 +30,15 @@ in {
       defaultNetwork.settings.dns_enabled = true;
     };
 
-    environment.systemPackages = with pkgs; [
-      dive
-      docker-compose
-    ] ++ lib.optionals hasSandbox [
-      pkgs.keystone.agentctl
-      pkgs.keystone.podman-agent
-    ];
+    environment.systemPackages =
+      with pkgs;
+      [
+        dive
+        docker-compose
+      ]
+      ++ lib.optionals hasSandbox [
+        pkgs.keystone.agentctl
+        pkgs.keystone.podman-agent
+      ];
   };
 }

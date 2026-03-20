@@ -13,7 +13,8 @@
   utils,
   ...
 }:
-with lib; let
+with lib;
+let
   osCfg = config.keystone.os;
   cfg = osCfg.storage;
 
@@ -21,46 +22,46 @@ with lib; let
   enableSwap = cfg.swap.size != "0" && cfg.swap.size != "";
 
   # Helper to get first device (for single disk or lead device in multi-disk)
-  firstDevice =
-    if cfg.devices != []
-    then elemAt cfg.devices 0
-    else "/dev/null";
+  firstDevice = if cfg.devices != [ ] then elemAt cfg.devices 0 else "/dev/null";
 
   # Compute device directory for ZFS import (matches devNodes)
   importDir = builtins.dirOf firstDevice;
 
   # Convert arcMax to bytes for kernel param
-  arcMaxBytes = let
-    # Parse size string like "4G" or "8G"
-    parseSize = s:
-      if hasSuffix "G" s
-      then (toInt (removeSuffix "G" s)) * 1024 * 1024 * 1024
-      else if hasSuffix "M" s
-      then (toInt (removeSuffix "M" s)) * 1024 * 1024
-      else toInt s;
-  in
-    if cfg.zfs.arcMax != null
-    then parseSize cfg.zfs.arcMax
-    else 4 * 1024 * 1024 * 1024; # Default 4GB
+  arcMaxBytes =
+    let
+      # Parse size string like "4G" or "8G"
+      parseSize =
+        s:
+        if hasSuffix "G" s then
+          (toInt (removeSuffix "G" s)) * 1024 * 1024 * 1024
+        else if hasSuffix "M" s then
+          (toInt (removeSuffix "M" s)) * 1024 * 1024
+        else
+          toInt s;
+    in
+    if cfg.zfs.arcMax != null then parseSize cfg.zfs.arcMax else 4 * 1024 * 1024 * 1024; # Default 4GB
 
   # Build ZFS vdev type based on mode and device count
   zfsVdevType =
-    if cfg.mode == "single"
-    then ""
-    else if cfg.mode == "mirror"
-    then "mirror"
-    else if cfg.mode == "stripe"
-    then ""
-    else cfg.mode; # raidz1, raidz2, raidz3
+    if cfg.mode == "single" then
+      ""
+    else if cfg.mode == "mirror" then
+      "mirror"
+    else if cfg.mode == "stripe" then
+      ""
+    else
+      cfg.mode; # raidz1, raidz2, raidz3
 
   # Generate device list for systemd dependencies
   deviceUnits = map (p: utils.escapeSystemdPath p + ".device") cfg.devices;
-in {
+in
+{
   config = mkMerge [
     # ZFS configuration
     (mkIf (osCfg.enable && cfg.enable && cfg.type == "zfs") {
       # Ensure ZFS support is enabled
-      boot.supportedFilesystems = ["zfs"];
+      boot.supportedFilesystems = [ "zfs" ];
 
       # Boot loader configuration
       boot.loader.systemd-boot.enable = true;
@@ -77,48 +78,50 @@ in {
 
         # Import the ZFS pool without mounting
         systemd.services.import-rpool-bare = {
-          after = ["modprobe@zfs.service"] ++ deviceUnits;
-          requires = ["modprobe@zfs.service"];
+          after = [ "modprobe@zfs.service" ] ++ deviceUnits;
+          requires = [ "modprobe@zfs.service" ];
 
           # Devices in 'wants' allows degraded import if one times out
           # 'cryptsetup-pre.target' ensures this finishes before cryptsetup
-          wants = ["cryptsetup-pre.target"] ++ deviceUnits;
-          before = ["cryptsetup-pre.target"];
+          wants = [ "cryptsetup-pre.target" ] ++ deviceUnits;
+          before = [ "cryptsetup-pre.target" ];
 
           unitConfig.DefaultDependencies = false;
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
           };
-          path = [config.boot.zfs.package];
+          path = [ config.boot.zfs.package ];
           enableStrictShellChecks = true;
-          script = let
-            # Validate encryption root to prevent mounting fraudulent filesystems
-            shouldCheckFS = fs: fs.fsType == "zfs" && utils.fsNeededForBoot fs;
-            checkFS = fs: ''
-              encroot="$(zfs get -H -o value encryptionroot ${fs.device})"
-              if [ "$encroot" != rpool/crypt ]; then
-                echo ${fs.device} has invalid encryptionroot "$encroot" >&2
-                exit 1
-              else
-                echo ${fs.device} has valid encryptionroot "$encroot" >&2
-              fi
-            '';
-          in ''
-            function cleanup() {
-              exit_code=$?
-              if [ "$exit_code" != 0 ]; then
-                zpool export rpool
-              fi
-            }
-            trap cleanup EXIT
-            zpool import -N -d ${importDir} rpool
+          script =
+            let
+              # Validate encryption root to prevent mounting fraudulent filesystems
+              shouldCheckFS = fs: fs.fsType == "zfs" && utils.fsNeededForBoot fs;
+              checkFS = fs: ''
+                encroot="$(zfs get -H -o value encryptionroot ${fs.device})"
+                if [ "$encroot" != rpool/crypt ]; then
+                  echo ${fs.device} has invalid encryptionroot "$encroot" >&2
+                  exit 1
+                else
+                  echo ${fs.device} has valid encryptionroot "$encroot" >&2
+                fi
+              '';
+            in
+            ''
+              function cleanup() {
+                exit_code=$?
+                if [ "$exit_code" != 0 ]; then
+                  zpool export rpool
+                fi
+              }
+              trap cleanup EXIT
+              zpool import -N -d ${importDir} rpool
 
-            # Check that file systems have correct encryptionroot
-            ${lib.concatStringsSep "\n" (
-              lib.map checkFS (lib.filter shouldCheckFS config.system.build.fileSystems)
-            )}
-          '';
+              # Check that file systems have correct encryptionroot
+              ${lib.concatStringsSep "\n" (
+                lib.map checkFS (lib.filter shouldCheckFS config.system.build.fileSystems)
+              )}
+            '';
         };
 
         # LUKS credstore configuration
@@ -151,13 +154,13 @@ in {
 
         # Load ZFS encryption key from credstore
         systemd.services.rpool-load-key = {
-          requiredBy = ["initrd.target"];
+          requiredBy = [ "initrd.target" ];
           before = [
             "sysroot.mount"
             "initrd.target"
           ];
-          requires = ["import-rpool-bare.service"];
-          after = ["import-rpool-bare.service"];
+          requires = [ "import-rpool-bare.service" ];
+          after = [ "import-rpool-bare.service" ];
           unitConfig.RequiresMountsFor = "/etc/credstore";
           unitConfig.DefaultDependencies = false;
           serviceConfig = {
@@ -169,57 +172,55 @@ in {
         };
 
         # Fix udev/cryptsetup race condition during initrd transition
-        systemd.services.systemd-udevd.before = ["systemd-cryptsetup@credstore.service"];
+        systemd.services.systemd-udevd.before = [ "systemd-cryptsetup@credstore.service" ];
       };
 
       # Disko configuration
       disko.devices = {
-        disk = let
-          # For single disk, ESP and swap on same disk
-          # For multi-disk, ESP only on first disk, swap on last (or separate)
-          mkDisk = idx: device: {
-            name = "disk${toString idx}";
-            value = {
-              type = "disk";
-              inherit device;
-              content = {
-                type = "gpt";
-                partitions = {
-                  # ESP only on first disk
-                  esp = mkIf (idx == 0) {
-                    name = "ESP";
-                    size = cfg.esp.size;
-                    type = "EF00";
-                    content = {
-                      type = "filesystem";
-                      format = "vfat";
-                      mountpoint = "/boot";
+        disk =
+          let
+            # For single disk, ESP and swap on same disk
+            # For multi-disk, ESP only on first disk, swap on last (or separate)
+            mkDisk = idx: device: {
+              name = "disk${toString idx}";
+              value = {
+                type = "disk";
+                inherit device;
+                content = {
+                  type = "gpt";
+                  partitions = {
+                    # ESP only on first disk
+                    esp = mkIf (idx == 0) {
+                      name = "ESP";
+                      size = cfg.esp.size;
+                      type = "EF00";
+                      content = {
+                        type = "filesystem";
+                        format = "vfat";
+                        mountpoint = "/boot";
+                      };
                     };
-                  };
-                  # ZFS partition - leave room for swap on last disk
-                  zfs = {
-                    end =
-                      if idx == (length cfg.devices - 1) && enableSwap
-                      then "-${cfg.swap.size}"
-                      else "-0";
-                    content = {
-                      type = "zfs";
-                      pool = "rpool";
+                    # ZFS partition - leave room for swap on last disk
+                    zfs = {
+                      end = if idx == (length cfg.devices - 1) && enableSwap then "-${cfg.swap.size}" else "-0";
+                      content = {
+                        type = "zfs";
+                        pool = "rpool";
+                      };
                     };
-                  };
-                  # Swap only on last disk (if enabled)
-                  encryptedSwap = mkIf (idx == (length cfg.devices - 1) && enableSwap) {
-                    size = "100%";
-                    content = {
-                      type = "swap";
-                      randomEncryption = true;
+                    # Swap only on last disk (if enabled)
+                    encryptedSwap = mkIf (idx == (length cfg.devices - 1) && enableSwap) {
+                      size = "100%";
+                      content = {
+                        type = "swap";
+                        randomEncryption = true;
+                      };
                     };
                   };
                 };
               };
             };
-          };
-        in
+          in
           builtins.listToAttrs (imap0 mkDisk cfg.devices);
 
         zpool.rpool = {
@@ -231,10 +232,7 @@ in {
             acltype = "posixacl";
             xattr = "sa";
             atime = cfg.zfs.atime;
-            "com.sun:auto-snapshot" =
-              if cfg.zfs.autoSnapshot
-              then "true"
-              else "false";
+            "com.sun:auto-snapshot" = if cfg.zfs.autoSnapshot then "true" else "false";
           };
           options.ashift = "12";
           datasets = {
@@ -288,10 +286,10 @@ in {
 
       # Explicit mount configuration for stage 1 (initrd)
       # Required for ZFS datasets using 'mountpoint=$path' with 'zfsutil' option
-      fileSystems = lib.genAttrs ["/" "/nix" "/var"] (fs: {
+      fileSystems = lib.genAttrs [ "/" "/nix" "/var" ] (fs: {
         device = "rpool/crypt/system${lib.optionalString (fs != "/") fs}";
         fsType = "zfs";
-        options = ["zfsutil"];
+        options = [ "zfsutil" ];
       });
 
       # ZFS boot configuration
@@ -328,8 +326,8 @@ in {
       };
 
       # Ensure proper ZFS module loading
-      boot.kernelModules = ["zfs"];
-      boot.extraModulePackages = [config.boot.kernelPackages.${pkgs.zfs.kernelModuleAttribute}];
+      boot.kernelModules = [ "zfs" ];
+      boot.extraModulePackages = [ config.boot.kernelPackages.${pkgs.zfs.kernelModuleAttribute} ];
     })
 
     # ext4 configuration (simpler alternative to ZFS)
@@ -359,10 +357,7 @@ in {
                 };
               };
               root = {
-                end =
-                  if enableSwap
-                  then "-${cfg.swap.size}"
-                  else "-0";
+                end = if enableSwap then "-${cfg.swap.size}" else "-0";
                 content = {
                   type = "luks";
                   name = "cryptroot";
@@ -377,19 +372,20 @@ in {
               swap = mkIf enableSwap {
                 size = "100%";
                 content =
-                  if cfg.hibernate.enable
-                  then {
-                    type = "luks";
-                    name = "cryptswap";
-                    passwordFile = "${./scripts/credstore-password}";
-                    content = {
+                  if cfg.hibernate.enable then
+                    {
+                      type = "luks";
+                      name = "cryptswap";
+                      passwordFile = "${./scripts/credstore-password}";
+                      content = {
+                        type = "swap";
+                      };
+                    }
+                  else
+                    {
                       type = "swap";
+                      randomEncryption = true;
                     };
-                  }
-                  else {
-                    type = "swap";
-                    randomEncryption = true;
-                  };
               };
             };
           };
@@ -415,9 +411,7 @@ in {
 
       boot.resumeDevice = mkIf cfg.hibernate.enable "/dev/mapper/cryptswap";
 
-      boot.initrd.availableKernelModules = mkIf cfg.hibernate.enable (
-        lib.mkAfter ["resume"]
-      );
+      boot.initrd.availableKernelModules = mkIf cfg.hibernate.enable (lib.mkAfter [ "resume" ]);
     })
   ];
 }

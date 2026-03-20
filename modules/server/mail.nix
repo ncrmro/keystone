@@ -12,9 +12,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.server.mail;
-in {
+in
+{
   options.keystone.server.mail = {
     domain = mkOption {
       type = types.str;
@@ -29,7 +31,7 @@ in {
   config = mkIf cfg.enable {
     # TODO: Implement mail server configuration
     # Consider using nixos-mailserver: https://gitlab.com/simple-nixos-mailserver/nixos-mailserver
-    
+
     warnings = [
       "keystone.server.mail is not yet implemented - this is a placeholder for future functionality"
     ];

@@ -11,9 +11,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.terminal.deepwork;
-in {
+in
+{
   options.keystone.terminal.deepwork = {
     enable = mkOption {
       type = types.bool;

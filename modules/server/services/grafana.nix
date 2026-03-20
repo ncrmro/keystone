@@ -19,22 +19,24 @@ let
   cfg = serverCfg.services.grafana;
 in
 {
-  options.keystone.server.services.grafana = serverLib.mkServiceOptions {
-    description = "Grafana observability platform";
-    subdomain = "grafana";
-    port = 3002;
-    access = "tailscale";
-    websockets = true;
-    registerDNS = true;
-  } // {
-    alerts = {
-      defaultEnabled = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Provision standard infrastructure alert rules (nix store disk space, etc.)";
+  options.keystone.server.services.grafana =
+    serverLib.mkServiceOptions {
+      description = "Grafana observability platform";
+      subdomain = "grafana";
+      port = 3002;
+      access = "tailscale";
+      websockets = true;
+      registerDNS = true;
+    }
+    // {
+      alerts = {
+        defaultEnabled = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Provision standard infrastructure alert rules (nix store disk space, etc.)";
+        };
       };
     };
-  };
 
   config = lib.mkMerge [
     # Nginx/DNS registration + Grafana service — when keystone grafana is enabled

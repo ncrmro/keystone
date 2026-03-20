@@ -18,25 +18,34 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.keystone.os.services.ollama;
 
   # Map acceleration backend to the appropriate Ollama package variant.
   # nixpkgs removed services.ollama.acceleration in favor of package selection.
   ollamaPackage =
-    if cfg.acceleration == "rocm"
-    then pkgs.ollama-rocm
-    else if cfg.acceleration == "cuda"
-    then pkgs.ollama-cuda
-    else if cfg.acceleration == "vulkan"
-    then pkgs.ollama-vulkan
-    else pkgs.ollama-cpu;
-in {
+    if cfg.acceleration == "rocm" then
+      pkgs.ollama-rocm
+    else if cfg.acceleration == "cuda" then
+      pkgs.ollama-cuda
+    else if cfg.acceleration == "vulkan" then
+      pkgs.ollama-vulkan
+    else
+      pkgs.ollama-cpu;
+in
+{
   options.keystone.os.services.ollama = {
     enable = mkEnableOption "Ollama local LLM inference server";
 
     acceleration = mkOption {
-      type = types.nullOr (types.enum ["rocm" "cuda" "vulkan"]);
+      type = types.nullOr (
+        types.enum [
+          "rocm"
+          "cuda"
+          "vulkan"
+        ]
+      );
       default = null;
       description = "GPU acceleration backend. null uses CPU only.";
       example = "vulkan";
@@ -56,16 +65,21 @@ in {
 
     models = mkOption {
       type = types.listOf types.str;
-      default = [];
+      default = [ ];
       description = "Models to automatically pull on service activation.";
-      example = ["qwen3:32b" "llama3.1:8b"];
+      example = [
+        "qwen3:32b"
+        "llama3.1:8b"
+      ];
     };
 
     environmentVariables = mkOption {
       type = types.attrsOf types.str;
-      default = {};
+      default = { };
       description = "Extra environment variables for the Ollama service.";
-      example = {OLLAMA_CONTEXT_LENGTH = "64000";};
+      example = {
+        OLLAMA_CONTEXT_LENGTH = "64000";
+      };
     };
 
     openFirewall = mkOption {

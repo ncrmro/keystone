@@ -7,19 +7,19 @@
 with lib;
 let
   cfg = config.keystone.os.tailscale;
-  
+
   # Find host in registry by matching networking.hostName
   # We search all hosts because the flake configuration name (the key)
   # might differ from the actual networking.hostName.
   hostList = attrValues config.keystone.hosts;
-  
+
   # Filter out the default 'nixos' hostname which is present during early evaluation
   # of some configurations before they've set their actual hostname.
   currentHostname = config.networking.hostName;
   isDefaultHostname = currentHostname == "nixos";
-  
+
   matchedHosts = filter (h: h.hostname == currentHostname) hostList;
-  currentHost = if !isDefaultHostname && matchedHosts != [] then head matchedHosts else null;
+  currentHost = if !isDefaultHostname && matchedHosts != [ ] then head matchedHosts else null;
 in
 {
   options.keystone.os.tailscale = {
@@ -64,7 +64,8 @@ in
         let
           # Base tags derived from the registry role
           roleTags =
-            if currentHost == null then [ ]
+            if currentHost == null then
+              [ ]
             else if currentHost.role == "server" then
               [ "tag:server" ]
             else if currentHost.role == "agent" then

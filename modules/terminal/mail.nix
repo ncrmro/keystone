@@ -143,7 +143,11 @@ in
       };
 
       encryption = mkOption {
-        type = types.enum [ "tls" "start-tls" "none" ];
+        type = types.enum [
+          "tls"
+          "start-tls"
+          "none"
+        ];
         default = "tls";
         description = "SMTP encryption type: tls (port 465), start-tls (port 587), or none";
       };

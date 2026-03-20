@@ -5,15 +5,18 @@
   config,
   ...
 }:
-with lib; let
+with lib;
+let
   topDomain = config.keystone.domain;
-in {
+in
+{
   agentSubmodule = types.submodule (
     {
       name,
       config,
       ...
-    }: {
+    }:
+    {
       options = {
         uid = mkOption {
           type = types.nullOr types.int;
@@ -127,10 +130,7 @@ in {
 
             url = mkOption {
               type = types.str;
-              default =
-                if topDomain != null
-                then "https://grafana.${topDomain}"
-                else "";
+              default = if topDomain != null then "https://grafana.${topDomain}" else "";
               description = "Grafana URL for the MCP server connection.";
             };
           };
@@ -278,25 +278,27 @@ in {
 
         mcp = {
           servers = mkOption {
-            type = types.attrsOf (types.submodule {
-              options = {
-                command = mkOption {
-                  type = types.str;
-                  description = "Absolute path to the MCP server binary.";
+            type = types.attrsOf (
+              types.submodule {
+                options = {
+                  command = mkOption {
+                    type = types.str;
+                    description = "Absolute path to the MCP server binary.";
+                  };
+                  args = mkOption {
+                    type = types.listOf types.str;
+                    default = [ ];
+                    description = "Arguments to pass to the MCP server.";
+                  };
+                  env = mkOption {
+                    type = types.attrsOf types.str;
+                    default = { };
+                    description = "Environment variables for the MCP server.";
+                  };
                 };
-                args = mkOption {
-                  type = types.listOf types.str;
-                  default = [];
-                  description = "Arguments to pass to the MCP server.";
-                };
-                env = mkOption {
-                  type = types.attrsOf types.str;
-                  default = {};
-                  description = "Environment variables for the MCP server.";
-                };
-              };
-            });
-            default = {};
+              }
+            );
+            default = { };
             description = "Additional MCP servers to configure for this agent.";
           };
         };

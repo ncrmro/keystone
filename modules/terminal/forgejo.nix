@@ -21,14 +21,20 @@
 #
 # Auto-enabled via keystone.services.git.host in users.nix and agents.nix
 # home-manager bridges.
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 with lib;
 let
   cfg = config.keystone.terminal;
   forgejoCfg = cfg.git.forgejo;
   hasDomainAndUser = forgejoCfg.domain != null && forgejoCfg.username != null;
   sshPortStr = toString forgejoCfg.sshPort;
-in {
+in
+{
   options.keystone.terminal.git.forgejo = {
     enable = mkOption {
       type = types.bool;
@@ -83,17 +89,19 @@ in {
         if [ ! -f "$TEA_FILE" ]; then
           cat > "$TEA_FILE" << 'SEED'
         ${builtins.toJSON {
-          logins = [{
-            name = "forgejo";
-            url = "https://${forgejoCfg.domain}";
-            token = "";
-            default = true;
-            ssh_host = forgejoCfg.domain;
-            ssh_key = "~/.ssh/id_ed25519";
-            ssh_agent = true;
-            version_check = false;
-            user = forgejoCfg.username;
-          }];
+          logins = [
+            {
+              name = "forgejo";
+              url = "https://${forgejoCfg.domain}";
+              token = "";
+              default = true;
+              ssh_host = forgejoCfg.domain;
+              ssh_key = "~/.ssh/id_ed25519";
+              ssh_agent = true;
+              version_check = false;
+              user = forgejoCfg.username;
+            }
+          ];
           preferences = {
             editor = false;
             flag_defaults = {
@@ -132,11 +140,11 @@ in {
         if [ ! -f "$FJ_FILE" ]; then
           cat > "$FJ_FILE" << 'SEED'
         ${builtins.toJSON {
-          hosts = {};
+          hosts = { };
           aliases = {
             "${forgejoCfg.domain}:${sshPortStr}" = forgejoCfg.domain;
           };
-          default_ssh = [];
+          default_ssh = [ ];
         }}
         SEED
         else

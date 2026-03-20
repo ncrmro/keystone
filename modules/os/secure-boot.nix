@@ -9,10 +9,12 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   osCfg = config.keystone.os;
   cfg = osCfg.secureBoot;
-in {
+in
+{
   config = mkIf (osCfg.enable && cfg.enable) {
     assertions = [
       {
@@ -26,7 +28,7 @@ in {
     ];
 
     # Ensure sbctl is available for key management
-    environment.systemPackages = [pkgs.sbctl];
+    environment.systemPackages = [ pkgs.sbctl ];
 
     # Configure lanzaboote for Secure Boot
     boot.lanzaboote = {
@@ -46,7 +48,7 @@ in {
           "${pkgs.sbctl}/bin/sbctl" \
           "${pkgs.gawk}/bin/awk"
       '';
-      deps = []; # Run early in activation
+      deps = [ ]; # Run early in activation
     };
   };
 }

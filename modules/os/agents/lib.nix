@@ -1,7 +1,11 @@
 # Shared helpers, constants, and filtered agent sets for the agents module.
 # This is a plain function (not a NixOS module) — each sub-module imports it:
 #   let agentsLib = import ./lib.nix { inherit lib config pkgs; };
-{ lib, config, pkgs }:
+{
+  lib,
+  config,
+  pkgs,
+}:
 with lib;
 let
   osCfg = config.keystone.os;
@@ -11,22 +15,30 @@ let
 
   # Get an agent's SSH public key from the keystone.keys registry.
   # Agents have exactly one host key — this returns it (or null if not in registry).
-  agentPublicKey = name: let
-    registryName = "agent-${name}";
-    u = keysCfg.${registryName} or null;
-    hostKeys = if u != null then mapAttrsToList (_: h: h.publicKey) u.hosts else [];
-  in if hostKeys != [] then head hostKeys else null;
+  agentPublicKey =
+    name:
+    let
+      registryName = "agent-${name}";
+      u = keysCfg.${registryName} or null;
+      hostKeys = if u != null then mapAttrsToList (_: h: h.publicKey) u.hosts else [ ];
+    in
+    if hostKeys != [ ] then head hostKeys else null;
 
   # All public keys for an agent from the keystone.keys registry
-  allKeysForAgent = name: let
-    registryName = "agent-${name}";
-  in if keysCfg ? ${registryName} then
+  allKeysForAgent =
+    name:
     let
-      u = keysCfg.${registryName};
-      hostKeys = mapAttrsToList (_: h: h.publicKey) u.hosts;
-      hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
-    in hostKeys ++ hwKeys
-  else [];
+      registryName = "agent-${name}";
+    in
+    if keysCfg ? ${registryName} then
+      let
+        u = keysCfg.${registryName};
+        hostKeys = mapAttrsToList (_: h: h.publicKey) u.hosts;
+        hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
+      in
+      hostKeys ++ hwKeys
+    else
+      [ ];
 
   # TODO: Re-evaluate agent ZFS home folders. Implementation needs to be reconciled with legacy setups.
   useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
@@ -67,17 +79,20 @@ let
   # Without this, SETENV on direct systemctl allows LD_PRELOAD injection as the
   # agent user, exposing SSH keys and mail credentials. The helper hardcodes
   # XDG_RUNTIME_DIR internally and allowlists safe systemctl verbs only.
-  agentSvcHelper = name:
+  agentSvcHelper =
+    name:
     let
       resolved = agentsWithUids.${name};
       uid = toString resolved.uid;
     in
-    pkgs.runCommand "agent-svc-${name}" {} ''
-      cp ${pkgs.replaceVars ./scripts/agent-svc.sh {
-        agentName = name;
-        uid = uid;
-        pathPrefix = "/etc/profiles/per-user/agent-${name}/bin:${lib.makeBinPath [ pkgs.nix ]}:/run/current-system/sw/bin";
-      }} $out
+    pkgs.runCommand "agent-svc-${name}" { } ''
+      cp ${
+        pkgs.replaceVars ./scripts/agent-svc.sh {
+          agentName = name;
+          uid = uid;
+          pathPrefix = "/etc/profiles/per-user/agent-${name}/bin:${lib.makeBinPath [ pkgs.nix ]}:/run/current-system/sw/bin";
+        }
+      } $out
       chmod +x $out
     '';
 
@@ -177,7 +192,7 @@ let
       chromeMcpPortBase + 1 + idx;
 
   # TODO: Re-enable per-agent Tailscale after fixing agenix.service dependency
-  tailscaleAgents = {};
+  tailscaleAgents = { };
   hasTailscaleAgents = false;
 
   # fwmark base for per-agent tailscale routing (one per agent)
@@ -195,31 +210,40 @@ let
     tailscaleFwmarkBase + 1 + idx;
 
   # Generate labwc config for an agent's home directory setup script
-  labwcConfigScript =
-    username: agentCfg:
-    ''
-        # Create labwc config directory
-        mkdir -p /home/${username}/.config/labwc
-        # autostart: create virtual output for headless VNC
-        cat > /home/${username}/.config/labwc/autostart <<'AUTOSTART'
-        # Create virtual output for headless VNC
-        ${pkgs.wlr-randr}/bin/wlr-randr --output HEADLESS-1 --custom-mode ${agentCfg.desktop.resolution}
-      AUTOSTART
-        chmod +x /home/${username}/.config/labwc/autostart
-        # rc.xml: minimal labwc config
-        cat > /home/${username}/.config/labwc/rc.xml <<'RCXML'
-      <?xml version="1.0"?>
-      <labwc_config>
-        <theme><name>default</name></theme>
-      </labwc_config>
-      RCXML
-        chown -R ${username}:agents /home/${username}/.config
-    '';
+  labwcConfigScript = username: agentCfg: ''
+      # Create labwc config directory
+      mkdir -p /home/${username}/.config/labwc
+      # autostart: create virtual output for headless VNC
+      cat > /home/${username}/.config/labwc/autostart <<'AUTOSTART'
+      # Create virtual output for headless VNC
+      ${pkgs.wlr-randr}/bin/wlr-randr --output HEADLESS-1 --custom-mode ${agentCfg.desktop.resolution}
+    AUTOSTART
+      chmod +x /home/${username}/.config/labwc/autostart
+      # rc.xml: minimal labwc config
+      cat > /home/${username}/.config/labwc/rc.xml <<'RCXML'
+    <?xml version="1.0"?>
+    <labwc_config>
+      <theme><name>default</name></theme>
+    </labwc_config>
+    RCXML
+      chown -R ${username}:agents /home/${username}/.config
+  '';
 
-in {
-  inherit osCfg cfg keysCfg topDomain;
+in
+{
+  inherit
+    osCfg
+    cfg
+    keysCfg
+    topDomain
+    ;
   inherit agentPublicKey allKeysForAgent useZfs;
-  inherit agentUidBase vncPortBase chromeDebugPortBase chromeMcpPortBase;
+  inherit
+    agentUidBase
+    vncPortBase
+    chromeDebugPortBase
+    chromeMcpPortBase
+    ;
   inherit sortedAgentNames agentsWithUids agentSvcHelper;
   inherit localAgents;
   inherit desktopAgents hasDesktopAgents;
