@@ -4,8 +4,8 @@
 # Usage: ks <command> [options]
 #
 # Commands:
-#   build  [--dev] [HOSTS]                           Build a NixOS configuration (no deploy)
-#   update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy a NixOS configuration
+#   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
+#   update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (home-manager only with --dev, full system default)
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
 #   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
 #   doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state
@@ -132,6 +132,172 @@ local_override_args() {
 # --- Repo URLs (for cloning) ---
 KEYSTONE_URL="git@github.com:ncrmro/keystone.git"
 AGENIX_SECRETS_URL="ssh://forgejo@git.ncrmro.com:2222/ncrmro/agenix-secrets.git"
+
+# --- Push keystone with fork fallback (REQ-016.9) ---
+# Pushes the local keystone repo. If the user lacks push access to the upstream
+# repo, forks it and pushes to the fork instead.
+push_keystone_with_fork_fallback() {
+  local ks_path="$1"
+  [[ -z "$ks_path" || ! -d "$ks_path" ]] && return 0
+
+  # Extract owner/repo from remote URL (handles SSH and HTTPS)
+  local remote_url
+  remote_url=$(git -C "$ks_path" remote get-url origin 2>/dev/null) || return 1
+  local owner_repo
+  owner_repo=$(echo "$remote_url" | sed -E 's|.*[:/]([^/]+/[^/]+?)(\.git)?$|\1|')
+
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "Warning: gh CLI not found. Attempting direct push..." >&2
+    git -C "$ks_path" push || {
+      echo "Error: Push failed. Install gh CLI for fork-fallback support." >&2
+      return 1
+    }
+    return 0
+  fi
+
+  # Check collaborator permission
+  local current_user permission
+  current_user=$(gh api user -q .login 2>/dev/null) || current_user=""
+  if [[ -n "$current_user" ]]; then
+    permission=$(gh api "repos/$owner_repo/collaborators/$current_user/permission" -q '.permission' 2>/dev/null) || permission="none"
+  else
+    permission="none"
+  fi
+
+  case "$permission" in
+    admin|maintain|write)
+      echo "Pushing keystone (direct access)..."
+      git -C "$ks_path" push
+      ;;
+    *)
+      echo "No push access to $owner_repo, pushing to fork..."
+      # Ensure fork exists
+      gh repo fork "$owner_repo" --clone=false 2>/dev/null || true
+      local fork_remote="git@github.com:$current_user/$(basename "$owner_repo").git"
+      # Set origin to fork for this push (will be restored by user if needed)
+      git -C "$ks_path" remote set-url origin "$fork_remote"
+      git -C "$ks_path" push -u origin "$(git -C "$ks_path" branch --show-current)"
+      echo "Pushed to fork: $fork_remote"
+      ;;
+  esac
+}
+
+# --- List home-manager users for a host (REQ-016.3) ---
+# Evaluates the flake to get all home-manager managed usernames for a host.
+list_hm_users() {
+  local repo_root="$1" host="$2"
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+  timeout 60 nix eval \
+    "$repo_root#nixosConfigurations.${host}.config.home-manager.users" \
+    --apply 'builtins.attrNames' --json \
+    "${override_args[@]}" 2>/dev/null | jq -r '.[]'
+}
+
+# --- Build home-manager activation packages only (REQ-016.1-3) ---
+# Builds home-manager activationPackage for each user on each host, returning
+# a newline-delimited list of "host:user:store-path" entries.
+build_home_manager_only() {
+  local repo_root="$1"
+  shift
+  local target_hosts=("$@")
+
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+
+  local build_targets=()
+  local target_map=()   # host:user pairs
+
+  for h in "${target_hosts[@]}"; do
+    local users
+    users=$(list_hm_users "$repo_root" "$h") || continue
+    if [[ -z "$users" ]]; then
+      echo "Warning: No home-manager users for host $h, skipping." >&2
+      continue
+    fi
+    while IFS= read -r user; do
+      build_targets+=("$repo_root#nixosConfigurations.$h.config.home-manager.users.\"$user\".home.activationPackage")
+      target_map+=("$h:$user")
+    done <<< "$users"
+  done
+
+  if [[ ${#build_targets[@]} -eq 0 ]]; then
+    echo "Warning: No home-manager targets to build." >&2
+    return 0
+  fi
+
+  echo "Building home-manager profiles: ${target_map[*]}..."
+  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+  echo "Home-manager build complete."
+}
+
+# --- Deploy home-manager profiles only (REQ-016.4-5) ---
+# Activates home-manager profiles for each user on each target host.
+# Does not require sudo — activation runs as the owning user.
+deploy_home_manager_only() {
+  local repo_root="$1"
+  shift
+  local target_hosts=("$@")
+
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+
+  local current_hostname
+  current_hostname=$(hostname)
+  local hosts_nix="$repo_root/hosts.nix"
+
+  for host in "${target_hosts[@]}"; do
+    local users
+    users=$(list_hm_users "$repo_root" "$host") || continue
+    [[ -z "$users" ]] && continue
+
+    local host_json host_hostname ssh_target fallback_ip
+    host_json=$(nix eval -f "$hosts_nix" "$host" --json 2>/dev/null) || continue
+    host_hostname=$(echo "$host_json" | jq -r '.hostname')
+    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+    fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
+
+    while IFS= read -r user; do
+      # Resolve the activation package store path
+      local activation_path
+      activation_path=$(nix build --no-link --print-out-paths \
+        "$repo_root#nixosConfigurations.$host.config.home-manager.users.\"$user\".home.activationPackage" \
+        "${override_args[@]}" 2>/dev/null) || {
+        echo "Error: Failed to resolve activation package for $user on $host" >&2
+        continue
+      }
+
+      if [[ "$host_hostname" == "$current_hostname" ]]; then
+        # LOCAL deploy — run activation as the user
+        echo "Activating home-manager for $user on $host (local)..."
+        sudo -u "$user" "$activation_path/activate" || {
+          echo "Error: Activation failed for $user on $host" >&2
+        }
+      else
+        # REMOTE deploy
+        if [[ -z "$ssh_target" ]]; then
+          echo "Error: $host has no sshTarget, cannot deploy remotely." >&2
+          continue
+        fi
+
+        local resolved="$ssh_target"
+        if [[ -n "$fallback_ip" ]]; then
+          if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+            resolved="$fallback_ip"
+            echo "Tailscale unavailable for $host, using LAN: $fallback_ip"
+          fi
+        fi
+
+        echo "Activating home-manager for $user on $host (remote: $resolved)..."
+        # Copy the closure to the remote host, then activate
+        nix copy --to "ssh://root@$resolved" "$activation_path" "${override_args[@]}" 2>/dev/null || true
+        ssh "root@$resolved" "sudo -u '$user' '$activation_path/activate'" || {
+          echo "Error: Remote activation failed for $user on $host" >&2
+        }
+      fi
+    done <<< "$users"
+  done
+}
 
 # --- Find local repo path ---
 # Returns the local path for a given repo name, checking .repos/ first, then legacy paths.
@@ -282,10 +448,11 @@ cmd_sync_host_keys() {
 }
 
 cmd_build() {
-  local hosts_arg=""
+  local hosts_arg="" lock=false
   while [[ $# -gt 0 ]]; do
     case $1 in
       --dev) shift ;;  # kept for backwards compat, no-op
+      --lock) lock=true; shift ;;
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) hosts_arg="$1"; shift ;;
     esac
@@ -306,18 +473,46 @@ cmd_build() {
     done
   fi
 
-  # --dev is kept for backwards compat but is now a no-op (overrides always applied when repos exist)
-  local override_args=()
-  read -ra override_args <<< "$(local_override_args "$repo_root")"
+  if [[ "$lock" == true ]]; then
+    # ── LOCK MODE (REQ-016.7): full system build with lock workflow ──
+    local ks_path secrets_path
+    ks_path=$(find_local_repo "$repo_root" keystone)
+    secrets_path=$(find_local_repo "$repo_root" agenix-secrets)
 
-  local build_targets=()
-  for h in "${target_hosts[@]}"; do
-    build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
-  done
+    # Step 1: Verify repos are clean
+    [[ -n "$ks_path" ]] && verify_repo_clean "$ks_path" keystone
+    [[ -n "$secrets_path" ]] && verify_repo_clean "$secrets_path" agenix-secrets
 
-  echo "Building: ${target_hosts[*]}..."
-  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
-  echo "Build complete for: ${target_hosts[*]}"
+    # Step 2: Push keystone with fork fallback (REQ-016.9)
+    [[ -n "$ks_path" ]] && push_keystone_with_fork_fallback "$ks_path"
+
+    # Step 3: Lock flake inputs
+    echo "Locking flake inputs..."
+    nix flake update keystone agenix-secrets --flake "$repo_root"
+
+    # Step 4: Commit flake.lock if changed
+    if ! git -C "$repo_root" diff --quiet flake.lock; then
+      echo "Committing flake.lock..."
+      git -C "$repo_root" add flake.lock
+      git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets"
+    fi
+
+    # Step 5: Full system build (no overrides — locked inputs)
+    local build_targets=()
+    for h in "${target_hosts[@]}"; do
+      build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
+    done
+    echo "Building (full system): ${target_hosts[*]}..."
+    nix build --no-link "${build_targets[@]}"
+
+    # Step 6: Push nixos-config (REQ-016.10)
+    echo "Pushing nixos-config..."
+    git -C "$repo_root" push
+    echo "Lock + build complete for: ${target_hosts[*]}"
+  else
+    # ── DEV MODE (REQ-016.1): home-manager only build ──
+    build_home_manager_only "$repo_root" "${target_hosts[@]}"
+  fi
 }
 
 cmd_update() {
@@ -356,6 +551,16 @@ cmd_update() {
     return
   fi
 
+  # ── DEV MODE: home-manager only (REQ-016.2) ──────────────────────────────────
+  if [[ "$lock" != true ]]; then
+    build_home_manager_only "$repo_root" "${target_hosts[@]}"
+    deploy_home_manager_only "$repo_root" "${target_hosts[@]}"
+    echo "Dev mode update complete (home-manager only) for: ${target_hosts[*]}"
+    return
+  fi
+
+  # ── LOCK MODE: full system rebuild ──────────────────────────────────────────
+
   # Step 1: Cache sudo credentials immediately — before any pull, lock, or build.
   # Any update that reaches this point may deploy locally; prompt upfront so the
   # user is not interrupted later.
@@ -381,36 +586,37 @@ cmd_update() {
     trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; trap - EXIT' EXIT
   fi
 
-  # ── UPFRONT PHASE (skipped in --dev mode) ───────────────────────────────────
-  if [[ "$lock" == true ]]; then
-    # Step 1: Pull nixos-config so we operate on latest
-    echo "Pulling nixos-config..."
-    git -C "$repo_root" pull --ff-only
+  # ── UPFRONT PHASE ───────────────────────────────────────────────────────────
+  # Step 1: Pull nixos-config so we operate on latest
+  echo "Pulling nixos-config..."
+  git -C "$repo_root" pull --ff-only
 
-    # Step 2: Pull keystone + agenix-secrets
-    pull_repo "$repo_root" keystone "$KEYSTONE_URL"
-    pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
+  # Step 2: Pull keystone + agenix-secrets
+  pull_repo "$repo_root" keystone "$KEYSTONE_URL"
+  pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
 
-    # Step 3: Verify repos are clean and fully pushed before locking
-    local ks_path secrets_path
-    ks_path=$(find_local_repo "$repo_root" keystone)
-    secrets_path=$(find_local_repo "$repo_root" agenix-secrets)
-    [[ -n "$ks_path" ]] && verify_repo_clean "$ks_path" keystone
-    [[ -n "$secrets_path" ]] && verify_repo_clean "$secrets_path" agenix-secrets
+  # Step 3: Verify repos are clean and fully pushed before locking
+  local ks_path secrets_path
+  ks_path=$(find_local_repo "$repo_root" keystone)
+  secrets_path=$(find_local_repo "$repo_root" agenix-secrets)
+  [[ -n "$ks_path" ]] && verify_repo_clean "$ks_path" keystone
+  [[ -n "$secrets_path" ]] && verify_repo_clean "$secrets_path" agenix-secrets
 
-    # Step 4: Update flake.lock BEFORE building so the build validates what will be committed
-    echo "Locking flake inputs..."
-    nix flake update keystone agenix-secrets --flake "$repo_root"
+  # Step 3.5: Push keystone with fork fallback (REQ-016.8-9)
+  [[ -n "$ks_path" ]] && push_keystone_with_fork_fallback "$ks_path"
 
-    # Step 5: Commit flake.lock (if changed)
-    if ! git -C "$repo_root" diff --quiet flake.lock; then
-      echo "Committing flake.lock..."
-      git -C "$repo_root" add flake.lock
-      git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets"
-    fi
+  # Step 4: Update flake.lock BEFORE building so the build validates what will be committed
+  echo "Locking flake inputs..."
+  nix flake update keystone agenix-secrets --flake "$repo_root"
+
+  # Step 5: Commit flake.lock (if changed)
+  if ! git -C "$repo_root" diff --quiet flake.lock; then
+    echo "Committing flake.lock..."
+    git -C "$repo_root" add flake.lock
+    git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets"
   fi
 
-  # Always use local overrides when repos are present (--dev is now a no-op for builds)
+  # Always use local overrides when repos are present
   local override_args=()
   read -ra override_args <<< "$(local_override_args "$repo_root")"
 
@@ -424,22 +630,20 @@ cmd_update() {
   echo "Building: ${target_hosts[*]}..."
   nix build --no-link "${build_targets[@]}" "${override_args[@]}"
 
-  # ── POST-BUILD PHASE (skipped in --dev mode) ────────────────────────────────
+  # ── POST-BUILD PHASE ────────────────────────────────────────────────────────
   # Step 8: Push flake.lock only after a successful build
-  if [[ "$lock" == true ]]; then
-    echo "Pushing nixos-config..."
-    if ! git -C "$repo_root" pull --rebase origin "$(git -C "$repo_root" branch --show-current)" 2>&1; then
-      echo ""
-      echo "ERROR: Failed to rebase nixos-config against origin."
-      echo "Resolve conflicts manually, then run: git push"
-      exit 1
-    fi
-    if ! git -C "$repo_root" push 2>&1; then
-      echo ""
-      echo "ERROR: Failed to push nixos-config."
-      echo "Run 'git pull --rebase && git push' to retry."
-      exit 1
-    fi
+  echo "Pushing nixos-config..."
+  if ! git -C "$repo_root" pull --rebase origin "$(git -C "$repo_root" branch --show-current)" 2>&1; then
+    echo ""
+    echo "ERROR: Failed to rebase nixos-config against origin."
+    echo "Resolve conflicts manually, then run: git push"
+    exit 1
+  fi
+  if ! git -C "$repo_root" push 2>&1; then
+    echo ""
+    echo "ERROR: Failed to push nixos-config."
+    echo "Run 'git pull --rebase && git push' to retry."
+    exit 1
   fi
 
   # ── DEPLOY PHASE ────────────────────────────────────────────────────────────
@@ -614,10 +818,10 @@ Steps executed in order:
 
 | Flag | Effect |
 |------|--------|
-| `--dev` | Skip pull, lock, commit, and push phases; useful with uncommitted local changes |
+| `--dev` | Home-manager only: build + activate user/agent profiles, skip system rebuild |
 | `--boot` | Use `nixos-rebuild boot` instead of `switch` (reboot required to apply) |
 | `--pull` | Pull repos only — no build or deploy |
-| `--lock` | Force locking (default when `--dev` is not set) |
+| `--lock` | Force locking (default when `--dev` is not set), full system rebuild |
 
 ### HOSTS
 
@@ -793,6 +997,33 @@ $host_table"
 $user_table"
   fi
 
+  # 7. Dev mode status (REQ-016.11-13)
+  local ks_dev_path
+  ks_dev_path=$(find_local_repo "$repo_root" keystone)
+  if [[ -n "$ks_dev_path" ]]; then
+    local ks_branch ks_dirty=""
+    ks_branch=$(git -C "$ks_dev_path" branch --show-current 2>/dev/null || echo "unknown")
+    if ! git -C "$ks_dev_path" diff --quiet 2>/dev/null || ! git -C "$ks_dev_path" diff --cached --quiet 2>/dev/null; then
+      ks_dirty=" (has uncommitted changes)"
+    fi
+    prompt="$prompt
+
+---
+
+## Development Mode
+
+**Status**: Active — using local keystone from disk${ks_dirty}
+**Path**: $ks_dev_path
+**Branch**: $ks_branch
+
+### Dev Mode Conventions
+
+- \`ks build\` / \`ks update --dev\`: Rebuilds **home-manager profiles only** (users + agents). Fast iteration, no sudo required.
+- \`ks build --lock\` / \`ks update\` (default): **Full NixOS system rebuild**. Pushes keystone (forks if not a collaborator), locks flake inputs, builds, pushes nixos-config, deploys.
+- Changes to keystone are NOT locked into flake.lock until \`--lock\` is used.
+- When ready to lock: commit + push keystone, then run \`ks update\` (or \`ks build --lock\`)."
+  fi
+
   printf '%s' "$prompt"
 }
 
@@ -935,8 +1166,8 @@ if [[ $# -lt 1 ]]; then
   echo "Usage: ks <command> [options]" >&2
   echo "" >&2
   echo "Commands:" >&2
-  echo "  build  [--dev] [HOSTS]                           Build NixOS configurations" >&2
-  echo "  update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy NixOS configurations" >&2
+  echo "  build  [--lock] [HOSTS]                            Build (home-manager only; --lock for full system)" >&2
+  echo "  update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (--dev for home-manager only)" >&2
   echo "  sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts" >&2
   echo "  agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context" >&2
   echo "  doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state" >&2
