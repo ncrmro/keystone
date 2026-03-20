@@ -41,9 +41,9 @@ nixos-config/
 
 ## Key Constraints
 
-- NEVER run `ks update` — deployment requires sudo and must be performed by a human or privileged process
-- NEVER commit directly to `main` — create feature branches and open PRs
-- NEVER edit `flake.lock` manually — use `nix flake update <input>`
+- MUST NOT run `ks update` — deployment requires sudo and must be performed by a human or privileged process
+- MUST NOT commit directly to `main` — create feature branches and open PRs
+- MUST NOT edit `flake.lock` manually — use `nix flake update <input>`
 - Follow `conventions/process.pull-request.md` before submitting any PR
 - Follow `conventions/process.version-control.md` for branch naming and commit messages
 
@@ -51,14 +51,14 @@ nixos-config/
 
 ### Test a change without deploying
 ```bash
-ks build --dev              # build current host with local overrides
-ks build --dev ocean        # build a specific host
+ks build                    # build current host (home-manager only, no sudo)
+ks build ocean              # build a specific host
 ```
 
 ### Work on keystone modules locally
 ```bash
 # Edit .repos/keystone/... or .submodules/keystone/...
-ks build --dev              # test with local overrides auto-applied
+ks build                    # test with local overrides auto-applied
 # When satisfied: commit + push keystone, then ask a human to run ks update
 ```
 

@@ -934,6 +934,20 @@ build_agent_prompt() {
     if [[ -n "$conventions" ]]; then
       prompt="$conventions"
     fi
+
+    # Load ks-agent archetype (provides identity and constraints for ks agent sessions)
+    local archetype_file="$ks_repo/modules/os/agents/archetypes/ks-agent.md"
+    if [[ -f "$archetype_file" ]]; then
+      if [[ -n "$prompt" ]]; then
+        prompt="$prompt
+
+---
+
+$(cat "$archetype_file")"
+      else
+        prompt="$(cat "$archetype_file")"
+      fi
+    fi
   fi
 
   # 2. ks update workflow (REQ-014.5)

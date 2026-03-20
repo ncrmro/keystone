@@ -24,6 +24,15 @@ in
           description = "User ID. If null, auto-assigned from the 4000+ range.";
         };
 
+        archetype = mkOption {
+          type = types.enum [
+            "engineer"
+            "product"
+          ];
+          description = "Convention archetype for this agent. Controls which conventions are inlined vs referenced. Available: engineer, product. See conventions/archetypes.yaml.";
+          example = "engineer";
+        };
+
         host = mkOption {
           type = types.nullOr types.str;
           default = null;
