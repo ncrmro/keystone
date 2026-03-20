@@ -114,3 +114,36 @@ specs_sync:
       Check the "Affected Modules" section lists all relevant files.
     additional_context:
       unchanged_matching_files: true
+
+# =====================================================================
+# Tests Sync: Evaluation tests stay current with module changes
+# When modules or flake.nix change, verify tests/ still cover the
+# changed modules and that existing tests pass.
+# =====================================================================
+tests_sync:
+  description: "Ensure tests/ evaluation tests stay current when modules change."
+  match:
+    include:
+      - "modules/**/*.nix"
+      - "flake.nix"
+      - "tests/**"
+    exclude:
+      - "modules/**/scripts/**"
+  review:
+    strategy: matches_together
+    instructions: |
+      When module files change, check whether the test suite covers the changes.
+
+      1. Run `nix flake check --no-build` to verify all evaluation tests pass.
+      2. For each changed module, check if the relevant test file in tests/module/
+         exercises the new or changed options:
+         - modules/os/** → tests/module/os-evaluation.nix
+         - modules/os/agents/** → tests/module/agent-evaluation.nix
+         - modules/server/** → tests/module/server-evaluation.nix
+         - modules/terminal/** → covered via agent-evaluation.nix (agents import terminal)
+         - templates/ → tests/module/template-evaluation.nix
+      3. If a new user-facing option is added but not exercised in any test, flag
+         it as "missing test coverage".
+      4. If test files change, verify they still evaluate cleanly.
+
+      Report which tests cover which changes, and flag any gaps.
