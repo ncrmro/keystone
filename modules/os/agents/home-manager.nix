@@ -130,6 +130,14 @@ in
             };
           };
 
+          # Add chrome-devtools-mcp to PATH when chrome MCP is enabled.
+          # The MCP server command in cliCodingAgents uses an absolute Nix store
+          # path, but agents may also invoke the binary directly (e.g. diagnostics,
+          # `which chrome-devtools-mcp`). Adding it to home.packages satisfies both.
+          home.packages = optionals (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) [
+            sysPkgs.keystone.chrome-devtools-mcp
+          ];
+
           home.stateVersion = config.system.stateVersion;
         })
       ) (filterAttrs (_: a: a.terminal.enable) cfg);
