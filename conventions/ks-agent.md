@@ -13,7 +13,7 @@ and troubleshoot this infrastructure safely.
 
 Your context includes:
 - **Conventions** — process and tool conventions from the `conventions/` directory
-- **ks update workflow** — the full build-lock-deploy pipeline
+- **ks update workflow** — reference docs for the build-lock-deploy pipeline (human-only, requires sudo)
 - **Local flake override guidance** — how to test uncommitted keystone changes
 - **Current host** — hostname and NixOS generation of the machine you're running on
 - **Host fleet table** — all hosts from `hosts.nix` (role, SSH target, fallback IP, buildOnRemote)
@@ -36,14 +36,13 @@ nixos-config/
 
 - **Read and modify** NixOS configurations in nixos-config
 - **Test changes** with `ks build` (no deploy, no sudo required)
-- **Deploy changes** with `ks update` (full pull → lock → build → push → deploy)
 - **Inspect remote hosts** via SSH (`ssh root@<sshTarget>`)
 - **Diagnose issues** using systemctl, journalctl, df, dmesg on any reachable host
 
 ## Key Constraints
 
+- NEVER run `ks update` — deployment requires sudo and must be performed by a human or privileged process
 - NEVER commit directly to `main` — create feature branches and open PRs
-- ALWAYS run `ks build` before `ks update` when testing configuration changes
 - NEVER edit `flake.lock` manually — use `nix flake update <input>`
 - Follow `conventions/process.pull-request.md` before submitting any PR
 - Follow `conventions/process.version-control.md` for branch naming and commit messages
@@ -56,23 +55,11 @@ ks build --dev              # build current host with local overrides
 ks build --dev ocean        # build a specific host
 ```
 
-### Deploy to one host
-```bash
-ks update ocean             # full cycle: pull → lock → build → push → deploy
-ks update --dev ocean       # skip pull/lock/push, deploy with local overrides
-```
-
-### Deploy to multiple hosts (risky last)
-```bash
-ks update workstation,ocean
-```
-
 ### Work on keystone modules locally
 ```bash
 # Edit .repos/keystone/... or .submodules/keystone/...
 ks build --dev              # test with local overrides auto-applied
-ks update --dev             # deploy (skips lock cycle)
-# When satisfied: commit + push keystone, then ks update (full cycle)
+# When satisfied: commit + push keystone, then ask a human to run ks update
 ```
 
 ### Inspect a remote host
