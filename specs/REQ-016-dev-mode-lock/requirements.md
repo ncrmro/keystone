@@ -40,7 +40,12 @@ be skipped in dev mode.
 default) MUST continue to perform the full NixOS system rebuild and
 deploy via `nixos-rebuild switch`, exactly as today.
 
-### Lock Workflow Enhancement
+### Lock Workflow Enhancement (Superseded by REQ-018)
+
+> **Note**: REQ-016.7 through REQ-016.10 are superseded by
+> REQ-018 (Keystone Home Directory and Repo Management), which
+> generalizes the lock workflow to a declarative repo registry.
+> REQ-016.9 (fork fallback) remains referenced by REQ-018.
 
 **REQ-016.7** `ks build --lock` MUST be a new code path that performs:
 1. Find local keystone repo, verify it is clean and fully pushed
