@@ -21,9 +21,18 @@ This convention outlines the system-level prerequisites handled by the underlyin
 8. **Chrome DevTools**: The `chrome-devtools` MCP server is globally available and pre-configured to connect to the local headless Chrome instance.
 9. **DeepWork**: The `deepwork` MCP server is pre-installed and available in the Nix development shell, providing workflow orchestration.
 
+### DeepWork Job Library
+10. The `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable is set automatically when `keystone.terminal.deepwork.enable = true`.
+11. Two job sources are provided via the colon-delimited search path:
+    - **Upstream library jobs** (`pkgs.keystone.deepwork-library-jobs`) — curated selection from the deepwork flake's `library/jobs/`. Each job is explicitly listed in the `deepwork-library-jobs` derivation in `flake.nix`.
+    - **Keystone-native jobs** (`pkgs.keystone.keystone-deepwork-jobs`) — jobs from `.deepwork/jobs/` in the keystone repo, available to all agents.
+12. Jobs are discovered at runtime from read-only Nix store paths. DeepWork writes run instances into the project's own `.deepwork/` directory.
+13. To add an upstream library job to keystone, append a `cp -r` entry in `flake.nix`'s `deepwork-library-jobs` derivation.
+14. For local deepwork development, override `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` to prepend a local checkout path (e.g. `export DEEPWORK_ADDITIONAL_JOBS_FOLDERS="/path/to/deepwork/library/jobs:$DEEPWORK_ADDITIONAL_JOBS_FOLDERS"`).
+
 ## Terminal Environment
 
-10. Agent systemd services (task-loop, scheduler, notes-sync) MUST run with the full home-manager terminal environment.
-11. All tools available in an interactive agent shell MUST also be available in systemd service contexts — including `bash`, `git`, `gh`, `himalaya`, and other CLI tools.
-12. Service units SHOULD source the agent's shell profile or use an equivalent mechanism to inherit the complete PATH and environment variables.
-13. Failure to provide the full environment (e.g., missing `bash` on PATH) causes task execution to crash silently, leaving tasks in an invalid state (see [keystone#103](https://github.com/ncrmro/keystone/issues/103)).
+15. Agent systemd services (task-loop, scheduler, notes-sync) MUST run with the full home-manager terminal environment.
+16. All tools available in an interactive agent shell MUST also be available in systemd service contexts — including `bash`, `git`, `gh`, `himalaya`, and other CLI tools.
+17. Service units SHOULD source the agent's shell profile or use an equivalent mechanism to inherit the complete PATH and environment variables.
+18. Failure to provide the full environment (e.g., missing `bash` on PATH) causes task execution to crash silently, leaving tasks in an invalid state (see [keystone#103](https://github.com/ncrmro/keystone/issues/103)).

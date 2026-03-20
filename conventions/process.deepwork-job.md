@@ -107,6 +107,21 @@ workflows:
 
 This violates rules 5 and 6 — the two jobs share most of their steps and should be one job with two workflows.
 
+## Backporting Jobs to Upstream DeepWork
+
+24. High-quality, well-scoped jobs SHOULD be contributed to the upstream deepwork standard library (`library/jobs/` in the deepwork repo) to grow the ecosystem.
+25. The backport process MUST follow these steps:
+    - **Develop locally**: Build and iterate on the job in keystone's `.deepwork/jobs/`.
+    - **Generalize**: Strip keystone-specific references before upstreaming:
+      - Replace hardcoded hostnames with `{host}` placeholders or "derive from git remote"
+      - Replace keystone convention references with inline content in `common_job_info`
+      - Remove references to keystone-specific files (TEAM.md, SOUL.md, etc.)
+      - Write step instructions as provider-agnostic — describe *what* to do, not *how* to invoke specific CLIs. The agent's tool conventions handle CLI specifics.
+    - **Upstream**: Create a PR to the deepwork repo adding the job to `library/jobs/{name}/`.
+    - **Update keystone**: After the upstream PR merges, add a `cp -r` entry in `flake.nix`'s `deepwork-library-jobs` derivation and remove the job from `.deepwork/jobs/`.
+26. If keystone needs customizations beyond the upstream job, a modified copy MAY be kept in `.deepwork/jobs/` — local jobs in `keystone-deepwork-jobs` take precedence over `deepwork-library-jobs` in the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` search path.
+27. Upstream library jobs MUST NOT include keystone-specific files (`AGENTS.md`, `.deepreview`, research docs). The upstream pattern is: `job.yml` + `readme.md` + `steps/*.md`.
+
 ## References
 
 - [DeepWork documentation](https://deepwork.dev)
