@@ -1,4 +1,8 @@
 # Home-manager terminal integration for agents.
+#
+# See conventions/tool.cli-coding-agents.md for instruction file paths,
+# MCP config paths, and sandbox nuances for each CLI coding tool.
+#
 # NOTE: This must be a separate mkMerge entry, not merged with // into the
 # mkIf block above. Using // on a mkIf value silently drops the merged keys
 # because the module system only reads the mkIf's `content` attribute.
