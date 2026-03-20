@@ -57,7 +57,7 @@ modules/
 │   ├── sandbox.nix             Podman-based AI agent sandboxing
 │   ├── secrets.nix             rbw (Bitwarden CLI) configuration
 │   ├── devtools.nix            csview, jq
-│   ├── conventions.nix         System-wide AGENTS.md generation from keystone conventions
+│   ├── conventions.nix         Tool-native instruction file generation from keystone conventions
 │   ├── deepwork.nix            DeepWork job integration (DEEPWORK_ADDITIONAL_JOBS_FOLDERS)
 │   ├── calendar.nix            CalDAV calendar client (calendula)
 │   ├── contacts.nix            CardDAV contacts client (cardamum)
