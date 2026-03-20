@@ -4,14 +4,15 @@
   pkgs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.terminal;
 
   # Generate allowed_signers file content: "<email> <key>" per line
-  allowedSignersContent = concatMapStringsSep "\n" (key:
-    "${cfg.git.userEmail} ${key}"
-  ) cfg.git.sshPublicKeys;
+  allowedSignersContent =
+    concatMapStringsSep "\n" (
+      key: "${cfg.git.userEmail} ${key}"
+    )
+    cfg.git.sshPublicKeys;
 in {
   imports = [
     ./shell.nix
@@ -31,6 +32,7 @@ in {
     ./forgejo.nix
     ./projects.nix
     ./cli-coding-agent-configs.nix
+    ./conventions.nix
   ];
 
   options.keystone.terminal = {
