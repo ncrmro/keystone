@@ -865,9 +865,151 @@ nix build .#nixosConfigurations.HOSTNAME.config.system.build.toplevel \
 OFDOC
 }
 
+# --- Fleet health: check reachability + NixOS generation for all hosts ---
+gather_fleet_health() {
+  local hosts_nix="$1"
+  local local_gen="$2"
+  local current_hostname
+  current_hostname=$(hostname)
+
+  local all_hosts
+  all_hosts=$(nix eval -f "$hosts_nix" --json --apply 'builtins.attrNames' 2>/dev/null) || return 0
+  local host_list
+  host_list=$(echo "$all_hosts" | jq -r '.[]')
+
+  echo "### Fleet status"
+  echo "| Host | Reachable | NixOS Generation | Status |"
+  echo "|------|-----------|------------------|--------|"
+
+  for host in $host_list; do
+    local host_json hostname ssh_target fallback_ip
+    host_json=$(nix eval -f "$hosts_nix" "$host" --json 2>/dev/null) || continue
+    hostname=$(echo "$host_json" | jq -r '.hostname // ""')
+    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // ""')
+    fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // ""')
+
+    # Current host — use local data
+    if [[ "$hostname" == "$current_hostname" ]]; then
+      echo "| $host | local | $local_gen | ← current |"
+      continue
+    fi
+
+    # Skip hosts with no SSH target
+    if [[ -z "$ssh_target" ]]; then
+      echo "| $host | — | — | no sshTarget |"
+      continue
+    fi
+
+    # Try SSH with Tailscale → fallback
+    local resolved="$ssh_target"
+    local reachable="no"
+    local remote_gen="—"
+    local status="unreachable"
+
+    if ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+      reachable="yes"
+    elif [[ -n "$fallback_ip" ]] && ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${fallback_ip}" true 2>/dev/null; then
+      reachable="yes (LAN)"
+      resolved="$fallback_ip"
+    fi
+
+    if [[ "$reachable" != "no" ]]; then
+      remote_gen=$(ssh -o ConnectTimeout=5 -o BatchMode=yes "root@${resolved}" nixos-version 2>/dev/null || echo "unknown")
+      if [[ "$remote_gen" == "$local_gen" ]]; then
+        status="ok"
+      elif [[ "$remote_gen" == "unknown" ]]; then
+        status="unknown"
+      else
+        status="drift"
+      fi
+    fi
+
+    echo "| $host | $reachable | $remote_gen | $status |"
+  done
+}
+
+# --- Agent health: check key systemd services for each agent ---
+gather_agent_health() {
+  local hosts_nix="$1"
+
+  # Check if agentctl is available
+  if ! command -v agentctl >/dev/null 2>&1; then
+    echo "### Agent status"
+    echo "_agentctl not available on this host_"
+    return 0
+  fi
+
+  # Get known agents from agentctl help output
+  local known_agents
+  known_agents=$(agentctl 2>&1 | grep "Known agents:" | sed 's/.*Known agents: //' || true)
+  if [[ -z "$known_agents" ]]; then
+    echo "### Agent status"
+    echo "_No agents configured_"
+    return 0
+  fi
+
+  echo "### Agent status"
+  echo "| Agent | Task Loop | Notes Sync | SSH Agent | Status |"
+  echo "|-------|-----------|------------|-----------|--------|"
+
+  for agent in $known_agents; do
+    local task_loop notes_sync ssh_agent overall
+
+    # Check key services via agentctl (handles remote dispatch automatically)
+    task_loop=$(agentctl "$agent" is-active "agent-${agent}-task-loop.timer" 2>/dev/null || echo "unknown")
+    notes_sync=$(agentctl "$agent" is-active "agent-${agent}-notes-sync.timer" 2>/dev/null || echo "unknown")
+    ssh_agent=$(agentctl "$agent" is-active "agent-${agent}-ssh-agent.service" 2>/dev/null || echo "unknown")
+
+    # Determine overall status
+    if [[ "$task_loop" == "active" && "$notes_sync" == "active" && "$ssh_agent" == "active" ]]; then
+      overall="ok"
+    elif [[ "$task_loop" == "unknown" && "$notes_sync" == "unknown" ]]; then
+      overall="unreachable"
+    else
+      overall="degraded"
+    fi
+
+    echo "| $agent | $task_loop | $notes_sync | $ssh_agent | $overall |"
+  done
+}
+
+# --- Agent task queue: count tasks by status ---
+gather_agent_tasks() {
+  # Check if agentctl is available
+  if ! command -v agentctl >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local known_agents
+  known_agents=$(agentctl 2>&1 | grep "Known agents:" | sed 's/.*Known agents: //' || true)
+  [[ -z "$known_agents" ]] && return 0
+
+  echo "### Agent tasks"
+  echo "| Agent | Pending | In Progress | Blocked | Completed |"
+  echo "|-------|---------|-------------|---------|-----------|"
+
+  for agent in $known_agents; do
+    local tasks_yaml pending in_progress blocked completed
+    tasks_yaml=$(agentctl "$agent" exec cat "/home/agent-${agent}/notes/TASKS.yaml" 2>/dev/null || true)
+
+    if [[ -z "$tasks_yaml" ]]; then
+      echo "| $agent | — | — | — | — |"
+      continue
+    fi
+
+    pending=$(echo "$tasks_yaml" | grep -c 'status: pending' 2>/dev/null || echo "0")
+    in_progress=$(echo "$tasks_yaml" | grep -c 'status: in_progress' 2>/dev/null || echo "0")
+    blocked=$(echo "$tasks_yaml" | grep -c 'status: blocked' 2>/dev/null || echo "0")
+    completed=$(echo "$tasks_yaml" | grep -c 'status: completed' 2>/dev/null || echo "0")
+
+    echo "| $agent | $pending | $in_progress | $blocked | $completed |"
+  done
+}
+
 # --- Gather current system state (for ks doctor) ---
 gather_system_state() {
   local repo_root="$1"
+  local hosts_nix="$2"
 
   echo "## System State"
   echo ""
@@ -915,6 +1057,20 @@ gather_system_state() {
   else
     echo "_flake.lock not found_"
   fi
+  echo ""
+
+  # Fleet health (host reachability + generation comparison)
+  if [[ -n "$hosts_nix" && -f "$hosts_nix" ]]; then
+    gather_fleet_health "$hosts_nix" "$gen"
+    echo ""
+  fi
+
+  # Agent health (service status)
+  gather_agent_health "$hosts_nix"
+  echo ""
+
+  # Agent task queue
+  gather_agent_tasks
 }
 
 # --- Build shared agent system prompt (REQ-014.2-8) ---
@@ -1144,24 +1300,27 @@ cmd_doctor() {
   local base_prompt
   base_prompt=$(build_agent_prompt "$repo_root" "$hosts_nix" "$ks_repo" "$current_host")
 
-  # Gather current system state (REQ-014.11)
+  # Gather current system state including fleet + agent health (REQ-014.11)
   local system_state
-  system_state=$(gather_system_state "$repo_root")
+  system_state=$(gather_system_state "$repo_root" "$hosts_nix")
 
   # Diagnostic-focused prefix (REQ-014.10)
   local doctor_prefix
   doctor_prefix="You are a diagnostic agent for a keystone NixOS infrastructure system.
-Your primary goal is to check host health, identify configuration issues, and suggest actionable fixes.
+Your primary goal is to check host health, agent health, and suggest actionable fixes.
 
 Focus areas:
 - Failed or degraded systemd units (check with: systemctl --failed)
 - Disk pressure (check with: df -h)
 - Stale flake locks (run ks update to refresh)
 - Unreachable hosts (check sshTarget connectivity via ssh)
-- Configuration drift between hosts
-- NixOS generation mismatches across the fleet
+- NixOS generation drift between hosts (compare fleet status table)
+- Agent service health (task-loop, notes-sync, ssh-agent timers/services)
+- Agent task queue (blocked tasks need human intervention, stale pending tasks may indicate stalls)
+- Agent SSH key health (verify with: agentctl <name> exec ssh-add -l)
+- Agent mail connectivity (verify with: agentctl <name> exec himalaya account list)
 
-Always suggest concrete remediation commands. Prefer ks commands over raw nix commands."
+Always suggest concrete remediation commands. Prefer ks/agentctl commands over raw nix/systemctl."
 
   local prompt
   prompt="$doctor_prefix
