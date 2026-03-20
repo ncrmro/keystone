@@ -23,6 +23,10 @@ in
 
   config = mkIf (osCfg.enable && cfg.enable) {
     virtualisation.containers.enable = true;
+    # CRITICAL: fuse-overlayfs required for rootless podman on ZFS — kernel
+    # overlayfs cannot mount on ZFS for unprivileged users (permission denied).
+    virtualisation.containers.storage.settings.storage.options.mount_program =
+      "${pkgs.fuse-overlayfs}/bin/fuse-overlayfs";
     virtualisation.docker.enable = lib.mkForce false;
     virtualisation.podman = {
       enable = true;
