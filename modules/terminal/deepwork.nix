@@ -11,11 +11,9 @@
   pkgs,
   ...
 }:
-with lib;
-let
+with lib; let
   cfg = config.keystone.terminal.deepwork;
-in
-{
+in {
   options.keystone.terminal.deepwork = {
     enable = mkOption {
       type = types.bool;
@@ -36,8 +34,14 @@ in
     # folders search path.  This is a colon-delimited list of absolute paths
     # consumed by deepwork's discovery module.  The store path is read-only;
     # deepwork writes instances/runs into the project's own .deepwork/jobs.
+    # Colon-delimited list of directories consumed by deepwork's discovery module.
+    # 1. Upstream library jobs (curated from deepwork flake)
+    # 2. Keystone-native jobs (consolidated from agent/notes repos)
     home.sessionVariables = {
-      DEEPWORK_ADDITIONAL_JOBS_FOLDERS = "${pkgs.keystone.deepwork-library-jobs}";
+      DEEPWORK_ADDITIONAL_JOBS_FOLDERS = builtins.concatStringsSep ":" [
+        "${pkgs.keystone.deepwork-library-jobs}"
+        "${pkgs.keystone.keystone-deepwork-jobs}"
+      ];
     };
   };
 }

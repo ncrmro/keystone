@@ -1,0 +1,297 @@
+name: milestone
+version: "1.0.0"
+summary: "Milestone lifecycle: setup from scope/press release, then engineering handoff with specs and issues"
+common_job_info_provided_to_all_steps_at_runtime: |
+  This job covers the full milestone lifecycle in two workflows:
+
+  1. **Setup** — Creates or adopts a milestone for a project repo, starting from either an
+     existing GitHub/Forgejo issue or freehand notes. Refines raw content into properly
+     formatted user stories, creates the milestone, and links the issue.
+
+  2. **Engineering Handoff** — The engineering response to a product milestone. Creates
+     functional requirement specs, a master plan issue, and decomposes work into small
+     child issues for implementation.
+
+  A press release (`project/press_release`) often precedes milestone setup, providing
+  the scope and customer framing that user stories are derived from.
+
+  The full pipeline is:
+  1. `project/press_release` — Luce writes a working-backwards press release
+  2. `milestone/setup` — Luce creates milestone + user stories issue
+  3. `milestone/engineering_handoff` — Drago responds with specs, plan issue, and child issues
+
+  ## Agents
+
+  - **Luce** (CPO / business agent): owns product scope, acceptance criteria, milestone tracking
+  - **Drago** (CTO / engineering agent): owns implementation, specs, code review, delivery
+
+  Agent usernames differ by platform — read the correct column from `.agents/TEAM.md`.
+
+  ## User Story Format (standard)
+
+  Each story in the consolidated issue must follow this format:
+  - Heading: concise action statement
+  - Body: "As a [persona], I want [action], so that [benefit]"
+  - Acceptance criteria as a markdown checklist
+  - "Derived from" line referencing the source scope item
+  - Priority tag (high / medium / low)
+  - Tagged as `engineering` or `product`
+
+  ## Platform Selection
+
+  Projects may use GitHub or Forgejo. The `project_repo` input determines which platform.
+  Check the project's `README.yaml` for the `platform` field on each repo, or ask the user.
+
+  - **GitHub**: Use `gh` CLI. Agent usernames are in the GitHub column of `.agents/TEAM.md`.
+  - **Forgejo**: Use `fj` CLI for issues, `tea api`/`curl` for milestones and labels
+    per `tool.forgejo` convention. Agent usernames are in the Forgejo column of `.agents/TEAM.md`.
+
+  ## Milestone Title
+
+  The milestone title is auto-generated from the issue title or freehand notes content.
+  It should capture the product/feature name or the customer benefit being delivered.
+
+  ## Labels
+
+  The consolidated issue must have the `product` label.
+  The repo must have `product` and `engineering` labels available for per-story issues.
+  The plan issue must have `engineering` and `plan` labels.
+
+  ## Assignment
+
+  The consolidated issue is assigned to the business agent's account on the relevant platform.
+  The plan issue and child issues are assigned to the engineering agent's account.
+
+  ## Key Engineering Principles
+
+  - **Small PRs**: Each child issue should map to a single small PR (2-3 files max)
+  - **Non-blocking**: Issues should be designed so PRs don't block each other
+  - **Feature-flagged**: Features should be flaggable for continuous deployment
+  - **Type separation**: `feat:` for user story work, `chore:`/`refactor:` for infrastructure,
+    `test:` for test suites — keep these separate
+  - **Tight scope**: No stretch goals in milestone; stretch goals noted as separate future work
+  - **Plan-before-code**: All specs and issues are created before implementation begins
+
+  ## Conventions to Read
+
+  - `process.product-engineering-handoff` — handoff protocol and demo artifacts
+  - `process.version-control` — commit discipline, branching
+  - `process.pull-request` — PR format and review
+  - `code.delivery` — end-to-end feature delivery lifecycle
+
+  ## Spec Format
+
+  Specs live in `specs/{NNN}-{slug}.md` with behavioral requirements using RFC 2119 keywords
+  (MUST, SHOULD, MAY). Each spec covers a system boundary identified during scope analysis.
+
+workflows:
+  - name: setup
+    summary: "Parse issue or notes, refine stories, create milestone, and link issue"
+    steps:
+      - gather_and_parse
+      - refine_stories
+      - setup_milestone
+
+  - name: engineering_handoff
+    summary: "Review milestone, create specs, plan issue, and decompose into child issues"
+    steps:
+      - review_milestone
+      - create_specs
+      - create_plan_issue
+      - decompose_child_issues
+
+steps:
+  - id: gather_and_parse
+    name: "Gather and Parse Input"
+    description: "Read an existing issue or accept freehand notes and extract raw scope"
+    instructions_file: steps/gather_and_parse.md
+    inputs:
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo) where the milestone will live"
+      - name: issue_number
+        description: "Issue number or URL to use as the starting point (leave blank if providing freehand notes)"
+      - name: freehand_notes
+        description: "Freehand scope notes if no existing issue (leave blank if using an existing issue)"
+    outputs:
+      raw_scope.md:
+        type: file
+        description: "Extracted raw scope content from the issue body or freehand notes, with source metadata"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: raw_scope.md
+        quality_criteria:
+          "Source Captured": "The raw scope includes the full original content without omissions."
+          "Metadata Present": "The file includes metadata about the source (issue number/URL, repo, platform) or notes that input was freehand."
+
+  - id: refine_stories
+    name: "Refine User Stories"
+    description: "Transform raw scope into properly formatted user stories with acceptance criteria"
+    instructions_file: steps/refine_stories.md
+    inputs:
+      - file: raw_scope.md
+        from_step: gather_and_parse
+    outputs:
+      refined_stories.md:
+        type: file
+        description: "User stories in standard format with acceptance criteria, priority tags, and ownership labels"
+        required: true
+      milestone_title.md:
+        type: file
+        description: "Auto-generated milestone title derived from the scope content"
+        required: true
+    dependencies:
+      - gather_and_parse
+    reviews:
+      - run_each: refined_stories.md
+        additional_review_guidance: "Read the raw_scope.md from the previous step to verify all scope items are covered."
+        quality_criteria:
+          "Full Coverage": "Every distinct scope item from the raw input maps to at least one user story."
+          "Standard Format": "Each story follows: As a [persona], I want [action], so that [benefit] — with a checklist of acceptance criteria."
+          "Ownership Tagged": "Each story is tagged as product or engineering with a logical distinction."
+          "Priority Assigned": "Each story has a priority tag (high / medium / low)."
+
+  - id: setup_milestone
+    name: "Set Up Milestone and Link Issue"
+    description: "Check for existing milestone, create if needed, update issue body, and link issue to milestone"
+    instructions_file: steps/setup_milestone.md
+    inputs:
+      - file: refined_stories.md
+        from_step: refine_stories
+      - file: milestone_title.md
+        from_step: refine_stories
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo)"
+      - name: issue_number
+        description: "Issue number to update (blank if a new issue should be created)"
+    outputs:
+      setup_report.md:
+        type: file
+        description: "Summary of created/found milestone, issue number, URLs, and what was updated"
+        required: true
+    dependencies:
+      - refine_stories
+    reviews:
+      - run_each: setup_report.md
+        additional_review_guidance: "Read the refined_stories.md to verify the issue body contains all refined stories."
+        quality_criteria:
+          "Milestone Exists": "A milestone was found or created and its title and URL are recorded."
+          "Issue Linked": "The issue is associated with the milestone."
+          "Issue Body Updated": "The issue body was updated with the refined user stories in standard format."
+          "Labels Applied": "The product label is on the issue."
+          "Report Complete": "The report includes milestone title, issue number, and URLs."
+
+  - id: review_milestone
+    name: "Review Milestone and Analyze Scope"
+    description: "Fetch the milestone issue, analyze the codebase, and map user stories to systems"
+    instructions_file: steps/review_milestone.md
+    inputs:
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo)"
+      - name: milestone_issue_number
+        description: "The milestone's consolidated user stories issue number (must already exist)"
+    outputs:
+      scope_analysis.md:
+        type: file
+        description: "Systems map, affected files/modules, shared boundaries, prerequisites, and ambiguity flags"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: scope_analysis.md
+        quality_criteria:
+          "Full Story Coverage": "Every user story from the milestone issue is analyzed and mapped to affected codebase files or modules."
+          "Codebase Grounding": "References actual files and directories in the project repository, not hypothetical or generic paths."
+          "Boundary Identification": "Shared system boundaries across stories are identified and documented."
+          "Gap Detection": "Implied prerequisites not explicitly listed in the user stories are identified and flagged."
+
+  - id: create_specs
+    name: "Create Functional Requirement Specs"
+    description: "Write spec files grouped by system boundary with behavioral requirements and data contracts"
+    instructions_file: steps/create_specs.md
+    inputs:
+      - file: scope_analysis.md
+        from_step: review_milestone
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo)"
+      - name: milestone_issue_number
+        description: "The milestone's consolidated user stories issue number"
+    outputs:
+      specs_pr_report.md:
+        type: file
+        description: "Report of created spec files and the draft PR with links"
+        required: true
+    dependencies:
+      - review_milestone
+    reviews:
+      - run_each: specs_pr_report.md
+        additional_review_guidance: "Read the scope_analysis.md from the previous step to verify all system boundaries are covered by specs."
+        quality_criteria:
+          "Full Boundary Coverage": "Every system boundary identified in the scope analysis has a corresponding spec file."
+          "Behavioral Requirements": "Specs use RFC 2119 keywords (MUST, SHOULD, MAY) for behavioral requirements."
+          "Data Contracts": "API contracts, data models, or interface definitions are specified where applicable."
+          "PR Created": "A draft PR has been created with the spec files and assigned to reviewers."
+          "Edge Cases": "Edge cases and error handling are documented in each spec."
+
+  - id: create_plan_issue
+    name: "Create Implementation Plan Issue"
+    description: "Create the master plan issue on the milestone with happy paths, test expectations, and design mockups"
+    instructions_file: steps/create_plan_issue.md
+    inputs:
+      - file: scope_analysis.md
+        from_step: review_milestone
+      - file: specs_pr_report.md
+        from_step: create_specs
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo)"
+      - name: milestone_issue_number
+        description: "The milestone's consolidated user stories issue number"
+    outputs:
+      plan_issue_report.md:
+        type: file
+        description: "Report of the created plan issue with number, URL, and content summary"
+        required: true
+    dependencies:
+      - review_milestone
+      - create_specs
+    reviews:
+      - run_each: plan_issue_report.md
+        additional_review_guidance: "Read the scope_analysis.md and specs_pr_report.md from prior steps to verify the plan issue covers all stories and references the specs PR."
+        quality_criteria:
+          "All Stories Present": "Every user story from the milestone issue appears in the plan with happy path requirements."
+          "Test Expectations": "Each story includes red/green test expectations describing what fails before and passes after implementation."
+          "Design Mockups": "ASCII art mockups are included for new UI components or layouts."
+          "Demo Descriptions": "Expected demo artifacts are described for each story."
+          "Specs Referenced": "The specs PR is referenced in the plan issue body."
+          "Milestone Linked": "The plan issue is linked to the milestone."
+
+  - id: decompose_child_issues
+    name: "Decompose into Child Issues"
+    description: "Break the plan into small, non-blocking child issues with type separation and feature flags"
+    instructions_file: steps/decompose_child_issues.md
+    inputs:
+      - file: scope_analysis.md
+        from_step: review_milestone
+      - file: plan_issue_report.md
+        from_step: create_plan_issue
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo)"
+    outputs:
+      decomposition_report.md:
+        type: file
+        description: "Report of all created child issues with numbers, types, dependencies, and traceability"
+        required: true
+    dependencies:
+      - review_milestone
+      - create_plan_issue
+    reviews:
+      - run_each: decomposition_report.md
+        additional_review_guidance: "Read the plan_issue_report.md and scope_analysis.md from prior steps to verify full coverage and appropriate decomposition."
+        quality_criteria:
+          "Full Plan Coverage": "Every item in the plan issue is covered by at least one child issue."
+          "Small PR Scope": "Each child issue is scoped to a small PR (2-3 files max)."
+          "Non-Blocking Design": "Issues are designed so their PRs do not block each other."
+          "Type Separation": "feat: issues are separate from chore:/refactor: infrastructure issues and test: issues."
+          "Feature Flags": "Feature flag requirements are noted where applicable."
+          "Tight Scope": "No stretch goals are included; stretch goals are noted as separate future work."
+          "Traceability": "Each child issue references the plan issue with 'Part of #N'."
+          "Conventional Titles": "Child issue titles use conventional commit prefixes (feat:, chore:, test:, refactor:)."

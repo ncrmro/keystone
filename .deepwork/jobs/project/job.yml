@@ -1,0 +1,331 @@
+name: project
+version: "1.1.0"
+summary: "Project onboarding, press releases, and success charter reviews"
+common_job_info_provided_to_all_steps_at_runtime: |
+  This job covers three project-level business workflows:
+
+  1. **Onboard** — Interactive onboarding for new projects: collect info, investigate repos/sites,
+     build a structured profile. Projects can be commercial ventures, nonprofits, open-source
+     efforts, or mission-focused initiatives.
+
+  2. **Press Release** — Working-backwards press release in the Amazon tradition. The press release
+     announces a product feature to customers AND scopes the development work required to deliver
+     on the promise.
+
+  3. **Success** — Define and review a project's mission, KPIs, charter, and goals across
+     5 horizons (1 month, 6 month, 1 year, 5 year, 10 year). Produces a living charter doc
+     and dated status reports with a verdict (accelerate/continue/pivot/pause/archive) plus
+     confidence score. Serves as the backbone for prioritization and reality checks — keeps
+     the human from losing the business thread while focused on engineering.
+
+  Key data files:
+  - PROJECTS.yaml: Priority-ordered project list at repo root. New projects are appended
+    at the end (lowest priority) unless the user specifies otherwise.
+  - projects/{slug}/README.yaml: Structured project profile (the primary deliverable of onboard).
+  - projects/{slug}/charter.md: Living project charter with mission, KPIs, and goals (success workflow).
+  - projects/{slug}/reports/success_review_YYYY-MM.md: Dated success review reports.
+
+  Agent access context:
+  - Agents (drago, luce) need SSH access to repos. Check with `git ls-remote` or CLI tools.
+  - Use `tea`/`fj` for Forgejo repos (git.ncrmro.com), `gh` for GitHub repos.
+  - Use CLI tools first for repo investigation to save tokens.
+  - Use Chrome MCP for all live public websites (HTTP 200) — take screenshot + snapshot
+    to capture current state, messaging, and page status (live/demo/placeholder).
+
+  Press release conventions:
+  - The agent writing the press release MUST follow the conventions defined in
+    `.agents/conventions/process.press-release.md` and adopt the role described in
+    `.agents/roles/press-release-writer.md`. Read both files before drafting.
+  - Write from the customer's perspective, not the builder's
+  - Lead with customer benefit in headline and opening
+  - Include problem paragraph before solution paragraph
+  - Present tense, as if the product is already launched
+  - Plain language — no jargon, buzzwords, or internal terminology
+  - 400-600 words, roughly one page
+  - Include a fictional customer quote articulating the value
+  - Include a call to action
+  - Claims must not exceed what the planned feature set can deliver
+  - Internal metrics and implementation details must not appear
+  - Output format is .mdx (MDX markdown) saved to the project's designated press release
+    directory, typically `posts/press_releases/`.
+
+  Downstream workflows this profile feeds into:
+  - `milestone/setup` — creates milestone and user stories from press release scope
+  - Research workflows for competitive analysis, market research, technical research
+
+  Lean Canvas fields collected during intake:
+  - Problem (top 1-3 problems)
+  - Customer Segments (target users)
+  - Unique Value Proposition
+  - Unfair Advantage (if any)
+  - Key Metrics (how success is measured)
+  - Additional fields are optional and can be filled in later.
+
+  README.yaml structure should include:
+  - name, slug, description, mission
+  - domains (list of domain names)
+  - repos (list of {url, platform, description})
+  - lean_canvas (problem, customer_segments, unique_value_proposition, unfair_advantage, key_metrics)
+  - riskiest_assumptions (list of assumptions ranked by risk)
+  - recommended_next_steps (prioritized list of downstream workflows to run)
+  - status, created_at
+
+workflows:
+  - name: onboard
+    summary: "Interactive project onboarding from discovery through profile creation"
+    steps:
+      - gather_basics
+      - investigate
+      - build_profile
+      - setup_repos
+
+  - name: press_release
+    summary: "Gather context and write a working-backwards press release"
+    steps:
+      - gather_context
+      - write_press_release
+
+  - name: success
+    summary: "Define or review project charter, KPIs, goals, and produce a verdict with recommendations"
+    steps:
+      - assess_state
+      - define_charter
+      - reality_check
+      - update_priorities
+
+steps:
+  - id: gather_basics
+    name: "Gather Project Basics"
+    description: "Interactive conversation to collect project name, mission, domains, git repos, and lean canvas details"
+    instructions_file: steps/gather_basics.md
+    inputs:
+      - name: project_name
+        description: "The name of the project to onboard (may be approximate — the conversation will refine it)"
+    outputs:
+      intake_notes.md:
+        type: file
+        description: "Raw conversation summary capturing all gathered details: name, slug, mission, domains, repos, lean canvas answers, and any user stories mentioned"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: intake_notes.md
+        quality_criteria:
+          "Core Fields Captured": "The notes include project name, slug, mission/description, and at least one of: domain, git repo, or customer segment."
+          "Lean Canvas Started": "At least 3 of the 5 lean canvas fields (problem, customer segments, UVP, unfair advantage, key metrics) have been discussed."
+          "Riskiest Assumptions Identified": "The agent has identified or asked about the project's riskiest assumptions."
+
+  - id: investigate
+    name: "Investigate Repos and Websites"
+    description: "Use CLI tools (tea/fj, gh, git ls-remote) to investigate repos, then Chrome MCP for public websites"
+    instructions_file: steps/investigate.md
+    inputs:
+      - file: intake_notes.md
+        from_step: gather_basics
+    outputs:
+      investigation_report.md:
+        type: file
+        description: "Findings from repo inspection (README, structure, languages, recent activity) and website review (screenshots, key pages)"
+        required: true
+    dependencies:
+      - gather_basics
+    reviews:
+      - run_each: investigation_report.md
+        additional_review_guidance: "Read intake_notes.md to verify all repos and domains mentioned were investigated."
+        quality_criteria:
+          "All Repos Checked": "Every git repo mentioned in intake_notes.md was checked for agent access (SSH clone or ls-remote) and basic structure."
+          "CLI Before Browser": "Investigation used CLI tools (git, tea/fj, gh) for repo investigation before using Chrome MCP."
+          "Access Status Clear": "For each repo, it is clear whether drago and luce agents have access (can clone/push). No 'untested' entries without explanation."
+          "Website State Captured": "Every live website (HTTP 200) has a current state summary covering headline, positioning, key pages, and page states (live/demo/placeholder)."
+
+  - id: build_profile
+    name: "Build Project Profile"
+    description: "Synthesize gathered info and investigation into projects/{slug}/README.yaml and update PROJECTS.yaml"
+    instructions_file: steps/build_profile.md
+    inputs:
+      - file: intake_notes.md
+        from_step: gather_basics
+      - file: investigation_report.md
+        from_step: investigate
+    outputs:
+      readme_yaml:
+        type: file
+        description: "The projects/{slug}/README.yaml structured profile document"
+        required: true
+      projects_yaml:
+        type: file
+        description: "Updated PROJECTS.yaml with the new project entry appended"
+        required: true
+    dependencies:
+      - gather_basics
+      - investigate
+    reviews:
+      - run_each: readme_yaml
+        additional_review_guidance: "Read intake_notes.md and investigation_report.md to verify the profile accurately reflects gathered information."
+        quality_criteria:
+          "Complete Structure": "README.yaml includes all required fields: name, slug, description, mission, repos, lean_canvas, riskiest_assumptions, recommended_next_steps, status, created_at."
+          "Assumptions Prioritized": "Riskiest assumptions are listed and ranked, with recommended next steps aligned to validating the highest-risk assumptions first."
+          "Valid YAML": "The file is valid YAML with no syntax errors."
+      - run_each: projects_yaml
+        quality_criteria:
+          "Project Added": "The new project appears in PROJECTS.yaml with name, description, status, and priority fields."
+          "Existing Projects Preserved": "All previously existing projects remain unchanged in PROJECTS.yaml."
+
+  - id: setup_repos
+    name: "Setup Repositories"
+    description: "Create any repos that don't exist yet (asking user where), ensure agent SSH access"
+    instructions_file: steps/setup_repos.md
+    inputs:
+      - file: readme_yaml
+        from_step: build_profile
+      - file: investigation_report.md
+        from_step: investigate
+    outputs:
+      setup_confirmation.md:
+        type: file
+        description: "Confirmation of repo setup actions taken: repos created, access verified, or skipped if all repos already existed"
+        required: true
+    dependencies:
+      - build_profile
+      - investigate
+    reviews: []
+
+  - id: gather_context
+    name: "Gather Context"
+    description: "Research the project and frame the customer problem, solution, and value proposition"
+    instructions_file: steps/gather_context.md
+    inputs:
+      - name: project_name
+        description: "The name of the project or product this feature belongs to"
+      - name: feature_brief
+        description: "What the feature does and how it furthers the project's business or mission"
+    outputs:
+      context_brief.md:
+        type: file
+        description: "Structured brief with customer segment, problem, solution framing, and key claims"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: context_brief.md
+        quality_criteria:
+          "Customer Identified": "The brief clearly identifies a specific customer segment and their needs."
+          "Problem-Solution Framing": "The problem is stated before the solution, and both are concrete — not vague or generic."
+          "Scoping Value": "The brief implies what must be built to deliver on the promise, providing development scoping value."
+
+  - id: write_press_release
+    name: "Write Press Release"
+    description: "Draft the press release following process.press-release convention"
+    instructions_file: steps/write_press_release.md
+    inputs:
+      - file: context_brief.md
+        from_step: gather_context
+    outputs:
+      press_release.mdx:
+        type: file
+        description: "The finished working-backwards press release in MDX format"
+        required: true
+    dependencies:
+      - gather_context
+    reviews:
+      - run_each: press_release.mdx
+        additional_review_guidance: "Read `.agents/conventions/process.press-release.md` for the full convention rules, and the `context_brief.md` file for the intended framing."
+        quality_criteria:
+          "Customer-First Framing": "The headline and opening paragraph state the customer benefit, not the feature name."
+          "Working Backwards Structure": "A problem paragraph precedes the solution paragraph, and the entire release is written in present tense."
+          "Plain Language": "No jargon, buzzwords, or internal terminology — a non-technical reader can understand it."
+          "Scoping Clarity": "The press release clearly implies what must be built to deliver the promise."
+          "Convention Compliance": "Follows process.press-release rules: 400-600 words, includes customer quote, call to action, and no internal metrics."
+
+  - id: assess_state
+    name: "Assess Project State"
+    description: "Gather current project state from README.yaml, milestones, recent activity, and existing charter"
+    instructions_file: steps/assess_state.md
+    inputs:
+      - name: project_slug
+        description: "The project slug (e.g., 'my-project') matching the directory under projects/"
+    outputs:
+      state_assessment.md:
+        type: file
+        description: "Current project state: milestone progress, recent activity, existing charter status, and raw data for the charter step"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: state_assessment.md
+        quality_criteria:
+          "Project Data Gathered": "The assessment includes data from README.yaml, PROJECTS.yaml, and any existing charter.md."
+          "Milestone Progress": "Current milestone status (open/closed issues, completion %) is captured from the platform."
+          "Activity Summary": "Recent git and issue activity is summarized to show momentum or stagnation."
+
+  - id: define_charter
+    name: "Define or Update Charter"
+    description: "Interactive step to define or update mission, KPIs, and goals at 5 horizons (1mo/6mo/1yr/5yr/10yr)"
+    instructions_file: steps/define_charter.md
+    inputs:
+      - file: state_assessment.md
+        from_step: assess_state
+    outputs:
+      charter:
+        type: file
+        description: "The projects/{slug}/charter.md living document with mission, KPIs, and goals"
+        required: true
+    dependencies:
+      - assess_state
+    reviews:
+      - run_each: charter
+        additional_review_guidance: "Read state_assessment.md to verify the charter reflects current project reality and addresses any gaps identified."
+        quality_criteria:
+          "Mission Defined": "The charter includes a clear, concise mission statement that distinguishes this project from others."
+          "KPIs Specified": "At least 3 business KPIs are defined with current values (or baselines) and target values."
+          "All Horizons Covered": "Goals are defined for all 5 horizons: 1 month, 6 months, 1 year, 5 years, and 10 years."
+          "Goals Are Measurable": "Each goal has concrete success criteria, not vague aspirations."
+
+  - id: reality_check
+    name: "Reality Check"
+    description: "Compare current state against charter goals and KPIs, produce verdict with confidence score"
+    instructions_file: steps/reality_check.md
+    inputs:
+      - file: state_assessment.md
+        from_step: assess_state
+      - file: charter
+        from_step: define_charter
+    outputs:
+      success_review:
+        type: file
+        description: "Dated review report at projects/{slug}/reports/success_review_YYYY-MM.md with KPI scores, goal progress, and verdict"
+        required: true
+    dependencies:
+      - assess_state
+      - define_charter
+    reviews:
+      - run_each: success_review
+        additional_review_guidance: "Read the charter file and state_assessment.md to verify the review accurately reflects progress against stated goals and KPIs."
+        quality_criteria:
+          "KPI Scoring": "Each KPI from the charter is scored against its target with current vs target values shown."
+          "Goal Progress": "Each goal across all 5 horizons is assessed for on-track, at-risk, or off-track status."
+          "Verdict Present": "A clear verdict (accelerate/continue/pivot/pause/archive) is stated with confidence level (high/medium/low)."
+          "Business Thread Check": "The review flags if activity is skewed toward engineering at the expense of business goals."
+          "Evidence-Based": "The verdict and confidence score are supported by specific data points, not gut feeling."
+
+  - id: update_priorities
+    name: "Update Priorities"
+    description: "Based on the verdict, recommend next actions and priority adjustments"
+    instructions_file: steps/update_priorities.md
+    inputs:
+      - file: success_review
+        from_step: reality_check
+      - file: charter
+        from_step: define_charter
+    outputs:
+      priority_recommendations.md:
+        type: file
+        description: "Concrete next actions: workflows to run, milestones to create/close, PROJECTS.yaml priority changes"
+        required: true
+    dependencies:
+      - reality_check
+      - define_charter
+    reviews:
+      - run_each: priority_recommendations.md
+        additional_review_guidance: "Read the success_review report and charter to verify recommendations are aligned with the verdict and goals."
+        quality_criteria:
+          "Verdict Aligned": "Recommendations directly follow from the verdict in the success review."
+          "Actionable Items": "Each recommendation specifies a concrete action (which workflow to run, which milestone to create/close, what to change in PROJECTS.yaml)."
+          "Prioritized": "Recommendations are ordered by impact and urgency."
