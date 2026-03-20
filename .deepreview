@@ -163,7 +163,7 @@ requirements_traceability:
       - "modules/**/scripts/**"
       - "tests/**"
   review:
-    strategy: per_file
+    strategy: individual
     instructions: |
       Each Nix module file MUST have a header comment block that includes:
 
