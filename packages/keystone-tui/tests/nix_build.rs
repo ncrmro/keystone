@@ -289,6 +289,8 @@ fn make_config(
         storage_type,
         disk_device: Some("/dev/disk/by-id/nvme-TEST_DISK_001".to_string()),
         github_username: None,
+        time_zone: "UTC".to_string(),
+        state_version: "25.05".to_string(),
         user: UserConfig {
             username: "testuser".to_string(),
             password: "testpass".to_string(),

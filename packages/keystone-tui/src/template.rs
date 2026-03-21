@@ -64,6 +64,8 @@ pub struct GenerateConfig {
     pub storage_type: StorageType,
     pub disk_device: Option<String>,
     pub github_username: Option<String>,
+    pub time_zone: String,
+    pub state_version: String,
     pub user: UserConfig,
     pub remote_unlock: RemoteUnlockConfig,
 }
@@ -102,6 +104,10 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
       url = "github:ncrmro/keystone";
       inputs.nixpkgs.follows = "nixpkgs";
     }};
+    disko = {{
+      url = "github:nix-community/disko";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
     home-manager = {{
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -112,6 +118,7 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
     self,
     nixpkgs,
     keystone,
+    disko,
     home-manager,
     ...
   }}: {{
@@ -119,6 +126,7 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
       "{hostname_esc}" = nixpkgs.lib.nixosSystem {{
         system = "x86_64-linux";
         modules = [
+          disko.nixosModules.disko
           home-manager.nixosModules.home-manager
           keystone.nixosModules.operating-system
 {desktop_module}
@@ -190,7 +198,7 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
 }}: {{
   networking.hostName = "{hostname}";
   networking.hostId = "{host_id}";
-  system.stateVersion = "25.05";
+  system.stateVersion = "{state_version}";
 
   keystone.os = {{
     enable = true;
@@ -238,13 +246,14 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
     }};
   }};
 
-  time.timeZone = "UTC";
+  time.timeZone = "{time_zone}";
   nix.settings.trusted-users = [ "root" "@wheel" ];
   environment.systemPackages = with pkgs; [ sbctl ];
 }}
 "#,
         hostname = hostname,
         host_id = host_id,
+        state_version = escape_nix_string(&config.state_version),
         storage_type = config.storage_type.nix_value(),
         disk_device = disk_device,
         username = username,
@@ -254,6 +263,7 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
         remote_unlock_keys_nix = remote_unlock_keys_nix,
         extra_groups = extra_groups,
         desktop_enable = desktop_enable,
+        time_zone = escape_nix_string(&config.time_zone),
     )
 }
 
@@ -429,6 +439,8 @@ mod tests {
             storage_type: StorageType::Zfs,
             disk_device: Some("/dev/disk/by-id/test-disk".to_string()),
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "admin".to_string(),
                 password: "changeme".to_string(),
@@ -455,6 +467,8 @@ mod tests {
             storage_type: StorageType::Ext4,
             disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "user".to_string(),
                 password: "pass".to_string(),
@@ -473,6 +487,59 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_flake_has_disko_input() {
+        let config = GenerateConfig {
+            hostname: "test".to_string(),
+            machine_type: MachineType::Server,
+            storage_type: StorageType::Zfs,
+            disk_device: None,
+            github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
+            user: UserConfig {
+                username: "admin".to_string(),
+                password: "pass".to_string(),
+                authorized_keys: vec![],
+            },
+            remote_unlock: RemoteUnlockConfig {
+                enable: false,
+                authorized_keys: vec![],
+            },
+        };
+
+        let flake = generate_flake_nix(&config);
+        assert!(flake.contains(r#"url = "github:nix-community/disko""#));
+        assert!(flake.contains("disko"));
+        assert!(flake.contains("disko.nixosModules.disko"));
+    }
+
+    #[test]
+    fn test_generate_configuration_uses_state_version_and_timezone() {
+        let config = GenerateConfig {
+            hostname: "tz-host".to_string(),
+            machine_type: MachineType::Server,
+            storage_type: StorageType::Zfs,
+            disk_device: None,
+            github_username: None,
+            time_zone: "America/New_York".to_string(),
+            state_version: "25.11".to_string(),
+            user: UserConfig {
+                username: "admin".to_string(),
+                password: "pass".to_string(),
+                authorized_keys: vec![],
+            },
+            remote_unlock: RemoteUnlockConfig {
+                enable: false,
+                authorized_keys: vec![],
+            },
+        };
+
+        let nix = generate_configuration_nix(&config);
+        assert!(nix.contains(r#"time.timeZone = "America/New_York""#));
+        assert!(nix.contains(r#"system.stateVersion = "25.11""#));
+    }
+
+    #[test]
     fn test_generate_flake_server() {
         let config = GenerateConfig {
             hostname: "server1".to_string(),
@@ -480,6 +547,8 @@ mod tests {
             storage_type: StorageType::Zfs,
             disk_device: Some("test".to_string()),
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "admin".to_string(),
                 password: "pass".to_string(),
@@ -504,6 +573,8 @@ mod tests {
             storage_type: StorageType::Zfs,
             disk_device: Some("test".to_string()),
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "dev".to_string(),
                 password: "pass".to_string(),
@@ -536,6 +607,8 @@ mod tests {
             storage_type: StorageType::Ext4,
             disk_device: None,
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "user".to_string(),
                 password: "pass".to_string(),
@@ -559,6 +632,8 @@ mod tests {
             storage_type: StorageType::Ext4,
             disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
             github_username: Some("octocat".to_string()),
+            time_zone: "America/Chicago".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "user".to_string(),
                 password: "pass".to_string(),
