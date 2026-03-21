@@ -88,16 +88,22 @@ fn extract_nixos_configurations(root: &SyntaxNode) -> Vec<HostInfo> {
 
 /// Parse a single host entry from the nixosConfigurations attrset.
 /// Expects a node like: `my-machine = nixpkgs.lib.nixosSystem { system = "..."; modules = [...]; };`
+/// Also handles quoted keys like: `"my-machine" = nixpkgs.lib.nixosSystem { ... };`
 fn parse_host_entry(attr_node: &SyntaxNode) -> Option<HostInfo> {
-    // Get the host name from the attrpath
+    // Get the host name from the attrpath — may be NODE_IDENT (bare) or NODE_STRING (quoted)
     let key_path = attr_node
         .children()
         .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)?;
     let name = key_path
         .children()
-        .find(|n| n.kind() == SyntaxKind::NODE_IDENT)?
-        .text()
-        .to_string();
+        .find_map(|n| match n.kind() {
+            SyntaxKind::NODE_IDENT => Some(n.text().to_string()),
+            SyntaxKind::NODE_STRING => {
+                let text = n.text().to_string();
+                Some(text.trim_matches('"').to_string())
+            }
+            _ => None,
+        })?;
 
     // Find the value node - it should be a function application like `nixpkgs.lib.nixosSystem { ... }`
     // The attrset argument is what we need to inspect
@@ -201,6 +207,145 @@ fn parse_modules_list(
             }
         }
     }
+}
+
+/// A single flake input parsed from `inputs = { ... }`.
+#[derive(Debug, Clone)]
+pub struct FlakeInputInfo {
+    /// Input name (e.g. "nixpkgs", "keystone", "disko").
+    pub name: String,
+    /// URL if specified (e.g. "github:NixOS/nixpkgs/nixos-unstable").
+    pub url: Option<String>,
+    /// Names of inputs this one follows (e.g. "nixpkgs" from `inputs.nixpkgs.follows`).
+    pub follows: Vec<String>,
+}
+
+/// Extract flake inputs from a parsed Nix expression.
+/// Works on the raw string content (parses internally).
+pub fn extract_flake_inputs(content: &str) -> Vec<FlakeInputInfo> {
+    let root = Root::parse(content);
+    let syntax = root.syntax();
+    extract_inputs_from_ast(&syntax)
+}
+
+/// Walk the AST looking for `inputs = { ... }` and extract each input entry.
+fn extract_inputs_from_ast(root: &SyntaxNode) -> Vec<FlakeInputInfo> {
+    let mut inputs = Vec::new();
+
+    for node in root.descendants() {
+        if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+            if let Some(attrpath) = node
+                .children()
+                .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
+            {
+                let path_text: String = attrpath
+                    .children()
+                    .filter(|n| n.kind() == SyntaxKind::NODE_IDENT)
+                    .map(|n| n.text().to_string())
+                    .collect::<Vec<_>>()
+                    .join(".");
+
+                if path_text == "inputs" {
+                    if let Some(value) = node
+                        .children()
+                        .find(|n| n.kind() == SyntaxKind::NODE_ATTR_SET)
+                    {
+                        for attr in value.children() {
+                            if attr.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                                if let Some(input) = parse_input_entry(&attr) {
+                                    inputs.push(input);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    inputs
+}
+
+/// Parse a single input entry from the inputs attrset.
+fn parse_input_entry(attr_node: &SyntaxNode) -> Option<FlakeInputInfo> {
+    let key_path = attr_node
+        .children()
+        .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)?;
+
+    let idents: Vec<String> = key_path
+        .children()
+        .filter(|n| n.kind() == SyntaxKind::NODE_IDENT)
+        .map(|n| n.text().to_string())
+        .collect();
+
+    // Handle both `nixpkgs.url = "..."` (dotted) and `nixpkgs = { url = "..."; }` (nested)
+    let name = idents.first()?.to_string();
+
+    // Dotted style: `nixpkgs.url = "..."` — the name is the first ident, value is the url
+    if idents.len() == 2 && idents[1] == "url" {
+        let url = extract_string_value(attr_node);
+        return Some(FlakeInputInfo {
+            name,
+            url,
+            follows: vec![],
+        });
+    }
+
+    // Nested attrset style: `nixpkgs = { url = "..."; inputs.X.follows = "Y"; }`
+    let mut url = None;
+    let mut follows = Vec::new();
+
+    // Check if value is a string (shorthand: `nixpkgs.url = "..."`)
+    if idents.len() == 1 {
+        // Look for nested attrset
+        for descendant in attr_node.children() {
+            if descendant.kind() == SyntaxKind::NODE_ATTR_SET {
+                for child in descendant.children() {
+                    if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                        let child_path: String = child
+                            .descendants()
+                            .filter(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
+                            .flat_map(|n| {
+                                n.children()
+                                    .filter(|c| c.kind() == SyntaxKind::NODE_IDENT)
+                                    .map(|c| c.text().to_string())
+                            })
+                            .collect::<Vec<_>>()
+                            .join(".");
+
+                        if child_path == "url" {
+                            url = extract_string_value(&child);
+                        } else if child_path.ends_with(".follows") {
+                            if let Some(val) = extract_string_value(&child) {
+                                follows.push(val);
+                            }
+                        }
+                    }
+                }
+            }
+            // Also handle plain string value: `nixpkgs.url = "..."`
+            if descendant.kind() == SyntaxKind::NODE_STRING {
+                let text = descendant.text().to_string();
+                let trimmed = text.trim_matches('"');
+                if !trimmed.is_empty() {
+                    url = Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    Some(FlakeInputInfo {
+        name,
+        url,
+        follows,
+    })
+}
+
+/// Extract the names of modules in a host's `modules = [...]` list from a flake string.
+/// This is a convenience wrapper for testing generated flakes.
+pub fn extract_nixos_configurations_from_str(content: &str) -> Vec<HostInfo> {
+    let root = Root::parse(content);
+    extract_nixos_configurations(&root.syntax())
 }
 
 #[cfg(test)]
@@ -362,5 +507,107 @@ mod tests {
             vec!["operating-system", "desktop", "agent"]
         );
         assert_eq!(hosts[1].config_files, vec!["./workstation.nix"]);
+    }
+
+    #[test]
+    fn test_extract_flake_inputs_nested_style() {
+        let content = r#"
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    keystone = {
+      url = "github:ncrmro/keystone";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    disko = {
+      url = "github:nix-community/disko";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+  outputs = { ... }: {};
+}
+"#;
+        let inputs = extract_flake_inputs(content);
+        let names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
+        assert!(names.contains(&"nixpkgs"), "should find nixpkgs input");
+        assert!(names.contains(&"keystone"), "should find keystone input");
+        assert!(names.contains(&"disko"), "should find disko input");
+        assert!(names.contains(&"home-manager"), "should find home-manager input");
+
+        let disko = inputs.iter().find(|i| i.name == "disko").unwrap();
+        assert_eq!(
+            disko.url.as_deref(),
+            Some("github:nix-community/disko")
+        );
+        assert!(disko.follows.contains(&"nixpkgs".to_string()));
+    }
+
+    #[test]
+    fn test_extract_flake_inputs_dotted_style() {
+        let content = r#"
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  };
+  outputs = { ... }: {};
+}
+"#;
+        let inputs = extract_flake_inputs(content);
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].name, "nixpkgs");
+        assert_eq!(
+            inputs[0].url.as_deref(),
+            Some("github:NixOS/nixpkgs/nixos-unstable")
+        );
+    }
+
+    #[test]
+    fn test_extract_configurations_from_generated_flake() {
+        // Use the actual template generator to prove round-trip correctness
+        use crate::template::*;
+
+        let config = GenerateConfig {
+            hostname: "ast-test".to_string(),
+            machine_type: MachineType::Server,
+            storage_type: StorageType::Zfs,
+            disk_device: None,
+            github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
+            user: UserConfig {
+                username: "admin".to_string(),
+                password: "pass".to_string(),
+                authorized_keys: vec![],
+            },
+            remote_unlock: RemoteUnlockConfig {
+                enable: false,
+                authorized_keys: vec![],
+            },
+        };
+
+        let flake = generate_flake_nix(&config);
+
+        // Verify inputs via AST
+        let inputs = extract_flake_inputs(&flake);
+        let input_names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
+        assert!(input_names.contains(&"disko"), "generated flake must have disko input");
+        assert!(input_names.contains(&"keystone"), "generated flake must have keystone input");
+        assert!(input_names.contains(&"home-manager"), "generated flake must have home-manager input");
+
+        // Verify the flake parses without errors
+        let root = Root::parse(&flake);
+        let errors: Vec<_> = root.errors().iter().map(|e| e.to_string()).collect();
+        assert!(errors.is_empty(), "generated flake has parse errors: {:?}", errors);
+
+        // Verify host via AST
+        let hosts = extract_nixos_configurations_from_str(&flake);
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].name, "ast-test");
+        assert_eq!(hosts[0].system.as_deref(), Some("x86_64-linux"));
+        assert!(hosts[0].keystone_modules.contains(&"operating-system".to_string()));
     }
 }
