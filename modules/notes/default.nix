@@ -2,7 +2,13 @@
 #
 # Syncs a git-backed notes repository on a timer using repo-sync.
 # Optionally initializes a zk Zettelkasten notebook structure.
-# Designed for human users (agents use the NixOS-level keystone.os.agents.*.notes).
+# Used by both human users and agents (agents set sync.enable = false
+# since NixOS-level agent-{name}-notes-sync handles sync).
+#
+# See conventions/tool.zk.md
+# See conventions/process.knowledge-management.md
+# Implements REQ-009
+# See specs/REQ-018-repo-management/requirements.md
 #
 # Usage:
 #   keystone.notes = {
