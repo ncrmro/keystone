@@ -127,6 +127,47 @@ rather than per-branch fetches.
 the repo health section SHOULD be omitted entirely rather than showing
 an empty table.
 
+### Git Identity and Signing
+
+**REQ-023.17** `ks doctor` MUST verify that `ssh-add -l` returns at least
+one loaded key. A missing key MUST be reported as an error (commit signing
+will fail silently).
+
+**REQ-023.18** `ks doctor` MUST verify that `git config --global user.signingkey`
+is set and that `git config --global gpg.format` is `ssh`. Misconfiguration
+MUST be reported as an error.
+
+**REQ-023.19** For each configured git service (GitHub via `gh auth status`,
+Forgejo via `tea login list` or session cookie presence), `ks doctor` MUST
+verify authentication is active. Failed auth MUST be reported as a warning.
+
+### PIM Tool Health
+
+**REQ-023.20** When `keystone.terminal.mail` is enabled, `ks doctor` MUST
+run `himalaya account list` (or equivalent) and verify the configured account
+is reachable. A connection failure MUST be reported as a warning.
+
+**REQ-023.21** When `keystone.terminal.calendar` is enabled, `ks doctor`
+MUST run `calendula calendar list` (or equivalent) and verify the CalDAV
+endpoint responds. A connection failure MUST be reported as a warning.
+
+**REQ-023.22** When `keystone.terminal.tasks` is enabled, `ks doctor` MUST
+verify that cfait can reach the CalDAV endpoint (e.g., by running `cfait`
+in a mode that tests connectivity, or by performing a direct HTTP PROPFIND
+against the configured URL). A connection failure MUST be reported as a
+warning.
+
+**REQ-023.23** PIM tool health results MUST be included in the system state
+as a table:
+
+```
+=== PIM Tool Health ===
+TOOL        STATUS   DETAILS
+himalaya    OK       1 account, INBOX reachable
+calendula   OK       CalDAV endpoint responds
+cfait       WARN     Connection refused (is Stalwart running?)
+```
+
 ### Relationship to Existing Checks
 
 **REQ-023.15** The existing dev mode detection in `build_agent_prompt`
