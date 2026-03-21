@@ -12,6 +12,8 @@ fn test_authorized_keys_appear_in_generated_nix() {
         storage_type: StorageType::Zfs,
         disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
         github_username: None,
+        time_zone: "UTC".to_string(),
+        state_version: "25.05".to_string(),
         user: UserConfig {
             username: "admin".to_string(),
             password: "changeme".to_string(),
@@ -61,6 +63,8 @@ fn test_empty_authorized_keys_generates_empty_list() {
         storage_type: StorageType::Ext4,
         disk_device: Some("/dev/sda".to_string()),
         github_username: None,
+        time_zone: "UTC".to_string(),
+        state_version: "25.05".to_string(),
         user: UserConfig {
             username: "user".to_string(),
             password: "pass".to_string(),
@@ -87,6 +91,8 @@ fn test_flake_nix_contains_hostname() {
         storage_type: StorageType::Zfs,
         disk_device: Some("/dev/sda".to_string()),
         github_username: None,
+        time_zone: "UTC".to_string(),
+        state_version: "25.05".to_string(),
         user: UserConfig {
             username: "admin".to_string(),
             password: "pass".to_string(),
@@ -111,6 +117,8 @@ fn test_laptop_gets_ext4_and_desktop() {
         storage_type: StorageType::Ext4,
         disk_device: Some("/dev/nvme0n1".to_string()),
         github_username: None,
+        time_zone: "UTC".to_string(),
+        state_version: "25.05".to_string(),
         user: UserConfig {
             username: "user".to_string(),
             password: "pass".to_string(),
