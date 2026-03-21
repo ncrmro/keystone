@@ -21,9 +21,11 @@ Using the refined stories and milestone title from the previous step, set up the
    - If no match, create a new milestone
 
 3. **Create milestone (if needed)**
-   - GitHub: `gh api repos/{owner}/{repo}/milestones -f title="TITLE" -f description="SOURCE_REF"`
+   - GitHub: `gh api repos/{owner}/{repo}/milestones -f title="TITLE" -f description="DESCRIPTION"`
    - Forgejo: `tea api -X POST /repos/{owner}/{repo}/milestones` with title and description
-   - The milestone description should reference the source (e.g., "From issue #N" or "From freehand scope notes")
+   - The milestone description MUST be a short summary (2-3 sentences max). GitHub/Forgejo milestone descriptions are collapsed by default — long content is hidden behind a click.
+   - The description MUST include both **why** (the problem or motivation) and **what** (the deliverable). Lead with the why — it gives reviewers instant context on the business reason for the milestone.
+   - Example: "Developers lose minutes every day switching between projects across scattered terminals and workspaces. This milestone delivers a unified context system for launching, naming, and switching between scoped work environments. User stories: #174"
 
 4. **Ensure required labels exist**
    - Check that `product` and `engineering` labels exist on the repo
@@ -33,16 +35,16 @@ Using the refined stories and milestone title from the previous step, set up the
    - Use sensible default colors if creating
 
 5. **Update or create the issue**
+   - Build the issue body with two sections:
+     1. If a press release preceded this milestone, embed its full text under a `## Press Release` heading at the top of the issue body. This is the working-backwards doc that scoped the milestone — reviewers must be able to read it directly on the issue. Do NOT link to vault file paths (private, invisible to reviewers).
+     2. Below the press release (or at the top if no press release), include all refined stories from `refined_stories.md` under a `## User Stories` heading.
    - If `issue_number` is provided:
-     - Read the refined stories from `refined_stories.md`
-     - Update the issue body with the refined stories content
      - GitHub: `gh issue edit <number> --repo owner/repo --body "BODY"`
      - Update the issue title to "[Milestone Title]: User Stories for Review"
      - Add the `product` label to the issue
      - Set the milestone on the issue
      - Assign to the business agent's account
    - If `issue_number` is blank:
-     - Create a new issue with the refined stories as the body
      - Title: "[Milestone Title]: User Stories for Review"
      - GitHub: `gh issue create --repo owner/repo --title "TITLE" --body "BODY" --label "product" --milestone "MILESTONE"`
      - Assign to the business agent's account
