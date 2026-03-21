@@ -200,9 +200,9 @@ pub fn handle_hosts_input(
             let host_name = hosts.selected_host().map(|h| h.name.clone());
             Some(AppAction::BuildIso { host_name })
         }
-        KeyCode::Char('d') => hosts
-            .selected_host()
-            .map(|h| AppAction::StartDeploy { host_name: h.name.clone() }),
+        KeyCode::Char('d') => hosts.selected_host().map(|h| AppAction::StartDeploy {
+            host_name: h.name.clone(),
+        }),
         KeyCode::Char('r') => Some(AppAction::RefreshDashboard),
         _ => None,
     }
@@ -566,9 +566,8 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         }
         AppAction::StartDeploy { host_name } => {
             if let Some(repo_path) = app.active_repo_path() {
-                app.current_screen = AppScreen::Deploy(
-                    screens::deploy::DeployScreen::new(repo_path, host_name),
-                );
+                app.current_screen =
+                    AppScreen::Deploy(screens::deploy::DeployScreen::new(repo_path, host_name));
             }
         }
         AppAction::DeployTargetUp => {
@@ -797,7 +796,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         }];
         let mut app = App::new_for_test();
         app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
@@ -816,7 +815,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         }];
         let mut app = App::new_for_test();
         app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
@@ -835,7 +834,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         };
         let mut app = App::new_for_test();
         app.current_screen =
@@ -855,7 +854,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         };
         let mut app = App::new_for_test();
         app.current_screen =
@@ -872,7 +871,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         }];
         let mut app = App::new_for_test();
         app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
@@ -891,7 +890,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         }];
         let mut app = App::new_for_test();
         app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
@@ -910,7 +909,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         };
         let mut app = App::new_for_test();
         app.current_screen =

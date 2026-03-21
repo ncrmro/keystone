@@ -95,7 +95,10 @@ impl HostDetailScreen {
             if !meta.fallback_ip.is_empty() {
                 lines.push(Line::from(vec![
                     Span::styled("  Fallback IP:", Style::default().fg(Color::DarkGray)),
-                    Span::styled(format!(" {}", meta.fallback_ip), Style::default().fg(Color::White)),
+                    Span::styled(
+                        format!(" {}", meta.fallback_ip),
+                        Style::default().fg(Color::White),
+                    ),
                 ]));
             }
             let mut flags = Vec::new();
@@ -162,7 +165,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec!["operating-system".to_string(), "desktop".to_string()],
             config_files: vec!["./configuration.nix".to_string()],
-                metadata: None,
+            metadata: None,
         };
         let screen = HostDetailScreen::new(host);
         assert_eq!(screen.host().name, "my-host");
@@ -177,7 +180,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         };
         let screen = HostDetailScreen::new(host);
         assert_eq!(screen.host().name, "unknown-host");

@@ -567,7 +567,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         }];
 
         let statuses = match_hosts_to_peers(&hosts, None);

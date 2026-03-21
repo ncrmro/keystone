@@ -182,10 +182,7 @@ async fn run_json_mode() -> Result<()> {
 
     let disk_device = json["disk_device"].as_str().map(|s| s.to_string());
     let github_username = json["github_username"].as_str().map(|s| s.to_string());
-    let time_zone = json["time_zone"]
-        .as_str()
-        .unwrap_or("UTC")
-        .to_string();
+    let time_zone = json["time_zone"].as_str().unwrap_or("UTC").to_string();
     let state_version = json["state_version"]
         .as_str()
         .unwrap_or("25.05")

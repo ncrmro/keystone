@@ -225,16 +225,14 @@ fn parse_host_entry(attr_node: &SyntaxNode) -> Option<HostInfo> {
     let key_path = attr_node
         .children()
         .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)?;
-    let name = key_path
-        .children()
-        .find_map(|n| match n.kind() {
-            SyntaxKind::NODE_IDENT => Some(n.text().to_string()),
-            SyntaxKind::NODE_STRING => {
-                let text = n.text().to_string();
-                Some(text.trim_matches('"').to_string())
-            }
-            _ => None,
-        })?;
+    let name = key_path.children().find_map(|n| match n.kind() {
+        SyntaxKind::NODE_IDENT => Some(n.text().to_string()),
+        SyntaxKind::NODE_STRING => {
+            let text = n.text().to_string();
+            Some(text.trim_matches('"').to_string())
+        }
+        _ => None,
+    })?;
 
     // Find the value node - it should be a function application like `nixpkgs.lib.nixosSystem { ... }`
     // The attrset argument is what we need to inspect
@@ -502,11 +500,7 @@ fn parse_input_entry(attr_node: &SyntaxNode) -> Option<FlakeInputInfo> {
         }
     }
 
-    Some(FlakeInputInfo {
-        name,
-        url,
-        follows,
-    })
+    Some(FlakeInputInfo { name, url, follows })
 }
 
 /// Extract the names of modules in a host's `modules = [...]` list from a flake string.
@@ -704,13 +698,13 @@ mod tests {
         assert!(names.contains(&"nixpkgs"), "should find nixpkgs input");
         assert!(names.contains(&"keystone"), "should find keystone input");
         assert!(names.contains(&"disko"), "should find disko input");
-        assert!(names.contains(&"home-manager"), "should find home-manager input");
+        assert!(
+            names.contains(&"home-manager"),
+            "should find home-manager input"
+        );
 
         let disko = inputs.iter().find(|i| i.name == "disko").unwrap();
-        assert_eq!(
-            disko.url.as_deref(),
-            Some("github:nix-community/disko")
-        );
+        assert_eq!(disko.url.as_deref(), Some("github:nix-community/disko"));
         assert!(disko.follows.contains(&"nixpkgs".to_string()));
     }
 
@@ -762,20 +756,35 @@ mod tests {
         // Verify inputs via AST
         let inputs = extract_flake_inputs(&flake);
         let input_names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
-        assert!(input_names.contains(&"disko"), "generated flake must have disko input");
-        assert!(input_names.contains(&"keystone"), "generated flake must have keystone input");
-        assert!(input_names.contains(&"home-manager"), "generated flake must have home-manager input");
+        assert!(
+            input_names.contains(&"disko"),
+            "generated flake must have disko input"
+        );
+        assert!(
+            input_names.contains(&"keystone"),
+            "generated flake must have keystone input"
+        );
+        assert!(
+            input_names.contains(&"home-manager"),
+            "generated flake must have home-manager input"
+        );
 
         // Verify the flake parses without errors
         let root = Root::parse(&flake);
         let errors: Vec<_> = root.errors().iter().map(|e| e.to_string()).collect();
-        assert!(errors.is_empty(), "generated flake has parse errors: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "generated flake has parse errors: {:?}",
+            errors
+        );
 
         // Verify host via AST
         let hosts = extract_nixos_configurations_from_str(&flake);
         assert_eq!(hosts.len(), 1);
         assert_eq!(hosts[0].name, "ast-test");
         assert_eq!(hosts[0].system.as_deref(), Some("x86_64-linux"));
-        assert!(hosts[0].keystone_modules.contains(&"operating-system".to_string()));
+        assert!(hosts[0]
+            .keystone_modules
+            .contains(&"operating-system".to_string()));
     }
 }
