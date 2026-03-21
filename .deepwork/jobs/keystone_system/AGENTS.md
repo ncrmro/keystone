@@ -7,6 +7,7 @@ This job manages the keystone NixOS module development lifecycle.
 The workflows are accessible as Claude Code slash commands:
 
 - `/ks.develop <goal>` — Full development lifecycle (plan → implement → review → build → merge → deploy → validate)
+- `/ks.convention <topic>` — Create or update a convention (draft → cross-reference → apply → commit to main)
 - `/ks.doctor [context]` — Standalone fleet health check across all hosts
 
 See `.claude/commands/ks.develop.md` and `.claude/commands/ks.doctor.md`.
@@ -16,6 +17,7 @@ See `.claude/commands/ks.develop.md` and `.claude/commands/ks.doctor.md`.
 | Workflow | Steps | Purpose |
 |----------|-------|---------|
 | `develop` | plan → implement → review → build → merge → deploy → validate | Full lifecycle |
+| `convention` | draft_convention → cross_reference → apply_convention → commit_convention | Convention CRUD |
 | `doctor` | validate | Standalone fleet health check |
 
 ## Key Conventions
@@ -37,6 +39,14 @@ See `.claude/commands/ks.develop.md` and `.claude/commands/ks.doctor.md`.
 
 - The validate step must check **agent health**, not just host services. Use `agentctl <agent> status/tasks/email` and check Tailscale status for offline agents.
 - Tailscale offline agents (e.g., agent-drago offline 13d) should be flagged as needing attention.
+
+### v1.4.0 — Convention workflow (2026-03-21)
+
+- The convention workflow commits directly to main (no worktree) because conventions are documentation files.
+- Cross-reference bidirectionality is enforced by the quality gate — if convention A references B, B must reference A.
+- When pushing to main, the remote may have new commits from other workflows. The commit step must handle rebase (stash → pull --rebase → stash pop → push).
+- When asking which archetypes to wire into, show the user which roles already reference related conventions to help them make informed placement decisions.
+- The convention workflow scanned 38 conventions for overlap on first test — the cross-reference step is thorough but found only 2 cross-ref opportunities (no duplicates), which is expected for a genuinely new domain.
 
 ## Nix Eval for System Context
 
