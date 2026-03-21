@@ -19,12 +19,12 @@ let
   testConfigs = {
     # Minimal ZFS configuration
     minimal-zfs = {
-      imports = [self.nixosModules.operating-system];
+      imports = [ self.nixosModules.operating-system ];
       keystone.os = {
         enable = true;
         storage = {
           type = "zfs";
-          devices = ["/dev/vda"];
+          devices = [ "/dev/vda" ];
         };
         users.testuser = {
           fullName = "Test User";
@@ -43,7 +43,7 @@ let
 
     # ZFS with all options
     full-zfs = {
-      imports = [self.nixosModules.operating-system];
+      imports = [ self.nixosModules.operating-system ];
       keystone.os = {
         enable = true;
         storage = {
@@ -71,16 +71,16 @@ let
         };
         remoteUnlock = {
           enable = true;
-          authorizedKeys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 test@localhost"];
+          authorizedKeys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 test@localhost" ];
           port = 2222;
         };
         ssh.enable = true;
         users.admin = {
           fullName = "Admin User";
           email = "admin@example.com";
-          extraGroups = ["wheel"];
+          extraGroups = [ "wheel" ];
           initialPassword = "adminpass";
-          authorizedKeys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 test@localhost"];
+          authorizedKeys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 test@localhost" ];
           terminal.enable = true;
           zfs.quota = "100G";
         };
@@ -96,12 +96,12 @@ let
 
     # ext4 configuration
     ext4-simple = {
-      imports = [self.nixosModules.operating-system];
+      imports = [ self.nixosModules.operating-system ];
       keystone.os = {
         enable = true;
         storage = {
           type = "ext4";
-          devices = ["/dev/vda"];
+          devices = [ "/dev/vda" ];
         };
         users.testuser = {
           fullName = "Test User";
@@ -116,14 +116,66 @@ let
       boot.loader.systemd-boot.enable = true;
     };
 
+    # Journal-remote server configuration
+    journal-remote-server = {
+      imports = [ self.nixosModules.operating-system ];
+      keystone.os = {
+        enable = true;
+        storage = {
+          type = "zfs";
+          devices = [ "/dev/vda" ];
+        };
+        journalRemote = {
+          serverHost = "journal-server";
+          server.enable = true;
+        };
+        users.testuser = {
+          fullName = "Test User";
+          initialPassword = "testpass";
+        };
+      };
+      networking.hostName = "journal-server";
+      networking.hostId = "deadbeef";
+      system.stateVersion = "25.05";
+      fileSystems."/" = {
+        device = "rpool/root";
+        fsType = "zfs";
+      };
+      boot.loader.systemd-boot.enable = true;
+    };
+
+    # Journal-remote client configuration (auto-forwards to server)
+    journal-remote-client = {
+      imports = [ self.nixosModules.operating-system ];
+      keystone.os = {
+        enable = true;
+        storage = {
+          type = "zfs";
+          devices = [ "/dev/vda" ];
+        };
+        journalRemote.serverHost = "ocean";
+        users.testuser = {
+          fullName = "Test User";
+          initialPassword = "testpass";
+        };
+      };
+      networking.hostId = "deadbeef";
+      system.stateVersion = "25.05";
+      fileSystems."/" = {
+        device = "rpool/root";
+        fsType = "zfs";
+      };
+      boot.loader.systemd-boot.enable = true;
+    };
+
     # ext4 with hibernation enabled
     ext4-hibernate = {
-      imports = [self.nixosModules.operating-system];
+      imports = [ self.nixosModules.operating-system ];
       keystone.os = {
         enable = true;
         storage = {
           type = "ext4";
-          devices = ["/dev/vda"];
+          devices = [ "/dev/vda" ];
           swap.size = "16G";
           hibernate.enable = true;
         };
@@ -142,22 +194,24 @@ let
   };
 
   # Evaluate each configuration
-  evaluateConfig = name: config: let
-    eval = lib.evalModules {
-      modules = [
-        config
-        "${pkgs.path}/nixos/modules/misc/nixpkgs.nix"
-        {nixpkgs.pkgs = pkgs;}
-      ];
-    };
-  in
-    pkgs.runCommand "eval-${name}" {} ''
+  evaluateConfig =
+    name: config:
+    let
+      eval = lib.evalModules {
+        modules = [
+          config
+          "${pkgs.path}/nixos/modules/misc/nixpkgs.nix"
+          { nixpkgs.pkgs = pkgs; }
+        ];
+      };
+    in
+    pkgs.runCommand "eval-${name}" { } ''
       echo "Evaluating ${name}..."
       echo "Config evaluated successfully"
       touch $out
     '';
 in
-  pkgs.runCommand "test-os-evaluation"
+pkgs.runCommand "test-os-evaluation"
   {
     # We just need to check if the configs would evaluate
     # The actual evaluation happens at build time
@@ -174,6 +228,8 @@ in
     echo "  - full-zfs: Full ZFS with all options"
     echo "  - ext4-simple: Simple ext4 setup"
     echo "  - ext4-hibernate: ext4 with hibernation enabled"
+    echo "  - journal-remote-server: Journal collection server"
+    echo "  - journal-remote-client: Journal upload client"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
