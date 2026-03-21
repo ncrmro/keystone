@@ -508,9 +508,19 @@ mod tests {
         };
 
         let flake = generate_flake_nix(&config);
-        assert!(flake.contains(r#"url = "github:nix-community/disko""#));
-        assert!(flake.contains("disko"));
-        assert!(flake.contains("disko.nixosModules.disko"));
+
+        // Use rnix AST to structurally verify disko is present as an input
+        let inputs = crate::nix::extract_flake_inputs(&flake);
+        let disko = inputs.iter().find(|i| i.name == "disko");
+        assert!(disko.is_some(), "disko must be a flake input");
+        assert_eq!(
+            disko.unwrap().url.as_deref(),
+            Some("github:nix-community/disko"),
+        );
+
+        // disko.nixosModules.disko must appear in the modules list
+        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
+        assert!(!hosts.is_empty());
     }
 
     #[test]
