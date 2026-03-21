@@ -100,7 +100,8 @@ enable = mkOption {
 # mail is already configured. Zero config maintenance.
 ```
 
-Similarly, journal-remote auto-derives from `keystone.hosts`:
+Similarly, journal-remote and ZFS backup auto-derive from `keystone.hosts`
+(see also `os.zfs-backup` for the ZFS application of this pattern):
 
 ```nix
 # nixos-config/hosts.nix — single declaration

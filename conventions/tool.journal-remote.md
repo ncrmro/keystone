@@ -100,6 +100,9 @@ ssh root@ocean du -sh /var/log/journal/remote/
 
 ## Integration with ks doctor
 
+See also `os.zfs-backup` rules 28-30 for ZFS-specific health checks in the same
+diagnostic framework.
+
 15. `ks doctor` SHOULD check `systemd-journal-upload` status on the current host and flag retry loops or failures.
 16. `ks doctor` SHOULD verify the server host's `systemd-journal-remote` is running when checking the server.
 17. When deploying journal-remote for the first time, the server MUST be deployed before clients — clients will retry-loop until the server is available.
