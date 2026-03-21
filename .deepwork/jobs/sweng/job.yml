@@ -1,17 +1,18 @@
 name: sweng
-version: "1.1.0"
-summary: "Single-task software engineering lifecycle: plan, assign agent, review, merge, clean up"
+version: "2.1.0"
+summary: "Software engineering lifecycle: design, implement, fix, refactor, and audit with agent orchestration"
 common_job_info_provided_to_all_steps_at_runtime: |
-  Software engineering workflow for Drago's agent space. Handles the full lifecycle
-  of delivering one code change per run: task intake, agent launch, review, CI gating,
-  merge, and cleanup.
+  Software engineering workflow with agent orchestration. Handles architecture design,
+  implementation, bug fixes, refactoring, and dev environment auditing. Each code-change
+  workflow delegates implementation to a sub-agent launched via agentctl.
 
   Key design principles:
   1. One task per workflow run — the task loop (TASKS.yaml) handles concurrency
-  2. TASKS.yaml is the source of truth for task status — no queue.json
+  2. TASKS.yaml is the source of truth for task status
   3. Dual-platform: GitHub (gh) and Forgejo (fj), auto-detected from git remote URL
-  4. Agents launched via agentctl: `agentctl drago <agent> --project <slug> --worktree <path>`
+  4. Agents launched via agentctl: `agentctl <agent-name> <agent-type> --project <slug> --worktree <path>`
   5. Convention compliance: process.feature-delivery from keystone governs the workflow
+  6. Worktree paths follow the keystone.os standard (see worktree convention below)
 
   Agent types supported:
   - claude: Claude Code CLI agent
@@ -25,13 +26,12 @@ common_job_info_provided_to_all_steps_at_runtime: |
 
   Directory layout:
   - .repos/{owner}/{repo}/ — main checkout (stays on default branch)
-  - .repos/{owner}/{repo}/.worktrees/{branch}/ — implementation worktree
+  - Worktrees created per keystone.os worktree convention
   - TASKS.yaml — task status tracking (agent-space root)
 
   Repository conventions (from CLAUDE.md / keystone):
   - Internal Forgejo repos: SSH clone to .repos/{owner}/{repo}
   - GitHub repos: gh repo clone to .repos/{owner}/{repo}
-  - Worktrees at .repos/{owner}/{repo}/.worktrees/{branch}
   - Conventional commits: type(scope): subject
   - PRs must reference issues with Closes/Fixes keywords
   - Squash merge is the default merge strategy
@@ -45,32 +45,95 @@ common_job_info_provided_to_all_steps_at_runtime: |
   agent: claude          # claude | gemini | opencode | claude-local
   platform: github       # auto-detected from remote URL
   issue: 42              # optional, GitHub/Forgejo issue number
+  task_type: implement   # implement | fix | refactor
   status: ready          # planning | ready | assigned | completed | merged
-  created: 2026-03-18
+  created: 2026-03-21
   ---
   ```
 
+  Workflow semantics:
+  - `implement`: New feature or capability. Branch prefix: feat/
+  - `fix`: Bug fix. Branch prefix: fix/
+  - `refactor`: Code restructuring without behavior change. Branch prefix: refactor/
+  - `design`: Architecture document only — no code changes, no agent launch.
+  - `audit`: Dev environment health check — no code changes, no agent launch.
+
+  Deploy preview verification:
+  When a project deploys to Cloudflare Workers, Vercel, Netlify, or similar platforms,
+  preview environments are created automatically on each push. The review step MUST
+  verify changes on the deployed preview — CI passing is necessary but not sufficient.
+  Always check the actual deployed behavior before merging.
+
+  Keystone conventions checked by audit:
+  - tool.nix-devshell: flake.nix, .envrc, direnv, devshell builds
+  - process.version-control: .gitignore, conventional commits, commit discipline
+  - process.continuous-integration: CI pipeline exists and passes
+  - process.code-review-ownership: CODEOWNERS file exists and is valid
+  - TDD: test infrastructure exists, tests run, failing tests committed separately
+
 workflows:
-  - name: sweng
-    summary: "Full lifecycle: plan task, launch agent, review work, merge, clean up"
+  - name: design
+    summary: "Create an architecture/design document for a feature or system change"
+    steps:
+      - design
+
+  - name: implement
+    summary: "Full implementation lifecycle: plan, assign agent, review, CI gate, merge, clean up"
     steps:
       - plan
       - assign
       - review
       - postflight
 
-  - name: plan
-    summary: "Task intake and worktree setup only"
+  - name: fix
+    summary: "Bug fix lifecycle: plan fix, assign agent, review, CI gate, merge, clean up"
     steps:
       - plan
-
-  - name: review
-    summary: "Review completed work, merge, and clean up"
-    steps:
+      - assign
       - review
       - postflight
 
+  - name: refactor
+    summary: "Refactoring lifecycle: plan refactor, assign agent, review, CI gate, merge, clean up"
+    steps:
+      - plan
+      - assign
+      - review
+      - postflight
+
+  - name: audit
+    summary: "Audit dev environment: devshell, conventions, TDD path, CI pipeline"
+    steps:
+      - audit
+
 steps:
+  - id: design
+    name: "Architecture Design"
+    description: >
+      Explore the codebase, understand constraints, and produce an architecture/design
+      document with diagrams, trade-offs, and implementation recommendations.
+    instructions_file: steps/design.md
+    exposed: true
+    inputs:
+      - name: goal
+        description: "What to design — a feature, system change, or architectural question"
+      - name: repo
+        description: "Target repository as owner/repo (e.g., ncrmro/catalyst)"
+    outputs:
+      design_doc.md:
+        type: file
+        description: "Architecture/design document with diagrams, constraints, trade-offs, and implementation plan"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: design_doc.md
+        quality_criteria:
+          "Clear Problem Statement": "The document states what problem is being solved and why the design is needed."
+          "Architecture Diagram": "At least one ASCII or text diagram illustrates the proposed architecture or data flow."
+          "Trade-offs Documented": "Design decisions include alternatives considered and rationale for the chosen approach."
+          "Implementation Path": "The document includes concrete next steps or an implementation plan that could feed into the implement workflow."
+          "Constraint Awareness": "The design accounts for existing codebase constraints, conventions, and infrastructure."
+
   - id: plan
     name: "Task Intake"
     description: >
@@ -94,11 +157,11 @@ steps:
     reviews:
       - run_each: task_md
         quality_criteria:
-          "Clear Acceptance Criteria": "Does TASK.md have specific, testable acceptance criteria as checkboxes?"
-          "Valid Frontmatter": "Does TASK.md have valid YAML frontmatter with repo, branch, agent, platform, status, and created fields?"
-          "Scoped Description": "Is the description focused on what needs to change and why?"
-          "Draft PR Created": "Was a draft PR created (GitHub: --draft, Forgejo: WIP: prefix) with Goal/Tasks/Changes/Demo sections?"
-          "Worktree Setup": "Was a git worktree created at .repos/{owner}/{repo}/.worktrees/{branch}?"
+          "Clear Acceptance Criteria": "TASK.md has specific, testable acceptance criteria as checkboxes."
+          "Valid Frontmatter": "TASK.md has valid YAML frontmatter with repo, branch, agent, platform, task_type, status, and created fields."
+          "Scoped Description": "The description is focused on what needs to change and why — no scope creep."
+          "Draft PR Created": "A draft PR was created (GitHub: --draft, Forgejo: WIP: prefix) with Goal/Tasks/Changes/Demo sections."
+          "Worktree Setup": "A git worktree was created at the standard worktree path with the correct branch."
 
   - id: assign
     name: "Launch Agent"
@@ -119,9 +182,9 @@ steps:
     reviews:
       - run_each: run_md
         quality_criteria:
-          "Agent Launched": "Does run.md confirm the agent was launched via agentctl with correct parameters?"
-          "TASK.md Copied": "Was TASK.md present in the worktree before launch?"
-          "Status Updated": "Was TASK.md status updated to assigned?"
+          "Agent Launched": "run.md confirms the agent was launched via agentctl with correct parameters."
+          "TASK.md Present": "TASK.md was present in the worktree before agent launch."
+          "Status Updated": "TASK.md status was updated to assigned."
 
   - id: review
     name: "Review and Merge"
@@ -148,16 +211,18 @@ steps:
           acceptance criterion. Flag any cosmetic reformatting, refactoring, or additions not
           required by the task.
         quality_criteria:
-          "Requirements Checked": "Does the review verify each acceptance criterion from TASK.md?"
-          "Scope Validated": "Does the review confirm ALL changes are in-scope? Were out-of-scope changes flagged as FAIL?"
-          "Clear Verdict": "Does the review state PASS or FAIL with rationale?"
-          "CI Gated": "Was CI checked (GitHub: gh pr checks --watch, Forgejo: commit status poll)?"
-          "Auto-Merge Used": "For PASS, was squash merge used (GitHub: --auto --squash, Forgejo: fj pr merge --method squash)?"
+          "Requirements Checked": "The review verifies each acceptance criterion from TASK.md."
+          "Scope Validated": "The review confirms ALL changes are in-scope. Out-of-scope changes are flagged as FAIL."
+          "Clear Verdict": "The review states PASS or FAIL with rationale."
+          "CI Gated": "CI was checked to completion (GitHub: gh pr checks --watch, Forgejo: commit status poll)."
+          "Deploy Preview Verified": "If the project has deploy previews (Cloudflare Workers, Vercel, Netlify), the deployed preview was checked and changes verified."
+          "Auto-Merge Used": "For PASS, squash merge was used (GitHub: --auto --squash, Forgejo: fj pr merge --method squash)."
 
   - id: postflight
     name: "Clean Up"
     description: >
-      Remove worktree and local branch. Update TASKS.yaml status to completed.
+      Remove worktree and local branch for merged task. Update TASKS.yaml status
+      to completed. Clean up temporary workflow files.
     instructions_file: steps/postflight.md
     inputs:
       - file: review_md
@@ -170,3 +235,30 @@ steps:
     dependencies:
       - review
     reviews: []
+
+  - id: audit
+    name: "Dev Environment Audit"
+    description: >
+      Audit a repository's development environment against keystone conventions.
+      Check devshell setup (flake.nix, .envrc, direnv), git conventions (.gitignore,
+      CODEOWNERS, commit format), TDD infrastructure, and CI pipeline health.
+      Defaults to current repo; accepts optional target repo path.
+    instructions_file: steps/audit.md
+    exposed: true
+    inputs:
+      - name: repo_path
+        description: "Path to the repository to audit (defaults to current working directory if omitted)"
+    outputs:
+      audit_report.md:
+        type: file
+        description: "Audit report with pass/fail for each convention check, findings, and remediation steps"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: audit_report.md
+        quality_criteria:
+          "Devshell Checked": "The audit verifies flake.nix exists, builds successfully (nix develop --command true), .envrc has 'use flake', and .direnv/ is gitignored."
+          "Git Conventions Checked": "The audit verifies .gitignore covers common artifacts, CODEOWNERS exists, and recent commits follow conventional commit format."
+          "TDD Path Verified": "The audit confirms test infrastructure exists (test runner, test directory), tests can be executed, and the repo supports the TDD commit pattern."
+          "CI Pipeline Verified": "The audit confirms CI config exists (.github/workflows/ or .forgejo/workflows/), the pipeline is functional, and checks are configured on PRs."
+          "Actionable Findings": "Each finding includes a clear remediation step — not just 'X is missing' but 'create X with Y content'."

@@ -3,7 +3,7 @@
 ## Objective
 
 Remove the worktree and local branch for a merged task. Update TASKS.yaml status
-to completed.
+to completed. Clean up temporary workflow files.
 
 ## Task
 
@@ -41,7 +41,7 @@ git branch -d $BRANCH 2>/dev/null || git branch -D $BRANCH
 
 On Forgejo, move the issue to "Done" on the project board. GitHub handles this
 automatically via built-in board automations (PR merged → Done), so no action
-needed on GitHub per `process.project-board` rule 6.
+needed on GitHub per `process.project-board`.
 
 **Forgejo:**
 ```bash
@@ -56,7 +56,6 @@ Update the task entry in TASKS.yaml:
 - Set `status: completed`
 
 ```bash
-# Read current TASKS.yaml
 cat TASKS.yaml
 ```
 
@@ -83,7 +82,7 @@ tasks:
     status: completed
     source: email
     source_ref: "email-42"
-    workflow: "sweng/sweng"
+    workflow: "sweng/implement"
     project: "catalyst"
 ```
 

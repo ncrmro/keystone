@@ -44,6 +44,11 @@ Review the diff against TASK.md acceptance criteria. For each criterion:
 
 If out-of-scope changes exist, verdict is **FAIL** with instructions to revert them.
 
+**Task-type-specific review focus:**
+- **implement**: Verify new behavior works, tests cover it, no existing tests broken
+- **fix**: Verify bug is fixed, regression test exists, root cause addressed (not just symptoms)
+- **refactor**: Verify behavior is UNCHANGED, structure improved, all tests still pass
+
 Verdict: **PASS** (all requirements met AND no out-of-scope changes) or **FAIL**.
 
 #### Step 3: Push Changes
@@ -95,6 +100,34 @@ rg -i 'error|fail|fatal|exit code' /tmp/ci-$JOB_ID.log
 
 **CRITICAL**: Never read full CI logs into conversation context. Download to file, search with rg.
 
+#### Step 4b: Deploy Preview Verification
+
+If the project has deploy previews (Cloudflare Workers, Vercel, Netlify, etc.),
+verify the changes on the deployed preview environment:
+
+1. **Check for preview URL**: Look for deploy preview comments on the PR from
+   platform bots (Cloudflare, Vercel, Netlify):
+   ```bash
+   gh pr view $PR_NUM --repo OWNER/REPO --comments | grep -i 'preview\|deploy'
+   ```
+
+2. **Verify the deployed service**: Visit the preview URL and confirm:
+   - The changes are visible and working as expected
+   - No regressions in existing functionality
+   - The service loads without errors
+
+3. **For Cloudflare Workers specifically**:
+   - Preview deployments are created automatically on each push
+   - URL format is typically: `https://<commit-hash>.<project>.workers.dev`
+   - Or check the Cloudflare dashboard for the preview URL
+
+4. **Record verification in review.md**: Include the preview URL and what was checked
+   in the review document.
+
+**This step is best-effort** — if no deploy preview is available, proceed with CI
+results only. But when previews ARE available, always use them. CI passing is necessary
+but not sufficient — verify the actual deployed behavior.
+
 #### Step 5: Request Review and Update Project Board
 
 **Request review:**
@@ -112,13 +145,13 @@ gh pr edit $PR_NUM --repo OWNER/REPO --add-reviewer copilot 2>/dev/null || \
 **Forgejo:**
 ```bash
 # Remove WIP: prefix to mark ready
-fj pr edit $PR_NUM --repo OWNER/REPO --title "feat(scope): task title"
+fj pr edit $PR_NUM --repo OWNER/REPO --title "$TYPE(scope): task title"
 
 # Assign repo owner as reviewer per tool.forgejo
 fj pr edit $PR_NUM --repo OWNER/REPO --add-reviewer REPO_OWNER
 ```
 
-**Move issue to "In Review"** on the project board per `code.delivery` rule 21:
+**Move issue to "In Review"** on the project board:
 
 **GitHub:**
 ```bash
@@ -220,8 +253,9 @@ pr_number: 42
 pr_url: https://github.com/ncrmro/catalyst/pull/42
 auto_merge: enabled
 fix_attempts: 0
-reviewed: 2026-03-18T15:30:00Z
+reviewed: 2026-03-21T15:30:00Z
 platform: github
+task_type: implement
 ---
 
 # Review: feat/add-search-endpoint
@@ -266,11 +300,12 @@ Enabled. PR will merge when CI passes and review is approved.
 verdict: FAIL
 pr_number: 42
 fix_attempts: 2
-reviewed: 2026-03-18T15:30:00Z
+reviewed: 2026-03-21T15:30:00Z
 platform: github
+task_type: fix
 ---
 
-# Review: feat/add-search-endpoint
+# Review: fix/null-pointer-crash
 
 ## Verdict: FAIL (Attempt 2/3)
 
@@ -288,13 +323,14 @@ Sending back to claude for fixes. TASK.md updated with fix requirements.
 
 - Agent's updated TASK.md reviewed against each acceptance criterion
 - Diff reviewed for scope — all changes trace to acceptance criteria
-- If PASS: changes pushed, CI gated, review requested, auto-merge enabled (squash), issue moved to "In Review" on project board
+- If PASS: changes pushed, CI gated, review requested, auto-merge enabled (squash), issue moved to "In Review"
 - If FAIL: work sent back to same agent with specific fix instructions via TASK.md
-- If 3 failures: issue moved back to "Backlog" on project board, comment posted on issue
+- If 3 failures: issue moved to "Blocked", comment posted on issue
 - Max 3 fix attempts enforced before marking failed
 - review.md written with verdict, evidence, and merge status
 - run.md updated with fix_attempts and timing
 - **CRITICAL**: CI logs never read into chat — download to file, search with rg
+- Deploy preview verified when available (Cloudflare Workers, Vercel, Netlify)
 - Platform-appropriate commands used throughout (gh vs fj)
 
 ## Context

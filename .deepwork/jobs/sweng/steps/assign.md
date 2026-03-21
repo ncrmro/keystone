@@ -23,6 +23,7 @@ Extract from frontmatter:
 - `branch` — branch name
 - `agent` — agent type (claude, gemini, opencode, claude-local)
 - `platform` — github or forgejo
+- `task_type` — implement, fix, or refactor
 
 #### Step 2: Verify Worktree State
 
@@ -81,7 +82,6 @@ Update TASK.md frontmatter to `status: assigned`:
 
 ```bash
 cd $WORKTREE
-# Update status in frontmatter
 sed -i 's/status: ready/status: assigned/' TASK.md
 git add TASK.md
 git commit -m "chore: mark task as assigned to $AGENT"
@@ -96,46 +96,6 @@ Write run metadata to `.deepwork/tmp/sweng/run.md`:
 mkdir -p .deepwork/tmp/sweng
 ```
 
-```markdown
----
-agent: claude
-started: 2026-03-18T14:30:00Z
-finished:
-status: running
-worktree: .repos/ncrmro/catalyst/.worktrees/feat/add-search-endpoint
-branch: feat/add-search-endpoint
-repo: ncrmro/catalyst
-platform: github
-pr_number: 42
-fix_attempts: 0
----
-
-## Summary
-
-Agent launched to implement: [task title]
-
-## Launch Command
-
-```bash
-agentctl drago claude --project catalyst --worktree /home/agent-drago/notes/.repos/ncrmro/catalyst/.worktrees/feat/add-search-endpoint
-```
-
-## Timing
-
-- Agent started: 2026-03-18T14:30:00Z
-- Agent completed: [will be populated]
-- CI started: [will be populated]
-- CI completed: [will be populated]
-
-## Files Changed
-
-[Will be populated after agent completes]
-
-## Test Results
-
-[Will be populated after agent completes]
-```
-
 ## Output Format
 
 ### run.md
@@ -143,13 +103,14 @@ agentctl drago claude --project catalyst --worktree /home/agent-drago/notes/.rep
 ```markdown
 ---
 agent: claude
-started: 2026-03-18T14:30:00Z
+started: 2026-03-21T14:30:00Z
 finished:
 status: running
 worktree: .repos/ncrmro/catalyst/.worktrees/feat/add-search-endpoint
 branch: feat/add-search-endpoint
 repo: ncrmro/catalyst
 platform: github
+task_type: implement
 pr_number: 42
 fix_attempts: 0
 ---
@@ -163,6 +124,21 @@ Agent launched to implement: Add Search Endpoint
 ```bash
 agentctl drago claude --project catalyst --worktree .repos/ncrmro/catalyst/.worktrees/feat/add-search-endpoint
 ```
+
+## Timing
+
+- Agent started: 2026-03-21T14:30:00Z
+- Agent completed: [will be populated]
+- CI started: [will be populated]
+- CI completed: [will be populated]
+
+## Files Changed
+
+[Will be populated after agent completes]
+
+## Test Results
+
+[Will be populated after agent completes]
 ```
 
 ## Quality Criteria
@@ -170,7 +146,7 @@ agentctl drago claude --project catalyst --worktree .repos/ncrmro/catalyst/.work
 - Agent launched via `agentctl drago <agent> --project <slug> --worktree <path>`
 - TASK.md present in worktree before launch
 - TASK.md status updated to `assigned`
-- run.md created with: agent, started, worktree, branch, repo, platform, pr_number
+- run.md created with: agent, started, worktree, branch, repo, platform, task_type, pr_number
 - Launch command recorded in run.md
 
 ## Context

@@ -1,54 +1,50 @@
-# Job Management
+# Software Engineering Job
 
-This folder and its subfolders are managed using `deepwork_jobs` workflows.
+This job manages the software engineering lifecycle with agent orchestration:
+architecture design, implementation, bug fixes, refactoring, and dev environment auditing.
 
-## Recommended Workflows
+## Slash Commands
 
-- `deepwork_jobs/new_job` - Full lifecycle: define -> implement -> test -> iterate
-- `deepwork_jobs/learn` - Improve instructions based on execution learnings
-- `deepwork_jobs/repair` - Clean up and migrate from prior DeepWork versions
+The workflows are accessible as Claude Code slash commands:
 
-## Directory Structure
+- `/sweng.design <goal>` — Create an architecture/design document
+- `/sweng.implement <task>` — Full implementation lifecycle (plan → agent → review → merge)
+- `/sweng.fix <bug>` — Bug fix lifecycle (plan → agent → review → merge)
+- `/sweng.refactor <goal>` — Refactoring lifecycle (plan → agent → review → merge)
+- `/sweng.audit [repo_path]` — Audit dev environment against keystone conventions
 
-```
-.
-├── .deepreview        # Review rules for the job itself using Deepwork Reviews
-├── AGENTS.md          # This file - project context and guidance
-├── job.yml            # Job specification (created by define step)
-├── steps/             # Step instruction files (created by implement step)
-│   └── *.md           # One file per step
-├── hooks/             # Custom validation scripts and prompts
-│   └── *.md|*.sh      # Hook files referenced in job.yml
-├── scripts/           # Reusable scripts and utilities created during job execution
-│   └── *.sh|*.py      # Helper scripts referenced in step instructions
-└── templates/         # Example file formats and templates
-    └── *.md|*.yml     # Templates referenced in step instructions
-```
+## Workflows
 
-## Editing Guidelines
+| Workflow | Steps | Purpose |
+|----------|-------|---------|
+| `design` | design | Standalone architecture/design document |
+| `implement` | plan → assign → review → postflight | New feature lifecycle |
+| `fix` | plan → assign → review → postflight | Bug fix lifecycle |
+| `refactor` | plan → assign → review → postflight | Refactoring lifecycle |
+| `audit` | audit | Dev environment health check |
 
-1. **Use workflows** for structural changes (adding steps, modifying job.yml)
-2. **Direct edits** are fine for minor instruction tweaks
+## Key Conventions
 
-## Job-Specific Context
+- **Agent orchestration**: Sub-agents launched via `agentctl` with TASK.md as contract
+- **Task types**: `implement` (feat/), `fix` (fix/), `refactor` (refactor/) — determines branch prefix
+- **Dual-platform**: GitHub (gh) and Forgejo (fj), auto-detected from git remote URL
+- **Scope control**: Every change must trace to an acceptance criterion — out-of-scope = FAIL
+- **Fix loop**: Max 3 attempts before marking blocked
+- **Audit checks**: devshell, git conventions, TDD path, CI pipeline
 
-### sweng
-
-#### Convention Dependencies
+## Convention Dependencies
 
 This job integrates several keystone conventions. Steps reference them by name:
-- `process.feature-delivery` — Branch naming, worktree paths, draft PR, squash merge
-- `process.version-control` — Conventional commits, SSH cloning, `.repos/` layout
-- `process.continuous-integration` — CI gating, log download, error search
+- `process.feature-delivery` — Branch naming, worktrees, draft PR, squash merge
+- `process.version-control` — Conventional commits, commit discipline
+- `process.continuous-integration` — CI gating, log handling, fix loop
 - `process.pull-request` — PR body format (Goal, Changes, Demo, Tasks)
-- `process.task-tracking` — TASKS.yaml schema and lifecycle
 - `process.copilot-agent` — Copilot review on GitHub PRs
-- `process.project-board` — Issue board transitions (In Progress, In Review, Done)
-- `code.delivery` — End-to-end delivery lifecycle with board integration
+- `process.code-review-ownership` — CODEOWNERS and reviewer assignment
+- `tool.nix-devshell` — Flake.nix, .envrc, direnv conventions (audit)
+- `process.project-board` — Issue board transitions (In Progress, In Review, Done, Blocked)
 
-See `.agents/conventions/` for full convention docs.
-
-#### Project Board Integration
+## Project Board Integration
 
 Every step that changes issue state MUST also update the project board column:
 - **plan**: Issue comment + move to "In Progress" when branch created
@@ -61,13 +57,37 @@ before setting statuses — these IDs are project-specific and MUST NOT be hardc
 
 Forgejo has no project board API — use `forgejo-project` CLI for all board operations.
 
-#### Platform Detection
+## Platform Detection
 
 Platform is inferred from git remote URL at runtime:
-- `*github.com*` -> github -> use `gh` CLI
-- `*git.ncrmro.com*` -> forgejo -> use `fj` CLI + `forgejo-project` for boards
+- `*github.com*` → github → use `gh` CLI
+- `*git.ncrmro.com*` → forgejo → use `fj` CLI + `forgejo-project` for boards
 
-## Last Updated
+## Bespoke Learnings
 
-- Date: 2026-03-19
-- From conversation about: Adding project board integration (issue comments and board column transitions) to all sweng steps
+### v2.0.0 — Redesign (2026-03-21)
+
+- Redesigned from single `sweng` workflow to 5 distinct workflows: design, implement, fix, refactor, audit
+- Added `task_type` field to TASK.md frontmatter to track workflow semantics
+- Implement/fix/refactor share the same step pipeline — the difference is the branch prefix and review focus
+- Design and audit are standalone steps that don't launch sub-agents
+- The audit workflow serves as a pre-flight check — if it fails, implement/fix/refactor will hit friction
+
+### v2.1.0 — Deploy preview verification (2026-03-21)
+
+- For projects deploying to Cloudflare Workers (like ks-systems-web), preview environments are created on every push
+- The review step now verifies deployed preview behavior — CI passing alone is not sufficient
+- This applies to any platform with preview deployments: Cloudflare Workers, Vercel, Netlify
+- Preview URL is typically found in PR comments from the platform's bot
+
+### v1.1.0 — Project board integration (2026-03-19)
+
+- Added project board column transitions to all sweng steps
+- GitHub project boards require field/option ID lookups — never hardcode these
+- Forgejo board operations use `forgejo-project` CLI (no REST API exists)
+
+## Editing Guidelines
+
+1. **Use workflows** for structural changes (adding steps, modifying job.yml)
+2. **Direct edits** are fine for minor instruction tweaks
+3. **Run `/deepwork learn`** after executing the workflow to capture new learnings
