@@ -44,6 +44,7 @@ in
         harper
         pandoc
         marksman
+        zk
         xdg-utils
         # Helper script for Markdown preview in Helix
         # We use a script with :pipe because:
@@ -178,6 +179,10 @@ in
             command = "${marksman}/bin/marksman";
             args = [ "server" ];
           };
+          zk = {
+            command = "${zk}/bin/zk";
+            args = [ "lsp" ];
+          };
         };
         language = [
           {
@@ -258,6 +263,7 @@ in
             name = "markdown";
             language-servers = [
               "marksman"
+              "zk"
               "harper-ls"
             ];
             auto-format = true;

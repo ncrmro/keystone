@@ -1,0 +1,181 @@
+name: notes
+version: "1.0.0"
+summary: "Zettelkasten knowledge management: scaffold, audit, and process notes repos"
+
+common_job_info_provided_to_all_steps_at_runtime: |
+  Zettelkasten knowledge management workflows for keystone notes repos.
+  Uses the `zk` CLI and follows the process.knowledge-management and
+  tool.zk conventions from keystone.
+
+  Note types and directories:
+  - inbox/       — Fleeting notes (ephemeral, triage within 48h)
+  - literature/  — Source summaries (permanent, one per source)
+  - notes/       — Permanent atomic notes (one idea per note)
+  - decisions/   — Architecture Decision Records (append-only status)
+  - index/       — Maps of Content linking related notes
+
+  ID format: YYYYMMDDHHmm (12-digit timestamp)
+  Filename: {id} {title-slug}.md
+  Linking: Wikilinks [[202603201430]]
+
+  Frontmatter (required on every note):
+  ```yaml
+  ---
+  id: "202603201430"
+  title: "Note Title"
+  type: fleeting | literature | permanent | decision | index
+  created: "2026-03-20T14:30:00Z"
+  author: agent-name | username
+  tags: []
+  ---
+  ```
+
+  Operational files NOT managed by zk:
+  - TASKS.yaml — task loop state
+  - PROJECTS.yaml — project metadata (pz)
+  - projects/ — project sessions (pz)
+
+workflows:
+  - name: init
+    summary: "Scaffold a new Zettelkasten notebook with config, templates, directories, and seed index notes"
+    steps:
+      - scaffold
+      - seed
+
+  - name: doctor
+    summary: "Audit an existing notes repo and migrate to standardized Zettelkasten structure"
+    steps:
+      - audit
+      - migrate
+
+  - name: process_inbox
+    summary: "Review fleeting notes in inbox/, promote or discard, link to knowledge graph"
+    steps:
+      - triage
+
+steps:
+  - id: scaffold
+    name: "Scaffold Notebook"
+    description: >
+      Create the Zettelkasten directory structure, .zk/config.toml, and
+      templates for a new or existing notes repo. Idempotent — safe to
+      run on a repo that already has partial structure.
+    instructions_file: steps/scaffold.md
+    inputs:
+      - name: notes_path
+        description: "Path to the notes repository root (e.g., ~/notes)"
+      - name: author
+        description: "Default author for note templates (e.g., agent-drago, ncrmro)"
+    outputs:
+      config_toml:
+        type: file
+        description: ".zk/config.toml written to the notes repo"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: config_toml
+        quality_criteria:
+          "Directory Structure": "Do all five directories exist (inbox, literature, notes, decisions, index)?"
+          "Config Valid": "Is .zk/config.toml valid TOML with correct group paths?"
+          "Templates Present": "Do all six templates exist in .zk/templates/ (default, fleeting, literature, permanent, decision, index)?"
+
+  - id: seed
+    name: "Seed Index Notes"
+    description: >
+      Create initial Map of Content (MOC) notes for core topic areas
+      discovered from existing repo content. If the repo is empty, create
+      a welcome index note.
+    instructions_file: steps/seed.md
+    inputs:
+      - name: notes_path
+        description: "Path to the notes repository root"
+      - name: author
+        description: "Default author for notes"
+    outputs:
+      seed_notes:
+        type: file
+        description: "List of created index notes (one path per line)"
+        required: true
+    dependencies:
+      - scaffold
+    reviews:
+      - run_each: seed_notes
+        quality_criteria:
+          "Index Notes Created": "Was at least one index note created in the index/ directory?"
+          "Valid Frontmatter": "Do all seed notes have correct YAML frontmatter (id, title, type: index, created, author, tags)?"
+          "Committed": "Were the seed notes committed with a conventional commit message?"
+
+  - id: audit
+    name: "Audit Repository"
+    description: >
+      Scan an existing notes repo and produce a migration report. Identify
+      notes without frontmatter, incorrect directory placement, orphan notes,
+      broken links, and non-standard filenames.
+    instructions_file: steps/audit.md
+    inputs:
+      - name: notes_path
+        description: "Path to the notes repository root"
+    outputs:
+      audit_report:
+        type: file
+        description: "Audit report at .deepwork/tmp/notes/audit_report.md"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: audit_report
+        quality_criteria:
+          "Comprehensive Scan": "Were all .md files in the repo scanned?"
+          "Issues Categorized": "Are issues grouped by type (missing frontmatter, wrong directory, orphans, broken links, bad filenames)?"
+          "Actionable": "Does each issue include the file path and a specific remediation action?"
+
+  - id: migrate
+    name: "Migrate Notes"
+    description: >
+      Apply the audit report fixes: add missing frontmatter, rename files
+      to standard format, move notes to correct directories, fix broken
+      links. Each file change is a separate commit for reversibility.
+    instructions_file: steps/migrate.md
+    inputs:
+      - file: audit_report
+        from_step: audit
+    outputs:
+      migration_log:
+        type: file
+        description: "Migration log at .deepwork/tmp/notes/migration_log.md listing all changes"
+        required: true
+    dependencies:
+      - audit
+    reviews:
+      - run_each: migration_log
+        quality_criteria:
+          "Per-File Commits": "Was each file change committed separately with a descriptive message?"
+          "No Data Loss": "Were existing note contents preserved (no truncation or overwriting of body text)?"
+          "Links Updated": "Were wikilinks updated to reflect any ID or filename changes?"
+          "Reversible": "Can each migration commit be reverted independently?"
+
+  - id: triage
+    name: "Triage Inbox"
+    description: >
+      Process all fleeting notes in inbox/. For each note, decide: promote
+      to permanent, promote to literature, promote to decision, or discard.
+      Create the target note, link to related existing notes, and delete
+      the fleeting note.
+    instructions_file: steps/triage.md
+    inputs:
+      - name: notes_path
+        description: "Path to the notes repository root"
+      - name: author
+        description: "Author name for new notes"
+    outputs:
+      triage_log:
+        type: file
+        description: "Triage log at .deepwork/tmp/notes/triage_log.md listing actions taken per inbox note"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: triage_log
+        quality_criteria:
+          "All Notes Processed": "Was every .md file in inbox/ addressed (promoted or discarded)?"
+          "Atomic Notes": "Do promoted permanent notes contain exactly one idea each?"
+          "Links Added": "Were related existing notes found and linked via wikilinks?"
+          "Inbox Empty": "Is the inbox/ directory empty (or contains only notes less than 48h old)?"

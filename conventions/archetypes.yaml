@@ -46,11 +46,13 @@ archetypes:
       - process.blocker
       - process.code-review-ownership
       - process.deepwork-job
+      - process.knowledge-management
       - process.project-board
       - process.refactor
       - tool.bitwarden
       - tool.forgejo
       - tool.himalaya
+      - tool.zk
       - process.version-control-advanced
       - tool.github
     roles:
@@ -134,11 +136,13 @@ archetypes:
     referenced_conventions:
       - process.task-tracking
       - process.project-board
+      - process.knowledge-management
       - os.requirements
       - process.agent-cronjobs
       - tool.bitwarden
       - tool.forgejo
       - tool.himalaya
+      - tool.zk
       - tool.github
     roles:
       # Role: business-analyst
