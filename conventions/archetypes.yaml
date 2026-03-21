@@ -69,6 +69,7 @@ archetypes:
       - process.project-board
       - process.refactor
       - code.shell-scripts
+      - code.comments
       - tool.bitwarden
       - tool.forgejo
       - tool.himalaya

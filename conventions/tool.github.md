@@ -39,6 +39,11 @@
 22. Built-in project workflows (Item closed → Done, PR merged → Done) handle Done transitions automatically — agents MUST NOT duplicate these.
 23. See `process.project-board` for full board lifecycle and CLI reference.
 
+## See Also
+
+- For internal Forgejo repos (git.ncrmro.com), use `tool.forgejo` instead of this convention.
+- `gh` is used only for public GitHub repos.
+
 ## Issue Comments
 
 24. Issue comments MUST be posted with: `gh issue comment {number} --repo {owner}/{repo} --body "..."`.
