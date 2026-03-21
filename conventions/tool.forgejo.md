@@ -182,22 +182,27 @@ curl -s -X POST \
 
 ## Project Boards
 
-23. Forgejo has no project board REST API. Agents MUST use the `forgejo-project` CLI (provided by keystone) for all board operations.
+23. Forgejo has no project board REST API (as of 14.x). Agents MUST use the `forgejo-project` CLI (provided by keystone) for all board operations.
 24. See `process.project-board` for full board lifecycle and Forgejo-specific guidance.
 25. Agents MUST set `FORGEJO_HOST`, `FORGEJO_USER`, and `FORGEJO_PASSWORD_CMD` environment variables.
 26. The script auto-authenticates on first use and re-authenticates on session expiry.
 27. `FORGEJO_PASSWORD_CMD` MUST delegate to a credential manager (`rbw`, `pass`, etc.) — passwords MUST NOT be stored in plaintext.
 
 ```bash
+# Auth — login once, session cookie cached at ~/.local/state/forgejo-project/cookies.txt
+forgejo-project login --host git.example.com --user alice \
+  --password-cmd "rbw get git.example.com --field password"
+
 # Project CRUD
 forgejo-project create --repo owner/repo --title "v1.0" --template basic-kanban
-forgejo-project list   --repo owner/repo
+forgejo-project list   --repo owner/repo                 # outputs JSON
 forgejo-project close  --repo owner/repo --project 5
+forgejo-project open   --repo owner/repo --project 5
 forgejo-project delete --repo owner/repo --project 5
 
 # Column CRUD
 forgejo-project column add     --repo owner/repo --project 5 --title "In Review" --color "#0075ca"
-forgejo-project column list    --repo owner/repo --project 5
+forgejo-project column list    --repo owner/repo --project 5  # outputs JSON
 forgejo-project column edit    --repo owner/repo --project 5 --column 3 --title "Reviewing"
 forgejo-project column default --repo owner/repo --project 5 --column 1
 forgejo-project column delete  --repo owner/repo --project 5 --column 3
@@ -205,5 +210,34 @@ forgejo-project column delete  --repo owner/repo --project 5 --column 3
 # Issue management
 forgejo-project item add  --repo owner/repo --project 5 --issue 42
 forgejo-project item move --repo owner/repo --project 5 --issue 42 --column 3
-forgejo-project item list --repo owner/repo --project 5
+forgejo-project item list --repo owner/repo --project 5   # outputs JSON
+```
+
+Issue numbers are automatically resolved to internal DB IDs via the REST API
+(`/api/v1/repos/{owner}/{repo}/issues/{number}`), which does accept session cookies.
+
+## Admin CLI (Server-side Provisioning)
+
+When running on the same server as Forgejo, the `forgejo admin` CLI does **not** require
+API tokens. It bypasses the HTTP API entirely and talks directly to the database using
+credentials from `app.ini`. Security is enforced via local file permissions — the command
+must run as the Forgejo system user.
+
+28. The admin CLI only supports: `user create`, `user list`, `user change-password`,
+    `user delete`, `user generate-access-token`, `user must-change-password`, `user reset-mfa`.
+29. There are **no admin CLI commands** for SSH key management, repository operations, or
+    token deletion — these MUST use the HTTP API with a generated token.
+
+```bash
+# CLI operations (no token needed, must run as forgejo user):
+sudo -u forgejo forgejo --work-path /var/lib/forgejo admin user list
+sudo -u forgejo forgejo --work-path /var/lib/forgejo admin user create --username <name> ...
+sudo -u forgejo forgejo --work-path /var/lib/forgejo admin user generate-access-token \
+  --username <name> --token-name <name> --scopes "..." --raw
+
+# API operations (require token, used for SSH keys + repos):
+curl -H "Authorization: token $TOKEN" http://127.0.0.1:3000/api/v1/admin/users/<name>/keys
+curl -H "Authorization: token $TOKEN" http://127.0.0.1:3000/api/v1/admin/users/<name>/repos
+curl -X DELETE -H "Authorization: token $TOKEN" \
+  http://127.0.0.1:3000/api/v1/users/<name>/tokens/<token-name>
 ```
