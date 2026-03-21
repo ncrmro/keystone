@@ -43,7 +43,13 @@ modules/
 │   ├── hypervisor.nix          Libvirt/KVM with OVMF, swtpm, SPICE
 │   ├── eternal-terminal.nix    Persistent shell sessions via et
 │   ├── airplay.nix             Shairport Sync AirPlay receiver
-│   ├── git-server.nix          Forgejo git server + agent repo provisioning
+│   ├── git-server/             Forgejo git server + agent repo provisioning
+│   ├── containers.nix          Podman container runtime (fuse-overlayfs for ZFS)
+│   ├── notifications.nix       Terminal notification system
+│   ├── ollama.nix              Ollama LLM runtime
+│   ├── immich.nix              Immich photo management (OS-level)
+│   ├── tailscale.nix           Tailscale VPN client
+│   ├── iphone-tether.nix       iOS USB tethering via libimobiledevice
 │   └── scripts/                Enrollment helpers (TPM, recovery, Secure Boot)
 ├── terminal/
 │   ├── default.nix             Orchestrator: keystone.terminal.* options
@@ -95,7 +101,8 @@ modules/
     │   ├── headscale.nix       VPN control (mercury.domain, port 8080, public)
     │   ├── miniflux.nix        RSS reader (miniflux.domain, port 8070)
     │   ├── mail.nix            Mail admin (mail.domain, port 8082)
-    │   └── adguard.nix         DNS blocking (adguard.home.domain, port 3000)
+    │   ├── adguard.nix         DNS blocking (adguard.home.domain, port 3000)
+    │   └── seaweedfs.nix       S3-compatible blob store (s3.domain, port 8333)
     ├── vpn.nix                 Legacy VPN module
     ├── mail.nix                Legacy mail module
     ├── monitoring.nix          Legacy monitoring module
@@ -347,6 +354,10 @@ keystone.hardwareKey = {
 | Eternal Terminal | `keystone.os.services.eternalTerminal` | Persistent sessions surviving network changes (port 2022, tailscale-only) |
 | AirPlay | `keystone.os.services.airplay` | Shairport Sync receiver |
 | systemd-resolved | `keystone.os.services.resolved` | DNS resolution for Tailscale MagicDNS |
+| Containers | `keystone.os.containers.enable` | Podman runtime with fuse-overlayfs for ZFS, docker-compose, DNS networking |
+| Tailscale | `keystone.os.tailscale` | Tailscale VPN client |
+| iPhone Tether | `keystone.os.iphoneTether.enable` | iOS USB tethering via libimobiledevice and usbmuxd |
+| Ollama | `keystone.os.ollama` | Ollama LLM runtime |
 | Mail | `keystone.mail.host` | Stalwart mail server (auto-enables on matching host) |
 | Git Server | `keystone.os.gitServer` | Forgejo with agent repo provisioning |
 
@@ -692,6 +703,7 @@ When enabled, the service registers in `_enabledServices`, and nginx/dns modules
 | miniflux | miniflux | 8070 | tailscale | |
 | mail | mail | 8082 | tailscale | Stalwart admin |
 | adguard | adguard.home | 3000 | tailscaleAndLocal | |
+| seaweedfs | s3 | 8333 | tailscale | S3-compatible blob store |
 
 ### DNS Pipeline
 
@@ -881,7 +893,7 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 |--------|-------------|
 | `keystone.domain` | Shared TLD for services + agents |
 | `keystone.mail.host` | Hostname of mail server (auto-enables Stalwart) |
-| `keystone.hosts` | Host identity + connection metadata (hostname, sshTarget, fallbackIP, buildOnRemote) |
+| `keystone.hosts` | Host identity + connection metadata (hostname, sshTarget, fallbackIP, buildOnRemote, role, baremetal, hostPublicKey, zfs) |
 | `keystone.terminal.enable` | Enable terminal tools (zsh, starship, zellij, helix) |
 | `keystone.terminal.git.userName/userEmail` | Required git config |
 | `keystone.desktop.enable` | Enable desktop environment |

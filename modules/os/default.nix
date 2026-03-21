@@ -1,5 +1,7 @@
 # Keystone OS - Unified Operating System Module
 #
+# Implements REQ-001 (Keystone OS)
+#
 # This module consolidates all OS-level configuration for Keystone:
 # - Storage (ZFS/ext4 with encryption)
 # - Secure Boot (Lanzaboote)
