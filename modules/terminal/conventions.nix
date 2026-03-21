@@ -105,16 +105,38 @@ in
 
     archetype = mkOption {
       type = types.str;
-      default = "engineer";
+      default = "keystone-system-host";
       description = ''
         The archetype to use for AGENTS.md generation. Determines which
         conventions are inlined vs referenced. See conventions/archetypes.yaml
-        for available archetypes (engineer, product).
+        for available archetypes (keystone-system-host, engineer, product).
+      '';
+    };
+
+    maxGlobalBytes = mkOption {
+      type = types.int;
+      default = 16000;
+      description = ''
+        Maximum allowed size in bytes for the generated global CLAUDE.md.
+        A build warning is emitted when the content exceeds this limit.
+        Default: 16000 bytes (~4000 tokens). See REQ-021.
       '';
     };
   };
 
   config = mkIf (terminalCfg.enable && cfg.enable) {
+    # REQ-021: Warn when generated conventions exceed the context budget.
+    # The global CLAUDE.md should be minimal — only host basics and essential
+    # daily-use rules. Most conventions should be referenced, not inlined.
+    warnings =
+      let
+        contentSize = builtins.stringLength agentsMdContent;
+      in
+      optional (contentSize > cfg.maxGlobalBytes)
+        "keystone.terminal.conventions: generated CLAUDE.md is ${toString contentSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
+          toString (cfg.maxGlobalBytes / 4)
+        } tokens). Move conventions from inlined_conventions to referenced_conventions in archetypes.yaml.";
+
     # Write conventions to each tool's native instruction file path.
     # OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file.
     home.file.".claude/CLAUDE.md".text = agentsMdContent;
