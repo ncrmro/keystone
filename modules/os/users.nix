@@ -22,6 +22,11 @@ let
   keysCfg = config.keystone.keys;
   hostname = config.networking.hostName;
 
+  # Look up the current host's devMode from keystone.hosts (FR-014)
+  hostEntries = attrValues config.keystone.hosts;
+  matchedHost = filter (h: h.hostname == hostname) hostEntries;
+  currentHostDevMode = if matchedHost != [ ] then (head matchedHost).devMode else false;
+
   # Whether the keystone desktop NixOS module is imported (gates home-manager desktop config)
   hasDesktopModule = options.keystone ? desktop;
 
@@ -208,6 +213,7 @@ in
                 keystone.terminal = mkIf userCfg.terminal.enable (
                   {
                     enable = mkDefault true;
+                    devMode = mkDefault currentHostDevMode;
                     git = {
                       enable = mkDefault (userCfg.email != null);
                       userName = mkDefault userCfg.fullName;

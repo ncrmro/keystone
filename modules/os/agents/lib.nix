@@ -102,6 +102,11 @@ let
   # for secrets/keys/configs don't fire on unrelated hosts.
   localAgents = filterAttrs (_: agentCfg: agentCfg.host == config.networking.hostName) cfg;
 
+  # Look up the current host's devMode from keystone.hosts (FR-014)
+  hostEntries = attrValues config.keystone.hosts;
+  matchedHost = filter (h: h.hostname == config.networking.hostName) hostEntries;
+  currentHostDevMode = if matchedHost != [ ] then (head matchedHost).devMode else false;
+
   desktopAgents = filterAttrs (_: agentCfg: agentCfg.desktop.enable) localAgents;
   hasDesktopAgents = desktopAgents != { };
 
@@ -245,7 +250,7 @@ in
     chromeMcpPortBase
     ;
   inherit sortedAgentNames agentsWithUids agentSvcHelper;
-  inherit localAgents;
+  inherit localAgents currentHostDevMode;
   inherit desktopAgents hasDesktopAgents;
   inherit mailAgents hasMailAgents;
   inherit sshAgents hasSshAgents;

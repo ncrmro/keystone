@@ -23,6 +23,7 @@ let
     topDomain
     agentPublicKey
     allKeysForAgent
+    currentHostDevMode
     ;
   inherit (agentsLib) globalAgentChromeDebugPort;
 in
@@ -50,6 +51,7 @@ in
 
             keystone.terminal = mkIf agentCfg.terminal.enable {
               enable = mkDefault true;
+              devMode = mkDefault currentHostDevMode;
               conventions.archetype = mkDefault agentCfg.archetype;
               git =
                 let
