@@ -18,7 +18,7 @@ pub enum AppAction {
     GoToHostDetail(HostInfo),
     GoToHosts,
     StartBuild(String),
-    BuildIso,
+    BuildIso { host_name: Option<String> },
     IsoTargetUp,
     IsoTargetDown,
     IsoTargetSelect,
@@ -187,7 +187,10 @@ pub fn handle_hosts_input(
         KeyCode::Enter => hosts
             .selected_host()
             .map(|host| AppAction::GoToHostDetail(host.clone())),
-        KeyCode::Char('i') => Some(AppAction::BuildIso),
+        KeyCode::Char('i') => {
+            let host_name = hosts.selected_host().map(|h| h.name.clone());
+            Some(AppAction::BuildIso { host_name })
+        }
         KeyCode::Char('r') => Some(AppAction::RefreshDashboard),
         _ => None,
     }
@@ -426,9 +429,10 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
                     AppScreen::Build(screens::build::BuildScreen::new(host_name, repo_path));
             }
         }
-        AppAction::BuildIso => {
+        AppAction::BuildIso { host_name } => {
             if let Some(repo_path) = app.active_repo_path() {
-                app.current_screen = AppScreen::Iso(screens::iso::IsoScreen::new(repo_path));
+                app.current_screen =
+                    AppScreen::Iso(screens::iso::IsoScreen::new_for_host(repo_path, host_name));
             }
         }
         AppAction::IsoTargetUp => {
@@ -615,6 +619,8 @@ async fn handle_create_config_action(
                 password,
                 gh_username,
                 authorized_keys,
+                None, // time_zone — use default
+                None, // state_version — use default
             )
             .await
             {
@@ -689,6 +695,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec![],
             config_files: vec![],
+                metadata: None,
         }];
         let mut app = App::new_for_test();
         app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
@@ -707,6 +714,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec![],
             config_files: vec![],
+                metadata: None,
         }];
         let mut app = App::new_for_test();
         app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
@@ -725,6 +733,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec![],
             config_files: vec![],
+                metadata: None,
         };
         let mut app = App::new_for_test();
         app.current_screen =
@@ -744,6 +753,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+                metadata: None,
         };
         let mut app = App::new_for_test();
         app.current_screen =
@@ -760,6 +770,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+                metadata: None,
         }];
         let mut app = App::new_for_test();
         app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
@@ -768,7 +779,7 @@ mod tests {
         ));
 
         let action = dispatch_key(&mut app, key(KeyCode::Char('i')));
-        assert!(matches!(action, Some(AppAction::BuildIso)));
+        assert!(matches!(action, Some(AppAction::BuildIso { .. })));
     }
 
     #[test]
@@ -778,6 +789,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+                metadata: None,
         }];
         let mut app = App::new_for_test();
         app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
@@ -796,6 +808,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+                metadata: None,
         };
         let mut app = App::new_for_test();
         app.current_screen =

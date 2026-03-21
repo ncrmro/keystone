@@ -212,6 +212,8 @@ async fn run_json_mode() -> Result<()> {
         password,
         github_username,
         all_keys,
+        Some(time_zone),
+        Some(state_version),
     )
     .await?;
 

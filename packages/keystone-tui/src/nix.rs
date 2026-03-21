@@ -16,6 +16,28 @@ pub struct HostInfo {
     pub keystone_modules: Vec<String>,
     /// Local config file paths from the modules list (e.g. ["./configuration.nix"]).
     pub config_files: Vec<String>,
+    /// Metadata from keystone.hosts (populated by eval_host_metadata).
+    pub metadata: Option<HostMetadata>,
+}
+
+/// Metadata from keystone.hosts.<name> evaluated from the flake.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostMetadata {
+    #[serde(default)]
+    pub hostname: String,
+    #[serde(default)]
+    pub ssh_target: String,
+    #[serde(default)]
+    pub fallback_ip: String,
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub baremetal: bool,
+    #[serde(default)]
+    pub zfs: bool,
+    #[serde(default)]
+    pub build_on_remote: bool,
 }
 
 /// Parsed information about a Keystone flake.
@@ -43,6 +65,51 @@ pub async fn parse_flake(repo_path: &Path) -> Result<FlakeInfo> {
     let hosts = extract_nixos_configurations(&syntax);
 
     Ok(FlakeInfo { hosts })
+}
+
+/// Evaluate keystone.hosts metadata from the flake via `nix eval`.
+///
+/// Runs `nix eval .#nixosConfigurations.<host>.config.keystone.hosts --json`
+/// and merges the results into the provided HostInfo entries. Hosts without
+/// keystone.hosts entries are left with `metadata: None`.
+///
+/// This is a best-effort operation — if nix eval fails (e.g. no keystone.hosts
+/// option), the hosts are returned unchanged.
+pub async fn eval_host_metadata(repo_path: &Path, hosts: &mut [HostInfo]) {
+    if hosts.is_empty() {
+        return;
+    }
+
+    // Try evaluating keystone.hosts from the first host's config
+    let first_host = &hosts[0].name;
+    let expr = format!(
+        "path:{}#nixosConfigurations.{}.config.keystone.hosts or {{}}",
+        repo_path.display(),
+        first_host,
+    );
+
+    let output = match tokio::process::Command::new("nix")
+        .args(["eval", "--json", &expr])
+        .current_dir(repo_path)
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return, // nix eval failed — leave metadata as None
+    };
+
+    let json_str = String::from_utf8_lossy(&output.stdout);
+    let parsed: std::collections::HashMap<String, HostMetadata> =
+        match serde_json::from_str(&json_str) {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+
+    for host in hosts.iter_mut() {
+        if let Some(meta) = parsed.get(&host.name) {
+            host.metadata = Some(meta.clone());
+        }
+    }
 }
 
 /// Extract nixosConfigurations attribute names and details from the flake AST.
@@ -160,6 +227,7 @@ fn parse_host_entry(attr_node: &SyntaxNode) -> Option<HostInfo> {
         system,
         keystone_modules,
         config_files,
+        metadata: None,
     })
 }
 
