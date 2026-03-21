@@ -49,5 +49,5 @@ For shell script authoring standards (strict mode, ShellCheck, Nix packaging), s
 
 ## Nix-Managed Configs
 
-22. Config files in `/nix/store/` or symlinked from it MUST NOT be edited directly.
+22. Config files in `/nix/store/` or symlinked from it MUST NOT be edited directly. For module authors managing runtime-writable configs, see `tool.nix` rules 17-21.
 23. Changes to Nix-managed tools (e.g., himalaya) MUST be made via home-manager configuration updates.
