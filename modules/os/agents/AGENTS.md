@@ -62,6 +62,75 @@ Scripts use `pkgs.replaceVars` with `@placeholder@` substitutions (same pattern 
 3. Return `{ config = mkIf (osCfg.enable && cfg != { }) { ... }; }`
 4. Add import to `default.nix`
 
+## Agent Option Schema
+
+```nix
+keystone.os.agents.drago = {
+  uid = null;                    # Auto-assign from 4000+ range
+  host = "ncrmro-workstation";   # Where resources are created (feature filtering)
+  archetype = "engineer";        # Convention archetype (engineer, product)
+  fullName = "Drago";
+  email = "agent-drago@example.com";
+  terminal.enable = true;
+  desktop = { enable = true; resolution = "1920x1080"; vncPort = null; };
+  chrome = { enable = true; debugPort = null; mcp.port = null; };
+  grafana.mcp = { enable = false; url = "https://grafana.example.com"; };
+  mail = { provision = false; address = "agent-drago@example.com"; };
+  github.username = "drago";
+  forgejo.username = "drago";
+  git = { provision = false; username = "drago"; repoName = "agent-space"; };
+  passwordManager.provision = false;
+  mcp.servers = {};
+  notes = {
+    syncOnCalendar = "*:0/5";
+    taskLoop.onCalendar = "*:0/5";
+    taskLoop.maxTasks = 5;
+    scheduler.onCalendar = "*-*-* 05:00:00";
+  };
+};
+```
+
+**Required agenix secrets** (per agent):
+- `agent-{name}-ssh-key` — SSH private key
+- `agent-{name}-ssh-passphrase` — SSH key passphrase
+- `agent-{name}-mail-password` — Stalwart mail password (if `mail.provision = true`)
+
+**CRITICAL**: Mail password secrets MUST list BOTH the agent's `host` (himalaya client)
+AND the mail server's host (Stalwart provisioning). Missing either breaks auth silently.
+
+SSH keys are managed via `keystone.keys."agent-{name}"`.
+
+## agentctl CLI (`agentctl.nix`)
+
+`agentctl` dispatches to per-agent helper scripts via sudo:
+
+```bash
+agentctl <agent-name> <command> [args...]
+```
+
+| Command | Description |
+|---------|-------------|
+| `status`, `start`, `stop`, `restart` | `systemctl --user` as the agent |
+| `journalctl` | `journalctl --user` as the agent |
+| `exec` | Run arbitrary command as the agent (diagnostics) |
+| `tasks` | Show agent tasks table (pending/in_progress first) |
+| `email` | Show agent inbox (recent envelopes) |
+| `claude` | Interactive Claude session in agent notes dir |
+| `gemini` | Interactive Gemini session in agent notes dir |
+| `codex` | Interactive Codex session in agent notes dir |
+| `opencode` | Interactive OpenCode session in agent notes dir |
+| `mail` | Send structured email via `agent-mail` |
+| `vnc` | Open remote-viewer to the agent's VNC desktop |
+| `provision` | Generate SSH keypair, mail password, and agenix secrets |
+
+**SECURITY**: Per-agent helper scripts hardcode `XDG_RUNTIME_DIR` and allowlist safe
+systemctl verbs to prevent LD_PRELOAD injection.
+
+**Testing**: `agentctl` uses `replaceVars` and cannot be tested without a rebuild:
+```bash
+ks build && ks update --dev
+```
+
 ## Security: Claude/Gemini Flag Separation
 
 In agentctl's tool dispatch and task-loop:
