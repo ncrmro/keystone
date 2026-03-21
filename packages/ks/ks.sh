@@ -1209,14 +1209,16 @@ $user_table"
 }
 
 # --- Launch AI agent with system prompt ---
+# Writes prompt to a checksummed temp file and passes it via @file
+# reference in --append-system-prompt. This avoids Linux MAX_ARG_STRLEN
+# (128KB per argument) — the argv only contains the small @path string,
+# while claude reads the full prompt from disk.
 # Usage: launch_agent local_model prompt [passthrough args...]
 launch_agent() {
   local local_model="$1"; shift
   local prompt="$1"; shift
 
-  # Write prompt to checksummed temp file to avoid shell quoting issues
-  local prompt_file
-  prompt_file="/tmp/ks-prompt-$(printf '%s' "$prompt" | md5sum | cut -d' ' -f1)"
+  local prompt_file="/tmp/ks-prompt-$(printf '%s' "$prompt" | md5sum | cut -d' ' -f1).md"
   printf '%s' "$prompt" > "$prompt_file"
 
   if [[ -n "$local_model" ]]; then
@@ -1229,7 +1231,7 @@ launch_agent() {
       exit 1
     fi
   elif command -v claude >/dev/null 2>&1; then
-    exec claude --append-system-prompt "$(cat "$prompt_file")" "$@"
+    exec claude --append-system-prompt "@${prompt_file}" "$@"
   else
     echo "Error: claude is not available." >&2
     exit 1
