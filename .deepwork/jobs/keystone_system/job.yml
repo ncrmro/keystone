@@ -223,7 +223,7 @@ steps:
     name: "Validate"
     description: "Run ks doctor on all hosts, verify the entire fleet is nominal"
     instructions_file: steps/validate.md
-    exposed: true
+    exposed: false
     inputs: []
     outputs:
       validation_report.md:
@@ -243,7 +243,7 @@ steps:
     name: "Write Issue"
     description: "Write a keystone spec with RFC 2119 requirements, user story, and ASCII architecture diagrams"
     instructions_file: steps/write_issue.md
-    exposed: true
+    exposed: false
     inputs:
       - name: feature_description
         description: "What feature or bug to spec — a sentence or paragraph describing the need"
@@ -267,7 +267,7 @@ steps:
     name: "Draft Convention"
     description: "Gather requirements and draft a new convention in RFC 2119 format"
     instructions_file: steps/draft_convention.md
-    exposed: true
+    exposed: false
     inputs:
       - name: convention_topic
         description: "What to codify — a topic description and optionally a draft with proposed rules"
