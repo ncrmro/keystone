@@ -174,7 +174,10 @@ push_keystone_with_fork_fallback() {
       # Ensure fork exists
       gh repo fork "$owner_repo" --clone=false 2>/dev/null || true
       local fork_remote
-      fork_remote="git@github.com:$current_user/$(basename "$owner_repo").git"
+      local repo_name
+      repo_name=$(basename "$owner_repo")
+      repo_name="${repo_name%.git}"
+      fork_remote="git@github.com:$current_user/${repo_name}.git"
       # Set origin to fork for this push (will be restored by user if needed)
       git -C "$ks_path" remote set-url origin "$fork_remote"
       git -C "$ks_path" push -u origin "$(git -C "$ks_path" branch --show-current)"
