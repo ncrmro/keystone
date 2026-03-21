@@ -25,6 +25,8 @@
    gh run rerun $RUN_ID --repo OWNER/REPO
    ```
 
+See `process.continuous-integration` for general CI gating and log handling rules.
+
 ## Development
 
 10. Local development SHOULD use `wrangler dev` for testing.
@@ -68,6 +70,8 @@
 
 ## Next.js on Cloudflare Workers (OpenNext.js)
 
+See `tool.nextjs` for general Next.js conventions (App Router, Server Components, data fetching).
+
 28. Next.js apps MUST use the [OpenNext.js Cloudflare adapter](https://opennext.js.org/cloudflare) to deploy on CF Workers.
 29. The project MUST include `open-next.config.ts` at the root configuring the adapter.
 30. The wrangler config MUST set `main` to `.open-next/worker.js` and `assets.directory` to `.open-next/assets`.
@@ -92,6 +96,8 @@
     ```
 37. Custom build steps (sync scripts, migrations, dataload) MUST run after `pnpm install` and before the Next.js build.
 38. The workflow trigger paths SHOULD include `.gitmodules` and `.submodules/**` if the project uses submodules.
+
+See `tool.nix-devshell` for flake.nix and direnv setup conventions.
 
 ## Project Setup Checklist
 
