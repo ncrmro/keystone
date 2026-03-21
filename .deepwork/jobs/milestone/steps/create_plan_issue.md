@@ -2,11 +2,13 @@
 
 ## Objective
 
-Create a master "Plan" issue on the milestone that references the specs PR, documents happy paths and test expectations for each user story, includes design mockups for UI components, and describes expected demo artifacts.
+Create a **single** plan issue on the milestone that serves as the sole tracking issue for all implementation work. This issue includes happy paths, test expectations, design mockups, demo artifacts, **and a phased task checklist documenting parallelism and blocking dependencies**. PRs are opened directly against this issue — no child issues are created.
 
 ## Task
 
-Read the scope analysis and specs PR report from prior steps, then compose and create a comprehensive plan issue on the project's platform. This issue becomes the single reference point for all implementation work on the milestone.
+Read the scope analysis and specs PR report from prior steps, then compose and create one comprehensive plan issue on the project's platform. This issue becomes the single reference point for all implementation work on the milestone. Multiple PRs will reference this issue via `Part of #N` or `Closes #N`.
+
+**IMPORTANT: Do NOT create child issues.** All work is tracked in this issue's task checklist.
 
 ### Process
 
@@ -28,7 +30,36 @@ Read the scope analysis and specs PR report from prior steps, then compose and c
    - **Feature flag requirements** — which stories need feature flags for safe deployment
    - References to the specs PR and the original milestone issue
 
-3. **Create the plan issue**
+3. **Compose the phased task checklist**
+
+   Break the work into tasks grouped by phase. Each task should map to a single small PR (2-3 files max). Use conventional commit prefixes for task names. Document parallelism and blocking:
+
+   ```markdown
+   ## Tasks
+
+   ### Phase 1: Infrastructure (parallel — no dependencies)
+   - [ ] chore: add recipes database migration
+   - [ ] chore: set up image upload infrastructure
+
+   ### Phase 2: Features (parallel — depends on Phase 1)
+   - [ ] feat: add recipe creation form
+   - [ ] feat: add recipe search
+
+   ### Phase 3: Integration Tests (depends on Phase 2)
+   - [ ] test: add recipe API integration tests
+
+   ### Future Work (out of milestone scope)
+   - Recipe ratings and reviews
+   - Recipe import from external sites
+   ```
+
+   Design for non-blocking PRs:
+   - Tasks within the same phase should be independently implementable
+   - Infrastructure tasks (`chore:`) come first and unblock feature work
+   - Feature tasks should depend on infrastructure, not on each other
+   - Use feature flags to avoid blocking on deployment order
+
+4. **Create the plan issue**
 
    **GitHub**:
    ```bash
@@ -156,18 +187,23 @@ The issue body created on the platform should follow this structure:
 ### US-002: [Story title]
 ...
 
-## Implementation Order
+## Tasks
 
-### Phase 1 (parallel — no dependencies)
-- Chore: Database schema migration
-- Chore: Image upload infrastructure
+### Phase 1: Infrastructure (parallel — no dependencies)
+- [ ] chore: add recipes database migration
+- [ ] chore: set up image upload infrastructure
 
-### Phase 2 (parallel — depends on Phase 1)
-- US-001: Recipe creation
-- US-002: Recipe search
+### Phase 2: Features (parallel — depends on Phase 1)
+- [ ] feat: add recipe creation form (US-001)
+- [ ] feat: add recipe search (US-002)
+- [ ] feat: add recipe sharing (US-003) — flag: `ENABLE_RECIPE_SHARING`
 
-### Phase 3 (depends on Phase 2)
-- US-005: Recipe sharing
+### Phase 3: Integration Tests (depends on Phase 2)
+- [ ] test: add recipe API integration tests
+
+### Future Work (out of milestone scope)
+- Recipe ratings and reviews
+- Recipe import from external sites
 
 ## Feature Flags
 
@@ -176,16 +212,20 @@ The issue body created on the platform should follow this structure:
 | US-003 | `ENABLE_RECIPE_SHARING` | Social features need gradual rollout |
 ```
 
+> **Note to implementers**: Each task above maps to one PR. Reference this issue in your PR with `Part of #N`. Check off tasks as PRs merge.
+
 ## Quality Criteria
 
+- **No child issues created** — all work tracked in this single plan issue's task checklist
 - Every user story from the milestone issue appears in the plan with happy path requirements
+- A phased task checklist documents all work items with conventional commit prefixes
+- Parallelism and blocking dependencies are clearly documented per phase
 - Each story includes red/green test expectations describing what fails before and passes after implementation
 - ASCII art mockups are included for new UI components or layouts
 - Expected demo artifacts are described for each story (screenshots, videos, preview URLs)
 - The specs PR is referenced in the plan issue body
 - The plan issue is linked to the milestone
-- Implementation order is documented with phasing and parallelization notes
 
 ## Context
 
-This step creates the engineering blueprint for the milestone. The plan issue serves three purposes: (1) it's the single reference for all implementation work, (2) it communicates the engineering approach to the CPO and human, and (3) it provides the structure that the next step (decompose_child_issues) will use to create individual issues. The test expectations follow TDD principles — defining what should fail and pass before writing code. The demo artifacts ensure that every story has a verifiable outcome visible to stakeholders.
+This step creates the engineering blueprint for the milestone. The plan issue serves as the **single tracking issue** for all implementation work — no child issues are created. Instead, the plan issue contains a phased task checklist where each task maps to one PR. This avoids issue sprawl (10+ granular issues per milestone) and keeps all context, parallelism notes, and blocking info in one place. PRs reference the plan issue with `Part of #N`. The test expectations follow TDD principles — defining what should fail and pass before writing code. The demo artifacts ensure that every story has a verifiable outcome visible to stakeholders.
