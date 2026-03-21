@@ -72,6 +72,7 @@ modules/
 │   ├── calendar.nix            CalDAV calendar client (calendula)
 │   ├── contacts.nix            CardDAV contacts client (cardamum)
 │   ├── timer.nix               Pomodoro timer (comodoro)
+│   ├── tasks.nix               CalDAV task manager TUI (cfait)
 │   ├── forgejo.nix             Forgejo git integration (forgejo-project CLI)
 │   ├── projects.nix            Project management features
 │   ├── cli-coding-agent-configs.nix  AI coding agent MCP/config generation
@@ -586,6 +587,19 @@ keystone.terminal.deepwork = {
 
 Sets the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable for DeepWork job integration, enabling workflow-driven development with quality gates.
 
+### Tasks (cfait)
+
+```nix
+keystone.terminal.tasks = {
+  enable = true;
+  # All other options auto-default from keystone.terminal.mail
+};
+```
+
+CalDAV task/TODO manager TUI. Credentials inherit from the mail module (same pattern as Calendar and Contacts). cfait manages VTODO items on the Stalwart CalDAV server, complementing Calendula's VEVENT management.
+
+A wrapper script resolves the password command at launch time since cfait only supports plaintext passwords in its config file.
+
 ### Dev Tools
 
 Enabled via `keystone.terminal.devTools = true`: `csview` (CSV viewer), `jq` (JSON processor).
@@ -798,6 +812,7 @@ The `keystone.domain` option (defined in `modules/domain.nix`) establishes a sha
 | calendula | pimalaya/calendula flake |
 | cardamum | pimalaya/cardamum flake |
 | comodoro | pimalaya/comodoro flake |
+| cfait | packages/cfait (Rust) |
 | agenix | agenix flake |
 
 ## Deployment Patterns
