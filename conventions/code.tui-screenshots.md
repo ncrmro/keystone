@@ -28,8 +28,8 @@ Standards for capturing reproducible screenshots and demo recordings of ratatui-
 
 13. Screenshots MUST NOT be committed as regular git objects — binary files bloat the repo history permanently.
 14. For PR demos, screenshots MUST be uploaded inline to the PR description or comments (GitHub and Forgejo accept drag-drop image uploads).
-15. For long-term documentation, screenshots MUST be uploaded to R2 Cloudflare object storage and referenced by URL. The ks.systems website serves these for public docs.
-16. Git LFS on Forgejo MAY be used as an alternative to R2 for documentation images.
+15. For long-term documentation, screenshots MUST be stored in git LFS on Forgejo — this is the preferred storage for all internal documentation images.
+16. For public-facing documentation (ks.systems website, press releases), screenshots MUST be uploaded to R2 Cloudflare object storage and referenced by URL.
 17. Generated screenshots in `docs/screenshots/` MUST be listed in `.gitignore` — they are ephemeral build artifacts, not tracked files.
 18. Screenshots MUST be regenerated before marking a PR ready for review if the PR changes any TUI screen rendering.
 
