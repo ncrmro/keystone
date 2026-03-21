@@ -49,6 +49,7 @@ archetypes:
       - tool.github
       - tool.zk
       - process.enable-by-default
+      - os.zfs-backup
       - tool.stalwart
 
   engineer:
@@ -75,6 +76,7 @@ archetypes:
       - process.version-control-advanced
       - tool.github
       - tool.journal-remote
+      - os.zfs-backup
       - tool.cloudflare-workers
       - tool.zk
       - process.knowledge-management
