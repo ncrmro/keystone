@@ -1220,7 +1220,8 @@ launch_agent() {
   local local_model="$1"; shift
   local prompt="$1"; shift
 
-  local prompt_file="/tmp/ks-prompt-$(printf '%s' "$prompt" | md5sum | cut -d' ' -f1).md"
+  local prompt_file
+  prompt_file="/tmp/ks-prompt-$(printf '%s' "$prompt" | md5sum | cut -d' ' -f1).md"
   printf '%s' "$prompt" > "$prompt_file"
 
   if [[ -n "$local_model" ]]; then
