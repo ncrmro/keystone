@@ -57,7 +57,6 @@ let
           zfs = {
             compression = "zstd";
             arcMax = "8G";
-            autoSnapshot = true;
             autoScrub = true;
           };
         };
