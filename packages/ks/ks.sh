@@ -55,6 +55,11 @@
 
 set -euo pipefail
 
+# --- Canonical repos directory ---
+# All managed repos live under ~/.keystone/repos/{OWNER}/{REPO}.
+# Legacy paths (.repos/, .submodules/, inline) are checked as fallbacks.
+KEYSTONE_REPOS_DIR="${KEYSTONE_REPOS_DIR:-$HOME/.keystone/repos}"
+
 # --- Discover repo root ---
 # All paths are resolved with readlink -f because Nix `path:` flake URIs
 # break on symlinks (e.g. ~/nixos-config -> .repos/ncrmro/nixos-config).
@@ -63,12 +68,19 @@ find_repo() {
     readlink -f "$NIXOS_CONFIG_DIR"
     return
   fi
+  # Canonical path: ~/.keystone/repos/ncrmro/nixos-config
+  if [[ -f "$KEYSTONE_REPOS_DIR/ncrmro/nixos-config/hosts.nix" ]]; then
+    readlink -f "$KEYSTONE_REPOS_DIR/ncrmro/nixos-config"
+    return
+  fi
+  # Legacy: git root of current directory
   local dir
   dir=$(git rev-parse --show-toplevel 2>/dev/null || true)
   if [[ -n "$dir" ]] && [[ -f "$dir/hosts.nix" ]]; then
     readlink -f "$dir"
     return
   fi
+  # Legacy: ~/nixos-config
   if [[ -f "$HOME/nixos-config/hosts.nix" ]]; then
     readlink -f "$HOME/nixos-config"
     return
@@ -113,18 +125,16 @@ resolve_host() {
 local_override_args() {
   local repo_root="$1"
   local args=()
+  local path
 
-  if [[ -d "$repo_root/.repos/keystone" ]]; then
-    args+=(--override-input keystone "path:$repo_root/.repos/keystone")
-  elif [[ -d "$repo_root/.submodules/keystone" ]]; then
-    args+=(--override-input keystone "path:$repo_root/.submodules/keystone")
-  fi
+  path=$(find_local_repo "$repo_root" keystone)
+  [[ -n "$path" ]] && args+=(--override-input keystone "path:$path")
 
-  if [[ -d "$repo_root/.repos/agenix-secrets" ]]; then
-    args+=(--override-input agenix-secrets "path:$repo_root/.repos/agenix-secrets")
-  elif [[ -d "$repo_root/agenix-secrets" ]]; then
-    args+=(--override-input agenix-secrets "path:$repo_root/agenix-secrets")
-  fi
+  path=$(find_local_repo "$repo_root" agenix-secrets)
+  [[ -n "$path" ]] && args+=(--override-input agenix-secrets "path:$path")
+
+  path=$(find_local_repo "$repo_root" deepwork)
+  [[ -n "$path" ]] && args+=(--override-input deepwork "path:$path")
 
   echo "${args[@]}"   # empty string if no repos found — no error, no exit
 }
@@ -132,6 +142,7 @@ local_override_args() {
 # --- Repo URLs (for cloning) ---
 KEYSTONE_URL="git@github.com:ncrmro/keystone.git"
 AGENIX_SECRETS_URL="ssh://forgejo@git.ncrmro.com:2222/ncrmro/agenix-secrets.git"
+DEEPWORK_URL="git@github.com:Unsupervisedcom/deepwork.git"
 
 # --- Push keystone with fork fallback (REQ-016.9) ---
 # Pushes the local keystone repo. If the user lacks push access to the upstream
@@ -303,44 +314,58 @@ deploy_home_manager_only() {
 }
 
 # --- Find local repo path ---
-# Returns the local path for a given repo name, checking .repos/ first, then legacy paths.
+# Returns the local path for a given repo name.
+# Checks ~/.keystone/repos/ first, then legacy paths as fallback.
 find_local_repo() {
   local repo_root="$1" name="$2"
   case "$name" in
     keystone)
-      if [[ -d "$repo_root/.repos/keystone" ]]; then
+      if [[ -d "$KEYSTONE_REPOS_DIR/ncrmro/keystone" ]]; then
+        echo "$KEYSTONE_REPOS_DIR/ncrmro/keystone"
+      elif [[ -d "$repo_root/.repos/keystone" ]]; then
         echo "$repo_root/.repos/keystone"
       elif [[ -d "$repo_root/.submodules/keystone" ]]; then
         echo "$repo_root/.submodules/keystone"
       fi
       ;;
     agenix-secrets)
-      if [[ -d "$repo_root/.repos/agenix-secrets" ]]; then
+      if [[ -d "$KEYSTONE_REPOS_DIR/ncrmro/agenix-secrets" ]]; then
+        echo "$KEYSTONE_REPOS_DIR/ncrmro/agenix-secrets"
+      elif [[ -d "$repo_root/.repos/agenix-secrets" ]]; then
         echo "$repo_root/.repos/agenix-secrets"
       elif [[ -d "$repo_root/agenix-secrets" ]]; then
         echo "$repo_root/agenix-secrets"
+      fi
+      ;;
+    deepwork)
+      if [[ -d "$KEYSTONE_REPOS_DIR/Unsupervisedcom/deepwork" ]]; then
+        echo "$KEYSTONE_REPOS_DIR/Unsupervisedcom/deepwork"
       fi
       ;;
   esac
 }
 
 # --- Pull (clone or update) a repo ---
+# Clones to ~/.keystone/repos/{OWNER}/{REPO} by default.
+# If the repo exists at a legacy path, pulls in-place there instead.
 pull_repo() {
   local repo_root="$1" name="$2" url="$3"
-  local target="$repo_root/.repos/$name"
+
+  # Derive owner/repo from URL for canonical path
+  local owner_repo
+  owner_repo=$(echo "$url" | sed -E 's|.*[:/]([^/]+/[^/]+?)(\.git)?$|\1|')
+  local canonical_target="$KEYSTONE_REPOS_DIR/$owner_repo"
 
   # Check legacy paths first — if found there, pull in-place
   local existing
   existing=$(find_local_repo "$repo_root" "$name")
-  if [[ -n "$existing" ]]; then
-    target="$existing"
-  fi
+  local target="${existing:-$canonical_target}"
 
   if [[ -e "$target/.git" ]]; then
     echo "Pulling $name..."
     git -C "$target" pull --ff-only
   else
-    echo "Cloning $name..."
+    echo "Cloning $name to $target..."
     mkdir -p "$(dirname "$target")"
     git clone "$url" "$target"
   fi
@@ -550,6 +575,7 @@ cmd_update() {
   if [[ "$pull" == true && "$lock" != true ]]; then
     pull_repo "$repo_root" keystone "$KEYSTONE_URL"
     pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
+    pull_repo "$repo_root" deepwork "$DEEPWORK_URL"
     echo "Pull complete."
     return
   fi
@@ -594,29 +620,54 @@ cmd_update() {
   echo "Pulling nixos-config..."
   git -C "$repo_root" pull --ff-only
 
-  # Step 2: Pull keystone + agenix-secrets
+  # Step 2: Pull all managed repos
   pull_repo "$repo_root" keystone "$KEYSTONE_URL"
   pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
+  pull_repo "$repo_root" deepwork "$DEEPWORK_URL"
 
-  # Step 3: Verify repos are clean and fully pushed before locking
-  local ks_path secrets_path
-  ks_path=$(find_local_repo "$repo_root" keystone)
-  secrets_path=$(find_local_repo "$repo_root" agenix-secrets)
-  [[ -n "$ks_path" ]] && verify_repo_clean "$ks_path" keystone
-  [[ -n "$secrets_path" ]] && verify_repo_clean "$secrets_path" agenix-secrets
+  # Step 3: Verify ALL repos are clean and pushed — no dirty trees.
+  # Every repo MUST have no uncommitted changes, no untracked files,
+  # and local HEAD == remote HEAD. This ensures flake.lock pins to a
+  # commit that exists on the remote.
+  verify_repo_clean "$repo_root" nixos-config
+  local repo_path
+  for name in keystone agenix-secrets deepwork; do
+    repo_path=$(find_local_repo "$repo_root" "$name")
+    [[ -n "$repo_path" ]] && verify_repo_clean "$repo_path" "$name"
+  done
 
   # Step 3.5: Push keystone with fork fallback (REQ-016.8-9)
+  local ks_path
+  ks_path=$(find_local_repo "$repo_root" keystone)
   [[ -n "$ks_path" ]] && push_keystone_with_fork_fallback "$ks_path"
 
   # Step 4: Update flake.lock BEFORE building so the build validates what will be committed
   echo "Locking flake inputs..."
-  nix flake update keystone agenix-secrets --flake "$repo_root"
+  nix flake update keystone agenix-secrets deepwork --flake "$repo_root"
 
-  # Step 5: Commit flake.lock (if changed)
+  # Step 5: Verify flake.lock pins match local repo HEADs.
+  # After verify_repo_clean, local HEAD == remote HEAD, so this confirms
+  # flake.lock locked to the same commit that's on the remote.
+  for name in keystone agenix-secrets deepwork; do
+    repo_path=$(find_local_repo "$repo_root" "$name")
+    if [[ -n "$repo_path" && -d "$repo_path" ]]; then
+      local locked_rev local_rev
+      locked_rev=$(jq -r ".nodes.\"$name\".locked.rev" "$repo_root/flake.lock")
+      local_rev=$(git -C "$repo_path" rev-parse HEAD)
+      if [[ "$locked_rev" != "$local_rev" ]]; then
+        echo "Error: flake.lock pins $name to $locked_rev" >&2
+        echo "  but local repo HEAD is $local_rev" >&2
+        echo "  → Push local changes and re-run." >&2
+        exit 1
+      fi
+    fi
+  done
+
+  # Step 6: Commit flake.lock (if changed)
   if ! git -C "$repo_root" diff --quiet flake.lock; then
     echo "Committing flake.lock..."
     git -C "$repo_root" add flake.lock
-    git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets"
+    git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets + deepwork"
   fi
 
   # Always use local overrides when repos are present
