@@ -3,10 +3,9 @@
 # Implements REQ-020 (Centralized Journal Collection)
 # See specs/REQ-020-journal-remote/requirements.md
 #
-# When one host enables `keystone.os.journalRemote.server.enable`, set
-# `keystone.os.journalRemote.serverHost` in shared config so all other
-# hosts auto-forward their journals via systemd-journal-upload. Transport
-# is plain HTTP over Tailscale — no TLS certificates needed.
+# Configuration is auto-derived from keystone.hosts: the host with
+# `journalRemote = true` becomes the server, all other hosts auto-forward
+# via systemd-journal-upload. No per-host config needed in nixos-config.
 #
 # SECURITY: Firewall restricts journal-remote port to the Tailscale interface.
 {
@@ -20,17 +19,33 @@ let
   osCfg = config.keystone.os;
   hostname = config.networking.hostName;
 
+  # Auto-derive serverHost from keystone.hosts registry.
+  # Find the host entry with journalRemote = true.
+  journalRemoteHosts = filterAttrs (_: h: h.journalRemote or false) config.keystone.hosts;
+  journalRemoteHostNames = attrNames journalRemoteHosts;
+  derivedServerHost =
+    if journalRemoteHostNames != [ ] then
+      (builtins.getAttr (builtins.head journalRemoteHostNames) journalRemoteHosts).hostname
+    else
+      null;
+
+  # Effective serverHost: explicit override > auto-derived from hosts registry
+  effectiveServerHost = if cfg.serverHost != null then cfg.serverHost else derivedServerHost;
+
   # Derive the server URL from the serverHost hostname.
   # Bare hostnames resolve via Tailscale MagicDNS.
   derivedServerUrl =
-    if cfg.serverHost != null then "http://${cfg.serverHost}:${toString cfg.server.port}" else null;
+    if effectiveServerHost != null then
+      "http://${effectiveServerHost}:${toString cfg.server.port}"
+    else
+      null;
 
   # Effective server URL: explicit override > auto-derived from serverHost
   effectiveServerUrl =
     if cfg.upload.serverUrl != null then cfg.upload.serverUrl else derivedServerUrl;
 
   # Is this host the journal server?
-  isServer = cfg.server.enable;
+  isServer = effectiveServerHost == hostname;
 
   # Should this host upload? Only if: not the server, upload enabled, and a URL exists.
   shouldUpload = !isServer && cfg.upload.enable && effectiveServerUrl != null;
@@ -41,10 +56,9 @@ in
       type = types.nullOr types.str;
       default = null;
       description = ''
-        Hostname of the journal-remote server. Set this in shared config
-        (e.g., alongside keystone.domain) so all hosts know where to
-        forward journals. Bare hostnames resolve via Tailscale MagicDNS.
-        When null, journal forwarding is disabled fleet-wide.
+        Hostname of the journal-remote server. Auto-derived from keystone.hosts
+        (the host with journalRemote = true). Override only for non-standard setups.
+        When null and no host has journalRemote = true, journal forwarding is disabled.
       '';
       example = "ocean";
     };
@@ -66,7 +80,7 @@ in
         description = ''
           Forward this host's journal to the fleet's journal-remote server.
           Set to false to opt out (e.g., for ephemeral VMs or test boxes).
-          Has no effect if serverHost is null.
+          Has no effect if no serverHost is configured.
         '';
       };
 
@@ -82,24 +96,28 @@ in
   };
 
   config = mkIf osCfg.enable (mkMerge [
+    # --- Auto-derive server.enable from hosts registry ---
+    (mkIf isServer {
+      keystone.os.journalRemote.server.enable = mkDefault true;
+    })
+
     # --- Assertions and warnings ---
     {
       assertions = [
         {
-          # REQ-020.6: server.enable must only be set on the serverHost
-          assertion = !cfg.server.enable || cfg.serverHost == hostname || cfg.serverHost == null;
+          # Only one host in keystone.hosts should have journalRemote = true
+          assertion = length journalRemoteHostNames <= 1;
           message = ''
-            keystone.os.journalRemote: server.enable is true on ${hostname},
-            but serverHost is set to "${toString cfg.serverHost}". The server
-            must only be enabled on the host named in serverHost.
+            keystone.hosts: multiple hosts have journalRemote = true: ${concatStringsSep ", " journalRemoteHostNames}.
+            Exactly one host should be the journal-remote server.
           '';
         }
       ];
 
-      warnings = optional (cfg.server.enable && cfg.serverHost == null) ''
-        keystone.os.journalRemote: server.enable is true but serverHost is null.
-        Clients won't auto-discover this server. Set serverHost = "${hostname}"
-        in shared config so other hosts know where to forward journals.
+      warnings = optional (cfg.server.enable && effectiveServerHost == null) ''
+        keystone.os.journalRemote: server.enable is true but no serverHost is configured
+        and no host in keystone.hosts has journalRemote = true. Clients won't auto-discover
+        this server. Set journalRemote = true on this host's entry in keystone.hosts.
       '';
     }
 
