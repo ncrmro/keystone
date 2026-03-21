@@ -6,6 +6,8 @@ hosts forward their journals to the server host (the host with
 `journalRemote = true` in `keystone.hosts`). This convention covers the
 commands and patterns for working with those collected logs.
 
+This module is a canonical example of the `process.enable-by-default` convention — one host registry field (`journalRemote = true`) drives config for the entire fleet.
+
 ## Architecture
 
 The journal-remote system has two components:

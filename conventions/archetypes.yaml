@@ -48,11 +48,13 @@ archetypes:
       - tool.forgejo
       - tool.github
       - tool.zk
+      - process.enable-by-default
 
   engineer:
     description: "Engineering agents — implementation, code review, architecture"
     inlined_conventions:
       - process.version-control
+      - process.enable-by-default
     referenced_conventions:
       - os.requirements
       - process.agent-cronjobs

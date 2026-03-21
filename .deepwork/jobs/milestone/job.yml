@@ -1,5 +1,5 @@
 name: milestone
-version: "1.3.1"
+version: "1.3.0"
 summary: "Milestone lifecycle: setup from scope/press release, then engineering handoff with specs and issues"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job covers the full milestone lifecycle in two workflows:
@@ -63,11 +63,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
 
   ## Key Engineering Principles
 
-  - **Single tracking issue**: One plan issue per milestone tracks all work. No child issues
-    are created by default. If a genuinely distinct feature warrants its own issue, create
-    at most 1-3 additional issues and STOP to ask the human for approval before filing them.
-  - **Human-in-the-loop for issue creation**: The agent MUST NOT create more than 1 plan issue
-    without explicit human approval. Issue bloat (10+ issues) has been a recurring problem.
+  - **Single tracking issue**: One plan issue per milestone tracks all work. No child issues.
   - **Many PRs, one issue**: Each PR references the plan issue. The plan issue's task checklist
     tracks progress across PRs.
   - **Parallelism documented**: The plan issue documents which tasks can be done in parallel
@@ -276,12 +272,3 @@ steps:
           "Specs Referenced": "The specs PR is referenced in the plan issue body."
           "Milestone Linked": "The plan issue is linked to the milestone."
 
-changelog:
-  - version: "1.3.1"
-    changes: "Strengthened issue count guardrails: 1 plan issue by default, 1-3 max only with explicit human approval. Added human-in-the-loop principle to common_job_info and create_plan_issue instructions. Removed orphaned decompose_child_issues.md."
-  - version: "1.3.0"
-    changes: "Milestone description must include WHY (problem/motivation) in addition to WHAT (deliverable). Added 'Milestone Description Motivating' quality criterion to setup_milestone reviews."
-  - version: "1.2.0"
-    changes: "Removed decompose_child_issues step. The plan issue now serves as the single tracking issue per milestone with a phased task checklist. PRs reference the plan issue directly — no child issues are created. This eliminates issue sprawl (10+ issues per milestone) and centralizes parallelism/blocking documentation."
-  - version: "1.1.1"
-    changes: "Initial release with setup and engineering_handoff workflows."
