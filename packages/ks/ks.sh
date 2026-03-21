@@ -1215,7 +1215,8 @@ launch_agent() {
   local prompt="$1"; shift
 
   # Write prompt to checksummed temp file to avoid shell quoting issues
-  local prompt_file="/tmp/ks-prompt-$(printf '%s' "$prompt" | md5sum | cut -d' ' -f1)"
+  local prompt_file
+  prompt_file="/tmp/ks-prompt-$(printf '%s' "$prompt" | md5sum | cut -d' ' -f1)"
   printf '%s' "$prompt" > "$prompt_file"
 
   if [[ -n "$local_model" ]]; then
