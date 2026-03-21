@@ -18,7 +18,7 @@
 
 8. NixOS modules MUST follow the `{ config, lib, pkgs, ... }:` argument pattern.
 9. Module options MUST use `lib.mkOption` with type, default, and description.
-10. Package derivations SHOULD use `stdenv.mkDerivation` or appropriate builder.
+10. Package derivations SHOULD use `stdenv.mkDerivation` or appropriate builder. For shell script packaging, see `code.shell-scripts` rules 23-27.
 
 ## Style
 
