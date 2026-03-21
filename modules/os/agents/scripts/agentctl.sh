@@ -42,7 +42,7 @@ if [ $# -lt 2 ]; then
   echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh" >&2
   echo "  --roles <role1,...>    Comma-separated extra roles appended after mode roles" >&2
   echo "  -p, --project <slug>   Run in project context with zellij session" >&2
-  echo "  --nosandbox            Disable Podman sandbox; run AI tool directly (current host behavior)" >&2
+  echo "  --sandbox              Opt into Podman sandbox for this session (default: direct execution)" >&2
   echo "" >&2
   echo "Examples:" >&2
   echo "  agentctl drago status agent-drago-task-loop" >&2
@@ -116,14 +116,14 @@ CMD="$1"; shift
 ROLE=""
 EXTRA_ROLES=""
 PROJECT=""
-NOSANDBOX=""
+SANDBOX=""
 REMAINING_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -r|--role) ROLE="$2"; shift 2 ;;
     --roles) EXTRA_ROLES="$2"; shift 2 ;;
     -p|--project) PROJECT="$2"; shift 2 ;;
-    --nosandbox) NOSANDBOX=1; shift ;;
+    --sandbox) SANDBOX=1; shift ;;
     *) REMAINING_ARGS+=("$1"); shift ;;
   esac
 done
@@ -211,8 +211,8 @@ case "$CMD" in
 **Working Directory:** ${_AGENTCTL_PROJECT_PATH}"
     fi
 
-    # Run as the agent, sandboxed inside Podman by default.
-    # --nosandbox preserves the original direct-exec behavior.
+    # Run as the agent, direct execution by default (REQ-013 sandbox scope).
+    # --sandbox opts into Podman containerization.
     exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -c '
       cd "'"$WORK_DIR"'"
 
@@ -316,10 +316,15 @@ $ROLE_PROMPT"
         esac
       fi
 
-      if [ -n "'"$NOSANDBOX"'" ]; then
-        # --nosandbox: direct-exec behavior (original path)
+      if [ -n "'"$SANDBOX"'" ]; then
+        # --sandbox: opt-in Podman sandboxing for interactive sessions.
+        # podman-agent adds auto-approve flags and handles mounts, SSH, cache volumes.
+        exec "'"$PODMAN_AGENT"'" "'"$CMD"'" "${SP_FLAGS[@]}" "$@"
+      else
+        # Default: direct execution as the agent user (REQ-013 sandbox scope).
+        # Interactive agentctl sessions run without Podman since the human
+        # operator is present and agents have OS-level user isolation.
         if [ -f flake.nix ]; then
-          # Use git+file with submodules=1 so nix can see git submodules
           FLAKE_REF="."
           if [ -f .gitmodules ]; then
             FLAKE_REF="git+file:.?submodules=1"
@@ -329,11 +334,6 @@ $ROLE_PROMPT"
         else
           exec "'"$CMD"'" $TOOL_FLAGS "${SP_FLAGS[@]}" "$@"
         fi
-      else
-        # Sandboxed default: run via podman-agent.
-        # podman-agent adds auto-approve flags and handles mounts, SSH, cache volumes.
-        # SP_FLAGS and user args are forwarded so the agent receives the full system prompt.
-        exec "'"$PODMAN_AGENT"'" "'"$CMD"'" "${SP_FLAGS[@]}" "$@"
       fi
     ' -- "$@"
     ;;
