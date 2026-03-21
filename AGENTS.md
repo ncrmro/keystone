@@ -354,7 +354,7 @@ keystone.hardwareKey = {
 
 The terminal module provides the complete development environment for both human users and OS agents. Agents receive the identical environment — no cherry-picking individual pieces.
 
-**Options**: `keystone.terminal.enable`, `keystone.terminal.editor` (default: "hx"), `keystone.terminal.devTools`, `keystone.terminal.git.*`
+**Options**: `keystone.terminal.enable`, `keystone.terminal.devMode`, `keystone.terminal.editor` (default: "hx"), `keystone.terminal.devTools`, `keystone.terminal.git.*`
 
 ### Shell
 
@@ -559,6 +559,10 @@ keystone.terminal.deepwork = {
 
 Sets the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable for DeepWork job integration, enabling workflow-driven development with quality gates.
 
+Two modes controlled by `keystone.terminal.devMode`:
+- **Normal** (default): uses read-only Nix store paths (`deepwork-library-jobs` + `keystone-deepwork-jobs`)
+- **Dev mode**: uses writable checkout at `~/.keystone/repos/Unsupervisedcom/deepwork/library/jobs` + `keystone-deepwork-jobs`, enabling `deepwork_jobs/learn` to modify upstream library jobs in place
+
 ### Dev Tools
 
 Enabled via `keystone.terminal.devTools = true`: `csview` (CSV viewer), `jq` (JSON processor).
@@ -758,6 +762,7 @@ The `keystone.domain` option (defined in `modules/domain.nix`) establishes a sha
 | codex | llm-agents flake |
 | opencode | llm-agents flake |
 | deepwork | deepwork flake |
+| deepwork-library-jobs | deepwork flake (library/jobs/) |
 | keystone-deepwork-jobs | local derivation (.deepwork/jobs/) |
 | keystone-conventions | local derivation (conventions/) |
 | chrome-devtools-mcp | packages/chrome-devtools-mcp |
@@ -881,7 +886,7 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 |--------|-------------|
 | `keystone.domain` | Shared TLD for services + agents |
 | `keystone.mail.host` | Hostname of mail server (auto-enables Stalwart) |
-| `keystone.hosts` | Host identity + connection metadata (hostname, sshTarget, fallbackIP, buildOnRemote) |
+| `keystone.hosts` | Host identity + connection metadata (hostname, sshTarget, fallbackIP, buildOnRemote, devMode) |
 | `keystone.terminal.enable` | Enable terminal tools (zsh, starship, zellij, helix) |
 | `keystone.terminal.git.userName/userEmail` | Required git config |
 | `keystone.desktop.enable` | Enable desktop environment |

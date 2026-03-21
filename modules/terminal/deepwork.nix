@@ -7,6 +7,10 @@
 #   repo checkout at ~/.keystone/repos/Unsupervisedcom/deepwork, enabling
 #   deepwork_jobs/learn to write improvements to library jobs in place.
 #   The checkout is managed by `ks update --pull`.
+#
+# Implements REQ-015 (REQ-015.3, REQ-015.10)
+# Implements REQ-001 FR-014 (Host-Level Feature Flags — devMode pass-through)
+# See conventions/process.deepwork-job.md
 {
   config,
   lib,

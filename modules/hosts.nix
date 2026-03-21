@@ -4,6 +4,8 @@
 # the infrastructure. Follows the same pattern as domain.nix and mail.nix —
 # set once per infrastructure, consumed by multiple modules and deploy scripts.
 #
+# Implements REQ-001 FR-014 (Host-Level Feature Flags)
+#
 # Usage:
 #   keystone.hosts = {
 #     ocean = {

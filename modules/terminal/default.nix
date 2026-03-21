@@ -1,3 +1,9 @@
+# Terminal environment orchestrator.
+#
+# Declares top-level keystone.terminal.* options and imports all terminal
+# submodules (shell, editor, AI, deepwork, git, mail, etc.).
+#
+# Implements REQ-002 (Terminal Development Environment)
 {
   config,
   lib,
