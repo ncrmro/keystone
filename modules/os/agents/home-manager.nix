@@ -190,6 +190,12 @@ in
               fi
             '';
 
+            # Expose team calendar URL so agents can subscribe without hardcoding paths.
+            # See conventions/tool.stalwart.md rule 19.
+            home.sessionVariables = mkIf (topDomain != null) {
+              KEYSTONE_TEAM_CALENDAR_URL = "https://mail.${topDomain}/dav/cal/team/shared/";
+            };
+
             # Add chrome-devtools-mcp to PATH when chrome MCP is enabled.
             # The MCP server command in cliCodingAgents uses an absolute Nix store
             # path, but agents may also invoke the binary directly (e.g. diagnostics,
