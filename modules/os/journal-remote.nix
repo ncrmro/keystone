@@ -8,7 +8,7 @@
 # hosts auto-forward their journals via systemd-journal-upload. Transport
 # is plain HTTP over Tailscale — no TLS certificates needed.
 #
-# SECURITY: Firewall restricts incoming connections to Tailscale IP ranges.
+# SECURITY: Firewall restricts journal-remote port to the Tailscale interface.
 {
   config,
   lib,
@@ -21,7 +21,7 @@ let
   hostname = config.networking.hostName;
 
   # Derive the server URL from the serverHost hostname.
-  # Uses Tailscale MagicDNS (<hostname>.mercury) for connectivity.
+  # Bare hostnames resolve via Tailscale MagicDNS.
   derivedServerUrl =
     if cfg.serverHost != null then "http://${cfg.serverHost}:${toString cfg.server.port}" else null;
 
@@ -43,7 +43,7 @@ in
       description = ''
         Hostname of the journal-remote server. Set this in shared config
         (e.g., alongside keystone.domain) so all hosts know where to
-        forward journals. Uses Tailscale MagicDNS for connectivity.
+        forward journals. Bare hostnames resolve via Tailscale MagicDNS.
         When null, journal forwarding is disabled fleet-wide.
       '';
       example = "ocean";
@@ -56,19 +56,6 @@ in
         type = types.port;
         default = 19532;
         description = "Listen port for systemd-journal-remote.";
-      };
-
-      listenAddress = mkOption {
-        type = types.str;
-        default = "0.0.0.0";
-        description = "Bind address for the journal-remote listener.";
-      };
-
-      maxDisk = mkOption {
-        type = types.str;
-        default = "10G";
-        description = "Maximum disk usage for remote journal storage.";
-        example = "20G";
       };
     };
 
@@ -95,7 +82,7 @@ in
   };
 
   config = mkIf osCfg.enable (mkMerge [
-    # --- Assertions ---
+    # --- Assertions and warnings ---
     {
       assertions = [
         {
@@ -108,6 +95,12 @@ in
           '';
         }
       ];
+
+      warnings = optional (cfg.server.enable && cfg.serverHost == null) ''
+        keystone.os.journalRemote: server.enable is true but serverHost is null.
+        Clients won't auto-discover this server. Set serverHost = "${hostname}"
+        in shared config so other hosts know where to forward journals.
+      '';
     }
 
     # --- Server: receive journals from the fleet ---
@@ -118,18 +111,10 @@ in
         port = cfg.server.port;
       };
 
-      # SECURITY: Restrict to Tailscale IP ranges (REQ-020.15)
-      networking.firewall.extraCommands = ''
-        iptables -A INPUT -p tcp --dport ${toString cfg.server.port} -s 100.64.0.0/10 -j ACCEPT
-        iptables -A INPUT -p tcp --dport ${toString cfg.server.port} -j DROP
-        ip6tables -A INPUT -p tcp --dport ${toString cfg.server.port} -s fd7a:115c:a1e0::/48 -j ACCEPT
-        ip6tables -A INPUT -p tcp --dport ${toString cfg.server.port} -j DROP
-      '';
-
-      # Storage limit for remote journals (REQ-020.20-22)
-      services.journald.extraConfig = ''
-        SystemMaxUse=${cfg.server.maxDisk}
-      '';
+      # SECURITY: Only accept connections on the Tailscale interface (REQ-020.15).
+      # All keystone hosts run Tailscale, so this is sufficient to restrict access
+      # to fleet members without fragile iptables rules.
+      networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ cfg.server.port ];
     })
 
     # --- Client: forward journals to the server ---

@@ -53,6 +53,7 @@ modules/
 │   ├── immich.nix              Immich photo management (OS-level)
 │   ├── tailscale.nix           Tailscale VPN client
 │   ├── iphone-tether.nix       iOS USB tethering via libimobiledevice
+│   ├── journal-remote.nix      Centralized journal collection via systemd-journal-remote/upload
 │   └── scripts/                Enrollment helpers (TPM, recovery, Secure Boot)
 ├── terminal/
 │   ├── default.nix             Orchestrator: keystone.terminal.* options
@@ -373,6 +374,7 @@ keystone.hardwareKey = {
 | Ollama | `keystone.os.ollama` | Ollama LLM runtime |
 | Mail | `keystone.mail.host` | Stalwart mail server (auto-enables on matching host) |
 | Git Server | `keystone.os.gitServer` | Forgejo with agent repo provisioning |
+| Journal Remote | `keystone.os.journalRemote` | Centralized journal collection via systemd-journal-remote/upload (port 19532, Tailscale-only) |
 
 ## Terminal Module (`modules/terminal/`)
 
