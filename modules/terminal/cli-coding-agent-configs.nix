@@ -10,6 +10,10 @@ with lib;
 let
   cfg = config.keystone.terminal.cliCodingAgents;
   terminalCfg = config.keystone.terminal;
+
+  # Nix-managed MCP servers as a JSON file in the store, used by the
+  # activation script to merge into the runtime ~/.claude.json.
+  claudeJsonMcpServers = pkgs.writeText "claude-mcp-servers.json" (builtins.toJSON cfg.mcpServers);
 in
 {
   options.keystone.terminal.cliCodingAgents = {
@@ -68,12 +72,6 @@ in
         };
       };
 
-      # Claude Code / Claude Desktop
-      # Location: ~/.claude.json
-      ".claude.json".text = builtins.toJSON {
-        mcpServers = cfg.mcpServers;
-      };
-
       # OpenCode
       # Location: ~/.config/opencode/opencode.json
       ".config/opencode/opencode.json".text = builtins.toJSON {
@@ -95,5 +93,32 @@ in
       #   mcpServers = cfg.mcpServers;
       # };
     };
+
+    # Claude Code / Claude Desktop
+    # CRITICAL: ~/.claude.json must be a writable regular file, not a Nix store
+    # symlink. Claude Code writes runtime state to this file (feature flags,
+    # subscription cache, OAuth account, MCP sync). A read-only symlink causes
+    # an infinite retry loop that hangs Claude Code forever.
+    # Strategy: merge only the mcpServers key from Nix config into the existing
+    # file, preserving all Claude Code runtime state.
+    home.activation.claudeJsonConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      claudeJson="$HOME/.claude.json"
+
+      # Remove stale Nix store symlink from previous home-manager generations
+      if [ -L "$claudeJson" ]; then
+        rm -f "$claudeJson"
+      fi
+
+      if [ -f "$claudeJson" ]; then
+        # Merge: replace only .mcpServers, preserve all other runtime state
+        ${pkgs.jq}/bin/jq -s '.[0] * {mcpServers: .[1]}' \
+          "$claudeJson" ${claudeJsonMcpServers} > "$claudeJson.tmp" \
+          && mv "$claudeJson.tmp" "$claudeJson"
+      else
+        # First run: create with just MCP servers, Claude Code populates the rest
+        ${pkgs.jq}/bin/jq -n --slurpfile s ${claudeJsonMcpServers} '{mcpServers: $s[0]}' \
+          > "$claudeJson"
+      fi
+    '';
   };
 }
