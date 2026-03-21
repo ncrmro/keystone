@@ -64,6 +64,15 @@ in
             default = null;
             description = "SSH host public key (/etc/ssh/ssh_host_ed25519_key.pub).";
           };
+          devMode = mkOption {
+            type = types.bool;
+            default = false;
+            description = ''
+              Enable development mode for this host. When true, keystone modules
+              use writable repo checkouts at ~/.keystone/repos/ instead of
+              read-only Nix store paths. Managed by `ks update --pull`.
+            '';
+          };
           zfs = mkOption {
             type = types.nullOr (
               types.submodule {
