@@ -1,3 +1,8 @@
+# Shell environment — Zsh, starship prompt, zoxide, direnv, zellij, and CLI tools.
+# Includes zellij layout presets (dev, ops, write) for the context system.
+#
+# Implements REQ-002 (FR-001: Shell Environment, FR-003: Terminal Multiplexer)
+# See conventions/tool.nix-devshell.md
 {
   config,
   lib,
@@ -86,6 +91,12 @@ in
         };
       };
     };
+
+    # Zellij layouts — pre-configured tab presets for context system
+    # Used by: pz --layout <name>, keystone-context <slug> --layout <name>
+    xdg.configFile."zellij/layouts/dev.kdl".source = ./layouts/dev.kdl;
+    xdg.configFile."zellij/layouts/ops.kdl".source = ./layouts/ops.kdl;
+    xdg.configFile."zellij/layouts/write.kdl".source = ./layouts/write.kdl;
 
     # Fzf - A command-line fuzzy finder
     # https://github.com/junegunn/fzf

@@ -1,3 +1,7 @@
+# Waybar status bar configuration for the Keystone desktop environment.
+# Named workspaces display context slugs (e.g., "catalyst") instead of numbers.
+#
+# Implements REQ-002 (dt-bar-001, dt-record-001.2, dt-record-001.3)
 {
   config,
   lib,
@@ -39,20 +43,9 @@ in
 
           "hyprland/workspaces" = {
             on-click = "activate";
-            format = "{icon}";
-            format-icons = {
-              default = "";
-              "1" = "1";
-              "2" = "2";
-              "3" = "3";
-              "4" = "4";
-              "5" = "5";
-              "6" = "6";
-              "7" = "7";
-              "8" = "8";
-              "9" = "9";
-              "10" = "0";
-            };
+            # {name} shows the workspace name for named workspaces (e.g., "catalyst")
+            # and the workspace number for numbered workspaces (e.g., "1")
+            format = "{name}";
             persistent-workspaces = {
               "1" = [ ];
               "2" = [ ];

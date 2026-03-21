@@ -58,6 +58,7 @@ modules/
 ├── terminal/
 │   ├── default.nix             Orchestrator: keystone.terminal.* options
 │   ├── shell.nix               Zsh, starship, zoxide, direnv, zellij
+│   ├── layouts/                Zellij layout presets (dev, ops, write) for context system
 │   ├── editor.nix              Helix editor with 25+ language servers
 │   ├── ai.nix                  Claude Code, Gemini CLI, Codex
 │   ├── mail.nix                Himalaya email client configuration
@@ -87,7 +88,8 @@ modules/
 │       │                       ssh-agent, swayosd, btop
 │       ├── hyprland/           appearance, autostart, bindings, environment, hypridle,
 │       │                       hyprlock, hyprpaper, hyprsunset, input, layout, monitors
-│       ├── scripts/            Menu system, screenshot, screenrecord, audio, idle, nightlight
+│       ├── scripts/            Menu system, screenshot, screenrecord, audio, idle, nightlight,
+│       │                       context launcher, context switcher
 │       └── theming/            15 themes with runtime switching (tokyo-night default)
 └── server/
     ├── default.nix             Orchestrator: imports all services + infrastructure
@@ -629,7 +631,7 @@ Desktop components enabled via `keystone.desktop.enable = true` in home-manager:
 | Component | Description |
 |-----------|-------------|
 | Ghostty | Terminal emulator (JetBrains Mono Nerd Font, 12pt, 0.95 opacity) |
-| Waybar | Status bar (workspaces, clock, CPU, battery, bluetooth, network, audio) |
+| Waybar | Status bar (named workspaces, clock, CPU, battery, bluetooth, network, audio) |
 | Walker | App launcher (apps, files, emoji, calculator, web search, clipboard) |
 | Mako | Notification daemon (themed) |
 | Clipboard | clipse history (100 items) + wl-clipboard + wl-clip-persist |
@@ -659,6 +661,7 @@ Desktop components enabled via `keystone.desktop.enable = true` in home-manager:
 | `$mod+S` | Scratchpad toggle |
 | `$mod+C/V/X` | Copy/Paste/Cut |
 | `$mod+Ctrl+V` | Clipboard manager |
+| `$mod+D` | Context switcher (fuzzy search across workspaces/sessions) |
 | `$mod+Escape` | Main menu |
 | `$mod+K` | Keybinding reference |
 | `Print` | Screenshot with editing |

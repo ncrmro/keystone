@@ -35,6 +35,59 @@ open_url() {
   xdg-open "$1" &
 }
 
+# ============== CONTEXTS MENU ==============
+show_contexts_menu() {
+  SESSION_PREFIX="obs"
+  VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
+
+  # Build list of active contexts from zellij sessions
+  context_list=""
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    name=$(echo "$line" | awk '{print $1}')
+    if [[ "$name" == "${SESSION_PREFIX}-"* ]]; then
+      slug="${name#"${SESSION_PREFIX}"-}"
+      if ! echo "$line" | grep -q "EXITED"; then
+        context_list="${context_list}●  ${slug}\n"
+      fi
+    fi
+  done < <(zellij list-sessions --no-formatting 2>/dev/null || true)
+
+  # Add available projects that aren't running
+  if [[ -d "${VAULT_ROOT}/projects" ]]; then
+    active_slugs=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | sed "s/^${SESSION_PREFIX}-//" || true)
+    for project_dir in "${VAULT_ROOT}/projects"/*/; do
+      [[ ! -d "$project_dir" ]] && continue
+      slug=$(basename "$project_dir")
+      if ! echo "$active_slugs" | grep -qx "$slug"; then
+        context_list="${context_list}○  ${slug}\n"
+      fi
+    done
+  fi
+
+  if [[ -z "$context_list" ]]; then
+    notify-send "No contexts" "No active sessions or projects found" -t 2000
+    back_to show_main_menu
+    return
+  fi
+
+  context_list="${context_list%\\n}"
+  selected=$(echo -e "$context_list" | keystone-launch-walker --dmenu --width 350 --minheight 1 --maxheight 630 -p "Context…" 2>/dev/null) || { back_to show_main_menu; return; }
+
+  if [[ -n "$selected" ]]; then
+    selected_slug=$(echo "$selected" | awk '{print $2}')
+    if echo "$selected" | grep -q "^●"; then
+      # Active — switch to workspace
+      hyprctl dispatch workspace "name:${selected_slug}" >/dev/null 2>&1
+    else
+      # Not running — launch
+      keystone-context "$selected_slug"
+    fi
+  else
+    back_to show_main_menu
+  fi
+}
+
 # ============== LEARN MENU ==============
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Hyprland\n  NixOS") in
@@ -152,12 +205,13 @@ show_system_menu() {
 
 # ============== MAIN MENU ==============
 show_main_menu() {
-  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  System")"
+  go_to_menu "$(menu "Go" "󰀻  Apps\n  Contexts\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  System")"
 }
 
 go_to_menu() {
   case "${1,,}" in
   *apps*) walker ;;
+  *contexts*) show_contexts_menu ;;
   *learn*) show_learn_menu ;;
   *capture*) show_capture_menu ;;
   *toggle*) show_toggle_menu ;;
