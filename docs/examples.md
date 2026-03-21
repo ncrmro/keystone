@@ -16,8 +16,7 @@ This document demonstrates different ways Keystone servers and clients can be de
   # Network gateway and VPN
   networking.firewall.allowedTCPPorts = [ 51820 ]; # WireGuard
   
-  # Storage with ZFS snapshots
-  services.zfs.autoSnapshot.enable = true;
+  # ZFS snapshots are managed by sanoid (see os.zfs-backup convention)
 }
 ```
 

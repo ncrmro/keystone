@@ -69,7 +69,6 @@
       zfs = {
         compression = "zstd"; # "zstd" (best), "lz4" (fastest), "off"
         atime = "off"; # Access time updates (off = better performance)
-        autoSnapshot = true; # Enable automatic snapshots
         autoScrub = true; # Weekly integrity scrub
         # arcMax = "8G";       # ARC cache limit (null = automatic)
       };

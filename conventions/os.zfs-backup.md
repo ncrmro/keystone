@@ -8,16 +8,15 @@ all configuration auto-derives from that single declaration.
 
 ## Tool Choice
 
-1. Snapshot creation and retention MUST use **sanoid** — the `services.zfs.autoSnapshot`
-   (zfs-auto-snapshot) option in `keystone.os.storage` MUST NOT be enabled alongside
-   sanoid, as both tools use the `autosnap_*` naming prefix and will conflict on
-   retention pruning.
+1. Snapshot creation and retention MUST use **sanoid** — the NixOS built-in
+   `services.zfs.autoSnapshot` (zfs-auto-snapshot) MUST NOT be used, as it shares
+   the `autosnap_*` naming prefix with sanoid and will conflict on retention pruning.
 2. Replication MUST use **syncoid** (from the same project as sanoid) — it natively
    understands sanoid's snapshot naming and supports `--include-snaps=autosnap` for
    selective transfer.
-3. Keystone modules MUST NOT configure `services.zfs.autoSnapshot` when sanoid is
-   active — the `storage.nix` autoSnapshot option SHOULD be gated behind a check
-   that sanoid is not enabled by `zfs.backup`.
+3. Keystone modules MUST NOT configure `services.zfs.autoSnapshot` — the
+   `autoSnapshot` option was removed from `keystone.os.storage.zfs` to prevent
+   conflicts with sanoid.
 
 ## Snapshot Retention
 
