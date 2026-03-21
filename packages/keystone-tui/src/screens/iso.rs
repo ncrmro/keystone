@@ -325,7 +325,10 @@ impl IsoScreen {
             None => ".#iso".to_string(),
         };
 
-        let _ = tx.send(IsoMessage::BuildOutput(format!("$ nix build {}", build_ref)));
+        let _ = tx.send(IsoMessage::BuildOutput(format!(
+            "$ nix build {}",
+            build_ref
+        )));
         let _ = tx.send(IsoMessage::BuildOutput(String::new()));
 
         let child_result = Command::new("nix")
