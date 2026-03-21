@@ -6,13 +6,18 @@ Accept a single task, identify the target repo and platform, create a branch and
 worktree per `process.feature-delivery`, write TASK.md with acceptance criteria,
 create a draft PR, and update TASKS.yaml.
 
+The workflow that invoked this step determines the task type:
+- `implement` → new feature (branch prefix: `feat/`)
+- `fix` → bug fix (branch prefix: `fix/`)
+- `refactor` → code restructuring (branch prefix: `refactor/`)
+
 ## Task
 
 ### Process
 
 #### Step 1: Gather Inputs
 
-Determine the task, repo, and agent:
+Ask structured questions to determine the task, repo, and agent:
 
 - **task_source**: One of:
   - TASKS.yaml entry name — read the entry for description and context
@@ -22,6 +27,13 @@ Determine the task, repo, and agent:
 - **agent**: Which agent to assign. Options: `claude`, `gemini`, `opencode`, `claude-local`
 
 If any input is ambiguous, ask the user before proceeding.
+
+Determine the **task_type** from the invoking workflow:
+- `/sweng.implement` → `implement`
+- `/sweng.fix` → `fix`
+- `/sweng.refactor` → `refactor`
+
+If invoked without a workflow context, ask the user which type applies.
 
 #### Step 2: Detect Platform
 
@@ -77,8 +89,11 @@ git fetch origin
 # Determine default branch
 DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
 
-# Create branch from default branch
-BRANCH="feat/task-slug"  # Use semantic prefix: feat/, fix/, refactor/, chore/, etc.
+# Create branch with semantic prefix matching task_type:
+# implement → feat/task-slug
+# fix → fix/task-slug
+# refactor → refactor/task-slug
+BRANCH="$PREFIX/task-slug"
 git branch $BRANCH origin/$DEFAULT_BRANCH
 git worktree add .worktrees/$BRANCH $BRANCH
 ```
@@ -96,8 +111,9 @@ branch: feat/task-slug
 agent: claude
 platform: github           # or forgejo
 issue: 42                  # optional
+task_type: implement       # implement | fix | refactor
 status: planning
-created: 2026-03-18
+created: 2026-03-21
 ---
 
 # Task Title
@@ -119,6 +135,12 @@ Tech stack: [from AGENTS.md / CLAUDE.md]
 - path/to/relevant/file.ts — why it matters
 ```
 
+**Task-type-specific guidance for acceptance criteria:**
+
+- **implement**: Focus on new behavior, API contracts, test coverage
+- **fix**: Include the bug reproduction steps, expected vs actual behavior, regression test
+- **refactor**: Include behavioral invariants (what must NOT change), before/after structure
+
 Update status to `ready` after writing.
 
 #### Step 7: Dummy Commit and Draft PR
@@ -128,7 +150,6 @@ Per `process.feature-delivery` rules 11-12:
 ```bash
 cd .repos/OWNER/REPO/.worktrees/$BRANCH
 
-# Copy TASK.md is already in the worktree root
 git add TASK.md
 git commit -m "chore: start work on [task title]"
 git push -u origin $BRANCH
@@ -139,7 +160,7 @@ Create draft PR with the proper body format per `process.pull-request`:
 **GitHub:**
 ```bash
 gh pr create --draft \
-  --title "feat(scope): task title" \
+  --title "$TYPE(scope): task title" \
   --body "$(cat <<'EOF'
 # Goal
 
@@ -165,7 +186,7 @@ EOF
 
 **Forgejo:**
 ```bash
-fj pr create "WIP: feat(scope): task title" \
+fj pr create "WIP: $TYPE(scope): task title" \
   --head $BRANCH --base $DEFAULT_BRANCH \
   --body "$(cat <<'EOF'
 # Goal
@@ -194,8 +215,7 @@ Record the PR number.
 
 #### Step 7b: Issue Comment and Project Board Update
 
-Per `process.project-board` and `code.delivery` rule 10, when starting work on an
-issue that belongs to a milestone with a project board:
+When starting work on an issue that belongs to a milestone with a project board:
 
 1. **Comment on the issue** to signal work has started:
 
@@ -215,9 +235,7 @@ fj issue comment $ISSUE_NUMBER --repo OWNER/REPO \
 
 **GitHub:**
 ```bash
-# Look up project board number and field IDs
 gh project field-list $PROJECT_NUM --owner OWNER --format json
-# Move item to "In Progress"
 gh project item-edit --id $ITEM_ID --project-id $PROJECT_ID \
   --field-id $STATUS_FIELD_ID --single-select-option-id $IN_PROGRESS_OPTION_ID
 ```
@@ -253,8 +271,9 @@ branch: feat/add-search-endpoint
 agent: claude
 platform: github
 issue: 12
+task_type: implement
 status: ready
-created: 2026-03-18
+created: 2026-03-21
 ---
 
 # Add Search Endpoint
@@ -279,14 +298,21 @@ The API uses Express.js with TypeScript and PostgreSQL (from AGENTS.md).
 
 ## Quality Criteria
 
-- TASK.md has valid YAML frontmatter with: repo, branch, agent, platform, status, created
+- TASK.md has valid YAML frontmatter with: repo, branch, agent, platform, task_type, status, created
 - Description is focused on what needs to change and why
 - Acceptance criteria are specific, testable checkboxes
-- Branch follows semantic naming (feat/, fix/, refactor/, chore/)
-- Worktree created at `.repos/{owner}/{repo}/.worktrees/{branch}`
+- Branch prefix matches task_type (feat/ for implement, fix/ for fix, refactor/ for refactor)
+- Worktree created at the standard worktree path with correct branch
 - Main checkout remains on default branch
 - Draft PR created with Goal/Tasks/Changes/Demo sections
-- PR title follows conventional commit format
+- PR title follows conventional commit format matching task_type
 - If issue exists, PR body includes `Closes #N`
-- If issue exists, a comment was posted on the issue noting work started
+- If issue exists, a comment was posted noting work started
 - If issue has a project board, issue moved to "In Progress" column
+
+## Context
+
+This step is shared by the `implement`, `fix`, and `refactor` workflows. The task_type
+determines the branch prefix and shapes the acceptance criteria guidance, but the process
+is otherwise identical. The key deliverable is a well-scoped TASK.md that gives the
+sub-agent clear, testable criteria to implement against.
