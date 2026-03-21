@@ -1,3 +1,8 @@
+# Hyprland keybindings for the Keystone desktop environment.
+# Defines all keyboard shortcuts including window management, workspace
+# navigation, application launchers, and the context switcher ($mod+D).
+#
+# Implements REQ-002 (dt-bind-002, dt-bind-010, dt-bind-011, dt-bind-012, dt-menu-001, dt-help-001)
 {
   config,
   lib,
