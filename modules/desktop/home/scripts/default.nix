@@ -194,6 +194,16 @@ let
     builtins.readFile ./keystone-menu-keybindings.sh
   );
 
+  # Context launcher — creates zellij session + ghostty window on named workspace
+  keystoneContext = pkgs.writeShellScriptBin "keystone-context" (
+    builtins.readFile ./keystone-context.sh
+  );
+
+  # Context switcher — fuzzy search across active contexts via Walker
+  keystoneContextSwitch = pkgs.writeShellScriptBin "keystone-context-switch" (
+    builtins.readFile ./keystone-context-switch.sh
+  );
+
   # Battery monitor script
   keystoneBatteryMonitor = pkgs.writeShellScriptBin "keystone-battery-monitor" ''
     BATTERY_THRESHOLD=10
@@ -230,6 +240,8 @@ in
       keystoneLaunchWalker
       keystoneMenu
       keystoneMenuKeybindings
+      keystoneContext
+      keystoneContextSwitch
       # Dependencies that should be available
       pkgs.gpu-screen-recorder
       pkgs.libxkbcommon # for xkbcli in keybindings menu
