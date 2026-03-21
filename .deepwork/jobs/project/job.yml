@@ -1,5 +1,5 @@
 name: project
-version: "1.1.0"
+version: "1.3.0"
 summary: "Project onboarding, press releases, and success charter reviews"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job covers three project-level business workflows:
@@ -41,8 +41,9 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Include problem paragraph before solution paragraph
   - Present tense, as if the product is already launched
   - Plain language — no jargon, buzzwords, or internal terminology
-  - 400-600 words, roughly one page
-  - Include a fictional customer quote articulating the value
+  - 300-500 words, succinct and semi-terse — current state, why, how, what
+  - Do NOT include a fictional customer quote — no fabricated testimonials
+  - Do NOT include a city dateline unless the user explicitly asks for one
   - Include a call to action
   - Claims must not exceed what the planned feature set can deliver
   - Internal metrics and implementation details must not appear
@@ -230,10 +231,12 @@ steps:
         additional_review_guidance: "Read `.agents/conventions/process.press-release.md` for the full convention rules, and the `context_brief.md` file for the intended framing."
         quality_criteria:
           "Customer-First Framing": "The headline and opening paragraph state the customer benefit, not the feature name."
-          "Working Backwards Structure": "A problem paragraph precedes the solution paragraph, and the entire release is written in present tense."
+          "Working Backwards Structure": "Body follows current state → why → how → what flow, written in present tense."
+          "Succinct and Terse": "300-500 words, no filler or verbose marketing prose. Each section is 1-3 sentences."
           "Plain Language": "No jargon, buzzwords, or internal terminology — a non-technical reader can understand it."
           "Scoping Clarity": "The press release clearly implies what must be built to deliver the promise."
-          "Convention Compliance": "Follows process.press-release rules: 400-600 words, includes customer quote, call to action, and no internal metrics."
+          "ASCII Art Mockup": "For products with a UI, an ASCII art mockup shows the product in use with realistic data."
+          "No Quotes or City": "No fictional customer quotes. No city dateline (unless user explicitly requested)."
 
   - id: assess_state
     name: "Assess Project State"
@@ -329,3 +332,11 @@ steps:
           "Verdict Aligned": "Recommendations directly follow from the verdict in the success review."
           "Actionable Items": "Each recommendation specifies a concrete action (which workflow to run, which milestone to create/close, what to change in PROJECTS.yaml)."
           "Prioritized": "Recommendations are ordered by impact and urgency."
+
+changelog:
+  - version: "1.3.0"
+    changes: "Press releases MUST include ASCII art mockups for products with a UI (TUI, GUI, CLI, web). Added step, template section, and quality criterion."
+  - version: "1.2.0"
+    changes: "Press release tone overhaul: removed fictional customer quotes, removed city dateline, reduced word count to 300-500, restructured body to current state → why → how → what flow. Press releases should be succinct and semi-terse, not verbose marketing prose."
+  - version: "1.1.0"
+    changes: "Initial release with onboard, press_release, and success workflows."
