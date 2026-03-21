@@ -78,8 +78,8 @@ in
   options.keystone.terminal.tasks = {
     enable = mkOption {
       type = types.bool;
-      default = false;
-      description = "Enable CalDAV task management TUI (cfait)";
+      default = mailCfg.enable;
+      description = "Enable CalDAV task management TUI (cfait). Auto-enables when mail is configured.";
     };
 
     host = mkOption {

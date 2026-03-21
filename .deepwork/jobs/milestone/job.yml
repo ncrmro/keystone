@@ -271,4 +271,3 @@ steps:
           "Demo Descriptions": "Expected demo artifacts are described for each story."
           "Specs Referenced": "The specs PR is referenced in the plan issue body."
           "Milestone Linked": "The plan issue is linked to the milestone."
-
