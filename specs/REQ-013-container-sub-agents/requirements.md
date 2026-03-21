@@ -141,11 +141,22 @@ View logs from a sub-agent container.
 4. The AGENT.md MUST use `{name}` and `{email}` placeholders matching SPEC-007 FR-009 patterns.
 5. Generated AGENT.md files SHOULD be cached in `{notes_path}/.claude-projects/{slug}/agents/{role_slug}/AGENTS.md` for debugging.
 
+### Sandbox Scope
+
+6. Podman sandboxing MUST only apply to automated sub-agents launched via
+   `pz agent start`. Interactive sessions launched via `agentctl <agent>
+   claude` (and other AI tool commands) MUST run directly as the agent
+   user without Podman, since the human operator is present and the agent
+   has its own OS-level user isolation.
+7. `agentctl` AI tool commands (`claude`, `gemini`, `codex`, `opencode`)
+   MUST default to direct execution. The `--sandbox` flag MAY be provided
+   to opt into Podman sandboxing for interactive sessions.
+
 ### Container Isolation
 
-6. Each sub-agent MUST run in its own Podman container.
-7. Containers MUST use the existing `podman-agent` infrastructure (Nix store volume, git worktree mounts, SSH forwarding).
-8. Multiple containers MUST be able to run concurrently for the same project.
+8. Each sub-agent MUST run in its own Podman container.
+9. Containers MUST use the existing `podman-agent` infrastructure (Nix store volume, git worktree mounts, SSH forwarding).
+10. Multiple containers MUST be able to run concurrently for the same project.
 9. Container names MUST follow the pattern `{prefix}-{project}-{role_slug}` to enable filtering.
 10. Containers MUST be labeled with metadata for querying: `project`, `role`, `archetype`.
 
