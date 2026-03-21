@@ -24,6 +24,9 @@ in
         "$mod, Escape, exec, keystone-menu"
         "$mod, K, exec, keystone-menu-keybindings"
 
+        # Context switcher
+        "$mod, D, exec, keystone-context-switch"
+
         # Window management
         "$mod, W, killactive,"
         "CTRL ALT, DELETE, exec, hyprctl dispatch closewindow address:*"
