@@ -217,6 +217,10 @@ forgejo-project item list --repo owner/repo --project 5   # outputs JSON
 Issue numbers are automatically resolved to internal DB IDs via the REST API
 (`/api/v1/repos/{owner}/{repo}/issues/{number}`), which does accept session cookies.
 
+## See Also
+
+- For public GitHub repos, use `tool.github` instead of this convention.
+
 ## Admin CLI (Server-side Provisioning)
 
 When running on the same server as Forgejo, the `forgejo admin` CLI does **not** require
