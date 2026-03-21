@@ -19,22 +19,39 @@ Standards for capturing reproducible screenshots and demo recordings of ratatui-
 9. Tape files MUST use `Screenshot docs/screenshots/<screen>.png` to write output to the canonical location.
 10. Tape files SHOULD include a regeneration comment at the top: `# Regenerate: nix run nixpkgs#vhs -- docs/tapes/<screen>.tape`.
 
-## Screenshot Artifacts
+## Screenshot Storage
 
-11. Screenshots MUST be stored in `docs/screenshots/` as PNG files.
-12. Screenshot filenames MUST match the screen name used by `--screenshot` (e.g., `--screenshot hosts` produces `docs/screenshots/hosts.png`).
-13. Screenshots SHOULD be committed to git and updated in place when the UI changes — they serve as living documentation.
-14. Screenshots MUST be regenerated before marking a PR ready for review if the PR changes any TUI screen rendering.
+11. Screenshots MUST NOT be committed as regular git objects — binary files bloat the repo history permanently.
+12. For PR demos, screenshots MUST be uploaded inline to the PR description or comments (GitHub and Forgejo accept drag-drop image uploads).
+13. For long-term documentation, screenshots MUST be stored in one of: git LFS (Forgejo preferred), or R2 Cloudflare object storage.
+14. Generated screenshots in `docs/screenshots/` MUST be listed in `.gitignore` — they are ephemeral build artifacts, not tracked files.
+15. Screenshots MUST be regenerated before marking a PR ready for review if the PR changes any TUI screen rendering.
+
+## Accidental Image Commits
+
+16. If screenshots or other binary images are accidentally committed as regular git objects, they MUST be removed from history using `git lfs migrate` or `git filter-repo`:
+
+```bash
+# Option 1: Migrate existing committed images to LFS
+git lfs migrate import --include="*.png,*.gif,*.jpg" --everything
+
+# Option 2: Remove images from history entirely (if not needed in LFS)
+git filter-repo --path assets/tui/ --invert-paths
+# Then force-push (requires team coordination):
+git push --force-with-lease
+```
+
+17. After rewriting history, all collaborators MUST re-clone or run `git fetch --all && git reset --hard origin/main`.
 
 ## Dev Shell
 
-15. `vhs` SHOULD be included in the project's Nix devshell for screenshot generation.
-16. A `make screenshots` target SHOULD be provided that regenerates all screenshots by running all tape files in `docs/tapes/`.
+18. `vhs` SHOULD be included in the project's Nix devshell for screenshot generation.
+19. A `make screenshots` target SHOULD be provided that regenerates all screenshots by running all tape files in `docs/tapes/`.
 
 ## Known Limitations
 
-17. vhs MUST NOT be used to capture screens rendered in crossterm's alternate screen buffer — the `--screenshot` flag exists specifically to work around this limitation.
-18. Screens that produce sparse ANSI output (few positioned cells) MAY fail with vhs's `Screenshot` command. In such cases, the tape file SHOULD document the limitation and offer a `GIF` Output as fallback.
+20. vhs MUST NOT be used to capture screens rendered in crossterm's alternate screen buffer — the `--screenshot` flag exists specifically to work around this limitation.
+21. Screens that produce sparse ANSI output (few positioned cells) MAY fail with vhs's `Screenshot` command. In such cases, the tape file SHOULD document the limitation and offer a `GIF` Output as fallback.
 
 ## Golden Example
 
@@ -77,10 +94,13 @@ TAPE
 cargo build --release
 PATH="$PWD/target/release:$PATH" nix run nixpkgs#vhs -- docs/tapes/my-screen.tape
 
-# 4. Verify the screenshot
+# 4. Verify the screenshot (local only — not committed)
 ls -la docs/screenshots/my-screen.png
 
-# 5. Commit the tape file and screenshot
-git add docs/tapes/my-screen.tape docs/screenshots/my-screen.png
-git commit -m "docs(tui): add my-screen screenshot"
+# 5. Upload to PR as inline image (drag-drop or gh CLI)
+# The PNG is NOT committed — upload it to the PR description instead.
+
+# 6. Commit only the tape file (the recipe, not the artifact)
+git add docs/tapes/my-screen.tape
+git commit -m "docs(tui): add my-screen vhs tape"
 ```
