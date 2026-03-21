@@ -192,3 +192,56 @@ requirements_traceability:
       - Trivial modules that only re-export or barrel-import other modules
       - Module files under 20 lines
       - Files that genuinely have no matching convention or spec
+
+# =====================================================================
+# Conventions: Format, Cross-Linking, and DRY
+# When convention files change, verify RFC 2119 format, check for
+# duplicated rules across conventions, and ensure cross-references.
+# =====================================================================
+conventions_review:
+  description: "Verify convention files follow RFC 2119 format, are DRY across the convention set, and cross-reference related conventions."
+  match:
+    include:
+      - "conventions/*.md"
+      - "conventions/archetypes.yaml"
+    exclude:
+      - "conventions/AGENTS.md"
+      - "conventions/AGENTS_TEMPLATE.md"
+      - "conventions/examples/**"
+  review:
+    strategy: matches_together
+    instructions: |
+      When convention files change, review them for format, deduplication, and cross-linking.
+
+      **Format checks (per conventions/AGENTS.md rules):**
+      1. H1 title MUST follow format: `# Convention: {Display Name} ({prefix.name})`
+      2. Rules MUST be numbered within each section
+      3. Rules MUST use RFC 2119 keywords (MUST, SHOULD, MAY, etc.) correctly
+      4. Each rule SHOULD be specific and actionable — no vague aspirational statements
+      5. If the convention covers a non-trivial pattern, a golden example section SHOULD exist
+
+      **DRY checks (cross-convention deduplication):**
+      6. Read the changed convention AND scan all other conventions in conventions/ for
+         overlapping rules. Specifically:
+         - Search for rules that cover the same topic in different conventions
+         - Flag any rule that is substantially duplicated in another convention
+         - Suggest which convention should own the rule and where to add a cross-reference
+      7. Related conventions MUST cross-reference each other. For example, if
+         tool.cloudflare-workers mentions CI pipelines, it SHOULD reference
+         process.continuous-integration. Use format: "See process.continuous-integration
+         for CI gating rules."
+
+      **Archetypes wiring checks:**
+      8. If a new convention file is added, verify it appears in the appropriate
+         archetype(s) in archetypes.yaml (either inlined or referenced)
+      9. If archetypes.yaml changes, verify all referenced convention files exist
+
+      **What to flag:**
+      - Missing H1 title or wrong format
+      - Unnumbered rules
+      - Duplicated rules across conventions (cite both files and rule numbers)
+      - Missing cross-references between related conventions
+      - New conventions not wired into any archetype
+      - Conventions referenced in archetypes.yaml that don't exist as files
+    additional_context:
+      unchanged_matching_files: true
