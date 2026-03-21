@@ -5,6 +5,7 @@ use crate::nix;
 use crate::repo;
 use crate::screens::build::BuildScreen;
 use crate::screens::create_config::CreateConfigScreen;
+use crate::screens::deploy::DeployScreen;
 use crate::screens::first_boot::FirstBootScreen;
 use crate::screens::host_detail::HostDetailScreen;
 use crate::screens::hosts::HostsScreen;
@@ -21,6 +22,7 @@ pub enum AppScreen {
     HostDetail(HostDetailScreen),
     Build(BuildScreen),
     Iso(IsoScreen),
+    Deploy(DeployScreen),
     Install(InstallScreen),
     FirstBoot(FirstBootScreen),
 }
