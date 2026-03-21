@@ -121,7 +121,30 @@ verify the changes on the deployed preview environment:
    - URL format is typically: `https://<commit-hash>.<project>.workers.dev`
    - Or check the Cloudflare dashboard for the preview URL
 
-4. **Record verification in review.md**: Include the preview URL and what was checked
+4. **Update the PR Demo section**: Per `process.pull-request`, every PR MUST have a
+   `# Demo` section with evidence the work is correct. When a deploy preview is available,
+   the Demo section MUST include:
+   - The preview URL
+   - What was verified (specific pages, features, behaviors)
+   - Screenshots or terminal output if applicable
+   - Confirmation that the deployed service loads without errors
+
+   ```bash
+   # Update PR body with deploy preview evidence
+   gh pr edit $PR_NUM --repo OWNER/REPO --body "$(cat <<'EOF'
+   ...existing body...
+
+   # Demo
+
+   **Deploy Preview**: https://<hash>.<project>.workers.dev
+   - Verified: [specific pages/features checked]
+   - Service loads without errors
+   - Changes visible and working as expected
+   EOF
+   )"
+   ```
+
+5. **Record verification in review.md**: Include the preview URL and what was checked
    in the review document.
 
 **This step is best-effort** — if no deploy preview is available, proceed with CI
@@ -330,7 +353,7 @@ Sending back to claude for fixes. TASK.md updated with fix requirements.
 - review.md written with verdict, evidence, and merge status
 - run.md updated with fix_attempts and timing
 - **CRITICAL**: CI logs never read into chat — download to file, search with rg
-- Deploy preview verified when available (Cloudflare Workers, Vercel, Netlify)
+- Deploy preview verified when available (Cloudflare Workers, Vercel, Netlify) and PR Demo section updated with evidence
 - Platform-appropriate commands used throughout (gh vs fj)
 
 ## Context

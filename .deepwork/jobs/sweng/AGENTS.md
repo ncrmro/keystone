@@ -73,12 +73,13 @@ Platform is inferred from git remote URL at runtime:
 - Design and audit are standalone steps that don't launch sub-agents
 - The audit workflow serves as a pre-flight check — if it fails, implement/fix/refactor will hit friction
 
-### v2.1.0 — Deploy preview verification (2026-03-21)
+### v2.1.x — Deploy preview verification + PR Demo (2026-03-21)
 
 - For projects deploying to Cloudflare Workers (like ks-systems-web), preview environments are created on every push
 - The review step now verifies deployed preview behavior — CI passing alone is not sufficient
 - This applies to any platform with preview deployments: Cloudflare Workers, Vercel, Netlify
 - Preview URL is typically found in PR comments from the platform's bot
+- The PR's `# Demo` section MUST be updated with the preview URL and verification evidence — this ties the deploy check back to the `process.pull-request` convention and provides a complete user story from code → deploy → verified
 
 ### v1.1.0 — Project board integration (2026-03-19)
 

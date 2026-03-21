@@ -1,5 +1,5 @@
 name: sweng
-version: "2.1.0"
+version: "2.1.1"
 summary: "Software engineering lifecycle: design, implement, fix, refactor, and audit with agent orchestration"
 common_job_info_provided_to_all_steps_at_runtime: |
   Software engineering workflow with agent orchestration. Handles architecture design,
@@ -215,7 +215,7 @@ steps:
           "Scope Validated": "The review confirms ALL changes are in-scope. Out-of-scope changes are flagged as FAIL."
           "Clear Verdict": "The review states PASS or FAIL with rationale."
           "CI Gated": "CI was checked to completion (GitHub: gh pr checks --watch, Forgejo: commit status poll)."
-          "Deploy Preview Verified": "If the project has deploy previews (Cloudflare Workers, Vercel, Netlify), the deployed preview was checked and changes verified."
+          "Deploy Preview Verified": "If the project has deploy previews (Cloudflare Workers, Vercel, Netlify), the deployed preview was checked, changes verified, and the PR Demo section updated with preview URL and verification evidence."
           "Auto-Merge Used": "For PASS, squash merge was used (GitHub: --auto --squash, Forgejo: fj pr merge --method squash)."
 
   - id: postflight
