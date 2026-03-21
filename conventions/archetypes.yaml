@@ -54,6 +54,7 @@ archetypes:
       - tool.himalaya
       - process.version-control-advanced
       - tool.github
+      - tool.journal-remote
       - tool.zk
       - process.knowledge-management
     roles:
