@@ -1,5 +1,10 @@
 # Agent submodule type definition.
 # Defines the schema for keystone.os.agents.<name>.
+#
+# Implements REQ-007 (OS Agents)
+# See specs/REQ-017-conventions-grafana-mcp/requirements.md (REQ-017.9: Grafana MCP options)
+# See specs/REQ-018-repo-management/requirements.md (agent notes path default)
+# See conventions/os.requirements.md
 {
   lib,
   config,

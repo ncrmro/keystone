@@ -829,6 +829,25 @@ keystone.server = {
 
 ## Development and Testing
 
+### Local Script Execution (Dev Mode)
+
+`ks` is a plain shell script (`writeShellApplication`, no `replaceVars`). It can be run directly from the keystone checkout without a Nix rebuild:
+
+```bash
+# Run ks directly from the local checkout
+bash packages/ks/ks.sh doctor
+bash packages/ks/ks.sh build
+```
+
+This is the fastest way to test changes to `ks.sh` — edit the file, run it immediately.
+
+**`agentctl` cannot be tested this way** — it uses `replaceVars` to bake in agent metadata, tool paths, and domain config at build time. Changes to `agentctl.sh` require:
+```bash
+ks build && ks update --dev    # home-manager rebuild (fast, no sudo)
+# or for system-level changes:
+sudo nixos-rebuild switch --flake .#<host>
+```
+
 ### Fast VM Testing (`bin/build-vm`)
 
 ```bash
