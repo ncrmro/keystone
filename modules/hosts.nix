@@ -69,6 +69,11 @@ in
             default = null;
             description = "SSH host public key (/etc/ssh/ssh_host_ed25519_key.pub).";
           };
+          journalRemote = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Whether this host is the centralized journal-remote server. Exactly one host should set this to true.";
+          };
           zfs = mkOption {
             type = types.nullOr (
               types.submodule {
