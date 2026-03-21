@@ -298,12 +298,26 @@ impl HostsScreen {
                     _ => String::new(),
                 };
 
+                let role_badge = status
+                    .host_info
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| {
+                        if m.role.is_empty() {
+                            None
+                        } else {
+                            Some(format!(" [{}]", m.role))
+                        }
+                    })
+                    .unwrap_or_default();
+
                 let line = Line::from(vec![
                     Span::styled(format!(" {} ", indicator), indicator_style),
                     Span::styled(
                         format!("{}{}", status.host_info.name, system_suffix),
                         Style::default(),
                     ),
+                    Span::styled(role_badge, Style::default().fg(Color::Magenta)),
                     Span::styled(ip_text, Style::default().fg(Color::DarkGray)),
                     Span::styled(last_seen, Style::default().fg(Color::DarkGray)),
                 ]);
@@ -548,6 +562,7 @@ mod tests {
                     system: Some("x86_64-linux".to_string()),
                     keystone_modules: vec!["operating-system".to_string()],
                     config_files: vec![],
+                metadata: None,
                 },
                 tailscale: Some(TailscalePeer {
                     hostname: "laptop".to_string(),
@@ -565,6 +580,7 @@ mod tests {
                     system: Some("x86_64-linux".to_string()),
                     keystone_modules: vec![],
                     config_files: vec![],
+                metadata: None,
                 },
                 tailscale: Some(TailscalePeer {
                     hostname: "server".to_string(),
@@ -582,6 +598,7 @@ mod tests {
                     system: Some("aarch64-linux".to_string()),
                     keystone_modules: vec![],
                     config_files: vec![],
+                metadata: None,
                 },
                 tailscale: Some(TailscalePeer {
                     hostname: "rpi".to_string(),
@@ -682,6 +699,7 @@ mod tests {
                 system: None,
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             tailscale: None,
             metrics: None,
@@ -729,6 +747,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec![],
             config_files: vec![],
+                metadata: None,
         }];
         let screen = HostsScreen::new("repo".to_string(), hosts);
         assert_eq!(screen.selected_host().unwrap().name, "laptop");
@@ -742,18 +761,21 @@ mod tests {
                 system: None,
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             HostInfo {
                 name: "b".to_string(),
                 system: None,
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             HostInfo {
                 name: "c".to_string(),
                 system: None,
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
         ];
         let mut screen = HostsScreen::new("repo".to_string(), hosts);
@@ -771,12 +793,14 @@ mod tests {
                 system: None,
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             HostInfo {
                 name: "b".to_string(),
                 system: None,
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
         ];
         let mut screen = HostsScreen::new("repo".to_string(), hosts);
