@@ -1209,31 +1209,33 @@ $user_table"
 }
 
 # --- Launch AI agent with system prompt ---
+# Writes the prompt to a CLAUDE.md file in a temp directory and launches
+# claude from there. Claude natively reads CLAUDE.md from the working
+# directory, avoiding ARG_MAX limits on large system-state prompts.
 # Usage: launch_agent local_model prompt [passthrough args...]
 launch_agent() {
   local local_model="$1"; shift
   local prompt="$1"; shift
 
   if [[ -n "$local_model" ]]; then
-    # Local model via Ollama (REQ-014.12-13)
     local model_arg="$local_model"
     [[ "$model_arg" == "default" ]] && model_arg=""
     if command -v ollama >/dev/null 2>&1; then
-      local ollama_args=("run")
-      [[ -n "$model_arg" ]] && ollama_args+=("$model_arg")
-      [[ -n "$prompt" ]] && ollama_args+=("--system" "$prompt")
-      exec ollama "${ollama_args[@]}" "$@"
+      exec ollama run ${model_arg:+"$model_arg"} --system "$prompt" "$@"
     else
       echo "Error: --local requires ollama to be installed." >&2
       exit 1
     fi
-  elif command -v agentctl >/dev/null 2>&1; then
-    exec agentctl claude --append-system-prompt "$prompt" "$@"
   elif command -v claude >/dev/null 2>&1; then
-    exec claude --dangerously-skip-permissions --append-system-prompt "$prompt" "$@"
+    # Write prompt to a project-level CLAUDE.md that claude reads natively.
+    # This avoids ARG_MAX limits from passing large prompts via argv.
+    local launch_dir
+    launch_dir=$(mktemp -d "${TMPDIR:-/tmp}/ks-agent.XXXXXX")
+    printf '%s' "$prompt" > "$launch_dir/CLAUDE.md"
+    cd "$launch_dir"
+    exec claude "$@"
   else
-    echo "Error: Neither agentctl nor claude is available." >&2
-    echo "Install Claude Code or run from a keystone NixOS host." >&2
+    echo "Error: claude is not available." >&2
     exit 1
   fi
 }
