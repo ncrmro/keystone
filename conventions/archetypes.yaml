@@ -53,6 +53,8 @@ archetypes:
       - tool.himalaya
       - process.version-control-advanced
       - tool.github
+      - tool.zk
+      - process.knowledge-management
     roles:
       # Role: code-reviewer
       # Used when the agent is strictly reviewing PRs authored by others (or subagents).
@@ -140,6 +142,8 @@ archetypes:
       - tool.forgejo
       - tool.himalaya
       - tool.github
+      - tool.zk
+      - process.knowledge-management
     roles:
       # Role: business-analyst
       # Used for evaluating market opportunities, competitor products, and defining KPIs.
