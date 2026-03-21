@@ -263,9 +263,9 @@ impl DeployScreen {
         // Use avahi-browse to find _keystone-iso._tcp services (available on NixOS ISOs)
         if let Ok(output) = Command::new("avahi-browse")
             .args([
-                "-t",            // terminate after timeout
-                "-r",            // resolve
-                "-p",            // parseable output
+                "-t", // terminate after timeout
+                "-r", // resolve
+                "-p", // parseable output
                 "_keystone-iso._tcp",
             ])
             .output()
@@ -308,11 +308,7 @@ impl DeployScreen {
         let _ = tx.send(DeployMessage::Output(String::new()));
 
         let child_result = Command::new("nixos-anywhere")
-            .args([
-                "--flake",
-                &flake_ref,
-                &target.ssh_target,
-            ])
+            .args(["--flake", &flake_ref, &target.ssh_target])
             .current_dir(&repo_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -382,7 +378,9 @@ impl DeployScreen {
             DeployPhase::Deploying => {
                 self.render_output(frame, area, "Deploying...", Color::Yellow)
             }
-            DeployPhase::Done => self.render_output(frame, area, "Deployment Complete", Color::Green),
+            DeployPhase::Done => {
+                self.render_output(frame, area, "Deployment Complete", Color::Green)
+            }
             DeployPhase::Failed(msg) => {
                 self.render_output(frame, area, &format!("Failed: {msg}"), Color::Red)
             }
@@ -631,7 +629,8 @@ mod tests {
 
     #[test]
     fn test_deploy_target_manual_input() {
-        let mut screen = DeployScreen::new_for_test(PathBuf::from("/tmp/test"), "test-host".to_string());
+        let mut screen =
+            DeployScreen::new_for_test(PathBuf::from("/tmp/test"), "test-host".to_string());
         // Simulate receiving empty mDNS results
         screen.scanning = false;
         screen.targets = Vec::new();
@@ -642,7 +641,8 @@ mod tests {
 
     #[test]
     fn test_deploy_go_back_from_confirm() {
-        let mut screen = DeployScreen::new_for_test(PathBuf::from("/tmp/test"), "test-host".to_string());
+        let mut screen =
+            DeployScreen::new_for_test(PathBuf::from("/tmp/test"), "test-host".to_string());
         screen.phase = DeployPhase::Confirm;
         screen.chosen_target = Some(DeployTarget {
             label: "test".to_string(),
@@ -657,7 +657,8 @@ mod tests {
 
     #[test]
     fn test_deploy_target_selection() {
-        let mut screen = DeployScreen::new_for_test(PathBuf::from("/tmp/test"), "test-host".to_string());
+        let mut screen =
+            DeployScreen::new_for_test(PathBuf::from("/tmp/test"), "test-host".to_string());
         screen.scanning = false;
         screen.targets = vec![
             DeployTarget {

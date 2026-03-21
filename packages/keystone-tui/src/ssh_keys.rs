@@ -49,11 +49,7 @@ pub fn detect_ssh_keys() -> Vec<DetectedKey> {
                 }
 
                 // Parse key type from the first field
-                let key_type = content
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("")
-                    .to_string();
+                let key_type = content.split_whitespace().next().unwrap_or("").to_string();
 
                 // Only accept known SSH key types
                 if !is_ssh_key_type(&key_type) {

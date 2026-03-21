@@ -456,13 +456,23 @@ mod tests {
 
         // Verify it parses cleanly
         let root = rnix::Root::parse(&nix);
-        assert!(root.errors().is_empty(), "configuration.nix has parse errors: {:?}", root.errors());
+        assert!(
+            root.errors().is_empty(),
+            "configuration.nix has parse errors: {:?}",
+            root.errors()
+        );
 
         // Verify key values are present via string (configuration.nix is a function body,
         // not a flake, so we check specific attribute values)
         assert!(nix.contains("test-host"), "should contain hostname");
-        assert!(nix.contains(r#"type = "zfs""#), "should contain storage type");
-        assert!(nix.contains("ssh-ed25519 AAAAC3testkey admin@laptop"), "should contain SSH key");
+        assert!(
+            nix.contains(r#"type = "zfs""#),
+            "should contain storage type"
+        );
+        assert!(
+            nix.contains("ssh-ed25519 AAAAC3testkey admin@laptop"),
+            "should contain SSH key"
+        );
     }
 
     #[test]
@@ -685,8 +695,14 @@ mod tests {
         // Verify inputs via AST
         let inputs = crate::nix::extract_flake_inputs(&iso_flake);
         let input_names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
-        assert!(input_names.contains(&"keystone"), "ISO flake must have keystone input");
-        assert!(input_names.contains(&"nixpkgs"), "ISO flake must have nixpkgs input");
+        assert!(
+            input_names.contains(&"keystone"),
+            "ISO flake must have keystone input"
+        );
+        assert!(
+            input_names.contains(&"nixpkgs"),
+            "ISO flake must have nixpkgs input"
+        );
 
         // Verify the keystoneIso host exists
         let hosts = crate::nix::extract_nixos_configurations_from_str(&iso_flake);
@@ -695,7 +711,9 @@ mod tests {
 
         // Verify isoInstaller module is referenced
         assert!(
-            hosts[0].keystone_modules.contains(&"isoInstaller".to_string()),
+            hosts[0]
+                .keystone_modules
+                .contains(&"isoInstaller".to_string()),
             "ISO config must include isoInstaller module"
         );
     }
