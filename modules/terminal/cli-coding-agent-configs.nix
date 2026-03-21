@@ -1,3 +1,9 @@
+# CLI Coding Agent MCP Configuration
+#
+# Generates MCP server configs at each AI coding tool's expected path
+# (~/.claude.json, ~/.gemini/settings.json, ~/.config/opencode/opencode.json).
+#
+# See conventions/tool.cli-coding-agents.md
 {
   config,
   lib,
