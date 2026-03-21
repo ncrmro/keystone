@@ -75,6 +75,8 @@ modules/
 │   ├── forgejo.nix             Forgejo git integration (forgejo-project CLI)
 │   ├── projects.nix            Project management features
 │   ├── cli-coding-agent-configs.nix  AI coding agent MCP/config generation
+│   ├── claude-code-commands.nix     Claude Code slash commands from DeepWork workflows
+│   ├── claude-code-commands/        Command .md files (source of truth for dev mode)
 │   └── claude-code/            Claude Code NPM package + update script
 ├── desktop/
 │   ├── nixos.nix               NixOS-level: Hyprland+UWSM, greetd, PipeWire, bluetooth
@@ -973,15 +975,17 @@ For security decisions, always name the specific attack vector being mitigated.
 - All ZFS datasets use native encryption with automatic key management
 - Home-manager integration is optional and only configured when imported
 
-## Submodule Usage in nixos-config
+## Keystone Config Repo
 
-When keystone is used as a git submodule in another flake:
+The **keystone config repo** is the nixos-config repository — the consumer flake that imports keystone modules and declares per-host/per-user configuration. In all contexts (docs, CLI output, agent prompts, option descriptions), "config repo" means this repository.
 
-```nix
-keystone = {
-  url = "git+file:./.submodules/keystone?submodules=1";
-  inputs.nixpkgs.follows = "nixpkgs";
-};
+Per REQ-018, all keystone-managed repos live under `~/.keystone/repos/OWNER/REPO/`:
+
+```
+~/.keystone/repos/
+├── ncrmro/nixos-config/     # The config repo (consumer flake)
+├── ncrmro/keystone/         # Keystone modules
+└── ncrmro/agenix-secrets/   # Encrypted secrets
 ```
 
 Use `ks build` and `ks update` to manage builds and deployments:
@@ -990,5 +994,26 @@ ks build                     # Build home-manager profiles only (fast, no sudo)
 ks build --lock              # Full system build + lock + push
 ks update --dev              # Deploy home-manager profiles only
 ks update                    # Full system: pull, lock, build, push, deploy
-ks update --dev --boot       # Not applicable (home-manager only, no boot needed)
 ```
+
+## Dev Mode vs Locked Mode
+
+Keystone terminal modules generate files (`~/.claude/commands/`, `~/.claude/CLAUDE.md`, `~/.gemini/` skills, etc.) via `home.file`. These files have two modes:
+
+**Dev mode** (`keystone.terminal.devMode.keystonePath` is set): Generated files are out-of-store symlinks pointing to the actual source files in the keystone checkout. Edits to the source files take effect immediately — no rebuild required.
+
+**Locked mode** (default, `keystonePath = null`): Generated files are immutable Nix store copies. Changes require editing the source, rebuilding, and reactivating.
+
+```nix
+# In nixos-config, enable dev mode for a user:
+keystone.terminal.devMode.keystonePath =
+  "/home/ncrmro/.keystone/repos/ncrmro/keystone";
+```
+
+The lifecycle:
+1. `ks update --dev` — deploy with dev mode active (editable symlinks)
+2. Edit source files in the keystone checkout, iterate rapidly
+3. Commit changes to keystone
+4. `ks update --lock` — lock flake inputs, rebuild from Nix store (immutable)
+
+Modules that support dev mode use `config.lib.file.mkOutOfStoreSymlink` when `keystonePath` is set and fall back to Nix store `source` when null. New file-generating modules SHOULD follow this pattern.

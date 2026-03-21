@@ -33,6 +33,7 @@ in
     ./projects.nix
     ./cli-coding-agent-configs.nix
     ./conventions.nix
+    ./claude-code-commands.nix
   ];
 
   options.keystone.terminal = {
@@ -48,6 +49,25 @@ in
       type = types.str;
       default = "hx";
       description = "Default editor command (e.g., 'hx' for helix, 'nvim' for neovim)";
+    };
+
+    devMode = {
+      keystonePath = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = ''
+          Absolute path to the local keystone repository checkout.
+
+          When set, terminal modules generate editable out-of-store symlinks
+          to source files in the checkout, enabling rapid iteration without
+          rebuilding. When null (default / locked mode), files are immutable
+          Nix store copies. Use `ks update --lock` to return to locked mode.
+
+          Per REQ-018, the standard location is
+          ~/.keystone/repos/OWNER/keystone (the keystone config repo).
+        '';
+        example = "/home/user/.keystone/repos/ncrmro/keystone";
+      };
     };
 
     git = {
