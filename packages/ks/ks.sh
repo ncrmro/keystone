@@ -501,22 +501,24 @@ cmd_build() {
     echo "Locking flake inputs..."
     nix flake update keystone agenix-secrets --flake "$repo_root"
 
-    # Step 4: Commit flake.lock if changed
+    # Step 4: Full system build with local overrides (REQ-019.5)
+    local override_args=()
+    read -ra override_args <<< "$(local_override_args "$repo_root")"
+    local build_targets=()
+    for h in "${target_hosts[@]}"; do
+      build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
+    done
+    echo "Building (full system): ${target_hosts[*]}..."
+    nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+
+    # Step 5: Commit flake.lock only after successful build (REQ-019.8)
     if ! git -C "$repo_root" diff --quiet flake.lock; then
       echo "Committing flake.lock..."
       git -C "$repo_root" add flake.lock
       git -C "$repo_root" commit -m "chore: relock keystone + agenix-secrets"
     fi
 
-    # Step 5: Full system build (no overrides — locked inputs)
-    local build_targets=()
-    for h in "${target_hosts[@]}"; do
-      build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
-    done
-    echo "Building (full system): ${target_hosts[*]}..."
-    nix build --no-link "${build_targets[@]}"
-
-    # Step 6: Push nixos-config (REQ-016.10)
+    # Step 6: Push nixos-config
     echo "Pushing nixos-config..."
     git -C "$repo_root" push
     echo "Lock + build complete for: ${target_hosts[*]}"
