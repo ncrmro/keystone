@@ -145,6 +145,38 @@ Check CI configuration:
    gh api repos/OWNER/REPO/branches/main/protection 2>/dev/null
    ```
 
+#### Step 5b: Platform Secrets Audit (Cloudflare Workers / Vercel / Netlify)
+
+If the project deploys to a platform, check that required secrets and variables
+are configured:
+
+1. **GitHub Actions secrets/variables**:
+   ```bash
+   gh secret list --repo OWNER/REPO
+   gh variable list --repo OWNER/REPO
+   ```
+   Cross-reference with what the deploy workflow expects (search for `${{ secrets.*}}`
+   and `${{ vars.*}}` in `.github/workflows/`).
+
+2. **For Cloudflare Workers projects** (detected by `wrangler.jsonc` or `wrangler.toml`):
+   ```bash
+   # Check wrangler config exists
+   test -f $REPO_PATH/wrangler.jsonc || test -f $REPO_PATH/wrangler.toml
+
+   # Check for OpenNext.js (Next.js on CF Workers)
+   test -f $REPO_PATH/open-next.config.ts && echo "OpenNext.js project"
+   ```
+
+   Required setup for CF Workers + Next.js (OpenNext.js):
+   - `wrangler.jsonc` with worker name, compatibility settings, R2 bindings
+   - `open-next.config.ts` for the OpenNext.js adapter
+   - GitHub Actions secrets: platform-specific (e.g., `DATABASE_AUTH_TOKEN`)
+   - GitHub Actions variables: platform-specific (e.g., `DATABASE_URL`)
+   - Wrangler secrets set via `wrangler secret put` from the server
+   - CF Workers Builds git integration enabled in Cloudflare dashboard
+
+3. **Report missing secrets**: List each expected secret/variable and whether it's configured.
+
 #### Step 6: Generate Audit Report
 
 Write the audit report to `.deepwork/tmp/sweng/audit_report.md`:

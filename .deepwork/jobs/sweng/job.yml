@@ -1,5 +1,5 @@
 name: sweng
-version: "2.1.2"
+version: "2.2.0"
 summary: "Software engineering lifecycle: design, implement, fix, refactor, and audit with agent orchestration"
 common_job_info_provided_to_all_steps_at_runtime: |
   Software engineering workflow with agent orchestration. Handles architecture design,
