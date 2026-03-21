@@ -10,7 +10,7 @@ The workflows are accessible as Claude Code slash commands:
 - `/ks.convention <topic>` — Create or update a convention (draft → cross-reference → apply → commit to main)
 - `/ks.doctor [context]` — Standalone fleet health check across all hosts
 
-See `.claude/commands/ks.develop.md` and `.claude/commands/ks.doctor.md`.
+See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, and `.claude/commands/ks.doctor.md`.
 
 ## Workflows
 
