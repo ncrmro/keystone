@@ -373,12 +373,22 @@ in
           # no repo creation, no SSH key provisioning, no admin collaborators.
           # The persistent API token is scoped to the user (--username), ensuring
           # each user gets their own token for tea/fj CLI access.
+          assertions = concatLists (
+            mapAttrsToList (
+              username: userCfg:
+              optional userCfg.forgejo.provision {
+                assertion = userCfg.email != null;
+                message = "User '${username}' has forgejo.provision = true but email is null. Set keystone.domain or an explicit email.";
+              }
+            ) config.keystone.os.users
+          );
+
           systemd.services = mkIf hasProvisionUsers (
             mapAttrs' (
               username: userCfg:
               let
                 forgejoUsername = userCfg.forgejo.username;
-                email = if userCfg.email != null then userCfg.email else "${username}@${config.keystone.domain}";
+                email = userCfg.email;
                 apiUrl = "http://127.0.0.1:${toString cfg.httpPort}/api/v1";
                 forgejoUser = config.services.forgejo.user;
               in

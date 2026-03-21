@@ -70,7 +70,7 @@ if [ -z "$EXISTING_API_TOKEN" ]; then
     --raw 2>/dev/null || true)
 
   if [ -n "$API_TOKEN" ]; then
-    USER_HOME=$(eval echo "~${SYSTEM_USER}")
+    USER_HOME=$(getent passwd "${SYSTEM_USER}" | cut -d: -f6)
 
     # Write token into tea config
     TEA_FILE="$USER_HOME/.config/tea/config.yml"
@@ -84,12 +84,16 @@ if [ -z "$EXISTING_API_TOKEN" ]; then
     # Write token into fj keys.json (tagged enum format)
     FJ_FILE="$USER_HOME/.local/share/forgejo-cli/keys.json"
     if [ -f "$FJ_FILE" ]; then
-      jq --arg host "${DOMAIN}" --arg token "$API_TOKEN" --arg name "$API_TOKEN_NAME" \
-        '.hosts[$host] = {"type": "Application", "name": $name, "token": $token}' "$FJ_FILE" > "$FJ_FILE.tmp" \
-        && mv "$FJ_FILE.tmp" "$FJ_FILE"
-      chown "${SYSTEM_USER}:users" "$FJ_FILE"
-      chmod 0600 "$FJ_FILE"
-      echo "${USERNAME}: Wrote API token to fj config"
+      if jq --arg host "${DOMAIN}" --arg token "$API_TOKEN" --arg name "$API_TOKEN_NAME" \
+        '.hosts[$host] = {"type": "Application", "name": $name, "token": $token}' "$FJ_FILE" > "$FJ_FILE.tmp"; then
+        mv "$FJ_FILE.tmp" "$FJ_FILE"
+        chown "${SYSTEM_USER}:users" "$FJ_FILE"
+        chmod 0600 "$FJ_FILE"
+        echo "${USERNAME}: Wrote API token to fj config"
+      else
+        rm -f "$FJ_FILE.tmp"
+        echo "${USERNAME}: Failed to update fj config"
+      fi
     fi
   else
     echo "${USERNAME}: Could not generate persistent API token"
