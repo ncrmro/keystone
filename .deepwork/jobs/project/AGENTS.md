@@ -42,6 +42,15 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 - **Resolution**: Added ASCII art mockup as a required step in `steps/write_press_release.md` (step 6). Added mockup section to the template. Added "ASCII Art Mockup" quality criterion to `job.yml` write_press_release reviews. Products without a UI may omit the mockup.
 - **Reference**: `steps/write_press_release.md` step 6 and template, `job.yml` write_press_release reviews
 
+### 2026-03-21: Press releases must create an issue and output the full URL
+- **Source**: User feedback after running `project/press_release` workflow for Keystone perception layer
+- **Issue**: The workflow produced only a local `.mdx` file but did not create an issue or provide a URL. Downstream workflows (e.g., `milestone/setup`) need a stable, linkable reference to the press release for traceability.
+- **Resolution**: Three changes applied:
+  1. Added step 10 to `steps/write_press_release.md` — create an issue on the project repo with the press release content and record the full URL
+  2. Added `press_release_issue_url.md` as a required output in `job.yml` with its own quality review
+  3. Updated `common_job_info` to mandate issue creation and URL output
+- **Reference**: `steps/write_press_release.md` step 10, `job.yml` write_press_release outputs and reviews
+
 ## Editing Guidelines
 
 1. **Use workflows** for structural changes (adding steps, modifying job.yml)

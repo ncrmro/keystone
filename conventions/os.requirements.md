@@ -23,6 +23,8 @@ This convention outlines the system-level prerequisites handled by the underlyin
 
 ## Terminal Environment
 
+See also `process.enable-by-default` for the design principle that agents receive the same environment as humans by default.
+
 10. Agent systemd services (task-loop, scheduler, notes-sync) MUST run with the full home-manager terminal environment.
 11. All tools available in an interactive agent shell MUST also be available in systemd service contexts — including `bash`, `git`, `gh`, `himalaya`, and other CLI tools.
 12. Service units SHOULD source the agent's shell profile or use an equivalent mechanism to inherit the complete PATH and environment variables.

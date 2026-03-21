@@ -1,5 +1,5 @@
 name: project
-version: "1.3.0"
+version: "1.4.0"
 summary: "Project onboarding, press releases, and success charter reviews"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job covers three project-level business workflows:
@@ -49,6 +49,9 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Internal metrics and implementation details must not appear
   - Output format is .mdx (MDX markdown) saved to the project's designated press release
     directory, typically `posts/press_releases/`.
+  - After writing the press release, an issue MUST be created on the project's repo containing
+    the full press release content. The full URL of this issue is a required output — downstream
+    workflows (milestone/setup, etc.) link back to the press release via this URL.
 
   Downstream workflows this profile feeds into:
   - `milestone/setup` — creates milestone and user stories from press release scope
@@ -224,6 +227,10 @@ steps:
         type: file
         description: "The finished working-backwards press release in MDX format"
         required: true
+      press_release_issue_url.md:
+        type: file
+        description: "Full URL of the issue created for the press release (for traceability and downstream workflow linking)"
+        required: true
     dependencies:
       - gather_context
     reviews:
@@ -237,6 +244,10 @@ steps:
           "Scoping Clarity": "The press release clearly implies what must be built to deliver the promise."
           "ASCII Art Mockup": "For products with a UI, an ASCII art mockup shows the product in use with realistic data."
           "No Quotes or City": "No fictional customer quotes. No city dateline (unless user explicitly requested)."
+      - run_each: press_release_issue_url.md
+        quality_criteria:
+          "Full URL Present": "The file contains a full URL (starting with https://) pointing to the issue that holds the press release."
+          "Issue Accessible": "The URL points to an actual issue on GitHub or Forgejo, not a file path or placeholder."
 
   - id: assess_state
     name: "Assess Project State"
@@ -333,10 +344,3 @@ steps:
           "Actionable Items": "Each recommendation specifies a concrete action (which workflow to run, which milestone to create/close, what to change in PROJECTS.yaml)."
           "Prioritized": "Recommendations are ordered by impact and urgency."
 
-changelog:
-  - version: "1.3.0"
-    changes: "Press releases MUST include ASCII art mockups for products with a UI (TUI, GUI, CLI, web). Added step, template section, and quality criterion."
-  - version: "1.2.0"
-    changes: "Press release tone overhaul: removed fictional customer quotes, removed city dateline, reduced word count to 300-500, restructured body to current state → why → how → what flow. Press releases should be succinct and semi-terse, not verbose marketing prose."
-  - version: "1.1.0"
-    changes: "Initial release with onboard, press_release, and success workflows."
