@@ -46,12 +46,14 @@ fn test_hosts_to_detail_and_back() {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec![],
             config_files: vec![],
+            metadata: None,
         },
         HostInfo {
             name: "server".to_string(),
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+            metadata: None,
         },
     ];
 
@@ -86,12 +88,14 @@ fn test_navigate_hosts_then_select_second() {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+            metadata: None,
         },
         HostInfo {
             name: "beta".to_string(),
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+            metadata: None,
         },
     ];
 
@@ -133,6 +137,7 @@ fn test_quit_from_any_screen() {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+            metadata: None,
         }),
     );
     let action = dispatch_key(&mut app, key(KeyCode::Char('q')));
@@ -155,6 +160,7 @@ async fn test_handle_action_go_to_host_detail() {
         system: Some("aarch64-linux".to_string()),
         keystone_modules: vec!["operating-system".to_string()],
         config_files: vec![],
+        metadata: None,
     };
 
     handle_action(&mut app, AppAction::GoToHostDetail(host)).await;
