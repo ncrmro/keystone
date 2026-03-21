@@ -192,4 +192,4 @@ Items requiring CPO clarification before implementation.
 
 ## Context
 
-This is the first step in the engineering planning workflow. The scope analysis drives all downstream work: specs are grouped by the system boundaries identified here, the plan issue references this analysis, and child issues are decomposed based on the story-to-system map. A thorough analysis prevents rework later — missing a shared boundary means specs won't cover it, and missing a prerequisite means blocked PRs during implementation.
+This is the first step in the engineering planning workflow. The scope analysis drives all downstream work: specs are grouped by the system boundaries identified here, and the plan issue references this analysis. A thorough analysis prevents rework later — missing a shared boundary means specs won't cover it, and missing a prerequisite means blocked PRs during implementation.

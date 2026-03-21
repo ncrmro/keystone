@@ -10,6 +10,8 @@ Read the scope analysis and specs PR report from prior steps, then compose and c
 
 **IMPORTANT: Do NOT create child issues.** All work is tracked in this issue's task checklist.
 
+**ISSUE COUNT CAP**: Create exactly ONE plan issue. If you identify a genuinely distinct feature that warrants its own issue (large delineating feature, not just a subtask), you MUST stop and ask the human for approval before creating it. The absolute maximum is 1-3 additional issues, and each requires explicit human sign-off. Issue bloat (10+ issues per milestone) has been a recurring problem — err on fewer issues.
+
 ### Process
 
 1. **Read prior step outputs**
