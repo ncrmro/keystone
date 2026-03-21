@@ -86,7 +86,7 @@ Read the scope analysis and specs PR report from prior steps, then compose and c
    - Assign to Drago (CTO) — read username from `.agents/TEAM.md`
    - Link to the milestone
 
-4. **Write the plan issue report**
+5. **Write the plan issue report**
 
 ## Output Format
 

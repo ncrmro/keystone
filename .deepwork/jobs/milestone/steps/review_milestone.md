@@ -6,7 +6,7 @@ Fetch the milestone's consolidated user stories issue, clone/navigate to the pro
 
 ## Task
 
-Read the milestone issue from the platform, explore the project's codebase, and build a systems map showing how the proposed user stories interact with existing code. This analysis informs spec creation, plan writing, and issue decomposition in subsequent steps.
+Read the milestone issue from the platform, explore the project's codebase, and build a systems map showing how the proposed user stories interact with existing code. This analysis informs spec creation and plan issue creation in subsequent steps.
 
 ### Process
 
