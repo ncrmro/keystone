@@ -1,7 +1,5 @@
 # Convention: Forgejo (tool.forgejo)
 
-## Forgejo
-
 ## Repository Access
 
 1. Repositories MUST be cloned via SSH, not HTTPS.

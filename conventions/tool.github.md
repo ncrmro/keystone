@@ -1,7 +1,5 @@
 # Convention: GitHub (tool.github)
 
-## GitHub CLI
-
 ## Authentication
 
 1. Account details MUST be defined in `SOUL.md`. Check `gh auth status` to verify authentication.
