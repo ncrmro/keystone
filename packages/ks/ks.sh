@@ -140,11 +140,16 @@ push_keystone_with_fork_fallback() {
   local ks_path="$1"
   [[ -z "$ks_path" || ! -d "$ks_path" ]] && return 0
 
-  # Extract owner/repo from remote URL (handles SSH and HTTPS)
+  # Extract owner/repo from remote URL (handles SSH, HTTPS, and Forgejo SSH)
   local remote_url
   remote_url=$(git -C "$ks_path" remote get-url origin 2>/dev/null) || return 1
-  local owner_repo
-  owner_repo=$(echo "$remote_url" | sed -E 's|.*[:/]([^/]+/[^/]+)$|\1|' | sed 's|\.git$||')
+  local _tmp _repo _rest _owner owner_repo
+  _tmp="${remote_url##*[:/]}"     # last path segment: "keystone.git"
+  _repo="${_tmp%.git}"            # strip .git suffix
+  _rest="${remote_url%"$_tmp"}"   # everything before last segment
+  _rest="${_rest%[:/]}"           # strip trailing : or /
+  _owner="${_rest##*[:/]}"        # owner segment
+  owner_repo="${_owner}/${_repo}"
 
   if ! command -v gh >/dev/null 2>&1; then
     echo "Warning: gh CLI not found. Attempting direct push..." >&2
