@@ -227,8 +227,8 @@ pub async fn create_new_repo_from_config(
     // Initialize git repository and create initial commit
     let commit_path = target_path.clone();
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        let repo = git2::Repository::init(&commit_path)
-            .context("Failed to initialize git repository")?;
+        let repo =
+            git2::Repository::init(&commit_path).context("Failed to initialize git repository")?;
 
         // Stage all generated files
         let mut index = repo.index().context("Failed to open index")?;

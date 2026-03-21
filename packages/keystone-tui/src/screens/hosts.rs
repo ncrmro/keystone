@@ -562,7 +562,7 @@ mod tests {
                     system: Some("x86_64-linux".to_string()),
                     keystone_modules: vec!["operating-system".to_string()],
                     config_files: vec![],
-                metadata: None,
+                    metadata: None,
                 },
                 tailscale: Some(TailscalePeer {
                     hostname: "laptop".to_string(),
@@ -580,7 +580,7 @@ mod tests {
                     system: Some("x86_64-linux".to_string()),
                     keystone_modules: vec![],
                     config_files: vec![],
-                metadata: None,
+                    metadata: None,
                 },
                 tailscale: Some(TailscalePeer {
                     hostname: "server".to_string(),
@@ -598,7 +598,7 @@ mod tests {
                     system: Some("aarch64-linux".to_string()),
                     keystone_modules: vec![],
                     config_files: vec![],
-                metadata: None,
+                    metadata: None,
                 },
                 tailscale: Some(TailscalePeer {
                     hostname: "rpi".to_string(),
@@ -747,7 +747,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec![],
             config_files: vec![],
-                metadata: None,
+            metadata: None,
         }];
         let screen = HostsScreen::new("repo".to_string(), hosts);
         assert_eq!(screen.selected_host().unwrap().name, "laptop");
