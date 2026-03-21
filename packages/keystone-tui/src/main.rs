@@ -46,6 +46,13 @@ struct Cli {
     /// time_zone, state_version.
     #[arg(long)]
     json: bool,
+
+    /// Render a single screen to stdout as ANSI and exit. No alternate screen, no raw mode.
+    /// Useful for capturing screenshots with vhs or piping to ansi-to-image tools.
+    ///
+    /// Available screens: welcome, create-config, hosts, install
+    #[arg(long, value_name = "SCREEN")]
+    screenshot: Option<String>,
 }
 
 /// Set up the terminal for TUI rendering.
@@ -78,6 +85,10 @@ async fn main() -> Result<()> {
         return run_json_mode().await;
     }
 
+    if let Some(ref screen_name) = cli.screenshot {
+        return run_screenshot_mode(screen_name).await;
+    }
+
     // Set up panic hook to restore terminal on panic
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -107,6 +118,76 @@ async fn main() -> Result<()> {
     app.save_config().await;
 
     result
+}
+
+/// Render a single screen to stdout as ANSI and exit.
+///
+/// Does NOT enter alternate screen or raw mode — the output goes directly to stdout
+/// so vhs, `ansi2image`, or terminal capture tools can record it.
+async fn run_screenshot_mode(screen_name: &str) -> Result<()> {
+    use crossterm::terminal::size;
+    use ratatui::backend::CrosstermBackend;
+
+    let (cols, rows) = size().unwrap_or((120, 40));
+
+    let backend = CrosstermBackend::new(io::stdout());
+    let mut terminal = Terminal::new(backend)?;
+
+    // Force a full-screen clear so ratatui writes every cell on the first draw.
+    // Without this, ratatui only writes "changed" cells via cursor positioning,
+    // which leaves sparse screens (like welcome) invisible to vhs/ttyd.
+    terminal.clear()?;
+
+    // Build the screen to render
+    match screen_name {
+        "welcome" => {
+            let mut screen = screens::welcome::WelcomeScreen::new();
+            terminal.draw(|frame| {
+                screen.render(frame, frame.area());
+            })?;
+        }
+        "create-config" => {
+            let mut screen =
+                screens::create_config::CreateConfigScreen::new("my-config".to_string());
+            terminal.draw(|frame| {
+                screen.render(frame, frame.area());
+            })?;
+        }
+        "hosts" => {
+            let app = App::new().await;
+            match &app.current_screen {
+                AppScreen::Hosts(hosts_screen) => {
+                    // Need a mutable reference, so clone the data
+                    let hosts: Vec<crate::nix::HostInfo> =
+                        hosts_screen.hosts().into_iter().cloned().collect();
+                    let mut screen =
+                        screens::hosts::HostsScreen::new("keystone".to_string(), hosts);
+                    terminal.draw(|frame| {
+                        screen.render(frame, frame.area());
+                    })?;
+                }
+                _ => {
+                    // No repos found, show empty hosts
+                    let mut screen =
+                        screens::hosts::HostsScreen::new("keystone".to_string(), Vec::new());
+                    terminal.draw(|frame| {
+                        screen.render(frame, frame.area());
+                    })?;
+                }
+            }
+        }
+        other => {
+            anyhow::bail!(
+                "Unknown screen '{}'. Available: welcome, create-config, hosts",
+                other
+            );
+        }
+    }
+
+    // Move cursor below the rendered content so the shell prompt doesn't overwrite it
+    println!();
+
+    Ok(())
 }
 
 /// Non-interactive JSON mode: read config from stdin, generate files, print output path.
