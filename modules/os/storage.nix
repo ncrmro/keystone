@@ -6,6 +6,9 @@
 # - Credstore pattern for key management
 # - SystemD initrd services for secure boot unlock
 #
+# See conventions/os.zfs-backup.md
+# Implements REQ-001 FR-005 (Copy-on-Write Storage), FR-006 (Storage Backend Selection)
+#
 {
   lib,
   config,
