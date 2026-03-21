@@ -308,12 +308,6 @@ in
           example = "4G";
         };
 
-        autoSnapshot = mkOption {
-          type = types.bool;
-          default = true;
-          description = "Enable automatic ZFS snapshots";
-        };
-
         autoScrub = mkOption {
           type = types.bool;
           default = true;

@@ -232,7 +232,7 @@ in
             acltype = "posixacl";
             xattr = "sa";
             atime = cfg.zfs.atime;
-            "com.sun:auto-snapshot" = if cfg.zfs.autoSnapshot then "true" else "false";
+            "com.sun:auto-snapshot" = "true"; # sanoid honors this for dataset-level opt-in/opt-out
           };
           options.ashift = "12";
           datasets = {
@@ -309,15 +309,6 @@ in
         autoScrub = mkIf cfg.zfs.autoScrub {
           enable = true;
           interval = "weekly";
-        };
-        autoSnapshot = mkIf cfg.zfs.autoSnapshot {
-          enable = true;
-          flags = "-k -p --utc";
-          frequent = 8;
-          hourly = 24;
-          daily = 7;
-          weekly = 4;
-          monthly = 12;
         };
         trim = {
           enable = true;
