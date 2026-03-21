@@ -57,7 +57,13 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 - **Issue**: The `decompose_child_issues` step created 10+ granular child issues per milestone (19 in both observed cases). This caused issue sprawl that was difficult to track, diluted context across many issues, and made it harder to understand parallelism and blocking at a glance.
 - **Resolution**: Removed the `decompose_child_issues` step entirely. The plan issue now serves as the single tracking issue per milestone. It includes a phased task checklist with conventional commit prefixes, parallelism documentation, and blocking dependencies. PRs reference the plan issue directly with `Part of #N`. Version bumped to 1.2.0.
 - **Reference**: `job.yml` engineering_handoff workflow (step removed), `steps/create_plan_issue.md` (task checklist and context sections added)
-- **Removed file**: `steps/decompose_child_issues.md` is no longer referenced by any workflow
+- **Removed file**: `steps/decompose_child_issues.md` deleted (was orphaned)
+
+### 2026-03-21: Issue count cap — 1 plan issue, 1-3 max with human approval
+- **Source**: Follow-up to the 19-issue problem above — the human's policy is stricter than just "no child issues"
+- **Issue**: Even after removing `decompose_child_issues`, the principle needed to be stated as a hard cap: one architecture/plan issue is the default. Everything follows from that single issue. Only genuinely large delineating features may warrant additional issues, but even then the cap is 1-3 and the agent MUST stop to ask the human before creating them.
+- **Resolution**: Added "Human-in-the-loop for issue creation" principle to `job.yml` common_job_info. Added explicit "ISSUE COUNT CAP" block to `steps/create_plan_issue.md`. Cleaned up stale "issue decomposition" references in `steps/review_milestone.md`. Version bumped to 1.3.1.
+- **Reference**: `job.yml` Key Engineering Principles, `steps/create_plan_issue.md` (cap block)
 
 ## Editing Guidelines
 
