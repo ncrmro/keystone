@@ -49,6 +49,7 @@ vms/test-server/extra-files/
 
 .worktrees
 worktree
+.claude/worktrees/
 __pycache__/
 
 # Node.js (for keystone-installer-ui)
