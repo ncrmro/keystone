@@ -31,6 +31,7 @@ modules/
 │   │   ├── notes.nix          notes-sync, task-loop, scheduler
 │   │   ├── home-manager.nix   Home-manager terminal integration
 │   │   ├── observability.nix  Agent observability (Grafana dashboards)
+│   │   ├── archetypes/        Agent archetype convention templates (ks-agent.md)
 │   │   ├── dashboards/        Agent health dashboards
 │   │   └── scripts/           Extracted shell scripts (@placeholder@ pattern)
 │   ├── storage.nix             ZFS/ext4 + LUKS credstore, disko partitioning

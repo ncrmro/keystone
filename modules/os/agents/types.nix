@@ -29,8 +29,9 @@ in
             "engineer"
             "product"
           ];
+          default = "engineer";
           description = "Convention archetype for this agent. Controls which conventions are inlined vs referenced. Available: engineer, product. See conventions/archetypes.yaml.";
-          example = "engineer";
+          example = "product";
         };
 
         host = mkOption {
