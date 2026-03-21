@@ -1209,31 +1209,26 @@ $user_table"
 }
 
 # --- Launch AI agent with system prompt ---
-# Writes the prompt to a CLAUDE.md file in a temp directory and launches
-# claude from there. Claude natively reads CLAUDE.md from the working
-# directory, avoiding ARG_MAX limits on large system-state prompts.
 # Usage: launch_agent local_model prompt [passthrough args...]
 launch_agent() {
   local local_model="$1"; shift
   local prompt="$1"; shift
 
+  # Write prompt to checksummed temp file to avoid shell quoting issues
+  local prompt_file="/tmp/ks-prompt-$(printf '%s' "$prompt" | md5sum | cut -d' ' -f1)"
+  printf '%s' "$prompt" > "$prompt_file"
+
   if [[ -n "$local_model" ]]; then
     local model_arg="$local_model"
     [[ "$model_arg" == "default" ]] && model_arg=""
     if command -v ollama >/dev/null 2>&1; then
-      exec ollama run ${model_arg:+"$model_arg"} --system "$prompt" "$@"
+      exec ollama run ${model_arg:+"$model_arg"} --system "$(cat "$prompt_file")" "$@"
     else
       echo "Error: --local requires ollama to be installed." >&2
       exit 1
     fi
   elif command -v claude >/dev/null 2>&1; then
-    # Write prompt to a project-level CLAUDE.md that claude reads natively.
-    # This avoids ARG_MAX limits from passing large prompts via argv.
-    local launch_dir
-    launch_dir=$(mktemp -d "${TMPDIR:-/tmp}/ks-agent.XXXXXX")
-    printf '%s' "$prompt" > "$launch_dir/CLAUDE.md"
-    cd "$launch_dir"
-    exec claude "$@"
+    exec claude --append-system-prompt "$(cat "$prompt_file")" "$@"
   else
     echo "Error: claude is not available." >&2
     exit 1
