@@ -214,13 +214,12 @@ in
                       userEmail = mkDefault userCfg.email;
                       # Bridge SSH public keys from keystone.keys for allowed_signers
                       sshPublicKeys = mkDefault (if keysCfg ? ${username} then allKeysFor username else [ ]);
-                      # TODO: Bridge forgejo.domain/sshPort/username here once the users.nix
-                      # home-manager bridge mkIf issue is resolved. Currently the entire mkIf
-                      # block is dead code for users whose home-manager config is also defined
-                      # in nixos-config (the nixos-config definitions take precedence and this
-                      # bridge's mkIf values are never applied — even mkForce has no effect).
-                      # See: https://github.com/ncrmro/keystone/issues/XXX
-                      forgejo.enable = mkDefault (config.keystone.services.git.host != null);
+                      forgejo = {
+                        enable = mkDefault (config.keystone.services.git.host != null);
+                        domain = mkDefault config.keystone.services.git.domain;
+                        sshPort = mkDefault config.keystone.services.git.sshPort;
+                        username = mkDefault userCfg.forgejo.username;
+                      };
                     };
                   }
                   // optionalAttrs userCfg.sshAutoLoad.enable {

@@ -31,6 +31,10 @@ let
   provisionAgents = filterAttrs (_: a: a.git.provision) config.keystone.os.agents;
   hasProvisionAgents = provisionAgents != { };
 
+  # Users that want Forgejo provisioning (API token auto-provisioning).
+  provisionUsers = filterAttrs (_: u: u.forgejo.provision) config.keystone.os.users;
+  hasProvisionUsers = provisionUsers != { };
+
   # Systemd service name for the gitea-actions-runner instance
   runnerServiceName = "gitea-runner-${utils.escapeSystemdPath cfg.runner.name}";
 
@@ -361,6 +365,59 @@ in
                 script = builtins.readFile ./scripts/provision-agent-git.sh;
               }
             ) provisionAgents
+          );
+        }
+        {
+          # Auto-provision Forgejo users and API tokens for normal users with
+          # forgejo.provision = true. Similar to agent provisioning but simpler:
+          # no repo creation, no SSH key provisioning, no admin collaborators.
+          # The persistent API token is scoped to the user (--username), ensuring
+          # each user gets their own token for tea/fj CLI access.
+          systemd.services = mkIf hasProvisionUsers (
+            mapAttrs' (
+              username: userCfg:
+              let
+                forgejoUsername = userCfg.forgejo.username;
+                email = if userCfg.email != null then userCfg.email else "${username}@${config.keystone.domain}";
+                apiUrl = "http://127.0.0.1:${toString cfg.httpPort}/api/v1";
+                forgejoUser = config.services.forgejo.user;
+              in
+              nameValuePair "provision-user-git-${username}" {
+                description = "Provision Forgejo user and API token for ${username}";
+                after = [
+                  "forgejo.service"
+                  "home-manager-${username}.service"
+                ];
+                requires = [ "forgejo.service" ];
+                wantedBy = [ "multi-user.target" ];
+
+                serviceConfig = {
+                  Type = "oneshot";
+                  RemainAfterExit = true;
+                };
+
+                path = [
+                  pkgs.forgejo
+                  pkgs.curl
+                  pkgs.jq
+                  pkgs.coreutils
+                  pkgs.sudo
+                  pkgs.yq-go
+                ];
+
+                environment = {
+                  FORGEJO_USER = forgejoUser;
+                  STATE_DIR = cfg.stateDir;
+                  API_URL = apiUrl;
+                  USERNAME = forgejoUsername;
+                  EMAIL = email;
+                  SYSTEM_USER = username;
+                  DOMAIN = cfg.domain;
+                };
+
+                script = builtins.readFile ./scripts/provision-user-git.sh;
+              }
+            ) provisionUsers
           );
         }
         (mkIf cfg.runner.enable {
