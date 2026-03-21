@@ -33,6 +33,14 @@ pub enum AppAction {
     InstallDiskUp,
     InstallDiskDown,
     InstallDiskSelect,
+    StartDeploy { host_name: String },
+    DeployTargetUp,
+    DeployTargetDown,
+    DeployTargetSelect,
+    DeployManualInput,
+    DeploySubmitManual,
+    DeployConfirm,
+    DeployBack,
     FirstBootStart,
     FirstBootSkip,
     FirstBootContinue,
@@ -59,6 +67,7 @@ pub fn dispatch_key(app: &mut App, key: KeyEvent) -> Option<AppAction> {
         AppScreen::HostDetail(ref mut detail) => handle_host_detail_input(detail, key),
         AppScreen::Build(ref mut build) => handle_build_input(build, key),
         AppScreen::Iso(ref mut iso) => handle_iso_input(iso, key),
+        AppScreen::Deploy(ref mut deploy) => handle_deploy_input(deploy, key),
         AppScreen::Install(ref mut install) => handle_install_input(install, key),
         AppScreen::FirstBoot(ref mut first_boot) => handle_first_boot_input(first_boot, key),
     }
@@ -191,6 +200,9 @@ pub fn handle_hosts_input(
             let host_name = hosts.selected_host().map(|h| h.name.clone());
             Some(AppAction::BuildIso { host_name })
         }
+        KeyCode::Char('d') => hosts
+            .selected_host()
+            .map(|h| AppAction::StartDeploy { host_name: h.name.clone() }),
         KeyCode::Char('r') => Some(AppAction::RefreshDashboard),
         _ => None,
     }
@@ -281,6 +293,54 @@ pub fn handle_iso_input(iso: &mut screens::iso::IsoScreen, key: KeyEvent) -> Opt
             _ => None,
         },
         IsoPhase::Done | IsoPhase::Failed(_) => match key.code {
+            KeyCode::Esc => Some(AppAction::GoToHosts),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+    }
+}
+
+/// Handle input for the deploy screen.
+pub fn handle_deploy_input(
+    deploy: &mut screens::deploy::DeployScreen,
+    key: KeyEvent,
+) -> Option<AppAction> {
+    use screens::deploy::DeployPhase;
+
+    match deploy.phase() {
+        DeployPhase::Discovery => match key.code {
+            KeyCode::Up | KeyCode::Char('k') => Some(AppAction::DeployTargetUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(AppAction::DeployTargetDown),
+            KeyCode::Enter => Some(AppAction::DeployTargetSelect),
+            KeyCode::Char('m') => Some(AppAction::DeployManualInput),
+            KeyCode::Esc | KeyCode::Char('q') => Some(AppAction::GoToHosts),
+            _ => None,
+        },
+        DeployPhase::ManualInput => match key.code {
+            KeyCode::Enter => Some(AppAction::DeploySubmitManual),
+            KeyCode::Esc => Some(AppAction::DeployBack),
+            _ => {
+                deploy.handle_text_input(key);
+                None
+            }
+        },
+        DeployPhase::Confirm => match key.code {
+            KeyCode::Enter => Some(AppAction::DeployConfirm),
+            KeyCode::Esc => Some(AppAction::DeployBack),
+            _ => None,
+        },
+        DeployPhase::Deploying => match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                deploy.scroll_up();
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                deploy.scroll_down();
+                None
+            }
+            _ => None,
+        },
+        DeployPhase::Done | DeployPhase::Failed(_) => match key.code {
             KeyCode::Esc => Some(AppAction::GoToHosts),
             KeyCode::Char('q') => Some(AppAction::Quit),
             _ => None,
@@ -502,6 +562,48 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         AppAction::InstallDiskSelect => {
             if let AppScreen::Install(ref mut install) = app.current_screen {
                 install.select_disk();
+            }
+        }
+        AppAction::StartDeploy { host_name } => {
+            if let Some(repo_path) = app.active_repo_path() {
+                app.current_screen = AppScreen::Deploy(
+                    screens::deploy::DeployScreen::new(repo_path, host_name),
+                );
+            }
+        }
+        AppAction::DeployTargetUp => {
+            if let AppScreen::Deploy(ref mut deploy) = app.current_screen {
+                deploy.target_up();
+            }
+        }
+        AppAction::DeployTargetDown => {
+            if let AppScreen::Deploy(ref mut deploy) = app.current_screen {
+                deploy.target_down();
+            }
+        }
+        AppAction::DeployTargetSelect => {
+            if let AppScreen::Deploy(ref mut deploy) = app.current_screen {
+                deploy.select_target();
+            }
+        }
+        AppAction::DeployManualInput => {
+            if let AppScreen::Deploy(ref mut deploy) = app.current_screen {
+                deploy.enter_manual_input();
+            }
+        }
+        AppAction::DeploySubmitManual => {
+            if let AppScreen::Deploy(ref mut deploy) = app.current_screen {
+                deploy.submit_manual();
+            }
+        }
+        AppAction::DeployConfirm => {
+            if let AppScreen::Deploy(ref mut deploy) = app.current_screen {
+                deploy.confirm_deploy();
+            }
+        }
+        AppAction::DeployBack => {
+            if let AppScreen::Deploy(ref mut deploy) = app.current_screen {
+                deploy.go_back();
             }
         }
         AppAction::FirstBootStart => {

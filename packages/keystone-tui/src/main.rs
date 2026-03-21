@@ -228,6 +228,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
         match &mut app.current_screen {
             AppScreen::Build(ref mut build) => build.poll(),
             AppScreen::Iso(ref mut iso) => iso.poll(),
+            AppScreen::Deploy(ref mut deploy) => deploy.poll(),
             AppScreen::Hosts(ref mut hosts) => hosts.poll(),
             AppScreen::Install(ref mut install) => install.poll(),
             AppScreen::FirstBoot(ref mut first_boot) => first_boot.poll(),
@@ -254,6 +255,9 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                 }
                 AppScreen::Iso(iso_screen) => {
                     iso_screen.render(frame, area);
+                }
+                AppScreen::Deploy(deploy_screen) => {
+                    deploy_screen.render(frame, area);
                 }
                 AppScreen::Install(install_screen) => {
                     install_screen.render(frame, area);
