@@ -17,6 +17,7 @@ Apply the fixes identified in the audit report to bring all notes into complianc
    **a) Add missing frontmatter** (first — establishes IDs needed for renames)
    - For each file missing frontmatter:
      - Generate a 12-digit timestamp ID based on the file's git creation date or current time
+     - If multiple files share the same minute-granularity timestamp, increment the ID by one minute to avoid collisions
      - Infer `type` from the file's directory (or default to `permanent`)
      - Infer `title` from the first `# Heading` or filename
      - Add YAML frontmatter block

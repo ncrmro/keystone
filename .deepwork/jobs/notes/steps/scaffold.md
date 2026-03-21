@@ -36,7 +36,7 @@ Create the standard Zettelkasten directory structure, zk configuration, and note
    - `index.md` — Map of Content with Notes section
 
    Each template MUST include YAML frontmatter with: id, title, type, created, author, tags.
-   The `author` field SHOULD default to the provided author input.
+   The `author` field MUST be present but MAY be empty — templates default to the provided author input when available.
 
 5. **Commit the scaffold**
    ```bash

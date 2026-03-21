@@ -25,14 +25,14 @@ Process all fleeting notes in `inbox/`, deciding for each: promote to permanent 
    - Add wikilinks to related notes in the Links section
    - Update the author field
    - Delete the fleeting note: `rm inbox/{filename}`
-   - Commit: `feat(notes): promote inbox note to permanent — {title}`
+   - Commit: `feat(notes): promote inbox note to permanent - {title}`
 
    **b) Promote to literature note** (the note summarizes an external source):
    - Create a literature note: `zk new literature --title "Summary of {source}"`
    - Fill in the source field, Summary, Key Points, and Relevance sections
    - Link to any permanent notes it supports
    - Delete the fleeting note
-   - Commit: `feat(notes): promote inbox note to literature — {title}`
+   - Commit: `feat(notes): promote inbox note to literature - {title}`
 
    **c) Promote to decision record** (the note captures an architectural decision):
    - Create a decision record: `zk new decisions --title "ADR: {decision}"`
@@ -40,11 +40,11 @@ Process all fleeting notes in `inbox/`, deciding for each: promote to permanent 
    - Set status to `proposed` or `accepted` based on content
    - Link to related notes
    - Delete the fleeting note
-   - Commit: `feat(notes): promote inbox note to decision — {title}`
+   - Commit: `feat(notes): promote inbox note to decision - {title}`
 
    **d) Discard** (the note has no lasting value — transient observation, duplicate, or stale):
    - Delete the fleeting note: `rm inbox/{filename}`
-   - Commit: `chore(notes): discard fleeting note — {brief reason}`
+   - Commit: `chore(notes): discard fleeting note - {brief reason}`
 
 3. **Update index notes**
    - If any promoted notes belong to an existing MOC's topic area, add wikilinks to the relevant index note
