@@ -117,9 +117,19 @@ verify the changes on the deployed preview environment:
    - The service loads without errors
 
 3. **For Cloudflare Workers specifically**:
-   - Preview deployments are created automatically on each push
-   - URL format is typically: `https://<commit-hash>.<project>.workers.dev`
-   - Or check the Cloudflare dashboard for the preview URL
+   - Preview deployments are created automatically by the Workers Builds integration
+   - Preview URLs are posted as PR comments by the Cloudflare bot in a table format
+   - **Branch preview**: `https://{branch-slug}-{project-name}.{account}.workers.dev`
+   - **Commit preview**: `https://{commit-hash-prefix}-{project-name}.{account}.workers.dev`
+   - Example: `https://feat-keystone-docs-pipeline-ks-systems-web.ncrmro.workers.dev`
+   - Parse the PR comments to extract these URLs:
+     ```bash
+     gh pr view $PR_NUM --repo OWNER/REPO --json comments --jq '.comments[].body' | grep -o 'https://[^ ]*workers.dev[^ ]*'
+     ```
+   - **Limitation**: CF Workers native builds run only `pnpm build` — they don't support
+     git submodules, custom build scripts (tsx), or multi-step builds. If your build
+     requires these, the preview will show a partial build. Use GitHub Actions for full
+     production deploys.
 
 4. **Update the PR Demo section**: Per `process.pull-request`, every PR MUST have a
    `# Demo` section with evidence the work is correct. When a deploy preview is available,

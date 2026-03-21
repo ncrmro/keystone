@@ -81,6 +81,24 @@ Platform is inferred from git remote URL at runtime:
 - Preview URL is typically found in PR comments from the platform's bot
 - The PR's `# Demo` section MUST be updated with the preview URL and verification evidence — this ties the deploy check back to the `process.pull-request` convention and provides a complete user story from code → deploy → verified
 
+### v2.1.x — Cloudflare Workers preview URL patterns (2026-03-21)
+
+Discovered from ks-systems-web PR #11 deployment:
+
+- **Branch preview URL**: `https://{branch-slug}-{project}.{account}.workers.dev`
+  - Branch name slugified: `feat/keystone-docs-pipeline` → `feat-keystone-docs-pipeline`
+  - Example: `https://feat-keystone-docs-pipeline-ks-systems-web.ncrmro.workers.dev`
+- **Commit preview URL**: `https://{commit-hash-prefix}-{project}.{account}.workers.dev`
+  - Example: `https://e5e23e00-ks-systems-web.ncrmro.workers.dev`
+- Preview URLs are posted by the Cloudflare bot as a PR comment with a markdown table
+- Parse with: `gh pr view --json comments --jq '.comments[].body' | grep workers.dev`
+- **CF Workers Builds limitations**:
+  - Only runs `pnpm build` (or configured build command) — no multi-step builds
+  - Does NOT support git submodules — submodule dirs are empty
+  - Does NOT support `tsx` or custom TypeScript runners outside node_modules
+  - Build scripts that need submodules or tsx must use `|| true` to fail gracefully
+  - Production deploys should go through GitHub Actions where you control the full pipeline
+
 ### v1.1.0 — Project board integration (2026-03-19)
 
 - Added project board column transitions to all sweng steps
