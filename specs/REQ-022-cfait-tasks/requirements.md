@@ -1,4 +1,4 @@
-# REQ-021: cfait CalDAV Task Manager
+# REQ-022: cfait CalDAV Task Manager
 
 Package cfait — a Rust-based terminal TUI for CalDAV task/TODO management — as
 a Nix derivation and integrate it into the keystone terminal module. cfait
@@ -58,35 +58,35 @@ from the terminal without switching to a browser.
 
 ### Packaging
 
-**REQ-021.1** cfait MUST be packaged as a Nix derivation available at
+**REQ-022.1** cfait MUST be packaged as a Nix derivation available at
 `pkgs.keystone.cfait`.
 
-**REQ-021.2** The package SHOULD be built from the upstream GitHub source
+**REQ-022.2** The package SHOULD be built from the upstream GitHub source
 (`github:trougnouf/cfait`) using `rustPlatform.buildRustPackage` or equivalent
 Rust builder.
 
-**REQ-021.3** If the upstream repository provides a `flake.nix` in the future,
+**REQ-022.3** If the upstream repository provides a `flake.nix` in the future,
 the packaging SHOULD migrate to a flake input following the Calendula pattern
 (`inputs.nixpkgs.follows = "nixpkgs"`).
 
-**REQ-021.4** The package MUST be added to the keystone overlay in `flake.nix`
+**REQ-022.4** The package MUST be added to the keystone overlay in `flake.nix`
 alongside the existing pimalaya tools.
 
 ### Terminal Module
 
-**REQ-021.5** A new module `modules/terminal/tasks.nix` MUST be created
+**REQ-022.5** A new module `modules/terminal/tasks.nix` MUST be created
 following the same pattern as `calendar.nix`.
 
-**REQ-021.6** The module MUST expose options at `keystone.terminal.tasks`.
+**REQ-022.6** The module MUST expose options at `keystone.terminal.tasks`.
 
-**REQ-021.7** The module MUST be imported by `modules/terminal/default.nix`.
+**REQ-022.7** The module MUST be imported by `modules/terminal/default.nix`.
 
-**REQ-021.8** When enabled, the module MUST add `pkgs.keystone.cfait` to
+**REQ-022.8** When enabled, the module MUST add `pkgs.keystone.cfait` to
 `home.packages`.
 
 ### Configuration
 
-**REQ-021.9** The module MUST expose the following options with defaults
+**REQ-022.9** The module MUST expose the following options with defaults
 inherited from `keystone.terminal.mail`:
 
 ```nix
@@ -126,10 +126,12 @@ keystone.terminal.tasks = {
 };
 ```
 
-**REQ-021.10** When `host` or `url` is configured, the module MUST generate
-`~/.config/cfait/config.toml` via `xdg.configFile`.
+**REQ-022.10** When `host` or `url` is configured, the module MUST generate
+`~/.config/cfait/config.toml` at launch time via a wrapper script (cfait does
+not support password commands, so the config is written with the resolved
+password at runtime rather than via `xdg.configFile`).
 
-**REQ-021.11** The generated config MUST include the CalDAV URL, username, and
+**REQ-022.11** The generated config MUST include the CalDAV URL, username, and
 password command in cfait's expected TOML format:
 
 ```toml
@@ -138,54 +140,54 @@ username = "{login}"
 password = "{resolved-password}"
 ```
 
-**REQ-021.12** The CalDAV URL derivation MUST follow the same pattern as
+**REQ-022.12** The CalDAV URL derivation MUST follow the same pattern as
 Calendula: use explicit `url` if set, otherwise build
 `https://${cfg.host}/dav/cal` (Stalwart's direct path, bypassing
 `/.well-known/caldav` discovery).
 
 ### Credential Inheritance
 
-**REQ-021.13** All credential options (host, login, passwordCommand) MUST
+**REQ-022.13** All credential options (host, login, passwordCommand) MUST
 default from `keystone.terminal.mail` so that Stalwart users need only
 `enable = true`.
 
-**REQ-021.14** Each credential option MAY be overridden individually for
+**REQ-022.14** Each credential option MAY be overridden individually for
 non-Stalwart CalDAV providers (e.g., iCloud, Nextcloud).
 
 ### Password Handling
 
-**REQ-021.15** cfait expects a plaintext password in its config, not a command.
+**REQ-022.15** cfait expects a plaintext password in its config, not a command.
 The module MUST document this difference from Calendula's `password.command`
 approach.
 
-**REQ-021.16** If cfait supports a password command or environment variable
+**REQ-022.16** If cfait supports a password command or environment variable
 mechanism, the module SHOULD use that instead of writing plaintext passwords to
 the config file.
 
-**REQ-021.17** If cfait only supports plaintext passwords, the module SHOULD
+**REQ-022.17** If cfait only supports plaintext passwords, the module SHOULD
 use a wrapper script or activation hook that resolves the password command at
 runtime and writes the config to a non-world-readable path.
 
 ### Integration
 
-**REQ-021.18** cfait MUST coexist with Calendula without conflict — both
+**REQ-022.18** cfait MUST coexist with Calendula without conflict — both
 connect to the same CalDAV server but manage different resource types (VTODO vs
 VEVENT).
 
-**REQ-021.19** The module SHOULD follow the same guard pattern as calendar.nix:
+**REQ-022.19** The module SHOULD follow the same guard pattern as calendar.nix:
 `mkIf (config.keystone.terminal.enable && cfg.enable)`.
 
-**REQ-021.20** Agent users with `terminal.enable = true` SHOULD be able to
+**REQ-022.20** Agent users with `terminal.enable = true` SHOULD be able to
 enable cfait for CalDAV task management alongside their existing calendar and
 contacts tools.
 
 ### Security
 
-**REQ-021.21** The generated config file MUST NOT contain plaintext passwords
+**REQ-022.21** The generated config file MUST NOT contain plaintext passwords
 if cfait supports any alternative credential mechanism (command, keyring,
 environment variable).
 
-**REQ-021.22** If plaintext password is unavoidable, the config file MUST be
+**REQ-022.22** If plaintext password is unavoidable, the config file MUST be
 written with mode `0600` and the module MUST emit a warning explaining the
 security implication.
 
