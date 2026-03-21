@@ -254,13 +254,21 @@ in
       description = "Commit message prefix used by repo-sync.";
     };
 
+    sync = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Enable the systemd sync service and timer. Disable when another mechanism handles sync (e.g. NixOS-level agent sync).";
+      };
+    };
+
     zk = {
       enable = lib.mkEnableOption "zk Zettelkasten notebook initialization";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.user.services.keystone-notes-sync = {
+    systemd.user.services.keystone-notes-sync = lib.mkIf cfg.sync.enable {
       Unit = {
         Description = "Sync notes repo via repo-sync";
       };
@@ -277,7 +285,7 @@ in
       };
     };
 
-    systemd.user.timers.keystone-notes-sync = {
+    systemd.user.timers.keystone-notes-sync = lib.mkIf cfg.sync.enable {
       Unit = {
         Description = "Timer for notes repo sync";
       };
