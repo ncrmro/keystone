@@ -48,6 +48,7 @@ archetypes:
       - process.deepwork-job
       - process.project-board
       - process.refactor
+      - code.shell-scripts
       - tool.bitwarden
       - tool.forgejo
       - tool.himalaya
@@ -80,6 +81,7 @@ archetypes:
           - process.feature-delivery
           - process.pull-request
           - process.refactor
+          - code.shell-scripts
           - tool.typescript
           - process.coding-agent
           - tool.nix-devshell

@@ -11,6 +11,8 @@
 
 ## Shell Usage
 
+For shell script authoring standards (strict mode, ShellCheck, Nix packaging), see `code.shell-scripts`.
+
 4. All repos MUST use `flake.nix` with a dev shell providing project dependencies.
 5. Commands that need project tools (Node, pnpm, cargo, etc.) MUST be run via `nix develop --command <cmd>`, from within an interactive `nix develop` session, or from a direnv-activated shell.
 6. You MUST NOT install tools globally or use `npx` — always use the project's dev shell.
