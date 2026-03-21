@@ -77,6 +77,48 @@ impl HostDetailScreen {
             }
         }
 
+        // Host metadata (from keystone.hosts)
+        if let Some(meta) = &self.host.metadata {
+            lines.push(Line::from(""));
+            if !meta.role.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled("  Role:       ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(meta.role.as_str(), Style::default().fg(Color::Magenta)),
+                ]));
+            }
+            if !meta.ssh_target.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled("  SSH:        ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(meta.ssh_target.as_str(), Style::default().fg(Color::White)),
+                ]));
+            }
+            if !meta.fallback_ip.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled("  Fallback IP:", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!(" {}", meta.fallback_ip),
+                        Style::default().fg(Color::White),
+                    ),
+                ]));
+            }
+            let mut flags = Vec::new();
+            if meta.baremetal {
+                flags.push("baremetal");
+            }
+            if meta.zfs {
+                flags.push("zfs");
+            }
+            if meta.build_on_remote {
+                flags.push("remote-build");
+            }
+            if !flags.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled("  Flags:      ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(flags.join(", "), Style::default().fg(Color::Yellow)),
+                ]));
+            }
+        }
+
         lines.push(Line::from(""));
 
         // Config files
@@ -123,6 +165,7 @@ mod tests {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec!["operating-system".to_string(), "desktop".to_string()],
             config_files: vec!["./configuration.nix".to_string()],
+            metadata: None,
         };
         let screen = HostDetailScreen::new(host);
         assert_eq!(screen.host().name, "my-host");
@@ -137,6 +180,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+            metadata: None,
         };
         let screen = HostDetailScreen::new(host);
         assert_eq!(screen.host().name, "unknown-host");

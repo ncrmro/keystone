@@ -166,6 +166,8 @@ pub async fn create_new_repo_from_config(
     password: String,
     github_username: Option<String>,
     authorized_keys: Vec<String>,
+    time_zone: Option<String>,
+    state_version: Option<String>,
 ) -> Result<KeystoneRepo> {
     use crate::template;
 
@@ -194,6 +196,8 @@ pub async fn create_new_repo_from_config(
         storage_type,
         disk_device,
         github_username,
+        time_zone: time_zone.unwrap_or_else(|| "UTC".to_string()),
+        state_version: state_version.unwrap_or_else(|| "25.05".to_string()),
         user: template::UserConfig {
             username,
             password,
@@ -220,10 +224,35 @@ pub async fn create_new_repo_from_config(
         .await
         .context("Failed to write hardware.nix")?;
 
-    // Initialize git repository
-    let init_path = target_path.clone();
-    tokio::task::spawn_blocking(move || {
-        git2::Repository::init(&init_path).context("Failed to initialize git repository")
+    // Initialize git repository and create initial commit
+    let commit_path = target_path.clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        let repo =
+            git2::Repository::init(&commit_path).context("Failed to initialize git repository")?;
+
+        // Stage all generated files
+        let mut index = repo.index().context("Failed to open index")?;
+        index
+            .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+            .context("Failed to add files to index")?;
+        index.write().context("Failed to write index")?;
+        let tree_id = index.write_tree().context("Failed to write tree")?;
+        let tree = repo.find_tree(tree_id).context("Failed to find tree")?;
+
+        // Create initial commit
+        let sig = git2::Signature::now("Keystone TUI", "keystone-tui@localhost")
+            .context("Failed to create signature")?;
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "feat: initial Keystone NixOS configuration",
+            &tree,
+            &[], // no parents — initial commit
+        )
+        .context("Failed to create initial commit")?;
+
+        Ok(())
     })
     .await
     .context("Failed to spawn git init task")??;
@@ -232,4 +261,34 @@ pub async fn create_new_repo_from_config(
         name: repo_name,
         path: target_path,
     })
+}
+
+/// Create a private GitHub repository and set it as the origin remote.
+///
+/// Requires `gh` CLI to be authenticated. Returns Ok(()) if successful,
+/// or an error if `gh` is not available or the operation fails.
+pub async fn create_github_repo(repo_path: &std::path::Path, repo_name: &str) -> Result<String> {
+    // Create private repo on GitHub
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "repo",
+            "create",
+            repo_name,
+            "--private",
+            "--source",
+            ".",
+            "--push",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .await
+        .context("Failed to run 'gh repo create' — is gh CLI installed and authenticated?")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("gh repo create failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(stdout)
 }

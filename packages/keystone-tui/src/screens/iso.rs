@@ -51,6 +51,8 @@ pub enum IsoPhase {
 pub struct IsoScreen {
     phase: IsoPhase,
     repo_path: PathBuf,
+    /// Host name to build the ISO for (used in flake ref).
+    host_name: Option<String>,
     /// Lines of build/write output.
     output_lines: Vec<String>,
     scroll_offset: u16,
@@ -68,6 +70,11 @@ pub struct IsoScreen {
 
 impl IsoScreen {
     pub fn new(repo_path: PathBuf) -> Self {
+        Self::new_for_host(repo_path, None)
+    }
+
+    /// Create an ISO screen targeting a specific host configuration.
+    pub fn new_for_host(repo_path: PathBuf, host_name: Option<String>) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
 
         // Discover USB devices and ~/Downloads immediately
@@ -78,6 +85,7 @@ impl IsoScreen {
         Self {
             phase: IsoPhase::SelectTarget,
             repo_path,
+            host_name,
             output_lines: Vec::new(),
             scroll_offset: 0,
             auto_scroll: true,
@@ -95,6 +103,7 @@ impl IsoScreen {
         Self {
             phase: IsoPhase::SelectTarget,
             repo_path,
+            host_name: None,
             output_lines: Vec::new(),
             scroll_offset: 0,
             auto_scroll: true,
@@ -226,8 +235,9 @@ impl IsoScreen {
         let (tx, rx) = mpsc::unbounded_channel();
         self.rx = Some(rx);
         let repo = self.repo_path.clone();
+        let host = self.host_name.clone();
         tokio::spawn(async move {
-            Self::run_build(tx, repo).await;
+            Self::run_build(tx, repo, host).await;
         });
     }
 
@@ -301,12 +311,28 @@ impl IsoScreen {
         let _ = tx.send(IsoMessage::TargetsDiscovered(targets));
     }
 
-    async fn run_build(tx: mpsc::UnboundedSender<IsoMessage>, repo_path: PathBuf) {
-        let _ = tx.send(IsoMessage::BuildOutput("$ nix build .#iso".to_string()));
+    async fn run_build(
+        tx: mpsc::UnboundedSender<IsoMessage>,
+        repo_path: PathBuf,
+        host_name: Option<String>,
+    ) {
+        // Build host-specific ISO if a host is selected, otherwise generic .#iso
+        let build_ref = match &host_name {
+            Some(host) => format!(
+                ".#nixosConfigurations.{}.config.system.build.isoImage",
+                host
+            ),
+            None => ".#iso".to_string(),
+        };
+
+        let _ = tx.send(IsoMessage::BuildOutput(format!(
+            "$ nix build {}",
+            build_ref
+        )));
         let _ = tx.send(IsoMessage::BuildOutput(String::new()));
 
         let child_result = Command::new("nix")
-            .args(["build", ".#iso"])
+            .args(["build", &build_ref])
             .current_dir(&repo_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

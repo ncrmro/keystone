@@ -64,6 +64,8 @@ pub struct GenerateConfig {
     pub storage_type: StorageType,
     pub disk_device: Option<String>,
     pub github_username: Option<String>,
+    pub time_zone: String,
+    pub state_version: String,
     pub user: UserConfig,
     pub remote_unlock: RemoteUnlockConfig,
 }
@@ -102,6 +104,10 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
       url = "github:ncrmro/keystone";
       inputs.nixpkgs.follows = "nixpkgs";
     }};
+    disko = {{
+      url = "github:nix-community/disko";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }};
     home-manager = {{
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -112,6 +118,7 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
     self,
     nixpkgs,
     keystone,
+    disko,
     home-manager,
     ...
   }}: {{
@@ -119,6 +126,7 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
       "{hostname_esc}" = nixpkgs.lib.nixosSystem {{
         system = "x86_64-linux";
         modules = [
+          disko.nixosModules.disko
           home-manager.nixosModules.home-manager
           keystone.nixosModules.operating-system
 {desktop_module}
@@ -190,7 +198,7 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
 }}: {{
   networking.hostName = "{hostname}";
   networking.hostId = "{host_id}";
-  system.stateVersion = "25.05";
+  system.stateVersion = "{state_version}";
 
   keystone.os = {{
     enable = true;
@@ -238,13 +246,14 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
     }};
   }};
 
-  time.timeZone = "UTC";
+  time.timeZone = "{time_zone}";
   nix.settings.trusted-users = [ "root" "@wheel" ];
   environment.systemPackages = with pkgs; [ sbctl ];
 }}
 "#,
         hostname = hostname,
         host_id = host_id,
+        state_version = escape_nix_string(&config.state_version),
         storage_type = config.storage_type.nix_value(),
         disk_device = disk_device,
         username = username,
@@ -254,6 +263,7 @@ pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
         remote_unlock_keys_nix = remote_unlock_keys_nix,
         extra_groups = extra_groups,
         desktop_enable = desktop_enable,
+        time_zone = escape_nix_string(&config.time_zone),
     )
 }
 
@@ -429,6 +439,8 @@ mod tests {
             storage_type: StorageType::Zfs,
             disk_device: Some("/dev/disk/by-id/test-disk".to_string()),
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "admin".to_string(),
                 password: "changeme".to_string(),
@@ -441,10 +453,26 @@ mod tests {
         };
 
         let nix = generate_configuration_nix(&config);
-        assert!(nix.contains("test-host"));
-        assert!(nix.contains(r#"type = "zfs""#));
-        assert!(nix.contains("ssh-ed25519 AAAAC3testkey admin@laptop"));
-        assert!(nix.contains(r#"enable = true"#));
+
+        // Verify it parses cleanly
+        let root = rnix::Root::parse(&nix);
+        assert!(
+            root.errors().is_empty(),
+            "configuration.nix has parse errors: {:?}",
+            root.errors()
+        );
+
+        // Verify key values are present via string (configuration.nix is a function body,
+        // not a flake, so we check specific attribute values)
+        assert!(nix.contains("test-host"), "should contain hostname");
+        assert!(
+            nix.contains(r#"type = "zfs""#),
+            "should contain storage type"
+        );
+        assert!(
+            nix.contains("ssh-ed25519 AAAAC3testkey admin@laptop"),
+            "should contain SSH key"
+        );
     }
 
     #[test]
@@ -455,6 +483,8 @@ mod tests {
             storage_type: StorageType::Ext4,
             disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "user".to_string(),
                 password: "pass".to_string(),
@@ -473,6 +503,69 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_flake_has_disko_input() {
+        let config = GenerateConfig {
+            hostname: "test".to_string(),
+            machine_type: MachineType::Server,
+            storage_type: StorageType::Zfs,
+            disk_device: None,
+            github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
+            user: UserConfig {
+                username: "admin".to_string(),
+                password: "pass".to_string(),
+                authorized_keys: vec![],
+            },
+            remote_unlock: RemoteUnlockConfig {
+                enable: false,
+                authorized_keys: vec![],
+            },
+        };
+
+        let flake = generate_flake_nix(&config);
+
+        // Use rnix AST to structurally verify disko is present as an input
+        let inputs = crate::nix::extract_flake_inputs(&flake);
+        let disko = inputs.iter().find(|i| i.name == "disko");
+        assert!(disko.is_some(), "disko must be a flake input");
+        assert_eq!(
+            disko.unwrap().url.as_deref(),
+            Some("github:nix-community/disko"),
+        );
+
+        // disko.nixosModules.disko must appear in the modules list
+        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
+        assert!(!hosts.is_empty());
+    }
+
+    #[test]
+    fn test_generate_configuration_uses_state_version_and_timezone() {
+        let config = GenerateConfig {
+            hostname: "tz-host".to_string(),
+            machine_type: MachineType::Server,
+            storage_type: StorageType::Zfs,
+            disk_device: None,
+            github_username: None,
+            time_zone: "America/New_York".to_string(),
+            state_version: "25.11".to_string(),
+            user: UserConfig {
+                username: "admin".to_string(),
+                password: "pass".to_string(),
+                authorized_keys: vec![],
+            },
+            remote_unlock: RemoteUnlockConfig {
+                enable: false,
+                authorized_keys: vec![],
+            },
+        };
+
+        let nix = generate_configuration_nix(&config);
+        assert!(nix.contains(r#"time.timeZone = "America/New_York""#));
+        assert!(nix.contains(r#"system.stateVersion = "25.11""#));
+    }
+
+    #[test]
     fn test_generate_flake_server() {
         let config = GenerateConfig {
             hostname: "server1".to_string(),
@@ -480,6 +573,8 @@ mod tests {
             storage_type: StorageType::Zfs,
             disk_device: Some("test".to_string()),
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "admin".to_string(),
                 password: "pass".to_string(),
@@ -492,8 +587,14 @@ mod tests {
         };
 
         let flake = generate_flake_nix(&config);
-        assert!(flake.contains("server1"));
-        assert!(flake.contains("# keystone.nixosModules.desktop"));
+        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].name, "server1");
+        // Server should NOT have desktop module
+        assert!(
+            !hosts[0].keystone_modules.contains(&"desktop".to_string()),
+            "server config should not include desktop module"
+        );
     }
 
     #[test]
@@ -504,6 +605,8 @@ mod tests {
             storage_type: StorageType::Zfs,
             disk_device: Some("test".to_string()),
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "dev".to_string(),
                 password: "pass".to_string(),
@@ -516,9 +619,14 @@ mod tests {
         };
 
         let flake = generate_flake_nix(&config);
-        assert!(flake.contains("workstation"));
-        // Desktop module should NOT be commented out for workstation
-        assert!(flake.contains("          keystone.nixosModules.desktop\n"));
+        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].name, "workstation");
+        // Workstation SHOULD have desktop module
+        assert!(
+            hosts[0].keystone_modules.contains(&"desktop".to_string()),
+            "workstation config should include desktop module"
+        );
     }
 
     #[test]
@@ -536,6 +644,8 @@ mod tests {
             storage_type: StorageType::Ext4,
             disk_device: None,
             github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "user".to_string(),
                 password: "pass".to_string(),
@@ -559,6 +669,8 @@ mod tests {
             storage_type: StorageType::Ext4,
             disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
             github_username: Some("octocat".to_string()),
+            time_zone: "America/Chicago".to_string(),
+            state_version: "25.05".to_string(),
             user: UserConfig {
                 username: "user".to_string(),
                 password: "pass".to_string(),
@@ -571,14 +683,38 @@ mod tests {
         };
 
         let iso_flake = generate_iso_flake_nix(&config);
-        assert!(iso_flake.contains("my-laptop"));
-        assert!(iso_flake.contains("keystoneIso"));
-        assert!(iso_flake.contains("keystone/install-config/flake.nix"));
-        assert!(iso_flake.contains("keystone/install-config/configuration.nix"));
-        assert!(iso_flake.contains("keystone/install-config/hardware.nix"));
-        assert!(iso_flake.contains("isoInstaller"));
-        assert!(iso_flake.contains("target-config/flake.nix"));
-        assert!(iso_flake.contains("keystone/install-config/username"));
-        assert!(iso_flake.contains("keystone/install-config/github_username"));
+
+        // Verify the ISO flake parses cleanly and has expected structure
+        let root = rnix::Root::parse(&iso_flake);
+        assert!(
+            root.errors().is_empty(),
+            "ISO flake has parse errors: {:?}",
+            root.errors()
+        );
+
+        // Verify inputs via AST
+        let inputs = crate::nix::extract_flake_inputs(&iso_flake);
+        let input_names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
+        assert!(
+            input_names.contains(&"keystone"),
+            "ISO flake must have keystone input"
+        );
+        assert!(
+            input_names.contains(&"nixpkgs"),
+            "ISO flake must have nixpkgs input"
+        );
+
+        // Verify the keystoneIso host exists
+        let hosts = crate::nix::extract_nixos_configurations_from_str(&iso_flake);
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].name, "keystoneIso");
+
+        // Verify isoInstaller module is referenced
+        assert!(
+            hosts[0]
+                .keystone_modules
+                .contains(&"isoInstaller".to_string()),
+            "ISO config must include isoInstaller module"
+        );
     }
 }

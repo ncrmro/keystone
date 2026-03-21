@@ -1,5 +1,6 @@
 pub mod build;
 pub mod create_config;
+pub mod deploy;
 pub mod first_boot;
 pub mod host_detail;
 pub mod hosts;

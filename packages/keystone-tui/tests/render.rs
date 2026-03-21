@@ -60,12 +60,14 @@ fn test_render_hosts_list() {
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec!["operating-system".to_string()],
             config_files: vec![],
+            metadata: None,
         },
         HostInfo {
             name: "server".to_string(),
             system: Some("x86_64-linux".to_string()),
             keystone_modules: vec!["operating-system".to_string()],
             config_files: vec![],
+            metadata: None,
         },
     ];
     let mut screen = HostsScreen::new("my-infra".to_string(), hosts);
@@ -86,6 +88,7 @@ fn test_render_host_detail() {
             "./configuration.nix".to_string(),
             "./hardware.nix".to_string(),
         ],
+        metadata: None,
     };
     let screen = HostDetailScreen::new(host);
     let output = render_to_string(60, 18, |frame| {
@@ -142,6 +145,7 @@ fn make_dashboard_statuses() -> Vec<HostStatus> {
                 system: Some("x86_64-linux".to_string()),
                 keystone_modules: vec!["operating-system".to_string()],
                 config_files: vec![],
+                metadata: None,
             },
             tailscale: Some(TailscalePeer {
                 hostname: "laptop".to_string(),
@@ -194,6 +198,7 @@ fn make_dashboard_statuses() -> Vec<HostStatus> {
                 system: Some("x86_64-linux".to_string()),
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             tailscale: Some(TailscalePeer {
                 hostname: "server".to_string(),
@@ -211,6 +216,7 @@ fn make_dashboard_statuses() -> Vec<HostStatus> {
                 system: Some("aarch64-linux".to_string()),
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             tailscale: Some(TailscalePeer {
                 hostname: "rpi".to_string(),
@@ -260,6 +266,7 @@ fn test_render_dashboard_no_tailscale() {
                 system: Some("x86_64-linux".to_string()),
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             tailscale: None,
             metrics: None,
@@ -271,6 +278,7 @@ fn test_render_dashboard_no_tailscale() {
                 system: Some("x86_64-linux".to_string()),
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             tailscale: None,
             metrics: None,

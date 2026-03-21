@@ -67,6 +67,7 @@ archetypes:
       - process.project-board
       - process.refactor
       - code.shell-scripts
+      - code.tui-screenshots
       - tool.bitwarden
       - tool.forgejo
       - tool.himalaya

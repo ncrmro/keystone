@@ -514,12 +514,14 @@ mod tests {
                 system: Some("x86_64-linux".to_string()),
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             HostInfo {
                 name: "server".to_string(),
                 system: Some("x86_64-linux".to_string()),
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
         ];
 
@@ -565,6 +567,7 @@ mod tests {
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
+            metadata: None,
         }];
 
         let statuses = match_hosts_to_peers(&hosts, None);
@@ -582,12 +585,14 @@ mod tests {
                 system: None,
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
             HostInfo {
                 name: "remote-box".to_string(),
                 system: None,
                 keystone_modules: vec![],
                 config_files: vec![],
+                metadata: None,
             },
         ];
 
