@@ -192,6 +192,7 @@ in
     ./immich.nix
     ./tailscale.nix
     ./containers.nix
+    ./journal-remote.nix
   ];
 
   options.keystone.os = {
