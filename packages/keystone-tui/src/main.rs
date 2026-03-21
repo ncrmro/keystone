@@ -9,6 +9,7 @@
 use std::io;
 
 use anyhow::Result;
+use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event},
     execute,
@@ -24,6 +25,7 @@ mod input;
 mod nix;
 mod repo;
 mod screens;
+mod ssh_keys;
 mod system;
 mod template;
 mod ui;
@@ -32,6 +34,19 @@ use app::{App, AppScreen};
 use input::{dispatch_key, handle_action, AppAction};
 use screens::first_boot::FirstBootConfig;
 use screens::install::InstallerConfig;
+
+/// Keystone TUI — NixOS infrastructure configuration and management.
+#[derive(Parser)]
+#[command(name = "keystone-tui", version, about)]
+struct Cli {
+    /// Generate config from JSON on stdin instead of launching the TUI.
+    ///
+    /// Expects a JSON object with fields: hostname, machine_type ("server"|"workstation"|"laptop"),
+    /// storage_type ("zfs"|"ext4"), username, password, and optionally: disk_device, github_username,
+    /// time_zone, state_version.
+    #[arg(long)]
+    json: bool,
+}
 
 /// Set up the terminal for TUI rendering.
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
@@ -57,6 +72,12 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Re
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    if cli.json {
+        return run_json_mode().await;
+    }
+
     // Set up panic hook to restore terminal on panic
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -86,6 +107,76 @@ async fn main() -> Result<()> {
     app.save_config().await;
 
     result
+}
+
+/// Non-interactive JSON mode: read config from stdin, generate files, print output path.
+async fn run_json_mode() -> Result<()> {
+    let input = io::read_to_string(io::stdin())?;
+    let json: serde_json::Value = serde_json::from_str(&input)?;
+
+    let hostname = json["hostname"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'hostname' field"))?
+        .to_string();
+
+    let machine_type = match json["machine_type"].as_str().unwrap_or("server") {
+        "workstation" => template::MachineType::Workstation,
+        "laptop" => template::MachineType::Laptop,
+        _ => template::MachineType::Server,
+    };
+
+    let storage_type = match json["storage_type"].as_str().unwrap_or("zfs") {
+        "ext4" => template::StorageType::Ext4,
+        _ => template::StorageType::Zfs,
+    };
+
+    let username = json["username"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'username' field"))?
+        .to_string();
+
+    let password = json["password"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'password' field"))?
+        .to_string();
+
+    let disk_device = json["disk_device"].as_str().map(|s| s.to_string());
+    let github_username = json["github_username"].as_str().map(|s| s.to_string());
+    let time_zone = json["time_zone"]
+        .as_str()
+        .unwrap_or("UTC")
+        .to_string();
+    let state_version = json["state_version"]
+        .as_str()
+        .unwrap_or("25.05")
+        .to_string();
+
+    // Fetch GitHub SSH keys if username provided
+    let authorized_keys = if let Some(ref gh) = github_username {
+        github::fetch_ssh_keys(gh).await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    // Also detect local SSH keys
+    let mut all_keys = authorized_keys;
+    all_keys.extend(ssh_keys::detect_local_ssh_keys());
+
+    let repo = repo::create_new_repo_from_config(
+        hostname.clone(),
+        machine_type,
+        hostname,
+        storage_type,
+        disk_device,
+        username,
+        password,
+        github_username,
+        all_keys,
+    )
+    .await?;
+
+    println!("{}", repo.path.display());
+    Ok(())
 }
 
 /// Main application loop. Generic over backend so tests can use TestBackend.
