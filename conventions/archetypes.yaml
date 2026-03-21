@@ -32,26 +32,43 @@
 # instructions to the LLM.
 
 archetypes:
+  # Default archetype for any user or agent on a keystone NixOS host.
+  # Minimal footprint — just host orientation and links to everything else.
+  keystone-system-host:
+    description: "NixOS host — Nix devshells, direnv, declarative config"
+    inlined_conventions:
+      - process.version-control
+    referenced_conventions:
+      - os.requirements
+      - tool.nix-devshell
+      - tool.nix
+      - code.shell-scripts
+      - tool.bitwarden
+      - tool.himalaya
+      - tool.forgejo
+      - tool.github
+      - tool.zk
+
   engineer:
     description: "Engineering agents — implementation, code review, architecture"
     inlined_conventions:
       - process.version-control
-      - process.feature-delivery
-      - process.continuous-integration
-      - process.copilot-agent
-      - tool.nix-devshell
     referenced_conventions:
       - os.requirements
       - process.agent-cronjobs
       - process.blocker
       - process.code-review-ownership
+      - process.continuous-integration
+      - process.copilot-agent
       - process.deepwork-job
+      - process.feature-delivery
       - process.project-board
       - process.refactor
       - code.shell-scripts
       - tool.bitwarden
       - tool.forgejo
       - tool.himalaya
+      - tool.nix-devshell
       - process.version-control-advanced
       - tool.github
       - tool.journal-remote
