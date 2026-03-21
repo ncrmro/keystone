@@ -290,14 +290,6 @@ in
               description = "Systemd calendar spec for scheduler timer. Default: daily at 5 AM.";
             };
           };
-
-          zk = {
-            enable = mkOption {
-              type = types.bool;
-              default = true;
-              description = "Enable zk Zettelkasten notebook scaffolding in the agent's notes repo.";
-            };
-          };
         };
 
         mcp = {
