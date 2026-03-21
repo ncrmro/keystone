@@ -17,7 +17,7 @@ while IFS= read -r line; do
   [[ -z "$line" ]] && continue
   name=$(echo "$line" | awk '{print $1}')
   if [[ "$name" == "${SESSION_PREFIX}-"* ]]; then
-    slug="${name#${SESSION_PREFIX}-}"
+    slug="${name#"${SESSION_PREFIX}"-}"
     if echo "$line" | grep -q "EXITED"; then
       SESSION_MAP["$slug"]="exited"
     else

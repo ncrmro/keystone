@@ -46,7 +46,7 @@ show_contexts_menu() {
     [[ -z "$line" ]] && continue
     name=$(echo "$line" | awk '{print $1}')
     if [[ "$name" == "${SESSION_PREFIX}-"* ]]; then
-      slug="${name#${SESSION_PREFIX}-}"
+      slug="${name#"${SESSION_PREFIX}"-}"
       if ! echo "$line" | grep -q "EXITED"; then
         context_list="${context_list}●  ${slug}\n"
       fi
