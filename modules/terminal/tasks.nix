@@ -11,8 +11,8 @@
 # A wrapper script resolves the password command at launch time and writes a
 # temporary config, avoiding permanent plaintext password storage on disk.
 #
-# Implements REQ-021 (cfait CalDAV Task Manager)
-# See specs/REQ-021-cfait-tasks/requirements.md
+# Implements REQ-022 (cfait CalDAV Task Manager)
+# See specs/REQ-022-cfait-tasks/requirements.md
 #
 # ## Stalwart (self-hosted) Example
 #
@@ -53,25 +53,25 @@ let
   # and writes a temporary config. This avoids storing plaintext passwords
   # on disk permanently — cfait only supports plaintext password in config.
   cfait-wrapped = pkgs.writeShellScriptBin "cfait" ''
-    set -euo pipefail
+        set -euo pipefail
 
-    CFAIT_CONFIG_DIR="''${XDG_CONFIG_HOME:-$HOME/.config}/cfait"
-    CFAIT_CONFIG="$CFAIT_CONFIG_DIR/config.toml"
+        CFAIT_CONFIG_DIR="''${XDG_CONFIG_HOME:-$HOME/.config}/cfait"
+        CFAIT_CONFIG="$CFAIT_CONFIG_DIR/config.toml"
 
-    mkdir -p "$CFAIT_CONFIG_DIR"
+        mkdir -p "$CFAIT_CONFIG_DIR"
 
-    # Resolve password via command
-    CFAIT_PASSWORD="$(${cfg.passwordCommand})"
+        # Resolve password via command
+        CFAIT_PASSWORD="$(${cfg.passwordCommand})"
 
-    # Write config with resolved password (mode 0600 for security)
-    install -m 0600 /dev/null "$CFAIT_CONFIG"
-    cat > "$CFAIT_CONFIG" <<TOML
+        # Write config with resolved password (mode 0600 for security)
+        install -m 0600 /dev/null "$CFAIT_CONFIG"
+        cat > "$CFAIT_CONFIG" <<TOML
     url = "${calDavUrl}"
     username = "${cfg.login}"
     password = "$CFAIT_PASSWORD"
     TOML
 
-    exec ${pkgs.keystone.cfait}/bin/cfait "$@"
+        exec ${pkgs.keystone.cfait}/bin/cfait "$@"
   '';
 in
 {
