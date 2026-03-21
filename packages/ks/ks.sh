@@ -144,7 +144,7 @@ push_keystone_with_fork_fallback() {
   local remote_url
   remote_url=$(git -C "$ks_path" remote get-url origin 2>/dev/null) || return 1
   local owner_repo
-  owner_repo=$(echo "$remote_url" | sed -E 's|.*[:/]([^/]+/[^/]+?)(\.git)?$|\1|')
+  owner_repo=$(echo "$remote_url" | sed -E 's|.*[:/]([^/]+/[^/]+)$|\1|' | sed 's|\.git$||')
 
   if ! command -v gh >/dev/null 2>&1; then
     echo "Warning: gh CLI not found. Attempting direct push..." >&2
