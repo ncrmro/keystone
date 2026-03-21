@@ -83,6 +83,8 @@ agentctl luce journalctl -u agent-luce-scheduler -n 20
 agentctl luce start agent-luce-task-loop
 ```
 
+For fleet-wide journal queries across all hosts, see `tool.journal-remote`.
+
 Alloy/Loki integration extracts `[step=X]` labels from structured log tags for observability dashboards.
 
 ## Source Reference
