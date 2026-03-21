@@ -26,7 +26,7 @@ let
       "${pkgs.path}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
       ../../modules/iso-installer.nix
       {
-        _module.args.sshKeys = [];
+        _module.args.sshKeys = [ ];
         # Match the kernel override from flake.nix
         boot.kernelPackages = lib.mkForce pkgs.linuxPackages_6_12;
       }
@@ -42,7 +42,7 @@ let
     sshEnabled = isoEval.config.services.openssh.enable;
     # boot.supportedFilesystems is an attrset in nixos-unstable (e.g. { zfs = true; })
     zfsSupport = isoEval.config.boot.supportedFilesystems.zfs or false;
-    flakesEnabled = builtins.elem "flakes" isoEval.config.nix.settings.experimental-features;
+    # Note: flakes are enabled by keystone.os (not iso-installer), so not checked here
     networkManager = isoEval.config.networking.networkmanager.enable;
     hostId = isoEval.config.networking.hostId != "";
   };
@@ -50,21 +50,26 @@ let
   # Fail the build if any check is false
   failedChecks = lib.filterAttrs (_: v: !v) configChecks;
 in
-pkgs.runCommand "test-iso-evaluation" {} ''
+pkgs.runCommand "test-iso-evaluation" { } ''
   echo "ISO installer evaluation tests"
   echo "=============================="
   echo ""
-  ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: passed:
-    if passed
-    then "echo '  PASS: ${name}'"
-    else "echo '  FAIL: ${name}' && exit 1"
-  ) configChecks)}
+  ${lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (
+      name: passed: if passed then "echo '  PASS: ${name}'" else "echo '  FAIL: ${name}' && exit 1"
+    ) configChecks
+  )}
   echo ""
-  ${if failedChecks == {} then ''
-    echo "All ISO evaluation checks passed!"
-  '' else ''
-    echo "FAILED checks: ${builtins.concatStringsSep ", " (builtins.attrNames failedChecks)}"
-    exit 1
-  ''}
+  ${
+    if failedChecks == { } then
+      ''
+        echo "All ISO evaluation checks passed!"
+      ''
+    else
+      ''
+        echo "FAILED checks: ${builtins.concatStringsSep ", " (builtins.attrNames failedChecks)}"
+        exit 1
+      ''
+  }
   touch $out
 ''

@@ -21,6 +21,9 @@
   keystone.os = {
     enable = true;
 
+    # Disable Tailscale for VM testing (no keystone.hosts registry available)
+    tailscale.enable = false;
+
     # Storage configuration with ZFS and encryption
     storage = {
       type = "zfs";

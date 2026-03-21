@@ -1423,6 +1423,10 @@
     },
     "root": {
       "inputs": {
+        "agenix": [
+          "keystone",
+          "agenix"
+        ],
         "disko": [
           "keystone",
           "disko"
