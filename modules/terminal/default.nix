@@ -35,6 +35,7 @@ in
     ./cli-coding-agent-configs.nix
     ./conventions.nix
     ./claude-code-commands.nix
+    ./perception.nix
   ];
 
   options.keystone.terminal = {
