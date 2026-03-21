@@ -173,29 +173,82 @@ impl InstallerConfig {
         Ok(())
     }
 
-    /// Extract storage type and disk device from configuration.nix via simple pattern matching.
+    /// Extract storage type and disk device from configuration.nix via rnix AST.
     fn parse_configuration_nix(config_dir: &Path) -> Option<(Option<String>, Option<String>)> {
         let content = std::fs::read_to_string(config_dir.join("configuration.nix")).ok()?;
+        let root = rnix::Root::parse(&content);
+        let syntax = root.syntax();
 
-        let storage_type = content
-            .lines()
-            .find(|l| l.contains("type =") && !l.contains("machine_type"))
-            .and_then(|l| {
-                let start = l.find('"')? + 1;
-                let end = l[start..].find('"')? + start;
-                Some(l[start..end].to_string())
-            });
+        let mut storage_type = None;
+        let mut disk_device = None;
 
-        let disk_device = content
-            .lines()
-            .find(|l| l.contains("/dev/disk/by-id/") || l.contains("__KEYSTONE_DISK__"))
-            .and_then(|l| {
-                let start = l.find('"')? + 1;
-                let end = l[start..].find('"')? + start;
-                Some(l[start..end].to_string())
-            });
+        // Walk the AST looking for `storage.type = "..."` and `storage.devices = [ "..." ]`
+        for node in syntax.descendants() {
+            if node.kind() != rnix::SyntaxKind::NODE_ATTRPATH_VALUE {
+                continue;
+            }
+
+            let path_text = Self::attr_path_text(&node);
+
+            // Match `type` inside a `storage` context (storage.type = "zfs")
+            if path_text.ends_with(".type") || path_text == "type" {
+                if let Some(val) = Self::extract_string_literal(&node) {
+                    if val == "zfs" || val == "ext4" {
+                        storage_type = Some(val);
+                    }
+                }
+            }
+
+            // Match `devices` inside storage — extract first element of the list
+            if path_text.ends_with(".devices") || path_text == "devices" {
+                for descendant in node.descendants() {
+                    if descendant.kind() == rnix::SyntaxKind::NODE_LIST {
+                        // Get the first string in the list
+                        for child in descendant.children() {
+                            if child.kind() == rnix::SyntaxKind::NODE_STRING {
+                                let text = child.text().to_string();
+                                let trimmed = text.trim_matches('"');
+                                if !trimmed.is_empty() {
+                                    disk_device = Some(trimmed.to_string());
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
 
         Some((storage_type, disk_device))
+    }
+
+    /// Get the dot-joined attribute path text from a NODE_ATTRPATH_VALUE.
+    fn attr_path_text(node: &rnix::SyntaxNode) -> String {
+        node.children()
+            .find(|n| n.kind() == rnix::SyntaxKind::NODE_ATTRPATH)
+            .map(|ap| {
+                ap.children()
+                    .filter(|n| n.kind() == rnix::SyntaxKind::NODE_IDENT)
+                    .map(|n| n.text().to_string())
+                    .collect::<Vec<_>>()
+                    .join(".")
+            })
+            .unwrap_or_default()
+    }
+
+    /// Extract a string literal value from a NODE_ATTRPATH_VALUE node.
+    fn extract_string_literal(node: &rnix::SyntaxNode) -> Option<String> {
+        for descendant in node.descendants() {
+            if descendant.kind() == rnix::SyntaxKind::NODE_STRING {
+                let text = descendant.text().to_string();
+                let trimmed = text.trim_matches('"');
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+        None
     }
 
     /// Replace the disk placeholder in the writable configuration.nix.
