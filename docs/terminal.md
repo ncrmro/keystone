@@ -129,11 +129,10 @@ The conventions module writes keystone conventions to each CLI coding tool's nat
 ```nix
 keystone.terminal.conventions = {
   enable = true;            # Default: true
-  archetype = "engineer";   # Default: "engineer"
 };
 ```
 
-The `archetype` option controls which convention set is applied. See `conventions/tool.cli-coding-agents.md` for details on each tool's file discovery.
+The archetype (set per-agent via `keystone.os.agents.<name>.archetype`, default `"engineer"`) controls which convention set is inlined vs referenced. See `conventions/tool.cli-coding-agents.md` for details on each tool's file discovery.
 
 ## DeepWork
 

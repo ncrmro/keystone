@@ -163,6 +163,7 @@ OS agents are user accounts provisioned via `keystone.os.agents.<name>`. Each ag
 keystone.os.agents.drago = {
   uid = null;                    # Auto-assign from 4000+ range
   host = "ncrmro-workstation";   # Where resources are created (feature filtering)
+  archetype = "engineer";        # Convention archetype (engineer, product)
   fullName = "Drago";
   email = "agent-drago@example.com";
 
@@ -554,11 +555,10 @@ Bitwarden CLI (`rbw`) for password management. Uses `pinentry-gnome3` by default
 ```nix
 keystone.terminal.conventions = {
   enable = true;            # Default: true
-  archetype = "engineer";   # Default: "engineer"
 };
 ```
 
-Writes keystone conventions to each CLI coding tool's native instruction file (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`) at build time. The archetype controls which convention set is applied. See `conventions/tool.cli-coding-agents.md`.
+Writes keystone conventions to each CLI coding tool's native instruction file (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`) at build time. The archetype (set per-agent via `keystone.os.agents.<name>.archetype`) controls which convention set is applied. See `conventions/tool.cli-coding-agents.md`.
 
 ### DeepWork
 
