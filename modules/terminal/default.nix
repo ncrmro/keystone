@@ -25,6 +25,7 @@ in
     ./calendar.nix
     ./contacts.nix
     ./timer.nix
+    ./tasks.nix
     ./agent-mail.nix
     ./sandbox.nix
     ./secrets.nix
