@@ -84,6 +84,7 @@ archetypes:
       # Used when the agent is strictly reviewing PRs authored by others (or subagents).
       # Focuses on finding flaws, security issues, and style violations rather than writing code.
       code-reviewer:
+        description: "Reviews PRs for correctness, security, and style — does not write code"
         conventions:
           - process.code-review-ownership
           - process.continuous-integration
@@ -98,6 +99,7 @@ archetypes:
       # The primary role for writing code, fixing bugs, and executing technical tasks.
       # Serves as the core implementation subagent.
       software-engineer:
+        description: "Writes code, fixes bugs, and executes technical implementation tasks"
         conventions:
           - process.blocker
           - process.continuous-integration
@@ -115,6 +117,7 @@ archetypes:
       # Used for high-level system design, evaluating trade-offs, and writing technical specs.
       # Focuses on structure and dependencies before implementation begins.
       architect:
+        description: "Designs system architecture, evaluates trade-offs, and writes technical specs"
         conventions:
           - process.feature-delivery
           - process.pull-request
@@ -125,6 +128,7 @@ archetypes:
       # Role: project-manager
       # Used for breaking down large issues, epics, or specs into actionable, sequential tasks.
       project-manager:
+        description: "Breaks down large issues and specs into actionable, sequential tasks for engineering"
         conventions:
           - process.feature-delivery
           - process.project-board
@@ -134,15 +138,17 @@ archetypes:
       # Role: task-decomposer
       # A supplementary subagent role used specifically to chunk work into smaller PRs.
       task-decomposer:
+        description: "Chunks work into smaller PRs and sequential sub-tasks"
         conventions:
           - process.feature-delivery
           - tool.forgejo
           - process.task-tracking
-          
+
       # Role: default
       # The default "idle" or administrative role. Used for checking email, triaging notifications,
       # running scheduled cronjobs, and managing the agent's internal state.
       default:
+        description: "Administrative role: email triage, notifications, and agent state management"
         conventions:
           - tool.bitwarden
           - process.claude-sessions
@@ -173,6 +179,7 @@ archetypes:
       # Role: business-analyst
       # Used for evaluating market opportunities, competitor products, and defining KPIs.
       business-analyst:
+        description: "Evaluates market opportunities, competitor products, and defines KPIs"
         conventions:
           - process.competitive-analysis
           - tool.himalaya
@@ -182,6 +189,7 @@ archetypes:
       # Used specifically for drafting and refining "Working Backwards" style press releases
       # which serve as the primary handoff mechanism to engineering.
       press-release-writer:
+        description: "Drafts and refines Working Backwards press releases as the engineering handoff"
         conventions:
           - process.press-release
           - tool.forgejo
@@ -190,6 +198,7 @@ archetypes:
       # Used for taking an approved press release and turning it into milestones and user stories
       # to be published on the git service for engineering consumption.
       project-manager:
+        description: "Turns approved press releases into milestones and user stories for engineering"
         conventions:
           - process.project-board
           - tool.forgejo
@@ -198,11 +207,13 @@ archetypes:
       # Role: task-decomposer
       # A supplementary subagent role used specifically to chunk work.
       task-decomposer:
+        description: "Chunks work into smaller deliverables and sequential tasks"
         conventions:
           - tool.forgejo
           - process.task-tracking
-          
+
       # Role: designer
       # Used to review UX/UI proposals, user flows, and ensure alignment with the product vision.
       designer:
+        description: "Reviews UX/UI proposals and ensures alignment with the product vision"
         conventions: []
