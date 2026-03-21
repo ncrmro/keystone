@@ -4,6 +4,7 @@
 # Implements REQ-007 (OS Agents)
 # See specs/REQ-017-conventions-grafana-mcp/requirements.md (REQ-017.9: Grafana MCP options)
 # See specs/REQ-018-repo-management/requirements.md (agent notes path default)
+# See specs/REQ-023-perception-layer/requirements.md (REQ-023.34: perception options)
 # See conventions/os.requirements.md
 {
   lib,
@@ -315,6 +316,119 @@ in
             );
             default = { };
             description = "Additional MCP servers to configure for this agent.";
+          };
+        };
+
+        # Perception layer: document parsing, voice transcription, photo search,
+        # screenshot syncing, contact linking, and activity reconstruction.
+        # See specs/REQ-023-perception-layer/requirements.md
+        perception = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Enable perception layer for this agent (PDF parsing, voice transcription, photo search, screenshot sync, contact linking, activity summaries).";
+          };
+
+          pdf = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable PDF-to-markdown conversion with bounding box citations.";
+            };
+
+            inputDir = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Watch directory for PDFs. Defaults to ~/documents/inbox.";
+            };
+
+            outputDir = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Output directory for parsed markdown + bbox JSON. Defaults to ~/documents/parsed.";
+            };
+          };
+
+          voice = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable local voice transcription via whisper.cpp.";
+            };
+
+            inputDir = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Watch directory for audio files. Defaults to ~/voice/inbox.";
+            };
+
+            outputDir = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Output directory for transcripts. Defaults to ~/voice/transcripts.";
+            };
+
+            model = mkOption {
+              type = types.enum [
+                "tiny"
+                "base"
+                "small"
+                "medium"
+                "large"
+              ];
+              default = "base";
+              description = "Whisper model size. Larger models are more accurate but slower.";
+            };
+          };
+
+          screenshots = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable screenshot syncing to Immich for ML indexing.";
+            };
+
+            syncOnCalendar = mkOption {
+              type = types.str;
+              default = "*:0/5";
+              description = "Systemd calendar expression for screenshot sync interval.";
+            };
+          };
+
+          search = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable Immich photo/screenshot search CLI.";
+            };
+          };
+
+          contacts = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable face-to-contact linking via Immich + CardDAV.";
+            };
+          };
+
+          processor = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable activity reconstruction and notes sync.";
+            };
+
+            onCalendar = mkOption {
+              type = types.str;
+              default = "*:0/30";
+              description = "Systemd calendar expression for perception processor interval.";
+            };
+
+            useOllama = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Use local Ollama for natural-language summaries and transcript correction.";
+            };
           };
         };
       };
