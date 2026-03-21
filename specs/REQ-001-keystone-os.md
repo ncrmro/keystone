@@ -144,6 +144,16 @@ The system MUST enforce a clear partition between human users, service accounts,
 - The system MUST ensure that UIDs are assigned deterministically within these ranges to maintain stable file ownership across deployments.
 - A NixOS assertion SHOULD verify that no UID collisions exist between these partitions.
 
+### FR-014: Host-Level Feature Flags
+
+Feature flags that affect multiple modules MUST be declared at the highest appropriate level and passed through to lower levels.
+
+- Host-scoped flags (e.g., `devMode`) MUST be declared in `keystone.hosts.<host>` as the single source of truth
+- NixOS modules MUST read the flag from `keystone.hosts` and pass it through to home-manager modules via a terminal-level option (e.g., `keystone.terminal.devMode`)
+- Individual submodules (e.g., `deepwork.nix`) MUST NOT declare their own copy of a host-level flag; they MUST read from the pass-through option
+- A single declaration in the consumer config (e.g., `devMode = true` on a workstation host) MUST flow through to every module that depends on the flag
+- This avoids duplication, prevents divergence between modules, and ensures all modules agree on the host's mode
+
 ## Non-Functional Requirements
 
 ### NFR-001: Reproducibility
