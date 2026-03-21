@@ -71,7 +71,7 @@ cmd_list() {
     name=$(echo "$line" | awk '{print $1}')
     # Filter to only sessions starting with the project prefix
     if [[ "$name" == "${SESSION_PREFIX}-"* ]]; then
-      local slug="${name#${SESSION_PREFIX}-}"
+      local slug="${name#"${SESSION_PREFIX}"-}"
       # Extract status if present in the line, otherwise mark as active
       if echo "$line" | grep -q "EXITED"; then
         status="exited"
