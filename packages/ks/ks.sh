@@ -345,6 +345,17 @@ pull_repo() {
   fi
 
   if [[ -e "$target/.git" ]]; then
+    # Detect detached HEAD and recover by switching to the default branch before pulling
+    if ! git -C "$target" symbolic-ref HEAD >/dev/null 2>&1; then
+      local default_branch
+      default_branch=$(git -C "$target" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+      default_branch="${default_branch:-main}"
+      echo "Warning: $name is in detached HEAD state, switching to $default_branch..." >&2
+      git -C "$target" checkout "$default_branch" || {
+        echo "Error: failed to checkout $default_branch in $name" >&2
+        return 1
+      }
+    fi
     echo "Pulling $name..."
     git -C "$target" pull --ff-only
   else
