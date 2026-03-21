@@ -34,10 +34,6 @@ Take the user-provided project name and feature brief, then build a structured c
    - Claims MUST NOT exceed what the planned feature set can deliver
    - Each claim should be something the development team can build toward
 
-6. **Draft a customer quote direction**
-   - What would a fictional customer say about this?
-   - What value would they articulate?
-
 If the feature brief is ambiguous about the customer segment, the problem being solved, or the scope of what will be built, ask structured questions to resolve the ambiguity before proceeding.
 
 ## Output Format
@@ -70,10 +66,6 @@ A structured markdown document that provides all the raw material needed to writ
 - [Claim 2]
 - [Claim 3]
 
-## Customer Quote Direction
-- **Fictional persona**: [name, title, company type]
-- **Value they'd articulate**: [the benefit in their own words]
-
 ## Call to Action
 [How the customer gets started — sign up, visit a page, try a demo, etc.]
 
@@ -105,10 +97,6 @@ Amazon S3 provides a simple web services interface to store and retrieve any amo
 - Simple web services interface (REST/SOAP)
 - Same infrastructure Amazon uses for its own sites
 - Pay only for what you use
-
-## Customer Quote Direction
-- **Fictional persona**: Sarah Chen, CTO, PhotoStream (photo sharing startup)
-- **Value they'd articulate**: "We stopped worrying about storage and started building features our users actually want."
 
 ## Call to Action
 Sign up for the Amazon S3 beta at aws.amazon.com/s3.

@@ -28,39 +28,38 @@ Read the context brief from the previous step and the conventions at `.agents/co
 4. **Write the opening paragraph**
    - Answer: who is the customer, what can they now do, why does it matter
    - Present tense, as if the product is launched
+   - Do NOT include a city dateline (e.g., "San Francisco, CA —") unless the user explicitly requests one
 
-5. **Write the problem paragraph**
-   - This MUST come before the solution paragraph
-   - Draw from the Problem section of the context brief
-   - Be specific and concrete about what customers struggled with
+5. **Write the body — succinct, semi-terse structure**
+   The press release body follows this flow: **current state → why this → how → what**
+   - **Current state**: What the customer struggles with today (the problem)
+   - **Why this**: Why this matters now — the motivation for building it
+   - **How**: How the product solves the problem (customer outcomes, not technical implementation)
+   - **What**: Key features at a high level, staying within the claims from the context brief
+   - Keep each section to 1-3 sentences. Be direct. No filler.
 
-6. **Write the solution paragraph**
-   - Explain how the product solves the problem
-   - Focus on customer outcomes, not technical implementation
-   - No internal metrics or architecture details
+6. **Include ASCII art mockup**
+   - If the product has a UI (TUI, GUI, CLI output, web page), include an ASCII art mockup showing the key interaction
+   - The mockup should show the product in use with realistic data — not empty states
+   - Use box-drawing characters (`┌ ─ ┐ │ └ ┘ ├ ┤ ┬ ┴ ┼`) for structure
+   - Place the mockup between the body and the call to action
+   - If the product has no visual interface (e.g., a library or API), omit the mockup
 
-7. **Write the customer quote**
-   - Use the quote direction from the context brief
-   - The quote should articulate the value in the customer's own words
-   - Include fictional name, title, and company
-
-8. **Write the details paragraph**
-   - Cover key features at a high level
-   - Stay within the claims defined in the context brief
-
-9. **Write the call to action**
+7. **Write the call to action**
    - How the customer gets started
    - Be specific — a URL, a signup flow, a command
 
-10. **Optional: Write FAQ**
-    - Anticipate 2-3 objections or questions
-    - Keep answers concise
+8. **Optional: Write FAQ**
+   - Anticipate 2-3 objections or questions
+   - Keep answers concise
 
-11. **Final check**
-    - Verify word count is 400-600 words
-    - Verify present tense throughout
-    - Verify no jargon, internal metrics, or implementation details
-    - Verify claims match the context brief's key claims
+9. **Final check**
+   - Verify word count is 300-500 words (aim for concise)
+   - Verify present tense throughout
+   - Verify no jargon, internal metrics, or implementation details
+   - Verify claims match the context brief's key claims
+   - Verify NO fictional customer quotes are included
+   - Verify NO city dateline is included (unless user requested one)
 
 ## Output Format
 
@@ -72,16 +71,19 @@ The finished press release in MDX format. Save to `posts/press_releases/` in the
 ```mdx
 ## [Headline: Customer Benefit in Plain Language]
 
-**[City, Date]** — [Opening paragraph: who the customer is, what they can now do, why it matters]
+[Opening paragraph: who the customer is, what they can now do, why it matters]
 
-[Problem paragraph: what the customer struggled with before]
+**Current state**: [What the customer struggles with today — 1-3 sentences]
 
-[Solution paragraph: how the product solves it]
+**Why this**: [Why it matters now — 1-2 sentences]
 
-> "[Customer quote articulating the value]"
-> — [Fictional customer name, title, company]
+**How**: [How the product solves it — customer outcomes — 1-3 sentences]
 
-[Details paragraph: key features, how it works at a high level]
+**What**: [Key features at a high level — 1-3 sentences]
+
+```
+[ASCII art mockup showing the product in use — realistic data, box-drawing characters]
+```
 
 [Call to action: how to get started]
 
@@ -92,18 +94,25 @@ The finished press release in MDX format. Save to `posts/press_releases/` in the
   A: [Answer]
 ```
 
+**Do NOT include:**
+- City dateline (e.g., "San Francisco, CA —") — omit unless user explicitly requests
+- Fictional customer quotes — no fabricated testimonials
+
 ## Quality Criteria
 
 - The headline and opening paragraph state the customer benefit, not the feature name
-- A problem paragraph precedes the solution paragraph
+- Body follows the current state → why → how → what structure
 - The entire release is written in present tense
+- Succinct and semi-terse — no filler, no verbose marketing prose
 - No jargon, buzzwords, or internal terminology — a non-technical reader can understand it
 - The press release clearly implies what must be built to deliver the promise
-- Word count is 400-600 words
-- Includes a fictional customer quote that articulates genuine value
+- Word count is 300-500 words
 - Includes a specific call to action
 - No internal metrics or implementation details appear
 - Claims do not exceed what the context brief defines as deliverable
+- ASCII art mockup included for products with a UI (TUI, GUI, CLI, web) — shows realistic usage
+- No fictional customer quotes
+- No city dateline (unless user explicitly requested one)
 
 ## Context
 
