@@ -245,3 +245,75 @@ conventions_review:
       - Conventions referenced in archetypes.yaml that don't exist as files
     additional_context:
       unchanged_matching_files: true
+
+# =====================================================================
+# AGENTS.md Budget: Keep root AGENTS.md as a navigation index
+# Fail review if root AGENTS.md exceeds 5KB or contains inline docs.
+# =====================================================================
+agents_md_budget:
+  description: "Ensure root AGENTS.md stays within its 5KB token budget and contains only navigation, not inline documentation."
+  match:
+    include:
+      - "AGENTS.md"
+  review:
+    strategy: matches_together
+    instructions: |
+      Root AGENTS.md changed. Verify it stays within the progressive-disclosure budget.
+
+      **Budget check:**
+      Run `wc -c AGENTS.md` and report the byte count. FAIL if the file exceeds 5000 bytes.
+
+      **Content check — flag if AGENTS.md contains:**
+      - Option tables with inline values (e.g., a full Nix attribute set like `keystone.os.storage = { ... }`)
+      - CLI command listings (e.g., multi-line bash blocks showing tool usage)
+      - Prose documentation sections longer than 5 lines that describe how something works
+
+      **Content that MUST stay in AGENTS.md (do not flag):**
+      - The module navigation table
+      - The module file tree (paths only, no descriptions)
+      - The flake exports tables
+      - The packages lists
+      - The Important Notes bullet list
+      - The Keystone Config Repo section with `ks` command examples
+      - Short reference links to module AGENTS.md files and docs/
+
+      If content belongs in a module AGENTS.md, a convention, or docs/, say so explicitly
+      and name the correct destination file.
+
+# =====================================================================
+# AGENTS.md DRY: Prevent duplication between root AGENTS.md and
+# module-level AGENTS.md files, conventions/, or docs/.
+# =====================================================================
+agents_md_dry:
+  description: "Detect content in root AGENTS.md that duplicates module-level AGENTS.md files, conventions/, or docs/."
+  match:
+    include:
+      - "AGENTS.md"
+      - "modules/**/AGENTS.md"
+      - "conventions/*.md"
+      - "docs/*.md"
+  review:
+    strategy: matches_together
+    instructions: |
+      Check for DRY violations between root AGENTS.md and the module-level context files.
+
+      **Read the following files and compare:**
+      1. Root `AGENTS.md`
+      2. Any changed `modules/**/AGENTS.md` files
+      3. Any changed `conventions/*.md` files
+      4. Any changed `docs/*.md` files
+
+      **Flag if root AGENTS.md contains a section heading or content block that also
+      appears (with the same meaning) in:**
+      - A module-level AGENTS.md (e.g., `modules/os/AGENTS.md`)
+      - A convention file (e.g., `conventions/tool.forgejo.md`)
+      - A user-facing doc (e.g., `docs/terminal.md`)
+
+      For each duplicate found, state:
+      - Which section in AGENTS.md duplicates which file + section
+      - Whether AGENTS.md should reference the other file instead
+
+      **Do NOT flag:**
+      - The navigation table (it deliberately names the same modules — that's its purpose)
+      - The file tree (navigation, not documentation)
+      - Brief cross-references or one-line descriptions

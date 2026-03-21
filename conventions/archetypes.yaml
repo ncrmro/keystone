@@ -80,6 +80,7 @@ archetypes:
       - tool.zk
       - process.knowledge-management
       - tool.stalwart
+      - tool.keystone-agent-context
     roles:
       # Role: code-reviewer
       # Used when the agent is strictly reviewing PRs authored by others (or subagents).
