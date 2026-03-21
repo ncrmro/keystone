@@ -74,6 +74,27 @@ fi
 ```
 
 If CI fails, download and search logs per `process.continuous-integration`:
+
+**Check for missing secrets first** — a common cause of CI failures on new or recently
+configured repos:
+```bash
+gh secret list --repo OWNER/REPO
+gh variable list --repo OWNER/REPO
+```
+
+If secrets are missing (empty output), tell the user what secrets are needed and offer
+the CLI commands to set them. After secrets are configured, offer to rerun:
+```bash
+gh run rerun $RUN_ID --repo OWNER/REPO
+```
+
+For Cloudflare Workers projects, also check wrangler secrets:
+```bash
+# Wrangler secrets must be set from the server or via wrangler CLI
+wrangler secret list
+```
+
+Then download and search logs:
 ```bash
 RUN_ID=$(gh run list --repo OWNER/REPO --branch $BRANCH -L 1 --json databaseId --jq '.[0].databaseId')
 gh run view "$RUN_ID" --repo OWNER/REPO --log > /tmp/ci-$RUN_ID.log

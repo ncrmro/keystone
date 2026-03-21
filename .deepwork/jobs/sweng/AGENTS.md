@@ -99,6 +99,19 @@ Discovered from ks-systems-web PR #11 deployment:
   - Build scripts that need submodules or tsx must use `|| true` to fail gracefully
   - Production deploys should go through GitHub Actions where you control the full pipeline
 
+### v2.1.x — CI secrets checking + CF Workers setup (2026-03-21)
+
+- Review step now checks `gh secret list` / `gh variable list` when CI fails — missing secrets are a common root cause on new repos
+- After secrets are configured, the review step offers `gh run rerun $RUN_ID` to retry
+- Audit step now includes platform secrets audit (Step 5b) for CF Workers projects
+- CF Workers + Next.js (OpenNext.js) project setup requires:
+  1. `wrangler.jsonc` with worker config, R2 bindings
+  2. `open-next.config.ts` for the adapter
+  3. GitHub Actions secrets/variables for db credentials etc.
+  4. Wrangler secrets set from server via `wrangler secret put`
+  5. CF Workers Builds git integration in Cloudflare dashboard
+- The existing `tool.cloudflare-workers` keystone convention (see `conventions/tool.cloudflare-workers.md`) should be expanded to cover: OpenNext.js patterns, GitHub Actions deploy workflows, secrets setup, and preview environment patterns. Use `ks.convention` to update it.
+
 ### v1.1.0 — Project board integration (2026-03-19)
 
 - Added project board column transitions to all sweng steps
