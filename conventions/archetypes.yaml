@@ -49,6 +49,7 @@ archetypes:
       - tool.github
       - tool.zk
       - process.enable-by-default
+      - tool.stalwart
 
   engineer:
     description: "Engineering agents — implementation, code review, architecture"
@@ -77,6 +78,7 @@ archetypes:
       - tool.cloudflare-workers
       - tool.zk
       - process.knowledge-management
+      - tool.stalwart
     roles:
       # Role: code-reviewer
       # Used when the agent is strictly reviewing PRs authored by others (or subagents).
