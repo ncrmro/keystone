@@ -74,6 +74,7 @@ archetypes:
       - process.version-control-advanced
       - tool.github
       - tool.journal-remote
+      - tool.cloudflare-workers
       - tool.zk
       - process.knowledge-management
     roles:
