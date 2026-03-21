@@ -194,6 +194,8 @@ pub async fn create_new_repo_from_config(
         storage_type,
         disk_device,
         github_username,
+        time_zone: "UTC".to_string(),
+        state_version: "25.05".to_string(),
         user: template::UserConfig {
             username,
             password,
