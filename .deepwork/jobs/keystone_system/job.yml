@@ -1,0 +1,236 @@
+name: keystone_system
+version: "1.3.0"
+summary: "Keystone development lifecycle: worktree, build, review, merge, deploy, validate all hosts"
+common_job_info_provided_to_all_steps_at_runtime: |
+  Keystone is a NixOS-based infrastructure platform. Development follows a strict
+  worktree-based workflow to keep the main branch always deployable.
+
+  ## Convention: All work happens in worktrees
+
+  Changes are NEVER made directly on main. Every change goes through:
+  1. Create a git worktree branch off main
+  2. Implement changes in the worktree
+  3. Run DeepWork reviews (.deepreview rules) and fix findings
+  4. Build to verify nix evaluation passes
+  5. Merge the worktree branch into main
+  6. Human runs `ks update --lock` in nixos-config to lock the new keystone rev
+  7. Validate ALL hosts in the system with `ks doctor`
+
+  ## Two-repo model
+
+  - **keystone** — the NixOS module library (this repo). Worktree branches are created here.
+  - **nixos-config** — the per-deployment configuration that imports keystone as a flake input.
+    `ks update --lock` pulls the latest keystone main, locks flake.lock, builds, and deploys.
+
+  ## Fast path vs full system
+
+  During development, use `ks build` (home-manager only, no sudo) for fast iteration.
+  This catches most evaluation errors and is sufficient for iterating on terminal/desktop
+  module changes. However, the final deploy MUST always be `ks update --lock` which does
+  a full system build + lock + deploy. Never consider a change complete until it has been
+  through the full system path.
+
+  ## Multi-host fleet
+
+  Keystone manages multiple hosts (workstation, server, etc.) connected via Tailscale.
+  After deploying to the current host, the validate step must check whether other hosts
+  also need updating (e.g., if keystone module changes affect server services). Use
+  `ks doctor` and the hosts table from `hosts.nix` to determine which hosts need attention.
+  All hosts must be nominal before the workflow is complete.
+
+  ## Key commands
+
+  - `nix flake check --no-build` — fast evaluation check (catches type errors, missing imports)
+  - `ks build` — build home-manager profiles only (fast, no sudo)
+  - `ks build --lock` — full system build + lock + push
+  - `ks update` — pull, build, deploy current host (requires sudo)
+  - `ks update --lock` — pull, lock, build, push, deploy (requires sudo, human-only)
+  - `ks doctor` — diagnose system health after deployment
+
+  ## Iterative loop rules
+
+  If the build step fails, loop back to implement to fix the issue.
+  If validation finds problems after deploy, create a new worktree and loop back to plan.
+  DeepWork review findings are fixed in-place in the worktree before proceeding.
+
+workflows:
+  - name: develop
+    summary: "Full keystone development lifecycle from plan through validated multi-host deployment"
+    steps:
+      - plan
+      - implement
+      - review
+      - build
+      - merge
+      - deploy
+      - validate
+
+  - name: issue
+    summary: "Write a keystone spec/issue with RFC 2119 requirements, user story, and architecture diagrams"
+    steps:
+      - write_issue
+
+  - name: doctor
+    summary: "Check all hosts are nominal — run ks doctor across the fleet"
+    steps:
+      - validate
+
+steps:
+  - id: plan
+    name: "Plan"
+    description: "Create a worktree and produce an implementation plan from the user's goal"
+    instructions_file: steps/plan.md
+    inputs:
+      - name: goal
+        description: "What to implement — a feature description, bug report, or refactor goal"
+    outputs:
+      plan.md:
+        type: file
+        description: "Implementation plan with steps, files to change, and acceptance criteria"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: plan.md
+        quality_criteria:
+          "Actionable Steps": "The plan has concrete, ordered implementation steps — not vague goals."
+          "Files Identified": "The plan identifies specific files that will be created or modified."
+          "Acceptance Criteria": "The plan includes clear criteria for when the work is done."
+
+  - id: implement
+    name: "Implement"
+    description: "Execute the plan in the worktree — write code, commit changes"
+    instructions_file: steps/implement.md
+    inputs:
+      - file: plan.md
+        from_step: plan
+    outputs:
+      implementation_summary.md:
+        type: file
+        description: "Summary of changes made: files modified, commits created, decisions taken"
+        required: true
+    dependencies:
+      - plan
+    reviews:
+      - run_each: implementation_summary.md
+        additional_review_guidance: "Read the plan.md file from the plan step to verify all planned steps were addressed."
+        quality_criteria:
+          "Plan Coverage": "All steps from the implementation plan are addressed — none are silently skipped."
+          "Commit Discipline": "Changes are committed with conventional commit messages and logical grouping."
+          "No Unrelated Changes": "The implementation stays focused on the plan — no scope creep or drive-by fixes."
+
+  - id: review
+    name: "Review"
+    description: "Run DeepWork .deepreview rules on the worktree changes and fix all findings"
+    instructions_file: steps/review.md
+    inputs:
+      - file: implementation_summary.md
+        from_step: implement
+    outputs:
+      review_report.md:
+        type: file
+        description: "Review results — findings addressed, findings skipped with justification"
+        required: true
+    dependencies:
+      - implement
+    reviews:
+      - run_each: review_report.md
+        quality_criteria:
+          "All Findings Addressed": "Every review finding is either fixed or has a documented justification for skipping."
+
+  - id: build
+    name: "Build"
+    description: "Verify nix evaluation and build pass — fast path with ks build, full check with nix flake check"
+    instructions_file: steps/build.md
+    inputs:
+      - file: review_report.md
+        from_step: review
+    outputs:
+      build_result.md:
+        type: file
+        description: "Build output — success confirmation or failure details with loop-back decision"
+        required: true
+    dependencies:
+      - review
+    reviews:
+      - run_each: build_result.md
+        quality_criteria:
+          "Build Clean": "Both nix flake check and ks build completed without errors."
+
+  - id: merge
+    name: "Merge"
+    description: "Merge the worktree branch into keystone main and push"
+    instructions_file: steps/merge.md
+    inputs:
+      - file: build_result.md
+        from_step: build
+    outputs:
+      merge_result.md:
+        type: file
+        description: "Merge confirmation — branch name, commit hash on main, push status"
+        required: true
+    dependencies:
+      - build
+    reviews:
+      - run_each: merge_result.md
+        quality_criteria:
+          "Clean Merge": "The merge completed without conflicts and the branch was pushed to origin/main."
+
+  - id: deploy
+    name: "Deploy"
+    description: "Human-in-the-loop: user runs ks update --lock for full system build and deployment"
+    instructions_file: steps/deploy.md
+    inputs:
+      - file: merge_result.md
+        from_step: merge
+    outputs:
+      deploy_result.md:
+        type: file
+        description: "Deployment confirmation — ks update --lock output, build success, any warnings"
+        required: true
+    dependencies:
+      - merge
+    reviews: []
+
+  - id: validate
+    name: "Validate"
+    description: "Run ks doctor on all hosts, verify the entire fleet is nominal"
+    instructions_file: steps/validate.md
+    exposed: true
+    inputs: []
+    outputs:
+      validation_report.md:
+        type: file
+        description: "Validation results — per-host ks doctor output, fleet health status, issues found"
+        required: true
+    dependencies:
+      - deploy
+    reviews:
+      - run_each: validation_report.md
+        quality_criteria:
+          "Current Host Nominal": "The ks doctor output for the current host shows no critical issues."
+          "Fleet Checked": "All hosts affected by the changes have been checked or confirmed not impacted."
+          "Changes Verified": "The specific changes from the plan are confirmed working on the live system."
+
+  - id: write_issue
+    name: "Write Issue"
+    description: "Write a keystone spec with RFC 2119 requirements, user story, and ASCII architecture diagrams"
+    instructions_file: steps/write_issue.md
+    exposed: true
+    inputs:
+      - name: feature_description
+        description: "What feature or bug to spec — a sentence or paragraph describing the need"
+    outputs:
+      requirements.md:
+        type: file
+        description: "Complete keystone spec with RFC 2119 requirements, user story, affected modules, and diagrams"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: requirements.md
+        additional_review_guidance: "Read existing specs in specs/ for format consistency. Check specs/REQ-019-ks-cli/requirements.md as the most recent example."
+        quality_criteria:
+          "RFC 2119 Language": "Requirements use RFC 2119 keywords (MUST, SHOULD, MAY) correctly and consistently."
+          "Testable Requirements": "Each requirement is specific enough to verify — no vague 'should work well' statements."
+          "Architecture Diagram": "At least one ASCII diagram illustrates the module architecture or data flow."
+          "Affected Modules": "The spec identifies which keystone modules and files are affected."
+          "User Story": "The spec includes a user story or motivation section explaining why this feature matters."
