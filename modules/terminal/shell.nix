@@ -1,3 +1,8 @@
+# Shell environment — Zsh, starship prompt, zoxide, direnv, zellij, and CLI tools.
+# Includes zellij layout presets (dev, ops, write) for the context system.
+#
+# Implements REQ-002 (FR-001: Shell Environment, FR-003: Terminal Multiplexer)
+# See conventions/tool.nix-devshell.md
 {
   config,
   lib,

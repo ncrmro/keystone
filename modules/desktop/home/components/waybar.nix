@@ -1,3 +1,7 @@
+# Waybar status bar configuration for the Keystone desktop environment.
+# Named workspaces display context slugs (e.g., "catalyst") instead of numbers.
+#
+# Implements REQ-002 (dt-bar-001, dt-record-001.2, dt-record-001.3)
 {
   config,
   lib,
