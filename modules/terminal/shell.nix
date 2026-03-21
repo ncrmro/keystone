@@ -87,6 +87,12 @@ in
       };
     };
 
+    # Zellij layouts — pre-configured tab presets for context system
+    # Used by: pz --layout <name>, keystone-context <slug> --layout <name>
+    xdg.configFile."zellij/layouts/dev.kdl".source = ./layouts/dev.kdl;
+    xdg.configFile."zellij/layouts/ops.kdl".source = ./layouts/ops.kdl;
+    xdg.configFile."zellij/layouts/write.kdl".source = ./layouts/write.kdl;
+
     # Fzf - A command-line fuzzy finder
     # https://github.com/junegunn/fzf
     programs.fzf = {
