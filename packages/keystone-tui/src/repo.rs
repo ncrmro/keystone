@@ -166,6 +166,8 @@ pub async fn create_new_repo_from_config(
     password: String,
     github_username: Option<String>,
     authorized_keys: Vec<String>,
+    time_zone: Option<String>,
+    state_version: Option<String>,
 ) -> Result<KeystoneRepo> {
     use crate::template;
 
@@ -194,8 +196,8 @@ pub async fn create_new_repo_from_config(
         storage_type,
         disk_device,
         github_username,
-        time_zone: "UTC".to_string(),
-        state_version: "25.05".to_string(),
+        time_zone: time_zone.unwrap_or_else(|| "UTC".to_string()),
+        state_version: state_version.unwrap_or_else(|| "25.05".to_string()),
         user: template::UserConfig {
             username,
             password,
