@@ -1,3 +1,11 @@
+# Podman container runtime for keystone hosts.
+#
+# Enables rootless Podman with fuse-overlayfs (required for ZFS), disables
+# Docker, and conditionally installs sandbox tooling (agentctl, podman-agent)
+# when the terminal sandbox module is active.
+#
+# See conventions/process.sandbox-agent.md
+# Implements REQ-013 (Container Sub-Agent Management)
 {
   config,
   lib,
