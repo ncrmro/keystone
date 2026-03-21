@@ -203,4 +203,4 @@ Each spec file at `specs/{NNN}-{slug}.md` should follow this structure:
 
 ## Context
 
-This step bridges analysis and implementation planning. Specs serve as the contract between product and engineering: they define what the system must do (behavioral requirements) without prescribing how (implementation details). The specs PR goes through review before implementation starts, ensuring alignment between Luce (product), Nicholas (human), and Drago (engineering). Subsequent steps reference these specs when creating the plan issue and child issues.
+This step bridges analysis and implementation planning. Specs serve as the contract between product and engineering: they define what the system must do (behavioral requirements) without prescribing how (implementation details). The specs PR goes through review before implementation starts, ensuring alignment between Luce (product), Nicholas (human), and Drago (engineering). Subsequent steps reference these specs when creating the plan issue.
