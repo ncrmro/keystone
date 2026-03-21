@@ -16,6 +16,7 @@
 with lib;
 let
   cfg = config.keystone.terminal.deepwork;
+  termCfg = config.keystone.terminal;
   # Writable deepwork checkout at the canonical keystone repos path.
   # Only used when devMode is enabled. Managed by `ks update --pull`.
   deepworkRepoJobsPath = "${config.home.homeDirectory}/.keystone/repos/Unsupervisedcom/deepwork/library/jobs";
@@ -33,26 +34,12 @@ in
         sessions for both human users and OS agents.
       '';
     };
-
-    devMode = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''
-        Enable DeepWork development mode.
-
-        When enabled, DEEPWORK_ADDITIONAL_JOBS_FOLDERS points at the writable
-        deepwork repo checkout at ~/.keystone/repos/Unsupervisedcom/deepwork
-        instead of the read-only Nix store path. This enables deepwork_jobs/learn
-        to modify upstream library jobs in place. The checkout is managed by
-        `ks update --pull`.
-      '';
-    };
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
     home.sessionVariables = {
       DEEPWORK_ADDITIONAL_JOBS_FOLDERS =
-        if cfg.devMode then
+        if termCfg.devMode then
           # Dev mode: writable checkout for library jobs + keystone-native jobs
           builtins.concatStringsSep ":" [
             deepworkRepoJobsPath

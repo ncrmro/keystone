@@ -38,6 +38,12 @@ in
   options.keystone.terminal = {
     enable = mkEnableOption "Keystone Terminal - Core terminal tools and configuration";
 
+    devMode = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Development mode — set from keystone.hosts.<host>.devMode at the NixOS level.";
+    };
+
     devTools = mkOption {
       type = types.bool;
       default = false;
