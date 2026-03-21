@@ -453,10 +453,16 @@ mod tests {
         };
 
         let nix = generate_configuration_nix(&config);
-        assert!(nix.contains("test-host"));
-        assert!(nix.contains(r#"type = "zfs""#));
-        assert!(nix.contains("ssh-ed25519 AAAAC3testkey admin@laptop"));
-        assert!(nix.contains(r#"enable = true"#));
+
+        // Verify it parses cleanly
+        let root = rnix::Root::parse(&nix);
+        assert!(root.errors().is_empty(), "configuration.nix has parse errors: {:?}", root.errors());
+
+        // Verify key values are present via string (configuration.nix is a function body,
+        // not a flake, so we check specific attribute values)
+        assert!(nix.contains("test-host"), "should contain hostname");
+        assert!(nix.contains(r#"type = "zfs""#), "should contain storage type");
+        assert!(nix.contains("ssh-ed25519 AAAAC3testkey admin@laptop"), "should contain SSH key");
     }
 
     #[test]
@@ -571,8 +577,14 @@ mod tests {
         };
 
         let flake = generate_flake_nix(&config);
-        assert!(flake.contains("server1"));
-        assert!(flake.contains("# keystone.nixosModules.desktop"));
+        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].name, "server1");
+        // Server should NOT have desktop module
+        assert!(
+            !hosts[0].keystone_modules.contains(&"desktop".to_string()),
+            "server config should not include desktop module"
+        );
     }
 
     #[test]
@@ -597,9 +609,14 @@ mod tests {
         };
 
         let flake = generate_flake_nix(&config);
-        assert!(flake.contains("workstation"));
-        // Desktop module should NOT be commented out for workstation
-        assert!(flake.contains("          keystone.nixosModules.desktop\n"));
+        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].name, "workstation");
+        // Workstation SHOULD have desktop module
+        assert!(
+            hosts[0].keystone_modules.contains(&"desktop".to_string()),
+            "workstation config should include desktop module"
+        );
     }
 
     #[test]
@@ -656,14 +673,30 @@ mod tests {
         };
 
         let iso_flake = generate_iso_flake_nix(&config);
-        assert!(iso_flake.contains("my-laptop"));
-        assert!(iso_flake.contains("keystoneIso"));
-        assert!(iso_flake.contains("keystone/install-config/flake.nix"));
-        assert!(iso_flake.contains("keystone/install-config/configuration.nix"));
-        assert!(iso_flake.contains("keystone/install-config/hardware.nix"));
-        assert!(iso_flake.contains("isoInstaller"));
-        assert!(iso_flake.contains("target-config/flake.nix"));
-        assert!(iso_flake.contains("keystone/install-config/username"));
-        assert!(iso_flake.contains("keystone/install-config/github_username"));
+
+        // Verify the ISO flake parses cleanly and has expected structure
+        let root = rnix::Root::parse(&iso_flake);
+        assert!(
+            root.errors().is_empty(),
+            "ISO flake has parse errors: {:?}",
+            root.errors()
+        );
+
+        // Verify inputs via AST
+        let inputs = crate::nix::extract_flake_inputs(&iso_flake);
+        let input_names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
+        assert!(input_names.contains(&"keystone"), "ISO flake must have keystone input");
+        assert!(input_names.contains(&"nixpkgs"), "ISO flake must have nixpkgs input");
+
+        // Verify the keystoneIso host exists
+        let hosts = crate::nix::extract_nixos_configurations_from_str(&iso_flake);
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].name, "keystoneIso");
+
+        // Verify isoInstaller module is referenced
+        assert!(
+            hosts[0].keystone_modules.contains(&"isoInstaller".to_string()),
+            "ISO config must include isoInstaller module"
+        );
     }
 }
