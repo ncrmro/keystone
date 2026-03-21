@@ -1,6 +1,6 @@
 name: keystone_system
-version: "1.3.0"
-summary: "Keystone development lifecycle: worktree, build, review, merge, deploy, validate all hosts"
+version: "1.4.0"
+summary: "Keystone development lifecycle: worktree, build, review, merge, deploy, validate, and convention management"
 common_job_info_provided_to_all_steps_at_runtime: |
   Keystone is a NixOS-based infrastructure platform. Development follows a strict
   worktree-based workflow to keep the main branch always deployable.
@@ -15,6 +15,9 @@ common_job_info_provided_to_all_steps_at_runtime: |
   5. Merge the worktree branch into main
   6. Human runs `ks update --lock` in nixos-config to lock the new keystone rev
   7. Validate ALL hosts in the system with `ks doctor`
+
+  **Exception**: The `convention` workflow commits directly to main because conventions
+  are documentation files that do not require Nix builds or multi-host deploys.
 
   ## Two-repo model
 
@@ -53,6 +56,23 @@ common_job_info_provided_to_all_steps_at_runtime: |
   If validation finds problems after deploy, create a new worktree and loop back to plan.
   DeepWork review findings are fixed in-place in the worktree before proceeding.
 
+  ## Convention system
+
+  Conventions live in `conventions/` as RFC 2119 markdown files. Each convention follows
+  a strict format: `{prefix}.{topic}.md` with prefixes `process`, `tool`, `code`, or `os`.
+  Conventions are wired into agent archetypes via `conventions/archetypes.yaml` — either
+  as `inlined_conventions` (always in context) or `referenced_conventions` (on-demand).
+
+  The AGENTS.md in CLAUDE.md is generated from archetypes.yaml by the Nix build
+  (`modules/terminal/conventions.nix`). After modifying archetypes.yaml, a `ks build`
+  or `ks update` regenerates the instruction files.
+
+  Key files:
+  - `conventions/*.md` — convention documents
+  - `conventions/archetypes.yaml` — maps conventions to agent archetypes and roles
+  - `conventions/AGENTS.md` — meta-conventions for editing the conventions repo itself
+  - `modules/terminal/conventions.nix` — Nix module that generates CLI tool instruction files
+
 workflows:
   - name: develop
     summary: "Full keystone development lifecycle from plan through validated multi-host deployment"
@@ -74,6 +94,14 @@ workflows:
     summary: "Check all hosts are nominal — run ks doctor across the fleet"
     steps:
       - validate
+
+  - name: convention
+    summary: "Create or update a convention: draft, cross-reference, deduplicate, wire archetypes, commit to main"
+    steps:
+      - draft_convention
+      - cross_reference
+      - apply_convention
+      - commit_convention
 
 steps:
   - id: plan
@@ -234,3 +262,95 @@ steps:
           "Architecture Diagram": "At least one ASCII diagram illustrates the module architecture or data flow."
           "Affected Modules": "The spec identifies which keystone modules and files are affected."
           "User Story": "The spec includes a user story or motivation section explaining why this feature matters."
+
+  - id: draft_convention
+    name: "Draft Convention"
+    description: "Gather requirements and draft a new convention in RFC 2119 format"
+    instructions_file: steps/draft_convention.md
+    exposed: true
+    inputs:
+      - name: convention_topic
+        description: "What to codify — a topic description and optionally a draft with proposed rules"
+    outputs:
+      convention_draft.md:
+        type: file
+        description: "The drafted convention file in RFC 2119 format, ready for cross-referencing"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: convention_draft.md
+        additional_review_guidance: "Read conventions/AGENTS.md for format rules (H1 title format, numbered rules, RFC 2119 keywords). Read 2-3 existing conventions in conventions/ to verify format consistency."
+        quality_criteria:
+          "RFC 2119 Format": "The convention follows the required format: H1 title as '# Convention: {Display Name} ({prefix.name})', numbered rules per section, RFC 2119 keywords used correctly."
+          "Actionable Rules": "Every rule is specific and actionable — no vague aspirational statements like 'code should be clean'."
+          "Logical Sections": "Rules are grouped into coherent sections with clear H2 headings."
+          "Golden Example": "If the convention covers a pattern or tool with non-trivial usage, a golden example section demonstrates the rules applied to a realistic scenario."
+
+  - id: cross_reference
+    name: "Cross-Reference"
+    description: "Scan all existing conventions for overlap, identify redundancies, and produce a deduplication plan"
+    instructions_file: steps/cross_reference.md
+    inputs:
+      - file: convention_draft.md
+        from_step: draft_convention
+    outputs:
+      cross_reference_report.md:
+        type: file
+        description: "Analysis of overlaps with existing conventions, redundant rules identified, and proposed changes (update, remove, add cross-refs)"
+        required: true
+    dependencies:
+      - draft_convention
+    reviews:
+      - run_each: cross_reference_report.md
+        additional_review_guidance: "Read the convention_draft.md from the previous step. Spot-check 2-3 of the referenced existing conventions to verify the overlap claims are accurate."
+        quality_criteria:
+          "Thorough Scan": "Every existing convention in conventions/ was considered — the report lists all files checked."
+          "Accurate Overlaps": "Identified overlaps cite specific rule numbers from both the new draft and existing conventions."
+          "Clear Action Plan": "Each overlap has a concrete resolution: keep in new convention, keep in existing, merge, or add cross-reference."
+
+  - id: apply_convention
+    name: "Apply Convention"
+    description: "Write the convention file, update or remove redundant conventions, wire into archetypes.yaml"
+    instructions_file: steps/apply_convention.md
+    inputs:
+      - file: convention_draft.md
+        from_step: draft_convention
+      - file: cross_reference_report.md
+        from_step: cross_reference
+    outputs:
+      change_summary.md:
+        type: file
+        description: "Summary of all file changes: convention created, conventions updated/removed, archetypes.yaml modifications"
+        required: true
+    dependencies:
+      - draft_convention
+      - cross_reference
+    reviews:
+      - run_each: change_summary.md
+        additional_review_guidance: "Read the cross_reference_report.md to verify all proposed changes were applied. Read conventions/archetypes.yaml to verify the new convention was wired correctly."
+        quality_criteria:
+          "Dedup Applied": "All redundancies identified in the cross-reference report are resolved — no duplicate rules remain across conventions."
+          "Archetypes Wired": "The new convention appears in the appropriate archetypes (inlined or referenced) and roles in archetypes.yaml."
+          "Cross-References Added": "Where conventions now reference each other (e.g., 'see code.shell-scripts'), the cross-references are bidirectional and accurate."
+          "No Orphaned Rules": "Rules removed from existing conventions were either moved to the new convention or confirmed truly redundant — nothing was silently dropped."
+
+  - id: commit_convention
+    name: "Commit Convention"
+    description: "Commit all convention changes to main and push to remote"
+    instructions_file: steps/commit_convention.md
+    inputs:
+      - file: change_summary.md
+        from_step: apply_convention
+    outputs:
+      commit_result.md:
+        type: file
+        description: "Commit confirmation — hash, files changed, push status"
+        required: true
+    dependencies:
+      - apply_convention
+    reviews:
+      - run_each: commit_result.md
+        quality_criteria:
+          "Clean Commit": "The commit message follows conventional commits format (docs(conventions): ...) and accurately describes the changes."
+          "Pushed to Remote": "The commit has been pushed to origin/main successfully."
+          "Only Convention Files": "The commit contains only convention-related files (conventions/*.md, conventions/archetypes.yaml) — no unrelated changes."
