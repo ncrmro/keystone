@@ -10,7 +10,9 @@ modules/
 ├── hosts.nix                   Shared keystone.hosts option (host identity + connection metadata)
 ├── iso-installer.nix           Bootable NixOS installer with TUI, ZFS, TPM tools
 ├── binary-cache-client.nix     Attic/Nix binary cache client + watch-store push
-├── mail.nix                    Stalwart mail server + agent account provisioning
+├── installer.nix               Installer module (keystoneInputs passthrough)
+├── keys.nix                    SSH public key registry (keystone.keys.*)
+├── secrets.nix                 Secrets module (rbw/agenix integration)
 ├── services.nix                Shared service registry (keystone.services.*)
 ├── notes/
 │   └── default.nix             Home-manager notes repo sync (repo-sync on timer)
@@ -193,13 +195,22 @@ keystone.os.agents.drago = {
   mail = {
     provision = false;           # Auto-provision on Stalwart host
     address = "agent-drago@example.com";
+    imap.port = 993;             # IMAP port override
+    smtp.port = 465;             # SMTP port override
   };
+
+  github.username = "drago";     # GitHub username for task loop issue fetching
+  forgejo.username = "drago";    # Forgejo username for task loop issue fetching
 
   git = {
     provision = false;           # Auto-provision on Forgejo host
     username = "drago";
     repoName = "agent-space";    # Auto-created notes repo
   };
+
+  passwordManager.provision = false;  # Emit Vaultwarden provisioning instructions
+
+  mcp.servers = {};              # Additional MCP servers per agent
 
   # SSH keys are managed via keystone.keys."agent-{name}"
 
@@ -756,6 +767,7 @@ The `keystone.domain` option (defined in `modules/domain.nix`) establishes a sha
 | repo-sync | Clone-if-absent, fetch/commit/rebase/push sync for git repos (shell) |
 | podman-agent | Run AI coding agents in Podman containers with persistent Nix store (shell) |
 | keystone-tui | Installer and configuration TUI (Rust) |
+| keystone-installer-ui | Installer UI components (React/Ink) |
 | keystone-ha | Cross-realm resource management TUI (Rust) |
 | ks | NixOS configuration build/update CLI (shell) |
 | pz | Project management CLI (shell) |
@@ -880,6 +892,8 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 | mail | `keystone.nixosModules.mail` | Shared keystone.mail.host option (mail server host) |
 | hosts | `keystone.nixosModules.hosts` | Shared keystone.hosts option (host identity + connection metadata) |
 | services | `keystone.nixosModules.services` | Shared service registry (keystone.services.*) |
+| keys | `keystone.nixosModules.keys` | SSH public key registry (keystone.keys.*) |
+| headscale-dns | `keystone.nixosModules.headscale-dns` | Consume server DNS records on headscale host |
 
 ### Home-Manager Modules
 
@@ -887,6 +901,8 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 |--------|-------------|-------------|
 | terminal | `keystone.homeModules.terminal` | Terminal dev environment |
 | desktop | `keystone.homeModules.desktop` | Hyprland desktop home config |
+| desktopHyprland | `keystone.homeModules.desktopHyprland` | Hyprland compositor module |
+| notes | `keystone.homeModules.notes` | Notes repo sync (repo-sync on timer) |
 
 ### Key Options
 
