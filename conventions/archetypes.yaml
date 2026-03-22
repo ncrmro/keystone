@@ -112,6 +112,8 @@ archetypes:
         conventions:
           - process.blocker
           - process.continuous-integration
+          - process.diagrams
+          - tool.mermaid
           - process.feature-delivery
           - process.pull-request
           - process.refactor
@@ -127,6 +129,8 @@ archetypes:
       # Focuses on structure and dependencies before implementation begins.
       architect:
         conventions:
+          - process.diagrams
+          - tool.mermaid
           - process.feature-delivery
           - process.pull-request
           - tool.forgejo
@@ -219,4 +223,6 @@ archetypes:
       # Role: designer
       # Used to review UX/UI proposals, user flows, and ensure alignment with the product vision.
       designer:
-        conventions: []
+        conventions:
+          - process.diagrams
+          - tool.mermaid
