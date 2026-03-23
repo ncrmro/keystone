@@ -97,13 +97,15 @@ for i in $(seq 0 $((SCHEDULE_COUNT - 1))); do
 
   # Append new task to TASKS.yaml
   log "  Creating task: ${SCHED_NAME}-${TODAY}"
+  TASK_CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   yq -i ".tasks += [{
     \"name\": \"${SCHED_NAME}-$(date +%Y-%m-%d)\",
     \"description\": \"$SCHED_DESC\",
     \"status\": \"pending\",
     \"source\": \"schedule\",
     \"source_ref\": \"$SOURCE_REF\",
-    \"workflow\": \"$SCHED_WORKFLOW\"
+    \"workflow\": \"$SCHED_WORKFLOW\",
+    \"created_at\": \"$TASK_CREATED_AT\"
   }]" TASKS.yaml
 
   CREATED=$((CREATED + 1))
