@@ -6,10 +6,11 @@
 # included automatically.  To add a new job, add a cp -r entry in the
 # deepwork-library-jobs runCommand once the job exists in the upstream repo.
 #
-# Dev mode (REQ-018): Both job sources are swappable via devMode paths:
-# - deepworkPath → deepwork library jobs use local checkout's library/jobs/
-# - keystonePath → keystone-native jobs use local checkout's .deepwork/jobs/
-# When either path is null, the corresponding Nix store copy is used.
+# Dev mode (REQ-018): When keystone.development is true, both job sources
+# swap to local checkouts derived from keystone.repos:
+# - deepworkPath → deepwork library jobs from local checkout's library/jobs/
+# - keystonePath → keystone-native jobs from local checkout's .deepwork/jobs/
+# When development mode is off, all paths resolve to Nix store copies.
 {
   config,
   lib,
@@ -20,10 +21,8 @@ with lib;
 let
   cfg = config.keystone.terminal.deepwork;
   terminalCfg = config.keystone.terminal;
-  devPath = terminalCfg.devMode.keystonePath;
-  deepworkDevPath = terminalCfg.devMode.deepworkPath;
-  isDev = devPath != null;
-  isDeepworkDev = deepworkDevPath != null;
+  devMode = terminalCfg.devMode;
+  isDev = devMode.keystonePath != null;
 in
 {
   options.keystone.terminal.deepwork = {
@@ -43,15 +42,14 @@ in
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
     # Colon-delimited list of directories consumed by deepwork's discovery module.
-    # 1. Upstream library jobs (curated from deepwork flake) — always from store
-    # 2. Keystone-native jobs — local checkout in dev mode, store copy in locked mode
+    # In dev mode both sources swap to local checkouts; in locked mode both use store.
     home.sessionVariables = {
       DEEPWORK_ADDITIONAL_JOBS_FOLDERS = builtins.concatStringsSep ":" [
-        (if isDeepworkDev
-         then "${deepworkDevPath}/library/jobs"
+        (if isDev && devMode.deepworkPath != null
+         then "${devMode.deepworkPath}/library/jobs"
          else "${pkgs.keystone.deepwork-library-jobs}")
         (if isDev
-         then "${devPath}/.deepwork/jobs"
+         then "${devMode.keystonePath}/.deepwork/jobs"
          else "${pkgs.keystone.keystone-deepwork-jobs}")
       ];
     };
