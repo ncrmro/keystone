@@ -1,3 +1,8 @@
+---
+title: SSH Agent (Desktop)
+description: SSH key management via systemd user service for Hyprland sessions
+---
+
 # SSH Agent (Desktop)
 
 The desktop module runs `ssh-agent` as a systemd user service, providing SSH key management for Hyprland sessions.

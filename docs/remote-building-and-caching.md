@@ -1,3 +1,8 @@
+---
+title: Remote Building and Caching
+description: Share Nix builds across multiple NixOS machines to avoid redundant compilation
+---
+
 # Remote Building and Caching
 
 ## Overview

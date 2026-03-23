@@ -1,6 +1,6 @@
 ---
-layout: default
 title: Agents
+description: Human-side tooling for interacting with OS agents
 ---
 
 # Agents

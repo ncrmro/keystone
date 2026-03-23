@@ -1,3 +1,8 @@
+---
+title: User Configuration
+description: Configuring NixOS user accounts with Keystone
+---
+
 # User Configuration
 
 ## Basic Setup

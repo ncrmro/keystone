@@ -1,3 +1,8 @@
+---
+title: Screen Recording User Guide
+description: GPU-accelerated screen recording with optional audio capture
+---
+
 # Screen Recording User Guide
 
 Keystone provides built-in screen recording capabilities using GPU-accelerated encoding. Record your screen with optional audio capture for documentation, tutorials, bug reports, and presentations.

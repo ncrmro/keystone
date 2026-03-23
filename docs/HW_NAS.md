@@ -1,3 +1,8 @@
+---
+title: Hardware NAS (Network Attached Storage)
+description: NAS hardware with redundant storage pools across multiple physical devices
+---
+
 # Hardware NAS (Network Attached Storage)
 
 The defining characterist of a NAS is that it usually contains a lot of storage where a storage pool

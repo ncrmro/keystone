@@ -1,6 +1,6 @@
 ---
-layout: default
 title: External Mail Providers
+description: Configuring Himalaya, Calendula, and Cardamum with external mail providers
 ---
 
 # External Mail Providers

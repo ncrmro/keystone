@@ -1,3 +1,8 @@
+---
+title: Hardware Keys (YubiKey/FIDO2)
+description: Using hardware security keys for SSH authentication, GPG signing, and secrets management
+---
+
 # Hardware Keys (YubiKey/FIDO2)
 
 This guide covers using hardware security keys (YubiKey, SoloKey, etc.) with Keystone for SSH authentication, GPG signing, and secrets management.

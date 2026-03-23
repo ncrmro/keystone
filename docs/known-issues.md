@@ -1,6 +1,6 @@
 ---
-layout: default
 title: Known Issues
+description: Known issues and workarounds in Keystone
 ---
 
 # Known Issues

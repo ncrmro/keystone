@@ -1,3 +1,8 @@
+---
+title: Build Platforms
+description: Build requirements and quick commands for local, GitHub Actions, and NixOS builds
+---
+
 # Build Platforms
 
 ## Requirements

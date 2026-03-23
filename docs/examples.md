@@ -1,3 +1,8 @@
+---
+title: Keystone Deployment Examples
+description: Server and client deployment examples for various hardware and use cases
+---
+
 # Keystone Deployment Examples
 
 This document demonstrates different ways Keystone servers and clients can be deployed and integrated.

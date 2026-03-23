@@ -1,3 +1,8 @@
+---
+title: Waybar Configuration
+description: Waybar desktop bar configuration with dynamic theming and custom integrations
+---
+
 In Keystone, Waybar is configured as a core desktop component with dynamic theming and custom integrations.
 
 ### Configuration Location

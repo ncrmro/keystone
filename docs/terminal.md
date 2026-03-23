@@ -1,6 +1,6 @@
 ---
-layout: default
 title: Terminal Module
+description: Comprehensive command-line development environment via Home Manager
 ---
 
 # Terminal Module

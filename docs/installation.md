@@ -1,3 +1,8 @@
+---
+title: Keystone Installation Guide
+description: Complete guide for installing NixOS using the Keystone installer ISO and nixos-anywhere
+---
+
 # Keystone Installation Guide
 
 Complete guide for installing NixOS using the Keystone installer ISO and nixos-anywhere.

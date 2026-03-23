@@ -1,6 +1,6 @@
 ---
-layout: default
 title: Server Module
+description: Unified nginx reverse proxy, ACME wildcard certificates, and DNS record generation
 ---
 
 # Server Module (`keystone.server`)

@@ -1,3 +1,8 @@
+---
+title: ZFS and Linux Kernel Version Compatibility
+description: How ZFS and Linux kernel versions interplay and why they must be matched
+---
+
 # ZFS and Linux Kernel Version Compatibility
 
 ## Research Question

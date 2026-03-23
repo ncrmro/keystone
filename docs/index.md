@@ -1,6 +1,6 @@
 ---
-layout: default
-title: Home
+title: Keystone Documentation
+description: Self-sovereign infrastructure platform with secure, encrypted NixOS deployments
 ---
 
 # Keystone Documentation

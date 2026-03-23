@@ -1,6 +1,6 @@
 ---
-layout: default
 title: Personal Information Management
+description: CLI tools for managing email, calendars, contacts, and timers via Pimalaya
 ---
 
 # Personal Information Management

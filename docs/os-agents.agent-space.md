@@ -1,7 +1,6 @@
 ---
-layout: default
 title: Agent Space & Shared Library
-parent: OS Agents
+description: Agent-space repository structure and shared agents library
 ---
 
 # Agent Space & Shared Agents Library

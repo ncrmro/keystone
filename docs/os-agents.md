@@ -1,6 +1,6 @@
 ---
-layout: default
 title: OS Agents
+description: Non-interactive NixOS user accounts for autonomous LLM-driven operation
 ---
 
 # OS Agents (`keystone.os.agents`)
