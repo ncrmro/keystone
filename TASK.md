@@ -5,7 +5,7 @@ agent: claude
 platform: github
 issue: 203
 task_type: implement
-status: ready
+status: assigned
 created: 2026-03-23
 ---
 
