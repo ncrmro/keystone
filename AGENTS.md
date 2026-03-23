@@ -235,8 +235,23 @@ keystone.os.agents.drago = {
 - `agent-{name}-ssh-key` — SSH private key
 - `agent-{name}-ssh-passphrase` — SSH key passphrase
 - `agent-{name}-mail-password` — Stalwart mail password (if mail.provision)
+- `agent-{name}-bitwarden-password` — Vaultwarden master password for unattended rbw pinentry
+
+**Required agenix secrets** (fleet-wide, when any agent has `mail.provision = true`):
+- `stalwart-admin-password` — Stalwart admin API password (for mail account + CalDAV/CardDAV provisioning)
+- `stalwart-team-password` — Password for the shared `team` Stalwart principal
 
 **CRITICAL**: Mail password secrets must list BOTH the agent's `host` (for himalaya client) AND the mail server's host (for Stalwart provisioning).
+
+**CalDAV/CardDAV auto-provisioning**: When `mail.provision = true`, the mail server (`modules/os/mail.nix`) automatically creates:
+- A personal CalDAV calendar at `/dav/cal/agent-{name}/personal/`
+- A personal CardDAV addressbook at `/dav/card/agent-{name}/personal/`
+- A fleet-wide `team` principal with a shared calendar at `/dav/cal/team/shared/` and addressbook at `/dav/card/team/shared/`
+- Read-write ACL grants on team resources for all provision agents
+
+Provisioning is idempotent and runs at system activation before user-session timers. After provisioning, `calendula calendars list` and `cardamum addressbooks list` work with no additional agent-side configuration.
+
+**`KEYSTONE_TEAM_CALENDAR_URL`**: Exported as a shell session variable by each agent's home-manager config when `keystone.domain` is set. Agents can subscribe to the team calendar without hardcoding paths.
 
 #### Forgejo CLI vs API
 
@@ -377,7 +392,7 @@ keystone.hardwareKey = {
 | Tailscale | `keystone.os.tailscale` | Tailscale VPN client |
 | iPhone Tether | `keystone.os.iphoneTether.enable` | iOS USB tethering via libimobiledevice and usbmuxd |
 | Ollama | `keystone.os.ollama` | Ollama LLM runtime |
-| Mail | `keystone.mail.host` | Stalwart mail server (auto-enables on matching host) |
+| Mail | `keystone.services.mail.host` | Stalwart mail server with Prometheus metrics + CalDAV/CardDAV provisioning (auto-enables on matching host) |
 | Git Server | `keystone.os.gitServer` | Forgejo with agent repo provisioning |
 | Journal Remote | `keystone.os.journalRemote` | Centralized journal collection via systemd-journal-remote/upload (port 19532, Tailscale-only) |
 
@@ -930,9 +945,8 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 | hardwareKey | `keystone.nixosModules.hardwareKey` | YubiKey/FIDO2 support |
 | isoInstaller | `keystone.nixosModules.isoInstaller` | Bootable installer |
 | domain | `keystone.nixosModules.domain` | Shared keystone.domain option |
-| mail | `keystone.nixosModules.mail` | Shared keystone.mail.host option (mail server host) |
+| services | `keystone.nixosModules.services` | Shared service registry (`keystone.services.*`) — declares `keystone.services.mail.host`, `keystone.services.git.host`, etc. |
 | hosts | `keystone.nixosModules.hosts` | Shared keystone.hosts option (host identity + connection metadata) |
-| services | `keystone.nixosModules.services` | Shared service registry (keystone.services.*) |
 | keys | `keystone.nixosModules.keys` | SSH public key registry (keystone.keys.*) |
 | headscale-dns | `keystone.nixosModules.headscale-dns` | Consume server DNS records on headscale host |
 
@@ -950,7 +964,7 @@ Read the PNG directly for visual inspection of boot failures, Secure Boot issues
 | Option | Description |
 |--------|-------------|
 | `keystone.domain` | Shared TLD for services + agents |
-| `keystone.mail.host` | Hostname of mail server (auto-enables Stalwart) |
+| `keystone.services.mail.host` | Hostname of mail server (auto-enables Stalwart with CalDAV/CardDAV + Prometheus metrics) |
 | `keystone.hosts` | Host identity + connection metadata (hostname, sshTarget, fallbackIP, buildOnRemote, role, baremetal, hostPublicKey, zfs) |
 | `keystone.terminal.enable` | Enable terminal tools (zsh, starship, zellij, helix) |
 | `keystone.terminal.git.userName/userEmail` | Required git config |
