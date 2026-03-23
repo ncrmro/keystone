@@ -118,6 +118,12 @@ other source. Every number in the report must trace back to the input files.
    Include the review window deadline in the PR body:
    > This PR will auto-merge in 72 hours. Comment or request changes before then.
 
+8. **Output the PR URL**
+
+   After creating the PR, output the PR URL prominently so the user can navigate
+   directly to it for review. This is the primary deliverable of the workflow — the
+   user needs this link.
+
 ## Output Format
 
 ### portfolio_report.md
