@@ -310,6 +310,9 @@
         # Shared host registry (keystone.hosts) — host identity and connection metadata
         hosts = ./modules/hosts.nix;
 
+        # Managed repo registry + development mode toggle (keystone.repos, keystone.development)
+        repos = ./modules/repos.nix;
+
         # Core OS module - storage, secure boot, TPM, remote unlock, users, services
         # Pass flake inputs to installer via dedicated option — NOT _module.args,
         # which would conflict with the desktop module's identical definition.
@@ -323,10 +326,17 @@
             ./modules/domain.nix
             ./modules/services.nix
             ./modules/hosts.nix
+            ./modules/repos.nix
             ./modules/os
             ./modules/installer.nix
           ];
           keystone.os.installer._keystoneInputs = keystoneInputs;
+          # Auto-populate keystone.repos from flake inputs with discoverable URLs.
+          # Only pass inputs that represent managed repos — not all upstream dependencies.
+          keystone._repoInputs = {
+            keystone = self;
+            inherit deepwork;
+          };
         };
 
         # Desktop module - Hyprland, audio, greetd (no disko/encryption dependencies)

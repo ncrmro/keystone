@@ -20,7 +20,7 @@ configuration, desktop environments, terminal tooling, and server services.
 
 ```
 modules/
-├── domain.nix, hosts.nix, keys.nix, secrets.nix, services.nix
+├── domain.nix, hosts.nix, keys.nix, repos.nix, secrets.nix, services.nix
 ├── iso-installer.nix, installer.nix, binary-cache-client.nix
 ├── notes/
 ├── os/
@@ -64,7 +64,7 @@ modules/
 | `binaryCacheClient` | Attic binary cache client |
 | `hardwareKey` | YubiKey/FIDO2 support |
 | `isoInstaller` | Bootable installer |
-| `domain`, `mail`, `hosts`, `services`, `keys` | Shared options modules |
+| `domain`, `hosts`, `repos`, `services`, `keys` | Shared options modules |
 | `headscale-dns` | Consume server DNS records on headscale host |
 
 ### Home-Manager Modules (`keystone.homeModules.*`)
@@ -93,6 +93,7 @@ modules/
 - TPM2 integration requires compatible hardware and UEFI firmware setup
 - Secure Boot requires manual key enrollment during installation
 - All ZFS datasets use native encryption with automatic key management
+- `keystone.repos` auto-populates from flake inputs; `keystone.development` enables local checkout paths
 
 ## Keystone Config Repo
 
