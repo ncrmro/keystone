@@ -12,6 +12,7 @@
   self,
   nixpkgs ? null,
   agenix,
+  home-manager ? null,
 }:
 let
   nixosSystem =
@@ -57,6 +58,45 @@ let
       echo "  User Timers: ${userTimersJson}"
       touch $out
     '';
+
+  # Like eval, but also includes home-manager so home-manager.nix integration runs.
+  # Falls back to plain eval when home-manager input is not provided.
+  evalWithHM =
+    name: modules:
+    if home-manager == null then
+      eval name modules
+    else
+      let
+        result = nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            home-manager.nixosModules.home-manager
+            agenix.nixosModules.default
+            self.nixosModules.operating-system
+            {
+              system.stateVersion = "25.05";
+              boot.loader.systemd-boot.enable = true;
+            }
+          ]
+          ++ modules;
+        };
+        usersJson = builtins.toJSON (builtins.attrNames result.config.users.users);
+        groupsJson = builtins.toJSON (builtins.attrNames result.config.users.groups);
+        servicesJson = builtins.toJSON (builtins.attrNames result.config.systemd.services);
+        timersJson = builtins.toJSON (builtins.attrNames result.config.systemd.timers);
+        userServicesJson = builtins.toJSON (builtins.attrNames result.config.systemd.user.services);
+        userTimersJson = builtins.toJSON (builtins.attrNames result.config.systemd.user.timers);
+      in
+      pkgs.runCommand "eval-${name}" { } ''
+        echo "Evaluating ${name}..."
+        echo "  Users: ${usersJson}"
+        echo "  Groups: ${groupsJson}"
+        echo "  Services: ${servicesJson}"
+        echo "  Timers: ${timersJson}"
+        echo "  User Services: ${userServicesJson}"
+        echo "  User Timers: ${userTimersJson}"
+        touch $out
+      '';
 
   # Test configurations
   tests = {
@@ -465,6 +505,131 @@ let
       }
     ];
 
+    # Agent with terminal.enable = true — exercises home-manager.nix integration
+    # (mail, calendar, contacts, secrets, cliCodingAgents, git wiring).
+    # testuser.terminal.enable = false because OS users rely on the consumer importing
+    # homeModules.terminal globally; agents import it per-user in home-manager.nix.
+    agent-terminal = evalWithHM "agent-terminal" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            terminal.enable = false;
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            terminal.enable = true;
+            notes.repo = "git@example.com:researcher/notes.git";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with terminal.enable + grafana.mcp.enable — exercises programs.zsh.initExtra
+    # and grafana MCP server entry in cliCodingAgents
+    agent-terminal-grafana = evalWithHM "agent-terminal-grafana" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            terminal.enable = false;
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            terminal.enable = true;
+            notes.repo = "git@example.com:researcher/notes.git";
+            grafana.mcp = {
+              enable = true;
+              url = "https://grafana.example.com";
+            };
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Stalwart mail server enabled via keystone.services.mail.host (no provision agents).
+    # Exercises Prometheus listener, IMAP/SMTP/JMAP bind config, allowedIps option.
+    mail-stalwart-enabled = eval "mail-stalwart-enabled" [
+      {
+        keystone = {
+          services.mail.host = "mailhost";
+          os = {
+            enable = true;
+            storage = {
+              type = "ext4";
+              devices = [ "/dev/vda" ];
+            };
+            mail.allowedIps = [
+              "100.64.0.0/10"
+              "fd7a:115c:a1e0::/48"
+            ];
+            users.testuser = {
+              fullName = "Test User";
+              initialPassword = "testpass";
+            };
+          };
+        };
+        networking.hostName = "mailhost";
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Stalwart with mail.provision = true — exercises per-agent provisioning services
+    # and team principal setup. Assertions require agenix secrets but are only
+    # evaluated when building system.build.toplevel, not in this eval test.
+    mail-stalwart-provision = eval "mail-stalwart-provision" [
+      {
+        keystone = {
+          services.mail.host = "mailhost";
+          os = {
+            enable = true;
+            storage = {
+              type = "ext4";
+              devices = [ "/dev/vda" ];
+            };
+            users.testuser = {
+              fullName = "Test User";
+              initialPassword = "testpass";
+            };
+            agents.drago = {
+              fullName = "Drago";
+              mail.provision = true;
+              mail.address = "agent-drago@example.com";
+              notes.repo = "git@example.com:drago/notes.git";
+            };
+          };
+        };
+        networking.hostName = "mailhost";
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
     # Agent with GitHub and Forgejo source usernames
     # forgejo.username defaults to agent name; github.username must be set explicitly
     agent-source-usernames = eval "agent-source-usernames" [
@@ -510,6 +675,8 @@ pkgs.runCommand "test-agent-evaluation"
     echo "Agent module evaluation tests"
     echo "============================="
     echo ""
+    echo "Includes: terminal integration (agent-terminal, agent-terminal-grafana),"
+    echo "  Stalwart mail server (mail-stalwart-enabled, mail-stalwart-provision)"
     echo "All agent module configurations evaluated successfully!"
     touch $out
   ''
