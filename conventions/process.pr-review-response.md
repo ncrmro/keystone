@@ -7,13 +7,13 @@ This convention defines how an agent responds to reviewer feedback on PRs it has
 
 ## Fetching Review Comments
 
-1. Before acting on review feedback, agents MUST fetch the full review comments from the platform API. The task description is a summary and MAY not contain complete context.
+1. Before acting on review feedback, agents MUST fetch the full review comments from the platform API. The task description is a summary and MAY not contain complete context. The fetch scripts intentionally omit bulky fields like `diff_hunk` to keep the ingest payload small — the executing agent MUST fetch these directly.
 
 **GitHub:**
 ```bash
 gh api repos/{owner}/{repo}/pulls/{number}/reviews --jq '[.[] | select(.state == "CHANGES_REQUESTED" or .state == "COMMENTED") | {id: .id, reviewer: .user.login, state: .state}]'
 
-# For each review, fetch line-level comments:
+# For each review, fetch line-level comments (includes diff_hunk for context):
 gh api repos/{owner}/{repo}/pulls/{number}/reviews/{review_id}/comments --jq '[.[] | {id: .id, path: .path, body: .body, diff_hunk: .diff_hunk}]'
 ```
 
@@ -23,7 +23,7 @@ curl -sf -H "Authorization: token $FORGEJO_TOKEN" \
   "$FORGEJO_HOST/api/v1/repos/{owner}/{repo}/pulls/{number}/reviews" \
   | jq '[.[] | select(.state == "REQUEST_CHANGES" or .state == "COMMENT") | {id: .id, reviewer: .user.login, state: .state}]'
 
-# For each review, fetch line-level comments:
+# For each review, fetch line-level comments (includes diff_hunk for context):
 curl -sf -H "Authorization: token $FORGEJO_TOKEN" \
   "$FORGEJO_HOST/api/v1/repos/{owner}/{repo}/pulls/{number}/reviews/{review_id}/comments" \
   | jq '[.[] | {id: .id, path: .path, body: .body, diff_hunk: .diff_hunk}]'

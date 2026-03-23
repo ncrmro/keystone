@@ -91,7 +91,7 @@ intervention.
 
 **REQ-024.2** `fetch-forgejo-sources` MUST include the PR's `head.ref` (branch name) in each review entry as the `pr_branch` field.
 
-**REQ-024.3** Fetch scripts MUST include the `diff_hunk` field from each review comment alongside the existing `id`, `path`, and `body` fields, so the executing agent has line-level context.
+**REQ-024.3** Fetch scripts MUST NOT include bulky fields like `diff_hunk` in review comment output. The executing agent fetches full review context (including diff hunks) directly from the platform API at execution time.
 
 ### Ingest (parse_sources.md)
 

@@ -108,7 +108,7 @@ while IFS= read -r row; do
       review_state=$(echo "$relevant" | jq -r ".[$review_idx].state")
 
       comments_raw=$(api_get "$API/repos/$owner/$name/pulls/$pr_number/reviews/$review_id/comments")
-      comments=$(echo "$comments_raw" | jq '[.[] | {id: .id, path: .path, body: .body, diff_hunk: .diff_hunk}]' 2>/dev/null || echo "[]")
+      comments=$(echo "$comments_raw" | jq '[.[] | {id: .id, path: .path, body: .body}]' 2>/dev/null || echo "[]")
 
       item=$(jq -n \
         --arg repo "$repo" \
