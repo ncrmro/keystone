@@ -51,6 +51,7 @@ in
         # Render TASKS.yaml as a sorted table (pending/in_progress first, completed last)
         tasksFormatter = pkgs.writeText "agentctl-tasks-formatter.py" ''
           import sys, re
+          from datetime import datetime
 
           lines = sys.stdin.read()
 
@@ -87,7 +88,53 @@ in
 
           icons = {"completed": "done", "in_progress": "run ", "pending": "wait", "blocked": "blkd", "error": "err "}
 
-          hdr = ["#", "STATUS", "NAME", "PROJECT", "SOURCE", "MODEL", "DESCRIPTION"]
+          def parse_ts(s):
+              if not s or s in ("-", "null", ""):
+                  return None
+              try:
+                  return datetime.fromisoformat(s.replace("Z", "+00:00"))
+              except Exception:
+                  return None
+
+          def fmt_date(s):
+              ts = parse_ts(s)
+              if not ts:
+                  return "-"
+              return ts.strftime("%b %d %H:%M")
+
+          def fmt_duration(started, completed):
+              ts_start = parse_ts(started)
+              ts_end = parse_ts(completed)
+              if not ts_start or not ts_end:
+                  return "-"
+              secs = int((ts_end - ts_start).total_seconds())
+              if secs < 0:
+                  return "-"
+              if secs < 60:
+                  return str(secs) + "s"
+              mins = secs // 60
+              if mins < 60:
+                  return str(mins) + "m"
+              hours = mins // 60
+              rem = mins % 60
+              return str(hours) + "h" + (str(rem) + "m" if rem else "")
+
+          def get_date(t):
+              status = t.get("status", "")
+              if status == "completed":
+                  return fmt_date(t.get("completed_at", ""))
+              elif status == "in_progress":
+                  return fmt_date(t.get("started_at", ""))
+              else:
+                  return fmt_date(t.get("created_at", ""))
+
+          def get_workflow(t):
+              w = t.get("workflow", "")
+              if not w or w in ("null", ""):
+                  return "-"
+              return w[:20]
+
+          hdr = ["#", "STATUS", "NAME", "PROJECT", "SOURCE", "MODEL", "DATE", "WORKFLOW", "DUR", "DESCRIPTION"]
           rows = []
           for i, t in enumerate(tasks):
               rows.append([
@@ -97,6 +144,9 @@ in
                   t.get("project", "-")[:15],
                   t.get("source", "-")[:10],
                   t.get("model", "-")[:6],
+                  get_date(t),
+                  get_workflow(t),
+                  fmt_duration(t.get("started_at", ""), t.get("completed_at", "")),
                   t.get("description", "")[:50],
               ])
 
@@ -112,6 +162,20 @@ in
           print("  ".join("-" * w for w in widths))
           for row in rows:
               print(fmt(row))
+
+          counts = {}
+          for t in tasks:
+              s = t.get("status", "unknown")
+              counts[s] = counts.get(s, 0) + 1
+
+          parts = []
+          for status, label in [("in_progress", "running"), ("pending", "pending"),
+                                 ("blocked", "blocked"), ("error", "errored"), ("completed", "done")]:
+              if counts.get(status, 0) > 0:
+                  parts.append(str(counts[status]) + " " + label)
+          if parts:
+              print("")
+              print("  " + ", ".join(parts))
         '';
 
         agentctl = pkgs.writeShellScriptBin "agentctl" (
