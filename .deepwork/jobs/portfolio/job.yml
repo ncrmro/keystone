@@ -1,5 +1,5 @@
 name: portfolio
-version: "1.1.0"
+version: "1.2.0"
 summary: "Holistic portfolio review across all projects with milestone status, activity, and health assessment"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job performs a holistic review of the user's entire project portfolio. It replaces
@@ -60,6 +60,11 @@ common_job_info_provided_to_all_steps_at_runtime: |
 
   The PR allows the user to review, comment on, and refine the report before
   merging. Branch naming: `portfolio-review/YYYY-MM`.
+
+  **Auto-merge convention**: PRs are created with `gh pr merge --auto --squash`
+  enabled, giving a 72-hour review window. The user can comment or request changes
+  within this window. If no action is taken, the PR merges automatically to prevent
+  stale review PRs from accumulating.
 
   Per-project data files are intermediate outputs in `.deepwork/tmp/` and do not
   need to be committed.
