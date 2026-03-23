@@ -16,7 +16,11 @@ in
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities";
 
     obs = {
-      enable = mkEnableOption "OBS Studio for screen recording and streaming";
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable OBS Studio for screen recording and streaming";
+      };
     };
 
     user = mkOption {
