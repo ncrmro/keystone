@@ -91,9 +91,9 @@ in
         && config.keystone.services.mail.host == config.networking.hostName
       )
       {
-        services.stalwart-mail = {
+        services.stalwart = {
           enable = true;
-          package = pkgs.stalwart-mail;
+          package = pkgs.stalwart;
           openFirewall = true;
 
           settings = {
@@ -241,7 +241,7 @@ in
         );
 
         # Idempotent: GET /api/principal/{name} → 200 means account exists, skip.
-        # NOTE: The systemd unit is "stalwart-mail.service".
+        # NOTE: The systemd unit is "stalwart.service" (renamed from stalwart-mail.service in nixpkgs).
         # The admin password secret may be a SHA-512 hash ($6$...) — Stalwart
         # accepts hashed passwords in HTTP basic auth, so provisioning still works.
         systemd.services = mkIf hasProvisionAgents (
@@ -256,8 +256,8 @@ in
             in
             nameValuePair "provision-agent-mail-${name}" {
               description = "Provision Stalwart mail account for ${username}";
-              after = [ "stalwart-mail.service" ];
-              requires = [ "stalwart-mail.service" ];
+              after = [ "stalwart.service" ];
+              requires = [ "stalwart.service" ];
               wantedBy = [ "multi-user.target" ];
 
               serviceConfig = {
