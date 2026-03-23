@@ -230,7 +230,10 @@ in
             # The MCP server command in cliCodingAgents uses an absolute Nix store
             # path, but agents may also invoke the binary directly (e.g. diagnostics,
             # `which chrome-devtools-mcp`). Adding it to home.packages satisfies both.
-            home.packages = optionals (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) [
+            home.packages = [
+              sysPkgs.keystone.slidev
+            ]
+            ++ optionals (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) [
               sysPkgs.keystone.chrome-devtools-mcp
             ];
 
