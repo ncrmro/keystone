@@ -499,6 +499,40 @@ let
         };
       }
     ];
+
+    # Agent with calendar team events
+    agent-calendar-team-events = eval "agent-calendar-team-events" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.planner = {
+            fullName = "Planning Agent";
+            notes.repo = "git@example.com:planner/notes.git";
+            calendar.teamEvents = [
+              {
+                summary = "[Team] Weekly Retrospective";
+                schedule = "weekly:friday";
+                time = "20:00";
+                workflow = "retrospective/run";
+              }
+              {
+                summary = "[Team] Monthly Review";
+                schedule = "monthly:1";
+                time = "10:00";
+              }
+            ];
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-agent-evaluation"

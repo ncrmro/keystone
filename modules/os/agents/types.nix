@@ -292,6 +292,52 @@ in
           };
         };
 
+        calendar = {
+          teamEvents = mkOption {
+            type = types.listOf (
+              types.submodule {
+                options = {
+                  summary = mkOption {
+                    type = types.str;
+                    description = "Event summary (e.g. '[Team] Weekly Retrospective').";
+                    example = "[Team] Weekly Retrospective";
+                  };
+                  schedule = mkOption {
+                    type = types.str;
+                    description = "Recurrence in SCHEDULES.yaml format: daily, weekly:<day>, monthly:<day>.";
+                    example = "weekly:friday";
+                  };
+                  time = mkOption {
+                    type = types.str;
+                    default = "20:00";
+                    description = "Event start time in HH:MM format.";
+                  };
+                  workflow = mkOption {
+                    type = types.str;
+                    default = "";
+                    description = "DeepWork workflow to invoke when this event triggers a task.";
+                  };
+                };
+              }
+            );
+            default = [ ];
+            description = ''
+              Recurring team cadence events to be created on the agent's CalDAV calendar.
+              Events with [Team] prefix are shared across all agents; events with
+              [AgentName] prefix are agent-specific. The scheduler reads these events
+              and creates tasks with source: "calendar".
+            '';
+            example = [
+              {
+                summary = "[Team] Weekly Retrospective";
+                schedule = "weekly:friday";
+                time = "20:00";
+                workflow = "retrospective/run";
+              }
+            ];
+          };
+        };
+
         mcp = {
           servers = mkOption {
             type = types.attrsOf (

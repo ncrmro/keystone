@@ -111,7 +111,64 @@ for i in $(seq 0 $((SCHEDULE_COUNT - 1))); do
   CREATED=$((CREATED + 1))
 done
 
-log "Scheduler finished: created $CREATED tasks"
+log "Scheduler: $CREATED tasks from SCHEDULES.yaml"
+
+# -- CalDAV calendar events ---------------------------------------------------
+# Read upcoming events from the agent's CalDAV calendar via calendula.
+# Events with [Team] or [AgentName] prefixes become tasks.
+# Gracefully skips if calendula is not available.
+if command -v calendula &>/dev/null; then
+  log "Reading CalDAV calendar events..."
+  CAL_EVENTS=$(calendula event list --output json 2>>"$LOG_FILE" || echo "[]")
+
+  if [ "$CAL_EVENTS" != "[]" ] && [ -n "$CAL_EVENTS" ]; then
+    CAL_COUNT=$(echo "$CAL_EVENTS" | jq 'length' 2>/dev/null || echo "0")
+    log "  Found $CAL_COUNT calendar events"
+
+    for j in $(seq 0 $((CAL_COUNT - 1))); do
+      CAL_UID=$(echo "$CAL_EVENTS" | jq -r ".[$j].uid // empty" 2>/dev/null || true)
+      CAL_SUMMARY=$(echo "$CAL_EVENTS" | jq -r ".[$j].summary // empty" 2>/dev/null || true)
+      CAL_DESCRIPTION=$(echo "$CAL_EVENTS" | jq -r ".[$j].description // .[$j].summary // empty" 2>/dev/null || true)
+      CAL_START=$(echo "$CAL_EVENTS" | jq -r ".[$j].start // empty" 2>/dev/null || true)
+
+      # Skip events without a UID or summary
+      if [ -z "$CAL_UID" ] || [ -z "$CAL_SUMMARY" ]; then
+        continue
+      fi
+
+      # Build source_ref for deduplication: calendar-<uid>-<date>
+      CAL_SOURCE_REF="calendar-${CAL_UID}-${TODAY}"
+
+      # Check if task already exists
+      EXISTING=$(yq "[.tasks[] | select(.source_ref == \"$CAL_SOURCE_REF\")] | length" TASKS.yaml 2>/dev/null || echo "0")
+      if [ "$EXISTING" -gt 0 ]; then
+        log "  Skipping calendar event (already exists: $CAL_SOURCE_REF)"
+        continue
+      fi
+
+      # Create task from calendar event
+      CAL_TASK_NAME="calendar-$(echo "$CAL_SUMMARY" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')-${TODAY}"
+      TASK_CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      log "  Creating task from calendar: $CAL_TASK_NAME"
+      yq -i ".tasks += [{
+        \"name\": \"$CAL_TASK_NAME\",
+        \"description\": \"$CAL_DESCRIPTION\",
+        \"status\": \"pending\",
+        \"source\": \"calendar\",
+        \"source_ref\": \"$CAL_SOURCE_REF\",
+        \"created_at\": \"$TASK_CREATED_AT\"
+      }]" TASKS.yaml
+
+      CREATED=$((CREATED + 1))
+    done
+  else
+    log "  No calendar events found"
+  fi
+else
+  log "Skipping CalDAV events: calendula not found"
+fi
+
+log "Scheduler finished: created $CREATED total tasks"
 
 # Trigger task loop if we created any tasks
 if [ $CREATED -gt 0 ]; then
