@@ -34,6 +34,9 @@ pkgs.testers.nixosTest {
         self.nixosModules.operating-system
       ];
 
+      # Apply keystone overlay for pkgs.keystone.* packages
+      nixpkgs.overlays = [ self.overlays.default ];
+
       # Keystone OS with agents
       keystone.os = {
         enable = true;
@@ -42,6 +45,9 @@ pkgs.testers.nixosTest {
         storage.enable = false;
         secureBoot.enable = false;
         tpm.enable = false;
+
+        # Disable Tailscale for VM testing (no keystone.hosts registry available)
+        tailscale.enable = false;
 
         # ext4 code path (creates agent-homes + create-user-homes services)
         storage.type = "ext4";

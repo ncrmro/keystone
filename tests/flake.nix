@@ -14,6 +14,7 @@
     nix-flatpak.follows = "keystone/nix-flatpak";
     walker.follows = "keystone/walker";
     kinda-nvim-hx.follows = "keystone/kinda-nvim-hx";
+    agenix.follows = "keystone/agenix";
     himalaya.follows = "keystone/himalaya";
     llm-agents.follows = "keystone/llm-agents";
     microvm = {
@@ -35,6 +36,7 @@
       nix-flatpak,
       walker,
       kinda-nvim-hx,
+      agenix,
       himalaya,
       llm-agents,
       microvm,
@@ -54,6 +56,7 @@
         test-server = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           modules = [
+            { nixpkgs.overlays = [ keystone.overlays.default ]; }
             keystone.nixosModules.operating-system
             ../vms/test-server/configuration.nix
           ];
@@ -63,6 +66,7 @@
         test-hyprland = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           modules = [
+            { nixpkgs.overlays = [ keystone.overlays.default ]; }
             home-manager.nixosModules.home-manager
             keystone.nixosModules.operating-system
             keystone.nixosModules.desktop
@@ -88,7 +92,16 @@
           system = "x86_64-linux";
           specialArgs = {
             inherit keystone;
-            keystoneInputs = { inherit nixpkgs hyprland nix-flatpak omarchy walker kinda-nvim-hx; };
+            keystoneInputs = {
+              inherit
+                nixpkgs
+                hyprland
+                nix-flatpak
+                omarchy
+                walker
+                kinda-nvim-hx
+                ;
+            };
           };
           modules = [
             home-manager.nixosModules.home-manager
@@ -175,7 +188,7 @@
         };
 
         test-agent-evaluation = import ./module/agent-evaluation.nix {
-          inherit pkgs lib;
+          inherit pkgs lib agenix;
           self = keystone;
         };
 
