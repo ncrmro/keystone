@@ -145,49 +145,51 @@ in
     ];
 
     # System packages for desktop environment
-    environment.systemPackages = with pkgs; [
-      # Screen recording
-      gpu-screen-recorder
+    environment.systemPackages =
+      with pkgs;
+      [
+        # Screen recording
+        gpu-screen-recorder
 
-      # Media
-      ## Video Editor
-      ## kdenlive disabled: broken in nixpkgs unstable (missing shaderc link in ffmpeg-full)
-      # kdePackages.kdenlive
-      ## Video Player
-      mpv
+        # Media
+        ## Video Editor
+        ## kdenlive disabled: broken in nixpkgs unstable (missing shaderc link in ffmpeg-full)
+        # kdePackages.kdenlive
+        ## Video Player
+        mpv
 
-      # File management
-      nautilus
-      file-roller
+        # File management
+        nautilus
+        file-roller
 
-      # System utilities
-      pavucontrol
-      networkmanagerapplet
-      blueberry
+        # System utilities
+        pavucontrol
+        networkmanagerapplet
+        blueberry
 
-      # XDG portals and desktop integration
-      xdg-utils
-      xdg-user-dirs
+        # XDG portals and desktop integration
+        xdg-utils
+        xdg-user-dirs
 
-      # Polkit agent
-      hyprpolkitagent
+        # Polkit agent
+        hyprpolkitagent
 
-      # Cursor themes
-      adwaita-icon-theme
+        # Cursor themes
+        adwaita-icon-theme
 
-      # Additional Hyprland tools
-      hyprsunset
-      hyprlock
-      hypridle
-      hyprpaper
-    ]
-    ++ optionals cfg.obs.enable [
-      (wrapOBS {
-        plugins = with obs-studio-plugins; [
-          obs-pipewire-audio-capture
-        ];
-      })
-    ];
+        # Additional Hyprland tools
+        hyprsunset
+        hyprlock
+        hypridle
+        hyprpaper
+      ]
+      ++ optionals cfg.obs.enable [
+        (wrapOBS {
+          plugins = with obs-studio-plugins; [
+            obs-pipewire-audio-capture
+          ];
+        })
+      ];
 
     # Enable polkit
     security.polkit.enable = mkDefault true;

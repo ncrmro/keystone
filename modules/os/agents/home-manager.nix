@@ -56,27 +56,27 @@ in
               conventions.archetype = mkDefault agentCfg.archetype;
 
               # Bridge keystone.development → devMode paths
-              devMode = let
-                repos = config.keystone.repos;
-                repoNames = attrNames repos;
-                keystoneEntry = findFirst
-                  (name: (repos.${name}.flakeInput or null) == "keystone")
-                  null repoNames;
-                deepworkEntry = findFirst
-                  (name: (repos.${name}.flakeInput or null) == "deepwork")
-                  null repoNames;
-              in {
-                keystonePath = mkDefault (
-                  if config.keystone.development && keystoneEntry != null
-                  then "/home/${username}/.keystone/repos/${keystoneEntry}"
-                  else null
-                );
-                deepworkPath = mkDefault (
-                  if config.keystone.development && deepworkEntry != null
-                  then "/home/${username}/.keystone/repos/${deepworkEntry}"
-                  else null
-                );
-              };
+              devMode =
+                let
+                  repos = config.keystone.repos;
+                  repoNames = attrNames repos;
+                  keystoneEntry = findFirst (name: (repos.${name}.flakeInput or null) == "keystone") null repoNames;
+                  deepworkEntry = findFirst (name: (repos.${name}.flakeInput or null) == "deepwork") null repoNames;
+                in
+                {
+                  keystonePath = mkDefault (
+                    if config.keystone.development && keystoneEntry != null then
+                      "/home/${username}/.keystone/repos/${keystoneEntry}"
+                    else
+                      null
+                  );
+                  deepworkPath = mkDefault (
+                    if config.keystone.development && deepworkEntry != null then
+                      "/home/${username}/.keystone/repos/${deepworkEntry}"
+                    else
+                      null
+                  );
+                };
 
               git =
                 let
