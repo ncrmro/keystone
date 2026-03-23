@@ -228,9 +228,9 @@ in
       # https://github.com/mikefarah/yq
       yq-go
 
-      # Nixfmt - Official Nix code formatter (RFC style)
+      # Nixfmt - Official Nix code formatter
       # https://github.com/NixOS/nixfmt
-      nixfmt-rfc-style
+      nixfmt
     ];
   };
 }

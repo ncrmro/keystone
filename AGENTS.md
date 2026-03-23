@@ -377,7 +377,7 @@ keystone.hardwareKey = {
 | Tailscale | `keystone.os.tailscale` | Tailscale VPN client |
 | iPhone Tether | `keystone.os.iphoneTether.enable` | iOS USB tethering via libimobiledevice and usbmuxd |
 | Ollama | `keystone.os.ollama` | Ollama LLM runtime |
-| Mail | `keystone.mail.host` | Stalwart mail server (auto-enables on matching host) |
+| Mail | `keystone.services.mail.host` | Stalwart mail server (auto-enables on matching host); `keystone.os.mail.allowedIps` whitelists IPs from fail2ban |
 | Git Server | `keystone.os.gitServer` | Forgejo with agent repo provisioning |
 | Journal Remote | `keystone.os.journalRemote` | Centralized journal collection via systemd-journal-remote/upload (port 19532, Tailscale-only) |
 
@@ -415,7 +415,7 @@ Zsh with oh-my-zsh (robbyrussell theme), starship prompt, zoxide, direnv+nix-dir
 | `Ctrl+Shift+O` | Session mode (Ctrl+O unbound to avoid lazygit conflict) |
 | `Ctrl+PageUp/Down` | Previous/next tab (alternative) |
 
-**Shell packages**: direnv, eza, glow, gnumake, htop, lazygit, ripgrep, tree, yazi, zesh, ghostty.terminfo.
+**Shell packages**: bottom, direnv, dust, eza, fd, fzf, bat, gh, glow, gnumake, htop, jq, lazygit, ncdu, nixfmt, ripgrep, sd, tealdeer, tree, yazi, yq-go, zesh, ghostty.terminfo, ks (keystone CLI).
 
 ### Editor
 
@@ -604,7 +604,7 @@ A wrapper script resolves the password command at launch time since cfait only s
 
 ### Dev Tools
 
-Enabled via `keystone.terminal.devTools = true`: `csview` (CSV viewer), `jq` (JSON processor).
+Enabled via `keystone.terminal.devTools = true`: `csview` (CSV viewer). Note: `jq` is always available via the base shell module.
 
 ## Desktop Module (`modules/desktop/`)
 

@@ -1,6 +1,10 @@
 # TODO this should move to a dedicated server-os module at some point to delinate it from deskop (maybe)
 # Keystone Mail Server (Stalwart)
 #
+# See conventions/tool.stalwart.md
+# Implements REQ-007 (OS Agents — FR-004: Email via Stalwart)
+# See specs/REQ-024-nixos-eval-warning-triage/requirements.md (REQ-024.2)
+#
 # This module provides a basic Stalwart mail server configuration.
 # On first boot, Stalwart generates a random admin password in the logs.
 #
@@ -24,13 +28,13 @@
 #   mode = "0400";
 # };
 #
-# services.stalwart-mail = {
+# services.stalwart = {
 #   credentials = {
 #     admin_password = config.age.secrets.stalwart-admin-password.path;
 #   };
 #   settings.authentication.fallback-admin = {
 #     user = "admin";
-#     secret = "%{file:/run/credentials/stalwart-mail.service/admin_password}%";
+#     secret = "%{file:/run/credentials/stalwart.service/admin_password}%";
 #   };
 # };
 # ```
@@ -237,7 +241,7 @@ in
         );
 
         # Idempotent: GET /api/principal/{name} → 200 means account exists, skip.
-        # NOTE: The systemd unit is "stalwart.service" (not "stalwart-mail.service").
+        # NOTE: The systemd unit is "stalwart-mail.service".
         # The admin password secret may be a SHA-512 hash ($6$...) — Stalwart
         # accepts hashed passwords in HTTP basic auth, so provisioning still works.
         systemd.services = mkIf hasProvisionAgents (
@@ -252,8 +256,8 @@ in
             in
             nameValuePair "provision-agent-mail-${name}" {
               description = "Provision Stalwart mail account for ${username}";
-              after = [ "stalwart.service" ];
-              requires = [ "stalwart.service" ];
+              after = [ "stalwart-mail.service" ];
+              requires = [ "stalwart-mail.service" ];
               wantedBy = [ "multi-user.target" ];
 
               serviceConfig = {
