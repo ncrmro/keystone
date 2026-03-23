@@ -2,14 +2,14 @@
   lib,
   stdenv,
   makeWrapper,
-  poppler_utils,
-  tesseract,
+  python3Packages,
   jq,
+  findutils,
   coreutils,
 }:
 stdenv.mkDerivation {
   pname = "pdf-extract";
-  version = "0.1.0";
+  version = "0.2.0";
 
   src = ./bin;
 
@@ -25,16 +25,16 @@ stdenv.mkDerivation {
     wrapProgram $out/bin/pdf-extract \
       --prefix PATH : ${
         lib.makeBinPath [
-          poppler_utils
-          tesseract
+          python3Packages.docling
           jq
+          findutils
           coreutils
         ]
       }
   '';
 
   meta = with lib; {
-    description = "Convert PDF to markdown with page-level bounding box citations";
+    description = "Convert PDF to markdown with element-level bounding box citations via Docling";
     mainProgram = "pdf-extract";
   };
 }
