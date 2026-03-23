@@ -100,23 +100,45 @@ other source. Every number in the report must trace back to the input files.
    git push -u origin portfolio-review/YYYY-MM
    ```
 
-   Open a PR using `gh pr create` (if GitHub) or the appropriate platform CLI:
-   - Title: `docs(portfolio): YYYY-MM portfolio review`
-   - Body: the Portfolio Summary section from the report, plus a link to the
-     full report file for detailed review
-   - The PR allows the user to comment on specific sections, request changes,
-     and refine the report before it lands on main
+   Open a PR using the appropriate platform CLI. Detect the platform from the
+   remote URL:
+   - `github.com` → use `gh pr create`
+   - `git.ncrmro.com` or other Forgejo → use `tea pr create`
 
-   **Auto-merge convention**: Enable auto-merge on the PR so it merges automatically
-   after a 72-hour review window. This gives the user time to comment and request
-   changes, but prevents the PR from going stale if they don't get to it.
-
+   **GitHub**:
    ```bash
+   gh pr create --title "docs(portfolio): YYYY-MM portfolio review" \
+     --body "$(cat <<'PREOF'
+   ## Portfolio Review — YYYY-MM
+
+   [Portfolio Summary section from report]
+
+   > This PR will auto-merge in 72 hours. Comment or request changes before then.
+   PREOF
+   )"
    gh pr merge --auto --squash
    ```
 
-   Include the review window deadline in the PR body:
+   **Forgejo** (tea CLI):
+   ```bash
+   tea pr create --repo ncrmro/notes \
+     --title "docs(portfolio): YYYY-MM portfolio review" \
+     --description "$(cat <<'PREOF'
+   ## Portfolio Review — YYYY-MM
+
+   [Portfolio Summary section from report]
+
    > This PR will auto-merge in 72 hours. Comment or request changes before then.
+   PREOF
+   )"
+   ```
+
+   The PR allows the user to comment on specific sections, request changes,
+   and refine the report before it lands on main.
+
+   **Auto-merge convention**: If the platform supports auto-merge, enable it so the
+   PR merges automatically after a 72-hour review window. This gives the user time
+   to comment but prevents stale PRs.
 
 8. **Output the PR URL**
 
