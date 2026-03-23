@@ -413,6 +413,7 @@
               lib
               nixpkgs
               agenix
+              home-manager
               ;
             self = self;
           };
