@@ -63,3 +63,6 @@ target/
 # VM screenshots for debugging
 screenshots/
 *.sock
+
+# TUI screenshots (removed from history)
+assets/tui/

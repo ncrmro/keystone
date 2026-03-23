@@ -171,6 +171,7 @@ let
 in
 {
   imports = [
+    ../repos.nix
     ../keys.nix
     ../secrets.nix
     ./notifications.nix

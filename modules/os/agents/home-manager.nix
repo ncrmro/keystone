@@ -41,7 +41,10 @@ in
         nameValuePair username (
           { pkgs, ... }:
           {
-            imports = [ ../../terminal/default.nix ];
+            imports = [
+              ../../terminal/default.nix
+              ../../notes/default.nix
+            ];
 
             # Provide empty keystoneInputs — editor.nix uses it for optional
             # unstable helix and kinda-nvim theme, both degrade gracefully to
@@ -51,6 +54,30 @@ in
             keystone.terminal = mkIf agentCfg.terminal.enable {
               enable = mkDefault true;
               conventions.archetype = mkDefault agentCfg.archetype;
+
+              # Bridge keystone.development → devMode paths
+              devMode = let
+                repos = config.keystone.repos;
+                repoNames = attrNames repos;
+                keystoneEntry = findFirst
+                  (name: (repos.${name}.flakeInput or null) == "keystone")
+                  null repoNames;
+                deepworkEntry = findFirst
+                  (name: (repos.${name}.flakeInput or null) == "deepwork")
+                  null repoNames;
+              in {
+                keystonePath = mkDefault (
+                  if config.keystone.development && keystoneEntry != null
+                  then "/home/${username}/.keystone/repos/${keystoneEntry}"
+                  else null
+                );
+                deepworkPath = mkDefault (
+                  if config.keystone.development && deepworkEntry != null
+                  then "/home/${username}/.keystone/repos/${deepworkEntry}"
+                  else null
+                );
+              };
+
               git =
                 let
                   pubKey = agentPublicKey name;
@@ -180,6 +207,15 @@ in
                   }
                 ) agentCfg.mcp.servers;
               };
+            };
+
+            # Bridge agent notes config to the home-manager notes module.
+            # Agents get both zk scaffolding and repo-sync via this module.
+            keystone.notes = mkIf agentCfg.terminal.enable {
+              enable = mkDefault true;
+              repo = mkDefault agentCfg.notes.repo;
+              path = mkDefault agentCfg.notes.path;
+              zk.enable = mkDefault true;
             };
 
             # Export GRAFANA_API_KEY from agenix secret at shell login (REQ-017.11).

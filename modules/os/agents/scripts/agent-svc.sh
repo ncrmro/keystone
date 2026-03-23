@@ -20,6 +20,12 @@ export SSH_AUTH_SOCK="/run/agent-${AGENT_NAME}-ssh-agent/agent.sock"
 # (e.g. ncrmro's), breaking all home-manager tools (himalaya, direnv, fj,
 # rbw) and devshell tools (deepwork, gh, node) for the agent.
 export PATH="$PATH_PREFIX"
+# Source home-manager session variables (EDITOR, VISUAL, etc.) so agentctl
+# exec inherits whatever keystone.terminal sets — no hardcoded values here.
+HM_VARS="/etc/profiles/per-user/agent-${AGENT_NAME}/etc/profile.d/hm-session-vars.sh"
+if [ -f "$HM_VARS" ]; then
+  . "$HM_VARS"
+fi
 
 if [ $# -lt 1 ]; then
   echo "Usage: agent-svc-${AGENT_NAME} <verb> [args...]" >&2

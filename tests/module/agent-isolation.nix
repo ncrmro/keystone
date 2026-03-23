@@ -192,6 +192,12 @@ pkgs.testers.nixosTest {
     machine.fail("su - testuser -c 'agentctl nonexistent status'")
     print("PASS: Unknown agent rejected")
 
+    # 12e. agentctl exec inherits EDITOR=hx (not system default nano)
+    editor = machine.succeed("su - testuser -c 'agentctl researcher exec env'")
+    assert "EDITOR=hx" in editor, f"Expected EDITOR=hx in agent env: {editor}"
+    assert "VISUAL=hx" in editor, f"Expected VISUAL=hx in agent env: {editor}"
+    print("PASS: Agent EDITOR and VISUAL set to hx")
+
     # === Desktop runtime validation (FR-002) ===
     print("")
     print("Starting desktop runtime tests...")
