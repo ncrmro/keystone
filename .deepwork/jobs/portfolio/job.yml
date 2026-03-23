@@ -1,0 +1,193 @@
+name: portfolio
+version: "1.0.0"
+summary: "Holistic portfolio review across all projects with milestone status, activity, and health assessment"
+common_job_info_provided_to_all_steps_at_runtime: |
+  This job performs a holistic review of the user's entire project portfolio. It replaces
+  the per-project `status.md` files previously maintained in the obsidian notes repo with
+  a single, comprehensive portfolio report that covers all active projects.
+
+  ## Purpose
+
+  The portfolio review serves as the user's executive dashboard — a periodic snapshot of
+  all in-flight work across every project. It answers: "Where do things stand across
+  everything I'm working on?" and "Where should I focus next?"
+
+  ## Data Sources
+
+  For each project, the review gathers data from:
+  1. **GitHub/Forgejo milestones** — open milestones, issue counts, completion percentages
+  2. **Git log** — recent commit activity to gauge momentum (last 30 days)
+  3. **Existing project profiles** — charter.md, README.yaml, status.md, README.md from
+     the notes repo's `projects/{slug}/` directory
+
+  ## Project Discovery
+
+  Projects are discovered from the notes repo. The primary source is `projects/README.md`
+  which lists all active and archived projects with their repos. A `PROJECTS.yaml` may
+  also exist at the repo root with priority ordering.
+
+  ## Platform Tools
+
+  - **GitHub repos**: Use `gh` CLI for milestones, issues, PRs, and activity
+  - **Forgejo repos**: Use `fj` or `tea` CLI, or `curl` with Forgejo API
+  - **Git activity**: Use `git log --oneline --since="30 days ago"` on local clones
+  - Check `~/code/ncrmro/` for local clones of repos
+
+  ## Report Format
+
+  The final portfolio report follows the structure of the old per-project status.md but
+  at the portfolio level:
+
+  - **Portfolio Summary** — overall health, project count, top-level concerns
+  - **Per-Project Status Table** — one row per project with status emoji, milestone info,
+    and activity indicator
+  - **In-Flight Milestones** — detailed view of all open milestones across projects
+  - **Portfolio Eisenhower Matrix** — ASCII box diagram classifying all projects by
+    urgency (time-sensitive deadlines, blockers) and importance (mission-critical,
+    revenue-generating). Q1=Do First, Q2=Schedule, Q3=Delegate, Q4=Archive
+  - **Per-Project Eisenhower Matrix** — for projects with 2+ milestones, an ASCII
+    matrix classifying milestones by urgency and importance within that project
+  - **Activity Heatmap** — which projects have momentum vs. are stagnant
+  - **Cross-Project Blockers** — blockers that affect multiple projects
+  - **Priority Recommendations** — where to focus next based on the data
+
+  Status indicators: 🟢 On Track, 🟡 At Risk, 🔴 Behind, ⚪ Not Started/Deferred
+
+  ## Output Location
+
+  The final report is written to the notes repo at:
+  `projects/portfolio/reviews/YYYY-MM.md` (dated, accumulates over time)
+
+  Per-project data files are intermediate outputs in `.deepwork/tmp/` and do not
+  need to be committed.
+
+workflows:
+  - name: review
+    summary: "Full portfolio review across all active projects with synthesized health report"
+    steps:
+      - discover_projects
+      - review_all_projects
+      - synthesize_report
+
+  - name: review_one
+    summary: "Status review for a single project: milestones, activity, and health assessment"
+    steps:
+      - gather_data
+      - write_summary
+
+steps:
+  # === review workflow (main) ===
+
+  - id: discover_projects
+    name: "Discover Projects"
+    description: "Scan the notes repo to build a list of all active projects with their repos and platforms"
+    instructions_file: steps/discover_projects.md
+    inputs:
+      - name: notes_path
+        description: "Path to the notes repo (e.g., ~/code/ncrmro/obsidian or ~/notes)"
+    outputs:
+      project_list.md:
+        type: file
+        description: "Structured list of all active projects with name, slug, repos (owner/repo), platform (github/forgejo), and local clone paths"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: project_list.md
+        quality_criteria:
+          "All Active Projects Listed": "Every active project from the notes repo is included with at least one repo reference."
+          "Platform Identified": "Each repo entry specifies whether it is on GitHub or Forgejo."
+          "Archived Excluded": "Archived or inactive projects are excluded from the list or clearly marked as excluded."
+
+  - id: review_all_projects
+    name: "Review All Projects"
+    description: "Launch review_one sub-workflow for each project in parallel via sub-agents"
+    instructions_file: steps/review_all_projects.md
+    inputs:
+      - file: project_list.md
+        from_step: discover_projects
+    outputs:
+      all_summaries.md:
+        type: file
+        description: "Combined per-project status summaries collected from all sub-workflow runs"
+        required: true
+    dependencies:
+      - discover_projects
+    reviews:
+      - run_each: all_summaries.md
+        additional_review_guidance: "Read project_list.md to verify every active project from the list has a corresponding summary."
+        quality_criteria:
+          "Full Coverage": "Every active project from project_list.md has a status summary in the combined output."
+          "Consistent Format": "All per-project summaries follow the same structure (status, milestones, activity, blockers)."
+
+  - id: synthesize_report
+    name: "Synthesize Portfolio Report"
+    description: "Combine all per-project summaries into a single portfolio health report with cross-project analysis"
+    instructions_file: steps/synthesize_report.md
+    inputs:
+      - file: all_summaries.md
+        from_step: review_all_projects
+      - file: project_list.md
+        from_step: discover_projects
+    outputs:
+      portfolio_report.md:
+        type: file
+        description: "The final portfolio review report written to projects/portfolio/reviews/YYYY-MM.md in the notes repo"
+        required: true
+    dependencies:
+      - review_all_projects
+      - discover_projects
+    reviews:
+      - run_each: portfolio_report.md
+        additional_review_guidance: "Read all_summaries.md to verify the report accurately reflects the per-project data without fabrication."
+        quality_criteria:
+          "Portfolio Summary Present": "The report opens with an overall portfolio health assessment and project count."
+          "Per-Project Table": "A summary table lists every project with status indicator, active milestone, and activity level."
+          "Milestone Detail": "All open milestones across projects are listed with completion percentages and target dates."
+          "Cross-Project Analysis": "The report identifies cross-project blockers, resource conflicts, or dependencies."
+          "Priority Recommendations": "Actionable recommendations for where to focus next are included, ordered by impact."
+          "Eisenhower Matrices": "A portfolio-level Eisenhower matrix classifies all projects into 4 quadrants (urgent/important). Projects with 2+ milestones also have a per-project matrix."
+          "Data-Backed": "All status indicators and assessments cite specific data (commit counts, issue counts, dates) rather than vague assertions."
+
+  # === review_one workflow (sub-workflow, per project) ===
+
+  - id: gather_data
+    name: "Gather Project Data"
+    description: "Fetch milestones, git activity, and existing profile/charter data for a single project"
+    instructions_file: steps/gather_data.md
+    inputs:
+      - name: project_slug
+        description: "The project slug (e.g., 'keystone', 'catalyst', 'meze')"
+      - name: project_repos
+        description: "Comma-separated list of repos as owner/repo:platform (e.g., 'ncrmro/keystone:github,ncrmro/keystone:forgejo')"
+      - name: notes_path
+        description: "Path to the notes repo for reading existing project profile/charter files"
+    outputs:
+      project_data.md:
+        type: file
+        description: "Raw collected data: milestone list with issue counts, recent git commits, charter/profile excerpts"
+        required: true
+    dependencies: []
+    reviews: []
+
+  - id: write_summary
+    name: "Write Project Summary"
+    description: "Synthesize raw data into a formatted per-project status summary"
+    instructions_file: steps/write_summary.md
+    inputs:
+      - file: project_data.md
+        from_step: gather_data
+    outputs:
+      project_summary.md:
+        type: file
+        description: "Formatted status summary: status indicator, goals, milestones, recent activity, blockers, next actions"
+        required: true
+    dependencies:
+      - gather_data
+    reviews:
+      - run_each: project_summary.md
+        additional_review_guidance: "Read project_data.md to verify the summary accurately reflects the raw data."
+        quality_criteria:
+          "Status Justified": "The status indicator (on-track/at-risk/behind/deferred) is justified by specific data points."
+          "Milestones Covered": "All open milestones are listed with completion percentage and target date if available."
+          "Activity Assessed": "Recent activity (commits, PRs, issues) is summarized to show momentum or stagnation."
+          "Actionable": "Next actions are concrete and specific, not vague aspirations."
