@@ -1,3 +1,6 @@
+# Keystone Terminal — core terminal module entry point.
+# Implements REQ-002 (Terminal Development Environment)
+# See specs/REQ-018-repo-management/ (devMode options)
 {
   config,
   lib,
