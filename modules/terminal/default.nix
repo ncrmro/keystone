@@ -37,7 +37,7 @@ in
     ./projects.nix
     ./cli-coding-agent-configs.nix
     ./conventions.nix
-    ./claude-code-commands.nix
+    ./ai-extensions.nix
     ./perception.nix
   ];
 
