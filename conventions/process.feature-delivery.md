@@ -44,7 +44,7 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 22. Reviewers MUST be assigned per the ownership matrix in `process.code-review-ownership`. On both GitHub and Forgejo, CODEOWNERS handles automatic reviewer assignment when a PR is created or undrafted, provided the repo has branch protection requiring code owner review enabled. If auto-request is not enabled, the authoring agent MUST manually request reviewers per the ownership matrix.
 23. On Forgejo, `tool.forgejo` rule 18 (repo owner as reviewer) is satisfied by including the repo owner in the CODEOWNERS file. Forgejo supports CODEOWNERS natively; no separate manual assignment is needed when CODEOWNERS is configured.
 24. Copilot SHOULD also be requested as a supplementary reviewer per `process.copilot-agent`.
-25. Review feedback MUST be addressed per `process.copilot-agent` conversation resolution rules (fix or explain every comment).
+25. Review feedback MUST be addressed per `process.copilot-agent` conversation resolution rules (fix or explain every comment). For human reviewer feedback, agents MUST also follow `process.pr-review-response` for the full response lifecycle (fetch comments, push fixes, reply, re-request review).
 26. PRs MUST be squash-merged per `process.pull-request`.
 
 ## Traceability

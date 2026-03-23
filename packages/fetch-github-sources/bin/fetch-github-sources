@@ -70,10 +70,11 @@ while IFS= read -r row; do
   subject_url=$(echo "$row" | jq -r '.subject.url')
   repo=$(echo "$row" | jq -r '.repository.full_name')
 
-  pr_data=$(gh api "$subject_url" --jq '{number: .number, title: .title, html_url: .html_url}' 2>/dev/null) || continue
+  pr_data=$(gh api "$subject_url" --jq '{number: .number, title: .title, html_url: .html_url, head_ref: .head.ref}' 2>/dev/null) || continue
   pr_number=$(echo "$pr_data" | jq -r '.number')
   pr_title=$(echo "$pr_data" | jq -r '.title')
   pr_url=$(echo "$pr_data" | jq -r '.html_url')
+  pr_branch=$(echo "$pr_data" | jq -r '.head_ref')
 
   reviews_raw=$(gh api "repos/$repo/pulls/$pr_number/reviews" 2>/dev/null || echo "[]")
   relevant=$(echo "$reviews_raw" | jq --arg agent "$AGENT_USERNAME" \
@@ -94,6 +95,7 @@ while IFS= read -r row; do
       --argjson pr_number "$pr_number" \
       --arg pr_title "$pr_title" \
       --arg pr_url "$pr_url" \
+      --arg pr_branch "$pr_branch" \
       --argjson review_id "$review_id" \
       --arg reviewer "$reviewer" \
       --arg review_state "$review_state" \
@@ -103,6 +105,7 @@ while IFS= read -r row; do
         pr_number: $pr_number,
         pr_title: $pr_title,
         pr_url: $pr_url,
+        pr_branch: $pr_branch,
         review_id: $review_id,
         reviewer: $reviewer,
         review_state: $review_state,
