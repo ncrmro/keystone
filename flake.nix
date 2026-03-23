@@ -1,5 +1,5 @@
 {
-  description = "Keystone NixOS installation media";
+  description = "Self-sovereign NixOS infrastructure platform";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -47,7 +47,10 @@
 
     # Desktop tools
     ghostty.url = "github:ghostty-org/ghostty";
-    yazi.url = "github:sxyazi/yazi";
+    yazi = {
+      url = "github:sxyazi/yazi";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     walker = {
       url = "github:abenz1267/walker";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -74,7 +77,10 @@
       flake = false;
     };
 
-    deepwork.url = "github:Unsupervisedcom/deepwork";
+    deepwork = {
+      url = "github:Unsupervisedcom/deepwork";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     # MCP servers
     grafana-mcp-src = {
@@ -133,6 +139,17 @@
           ;
         keystoneOverlay = self.overlays.default;
       };
+
+      # Shared ISO installer module list — used by both nixosConfigurations.keystoneIso
+      # and lib.mkInstallerIso to avoid maintaining parallel module wiring.
+      installerModules = system: [
+        "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+        ./modules/iso-installer.nix
+        {
+          # Force kernel 6.12 — must be set here to override minimal CD default
+          boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
+        }
+      ];
     in
     {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
@@ -147,13 +164,9 @@
         }:
         (nixpkgs.lib.nixosSystem {
           inherit system;
-          modules = [
-            "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
-            ./modules/iso-installer.nix
+          modules = installerModules system ++ [
             {
               keystone.installer.sshKeys = sshKeys;
-              # Force kernel 6.12 — must be set here to override minimal CD default
-              boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
             }
           ];
         }).config.system.build.isoImage;
@@ -163,141 +176,27 @@
       nixosConfigurations = {
         keystoneIso = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
-          modules = [
-            "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
-            ./modules/iso-installer.nix
-            {
-              # Force kernel 6.12 — must be set here to override minimal CD default
-              boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.x86_64-linux.linuxPackages_6_12;
-            }
-          ];
+          modules = installerModules "x86_64-linux";
         };
       };
 
       # Overlay that provides keystone packages
-      # NOTE: Paths must be captured in `let` BEFORE the function, otherwise they
-      # get evaluated in the wrong context when the overlay is applied by a consumer flake
-      overlays.default =
-        let
-          zesh-src = ./packages/zesh;
-          agent-coding-agent-src = ./packages/agent-coding-agent;
-          agent-mail-src = ./packages/agent-mail;
-          fetch-email-source-src = ./packages/fetch-email-source;
-          fetch-forgejo-sources-src = ./packages/fetch-forgejo-sources;
-          forgejo-project-src = ./packages/forgejo-project;
-          fetch-github-sources-src = ./packages/fetch-github-sources;
-          repo-sync-src = ./packages/repo-sync;
-          podman-agent-src = ./packages/podman-agent;
-          cfait-src = ./packages/cfait;
-          ks-src = ./packages/ks;
-          pz-src = ./packages/pz;
-          himalaya-flake = himalaya;
-          calendula-flake = calendula;
-          cardamum-flake = cardamum;
-          comodoro-flake = comodoro;
-          llm-agents-flake = llm-agents;
-          browser-previews-flake = browser-previews;
-          ghostty-flake = ghostty;
-          yazi-flake = yazi;
-          agenix-flake = agenix;
-          deepwork-flake = deepwork;
-          chrome-devtools-mcp-src = ./packages/chrome-devtools-mcp;
-        in
-        final: prev: {
-          keystone = {
-            zesh = final.callPackage zesh-src { };
-            agent-coding-agent = final.callPackage agent-coding-agent-src { };
-            agent-mail = final.callPackage agent-mail-src { himalaya = final.keystone.himalaya; };
-            fetch-email-source = final.callPackage fetch-email-source-src {
-              himalaya = final.keystone.himalaya;
-            };
-            fetch-forgejo-sources = final.callPackage fetch-forgejo-sources-src { };
-            forgejo-project = final.callPackage forgejo-project-src { };
-            fetch-github-sources = final.callPackage fetch-github-sources-src { };
-            repo-sync = final.callPackage repo-sync-src { };
-            podman-agent = final.callPackage podman-agent-src { };
-            ks = final.callPackage ks-src { };
-            pz = final.callPackage pz-src { };
-            cfait = final.callPackage cfait-src { };
-            himalaya = himalaya-flake.packages.${final.system}.default;
-            calendula = calendula-flake.packages.${final.system}.default;
-            cardamum = cardamum-flake.packages.${final.system}.default;
-            # Comodoro upstream flake is missing dbus from buildInputs/nativeBuildInputs.
-            # The postInstall phase runs the binary (to generate completions) before
-            # fixup patches RPATH, so we also set LD_LIBRARY_PATH during install.
-            comodoro = comodoro-flake.packages.${final.system}.default.overrideAttrs (
-              old:
-              let
-                libPath = final.lib.makeLibraryPath [ final.dbus ];
-              in
-              {
-                nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [
-                  final.pkg-config
-                  final.makeWrapper
-                ];
-                buildInputs = (old.buildInputs or [ ]) ++ [ final.dbus ];
-                postInstall = ''
-                  export LD_LIBRARY_PATH="${libPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-                ''
-                + (old.postInstall or "")
-                + ''
-                  wrapProgram $out/bin/comodoro --prefix LD_LIBRARY_PATH : "${libPath}"
-                '';
-              }
-            );
-            # AI coding agents from llm-agents.nix
-            claude-code = llm-agents-flake.packages.${final.system}.claude-code;
-            gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;
-            codex = llm-agents-flake.packages.${final.system}.codex;
-            opencode = llm-agents-flake.packages.${final.system}.opencode;
-            # Browsers from browser-previews
-            google-chrome = browser-previews-flake.packages.${final.system}.google-chrome;
-            # Desktop tools from flake inputs
-            ghostty = ghostty-flake.packages.${final.system}.default;
-            yazi = yazi-flake.packages.${final.system}.default;
-            agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
-            deepwork = deepwork-flake.packages.${final.system}.default;
-            # Curated selection of DeepWork library jobs from the deepwork flake.
-            # Only explicitly listed jobs are included — to add a new job, append a
-            # cp -r line below once that job exists in the upstream library/jobs.
-            deepwork-library-jobs = final.runCommand "deepwork-library-jobs" { } ''
-              mkdir -p $out
-              cp -r ${deepwork-flake}/library/jobs/spec_driven_development $out/
-            '';
-            # Keystone-native DeepWork jobs from .deepwork/jobs/ in this repo.
-            # Jobs migrated from ncrmro/agents, luce/drago, and ncrmro/notes land
-            # here and become available to all agents via DEEPWORK_ADDITIONAL_JOBS_FOLDERS.
-            keystone-deepwork-jobs = final.runCommand "keystone-deepwork-jobs" { } ''
-              mkdir -p $out
-              if [ -d ${self}/.deepwork/jobs ] && [ "$(ls -A ${self}/.deepwork/jobs 2>/dev/null)" ]; then
-                for d in ${self}/.deepwork/jobs/*/; do
-                  [ -d "$d" ] && cp -r "$d" $out/
-                done
-              fi
-            '';
-            # Keystone conventions (tool manuals, process docs, archetypes) packaged
-            # for home-manager to generate system-wide AGENTS.md at build time.
-            keystone-conventions = final.runCommand "keystone-conventions" { } ''
-              mkdir -p $out
-              cp -r ${self}/conventions/* $out/
-            '';
-            chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src { };
-            # Grafana MCP server — provides Prometheus/Loki query access to agents.
-            grafana-mcp = final.buildGoModule {
-              pname = "mcp-grafana";
-              version = "unstable";
-              src = grafana-mcp-src;
-              vendorHash = "sha256-NUarbuK3Eg8LflToR35Oaw3lJLjXCJLYukpJ7G4q5FI=";
-              meta = {
-                description = "Grafana MCP server for querying metrics and logs";
-                homepage = "https://github.com/grafana/mcp-grafana";
-              };
-            };
-          };
-          # Top-level overrides so programs.ghostty/yazi use flake versions
-          ghostty = ghostty-flake.packages.${final.system}.default;
-          yazi = yazi-flake.packages.${final.system}.default;
-        };
+      overlays.default = import ./overlays/default.nix {
+        inherit
+          self
+          himalaya
+          calendula
+          cardamum
+          comodoro
+          llm-agents
+          browser-previews
+          ghostty
+          yazi
+          agenix
+          deepwork
+          grafana-mcp-src
+          ;
+      };
 
       # Export Keystone modules for use in other flakes
       nixosModules = {
@@ -426,28 +325,36 @@
           };
         };
 
-      # Packages exported for consumption
+      # Packages exported for consumption — sourced from the overlay (single source of truth)
       # Note: Integration/VM tests are in ./tests/flake.nix (separate flake to avoid IFD issues)
       packages.x86_64-linux =
         let
-          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          pkgs = import nixpkgs {
+            system = "x86_64-linux";
+            overlays = [ self.overlays.default ];
+          };
         in
         {
           iso = self.lib.mkInstallerIso { inherit nixpkgs; };
-          zesh = pkgs.callPackage ./packages/zesh { };
-          agent-coding-agent = pkgs.callPackage ./packages/agent-coding-agent { };
-          agent-mail = pkgs.callPackage ./packages/agent-mail {
-            himalaya = himalaya.packages.x86_64-linux.default;
-          };
-          fetch-email-source = pkgs.callPackage ./packages/fetch-email-source {
-            himalaya = himalaya.packages.x86_64-linux.default;
-          };
-          fetch-forgejo-sources = pkgs.callPackage ./packages/fetch-forgejo-sources { };
-          forgejo-project = pkgs.callPackage ./packages/forgejo-project { };
-          fetch-github-sources = pkgs.callPackage ./packages/fetch-github-sources { };
-          repo-sync = pkgs.callPackage ./packages/repo-sync { };
-          podman-agent = pkgs.callPackage ./packages/podman-agent { };
-          ks = pkgs.callPackage ./packages/ks { };
+          inherit (pkgs.keystone)
+            zesh
+            agent-coding-agent
+            agent-mail
+            fetch-email-source
+            fetch-forgejo-sources
+            forgejo-project
+            fetch-github-sources
+            repo-sync
+            podman-agent
+            ks
+            pz
+            cfait
+            chrome-devtools-mcp
+            grafana-mcp
+            deepwork-library-jobs
+            keystone-deepwork-jobs
+            keystone-conventions
+            ;
           keystone-tui = pkgs.callPackage ./packages/keystone-tui { };
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
         };
