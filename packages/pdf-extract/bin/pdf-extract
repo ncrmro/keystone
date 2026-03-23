@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# pdf-extract — Convert PDF to markdown with page-level bounding box citations.
+#
+# Uses pdftotext (poppler) for native-text PDFs and tesseract OCR for scanned
+# (image-only) pages. Outputs {name}.md and {name}.bbox.json.
+#
+# Implements REQ-023.1–REQ-023.5
+#
+# Usage: pdf-extract <input.pdf> [--output-dir <dir>]
+set -euo pipefail
+
+usage() {
+  echo "Usage: pdf-extract <input.pdf> [--output-dir <dir>]"
+  echo ""
+  echo "Convert a PDF to markdown with page-level bounding box metadata."
+  echo ""
+  echo "Options:"
+  echo "  --output-dir <dir>  Output directory (default: same as input file)"
+  echo "  --help              Show this help"
+  exit "${1:-0}"
+}
+
+INPUT=""
+OUTPUT_DIR=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+    --help) usage 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage 1 ;;
+    *) INPUT="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$INPUT" ]]; then
+  echo "Error: no input PDF specified" >&2
+  usage 1
+fi
+
+if [[ ! -f "$INPUT" ]]; then
+  echo "Error: file not found: $INPUT" >&2
+  exit 1
+fi
+
+BASENAME=$(basename "$INPUT" .pdf)
+INPUT_DIR=$(dirname "$INPUT")
+OUTPUT_DIR="${OUTPUT_DIR:-$INPUT_DIR}"
+mkdir -p "$OUTPUT_DIR"
+
+TMPDIR_WORK=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_WORK"' EXIT
+
+# ── Detect scanned vs native-text PDF ────────────────────────────────
+# Extract first 5 pages of text; if effectively empty, assume scanned.
+pdftotext -l 5 "$INPUT" "$TMPDIR_WORK/sample.txt" 2>/dev/null || true
+CHAR_COUNT=$(wc -c < "$TMPDIR_WORK/sample.txt" | tr -d ' ')
+
+if [[ "$CHAR_COUNT" -lt 50 ]]; then
+  MODE="ocr"
+else
+  MODE="native"
+fi
+
+echo "pdf-extract: mode=$MODE file=$INPUT" >&2
+
+# ── Extract text ─────────────────────────────────────────────────────
+PAGE_COUNT=$(pdftotext -l 999999 "$INPUT" /dev/null 2>&1 | grep -oP 'Pages:\s+\K\d+' || true)
+if [[ -z "$PAGE_COUNT" ]]; then
+  # Fallback: count pages via pdfinfo-style output from pdftotext
+  PAGE_COUNT=$(pdftotext "$INPUT" /dev/null 2>&1 | grep -c "Page" || echo "1")
+fi
+
+# Get actual page count from pdftotext by extracting per-page
+# We extract page-by-page to build both markdown and bbox data
+PAGES_DIR="$TMPDIR_WORK/pages"
+mkdir -p "$PAGES_DIR"
+
+MD_OUT="$OUTPUT_DIR/$BASENAME.md"
+BBOX_OUT="$OUTPUT_DIR/$BASENAME.bbox.json"
+
+# Initialize markdown output
+{
+  echo "# $BASENAME"
+  echo ""
+} > "$MD_OUT"
+
+# Initialize bbox JSON array
+echo '[' > "$BBOX_OUT"
+FIRST_PAGE=true
+
+# Extract page-by-page
+PAGE=1
+while true; do
+  PAGE_TXT="$PAGES_DIR/page-$PAGE.txt"
+
+  if [[ "$MODE" == "native" ]]; then
+    # Extract single page with layout preservation
+    pdftotext -layout -f "$PAGE" -l "$PAGE" "$INPUT" "$PAGE_TXT" 2>/dev/null || break
+  else
+    # OCR mode: render page to image, then tesseract
+    PAGE_IMG="$PAGES_DIR/page-$PAGE.png"
+    # pdftoppm renders a single page; -r 300 for decent OCR quality
+    pdftoppm -png -r 300 -f "$PAGE" -l "$PAGE" "$INPUT" "$PAGES_DIR/page" 2>/dev/null || break
+
+    # pdftoppm names output page-NN.png or page-N.png
+    RENDERED=$(ls "$PAGES_DIR"/page-*.png 2>/dev/null | head -1)
+    if [[ -z "$RENDERED" ]]; then break; fi
+    mv "$RENDERED" "$PAGE_IMG"
+
+    tesseract "$PAGE_IMG" "$PAGES_DIR/page-$PAGE" 2>/dev/null || break
+    # tesseract outputs .txt extension
+    if [[ ! -f "$PAGE_TXT" ]]; then
+      # tesseract may have created page-$PAGE.txt already
+      mv "$PAGES_DIR/page-$PAGE.txt" "$PAGE_TXT" 2>/dev/null || break
+    fi
+    rm -f "$PAGE_IMG"
+  fi
+
+  # Check if we got any output (empty = past last page)
+  if [[ ! -f "$PAGE_TXT" ]] || [[ ! -s "$PAGE_TXT" ]]; then
+    # For native mode, pdftotext creates empty files past the last page
+    # Check if this is truly empty or just whitespace
+    if [[ -f "$PAGE_TXT" ]]; then
+      CONTENT=$(tr -d '[:space:]' < "$PAGE_TXT")
+      if [[ -z "$CONTENT" ]] && [[ "$PAGE" -gt 1 ]]; then
+        rm -f "$PAGE_TXT"
+        break
+      fi
+    else
+      break
+    fi
+  fi
+
+  # Append to markdown with page citation
+  {
+    echo "## Page $PAGE"
+    echo ""
+    cat "$PAGE_TXT"
+    echo ""
+  } >> "$MD_OUT"
+
+  # Generate bbox entry (page-level bounding box from pdftotext HTML mode)
+  if [[ "$MODE" == "native" ]]; then
+    HTML_OUT="$PAGES_DIR/page-$PAGE.html"
+    pdftotext -bbox -f "$PAGE" -l "$PAGE" "$INPUT" "$HTML_OUT" 2>/dev/null || true
+
+    # Extract page dimensions from the HTML bbox output
+    PAGE_BBOX=$(grep -oP 'xMin="[^"]*" yMin="[^"]*" xMax="[^"]*" yMax="[^"]*"' "$HTML_OUT" 2>/dev/null | head -1 || echo "")
+    if [[ -n "$PAGE_BBOX" ]]; then
+      X_MIN=$(echo "$PAGE_BBOX" | grep -oP 'xMin="\K[^"]*')
+      Y_MIN=$(echo "$PAGE_BBOX" | grep -oP 'yMin="\K[^"]*')
+      X_MAX=$(echo "$PAGE_BBOX" | grep -oP 'xMax="\K[^"]*')
+      Y_MAX=$(echo "$PAGE_BBOX" | grep -oP 'yMax="\K[^"]*')
+    else
+      X_MIN="0"; Y_MIN="0"; X_MAX="612"; Y_MAX="792"
+    fi
+    rm -f "$HTML_OUT"
+  else
+    # OCR mode: use standard US Letter dimensions
+    X_MIN="0"; Y_MIN="0"; X_MAX="612"; Y_MAX="792"
+  fi
+
+  LINE_COUNT=$(wc -l < "$PAGE_TXT" | tr -d ' ')
+
+  if [[ "$FIRST_PAGE" == "true" ]]; then
+    FIRST_PAGE=false
+  else
+    echo ',' >> "$BBOX_OUT"
+  fi
+
+  jq -n \
+    --argjson page "$PAGE" \
+    --arg mode "$MODE" \
+    --argjson lines "$LINE_COUNT" \
+    --argjson xMin "${X_MIN:-0}" \
+    --argjson yMin "${Y_MIN:-0}" \
+    --argjson xMax "${X_MAX:-612}" \
+    --argjson yMax "${Y_MAX:-792}" \
+    '{page: $page, mode: $mode, lines: $lines, bbox: {xMin: $xMin, yMin: $yMin, xMax: $xMax, yMax: $yMax}}' \
+    >> "$BBOX_OUT"
+
+  PAGE=$((PAGE + 1))
+done
+
+echo ']' >> "$BBOX_OUT"
+
+TOTAL=$((PAGE - 1))
+echo "pdf-extract: wrote $TOTAL pages to $MD_OUT" >&2
+echo "pdf-extract: bbox metadata at $BBOX_OUT" >&2
