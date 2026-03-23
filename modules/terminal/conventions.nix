@@ -2,13 +2,17 @@
 #
 # See conventions/tool.cli-coding-agents.md
 # Implements REQ-017 (Conventions and Grafana MCP)
+# Implements REQ-024 (Archetype Role Sub-Agents and Skills)
 #
 # Reads archetypes.yaml from the keystone-conventions Nix store derivation and
 # writes conventions to each CLI coding tool's native instruction file path:
-#   - ~/.claude/CLAUDE.md   (Claude Code)
-#   - ~/.gemini/GEMINI.md   (Gemini CLI)
-#   - ~/.codex/AGENTS.md    (Codex)
+#   - ~/.claude/CLAUDE.md           (Claude Code — global archetype instructions)
+#   - ~/.gemini/GEMINI.md           (Gemini CLI)
+#   - ~/.codex/AGENTS.md            (Codex)
 #   - OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file needed
+#
+# Role sub-agents (REQ-024):
+#   - ~/.claude/agents/<role>.md    (one per role defined in the archetype)
 #
 # Content separation:
 #   - Keystone repo (conventions/): tool manuals, process docs, archetypes — shared
@@ -71,6 +75,59 @@ let
     "- [${name}](${conventionsPath}/${filename})"
   ) (archetypeConfig.referenced_conventions or [ ]);
 
+  # ---------------------------------------------------------------------------
+  # REQ-024: Role sub-agent generation
+  # ---------------------------------------------------------------------------
+
+  # Get roles map for the archetype (empty attrset if none defined)
+  archetypeRoles = archetypeConfig.roles or { };
+
+  # Helper: convert kebab-case to Title Case (e.g., "code-reviewer" → "Code Reviewer")
+  toTitleCase =
+    str:
+    concatMapStringsSep " " (
+      word: (toUpper (substring 0 1 word)) + (substring 1 (stringLength word - 1) word)
+    ) (splitString "-" str);
+
+  # Build content for a single role sub-agent file.
+  # Format: YAML frontmatter + compiled convention content per role.
+  buildRoleContent =
+    roleName: roleCfg:
+    let
+      roleDescription = roleCfg.description or roleName;
+      roleDisplayName = toTitleCase roleName;
+      conventionContents = map (
+        name:
+        let
+          filepath = "${conventionsPath}/${name}.md";
+        in
+        if builtins.pathExists filepath then
+          "## ${name}\n\n" + builtins.readFile filepath
+        else
+          "<!-- Convention ${name} not found -->"
+      ) (roleCfg.conventions or [ ]);
+      body = concatStringsSep "\n\n---\n\n" conventionContents;
+    in
+    ''
+      ---
+      name: ${roleDisplayName}
+      description: ${roleDescription}
+      ---
+
+    ''
+    + body;
+
+  # Build the attrset of home.file entries for role sub-agent files.
+  # Each role in the archetype becomes ~/.claude/agents/<role-name>.md.
+  roleSubAgentFiles =
+    if cfg.roleSubAgents.enable && archetypeRoles != { } then
+      mapAttrs' (
+        roleName: roleCfg:
+        nameValuePair ".claude/agents/${roleName}.md" { text = buildRoleContent roleName roleCfg; }
+      ) archetypeRoles
+    else
+      { };
+
   # Compose the AGENTS.md content
   agentsMdContent = concatStringsSep "\n\n---\n\n" (
     [
@@ -122,6 +179,20 @@ in
         Default: 16000 bytes (~4000 tokens). See REQ-021.
       '';
     };
+
+    roleSubAgents = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Generate per-role Claude Code sub-agent files in ~/.claude/agents/<role>.md
+          from the archetype's roles defined in archetypes.yaml. Each file contains
+          YAML frontmatter (name, description) and compiled convention content for
+          that role. Set to false to suppress sub-agent generation without affecting
+          the global CLAUDE.md. See REQ-024.
+        '';
+      };
+    };
   };
 
   config = mkIf (terminalCfg.enable && cfg.enable) {
@@ -142,6 +213,11 @@ in
     home.file.".claude/CLAUDE.md".text = agentsMdContent;
     home.file.".gemini/GEMINI.md".text = agentsMdContent;
     home.file.".codex/AGENTS.md".text = agentsMdContent;
+
+    # REQ-024: Generate per-role Claude Code sub-agent files.
+    # Each role in the archetype becomes ~/.claude/agents/<role>.md.
+    # home.file is an attrset; this merge adds role files alongside the globals above.
+    home.file = roleSubAgentFiles;
 
     # Expose the full conventions directory for on-demand reading
     # (referenced conventions link to Nix store paths in this directory)
