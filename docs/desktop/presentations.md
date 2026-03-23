@@ -45,15 +45,16 @@ For full details, see [Screen Recording User Guide](screen-recording.md).
 
 ### Setup
 
-Slidev runs via Node.js. Create a presentation in any project directory:
+Slidev is pre-installed on all keystone desktop and agent profiles via `pkgs.keystone.slidev`. The `slidev` command is available immediately — no npm install needed.
+
+To create a new presentation:
 
 ```bash
-# Initialize a new presentation
-npm init slidev@latest my-presentation
-cd my-presentation
+# Create a slides.md in your project and start presenting
+slidev slides.md
 
-# Or in an existing project, add slidev
-npm install @slidev/cli @slidev/theme-default
+# Or initialize a full Slidev project with themes
+npm init slidev@latest my-presentation
 ```
 
 ### Creating Slides

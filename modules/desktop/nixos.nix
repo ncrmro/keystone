@@ -1,3 +1,6 @@
+# Keystone Desktop — NixOS-level system configuration.
+# Implements REQ-002 (Keystone Desktop)
+# See conventions/process.enable-by-default.md
 {
   config,
   lib,

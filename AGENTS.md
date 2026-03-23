@@ -77,13 +77,13 @@ modules/
 
 `zesh`, `agent-mail`, `agent-coding-agent`, `fetch-email-source`, `fetch-forgejo-sources`,
 `fetch-github-sources`, `repo-sync`, `podman-agent`, `keystone-tui`, `keystone-installer-ui`,
-`keystone-ha`, `ks`, `pz`, `forgejo-project`, `chrome-devtools-mcp`
+`keystone-ha`, `ks`, `pz`, `forgejo-project`, `chrome-devtools-mcp`, `slidev`
 
 ### Overlay (`pkgs.keystone.*`)
 
 `claude-code`, `gemini-cli`, `codex`, `opencode`, `deepwork`, `keystone-deepwork-jobs`,
 `keystone-conventions`, `chrome-devtools-mcp`, `grafana-mcp`, `google-chrome`, `ghostty`,
-`yazi`, `himalaya`, `calendula`, `cardamum`, `comodoro`, `cfait`, `agenix`
+`yazi`, `himalaya`, `calendula`, `cardamum`, `comodoro`, `cfait`, `agenix`, `slidev`
 
 ## Important Notes
 
