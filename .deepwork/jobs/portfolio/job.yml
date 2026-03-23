@@ -1,5 +1,5 @@
 name: portfolio
-version: "1.0.0"
+version: "1.1.0"
 summary: "Holistic portfolio review across all projects with milestone status, activity, and health assessment"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job performs a holistic review of the user's entire project portfolio. It replaces
@@ -55,8 +55,11 @@ common_job_info_provided_to_all_steps_at_runtime: |
 
   ## Output Location
 
-  The final report is written to the notes repo at:
+  The final report is delivered as a **pull request** into the notes repo at:
   `projects/portfolio/reviews/YYYY-MM.md` (dated, accumulates over time)
+
+  The PR allows the user to review, comment on, and refine the report before
+  merging. Branch naming: `portfolio-review/YYYY-MM`.
 
   Per-project data files are intermediate outputs in `.deepwork/tmp/` and do not
   need to be committed.
