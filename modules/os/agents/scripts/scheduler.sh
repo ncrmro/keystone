@@ -125,6 +125,7 @@ if command -v calendula &>/dev/null; then
     CAL_COUNT=$(echo "$CAL_EVENTS" | jq 'length' 2>/dev/null || echo "0")
     log "  Found $CAL_COUNT calendar events"
 
+    if [ "$CAL_COUNT" -gt 0 ]; then
     for j in $(seq 0 $((CAL_COUNT - 1))); do
       CAL_UID=$(echo "$CAL_EVENTS" | jq -r ".[$j].uid // empty" 2>/dev/null || true)
       CAL_SUMMARY=$(echo "$CAL_EVENTS" | jq -r ".[$j].summary // empty" 2>/dev/null || true)
@@ -136,8 +137,18 @@ if command -v calendula &>/dev/null; then
         continue
       fi
 
+      # Use event start date for deduplication when available, fall back to today
+      CAL_DATE="${TODAY}"
+      if [ -n "$CAL_START" ]; then
+        # Extract date portion (YYYY-MM-DD) from start timestamp
+        CAL_DATE_PARSED=$(echo "$CAL_START" | grep -oP '^\d{4}-\d{2}-\d{2}' || true)
+        if [ -n "$CAL_DATE_PARSED" ]; then
+          CAL_DATE="$CAL_DATE_PARSED"
+        fi
+      fi
+
       # Build source_ref for deduplication: calendar-<uid>-<date>
-      CAL_SOURCE_REF="calendar-${CAL_UID}-${TODAY}"
+      CAL_SOURCE_REF="calendar-${CAL_UID}-${CAL_DATE}"
 
       # Check if task already exists
       EXISTING=$(yq "[.tasks[] | select(.source_ref == \"$CAL_SOURCE_REF\")] | length" TASKS.yaml 2>/dev/null || echo "0")
@@ -161,6 +172,7 @@ if command -v calendula &>/dev/null; then
 
       CREATED=$((CREATED + 1))
     done
+    fi # CAL_COUNT > 0
   else
     log "  No calendar events found"
   fi

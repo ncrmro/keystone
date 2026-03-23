@@ -322,10 +322,12 @@ in
             );
             default = [ ];
             description = ''
-              Recurring team cadence events to be created on the agent's CalDAV calendar.
+              Recurring team cadence events for the agent's CalDAV calendar.
               Events with [Team] prefix are shared across all agents; events with
-              [AgentName] prefix are agent-specific. The scheduler reads these events
-              and creates tasks with source: "calendar".
+              [AgentName] prefix are agent-specific. These events must be created
+              on the CalDAV server (e.g. via calendula or a CalDAV client). The
+              scheduler reads events from the calendar and creates tasks with
+              source: "calendar".
             '';
             example = [
               {
