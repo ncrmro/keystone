@@ -15,6 +15,10 @@ in
   options.keystone.desktop = {
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities";
 
+    obs = {
+      enable = mkEnableOption "OBS Studio for screen recording and streaming";
+    };
+
     user = mkOption {
       type = types.str;
       description = "User for auto-login to Hyprland session";
@@ -169,6 +173,13 @@ in
       hyprlock
       hypridle
       hyprpaper
+    ]
+    ++ optionals cfg.obs.enable [
+      (wrapOBS {
+        plugins = with obs-studio-plugins; [
+          obs-pipewire-audio-capture
+        ];
+      })
     ];
 
     # Enable polkit
