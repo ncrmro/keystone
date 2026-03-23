@@ -49,6 +49,10 @@ per-host `enable = true` flags that must be maintained in lockstep.
 11. Agent-specific overrides (e.g., different mail credentials) MUST use the
     agent submodule options, not separate module-level flags.
 
+See `process.keystone-principal-parity` for the implementation discipline
+(shared provisioning scripts, option symmetry, divergence documentation)
+that enforces this parity at the code level.
+
 ## Config Reduction Reviews
 
 12. During the `ks.develop` workflow review step, reviewers SHOULD check

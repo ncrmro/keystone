@@ -36,3 +36,6 @@ See also `process.enable-by-default` for the design principle that agents receiv
 13. All tools available in an interactive agent shell MUST also be available in systemd service contexts — including `bash`, `git`, `gh`, `himalaya`, and other CLI tools.
 14. Service units SHOULD source the agent's shell profile or use an equivalent mechanism to inherit the complete PATH and environment variables.
 15. Failure to provide the full environment (e.g., missing `bash` on PATH) causes task execution to crash silently, leaving tasks in an invalid state (see [keystone#103](https://github.com/ncrmro/keystone/issues/103)).
+
+See `process.keystone-principal-parity` for provisioning-time design patterns
+that maintain agent/human parity at the script and Nix module level.
