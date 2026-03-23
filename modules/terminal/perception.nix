@@ -1,7 +1,8 @@
 # Keystone Terminal Perception
 #
 # Installs CLI tools for the perception layer:
-# - pdf-extract: PDF to markdown with bounding box citations
+# - docling: IBM Docling PDF-to-markdown with structure preservation
+# - pdf-extract: convenience wrapper around docling with bbox JSON output
 # - whisper-transcribe: local audio transcription via whisper.cpp
 # - Keystone Photos (`ks photos`, backed by `keystone-photos`)
 # - immich-search: Immich REST API search (smart, person, recent)
@@ -44,6 +45,7 @@ in
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
     home.packages = [
+      pkgs.keystone.docling
       pkgs.keystone.pdf-extract
       pkgs.keystone.whisper-transcribe
       pkgs.keystone.immich-search
