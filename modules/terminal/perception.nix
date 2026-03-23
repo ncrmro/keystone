@@ -1,16 +1,14 @@
 # Keystone Terminal Perception
 #
-# This module provides CLI tools for the perception layer:
-# - PDF parsing (docling) — added in Phase 2
-# - Voice transcription (whisper.cpp) — added in Phase 2
-# - Keystone Photos (`ks photos`, backed by `keystone-photos`) — added in Phase 2
-# - Voice recording helper — added in Phase 2
-#
-# This is the configuration scaffolding. When `enable = true`, the option
-# tree is available but no packages are installed yet — they are added as
-# individual packages land in subsequent PRs.
+# Installs CLI tools for the perception layer:
+# - pdf-extract: PDF to markdown with bounding box citations
+# - whisper-transcribe: local audio transcription via whisper.cpp
+# - Keystone Photos (`ks photos`, backed by `keystone-photos`)
+# - immich-search: Immich REST API search (smart, person, recent)
+# - voice-recorder: PipeWire microphone capture helper
 #
 # Implements REQ-023.36 (terminal perception.enable option).
+# Implements REQ-023.40 (standalone CLI commands for agents and task loops).
 #
 # ## Example
 #
@@ -45,6 +43,11 @@ in
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
-    home.packages = optional cfg.search.enable pkgs.keystone.keystone-photos;
+    home.packages = [
+      pkgs.keystone.pdf-extract
+      pkgs.keystone.whisper-transcribe
+      pkgs.keystone.immich-search
+      pkgs.keystone.voice-recorder
+    ] ++ optional cfg.search.enable pkgs.keystone.keystone-photos;
   };
 }

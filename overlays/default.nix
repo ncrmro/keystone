@@ -38,6 +38,10 @@ let
   pz-src = ../packages/pz;
   keystone-photos-src = ../packages/keystone-photos;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
+  pdf-extract-src = ../packages/pdf-extract;
+  whisper-transcribe-src = ../packages/whisper-transcribe;
+  immich-search-src = ../packages/immich-search;
+  voice-recorder-src = ../packages/voice-recorder;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
   lfs-s3-pkg-src = ../packages/lfs-s3;
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
@@ -162,6 +166,12 @@ in
       keystone-src = self;
     };
     chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src { };
+    # Perception layer CLI tools (REQ-024)
+    docling = final.python3Packages.docling;
+    pdf-extract = final.callPackage pdf-extract-src { };
+    whisper-transcribe = final.callPackage whisper-transcribe-src { };
+    immich-search = final.callPackage immich-search-src { };
+    voice-recorder = final.callPackage voice-recorder-src { };
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;
     };
@@ -174,6 +184,23 @@ in
     # ghostty only has .default for Linux systems
     ghostty = ghostty-flake.packages.${system}.default;
   };
+  # Fix docling-parse: nlohmann_json 3.12.0 has ambiguous bool→JSON cast in
+  # C++20 mode. Disabling implicit conversions avoids the overload resolution
+  # failure. See https://github.com/docling-project/docling-parse/issues/172
+  # and nixpkgs PR #453902. Remove this override when nlohmann_json ≥3.12.1
+  # lands in nixpkgs.
+  pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+    (python-final: python-prev: {
+      docling-parse = python-prev.docling-parse.overrideAttrs (old: {
+        env = (old.env or { }) // {
+          NIX_CFLAGS_COMPILE = (old.env.NIX_CFLAGS_COMPILE or "") + " -DJSON_ImplicitConversions=0";
+        };
+        meta = old.meta // {
+          broken = false;
+        };
+      });
+    })
+  ];
   # Top-level overrides so programs.ghostty/yazi use flake versions
   yazi = yazi-flake.packages.${system}.default;
 }
