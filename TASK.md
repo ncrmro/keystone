@@ -29,11 +29,11 @@ Tech stack: NixOS modules, Nix overlays, home-manager, DeepWork jobs (YAML + mar
 
 ## Acceptance Criteria
 
-- [ ] `docs/desktop/presentations.md` exists covering all four use case scenarios
-- [ ] Slidev is packaged or has a documented setup path
-- [ ] OBS usage is documented as an alternative for complex recordings
-- [ ] `video-slidev` pipeline is documented with usage examples
-- [ ] At least one DeepWork workflow for presentation creation exists
+- [x] `docs/desktop/presentations.md` exists covering all four use case scenarios
+- [x] Slidev is packaged or has a documented setup path
+- [x] OBS usage is documented as an alternative for complex recordings
+- [x] `video-slidev` pipeline is documented with usage examples
+- [ ] At least one DeepWork workflow for presentation creation exists (deferred — outline posted on #203)
 - [ ] Existing evaluation passes (`nix flake check --no-build`)
 
 ## Key Files
