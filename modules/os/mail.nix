@@ -1,6 +1,9 @@
 # TODO this should move to a dedicated server-os module at some point to delinate it from deskop (maybe)
 # Keystone Mail Server (Stalwart)
 #
+# See conventions/tool.stalwart.md
+# Implements REQ-007 (OS Agents — FR-004: Email via Stalwart)
+#
 # This module provides a basic Stalwart mail server configuration.
 # On first boot, Stalwart generates a random admin password in the logs.
 #
