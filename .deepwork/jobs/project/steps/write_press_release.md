@@ -126,6 +126,16 @@ A single-line file containing the full URL of the issue created for the press re
 - No fictional customer quotes
 - No city dateline (unless user explicitly requested one)
 
+## Next Steps
+
+After this workflow completes, suggest the following to the user:
+
+> The press release is done. The natural next step is to run **`milestone/setup`** to create a milestone with user stories derived from this press release. The press release issue URL (`press_release_issue_url.md`) feeds directly into milestone setup as the scope source.
+>
+> After milestone setup, run **`milestone/engineering_handoff`** to create functional requirement specs and a plan issue.
+
+The full pipeline is: `project/press_release` → `milestone/setup` → `milestone/engineering_handoff`.
+
 ## Context
 
 This press release is a working-backwards document in the Amazon tradition. It serves two audiences: customers (who should understand the value immediately) and the development team (who should understand what needs to be built). The quality of this document determines whether the team invests in building the feature — so clarity and honesty about what is being promised are essential.

@@ -1,5 +1,5 @@
 name: project
-version: "1.4.0"
+version: "1.4.1"
 summary: "Project onboarding, press releases, and success charter reviews"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job covers three project-level business workflows:

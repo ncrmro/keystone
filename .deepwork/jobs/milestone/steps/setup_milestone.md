@@ -129,6 +129,12 @@ A summary of everything that was created or updated.
 - The report includes milestone title, issue number, and URLs
 - The `product` and `engineering` labels exist on the repo for future use
 
+## Next Steps
+
+After this workflow completes, suggest the following to the user:
+
+> The milestone and user stories are ready. The natural next step is to run **`milestone/engineering_handoff`** to create functional requirement specs (with RFC 2119 keywords) and a single plan issue tracking all implementation work.
+
 ## Context
 
 This is the final step that makes everything concrete on the platform. After this step, a human can review the consolidated issue, comment on individual stories, and approve them before agents begin work. The milestone provides the tracking container, and the issue serves as the parent scope document.
