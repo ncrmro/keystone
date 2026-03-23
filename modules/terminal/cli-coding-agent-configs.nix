@@ -32,11 +32,10 @@ let
             "--path"
             "."
             "--external-runner"
-            "gemini"
+            "claude"
             "--platform"
             "gemini"
-          ];
-        };
+          ];        };
       } else {}
     );
     context = {
