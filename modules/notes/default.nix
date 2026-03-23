@@ -2,7 +2,12 @@
 #
 # Syncs a git-backed notes repository on a timer using repo-sync.
 # Optionally initializes a zk Zettelkasten notebook structure.
-# Designed for human users (agents use the NixOS-level keystone.os.agents.*.notes).
+# Used by both human users and agents.
+#
+# See conventions/tool.zk.md
+# See conventions/process.knowledge-management.md
+# Implements REQ-009
+# See specs/REQ-018-repo-management/requirements.md
 #
 # Usage:
 #   keystone.notes = {
@@ -68,8 +73,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: fleeting
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     tags: []
     ---
 
@@ -84,8 +89,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: literature
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     source: ""
     source_url: ""
     tags: []
@@ -112,8 +117,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: permanent
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     tags: []
     ---
 
@@ -132,8 +137,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: decision
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     status: proposed
     supersedes: ""
     tags: [decision]
@@ -164,8 +169,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: index
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     tags: [index]
     ---
 
@@ -254,13 +259,21 @@ in
       description = "Commit message prefix used by repo-sync.";
     };
 
+    sync = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Enable the systemd sync service and timer. Disable when another mechanism handles sync (e.g. NixOS-level agent sync).";
+      };
+    };
+
     zk = {
       enable = lib.mkEnableOption "zk Zettelkasten notebook initialization";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.user.services.keystone-notes-sync = {
+    systemd.user.services.keystone-notes-sync = lib.mkIf cfg.sync.enable {
       Unit = {
         Description = "Sync notes repo via repo-sync";
       };
@@ -277,7 +290,7 @@ in
       };
     };
 
-    systemd.user.timers.keystone-notes-sync = {
+    systemd.user.timers.keystone-notes-sync = lib.mkIf cfg.sync.enable {
       Unit = {
         Description = "Timer for notes repo sync";
       };

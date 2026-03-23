@@ -41,7 +41,10 @@ in
         nameValuePair username (
           { pkgs, ... }:
           {
-            imports = [ ../../terminal/default.nix ];
+            imports = [
+              ../../terminal/default.nix
+              ../../notes/default.nix
+            ];
 
             # Provide empty keystoneInputs — editor.nix uses it for optional
             # unstable helix and kinda-nvim theme, both degrade gracefully to
@@ -204,6 +207,15 @@ in
                   }
                 ) agentCfg.mcp.servers;
               };
+            };
+
+            # Bridge agent notes config to the home-manager notes module.
+            # Agents get both zk scaffolding and repo-sync via this module.
+            keystone.notes = mkIf agentCfg.terminal.enable {
+              enable = mkDefault true;
+              repo = mkDefault agentCfg.notes.repo;
+              path = mkDefault agentCfg.notes.path;
+              zk.enable = mkDefault true;
             };
 
             # Export GRAFANA_API_KEY from agenix secret at shell login (REQ-017.11).

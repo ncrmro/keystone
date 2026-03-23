@@ -1,4 +1,5 @@
-# Agent notes: sync, task loop, scheduler as systemd.user.services with linger.
+# Agent notes: task loop, scheduler as systemd.user.services with linger.
+# Notes sync is handled by the home-manager notes module (keystone-notes-sync).
 {
   lib,
   config,
@@ -41,7 +42,8 @@ let
 in
 {
   config = mkIf (osCfg.enable && localAgents != { }) {
-    # Notes sync via repo-sync (user services for all agents)
+    # Agent task loop and scheduler as systemd user services.
+    # Notes sync is handled by the home-manager notes module (keystone-notes-sync).
     systemd.user.services = mkMerge (
       mapAttrsToList (
         name: agentCfg:
@@ -49,26 +51,6 @@ in
           username = "agent-${name}";
         in
         {
-          "agent-${name}-notes-sync" = {
-            description = "Sync notes repo for ${username}";
-            unitConfig.ConditionUser = username;
-            serviceConfig = {
-              Type = "oneshot";
-              SyslogIdentifier = "agent-${name}-notes-sync";
-              ExecStart = builtins.concatStringsSep " " [
-                "${pkgs.keystone.repo-sync}/bin/repo-sync"
-                "--repo ${escapeShellArg agentCfg.notes.repo}"
-                "--path ${escapeShellArg agentCfg.notes.path}"
-                "--commit-prefix \"vault sync\""
-                "--log-dir /home/${username}/.local/state/notes-sync/logs"
-              ];
-            };
-            environment = {
-              SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
-              GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
-            };
-          };
-
           "agent-${name}-task-loop" = {
             description = "Autonomous task loop for ${username}";
             unitConfig.ConditionUser = username;
@@ -117,15 +99,6 @@ in
           username = "agent-${name}";
         in
         {
-          "agent-${name}-notes-sync" = {
-            wantedBy = [ "default.target" ];
-            unitConfig.ConditionUser = username;
-            timerConfig = {
-              OnCalendar = agentCfg.notes.syncOnCalendar;
-              Persistent = true;
-            };
-          };
-
           "agent-${name}-task-loop" = {
             wantedBy = [ "default.target" ];
             unitConfig.ConditionUser = username;
