@@ -14,12 +14,15 @@ keystone.desktop = {
   audio.enable = true;     # PipeWire (ALSA + Pulse + Jack)
   bluetooth.enable = true; # Blueman
   networking.enable = true; # NetworkManager + systemd-resolved
+  obs.enable = true;       # OBS Studio (default: true, disable per-host if needed)
 };
 ```
 
 **Included at NixOS level**: Hyprland + UWSM, greetd auto-login, PipeWire audio,
 Bluetooth, CUPS printing, NetworkManager, flatpak, Nerd Fonts (JetBrains Mono,
-Caskaydia Mono), polkit, OOM protection (Docker/Podman get `OOMScoreAdjust = 1000`).
+Caskaydia Mono), polkit, OOM protection (Docker/Podman get `OOMScoreAdjust = 1000`),
+OBS Studio with PipeWire audio capture (enabled by default, disable per-host via
+`obs.enable = false` for hosts without GPU encoding support).
 
 OS-level changes require a full `nixos-rebuild switch` — not just `ks build`.
 
@@ -37,6 +40,7 @@ Enabled via `keystone.desktop.enable = true` in home-manager config. Components:
 | Screenshot | `components/screenshot.nix` | grim + slurp + satty annotation |
 | SwayOSD | `components/swayosd.nix` | Volume/brightness OSD |
 | Btop | `components/btop.nix` | System monitor (themed) |
+| Slidev | `home/default.nix` | Markdown presentation tool (`pkgs.keystone.slidev`) |
 
 ## Key Hyprland Options
 

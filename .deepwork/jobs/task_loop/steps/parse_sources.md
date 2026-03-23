@@ -63,6 +63,13 @@ Scheduled tasks (with `source: "schedule"`) are created by the `agent-scheduler`
 - **Reply emails**: Replies to agent-sent emails (e.g., replies to the daily status digest, replies to task confirmations) frequently contain NEW task requests from the human. When an email is a reply (`Re: ...`), focus on the new content above the quoted text — that is likely a new instruction, not a repeat of the original. Never dismiss a reply as "not actionable" just because it is part of an existing thread.
 - **GitHub Issues**: Open issues assigned to the agent or unassigned in watched repos are potential tasks. Closed issues are not.
 - **GitHub PRs**: PRs requesting review are tasks. PRs the agent authored that need updates are tasks. Merged/closed PRs are not.
+- **GitHub/Forgejo PR Reviews** (`github-pr-reviews`, `forgejo-pr-reviews`): Reviews on agent-authored PRs. These are high-priority — the agent's PR is blocked until feedback is addressed.
+  - Reviews with state `CHANGES_REQUESTED` (GitHub) or `REQUEST_CHANGES` (Forgejo) MUST always create a task.
+  - Reviews with state `COMMENTED` SHOULD create a task only if comments contain actionable feedback (not purely informational or approving).
+  - Use `source: "github-pr-review"` or `source: "forgejo-pr-review"`.
+  - Use `source_ref: "{pr_url}#reviews"` (keyed by PR URL to consolidate multiple reviews on the same PR into one task).
+  - The task `description` MUST include: repo name, PR number, branch name (`pr_branch`), reviewer name, review state, and a summary of each comment (file path + comment body). Preserve enough context for the executing agent to act without re-fetching.
+  - Example task name: `address-review-fix-login-bug-42`
 - **Deduplication**: Always check `source_ref` against existing tasks. If a task already exists for a source item, skip it even if the source data has changed.
 
 ## Output Format

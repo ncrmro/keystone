@@ -25,8 +25,9 @@ in
     # Desktop implies terminal
     keystone.terminal.enable = true;
 
-    home.packages = with pkgs; [
-      # Core utilities
+    home.packages = [
+      # Presentations
+      pkgs.keystone.slidev
     ];
   };
 }

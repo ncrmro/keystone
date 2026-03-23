@@ -8,17 +8,19 @@ The workflows are accessible as Claude Code slash commands:
 
 - `/ks.develop <goal>` — Full development lifecycle (plan → implement → review → build → merge → deploy → validate)
 - `/ks.convention <topic>` — Create or update a convention (draft → cross-reference → apply → commit to main)
+- `/ks.update` — Deploy pending keystone changes: survey fleet, triage, fix, build, deploy, validate
 - `/ks.doctor [context]` — Standalone fleet health check across all hosts
 
-See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, and `.claude/commands/ks.doctor.md`.
+See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.claude/commands/ks.update.md`, and `.claude/commands/ks.doctor.md`.
 
 ## Workflows
 
 | Workflow | Steps | Purpose |
 |----------|-------|---------|
 | `develop` | plan → implement → review → build → merge → deploy → validate | Full lifecycle |
+| `update` | survey_fleet → plan_update → execute_fixes → preflight_build → run_update → validate | Catch-up deploy |
 | `convention` | draft_convention → cross_reference → apply_convention → commit_convention | Convention CRUD |
-| `doctor` | validate | Standalone fleet health check |
+| `doctor` | survey_fleet → validate | Standalone fleet health check |
 
 ## Key Conventions
 
@@ -47,6 +49,17 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, and `
 - When pushing to main, the remote may have new commits from other workflows. The commit step must handle rebase (stash → pull --rebase → stash pop → push).
 - When asking which archetypes to wire into, show the user which roles already reference related conventions to help them make informed placement decisions.
 - The convention workflow scanned 38 conventions for overlap on first test — the cross-reference step is thorough but found only 2 cross-ref opportunities (no duplicates), which is expected for a genuinely new domain.
+
+### v1.5.0 — Update workflow (2026-03-23)
+
+- **Always use `ks update --lock` explicitly** — never omit `--lock` even though it's the default. The user expects the explicit flag for clarity and the workflow's goal is reaching a locked state.
+- **Present the full command with hosts**: The run_update step must output the exact command including host list, e.g., `ks update --lock ncrmro-workstation,ocean,mercury,maia`. Don't make the user figure out which hosts to include.
+- **Preflight build is essential**: Always run `ks build <hosts>` before the human-in-the-loop deploy. This catches eval errors without requiring sudo and saves the human from wasted time on failed builds.
+- **De-risk updates: one host at a time, `--boot` for risky changes**: When changes touch Secure Boot (lanzaboote), bootloader, kernel, or systemd-boot config, recommend the human deploy to ONE local host first (laptop/workstation where they have physical access) with `--boot`, reboot, verify it works, THEN deploy to remote hosts. A past lanzaboote update broke Secure Boot on ocean and required physical BIOS intervention. Remote servers should NEVER be the first host to receive bootloader changes.
+- **Reboot resume instructions**: When `--boot` is used and a reboot is required, the session is lost. Before the reboot, write `.deepwork/tmp/resume_context.md` with the current workflow state (step, deployed hosts, remaining hosts, verification checklist, next command) and output instructions for the human on how to resume in a new claude/gemini session. The resume file survives the reboot and gives the next agent full context.
+- **LFS history rewrites inflate commit counts**: When keystone history is rewritten (e.g., to remove LFS), `git log locked..main` shows the entire rewritten history. Use `--since=<lock-date>` to find the real delta instead of relying on `locked..main` when commit counts seem unreasonably high.
+- **The survey_fleet step is reused by doctor**: Both `update` and `doctor` workflows now start with survey_fleet, making it the standard fleet state collection step.
+- **Config repo path standardization**: `nixos-config` will become `keystone-config`. Use `~/.keystone/repos/nixos-config` as canonical path with fallbacks.
 
 ## Nix Eval for System Context
 

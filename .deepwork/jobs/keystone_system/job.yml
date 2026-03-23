@@ -1,6 +1,6 @@
 name: keystone_system
-version: "1.4.1"
-summary: "Keystone development lifecycle: worktree, build, review, merge, deploy, validate, and convention management"
+version: "1.5.0"
+summary: "Keystone development lifecycle: worktree, build, review, merge, deploy, validate, update, and convention management"
 common_job_info_provided_to_all_steps_at_runtime: |
   Keystone is a NixOS-based infrastructure platform. Development follows a strict
   worktree-based workflow to keep the main branch always deployable.
@@ -18,6 +18,11 @@ common_job_info_provided_to_all_steps_at_runtime: |
 
   **Exception**: The `convention` workflow commits directly to main because conventions
   are documentation files that do not require Nix builds or multi-host deploys.
+
+  **Exception**: The `update` workflow is for catching up — getting the fleet to a fully locked,
+  fully built state ready for `ks update --lock`. It surveys the gap between what's locked in
+  nixos-config and what's on keystone main, triages issues, applies quick fixes, runs preflight
+  builds for all hosts, then hands off to the human for the final `ks update --lock` and validates.
 
   ## Two-repo model
 
@@ -91,8 +96,9 @@ workflows:
       - write_issue
 
   - name: doctor
-    summary: "Check all hosts are nominal — run ks doctor across the fleet"
+    summary: "Check all hosts are nominal — survey fleet state, then run ks doctor across the fleet"
     steps:
+      - survey_fleet
       - validate
 
   - name: convention
@@ -102,6 +108,16 @@ workflows:
       - cross_reference
       - apply_convention
       - commit_convention
+
+  - name: update
+    summary: "Deploy pending keystone changes to fleet: survey, triage, fix, build, ks update --lock, validate"
+    steps:
+      - survey_fleet
+      - plan_update
+      - execute_fixes
+      - preflight_build
+      - run_update
+      - validate
 
 steps:
   - id: plan
@@ -238,6 +254,107 @@ steps:
           "Current Host Nominal": "The ks doctor output for the current host shows no critical issues."
           "Fleet Checked": "All hosts affected by the changes have been checked or confirmed not impacted."
           "Changes Verified": "The specific changes from the plan are confirmed working on the live system."
+
+  - id: survey_fleet
+    name: "Survey Fleet"
+    description: "Gather fleet state: keystone rev gap, recent commits since last lock, preliminary ks doctor"
+    instructions_file: steps/survey_fleet.md
+    inputs: []
+    outputs:
+      fleet_survey.md:
+        type: file
+        description: "Fleet state report: current vs latest keystone rev, commit changelog, per-host health, reachability"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: fleet_survey.md
+        quality_criteria:
+          "Rev Gap Documented": "The report shows the exact keystone commit currently locked in flake.lock and the latest commit on keystone main, with the full commit log between them."
+          "Host Reachability": "All hosts in hosts.nix are listed with their reachability status — unreachable hosts are noted, not silently skipped."
+          "Preliminary Health": "The ks doctor output for the current host is captured, with any existing issues flagged."
+
+  - id: plan_update
+    name: "Plan Update"
+    description: "Analyze survey, triage changes into verify-only / ad-hoc-fix / needs-issue, produce update plan"
+    instructions_file: steps/plan_update.md
+    inputs:
+      - file: fleet_survey.md
+        from_step: survey_fleet
+    outputs:
+      update_plan.md:
+        type: file
+        description: "Update plan: triaged changes, verification checklist, issues to file, fixes to apply"
+        required: true
+    dependencies:
+      - survey_fleet
+    reviews:
+      - run_each: update_plan.md
+        additional_review_guidance: "Read the fleet_survey.md from the previous step to verify that all commits in the gap are accounted for in the triage."
+        quality_criteria:
+          "Complete Triage": "Every commit in the keystone rev gap is classified as verify-only, ad-hoc-fix, or needs-issue — none are unaccounted for."
+          "Verification Checklist": "The plan includes a concrete checklist of things to verify after deployment, derived from the changes."
+          "Issue Criteria": "Items marked needs-issue have clear justification for why they can't be fixed ad-hoc (scope, risk, or complexity)."
+
+  - id: execute_fixes
+    name: "Execute Fixes"
+    description: "Apply ad-hoc fixes in worktrees, file ks.issues for big items, commit and push"
+    instructions_file: steps/execute_fixes.md
+    inputs:
+      - file: update_plan.md
+        from_step: plan_update
+    outputs:
+      fixes_report.md:
+        type: file
+        description: "Report of fixes applied, issues filed, and any remaining blockers before deployment"
+        required: true
+    dependencies:
+      - plan_update
+    reviews:
+      - run_each: fixes_report.md
+        additional_review_guidance: "Read the update_plan.md to verify all ad-hoc-fix items were addressed and all needs-issue items have issue URLs."
+        quality_criteria:
+          "All Ad-Hoc Fixes Applied": "Every item marked ad-hoc-fix in the plan is resolved — committed and pushed to keystone main."
+          "Issues Filed": "Every item marked needs-issue has a GitHub issue URL linked in the report."
+          "No Blockers": "Any remaining blockers that would prevent ks update --lock from succeeding are documented with mitigation steps."
+
+  - id: preflight_build
+    name: "Preflight Build"
+    description: "Run ks build for all target hosts to catch eval errors before the human deploys"
+    instructions_file: steps/preflight_build.md
+    inputs:
+      - file: update_plan.md
+        from_step: plan_update
+      - file: fixes_report.md
+        from_step: execute_fixes
+    outputs:
+      build_result.md:
+        type: file
+        description: "Build results per host — success/failure, errors, warnings"
+        required: true
+    dependencies:
+      - plan_update
+      - execute_fixes
+    reviews:
+      - run_each: build_result.md
+        quality_criteria:
+          "All Target Hosts Built": "Every reachable host from the deployment plan was built — none were silently skipped."
+          "Build Clean": "All hosts build successfully, or failures are documented with error details."
+
+  - id: run_update
+    name: "Run Update"
+    description: "Human-in-the-loop: user runs ks update --lock to deploy all pending changes to the fleet"
+    instructions_file: steps/run_update.md
+    inputs:
+      - file: build_result.md
+        from_step: preflight_build
+    outputs:
+      update_result.md:
+        type: file
+        description: "Deployment result: ks update --lock output per host, build status, any errors or warnings"
+        required: true
+    dependencies:
+      - preflight_build
+    reviews: []
 
   - id: write_issue
     name: "Write Issue"

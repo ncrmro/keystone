@@ -9,8 +9,9 @@ installer-iso
 # ISO files (they are large)
 *.iso
 
-# Editor files
+# Editor / AI tool files
 .vscode/
+.gemini/
 *.swp
 *.swo
 *~
@@ -63,6 +64,9 @@ target/
 # VM screenshots for debugging
 screenshots/
 *.sock
+
+# AI Agent and DeepWork artifacts
+.deepwork/
 
 # TUI screenshots (removed from history)
 assets/tui/

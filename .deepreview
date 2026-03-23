@@ -25,26 +25,41 @@ nix_validate:
       If both pass, report "All checks passed." with a brief summary.
 
 # =====================================================================
-# Docs Sync: CLAUDE.md and docs/ stay current with module changes
-# When NixOS modules or flake.nix change, verify documentation matches.
+# Implementation Sync: Docs, specs, and tests stay current with code
+# When modules, packages, or flake.nix change, verify that derived
+# artifacts (docs/, specs/, tests/) still match the implementation.
 # =====================================================================
-update_keystone_docs:
-  description: "Ensure AGENTS.md and docs/ stay current when NixOS modules, flake outputs, or options change."
+implementation_sync:
+  description: "Ensure docs/, specs/, and tests/ stay in sync when implementation files change."
   match:
     include:
       - "modules/**/*.nix"
+      - "modules/**/AGENTS.md"
+      - "packages/**/*.sh"
+      - "packages/**/*.nix"
+      - "packages/**/AGENTS.md"
       - "flake.nix"
       - "AGENTS.md"
+      - "conventions/AGENTS.md"
+      - "releases/AGENTS.md"
       - "docs/**"
       - "templates/**"
+      - "specs/**"
+      - "tests/**"
+      - ".deepwork/jobs/**"
     exclude:
       - "modules/**/scripts/**"
-      - "tests/**"
   review:
     strategy: matches_together
+    additional_context:
+      unchanged_matching_files: true
     instructions: |
-      When NixOS module files or flake.nix change, check whether AGENTS.md and docs/ need updating.
-      Read AGENTS.md and the relevant docs/*.md files, then compare against the changed source files.
+      When implementation files change, check whether derived artifacts still match.
+      When derived artifacts change without code changes, verify they match the code.
+
+      ## 1. Documentation (AGENTS.md + docs/)
+
+      Read AGENTS.md and relevant docs/*.md files, then compare against changed source.
       Note: CLAUDE.md is a symlink to AGENTS.md — they are the same file.
 
       **AGENTS.md checks:**
@@ -68,35 +83,10 @@ update_keystone_docs:
 
       For any doc that references module options, NixOS config snippets, or CLI commands,
       verify they still match the actual implementation. Flag outdated sections.
+      If a module change adds new user-facing features or options not yet documented,
+      flag as "missing documentation".
 
-      If a module change adds new user-facing features or options that are not yet
-      documented in any docs/ file, flag this as "missing documentation".
-    additional_context:
-      unchanged_matching_files: true
-
-# =====================================================================
-# Specs Sync: Requirements specs stay current with implementation
-# When modules, packages, or CLI scripts change, verify the relevant
-# specs in specs/ still accurately describe the implementation.
-# =====================================================================
-specs_sync:
-  description: "Ensure specs/ requirements stay in sync with implementation when code changes."
-  match:
-    include:
-      - "modules/**/*.nix"
-      - "packages/**/*.sh"
-      - "packages/**/*.nix"
-      - "flake.nix"
-      - "specs/**"
-      - ".deepwork/jobs/**"
-    exclude:
-      - "tests/**"
-      - "modules/**/scripts/**"
-  review:
-    strategy: matches_together
-    instructions: |
-      When implementation files change, check whether the corresponding specs
-      in specs/ still accurately describe the behavior.
+      ## 2. Specs (specs/)
 
       For each spec (REQ-XXX):
       1. Read the requirements.md file
@@ -108,42 +98,20 @@ specs_sync:
          - Code behavior not covered by any requirement
          - Outdated file paths, option names, or CLI flags in the spec
 
-      When spec files change without corresponding code changes, verify the
-      spec still matches what the code actually does.
-
       Check the "Affected Modules" section lists all relevant files.
-    additional_context:
-      unchanged_matching_files: true
 
-# =====================================================================
-# Tests Sync: Evaluation tests stay current with module changes
-# When modules or flake.nix change, verify tests/ still cover the
-# changed modules and that existing tests pass.
-# =====================================================================
-tests_sync:
-  description: "Ensure tests/ evaluation tests stay current when modules change."
-  match:
-    include:
-      - "modules/**/*.nix"
-      - "flake.nix"
-      - "tests/**"
-    exclude:
-      - "modules/**/scripts/**"
-  review:
-    strategy: matches_together
-    instructions: |
-      When module files change, check whether the test suite covers the changes.
+      ## 3. Tests (tests/)
 
       1. Run `nix flake check --no-build` to verify all evaluation tests pass.
-      2. For each changed module, check if the relevant test file in tests/module/
-         exercises the new or changed options:
+      2. For each changed module, check if the relevant test file exercises the
+         new or changed options:
          - modules/os/** → tests/module/os-evaluation.nix
          - modules/os/agents/** → tests/module/agent-evaluation.nix
          - modules/server/** → tests/module/server-evaluation.nix
          - modules/terminal/** → covered via agent-evaluation.nix (agents import terminal)
          - templates/ → tests/module/template-evaluation.nix
       3. If a new user-facing option is added but not exercised in any test, flag
-         it as "missing test coverage".
+         as "missing test coverage".
       4. If test files change, verify they still evaluate cleanly.
 
       Report which tests cover which changes, and flag any gaps.
@@ -194,112 +162,111 @@ requirements_traceability:
       - Files that genuinely have no matching convention or spec
 
 # =====================================================================
-# Conventions: Format, Cross-Linking, and DRY
-# When convention files change, verify RFC 2119 format, check for
-# duplicated rules across conventions, and ensure cross-references.
+# Shell Script Code Review
+# Reviews shell scripts against project conventions in
+# conventions/code.shell-scripts.md. Checks ShellCheck compliance,
+# strict mode, quoting, cleanup, and Nix packaging patterns.
 # =====================================================================
-conventions_review:
-  description: "Verify convention files follow RFC 2119 format, are DRY across the convention set, and cross-reference related conventions."
+shell_code_review:
+  description: "Review shell scripts against keystone shell script conventions and best practices."
   match:
     include:
-      - "conventions/*.md"
-      - "conventions/archetypes.yaml"
+      - "**/*.sh"
     exclude:
-      - "conventions/AGENTS.md"
-      - "conventions/AGENTS_TEMPLATE.md"
-      - "conventions/examples/**"
+      - ".claude/worktrees/**"
+      - ".worktrees/**"
+      - "worktree/**"
   review:
-    strategy: matches_together
+    strategy: individual
     instructions: |
-      When convention files change, review them for format, deduplication, and cross-linking.
+      Review this shell script against the keystone shell script conventions
+      documented in conventions/code.shell-scripts.md.
 
-      **Format checks (per conventions/AGENTS.md rules):**
-      1. H1 title MUST follow format: `# Convention: {Display Name} ({prefix.name})`
-      2. Rules MUST be numbered within each section
-      3. Rules MUST use RFC 2119 keywords (MUST, SHOULD, MAY, etc.) correctly
-      4. Each rule SHOULD be specific and actionable — no vague aspirational statements
-      5. If the convention covers a non-trivial pattern, a golden example section SHOULD exist
+      Check for:
+      - `set -euo pipefail` present at the top (rule 1)
+      - Correct shebang for standalone scripts vs writeShellApplication (rules 2-3)
+      - ShellCheck compliance — flag any obvious violations (rules 5-7)
+      - SC2155: local declarations split from command substitutions (rule 7)
+      - Cleanup trap on EXIT for scripts creating temp files/dirs (rules 8-10)
+      - All variable expansions double-quoted (rule 11)
+      - `[[ ]]` used instead of `[ ]` (rule 13)
+      - Functions use `local` for all variables (rule 15)
+      - Error messages written to stderr (rule 17)
+      - Argument parsing uses while/case loop (rule 18)
+      - Unknown arguments rejected with error (rule 19)
 
-      **DRY checks (cross-convention deduplication):**
-      6. Read the changed convention AND scan all other conventions in conventions/ for
-         overlapping rules. Specifically:
-         - Search for rules that cover the same topic in different conventions
-         - Flag any rule that is substantially duplicated in another convention
-         - Suggest which convention should own the rule and where to add a cross-reference
-      7. Related conventions MUST cross-reference each other. For example, if
-         tool.cloudflare-workers mentions CI pipelines, it SHOULD reference
-         process.continuous-integration. Use format: "See process.continuous-integration
-         for CI gating rules."
-
-      **Archetypes wiring checks:**
-      8. If a new convention file is added, verify it appears in the appropriate
-         archetype(s) in archetypes.yaml (either inlined or referenced)
-      9. If archetypes.yaml changes, verify all referenced convention files exist
-
-      **What to flag:**
-      - Missing H1 title or wrong format
-      - Unnumbered rules
-      - Duplicated rules across conventions (cite both files and rule numbers)
-      - Missing cross-references between related conventions
-      - New conventions not wired into any archetype
-      - Conventions referenced in archetypes.yaml that don't exist as files
+      Additionally, always check:
+      - **DRY violations**: Is there duplicated logic or repeated patterns that
+        should be extracted into a shared function or utility script?
+      - **Comment accuracy**: Are all comments still accurate after the changes?
+        Flag comments that describe behavior that no longer matches the code.
 
 # =====================================================================
-# No Redundant Options: Agent types must not duplicate module concerns
-# When a capability is already provided by an imported module (terminal,
-# notes, desktop), the agent type should bridge to that module's options
-# rather than re-declaring its own.
+# Rust Code Review
+# Reviews Rust source files in keystone-tui and keystone-ha packages.
+# Checks idiomatic Rust patterns, error handling, and project style.
 # =====================================================================
-no_redundant_options:
-  description: "Prevent agent type options from duplicating functionality already owned by another module."
+rust_code_review:
+  description: "Review Rust source files against project patterns and idiomatic Rust practices."
   match:
     include:
-      - "modules/os/agents/types.nix"
-      - "modules/os/agents/home-manager.nix"
-      - "modules/os/agents/notes.nix"
-    exclude: []
+      - "packages/keystone-tui/src/**/*.rs"
+      - "packages/keystone-tui/tests/**/*.rs"
+      - "packages/keystone-ha/**/*.rs"
+    exclude:
+      - "**/target/**"
+  review:
+    strategy: individual
+    instructions: |
+      Review this Rust source file against idiomatic Rust practices and the
+      project's existing patterns. Reference packages/keystone-tui/AGENTS.md
+      for CI validation expectations.
+
+      Check for:
+      - Proper error handling (Result/Option usage, no unwrap in production code)
+      - Idiomatic Rust patterns (iterators over manual loops, pattern matching)
+      - Consistent naming (snake_case functions/variables, CamelCase types)
+      - Appropriate visibility modifiers (prefer private by default)
+      - Module organization consistent with existing structure
+      - Correct use of lifetimes and ownership (no unnecessary clones)
+      - Test coverage for new public functions
+
+      Additionally, always check:
+      - **DRY violations**: Is there duplicated logic or repeated patterns that
+        should be extracted into a shared function, trait, or module?
+      - **Comment accuracy**: Are all comments, doc comments (///), and inline
+        documentation still accurate after the changes? Flag any comments that
+        describe behavior that no longer matches the code.
+
+# =====================================================================
+# Suggest New Reviews (DeepWork native)
+# Analyzes all changes to suggest new review rules that would catch
+# issues going forward. Conservative — only suggests high-value rules.
+# =====================================================================
+suggest_new_reviews:
+  description: "Analyze all changes and suggest new review rules that would catch issues going forward."
+  match:
+    include:
+      - "**/*"
+    exclude:
+      - ".github/**"
+      - ".claude/worktrees/**"
+      - ".worktrees/**"
+      - "worktree/**"
   review:
     strategy: matches_together
     instructions: |
-      Keystone follows a layered module architecture where each concern has a
-      single owning module. Agent types (types.nix) declare agent-specific
-      identity and provisioning options; shared capabilities live in their own
-      modules (terminal, notes, desktop, mail, etc.) and are *bridged* via
-      home-manager.nix — not re-declared.
+      Analyze the changeset to determine whether any new DeepWork review rules
+      should be added.
 
-      **Check for duplication:**
-      For every new or changed `mkOption` in types.nix, verify it is NOT
-      duplicating an option that already exists in one of these modules:
-      - `modules/terminal/` — editor, shell, AI tools, zk, git, mail, secrets
-      - `modules/notes/` — zk scaffolding, sync, notebook structure
-      - `modules/desktop/` — compositor, theming, components
-
-      **Correct pattern (bridge, don't duplicate):**
-      ```nix
-      # home-manager.nix — bridges agent config to the notes module
-      keystone.notes = mkIf agentCfg.terminal.enable {
-        enable = mkDefault true;
-        zk.enable = mkDefault true;  # terminal already provides zk binary + LSP
-      };
-      ```
-
-      **Anti-pattern (duplication):**
-      ```nix
-      # types.nix — DO NOT add options that duplicate module concerns
-      notes.zk.enable = mkOption { ... };  # BAD: notes module already owns zk.enable
-      ```
-
-      **When to flag:**
-      - A new option in types.nix mirrors an existing option path in terminal/,
-        notes/, or desktop/ modules
-      - home-manager.nix bridges an agent option that could use the module's
-        existing option directly
-      - An agent-level option controls behavior that is already gated by
-        `terminal.enable` or another module's enable flag
-
-      **Exceptions:**
-      - Agent-specific overrides with no module equivalent (e.g., `notes.syncOnCalendar`,
-        `notes.taskLoop.maxTasks`) — these are agent provisioning concerns
-      - Options that configure cross-module wiring (e.g., `git.provision`, `mail.provision`)
-    additional_context:
-      unchanged_matching_files: true
+      1. Call get_configured_reviews to see all currently configured review rules.
+      2. Read README_REVIEWS.md if present for context on review capabilities.
+      3. For each change, consider:
+         - Did this change introduce a type of issue a review rule could catch?
+         - Is there a pattern likely to recur?
+         - Would an existing rule benefit from a small scope expansion?
+      4. Be extremely conservative. Only suggest rules that are:
+         - Extremely narrow (targets 1 specific file or small bounded set)
+         - Slight additions to existing rules (adding a glob to an include list)
+         - Catches an issue likely to recur and worth ongoing cost
+      5. If no rules are warranted, say so. An empty suggestion list is valid.

@@ -1,3 +1,6 @@
+# Keystone Terminal — core terminal module entry point.
+# Implements REQ-002 (Terminal Development Environment)
+# See specs/REQ-018-repo-management/ (devMode options)
 {
   config,
   lib,
@@ -34,7 +37,7 @@ in
     ./projects.nix
     ./cli-coding-agent-configs.nix
     ./conventions.nix
-    ./claude-code-commands.nix
+    ./ai-extensions.nix
     ./perception.nix
   ];
 
@@ -169,7 +172,7 @@ in
       };
     };
 
-    home.packages = mkIf cfg.git.enable [
+    home.packages = optionals cfg.git.enable [
       pkgs.keystone.fetch-github-sources
     ];
 
