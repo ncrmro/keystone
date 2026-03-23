@@ -24,6 +24,23 @@ in
         default = true;
         description = "Enable OBS Studio for screen recording and streaming";
       };
+      gpuType = mkOption {
+        type = types.nullOr (
+          types.enum [
+            "amd"
+            "intel"
+            "nvidia"
+          ]
+        );
+        default = null;
+        description = ''
+          GPU type for hardware-accelerated encoding in OBS.
+          - amd: enables VA-API and Vulkan capture plugins
+          - intel: enables VA-API plugin
+          - nvidia: enables Vulkan capture plugin (NVENC is built into OBS core)
+          When null, only PipeWire audio capture is included (no GPU-specific plugins).
+        '';
+      };
     };
 
     user = mkOption {
@@ -185,9 +202,21 @@ in
       ]
       ++ optionals cfg.obs.enable [
         (wrapOBS {
-          plugins = with obs-studio-plugins; [
-            obs-pipewire-audio-capture
-          ];
+          plugins =
+            with obs-studio-plugins;
+            [
+              obs-pipewire-audio-capture
+            ]
+            ++ optionals (cfg.obs.gpuType == "amd") [
+              obs-vaapi
+              obs-vkcapture
+            ]
+            ++ optionals (cfg.obs.gpuType == "intel") [
+              obs-vaapi
+            ]
+            ++ optionals (cfg.obs.gpuType == "nvidia") [
+              obs-vkcapture
+            ];
         })
       ];
 
