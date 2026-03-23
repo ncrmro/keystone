@@ -107,6 +107,17 @@ other source. Every number in the report must trace back to the input files.
    - The PR allows the user to comment on specific sections, request changes,
      and refine the report before it lands on main
 
+   **Auto-merge convention**: Enable auto-merge on the PR so it merges automatically
+   after a 72-hour review window. This gives the user time to comment and request
+   changes, but prevents the PR from going stale if they don't get to it.
+
+   ```bash
+   gh pr merge --auto --squash
+   ```
+
+   Include the review window deadline in the PR body:
+   > This PR will auto-merge in 72 hours. Comment or request changes before then.
+
 ## Output Format
 
 ### portfolio_report.md
