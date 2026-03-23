@@ -35,6 +35,7 @@ let
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
   keystone-deepwork-jobs-src = ../packages/keystone-deepwork-jobs;
   keystone-conventions-src = ../packages/keystone-conventions;
+  slidev-src = ../packages/slidev;
   himalaya-flake = himalaya;
   calendula-flake = calendula;
   cardamum-flake = cardamum;
@@ -113,6 +114,7 @@ final: prev: {
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;
     };
+    slidev = final.callPackage slidev-src { };
   };
   # Top-level overrides so programs.ghostty/yazi use flake versions
   ghostty = ghostty-flake.packages.${final.system}.default;

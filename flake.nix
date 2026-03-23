@@ -364,6 +364,7 @@
             deepwork-library-jobs
             keystone-deepwork-jobs
             keystone-conventions
+            slidev
             ;
           keystone-tui = pkgs.callPackage ./packages/keystone-tui { };
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
