@@ -46,8 +46,6 @@ in
   };
 
   config = mkIf (cfg.enable && cfg.ai.enable) {
-    keystone.terminal.cliCodingAgents.enable = mkDefault true;
-
     home.file = {
       ".gemini/skills/deepwork/index.toml".text = ''
         +++

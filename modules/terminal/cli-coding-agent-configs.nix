@@ -63,7 +63,11 @@ let
 in
 {
   options.keystone.terminal.cliCodingAgents = {
-    enable = mkEnableOption "global configurations for AI coding agent CLIs";
+    enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = "global configurations for AI coding agent CLIs";
+    };
 
     mcpServers = mkOption {
       type = types.attrsOf (
