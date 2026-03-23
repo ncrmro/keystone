@@ -10,6 +10,10 @@ analysis, an overall health assessment, and priority recommendations.
 Read the combined per-project summaries and the project list, then produce a portfolio
 report that gives the user a complete picture of where everything stands.
 
+**CRITICAL**: The report MUST only contain data that appears in `all_summaries.md` and
+`project_list.md`. Do not include projects, commit counts, dates, or metrics from any
+other source. Every number in the report must trace back to the input files.
+
 ### Process
 
 1. **Calculate portfolio-level metrics**
@@ -76,15 +80,32 @@ report that gives the user a complete picture of where everything stands.
    workflow to run if applicable (e.g., "Run `project/success` for catalyst to update
    the charter").
 
-7. **Write the report to the notes repo**
+7. **Write the report and open a PR in the notes repo**
 
-   Save the final report to `{notes_path}/projects/portfolio/reviews/YYYY-MM.md`
-   where YYYY-MM is the current year-month.
+   The report is delivered as a pull request into the notes repo so the user can
+   review, refine, and discuss it before merging.
 
-   Create the directory structure if it doesn't exist:
    ```bash
-   mkdir -p {notes_path}/projects/portfolio/reviews/
+   cd {notes_path}
+   git checkout -b portfolio-review/YYYY-MM
+   mkdir -p projects/portfolio/reviews/
    ```
+
+   Write the report to `projects/portfolio/reviews/YYYY-MM.md`.
+
+   Then commit and push:
+   ```bash
+   git add projects/portfolio/reviews/YYYY-MM.md
+   git commit -m "docs(portfolio): add YYYY-MM portfolio review"
+   git push -u origin portfolio-review/YYYY-MM
+   ```
+
+   Open a PR using `gh pr create` (if GitHub) or the appropriate platform CLI:
+   - Title: `docs(portfolio): YYYY-MM portfolio review`
+   - Body: the Portfolio Summary section from the report, plus a link to the
+     full report file for detailed review
+   - The PR allows the user to comment on specific sections, request changes,
+     and refine the report before it lands on main
 
 ## Output Format
 
