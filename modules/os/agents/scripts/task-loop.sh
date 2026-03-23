@@ -249,6 +249,11 @@ while [ $TASK_COUNT -lt "$MAX_TASKS" ]; do
   CURRENT_TASK="$TASK_NAME"
   log "  Executing task $TASK_COUNT: $TASK_NAME"
 
+  # Record start time and mark in_progress before execution
+  TASK_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).started_at = \"$TASK_STARTED_AT\"" TASKS.yaml
+  yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"in_progress\"" TASKS.yaml
+
   # Build model flag
   MODEL_FLAG=""
   if [ -n "$TASK_MODEL" ] && [ "$TASK_MODEL" != "null" ]; then
@@ -275,6 +280,8 @@ Description: $TASK_DESC"
   set -o pipefail
 
   if [ "$TASK_EXIT" -eq 0 ]; then
+    TASK_COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).completed_at = \"$TASK_COMPLETED_AT\"" TASKS.yaml
     yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"completed\"" TASKS.yaml
     log "  Task $TASK_NAME completed (log: $TASK_LOG)"
   else
