@@ -4,7 +4,7 @@
 # Implements REQ-007 (OS Agents)
 # See specs/REQ-017-conventions-grafana-mcp/requirements.md (REQ-017.9: Grafana MCP options)
 # See specs/REQ-018-repo-management/requirements.md (agent notes path default)
-# See specs/REQ-023-perception-layer/requirements.md (REQ-023.34: perception options)
+# See specs/REQ-024-perception-layer/requirements.md (REQ-024.34: perception options)
 # See conventions/os.requirements.md
 {
   lib,
@@ -321,7 +321,7 @@ in
 
         # Perception layer: document parsing, voice transcription, photo search,
         # screenshot syncing, contact linking, and activity reconstruction.
-        # See specs/REQ-023-perception-layer/requirements.md
+        # See specs/REQ-024-perception-layer/requirements.md
         perception = {
           enable = mkOption {
             type = types.bool;

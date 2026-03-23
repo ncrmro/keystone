@@ -1,6 +1,6 @@
 # Agent perception layer: screenshot sync and activity processor as systemd user services.
 #
-# Implements REQ-023 (Perception Layer) — configuration scaffolding only.
+# Implements REQ-024 (Perception Layer) — configuration scaffolding only.
 # Actual scripts are added in subsequent PRs; services use placeholder ExecStart
 # that logs "not yet implemented" and exits 0.
 #

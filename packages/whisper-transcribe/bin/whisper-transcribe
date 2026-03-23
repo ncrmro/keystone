@@ -5,7 +5,7 @@
 # ~/.local/share/whisper-models/. Converts non-WAV input to WAV via ffmpeg.
 # Outputs timestamped plain text transcript.
 #
-# Implements REQ-023.7–REQ-023.11
+# Implements REQ-024.7–REQ-024.11
 #
 # Usage: whisper-transcribe <audio-file> [--model tiny|base|small|medium|large] [--output-dir <dir>]
 set -euo pipefail

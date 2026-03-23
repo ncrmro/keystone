@@ -3,7 +3,7 @@
 #
 # Wraps pw-record for simple mic capture. Press Ctrl+C to stop.
 #
-# Implements REQ-023.12
+# Implements REQ-024.12
 #
 # Usage: voice-recorder [--output-dir <dir>] [--duration <seconds>]
 set -euo pipefail
