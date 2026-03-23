@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# whisper-transcribe — Local audio transcription via whisper.cpp.
+#
+# Auto-downloads the whisper model on first use to
+# ~/.local/share/whisper-models/. Converts non-WAV input to WAV via ffmpeg.
+# Outputs timestamped plain text transcript.
+#
+# Implements REQ-023.7–REQ-023.11
+#
+# Usage: whisper-transcribe <audio-file> [--model tiny|base|small|medium|large] [--output-dir <dir>]
+set -euo pipefail
+
+WHISPER_MODELS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/whisper-models"
+
+usage() {
+  echo "Usage: whisper-transcribe <audio-file> [--model <size>] [--output-dir <dir>]"
+  echo ""
+  echo "Transcribe audio locally using whisper.cpp."
+  echo ""
+  echo "Options:"
+  echo "  --model <size>      Model size: tiny, base, small, medium, large (default: base)"
+  echo "  --output-dir <dir>  Output directory (default: same as input file)"
+  echo "  --help              Show this help"
+  exit "${1:-0}"
+}
+
+INPUT=""
+MODEL="base"
+OUTPUT_DIR=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model) MODEL="$2"; shift 2 ;;
+    --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+    --help) usage 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage 1 ;;
+    *) INPUT="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$INPUT" ]]; then
+  echo "Error: no input audio file specified" >&2
+  usage 1
+fi
+
+if [[ ! -f "$INPUT" ]]; then
+  echo "Error: file not found: $INPUT" >&2
+  exit 1
+fi
+
+# Validate model name
+case "$MODEL" in
+  tiny|base|small|medium|large) ;;
+  *) echo "Error: invalid model: $MODEL (choose: tiny, base, small, medium, large)" >&2; exit 1 ;;
+esac
+
+BASENAME=$(basename "$INPUT")
+BASENAME_NOEXT="${BASENAME%.*}"
+INPUT_DIR=$(dirname "$INPUT")
+OUTPUT_DIR="${OUTPUT_DIR:-$INPUT_DIR}"
+mkdir -p "$OUTPUT_DIR"
+
+TMPDIR_WORK=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_WORK"' EXIT
+
+# ── Ensure model is available ────────────────────────────────────────
+MODEL_FILE="ggml-${MODEL}.bin"
+MODEL_PATH="$WHISPER_MODELS_DIR/$MODEL_FILE"
+
+if [[ ! -f "$MODEL_PATH" ]]; then
+  echo "whisper-transcribe: downloading model '$MODEL' to $WHISPER_MODELS_DIR" >&2
+  mkdir -p "$WHISPER_MODELS_DIR"
+
+  MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILE}"
+  curl -fSL --progress-bar -o "$MODEL_PATH.tmp" "$MODEL_URL"
+  mv "$MODEL_PATH.tmp" "$MODEL_PATH"
+  echo "whisper-transcribe: model downloaded" >&2
+fi
+
+# ── Convert to WAV if needed ─────────────────────────────────────────
+# whisper.cpp requires 16kHz mono WAV
+EXT="${INPUT##*.}"
+EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+
+if [[ "$EXT_LOWER" == "wav" ]]; then
+  WAV_INPUT="$INPUT"
+else
+  echo "whisper-transcribe: converting $EXT_LOWER to WAV" >&2
+  WAV_INPUT="$TMPDIR_WORK/input.wav"
+  ffmpeg -y -i "$INPUT" -ar 16000 -ac 1 -c:a pcm_s16le "$WAV_INPUT" 2>/dev/null
+fi
+
+# ── Run whisper.cpp ──────────────────────────────────────────────────
+OUTPUT_TXT="$OUTPUT_DIR/$BASENAME_NOEXT.txt"
+
+echo "whisper-transcribe: model=$MODEL file=$INPUT" >&2
+
+whisper-cpp \
+  --model "$MODEL_PATH" \
+  --output-txt \
+  --output-file "$TMPDIR_WORK/transcript" \
+  --print-timestamps \
+  "$WAV_INPUT" 2>/dev/null
+
+# whisper-cpp creates transcript.txt
+if [[ -f "$TMPDIR_WORK/transcript.txt" ]]; then
+  cp "$TMPDIR_WORK/transcript.txt" "$OUTPUT_TXT"
+else
+  echo "Error: whisper-cpp produced no output" >&2
+  exit 1
+fi
+
+echo "whisper-transcribe: wrote transcript to $OUTPUT_TXT" >&2
