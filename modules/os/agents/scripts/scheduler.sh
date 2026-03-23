@@ -137,14 +137,19 @@ if command -v calendula &>/dev/null; then
         continue
       fi
 
+      # Only create tasks for events whose summary starts with [Team] or [AgentName]
+      if [[ ! "$CAL_SUMMARY" == "\[Team\]"* && ! "$CAL_SUMMARY" == "\[$AGENT_NAME\]"* ]]; then
+        continue
+      fi
+
       # Use event start date for deduplication when available, fall back to today
       CAL_DATE="${TODAY}"
       if [ -n "$CAL_START" ]; then
-        # Extract date portion (YYYY-MM-DD) from start timestamp
-        CAL_DATE_PARSED=$(echo "$CAL_START" | grep -oP '^\d{4}-\d{2}-\d{2}' || true)
-        if [ -n "$CAL_DATE_PARSED" ]; then
-          CAL_DATE="$CAL_DATE_PARSED"
-        fi
+        # Extract date portion (YYYY-MM-DD) from start timestamp without relying on grep -P
+        CAL_DATE_PARSED=${CAL_START:0:10}
+        case "$CAL_DATE_PARSED" in
+          ????-??-??) CAL_DATE="$CAL_DATE_PARSED" ;;
+        esac
       fi
 
       # Build source_ref for deduplication: calendar-<uid>-<date>
@@ -157,18 +162,19 @@ if command -v calendula &>/dev/null; then
         continue
       fi
 
-      # Create task from calendar event
-      CAL_TASK_NAME="calendar-$(echo "$CAL_SUMMARY" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')-${TODAY}"
+      # Create task from calendar event — use yq env() to safely handle special chars
+      CAL_TASK_NAME="calendar-$(echo "$CAL_SUMMARY" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')-${CAL_DATE}"
       TASK_CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
       log "  Creating task from calendar: $CAL_TASK_NAME"
-      yq -i ".tasks += [{
-        \"name\": \"$CAL_TASK_NAME\",
-        \"description\": \"$CAL_DESCRIPTION\",
-        \"status\": \"pending\",
-        \"source\": \"calendar\",
-        \"source_ref\": \"$CAL_SOURCE_REF\",
-        \"created_at\": \"$TASK_CREATED_AT\"
-      }]" TASKS.yaml
+      export CAL_TASK_NAME CAL_DESCRIPTION CAL_SOURCE_REF TASK_CREATED_AT
+      yq -i '.tasks += [{
+        "name": env(CAL_TASK_NAME),
+        "description": env(CAL_DESCRIPTION),
+        "status": "pending",
+        "source": "calendar",
+        "source_ref": env(CAL_SOURCE_REF),
+        "created_at": env(TASK_CREATED_AT)
+      }]' TASKS.yaml
 
       CREATED=$((CREATED + 1))
     done
