@@ -1,3 +1,5 @@
+# Convention: OS Requirements (os.requirements)
+
 ## OS Requirements
 
 This convention outlines the system-level prerequisites handled by the underlying operating system (Keystone) that agents can rely upon without manual configuration.

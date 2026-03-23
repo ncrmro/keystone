@@ -42,7 +42,7 @@ per-host `enable = true` flags that must be maintained in lockstep.
 
 9. Agents MUST receive the same terminal environment as human users — no
    cherry-picking individual tools or features. See `os.requirements` rules
-   10-13 for the systemd-level enforcement of this principle.
+   12-15 for the systemd-level enforcement of this principle.
 10. When a terminal submodule is enabled for any user on a host, it SHOULD
     be enabled for all agents on that host unless the agent definition
     explicitly opts out.
