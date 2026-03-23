@@ -552,7 +552,11 @@ in
 
         # Perception layer: document parsing, voice transcription, photo search,
         # screenshot syncing, contact linking, and activity reconstruction.
+<<<<<<< HEAD
         # See specs/REQ-023-executive-assistant-perception-layer.md
+=======
+        # See specs/REQ-024-perception-layer/requirements.md
+>>>>>>> c816b08 (refactor(os): update perception references from REQ-023 to REQ-024)
         perception = {
           enable = mkOption {
             type = types.bool;

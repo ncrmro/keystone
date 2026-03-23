@@ -5,7 +5,7 @@
 # Auth via IMMICH_API_KEY env var or --api-key-file flag.
 # IMMICH_URL env var for server address.
 #
-# Implements REQ-023.19–REQ-023.22
+# Implements REQ-024.19–REQ-024.22
 #
 # Usage: immich-search <subcommand> [options]
 set -euo pipefail

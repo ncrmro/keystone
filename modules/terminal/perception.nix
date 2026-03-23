@@ -7,8 +7,8 @@
 # - immich-search: Immich REST API search (smart, person, recent)
 # - voice-recorder: PipeWire microphone capture helper
 #
-# Implements REQ-023.36 (terminal perception.enable option).
-# Implements REQ-023.40 (standalone CLI commands for agents and task loops).
+# Implements REQ-024.36 (terminal perception.enable option).
+# Implements REQ-024.40 (standalone CLI commands for agents and task loops).
 #
 # ## Example
 #

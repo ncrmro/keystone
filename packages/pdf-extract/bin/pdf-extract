@@ -4,7 +4,7 @@
 # Uses pdftotext (poppler) for native-text PDFs and tesseract OCR for scanned
 # (image-only) pages. Outputs {name}.md and {name}.bbox.json.
 #
-# Implements REQ-023.1–REQ-023.5
+# Implements REQ-024.1–REQ-024.5
 #
 # Usage: pdf-extract <input.pdf> [--output-dir <dir>]
 set -euo pipefail
