@@ -74,8 +74,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: fleeting
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     tags: []
     ---
 
@@ -90,8 +90,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: literature
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     source: ""
     source_url: ""
     tags: []
@@ -118,8 +118,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: permanent
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     tags: []
     ---
 
@@ -138,8 +138,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: decision
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     status: proposed
     supersedes: ""
     tags: [decision]
@@ -170,8 +170,8 @@ let
     id: "{{id}}"
     title: "{{title}}"
     type: index
-    created: {{format-date now '%Y-%m-%dT%H:%M:%S%:z'}}
-    author: {{env "USER"}}
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
     tags: [index]
     ---
 
