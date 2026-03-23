@@ -1,6 +1,9 @@
 # TODO this should move to a dedicated server-os module at some point to delinate it from deskop (maybe)
 # Keystone Mail Server (Stalwart)
 #
+# See conventions/tool.stalwart.md
+# Implements REQ-007 (OS Agents — FR-004: Email via Stalwart)
+#
 # This module provides a Stalwart mail server configuration with:
 # - Prometheus metrics on 127.0.0.1:9010 (default-on, see conventions/tool.stalwart.md)
 # - Per-agent CalDAV calendar + CardDAV addressbook provisioning at system activation
