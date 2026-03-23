@@ -171,6 +171,9 @@ in
 
     home.packages = mkIf cfg.git.enable [
       pkgs.keystone.fetch-github-sources
+    ]
+    ++ [
+      pkgs.keystone.slidev
     ];
 
     programs.lazygit.enable = mkIf cfg.git.enable (mkDefault true);
