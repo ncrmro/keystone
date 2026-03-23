@@ -9,8 +9,9 @@ installer-iso
 # ISO files (they are large)
 *.iso
 
-# Editor files
+# Editor / AI tool files
 .vscode/
+.gemini/
 *.swp
 *.swo
 *~
