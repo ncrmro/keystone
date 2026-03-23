@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# voice-recorder — PipeWire microphone capture to timestamped WAV.
+#
+# Wraps pw-record for simple mic capture. Press Ctrl+C to stop.
+#
+# Implements REQ-023.12
+#
+# Usage: voice-recorder [--output-dir <dir>] [--duration <seconds>]
+set -euo pipefail
+
+usage() {
+  echo "Usage: voice-recorder [--output-dir <dir>] [--duration <seconds>]"
+  echo ""
+  echo "Record audio from the default microphone via PipeWire."
+  echo "Press Ctrl+C to stop recording (or use --duration for timed capture)."
+  echo ""
+  echo "Options:"
+  echo "  --output-dir <dir>    Output directory (default: ~/voice/inbox)"
+  echo "  --duration <seconds>  Record for N seconds then stop (default: until Ctrl+C)"
+  echo "  --help                Show this help"
+  exit "${1:-0}"
+}
+
+OUTPUT_DIR="${HOME}/voice/inbox"
+DURATION=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+    --duration) DURATION="$2"; shift 2 ;;
+    --help) usage 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage 1 ;;
+    *) echo "Unknown argument: $1" >&2; usage 1 ;;
+  esac
+done
+
+mkdir -p "$OUTPUT_DIR"
+
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+OUTPUT_FILE="$OUTPUT_DIR/recording-$TIMESTAMP.wav"
+
+echo "voice-recorder: recording to $OUTPUT_FILE" >&2
+echo "voice-recorder: press Ctrl+C to stop" >&2
+
+PW_ARGS=(
+  --target "0"            # Default source (microphone)
+  --format s16            # 16-bit signed PCM
+  --rate 16000            # 16kHz (optimal for whisper.cpp)
+  --channels 1            # Mono
+  "$OUTPUT_FILE"
+)
+
+if [[ -n "$DURATION" ]]; then
+  # pw-record supports --sec for timed recording
+  timeout "$DURATION" pw-record "${PW_ARGS[@]}" || true
+else
+  pw-record "${PW_ARGS[@]}"
+fi
+
+if [[ -f "$OUTPUT_FILE" ]]; then
+  SIZE=$(stat -c%s "$OUTPUT_FILE" 2>/dev/null || stat -f%z "$OUTPUT_FILE" 2>/dev/null || echo "0")
+  echo "voice-recorder: saved $OUTPUT_FILE ($SIZE bytes)" >&2
+else
+  echo "voice-recorder: no output file created" >&2
+  exit 1
+fi
