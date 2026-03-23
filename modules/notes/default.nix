@@ -2,8 +2,7 @@
 #
 # Syncs a git-backed notes repository on a timer using repo-sync.
 # Optionally initializes a zk Zettelkasten notebook structure.
-# Used by both human users and agents (agents set sync.enable = false
-# since NixOS-level agent-{name}-notes-sync handles sync).
+# Used by both human users and agents.
 #
 # See conventions/tool.zk.md
 # See conventions/process.knowledge-management.md

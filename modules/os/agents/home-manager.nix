@@ -210,13 +210,11 @@ in
             };
 
             # Bridge agent notes config to the home-manager notes module.
-            # Agents get zk scaffolding via this module but suppress the sync timer —
-            # NixOS-level agent-{name}-notes-sync (modules/os/agents/notes.nix) handles sync.
+            # Agents get both zk scaffolding and repo-sync via this module.
             keystone.notes = mkIf agentCfg.terminal.enable {
               enable = mkDefault true;
               repo = mkDefault agentCfg.notes.repo;
               path = mkDefault agentCfg.notes.path;
-              sync.enable = mkDefault false;
               zk.enable = mkDefault true;
             };
 
