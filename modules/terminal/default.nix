@@ -65,10 +65,24 @@ in
           rebuilding. When null (default / locked mode), files are immutable
           Nix store copies. Use `ks update --lock` to return to locked mode.
 
+          Auto-derived from keystone.repos when keystone.development is true.
           Per REQ-018, the standard location is
           ~/.keystone/repos/OWNER/keystone (the keystone config repo).
         '';
         example = "/home/user/.keystone/repos/ncrmro/keystone";
+      };
+
+      deepworkPath = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = ''
+          Absolute path to the local deepwork repository checkout.
+
+          When set, deepwork library jobs use the local checkout instead of
+          Nix store copies. Auto-derived from keystone.repos when
+          keystone.development is true.
+        '';
+        example = "/home/user/.keystone/repos/Unsupervisedcom/deepwork";
       };
     };
 

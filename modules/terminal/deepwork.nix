@@ -5,6 +5,12 @@
 # Jobs are explicitly listed in the derivation in flake.nix — no jobs are
 # included automatically.  To add a new job, add a cp -r entry in the
 # deepwork-library-jobs runCommand once the job exists in the upstream repo.
+#
+# Dev mode (REQ-018): When keystone.development is true, both job sources
+# swap to local checkouts derived from keystone.repos:
+# - deepworkPath → deepwork library jobs from local checkout's library/jobs/
+# - keystonePath → keystone-native jobs from local checkout's .deepwork/jobs/
+# When development mode is off, all paths resolve to Nix store copies.
 {
   config,
   lib,
@@ -14,6 +20,9 @@
 with lib;
 let
   cfg = config.keystone.terminal.deepwork;
+  terminalCfg = config.keystone.terminal;
+  devMode = terminalCfg.devMode;
+  isDev = devMode.keystonePath != null;
 in
 {
   options.keystone.terminal.deepwork = {
@@ -32,17 +41,16 @@ in
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
-    # Append the keystone-curated DeepWork library jobs to the additional job
-    # folders search path.  This is a colon-delimited list of absolute paths
-    # consumed by deepwork's discovery module.  The store path is read-only;
-    # deepwork writes instances/runs into the project's own .deepwork/jobs.
     # Colon-delimited list of directories consumed by deepwork's discovery module.
-    # 1. Upstream library jobs (curated from deepwork flake)
-    # 2. Keystone-native jobs (consolidated from agent/notes repos)
+    # In dev mode both sources swap to local checkouts; in locked mode both use store.
     home.sessionVariables = {
       DEEPWORK_ADDITIONAL_JOBS_FOLDERS = builtins.concatStringsSep ":" [
-        "${pkgs.keystone.deepwork-library-jobs}"
-        "${pkgs.keystone.keystone-deepwork-jobs}"
+        (if isDev && devMode.deepworkPath != null
+         then "${devMode.deepworkPath}/library/jobs"
+         else "${pkgs.keystone.deepwork-library-jobs}")
+        (if isDev
+         then "${devMode.keystonePath}/.deepwork/jobs"
+         else "${pkgs.keystone.keystone-deepwork-jobs}")
       ];
     };
   };
