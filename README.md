@@ -1,68 +1,87 @@
 # Keystone
 
-Self-sovereign NixOS infrastructure platform for deploying secure, encrypted systems on any hardware.
+Own your infrastructure. Keystone turns one or more machines into a unified,
+self-hosted system — encrypted storage, integrated services, and a fully configurable
+foundation that enables capabilities like autonomous AI agents operating with real
+system identity. Add users for everyone in your household, or run it solo.
 
-**[Documentation](https://ncrmro.github.io/keystone/)** | **[Roadmap](ROADMAP.md)**
+**[Get Started](docs/installation.md)** · **[Documentation](https://ncrmro.github.io/keystone/)**
 
----
-
-## Overview
-
-Keystone provides declarative, reproducible infrastructure with hardware-backed security:
-
-- **Full disk encryption** with TPM2 auto-unlock
-- **Secure Boot** with custom key enrollment
-- **ZFS storage** with native encryption and snapshots
-- **Portable configs** — migrate between bare-metal and cloud seamlessly
-
-## Architecture
-
-| Type | Purpose | Examples |
-|------|---------|----------|
-| **Server** | Always-on services (VPN, DNS, storage, backups) | Raspberry Pi, NUC, VPS |
-| **Client** | Interactive workstations with Hyprland desktop | Desktop, laptop |
-
-Both share the same security model: TPM2, LUKS encryption, Secure Boot attestation.
+<!-- TODO: hero screenshot of TUI or dashboard -->
 
 ---
 
-## Quick Start
+## Your Data, Your Hardware
 
-### Using the Flake Template (Recommended)
+Keystone installs on any x86 machine via USB. The setup TUI handles disk encryption,
+user creation, and service configuration — no config files required.
+
+- Full disk encryption with TPM2 auto-unlock
+- Secure Boot with custom key enrollment
+- ZFS storage with snapshots and compression
+
+[Installation Guide](docs/installation.md) · [TPM Enrollment](docs/tpm-enrollment.md)
+
+<!-- TODO: TUI welcome/setup screenshot -->
+
+## Self-Hosted Services
+
+Enable services with a single toggle. Keystone auto-configures TLS certificates,
+reverse proxy, and DNS for each one.
+
+| Service | What it replaces |
+|---------|-----------------|
+| Immich | Google Photos |
+| Forgejo | GitHub |
+| Vaultwarden | 1Password |
+| Stalwart | Gmail |
+| AdGuard | Pi-hole |
+| Headscale | Tailscale control |
+| Grafana + Prometheus + Loki | Datadog |
+| Miniflux | Feedly |
+| Attic | Cachix |
+| SeaweedFS | S3 |
+
+[Server Documentation](docs/server.md)
+
+<!-- TODO: services screenshot -->
+
+## Desktop & Terminal
+
+A complete development environment — terminal or full desktop.
+
+**Terminal**: Zsh, Helix editor, Zellij multiplexer, Git with SSH signing, AI coding tools
+
+**Desktop**: Hyprland compositor, 15 themes, app launcher, clipboard history, screenshot tools
+
+[Terminal](docs/terminal.md) · [Personal Info Management](docs/personal-info-management.md)
+
+## OS Agents
+
+Autonomous user accounts that run on your system with their own identity,
+email, git workspace, and task queue. Agents fetch issues, write code, open PRs,
+and process documents — all on your hardware.
+
+[Agent Documentation](docs/os-agents.md)
+
+---
+
+## Getting Started
+
+### USB Install (Recommended)
+
+Build the installer ISO, boot on target hardware, and follow the TUI.
 
 ```bash
-# Initialize from template
-nix flake init -t github:ncrmro/keystone
-
-# Find required values
-grep -n "TODO:" configuration.nix
-head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '  # Generate hostId
-ls -la /dev/disk/by-id/                                  # Find disk ID
-
-# Deploy to target machine
-nixos-anywhere --flake .#my-machine root@<installer-ip>
-```
-
-The template includes documented `keystone.os.*` options with TODO markers for required values.
-
-### Manual ISO Deployment
-
-```bash
-# Build installer ISO
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
-
-# Deploy to target machine
-nixos-anywhere --flake .#your-server root@<installer-ip>
-
-# Post-install: enroll TPM
-ssh root@<target-ip> keystone-enroll-tpm
 ```
 
-See [Installation Guide](docs/installation.md) for complete instructions.
+[Full Installation Guide](docs/installation.md)
 
----
+### For NixOS Users
 
-## Using as a Flake Input
+Keystone is a set of NixOS and home-manager modules. Use it as a flake input
+for full control over your configuration.
 
 ```nix
 {
@@ -78,7 +97,6 @@ See [Installation Guide](docs/installation.md) for complete instructions.
       modules = [
         home-manager.nixosModules.home-manager
         keystone.nixosModules.operating-system
-        # keystone.nixosModules.desktop  # Add for Hyprland
         {
           networking.hostId = "deadbeef";
           keystone.os = {
@@ -97,42 +115,17 @@ See [Installation Guide](docs/installation.md) for complete instructions.
 }
 ```
 
-### Available Modules
-
-**NixOS** (`keystone.nixosModules.*`):
-| Module | Description |
-|--------|-------------|
-| `operating-system` | Core OS (storage, secure boot, TPM, users, SSH, mDNS, firewall) |
-| `desktop` | Hyprland desktop environment (audio, greetd login) |
-| `isoInstaller` | Bootable installer configuration |
-
-**Home Manager** (`keystone.homeModules.*`):
-| Module | Description |
-|--------|-------------|
-| `terminal` | Dev environment (Helix, Zsh, Zellij, Ghostty, Git) |
-| `desktop` | Full Hyprland desktop configuration |
-
----
+[Module Reference](docs/index.md) · [Examples](docs/examples.md)
 
 ## Development
 
 ```bash
-# Fast config testing (no encryption overhead)
 make build-vm-terminal    # SSH into terminal VM
 make build-vm-desktop     # Hyprland desktop VM
-
-# Full-stack testing (TPM + Secure Boot)
-make vm-create            # Create libvirt VM
-make vm-ssh               # SSH into test VM
-make vm-reset             # Delete VM and artifacts
-
-# Run tests
-make test
+make test                 # Run test suite
 ```
 
-See `make help` for all available targets.
-
----
+[VM Testing](docs/testing-vm.md) · [Testing Procedures](docs/testing-procedure.md)
 
 ## License
 
