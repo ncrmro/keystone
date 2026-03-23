@@ -5,7 +5,7 @@ self-hosted system — encrypted storage, integrated services, and a fully confi
 foundation that enables capabilities like autonomous AI agents operating with real
 system identity. Add users for everyone in your household, or run it solo.
 
-**[Get Started](docs/installation.md)** · **[Documentation](https://ncrmro.github.io/keystone/)**
+**[Get Started](docs/os/installation.md)** · **[Documentation](docs/index.md)**
 
 <!-- TODO: hero screenshot of TUI or dashboard -->
 
@@ -20,7 +20,7 @@ user creation, and service configuration — no config files required.
 - Secure Boot with custom key enrollment
 - ZFS storage with snapshots and compression
 
-[Installation Guide](docs/installation.md) · [TPM Enrollment](docs/tpm-enrollment.md)
+[Installation Guide](docs/os/installation.md) · [TPM Enrollment](docs/os/tpm-enrollment.md)
 
 <!-- TODO: TUI welcome/setup screenshot -->
 
@@ -42,7 +42,7 @@ reverse proxy, and DNS for each one.
 | Attic | Cachix |
 | SeaweedFS | S3 |
 
-[Server Documentation](docs/server.md)
+[Server Documentation](docs/os/server.md)
 
 <!-- TODO: services screenshot -->
 
@@ -54,7 +54,7 @@ A complete development environment — terminal or full desktop.
 
 **Desktop**: Hyprland compositor, 15 themes, app launcher, clipboard history, screenshot tools
 
-[Terminal](docs/terminal.md) · [Personal Info Management](docs/personal-info-management.md)
+[Terminal](docs/terminal/terminal.md) · [Personal Info Management](docs/os/personal-info-management.md) · [Cross-Platform Comparison](docs/comparison.md)
 
 ## OS Agents
 
@@ -62,7 +62,7 @@ Autonomous user accounts that run on your system with their own identity,
 email, git workspace, and task queue. Agents fetch issues, write code, open PRs,
 and process documents — all on your hardware.
 
-[Agent Documentation](docs/os-agents.md)
+[Agent Documentation](docs/agents/os-agents.md)
 
 ---
 
@@ -76,7 +76,7 @@ Build the installer ISO, boot on target hardware, and follow the TUI.
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
-[Full Installation Guide](docs/installation.md)
+[Full Installation Guide](docs/os/installation.md)
 
 ### For NixOS Users
 
@@ -125,7 +125,7 @@ make build-vm-desktop     # Hyprland desktop VM
 make test                 # Run test suite
 ```
 
-[VM Testing](docs/testing-vm.md) · [Testing Procedures](docs/testing-procedure.md)
+[VM Testing](docs/os/testing-vm.md) · [Testing Procedures](docs/os/testing-procedure.md)
 
 ## License
 
