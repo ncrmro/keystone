@@ -69,8 +69,27 @@ in
     home.file = {
       # Gemini CLI
       # Location: ~/.gemini/settings.json
+      # TODO: DeepWork is currently installed via the claude plugin for Claude.
+      # Ideally, this should be avoided and DeepWork should be configured
+      # globally by Nix via `cfg.mcpServers` for all tools. For now, we inject
+      # it only into Gemini's MCP config.
       ".gemini/settings.json".text = builtins.toJSON {
-        mcpServers = cfg.mcpServers;
+        mcpServers = cfg.mcpServers // (
+          if terminalCfg.ai.enable then {
+            deepwork = {
+              command = "${pkgs.keystone.deepwork}/bin/deepwork";
+              args = [
+                "serve"
+                "--path"
+                "."
+                "--external-runner"
+                "gemini"
+                "--platform"
+                "gemini"
+              ];
+            };
+          } else {}
+        );
         context = {
           fileFiltering = {
             inherit (cfg) respectGitIgnore;
