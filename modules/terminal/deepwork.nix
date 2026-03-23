@@ -6,10 +6,10 @@
 # included automatically.  To add a new job, add a cp -r entry in the
 # deepwork-library-jobs runCommand once the job exists in the upstream repo.
 #
-# Dev mode (REQ-018): When keystone.terminal.devMode.keystonePath is set,
-# keystone-deepwork-jobs points at the local checkout's .deepwork/jobs/ —
-# editable in place without rebuilding. Upstream library jobs remain
-# immutable store copies (they come from the deepwork flake, not keystone).
+# Dev mode (REQ-018): Both job sources are swappable via devMode paths:
+# - deepworkPath → deepwork library jobs use local checkout's library/jobs/
+# - keystonePath → keystone-native jobs use local checkout's .deepwork/jobs/
+# When either path is null, the corresponding Nix store copy is used.
 {
   config,
   lib,
@@ -21,7 +21,9 @@ let
   cfg = config.keystone.terminal.deepwork;
   terminalCfg = config.keystone.terminal;
   devPath = terminalCfg.devMode.keystonePath;
+  deepworkDevPath = terminalCfg.devMode.deepworkPath;
   isDev = devPath != null;
+  isDeepworkDev = deepworkDevPath != null;
 in
 {
   options.keystone.terminal.deepwork = {
@@ -45,8 +47,12 @@ in
     # 2. Keystone-native jobs — local checkout in dev mode, store copy in locked mode
     home.sessionVariables = {
       DEEPWORK_ADDITIONAL_JOBS_FOLDERS = builtins.concatStringsSep ":" [
-        "${pkgs.keystone.deepwork-library-jobs}"
-        (if isDev then "${devPath}/.deepwork/jobs" else "${pkgs.keystone.keystone-deepwork-jobs}")
+        (if isDeepworkDev
+         then "${deepworkDevPath}/library/jobs"
+         else "${pkgs.keystone.deepwork-library-jobs}")
+        (if isDev
+         then "${devPath}/.deepwork/jobs"
+         else "${pkgs.keystone.keystone-deepwork-jobs}")
       ];
     };
   };
