@@ -64,6 +64,7 @@ archetypes:
       - process.code-review-ownership
       - process.continuous-integration
       - process.copilot-agent
+      - process.pr-review-response
       - process.deepwork-job
       - process.feature-delivery
       - process.project-board
