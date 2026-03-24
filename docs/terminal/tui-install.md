@@ -19,8 +19,8 @@ For users on macOS or other Linux distributions (Ubuntu, Fedora, Arch, etc.), yo
 
 First, you need to have the Nix package manager installed.
 
-- **macOS Users:** Follow the [macOS Installation Guide](/docs/nix-install-macos)
-- **Linux Users:** Follow the [Ubuntu/Debian Installation Guide](/docs/nix-install-ubuntu) (also applies to most other Linux distros)
+- **macOS Users:** Follow the [macOS Installation Guide](/docs/os/build-platforms)
+- **Linux Users:** Follow the [Ubuntu/Debian Installation Guide](/docs/os/build-platforms) (also applies to most other Linux distros)
 
 ### 2. Install Keystone TUI
 
