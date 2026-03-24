@@ -245,6 +245,71 @@ list_hm_users() {
     "${override_args[@]}" 2>/dev/null | jq -r '.[]'
 }
 
+# --- Parallel build using nix-fast-build (nix-eval-jobs) ---
+# When nix-fast-build is available and no input overrides are needed, generates
+# a Nix expression wrapping all build targets into an attrset and invokes
+# nix-fast-build for multi-threaded evaluation via nix-eval-jobs.
+# Falls back to standard nix build on error or when nix-fast-build is unavailable.
+#
+# Usage: nix_fast_build <repo_root> <target...> [--override-input name value ...]
+nix_fast_build() {
+  local repo_root="$1"; shift
+  local all_args=("$@")
+
+  # Check for --override-input flags — nix-fast-build --file mode cannot
+  # pass flake input overrides, so we must fall back to nix build.
+  local has_overrides=false
+  for arg in "${all_args[@]}"; do
+    [[ "$arg" == "--override-input" ]] && has_overrides=true && break
+  done
+
+  # Extract just the flake target references (non-flag positional args)
+  local targets=()
+  local skip_next=false
+  for arg in "${all_args[@]}"; do
+    if $skip_next; then skip_next=false; continue; fi
+    case "$arg" in
+      --override-input) skip_next=true ;;
+      --*) ;;
+      *) targets+=("$arg") ;;
+    esac
+  done
+
+  # Use nix-fast-build when available, no overrides, and multiple targets
+  if command -v nix-fast-build &>/dev/null && [[ "$has_overrides" == false ]] && [[ ${#targets[@]} -gt 1 ]]; then
+    local tmpfile
+    tmpfile=$(mktemp /tmp/ks-build-XXXXXX.nix)
+
+    # Generate a Nix expression wrapping targets into an attrset.
+    # nix-fast-build evaluates each attribute in parallel via nix-eval-jobs.
+    {
+      echo "let"
+      echo "  flake = builtins.getFlake \"path:${repo_root}\";"
+      echo "in {"
+      local i=0
+      for target in "${targets[@]}"; do
+        local attr_path="${target#*#}"
+        echo "  \"target-${i}\" = flake.${attr_path};"
+        ((i++))
+      done
+      echo "}"
+    } > "$tmpfile"
+
+    echo "Using nix-fast-build for parallel evaluation (${#targets[@]} targets)..."
+    local rc=0
+    nix-fast-build --file "$tmpfile" --no-link --skip-cached --no-nom || rc=$?
+    rm -f "$tmpfile"
+
+    if [[ $rc -eq 0 ]]; then
+      return 0
+    fi
+    echo "nix-fast-build failed (exit $rc), falling back to nix build..." >&2
+  fi
+
+  # Fallback: standard nix build
+  nix build --no-link "${all_args[@]}"
+}
+
 # --- Build home-manager activation packages only (REQ-016.1-3) ---
 # Builds home-manager activationPackage for each user on each host, returning
 # a newline-delimited list of "host:user:store-path" entries.
@@ -278,7 +343,7 @@ build_home_manager_only() {
   fi
 
   echo "Building home-manager profiles: ${target_map[*]}..."
-  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+  nix_fast_build "$repo_root" "${build_targets[@]}" "${override_args[@]}"
   echo "Home-manager build complete."
 }
 
@@ -562,7 +627,7 @@ cmd_build() {
       build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
     done
     echo "Building (full system): ${target_hosts[*]}..."
-    nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+    nix_fast_build "$repo_root" "${build_targets[@]}" "${override_args[@]}"
 
     # Step 5: Commit flake.lock only after successful build (REQ-019.8)
     if ! git -C "$repo_root" diff --quiet flake.lock; then
@@ -714,7 +779,7 @@ cmd_update() {
   done
 
   echo "Building: ${target_hosts[*]}..."
-  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+  nix_fast_build "$repo_root" "${build_targets[@]}" "${override_args[@]}"
 
   # ── POST-BUILD PHASE ────────────────────────────────────────────────────────
   # Step 8: Push flake.lock only after a successful build

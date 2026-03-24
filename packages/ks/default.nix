@@ -6,6 +6,7 @@
   jq,
   openssh,
   hostname,
+  nix-fast-build,
 }:
 writeShellApplication {
   name = "ks";
@@ -15,6 +16,7 @@ writeShellApplication {
     jq
     openssh
     hostname
+    nix-fast-build
   ];
   text = builtins.readFile ./ks.sh;
   meta = with lib; {
