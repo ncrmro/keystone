@@ -101,9 +101,10 @@ let
         # Replace $ARGUMENTS with Gemini's native {{args}}
         prompt = replaceStrings [ "$ARGUMENTS" ] [ "{{args}}" ] content;
       in
-      lib.generators.toTOML { } {
-        inherit description prompt;
-      };
+      ''
+        description = ${builtins.toJSON description}
+        prompt = ${builtins.toJSON prompt}
+      '';
   };
 
   # Shared metadata for skills
