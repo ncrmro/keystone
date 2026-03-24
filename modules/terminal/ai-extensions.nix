@@ -122,6 +122,7 @@ let
     removeSuffix "." (removePrefix "# " (head (splitString "\n" content)));
 
   codexSkillName = name: replaceStrings [ "." ] [ "-" ] (commandBaseName name);
+  codexManagedSkillNames = [ "deepwork" ] ++ map codexSkillName commandFiles;
 
   codexSkillBody =
     name:
@@ -320,5 +321,25 @@ in
         );
       in
       commandFilesByTool // deepworkSkillsByTool // codexCommandSkills;
+
+    # Codex 0.114.0 skips skills whose payload files are symlinks.
+    # Home Manager creates symlinks for home.file entries in both locked mode
+    # and development mode, so materialize the managed Codex skill files as
+    # regular files after the link generation step.
+    home.activation.codexSkills = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      codexSkillsRoot="$HOME/.codex/skills"
+
+      for skillName in ${lib.escapeShellArgs codexManagedSkillNames}; do
+        skillDir="$codexSkillsRoot/$skillName"
+        [ -d "$skillDir" ] || continue
+
+        find "$skillDir" -type l | while read -r linkPath; do
+          targetPath="$(readlink -f "$linkPath")"
+          [ -f "$targetPath" ] || continue
+          rm -f "$linkPath"
+          cp "$targetPath" "$linkPath"
+        done
+      done
+    '';
   };
 }

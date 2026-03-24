@@ -65,6 +65,13 @@ tool loads conventions natively (without prompt injection).
 - `~/.codex/config.toml` — managed MCP server configs, merged with the user's existing Codex settings
 - `~/.codex/skills/` — Codex-native skills generated from keystone workflow command templates
 
+**Important nuance**: Codex 0.114.0 does not reliably discover skills when
+`SKILL.md` and `agents/openai.yaml` are symlinks. Keystone MUST materialize its
+managed skill payload files under `~/.codex/skills/` as regular files during
+activation, including in development mode. As a result, Codex skill changes
+require a profile activation step (`ks switch` or `ks update --dev`) rather than
+appearing instantly through out-of-store symlinks.
+
 ### OpenCode
 
 - **Docs**: https://opencode.ai/docs/rules/

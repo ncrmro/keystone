@@ -86,6 +86,12 @@ Generates `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md` fro
 (`~/.claude/commands/`, `~/.claude/CLAUDE.md`, etc.) are out-of-store symlinks →
 edits take effect immediately without rebuild.
 
+**Codex exception**: Codex 0.114.0 does not reliably discover skills when
+`SKILL.md` and `agents/openai.yaml` are symlinks. Keystone therefore materializes
+managed files under `~/.codex/skills/` as regular files during activation, even in
+development mode. Codex skill template changes still require `ks switch` or
+`ks update --dev` to refresh the copied files.
+
 **Locked mode** (default): Files are immutable Nix store copies. Rebuild required.
 
 ```nix
