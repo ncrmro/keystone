@@ -16,6 +16,21 @@ in
   config = mkIf (osCfg.enable && cfg != { }) {
     environment.systemPackages =
       let
+        agentOllamaConfig =
+          name:
+          let
+            username = "agent-${name}";
+            userCfg =
+              if config ? home-manager && builtins.hasAttr username config.home-manager.users then
+                config.home-manager.users.${username}.keystone.terminal.ai.ollama
+              else
+                {
+                  enable = false;
+                  host = "http://localhost:11434";
+                  defaultModel = null;
+                };
+          in
+          userCfg;
         # Nix-generated static lookup: agent name -> helper store path
         agentHelperCases = concatStringsSep "\n" (
           mapAttrsToList (name: _: "          ${name}) HELPER=\"${agentSvcHelper name}\" ;;") cfg
@@ -34,6 +49,18 @@ in
         agentHostCases = concatStringsSep "\n" (
           mapAttrsToList (
             name: agentCfg: "          ${name}) AGENT_HOST=\"${toString agentCfg.host}\" ;;"
+          ) cfg
+        );
+        agentOllamaCases = concatStringsSep "\n" (
+          mapAttrsToList (
+            name: _:
+            let
+              ollamaCfg = agentOllamaConfig name;
+              defaultModel = if ollamaCfg.defaultModel != null then ollamaCfg.defaultModel else "";
+            in
+            ''
+              ${name}) OLLAMA_ENABLED="${boolToString ollamaCfg.enable}"; OLLAMA_HOST="${ollamaCfg.host}"; OLLAMA_DEFAULT_MODEL="${defaultModel}" ;;
+            ''
           ) cfg
         );
         # Nix-generated static lookup: agent name -> provision metadata
@@ -57,6 +84,7 @@ in
               agentNotesCases = agentNotesCases;
               agentVncCases = agentVncCases;
               agentHostCases = agentHostCases;
+              agentOllamaCases = agentOllamaCases;
               agentProvisionCases = agentProvisionCases;
               knownAgents = knownAgents;
               python3 = "${pkgs.python3}/bin/python3";

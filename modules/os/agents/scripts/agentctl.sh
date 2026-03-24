@@ -42,6 +42,7 @@ if [ $# -lt 2 ]; then
   echo "  -r, --role <mode>      Compose role-specific prompt via .agents/compose.sh" >&2
   echo "  --roles <role1,...>    Comma-separated extra roles appended after mode roles" >&2
   echo "  -p, --project <slug>   Run in project context with zellij session" >&2
+  echo "  --local [model]        Use the configured Ollama server for claude/opencode" >&2
   echo "  --sandbox              Opt into Podman sandbox for this session (default: direct execution)" >&2
   echo "" >&2
   echo "Examples:" >&2
@@ -53,6 +54,8 @@ if [ $# -lt 2 ]; then
   echo "  agentctl drago shell" >&2
   echo "  agentctl drago claude" >&2
   echo "  agentctl drago claude -r code-review" >&2
+  echo "  agentctl drago claude --local" >&2
+  echo "  agentctl drago claude --local qwen3:32b" >&2
   echo "  agentctl drago claude --roles software-engineer,code-reviewer" >&2
   echo "  agentctl drago claude -r implementation --roles software-engineer" >&2
   echo "  agentctl drago claude --project nixos-config fix-auth" >&2
@@ -61,6 +64,7 @@ if [ $# -lt 2 ]; then
   echo "  agentctl drago gemini --project nixos-config fix-auth" >&2
   echo "  agentctl drago codex --project nixos-config fix-auth" >&2
   echo "  agentctl drago opencode --project nixos-config fix-auth" >&2
+  echo "  agentctl drago opencode --local" >&2
   echo "  agentctl drago gemini" >&2
   echo "  agentctl drago codex" >&2
   echo "  agentctl drago opencode" >&2
@@ -99,6 +103,13 @@ case "$AGENT_NAME" in
 @agentHostCases@
 esac
 
+OLLAMA_ENABLED="false"
+OLLAMA_HOST="http://localhost:11434"
+OLLAMA_DEFAULT_MODEL=""
+case "$AGENT_NAME" in
+@agentOllamaCases@
+esac
+
 THIS_HOST="$(cat /etc/hostname)"
 
 # Remote dispatch: forward non-local commands via SSH over Tailscale.
@@ -117,17 +128,34 @@ ROLE=""
 EXTRA_ROLES=""
 PROJECT=""
 SANDBOX=""
+LOCAL_MODEL=""
 REMAINING_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -r|--role) ROLE="$2"; shift 2 ;;
     --roles) EXTRA_ROLES="$2"; shift 2 ;;
     -p|--project) PROJECT="$2"; shift 2 ;;
+    --local)
+      shift
+      if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
+        LOCAL_MODEL="$1"; shift
+      else
+        LOCAL_MODEL="default"
+      fi
+      ;;
     --sandbox) SANDBOX=1; shift ;;
     *) REMAINING_ARGS+=("$1"); shift ;;
   esac
 done
 set -- "${REMAINING_ARGS[@]}"
+
+LOCAL_FLAG_ARGS=()
+if [[ -n "$LOCAL_MODEL" ]]; then
+  LOCAL_FLAG_ARGS+=(--local)
+  if [[ "$LOCAL_MODEL" != "default" ]]; then
+    LOCAL_FLAG_ARGS+=("$LOCAL_MODEL")
+  fi
+fi
 
 case "$CMD" in
   tasks)
@@ -145,6 +173,23 @@ case "$CMD" in
     exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && exec bash -l"
     ;;
   claude|gemini|codex|opencode)
+    if [[ -n "$LOCAL_MODEL" ]]; then
+      case "$CMD" in
+        claude|opencode) ;;
+        *)
+          echo "Error: --local is only supported for 'claude' and 'opencode'." >&2
+          echo "Received: $CMD" >&2
+          exit 1
+          ;;
+      esac
+
+      if [[ "$OLLAMA_ENABLED" != "true" ]]; then
+        echo "Error: local model support is not enabled for agent '$AGENT_NAME'." >&2
+        echo "Set keystone.terminal.ai.ollama.enable = true to use --local." >&2
+        exit 1
+      fi
+    fi
+
     # --- Project + zellij session wrapping (all AI tools) ---
     if [ -n "$PROJECT" ]; then
       # Session slug is the first positional argument
@@ -196,7 +241,7 @@ case "$CMD" in
             "_AGENTCTL_PROJECT_PATH=$PROJECT_PATH" \
             "_AGENTCTL_PROJECT_NAME=$PROJECT_NAME" \
             "_AGENTCTL_PROJECT_DESC=$PROJECT_DESC" \
-        agentctl "$AGENT_NAME" "$CMD" ${ROLE:+-r "$ROLE"} ${EXTRA_ROLES:+--roles "$EXTRA_ROLES"} "$@"
+        agentctl "$AGENT_NAME" "$CMD" "${LOCAL_FLAG_ARGS[@]}" ${ROLE:+-r "$ROLE"} ${EXTRA_ROLES:+--roles "$EXTRA_ROLES"} "$@"
     fi
 
     # Determine working directory and project context (from zellij re-entry)
@@ -231,6 +276,26 @@ case "$CMD" in
         gemini) TOOL_FLAGS="--yolo" ;;
         codex) TOOL_FLAGS="--full-auto" ;;
       esac
+
+      LOCAL_MODEL="'"$LOCAL_MODEL"'"
+      OLLAMA_ENABLED="'"$OLLAMA_ENABLED"'"
+      OLLAMA_HOST="'"$OLLAMA_HOST"'"
+      OLLAMA_DEFAULT_MODEL="'"$OLLAMA_DEFAULT_MODEL"'"
+      RESOLVED_LOCAL_MODEL=""
+      if [ -n "$LOCAL_MODEL" ]; then
+        if [ "$OLLAMA_ENABLED" != "true" ]; then
+          echo "Error: local model support is not enabled for agent '"$AGENT_NAME"'." >&2
+          exit 1
+        fi
+        if [ -n "$LOCAL_MODEL" ] && [ "$LOCAL_MODEL" != "default" ]; then
+          RESOLVED_LOCAL_MODEL="$LOCAL_MODEL"
+        elif [ -n "$OLLAMA_DEFAULT_MODEL" ]; then
+          RESOLVED_LOCAL_MODEL="$OLLAMA_DEFAULT_MODEL"
+        else
+          echo "Error: no local model was provided and no default model is configured for agent '"$AGENT_NAME"'." >&2
+          exit 1
+        fi
+      fi
 
       # Compose system prompt from AGENTS.md layers + role + project context
       # (applies to all AI tools; injection mechanism is per-tool below)
@@ -312,6 +377,21 @@ $ROLE_PROMPT"
             ;;
           opencode)
             # opencode reads AGENTS.md natively from the working directory
+            ;;
+        esac
+      fi
+
+      if [ -n "$LOCAL_MODEL" ]; then
+        case "'"$CMD"'" in
+          claude)
+            export ANTHROPIC_BASE_URL="$OLLAMA_HOST"
+            export ANTHROPIC_AUTH_TOKEN="ollama"
+            TOOL_FLAGS="$TOOL_FLAGS --model $RESOLVED_LOCAL_MODEL"
+            ;;
+          opencode)
+            export OPENCODE_PROVIDER="ollama"
+            export OPENCODE_MODEL="$RESOLVED_LOCAL_MODEL"
+            export OLLAMA_HOST="$OLLAMA_HOST"
             ;;
         esac
       fi

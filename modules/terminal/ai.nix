@@ -71,20 +71,40 @@ in
     programs.zsh.initContent = mkIf ollamaCfg.enable (
       let
         modelFlag = if ollamaCfg.defaultModel != null then " --model ${ollamaCfg.defaultModel}" else "";
+        defaultClaudeModel = if ollamaCfg.defaultModel != null then ollamaCfg.defaultModel else "";
+        defaultOpenCodeModel = if ollamaCfg.defaultModel != null then ollamaCfg.defaultModel else "";
       in
       ''
-        # Local Ollama wrappers — cloud commands (claude, opencode) remain unchanged
+        # Local Ollama wrappers mirror the first-class local launch behavior used
+        # by ks and agentctl. Hosted commands (claude, opencode) remain unchanged.
+        _keystone_has_model_arg() {
+          local arg
+          for arg in "$@"; do
+            case "$arg" in
+              --model|--model=*) return 0 ;;
+            esac
+          done
+          return 1
+        }
+
         claude-local() {
+          if ! _keystone_has_model_arg "$@" && [[ -z "${defaultClaudeModel}" ]]; then
+            echo "Error: no local model was provided and keystone.terminal.ai.ollama.defaultModel is not set." >&2
+            return 1
+          fi
           ANTHROPIC_BASE_URL="${ollamaCfg.host}" \
           ANTHROPIC_AUTH_TOKEN="ollama" \
             claude${modelFlag} "$@"
         }
 
         opencode-local() {
+          local resolved_model="${defaultOpenCodeModel}"
+          if [[ -z "$resolved_model" ]]; then
+            echo "Error: keystone.terminal.ai.ollama.defaultModel is not set for opencode-local." >&2
+            return 1
+          fi
           OPENCODE_PROVIDER="ollama" \
-          OPENCODE_MODEL="${
-            if ollamaCfg.defaultModel != null then ollamaCfg.defaultModel else "llama3.1:8b"
-          }" \
+          OPENCODE_MODEL="$resolved_model" \
           OLLAMA_HOST="${ollamaCfg.host}" \
             opencode "$@"
         }
