@@ -40,6 +40,7 @@ archetypes:
       - process.version-control
     referenced_conventions:
       - os.requirements
+      - process.prose
       - tool.nix-devshell
       - tool.nix
       - code.shell-scripts
@@ -51,6 +52,7 @@ archetypes:
       - process.enable-by-default
       - os.zfs-backup
       - tool.stalwart
+      - tool.standard-utilities
 
   engineer:
     description: "Engineering agents — implementation, code review, architecture"
@@ -84,6 +86,7 @@ archetypes:
       - tool.zk
       - process.knowledge-management
       - tool.stalwart
+      - tool.standard-utilities
     roles:
       # Role: code-reviewer
       # Used when the agent is strictly reviewing PRs authored by others (or subagents).
@@ -175,6 +178,7 @@ archetypes:
       - tool.github
       - tool.zk
       - process.knowledge-management
+      - tool.standard-utilities
     roles:
       # Role: business-analyst
       # Used for evaluating market opportunities, competitor products, and defining KPIs.
