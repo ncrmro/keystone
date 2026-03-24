@@ -233,6 +233,7 @@ in
     ./journal-remote.nix
     ./alloy.nix
     ./observability.nix
+    ./zfs-backup.nix
   ];
 
   options.keystone.os = {
