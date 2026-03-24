@@ -52,6 +52,7 @@ archetypes:
       - tool.github
       - tool.zk
       - process.notes
+      - process.presentation-slides
       - tool.zk-notes
       - process.enable-by-default
       - os.zfs-backup
@@ -192,6 +193,7 @@ archetypes:
       - tool.zk
       - process.knowledge-management
       - process.notes
+      - process.presentation-slides
       - tool.zk-notes
     roles:
       # Role: business-analyst

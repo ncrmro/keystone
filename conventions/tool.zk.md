@@ -5,14 +5,14 @@
 
 1. A notes repository MUST be initialized as a zk notebook before use: `zk init`.
 2. The `.zk/` directory and its contents (config.toml, templates) MUST be committed to git.
-3. Directory structure MUST follow the keystone standard: `inbox/`, `literature/`, `notes/`, `decisions/`, `reports/`, `index/`, and `archive/`.
+3. Directory structure MUST follow the keystone standard: `inbox/`, `literature/`, `notes/`, `decisions/`, `docs/reports/`, `docs/presentations/`, `index/`, and `archive/`.
 4. See `process.knowledge-management` for the note type taxonomy and methodology.
 5. See `process.notes` and `tool.zk-notes` for hub notes, report chains, and archive workflows.
 
 ## Creating Notes
 
 6. Notes MUST be created via `zk new <group>/ --title "Title"`.
-7. Groups map to directories: `inbox` (fleeting), `literature`, `notes` (permanent), `decisions`, `reports`, `index`, and `archive`.
+7. Groups map to directories: `inbox` (fleeting), `literature`, `notes` (permanent), `decisions`, `docs/reports` (report), `docs/presentations` (presentation), `index`, and `archive`.
 8. In non-interactive contexts (agents, scripts), `--no-input` MUST be used to prevent `$EDITOR` from opening.
 9. `--print-path` SHOULD be used when the caller needs the created file path.
 
@@ -28,8 +28,12 @@ zk new literature/ --title "NixOS module system" --no-input \
   --extra source="NixOS Manual" --extra source_url="https://nixos.org/manual"
 
 # Recurring report
-zk new reports/ --title "Keystone fleet health $(date +%Y-%m-%d)" --no-input \
+zk new docs/reports/ --title "Keystone fleet health $(date +%Y-%m-%d)" --no-input \
   --print-path --extra report_kind="keystone-system"
+
+# Presentation deck
+zk new docs/presentations/ --title "Keystone architecture briefing" --no-input \
+  --print-path --extra presentation_kind="architecture-briefing"
 ```
 
 ## Searching and Listing
@@ -48,8 +52,12 @@ zk list --format json --tag decision
 zk list inbox/ --format json
 
 # Latest report in a chain
-zk list reports/ --tag "report/keystone-system" --tag "repo/ncrmro/nixos-config" \
+zk list docs/reports/ --tag "report/keystone-system" --tag "repo/ncrmro/nixos-config" \
   --tag "source/deepwork/ks-doctor" --sort created- --limit 1 --format json
+
+# Latest presentation deck of a given kind
+zk list docs/presentations/ --tag "presentation/architecture-briefing" \
+  --tag "project/keystone" --sort created- --limit 1 --format json
 
 # Find notes linked from a specific note
 zk list --linked-by notes/202603201430.md --format json

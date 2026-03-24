@@ -15,7 +15,8 @@ This convention defines a Zettelkasten-based knowledge management system for key
 | literature | `literature/` | Summaries of external sources written in your own words |
 | permanent | `notes/` | Distilled, atomic ideas — one idea per note |
 | decision | `decisions/` | Architectural Decision Records (ADRs) with context, decision, consequences |
-| report | `reports/` | Time-stamped operational, research, or workflow reports |
+| report | `docs/reports/` | Time-stamped operational, research, or workflow reports |
+| presentation | `docs/presentations/` | Slidev decks and other Markdown-native presentation artifacts |
 | index | `index/` | Maps of Content — curated entry points linking to related permanent notes |
 | archive | `archive/` | Archived project notes retained in the zk graph |
 
@@ -53,7 +54,7 @@ tags: [zfs, storage]
 |-------|----------|-------------|
 | `id` | Yes | 12-digit timestamp ID |
 | `title` | Yes | Human-readable title |
-| `type` | Yes | `fleeting`, `literature`, `permanent`, `decision`, `index` |
+| `type` | Yes | `fleeting`, `literature`, `permanent`, `decision`, `report`, `presentation`, `index`, or `archive` |
 | `created` | Yes | ISO 8601 creation timestamp |
 | `author` | Yes | Unix username of creator (e.g., `ncrmro`, `agent-drago`) |
 | `tags` | Yes | List of lowercase hyphenated tags |
@@ -70,6 +71,7 @@ tags: [zfs, storage]
 | `report_kind` | report | Canonical report kind, e.g. `fleet-health` |
 | `previous_report` | report | Prior report note ID in the same chain |
 | `source_ref` | report | Workflow, command, file, or source that generated the report |
+| `presentation_kind` | presentation | Canonical deck kind, e.g. `architecture-briefing` |
 | `archived_at` | archive | ISO 8601 timestamp when the note was archived |
 | `archived_reason` | archive | Why the note moved out of the active workspace |
 | `archived_from` | archive | Original group before archival |
@@ -82,25 +84,26 @@ tags: [zfs, storage]
 17. Fleeting notes MAY be orphans (they are unprocessed by definition).
 18. Decision notes MUST link to the permanent notes that informed the decision.
 19. Report notes SHOULD link to the relevant project hub and MUST link to the prior report when they continue an existing series.
-20. When a note is superseded, the old note MUST link forward to the replacement via the `supersedes` field.
+20. Presentation notes SHOULD link to the relevant project hub and supporting notes used in speaker notes or references.
+21. When a note is superseded, the old note MUST link forward to the replacement via the `supersedes` field.
 
 ## Information Pipeline
 
-19. New ideas MUST be captured immediately as fleeting notes in `inbox/`.
-20. Fleeting notes MUST be reviewed periodically: promoted to permanent or literature, or discarded.
-21. When promoting a fleeting note, the new permanent/literature note SHOULD incorporate and expand on the fleeting content, then the fleeting note SHOULD be deleted.
-22. Literature notes MAY be promoted to permanent notes when a distinct atomic insight emerges.
+22. New ideas MUST be captured immediately as fleeting notes in `inbox/`.
+23. Fleeting notes MUST be reviewed periodically: promoted to permanent or literature, or discarded.
+24. When promoting a fleeting note, the new permanent/literature note SHOULD incorporate and expand on the fleeting content, then the fleeting note SHOULD be deleted.
+25. Literature notes MAY be promoted to permanent notes when a distinct atomic insight emerges.
 
 ## Agent Integration
 
-25. After completing a task, agents SHOULD create a fleeting note capturing what was learned.
-26. Before starting a task, agents SHOULD search for relevant context: `zk list --match "<task description>" --format json`.
-27. Inbox processing SHOULD be scheduled as a recurring task in `SCHEDULES.yaml`.
-28. Agents MUST use `--no-input` and `--print-path` when creating notes programmatically (see `tool.zk`).
-29. Hub notes, report chains, and archival policy are defined by `process.notes`.
+26. After completing a task, agents SHOULD create a fleeting note capturing what was learned.
+27. Before starting a task, agents SHOULD search for relevant context: `zk list --match "<task description>" --format json`.
+28. Inbox processing SHOULD be scheduled as a recurring task in `SCHEDULES.yaml`.
+29. Agents MUST use `--no-input` and `--print-path` when creating notes programmatically (see `tool.zk`).
+30. Hub notes, report chains, presentation deck storage, and archival policy are defined by `process.notes`.
 
 ## Coexistence with Operational Files
 
-30. YAML operational files (`TASKS.yaml`, `PROJECTS.yaml`, `SCHEDULES.yaml`) remain at the repo root and are NOT notes.
-31. The `zk` indexer ignores non-markdown files — no special exclusion rules are needed.
-32. Identity files (`SOUL.md`, `AGENTS.md`) at the repo root are NOT notes and SHOULD NOT have zk frontmatter.
+31. YAML operational files (`TASKS.yaml`, `PROJECTS.yaml`, `SCHEDULES.yaml`) remain at the repo root and are NOT notes.
+32. The `zk` indexer ignores non-markdown files — no special exclusion rules are needed.
+33. Identity files (`SOUL.md`, `AGENTS.md`) at the repo root are NOT notes and SHOULD NOT have zk frontmatter.
