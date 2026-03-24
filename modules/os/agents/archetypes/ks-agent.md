@@ -51,7 +51,8 @@ nixos-config/
 
 ### Test a change without deploying
 ```bash
-ks build                    # build current host (home-manager only, no sudo)
+ks build                    # full system build (no side effects, no sudo)
+ks build --home-only        # home-manager only (fast path)
 ks build ocean              # build a specific host
 ```
 
@@ -59,6 +60,7 @@ ks build ocean              # build a specific host
 ```bash
 # Edit .repos/keystone/... or .submodules/keystone/...
 ks build                    # test with local overrides auto-applied
+ks build --keystone-path ~/keystone-worktree  # test a worktree branch
 # When satisfied: commit + push keystone, then ask a human to run ks update
 ```
 

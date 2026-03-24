@@ -24,7 +24,8 @@ Caskaydia Mono), polkit, OOM protection (Docker/Podman get `OOMScoreAdjust = 100
 OBS Studio with PipeWire audio capture (enabled by default, disable per-host via
 `obs.enable = false` for hosts without GPU encoding support).
 
-OS-level changes require a full `nixos-rebuild switch` — not just `ks build`.
+OS-level changes require a full system build — `ks build` (default) verifies them.
+Deploying requires `ks update` (which calls `nixos-rebuild switch`).
 
 ## Home-Manager Level (`home/`)
 

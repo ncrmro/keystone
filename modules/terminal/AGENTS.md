@@ -4,8 +4,8 @@ This guide covers conventions for editing the terminal module. For the full user
 reference, see `docs/terminal.md`.
 
 **Key constraint**: Terminal and desktop modules are **home-manager based**, not NixOS
-system modules. Changes only require `ks build` (fast, no sudo) unless they touch
-NixOS-level options.
+system modules. Changes can be verified with `ks build` (full system, default) or the
+faster `ks build --home-only` (no sudo) unless they touch NixOS-level options.
 
 ## Shell (`shell.nix`)
 

@@ -7,8 +7,8 @@
 # Usage: ks <command> [options]
 #
 # Commands:
-#   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
-#   update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (home-manager only with --dev, full system default)
+#   build  [--home-only] [--lock] [HOSTS]              Build full system (default) or home-manager only (--home-only)
+#   update [--home-only] [--boot] [--pull] [--lock] [HOSTS]  Deploy (home-manager only with --home-only, full system default)
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
 #   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
 #   doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state
@@ -29,8 +29,9 @@
 #   3. ~/.keystone/repos/*/ if it contains hosts.nix
 #   4. ~/nixos-config as fallback
 #
-# The --dev flag overrides keystone and agenix-secrets flake inputs with
-# local clone paths for testing uncommitted changes.
+# Both build and update support --config-path and --keystone-path to override
+# the nixos-config repo and keystone input respectively (e.g. for testing
+# a worktree branch before merging).
 #
 # Requirements (RFC 2119)
 #
@@ -41,8 +42,10 @@
 #   MUST verify keystone and agenix-secrets are clean and fully pushed before locking.
 #
 # Build
+#   MUST default to full system build (nixosConfigurations.*.config.system.build.toplevel).
+#   MUST support --home-only to build only home-manager activation packages.
 #   MUST always use local .repos/keystone and .repos/agenix-secrets as --override-input
-#     when those directories exist, regardless of --dev flag.
+#     when those directories exist.
 #   MUST build all target hosts before deploying any of them.
 #   MUST pass --no-link to nix build to prevent ./result symlinks in the caller's CWD.
 #   SHOULD build all targets in a single nix invocation (nix parallelises internally).
@@ -53,8 +56,9 @@
 #     host is targeted, so the user is not interrupted mid-run.
 #   SHOULD keep sudo credentials alive for the duration of the run.
 #
-# --dev mode
-#   MUST skip pull, flake-update, commit, and push phases.
+# --home-only mode
+#   Builds/deploys home-manager profiles only (fast path, no sudo required).
+#   MUST skip pull, flake-update, commit, and push phases when used with build.
 #   MAY be used with uncommitted local repo changes.
 
 set -euo pipefail
@@ -507,18 +511,25 @@ cmd_sync_host_keys() {
 }
 
 cmd_build() {
-  local hosts_arg="" lock=false
+  local hosts_arg="" lock=false home_only=false config_path="" keystone_path=""
   while [[ $# -gt 0 ]]; do
     case $1 in
-      --dev) shift ;;  # kept for backwards compat, no-op
+      --home-only) home_only=true; shift ;;
+      --dev) home_only=true; shift ;;  # deprecated alias for --home-only
       --lock) lock=true; shift ;;
+      --config-path) config_path="$2"; shift 2 ;;
+      --keystone-path) keystone_path="$2"; shift 2 ;;
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) hosts_arg="$1"; shift ;;
     esac
   done
 
   local repo_root
-  repo_root=$(find_repo)
+  if [[ -n "$config_path" ]]; then
+    repo_root=$(readlink -f "$config_path")
+  else
+    repo_root=$(find_repo)
+  fi
   local hosts_nix="$repo_root/hosts.nix"
 
   local target_hosts=()
@@ -530,6 +541,13 @@ cmd_build() {
     for h in "${ADDR[@]}"; do
       target_hosts+=("$(resolve_host "$hosts_nix" "$h")")
     done
+  fi
+
+  # Extra override for --keystone-path
+  local extra_override_args=()
+  if [[ -n "$keystone_path" ]]; then
+    keystone_path=$(readlink -f "$keystone_path")
+    extra_override_args+=(--override-input keystone "path:$keystone_path")
   fi
 
   if [[ "$lock" == true ]]; then
@@ -562,7 +580,7 @@ cmd_build() {
       build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
     done
     echo "Building (full system): ${target_hosts[*]}..."
-    nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+    nix build --no-link "${build_targets[@]}" "${override_args[@]}" "${extra_override_args[@]}"
 
     # Step 5: Commit flake.lock only after successful build (REQ-019.8)
     if ! git -C "$repo_root" diff --quiet flake.lock; then
@@ -575,29 +593,54 @@ cmd_build() {
     echo "Pushing nixos-config..."
     git -C "$repo_root" push
     echo "Lock + build complete for: ${target_hosts[*]}"
-  else
-    # ── DEV MODE (REQ-016.1): home-manager only build ──
+  elif [[ "$home_only" == true ]]; then
+    # ── HOME-ONLY MODE: home-manager only build ──
     build_home_manager_only "$repo_root" "${target_hosts[@]}"
+  else
+    # ── DEFAULT MODE (REQ-025): full system build, no side effects ──
+    local override_args=()
+    read -ra override_args <<< "$(local_override_args "$repo_root")"
+    local build_targets=()
+    for h in "${target_hosts[@]}"; do
+      build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
+    done
+    echo "Building (full system): ${target_hosts[*]}..."
+    nix build --no-link "${build_targets[@]}" "${override_args[@]}" "${extra_override_args[@]}"
+    echo "Build complete for: ${target_hosts[*]}"
   fi
 }
 
 # --- Update command ---
 cmd_update() {
-  local mode="switch" hosts_arg="" pull=false lock=true
+  local mode="switch" hosts_arg="" pull=false lock=true home_only=false config_path="" keystone_path=""
   while [[ $# -gt 0 ]]; do
     case $1 in
-      --dev) lock=false; shift ;;
+      --home-only) home_only=true; lock=false; shift ;;
+      --dev) home_only=true; lock=false; shift ;;  # deprecated alias for --home-only
       --boot) mode="boot"; shift ;;
       --pull) pull=true; shift ;;
       --lock) lock=true; shift ;;
+      --config-path) config_path="$2"; shift 2 ;;
+      --keystone-path) keystone_path="$2"; shift 2 ;;
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) hosts_arg="$1"; shift ;;
     esac
   done
 
   local repo_root
-  repo_root=$(find_repo)
+  if [[ -n "$config_path" ]]; then
+    repo_root=$(readlink -f "$config_path")
+  else
+    repo_root=$(find_repo)
+  fi
   local hosts_nix="$repo_root/hosts.nix"
+
+  # Extra override for --keystone-path
+  local extra_override_args=()
+  if [[ -n "$keystone_path" ]]; then
+    keystone_path=$(readlink -f "$keystone_path")
+    extra_override_args+=(--override-input keystone "path:$keystone_path")
+  fi
 
   local target_hosts=()
   if [[ -z "$hosts_arg" ]]; then
@@ -626,11 +669,11 @@ cmd_update() {
     return
   fi
 
-  # ── DEV MODE: home-manager only (REQ-016.2) ──────────────────────────────────
-  if [[ "$lock" != true ]]; then
+  # ── HOME-ONLY MODE: home-manager only (REQ-025) ──────────────────────────────
+  if [[ "$home_only" == true ]]; then
     build_home_manager_only "$repo_root" "${target_hosts[@]}"
     deploy_home_manager_only "$repo_root" "${target_hosts[@]}"
-    echo "Dev mode update complete (home-manager only) for: ${target_hosts[*]}"
+    echo "Home-only update complete (home-manager only) for: ${target_hosts[*]}"
     return
   fi
 
@@ -714,7 +757,7 @@ cmd_update() {
   done
 
   echo "Building: ${target_hosts[*]}..."
-  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+  nix build --no-link "${build_targets[@]}" "${override_args[@]}" "${extra_override_args[@]}"
 
   # ── POST-BUILD PHASE ────────────────────────────────────────────────────────
   # Step 8: Push flake.lock only after a successful build
@@ -745,7 +788,7 @@ cmd_update() {
     if [[ "$host_hostname" == "$current_hostname" ]]; then
       # LOCAL deploy
       echo "Deploying $host locally ($mode)..."
-      sudo nixos-rebuild "$mode" --flake "$repo_root#$host" "${override_args[@]}"
+      sudo nixos-rebuild "$mode" --flake "$repo_root#$host" "${override_args[@]}" "${extra_override_args[@]}"
     else
       # REMOTE deploy
       if [[ -z "$ssh_target" ]]; then
@@ -769,7 +812,7 @@ cmd_update() {
       fi
 
       echo "Deploying $host to root@$resolved ($mode)..."
-      nixos-rebuild "$mode" --flake "$repo_root#$host" "${remote_args[@]}" "${override_args[@]}"
+      nixos-rebuild "$mode" --flake "$repo_root#$host" "${remote_args[@]}" "${override_args[@]}" "${extra_override_args[@]}"
     fi
 
     [[ "$mode" == "boot" ]] && echo "Reboot required to apply changes for $host."
@@ -886,7 +929,7 @@ ks_update_workflow_docs() {
 > **WARNING**: `ks update` calls `sudo nixos-rebuild switch`. Agents MUST NOT
 > run this command. Use `ks build` to test changes, then ask a human to deploy.
 
-`ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]`
+`ks update [--home-only] [--boot] [--pull] [--lock] [HOSTS]`
 
 Steps executed in order:
 
@@ -904,10 +947,10 @@ Steps executed in order:
 
 | Flag | Effect |
 |------|--------|
-| `--dev` | Home-manager only: build + activate user/agent profiles, skip system rebuild |
+| `--home-only` | Home-manager only: build + activate user/agent profiles, skip system rebuild |
 | `--boot` | Use `nixos-rebuild boot` instead of `switch` (reboot required to apply) |
 | `--pull` | Pull repos only — no build or deploy |
-| `--lock` | Force locking (default when `--dev` is not set), full system rebuild |
+| `--lock` | Force locking (default when `--home-only` is not set), full system rebuild |
 
 ### HOSTS
 
@@ -1273,7 +1316,8 @@ $user_table"
 
 ### Dev Mode Conventions
 
-- \`ks build\` / \`ks update --dev\`: Rebuilds **home-manager profiles only** (users + agents). Fast iteration, no sudo required.
+- \`ks build\`: **Full NixOS system build** (no side effects). Verifies system-level changes.
+- \`ks build --home-only\` / \`ks update --home-only\`: Rebuilds **home-manager profiles only** (users + agents). Fast iteration, no sudo required.
 - \`ks build --lock\` / \`ks update\` (default): **Full NixOS system rebuild**. Pushes keystone (forks if not a collaborator), locks flake inputs, builds, pushes nixos-config, deploys.
 - Changes to keystone are NOT locked into flake.lock until \`--lock\` is used.
 - When ready to lock: commit + push keystone, then run \`ks update\` (or \`ks build --lock\`)."
@@ -1425,8 +1469,8 @@ if [[ $# -lt 1 ]]; then
   echo "Usage: ks <command> [options]" >&2
   echo "" >&2
   echo "Commands:" >&2
-  echo "  build  [--lock] [HOSTS]                            Build (home-manager only; --lock for full system)" >&2
-  echo "  update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (--dev for home-manager only)" >&2
+  echo "  build  [--home-only] [--lock] [HOSTS]              Build (full system default; --home-only for HM only)" >&2
+  echo "  update [--home-only] [--boot] [--pull] [--lock] [HOSTS]  Deploy (--home-only for HM only)" >&2
   echo "  sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts" >&2
   echo "  agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context" >&2
   echo "  doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state" >&2

@@ -16,8 +16,8 @@ MAY, REQUIRED, OPTIONAL).
 
 | Command | Description |
 |---------|-------------|
-| `ks build [--lock] [HOSTS]` | Build home-manager profiles (default) or full system (`--lock`) |
-| `ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]` | Deploy to hosts |
+| `ks build [--home-only] [--lock] [--config-path PATH] [--keystone-path PATH] [HOSTS]` | Build full system (default), home-manager only (`--home-only`), or full system + lock (`--lock`) |
+| `ks update [--home-only] [--boot] [--pull] [--lock] [--config-path PATH] [--keystone-path PATH] [HOSTS]` | Deploy to hosts |
 | `ks sync-host-keys` | Populate `hostPublicKey` in `hosts.nix` from live hosts |
 | `ks agent [--local [MODEL]] [args...]` | Launch AI agent with keystone OS context |
 | `ks doctor [--local [MODEL]] [args...]` | Launch diagnostic AI agent with system state |
@@ -40,12 +40,13 @@ to eliminate symlinks, because Nix `path:` flake URIs break on symlinks.
 
 ### Build
 
-**REQ-019.3** `ks build` without `--lock` MUST build only home-manager
-activation packages for all managed users and agents on each target host
-(fast iteration, no sudo required).
+**REQ-019.3** `ks build` without flags MUST build the full NixOS system
+toplevel for all target hosts (no side effects — no lock, commit, or push).
 
-**REQ-019.4** `ks build --lock` MUST build the full NixOS system toplevel
-for all target hosts.
+**REQ-019.4** `ks build --home-only` MUST build only home-manager
+activation packages for all managed users and agents on each target host
+(fast iteration, no sudo required). `--dev` is a deprecated alias for
+`--home-only`.
 
 **REQ-019.5** `ks` MUST always use local repo checkouts (per REQ-018)
 as `--override-input` when those directories exist, regardless of mode.
@@ -81,9 +82,10 @@ interrupted mid-run.
 **REQ-019.12** `ks` SHOULD keep sudo credentials alive for the duration
 of the run.
 
-**REQ-019.13** `ks update --dev` MUST build and activate only home-manager
+**REQ-019.13** `ks update --home-only` MUST build and activate only home-manager
 profiles (users + agents) across all target hosts, skipping the full
-NixOS system rebuild. Dev mode deploy SHOULD NOT require sudo.
+NixOS system rebuild. Home-only mode deploy SHOULD NOT require sudo.
+`--dev` is a deprecated alias for `--home-only`.
 
 **REQ-019.14** `ks update --boot` MUST set the NixOS configuration for
 next boot without activating it (uses `nixos-rebuild boot` instead of
@@ -91,10 +93,22 @@ next boot without activating it (uses `nixos-rebuild boot` instead of
 
 ### Dev Mode
 
-**REQ-019.15** Dev mode (`ks build` without `--lock`, `ks update --dev`)
+**REQ-019.15** Home-only mode (`ks build --home-only`, `ks update --home-only`)
 MUST skip pull, flake-update, commit, and push phases.
 
-**REQ-019.16** Dev mode MAY be used with uncommitted local repo changes.
+**REQ-019.16** Home-only mode MAY be used with uncommitted local repo changes.
+
+### Path Overrides
+
+**REQ-019.16.1** `ks build` and `ks update` MUST support `--config-path PATH`
+to override the nixos-config repo root. When provided, repo discovery
+(REQ-019.1) is bypassed and `PATH` is used directly (resolved via
+`readlink -f`).
+
+**REQ-019.16.2** `ks build` and `ks update` MUST support `--keystone-path PATH`
+to override the keystone flake input. When provided, an additional
+`--override-input keystone path:PATH` is passed to all `nix build` and
+`nixos-rebuild` invocations (resolved via `readlink -f`).
 
 ### Dev Mode — Local Script Execution
 
@@ -152,7 +166,7 @@ update the `hostPublicKey` field in `hosts.nix`.
 
 - If `gh` CLI is not available, lock mode MUST fall back to direct
   `git push` and emit a warning if push fails.
-- If no home-manager users exist for a target host, `ks build` (dev mode)
+- If no home-manager users exist for a target host, `ks build --home-only`
   MUST succeed with a warning rather than error.
 - Risky hosts SHOULD be deployed last when multiple hosts are targeted
   (user convention, not enforced).

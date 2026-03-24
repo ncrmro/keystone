@@ -102,9 +102,10 @@ modules and declares per-host/per-user configuration. All keystone-managed repos
 under `~/.keystone/repos/OWNER/REPO/`.
 
 ```bash
-ks build              # Build home-manager profiles only (fast, no sudo)
+ks build              # Full system build (no side effects)
+ks build --home-only  # Build home-manager profiles only (fast, no sudo)
 ks build --lock       # Full system build + lock + push
-ks update --dev       # Deploy home-manager profiles only
+ks update --home-only # Deploy home-manager profiles only
 ks update             # Full system: pull, lock, build, push, deploy
 ks update --lock      # Pull, lock, build, push, deploy (human-only)
 ```

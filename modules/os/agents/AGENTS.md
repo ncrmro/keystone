@@ -128,7 +128,7 @@ systemctl verbs to prevent LD_PRELOAD injection.
 
 **Testing**: `agentctl` uses `replaceVars` and cannot be tested without a rebuild:
 ```bash
-ks build && ks update --dev
+ks build --home-only && ks update --home-only
 ```
 
 ## Security: Claude/Gemini Flag Separation
