@@ -152,8 +152,6 @@ in
                       "serve"
                       "--path"
                       "."
-                      "--external-runner"
-                      "claude"
                       "--platform"
                       "claude"
                     ];

@@ -25,8 +25,6 @@ let
       "serve"
       "--path"
       "."
-      "--external-runner"
-      "claude"
       "--platform"
       platform
     ];
