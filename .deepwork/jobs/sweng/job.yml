@@ -1,5 +1,5 @@
 name: sweng
-version: "2.3.0"
+version: "2.3.1"
 summary: "Software engineering lifecycle: design, implement, fix, refactor, and audit with agent orchestration"
 common_job_info_provided_to_all_steps_at_runtime: |
   Software engineering workflow with agent orchestration. Handles architecture design,
@@ -210,7 +210,7 @@ steps:
       - run_each: pull_request_update_md
         quality_criteria:
           "Demo Section Updated": "PR body has a Demo section with concrete evidence (screenshots, test results, or preview URLs)."
-          "Screenshots Posted": "If the project has screenshot tests, they were run, committed, and posted as a PR comment. Private repos use draft release assets, not raw.githubusercontent.com."
+          "Screenshots Posted": "If the project has screenshot tests, they were run, committed, and embedded in the PR body's Demo section (not as a separate comment). Private repos use draft release assets, not raw.githubusercontent.com."
 
   - id: review
     name: "Review and Merge"

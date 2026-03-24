@@ -58,9 +58,9 @@ git push
 
 **Skip this step** if no screenshot test infrastructure exists in the project.
 
-#### Step 3: Post Screenshot Demo on PR
+#### Step 3: Get Screenshot Image URLs
 
-Screenshots must be uploaded so they render inline in PR comments. The method
+Screenshots must be hosted so they render inline in the PR body. The method
 depends on whether the repo is public or private.
 
 **Detect repo visibility:**
@@ -85,7 +85,7 @@ RELEASE_ID=$(gh api repos/OWNER/REPO/releases -X POST \
   -F draft=true \
   --jq '.id')
 
-# Upload each screenshot
+# Upload each screenshot and collect URLs
 for f in path/to/screenshots/*.png; do
   NAME=$(basename "$f")
   URL=$(curl -sS -X POST \
@@ -100,18 +100,37 @@ done
 Draft release assets are accessible to anyone with repo access and render inline
 in GitHub markdown.
 
-**Post the PR comment:**
-```bash
-gh pr comment $PR_NUM --repo OWNER/REPO --body "$(cat <<EOF
-## Demo Screenshots
+Note: Forgejo does not support release asset uploads in the same way. For Forgejo
+private repos, consider hosting screenshots in a public location or using inline
+base64 data URIs for small images.
 
-Automated Playwright screenshots capturing requirement evidence.
+#### Step 4: Update PR Body Demo Section
+
+**IMPORTANT**: Screenshots go in the **PR body** under the `# Demo` header — NOT
+as a separate PR comment. The Demo section is the single source of truth for
+evidence that the implementation works.
+
+Update the PR body using `gh pr edit` (not `gh pr comment`). Preserve the existing
+body (Goal/Tasks/Changes sections) and update only the Demo section:
+
+```bash
+gh pr edit $PR_NUM --repo OWNER/REPO --body "$(cat <<EOF
+...existing body with Goal/Tasks/Changes sections...
+
+# Demo
+
+## Screenshots
 
 ### Screenshot 1 — Description (REQ-NNN)
 ![Description]($IMAGE_URL_1)
 
 ### Screenshot 2 — Description (REQ-NNN)
 ![Description]($IMAGE_URL_2)
+
+## Verification
+- Tests pass: \`bun test\` — N/N passed
+- [Specific behaviors verified]
+- Deploy preview: [URL if available, or omit]
 EOF
 )"
 ```
@@ -120,37 +139,7 @@ Each screenshot should reference the requirement(s) it provides evidence for.
 
 **Forgejo:**
 ```bash
-fj pr comment $PR_NUM --repo OWNER/REPO --body "..."
-```
-
-Note: Forgejo does not support release asset uploads in the same way. For Forgejo
-private repos, consider hosting screenshots in a public location or using inline
-base64 data URIs for small images.
-
-#### Step 4: Update PR Demo Section
-
-Update the PR body's `# Demo` section with evidence the work is correct.
-Include all available evidence:
-
-- **Screenshot URLs** (if captured in Steps 2-3)
-- **Deploy preview URL** (if the project uses Cloudflare Workers, Vercel, Netlify — check for bot comments on the PR)
-- **Test results** summary
-- **Key behaviors verified**
-
-```bash
-gh pr edit $PR_NUM --repo OWNER/REPO --body "$(cat <<'EOF'
-...existing body with Goal/Tasks/Changes sections...
-
-# Demo
-
-## Screenshots
-- [Screenshot descriptions with requirement references]
-
-## Verification
-- Tests pass: `bun test` — N/N passed
-- [Specific behaviors verified]
-EOF
-)"
+fj pr edit $PR_NUM --repo OWNER/REPO --body "..."
 ```
 
 #### Step 5: Write pull_request_update.md
@@ -170,8 +159,8 @@ platform: github
 # PR Update: feat/task-slug
 
 ## Screenshots
-- 01-full-layout.png (REQ-007) — posted as PR comment
-- 02-file-viewer.png (REQ-001) — posted as PR comment
+- 01-full-layout.png (REQ-007) — embedded in PR body Demo section
+- 02-file-viewer.png (REQ-001) — embedded in PR body Demo section
 
 ## Demo Section
 Updated with screenshot evidence and test results.
@@ -182,8 +171,8 @@ Updated with screenshot evidence and test results.
 
 ## Quality Criteria
 
-- PR Demo section updated with concrete evidence (screenshots, test results, preview URLs)
-- Screenshot tests run if available; screenshots committed, pushed, and posted as PR comment
+- Screenshots embedded in the PR body's Demo section (via `gh pr edit`), NOT as separate PR comments
+- Screenshot tests run if available; screenshots committed and pushed
 - Private repos use draft release assets (not raw.githubusercontent.com which 404s)
 - Screenshots reference specific requirements (REQ-NNN) they provide evidence for
 - PR body reflects the current state of implementation
