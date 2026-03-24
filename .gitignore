@@ -65,9 +65,17 @@ target/
 screenshots/
 *.sock
 
-# DeepWork runtime artifacts (jobs/ is tracked)
+# DeepWork runtime artifacts (job definitions are tracked, outputs are not)
 .deepwork/sessions/
 .deepwork/tmp/
+.deepwork/jobs/**/plan.md
+.deepwork/jobs/**/implementation_summary.md
+.deepwork/jobs/**/review_report.md
+.deepwork/jobs/**/build_result.md
+.deepwork/jobs/**/merge_result.md
+.deepwork/jobs/**/deploy_result.md
+.deepwork/jobs/**/validation_report.md
+.deepwork/jobs/**/fleet_survey.md
 
 # TUI screenshots (removed from history)
 assets/tui/
