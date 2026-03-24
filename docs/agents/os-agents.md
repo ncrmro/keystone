@@ -84,6 +84,7 @@ flowchart TB
         email_src["Email<br/>(himalaya)"]
         github_src["GitHub<br/>(gh CLI)"]
         forgejo_src["Forgejo<br/>(tea CLI)"]
+        calendar_src["Calendar<br/>(calendula)"]
     end
 
     sched_timer --> sched_svc
@@ -94,7 +95,7 @@ flowchart TB
     sched_svc -->|"creates tasks"| tasks
 
     loop_svc --> prefetch
-    prefetch -->|"fetches"| email_src & github_src & forgejo_src
+    prefetch -->|"fetches"| email_src & github_src & forgejo_src & calendar_src
     prefetch --> hash --> ingest
     ingest -->|"updates"| tasks
     ingest --> prioritize
@@ -514,7 +515,9 @@ The scheduler (`scheduler.sh`) is a pure-bash script (no LLM) that runs once dai
    - `monthly:<day>` — runs on the numbered day (e.g., `monthly:1`)
 3. Creates tasks with `source: "schedule"` and `source_ref: "schedule-{name}-{YYYY-MM-DD}"` for deduplication
 4. Sets the `workflow` field from the schedule definition (scheduler is the only creator that sets workflows at creation time)
-5. If any tasks were created, triggers `agent-{name}-task-loop.service`
+5. Reads CalDAV calendar events via `calendula event list` (gracefully skipped if calendula is unavailable)
+6. Creates tasks from calendar events with `source: "calendar"` and `source_ref: "calendar-{uid}-{YYYY-MM-DD}"` for deduplication
+7. If any tasks were created, triggers `agent-{name}-task-loop.service`
 
 ### Workflow Dispatch
 
@@ -566,7 +569,7 @@ tasks:                             # REQUIRED: only top-level key
     description: "What to do"      # REQUIRED: human-readable
     status: pending                # REQUIRED: pending|in_progress|completed|blocked
     project: "project-name"       # MAY: from PROJECTS.yaml
-    source: "email"               # MAY: email|github-issue|github-pr|forgejo-issue|schedule|manual
+    source: "email"               # MAY: email|github-issue|github-pr|forgejo-issue|schedule|calendar|manual
     source_ref: "email-42-u@h"    # MAY: unique ID for deduplication
     model: "sonnet"               # MAY: haiku|sonnet|opus — execution model override
     workflow: "job/workflow"       # MAY: DeepWork workflow to invoke
@@ -586,11 +589,13 @@ tasks:                             # REQUIRED: only top-level key
 - Email: `email-{id}-{sender_address}`
 - GitHub issue: full URL
 - Schedule: `schedule-{name}-{YYYY-MM-DD}`
+- Calendar: `calendar-{uid}-{YYYY-MM-DD}`
 
 **Workflow assignment rules:**
 - Ingest MUST NOT set workflows — only appends new tasks with required fields
 - Prioritize assigns workflows via a deterministic decision tree (first match wins)
 - Scheduler sets workflows at task creation time from `SCHEDULES.yaml`
+- Calendar events do not set workflows at creation — prioritize assigns them
 - Pre-existing workflow fields are always preserved
 
 ### PROJECTS.yaml
