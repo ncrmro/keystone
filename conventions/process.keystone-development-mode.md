@@ -42,6 +42,13 @@ enabled, modules derive local paths from the `keystone.repos` registry at
 10. DeepWork library jobs (`DEEPWORK_ADDITIONAL_JOBS_FOLDERS`) swap to local
     checkouts when `keystone.terminal.development` is true and the
     corresponding repo is registered.
+11. AI artifact instruction files, skills, and role agent profiles
+    (`ai-artifacts/`) swap to the local checkout when
+    `keystone.development = true` and the keystone repo is registered. This
+    covers `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`,
+    `~/.config/opencode/AGENTS.md`, and all skill directories.
+12. When `keystone.development = false`, AI artifacts are installed from the
+    committed tree via the Nix store — behavior is reproducible in locked builds.
 
 ## Desktop Module
 

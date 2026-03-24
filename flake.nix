@@ -373,6 +373,11 @@
                   exit 1
                 fi
               '';
+          # AI artifact module evaluation test (REQ-33)
+          ai-artifacts-evaluation = import ./tests/module/ai-artifacts-evaluation.nix {
+            inherit pkgs lib;
+            self = self;
+          };
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)
