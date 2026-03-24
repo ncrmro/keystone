@@ -13,8 +13,9 @@
 # IMPORTANT: tea's `ssh_agent: true` only authenticates git transport
 # (clone/push/pull), NOT Forgejo REST API calls. All API operations (PRs,
 # issues, releases) require a real token in the `token` field. For agents,
-# tokens are provisioned automatically by git-server.nix. For humans, add
-# a token manually after first deploy — it will be preserved across rebuilds.
+# tokens are provisioned automatically by git-server.nix. For users, set
+# forgejo.provision = true in keystone.os.users.<name> to auto-provision
+# a persistent API token scoped to the user.
 #
 # Both config files use activation scripts (not home.file) so that
 # manually-added or provisioned tokens survive nixos-rebuild.

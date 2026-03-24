@@ -95,6 +95,21 @@ let
           };
         };
 
+        forgejo = {
+          provision = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Auto-provision Forgejo user and API token on the git server host. The token is scoped to this user.";
+          };
+
+          username = mkOption {
+            type = types.str;
+            default = name;
+            description = "Forgejo username. Defaults to the OS username.";
+            example = "ncrmro";
+          };
+        };
+
         sshAutoLoad = {
           enable = mkOption {
             type = types.bool;
