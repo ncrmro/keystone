@@ -4,7 +4,7 @@
 ## TASKS.yaml
 
 1. All tasks MUST be tracked in `TASKS.yaml` at the agent-space root.
-2. `TASKS.yaml` MUST be checked for current and historical task context before starting work.
+2. `TASKS.yaml` MUST be checked for current and historical task context before starting work. See `process.context-continuity` for standards on public state tracking on Issues/PRs.
 3. Task status MUST be updated to `completed` when done.
 4. Task names MUST be descriptive slugs (e.g., `daily-priorities-2026-03-12`).
 5. Tasks MUST include `source` and `source_ref` to trace where they came from.

@@ -68,7 +68,7 @@ user stories issue MUST exist before engineering planning starts.
 
 ## Issue Work Protocol
 
-26. When a PR resolving a milestone issue is merged, the closing agent MUST post a structured `## Demo Artifacts` comment on the issue containing screenshot URLs, video links, and/or preview links from the PR's Demo section (see `process.pull-request` convention, rules 5-9).
+26. When a PR resolving a milestone issue is merged, the closing agent MUST post a structured `## Demo Artifacts` comment on the issue containing screenshot URLs, video links, and/or preview links from the PR's Demo section (see `process.pull-request` convention, rules 5-9). See `process.context-continuity` for evidence requirements during implementation.
 27. Issues producing visible output MUST NOT be closed until the demo artifact comment is posted.
 28. Agents MUST reference the PR number (e.g., `PR #42`) in the artifact comment so reviewers can trace back to the full Demo section.
 29. For issues with no visible output (e.g., infrastructure, refactoring), the artifact comment MAY be omitted but the closing PR MUST still have a Demo section per `process.pull-request` convention.

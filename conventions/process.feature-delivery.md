@@ -36,7 +36,7 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 
 18. Commits MUST follow `process.version-control` commit discipline (early, often, one logical change per commit).
 19. Changes MUST NOT exceed the scope of the issue's acceptance criteria.
-20. All tasks in the PR body's `# Tasks` section MUST be checked off before marking the PR ready for review.
+20. All tasks in the PR body's `# Tasks` section MUST be updated in real-time as each sub-task is completed (see `process.context-continuity`). All tasks MUST be checked off before marking the PR ready for review.
 
 ## Review and Merge
 

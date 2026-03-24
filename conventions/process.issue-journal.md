@@ -37,7 +37,7 @@ is happening without checking TASKS.yaml or waiting for a PR.
 
 ## Work Update Comment
 
-7. Agents MUST post a `## Work Update` comment on the source issue AFTER task execution completes or is blocked.
+7. Agents MUST post a `## Work Update` comment on the source issue AFTER task execution completes or is blocked. See `process.context-continuity` for content standards when documenting difficulties.
 8. The comment MUST include:
    - Agent name
    - Task name

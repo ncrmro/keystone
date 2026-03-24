@@ -9,7 +9,7 @@ See `process.prose` for general writing style and clarity rules.
 1. Every PR description MUST include three sections: **Goal**, **Changes**, and **Demo**.
 2. The **Goal** section MUST state what the PR achieves and why.
 3. The **Changes** section MUST summarize what was modified.
-4. The **Demo** section MUST provide evidence that the work is correct and instructions for validation.
+4. The **Demo** section MUST provide evidence that the work is correct and instructions for validation. Evidence MUST be updated in real-time as implementation progresses (see `process.context-continuity`).
 
 ## Demo Section
 
