@@ -21,8 +21,9 @@ let
   mkRepoEntry =
     name: input:
     let
-      si = input.sourceInfo or { };
-      type = si.type or "";
+      # Safe access to sourceInfo to avoid context-related evaluation errors
+      si = if builtins.isAttrs input && input ? sourceInfo then input.sourceInfo else { };
+      type = si.type or "path";
     in
     if type == "github" && si ? owner && si ? repo then
       {
@@ -33,11 +34,43 @@ let
           branch = "main";
         };
       }
-    else if type == "git" && si ? url then
+    else if (type == "git" || type == "path") then
+      let
+        # Try to extract owner/repo from URL if available.
+        # Avoid using si.path directly if it's a store path to prevent evaluation errors.
+        url = si.url or "";
+
+        # Clean URL of protocols and prefixes
+        # Note: replaceStrings replaces all occurrences of each string in the first list with the corresponding string in the second list.
+        cleanUrl =
+          replaceStrings
+            [ "git+" "file://" "https://" "ssh://" "git@github.com:" ]
+            [
+              ""
+              ""
+              ""
+              ""
+              ""
+            ]
+            url;
+        # Split and take last two parts
+        parts = filter (s: s != "") (splitString "/" cleanUrl);
+        len = length parts;
+        repo = if len >= 1 then removeSuffix ".git" (last parts) else null;
+        owner = if len >= 2 then elemAt parts (len - 2) else null;
+
+        # Special case: if it's the keystone input and we're evaluating it
+        # locally, we might not have owner/repo in the path.
+        # Use ncrmro/keystone as a sensible default for the keystone input
+        # if name is "keystone".
+        defaultOwnerRepo = if name == "keystone" then "ncrmro/keystone" else name;
+
+        derivedName = if owner != null && repo != null then "${owner}/${repo}" else defaultOwnerRepo;
+      in
       {
-        inherit name;
+        name = derivedName;
         value = {
-          url = si.url;
+          inherit url;
           flakeInput = name;
           branch = "main";
         };
