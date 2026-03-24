@@ -22,43 +22,53 @@ let
   claudeJsonMcpServers = pkgs.writeText "claude-mcp-servers.json" (builtins.toJSON cfg.mcpServers);
 
   # Nix-managed settings for Gemini CLI
-  geminiJsonSettings = pkgs.writeText "gemini-settings.json" (builtins.toJSON {
-    mcpServers = cfg.mcpServers // (
-      if terminalCfg.ai.enable then {
-        deepwork = {
-          command = "${pkgs.keystone.deepwork}/bin/deepwork";
-          args = [
-            "serve"
-            "--path"
-            "."
-            "--external-runner"
-            "claude"
-            "--platform"
-            "gemini"
-          ];        };
-      } else {}
-    );
-    context = {
-      fileFiltering = {
-        inherit (cfg) respectGitIgnore;
+  geminiJsonSettings = pkgs.writeText "gemini-settings.json" (
+    builtins.toJSON {
+      mcpServers =
+        cfg.mcpServers
+        // (
+          if terminalCfg.ai.enable then
+            {
+              deepwork = {
+                command = "${pkgs.keystone.deepwork}/bin/deepwork";
+                args = [
+                  "serve"
+                  "--path"
+                  "."
+                  "--external-runner"
+                  "claude"
+                  "--platform"
+                  "gemini"
+                ];
+              };
+            }
+          else
+            { }
+        );
+      context = {
+        fileFiltering = {
+          inherit (cfg) respectGitIgnore;
+        };
       };
-    };
-  });
+    }
+  );
 
   # Nix-managed settings for OpenCode
-  opencodeJsonSettings = pkgs.writeText "opencode-settings.json" (builtins.toJSON {
-    mcp = mapAttrs (
-      _: srv:
-      {
-        type = "local";
-        command = [ srv.command ] ++ srv.args;
-        enabled = true;
-      }
-      // optionalAttrs (srv.env != { }) {
-        inherit (srv) env;
-      }
-    ) cfg.mcpServers;
-  });
+  opencodeJsonSettings = pkgs.writeText "opencode-settings.json" (
+    builtins.toJSON {
+      mcp = mapAttrs (
+        _: srv:
+        {
+          type = "local";
+          command = [ srv.command ] ++ srv.args;
+          enabled = true;
+        }
+        // optionalAttrs (srv.env != { }) {
+          inherit (srv) env;
+        }
+      ) cfg.mcpServers;
+    }
+  );
 in
 {
   options.keystone.terminal.cliCodingAgents = {

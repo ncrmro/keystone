@@ -116,7 +116,7 @@ fzf
 Ctrl+r
 
 # Find and open file
-nvim $(fzf)
+hx $(fzf)
 ```
 
 **ripgrep** and **fd**: Fast search for content and files:

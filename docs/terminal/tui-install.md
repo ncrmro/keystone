@@ -19,8 +19,8 @@ For users on macOS or other Linux distributions (Ubuntu, Fedora, Arch, etc.), yo
 
 First, you need to have the Nix package manager installed.
 
-- **macOS Users:** Follow the [macOS Installation Guide](/docs/nix-install-macos)
-- **Linux Users:** Follow the [Ubuntu/Debian Installation Guide](/docs/nix-install-ubuntu) (also applies to most other Linux distros)
+- **macOS Users:** Follow the [macOS Installation Guide](/docs/os/build-platforms)
+- **Linux Users:** Follow the [Ubuntu/Debian Installation Guide](/docs/os/build-platforms) (also applies to most other Linux distros)
 
 ### 2. Install Keystone TUI
 
@@ -76,7 +76,7 @@ For a permanent installation that manages your configuration files (dotfiles), w
 2.  **Apply the configuration:**
 
     ```bash
-    nix run home-manager/master -- switch --flake .#YOUR_USERNAME
+    nix run github:nix-community/home-manager/master -- switch --flake .#YOUR_USERNAME
     ```
 
 ## Next Steps
