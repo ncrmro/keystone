@@ -65,8 +65,9 @@ target/
 screenshots/
 *.sock
 
-# AI Agent and DeepWork artifacts
-.deepwork/
+# DeepWork runtime artifacts (jobs/ is tracked)
+.deepwork/sessions/
+.deepwork/tmp/
 
 # TUI screenshots (removed from history)
 assets/tui/
