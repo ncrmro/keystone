@@ -1,6 +1,6 @@
 interface:
-  display_name: "---"
-  short_description: "---"
+  display_name: "Onboard a new project interactively"
+  short_description: "Onboard a new project interactively"
 
 dependencies:
   tools:

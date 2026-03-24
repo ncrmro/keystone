@@ -1,12 +1,8 @@
 ---
 name: project-success
-description: "---"
+description: "Review project charter, KPIs, and goals"
 ---
 
----
-description: Review project charter, KPIs, and goals
-argument-hint: <project name>
----
 
 You MUST use the DeepWork MCP tools to execute this workflow.
 

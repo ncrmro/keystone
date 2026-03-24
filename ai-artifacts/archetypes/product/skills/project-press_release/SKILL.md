@@ -1,12 +1,8 @@
 ---
 name: project-press_release
-description: "---"
+description: "Draft and disseminate a press release for a product launch"
 ---
 
----
-description: Draft and disseminate a press release for a product launch
-argument-hint: <project name or launch context>
----
 
 You MUST use the DeepWork MCP tools to execute this workflow.
 

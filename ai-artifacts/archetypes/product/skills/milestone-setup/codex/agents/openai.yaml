@@ -1,6 +1,6 @@
 interface:
-  display_name: "---"
-  short_description: "---"
+  display_name: "Create a milestone from scope or press release"
+  short_description: "Create a milestone from scope or press release"
 
 dependencies:
   tools:

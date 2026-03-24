@@ -1,12 +1,8 @@
 ---
 name: milestone-eng_handoff
-description: "---"
+description: "Engineering handoff with specs and issue decomposition"
 ---
 
----
-description: Engineering handoff with specs and issue decomposition
-argument-hint: <milestone name or issue reference>
----
 
 You MUST use the DeepWork MCP tools to execute this workflow.
 

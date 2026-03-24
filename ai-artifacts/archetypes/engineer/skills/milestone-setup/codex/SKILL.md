@@ -1,12 +1,8 @@
 ---
 name: milestone-setup
-description: "---"
+description: "Create a milestone from scope or press release"
 ---
 
----
-description: Create a milestone from scope or press release
-argument-hint: <milestone description or issue reference>
----
 
 You MUST use the DeepWork MCP tools to execute this workflow.
 

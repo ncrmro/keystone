@@ -154,6 +154,48 @@ When the user invokes `/deepwork`, parse their intent:
 SKILL
 }
 
+# Extract a meaningful description from a command file.
+# If the file has YAML frontmatter (starts with ---), extract the description field.
+# Otherwise, use the first line stripped of Markdown heading syntax.
+extract_description() {
+  local cmd_file="$1"
+  local first_line
+  first_line=$(head -1 "$cmd_file")
+
+  if [[ "$first_line" == "---" ]]; then
+    # File has YAML frontmatter — extract description field
+    local desc
+    desc=$(sed -n '/^---$/,/^---$/{ /^description:/{ s/^description: *//; p; q; } }' "$cmd_file")
+    if [[ -n "$desc" ]]; then
+      echo "$desc"
+      return
+    fi
+    # Fallback: find first heading after frontmatter
+    desc=$(sed '1,/^---$/d; 1,/^---$/d' "$cmd_file" | grep -m1 '^# ' | sed 's/^# //' | sed 's/\.$//')
+    if [[ -n "$desc" ]]; then
+      echo "$desc"
+      return
+    fi
+  fi
+
+  # No frontmatter — use first line
+  echo "$first_line" | sed 's/^# //' | sed 's/\.$//'
+}
+
+# Extract the body of a command file, stripping any YAML frontmatter.
+extract_body() {
+  local cmd_file="$1"
+  local first_line
+  first_line=$(head -1 "$cmd_file")
+
+  if [[ "$first_line" == "---" ]]; then
+    # Strip YAML frontmatter (everything between first two --- lines)
+    sed '1{/^---$/d}' "$cmd_file" | sed '1,/^---$/d'
+  else
+    cat "$cmd_file"
+  fi
+}
+
 # Generate a command skill for a given command file.
 # For Claude/Gemini/OpenCode this is a SKILL.md with frontmatter.
 generate_command_skill() {
@@ -165,19 +207,19 @@ generate_command_skill() {
     return
   fi
 
-  local first_line
-  first_line=$(head -1 "$cmd_file" | sed 's/^# //' | sed 's/\.$//')
+  local description
+  description=$(extract_description "$cmd_file")
   local skill_name
   skill_name=$(echo "$cmd_name" | tr '.' '-')
 
   cat <<EOF
 ---
 name: ${skill_name}
-description: "${first_line}"
+description: "${description}"
 ---
 
 EOF
-  cat "$cmd_file"
+  extract_body "$cmd_file"
 }
 
 # Generate a Codex-specific skill (includes invocation instructions + agents/openai.yaml)
@@ -190,8 +232,8 @@ generate_codex_skill() {
     return
   fi
 
-  local first_line
-  first_line=$(head -1 "$cmd_file" | sed 's/^# //' | sed 's/\.$//')
+  local description
+  description=$(extract_description "$cmd_file")
   local skill_name
   skill_name=$(echo "$cmd_name" | tr '.' '-')
   local skill_token="\$${skill_name}"
@@ -199,11 +241,11 @@ generate_codex_skill() {
   cat <<EOF
 ---
 name: ${skill_name}
-description: "${first_line}"
+description: "${description}"
 ---
 
 EOF
-  cat "$cmd_file"
+  extract_body "$cmd_file"
   cat <<EOF
 
 ## Codex skill invocation
@@ -222,13 +264,13 @@ generate_codex_openai_yaml() {
     return
   fi
 
-  local first_line
-  first_line=$(head -1 "$cmd_file" | sed 's/^# //' | sed 's/\.$//')
+  local description
+  description=$(extract_description "$cmd_file")
 
   cat <<EOF
 interface:
-  display_name: "${first_line}"
-  short_description: "${first_line}"
+  display_name: "${description}"
+  short_description: "${description}"
 
 dependencies:
   tools:
