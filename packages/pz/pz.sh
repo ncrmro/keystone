@@ -42,7 +42,7 @@ pz — Projctl Zellij session manager
 
 Usage:
   pz <project> [--layout <name>]  Create or attach to a Zellij session for <project>
-  pz list                         List active project sessions
+  pz list [--project <slug>]      List active project sessions
   pz agent <agent> <cmd> [args]   Run agentctl within the project context
   pz --help                       Show this help message
 
@@ -55,31 +55,123 @@ Environment:
 EOF
 }
 
-# list active project sessions (those matching obs-* prefix)
-cmd_list() {
-  local sessions
-  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
-  if [[ -z "$sessions" ]]; then
-    echo "(no active project sessions)"
+discover_projects() {
+  local projects_dir="${VAULT_ROOT}/projects"
+
+  if [[ ! -d "$projects_dir" ]]; then
     return 0
   fi
 
-  echo "SLUG                          STATUS"
-  echo "------------------------------  --------"
-  while IFS= read -r line; do
-    local name status
-    name=$(echo "$line" | awk '{print $1}')
-    # Filter to only sessions starting with the project prefix
-    if [[ "$name" == "${SESSION_PREFIX}-"* ]]; then
-      local slug="${name#"${SESSION_PREFIX}"-}"
-      # Extract status if present in the line, otherwise mark as active
-      if echo "$line" | grep -q "EXITED"; then
-        status="exited"
-      else
-        status="active"
+  find "$projects_dir" -mindepth 2 -maxdepth 2 -type f -name README.md -print 2>/dev/null \
+    | while IFS= read -r readme; do
+        local project_dir slug
+        project_dir=$(dirname "$readme")
+        slug=$(basename "$project_dir")
+        case "$slug" in
+          _* )
+            continue
+            ;;
+        esac
+        printf "%s\n" "$slug"
+      done \
+    | sort -u
+}
+
+session_status_from_line() {
+  local line="$1"
+
+  if [[ "$line" == *"(current)"* ]]; then
+    printf "attached\n"
+  elif [[ "$line" == *"EXITED"* ]]; then
+    printf "exited\n"
+  else
+    printf "detached\n"
+  fi
+}
+
+match_registered_project_slug() {
+  local session_name="$1"
+  shift
+
+  local suffix="${session_name#"${SESSION_PREFIX}"-}"
+  local project_slug=""
+
+  for candidate in "$@"; do
+    if [[ "$suffix" == "$candidate" || "$suffix" == "${candidate}-"* ]]; then
+      if [[ -z "$project_slug" || ${#candidate} -gt ${#project_slug} ]]; then
+        project_slug="$candidate"
       fi
-      printf "%-32s  %s\n" "$slug" "$status"
     fi
+  done
+
+  if [[ -n "$project_slug" ]]; then
+    printf "%s\n" "$project_slug"
+  fi
+}
+
+# list active project sessions for registered projects only
+cmd_list() {
+  local project_filter=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project)
+        if [[ $# -lt 2 ]]; then
+          echo "error: --project requires a slug argument" >&2
+          exit 1
+        fi
+        project_filter="$2"
+        shift 2
+        ;;
+      *)
+        echo "error: unknown option for 'list': $1" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  mapfile -t projects < <(discover_projects)
+
+  echo "PROJECT                       SESSION                       STATUS"
+  echo "----------------------------  ----------------------------  --------"
+
+  if [[ ${#projects[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  local sessions
+  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  if [[ -z "$sessions" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r line; do
+    local name project_slug session_slug status suffix
+    [[ -z "$line" ]] && continue
+
+    name=$(printf "%s\n" "$line" | awk '{print $1}')
+    if [[ "$name" != "${SESSION_PREFIX}-"* ]]; then
+      continue
+    fi
+
+    project_slug=$(match_registered_project_slug "$name" "${projects[@]}")
+    if [[ -z "$project_slug" ]]; then
+      continue
+    fi
+
+    if [[ -n "$project_filter" && "$project_slug" != "$project_filter" ]]; then
+      continue
+    fi
+
+    suffix="${name#"${SESSION_PREFIX}"-"${project_slug}"}"
+    if [[ -z "$suffix" ]]; then
+      session_slug="main"
+    else
+      session_slug="${suffix#-}"
+      [[ -z "$session_slug" ]] && session_slug="main"
+    fi
+
+    status=$(session_status_from_line "$line")
+    printf "%-28s  %-28s  %s\n" "$project_slug" "$session_slug" "$status"
   done <<< "$sessions"
 }
 
@@ -191,7 +283,8 @@ case "$1" in
     exit 0
     ;;
   list)
-    cmd_list
+    shift
+    cmd_list "$@"
     ;;
   agent)
     shift

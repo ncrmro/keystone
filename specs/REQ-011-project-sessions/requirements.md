@@ -78,18 +78,19 @@ to ensure consistent session identification across tools.
 List sessions filtered by project.
 
 **Behavior**:
-1. The command MUST list all Zellij sessions whose names start with `{prefix}-`
-2. When `--project <project-slug>` is provided, the command MUST show only sessions matching `{prefix}-{project-slug}-`
-3. Output MUST include: project slug, session slug, status (attached/detached), and creation time
+1. The command MUST discover valid project slugs from `{notes_path}/projects/*/README.md`
+2. The command MUST list only Zellij sessions whose names start with `{prefix}-` and whose slug includes a discovered project slug
+3. When `--project <project-slug>` is provided, the command MUST show only sessions whose discovered project slug matches that value
 4. Sessions from other prefixes (e.g., manual Zellij sessions) MUST be excluded
+5. Sessions whose names do not include a discovered project slug MUST be excluded
 5. The command MUST exit with code `0` even when no sessions are found (empty list)
 
 **Output format** (stdout, tab-separated):
 ```
-PROJECT     SESSION     STATUS      CREATED
-backend     main        attached    2026-03-18T10:30:00
-backend     review      detached    2026-03-18T11:00:00
-frontend    main        detached    2026-03-17T14:22:00
+PROJECT     SESSION     STATUS
+backend     main        attached
+backend     review      detached
+frontend    main        detached
 ```
 
 ### `pz kill <project-slug> [<session-slug>]`
@@ -137,7 +138,7 @@ Destroy a project session.
 
 ## Edge Cases
 
-- **Stale sessions**: If a Zellij session exists but the project directory has been deleted, `pz list` MUST still show the session (it's a valid Zellij session). `pz <project-slug>` for a deleted project MUST fail with exit code `1`.
+- **Stale sessions**: If a Zellij session exists but the project directory has been deleted or is no longer registered under `{notes_path}/projects/*/README.md`, `pz list` MUST exclude the session. `pz <project-slug>` for a deleted project MUST fail with exit code `1`.
 - **Concurrent attach**: If a session is already attached in another terminal, `pz <project-slug> <session-slug>` MUST attach to the same session (Zellij supports multiple clients per session).
 - **Empty projects directory**: If no projects exist, `pz list` MUST output an empty table with headers only. `pz <project-slug>` MUST fail with exit code `1`.
 - **Invalid slug characters**: `pz` MUST reject slugs containing characters other than lowercase alphanumeric and hyphens.
