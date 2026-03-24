@@ -1,5 +1,5 @@
 name: keystone_system
-version: "1.8.0"
+version: "1.9.0"
 summary: "Keystone development lifecycle: worktree, build, review, merge, deploy, validate, update, and convention management"
 common_job_info_provided_to_all_steps_at_runtime: |
   Keystone is a NixOS-based infrastructure platform. Development follows a strict
@@ -91,7 +91,7 @@ workflows:
       - validate
 
   - name: issue
-    summary: "Write a keystone spec/issue with RFC 2119 requirements, user story, and architecture diagrams"
+    summary: "Create or identify a keystone GitHub issue whose body contains RFC 2119 requirements, user story, diagrams, and deliverables"
     steps:
       - write_issue
 
@@ -361,27 +361,29 @@ steps:
 
   - id: write_issue
     name: "Write Issue"
-    description: "Write a keystone spec with RFC 2119 requirements, user story, and ASCII architecture diagrams"
+    description: "Research a feature, draft a GitHub issue body with RFC 2119 requirements and user stories, and create or link the issue"
     instructions_file: steps/write_issue.md
     exposed: true
     inputs:
       - name: feature_description
         description: "What feature or bug to spec — a sentence or paragraph describing the need"
     outputs:
-      requirements.md:
+      issue.md:
         type: file
-        description: "Complete keystone spec with RFC 2119 requirements, user story, affected modules, and diagrams"
+        description: "Final GitHub issue body plus created issue URL or matching existing issue URL"
         required: true
     dependencies: []
     reviews:
-      - run_each: requirements.md
-        additional_review_guidance: "Read existing specs in specs/ for format consistency. Check specs/REQ-019-ks-cli/requirements.md as the most recent example."
+      - run_each: issue.md
+        additional_review_guidance: "Confirm the issue body is actionable as the plan of record and suitable to seed the eventual PR description."
         quality_criteria:
           "RFC 2119 Language": "Requirements use RFC 2119 keywords (MUST, SHOULD, MAY) correctly and consistently."
           "Testable Requirements": "Each requirement is specific enough to verify — no vague 'should work well' statements."
           "Architecture Diagram": "At least one ASCII diagram illustrates the module architecture or data flow."
           "Affected Modules": "The spec identifies which keystone modules and files are affected."
-          "User Story": "The spec includes a user story or motivation section explaining why this feature matters."
+          "User Stories": "The issue includes user stories covering the main actors or usage modes affected by the change."
+          "Issue Created": "The output includes the created GitHub issue URL or explains which existing issue was reused."
+          "PR-Ready Body": "The issue body includes deliverables or acceptance criteria that can be carried into the PR description."
 
   - id: draft_convention
     name: "Draft Convention"

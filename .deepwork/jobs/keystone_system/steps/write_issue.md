@@ -2,11 +2,15 @@
 
 ## Objective
 
-Produce a complete keystone specification document with RFC 2119 requirements, a user story, affected modules, and ASCII architecture diagrams. The spec follows the established pattern in `specs/`.
+Produce a GitHub issue for `ncrmro/keystone` whose body serves as the plan of
+record: RFC 2119 requirements, user stories, affected modules, architecture
+diagrams, and an implementation checklist that can later be mirrored in the PR.
 
 ## Task
 
-Take the user's feature description and research the keystone codebase to produce a well-structured spec. Ask structured questions if the description is ambiguous.
+Take the user's feature description and research the keystone codebase to
+produce a well-structured issue. Ask structured questions if the description is
+ambiguous.
 
 ### Process
 
@@ -21,36 +25,35 @@ Take the user's feature description and research the keystone codebase to produc
    - Review `AGENTS.md` / `CLAUDE.md` for the module file tree and conventions
    - Look at existing specs in `specs/` for format reference — especially the most recent ones
 
-3. **Determine the next REQ number**
-   - List `specs/` to find the highest REQ number
-   - Increment by 1 for the new spec
-
-4. **Write the spec**
+3. **Draft the issue**
    - Follow the established format (see Output Format below)
    - Use RFC 2119 keywords: MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT, MAY, REQUIRED, OPTIONAL
-   - Every requirement MUST be numbered: `REQ-XXX.N`
+   - Every requirement MUST be numbered under a temporary issue-local prefix such as `ISSUE-REQ-1`, `ISSUE-REQ-2`, or another unambiguous sequential format
    - Include at least one ASCII diagram showing module architecture or data flow
    - Identify all affected files in `modules/`, `packages/`, and `flake.nix`
+   - Include a checklist of deliverables or implementation tasks derived from the requirements
+   - The issue body MUST be sufficient for a future PR description to reuse directly
 
-5. **Create the spec directory and file**
-   - Create `specs/REQ-XXX-<short-name>/requirements.md`
-   - The short name should be lowercase-hyphenated, matching the feature (e.g., `journal-remote`)
+4. **Create the GitHub issue**
+   - Choose a Conventional-Commit-style issue title: `type(scope): subject`
+   - Use `gh issue create --repo ncrmro/keystone --title "..." --body-file <file>`
+   - If a closely matching issue already exists, do NOT create a duplicate. Update the output file with the existing issue URL and explain why it matches.
+   - Save the final issue body to a local markdown output file before creating the issue so it can be reused in the eventual PR.
+   - After creation, append the created issue URL to the output file.
 
 ## Output Format
 
-### requirements.md
+### issue.md
 
 ```markdown
-# REQ-XXX: <Feature Title>
+# <Conventional issue title>
 
 <One paragraph summary of what this feature does and why it matters.>
 
-Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
-MAY, REQUIRED, OPTIONAL).
+## User stories
 
-## User Story
-
-As a [role], I want [capability] so that [benefit].
+- As a [role], I want [capability] so that [benefit].
+- As a [role], I want [capability] so that [benefit].
 
 ## Architecture
 
@@ -66,33 +69,29 @@ As a [role], I want [capability] so that [benefit].
 
 ### <Section Name>
 
-**REQ-XXX.1** <Module/feature> MUST <do something specific>.
+**ISSUE-REQ-1** <Module/feature> MUST <do something specific>.
 
-**REQ-XXX.2** <Module/feature> SHOULD <do something recommended>.
+**ISSUE-REQ-2** <Module/feature> SHOULD <do something recommended>.
 
-**REQ-XXX.3** When <condition>, <module> MUST <behavior>.
+**ISSUE-REQ-3** When <condition>, <module> MUST <behavior>.
 
 [Continue with numbered requirements grouped by logical section...]
 
-### Configuration
+## Deliverables
 
-**REQ-XXX.N** The module MUST expose options at `keystone.<path>`.
+- [ ] Deliverable derived from the requirements
+- [ ] Deliverable derived from the requirements
 
-```nix
-# Example configuration
-keystone.<path> = {
-  enable = true;
-  # ... options with descriptions
-};
-```
+## Acceptance criteria
 
-### Integration
+- [ ] Requirement coverage is complete
+- [ ] Build/test/validation path is identified
 
-**REQ-XXX.N** <How this integrates with existing keystone modules.>
+## Issue metadata
 
-### Security
-
-**REQ-XXX.N** <Security considerations, if applicable.>
+- Repository: `ncrmro/keystone`
+- Suggested labels: `<optional labels>`
+- Created issue: `<issue URL after creation>`
 ```
 
 ## Quality Criteria
@@ -101,9 +100,13 @@ keystone.<path> = {
 - Each requirement is numbered and specific enough to verify
 - At least one ASCII diagram illustrates the architecture
 - All affected keystone modules and files are identified
-- A user story or motivation section explains why this feature matters
-- The spec follows the format of existing specs in `specs/`
+- A user stories section explains why this feature matters for the relevant actors
+- The issue body can be reused as the foundation for the eventual PR description
+- A GitHub issue was created or an existing matching issue was linked with justification
 
 ## Context
 
-Keystone specs live in `specs/REQ-XXX-<name>/requirements.md`. They serve as the plan of record for implementation. The `ks.develop` workflow consumes these specs as input goals. Well-written specs with clear RFC 2119 requirements make implementation and review much smoother.
+Keystone issues are the plan of record for implementation. The issue body
+should contain the requirements and checklist that will later be reflected in
+the PR description. Avoid creating a standalone `specs/REQ-XXX/...` file unless
+the user explicitly asked for a committed spec in addition to the issue.

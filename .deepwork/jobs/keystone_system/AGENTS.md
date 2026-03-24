@@ -56,6 +56,13 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 - **`~/notes/` is the primary zk notebook** — it has `journal/`, `notes/`, `inbox/`, and other directories. The zk config auto-names notes as `YYYYMMDDHHMM slug-title.md`. The note should contain a concise summary (not the full raw output files).
 - **The `.deepwork/jobs/` folder is scratch space** — it's fine for working files during execution but is not the final destination for personal system data.
 
+### v1.8.1 — Issue workflow correction (2026-03-24)
+
+- **`keystone_system/issue` creates GitHub issues, not standalone specs**: the authoritative output is a GitHub issue on `ncrmro/keystone` whose body contains the RFC 2119 requirements, architecture diagram, affected modules, and implementation checklist.
+- **The issue body is the plan of record**: it should be written so the eventual PR description can reuse the same requirements and deliverables with minimal rewriting.
+- **Include user stories, plural**: when the feature affects more than one actor or workflow, the issue body should have a `## User stories` section with multiple bullets rather than a single generic story.
+- **A local markdown file may exist only as a staging artifact** for `gh issue create --body-file`; do not leave the workflow framed as "create `specs/REQ-XXX/.../requirements.md`" unless the user explicitly asked for a committed spec file too.
+
 ### v1.7.0 — Doctor report quality (2026-03-24)
 
 - **Always cross-reference issues with GitHub before flagging as new**: When the doctor finds failed units or health problems, search GitHub first (`gh issue list --search "<keyword>" --repo ncrmro/keystone` and `ncrmro/nixos-config`). There is already an existing GitHub issue for the `syncoid-rpool-to-*` ZFS backup sync failures — link to it rather than treating it as new.
