@@ -193,6 +193,7 @@ in
     ./tailscale.nix
     ./containers.nix
     ./journal-remote.nix
+    ./zfs-backup.nix
   ];
 
   options.keystone.os = {

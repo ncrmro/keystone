@@ -581,6 +581,144 @@ cmd_build() {
   fi
 }
 
+# --- Switch command (fast deploy) ---
+cmd_switch() {
+  local mode="switch" hosts_arg=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --boot) mode="boot"; shift ;;
+      -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
+      *) hosts_arg="$1"; shift ;;
+    esac
+  done
+
+  local repo_root
+  repo_root=$(find_repo)
+  local hosts_nix="$repo_root/hosts.nix"
+
+  local target_hosts=()
+  if [[ -z "$hosts_arg" ]]; then
+    target_hosts+=("$(resolve_host "$hosts_nix" "")")
+  else
+    # Split by comma
+    IFS=',' read -ra ADDR <<< "$hosts_arg"
+    for h in "${ADDR[@]}"; do
+      target_hosts+=("$(resolve_host "$hosts_nix" "$h")")
+    done
+  fi
+
+  # Cache sudo if local host is targeted
+  local needs_sudo=false current_hostname
+  current_hostname=$(hostname)
+  for h in "${target_hosts[@]}"; do
+    local h_hostname
+    h_hostname=$(nix eval -f "$hosts_nix" "$h.hostname" --raw)
+    if [[ "$h_hostname" == "$current_hostname" ]]; then
+      needs_sudo=true; break
+    fi
+  done
+
+  if [[ "$needs_sudo" == true ]]; then
+    echo "Caching sudo credentials..."
+    sudo -v
+  fi
+
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+
+  # Step 1: Build ALL in parallel for efficiency
+  local build_targets=()
+  for h in "${target_hosts[@]}"; do
+    build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
+  done
+
+  echo "Building: ${target_hosts[*]}..."
+  local build_paths=()
+  mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}")
+
+  # Step 2: Deploy sequentially using the built store paths
+  for i in "${!target_hosts[@]}"; do
+    local host="${target_hosts[$i]}"
+    local path="${build_paths[$i]}"
+    local host_json ssh_target fallback_ip host_hostname
+    host_json=$(nix eval -f "$hosts_nix" "$host" --json)
+    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+    fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
+    host_hostname=$(echo "$host_json" | jq -r '.hostname')
+
+    if [[ "$host_hostname" == "$current_hostname" ]]; then
+      local old_sw new_sw old_kernel new_kernel old_initrd new_initrd etc_changed=false
+      old_sw=$(readlink -f /run/current-system/sw 2>/dev/null || echo "old")
+      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
+      old_kernel=$(readlink -f /run/current-system/kernel 2>/dev/null || echo "old")
+      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
+      old_initrd=$(readlink -f /run/current-system/initrd 2>/dev/null || echo "old")
+      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
+
+      if ! diff -r -q --exclude="per-user" "$(readlink -f /run/current-system/etc)" "$(readlink -f "$path/etc")" >/dev/null 2>&1; then
+        etc_changed=true
+      fi
+
+      if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
+        echo "OS core unchanged. Activating fast home-manager switch locally..."
+        deploy_home_manager_only "$repo_root" "$host"
+        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
+        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        sudo "$path/bin/switch-to-configuration" boot
+      else
+        echo "Deploying $host locally ($mode)..."
+        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
+        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        sudo "$path/bin/switch-to-configuration" "$mode"
+      fi
+    else
+      if [[ -z "$ssh_target" ]]; then
+        echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2; exit 1
+      fi
+      local resolved="$ssh_target"
+      if [[ -n "$fallback_ip" ]]; then
+        if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+          resolved="$fallback_ip"
+        fi
+      fi
+      
+      echo "Deploying $host to root@$resolved ($mode)..."
+      nix copy --to "ssh://root@$resolved" "$path"
+      
+      # Check remote OS state
+      local new_sw new_kernel new_initrd check_cmd remote_status
+      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
+      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
+      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
+      
+      check_cmd="
+        old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
+        old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
+        old_initrd=\$(readlink -f /run/current-system/initrd 2>/dev/null || echo 'old')
+        if [[ \"\$old_sw\" == \"$new_sw\" && \"\$old_kernel\" == \"$new_kernel\" && \"\$old_initrd\" == \"$new_initrd\" ]]; then
+          if ! diff -r -q --exclude='per-user' \"\$(readlink -f /run/current-system/etc)\" \"\$(readlink -f $path/etc)\" >/dev/null 2>&1; then
+            echo 'OS'
+          else
+            echo 'HM'
+          fi
+        else
+          echo 'OS'
+        fi
+      "
+      remote_status=$(ssh "root@$resolved" "$check_cmd")
+
+      if [[ "$remote_status" == "HM" ]]; then
+        echo "OS core unchanged. Activating fast home-manager switch remotely..."
+        deploy_home_manager_only "$repo_root" "$host"
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration boot"
+      else
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
+      fi
+    fi
+    echo "Update complete for $host"
+  done
+}
+
 # --- Update command ---
 cmd_update() {
   local mode="switch" hosts_arg="" pull=false lock=true
@@ -714,7 +852,8 @@ cmd_update() {
   done
 
   echo "Building: ${target_hosts[*]}..."
-  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+  local build_paths=()
+  mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}")
 
   # ── POST-BUILD PHASE ────────────────────────────────────────────────────────
   # Step 8: Push flake.lock only after a successful build
@@ -732,44 +871,84 @@ cmd_update() {
     exit 1
   fi
 
-  # ── DEPLOY PHASE ────────────────────────────────────────────────────────────
-  # Step 9: Sequential deployment — risky hosts should be placed last in the list.
-  for host in "${target_hosts[@]}"; do
-    local host_json ssh_target fallback_ip build_on_remote host_hostname
+  # Step 2: Deploy sequentially using the built store paths
+  for i in "${!target_hosts[@]}"; do
+    local host="${target_hosts[$i]}"
+    local path="${build_paths[$i]}"
+    local host_json ssh_target fallback_ip host_hostname
     host_json=$(nix eval -f "$hosts_nix" "$host" --json)
     ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
     fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
-    build_on_remote=$(echo "$host_json" | jq -r '.buildOnRemote')
     host_hostname=$(echo "$host_json" | jq -r '.hostname')
 
     if [[ "$host_hostname" == "$current_hostname" ]]; then
-      # LOCAL deploy
-      echo "Deploying $host locally ($mode)..."
-      sudo nixos-rebuild "$mode" --flake "$repo_root#$host" "${override_args[@]}"
-    else
-      # REMOTE deploy
-      if [[ -z "$ssh_target" ]]; then
-        echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2
-        exit 1
+      local old_sw new_sw old_kernel new_kernel old_initrd new_initrd etc_changed=false
+      old_sw=$(readlink -f /run/current-system/sw 2>/dev/null || echo "old")
+      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
+      old_kernel=$(readlink -f /run/current-system/kernel 2>/dev/null || echo "old")
+      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
+      old_initrd=$(readlink -f /run/current-system/initrd 2>/dev/null || echo "old")
+      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
+
+      if ! diff -r -q --exclude="per-user" "$(readlink -f /run/current-system/etc)" "$(readlink -f "$path/etc")" >/dev/null 2>&1; then
+        etc_changed=true
       fi
 
+      if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
+        echo "OS core unchanged. Activating fast home-manager switch locally..."
+        deploy_home_manager_only "$repo_root" "$host"
+        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
+        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        sudo "$path/bin/switch-to-configuration" boot
+      else
+        echo "Deploying $host locally ($mode)..."
+        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
+        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        sudo "$path/bin/switch-to-configuration" "$mode"
+      fi
+    else
+      if [[ -z "$ssh_target" ]]; then
+        echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2; exit 1
+      fi
       local resolved="$ssh_target"
       if [[ -n "$fallback_ip" ]]; then
-        if ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
-          echo "Using Tailscale: $ssh_target"
-        else
+        if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
           resolved="$fallback_ip"
-          echo "Tailscale unavailable, using LAN: $fallback_ip"
         fi
       fi
-
-      local remote_args=(--target-host "root@$resolved")
-      if [[ "$build_on_remote" == "true" ]]; then
-        remote_args+=(--build-host "root@$resolved")
-      fi
-
+      
       echo "Deploying $host to root@$resolved ($mode)..."
-      nixos-rebuild "$mode" --flake "$repo_root#$host" "${remote_args[@]}" "${override_args[@]}"
+      nix copy --to "ssh://root@$resolved" "$path"
+      
+      # Check remote OS state
+      local new_sw new_kernel new_initrd check_cmd remote_status
+      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
+      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
+      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
+      
+      check_cmd="
+        old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
+        old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
+        old_initrd=\$(readlink -f /run/current-system/initrd 2>/dev/null || echo 'old')
+        if [[ \"\$old_sw\" == \"$new_sw\" && \"\$old_kernel\" == \"$new_kernel\" && \"\$old_initrd\" == \"$new_initrd\" ]]; then
+          if ! diff -r -q --exclude='per-user' \"\$(readlink -f /run/current-system/etc)\" \"\$(readlink -f $path/etc)\" >/dev/null 2>&1; then
+            echo 'OS'
+          else
+            echo 'HM'
+          fi
+        else
+          echo 'OS'
+        fi
+      "
+      remote_status=$(ssh "root@$resolved" "$check_cmd")
+
+      if [[ "$remote_status" == "HM" ]]; then
+        echo "OS core unchanged. Activating fast home-manager switch remotely..."
+        deploy_home_manager_only "$repo_root" "$host"
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration boot"
+      else
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
+      fi
     fi
 
     [[ "$mode" == "boot" ]] && echo "Reboot required to apply changes for $host."
@@ -876,36 +1055,42 @@ build_user_table() {
 }
 
 # --- ks update workflow documentation (REQ-014.5) ---
-# NOTE: ks update requires sudo. Agents MUST NOT run it directly.
+# NOTE: ks update/switch requires sudo. Agents MUST NOT run it directly.
 # This documentation is injected as reference knowledge so the agent can
 # explain the workflow to humans or understand the deploy pipeline.
 ks_update_workflow_docs() {
   cat <<'WFDOC'
-## ks update Workflow (Reference Only — requires sudo, human-only)
+## Deployment Workflows (Reference Only — requires sudo, human-only)
 
-> **WARNING**: `ks update` calls `sudo nixos-rebuild switch`. Agents MUST NOT
-> run this command. Use `ks build` to test changes, then ask a human to deploy.
+> **WARNING**: `ks update` and `ks switch` call `sudo` and activate system
+> configurations. Agents MUST NOT run these commands. Use `ks build` to test
+> changes, then ask a human to deploy.
 
+### 1. `ks update` — Full Release Workflow
 `ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]`
 
-Steps executed in order:
+Use this for official updates. It ensures everything is pulled, locked,
+verified, and pushed to origin before deployment.
 
-1. **Pull** nixos-config (`git pull --ff-only`)
-2. **Pull** all repos defined in the registry
-3. **Verify** repos are clean and fully pushed
-4. **Lock** flake inputs (`nix flake update ...`)
-5. **Commit** flake.lock if changed (`git commit flake.lock -m "chore: relock ..."`)
-6. **Build** all target hosts in a single `nix build` invocation (Nix parallelises internally)
-7. **Push** nixos-config (rebase + push)
-8. **Deploy** hosts sequentially: local hosts via `sudo nixos-rebuild switch`,
-   remote hosts via `nixos-rebuild switch --target-host root@<sshTarget>`
+1. **Pull** nixos-config and all registered repos
+2. **Verify** all repos are clean
+3. **Lock** flake inputs and **Commit** flake.lock
+4. **Build** all target hosts in parallel for verification
+5. **Push** nixos-config to origin
+6. **Deploy** hosts sequentially using the verified store paths (fast activation)
 
-### Flags
+### 2. `ks switch` — Fast Iteration Workflow
+`ks switch [--boot] [HOSTS]`
+
+Use this for local development. It builds and activates the current state of
+the local repo immediately, skipping pull, lock, and push phases.
+
+### Flags (update)
 
 | Flag | Effect |
 |------|--------|
 | `--dev` | Home-manager only: build + activate user/agent profiles, skip system rebuild |
-| `--boot` | Use `nixos-rebuild boot` instead of `switch` (reboot required to apply) |
+| `--boot` | Use `boot` instead of `switch` mode (reboot required to apply) |
 | `--pull` | Pull repos only — no build or deploy |
 | `--lock` | Force locking (default when `--dev` is not set), full system rebuild |
 
@@ -922,7 +1107,7 @@ local_flake_override_docs() {
 ## Local Flake Overrides
 
 `ks` auto-detects local repo clones and passes
-`--override-input` flags to every `nix build` / `nixos-rebuild` call —
+`--override-input` flags to every `nix build` / `ks switch` call —
 no manual flags needed.
 
 ### Detected Paths (in order)
@@ -931,20 +1116,13 @@ no manual flags needed.
 |-------|---------------|
 | <input> | `~/.keystone/repos/<owner>/<repo>`, `<repo>/.repos/<name>`, `<repo>/.submodules/<name>` |
 
-### Equivalent Manual Command
-
-```bash
-nix build .#nixosConfigurations.HOSTNAME.config.system.build.toplevel \
-  --override-input keystone path:$HOME/.keystone/repos/ncrmro/keystone \
-  --no-link
-```
-
 ### Workflow for Repo Changes
 
 1. Edit files in local repo checkout
-2. Test with `ks build --dev` (builds with local overrides, no deploy)
-3. Once satisfied, commit + push the repo
-4. Ask a human to run `ks update` (requires sudo) for deployment
+2. Test with `ks build --dev` (builds home-manager with local overrides)
+3. Apply locally with `ks switch` (system update with local overrides)
+4. Once satisfied, commit + push the repo
+5. Run `ks update` for official deployment (locks and pushes nixos-config)
 OFDOC
 }
 
@@ -1426,7 +1604,8 @@ if [[ $# -lt 1 ]]; then
   echo "" >&2
   echo "Commands:" >&2
   echo "  build  [--lock] [HOSTS]                            Build (home-manager only; --lock for full system)" >&2
-  echo "  update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (--dev for home-manager only)" >&2
+  echo "  update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Pull, lock, build, push, and deploy" >&2
+  echo "  switch [--boot] [HOSTS]                            Deploy current state without lock/push (full system)" >&2
   echo "  sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts" >&2
   echo "  agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context" >&2
   echo "  doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state" >&2
@@ -1442,12 +1621,13 @@ CMD="$1"; shift
 case "$CMD" in
   build)  cmd_build "$@" ;;
   update) cmd_update "$@" ;;
+  switch) cmd_switch "$@" ;;
   sync-host-keys) cmd_sync_host_keys "$@" ;;
   agent)  cmd_agent "$@" ;;
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: build, update, sync-host-keys, agent, doctor" >&2
+    echo "Known commands: build, update, switch, sync-host-keys, agent, doctor" >&2
     exit 1
     ;;
 esac
