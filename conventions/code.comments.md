@@ -1,7 +1,8 @@
-# Convention: Code Comments (`code.comments`)
+# Convention: Code Comments (code.comments)
 
 Rules for inline and file-level documentation in keystone source files.
 Applies to all languages: Nix, Bash, Rust, TypeScript.
+See `process.prose` for rules governing non-code narrative text (READMEs, PRs, issues).
 
 ## File-Level Documentation
 

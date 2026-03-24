@@ -71,6 +71,7 @@ archetypes:
       - process.refactor
       - code.shell-scripts
       - code.comments
+      - process.prose
       - tool.bitwarden
       - tool.forgejo
       - tool.himalaya
@@ -165,6 +166,7 @@ archetypes:
     referenced_conventions:
       - process.task-tracking
       - process.project-board
+      - process.prose
       - os.requirements
       - process.agent-cronjobs
       - tool.bitwarden

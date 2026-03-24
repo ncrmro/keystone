@@ -1,5 +1,9 @@
 
-## Press Release
+# Convention: Press Release (process.press-release)
+
+Standards for drafting "Working Backwards" style press releases to define
+product vision and engineering requirements. See `process.prose` for general
+clarity and style rules.
 
 ## Working Backwards Format
 
