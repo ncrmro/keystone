@@ -499,6 +499,46 @@ let
         };
       }
     ];
+
+    # Agent with perception enabled (REQ-024) — verifies perception options
+    # evaluate correctly and systemd user services/timers are created.
+    agent-perception = eval "agent-perception" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
+            perception = {
+              enable = true;
+              pdf.enable = true;
+              voice.enable = true;
+              voice.model = "small";
+              screenshots.enable = true;
+              search.enable = true;
+              contacts.enable = true;
+              processor = {
+                enable = true;
+                onCalendar = "*:0/15";
+                useOllama = false;
+              };
+            };
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-agent-evaluation"
