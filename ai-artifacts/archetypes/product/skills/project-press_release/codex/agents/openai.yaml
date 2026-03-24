@@ -1,6 +1,6 @@
 interface:
-  display_name: "---"
-  short_description: "---"
+  display_name: "Draft and disseminate a press release for a product launch"
+  short_description: "Draft and disseminate a press release for a product launch"
 
 dependencies:
   tools:

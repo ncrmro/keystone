@@ -1,6 +1,6 @@
 interface:
-  display_name: "---"
-  short_description: "---"
+  display_name: "Review project charter, KPIs, and goals"
+  short_description: "Review project charter, KPIs, and goals"
 
 dependencies:
   tools:

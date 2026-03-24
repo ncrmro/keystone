@@ -1,12 +1,8 @@
 ---
 name: project-onboard
-description: "---"
+description: "Onboard a new project interactively"
 ---
 
----
-description: Onboard a new project interactively
-argument-hint: <project name or description>
----
 
 You MUST use the DeepWork MCP tools to execute this workflow.
 

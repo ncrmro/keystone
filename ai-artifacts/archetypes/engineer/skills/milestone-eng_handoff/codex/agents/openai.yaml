@@ -1,6 +1,6 @@
 interface:
-  display_name: "---"
-  short_description: "---"
+  display_name: "Engineering handoff with specs and issue decomposition"
+  short_description: "Engineering handoff with specs and issue decomposition"
 
 dependencies:
   tools:
