@@ -3,7 +3,7 @@
 # Boots a NixOS VM with 2 agents and 1 human user, then verifies:
 # - Agent UIDs in the 4000+ range
 # - Agents in `agents` group, NOT `wheel`
-# - Home directories with chmod 700 and correct ownership
+# - Home directories with chmod 2770 and correct ownership
 # - Cross-agent, agent-human, and human-agent filesystem isolation
 # - Agents cannot sudo or write to system paths
 # - Users can write to their own home
@@ -19,6 +19,7 @@
   pkgs,
   lib,
   self,
+  home-manager,
 }:
 pkgs.testers.nixosTest {
   name = "agent-isolation";
@@ -31,8 +32,11 @@ pkgs.testers.nixosTest {
     }:
     {
       imports = [
+        home-manager.nixosModules.home-manager
         self.nixosModules.operating-system
       ];
+
+      nixpkgs.overlays = [ self.overlays.default ];
 
       # Keystone OS with agents
       keystone.os = {
@@ -51,6 +55,7 @@ pkgs.testers.nixosTest {
           fullName = "Test User";
           initialPassword = "testpass";
           extraGroups = [ "wheel" ];
+          terminal.enable = false;
         };
 
         # Two agents (alphabetical: coder=4001, researcher=4002)
@@ -63,6 +68,24 @@ pkgs.testers.nixosTest {
 
         };
       };
+
+      keystone.hosts.machine = {
+        hostname = "machine";
+        role = "client";
+        baremetal = false;
+      };
+
+      home-manager.useGlobalPkgs = true;
+      home-manager.useUserPackages = true;
+      home-manager.users.agent-coder.keystone.terminal = {
+        ai.enable = false;
+        sandbox.enable = false;
+      };
+      home-manager.users.agent-researcher.keystone.terminal = {
+        ai.enable = false;
+        sandbox.enable = false;
+      };
+      programs.zsh.enable = true;
 
       # Minimal boot config for VM
       fileSystems."/" = {
@@ -118,23 +141,23 @@ pkgs.testers.nixosTest {
     assert "wheel" in testuser_groups, f"testuser not in wheel: {testuser_groups}"
     print("PASS: Human user in wheel group")
 
-    # 4. Home dirs exist with chmod 700
+    # 4. Agent homes are 2770 for agent-admins access; human homes stay 700
     coder_perms = machine.succeed("stat -c '%a' /home/agent-coder").strip()
-    assert coder_perms == "700", f"agent-coder home perms: {coder_perms}, expected 700"
+    assert coder_perms == "2770", f"agent-coder home perms: {coder_perms}, expected 2770"
 
     researcher_perms = machine.succeed("stat -c '%a' /home/agent-researcher").strip()
-    assert researcher_perms == "700", f"agent-researcher home perms: {researcher_perms}, expected 700"
+    assert researcher_perms == "2770", f"agent-researcher home perms: {researcher_perms}, expected 2770"
 
     testuser_perms = machine.succeed("stat -c '%a' /home/testuser").strip()
     assert testuser_perms == "700", f"testuser home perms: {testuser_perms}, expected 700"
-    print("PASS: Home directories have 700 permissions")
+    print("PASS: Agent homes are 2770 and human homes are 700")
 
-    # 5. Correct ownership (user:agents for agents, user:users for human)
+    # 5. Correct ownership (user:agent-admins for agents, user:users for human)
     coder_owner = machine.succeed("stat -c '%U:%G' /home/agent-coder").strip()
-    assert coder_owner == "agent-coder:agents", f"agent-coder home owner: {coder_owner}"
+    assert coder_owner == "agent-coder:agent-admins", f"agent-coder home owner: {coder_owner}"
 
     researcher_owner = machine.succeed("stat -c '%U:%G' /home/agent-researcher").strip()
-    assert researcher_owner == "agent-researcher:agents", f"agent-researcher home owner: {researcher_owner}"
+    assert researcher_owner == "agent-researcher:agent-admins", f"agent-researcher home owner: {researcher_owner}"
 
     testuser_owner = machine.succeed("stat -c '%U:%G' /home/testuser").strip()
     assert testuser_owner == "testuser:users", f"testuser home owner: {testuser_owner}"
@@ -148,9 +171,9 @@ pkgs.testers.nixosTest {
     machine.fail("su - agent-researcher -c 'ls /home/testuser/'")
     print("PASS: Agent cannot read human user's home")
 
-    # 8. Human can't read agent homes
-    machine.fail("su - testuser -c 'ls /home/agent-researcher/'")
-    print("PASS: Human cannot read agent's home")
+    # 8. Human agent-admins can read agent homes
+    machine.succeed("su - testuser -c 'ls /home/agent-researcher/'")
+    print("PASS: Human agent-admins can read agent homes")
 
     # 9. Agent can't sudo
     machine.fail("su - agent-researcher -c 'sudo -n id'")
@@ -192,11 +215,11 @@ pkgs.testers.nixosTest {
     machine.fail("su - testuser -c 'agentctl nonexistent status'")
     print("PASS: Unknown agent rejected")
 
-    # 12e. agentctl exec inherits EDITOR=hx (not system default nano)
+    # 12e. agentctl exec survives helper sourcing and inherits HM session vars
     editor = machine.succeed("su - testuser -c 'agentctl researcher exec env'")
     assert "EDITOR=hx" in editor, f"Expected EDITOR=hx in agent env: {editor}"
     assert "VISUAL=hx" in editor, f"Expected VISUAL=hx in agent env: {editor}"
-    print("PASS: Agent EDITOR and VISUAL set to hx")
+    print("PASS: agentctl exec survives HM session sourcing and sets EDITOR/VISUAL")
 
     # === Desktop runtime validation (FR-002) ===
     print("")

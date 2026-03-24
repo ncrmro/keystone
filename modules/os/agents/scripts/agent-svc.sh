@@ -24,7 +24,10 @@ export PATH="$PATH_PREFIX"
 # exec inherits whatever keystone.terminal sets — no hardcoded values here.
 HM_VARS="/etc/profiles/per-user/agent-${AGENT_NAME}/etc/profile.d/hm-session-vars.sh"
 if [ -f "$HM_VARS" ]; then
+  # Home Manager's guard is not nounset-safe, so relax -u only for sourcing.
+  set +u
   . "$HM_VARS"
+  set -u
 fi
 
 if [ $# -lt 1 ]; then

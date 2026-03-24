@@ -11,11 +11,19 @@
     lanzaboote.follows = "keystone/lanzaboote";
     omarchy.follows = "keystone/omarchy";
     hyprland.follows = "keystone/hyprland";
-    nix-flatpak.follows = "keystone/nix-flatpak";
-    walker.follows = "keystone/walker";
-    kinda-nvim-hx.follows = "keystone/kinda-nvim-hx";
     himalaya.follows = "keystone/himalaya";
     llm-agents.follows = "keystone/llm-agents";
+    # These inputs are consumed directly by the tests flake. Keep explicit
+    # definitions here because the path-based parent lock can lag nested inputs.
+    nix-flatpak.url = "github:gmodena/nix-flatpak";
+    walker = {
+      url = "github:abenz1267/walker";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    kinda-nvim-hx = {
+      url = "github:strash/kinda_nvim.hx";
+      flake = false;
+    };
     microvm = {
       url = "github:astro/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -88,7 +96,16 @@
           system = "x86_64-linux";
           specialArgs = {
             inherit keystone;
-            keystoneInputs = { inherit nixpkgs hyprland nix-flatpak omarchy walker kinda-nvim-hx; };
+            keystoneInputs = {
+              inherit
+                nixpkgs
+                hyprland
+                nix-flatpak
+                omarchy
+                walker
+                kinda-nvim-hx
+                ;
+            };
           };
           modules = [
             home-manager.nixosModules.home-manager
@@ -166,6 +183,7 @@
         test-agent-isolation = import ./module/agent-isolation.nix {
           inherit pkgs lib;
           self = keystone;
+          inherit home-manager;
         };
 
         # Evaluation Tests
