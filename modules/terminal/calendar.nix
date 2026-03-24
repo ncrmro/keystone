@@ -111,10 +111,11 @@ in
       text =
         let
           # Use explicit url if set; otherwise build Stalwart's default path.
-          # Stalwart's /.well-known/caldav redirects to /dav/cal, but calendula's
-          # discovery PROPFIND to the root URL gets a 400 from nginx before the
-          # redirect — so we use the direct path instead of discovery.
-          calDavUri = if cfg.url != "" then cfg.url else "https://${cfg.host}/dav/cal";
+          # Stalwart's CalDAV structure is /dav/cal/{username}/{calendar}/.
+          # Calendula PROPFINDs the home-uri to discover calendars, so we must
+          # point at the user collection — not the root /dav/cal which only
+          # lists user-level collections (not actual calendars).
+          calDavUri = if cfg.url != "" then cfg.url else "https://${cfg.host}/dav/cal/${cfg.login}";
         in
         ''
           [accounts.${cfg.accountName}]
