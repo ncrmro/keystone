@@ -1,17 +1,17 @@
 # AI CLI slash commands and skills generalized for all supported tools.
 #
-# Generates slash commands (/project.*, /milestone.*) and registers the
-# DeepWork skill across Claude Code, Gemini CLI, OpenCode, and Codex.
+# Generates slash commands for tools that support them and registers DeepWork
+# skills across Claude Code, Gemini CLI, OpenCode, and Codex.
 #
 # Each tool has its own directory structure and configuration requirements:
 # - Claude: ~/.claude/commands/*.md, ~/.claude/skills/deepwork/SKILL.md
 # - Gemini: ~/.gemini/commands/*.toml, ~/.gemini/skills/deepwork/SKILL.md
 # - OpenCode: ~/.config/opencode/commands/*.md, ~/.config/opencode/skills/deepwork/SKILL.md
-# - Codex: ~/.codex/skills/deepwork/SKILL.md (uses AGENTS.md for commands)
+# - Codex: ~/.codex/skills/*.md-based skills
 #
 # TODO: As other AI coding CLIs gain support for custom workflow commands or
-# "skill" plugins via markdown templates, add their respective configuration
-# directories to the generation logic below.
+# skill plugins, add their respective configuration directories to the
+# generation logic below.
 #
 # Development mode (REQ-018): When keystone.development is true and
 # a keystone repo is registered, templates are out-of-store symlinks to the
@@ -109,6 +109,54 @@ let
       '';
   };
 
+  commandBaseName = name: lib.removeSuffix ".md" name;
+
+  commandTitle =
+    name:
+    let
+      content = builtins.readFile (./ai-commands + "/${name}");
+    in
+    removeSuffix "." (removePrefix "# " (head (splitString "\n" content)));
+
+  codexSkillName = name: replaceStrings [ "." ] [ "-" ] (commandBaseName name);
+
+  codexSkillBody =
+    name:
+    let
+      template = builtins.readFile (./ai-commands + "/${name}");
+      skillName = codexSkillName name;
+    in
+    ''
+      ${template}
+
+      ## Codex skill invocation
+
+      Use this skill when the user invokes `$${skillName}` or asks for this workflow implicitly.
+      Interpret `$ARGUMENTS` as any text that follows the skill mention. If the user did not
+      provide extra text, continue without additional arguments.
+    '';
+
+  mkCodexSkillMd =
+    name:
+    mkSkillMd {
+      name = codexSkillName name;
+      description = commandTitle name;
+    } (codexSkillBody name);
+
+  mkCodexSkillOpenAiYaml = name: {
+    text = ''
+      interface:
+        display_name: ${builtins.toJSON (commandTitle name)}
+        short_description: ${builtins.toJSON (commandTitle name)}
+
+      dependencies:
+        tools:
+          - type: "mcp"
+            value: "deepwork"
+            description: "DeepWork MCP server"
+    '';
+  };
+
   # Shared metadata for skills
   skillMetadata = {
     name = "deepwork";
@@ -179,51 +227,94 @@ in
 
   config = mkIf (terminalCfg.enable && terminalCfg.ai.enable && cfg.enable) {
     home.file =
-      foldl'
-        (
-          acc: toolDir:
-          # 1. Provision Slash Commands (Claude, Gemini, OpenCode)
-          # TODO: Expand this list as other tools add support for standalone command templates.
-          (
-            if (toolDir != ".codex") then
-              acc
-              // (listToAttrs (
-                map (name: {
-                  # Gemini uses .toml for commands and subdirectories for namespacing (ks.develop -> ks/develop -> /ks:develop)
-                  # Others use .md and maintain dots in filenames for now.
-                  name =
-                    if (toolDir == ".gemini") then
-                      let
-                        relPath = replaceStrings [ "." ] [ "/" ] (lib.removeSuffix ".md" name);
-                      in
-                      "${toolDir}/commands/${relPath}.toml"
-                    else
-                      "${toolDir}/commands/${name}";
-
-                  value = if (toolDir == ".gemini") then mkGeminiToml name else mkSource "ai-commands/${name}";
-                }) commandFiles
-              ))
-            else
-              acc
-          )
-          //
-            # 2. Provision DeepWork Skill (Claude, Gemini, OpenCode, Codex)
-            # TODO: Expand this list as other tools add support for "Agent Skill" directory structures.
+      let
+        commandFilesByTool =
+          foldl'
             (
+              acc: toolDir:
+              if (toolDir == ".codex") then
+                acc
+              else
+                acc
+                // (listToAttrs (
+                  map (name: {
+                    name =
+                      if (toolDir == ".gemini") then
+                        let
+                          relPath = replaceStrings [ "." ] [ "/" ] (commandBaseName name);
+                        in
+                        "${toolDir}/commands/${relPath}.toml"
+                      else
+                        "${toolDir}/commands/${name}";
+
+                    value = if (toolDir == ".gemini") then mkGeminiToml name else mkSource "ai-commands/${name}";
+                  }) commandFiles
+                ))
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+              ".codex"
+            ];
+
+        deepworkSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
               let
                 skillDir = "${toolDir}/skills/deepwork";
               in
-              {
+              acc
+              // {
                 "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
               }
+              // optionalAttrs (toolDir == ".codex") {
+                "${skillDir}/agents/openai.yaml".text = ''
+                  interface:
+                    display_name: "DeepWork"
+                    short_description: "Start or continue DeepWork workflows using MCP tools"
+
+                  dependencies:
+                    tools:
+                      - type: "mcp"
+                        value: "deepwork"
+                        description: "DeepWork MCP server"
+                '';
+              }
             )
-        )
-        { }
-        [
-          ".claude"
-          ".gemini"
-          ".config/opencode"
-          ".codex"
-        ];
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+              ".codex"
+            ];
+
+        codexCommandSkills = listToAttrs (
+          flatten (
+            map (
+              name:
+              let
+                skillDir = ".codex/skills/${codexSkillName name}";
+              in
+              [
+                {
+                  name = "${skillDir}/SKILL.md";
+                  value = {
+                    text = mkCodexSkillMd name;
+                  };
+                }
+                {
+                  name = "${skillDir}/agents/openai.yaml";
+                  value = mkCodexSkillOpenAiYaml name;
+                }
+              ]
+            ) commandFiles
+          )
+        );
+      in
+      commandFilesByTool // deepworkSkillsByTool // codexCommandSkills;
   };
 }

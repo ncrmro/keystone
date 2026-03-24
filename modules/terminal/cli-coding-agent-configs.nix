@@ -1,7 +1,8 @@
 # CLI Coding Agent MCP Configuration
 #
 # Generates MCP server configs at each AI coding tool's expected path
-# (~/.claude.json, ~/.gemini/settings.json, ~/.config/opencode/opencode.json).
+# (~/.claude.json, ~/.gemini/settings.json, ~/.codex/config.toml,
+# ~/.config/opencode/opencode.json).
 #
 # See conventions/tool.cli-coding-agents.md
 {
@@ -16,49 +17,79 @@ with lib;
 let
   cfg = config.keystone.terminal.cliCodingAgents;
   terminalCfg = config.keystone.terminal;
+  deepworkEnabled = terminalCfg.ai.enable && terminalCfg.deepwork.enable;
+
+  mkDeepworkServer = platform: {
+    command = "${pkgs.keystone.deepwork}/bin/deepwork";
+    args = [
+      "serve"
+      "--path"
+      "."
+      "--external-runner"
+      "claude"
+      "--platform"
+      platform
+    ];
+  };
+
+  claudeMcpServers =
+    cfg.mcpServers
+    // optionalAttrs deepworkEnabled {
+      deepwork = mkDeepworkServer "claude";
+    };
+
+  geminiMcpServers =
+    cfg.mcpServers
+    // optionalAttrs deepworkEnabled {
+      deepwork = mkDeepworkServer "gemini";
+    };
+
+  codexMcpServers =
+    cfg.mcpServers
+    // optionalAttrs deepworkEnabled {
+      deepwork = mkDeepworkServer "codex";
+    };
+
+  opencodeMcpServers =
+    cfg.mcpServers
+    // optionalAttrs deepworkEnabled {
+      deepwork = mkDeepworkServer "opencode";
+    };
 
   # Nix-managed MCP servers as a JSON file in the store, used by the
   # activation script to merge into the runtime ~/.claude.json.
-  claudeJsonMcpServers = pkgs.writeText "claude-mcp-servers.json" (builtins.toJSON cfg.mcpServers);
+  claudeJsonMcpServers = pkgs.writeText "claude-mcp-servers.json" (builtins.toJSON claudeMcpServers);
 
   # Nix-managed settings for Gemini CLI
-  geminiJsonSettings = pkgs.writeText "gemini-settings.json" (builtins.toJSON {
-    mcpServers = cfg.mcpServers // (
-      if terminalCfg.ai.enable then {
-        deepwork = {
-          command = "${pkgs.keystone.deepwork}/bin/deepwork";
-          args = [
-            "serve"
-            "--path"
-            "."
-            "--external-runner"
-            "claude"
-            "--platform"
-            "gemini"
-          ];        };
-      } else {}
-    );
-    context = {
-      fileFiltering = {
-        inherit (cfg) respectGitIgnore;
+  geminiJsonSettings = pkgs.writeText "gemini-settings.json" (
+    builtins.toJSON {
+      mcpServers = geminiMcpServers;
+      context = {
+        fileFiltering = {
+          inherit (cfg) respectGitIgnore;
+        };
       };
-    };
-  });
+    }
+  );
+
+  codexJsonMcpServers = pkgs.writeText "codex-mcp-servers.json" (builtins.toJSON codexMcpServers);
 
   # Nix-managed settings for OpenCode
-  opencodeJsonSettings = pkgs.writeText "opencode-settings.json" (builtins.toJSON {
-    mcp = mapAttrs (
-      _: srv:
-      {
-        type = "local";
-        command = [ srv.command ] ++ srv.args;
-        enabled = true;
-      }
-      // optionalAttrs (srv.env != { }) {
-        inherit (srv) env;
-      }
-    ) cfg.mcpServers;
-  });
+  opencodeJsonSettings = pkgs.writeText "opencode-settings.json" (
+    builtins.toJSON {
+      mcp = mapAttrs (
+        _: srv:
+        {
+          type = "local";
+          command = [ srv.command ] ++ srv.args;
+          enabled = true;
+        }
+        // optionalAttrs (srv ? env && srv.env != { }) {
+          inherit (srv) env;
+        }
+      ) opencodeMcpServers;
+    }
+  );
 in
 {
   options.keystone.terminal.cliCodingAgents = {
@@ -109,13 +140,6 @@ in
   };
 
   config = mkIf (terminalCfg.enable && cfg.enable) {
-    home.file = {
-      # TODO: Enable when codex supports global settings file
-      # ".codex/settings.json".text = builtins.toJSON {
-      #   mcpServers = cfg.mcpServers;
-      # };
-    };
-
     # Claude Code / Claude Desktop
     # CRITICAL: ~/.claude.json must be a writable regular file, not a Nix store
     # symlink. Claude Code writes runtime state to this file (feature flags,
@@ -189,6 +213,154 @@ in
         cp ${opencodeJsonSettings} "$opencodeSettings"
         chmod 644 "$opencodeSettings"
       fi
+    '';
+
+    # Codex
+    # CRITICAL: ~/.codex/config.toml must be a writable regular file.
+    # Strategy: replace only [mcp_servers], preserve all other runtime state.
+    home.activation.codexConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+            codexConfig="$HOME/.codex/config.toml"
+            mkdir -p "$(dirname "$codexConfig")"
+
+            # Remove stale Nix store symlink from previous home-manager generations
+            if [ -L "$codexConfig" ]; then
+              rm -f "$codexConfig"
+            fi
+
+            if [ -f "$codexConfig" ]; then
+              CODEX_CONFIG="$codexConfig" MANAGED_MCP="${codexJsonMcpServers}" ${pkgs.python3}/bin/python - <<'PY'
+      import json
+      import os
+      import tomllib
+      from pathlib import Path
+
+      config_path = Path(os.environ["CODEX_CONFIG"]).expanduser()
+      managed_path = Path(os.environ["MANAGED_MCP"])
+
+      with managed_path.open("r", encoding="utf-8") as fh:
+          managed_mcp = json.load(fh)
+
+      with config_path.open("rb") as fh:
+          data = tomllib.load(fh)
+
+      data["mcp_servers"] = managed_mcp
+
+      def format_key(key):
+          if key.replace("_", "").replace("-", "").isalnum():
+              return key
+          escaped = key.replace("\\", "\\\\").replace("\"", "\\\"")
+          return f'"{escaped}"'
+
+      def format_scalar(value):
+          if isinstance(value, bool):
+              return "true" if value else "false"
+          if isinstance(value, (int, float)):
+              return str(value)
+          escaped = value.replace("\\", "\\\\").replace("\"", "\\\"")
+          return f'"{escaped}"'
+
+      def format_inline(value):
+          if isinstance(value, list):
+            return "[{}]".format(", ".join(format_inline(item) for item in value))
+          if isinstance(value, dict):
+            items = ", ".join(
+              f"{format_key(k)} = {format_inline(v)}" for k, v in value.items()
+            )
+            return "{ " + items + " }"
+          return format_scalar(value)
+
+      def write_table(lines, path, table):
+          scalars = []
+          child_tables = []
+          array_tables = []
+          for key, value in table.items():
+              if isinstance(value, dict):
+                  child_tables.append((key, value))
+              elif isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
+                  array_tables.append((key, value))
+              else:
+                  scalars.append((key, value))
+
+          if path:
+              lines.append(f"[{'.'.join(format_key(part) for part in path)}]")
+          for key, value in scalars:
+              lines.append(f"{format_key(key)} = {format_inline(value)}")
+          if scalars and (child_tables or array_tables):
+              lines.append("")
+
+          for index, (key, value) in enumerate(child_tables):
+              write_table(lines, path + [key], value)
+              if index != len(child_tables) - 1 or array_tables:
+                  lines.append("")
+
+          for table_index, (key, entries) in enumerate(array_tables):
+              for entry_index, entry in enumerate(entries):
+                  lines.append(f"[[{'.'.join(format_key(part) for part in path + [key])}]]")
+                  nested_lines = []
+                  write_table(nested_lines, [], entry)
+                  lines.extend(nested_lines)
+                  if entry_index != len(entries) - 1:
+                      lines.append("")
+              if table_index != len(array_tables) - 1:
+                  lines.append("")
+
+      lines = []
+      write_table(lines, [], data)
+      output = "\n".join(line for line in lines if line is not None).strip() + "\n"
+      tmp_path = config_path.with_suffix(".tmp")
+      tmp_path.write_text(output, encoding="utf-8")
+      tmp_path.replace(config_path)
+      PY
+            else
+              cat > "$codexConfig" <<'EOF'
+      [mcp_servers]
+      EOF
+              CODEX_CONFIG="$codexConfig" MANAGED_MCP="${codexJsonMcpServers}" ${pkgs.python3}/bin/python - <<'PY'
+      import json
+      import os
+      from pathlib import Path
+
+      config_path = Path(os.environ["CODEX_CONFIG"]).expanduser()
+      managed_path = Path(os.environ["MANAGED_MCP"])
+
+      with managed_path.open("r", encoding="utf-8") as fh:
+          managed_mcp = json.load(fh)
+
+      def format_key(key):
+          if key.replace("_", "").replace("-", "").isalnum():
+              return key
+          escaped = key.replace("\\", "\\\\").replace("\"", "\\\"")
+          return f'"{escaped}"'
+
+      def format_scalar(value):
+          if isinstance(value, bool):
+              return "true" if value else "false"
+          if isinstance(value, (int, float)):
+              return str(value)
+          escaped = value.replace("\\", "\\\\").replace("\"", "\\\"")
+          return f'"{escaped}"'
+
+      def format_inline(value):
+          if isinstance(value, list):
+              return "[{}]".format(", ".join(format_inline(item) for item in value))
+          if isinstance(value, dict):
+              items = ", ".join(
+                  f"{format_key(k)} = {format_inline(v)}" for k, v in value.items()
+              )
+              return "{ " + items + " }"
+          return format_scalar(value)
+
+      lines = []
+      for name, server in managed_mcp.items():
+          lines.append(f"[mcp_servers.{format_key(name)}]")
+          for key, value in server.items():
+              lines.append(f"{format_key(key)} = {format_inline(value)}")
+          lines.append("")
+
+      config_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+      PY
+              chmod 644 "$codexConfig"
+            fi
     '';
   };
 }

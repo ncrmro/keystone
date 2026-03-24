@@ -62,7 +62,8 @@ tool loads conventions natively (without prompt injection).
 
 **Keystone generates**:
 - `~/.codex/AGENTS.md` — system-wide conventions (note: Codex calls this `instructions.md` in some versions; use `AGENTS.md` for compatibility)
-- `~/.codex/config.toml` — not generated yet (TODO: MCP config when supported)
+- `~/.codex/config.toml` — managed MCP server configs, merged with the user's existing Codex settings
+- `~/.codex/skills/` — Codex-native skills generated from keystone workflow command templates
 
 ### OpenCode
 
@@ -109,7 +110,7 @@ when OpenCode-specific configuration is needed.
 |------|----------------------|--------------------------|------------|
 | Claude Code | `~/.claude/CLAUDE.md` | `./CLAUDE.md` or `./.claude/CLAUDE.md` | `~/.claude.json` |
 | Gemini CLI | `~/.gemini/GEMINI.md` | `./GEMINI.md` | `~/.gemini/settings.json` |
-| Codex | `~/.codex/AGENTS.md` | `./AGENTS.md` | N/A (TODO) |
+| Codex | `~/.codex/AGENTS.md` | `./AGENTS.md` | `~/.codex/config.toml` |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `./AGENTS.md` | `~/.config/opencode/opencode.json` |
 | Copilot CLI | `~/.copilot/agents/*.md` | `.github/copilot-instructions.md` + `AGENTS.md` | `~/.copilot/mcp-config.json` |
 
@@ -126,8 +127,8 @@ when OpenCode-specific configuration is needed.
 
 1. MUST generate MCP server configs at each tool's expected path
 2. MUST NOT embed secrets (API keys, tokens) — these are world-readable in the Nix store
-3. Currently generates: `~/.claude.json`, `~/.gemini/settings.json`, `~/.config/opencode/opencode.json`
-4. TODO: Codex MCP config when supported
+3. Currently generates: `~/.claude.json`, `~/.gemini/settings.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`
+4. Codex config management MUST preserve unrelated user settings and replace only the managed `mcp_servers` subtree
 
 ### `modules/os/agents/scripts/agentctl.sh`
 
@@ -149,7 +150,7 @@ when OpenCode-specific configuration is needed.
 
 When an agent runs inside a Podman container via `podman-agent`:
 
-- The host's `~/.claude.json`, `~/.gemini/settings.json`, etc. are mounted read-only
+- The host's `~/.claude.json`, `~/.gemini/settings.json`, `~/.codex/config.toml`, etc. are mounted read-only
 - MCP server commands in configs reference absolute Nix store paths — these resolve correctly only if the store closure is available in the container's persistent Nix volume
 - Tool-native instruction files (`~/.claude/CLAUDE.md`, etc.) ARE mounted since the host tool dirs are already mounted
 - The `SP_FLAGS` prompt injection from agentctl works regardless of sandbox — it passes additional context as CLI args
@@ -163,7 +164,8 @@ When an agent runs inside a Podman container via `podman-agent`:
 1. Add the tool's package to `modules/terminal/ai.nix`
 2. Add MCP config generation to `modules/terminal/cli-coding-agent-configs.nix`
 3. Add instruction file generation to `modules/terminal/conventions.nix` at the tool's expected user-level path
-4. Add the tool's config directory mount to `packages/podman-agent/podman-agent.sh`
-5. Add the tool's prompt injection mechanism to `modules/os/agents/scripts/agentctl.sh`
-6. Add a pre-resolved store path env var to `modules/terminal/sandbox.nix`
-7. Update this convention document
+4. Add slash-command or skill generation to `modules/terminal/ai-extensions.nix`, depending on the tool's native workflow surface
+5. Add the tool's config directory mount to `packages/podman-agent/podman-agent.sh`
+6. Add the tool's prompt injection mechanism to `modules/os/agents/scripts/agentctl.sh`
+7. Add a pre-resolved store path env var to `modules/terminal/sandbox.nix`
+8. Update this convention document
