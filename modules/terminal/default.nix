@@ -40,6 +40,7 @@ in
     ./projects.nix
     ./cli-coding-agent-configs.nix
     ./conventions.nix
+    ./ai-artifacts.nix
     ./ai-extensions.nix
     ./perception.nix
   ];

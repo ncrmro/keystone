@@ -336,6 +336,43 @@
             inherit pkgs lib nixpkgs;
             self = self;
           };
+          # AI artifact freshness check (REQ-30, REQ-31)
+          # Regenerates ai-artifacts/ from source metadata and verifies the
+          # committed tree matches.  Fails when committed artifacts are stale.
+          ai-artifacts-freshness =
+            pkgs.runCommand "check-ai-artifacts-freshness"
+              {
+                nativeBuildInputs = [
+                  pkgs.yq-go
+                  pkgs.coreutils
+                  pkgs.gnused
+                  pkgs.gnugrep
+                  pkgs.bash
+                  pkgs.gettext
+                  pkgs.diffutils
+                ];
+              }
+              ''
+                # Generate artifacts from source metadata into a temp dir
+                export HOME=$(mktemp -d)
+                bash ${self}/packages/generate-ai-artifacts/generate-ai-artifacts.sh \
+                  --conventions-dir ${self}/conventions \
+                  --commands-dir ${self}/modules/terminal/ai-commands \
+                  --output-dir "$HOME/generated"
+
+                # Compare against committed tree
+                if diff -rq ${self}/ai-artifacts "$HOME/generated" > /dev/null 2>&1; then
+                  echo "AI artifacts are up to date with source metadata."
+                  touch $out
+                else
+                  echo "ERROR: Committed ai-artifacts/ is stale relative to source metadata." >&2
+                  echo "Differences:" >&2
+                  diff -rq ${self}/ai-artifacts "$HOME/generated" >&2 || true
+                  echo "" >&2
+                  echo "Run 'generate-ai-artifacts' to regenerate." >&2
+                  exit 1
+                fi
+              '';
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)
@@ -367,6 +404,7 @@
             deepwork-library-jobs
             keystone-deepwork-jobs
             keystone-conventions
+            generate-ai-artifacts
             slidev
             ;
           keystone-tui = pkgs.callPackage ./packages/keystone-tui { };

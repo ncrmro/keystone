@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the agent_builder/issue DeepWork workflow to file an infrastructure issue"
+  short_description: "Start the agent_builder/issue DeepWork workflow to file an infrastructure issue"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

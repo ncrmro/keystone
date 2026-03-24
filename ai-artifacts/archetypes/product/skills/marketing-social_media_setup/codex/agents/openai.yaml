@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the marketing/social_media_setup DeepWork workflow to set up social media"
+  short_description: "Start the marketing/social_media_setup DeepWork workflow to set up social media"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

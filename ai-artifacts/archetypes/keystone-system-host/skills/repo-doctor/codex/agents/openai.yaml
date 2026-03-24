@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the repo/doctor DeepWork workflow to audit existing repo state"
+  short_description: "Start the repo/doctor DeepWork workflow to audit existing repo state"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

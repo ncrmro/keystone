@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the keystone_system/issue DeepWork workflow to create a GitHub issue"
+  short_description: "Start the keystone_system/issue DeepWork workflow to create a GitHub issue"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the agent_builder/bootstrap DeepWork workflow to create a new agent-space repo"
+  short_description: "Start the agent_builder/bootstrap DeepWork workflow to create a new agent-space repo"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"
