@@ -937,7 +937,8 @@ let
       }
     ];
 
-    # Agent with perception layer enabled (REQ-023.34)
+    # Agent with perception enabled — verifies perception options evaluate
+    # correctly and systemd user services/timers are created.
     agent-perception = eval "agent-perception" [
       {
         keystone.os = {
@@ -946,16 +947,25 @@ let
             type = "ext4";
             devices = [ "/dev/vda" ];
           };
-          agents.vision = {
-            fullName = "Vision Agent";
-            notes.repo = "git@example.com:vision/notes.git";
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
             perception = {
               enable = true;
+              pdf.enable = true;
+              voice.enable = true;
               voice.model = "small";
+              screenshots.enable = true;
+              search.enable = true;
+              contacts.enable = true;
               processor = {
                 enable = true;
-                useOllama = true;
                 onCalendar = "*:0/15";
+                useOllama = true;
               };
             };
           };
