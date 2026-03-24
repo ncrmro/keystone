@@ -182,49 +182,6 @@ verify the changes on the deployed preview environment:
 results only. But when previews ARE available, always use them. CI passing is necessary
 but not sufficient — verify the actual deployed behavior.
 
-#### Step 4c: Screenshot Demo Evidence
-
-If the project has Playwright screenshot tests (e.g., `bun run test:screenshots`,
-`npm run test:screenshots`), run them to capture visual evidence of requirements:
-
-1. **Check for screenshot test script**: Look in `package.json` for a
-   `test:screenshots` script or similar Playwright screenshot runner.
-
-2. **Run the screenshot tests**:
-   ```bash
-   cd $WORKTREE
-   bun run test:screenshots  # or npm/pnpm equivalent
-   ```
-
-3. **Commit and push screenshots**: Screenshots should be committed so they can
-   be referenced by URL:
-   ```bash
-   git add packages/web/tests/browser/screenshots/  # or wherever screenshots land
-   git commit -m "test(screenshots): capture requirement evidence"
-   git push
-   ```
-
-4. **Post screenshots on the PR**: Use `raw.githubusercontent.com` URLs with the
-   commit SHA to embed images inline:
-   ```bash
-   SHA=$(git rev-parse --short HEAD)
-   gh pr comment $PR_NUM --repo OWNER/REPO --body "$(cat <<EOF
-   ## Demo Screenshots
-
-   Automated Playwright screenshots capturing requirement evidence.
-
-   ### Screenshot 1
-   ![Description](https://raw.githubusercontent.com/OWNER/REPO/$SHA/path/to/screenshot.png)
-   EOF
-   )"
-   ```
-
-5. **Record in review.md**: Note which screenshots were captured and which
-   requirements they provide evidence for.
-
-**This step is best-effort** — skip if no screenshot test infrastructure exists.
-When screenshots ARE available, they provide strong visual evidence for UI requirements.
-
 #### Step 5: Request Review and Update Project Board
 
 **Request review:**
