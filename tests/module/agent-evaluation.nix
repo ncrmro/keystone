@@ -64,6 +64,13 @@ let
       timersJson = builtins.toJSON (builtins.attrNames result.config.systemd.timers);
       userServicesJson = builtins.toJSON (builtins.attrNames result.config.systemd.user.services);
       userTimersJson = builtins.toJSON (builtins.attrNames result.config.systemd.user.timers);
+
+      # Check for session variables in home-manager if terminal is enabled for testuser
+      sessionVarsJson =
+        if result.config ? home-manager && result.config.home-manager.users ? testuser then
+          builtins.toJSON result.config.home-manager.users.testuser.home.sessionVariables
+        else
+          "{}";
     in
     pkgs.runCommand "eval-${name}" { } ''
       echo "Evaluating ${name}..."
@@ -73,6 +80,21 @@ let
       echo "  Timers: ${timersJson}"
       echo "  User Services: ${userServicesJson}"
       echo "  User Timers: ${userTimersJson}"
+
+      # Verify DEEPWORK_ADDITIONAL_JOBS_FOLDERS for development-mode test
+      if [ "${name}" = "development-mode" ]; then
+        echo "Verifying DEEPWORK_ADDITIONAL_JOBS_FOLDERS in development-mode..."
+        # We expect /home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs
+        # because ncrmro/keystone is the guessed name for the keystone input.
+        if echo '${sessionVarsJson}' | grep -q "/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs"; then
+          echo "  ✓ Found local keystone jobs path"
+        else
+          echo "  ✗ Missing local keystone jobs path"
+          echo "  Actual Session Vars: ${sessionVarsJson}"
+          exit 1
+        fi
+      fi
+
       touch $out
     '';
 
@@ -90,6 +112,30 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Development mode verification
+    development-mode = eval "development-mode" [
+      {
+        keystone.development = true;
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            terminal.enable = true;
+            email = "testuser@example.com";
           };
         };
         fileSystems."/" = {
