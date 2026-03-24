@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the sweng/design DeepWork workflow to create an architecture/design document"
+  short_description: "Start the sweng/design DeepWork workflow to create an architecture/design document"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

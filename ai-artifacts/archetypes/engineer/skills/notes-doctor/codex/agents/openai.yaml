@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the notes/doctor DeepWork workflow to repair and normalize a zk notebook"
+  short_description: "Start the notes/doctor DeepWork workflow to repair and normalize a zk notebook"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

@@ -43,6 +43,7 @@ let
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
   keystone-deepwork-jobs-src = ../packages/keystone-deepwork-jobs;
   keystone-conventions-src = ../packages/keystone-conventions;
+  generate-ai-artifacts-src = ../packages/generate-ai-artifacts;
   slidev-src = ../packages/slidev;
   himalaya-flake = himalaya;
   calendula-flake = calendula;
@@ -161,6 +162,7 @@ in
     keystone-conventions = final.callPackage keystone-conventions-src {
       keystone-src = self;
     };
+    generate-ai-artifacts = final.callPackage generate-ai-artifacts-src { };
     chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src { };
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;

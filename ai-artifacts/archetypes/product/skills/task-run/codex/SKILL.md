@@ -1,0 +1,19 @@
+---
+name: task-run
+description: "Start the task_loop/run DeepWork workflow to execute a single pending task"
+---
+
+Start the task_loop/run DeepWork workflow to execute a single pending task.
+
+Use the DeepWork MCP tools to start the workflow:
+- job_name: "task_loop"
+- workflow_name: "run"
+- goal: "$ARGUMENTS" (optional, a specific task name from TASKS.yaml or user prompt)
+
+Follow the workflow instructions returned by the MCP server. This executes a single pending task, updating its status in TASKS.yaml and creating a worktree for the task if necessary.
+
+## Codex skill invocation
+
+Use this skill when the user invokes `$task-run` or asks for this workflow implicitly.
+Interpret `$ARGUMENTS` as any text that follows the skill mention. If the user did not
+provide extra text, continue without additional arguments.
