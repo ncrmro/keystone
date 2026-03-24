@@ -130,6 +130,15 @@ when OpenCode-specific configuration is needed.
 3. MUST NOT write a separate canonical copy — the tool-native files ARE the source of truth
 4. MUST symlink `~/.config/keystone/conventions/` to the conventions store path for on-demand reading
 
+### `modules/terminal/ai-extensions.nix`
+
+1. MUST treat `modules/terminal/ai-commands/*.md` as metadata-aware templates with required YAML frontmatter
+2. MUST derive tool-facing descriptions and labels from parsed frontmatter, not the first line of the Markdown body
+3. MUST preserve YAML frontmatter for tools that natively consume Markdown metadata, including Claude Code commands and Codex skills
+4. MUST render Gemini commands as native TOML rather than Markdown-based skill files
+5. MUST strip command frontmatter from rendered bodies only for targets that do not consume it natively
+6. MUST keep command filenames and Codex skill ids stable unless a breaking rename is explicitly intended
+
 ### `modules/terminal/cli-coding-agent-configs.nix`
 
 1. MUST generate MCP server configs at each tool's expected path

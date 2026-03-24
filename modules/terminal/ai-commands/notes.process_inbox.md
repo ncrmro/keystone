@@ -1,3 +1,8 @@
+---
+description: Start the notes/process_inbox DeepWork workflow to review and promote fleeting notes
+argument-hint: <optional note ID or query>
+---
+
 Start the notes/process_inbox DeepWork workflow to review and promote fleeting notes.
 
 Use the DeepWork MCP tools to start the workflow:

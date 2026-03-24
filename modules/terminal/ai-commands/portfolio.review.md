@@ -1,3 +1,8 @@
+---
+description: Start the portfolio/review DeepWork workflow for a holistic portfolio health assessment
+argument-hint: <optional focus>
+---
+
 Start the portfolio/review DeepWork workflow for a holistic portfolio health assessment.
 
 Use the DeepWork MCP tools to start the workflow:

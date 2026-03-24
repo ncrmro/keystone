@@ -1,3 +1,8 @@
+---
+description: Start the sweng/design DeepWork workflow to create an architecture/design document
+argument-hint: <design goal>
+---
+
 Start the sweng/design DeepWork workflow to create an architecture/design document.
 
 Use the DeepWork MCP tools to start the workflow:

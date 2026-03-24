@@ -1,3 +1,8 @@
+---
+description: Start the keystone_system/develop DeepWork workflow
+argument-hint: <goal>
+---
+
 Start the keystone_system/develop DeepWork workflow.
 
 Use the DeepWork MCP tools to start the workflow:

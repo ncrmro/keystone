@@ -4,8 +4,8 @@
 # skills across Claude Code, Gemini CLI, OpenCode, and Codex.
 #
 # Each tool has its own directory structure and configuration requirements:
-# - Claude: ~/.claude/commands/*.md, ~/.claude/skills/deepwork/SKILL.md
-# - Gemini: ~/.gemini/commands/*.toml, ~/.gemini/skills/deepwork/SKILL.md
+# - Claude: ~/.claude/commands/*.md with YAML frontmatter, ~/.claude/skills/deepwork/SKILL.md
+# - Gemini: ~/.gemini/commands/*.toml
 # - OpenCode: ~/.config/opencode/commands/*.md, ~/.config/opencode/skills/deepwork/SKILL.md
 # - Codex: ~/.codex/skills/*.md-based skills
 #
@@ -85,6 +85,113 @@ let
         source = ./. + "/${subpath}";
       };
 
+  stripMatchingQuotes =
+    value:
+    if hasPrefix "\"" value && hasSuffix "\"" value then
+      removeSuffix "\"" (removePrefix "\"" value)
+    else if hasPrefix "'" value && hasSuffix "'" value then
+      removeSuffix "'" (removePrefix "'" value)
+    else
+      value;
+
+  parseFrontmatterLine =
+    line:
+    let
+      match = builtins.match "([A-Za-z0-9_-]+):[[:space:]]*(.*)" line;
+    in
+    if match == null then
+      null
+    else
+      {
+        name = elemAt match 0;
+        value = stripMatchingQuotes (elemAt match 1);
+      };
+
+  findFrontmatterEnd =
+    lines: idx:
+    if idx >= length lines then
+      null
+    else if elemAt lines idx == "---" then
+      idx
+    else
+      findFrontmatterEnd lines (idx + 1);
+
+  parseCommandTemplate =
+    name:
+    let
+      content = builtins.readFile (./ai-commands + "/${name}");
+      lines = splitString "\n" content;
+      hasFrontmatter = length lines > 0 && head lines == "---";
+      frontmatterEnd = if hasFrontmatter then findFrontmatterEnd lines 1 else null;
+      frontmatterLines =
+        if hasFrontmatter && frontmatterEnd != null then sublist 1 (frontmatterEnd - 1) lines else [ ];
+      bodyLines =
+        if hasFrontmatter && frontmatterEnd != null then
+          sublist (frontmatterEnd + 1) (length lines - frontmatterEnd - 1) lines
+        else
+          lines;
+      frontmatterEntries = filter (entry: entry != null) (map parseFrontmatterLine frontmatterLines);
+      frontmatter = listToAttrs frontmatterEntries;
+      body = concatStringsSep "\n" bodyLines;
+    in
+    {
+      inherit body;
+      frontmatter = frontmatter // {
+        inherit (frontmatter) description;
+      };
+      description =
+        frontmatter.description or (throw "ai-command ${name} is missing required frontmatter.description");
+      argumentHint = frontmatter.argument-hint or null;
+      displayName = frontmatter.display-name or frontmatter.description or null;
+    };
+
+  renderYamlScalar =
+    value:
+    if builtins.isBool value then
+      if value then "true" else "false"
+    else if builtins.isInt value || builtins.isFloat value then
+      toString value
+    else
+      builtins.toJSON value;
+
+  renderFrontmatter =
+    frontmatter:
+    let
+      preferredOrder = [
+        "name"
+        "description"
+        "argument-hint"
+        "display-name"
+        "disable-model-invocation"
+        "user-invocable"
+        "allowed-tools"
+        "model"
+        "effort"
+        "context"
+        "agent"
+      ];
+      orderedKeys = filter (key: builtins.hasAttr key frontmatter) preferredOrder;
+      extraKeys = filter (key: !(elem key preferredOrder)) (attrNames frontmatter);
+      keys = orderedKeys ++ extraKeys;
+      lines = map (key: "${key}: ${renderYamlScalar frontmatter.${key}}") keys;
+    in
+    ''
+      ---
+      ${concatStringsSep "\n" lines}
+      ---
+    '';
+
+  renderClaudeCommand =
+    name:
+    let
+      template = parseCommandTemplate name;
+    in
+    ''
+      ${renderFrontmatter template.frontmatter}
+
+      ${template.body}
+    '';
+
   # Helper to generate Gemini-compatible TOML from a Markdown template.
   # Gemini commands require .toml files with `prompt` and optionally `description`.
   #
@@ -94,32 +201,31 @@ let
   mkGeminiToml = name: {
     text =
       let
-        # We must use a relative path here so Nix can read the file in pure
-        # evaluation mode (Flakes). devPath (absolute) is only for symlinks.
-        mdFile = ./ai-commands + "/${name}";
-
-        content = builtins.readFile mdFile;
-        # Extract first line as description, strip Markdown formatting if present
-        firstLine = head (splitString "\n" content);
-        description = removeSuffix "." (removePrefix "# " firstLine);
-
+        template = parseCommandTemplate name;
         # Replace $ARGUMENTS with Gemini's native {{args}}
-        prompt = replaceStrings [ "$ARGUMENTS" ] [ "{{args}}" ] content;
+        prompt = replaceStrings [ "$ARGUMENTS" ] [ "{{args}}" ] template.body;
       in
       ''
-        description = ${builtins.toJSON description}
+        description = ${builtins.toJSON template.description}
+        prompt = ${builtins.toJSON prompt}
+      '';
+  };
+
+  mkGeminiDeepworkToml = {
+    text =
+      let
+        prompt = replaceStrings [ "$ARGUMENTS" ] [ "{{args}}" ] deepworkSkillBody;
+      in
+      ''
+        description = ${builtins.toJSON skillMetadata.description}
         prompt = ${builtins.toJSON prompt}
       '';
   };
 
   commandBaseName = name: lib.removeSuffix ".md" name;
 
-  commandTitle =
-    name:
-    let
-      content = builtins.readFile (./ai-commands + "/${name}");
-    in
-    removeSuffix "." (removePrefix "# " (head (splitString "\n" content)));
+  commandDescription = name: (parseCommandTemplate name).description;
+  commandDisplayName = name: (parseCommandTemplate name).displayName;
 
   codexSkillName = name: replaceStrings [ "." ] [ "-" ] (commandBaseName name);
   codexManagedSkillNames = [ "deepwork" ] ++ map codexSkillName commandFiles;
@@ -127,12 +233,12 @@ let
   codexSkillBody =
     name:
     let
-      template = builtins.readFile (./ai-commands + "/${name}");
+      template = parseCommandTemplate name;
       skillName = codexSkillName name;
       skillToken = "$" + skillName;
     in
     ''
-      ${template}
+      ${template.body}
 
       ## Codex skill invocation
 
@@ -145,14 +251,14 @@ let
     name:
     mkSkillMd {
       name = codexSkillName name;
-      description = commandTitle name;
+      description = commandDescription name;
     } (codexSkillBody name);
 
   mkCodexSkillOpenAiYaml = name: {
     text = ''
       interface:
-        display_name: ${builtins.toJSON (commandTitle name)}
-        short_description: ${builtins.toJSON (commandTitle name)}
+        display_name: ${builtins.toJSON (commandDisplayName name)}
+        short_description: ${builtins.toJSON (commandDescription name)}
 
       dependencies:
         tools:
@@ -252,7 +358,17 @@ in
                       else
                         "${toolDir}/commands/${name}";
 
-                    value = if (toolDir == ".gemini") then mkGeminiToml name else mkSource "ai-commands/${name}";
+                    value =
+                      if (toolDir == ".gemini") then
+                        mkGeminiToml name
+                      else if (toolDir == ".claude") then
+                        {
+                          text = renderClaudeCommand name;
+                        }
+                      else
+                        {
+                          text = (parseCommandTemplate name).body;
+                        };
                   }) commandFiles
                 ))
             )
@@ -271,23 +387,26 @@ in
               let
                 skillDir = "${toolDir}/skills/deepwork";
               in
-              acc
-              // {
-                "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
-              }
-              // optionalAttrs (toolDir == ".codex") {
-                "${skillDir}/agents/openai.yaml".text = ''
-                  interface:
-                    display_name: "DeepWork"
-                    short_description: "Start or continue DeepWork workflows using MCP tools"
+              if toolDir == ".gemini" then
+                acc // { "${toolDir}/commands/deepwork.toml" = mkGeminiDeepworkToml; }
+              else
+                acc
+                // {
+                  "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
+                }
+                // optionalAttrs (toolDir == ".codex") {
+                  "${skillDir}/agents/openai.yaml".text = ''
+                    interface:
+                      display_name: "DeepWork"
+                      short_description: "Start or continue DeepWork workflows using MCP tools"
 
-                  dependencies:
-                    tools:
-                      - type: "mcp"
-                        value: "deepwork"
-                        description: "DeepWork MCP server"
-                '';
-              }
+                    dependencies:
+                      tools:
+                        - type: "mcp"
+                          value: "deepwork"
+                          description: "DeepWork MCP server"
+                  '';
+                }
             )
             { }
             [

@@ -1,3 +1,8 @@
+---
+description: Start the research/quick DeepWork workflow for a fast, local-only research summary
+argument-hint: <research topic or question>
+---
+
 Start the research/quick DeepWork workflow for a fast, local-only research summary.
 
 Use the DeepWork MCP tools to start the workflow:

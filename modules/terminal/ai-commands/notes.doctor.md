@@ -1,3 +1,8 @@
+---
+description: Start the notes/doctor DeepWork workflow to repair and normalize a zk notebook
+argument-hint: <optional scope>
+---
+
 Start the notes/doctor DeepWork workflow to repair and normalize a zk notebook.
 
 Use the DeepWork MCP tools to start the workflow:

@@ -1,3 +1,8 @@
+---
+description: Start the keystone_system/doctor DeepWork workflow to check fleet health
+argument-hint: <optional focus>
+---
+
 Start the keystone_system/doctor DeepWork workflow to check fleet health.
 
 Use the DeepWork MCP tools to start the workflow:

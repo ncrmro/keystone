@@ -1,3 +1,8 @@
+---
+description: Start the keystone_system/issue DeepWork workflow to create a GitHub issue
+argument-hint: <feature description>
+---
+
 Start the keystone_system/issue DeepWork workflow to create a GitHub issue.
 
 Use the DeepWork MCP tools to start the workflow:

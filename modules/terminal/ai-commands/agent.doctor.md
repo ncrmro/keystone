@@ -1,3 +1,8 @@
+---
+description: Start the agent_builder/doctor DeepWork workflow to diagnose agent health
+argument-hint: <agent name>
+---
+
 Start the agent_builder/doctor DeepWork workflow to diagnose agent health.
 
 Use the DeepWork MCP tools to start the workflow:

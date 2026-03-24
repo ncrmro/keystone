@@ -1,3 +1,8 @@
+---
+description: Start the agent_builder/issue DeepWork workflow to file an infrastructure issue
+argument-hint: <problem description>
+---
+
 Start the agent_builder/issue DeepWork workflow to file an infrastructure issue.
 
 Use the DeepWork MCP tools to start the workflow:

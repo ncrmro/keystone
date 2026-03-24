@@ -1,3 +1,8 @@
+---
+description: Start the agent_builder/onboard DeepWork workflow to onboard an agent to services
+argument-hint: <agent name>
+---
+
 Start the agent_builder/onboard DeepWork workflow to onboard an agent to services.
 
 Use the DeepWork MCP tools to start the workflow:

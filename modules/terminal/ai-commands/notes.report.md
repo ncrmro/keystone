@@ -1,3 +1,8 @@
+---
+description: Start the notes/report DeepWork workflow to capture a standardized project report note
+argument-hint: <project and report context>
+---
+
 Start the notes/report DeepWork workflow to capture a standardized project report note.
 
 Use the DeepWork MCP tools to start the workflow:

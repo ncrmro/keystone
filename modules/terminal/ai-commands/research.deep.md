@@ -1,3 +1,8 @@
+---
+description: Start the research/deep DeepWork workflow for a comprehensive multi-platform investigation
+argument-hint: <research topic or question>
+---
+
 Start the research/deep DeepWork workflow for a comprehensive multi-platform investigation.
 
 Use the DeepWork MCP tools to start the workflow:

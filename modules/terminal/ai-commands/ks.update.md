@@ -1,3 +1,8 @@
+---
+description: Start the keystone_system/update DeepWork workflow to deploy pending keystone changes to the fleet
+argument-hint: <optional context>
+---
+
 Start the keystone_system/update DeepWork workflow to deploy pending keystone changes to the fleet.
 
 Use the DeepWork MCP tools to start the workflow:

@@ -1,3 +1,8 @@
+---
+description: Start the sweng/refactor DeepWork workflow for code restructuring without behavior change
+argument-hint: <task source>
+---
+
 Start the sweng/refactor DeepWork workflow for code restructuring without behavior change.
 
 Use the DeepWork MCP tools to start the workflow:

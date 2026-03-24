@@ -1,3 +1,8 @@
+---
+description: Start the sweng/fix DeepWork workflow to fix a bug or issue
+argument-hint: <task source>
+---
+
 Start the sweng/fix DeepWork workflow to fix a bug or issue.
 
 Use the DeepWork MCP tools to start the workflow:

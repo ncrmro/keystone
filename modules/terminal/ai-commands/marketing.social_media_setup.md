@@ -1,3 +1,8 @@
+---
+description: Start the marketing/social_media_setup DeepWork workflow to set up social media
+argument-hint: <project name and desired social platforms>
+---
+
 Start the marketing/social_media_setup DeepWork workflow to set up social media.
 
 Use the DeepWork MCP tools to start the workflow:

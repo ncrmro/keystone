@@ -1,3 +1,8 @@
+---
+description: Start the repo/setup DeepWork workflow to make a repo ready for work
+argument-hint: <optional repo path or name>
+---
+
 Start the repo/setup DeepWork workflow to make a repo ready for work.
 
 Use the DeepWork MCP tools to start the workflow:

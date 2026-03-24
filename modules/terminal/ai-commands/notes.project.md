@@ -1,3 +1,8 @@
+---
+description: Start the notes/project_hub DeepWork workflow to create or refresh a project hub note
+argument-hint: <project name or slug>
+---
+
 Start the notes/project_hub DeepWork workflow to create or refresh a project hub note.
 
 Use the DeepWork MCP tools to start the workflow:

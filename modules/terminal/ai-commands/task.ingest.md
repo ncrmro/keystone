@@ -1,3 +1,8 @@
+---
+description: Start the task_loop/ingest DeepWork workflow to ingest tasks from source files
+argument-hint: <optional task source>
+---
+
 Start the task_loop/ingest DeepWork workflow to ingest tasks from source files.
 
 Use the DeepWork MCP tools to start the workflow:

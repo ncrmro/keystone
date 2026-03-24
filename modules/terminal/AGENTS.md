@@ -35,6 +35,19 @@ Required options: `keystone.terminal.git.userName` and `keystone.terminal.git.us
 Four tools: Claude Code (NPM), Gemini CLI, Codex, OpenCode (last three from llm-agents flake).
 All available when `keystone.terminal.enable = true` — agents get the identical environment.
 
+`modules/terminal/ai-commands/*.md` are shared metadata-aware templates for AI
+tool command and skill generation. Each file MUST use YAML frontmatter with at
+least a `description` field.
+
+Keystone maps those templates into each tool's native format:
+- Claude Code commands keep YAML frontmatter in `~/.claude/commands/*.md`
+- Gemini commands are rendered as `~/.gemini/commands/*.toml`
+- Codex skills are rendered as `~/.codex/skills/*/SKILL.md` with YAML frontmatter
+- OpenCode commands receive the Markdown body only
+
+Generators consume parsed metadata and body separately, so do not rely on the
+first line of the body as implicit metadata.
+
 ## Mail (`mail.nix`)
 
 **CRITICAL**: The `login` field is the Stalwart **account name** (e.g., `"ncrmro"`),

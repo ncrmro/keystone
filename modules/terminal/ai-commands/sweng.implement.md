@@ -1,3 +1,8 @@
+---
+description: Start the sweng/implement DeepWork workflow for a new feature or capability
+argument-hint: <task source>
+---
+
 Start the sweng/implement DeepWork workflow for a new feature or capability.
 
 Use the DeepWork MCP tools to start the workflow:
