@@ -87,11 +87,9 @@ let
   mkGeminiToml = name: {
     text =
       let
-        mdFile =
-          if devPath != null then
-            "${devPath}/modules/terminal/ai-commands/${name}"
-          else
-            ./ai-commands + "/${name}";
+        # We must use a relative path here so Nix can read the file in pure
+        # evaluation mode (Flakes). devPath (absolute) is only for symlinks.
+        mdFile = ./ai-commands + "/${name}";
 
         content = builtins.readFile mdFile;
         # Extract first line as description, strip Markdown formatting if present
