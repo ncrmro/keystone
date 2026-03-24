@@ -24,13 +24,14 @@ without SSH-ing into each host individually.
 │ journal-upload ──┼─┐   │ journal-upload ──┼─┐   │ journal-upload ──┼─┐
 └──────────────────┘ │   └──────────────────┘ │   └──────────────────┘ │
                      │                        │                        │
-                     │   Tailscale (port 19532)                        │
+                     │  HTTPS → journal.<domain> (nginx)               │
                      │                        │                        │
                      ▼                        ▼                        ▼
               ┌─────────────────────────────────────────────────┐
               │                   ocean                         │
               │                                                 │
-              │  systemd-journal-remote (port 19532)            │
+              │  nginx (HTTPS :443) → 127.0.0.1:19532           │
+              │  systemd-journal-remote (HTTP, localhost only)   │
               │  /var/log/journal/remote/                       │
               │    ├── remote-ncrmro-workstation.journal        │
               │    ├── remote-maia.journal                      │
@@ -113,16 +114,19 @@ keystone.os.journalRemote = {
 
 ### Transport & Security
 
-**REQ-020.14** Transport MUST use HTTP (not HTTPS) since all traffic
-flows over the Tailscale mesh which provides encryption and
-authentication.
+**REQ-020.14** Transport MUST use HTTPS via the nginx reverse proxy when
+`keystone.domain` is set. The nginx vhost (`journal.<domain>`) terminates
+TLS using the ACME wildcard certificate and proxies to the local
+`systemd-journal-remote` HTTP listener. When no domain is configured,
+the module falls back to plain HTTP over the Tailscale mesh.
 
-**REQ-020.15** The server SHOULD restrict incoming connections to
-Tailscale IP ranges (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) via
-firewall rules or systemd socket activation.
+**REQ-020.15** When using nginx proxy, access MUST be restricted to
+Tailscale IP ranges (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) via nginx
+access controls. When using direct HTTP (no domain), the server SHOULD
+restrict incoming connections to the Tailscale interface via firewall rules.
 
 **REQ-020.16** The module MUST NOT use mTLS certificates — Tailscale
-handles authentication.
+handles authentication and nginx provides HTTPS termination.
 
 ### Integration
 

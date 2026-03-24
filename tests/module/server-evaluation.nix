@@ -134,6 +134,22 @@ let
         };
       }
     ];
+
+    # Journal-remote nginx proxy (auto-registered when journal-remote is active)
+    journal-remote-proxy = eval "journal-remote-proxy" [
+      {
+        keystone = {
+          domain = "example.com";
+          server.enable = true;
+        };
+        # Simulate journal-remote being active (set by OS module on the server host)
+        services.journald.remote = {
+          enable = true;
+          listen = "http";
+          port = 19532;
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-server-evaluation"
@@ -152,6 +168,7 @@ pkgs.runCommand "test-server-evaluation"
     echo "  - seaweedfs-with-s3-config: SeaweedFS with S3 credentials file"
     echo "  - seaweedfs-custom: SeaweedFS with custom ports and subdomain"
     echo "  - seaweedfs-with-forgejo: SeaweedFS alongside Forgejo (no port conflict)"
+    echo "  - journal-remote-proxy: Journal-remote nginx proxy auto-registration"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out

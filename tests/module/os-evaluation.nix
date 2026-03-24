@@ -133,6 +133,7 @@ let
           initialPassword = "testpass";
         };
       };
+      keystone.domain = "example.com";
       networking.hostName = "journal-server";
       networking.hostId = "deadbeef";
       system.stateVersion = "25.05";
@@ -143,8 +144,33 @@ let
       boot.loader.systemd-boot.enable = true;
     };
 
-    # Journal-remote client configuration (auto-forwards to server)
+    # Journal-remote client configuration (auto-forwards to server via HTTPS)
     journal-remote-client = {
+      imports = [ self.nixosModules.operating-system ];
+      keystone.os = {
+        enable = true;
+        storage = {
+          type = "zfs";
+          devices = [ "/dev/vda" ];
+        };
+        journalRemote.serverHost = "ocean";
+        users.testuser = {
+          fullName = "Test User";
+          initialPassword = "testpass";
+        };
+      };
+      keystone.domain = "example.com";
+      networking.hostId = "deadbeef";
+      system.stateVersion = "25.05";
+      fileSystems."/" = {
+        device = "rpool/root";
+        fsType = "zfs";
+      };
+      boot.loader.systemd-boot.enable = true;
+    };
+
+    # Journal-remote client without domain (falls back to HTTP)
+    journal-remote-client-no-domain = {
       imports = [ self.nixosModules.operating-system ];
       keystone.os = {
         enable = true;
@@ -227,8 +253,9 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - full-zfs: Full ZFS with all options"
     echo "  - ext4-simple: Simple ext4 setup"
     echo "  - ext4-hibernate: ext4 with hibernation enabled"
-    echo "  - journal-remote-server: Journal collection server"
-    echo "  - journal-remote-client: Journal upload client"
+    echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
+    echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
+    echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
