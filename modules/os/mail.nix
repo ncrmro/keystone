@@ -67,6 +67,10 @@ let
   # to decrypt at activation time on this host.
   provisionAgents = filterAttrs (_: a: a.mail.provision) config.keystone.os.agents;
   hasProvisionAgents = provisionAgents != { };
+
+  # Human usernames for CalDAV sharing — agents grant these users read/write
+  # access to their calendars so the human can schedule tasks via CalDAV.
+  humanUsers = attrNames config.keystone.os.users;
 in
 {
   options.keystone.os.mail = {
@@ -200,6 +204,15 @@ in
             # Web admin interface is configured automatically by nixpkgs
             # (sets webadmin.path to /var/cache/stalwart-mail)
 
+            # CalDAV/CardDAV sharing between principals
+            # allow-directory-query: lets users discover other principals for sharing
+            # assisted-discovery: makes PROPFIND Depth:1 return shared collections
+            sharing = {
+              allow-directory-query = true;
+              max-shares-per-item = 50;
+            };
+            dav.collection.assisted-discovery = true;
+
             # Spam filter - disabled to avoid missing file error
             # TODO: Spam filter is currently disabled because the default `spamfilter.toml`
             # resource was not found in the Stalwart Mail package. To re-enable, either:
@@ -269,43 +282,83 @@ in
                 pkgs.jq
               ];
 
-              script = ''
-                set -euo pipefail
+              script =
+                let
+                  # Build ACL XML granting each human user read+write on the agent's calendar
+                  aclAces = concatMapStringsSep "\n" (user: ''
+                    <D:ace>
+                      <D:principal><D:href>/dav/pal/${user}/</D:href></D:principal>
+                      <D:grant>
+                        <D:privilege><D:read/></D:privilege>
+                        <D:privilege><D:write/></D:privilege>
+                      </D:grant>
+                    </D:ace>
+                  '') humanUsers;
+                in
+                ''
+                  set -euo pipefail
 
-                ADMIN_PASS=$(cat ${adminPasswordPath})
-                AGENT_PASS=$(tr -d '\n' < ${agentPasswordPath})
-                API="http://127.0.0.1:8082/api"
+                  ADMIN_PASS=$(cat ${adminPasswordPath})
+                  AGENT_PASS=$(tr -d '\n' < ${agentPasswordPath})
+                  API="http://127.0.0.1:8082/api"
 
-                # Check if account already exists
-                STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                  -u "admin:$ADMIN_PASS" \
-                  "$API/principal/${username}")
+                  # Check if account already exists
+                  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                    -u "admin:$ADMIN_PASS" \
+                    "$API/principal/${username}")
 
-                if [ "$STATUS" = "200" ]; then
-                  echo "${username}: Stalwart account already exists, skipping creation"
-                  exit 0
-                fi
+                  if [[ "$STATUS" != "200" ]]; then
+                    echo "${username}: Creating Stalwart mail account..."
 
-                echo "${username}: Creating Stalwart mail account..."
+                    # Create the account
+                    curl -sf -u "admin:$ADMIN_PASS" \
+                      "$API/principal" \
+                      -H "Content-Type: application/json" \
+                      -d "$(jq -n \
+                        --arg name "${username}" \
+                        --arg pass "$AGENT_PASS" \
+                        --arg email "${mailAddr}" \
+                        '{type: "individual", name: $name, secrets: [$pass], emails: [$email]}')"
 
-                # Create the account
-                curl -sf -u "admin:$ADMIN_PASS" \
-                  "$API/principal" \
-                  -H "Content-Type: application/json" \
-                  -d "$(jq -n \
-                    --arg name "${username}" \
-                    --arg pass "$AGENT_PASS" \
-                    --arg email "${mailAddr}" \
-                    '{type: "individual", name: $name, secrets: [$pass], emails: [$email]}')"
+                    # Set role to user
+                    curl -sf -u "admin:$ADMIN_PASS" \
+                      "$API/principal/${username}" -X PATCH \
+                      -H "Content-Type: application/json" \
+                      -d '[{"action":"set","field":"roles","value":["user"]}]'
 
-                # Set role to user
-                curl -sf -u "admin:$ADMIN_PASS" \
-                  "$API/principal/${username}" -X PATCH \
-                  -H "Content-Type: application/json" \
-                  -d '[{"action":"set","field":"roles","value":["user"]}]'
+                    echo "${username}: Stalwart mail account created successfully"
+                  else
+                    echo "${username}: Stalwart account already exists"
+                  fi
 
-                echo "${username}: Stalwart mail account created successfully"
-              '';
+                  # Grant human users read/write access to the agent's default calendar.
+                  # The ACL request must be authenticated as the calendar owner (agent).
+                  # Stalwart auto-creates the default calendar on first CalDAV access.
+                  echo "${username}: Setting CalDAV sharing ACLs..."
+
+                  # First, trigger default calendar creation by accessing the agent's CalDAV home
+                  curl -sf -u "${username}:$AGENT_PASS" \
+                    "http://127.0.0.1:8082/dav/cal/${username}/" \
+                    -X PROPFIND -H "Content-Type: application/xml" -H "Depth: 1" \
+                    -d '<?xml version="1.0"?><propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>' \
+                    -o /dev/null || true
+
+                  # Set ACL on the agent's default calendar
+                  ACL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                    -u "${username}:$AGENT_PASS" \
+                    "http://127.0.0.1:8082/dav/cal/${username}/default/" \
+                    -X ACL -H "Content-Type: application/xml" \
+                    -d '<?xml version="1.0" encoding="utf-8"?>
+                  <D:acl xmlns:D="DAV:">
+                  ${aclAces}
+                  </D:acl>')
+
+                  if [[ "$ACL_STATUS" = "200" || "$ACL_STATUS" = "204" ]]; then
+                    echo "${username}: CalDAV sharing ACLs set successfully"
+                  else
+                    echo "${username}: WARNING: CalDAV ACL request returned HTTP $ACL_STATUS" >&2
+                  fi
+                '';
             }
           ) provisionAgents
         );
