@@ -70,3 +70,11 @@ macOS in the future).
 
 **REQ-009.15** The module MAY provide launchd plist generation for macOS
 support as a future extension.
+
+### Environment
+
+**REQ-009.16** When `keystone.notes.enable` is `true`, the module MUST
+export `NOTES_DIR` via `home.sessionVariables` set to `keystone.notes.path`
+(default `~/notes`). This allows tools such as deepwork research workflows
+and `zk` scripts to discover the notes directory without additional
+configuration.
