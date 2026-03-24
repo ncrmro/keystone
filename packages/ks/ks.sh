@@ -705,13 +705,16 @@ cmd_switch() {
           echo 'OS'
         fi
       "
+      # shellcheck disable=SC2029
       remote_status=$(ssh "root@$resolved" "$check_cmd")
 
       if [[ "$remote_status" == "HM" ]]; then
         echo "OS core unchanged. Activating fast home-manager switch remotely..."
         deploy_home_manager_only "$repo_root" "$host"
+        # shellcheck disable=SC2029
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration boot"
       else
+        # shellcheck disable=SC2029
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
       fi
     fi
@@ -940,13 +943,16 @@ cmd_update() {
           echo 'OS'
         fi
       "
+      # shellcheck disable=SC2029
       remote_status=$(ssh "root@$resolved" "$check_cmd")
 
       if [[ "$remote_status" == "HM" ]]; then
         echo "OS core unchanged. Activating fast home-manager switch remotely..."
         deploy_home_manager_only "$repo_root" "$host"
+        # shellcheck disable=SC2029
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration boot"
       else
+        # shellcheck disable=SC2029
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
       fi
     fi
