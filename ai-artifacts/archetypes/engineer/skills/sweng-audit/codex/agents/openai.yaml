@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the sweng/audit DeepWork workflow to check dev environment health"
+  short_description: "Start the sweng/audit DeepWork workflow to check dev environment health"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

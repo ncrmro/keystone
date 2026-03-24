@@ -1,0 +1,9 @@
+interface:
+  display_name: "Engineering handoff with specs and issue decomposition"
+  short_description: "Engineering handoff with specs and issue decomposition"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

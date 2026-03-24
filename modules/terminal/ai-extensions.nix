@@ -3,15 +3,16 @@
 # Generates slash commands for tools that support them and registers DeepWork
 # skills across Claude Code, Gemini CLI, OpenCode, and Codex.
 #
-# Each tool has its own directory structure and configuration requirements:
-# - Claude: ~/.claude/commands/*.md, ~/.claude/skills/deepwork/SKILL.md
-# - Gemini: ~/.gemini/commands/*.toml, ~/.gemini/skills/deepwork/SKILL.md
-# - OpenCode: ~/.config/opencode/commands/*.md, ~/.config/opencode/skills/deepwork/SKILL.md
-# - Codex: ~/.codex/skills/*.md-based skills
+# When aiArtifacts is enabled, skills are loaded from the committed artifact
+# tree and are archetype-scoped (REQ-10, REQ-22).  Commands are still
+# generated uniformly (all archetypes get all commands for tools that support
+# them).
 #
-# TODO: As other AI coding CLIs gain support for custom workflow commands or
-# skill plugins, add their respective configuration directories to the
-# generation logic below.
+# Each tool has its own directory structure and configuration requirements:
+# - Claude: ~/.claude/commands/*.md, ~/.claude/skills/<name>/SKILL.md
+# - Gemini: ~/.gemini/commands/*.toml, ~/.gemini/skills/<name>/SKILL.md
+# - OpenCode: ~/.config/opencode/commands/*.md, ~/.config/opencode/skills/<name>/SKILL.md
+# - Codex: ~/.codex/skills/<name>/SKILL.md + agents/openai.yaml
 #
 # Development mode (REQ-018): When keystone.development is true and
 # a keystone repo is registered, templates are out-of-store symlinks to the
@@ -26,9 +27,14 @@ with lib;
 let
   terminalCfg = config.keystone.terminal;
   cfg = terminalCfg.aiExtensions;
+  aiArtifactsCfg = config.keystone.terminal.aiArtifacts;
   isDev = config.keystone.development;
   repos = config.keystone.repos;
   homeDir = config.home.homeDirectory;
+
+  # Whether to use archetype-scoped skills from the artifact tree
+  useArtifactTree = aiArtifactsCfg.enable;
+  archetype = aiArtifactsCfg.archetype;
 
   # Look up the keystone repo's local checkout path.
   keystoneEntry = findFirst (name: (repos.${name}.flakeInput or null) == "keystone") null (
@@ -211,6 +217,108 @@ let
 
     ${body}
   '';
+
+  # Helper: resolve skill source from artifact tree.
+  # In dev mode: out-of-store symlink. In non-dev mode: Nix store path.
+  mkArtifactSkillSource =
+    relPath:
+    if devPath != null then
+      {
+        source = config.lib.file.mkOutOfStoreSymlink "${devPath}/ai-artifacts/archetypes/${archetype}/skills/${relPath}";
+      }
+    else
+      {
+        source = ./. + "/../../ai-artifacts/archetypes/${archetype}/skills/${relPath}";
+      };
+
+  # Read the archetype's skill list from archetypes.yaml for artifact-tree mode.
+  conventionsPath = pkgs.keystone.keystone-conventions;
+  archetypesFile = "${conventionsPath}/archetypes.yaml";
+  hasArchetypes = builtins.pathExists archetypesFile;
+  archetypesYaml =
+    if hasArchetypes then
+      builtins.fromJSON (
+        builtins.readFile (
+          pkgs.runCommand "archetypes-skills-json" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+            yq -o=json '.' ${archetypesFile} > $out
+          ''
+        )
+      )
+    else
+      { archetypes = { }; };
+  archetypeConfig = archetypesYaml.archetypes.${archetype} or { };
+  archetypeSkills = archetypeConfig.skills or [ ];
+
+  # Convert skill name from archetypes.yaml (e.g., "sweng.audit") to directory
+  # name in the artifact tree (e.g., "sweng-audit")
+  skillDirName = name: replaceStrings [ "." ] [ "-" ] name;
+
+  # Build artifact-tree skill files for all tool directories.
+  # Each archetype skill gets installed at the tool's native skill path.
+  artifactSkillsByTool =
+    let
+      # Standard tool directories (Claude, Gemini, OpenCode)
+      standardToolDirs = [
+        ".claude"
+        ".gemini"
+        ".config/opencode"
+      ];
+
+      # DeepWork skill for all tools (always included, REQ-10)
+      deepworkSkills = foldl' (
+        acc: toolDir:
+        acc
+        // {
+          "${toolDir}/skills/deepwork/SKILL.md" = mkArtifactSkillSource "deepwork/SKILL.md";
+        }
+      ) { } (standardToolDirs ++ [ ".codex" ]);
+
+      # Codex-specific DeepWork agent metadata
+      codexDeepworkAgent = {
+        ".codex/skills/deepwork/agents/openai.yaml" = mkArtifactSkillSource "deepwork/agents/openai.yaml";
+      };
+
+      # Archetype-scoped skills for standard tools (Claude, Gemini, OpenCode)
+      standardSkills = foldl' (
+        acc: toolDir:
+        acc
+        // (listToAttrs (
+          map (
+            name:
+            let
+              sdir = skillDirName name;
+            in
+            {
+              name = "${toolDir}/skills/${sdir}/SKILL.md";
+              value = mkArtifactSkillSource "${sdir}/SKILL.md";
+            }
+          ) archetypeSkills
+        ))
+      ) { } standardToolDirs;
+
+      # Codex-specific archetype skills (SKILL.md + agents/openai.yaml)
+      codexSkills = listToAttrs (
+        flatten (
+          map (
+            name:
+            let
+              sdir = skillDirName name;
+            in
+            [
+              {
+                name = ".codex/skills/${sdir}/SKILL.md";
+                value = mkArtifactSkillSource "${sdir}/codex/SKILL.md";
+              }
+              {
+                name = ".codex/skills/${sdir}/agents/openai.yaml";
+                value = mkArtifactSkillSource "${sdir}/codex/agents/openai.yaml";
+              }
+            ]
+          ) archetypeSkills
+        )
+      );
+    in
+    deepworkSkills // codexDeepworkAgent // standardSkills // codexSkills;
 in
 {
   options.keystone.terminal.aiExtensions = {
@@ -232,6 +340,7 @@ in
   config = mkIf (terminalCfg.enable && terminalCfg.ai.enable && cfg.enable) {
     home.file =
       let
+        # Slash commands — generated uniformly for all archetypes (not skill-scoped)
         commandFilesByTool =
           foldl'
             (
@@ -263,62 +372,71 @@ in
               ".codex"
             ];
 
-        deepworkSkillsByTool =
-          foldl'
-            (
-              acc: toolDir:
-              let
-                skillDir = "${toolDir}/skills/deepwork";
-              in
-              acc
-              // {
-                "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
-              }
-              // optionalAttrs (toolDir == ".codex") {
-                "${skillDir}/agents/openai.yaml".text = ''
-                  interface:
-                    display_name: "DeepWork"
-                    short_description: "Start or continue DeepWork workflows using MCP tools"
+        # Skills — archetype-aware when artifact tree is enabled (REQ-10)
+        skillFiles =
+          if useArtifactTree then
+            artifactSkillsByTool
+          else
+            # Fallback: uniform DeepWork + Codex command skills (backward compat, REQ-35)
+            let
+              deepworkSkillsByTool =
+                foldl'
+                  (
+                    acc: toolDir:
+                    let
+                      skillDir = "${toolDir}/skills/deepwork";
+                    in
+                    acc
+                    // {
+                      "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
+                    }
+                    // optionalAttrs (toolDir == ".codex") {
+                      "${skillDir}/agents/openai.yaml".text = ''
+                        interface:
+                          display_name: "DeepWork"
+                          short_description: "Start or continue DeepWork workflows using MCP tools"
 
-                  dependencies:
-                    tools:
-                      - type: "mcp"
-                        value: "deepwork"
-                        description: "DeepWork MCP server"
-                '';
-              }
-            )
-            { }
-            [
-              ".claude"
-              ".gemini"
-              ".config/opencode"
-              ".codex"
-            ];
+                        dependencies:
+                          tools:
+                            - type: "mcp"
+                              value: "deepwork"
+                              description: "DeepWork MCP server"
+                      '';
+                    }
+                  )
+                  { }
+                  [
+                    ".claude"
+                    ".gemini"
+                    ".config/opencode"
+                    ".codex"
+                  ];
 
-        codexCommandSkills = listToAttrs (
-          flatten (
-            map (
-              name:
-              let
-                skillDir = ".codex/skills/${codexSkillName name}";
-              in
-              [
-                {
-                  name = "${skillDir}/SKILL.md";
-                  value = {
-                    text = mkCodexSkillMd name;
-                  };
-                }
-                {
-                  name = "${skillDir}/agents/openai.yaml";
-                  value = mkCodexSkillOpenAiYaml name;
-                }
-              ]
-            ) commandFiles
-          )
-        );
+              codexCommandSkills = listToAttrs (
+                flatten (
+                  map (
+                    name:
+                    let
+                      skillDir = ".codex/skills/${codexSkillName name}";
+                    in
+                    [
+                      {
+                        name = "${skillDir}/SKILL.md";
+                        value = {
+                          text = mkCodexSkillMd name;
+                        };
+                      }
+                      {
+                        name = "${skillDir}/agents/openai.yaml";
+                        value = mkCodexSkillOpenAiYaml name;
+                      }
+                    ]
+                  ) commandFiles
+                )
+              );
+            in
+            deepworkSkillsByTool // codexCommandSkills;
       in
-      commandFilesByTool // deepworkSkillsByTool // codexCommandSkills;
+      commandFilesByTool // skillFiles;
   };
 }

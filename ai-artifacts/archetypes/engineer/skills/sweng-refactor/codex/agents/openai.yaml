@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the sweng/refactor DeepWork workflow for code restructuring without behavior change"
+  short_description: "Start the sweng/refactor DeepWork workflow for code restructuring without behavior change"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

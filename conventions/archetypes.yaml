@@ -58,6 +58,17 @@ archetypes:
       - os.zfs-backup
       - tool.stalwart
       - tool.standard-utilities
+    # Skills available to this archetype. "deepwork" is always included.
+    # Each entry maps to an ai-commands/ template file.
+    skills:
+      - ks.doctor
+      - ks.update
+      - ks.develop
+      - ks.convention
+      - repo.doctor
+      - repo.setup
+      - notes.process_inbox
+      - notes.doctor
 
   engineer:
     description: "Engineering agents — implementation, code review, architecture"
@@ -95,6 +106,38 @@ archetypes:
       - process.notes
       - tool.zk-notes
       - tool.stalwart
+    # Skills available to the engineer archetype — covers the full engineering
+    # command surface including software engineering, task management, research,
+    # and agent lifecycle commands.
+    skills:
+      - sweng.audit
+      - sweng.design
+      - sweng.fix
+      - sweng.implement
+      - sweng.refactor
+      - task.ingest
+      - task.run
+      - ks.doctor
+      - ks.update
+      - ks.develop
+      - ks.convention
+      - ks.issue
+      - repo.doctor
+      - repo.setup
+      - research.deep
+      - research.quick
+      - notes.process_inbox
+      - notes.doctor
+      - notes.project
+      - notes.report
+      - agent.bootstrap
+      - agent.doctor
+      - agent.issue
+      - agent.onboard
+      - daily_status.send
+      - milestone.eng_handoff
+      - milestone.setup
+      - project.onboard
     roles:
       # Role: code-reviewer
       # Used when the agent is strictly reviewing PRs authored by others (or subagents).
@@ -195,6 +238,26 @@ archetypes:
       - process.notes
       - process.presentation-slides
       - tool.zk-notes
+    # Skills available to the product archetype — covers product management,
+    # project planning, research, portfolio review, and marketing.
+    skills:
+      - project.press_release
+      - project.success
+      - project.onboard
+      - milestone.setup
+      - milestone.eng_handoff
+      - portfolio.review
+      - research.deep
+      - research.quick
+      - task.ingest
+      - task.run
+      - notes.process_inbox
+      - notes.doctor
+      - notes.project
+      - notes.report
+      - marketing.social_media_setup
+      - daily_status.send
+      - ks.issue
     roles:
       # Role: business-analyst
       # Used for evaluating market opportunities, competitor products, and defining KPIs.

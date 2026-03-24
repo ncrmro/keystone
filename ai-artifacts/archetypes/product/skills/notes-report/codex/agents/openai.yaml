@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the notes/report DeepWork workflow to capture a standardized project report note"
+  short_description: "Start the notes/report DeepWork workflow to capture a standardized project report note"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

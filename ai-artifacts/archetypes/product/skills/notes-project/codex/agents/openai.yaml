@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the notes/project_hub DeepWork workflow to create or refresh a project hub note"
+  short_description: "Start the notes/project_hub DeepWork workflow to create or refresh a project hub note"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

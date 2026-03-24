@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the task_loop/ingest DeepWork workflow to ingest tasks from source files"
+  short_description: "Start the task_loop/ingest DeepWork workflow to ingest tasks from source files"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

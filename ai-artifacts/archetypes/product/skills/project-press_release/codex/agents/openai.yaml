@@ -1,0 +1,9 @@
+interface:
+  display_name: "Draft and disseminate a press release for a product launch"
+  short_description: "Draft and disseminate a press release for a product launch"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

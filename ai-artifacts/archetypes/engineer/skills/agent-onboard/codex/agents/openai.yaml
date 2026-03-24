@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the agent_builder/onboard DeepWork workflow to onboard an agent to services"
+  short_description: "Start the agent_builder/onboard DeepWork workflow to onboard an agent to services"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

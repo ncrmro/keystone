@@ -88,7 +88,16 @@
           system = "x86_64-linux";
           specialArgs = {
             inherit keystone;
-            keystoneInputs = { inherit nixpkgs hyprland nix-flatpak omarchy walker kinda-nvim-hx; };
+            keystoneInputs = {
+              inherit
+                nixpkgs
+                hyprland
+                nix-flatpak
+                omarchy
+                walker
+                kinda-nvim-hx
+                ;
+            };
           };
           modules = [
             home-manager.nixosModules.home-manager
