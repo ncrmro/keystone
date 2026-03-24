@@ -3,6 +3,7 @@
 #
 # See conventions/tool.stalwart.md
 # Implements REQ-007 (OS Agents — FR-004: Email via Stalwart)
+# See specs/REQ-024-agentic-calendar/requirements.md (REQ-024.19, REQ-024.20: cross-calendar ACLs)
 #
 # This module provides a basic Stalwart mail server configuration.
 # On first boot, Stalwart generates a random admin password in the logs.
