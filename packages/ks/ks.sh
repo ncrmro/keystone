@@ -278,7 +278,7 @@ nix_fast_build() {
   # Use nix-fast-build when available, no overrides, and multiple targets
   if command -v nix-fast-build &>/dev/null && [[ "$has_overrides" == false ]] && [[ ${#targets[@]} -gt 1 ]]; then
     local tmpfile
-    tmpfile=$(mktemp /tmp/ks-build-XXXXXX.nix)
+    tmpfile=$(mktemp "${TMPDIR:-/tmp}/ks-build-XXXXXX.nix")
 
     # Generate a Nix expression wrapping targets into an attrset.
     # nix-fast-build evaluates each attribute in parallel via nix-eval-jobs.
@@ -288,7 +288,17 @@ nix_fast_build() {
       echo "in {"
       local i=0
       for target in "${targets[@]}"; do
+        # Validate target contains a '#' separator (flake reference format)
+        if [[ "$target" != *"#"* ]]; then
+          echo "Warning: skipping malformed target (no '#'): $target" >&2
+          continue
+        fi
         local attr_path="${target#*#}"
+        # Validate attr_path contains only safe Nix identifier characters
+        if [[ ! "$attr_path" =~ ^[a-zA-Z0-9._\"-]+$ ]]; then
+          echo "Warning: skipping target with unexpected characters: $attr_path" >&2
+          continue
+        fi
         echo "  \"target-${i}\" = flake.${attr_path};"
         ((i++))
       done
