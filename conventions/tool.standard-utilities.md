@@ -36,4 +36,4 @@ Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `se
 
 ## Environment and Tool Availability
 
-18. If a required CLI tool is not pre-installed or available on the PATH, it MUST be provided via a Nix devshell (`nix develop`) or added to the project's `flake.nix`. See `tool.nix-devshell` for standards on adding packages.
+18. Projects SHOULD utilize Nix devshells (`nix develop`) to provide required tools when possible. In repositories where introducing Nix configuration is undesirable, tools MUST be provided by the pre-installed host environment or a local untracked shell. See `tool.nix-devshell` for standards on project-specific environments.
