@@ -88,7 +88,16 @@
           system = "x86_64-linux";
           specialArgs = {
             inherit keystone;
-            keystoneInputs = { inherit nixpkgs hyprland nix-flatpak omarchy walker kinda-nvim-hx; };
+            keystoneInputs = {
+              inherit
+                nixpkgs
+                hyprland
+                nix-flatpak
+                omarchy
+                walker
+                kinda-nvim-hx
+                ;
+            };
           };
           modules = [
             home-manager.nixosModules.home-manager
@@ -142,6 +151,11 @@
 
       checks.${system} = {
         # Integration Tests
+        test-service-account-provisioning = import ./module/service-account-provisioning.nix {
+          inherit pkgs lib;
+          self = keystone;
+        };
+
         test-installer = import ./integration/installer.nix {
           inherit pkgs;
           lib = pkgs.lib;

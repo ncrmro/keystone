@@ -101,8 +101,12 @@ The **keystone config repo** is `nixos-config` — the consumer flake that impor
 modules and declares per-host/per-user configuration. All keystone-managed repos live
 under `~/.keystone/repos/OWNER/REPO/`.
 
+> **CRITICAL: Verifying Builds**
+> Agents MUST verify their changes by running a full build against a real host, not just isolated tests.
+> Run `ks build` (which defaults to the current host) to ensure your changes integrate correctly.
+
 ```bash
-ks build              # Build home-manager profiles only (fast, no sudo)
+ks build              # Build full system for current host (verify changes here!)
 ks build --lock       # Full system build + lock + push
 ks update --dev       # Deploy home-manager profiles only
 ks update             # Full system: pull, lock, build, push, deploy
