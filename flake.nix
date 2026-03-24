@@ -411,6 +411,7 @@
               yq-go
               gettext
               bash
+              shellcheck
               deepwork.packages.${pkgs.system}.default
               gh # GitHub CLI
               python3
