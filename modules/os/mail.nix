@@ -321,16 +321,16 @@ in
                         --arg email "${mailAddr}" \
                         '{type: "individual", name: $name, secrets: [$pass], emails: [$email]}')"
 
-                    # Set role to user
-                    curl -sf -u "admin:$ADMIN_PASS" \
-                      "$API/principal/${username}" -X PATCH \
-                      -H "Content-Type: application/json" \
-                      -d '[{"action":"set","field":"roles","value":["user"]}]'
-
                     echo "${username}: Stalwart mail account created successfully"
                   else
                     echo "${username}: Stalwart account already exists"
                   fi
+
+                  # Always ensure role is set (idempotent) — needed for CalDAV/CardDAV permissions
+                  curl -sf -u "admin:$ADMIN_PASS" \
+                    "$API/principal/${username}" -X PATCH \
+                    -H "Content-Type: application/json" \
+                    -d '[{"action":"set","field":"roles","value":["user"]}]'
 
                   # Grant human users read/write access to the agent's default calendar.
                   # The ACL request must be authenticated as the calendar owner (agent).
