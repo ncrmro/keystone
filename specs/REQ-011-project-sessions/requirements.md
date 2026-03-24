@@ -54,8 +54,8 @@ Create or attach to a named project Zellij session.
 - `<session-slug>` — purpose identifier for the session (optional; default: `main`)
 
 Session names use the format `{prefix}-{project-slug}-{session-slug}`, allowing multiple
-named sessions per project. This aligns with `agentctl --project <project> <session-slug>`,
-which also creates sessions named `{project}-{session-slug}` (plus the prefix).
+named sessions per project. This naming scheme is also adopted by `agentctl` (REQ-012.3)
+to ensure consistent session identification across tools.
 
 **Behavior**:
 1. The command MUST validate that `{notes_path}/projects/{project-slug}/README.md` exists
@@ -125,7 +125,7 @@ Destroy a project session.
    - `PROJECT_PATH` — absolute path to the project directory
    - `PROJECT_README` — path to the project's `README.md`
    - `VAULT_ROOT` — the notes repo root (`keystone.notes.path`)
-   - `CLAUDE_CONFIG_DIR` — project-scoped Claude configuration directory (`{notes_path}/.claude-projects/{slug}/`)
+   - `CLAUDE_CONFIG_DIR` — project-scoped Claude configuration directory (`{notes_path}/.claude-projects/{project-slug}/`)
    - `AGENTS_MD` — path to the aggregated agents context file for the project (REQ-010.12)
 10. Environment variables MUST be available to all processes spawned within the session.
 

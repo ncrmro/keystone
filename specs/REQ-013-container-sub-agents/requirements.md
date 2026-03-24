@@ -78,7 +78,7 @@ Launch a sub-agent in a Podman container.
    d. Appending aggregated repo AGENTS.md files
 4. The command MUST launch a Podman container using the `podman-agent` script
 5. The AGENTS.md MUST be volume-mounted into the container
-6. The container MUST be labeled with `project={slug}`, `role={role_slug}`, `archetype={name}`
+6. The container MUST be labeled with `project={project}`, `role={role_slug}`, `archetype={name}`
 
 **Exit codes**:
 - `0` — container started (detach) or agent exited normally (interactive)
@@ -139,7 +139,7 @@ View logs from a sub-agent container.
    - Relevant convention files
    - Repository AGENTS.md files (from declared repos)
 4. The AGENTS.md MUST use `{name}` and `{email}` placeholders matching SPEC-007 FR-009 patterns.
-5. Generated AGENTS.md files SHOULD be cached in `{notes_path}/.claude-projects/{slug}/agents/{role_slug}/AGENTS.md` for debugging.
+5. Generated AGENTS.md files SHOULD be cached in `{notes_path}/.claude-projects/{project}/agents/{role_slug}/AGENTS.md` for debugging.
 
 ### Sandbox Scope
 

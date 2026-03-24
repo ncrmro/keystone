@@ -1,7 +1,7 @@
 # REQ-012: agentctl Project Sessions
 
 Extend agentctl with project context, worktree isolation, sandboxed execution,
-and local model support across all AI tools. Integrates with `pz agent` (REQ-013)
+and local model support across all AI tools. Integrates with the `pz agent` wrapper (REQ-010.13/REQ-010.14)
 to provide project-scoped AI agent sessions.
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
@@ -31,11 +31,13 @@ environment variables (PROJECT_NAME, PROJECT_PATH, PROJECT_README,
 VAULT_ROOT) for all tools.
 
 > **Breaking changes from current implementation**: The current `agentctl.sh`
-> supports `--project` only for `claude` and requires an additional positional
-> `<session-slug>` argument. REQ-012.1 generalizes `--project` to all AI tools,
-> and REQ-012.3 makes the Zellij session creation uniform. Project metadata
-> is discovered from `README.md` frontmatter (REQ-010) rather than `PROJECTS.yaml`.
-> These are intentional breaking changes; migration is out of scope for this spec.
+> already wires `--project` and Zellij session wrapping for `claude|gemini|codex|opencode`,
+> and requires an additional positional `<session-slug>` argument with a specific
+> session naming/prefix convention. REQ-012.1/REQ-012.3 standardize this behavior across
+> all AI tools, change the session naming/prefix contract (and `<session-slug>` handling),
+> and switch project metadata discovery to `README.md` frontmatter (REQ-010) rather than
+> `PROJECTS.yaml`. These are intentional breaking changes; migration is out of scope for
+> this spec.
 
 ### Worktree Support
 
