@@ -515,7 +515,7 @@ The scheduler (`scheduler.sh`) is a pure-bash script (no LLM) that runs once dai
    - `monthly:<day>` — runs on the numbered day (e.g., `monthly:1`)
 3. Creates tasks with `source: "schedule"` and `source_ref: "schedule-{name}-{YYYY-MM-DD}"` for deduplication
 4. Sets the `workflow` field from the schedule definition (scheduler is the only creator that sets workflows at creation time)
-5. Reads CalDAV calendar events via `calendula event list` (gracefully skipped if calendula is unavailable)
+5. Reads CalDAV calendar events via `calendula event list` (gracefully skipped if calendula is unavailable) — all events on the calendar become tasks, no prefix required
 6. Creates tasks from calendar events with `source: "calendar"` and `source_ref: "calendar-{uid}-{YYYY-MM-DD}"` for deduplication
 7. If any tasks were created, triggers `agent-{name}-task-loop.service`
 

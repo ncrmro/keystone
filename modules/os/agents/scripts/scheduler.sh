@@ -115,7 +115,8 @@ log "Scheduler: $CREATED tasks from SCHEDULES.yaml"
 
 # -- CalDAV calendar events ---------------------------------------------------
 # Read upcoming events from the agent's CalDAV calendar via calendula.
-# Events with [Team] or [AgentName] prefixes become tasks.
+# All events on the calendar become tasks — the calendar itself is the
+# scheduling mechanism. Events missing a UID or summary are skipped.
 # Gracefully skips if calendula is not available.
 if command -v calendula &>/dev/null; then
   log "Reading CalDAV calendar events..."
@@ -134,11 +135,6 @@ if command -v calendula &>/dev/null; then
 
       # Skip events without a UID or summary
       if [ -z "$CAL_UID" ] || [ -z "$CAL_SUMMARY" ]; then
-        continue
-      fi
-
-      # Only create tasks for events whose summary starts with [Team] or [AgentName]
-      if [[ ! "$CAL_SUMMARY" == "\[Team\]"* && ! "$CAL_SUMMARY" == "\[$AGENT_NAME\]"* ]]; then
         continue
       fi
 

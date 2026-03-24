@@ -299,8 +299,8 @@ in
                 options = {
                   summary = mkOption {
                     type = types.str;
-                    description = "Event summary (e.g. '[Team] Weekly Retrospective').";
-                    example = "[Team] Weekly Retrospective";
+                    description = "Event summary (e.g. 'Weekly Retrospective').";
+                    example = "Weekly Retrospective";
                   };
                   schedule = mkOption {
                     type = types.str;
@@ -323,15 +323,14 @@ in
             default = [ ];
             description = ''
               Recurring team cadence events for the agent's CalDAV calendar.
-              Events with [Team] prefix are shared across all agents; events with
-              [AgentName] prefix are agent-specific. These events must be created
-              on the CalDAV server (e.g. via calendula or a CalDAV client). The
-              scheduler reads events from the calendar and creates tasks with
-              source: "calendar".
+              All events on the calendar become tasks — the calendar itself is the
+              scheduling mechanism. These events must be created on the CalDAV
+              server (e.g. via calendula or a CalDAV client). The scheduler reads
+              events from the calendar and creates tasks with source: "calendar".
             '';
             example = [
               {
-                summary = "[Team] Weekly Retrospective";
+                summary = "Weekly Retrospective";
                 schedule = "weekly:friday";
                 time = "20:00";
                 workflow = "retrospective/run";
