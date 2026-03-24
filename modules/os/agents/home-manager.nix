@@ -51,32 +51,14 @@ in
             # stable defaults when the attrs are absent.
             _module.args.keystoneInputs = { };
 
-            keystone.terminal = mkIf agentCfg.terminal.enable {
-              enable = mkDefault true;
+            # NOTE: Do NOT wrap in mkIf — see users.nix for explanation.
+            keystone.terminal = {
+              enable = mkDefault agentCfg.terminal.enable;
               conventions.archetype = mkDefault agentCfg.archetype;
 
-              # Bridge keystone.development → devMode paths
-              devMode = let
-                repos = config.keystone.repos;
-                repoNames = attrNames repos;
-                keystoneEntry = findFirst
-                  (name: (repos.${name}.flakeInput or null) == "keystone")
-                  null repoNames;
-                deepworkEntry = findFirst
-                  (name: (repos.${name}.flakeInput or null) == "deepwork")
-                  null repoNames;
-              in {
-                keystonePath = mkDefault (
-                  if config.keystone.development && keystoneEntry != null
-                  then "/home/${username}/.keystone/repos/${keystoneEntry}"
-                  else null
-                );
-                deepworkPath = mkDefault (
-                  if config.keystone.development && deepworkEntry != null
-                  then "/home/${username}/.keystone/repos/${deepworkEntry}"
-                  else null
-                );
-              };
+              # development and repos are no longer bridged here;
+              # they are inherited globally from keystone.development
+              # and keystone.repos which are now shared options.
 
               git =
                 let
@@ -230,7 +212,10 @@ in
             # The MCP server command in cliCodingAgents uses an absolute Nix store
             # path, but agents may also invoke the binary directly (e.g. diagnostics,
             # `which chrome-devtools-mcp`). Adding it to home.packages satisfies both.
-            home.packages = optionals (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) [
+            home.packages = [
+              sysPkgs.keystone.slidev
+            ]
+            ++ optionals (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) [
               sysPkgs.keystone.chrome-devtools-mcp
             ];
 

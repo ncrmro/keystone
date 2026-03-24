@@ -20,10 +20,63 @@ let
   # Nix-managed MCP servers as a JSON file in the store, used by the
   # activation script to merge into the runtime ~/.claude.json.
   claudeJsonMcpServers = pkgs.writeText "claude-mcp-servers.json" (builtins.toJSON cfg.mcpServers);
+
+  # Nix-managed settings for Gemini CLI
+  geminiJsonSettings = pkgs.writeText "gemini-settings.json" (
+    builtins.toJSON {
+      mcpServers =
+        cfg.mcpServers
+        // (
+          if terminalCfg.ai.enable then
+            {
+              deepwork = {
+                command = "${pkgs.keystone.deepwork}/bin/deepwork";
+                args = [
+                  "serve"
+                  "--path"
+                  "."
+                  "--external-runner"
+                  "claude"
+                  "--platform"
+                  "gemini"
+                ];
+              };
+            }
+          else
+            { }
+        );
+      context = {
+        fileFiltering = {
+          inherit (cfg) respectGitIgnore;
+        };
+      };
+    }
+  );
+
+  # Nix-managed settings for OpenCode
+  opencodeJsonSettings = pkgs.writeText "opencode-settings.json" (
+    builtins.toJSON {
+      mcp = mapAttrs (
+        _: srv:
+        {
+          type = "local";
+          command = [ srv.command ] ++ srv.args;
+          enabled = true;
+        }
+        // optionalAttrs (srv.env != { }) {
+          inherit (srv) env;
+        }
+      ) cfg.mcpServers;
+    }
+  );
 in
 {
   options.keystone.terminal.cliCodingAgents = {
-    enable = mkEnableOption "global configurations for AI coding agent CLIs";
+    enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = "global configurations for AI coding agent CLIs";
+    };
 
     mcpServers = mkOption {
       type = types.attrsOf (
@@ -67,33 +120,6 @@ in
 
   config = mkIf (terminalCfg.enable && cfg.enable) {
     home.file = {
-      # Gemini CLI
-      # Location: ~/.gemini/settings.json
-      ".gemini/settings.json".text = builtins.toJSON {
-        mcpServers = cfg.mcpServers;
-        context = {
-          fileFiltering = {
-            inherit (cfg) respectGitIgnore;
-          };
-        };
-      };
-
-      # OpenCode
-      # Location: ~/.config/opencode/opencode.json
-      ".config/opencode/opencode.json".text = builtins.toJSON {
-        mcp = mapAttrs (
-          _: srv:
-          {
-            type = "local";
-            command = [ srv.command ] ++ srv.args;
-            enabled = true;
-          }
-          // optionalAttrs (srv.env != { }) {
-            inherit (srv) env;
-          }
-        ) cfg.mcpServers;
-      };
-
       # TODO: Enable when codex supports global settings file
       # ".codex/settings.json".text = builtins.toJSON {
       #   mcpServers = cfg.mcpServers;
@@ -124,6 +150,54 @@ in
         # First run: create with just MCP servers, Claude Code populates the rest
         ${pkgs.jq}/bin/jq -n --slurpfile s ${claudeJsonMcpServers} '{mcpServers: $s[0]}' \
           > "$claudeJson"
+      fi
+    '';
+
+    # Gemini CLI
+    # CRITICAL: ~/.gemini/settings.json must be a writable regular file.
+    # Strategy: merge mcpServers and context settings from Nix config.
+    home.activation.geminiSettingsConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      geminiSettings="$HOME/.gemini/settings.json"
+      mkdir -p "$(dirname "$geminiSettings")"
+
+      # Remove stale Nix store symlink from previous home-manager generations
+      if [ -L "$geminiSettings" ]; then
+        rm -f "$geminiSettings"
+      fi
+
+      if [ -f "$geminiSettings" ]; then
+        # Merge: replace mcpServers and context, preserve all other state
+        ${pkgs.jq}/bin/jq -s '.[0] * .[1]' \
+          "$geminiSettings" ${geminiJsonSettings} > "$geminiSettings.tmp" \
+          && mv "$geminiSettings.tmp" "$geminiSettings"
+      else
+        # First run: create from scratch
+        cp ${geminiJsonSettings} "$geminiSettings"
+        chmod 644 "$geminiSettings"
+      fi
+    '';
+
+    # OpenCode
+    # CRITICAL: ~/.config/opencode/opencode.json must be a writable regular file.
+    # Strategy: merge mcp configuration from Nix config.
+    home.activation.opencodeSettingsConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      opencodeSettings="$HOME/.config/opencode/opencode.json"
+      mkdir -p "$(dirname "$opencodeSettings")"
+
+      # Remove stale Nix store symlink from previous home-manager generations
+      if [ -L "$opencodeSettings" ]; then
+        rm -f "$opencodeSettings"
+      fi
+
+      if [ -f "$opencodeSettings" ]; then
+        # Merge: replace .mcp, preserve all other runtime state
+        ${pkgs.jq}/bin/jq -s '.[0] * .[1]' \
+          "$opencodeSettings" ${opencodeJsonSettings} > "$opencodeSettings.tmp" \
+          && mv "$opencodeSettings.tmp" "$opencodeSettings"
+      else
+        # First run: create from scratch
+        cp ${opencodeJsonSettings} "$opencodeSettings"
+        chmod 644 "$opencodeSettings"
       fi
     '';
   };

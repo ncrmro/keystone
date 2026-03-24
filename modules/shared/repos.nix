@@ -9,11 +9,30 @@
 # Only inputs with discoverable source URLs (github, git) are registered.
 # Auto-derived entries use mkDefault priority so consumers can override.
 #
-{ lib, config, ... }:
+{
+  lib,
+  config,
+  options,
+  ...
+}:
+let _ = builtins.trace "SHARED REPOS MODULE LOADING..." null; in
 with lib;
 let
   cfg = config.keystone;
   inputs = cfg._repoInputs;
+
+  # Whether we are running inside a Home Manager module that has access to NixOS config
+  osConfig =
+    if config ? osConfig then
+      config.osConfig
+    else if options ? osConfig && options.osConfig ? value then
+      options.osConfig.value
+    else
+      null;
+
+  _trace1 = builtins.trace "SHARED REPOS: config has osConfig: ${if config ? osConfig then "YES" else "NO"}" null;
+  _trace2 = builtins.trace "SHARED REPOS: options has osConfig: ${if options ? osConfig then "YES" else "NO"}" null;
+  _trace3 = if osConfig != null then builtins.trace "SHARED REPOS: osConfig.keystone.development is ${builtins.toJSON (osConfig.keystone.development or "MISSING")}" null else null;
 
   # Derive a repo entry from a flake input's sourceInfo.
   # Returns null for inputs without a discoverable git URL.
@@ -21,8 +40,9 @@ let
   mkRepoEntry =
     name: input:
     let
-      si = input.sourceInfo or { };
-      type = si.type or "";
+      # Safe access to sourceInfo to avoid context-related evaluation errors
+      si = if builtins.isAttrs input && input ? sourceInfo then input.sourceInfo else { };
+      type = si.type or "path";
     in
     if type == "github" && si ? owner && si ? repo then
       {
@@ -33,11 +53,43 @@ let
           branch = "main";
         };
       }
-    else if type == "git" && si ? url then
+    else if (type == "git" || type == "path") then
+      let
+        # Try to extract owner/repo from URL if available.
+        # Avoid using si.path directly if it's a store path to prevent evaluation errors.
+        url = si.url or "";
+
+        # Clean URL of protocols and prefixes
+        # Note: replaceStrings replaces all occurrences of each string in the first list with the corresponding string in the second list.
+        cleanUrl =
+          replaceStrings
+            [ "git+" "file://" "https://" "ssh://" "git@github.com:" ]
+            [
+              ""
+              ""
+              ""
+              ""
+              ""
+            ]
+            url;
+        # Split and take last two parts
+        parts = filter (s: s != "") (splitString "/" cleanUrl);
+        len = length parts;
+        repo = if len >= 1 then removeSuffix ".git" (last parts) else null;
+        owner = if len >= 2 then elemAt parts (len - 2) else null;
+
+        # Special case: if it's the keystone input and we're evaluating it
+        # locally, we might not have owner/repo in the path.
+        # Use ncrmro/keystone as a sensible default for the keystone input
+        # if name is "keystone".
+        defaultOwnerRepo = if name == "keystone" then "ncrmro/keystone" else name;
+
+        derivedName = if owner != null && repo != null then "${owner}/${repo}" else defaultOwnerRepo;
+      in
       {
-        inherit name;
+        name = derivedName;
         value = {
-          url = si.url;
+          inherit url;
           flakeInput = name;
           branch = "main";
         };
@@ -52,7 +104,7 @@ in
   options.keystone = {
     development = mkOption {
       type = types.bool;
-      default = false;
+      default = if osConfig != null then osConfig.keystone.development or false else false;
       description = ''
         Enable development mode globally. When true, modules use local repo
         checkouts at ~/.keystone/repos/OWNER/REPO/ instead of Nix store copies.
@@ -91,7 +143,7 @@ in
           };
         }
       );
-      default = { };
+      default = if osConfig != null then osConfig.keystone.repos or { } else { };
       description = "Managed repositories keyed by owner/repo. Cloned to ~/.keystone/repos/{owner}/{repo}/.";
     };
   };

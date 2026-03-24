@@ -137,6 +137,8 @@
           kinda-nvim-hx
           omarchy
           ;
+        self = self;
+        deepwork = deepwork;
         keystoneOverlay = self.overlays.default;
       };
 
@@ -210,7 +212,7 @@
         hosts = ./modules/hosts.nix;
 
         # Managed repo registry + development mode toggle (keystone.repos, keystone.development)
-        repos = ./modules/repos.nix;
+        repos = ./modules/shared/repos.nix;
 
         # Core OS module - storage, secure boot, TPM, remote unlock, users, services
         # Pass flake inputs to installer via dedicated option — NOT _module.args,
@@ -225,7 +227,7 @@
             ./modules/domain.nix
             ./modules/services.nix
             ./modules/hosts.nix
-            ./modules/repos.nix
+            ./modules/shared/repos.nix
             ./modules/os
             ./modules/installer.nix
           ];
@@ -322,6 +324,7 @@
               lib
               nixpkgs
               agenix
+              home-manager
               ;
             self = self;
           };
@@ -364,6 +367,7 @@
             deepwork-library-jobs
             keystone-deepwork-jobs
             keystone-conventions
+            slidev
             ;
           keystone-tui = pkgs.callPackage ./packages/keystone-tui { };
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
@@ -410,6 +414,7 @@
               yq-go
               gettext
               bash
+              shellcheck
               deepwork.packages.${pkgs.system}.default
               gh # GitHub CLI
               python3

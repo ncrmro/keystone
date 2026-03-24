@@ -1,3 +1,6 @@
+# Keystone Desktop — NixOS-level system configuration.
+# Implements REQ-002 (Keystone Desktop)
+# See conventions/process.enable-by-default.md
 {
   config,
   lib,
@@ -14,6 +17,31 @@ in
   # _module.args infinite recursion when keystoneInputs is used in imports)
   options.keystone.desktop = {
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities";
+
+    obs = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable OBS Studio for screen recording and streaming";
+      };
+      gpuType = mkOption {
+        type = types.nullOr (
+          types.enum [
+            "amd"
+            "intel"
+            "nvidia"
+          ]
+        );
+        default = null;
+        description = ''
+          GPU type for hardware-accelerated encoding in OBS.
+          - amd: enables VA-API and Vulkan capture plugins
+          - intel: enables VA-API plugin
+          - nvidia: enables Vulkan capture plugin (NVENC is built into OBS core)
+          When null, only PipeWire audio capture is included (no GPU-specific plugins).
+        '';
+      };
+    };
 
     user = mkOption {
       type = types.str;
@@ -134,42 +162,63 @@ in
     ];
 
     # System packages for desktop environment
-    environment.systemPackages = with pkgs; [
-      # Screen recording
-      gpu-screen-recorder
+    environment.systemPackages =
+      with pkgs;
+      [
+        # Screen recording
+        gpu-screen-recorder
 
-      # Media
-      ## Video Editor
-      ## kdenlive disabled: broken in nixpkgs unstable (missing shaderc link in ffmpeg-full)
-      # kdePackages.kdenlive
-      ## Video Player
-      mpv
+        # Media
+        ## Video Editor
+        ## kdenlive disabled: broken in nixpkgs unstable (missing shaderc link in ffmpeg-full)
+        # kdePackages.kdenlive
+        ## Video Player
+        mpv
 
-      # File management
-      nautilus
-      file-roller
+        # File management
+        nautilus
+        file-roller
 
-      # System utilities
-      pavucontrol
-      networkmanagerapplet
-      blueberry
+        # System utilities
+        pavucontrol
+        networkmanagerapplet
+        blueberry
 
-      # XDG portals and desktop integration
-      xdg-utils
-      xdg-user-dirs
+        # XDG portals and desktop integration
+        xdg-utils
+        xdg-user-dirs
 
-      # Polkit agent
-      hyprpolkitagent
+        # Polkit agent
+        hyprpolkitagent
 
-      # Cursor themes
-      adwaita-icon-theme
+        # Cursor themes
+        adwaita-icon-theme
 
-      # Additional Hyprland tools
-      hyprsunset
-      hyprlock
-      hypridle
-      hyprpaper
-    ];
+        # Additional Hyprland tools
+        hyprsunset
+        hyprlock
+        hypridle
+        hyprpaper
+      ]
+      ++ optionals cfg.obs.enable [
+        (wrapOBS {
+          plugins =
+            with obs-studio-plugins;
+            [
+              obs-pipewire-audio-capture
+            ]
+            ++ optionals (cfg.obs.gpuType == "amd") [
+              obs-vaapi
+              obs-vkcapture
+            ]
+            ++ optionals (cfg.obs.gpuType == "intel") [
+              obs-vaapi
+            ]
+            ++ optionals (cfg.obs.gpuType == "nvidia") [
+              obs-vkcapture
+            ];
+        })
+      ];
 
     # Enable polkit
     security.polkit.enable = mkDefault true;

@@ -9,8 +9,9 @@ installer-iso
 # ISO files (they are large)
 *.iso
 
-# Editor files
+# Editor / AI tool files
 .vscode/
+.gemini/
 *.swp
 *.swo
 *~
@@ -63,6 +64,18 @@ target/
 # VM screenshots for debugging
 screenshots/
 *.sock
+
+# DeepWork runtime artifacts (job definitions are tracked, outputs are not)
+.deepwork/sessions/
+.deepwork/tmp/
+.deepwork/jobs/**/plan.md
+.deepwork/jobs/**/implementation_summary.md
+.deepwork/jobs/**/review_report.md
+.deepwork/jobs/**/build_result.md
+.deepwork/jobs/**/merge_result.md
+.deepwork/jobs/**/deploy_result.md
+.deepwork/jobs/**/validation_report.md
+.deepwork/jobs/**/fleet_survey.md
 
 # TUI screenshots (removed from history)
 assets/tui/

@@ -1,5 +1,5 @@
 name: sweng
-version: "2.2.0"
+version: "2.3.1"
 summary: "Software engineering lifecycle: design, implement, fix, refactor, and audit with agent orchestration"
 common_job_info_provided_to_all_steps_at_runtime: |
   Software engineering workflow with agent orchestration. Handles architecture design,
@@ -82,6 +82,7 @@ workflows:
     steps:
       - plan
       - assign
+      - pull_request_update
       - review
       - postflight
 
@@ -90,6 +91,7 @@ workflows:
     steps:
       - plan
       - assign
+      - pull_request_update
       - review
       - postflight
 
@@ -98,6 +100,7 @@ workflows:
     steps:
       - plan
       - assign
+      - pull_request_update
       - review
       - postflight
 
@@ -186,6 +189,29 @@ steps:
           "TASK.md Present": "TASK.md was present in the worktree before agent launch."
           "Status Updated": "TASK.md status was updated to assigned."
 
+  - id: pull_request_update
+    name: "Update PR with Demo Evidence"
+    description: >
+      Run screenshot tests (if available), post visual evidence on the PR,
+      and update the PR Demo section before review begins. Handles private
+      repo image hosting via draft release assets.
+    instructions_file: steps/pull_request_update.md
+    inputs:
+      - file: run_md
+        from_step: assign
+    outputs:
+      pull_request_update_md:
+        type: file
+        description: "PR update summary at .deepwork/tmp/sweng/pull_request_update.md with evidence of screenshots posted and demo section updated"
+        required: true
+    dependencies:
+      - assign
+    reviews:
+      - run_each: pull_request_update_md
+        quality_criteria:
+          "Demo Section Updated": "PR body has a Demo section with concrete evidence (screenshots, test results, or preview URLs)."
+          "Screenshots Posted": "If the project has screenshot tests, they were run, committed, and embedded in the PR body's Demo section (not as a separate comment). Private repos use draft release assets, not raw.githubusercontent.com."
+
   - id: review
     name: "Review and Merge"
     description: >
@@ -194,15 +220,15 @@ steps:
       repo owner). Auto-merge on PASS (squash). Max 3 fix attempts on FAIL.
     instructions_file: steps/review.md
     inputs:
-      - file: run_md
-        from_step: assign
+      - file: pull_request_update_md
+        from_step: pull_request_update
     outputs:
       review_md:
         type: file
         description: "Review document at .deepwork/tmp/sweng/review.md with verdict, evidence, and merge status"
         required: true
     dependencies:
-      - assign
+      - pull_request_update
     reviews:
       - run_each: review_md
         additional_review_guidance: >

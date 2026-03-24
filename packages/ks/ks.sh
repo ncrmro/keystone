@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ks — Keystone infrastructure CLI
 #
+# Implements REQ-018: Keystone Home Directory and Repo Management
+# See conventions/code.shell-scripts.md
+#
 # Usage: ks <command> [options]
 #
 # Commands:
@@ -23,7 +26,8 @@
 # Repo discovery:
 #   1. $NIXOS_CONFIG_DIR if set and contains hosts.nix
 #   2. Git repo root of current directory if it contains hosts.nix
-#   3. ~/nixos-config as fallback
+#   3. ~/.keystone/repos/*/ if it contains hosts.nix
+#   4. ~/nixos-config as fallback
 #
 # The --dev flag overrides keystone and agenix-secrets flake inputs with
 # local clone paths for testing uncommitted changes.
@@ -63,19 +67,42 @@ find_repo() {
     readlink -f "$NIXOS_CONFIG_DIR"
     return
   fi
+
   local dir
   dir=$(git rev-parse --show-toplevel 2>/dev/null || true)
   if [[ -n "$dir" ]] && [[ -f "$dir/hosts.nix" ]]; then
     readlink -f "$dir"
     return
   fi
+
+  # Scan for any repo with hosts.nix in ~/.keystone/repos/
+  if [[ -d "$HOME/.keystone/repos" ]]; then
+    local match
+    match=$(find "$HOME/.keystone/repos" -maxdepth 3 -name hosts.nix -print -quit)
+    if [[ -n "$match" ]]; then
+      readlink -f "$(dirname "$match")"
+      return
+    fi
+  fi
+
   if [[ -f "$HOME/nixos-config/hosts.nix" ]]; then
     readlink -f "$HOME/nixos-config"
     return
   fi
-  echo "Error: Cannot find nixos-config repo." >&2
+
+  echo "Error: Cannot find nixos-config repo (no hosts.nix found)." >&2
   echo "Set NIXOS_CONFIG_DIR or run from within the repo." >&2
   exit 1
+}
+
+# --- Get repo registry from repos.nix ---
+get_repos_registry() {
+  local repo_root="$1"
+  if [[ -f "$repo_root/repos.nix" ]]; then
+    nix eval -f "$repo_root/repos.nix" --json 2>/dev/null
+  else
+    echo "{}"
+  fi
 }
 
 # --- Resolve HOST from hosts.nix ---
@@ -113,25 +140,40 @@ resolve_host() {
 local_override_args() {
   local repo_root="$1"
   local args=()
+  local registry
+  registry=$(get_repos_registry "$repo_root")
 
-  if [[ -d "$repo_root/.repos/keystone" ]]; then
-    args+=(--override-input keystone "path:$repo_root/.repos/keystone")
-  elif [[ -d "$repo_root/.submodules/keystone" ]]; then
-    args+=(--override-input keystone "path:$repo_root/.submodules/keystone")
-  fi
+  # Parse registry entries
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local key input path
+    key=$(echo "$line" | cut -d'|' -f1)
+    input=$(echo "$line" | cut -d'|' -f2)
 
-  if [[ -d "$repo_root/.repos/agenix-secrets" ]]; then
-    args+=(--override-input agenix-secrets "path:$repo_root/.repos/agenix-secrets")
-  elif [[ -d "$repo_root/agenix-secrets" ]]; then
-    args+=(--override-input agenix-secrets "path:$repo_root/agenix-secrets")
-  fi
+    # Check for checkout in standard locations:
+    # 1. ~/.keystone/repos/{key}
+    # 2. $repo_root/.repos/{name}
+    # 3. $repo_root/.submodules/{name} (legacy)
+    # 4. $repo_root/{name} (legacy)
+    local name="${key##*/}"
+    path=""
+    if [[ -d "$HOME/.keystone/repos/$key" ]]; then
+      path="$HOME/.keystone/repos/$key"
+    elif [[ -d "$repo_root/.repos/$name" ]]; then
+      path="$repo_root/.repos/$name"
+    elif [[ -d "$repo_root/.submodules/$name" ]]; then
+      path="$repo_root/.submodules/$name"
+    elif [[ -d "$repo_root/$name" ]]; then
+      path="$repo_root/$name"
+    fi
+
+    if [[ -n "$path" && "$input" != "null" ]]; then
+      args+=(--override-input "$input" "path:$path")
+    fi
+  done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.flakeInput)"')"
 
   echo "${args[@]}"   # empty string if no repos found — no error, no exit
 }
-
-# --- Repo URLs (for cloning) ---
-KEYSTONE_URL="git@github.com:ncrmro/keystone.git"
-AGENIX_SECRETS_URL="ssh://forgejo@git.ncrmro.com:2222/ncrmro/agenix-secrets.git"
 
 # --- Push keystone with fork fallback (REQ-016.9) ---
 # Pushes the local keystone repo. If the user lacks push access to the upstream
@@ -311,35 +353,30 @@ deploy_home_manager_only() {
 }
 
 # --- Find local repo path ---
-# Returns the local path for a given repo name, checking .repos/ first, then legacy paths.
+# Returns the local path for a given repo registry key (owner/repo).
 find_local_repo() {
-  local repo_root="$1" name="$2"
-  case "$name" in
-    keystone)
-      if [[ -d "$repo_root/.repos/keystone" ]]; then
-        echo "$repo_root/.repos/keystone"
-      elif [[ -d "$repo_root/.submodules/keystone" ]]; then
-        echo "$repo_root/.submodules/keystone"
-      fi
-      ;;
-    agenix-secrets)
-      if [[ -d "$repo_root/.repos/agenix-secrets" ]]; then
-        echo "$repo_root/.repos/agenix-secrets"
-      elif [[ -d "$repo_root/agenix-secrets" ]]; then
-        echo "$repo_root/agenix-secrets"
-      fi
-      ;;
-  esac
+  local repo_root="$1" key="$2"
+  local name="${key##*/}"
+
+  if [[ -d "$HOME/.keystone/repos/$key" ]]; then
+    echo "$HOME/.keystone/repos/$key"
+  elif [[ -d "$repo_root/.repos/$name" ]]; then
+    echo "$repo_root/.repos/$name"
+  elif [[ -d "$repo_root/.submodules/$name" ]]; then
+    echo "$repo_root/.submodules/$name"
+  elif [[ -d "$repo_root/$name" ]]; then
+    echo "$repo_root/$name"
+  fi
 }
 
 # --- Pull (clone or update) a repo ---
 pull_repo() {
-  local repo_root="$1" name="$2" url="$3"
-  local target="$repo_root/.repos/$name"
+  local repo_root="$1" key="$2" url="$3"
+  local target="$HOME/.keystone/repos/$key"
 
-  # Check legacy paths first — if found there, pull in-place
+  # Check for existing checkout in legacy locations
   local existing
-  existing=$(find_local_repo "$repo_root" "$name")
+  existing=$(find_local_repo "$repo_root" "$key")
   if [[ -n "$existing" ]]; then
     target="$existing"
   fi
@@ -350,16 +387,16 @@ pull_repo() {
       local default_branch
       default_branch=$(git -C "$target" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
       default_branch="${default_branch:-main}"
-      echo "Warning: $name is in detached HEAD state, switching to $default_branch..." >&2
+      echo "Warning: $key is in detached HEAD state, switching to $default_branch..." >&2
       git -C "$target" checkout "$default_branch" || {
-        echo "Error: failed to checkout $default_branch in $name" >&2
+        echo "Error: failed to checkout $default_branch in $key" >&2
         return 1
       }
     fi
-    echo "Pulling $name..."
+    echo "Pulling $key..."
     git -C "$target" pull --ff-only
   else
-    echo "Cloning $name..."
+    echo "Cloning $key..."
     mkdir -p "$(dirname "$target")"
     git clone "$url" "$target"
   fi
@@ -497,20 +534,25 @@ cmd_build() {
 
   if [[ "$lock" == true ]]; then
     # ── LOCK MODE (REQ-016.7): full system build with lock workflow ──
-    local ks_path secrets_path
-    ks_path=$(find_local_repo "$repo_root" keystone)
-    secrets_path=$(find_local_repo "$repo_root" agenix-secrets)
-
     # Step 1: Verify repos are clean
-    [[ -n "$ks_path" ]] && verify_repo_clean "$ks_path" keystone
-    [[ -n "$secrets_path" ]] && verify_repo_clean "$secrets_path" agenix-secrets
+    while IFS= read -r key; do
+      [[ -z "$key" ]] && continue
+      local path
+      path=$(find_local_repo "$repo_root" "$key")
+      [[ -n "$path" ]] && verify_repo_clean "$path" "$key"
+    done <<< "$(get_repos_registry "$repo_root" | jq -r 'to_entries[].key')"
 
     # Step 2: Push keystone with fork fallback (REQ-016.9)
+    local ks_path
+    ks_path=$(find_local_repo "$repo_root" "ncrmro/keystone")
     [[ -n "$ks_path" ]] && push_keystone_with_fork_fallback "$ks_path"
 
     # Step 3: Lock flake inputs
     echo "Locking flake inputs..."
-    nix flake update keystone agenix-secrets --flake "$repo_root"
+    local inputs
+    inputs=$(get_repos_registry "$repo_root" | jq -r 'to_entries[].value.flakeInput | select(. != null)')
+    # shellcheck disable=SC2086
+    nix flake update $inputs --flake "$repo_root"
 
     # Step 4: Full system build with local overrides (REQ-019.5)
     local override_args=()
@@ -539,6 +581,7 @@ cmd_build() {
   fi
 }
 
+# --- Update command ---
 cmd_update() {
   local mode="switch" hosts_arg="" pull=false lock=true
   while [[ $# -gt 0 ]]; do
@@ -567,10 +610,18 @@ cmd_update() {
     done
   fi
 
+  local registry
+  registry=$(get_repos_registry "$repo_root")
+
   # --- Handle --pull (standalone, no lock) ---
   if [[ "$pull" == true && "$lock" != true ]]; then
-    pull_repo "$repo_root" keystone "$KEYSTONE_URL"
-    pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      local key url
+      key=$(echo "$line" | cut -d'|' -f1)
+      url=$(echo "$line" | cut -d'|' -f2)
+      pull_repo "$repo_root" "$key" "$url"
+    done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
     echo "Pull complete."
     return
   fi
@@ -615,23 +666,34 @@ cmd_update() {
   echo "Pulling nixos-config..."
   git -C "$repo_root" pull --ff-only
 
-  # Step 2: Pull keystone + agenix-secrets
-  pull_repo "$repo_root" keystone "$KEYSTONE_URL"
-  pull_repo "$repo_root" agenix-secrets "$AGENIX_SECRETS_URL"
+  # Step 2: Pull all repos in registry
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local key url
+    key=$(echo "$line" | cut -d'|' -f1)
+    url=$(echo "$line" | cut -d'|' -f2)
+    pull_repo "$repo_root" "$key" "$url"
+  done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
 
   # Step 3: Verify repos are clean and fully pushed before locking
-  local ks_path secrets_path
-  ks_path=$(find_local_repo "$repo_root" keystone)
-  secrets_path=$(find_local_repo "$repo_root" agenix-secrets)
-  [[ -n "$ks_path" ]] && verify_repo_clean "$ks_path" keystone
-  [[ -n "$secrets_path" ]] && verify_repo_clean "$secrets_path" agenix-secrets
+  while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    local path
+    path=$(find_local_repo "$repo_root" "$key")
+    [[ -n "$path" ]] && verify_repo_clean "$path" "$key"
+  done <<< "$(echo "$registry" | jq -r 'to_entries[].key')"
 
   # Step 3.5: Push keystone with fork fallback (REQ-016.8-9)
+  local ks_path
+  ks_path=$(find_local_repo "$repo_root" "ncrmro/keystone")
   [[ -n "$ks_path" ]] && push_keystone_with_fork_fallback "$ks_path"
 
   # Step 4: Update flake.lock BEFORE building so the build validates what will be committed
   echo "Locking flake inputs..."
-  nix flake update keystone agenix-secrets --flake "$repo_root"
+  local inputs
+  inputs=$(echo "$registry" | jq -r 'to_entries[].value.flakeInput | select(. != null)')
+  # shellcheck disable=SC2086
+  nix flake update $inputs --flake "$repo_root"
 
   # Step 5: Commit flake.lock (if changed)
   if ! git -C "$repo_root" diff --quiet flake.lock; then
@@ -720,7 +782,7 @@ cmd_update() {
 find_keystone_repo() {
   local repo_root="$1"
   local ks_path
-  ks_path=$(find_local_repo "$repo_root" keystone)
+  ks_path=$(find_local_repo "$repo_root" "ncrmro/keystone")
   echo "${ks_path:-}"
 }
 
@@ -829,9 +891,9 @@ ks_update_workflow_docs() {
 Steps executed in order:
 
 1. **Pull** nixos-config (`git pull --ff-only`)
-2. **Pull** keystone and agenix-secrets repos (clone if absent)
-3. **Verify** keystone and agenix-secrets are clean and fully pushed
-4. **Lock** flake inputs (`nix flake update keystone agenix-secrets`)
+2. **Pull** all repos defined in the registry
+3. **Verify** repos are clean and fully pushed
+4. **Lock** flake inputs (`nix flake update ...`)
 5. **Commit** flake.lock if changed (`git commit flake.lock -m "chore: relock ..."`)
 6. **Build** all target hosts in a single `nix build` invocation (Nix parallelises internally)
 7. **Push** nixos-config (rebase + push)
@@ -859,7 +921,7 @@ local_flake_override_docs() {
   cat <<'OFDOC'
 ## Local Flake Overrides
 
-`ks` auto-detects local keystone and agenix-secrets clones and passes
+`ks` auto-detects local repo clones and passes
 `--override-input` flags to every `nix build` / `nixos-rebuild` call —
 no manual flags needed.
 
@@ -867,22 +929,21 @@ no manual flags needed.
 
 | Input | Paths checked |
 |-------|---------------|
-| keystone | `<repo>/.repos/keystone`, `<repo>/.submodules/keystone` |
-| agenix-secrets | `<repo>/.repos/agenix-secrets`, `<repo>/agenix-secrets/` |
+| <input> | `~/.keystone/repos/<owner>/<repo>`, `<repo>/.repos/<name>`, `<repo>/.submodules/<name>` |
 
 ### Equivalent Manual Command
 
 ```bash
 nix build .#nixosConfigurations.HOSTNAME.config.system.build.toplevel \
-  --override-input keystone path:$(pwd)/.repos/keystone \
+  --override-input keystone path:$HOME/.keystone/repos/ncrmro/keystone \
   --no-link
 ```
 
-### Workflow for Keystone Changes
+### Workflow for Repo Changes
 
-1. Edit files in `.repos/keystone/` (or `.submodules/keystone/`)
+1. Edit files in local repo checkout
 2. Test with `ks build --dev` (builds with local overrides, no deploy)
-3. Once satisfied, commit + push keystone
+3. Once satisfied, commit + push the repo
 4. Ask a human to run `ks update` (requires sudo) for deployment
 OFDOC
 }
@@ -1193,7 +1254,7 @@ $user_table"
 
   # 7. Dev mode status (REQ-016.11-13)
   local ks_dev_path
-  ks_dev_path=$(find_local_repo "$repo_root" keystone)
+  ks_dev_path=$(find_local_repo "$repo_root" "ncrmro/keystone")
   if [[ -n "$ks_dev_path" ]]; then
     local ks_branch ks_dirty=""
     ks_branch=$(git -C "$ks_dev_path" branch --show-current 2>/dev/null || echo "unknown")
@@ -1373,7 +1434,7 @@ if [[ $# -lt 1 ]]; then
   echo "HOSTS: Comma-separated list of host names (e.g. host1,host2). Defaults to current host." >&2
   echo "Note: Risky hosts should be placed last (e.g. workstation,ocean)." >&2
   echo "" >&2
-  echo "Repo discovery: \$NIXOS_CONFIG_DIR > git root > ~/nixos-config" >&2
+  echo "Repo discovery: \$NIXOS_CONFIG_DIR > git root > ~/.keystone/repos/*/ > ~/nixos-config" >&2
   exit 1
 fi
 

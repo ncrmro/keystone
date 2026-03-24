@@ -1,7 +1,12 @@
+# Keystone Terminal — core terminal module entry point.
+# Implements REQ-002 (Terminal Development Environment)
+# See specs/REQ-018-repo-management/ (development mode)
 {
   config,
   lib,
   pkgs,
+  keystoneInputs ? { },
+  osConfig ? null,
   ...
 }:
 with lib;
@@ -15,6 +20,7 @@ let
 in
 {
   imports = [
+    ../shared/repos.nix
     ./shell.nix
     ./editor.nix
     ./ai.nix
@@ -34,7 +40,7 @@ in
     ./projects.nix
     ./cli-coding-agent-configs.nix
     ./conventions.nix
-    ./claude-code-commands.nix
+    ./ai-extensions.nix
     ./perception.nix
   ];
 
@@ -51,39 +57,6 @@ in
       type = types.str;
       default = "hx";
       description = "Default editor command (e.g., 'hx' for helix, 'nvim' for neovim)";
-    };
-
-    devMode = {
-      keystonePath = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = ''
-          Absolute path to the local keystone repository checkout.
-
-          When set, terminal modules generate editable out-of-store symlinks
-          to source files in the checkout, enabling rapid iteration without
-          rebuilding. When null (default / locked mode), files are immutable
-          Nix store copies. Use `ks update --lock` to return to locked mode.
-
-          Auto-derived from keystone.repos when keystone.development is true.
-          Per REQ-018, the standard location is
-          ~/.keystone/repos/OWNER/keystone (the keystone config repo).
-        '';
-        example = "/home/user/.keystone/repos/ncrmro/keystone";
-      };
-
-      deepworkPath = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = ''
-          Absolute path to the local deepwork repository checkout.
-
-          When set, deepwork library jobs use the local checkout instead of
-          Nix store copies. Auto-derived from keystone.repos when
-          keystone.development is true.
-        '';
-        example = "/home/user/.keystone/repos/Unsupervisedcom/deepwork";
-      };
     };
 
     git = {
@@ -122,6 +95,19 @@ in
   };
 
   config = mkIf cfg.enable {
+    # Auto-populate keystone._repoInputs for home-manager if inputs are provided
+    # via keystoneInputs (standard for keystone's own home-manager modules).
+    keystone._repoInputs = mkIf (keystoneInputs ? self) {
+      keystone = keystoneInputs.self;
+      deepwork = keystoneInputs.deepwork or { };
+    };
+
+    # Inherit development mode and repos from NixOS level if available (osConfig).
+    # This ensures that setting keystone.development = true at the NixOS level
+    # automatically applies to all users' terminal modules without manual bridging.
+    keystone.development = mkIf (osConfig != null) (mkDefault osConfig.keystone.development);
+    keystone.repos = mkIf (osConfig != null) (mkDefault osConfig.keystone.repos);
+
     # Assertions to ensure required git options are set
     assertions = [
       {
@@ -169,7 +155,7 @@ in
       };
     };
 
-    home.packages = mkIf cfg.git.enable [
+    home.packages = optionals cfg.git.enable [
       pkgs.keystone.fetch-github-sources
     ];
 

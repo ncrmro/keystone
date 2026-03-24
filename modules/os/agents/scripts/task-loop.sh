@@ -95,6 +95,19 @@ elif [ -n "$FORGEJO_USERNAME" ]; then
   log "  Skipping forgejo source: fetch-forgejo-sources not found"
 fi
 
+# Built-in source: CalDAV calendar events (calendula)
+# calendula is installed via home-manager (keystone.terminal.calendar), not the dev shell
+if command -v calendula &>/dev/null; then
+  log "  Fetching source: calendar"
+  CALENDAR_OUTPUT=$(calendula event list --output json 2>>"$LOG_FILE" || echo "[]")
+  if [ -n "$CALENDAR_OUTPUT" ] && [ "$CALENDAR_OUTPUT" != "[]" ]; then
+    SOURCES_JSON=$(echo "$SOURCES_JSON" | jq --argjson data "$CALENDAR_OUTPUT" \
+      '. + [{"source": "calendar", "data": $data}]')
+  fi
+else
+  log "  Skipping calendar source: calendula not found"
+fi
+
 # Custom sources from PROJECTS.yaml (user-defined commands)
 if [ -f PROJECTS.yaml ]; then
   SOURCE_COUNT=$(yq '.sources | length' PROJECTS.yaml 2>/dev/null || echo "0")

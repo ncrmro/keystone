@@ -1,5 +1,8 @@
 
-## Pull Request
+# Convention: Pull Request (process.pull-request)
+
+Standards for summarizing work and providing validation evidence in pull requests.
+See `process.prose` for general writing style and clarity rules.
 
 ## Required Sections
 
