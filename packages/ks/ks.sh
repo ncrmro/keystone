@@ -8,7 +8,7 @@
 #
 # Commands:
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
-#   update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (home-manager only with --dev, full system default)
+#   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (home-manager only with --dev, full system default)
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
 #   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
 #   doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state
@@ -46,6 +46,7 @@
 #   MUST build all target hosts before deploying any of them.
 #   MUST pass --no-link to nix build to prevent ./result symlinks in the caller's CWD.
 #   SHOULD build all targets in a single nix invocation (nix parallelises internally).
+#   SHOULD hide warning lines during `ks update` by default; `--debug` MUST show them.
 #
 # Deployment
 #   MUST deploy hosts sequentially (not in parallel) to limit blast radius.
@@ -58,6 +59,22 @@
 #   MAY be used with uncommitted local repo changes.
 
 set -euo pipefail
+
+KS_DEBUG=false
+
+run_with_warning_filter() {
+  if [[ "${KS_DEBUG}" == true ]]; then
+    "$@"
+  else
+    "$@" 2> >(
+      awk '
+        /^warning:/ { next }
+        /^evaluation warning:/ { next }
+        { print > "/dev/stderr" }
+      '
+    )
+  fi
+}
 
 # --- Discover repo root ---
 # All paths are resolved with readlink -f because Nix `path:` flake URIs
@@ -175,6 +192,152 @@ local_override_args() {
   echo "${args[@]}"   # empty string if no repos found — no error, no exit
 }
 
+resolve_current_hm_user() {
+  local repo_root="$1"
+  local host="$2"
+  if [[ -z "$host" ]]; then
+    echo ""
+    return
+  fi
+  local preferred_user="${SUDO_USER:-${USER:-$(id -un)}}"
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+  local users_json
+  users_json=$(timeout 60 nix eval \
+    "$repo_root#nixosConfigurations.${host}.config.home-manager.users" \
+    --apply 'builtins.attrNames' --json \
+    "${override_args[@]}" 2>/dev/null || echo "[]")
+
+  if echo "$users_json" | jq -e --arg user "$preferred_user" '.[] | select(. == $user)' >/dev/null 2>&1; then
+    echo "$preferred_user"
+    return
+  fi
+
+  local fallback_user
+  fallback_user=$(echo "$users_json" | jq -r 'map(select(startswith("agent-") | not)) | .[0] // ""')
+  if [[ -n "$fallback_user" ]]; then
+    echo "$fallback_user"
+    return
+  fi
+
+  echo "$users_json" | jq -r '.[0] // ""'
+}
+
+eval_hm_user_attr_json() {
+  local repo_root="$1"
+  local host="$2"
+  local user="$3"
+  local attr_suffix="$4"
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+
+  timeout 60 nix eval \
+    "$repo_root#nixosConfigurations.${host}.config.home-manager.users.\"${user}\".${attr_suffix}" \
+    --json \
+    "${override_args[@]}" 2>/dev/null
+}
+
+resolve_ollama_user() {
+  local repo_root="$1"
+  local host="$2"
+  local user="${3:-}"
+
+  if [[ -n "$user" ]]; then
+    echo "$user"
+    return
+  fi
+
+  local resolved_user
+  resolved_user=$(resolve_current_hm_user "$repo_root" "$host")
+  if [[ -z "$resolved_user" ]]; then
+    echo "Error: could not resolve a home-manager user for host '$host'." >&2
+    exit 1
+  fi
+
+  echo "$resolved_user"
+}
+
+resolve_ollama_enabled() {
+  local repo_root="$1"
+  local host="$2"
+  local user
+  user=$(resolve_ollama_user "$repo_root" "$host" "${3:-}")
+
+  eval_hm_user_attr_json "$repo_root" "$host" "$user" "keystone.terminal.ai.ollama.enable" \
+    | jq -r 'if . == true then "true" else "false" end' 2>/dev/null || echo "false"
+}
+
+resolve_ollama_host() {
+  local repo_root="$1"
+  local host="$2"
+  local user
+  user=$(resolve_ollama_user "$repo_root" "$host" "${3:-}")
+
+  eval_hm_user_attr_json "$repo_root" "$host" "$user" "keystone.terminal.ai.ollama.host" \
+    | jq -r '. // ""' 2>/dev/null
+}
+
+resolve_ollama_default_model() {
+  local repo_root="$1"
+  local host="$2"
+  local user
+  user=$(resolve_ollama_user "$repo_root" "$host" "${3:-}")
+
+  eval_hm_user_attr_json "$repo_root" "$host" "$user" "keystone.terminal.ai.ollama.defaultModel" \
+    | jq -r '. // ""' 2>/dev/null
+}
+
+require_ollama_enabled() {
+  local repo_root="$1"
+  local host="$2"
+  local user="$3"
+  local enabled
+  enabled=$(resolve_ollama_enabled "$repo_root" "$host" "$user")
+  if [[ "$enabled" != "true" ]]; then
+    echo "Error: local model support is not enabled for home-manager user '$user' on host '$host'." >&2
+    echo "Set keystone.terminal.ai.ollama.enable = true to use --local." >&2
+    exit 1
+  fi
+}
+
+resolve_local_model() {
+  local explicit_model="$1"
+  local default_model="$2"
+
+  if [[ -n "$explicit_model" && "$explicit_model" != "default" ]]; then
+    echo "$explicit_model"
+    return
+  fi
+
+  if [[ -n "$default_model" ]]; then
+    echo "$default_model"
+    return
+  fi
+
+  echo "Error: no local model was provided and keystone.terminal.ai.ollama.defaultModel is not set." >&2
+  exit 1
+}
+
+list_ollama_models() {
+  local ollama_host="$1"
+
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "_ollama CLI not installed_"
+    return
+  fi
+
+  local models
+  models=$(OLLAMA_HOST="$ollama_host" ollama list 2>/dev/null | awk 'NR > 1 { print $1 }' || true)
+  if [[ -z "$models" ]]; then
+    echo "_No local models found_"
+    return
+  fi
+
+  while IFS= read -r model; do
+    [[ -n "$model" ]] && echo "- $model"
+  done <<< "$models"
+}
+
 # --- Push keystone with fork fallback (REQ-016.9) ---
 # Pushes the local keystone repo. If the user lacks push access to the upstream
 # repo, forks it and pushes to the fork instead.
@@ -195,7 +358,7 @@ push_keystone_with_fork_fallback() {
 
   if ! command -v gh >/dev/null 2>&1; then
     echo "Warning: gh CLI not found. Attempting direct push..." >&2
-    git -C "$ks_path" push || {
+    run_with_warning_filter git -C "$ks_path" push || {
       echo "Error: Push failed. Install gh CLI for fork-fallback support." >&2
       return 1
     }
@@ -214,7 +377,7 @@ push_keystone_with_fork_fallback() {
   case "$permission" in
     admin|maintain|write)
       echo "Pushing keystone (direct access)..."
-      git -C "$ks_path" push
+      run_with_warning_filter git -C "$ks_path" push
       ;;
     *)
       echo "No push access to $owner_repo, pushing to fork..."
@@ -227,7 +390,7 @@ push_keystone_with_fork_fallback() {
       fork_remote="git@github.com:$current_user/${repo_name}.git"
       # Set origin to fork for this push (will be restored by user if needed)
       git -C "$ks_path" remote set-url origin "$fork_remote"
-      git -C "$ks_path" push -u origin "$(git -C "$ks_path" branch --show-current)"
+      run_with_warning_filter git -C "$ks_path" push -u origin "$(git -C "$ks_path" branch --show-current)"
       echo "Pushed to fork: $fork_remote"
       ;;
   esac
@@ -394,7 +557,7 @@ pull_repo() {
       }
     fi
     echo "Pulling $key..."
-    git -C "$target" pull --ff-only
+    run_with_warning_filter git -C "$target" pull --ff-only
   else
     echo "Cloning $key..."
     mkdir -p "$(dirname "$target")"
@@ -727,6 +890,7 @@ cmd_update() {
   local mode="switch" hosts_arg="" pull=false lock=true
   while [[ $# -gt 0 ]]; do
     case $1 in
+      --debug) KS_DEBUG=true; shift ;;
       --dev) lock=false; shift ;;
       --boot) mode="boot"; shift ;;
       --pull) pull=true; shift ;;
@@ -805,7 +969,7 @@ cmd_update() {
   # ── UPFRONT PHASE ───────────────────────────────────────────────────────────
   # Step 1: Pull nixos-config so we operate on latest
   echo "Pulling nixos-config..."
-  git -C "$repo_root" pull --ff-only
+  run_with_warning_filter git -C "$repo_root" pull --ff-only
 
   # Step 2: Pull all repos in registry
   while IFS= read -r line; do
@@ -834,7 +998,7 @@ cmd_update() {
   local inputs
   inputs=$(echo "$registry" | jq -r 'to_entries[].value.flakeInput | select(. != null)')
   # shellcheck disable=SC2086
-  nix flake update $inputs --flake "$repo_root"
+  run_with_warning_filter nix flake update $inputs --flake "$repo_root"
 
   # Step 5: Commit flake.lock (if changed)
   if ! git -C "$repo_root" diff --quiet flake.lock; then
@@ -856,18 +1020,34 @@ cmd_update() {
 
   echo "Building: ${target_hosts[*]}..."
   local build_paths=()
-  mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}")
+  if ! mapfile -t build_paths < <(run_with_warning_filter nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}"); then
+    local rerun_cmd="ks update"
+    if [[ "${KS_DEBUG}" == true ]]; then
+      rerun_cmd+=" --debug"
+    fi
+    if [[ "$mode" == "boot" ]]; then
+      rerun_cmd+=" --boot"
+    fi
+    rerun_cmd+=" --lock"
+    if [[ -n "$hosts_arg" ]]; then
+      rerun_cmd+=" $hosts_arg"
+    fi
+    echo ""
+    echo "ERROR: Build failed."
+    echo "Fix the build errors above, then rerun: $rerun_cmd"
+    exit 1
+  fi
 
   # ── POST-BUILD PHASE ────────────────────────────────────────────────────────
   # Step 8: Push flake.lock only after a successful build
   echo "Pushing nixos-config..."
-  if ! git -C "$repo_root" pull --rebase origin "$(git -C "$repo_root" branch --show-current)" 2>&1; then
+  if ! run_with_warning_filter git -C "$repo_root" pull --rebase origin "$(git -C "$repo_root" branch --show-current)"; then
     echo ""
     echo "ERROR: Failed to rebase nixos-config against origin."
     echo "Resolve conflicts manually, then run: git push"
     exit 1
   fi
-  if ! git -C "$repo_root" push 2>&1; then
+  if ! run_with_warning_filter git -C "$repo_root" push; then
     echo ""
     echo "ERROR: Failed to push nixos-config."
     echo "Run 'git pull --rebase && git push' to retry."
@@ -1073,7 +1253,7 @@ ks_update_workflow_docs() {
 > changes, then ask a human to deploy.
 
 ### 1. `ks update` — Full Release Workflow
-`ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]`
+`ks update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]`
 
 Use this for official updates. It ensures everything is pulled, locked,
 verified, and pushed to origin before deployment.
@@ -1095,6 +1275,7 @@ the local repo immediately, skipping pull, lock, and push phases.
 
 | Flag | Effect |
 |------|--------|
+| `--debug` | Show warning lines from underlying `git`/`nix` commands |
 | `--dev` | Home-manager only: build + activate user/agent profiles, skip system rebuild |
 | `--boot` | Use `boot` instead of `switch` mode (reboot required to apply) |
 | `--pull` | Pull repos only — no build or deploy |
@@ -1277,6 +1458,7 @@ gather_agent_tasks() {
 gather_system_state() {
   local repo_root="$1"
   local hosts_nix="$2"
+  local current_host="${3:-}"
 
   echo "## System State"
   echo ""
@@ -1326,6 +1508,10 @@ gather_system_state() {
   fi
   echo ""
 
+  # Ollama diagnostics
+  gather_ollama_diagnostics "$repo_root" "$current_host"
+  echo ""
+
   # Fleet health (host reachability + generation comparison)
   if [[ -n "$hosts_nix" && -f "$hosts_nix" ]]; then
     gather_fleet_health "$hosts_nix" "$gen"
@@ -1338,6 +1524,75 @@ gather_system_state() {
 
   # Agent task queue
   gather_agent_tasks
+}
+
+gather_ollama_diagnostics() {
+  local repo_root="$1"
+  local current_host="$2"
+
+  echo "### Ollama diagnostics"
+
+  if [[ -z "$current_host" ]]; then
+    echo "_Current host is not defined in hosts.nix; skipping config evaluation_"
+    return
+  fi
+
+  local user
+  user=$(resolve_current_hm_user "$repo_root" "$current_host")
+  if [[ -z "$user" ]]; then
+    echo "_No home-manager user found for current host_"
+    return
+  fi
+
+  local enabled host default_model
+  enabled=$(resolve_ollama_enabled "$repo_root" "$current_host" "$user")
+  host=$(resolve_ollama_host "$repo_root" "$current_host" "$user")
+  default_model=$(resolve_ollama_default_model "$repo_root" "$current_host" "$user")
+
+  echo "- Home-manager user: $user"
+  echo "- Ollama enabled: $enabled"
+  echo "- Ollama host: ${host:-_not configured_}"
+  echo "- Default model: ${default_model:-_not configured_}"
+  echo "- ollama CLI: $(command -v ollama >/dev/null 2>&1 && echo "installed" || echo "missing")"
+  echo "- claude CLI: $(command -v claude >/dev/null 2>&1 && echo "installed" || echo "missing")"
+
+  if command -v ollama >/dev/null 2>&1 && [[ -n "$host" ]]; then
+    if OLLAMA_HOST="$host" ollama list >/dev/null 2>&1; then
+      echo "- Ollama API: reachable"
+    else
+      echo "- Ollama API: unreachable"
+    fi
+  else
+    echo "- Ollama API: unchecked"
+  fi
+
+  echo "- Available models:"
+  list_ollama_models "$host"
+
+  local agent_users_json
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+  agent_users_json=$(timeout 60 nix eval \
+    "$repo_root#nixosConfigurations.${current_host}.config.home-manager.users" \
+    --apply 'builtins.attrNames' --json \
+    "${override_args[@]}" 2>/dev/null || echo "[]")
+  local agent_users
+  agent_users=$(echo "$agent_users_json" | jq -r '.[] | select(startswith("agent-"))')
+
+  if [[ -z "$agent_users" ]]; then
+    echo "- Agent local config: _no agent home-manager users found_"
+    return
+  fi
+
+  echo "- Agent local config:"
+  while IFS= read -r agent_user; do
+    [[ -z "$agent_user" ]] && continue
+    local agent_enabled agent_host agent_model
+    agent_enabled=$(resolve_ollama_enabled "$repo_root" "$current_host" "$agent_user")
+    agent_host=$(resolve_ollama_host "$repo_root" "$current_host" "$agent_user")
+    agent_model=$(resolve_ollama_default_model "$repo_root" "$current_host" "$agent_user")
+    echo "  - ${agent_user}: enabled=${agent_enabled}, host=${agent_host:-none}, defaultModel=${agent_model:-none}"
+  done <<< "$agent_users"
 }
 
 # --- Build shared agent system prompt (REQ-014.2-8) ---
@@ -1474,6 +1729,8 @@ $user_table"
 # Usage: launch_agent local_model prompt [passthrough args...]
 launch_agent() {
   local local_model="$1"; shift
+  local repo_root="$1"; shift
+  local current_host="$1"; shift
   local prompt="$1"; shift
 
   local prompt_file
@@ -1481,14 +1738,29 @@ launch_agent() {
   printf '%s' "$prompt" > "$prompt_file"
 
   if [[ -n "$local_model" ]]; then
-    local model_arg="$local_model"
-    [[ "$model_arg" == "default" ]] && model_arg=""
-    if command -v ollama >/dev/null 2>&1; then
-      exec ollama run ${model_arg:+"$model_arg"} --system "$(cat "$prompt_file")" "$@"
-    else
+    if [[ -z "$current_host" ]]; then
+      echo "Error: could not resolve the current host in hosts.nix, so --local cannot load home-manager Ollama settings." >&2
+      exit 1
+    fi
+    local hm_user ollama_host default_model resolved_model
+    hm_user=$(resolve_current_hm_user "$repo_root" "$current_host")
+    require_ollama_enabled "$repo_root" "$current_host" "$hm_user"
+    ollama_host=$(resolve_ollama_host "$repo_root" "$current_host" "$hm_user")
+    default_model=$(resolve_ollama_default_model "$repo_root" "$current_host" "$hm_user")
+    resolved_model=$(resolve_local_model "$local_model" "$default_model")
+
+    if ! command -v ollama >/dev/null 2>&1; then
       echo "Error: --local requires ollama to be installed." >&2
       exit 1
     fi
+    if ! command -v claude >/dev/null 2>&1; then
+      echo "Error: --local requires claude to be installed." >&2
+      exit 1
+    fi
+
+    ANTHROPIC_BASE_URL="$ollama_host" \
+    ANTHROPIC_AUTH_TOKEN="ollama" \
+      exec claude --model "$resolved_model" --append-system-prompt "@${prompt_file}" "$@"
   elif command -v claude >/dev/null 2>&1; then
     exec claude --append-system-prompt "@${prompt_file}" "$@"
   else
@@ -1531,7 +1803,7 @@ cmd_agent() {
   local prompt
   prompt=$(build_agent_prompt "$repo_root" "$hosts_nix" "$ks_repo" "$current_host")
 
-  launch_agent "$local_model" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
+  launch_agent "$local_model" "$repo_root" "$current_host" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
 }
 
 cmd_doctor() {
@@ -1570,7 +1842,7 @@ cmd_doctor() {
 
   # Gather current system state including fleet + agent health (REQ-014.11)
   local system_state
-  system_state=$(gather_system_state "$repo_root" "$hosts_nix")
+  system_state=$(gather_system_state "$repo_root" "$hosts_nix" "$current_host")
 
   # Diagnostic-focused prefix (REQ-014.10)
   local doctor_prefix
@@ -1601,7 +1873,7 @@ $system_state
 
 $base_prompt"
 
-  launch_agent "$local_model" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
+  launch_agent "$local_model" "$repo_root" "$current_host" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
 }
 
 # --- Main dispatch ---
@@ -1610,7 +1882,7 @@ if [[ $# -lt 1 ]]; then
   echo "" >&2
   echo "Commands:" >&2
   echo "  build  [--lock] [HOSTS]                            Build (home-manager only; --lock for full system)" >&2
-  echo "  update [--dev] [--boot] [--pull] [--lock] [HOSTS]  Pull, lock, build, push, and deploy" >&2
+  echo "  update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Pull, lock, build, push, and deploy" >&2
   echo "  switch [--boot] [HOSTS]                            Deploy current state without lock/push (full system)" >&2
   echo "  sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts" >&2
   echo "  agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context" >&2
