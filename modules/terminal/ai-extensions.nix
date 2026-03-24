@@ -84,6 +84,10 @@ let
 
   # Helper to generate Gemini-compatible TOML from a Markdown template.
   # Gemini commands require .toml files with `prompt` and optionally `description`.
+  #
+  # CRITICAL: builtins.readFile requires a path type (e.g. ./path) or a path
+  # relative to the flake root to work in pure evaluation mode. Absolute
+  # path strings (like devPath) are forbidden.
   mkGeminiToml = name: {
     text =
       let
