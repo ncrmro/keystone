@@ -273,6 +273,12 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # REQ-009.16: export NOTES_DIR so tools (deepwork, zk, scripts) can
+    # discover the notes directory without additional configuration.
+    home.sessionVariables = {
+      NOTES_DIR = cfg.path;
+    };
+
     systemd.user.services.keystone-notes-sync = lib.mkIf cfg.sync.enable {
       Unit = {
         Description = "Sync notes repo via repo-sync";
