@@ -37,22 +37,31 @@ Derived from Zellij session state.
 
 | Field | Type | Source | Notes |
 |-------|------|--------|-------|
-| name | string | Zellij session name | Format: `{prefix}-{slug}` |
-| slug | string | Extracted from session name | Everything after `{prefix}-` |
+| name | string | Zellij session name | Format: `{prefix}-{project-slug}-{session-slug}` |
+| project_slug | string | Extracted from session name | Project identifier |
+| session_slug | string | Extracted from session name | Purpose identifier (default: `main`) |
 | status | enum | Zellij | `attached` or `detached` |
 | created | timestamp | Zellij session metadata | ISO 8601 |
 
 ## CLI Contract
 
-### `pz <slug>`
+### `pz <project-slug> [<session-slug>]`
 
-Create or attach to a project Zellij session.
+Create or attach to a named project Zellij session.
+
+**Arguments**:
+- `<project-slug>` — the project to open (required)
+- `<session-slug>` — purpose identifier for the session (optional; default: `main`)
+
+Session names use the format `{prefix}-{project-slug}-{session-slug}`, allowing multiple
+named sessions per project. This aligns with `agentctl --project <project> <session-slug>`,
+which also creates sessions named `{project}-{session-slug}` (plus the prefix).
 
 **Behavior**:
-1. The command MUST validate that `{notes_path}/projects/{slug}/README.md` exists
-2. If a Zellij session named `{prefix}-{slug}` exists, the command MUST attach to it
-3. If no session exists, the command MUST create a new Zellij session named `{prefix}-{slug}`
-4. The session MUST start with the working directory set to `{notes_path}/projects/{slug}`
+1. The command MUST validate that `{notes_path}/projects/{project-slug}/README.md` exists
+2. If a Zellij session named `{prefix}-{project-slug}-{session-slug}` exists, the command MUST attach to it
+3. If no session exists, the command MUST create a new Zellij session named `{prefix}-{project-slug}-{session-slug}`
+4. The session MUST start with the working directory set to `{notes_path}/projects/{project-slug}`
 5. The command MUST export environment variables per REQ-010.9 before attaching
 
 **Exit codes**:
@@ -61,44 +70,46 @@ Create or attach to a project Zellij session.
 - `2` — Zellij not available or session creation failed
 
 **Error output**:
-- Missing project: `error: project '{slug}' not found at {notes_path}/projects/{slug}`
-- Missing README: `error: project '{slug}' has no README.md`
+- Missing project: `error: project '{project-slug}' not found at {notes_path}/projects/{project-slug}`
+- Missing README: `error: project '{project-slug}' has no README.md`
 
-### `pz list [--project <slug>]`
+### `pz list [--project <project-slug>]`
 
 List sessions filtered by project.
 
 **Behavior**:
 1. The command MUST list all Zellij sessions whose names start with `{prefix}-`
-2. When `--project <slug>` is provided, the command MUST show only sessions matching `{prefix}-{slug}`
-3. Output MUST include: session slug, status (attached/detached), and creation time
+2. When `--project <project-slug>` is provided, the command MUST show only sessions matching `{prefix}-{project-slug}-`
+3. Output MUST include: project slug, session slug, status (attached/detached), and creation time
 4. Sessions from other prefixes (e.g., manual Zellij sessions) MUST be excluded
 5. The command MUST exit with code `0` even when no sessions are found (empty list)
 
 **Output format** (stdout, tab-separated):
 ```
-SLUG        STATUS      CREATED
-backend     attached    2026-03-18T10:30:00
-frontend    detached    2026-03-17T14:22:00
+PROJECT     SESSION     STATUS      CREATED
+backend     main        attached    2026-03-18T10:30:00
+backend     review      detached    2026-03-18T11:00:00
+frontend    main        detached    2026-03-17T14:22:00
 ```
 
-### `pz kill <slug>`
+### `pz kill <project-slug> [<session-slug>]`
 
 Destroy a project session.
 
 **Behavior**:
-1. The command MUST kill the Zellij session named `{prefix}-{slug}`
-2. If the session does not exist, the command MUST print a warning and exit `0`
-3. The command MUST NOT kill sessions that don't match the `{prefix}-` pattern
+1. The command MUST kill the Zellij session named `{prefix}-{project-slug}-{session-slug}`
+2. When `<session-slug>` is omitted, the command MUST kill ALL sessions matching `{prefix}-{project-slug}-*`
+3. If the session does not exist, the command MUST print a warning and exit `0`
+4. The command MUST NOT kill sessions that don't match the `{prefix}-` pattern
 
 ## Behavioral Requirements
 
 ### Session Lifecycle
 
 1. Sessions MUST persist across terminal disconnections (Zellij default behavior).
-2. Re-running `pz {slug}` on an existing session MUST attach, not create a duplicate.
+2. Re-running `pz {project-slug} [session-slug]` on an existing session MUST attach, not create a duplicate.
 3. The session prefix MUST be configurable via `keystone.projects.sessionPrefix` (default: `obs`, per REQ-010.7).
-4. Session names MUST use the format `{prefix}-{slug}` with no additional separators.
+4. Session names MUST use the format `{prefix}-{project-slug}-{session-slug}`. This naming scheme is shared with `agentctl --project <project> <session-slug>` to ensure consistent session identification across tools.
 
 ### Project Discovery
 
@@ -114,6 +125,8 @@ Destroy a project session.
    - `PROJECT_PATH` — absolute path to the project directory
    - `PROJECT_README` — path to the project's `README.md`
    - `VAULT_ROOT` — the notes repo root (`keystone.notes.path`)
+   - `CLAUDE_CONFIG_DIR` — project-scoped Claude configuration directory (`{notes_path}/.claude-projects/{slug}/`)
+   - `AGENTS_MD` — path to the aggregated agents context file for the project (REQ-010.12)
 10. Environment variables MUST be available to all processes spawned within the session.
 
 ### Shell Completion
@@ -124,9 +137,9 @@ Destroy a project session.
 
 ## Edge Cases
 
-- **Stale sessions**: If a Zellij session exists but the project directory has been deleted, `pz list` MUST still show the session (it's a valid Zellij session). `pz <slug>` for a deleted project MUST fail with exit code `1`.
-- **Concurrent attach**: If a session is already attached in another terminal, `pz {slug}` MUST attach to the same session (Zellij supports multiple clients per session).
-- **Empty projects directory**: If no projects exist, `pz list` MUST output an empty table with headers only. `pz <slug>` MUST fail with exit code `1`.
+- **Stale sessions**: If a Zellij session exists but the project directory has been deleted, `pz list` MUST still show the session (it's a valid Zellij session). `pz <project-slug>` for a deleted project MUST fail with exit code `1`.
+- **Concurrent attach**: If a session is already attached in another terminal, `pz <project-slug> <session-slug>` MUST attach to the same session (Zellij supports multiple clients per session).
+- **Empty projects directory**: If no projects exist, `pz list` MUST output an empty table with headers only. `pz <project-slug>` MUST fail with exit code `1`.
 - **Invalid slug characters**: `pz` MUST reject slugs containing characters other than lowercase alphanumeric and hyphens.
 - **Zellij not running**: If Zellij server is not running, `pz` MUST start a new server automatically (Zellij default behavior).
 

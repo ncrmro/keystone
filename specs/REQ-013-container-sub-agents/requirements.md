@@ -1,7 +1,7 @@
 # REQ-013: Container Sub-Agent Management
 
 Manage multiple AI sub-agents in Podman containers with dynamically
-generated AGENT.md files composed from archetype and role definitions.
+generated AGENTS.md files composed from archetype and role definitions.
 Extends the existing `podman-agent` infrastructure.
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
@@ -11,7 +11,7 @@ MAY, REQUIRED, OPTIONAL).
 - US-005: Manage multiple sub-agents in containers
 
 ## Affected Modules
-- `packages/podman-agent/podman-agent.sh` — extend with archetype-based AGENT.md generation
+- `packages/podman-agent/podman-agent.sh` — extend with archetype-based AGENTS.md generation
 - `modules/os/containers.nix` — Podman runtime configuration
 - `modules/terminal/projects.nix` — sub-agent configuration options
 - `modules/os/agents/` — archetype definitions and agent provisioning patterns (reference)
@@ -27,7 +27,7 @@ Defines a reusable agent persona and configuration template.
 | name | string | yes | Archetype identifier (e.g., `engineer`, `reviewer`, `researcher`) |
 | description | string | yes | One-line role description |
 | system_prompt | string | yes | Base system prompt for this archetype |
-| conventions | list[string] | no | Convention files to include in AGENT.md |
+| conventions | list[string] | no | Convention files to include in AGENTS.md |
 | tools | list[string] | no | MCP tools or CLI tools to enable |
 | model | enum | no | Preferred model (`haiku`, `sonnet`, `opus`). Default: `sonnet` |
 
@@ -39,7 +39,7 @@ A project-specific instantiation of an archetype.
 | slug | string | yes | Short identifier (e.g., `backend`, `frontend`, `tests`) |
 | archetype | string | yes | Reference to an archetype name |
 | repos | list[string] | no | Subset of project repos this agent works on |
-| extra_context | string | no | Additional context appended to AGENT.md |
+| extra_context | string | no | Additional context appended to AGENTS.md |
 | worktree_branch | string | no | Branch name for worktree isolation |
 
 ### Container Instance
@@ -71,13 +71,13 @@ Launch a sub-agent in a Podman container.
 **Behavior**:
 1. The command MUST resolve the current project from `$PROJECT_NAME` or error if not in a project session
 2. The command MUST look up the role definition from the project configuration
-3. The command MUST dynamically generate an AGENT.md file by:
+3. The command MUST dynamically generate an AGENTS.md file by:
    a. Starting with the archetype's system prompt
    b. Appending relevant convention files
    c. Appending project-specific context from the role definition
    d. Appending aggregated repo AGENTS.md files
 4. The command MUST launch a Podman container using the `podman-agent` script
-5. The AGENT.md MUST be volume-mounted into the container
+5. The AGENTS.md MUST be volume-mounted into the container
 6. The container MUST be labeled with `project={slug}`, `role={role_slug}`, `archetype={name}`
 
 **Exit codes**:
@@ -129,17 +129,17 @@ View logs from a sub-agent container.
 
 ## Behavioral Requirements
 
-### Dynamic AGENT.md Generation
+### Dynamic AGENTS.md Generation
 
 1. The system MUST support archetype definitions stored in a discoverable location (e.g., `{notes_path}/archetypes/{name}.md` or declarative Nix options).
-2. AGENT.md MUST be assembled at container launch time, not pre-generated.
-3. The generated AGENT.md MUST include:
+2. AGENTS.md MUST be assembled at container launch time, not pre-generated.
+3. The generated AGENTS.md MUST include:
    - Archetype system prompt
    - Project-specific role context
    - Relevant convention files
    - Repository AGENTS.md files (from declared repos)
-4. The AGENT.md MUST use `{name}` and `{email}` placeholders matching SPEC-007 FR-009 patterns.
-5. Generated AGENT.md files SHOULD be cached in `{notes_path}/.claude-projects/{slug}/agents/{role_slug}/AGENTS.md` for debugging.
+4. The AGENTS.md MUST use `{name}` and `{email}` placeholders matching SPEC-007 FR-009 patterns.
+5. Generated AGENTS.md files SHOULD be cached in `{notes_path}/.claude-projects/{slug}/agents/{role_slug}/AGENTS.md` for debugging.
 
 ### Sandbox Scope
 

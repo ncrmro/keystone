@@ -1,8 +1,8 @@
 # REQ-012: agentctl Project Sessions
 
 Extend agentctl with project context, worktree isolation, sandboxed execution,
-and local model support across all AI tools. Integrates with `pz agent` to replace the originally proposed
-`pclaude` CLI.
+and local model support across all AI tools. Integrates with `pz agent` (REQ-013)
+to provide project-scoped AI agent sessions.
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
@@ -29,6 +29,13 @@ subcommands, composing role-specific context via `.agents/compose.sh`.
 session, set the working directory to the project path, and export
 environment variables (PROJECT_NAME, PROJECT_PATH, PROJECT_README,
 VAULT_ROOT) for all tools.
+
+> **Breaking changes from current implementation**: The current `agentctl.sh`
+> supports `--project` only for `claude` and requires an additional positional
+> `<session-slug>` argument. REQ-012.1 generalizes `--project` to all AI tools,
+> and REQ-012.3 makes the Zellij session creation uniform. Project metadata
+> is discovered from `README.md` frontmatter (REQ-010) rather than `PROJECTS.yaml`.
+> These are intentional breaking changes; migration is out of scope for this spec.
 
 ### Worktree Support
 
@@ -58,7 +65,7 @@ directory as read-only to support git operations from within the
 worktree.
 
 **REQ-012.11** The sandbox container MUST mount project context files
-(AGENT.md, CLAUDE.md, GEMINI.md) read-only at `~/` inside the
+(AGENTS.md, CLAUDE.md, GEMINI.md) read-only at `~/` inside the
 container, so AI tools discover them natively from the home directory.
 
 **REQ-012.12** agentctl MUST support a `--nosandbox` flag that disables
@@ -125,7 +132,7 @@ mechanism:
 
 **REQ-012.27** When running in sandbox mode (default), context files
 mounted at `~/` provide the system prompt. The `--append-system-prompt`
-mechanism is OPTIONAL for sandboxed tools since they read `~/AGENT.md`
+mechanism is OPTIONAL for sandboxed tools since they read `~/AGENTS.md`
 natively.
 
 ## Edge Cases

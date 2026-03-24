@@ -3,6 +3,9 @@
 New subcommands for the `ks` infrastructure CLI that launch an AI agent
 with full keystone OS context. Uses agentctl under the hood.
 
+Part of the projctl terminal session management milestone (alongside
+REQ-011, REQ-012, REQ-013).
+
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
 
@@ -19,8 +22,9 @@ MAY, REQUIRED, OPTIONAL).
 with the keystone OS archetype/role loaded into its system prompt.
 
 **REQ-014.2** The system prompt MUST include a table of all hosts in the
-keystone system, enumerated from `hosts.nix` (hostname, role, sshTarget,
-connection info, buildOnRemote flag).
+keystone system, enumerated from `hosts.nix`. The table MUST include the
+fields specified in REQ-014.18: name, hostname, role, sshTarget, fallbackIP,
+and buildOnRemote status.
 
 **REQ-014.3** The system prompt MUST include all users configured in the
 keystone flake (from `keystone.os.users` or the nixos-config).
