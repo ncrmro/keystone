@@ -33,3 +33,7 @@ Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `se
 15. Tools MUST NOT be used on binary files unless specifically designed for them.
 16. For large-scale find-and-replace, use `git grep` or `rg` with `xargs` to ensure safety and speed.
 17. Avoid piping secrets or sensitive data into these utilities unless the output is immediately redirected to a secure location.
+
+## Environment and Tool Availability
+
+18. If a required CLI tool is not pre-installed or available on the PATH, it SHOULD be provided via a Nix devshell (`nix develop`) or added to the project's `flake.nix`. See `tool.nix-devshell` for standards on adding packages.
