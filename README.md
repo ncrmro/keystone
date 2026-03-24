@@ -5,7 +5,7 @@ self-hosted system — encrypted storage, integrated services, and a fully confi
 foundation that enables capabilities like autonomous AI agents operating with real
 system identity. Add users for everyone in your household, or run it solo.
 
-**[Get Started](docs/os/installation.md)** · **[Documentation](docs/index.md)** · **[Compare](docs/comparison.md)**
+**[Get Started](docs/os/installation.md)** · **[Documentation](docs/index.md)** · **[OS Comparison](docs/comparison.md)** · **[Agent Platform Comparison](docs/agents/comparison.md)**
 
 <!-- TODO: hero screenshot of TUI or dashboard -->
 
