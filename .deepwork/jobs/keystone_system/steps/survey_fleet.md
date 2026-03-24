@@ -79,7 +79,15 @@ Build a comprehensive snapshot of the fleet's current state to inform the update
      ```
    - Skip VMs and test hosts (those with `sshTarget: null` or `baremetal: false` where not cloud)
 
-6. **Check for agenix-secrets changes**
+6. **Cross-reference known issues with GitHub**
+   - For any failed units or health problems found in step 3, search GitHub before treating them as new:
+     ```bash
+     gh issue list --search "<keyword>" --repo ncrmro/keystone
+     gh issue list --search "<keyword>" --repo ncrmro/nixos-config
+     ```
+   - Note the issue URL next to each finding in the health section — do not create duplicates
+
+7. **Check for agenix-secrets changes**
    - If `agenix-secrets/` exists in nixos-config, check if it's clean and up to date:
      ```bash
      git -C <nixos-config-path>/agenix-secrets status --short

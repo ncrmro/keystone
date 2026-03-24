@@ -1,5 +1,5 @@
 name: keystone_system
-version: "1.6.0"
+version: "1.8.0"
 summary: "Keystone development lifecycle: worktree, build, review, merge, deploy, validate, update, and convention management"
 common_job_info_provided_to_all_steps_at_runtime: |
   Keystone is a NixOS-based infrastructure platform. Development follows a strict
@@ -254,6 +254,9 @@ steps:
           "Current Host Nominal": "Direct health checks on the current host (`systemctl --failed`, `journalctl -p err`) show no critical issues."
           "Fleet Checked": "All hosts affected by the changes have been checked or confirmed not impacted."
           "Changes Verified": "The specific changes from the plan are confirmed working on the live system."
+          "Agent Detail": "Each configured agent's task queue, recent jobs, and any blocking issues are reported — not just service running status."
+          "Issues Tracked": "Every issue found is cross-referenced against GitHub (ncrmro/keystone and ncrmro/nixos-config) — existing issues are linked, new issues are flagged for creation."
+          "Archived to Notes": "A dated fleet health note has been written to ~/notes/ via zk new — personal deployment data must not remain only in the keystone open-source repo."
 
   - id: survey_fleet
     name: "Survey Fleet"
