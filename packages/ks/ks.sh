@@ -246,9 +246,9 @@ list_hm_users() {
 }
 
 # --- Parallel build using nix-fast-build (nix-eval-jobs) ---
-# When nix-fast-build is available and no input overrides are needed, generates
-# a Nix expression wrapping all build targets into an attrset and invokes
-# nix-fast-build for multi-threaded evaluation via nix-eval-jobs.
+# Creates a temporary wrapper flake that re-exports build targets as an attrset,
+# locks it with any --override-input flags baked in, and invokes nix-fast-build
+# for multi-threaded evaluation via nix-eval-jobs.
 # Falls back to standard nix build on error or when nix-fast-build is unavailable.
 #
 # Usage: nix_fast_build <repo_root> <target...> [--override-input name value ...]
@@ -256,67 +256,92 @@ nix_fast_build() {
   local repo_root="$1"; shift
   local all_args=("$@")
 
-  # Check for --override-input flags — nix-fast-build --file mode cannot
-  # pass flake input overrides, so we must fall back to nix build.
-  local has_overrides=false
-  for arg in "${all_args[@]}"; do
-    [[ "$arg" == "--override-input" ]] && has_overrides=true && break
-  done
-
-  # Extract just the flake target references (non-flag positional args)
-  local targets=()
-  local skip_next=false
-  for arg in "${all_args[@]}"; do
-    if $skip_next; then skip_next=false; continue; fi
-    case "$arg" in
-      --override-input) skip_next=true ;;
-      --*) ;;
-      *) targets+=("$arg") ;;
+  # Parse args: separate targets from --override-input pairs
+  local targets=() override_names=() override_values=()
+  local i=0
+  while [[ $i -lt ${#all_args[@]} ]]; do
+    case "${all_args[$i]}" in
+      --override-input)
+        override_names+=("${all_args[$((i+1))]}")
+        override_values+=("${all_args[$((i+2))]}")
+        ((i+=3))
+        ;;
+      --*) ((i++)) ;;
+      *) targets+=("${all_args[$i]}"); ((i++)) ;;
     esac
   done
 
-  # Use nix-fast-build when available, no overrides, and multiple targets
-  if command -v nix-fast-build &>/dev/null && [[ "$has_overrides" == false ]] && [[ ${#targets[@]} -gt 1 ]]; then
-    local tmpfile
-    tmpfile=$(mktemp "${TMPDIR:-/tmp}/ks-build-XXXXXX.nix")
-
-    # Generate a Nix expression wrapping targets into an attrset.
-    # nix-fast-build evaluates each attribute in parallel via nix-eval-jobs.
-    {
-      echo "let"
-      echo "  flake = builtins.getFlake \"path:${repo_root}\";"
-      echo "in {"
-      local i=0
-      for target in "${targets[@]}"; do
-        # Validate target contains a '#' separator (flake reference format)
-        if [[ "$target" != *"#"* ]]; then
-          echo "Warning: skipping malformed target (no '#'): $target" >&2
-          continue
-        fi
-        local attr_path="${target#*#}"
-        # Validate attr_path contains only safe Nix identifier characters
-        if [[ ! "$attr_path" =~ ^[a-zA-Z0-9._\"-]+$ ]]; then
-          echo "Warning: skipping target with unexpected characters: $attr_path" >&2
-          continue
-        fi
-        echo "  \"target-${i}\" = flake.${attr_path};"
-        ((i++))
-      done
-      echo "}"
-    } > "$tmpfile"
-
-    echo "Using nix-fast-build for parallel evaluation (${#targets[@]} targets)..."
-    local rc=0
-    nix-fast-build --file "$tmpfile" --no-link --skip-cached --no-nom || rc=$?
-    rm -f "$tmpfile"
-
-    if [[ $rc -eq 0 ]]; then
-      return 0
-    fi
-    echo "nix-fast-build failed (exit $rc), falling back to nix build..." >&2
+  # Require nix-fast-build and multiple targets for parallelism benefit
+  if ! command -v nix-fast-build &>/dev/null || [[ ${#targets[@]} -le 1 ]]; then
+    nix build --no-link "${all_args[@]}"
+    return
   fi
 
-  # Fallback: standard nix build
+  # Determine current system for flake output structure
+  local current_system
+  case "$(uname -m)" in
+    x86_64)  current_system="x86_64-linux" ;;
+    aarch64) current_system="aarch64-linux" ;;
+    *)       current_system="$(uname -m)-linux" ;;
+  esac
+
+  local tmpdir
+  tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/ks-build-XXXXXX")
+
+  # Generate a wrapper flake that re-exports build targets as an attrset.
+  # nix-fast-build evaluates each attribute in parallel via nix-eval-jobs.
+  {
+    echo '{'
+    echo "  inputs.src.url = \"path:${repo_root}\";"
+    echo '  outputs = { src, ... }: {'
+    echo "    targets.\"${current_system}\" = {"
+    local idx=0
+    for target in "${targets[@]}"; do
+      # Validate target contains a '#' separator (flake reference format)
+      if [[ "$target" != *"#"* ]]; then
+        echo "Warning: skipping malformed target (no '#'): $target" >&2
+        continue
+      fi
+      local attr_path="${target#*#}"
+      # Validate attr_path contains only safe Nix identifier characters
+      if [[ ! "$attr_path" =~ ^[a-zA-Z0-9._\"-]+$ ]]; then
+        echo "Warning: skipping target with unexpected characters: $attr_path" >&2
+        continue
+      fi
+      echo "      \"target-${idx}\" = src.${attr_path};"
+      ((idx++))
+    done
+    echo '    };'
+    echo '  };'
+    echo '}'
+  } > "$tmpdir/flake.nix"
+
+  # Translate --override-input flags: prefix names with "src/" to target
+  # the wrapped flake's inputs (e.g., keystone -> src/keystone)
+  local lock_args=()
+  for ((j=0; j<${#override_names[@]}; j++)); do
+    lock_args+=(--override-input "src/${override_names[$j]}" "${override_values[$j]}")
+  done
+
+  # Lock the wrapper flake (bakes overrides into flake.lock)
+  local lock_output
+  if ! lock_output=$(timeout 30 nix flake lock "$tmpdir" "${lock_args[@]}" 2>&1); then
+    echo "Warning: Failed to lock wrapper flake, falling back to nix build" >&2
+    [[ -n "$lock_output" ]] && echo "$lock_output" >&2
+    rm -rf "$tmpdir"
+    nix build --no-link "${all_args[@]}"
+    return
+  fi
+
+  echo "Using nix-fast-build for parallel evaluation (${#targets[@]} targets)..."
+  local rc=0
+  nix-fast-build --flake "$tmpdir#targets" --no-link --skip-cached --no-nom || rc=$?
+  rm -rf "$tmpdir"
+
+  if [[ $rc -eq 0 ]]; then
+    return 0
+  fi
+  echo "nix-fast-build failed (exit $rc), falling back to nix build..." >&2
   nix build --no-link "${all_args[@]}"
 }
 
