@@ -38,9 +38,10 @@ archetypes:
     description: "NixOS host — Nix devshells, direnv, declarative config"
     inlined_conventions:
       - process.version-control
+      - process.prose
+      - tool.standard-utilities
     referenced_conventions:
       - os.requirements
-      - process.prose
       - tool.nix-devshell
       - tool.nix
       - code.shell-scripts
@@ -59,6 +60,8 @@ archetypes:
     inlined_conventions:
       - process.version-control
       - process.enable-by-default
+      - process.prose
+      - tool.standard-utilities
     referenced_conventions:
       - os.requirements
       - process.agent-cronjobs
@@ -73,7 +76,6 @@ archetypes:
       - process.refactor
       - code.shell-scripts
       - code.comments
-      - process.prose
       - tool.bitwarden
       - tool.forgejo
       - tool.himalaya
@@ -86,7 +88,6 @@ archetypes:
       - tool.zk
       - process.knowledge-management
       - tool.stalwart
-      - tool.standard-utilities
     roles:
       # Role: code-reviewer
       # Used when the agent is strictly reviewing PRs authored by others (or subagents).
@@ -166,10 +167,11 @@ archetypes:
     inlined_conventions:
       - process.product-engineering-handoff
       - process.press-release
+      - process.prose
+      - tool.standard-utilities
     referenced_conventions:
       - process.task-tracking
       - process.project-board
-      - process.prose
       - os.requirements
       - process.agent-cronjobs
       - tool.bitwarden
@@ -178,7 +180,6 @@ archetypes:
       - tool.github
       - tool.zk
       - process.knowledge-management
-      - tool.standard-utilities
     roles:
       # Role: business-analyst
       # Used for evaluating market opportunities, competitor products, and defining KPIs.
