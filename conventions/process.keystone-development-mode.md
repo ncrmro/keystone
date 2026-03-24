@@ -35,14 +35,13 @@ enabled, modules derive local paths from the `keystone.repos` registry at
 
 ## Terminal Module
 
-8. `keystone.terminal.devMode.keystonePath` is auto-derived from the
-   `keystone.repos` entry whose `flakeInput == "keystone"` when development
-   mode is enabled.
-9. `keystone.terminal.devMode.deepworkPath` is auto-derived from the
-   `keystone.repos` entry whose `flakeInput == "deepwork"` when development
-   mode is enabled.
+8. `keystone.terminal.development` is bridged from the NixOS-level
+   `keystone.development` option by `users.nix`.
+9. `keystone.terminal.repos` is bridged from `keystone.repos` by `users.nix`.
+   Terminal modules look up local checkout paths by `flakeInput` name.
 10. DeepWork library jobs (`DEEPWORK_ADDITIONAL_JOBS_FOLDERS`) swap to local
-    checkouts when the corresponding `devMode` path is set.
+    checkouts when `keystone.terminal.development` is true and the
+    corresponding repo is registered.
 
 ## Desktop Module
 

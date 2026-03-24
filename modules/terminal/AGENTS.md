@@ -80,21 +80,26 @@ Generates `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md` fro
 (default 16KB). If triggered, move conventions from `inlined_conventions` to
 `referenced_conventions` in `archetypes.yaml`.
 
-## Dev Mode vs Locked Mode (`devMode` option in `terminal/default.nix`)
+## Development Mode vs Locked Mode (`development` + `repos` in `terminal/default.nix`)
 
-**Dev mode** (`keystonePath` set): Generated files (`~/.claude/commands/`, `~/.claude/CLAUDE.md`,
-etc.) are out-of-store symlinks → edits take effect immediately without rebuild.
+**Development mode** (`development = true` with repos registered): Generated files
+(`~/.claude/commands/`, `~/.claude/CLAUDE.md`, etc.) are out-of-store symlinks →
+edits take effect immediately without rebuild.
 
 **Locked mode** (default): Files are immutable Nix store copies. Rebuild required.
 
 ```nix
-# In nixos-config, enable dev mode:
-keystone.terminal.devMode.keystonePath =
-  "/home/ncrmro/.keystone/repos/ncrmro/keystone";
+# In nixos-config, enable development mode:
+keystone.development = true;
+# repos are auto-populated from flake inputs via keystone.repos
 ```
 
+The `development` boolean and `repos` attrset are bridged from NixOS-level
+`keystone.development` and `keystone.repos` by `users.nix`. Terminal modules
+look up local checkout paths via `repos` entries by `flakeInput` name.
+
 New file-generating modules MUST use `config.lib.file.mkOutOfStoreSymlink` when
-`keystonePath` is set, falling back to Nix store `source` otherwise.
+development mode is active, falling back to Nix store `source` otherwise.
 
 ## Tasks / Calendar / Contacts / Timer
 
