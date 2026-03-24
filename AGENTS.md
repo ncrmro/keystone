@@ -20,7 +20,7 @@ configuration, desktop environments, terminal tooling, and server services.
 
 ```
 modules/
-├── domain.nix, hosts.nix, keys.nix, repos.nix, secrets.nix, services.nix
+├── domain.nix, hosts.nix, keys.nix, shared/repos.nix, secrets.nix, services.nix
 ├── iso-installer.nix, installer.nix, binary-cache-client.nix
 ├── notes/
 ├── os/

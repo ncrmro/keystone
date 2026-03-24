@@ -105,8 +105,8 @@ in
     # Inherit development mode and repos from NixOS level if available (osConfig).
     # This ensures that setting keystone.development = true at the NixOS level
     # automatically applies to all users' terminal modules without manual bridging.
-    keystone.development = mkIf (osConfig != null) (mkDefault osConfig.keystone.development);
-    keystone.repos = mkIf (osConfig != null) (mkDefault osConfig.keystone.repos);
+    keystone.development = mkIf (osConfig != null) (mkDefault (osConfig.keystone.development or false));
+    keystone.repos = mkIf (osConfig != null) (mkDefault (osConfig.keystone.repos or { }));
 
     # Assertions to ensure required git options are set
     assertions = [
