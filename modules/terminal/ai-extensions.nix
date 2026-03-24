@@ -13,7 +13,7 @@
 # "skill" plugins via markdown templates, add their respective configuration
 # directories to the generation logic below.
 #
-# Development mode (REQ-018): When keystone.terminal.development is true and
+# Development mode (REQ-018): When keystone.development is true and
 # a keystone repo is registered, templates are out-of-store symlinks to the
 # checkout — editable in place.
 {
@@ -26,8 +26,8 @@ with lib;
 let
   terminalCfg = config.keystone.terminal;
   cfg = terminalCfg.aiExtensions;
-  isDev = terminalCfg.development;
-  repos = terminalCfg.repos;
+  isDev = config.keystone.development;
+  repos = config.keystone.repos;
   homeDir = config.home.homeDirectory;
 
   # Look up the keystone repo's local checkout path.

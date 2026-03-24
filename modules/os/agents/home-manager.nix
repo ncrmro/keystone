@@ -56,9 +56,9 @@ in
               enable = mkDefault agentCfg.terminal.enable;
               conventions.archetype = mkDefault agentCfg.archetype;
 
-              # Bridge keystone.development + keystone.repos → terminal options
-              development = mkDefault config.keystone.development;
-              repos = mkDefault config.keystone.repos;
+              # development and repos are no longer bridged here;
+              # they are inherited globally from keystone.development
+              # and keystone.repos which are now shared options.
 
               git =
                 let

@@ -5,6 +5,8 @@
   config,
   lib,
   pkgs,
+  keystoneInputs ? { },
+  osConfig ? null,
   ...
 }:
 with lib;
@@ -18,6 +20,7 @@ let
 in
 {
   imports = [
+    ../shared/repos.nix
     ./shell.nix
     ./editor.nix
     ./ai.nix
@@ -56,46 +59,6 @@ in
       description = "Default editor command (e.g., 'hx' for helix, 'nvim' for neovim)";
     };
 
-    development = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''
-        Enable development mode. When true, terminal modules use local repo
-        checkouts at ~/.keystone/repos/OWNER/REPO/ instead of Nix store copies,
-        enabling rapid iteration without rebuilding.
-
-        Bridged from the NixOS-level keystone.development option by users.nix.
-      '';
-    };
-
-    repos = mkOption {
-      type = types.attrsOf (
-        types.submodule {
-          options = {
-            url = mkOption {
-              type = types.str;
-              description = "Git remote URL";
-            };
-            flakeInput = mkOption {
-              type = types.nullOr types.str;
-              default = null;
-              description = "Corresponding flake input name.";
-            };
-            branch = mkOption {
-              type = types.str;
-              default = "main";
-              description = "Default branch for pull/push";
-            };
-          };
-        }
-      );
-      default = { };
-      description = ''
-        Managed repositories keyed by owner/repo. Used in development mode to
-        resolve local checkout paths. Bridged from keystone.repos by users.nix.
-      '';
-    };
-
     git = {
       enable = mkOption {
         type = types.bool;
@@ -132,6 +95,19 @@ in
   };
 
   config = mkIf cfg.enable {
+    # Auto-populate keystone._repoInputs for home-manager if inputs are provided
+    # via keystoneInputs (standard for keystone's own home-manager modules).
+    keystone._repoInputs = mkIf (keystoneInputs ? self) {
+      keystone = keystoneInputs.self;
+      deepwork = keystoneInputs.deepwork or { };
+    };
+
+    # Inherit development mode and repos from NixOS level if available (osConfig).
+    # This ensures that setting keystone.development = true at the NixOS level
+    # automatically applies to all users' terminal modules without manual bridging.
+    keystone.development = mkIf (osConfig != null) (mkDefault osConfig.keystone.development);
+    keystone.repos = mkIf (osConfig != null) (mkDefault osConfig.keystone.repos);
+
     # Assertions to ensure required git options are set
     assertions = [
       {

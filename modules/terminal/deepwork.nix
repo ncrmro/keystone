@@ -6,8 +6,8 @@
 # included automatically.  To add a new job, add a cp -r entry in the
 # deepwork-library-jobs runCommand once the job exists in the upstream repo.
 #
-# Development mode (REQ-018): When keystone.terminal.development is true,
-# both job sources swap to local checkouts derived from keystone.terminal.repos:
+# Development mode (REQ-018): When keystone.development is true,
+# both job sources swap to local checkouts derived from keystone.repos:
 # - deepwork repo → library jobs from local checkout's library/jobs/
 # - keystone repo → keystone-native jobs from local checkout's .deepwork/jobs/
 # When development mode is off, all paths resolve to Nix store copies.
@@ -21,8 +21,8 @@ with lib;
 let
   cfg = config.keystone.terminal.deepwork;
   terminalCfg = config.keystone.terminal;
-  isDev = terminalCfg.development;
-  repos = terminalCfg.repos;
+  isDev = config.keystone.development;
+  repos = config.keystone.repos;
   homeDir = config.home.homeDirectory;
 
   # Look up a repo's local checkout path by its flakeInput name.

@@ -9,11 +9,30 @@
 # Only inputs with discoverable source URLs (github, git) are registered.
 # Auto-derived entries use mkDefault priority so consumers can override.
 #
-{ lib, config, ... }:
+{
+  lib,
+  config,
+  options,
+  ...
+}:
+let _ = builtins.trace "SHARED REPOS MODULE LOADING..." null; in
 with lib;
 let
   cfg = config.keystone;
   inputs = cfg._repoInputs;
+
+  # Whether we are running inside a Home Manager module that has access to NixOS config
+  osConfig =
+    if config ? osConfig then
+      config.osConfig
+    else if options ? osConfig && options.osConfig ? value then
+      options.osConfig.value
+    else
+      null;
+
+  _trace1 = builtins.trace "SHARED REPOS: config has osConfig: ${if config ? osConfig then "YES" else "NO"}" null;
+  _trace2 = builtins.trace "SHARED REPOS: options has osConfig: ${if options ? osConfig then "YES" else "NO"}" null;
+  _trace3 = if osConfig != null then builtins.trace "SHARED REPOS: osConfig.keystone.development is ${builtins.toJSON (osConfig.keystone.development or "MISSING")}" null else null;
 
   # Derive a repo entry from a flake input's sourceInfo.
   # Returns null for inputs without a discoverable git URL.
@@ -85,7 +104,7 @@ in
   options.keystone = {
     development = mkOption {
       type = types.bool;
-      default = false;
+      default = if osConfig != null then osConfig.keystone.development or false else false;
       description = ''
         Enable development mode globally. When true, modules use local repo
         checkouts at ~/.keystone/repos/OWNER/REPO/ instead of Nix store copies.
@@ -124,7 +143,7 @@ in
           };
         }
       );
-      default = { };
+      default = if osConfig != null then osConfig.keystone.repos or { } else { };
       description = "Managed repositories keyed by owner/repo. Cloned to ~/.keystone/repos/{owner}/{repo}/.";
     };
   };
