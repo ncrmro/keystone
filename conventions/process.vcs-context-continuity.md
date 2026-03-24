@@ -1,5 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
-# Convention: Context Continuity (process.context-continuity)
+# Convention: VCS Context Continuity (process.vcs-context-continuity)
 
 Standards for maintaining real-time visibility and state tracking on issues and 
 pull requests to ensure that any agent or human can seamlessly resume 

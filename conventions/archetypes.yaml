@@ -40,7 +40,7 @@ archetypes:
       - process.version-control
       - process.prose
       - tool.standard-utilities
-      - process.context-continuity
+      - process.vcs-context-continuity
     referenced_conventions:
       - os.requirements
       - tool.nix-devshell
@@ -63,7 +63,7 @@ archetypes:
       - process.enable-by-default
       - process.prose
       - tool.standard-utilities
-      - process.context-continuity
+      - process.vcs-context-continuity
     referenced_conventions:
       - os.requirements
       - process.agent-cronjobs
@@ -171,7 +171,7 @@ archetypes:
       - process.press-release
       - process.prose
       - tool.standard-utilities
-      - process.context-continuity
+      - process.vcs-context-continuity
     referenced_conventions:
       - process.task-tracking
       - process.project-board

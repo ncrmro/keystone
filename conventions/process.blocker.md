@@ -38,7 +38,7 @@ This convention defines how agents identify, report, and recover from platform a
 ## Handoff and Notification
 
 13. The blocker issue MUST be assigned to the appropriate person — infrastructure issues to the human operator (see `TEAM.md`), project ops issues to the repo owner.
-14. A comment MUST be posted on the blocked task's issue (if it has one) linking to the blocker issue and explaining the dependency. See `process.context-continuity` for standards on documenting environmental difficulties.
+14. A comment MUST be posted on the blocked task's issue (if it has one) linking to the blocker issue and explaining the dependency. See `process.vcs-context-continuity` for standards on documenting environmental difficulties.
 15. The agent SHOULD send a brief email notification to the assignee via himalaya per `tool.himalaya`.
 
 ## Resuming After Unblock
