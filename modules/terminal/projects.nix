@@ -25,6 +25,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 with lib;
@@ -38,7 +39,9 @@ in
   imports = [ ../notes/default.nix ];
 
   options.keystone.projects = {
-    enable = mkEnableOption "Keystone project session management";
+    enable = mkEnableOption "Keystone project session management" // {
+      default = true;
+    };
 
     sessionPrefix = mkOption {
       type = types.str;
@@ -55,6 +58,10 @@ in
         assertion = config.keystone.notes.enable;
         message = "keystone.notes.enable must be true when keystone.projects.enable is true (REQ-010.5)";
       }
+    ];
+
+    home.packages = [
+      pkgs.keystone.pz
     ];
   };
 }
