@@ -68,8 +68,11 @@ in
               GoToNextTab = { };
             };
             # New tab: Ctrl+T
+            # Enforce naming in-client to avoid the multi-client CLI rename-tab issue.
             "bind \"Ctrl t\"" = {
               NewTab = { };
+              SwitchToMode = "renametab";
+              TabNameInput = 0;
             };
             # Close tab: Ctrl+W
             "bind \"Ctrl w\"" = {

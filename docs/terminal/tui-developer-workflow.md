@@ -76,7 +76,8 @@ Key concepts:
 Basic navigation:
 
 - `Ctrl+p` then arrow keys: Switch panes
-- `Ctrl+t` then arrow keys: Switch tabs
+- `Ctrl+t`: Create a new tab and name it immediately
+- `Ctrl+PageUp` / `Ctrl+PageDown`: Switch tabs
 - `Ctrl+p` then `n`: New pane
 - `Ctrl+o` then `d`: Detach session
 
