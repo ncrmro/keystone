@@ -76,7 +76,7 @@ For a permanent installation that manages your configuration files (dotfiles), w
 2.  **Apply the configuration:**
 
     ```bash
-    nix run home-manager/master -- switch --flake .#YOUR_USERNAME
+    nix run github:nix-community/home-manager/master -- switch --flake .#YOUR_USERNAME
     ```
 
 ## Next Steps
