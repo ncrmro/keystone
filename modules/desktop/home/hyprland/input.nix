@@ -31,8 +31,17 @@ in
         };
       };
 
-      # Note: workspace_swipe was removed in Hyprland 0.51+
-      # Use new gesture syntax if needed: gesture = fingers, direction, action
+      # Touchpad gestures for workspace switching (Hyprland 0.51+ syntax)
+      # Four-finger horizontal swipe switches workspaces
+      gestures = {
+        gesture = [
+          "4, horizontal, workspace"
+          # TODO: Three-finger drag for window moving is not supported by Hyprland.
+          # The upstream issue (https://github.com/hyprwm/Hyprland/issues/5473) is
+          # marked "not planned" — native touchpad drag gestures that move/float windows
+          # are not implemented. Re-evaluate when upstream adds support.
+        ];
+      };
     };
   };
 }
