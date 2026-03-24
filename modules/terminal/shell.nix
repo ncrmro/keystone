@@ -71,7 +71,8 @@ in
             # Enforce naming in-client to avoid the multi-client CLI rename-tab issue.
             "bind \"Ctrl t\"" = {
               NewTab = { };
-              SwitchToMode = "renametab";
+              UndoRenameTab = { };
+              SwitchToMode = "RenameTab";
               TabNameInput = 0;
             };
             # Close tab: Ctrl+W
