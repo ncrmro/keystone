@@ -14,6 +14,12 @@
 #   - Keystone repo (conventions/): tool manuals, process docs, archetypes — shared
 #   - nixos-config repo: SOUL.md, TEAM.md, SERVICES.md — per-deployment/per-agent
 #   - This module generates ONLY the conventions layer
+#
+# Development mode (REQ-018): When keystone.terminal.development is true and
+# a keystone repo is registered, the exposed conventions directory and referenced
+# convention links resolve to local checkout paths — editable in place.
+# Eval-time reads (archetypes.yaml, inlined conventions) always use the Nix store
+# copy since builtins.readFile requires store paths in pure evaluation mode.
 {
   config,
   lib,
@@ -24,11 +30,30 @@ with lib;
 let
   cfg = config.keystone.terminal.conventions;
   terminalCfg = config.keystone.terminal;
-  conventionsPath = pkgs.keystone.keystone-conventions;
+  isDev = terminalCfg.development;
+  repos = terminalCfg.repos;
+  homeDir = config.home.homeDirectory;
+
+  # Look up the keystone repo's local checkout path.
+  keystoneEntry = findFirst (name: (repos.${name}.flakeInput or null) == "keystone") null (
+    attrNames repos
+  );
+  devConventionsPath =
+    if isDev && keystoneEntry != null then
+      "${homeDir}/.keystone/repos/${keystoneEntry}/conventions"
+    else
+      null;
+
+  # Store path — always needed for eval-time reads (archetypes.yaml, inlined conventions).
+  storeConventionsPath = pkgs.keystone.keystone-conventions;
+
+  # Runtime path: local checkout in dev mode, Nix store otherwise.
+  # Used for referenced convention links and the exposed conventions directory.
+  conventionsPath = if devConventionsPath != null then devConventionsPath else storeConventionsPath;
 
   # Read archetypes.yaml from the conventions derivation.
   # Guard: if the file doesn't exist, produce empty config (graceful degradation).
-  archetypesFile = "${conventionsPath}/archetypes.yaml";
+  archetypesFile = "${storeConventionsPath}/archetypes.yaml";
   hasArchetypes = builtins.pathExists archetypesFile;
 
   # Parse archetypes.yaml to determine which conventions to inline
@@ -47,14 +72,16 @@ let
   # Get the archetype config
   archetypeConfig = archetypesYaml.archetypes.${cfg.archetype} or { };
 
-  # Build inlined conventions content
+  # Build inlined conventions content.
+  # Always reads from store path — builtins.readFile requires store paths in
+  # pure evaluation mode. Inlined content updates on next rebuild.
   inlinedConventions = map (
     name:
     let
       # Convention names use dots (e.g., "process.version-control") but files
       # use the full name as filename (e.g., "process.version-control.md")
       filename = "${name}.md";
-      filepath = "${conventionsPath}/${filename}";
+      filepath = "${storeConventionsPath}/${filename}";
     in
     if builtins.pathExists filepath then
       builtins.readFile filepath
@@ -143,8 +170,13 @@ in
     home.file.".gemini/GEMINI.md".text = agentsMdContent;
     home.file.".codex/AGENTS.md".text = agentsMdContent;
 
-    # Expose the full conventions directory for on-demand reading
-    # (referenced conventions link to Nix store paths in this directory)
-    home.file.".config/keystone/conventions".source = conventionsPath;
+    # Expose the full conventions directory for on-demand reading.
+    # In dev mode, symlinks to local checkout (editable in place).
+    # In locked mode, points to Nix store copy.
+    home.file.".config/keystone/conventions" =
+      if devConventionsPath != null then
+        { source = config.lib.file.mkOutOfStoreSymlink devConventionsPath; }
+      else
+        { source = storeConventionsPath; };
   };
 }
