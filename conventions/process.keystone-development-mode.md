@@ -47,29 +47,36 @@ enabled, modules derive local paths from the `keystone.repos` registry at
     `CLAUDE.md`, `GEMINI.md`), curated AI command files, and managed Codex
     skills MUST be refreshable from the live keystone checkout without a full
     rebuild.
-12. `ks sync-agent-assets` is the supported no-sudo refresh path for these
+12. AI artifact instruction files, skills, and role agent profiles
+    (`ai-artifacts/`) swap to the local checkout when
+    `keystone.development = true` and the keystone repo is registered. This
+    covers `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`,
+    `~/.config/opencode/AGENTS.md`, and all skill directories.
+13. When `keystone.development = false`, AI artifacts are installed from the
+    committed tree via the Nix store — behavior is reproducible in locked builds.
+14. `ks sync-agent-assets` is the supported no-sudo refresh path for these
     generated development-mode assets. `ks switch` and `ks update --dev` MUST
     also run the same refresh path during activation.
-13. Development-mode refreshes MUST write generated outputs into user-home tool
+15. Development-mode refreshes MUST write generated outputs into user-home tool
     paths, not into repo checkouts under `keystone.repos`.
 
 ## Desktop Module
 
-14. Desktop and terminal user-facing shell scripts backed by checked-in `.sh`
+16. Desktop and terminal user-facing shell scripts backed by checked-in `.sh`
     files MUST be linked into the user's PATH from the local checkout when
     `keystone.development = true`. After activation, edits to the repo script
     MUST take effect without rebuild.
-15. When a linked repo-backed script depends on adjacent non-executable assets
+17. When a linked repo-backed script depends on adjacent non-executable assets
     such as CSS, templates, or static config files, the script MUST resolve
     those assets from the live checkout at runtime. Build-time substituted
     paths alone are insufficient because the linked dev-mode script bypasses
     Nix substitution.
-16. Desktop theme and configuration files MAY use local checkouts for rapid
+18. Desktop theme and configuration files MAY use local checkouts for rapid
     iteration when `keystone.development = true`.
 
 ## Server Module
 
-17. (Future) Server modules MAY use local checkouts for service configs when
+19. (Future) Server modules MAY use local checkouts for service configs when
     `keystone.development = true`.
 
 For the Grafana-specific application of these development-mode rules, including
@@ -78,19 +85,19 @@ checked-in dashboard JSON and rapid apply flows, see
 
 ## Safety
 
-18. `keystone.development` MUST only affect path resolution — it MUST NOT
+20. `keystone.development` MUST only affect path resolution — it MUST NOT
     modify, commit, or push any repository (per REQ-018.8).
-19. Modules MUST NOT write to paths derived from `keystone.repos` entries.
+21. Modules MUST NOT write to paths derived from `keystone.repos` entries.
     Local checkouts are read-only from the module system's perspective.
 
 ## Agent Parity
 
-20. Agents MUST inherit development mode from the global
+22. Agents MUST inherit development mode from the global
     `keystone.development` setting via their home-manager config bridge (see
     `process.enable-by-default` rules 9-11).
 
 ## Diagnostics
 
-21. `ks doctor` MUST report development mode status: whether it is enabled,
+23. `ks doctor` MUST report development mode status: whether it is enabled,
     which repos are declared, and whether their local checkouts exist (per
     REQ-023).

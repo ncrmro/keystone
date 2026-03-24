@@ -98,10 +98,9 @@ MUST run the same refresh path.
 - `~/.config/opencode/AGENTS.md` — system-wide conventions
 - `~/.config/opencode/opencode.json` — MCP server configs
 
-**Note**: OpenCode's Claude Code compatibility means it reads `~/.claude/CLAUDE.md` by default.
-Keystone SHOULD NOT configure OpenCode separately for now — it picks up Claude Code's
-CLAUDE.md automatically. Disable compatibility later with `OPENCODE_DISABLE_CLAUDE_CODE=1`
-when OpenCode-specific configuration is needed.
+**Note**: OpenCode now has a native instruction file at `~/.config/opencode/AGENTS.md`.
+Keystone generates this from the artifact tree alongside Claude, Gemini, and Codex
+instruction files. OpenCode's Claude Code compatibility layer is no longer required.
 
 ### GitHub Copilot CLI
 
@@ -140,7 +139,16 @@ when OpenCode-specific configuration is needed.
 1. MUST generate the system-wide conventions content from `keystone-conventions` derivation
 2. MUST write the canonical user-level instruction file to `~/.keystone/AGENTS.md`
 3. MUST derive the tool-native user-level files from the same generated content
-4. MUST symlink `~/.config/keystone/conventions/` to the conventions store path for on-demand reading
+4. MUST install archetype-specific instruction files from `ai-artifacts/` when `aiArtifacts.enable` is true
+5. MUST write to ALL tool-native user-level paths: Claude, Gemini, Codex, and OpenCode
+6. MUST fall back to in-memory generation when `aiArtifacts.enable` is false (backward compatibility)
+7. MUST symlink `~/.config/keystone/conventions/` to the conventions store path for on-demand reading
+
+### `modules/terminal/ai-artifacts.nix`
+
+1. MUST expose `keystone.terminal.aiArtifacts` options for enable, archetype, and per-tool control
+2. MUST default the archetype to `conventions.archetype` so users don't set it twice
+3. MUST resolve local artifact tree in development mode, Nix store copies otherwise
 
 ### `modules/terminal/ai-extensions.nix`
 

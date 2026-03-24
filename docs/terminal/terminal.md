@@ -143,7 +143,7 @@ The conventions module writes keystone conventions to each CLI coding tool's nat
 - `~/.claude/CLAUDE.md` (Claude Code)
 - `~/.gemini/GEMINI.md` (Gemini CLI)
 - `~/.codex/AGENTS.md` (Codex)
-- OpenCode reads `~/.claude/CLAUDE.md` via legacy compatibility
+- `~/.config/opencode/AGENTS.md` (OpenCode)
 
 ```nix
 keystone.terminal.conventions = {
@@ -156,6 +156,51 @@ keystone.terminal.conventions = {
 The `archetype` option controls which convention set is inlined vs referenced. The default is `"keystone-system-host"`. Per-agent overrides are set via `keystone.os.agents.<name>.archetype`. See `conventions/tool.cli-coding-agents.md` for details on each tool's file discovery.
 
 `maxGlobalBytes` sets the budget for the generated file. A build warning is emitted when the content exceeds this limit.
+
+### AI Artifacts
+
+When `keystone.terminal.aiArtifacts.enable` is true (the default), instruction files and skills are installed from the committed `ai-artifacts/` tree. This tree is generated from `conventions/archetypes.yaml` by the `generate-ai-artifacts` tool and committed for PR review.
+
+```text
+ai-artifacts/
+├── archetypes/<name>/
+│   ├── claude/CLAUDE.md
+│   ├── gemini/GEMINI.md
+│   ├── codex/AGENTS.md
+│   ├── opencode/AGENTS.md
+│   └── skills/<skill>/SKILL.md
+└── roles/<role>/<tool>/agent.md
+```
+
+The artifact tree is archetype-aware: different archetypes produce different instruction files and skill sets. Configure the archetype and per-tool enablement:
+
+```nix
+keystone.terminal.aiArtifacts = {
+  enable = true;                         # Default: true
+  archetype = "engineer";               # Defaults to conventions.archetype
+  tools.claude.enable = true;           # Per-tool control
+  tools.gemini.enable = true;
+  tools.codex.enable = true;
+  tools.opencode.enable = true;
+};
+```
+
+#### Development mode
+
+When `keystone.development = true` and a keystone repo is registered, artifact files resolve to the local checkout at `~/.keystone/repos/{owner}/{repo}/ai-artifacts/`. This allows rapid iteration without rebuilding.
+
+When `keystone.development = false`, artifacts are installed from the Nix store (committed tree), ensuring reproducible behavior.
+
+#### Regenerating artifacts
+
+To refresh the committed artifact tree after editing source metadata:
+
+```bash
+generate-ai-artifacts                    # In a nix develop shell
+# Or: nix run .#generate-ai-artifacts -- --output-dir ai-artifacts
+```
+
+Then review the diff and commit both source changes and regenerated artifacts.
 
 ## DeepWork
 
