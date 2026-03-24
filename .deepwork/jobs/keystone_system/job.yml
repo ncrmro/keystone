@@ -1,5 +1,5 @@
 name: keystone_system
-version: "1.5.0"
+version: "1.6.0"
 summary: "Keystone development lifecycle: worktree, build, review, merge, deploy, validate, update, and convention management"
 common_job_info_provided_to_all_steps_at_runtime: |
   Keystone is a NixOS-based infrastructure platform. Development follows a strict
@@ -53,7 +53,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - `ks build --lock` — full system build + lock + push
   - `ks update` — pull, build, deploy current host (requires sudo)
   - `ks update --lock` — pull, lock, build, push, deploy (requires sudo, human-only)
-  - `ks doctor` — diagnose system health after deployment
+  - `ks doctor` — **AI entrypoint only** — this launches the `/ks.doctor` slash command (spawns a new model session). NEVER call `ks doctor` as a shell command inside a workflow step — use `systemctl --failed` and `journalctl -p err` for direct health checks instead.
 
   ## Iterative loop rules
 
@@ -96,7 +96,7 @@ workflows:
       - write_issue
 
   - name: doctor
-    summary: "Check all hosts are nominal — survey fleet state, then run ks doctor across the fleet"
+    summary: "Check all hosts are nominal — survey fleet state, then validate via direct shell health checks"
     steps:
       - survey_fleet
       - validate
@@ -237,7 +237,7 @@ steps:
 
   - id: validate
     name: "Validate"
-    description: "Run ks doctor on all hosts, verify the entire fleet is nominal"
+    description: "Check all hosts are nominal via direct shell health checks (systemctl, journalctl, agentctl)"
     instructions_file: steps/validate.md
     exposed: true
     inputs: []
@@ -251,13 +251,13 @@ steps:
     reviews:
       - run_each: validation_report.md
         quality_criteria:
-          "Current Host Nominal": "The ks doctor output for the current host shows no critical issues."
+          "Current Host Nominal": "Direct health checks on the current host (`systemctl --failed`, `journalctl -p err`) show no critical issues."
           "Fleet Checked": "All hosts affected by the changes have been checked or confirmed not impacted."
           "Changes Verified": "The specific changes from the plan are confirmed working on the live system."
 
   - id: survey_fleet
     name: "Survey Fleet"
-    description: "Gather fleet state: keystone rev gap, recent commits since last lock, preliminary ks doctor"
+    description: "Gather fleet state: keystone rev gap, recent commits since last lock, direct host health checks"
     instructions_file: steps/survey_fleet.md
     inputs: []
     outputs:
@@ -271,7 +271,7 @@ steps:
         quality_criteria:
           "Rev Gap Documented": "The report shows the exact keystone commit currently locked in flake.lock and the latest commit on keystone main, with the full commit log between them."
           "Host Reachability": "All hosts in hosts.nix are listed with their reachability status — unreachable hosts are noted, not silently skipped."
-          "Preliminary Health": "The ks doctor output for the current host is captured, with any existing issues flagged."
+          "Preliminary Health": "Direct health checks (`systemctl --failed`, `journalctl -p err`) were run on the current host and any issues are documented."
 
   - id: plan_update
     name: "Plan Update"

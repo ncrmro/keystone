@@ -10,9 +10,15 @@ Verify that the deployed changes are working correctly across all hosts. This st
 
 ### Process
 
-1. **Run ks doctor on the current host**
-   - Execute `ks doctor` and capture the full output
-   - Look for any errors, warnings, or failed checks
+1. **Check current host health directly**
+   - **Do NOT run `ks doctor`** — it is an AI entrypoint (`/ks.doctor` slash command), not a shell diagnostic tool
+   - Run direct health checks instead:
+     ```bash
+     systemctl is-system-running           # overall state
+     systemctl --failed                    # list failed units
+     journalctl -p err --since '1 hour ago' --no-pager | tail -30
+     ```
+   - For service-specific checks related to the deployed changes, run `systemctl status <service>` directly
    - Pay special attention to services related to the changes that were deployed
 
 2. **Check the validation criteria from the plan**
@@ -65,8 +71,9 @@ Verify that the deployed changes are working correctly across all hosts. This st
 
 ## Current Host
 - **Hostname**: [hostname]
-- **ks doctor status**: [PASS | WARNINGS | FAIL]
-- **Output summary**: [key findings from ks doctor]
+- **System state**: [running | degraded | maintenance]
+- **Failed units**: [from `systemctl --failed`, or "None"]
+- **Recent errors**: [from `journalctl -p err`, or "None"]
 
 ## Plan Validation Criteria
 
@@ -100,7 +107,7 @@ Verify that the deployed changes are working correctly across all hosts. This st
 
 ## Quality Criteria
 
-- The ks doctor output for the current host shows no critical issues
+- Direct health checks on the current host (`systemctl --failed`, `journalctl -p err`) show no critical issues
 - All hosts affected by the changes have been checked or confirmed not impacted
 - The specific validation criteria from the plan are confirmed working on the live system
 

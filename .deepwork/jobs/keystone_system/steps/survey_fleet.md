@@ -34,9 +34,15 @@ Build a comprehensive snapshot of the fleet's current state to inform the update
      ```
    - Note any uncommitted changes in nixos-config: `git -C <nixos-config-path> status`
 
-3. **Run preliminary ks doctor**
-   - Execute `ks doctor` on the current host and capture the output
-   - Note any existing issues — these are pre-existing and not caused by pending changes
+3. **Check current host health directly**
+   - **Do NOT run `ks doctor`** — that command is an AI entrypoint (`/ks.doctor` slash command) and would create a recursive loop
+   - Instead, run direct shell health checks:
+     ```bash
+     systemctl is-system-running           # overall state: running / degraded
+     systemctl --failed                    # list any failed units
+     journalctl -p err --since '1 hour ago' --no-pager | tail -20
+     ```
+   - Note any failed units or recent errors — these are pre-existing issues, not caused by pending changes
 
 4. **Gather fleet data via nix eval**
    Use the same nix eval patterns as `ks doctor` (see AGENTS.md "Nix Eval for System Context"):
@@ -117,11 +123,9 @@ Build a comprehensive snapshot of the fleet's current state to inform the update
 ## Preliminary Health (Current Host)
 
 - **Hostname**: [hostname]
-- **ks doctor summary**: [PASS | WARNINGS | FAIL]
-- **Issues found**:
-  - [issue 1]
-  - [issue 2]
-  - [or "None"]
+- **System state**: [running | degraded | maintenance]
+- **Failed units**: [list from `systemctl --failed`, or "None"]
+- **Recent errors**: [summary from `journalctl -p err`, or "None"]
 
 ## Host Reachability
 
@@ -143,7 +147,7 @@ Build a comprehensive snapshot of the fleet's current state to inform the update
 
 - The report shows the exact keystone commit currently locked in flake.lock and the latest commit on keystone main, with the full commit log between them
 - All hosts in hosts.nix are listed with their reachability status — unreachable hosts are noted, not silently skipped
-- The ks doctor output for the current host is captured, with any existing issues flagged
+- Direct host health checks (`systemctl --failed`, `journalctl -p err`) were run on the current host and any issues are documented
 
 ## Context
 

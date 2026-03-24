@@ -50,6 +50,12 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 - When asking which archetypes to wire into, show the user which roles already reference related conventions to help them make informed placement decisions.
 - The convention workflow scanned 38 conventions for overlap on first test — the cross-reference step is thorough but found only 2 cross-ref opportunities (no duplicates), which is expected for a genuinely new domain.
 
+### v1.6.0 — Doctor recursion fix (2026-03-24)
+
+- **`ks doctor` is an AI entrypoint, not a shell tool**: Running `ks doctor` inside a workflow step launches a new `/ks.doctor` slash command session — recursive and wrong. Use `systemctl --failed`, `systemctl is-system-running`, and `journalctl -p err --since '1 hour ago'` for direct host health checks instead.
+- This affected both `survey_fleet.md` (step 3) and `validate.md` (step 1) — both have been corrected.
+- The same applies to any other `ks` AI entrypoints (`ks switch`, etc.) — never call them as shell commands from within a workflow.
+
 ### v1.5.0 — Update workflow (2026-03-23)
 
 - **Always use `ks update --lock` explicitly** — never omit `--lock` even though it's the default. The user expects the explicit flag for clarity and the workflow's goal is reaching a locked state.
