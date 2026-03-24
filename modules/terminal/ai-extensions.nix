@@ -128,13 +128,14 @@ let
     let
       template = builtins.readFile (./ai-commands + "/${name}");
       skillName = codexSkillName name;
+      skillToken = "$" + skillName;
     in
     ''
       ${template}
 
       ## Codex skill invocation
 
-      Use this skill when the user invokes `$${skillName}` or asks for this workflow implicitly.
+      Use this skill when the user invokes `${skillToken}` or asks for this workflow implicitly.
       Interpret `$ARGUMENTS` as any text that follows the skill mention. If the user did not
       provide extra text, continue without additional arguments.
     '';
