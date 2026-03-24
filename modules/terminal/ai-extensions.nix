@@ -5,7 +5,7 @@
 #
 # Each tool has its own directory structure and configuration requirements:
 # - Claude: ~/.claude/commands/*.md, ~/.claude/skills/deepwork/SKILL.md
-# - Gemini: ~/.gemini/commands/*.md, ~/.gemini/skills/deepwork/SKILL.md + index.toml
+# - Gemini: ~/.gemini/commands/*.toml, ~/.gemini/skills/deepwork/SKILL.md
 # - OpenCode: ~/.config/opencode/commands/*.md, ~/.config/opencode/skills/deepwork/SKILL.md
 # - Codex: ~/.codex/skills/deepwork/SKILL.md (uses AGENTS.md for commands)
 #
@@ -19,6 +19,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 with lib;
@@ -38,16 +39,35 @@ let
 
   # DeepWork Workflow slash commands (templates in ./ai-commands/)
   commandFiles = [
-    "project.onboard.md"
-    "project.press_release.md"
-    "project.success.md"
-    "milestone.setup.md"
-    "milestone.eng_handoff.md"
+    "agent.bootstrap.md"
+    "agent.doctor.md"
+    "agent.issue.md"
+    "agent.onboard.md"
+    "daily_status.send.md"
     "ks.convention.md"
     "ks.develop.md"
     "ks.doctor.md"
     "ks.issue.md"
     "ks.update.md"
+    "marketing.social_media_setup.md"
+    "milestone.eng_handoff.md"
+    "milestone.setup.md"
+    "notes.process_inbox.md"
+    "portfolio.review.md"
+    "project.onboard.md"
+    "project.press_release.md"
+    "project.success.md"
+    "repo.doctor.md"
+    "repo.setup.md"
+    "research.deep.md"
+    "research.quick.md"
+    "sweng.audit.md"
+    "sweng.design.md"
+    "sweng.fix.md"
+    "sweng.implement.md"
+    "sweng.refactor.md"
+    "task.ingest.md"
+    "task.run.md"
   ];
 
   # Helper to resolve source path (symlink in dev mode, Nix store otherwise)
@@ -61,6 +81,30 @@ let
       {
         source = ./. + "/${subpath}";
       };
+
+  # Helper to generate Gemini-compatible TOML from a Markdown template.
+  # Gemini commands require .toml files with `prompt` and optionally `description`.
+  mkGeminiToml = name: {
+    text =
+      let
+        mdFile =
+          if devPath != null then
+            "${devPath}/modules/terminal/ai-commands/${name}"
+          else
+            ./ai-commands + "/${name}";
+
+        content = builtins.readFile mdFile;
+        # Extract first line as description, strip Markdown formatting if present
+        firstLine = head (splitString "\n" content);
+        description = removeSuffix "." (removePrefix "# " firstLine);
+
+        # Replace $ARGUMENTS with Gemini's native {{args}}
+        prompt = replaceStrings [ "$ARGUMENTS" ] [ "{{args}}" ] content;
+      in
+      lib.generators.toTOML { } {
+        inherit description prompt;
+      };
+  };
 
   # Shared metadata for skills
   skillMetadata = {
@@ -142,8 +186,18 @@ in
               acc
               // (listToAttrs (
                 map (name: {
-                  name = "${toolDir}/commands/${name}";
-                  value = mkSource "ai-commands/${name}";
+                  # Gemini uses .toml for commands and subdirectories for namespacing (ks.develop -> ks/develop -> /ks:develop)
+                  # Others use .md and maintain dots in filenames for now.
+                  name =
+                    if (toolDir == ".gemini") then
+                      let
+                        relPath = replaceStrings [ "." ] [ "/" ] (lib.removeSuffix ".md" name);
+                      in
+                      "${toolDir}/commands/${relPath}.toml"
+                    else
+                      "${toolDir}/commands/${name}";
+
+                  value = if (toolDir == ".gemini") then mkGeminiToml name else mkSource "ai-commands/${name}";
                 }) commandFiles
               ))
             else
