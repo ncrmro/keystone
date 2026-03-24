@@ -17,7 +17,8 @@ MAY, REQUIRED, OPTIONAL).
 | Command | Description |
 |---------|-------------|
 | `ks build [--lock] [HOSTS]` | Build home-manager profiles (default) or full system (`--lock`) |
-| `ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]` | Deploy to hosts |
+| `ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]` | Pull, lock, build, push, and deploy to hosts |
+| `ks switch [--boot] [HOSTS]` | Fast deploy current state without pull/lock/push |
 | `ks sync-host-keys` | Populate `hostPublicKey` in `hosts.nix` from live hosts |
 | `ks agent [--local [MODEL]] [args...]` | Launch AI agent with keystone OS context |
 | `ks doctor [--local [MODEL]] [args...]` | Launch diagnostic AI agent with system state |
@@ -51,7 +52,9 @@ for all target hosts.
 as `--override-input` when those directories exist, regardless of mode.
 
 **REQ-019.6** `ks` MUST build all target hosts before deploying any of
-them (fail-fast ordering).
+them (fail-fast ordering). `ks update` and `ks switch` MUST capture
+the built store paths from the parallel build phase and use them
+directly for deployment to prevent redundant Nix evaluations.
 
 **REQ-019.7** `ks` MUST pass `--no-link` to `nix build` to prevent
 `./result` symlinks in the caller's working directory.
@@ -85,9 +88,21 @@ of the run.
 profiles (users + agents) across all target hosts, skipping the full
 NixOS system rebuild. Dev mode deploy SHOULD NOT require sudo.
 
-**REQ-019.14** `ks update --boot` MUST set the NixOS configuration for
-next boot without activating it (uses `nixos-rebuild boot` instead of
-`switch`).
+**REQ-019.14** `ks update --boot` and `ks switch --boot` MUST set the
+NixOS configuration for next boot without activating it immediately.
+
+**REQ-019.15** `ks switch` MUST provide a fast-iteration deployment
+workflow by building and activating the current local state immediately,
+skipping the pull, lock, and push phases required by `ks update`.
+
+**REQ-019.16** Smart Deploy: `ks update` and `ks switch` MUST automatically
+detect if an update only modifies home-manager profiles by comparing the
+newly built `toplevel` against the currently running system.
+- It MUST compare `sw`, `kernel`, `initrd`, and `/etc` (excluding `per-user`).
+- If only home-manager files changed (no core OS changes), it MUST bypass
+  the slow `switch-to-configuration switch` and instead activate the
+  home-manager profile directly, followed by a fast `switch-to-configuration boot`
+  to register the generation.
 
 ### Dev Mode
 
