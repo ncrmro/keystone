@@ -86,3 +86,19 @@ agentctl drago mail project.new --subject "Plant Caravan"
 ```
 
 The agent's task loop picks up emails and processes them based on the `[template-type]` subject tag. See [mail templates](#mail-templates) above for available templates.
+
+## Agent notes
+
+Agents work inside the same shared notes system as humans. Their notebook is
+typically `/home/agent-{name}/notes/`, and durable outputs should end up there
+rather than only in workflow scratch files.
+
+Use [Notes](../notes.md) for the shared workflow. The agent-specific behavior is:
+
+- create or refresh initiative hub notes with `/notes.project`,
+- write recurring output to `reports/` with `/notes.report`,
+- normalize older notebooks with `/notes.doctor`, and
+- promote fleeting notes with `/notes.process_inbox`.
+
+Material decisions that affect a repo or initiative should be recorded in the
+notebook and mirrored into the related issue or pull request.

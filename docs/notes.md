@@ -1,0 +1,177 @@
+---
+title: Notes
+description: Shared zk note-taking system for humans, agents, and DeepWork workflows
+---
+
+# Notes
+
+Keystone uses a shared `zk` notebook model for human notes, agent notes, and
+workflow-generated reports. The same system supports quick captures, durable
+knowledge notes, decision records, operational reports, and archived project
+history.
+
+For a human user, the notebook usually lives at `~/notes`. For OS agents, it
+usually lives at `/home/agent-{name}/notes/`.
+
+## What the notes system is for
+
+Use the notes system to:
+
+- capture fleeting thoughts quickly,
+- turn research or work output into durable notes,
+- keep one hub note per active initiative,
+- store recurring reports such as diagnostics and reviews, and
+- preserve completed work in an archive without breaking the graph.
+
+The notes system is shared. Humans and agents should both write into the same
+structure and use the same linking and tagging model.
+
+## Notebook layout
+
+The current notes model uses these groups:
+
+- `inbox/` for quick captures and raw notes
+- `literature/` for source summaries
+- `notes/` for durable idea notes
+- `decisions/` for explicit decisions
+- `reports/` for time-stamped workflow or operational reports
+- `index/` for hub notes and maps of content
+- `archive/` for completed or abandoned initiative material
+
+New or older notebooks may start with only the core `zk` groups scaffolded by
+the notes module. If your notebook does not yet have `reports/` or `archive/`,
+run the notes repair workflow to normalize it to the current model.
+
+## Note types and flow
+
+The normal flow is:
+
+1. Capture rough input in `inbox/`.
+2. Promote useful material into `literature/`, `notes/`, `decisions/`, or `reports/`.
+3. Link durable notes and reports from an `index/` hub note.
+4. Move concluded initiative material into `archive/`.
+
+### Hub notes
+
+Each active initiative should have one hub note in `index/`. The hub is the
+entry point for the work. It should summarize the objective, current state,
+next actions, durable notes, decisions, related repos, and recent reports.
+
+### Report notes
+
+Reports belong in `reports/`. Use them for:
+
+- `ks.doctor` output,
+- DeepWork research output,
+- review writeups,
+- operational checks, and
+- other dated run results.
+
+Recurring reports should link to the previous report in the same series so the
+history is easy to follow.
+
+### Archive
+
+When an initiative is complete, paused, or abandoned, move its hub and related
+initiative-specific notes into `archive/`. Keep the links and tags intact so
+the historical material remains searchable.
+
+## Tags and linking
+
+Keystone uses a tight tag set. The most important tags are:
+
+- `project/<slug>`
+- `repo/<owner>/<repo>`
+- `report/<kind>`
+- `status/active`
+- `status/archived`
+- `source/human`
+- `source/agent`
+- `source/deepwork`
+- `source/deepwork/ks-doctor`
+
+Prefer links and frontmatter over inventing new tags. Agents should be
+especially conservative about creating new tags outside the established
+namespaces.
+
+Use wikilinks for internal note references:
+
+```markdown
+See [[202603241230]] for the latest fleet health report.
+```
+
+## Human workflow
+
+For a human operator, the normal pattern is:
+
+```bash
+# Create a durable note
+zk new notes/ --title "ZFS backup failure pattern"
+
+# Create a quick capture
+zk new inbox/ --title "Follow up on launch checklist"
+
+# Search for related notes
+zk list --match "fleet health" --format json
+```
+
+When the note relates to an active initiative, add the canonical project tag
+and link it from the relevant hub note.
+
+## Agent and DeepWork workflow
+
+Agents and DeepWork workflows should write durable output into the notebook
+instead of leaving it only in scratch files or workflow output folders.
+
+The new notes workflows are:
+
+- `/notes.project` to create or refresh a hub note
+- `/notes.report` to create a standardized report note
+- `/notes.doctor` to repair and normalize a notebook
+- `/notes.process_inbox` to review and promote fleeting notes
+
+Typical agent behavior:
+
+- search for an existing hub and related reports before starting work,
+- write material decisions into `decisions/` or a report note,
+- mirror important decisions into the related issue or pull request,
+- link new reports back to the hub note.
+
+### Example: human report capture
+
+```bash
+cat system_diagnostics.log | zk new reports/ \
+  --interactive \
+  --title "NixOS telemetry $(date +%Y-%m-%d)" \
+  --extra project="unsupervised-platform" \
+  --extra report_kind="nixos-telemetry" \
+  --extra source_ref="system_diagnostics.log"
+```
+
+### Example: agent report flow
+
+An agent running `ks.doctor` should create a report note in `reports/`, tag it
+as `report/keystone-system`, `repo/ncrmro/nixos-config`, and
+`source/deepwork/ks-doctor`, link it to the previous report in the same series,
+and update a relevant system or operations hub if one exists.
+
+## Where this is configured
+
+- The home-manager notes module syncs the notes repo and can scaffold a zk
+  notebook for human users.
+- OS agents use the same notebook model in their agent-space.
+- The AI command layer exposes the notes workflows across the supported coding
+  agents, with tool-specific UX differences.
+
+## Related docs
+
+- [Terminal](terminal/terminal.md) for the terminal environment and AI command support
+- [Agents](agents/agents.md) for human-side agent interaction
+- [OS Agents](agents/os-agents.md) for agent-space provisioning and notes sync
+
+For the authoritative policy and CLI details, see:
+
+- `conventions/process.notes.md`
+- `conventions/tool.zk-notes.md`
+- `conventions/process.knowledge-management.md`
+- `conventions/tool.zk.md`

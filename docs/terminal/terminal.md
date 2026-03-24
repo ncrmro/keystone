@@ -146,6 +146,22 @@ keystone.terminal.deepwork = {
 
 When enabled, the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable is set, allowing the DeepWork MCP server to discover project-specific job definitions alongside the built-in ones.
 
+## Notes
+
+Keystone supports a shared `zk` notebook model for both human note-taking and
+agent-generated notes and reports. The user-facing guide is [Notes](../notes.md).
+
+For terminal users, the most relevant parts are:
+
+- `zk` for manual note creation and search,
+- `/notes.project` for hub notes,
+- `/notes.report` for report capture,
+- `/notes.doctor` for notebook repair and normalization, and
+- `/notes.process_inbox` for inbox review.
+
+Use the notes guide for the workflow and the conventions for the authoritative
+schema and policy details.
+
 ## Personal Information Management
 
 Keystone integrates the [Pimalaya](https://pimalaya.org/) CLI suite for email, calendars, contacts, and timers:

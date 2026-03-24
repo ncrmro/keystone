@@ -51,6 +51,8 @@ archetypes:
       - tool.forgejo
       - tool.github
       - tool.zk
+      - process.notes
+      - tool.zk-notes
       - process.enable-by-default
       - os.zfs-backup
       - tool.stalwart
@@ -89,6 +91,8 @@ archetypes:
       - tool.cloudflare-workers
       - tool.zk
       - process.knowledge-management
+      - process.notes
+      - tool.zk-notes
       - tool.stalwart
     roles:
       # Role: code-reviewer
@@ -187,6 +191,8 @@ archetypes:
       - tool.github
       - tool.zk
       - process.knowledge-management
+      - process.notes
+      - tool.zk-notes
     roles:
       # Role: business-analyst
       # Used for evaluating market opportunities, competitor products, and defining KPIs.

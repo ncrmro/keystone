@@ -50,6 +50,18 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 - When asking which archetypes to wire into, show the user which roles already reference related conventions to help them make informed placement decisions.
 - The convention workflow scanned 38 conventions for overlap on first test — the cross-reference step is thorough but found only 2 cross-ref opportunities (no duplicates), which is expected for a genuinely new domain.
 
+### v1.8.0 — Archive doctor reports to zk notes (2026-03-24)
+
+- **Doctor reports belong in `~/notes/`, not in the keystone open-source repo**: fleet_survey.md and validation_report.md contain personal deployment data (host names, IPs, generations, service failures) specific to the user's keystone deployment — not the open-source project. After completing the validate step, archive a summary to `~/notes/` using `zk new --notebook ~/notes --title "keystone fleet health YYYY-MM-DD" --no-input`.
+- **`~/notes/` is the primary zk notebook** — it has `journal/`, `notes/`, `inbox/`, and other directories. The zk config auto-names notes as `YYYYMMDDHHMM slug-title.md`. The note should contain a concise summary (not the full raw output files).
+- **The `.deepwork/jobs/` folder is scratch space** — it's fine for working files during execution but is not the final destination for personal system data.
+
+### v1.7.0 — Doctor report quality (2026-03-24)
+
+- **Always cross-reference issues with GitHub before flagging as new**: When the doctor finds failed units or health problems, search GitHub first (`gh issue list --search "<keyword>" --repo ncrmro/keystone` and `ncrmro/nixos-config`). There is already an existing GitHub issue for the `syncoid-rpool-to-*` ZFS backup sync failures — link to it rather than treating it as new.
+- **Agent health needs task-level detail**: The report should show each agent's task queue depth, recent job names, and any blocking issues — not just "services running." Use `agentctl <agent> jobs` (or equivalent) to get recent activity.
+- **Tailscale offline for agents is expected (TODO)**: Agent Tailscale integration is a planned feature, not yet implemented. Tailscale offline status for agent nodes should be documented as informational, not flagged as an alert. Only flag host-level Tailscale nodes going offline.
+
 ### v1.6.0 — Doctor recursion fix (2026-03-24)
 
 - **`ks doctor` is an AI entrypoint, not a shell tool**: Running `ks doctor` inside a workflow step launches a new `/ks.doctor` slash command session — recursive and wrong. Use `systemctl --failed`, `systemctl is-system-running`, and `journalctl -p err --since '1 hour ago'` for direct host health checks instead.

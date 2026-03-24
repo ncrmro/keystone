@@ -14,22 +14,25 @@ Create the `.zk/` configuration, templates, and directory structure for a Zettel
    - Note ID format: `{{format-date now '%Y%m%d%H%M'}}`
    - Filename pattern: `{{id}} {{slug title}}`
    - Wikilink format enabled
-   - Groups configured: fleeting (inbox/), literature (literature/), permanent (notes/), decision (decisions/), index (index/)
+   - Groups configured: fleeting (inbox/), literature (literature/), permanent (notes/), decision (decisions/), report (reports/), index (index/), archive (archive/)
    - Each group maps to its template file
 
-4. Create `.zk/templates/` with five template files:
+4. Create `.zk/templates/` with six template files:
    - `fleeting.md` — Minimal: id, title, type, created, author, tags, then content
    - `literature.md` — Includes source, source_url fields + Summary/Key Points/Links sections
    - `permanent.md` — Single idea + Links section
    - `decision.md` — Includes status, supersedes fields + Context/Decision/Consequences/Links sections
-   - `index.md` — Includes index tag + Notes section for curated links
+   - `report.md` — Includes project, report_kind, source_ref, previous_report + Findings/Actions sections
+   - `index.md` — Includes project tag support + sections for objective, reports, decisions, and queries
 
 5. Create note directories with `.gitkeep` files:
    - `inbox/`
    - `literature/`
    - `notes/`
    - `decisions/`
+   - `reports/`
    - `index/`
+   - `archive/`
 
 6. Verify with `zk index` — should complete without errors.
 
@@ -46,12 +49,15 @@ Write `scaffold_report.md` listing every file and directory created, e.g.:
 - .zk/templates/literature.md
 - .zk/templates/permanent.md
 - .zk/templates/decision.md
+- .zk/templates/report.md
 - .zk/templates/index.md
 - inbox/.gitkeep
 - literature/.gitkeep
 - notes/.gitkeep
 - decisions/.gitkeep
+- reports/.gitkeep
 - index/.gitkeep
+- archive/.gitkeep
 
 ## Verification
 - `zk index`: OK
