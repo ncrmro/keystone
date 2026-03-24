@@ -1,6 +1,6 @@
 # Keystone Terminal — core terminal module entry point.
 # Implements REQ-002 (Terminal Development Environment)
-# See specs/REQ-018-repo-management/ (devMode options)
+# See specs/REQ-018-repo-management/ (development mode)
 {
   config,
   lib,
@@ -56,37 +56,44 @@ in
       description = "Default editor command (e.g., 'hx' for helix, 'nvim' for neovim)";
     };
 
-    devMode = {
-      keystonePath = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = ''
-          Absolute path to the local keystone repository checkout.
+    development = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Enable development mode. When true, terminal modules use local repo
+        checkouts at ~/.keystone/repos/OWNER/REPO/ instead of Nix store copies,
+        enabling rapid iteration without rebuilding.
 
-          When set, terminal modules generate editable out-of-store symlinks
-          to source files in the checkout, enabling rapid iteration without
-          rebuilding. When null (default / locked mode), files are immutable
-          Nix store copies. Use `ks update --lock` to return to locked mode.
+        Bridged from the NixOS-level keystone.development option by users.nix.
+      '';
+    };
 
-          Auto-derived from keystone.repos when keystone.development is true.
-          Per REQ-018, the standard location is
-          ~/.keystone/repos/OWNER/keystone (the keystone config repo).
-        '';
-        example = "/home/user/.keystone/repos/ncrmro/keystone";
-      };
-
-      deepworkPath = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = ''
-          Absolute path to the local deepwork repository checkout.
-
-          When set, deepwork library jobs use the local checkout instead of
-          Nix store copies. Auto-derived from keystone.repos when
-          keystone.development is true.
-        '';
-        example = "/home/user/.keystone/repos/Unsupervisedcom/deepwork";
-      };
+    repos = mkOption {
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            url = mkOption {
+              type = types.str;
+              description = "Git remote URL";
+            };
+            flakeInput = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Corresponding flake input name.";
+            };
+            branch = mkOption {
+              type = types.str;
+              default = "main";
+              description = "Default branch for pull/push";
+            };
+          };
+        }
+      );
+      default = { };
+      description = ''
+        Managed repositories keyed by owner/repo. Used in development mode to
+        resolve local checkout paths. Bridged from keystone.repos by users.nix.
+      '';
     };
 
     git = {

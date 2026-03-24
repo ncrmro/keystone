@@ -6,10 +6,10 @@
 # included automatically.  To add a new job, add a cp -r entry in the
 # deepwork-library-jobs runCommand once the job exists in the upstream repo.
 #
-# Dev mode (REQ-018): When keystone.development is true, both job sources
-# swap to local checkouts derived from keystone.repos:
-# - deepworkPath → deepwork library jobs from local checkout's library/jobs/
-# - keystonePath → keystone-native jobs from local checkout's .deepwork/jobs/
+# Development mode (REQ-018): When keystone.terminal.development is true,
+# both job sources swap to local checkouts derived from keystone.terminal.repos:
+# - deepwork repo → library jobs from local checkout's library/jobs/
+# - keystone repo → keystone-native jobs from local checkout's .deepwork/jobs/
 # When development mode is off, all paths resolve to Nix store copies.
 {
   config,
@@ -21,8 +21,22 @@ with lib;
 let
   cfg = config.keystone.terminal.deepwork;
   terminalCfg = config.keystone.terminal;
-  devMode = terminalCfg.devMode;
-  isDev = devMode.keystonePath != null;
+  isDev = terminalCfg.development;
+  repos = terminalCfg.repos;
+  homeDir = config.home.homeDirectory;
+
+  # Look up a repo's local checkout path by its flakeInput name.
+  repoPath =
+    flakeInputName:
+    let
+      entry = findFirst (name: (repos.${name}.flakeInput or null) == flakeInputName) null (
+        attrNames repos
+      );
+    in
+    if entry != null then "${homeDir}/.keystone/repos/${entry}" else null;
+
+  keystonePath = repoPath "keystone";
+  deepworkPath = repoPath "deepwork";
 in
 {
   options.keystone.terminal.deepwork = {
@@ -45,12 +59,18 @@ in
     # In dev mode both sources swap to local checkouts; in locked mode both use store.
     home.sessionVariables = {
       DEEPWORK_ADDITIONAL_JOBS_FOLDERS = builtins.concatStringsSep ":" [
-        (if isDev && devMode.deepworkPath != null
-         then "${devMode.deepworkPath}/library/jobs"
-         else "${pkgs.keystone.deepwork-library-jobs}")
-        (if isDev
-         then "${devMode.keystonePath}/.deepwork/jobs"
-         else "${pkgs.keystone.keystone-deepwork-jobs}")
+        (
+          if isDev && deepworkPath != null then
+            "${deepworkPath}/library/jobs"
+          else
+            "${pkgs.keystone.deepwork-library-jobs}"
+        )
+        (
+          if isDev && keystonePath != null then
+            "${keystonePath}/.deepwork/jobs"
+          else
+            "${pkgs.keystone.keystone-deepwork-jobs}"
+        )
       ];
     };
   };

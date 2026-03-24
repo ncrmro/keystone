@@ -13,8 +13,9 @@
 # "skill" plugins via markdown templates, add their respective configuration
 # directories to the generation logic below.
 #
-# Dev mode (REQ-018): When keystone.terminal.devMode.keystonePath is set,
-# templates are out-of-store symlinks to the checkout — editable in place.
+# Development mode (REQ-018): When keystone.terminal.development is true and
+# a keystone repo is registered, templates are out-of-store symlinks to the
+# checkout — editable in place.
 {
   config,
   lib,
@@ -24,8 +25,16 @@ with lib;
 let
   terminalCfg = config.keystone.terminal;
   cfg = terminalCfg.aiExtensions;
-  devPath = terminalCfg.devMode.keystonePath;
-  isDev = devPath != null;
+  isDev = terminalCfg.development;
+  repos = terminalCfg.repos;
+  homeDir = config.home.homeDirectory;
+
+  # Look up the keystone repo's local checkout path.
+  keystoneEntry = findFirst (name: (repos.${name}.flakeInput or null) == "keystone") null (
+    attrNames repos
+  );
+  devPath =
+    if isDev && keystoneEntry != null then "${homeDir}/.keystone/repos/${keystoneEntry}" else null;
 
   # DeepWork Workflow slash commands (templates in ./ai-commands/)
   commandFiles = [
@@ -42,12 +51,16 @@ let
   ];
 
   # Helper to resolve source path (symlink in dev mode, Nix store otherwise)
-  mkSource = subpath:
-    if isDev then {
-      source = config.lib.file.mkOutOfStoreSymlink "${devPath}/modules/terminal/${subpath}";
-    } else {
-      source = ./. + "/${subpath}";
-    };
+  mkSource =
+    subpath:
+    if devPath != null then
+      {
+        source = config.lib.file.mkOutOfStoreSymlink "${devPath}/modules/terminal/${subpath}";
+      }
+    else
+      {
+        source = ./. + "/${subpath}";
+      };
 
   # Shared metadata for skills
   skillMetadata = {
@@ -111,27 +124,49 @@ in
 
   # Backward compatibility for the old option name
   imports = [
-    (mkAliasOptionModule [ "keystone" "terminal" "claudeCodeCommands" "enable" ] [ "keystone" "terminal" "aiExtensions" "enable" ])
+    (mkAliasOptionModule
+      [ "keystone" "terminal" "claudeCodeCommands" "enable" ]
+      [ "keystone" "terminal" "aiExtensions" "enable" ]
+    )
   ];
 
   config = mkIf (terminalCfg.enable && terminalCfg.ai.enable && cfg.enable) {
-    home.file = foldl' (acc: toolDir:
-      # 1. Provision Slash Commands (Claude, Gemini, OpenCode)
-      # TODO: Expand this list as other tools add support for standalone command templates.
-      (if (toolDir != ".codex") then
-        acc // (listToAttrs (map (name: {
-          name = "${toolDir}/commands/${name}";
-          value = mkSource "ai-commands/${name}";
-        }) commandFiles))
-      else acc)
-      //
-      # 2. Provision DeepWork Skill (Claude, Gemini, OpenCode, Codex)
-      # TODO: Expand this list as other tools add support for "Agent Skill" directory structures.
-      (let
-        skillDir = "${toolDir}/skills/deepwork";
-      in {
-        "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
-      })
-    ) {} [ ".claude" ".gemini" ".config/opencode" ".codex" ];
+    home.file =
+      foldl'
+        (
+          acc: toolDir:
+          # 1. Provision Slash Commands (Claude, Gemini, OpenCode)
+          # TODO: Expand this list as other tools add support for standalone command templates.
+          (
+            if (toolDir != ".codex") then
+              acc
+              // (listToAttrs (
+                map (name: {
+                  name = "${toolDir}/commands/${name}";
+                  value = mkSource "ai-commands/${name}";
+                }) commandFiles
+              ))
+            else
+              acc
+          )
+          //
+            # 2. Provision DeepWork Skill (Claude, Gemini, OpenCode, Codex)
+            # TODO: Expand this list as other tools add support for "Agent Skill" directory structures.
+            (
+              let
+                skillDir = "${toolDir}/skills/deepwork";
+              in
+              {
+                "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
+              }
+            )
+        )
+        { }
+        [
+          ".claude"
+          ".gemini"
+          ".config/opencode"
+          ".codex"
+        ];
   };
 }
