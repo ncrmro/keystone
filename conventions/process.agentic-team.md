@@ -244,7 +244,7 @@ Monday — Direction Setting (half day)
 - [Blocker Escalation](./process.blocker.md) — How agents report and recover from blockers
 - [Code Review Ownership](./process.code-review-ownership.md) — Reviewer assignment via CODEOWNERS
 - [DeepWork Job Design](./process.deepwork-job.md) — Job and workflow design rules
-- [Feature Delivery](./code.delivery.md) — End-to-end code delivery lifecycle
+- [Feature Delivery](./process.feature-delivery.md) — End-to-end code delivery lifecycle
 - [Issue Journal](./process.issue-journal.md) — Structured issue comments for visibility
 - [Product-Engineering Handoff](./process.product-engineering-handoff.md) — Press release to milestone pipeline
 - [Project Board](./process.project-board.md) — Board column conventions and transitions

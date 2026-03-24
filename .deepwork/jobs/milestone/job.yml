@@ -80,7 +80,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - `process.product-engineering-handoff` — handoff protocol and demo artifacts
   - `process.version-control` — commit discipline, branching
   - `process.pull-request` — PR format and review
-  - `code.delivery` — end-to-end feature delivery lifecycle
+  - `process.feature-delivery` — end-to-end feature delivery lifecycle
 
   ## Spec Format
 
