@@ -514,13 +514,13 @@ let
             notes.repo = "git@example.com:planner/notes.git";
             calendar.teamEvents = [
               {
-                summary = "[Team] Weekly Retrospective";
+                summary = "Weekly Retrospective";
                 schedule = "weekly:friday";
                 time = "20:00";
                 workflow = "retrospective/run";
               }
               {
-                summary = "[Team] Monthly Review";
+                summary = "Monthly Review";
                 schedule = "monthly:1";
                 time = "10:00";
               }
