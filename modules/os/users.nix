@@ -205,33 +205,29 @@ in
                 home.stateVersion = config.system.stateVersion;
 
                 # Terminal development environment
-                keystone.terminal = mkIf userCfg.terminal.enable (
-                  {
-                    enable = mkDefault true;
+                # NOTE: Do NOT wrap this in mkIf — mkIf inside function-type
+                # home-manager.users definitions silently fails to merge when
+                # another module also defines the same user. Use mkDefault on
+                # enable instead; the terminal module's own config = mkIf cfg.enable
+                # handles gating.
+                keystone.terminal = {
+                  enable = mkDefault userCfg.terminal.enable;
 
-                    # Bridge keystone.development + keystone.repos → terminal options
-                    development = mkDefault config.keystone.development;
-                    repos = mkDefault config.keystone.repos;
+                  # Bridge keystone.development + keystone.repos → terminal options
+                  development = mkDefault config.keystone.development;
+                  repos = mkDefault config.keystone.repos;
 
-                    git = {
-                      enable = mkDefault (userCfg.email != null);
-                      userName = mkDefault userCfg.fullName;
-                      userEmail = mkDefault userCfg.email;
-                      # Bridge SSH public keys from keystone.keys for allowed_signers
-                      sshPublicKeys = mkDefault (if keysCfg ? ${username} then allKeysFor username else [ ]);
-                      # TODO: Bridge forgejo.domain/sshPort/username here once the users.nix
-                      # home-manager bridge mkIf issue is resolved. Currently the entire mkIf
-                      # block is dead code for users whose home-manager config is also defined
-                      # in nixos-config (the nixos-config definitions take precedence and this
-                      # bridge's mkIf values are never applied — even mkForce has no effect).
-                      # See: https://github.com/ncrmro/keystone/issues/XXX
-                      forgejo.enable = mkDefault (config.keystone.services.git.host != null);
-                    };
-                  }
-                  // optionalAttrs userCfg.sshAutoLoad.enable {
-                    sshAutoLoad.enable = mkDefault true;
-                  }
-                );
+                  git = {
+                    enable = mkDefault (userCfg.terminal.enable && userCfg.email != null);
+                    userName = mkDefault userCfg.fullName;
+                    userEmail = mkDefault userCfg.email;
+                    # Bridge SSH public keys from keystone.keys for allowed_signers
+                    sshPublicKeys = mkDefault (if keysCfg ? ${username} then allKeysFor username else [ ]);
+                    forgejo.enable = mkDefault (config.keystone.services.git.host != null);
+                  };
+
+                  sshAutoLoad.enable = mkDefault userCfg.sshAutoLoad.enable;
+                };
               }
               // optionalAttrs hasDesktopModule {
                 # Desktop configuration (Hyprland) — only set when desktop NixOS module is imported

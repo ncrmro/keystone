@@ -51,8 +51,9 @@ in
             # stable defaults when the attrs are absent.
             _module.args.keystoneInputs = { };
 
-            keystone.terminal = mkIf agentCfg.terminal.enable {
-              enable = mkDefault true;
+            # NOTE: Do NOT wrap in mkIf — see users.nix for explanation.
+            keystone.terminal = {
+              enable = mkDefault agentCfg.terminal.enable;
               conventions.archetype = mkDefault agentCfg.archetype;
 
               # Bridge keystone.development + keystone.repos → terminal options
