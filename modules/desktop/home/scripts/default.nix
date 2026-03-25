@@ -206,6 +206,11 @@ let
     builtins.readFile ./keystone-context-switch.sh
   );
 
+  # Inbox capture launcher — opens zk edit -i in a dedicated floating Ghostty window
+  keystoneNotesInbox = pkgs.writeShellScriptBin "keystone-notes-inbox" (
+    builtins.readFile ./keystone-notes-inbox.sh
+  );
+
   # Battery monitor script
   keystoneBatteryMonitor = pkgs.writeShellScriptBin "keystone-battery-monitor" ''
     BATTERY_THRESHOLD=10
@@ -261,6 +266,12 @@ let
       commandName = "keystone-context-switch";
       relativePath = "modules/desktop/home/scripts/keystone-context-switch.sh";
       package = keystoneContextSwitch;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
+      commandName = "keystone-notes-inbox";
+      relativePath = "modules/desktop/home/scripts/keystone-notes-inbox.sh";
+      package = keystoneNotesInbox;
     })
   ];
 in

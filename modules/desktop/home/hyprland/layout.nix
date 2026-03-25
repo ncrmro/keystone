@@ -56,6 +56,11 @@ in
         "float, match:class (clipse)"
         "size 622 652, match:class (clipse)"
         "stayfocused, match:class (clipse)"
+
+        # Float and center the dedicated inbox capture window
+        "float, match:class ^(com.mitchellh.ghostty)$, match:title ^(keystone-notes-inbox)$"
+        "center, match:class ^(com.mitchellh.ghostty)$, match:title ^(keystone-notes-inbox)$"
+        "size 1000 700, match:class ^(com.mitchellh.ghostty)$, match:title ^(keystone-notes-inbox)$"
       ];
 
       # layerrule disabled until Hyprland 0.52+ syntax is confirmed

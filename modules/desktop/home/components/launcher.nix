@@ -36,6 +36,19 @@ in
       icon = "folder-development";
     };
 
+    xdg.desktopEntries.keystone-notes = {
+      name = "Notes";
+      genericName = "Inbox note capture";
+      comment = "Open zk inbox capture in a floating window";
+      exec = "keystone-notes-inbox";
+      terminal = false;
+      categories = [
+        "Utility"
+        "Office"
+      ];
+      icon = "notes";
+    };
+
     # Wofi as the application launcher
     programs.wofi = {
       enable = mkDefault true;
