@@ -549,6 +549,38 @@ The prioritize step assigns models based on task complexity:
 
 **Model-workflow coherence**: Any task with a `workflow` field MUST have at least `sonnet` as its model. If prioritize assigns `haiku` but also assigns a workflow, the model is upgraded to `sonnet`.
 
+### Fallback Model & Provider Defaults
+
+Each agent declares fallback defaults for provider and model via NixOS options:
+
+```nix
+keystone.os.agents.drago = {
+  notes.taskLoop.defaults = {
+    provider = "claude";   # claude | gemini — used when a task omits provider
+    model = null;          # null = provider CLI default; or e.g. "sonnet"
+  };
+};
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `notes.taskLoop.defaults.provider` | `enum [ "claude" "gemini" ]` | `"claude"` | Fallback execution provider when a task does not specify its own `provider` field |
+| `notes.taskLoop.defaults.model` | `nullOr str` | `null` | Fallback model when a task does not specify its own `model` field. `null` means the selected provider uses its built-in CLI default |
+
+**Resolution chain** (task-loop.sh, execute step):
+
+```
+task.provider  →  if set, use it
+                  else → notes.taskLoop.defaults.provider  (NixOS option)
+
+task.model     →  if set, use it
+                  else → notes.taskLoop.defaults.model     (NixOS option)
+                         if null → provider CLI default
+```
+
+Ingest and prioritize always use `claude --model haiku` regardless of these defaults.
+Individual tasks in TASKS.yaml can override both `provider` and `model` per-task.
+
 ### Key Design Decisions
 
 **task-loop.sh in Nix store**: The script is packaged via `pkgs.replaceVars` with Nix store paths for all dependencies (`yq`, `jq`, `coreutils`, etc.), ensuring reproducible execution. The `@placeholder@` pattern substitutes absolute paths at build time.
@@ -599,10 +631,10 @@ tasks:                             # REQUIRED: only top-level key
 - Calendar events do not set workflows at creation — prioritize assigns them
 - Pre-existing workflow fields are always preserved
 
-**Execution fallback rules:**
+**Execution fallback rules** (see also [Fallback Model & Provider Defaults](#fallback-model--provider-defaults)):
 - Task execution defaults come from `keystone.os.agents.<name>.notes.taskLoop.defaults`
-- A task-level `provider` overrides the agent default provider
-- A task-level `model` overrides the agent default model
+- A task-level `provider` overrides the agent default provider (`defaults.provider`)
+- A task-level `model` overrides the agent default model (`defaults.model`)
 - If `model` is omitted at both levels, the selected CLI uses its built-in default model
 - `provider: claude` runs via Claude Code, `provider: gemini` runs via Gemini CLI
 
