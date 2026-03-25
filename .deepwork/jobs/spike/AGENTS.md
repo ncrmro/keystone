@@ -37,7 +37,7 @@ Spikes use a top-level `spikes/` directory (git-tracked, excluded from zk indexi
 - Code artifacts and research: `spikes/[spike_name]/`
 - zk report note (summary): `reports/` via `zk new`
 - zk ADR (architectural decision): `decisions/` via `zk new`
-- Symlink: `ln -s ../../spikes/[spike_name] projects/[ProjectName]/spikes/[spike_name]`
+- Symlink: `ln -s ../../../spikes/[spike_name] projects/[ProjectName]/spikes/[spike_name]`
 - The project name is captured in scope.md metadata for use by the report step
 
 ### Project File Format
@@ -92,7 +92,11 @@ When running spikes in a zk notes repo (`.zk/config.toml` present):
 
 3. **Spike prototype directories should be self-contained**: Users navigated to `spikes/kicad-sensor-breakout/` but the `flake.nix` was in `prototype/`. The Nix flake searched upward and found the vault root flake instead. Prototype directories with dev shells should be clearly documented as the entry point, or the `.envrc` should be at the spike root pointing into `prototype/`.
 
+### Learnings from krpc-claude-pilot (2026-03-25)
+
+1. **Symlink relative path requires 3 `..` segments**: The symlink lives at `projects/[Project]/spikes/[spike_name]` — that is 3 levels deep from the repo root (`projects/`, `[Project]/`, `spikes/`). To resolve back to the repo root you need `../../../`, not `../../`. The `../../` path was a carry-over error from an earlier layout. Both `report.md` and this file now use `../../../spikes/[spike_name]`. When writing the `ln -s` command, always count the path depth: `projects/X/spikes/` → 3 levels → `../../../`.
+
 ## Last Updated
 
-- Date: 2026-03-24
-- From conversation about: spikes/ output dir (git-tracked, zk-excluded), zk new for report+ADR, project tagging, symlink path fix (v1.4.1)
+- Date: 2026-03-25
+- From conversation about: symlink depth bug — projects/[Project]/spikes/ is 3 levels deep, requires ../../../ not ../../ (v1.4.2)

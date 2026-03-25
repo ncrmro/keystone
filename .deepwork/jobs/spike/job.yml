@@ -1,5 +1,5 @@
 name: spike
-version: 1.4.1
+version: 1.4.2
 summary: Time-boxed investigation to answer a technical question or validate feasibility for a project
 common_job_info_provided_to_all_steps_at_runtime: 'Time-boxed research and prototyping to reduce uncertainty for a project.
 

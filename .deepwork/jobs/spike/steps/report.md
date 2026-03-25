@@ -31,8 +31,8 @@ Synthesize the spike's research and prototype results into a README.md with a cl
    # Create the project's spikes directory if it doesn't exist
    mkdir -p projects/[ProjectName]/spikes
 
-   # Create a relative symlink
-   ln -s ../../spikes/[spike_name] projects/[ProjectName]/spikes/[spike_name]
+   # Create a relative symlink (3 levels: projects/[Project]/spikes/ → repo root)
+   ln -s ../../../spikes/[spike_name] projects/[ProjectName]/spikes/[spike_name]
    ```
 
    Use the project name as it appears in `projects/README.md` (matching the folder name under `projects/`). Verify the symlink resolves correctly.

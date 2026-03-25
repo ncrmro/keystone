@@ -21,7 +21,7 @@ Update the project file with key takeaways from the spike, and — when a zk not
    - Include: spike name, date, one-line conclusion, link to spike README, and next steps
    - Next steps belong **under the spike entry**, not in a separate global section
    - Link format: `[spike_name]([project_folder]/spikes/[spike_name]/README.md)`
-     (relative to the project `.md` file; resolves via symlink `projects/[project]/spikes/[spike_name]/` → `../../spikes/[spike_name]`)
+     (relative to the project `.md` file; resolves via symlink `projects/[project]/spikes/[spike_name]/` → `../../../spikes/[spike_name]`)
 
 4. **Create zk notes** (if working in a zk notes repo)
    - Check for a `.zk/` directory at or above the working directory — skip this step if absent
