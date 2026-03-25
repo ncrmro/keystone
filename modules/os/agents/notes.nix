@@ -19,12 +19,24 @@ let
     let
       notesDir = agentCfg.notes.path;
       maxTasks = agentCfg.notes.taskLoop.maxTasks;
+      defaultProvider = agentCfg.notes.taskLoop.defaults.provider;
+      defaultModel =
+        if agentCfg.notes.taskLoop.defaults.model == null then
+          ""
+        else
+          agentCfg.notes.taskLoop.defaults.model;
       githubUsername = agentCfg.github.username;
       forgejoUsername = agentCfg.forgejo.username;
     in
     pkgs.replaceVars ./scripts/task-loop.sh {
-      notesDir = notesDir;
-      inherit maxTasks githubUsername forgejoUsername;
+      inherit
+        defaultModel
+        defaultProvider
+        forgejoUsername
+        githubUsername
+        maxTasks
+        notesDir
+        ;
       agentName = name;
     };
 

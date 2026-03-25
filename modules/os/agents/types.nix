@@ -281,6 +281,32 @@ in
               default = 5;
               description = "Maximum number of pending tasks to execute per run.";
             };
+
+            defaults = {
+              provider = mkOption {
+                type = types.enum [
+                  "claude"
+                  "gemini"
+                ];
+                default = "claude";
+                description = ''
+                  Default task execution provider for the agent task loop.
+                  Individual tasks in TASKS.yaml may override this with their
+                  own `provider` field.
+                '';
+              };
+
+              model = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = ''
+                  Default model for task-loop execution when a task does not
+                  declare its own `model`. If null, the selected provider uses
+                  its CLI default model.
+                '';
+                example = "sonnet";
+              };
+            };
           };
 
           scheduler = {
