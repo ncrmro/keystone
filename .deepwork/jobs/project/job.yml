@@ -1,5 +1,5 @@
 name: project
-version: "1.4.1"
+version: "1.4.2"
 summary: "Project onboarding, press releases, and success charter reviews"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job covers three project-level business workflows:
@@ -47,8 +47,10 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Include a call to action
   - Claims must not exceed what the planned feature set can deliver
   - Internal metrics and implementation details must not appear
-  - Output format is .mdx (MDX markdown) saved to the project's designated press release
-    directory, typically `posts/press_releases/`.
+  - The local workflow artifact for a press release is staged under `.deepwork/tmp/`.
+    If the project stores press releases in-repo, publish the finalized `.mdx` to the
+    project's designated directory, typically `posts/press_releases/`, as a separate
+    explicit step.
   - After writing the press release, an issue MUST be created on the project's repo containing
     the full press release content. The full URL of this issue is a required output — downstream
     workflows (milestone/setup, etc.) link back to the press release via this URL.
@@ -343,4 +345,3 @@ steps:
           "Verdict Aligned": "Recommendations directly follow from the verdict in the success review."
           "Actionable Items": "Each recommendation specifies a concrete action (which workflow to run, which milestone to create/close, what to change in PROJECTS.yaml)."
           "Prioritized": "Recommendations are ordered by impact and urgency."
-

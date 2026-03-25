@@ -60,24 +60,40 @@ Read the context brief from the previous step and the conventions at `.agents/co
    - Verify claims match the context brief's key claims
    - Verify NO fictional customer quotes are included
    - Verify NO city dateline is included (unless user requested one)
+   - Write the local workflow artifacts under `.deepwork/tmp/`, not ad hoc `/tmp/` paths
 
-10. **Create an issue for the press release**
+10. **Stage the local outputs**
+    - Write the press release draft to `.deepwork/tmp/press_release.mdx`
+    - Write the issue URL to `.deepwork/tmp/press_release_issue_url.md`
+    - These files are transient workflow artifacts for DeepWork output handoff
+
+11. **Publish the canonical copy**
     - After the press release file is written and passes the final check, create an issue on the project's repo that contains the full press release content
     - Use `gh issue create` (GitHub) or `fj issue create` (Forgejo) depending on where the project is hosted
     - The issue title should match the press release headline
     - The issue body should contain the full press release content
     - Label the issue with `press-release` (create the label if it doesn't exist)
-    - Record the **full URL** of the created issue — this is a required output
+    - Record the **full URL** of the created issue in `.deepwork/tmp/press_release_issue_url.md`
+    - If the project repo already stores press releases as tracked content, publish the finalized draft there as a separate explicit step after the issue is created
+    - If the project does not store press releases in-repo, keep `.deepwork/tmp/press_release.mdx` as the transient local artifact and treat the issue as the canonical published record
 
 ## Output Format
 
 ### press_release.mdx
 
-The finished press release in MDX format. Save to `posts/press_releases/` in the project's repository.
+The finished press release in MDX format. Write the local workflow artifact to
+`.deepwork/tmp/press_release.mdx`.
+
+If the project already stores press releases in-repo, publish the finalized draft
+to the project's designated directory, typically `posts/press_releases/`, as a
+separate explicit publication step.
 
 ### press_release_issue_url.md
 
-A single-line file containing the full URL of the issue created for the press release (e.g., `https://github.com/owner/repo/issues/42`). This URL is required for traceability — downstream workflows like `milestone/setup` link back to the press release via this URL.
+A single-line file at `.deepwork/tmp/press_release_issue_url.md` containing the full
+URL of the issue created for the press release (e.g.,
+`https://github.com/owner/repo/issues/42`). This URL is required for traceability —
+downstream workflows like `milestone/setup` link back to the press release via this URL.
 
 **Structure**:
 ```mdx
