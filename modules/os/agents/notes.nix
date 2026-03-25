@@ -10,6 +10,55 @@ with lib;
 let
   agentsLib = import ./lib.nix { inherit lib config pkgs; };
   inherit (agentsLib) osCfg localAgents;
+  builtInTaskLoopProfiles = {
+    embedding = {
+      claude = { };
+      gemini = { };
+      codex = { };
+    };
+    fast = {
+      claude = {
+        model = "haiku";
+        fallbackModel = "sonnet";
+        effort = "low";
+      };
+      gemini = {
+        model = "gemini-3-flash-preview";
+      };
+      codex = { };
+    };
+    medium = {
+      claude = {
+        model = "sonnet";
+        fallbackModel = "opus";
+        effort = "medium";
+      };
+      gemini = {
+        model = "auto-gemini-3";
+      };
+      codex = { };
+    };
+    max = {
+      claude = {
+        model = "opus";
+        effort = "max";
+      };
+      gemini = {
+        model = "auto-gemini-3";
+      };
+      codex = { };
+    };
+  };
+
+  serializeTaskLoopStage =
+    stageCfg:
+    builtins.toJSON {
+      profile = stageCfg.profile;
+      provider = stageCfg.provider;
+      model = stageCfg.model;
+      fallbackModel = stageCfg.fallbackModel;
+      effort = stageCfg.effort;
+    };
 
   # Task loop script: pre-fetch sources, ingest, prioritize, execute.
   # All tools (yq, jq, bash, git, claude, etc.) come from the agent's
@@ -19,23 +68,27 @@ let
     let
       notesDir = agentCfg.notes.path;
       maxTasks = agentCfg.notes.taskLoop.maxTasks;
-      defaultProvider = agentCfg.notes.taskLoop.defaults.provider;
-      defaultModel =
-        if agentCfg.notes.taskLoop.defaults.model == null then
-          ""
-        else
-          agentCfg.notes.taskLoop.defaults.model;
+      defaultsJson = serializeTaskLoopStage agentCfg.notes.taskLoop.defaults;
+      ingestJson = serializeTaskLoopStage agentCfg.notes.taskLoop.ingest;
+      prioritizeJson = serializeTaskLoopStage agentCfg.notes.taskLoop.prioritize;
+      executeJson = serializeTaskLoopStage agentCfg.notes.taskLoop.execute;
+      profilesJson = builtins.toJSON (
+        lib.recursiveUpdate builtInTaskLoopProfiles agentCfg.notes.taskLoop.profiles
+      );
       githubUsername = agentCfg.github.username;
       forgejoUsername = agentCfg.forgejo.username;
     in
     pkgs.replaceVars ./scripts/task-loop.sh {
       inherit
-        defaultModel
-        defaultProvider
+        defaultsJson
+        executeJson
         forgejoUsername
         githubUsername
+        ingestJson
         maxTasks
         notesDir
+        prioritizeJson
+        profilesJson
         ;
       agentName = name;
     };

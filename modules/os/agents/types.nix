@@ -14,6 +14,101 @@
 with lib;
 let
   topDomain = config.keystone.domain;
+  taskLoopProviderType = types.enum [
+    "claude"
+    "gemini"
+    "codex"
+  ];
+  taskLoopEffortType = types.enum [
+    "low"
+    "medium"
+    "high"
+    "max"
+  ];
+  taskLoopProfileProviderSubmodule = types.submodule {
+    options = {
+      model = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Model name for this provider when the profile is selected.";
+      };
+
+      fallbackModel = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Fallback model for this provider when the primary model is unavailable.";
+      };
+
+      effort = mkOption {
+        type = types.nullOr taskLoopEffortType;
+        default = null;
+        description = "Reasoning effort level for this provider. Currently only Claude consumes this value.";
+      };
+    };
+  };
+  taskLoopProfileSubmodule = types.submodule {
+    options = {
+      claude = mkOption {
+        type = taskLoopProfileProviderSubmodule;
+        default = { };
+        description = "Claude-specific model settings for this task-loop profile.";
+      };
+
+      gemini = mkOption {
+        type = taskLoopProfileProviderSubmodule;
+        default = { };
+        description = "Gemini-specific model settings for this task-loop profile.";
+      };
+
+      codex = mkOption {
+        type = taskLoopProfileProviderSubmodule;
+        default = { };
+        description = "Codex-specific model settings for this task-loop profile.";
+      };
+    };
+  };
+  taskLoopStageSubmodule =
+    {
+      providerDefault ? null,
+      profileDefault ? null,
+      descriptionPrefix,
+    }:
+    types.submodule {
+      options = {
+        profile = mkOption {
+          type = types.nullOr types.str;
+          default = profileDefault;
+          description = "${descriptionPrefix} profile name. Semantic profiles such as fast, medium, and max resolve to provider-specific model settings.";
+          example = "fast";
+        };
+
+        provider = mkOption {
+          type = types.nullOr taskLoopProviderType;
+          default = providerDefault;
+          description = "${descriptionPrefix} provider. If null, the task loop falls back to the next configured scope.";
+        };
+
+        model = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "${descriptionPrefix} explicit model override.";
+          example = "sonnet";
+        };
+
+        fallbackModel = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "${descriptionPrefix} fallback model override.";
+          example = "opus";
+        };
+
+        effort = mkOption {
+          type = types.nullOr taskLoopEffortType;
+          default = null;
+          description = "${descriptionPrefix} reasoning effort override. Currently only Claude consumes this value.";
+        };
+      };
+    };
 in
 {
   agentSubmodule = types.submodule (
@@ -282,30 +377,64 @@ in
               description = "Maximum number of pending tasks to execute per run.";
             };
 
-            defaults = {
-              provider = mkOption {
-                type = types.enum [
-                  "claude"
-                  "gemini"
-                ];
-                default = "claude";
-                description = ''
-                  Default task execution provider for the agent task loop.
-                  Individual tasks in TASKS.yaml may override this with their
-                  own `provider` field.
-                '';
+            defaults = mkOption {
+              type = taskLoopStageSubmodule {
+                providerDefault = "claude";
+                profileDefault = null;
+                descriptionPrefix = "Global task-loop default";
               };
+              default = { };
+              description = ''
+                Global task-loop defaults shared by ingest, prioritize, and
+                execute. Stage-specific settings and TASKS.yaml fields can
+                override these values.
+              '';
+            };
 
-              model = mkOption {
-                type = types.nullOr types.str;
-                default = null;
-                description = ''
-                  Default model for task-loop execution when a task does not
-                  declare its own `model`. If null, the selected provider uses
-                  its CLI default model.
-                '';
-                example = "sonnet";
+            profiles = mkOption {
+              type = types.attrsOf taskLoopProfileSubmodule;
+              default = { };
+              description = ''
+                Custom task-loop model profiles keyed by semantic names such as
+                fast, medium, or max. These extend and override the built-in
+                profile catalog.
+              '';
+              example = literalExpression ''
+                {
+                  medium = {
+                    claude = {
+                      model = "sonnet";
+                      fallbackModel = "opus";
+                      effort = "medium";
+                    };
+                    gemini.model = "auto-gemini-3";
+                  };
+                }
+              '';
+            };
+
+            ingest = mkOption {
+              type = taskLoopStageSubmodule {
+                descriptionPrefix = "Ingest-stage";
               };
+              default = { };
+              description = "Provider, profile, model, fallback model, and effort overrides for the ingest stage.";
+            };
+
+            prioritize = mkOption {
+              type = taskLoopStageSubmodule {
+                descriptionPrefix = "Prioritize-stage";
+              };
+              default = { };
+              description = "Provider, profile, model, fallback model, and effort overrides for the prioritize stage.";
+            };
+
+            execute = mkOption {
+              type = taskLoopStageSubmodule {
+                descriptionPrefix = "Execute-stage";
+              };
+              default = { };
+              description = "Provider, profile, model, fallback model, and effort overrides for task execution.";
             };
           };
 

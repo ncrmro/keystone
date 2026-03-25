@@ -461,11 +461,35 @@ let
             # SSH public key now set via keystone.keys."agent-tester"
             notes.repo = "git@example.com:test/notes.git";
             notes.taskLoop = {
+              defaults = {
+                provider = "claude";
+                profile = "medium";
+                fallbackModel = "opus";
+                effort = "medium";
+              };
+              profiles = {
+                max = {
+                  claude = {
+                    model = "opus";
+                    effort = "max";
+                  };
+                  gemini.model = "auto-gemini-3";
+                };
+              };
+              ingest = {
+                profile = "fast";
+                provider = "gemini";
+              };
               onCalendar = "*:0/15";
               maxTasks = 3;
-              defaults = {
-                provider = "gemini";
-                model = "gemini-2.5-pro";
+              prioritize = {
+                profile = "fast";
+                model = "gemini-3-flash-preview";
+              };
+              execute = {
+                profile = "max";
+                provider = "claude";
+                fallbackModel = "sonnet";
               };
             };
             notes.scheduler = {
