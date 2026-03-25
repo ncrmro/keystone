@@ -27,9 +27,10 @@ enabled, modules derive local paths from the `keystone.repos` registry at
 ## Path Resolution
 
 6. When `keystone.development = true`, modules that consume Nix store copies
-   (conventions, deepwork jobs, claude-code commands) MUST resolve to the
-   local checkout path derived from `keystone.repos` entries whose
-   `flakeInput` matches the relevant flake input.
+   (conventions, deepwork jobs, claude-code commands, repo-backed shell
+   entrypoints) MUST resolve to the local checkout path derived from
+   `keystone.repos` entries whose `flakeInput` matches the relevant flake
+   input.
 7. When `keystone.development = false` (default), all paths MUST resolve to
    immutable Nix store copies — behavior is identical to a locked build.
 
@@ -45,29 +46,33 @@ enabled, modules derive local paths from the `keystone.repos` registry at
 
 ## Desktop Module
 
-11. (Future) Desktop theme and configuration files MAY use local checkouts for
-    rapid iteration when `keystone.development = true`.
+11. Desktop and terminal user-facing shell scripts backed by checked-in `.sh`
+    files MUST be linked into the user's PATH from the local checkout when
+    `keystone.development = true`. After activation, edits to the repo script
+    MUST take effect without rebuild.
+12. Desktop theme and configuration files MAY use local checkouts for rapid
+    iteration when `keystone.development = true`.
 
 ## Server Module
 
-12. (Future) Server modules MAY use local checkouts for service configs when
+13. (Future) Server modules MAY use local checkouts for service configs when
     `keystone.development = true`.
 
 ## Safety
 
-13. `keystone.development` MUST only affect path resolution — it MUST NOT
+14. `keystone.development` MUST only affect path resolution — it MUST NOT
     modify, commit, or push any repository (per REQ-018.8).
-14. Modules MUST NOT write to paths derived from `keystone.repos` entries.
+15. Modules MUST NOT write to paths derived from `keystone.repos` entries.
     Local checkouts are read-only from the module system's perspective.
 
 ## Agent Parity
 
-15. Agents MUST inherit development mode from the global
+16. Agents MUST inherit development mode from the global
     `keystone.development` setting via their home-manager config bridge (see
     `process.enable-by-default` rules 9-11).
 
 ## Diagnostics
 
-16. `ks doctor` MUST report development mode status: whether it is enabled,
+17. `ks doctor` MUST report development mode status: whether it is enabled,
     which repos are declared, and whether their local checkouts exist (per
     REQ-023).

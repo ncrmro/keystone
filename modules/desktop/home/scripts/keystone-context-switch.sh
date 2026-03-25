@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # keystone-context-switch — Fuzzy context switcher for desktop contexts
 #
 # Queries Hyprland workspaces and zellij sessions, presents a unified list

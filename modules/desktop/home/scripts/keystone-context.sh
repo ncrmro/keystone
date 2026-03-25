@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # keystone-context — Launch or attach to a desktop context
 #
 # Creates a zellij session (via pz for projects, directly for ad-hoc slugs),

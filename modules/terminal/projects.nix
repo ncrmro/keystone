@@ -29,6 +29,14 @@
 with lib;
 let
   cfg = config.keystone.projects;
+  devScripts = import ../shared/dev-script-link.nix { inherit lib; };
+  inherit (devScripts) mkHomeScriptCommand;
+  pzCommand = mkHomeScriptCommand {
+    inherit config;
+    commandName = "pz";
+    relativePath = "packages/pz/pz.sh";
+    package = pkgs.keystone.pz;
+  };
 in
 {
   # Import notes module so keystone.notes options are declared and accessible
@@ -42,17 +50,16 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    # REQ-010.5: keystone.notes.enable MUST be true when projects.enable is true
-    assertions = [
-      {
-        assertion = config.keystone.notes.enable;
-        message = "keystone.notes.enable must be true when keystone.projects.enable is true (REQ-010.5)";
-      }
-    ];
-
-    home.packages = [
-      pkgs.keystone.pz
-    ];
-  };
+  config = mkIf cfg.enable (mkMerge [
+    {
+      # REQ-010.5: keystone.notes.enable MUST be true when projects.enable is true
+      assertions = [
+        {
+          assertion = config.keystone.notes.enable;
+          message = "keystone.notes.enable must be true when keystone.projects.enable is true (REQ-010.5)";
+        }
+      ];
+    }
+    pzCommand
+  ]);
 }
