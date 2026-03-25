@@ -7,16 +7,20 @@ Based on the audit report, propose a concrete migration plan that converts the e
 ## Task
 
 1. **File classification**: For each markdown file (excluding operational files), determine:
-   - Target note type: fleeting, literature, permanent, decision, or index
-   - Target directory: inbox/, literature/, notes/, decisions/, or index/
+   - Target note type: fleeting, literature, permanent, decision, index, or report
+   - Target directory: inbox/, literature/, notes/, decisions/, index/, reports/, or an explicitly preserved spike/support path
    - Classification rationale (brief)
 
    Classification heuristics:
    - Files with structured analysis or ADR-like format -> `decisions/`
    - Files that summarize external sources (articles, docs) -> `literature/`
+   - Files that summarize work done or outcomes captured for a project -> `reports/` if the repo already uses a report group
    - Files that curate links to other files -> `index/`
+   - Project hub notes belong in `index/`, even when they are project-specific
    - Files with developed, standalone ideas -> `notes/`
    - Short, unstructured captures -> `inbox/`
+   - Canonical spike notes may stay at `spikes/<slug>/README.md` when the repo already uses root spike trees
+   - Spike support docs such as `spikes/<slug>/scope.md`, `research.md`, or `prototype/README.md` may remain as artifacts instead of being forced into canonical zk groups
 
    **Obsidian-specific heuristics:**
    - `_archive/` or `Archive/` contents -> `inbox/` (to be triaged)
@@ -27,6 +31,7 @@ Based on the audit report, propose a concrete migration plan that converts the e
    - `ideas/` -> `inbox/` (fleeting captures to be promoted)
    - `research/` -> `literature/` (source-based research)
    - `talks/` -> `literature/` (external content summaries)
+   - old spike/prototype notes in `notes/` or `index/` -> consolidate into canonical `spikes/<slug>/README.md` plus support files where the repo already follows that convention
 
    **Apple Notes heuristics:**
    - Flat files with HTML fragments -> strip HTML, classify by content length
@@ -42,9 +47,11 @@ Based on the audit report, propose a concrete migration plan that converts the e
 3. **Frontmatter plan**: For each file, specify:
    - Fields to add (id, title, type, created, author, tags)
    - How to derive `title` (from existing frontmatter, filename, or first heading)
-   - How to derive `tags` (from existing frontmatter, directory name, or content keywords)
+   - How to derive `tags` (from existing frontmatter, directory name, project hubs, or content keywords)
    - **Obsidian**: Preserve `aliases` field if present; convert Obsidian tags (#tag) to frontmatter tags
    - **Apple Notes**: Derive title from first line of content
+   - For project tags, derive the project slug from project hub notes in `index/`, then use `rg`-based matching across note bodies to find files that should inherit that project tag
+   - Preserve the repo's existing project tag style if one already exists (`project, catalyst` and `project/catalyst` are both valid house styles; do not rewrite styles unnecessarily)
 
 4. **Directory moves**: Map current paths to target paths.
 
@@ -71,6 +78,12 @@ Based on the audit report, propose a concrete migration plan that converts the e
      - keep in place as operational residue
      - delete only after note content has been preserved elsewhere
    - `projects/` and `workflow/` are not automatically exempt. The plan must explicitly decide whether their markdown is notebook content or operational residue.
+   - If the repo already uses root `spikes/` with canonical README notes, classify that as an intentional convention, not a failed migration
+
+9. **Project tag remediation plan**:
+   - Use the audit's ripgrep-based findings to list files that likely need project tags
+   - Decide whether each gap should be fixed during migration or left as ambiguous/manual follow-up
+   - For ambiguous matches, explain why the project ownership is not strong enough to tag automatically
 
 ## Output Format
 
@@ -106,6 +119,9 @@ Write `.deepwork/tmp/migration_plan.md`:
 ## Legacy Tree Disposition
 (explicit per-directory treatment for `projects/`, `workflow/`, `spikes/`, etc.)
 
+## Project tag remediation
+(files or batches that will receive missing project tags, plus any ambiguous leftovers)
+
 ## Excluded (no action)
 (list of operational files skipped)
 ```
@@ -115,6 +131,7 @@ Write `.deepwork/tmp/migration_plan.md`:
 - NEVER plan to delete content — only add frontmatter, move files, and convert links
 - Files already conforming to the standard should be left as-is
 - Obsidian callouts (`> [!type]`) should be PRESERVED, not stripped
+- Use `rg`-based project-name discovery instead of ad hoc filename guessing when deciding missing project tags
 - The plan must be reviewable before execution (next step is the actual migration)
 - For repos > 500 files, include a batch strategy to keep commits manageable
 - The migration plan is transient workflow state. Store it under `.deepwork/tmp/` and do not commit it.

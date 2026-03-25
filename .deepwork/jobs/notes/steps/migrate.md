@@ -42,7 +42,19 @@ Execute the migration plan: add frontmatter, assign IDs, move files to correct d
       - Obsidian embeds: `![[filename]]` -> `![[id]]`
       - Update links in OTHER files that reference this file's old path
 
-   e. **Commit this single file's changes**:
+   e. **Apply project ownership tags where the evidence is strong**:
+      - Derive project names and aliases from project hub notes in `index/`
+      - Search with `rg` or `scripts/find_missing_project_tags.py` to find migrated files that mention a project but still lack that project tag
+      - Add the missing project tag when the file has a clear project owner
+      - Leave ambiguous ownership untouched and record it in the migration log instead of guessing
+
+   f. **Respect project hub and spike conventions**:
+      - Keep project hub notes in `index/`
+      - If the repo uses root spike trees, keep `spikes/<slug>/README.md` as the canonical spike note
+      - Do not force spike support docs such as `scope.md`, `research.md`, or `prototype/README.md` into `notes/` just because they are markdown
+      - If `.zk/config.toml` intentionally ignores spike support docs, preserve that behavior
+
+   g. **Commit this single file's changes**:
       ```bash
       git add -A
       git commit -m "chore(notes): migrate {old-filename} to {type}/{new-filename}"
@@ -66,6 +78,7 @@ Execute the migration plan: add frontmatter, assign IDs, move files to correct d
    - Migrate all note-like markdown into canonical zk groups unless the plan explicitly marked that subtree as operational residue
    - If a directory still exists afterward, it should contain only operational/generated files or non-markdown assets
    - If note-like markdown remains outside canonical groups, the migration is incomplete
+   - Root `spikes/` is allowed when the plan marked it as a canonical spike-note convention rather than a legacy tree
 
 ## Output Format
 
@@ -89,6 +102,10 @@ Write `.deepwork/tmp/migration_log.md`:
 - Inline tags extracted: N
 - Obsidian callouts preserved: N
 
+## Project Tag Updates
+- Files given missing project tags: N
+- Ambiguous project-tag candidates left for manual review: N
+
 ## Summary
 - Files migrated: N
 - Commits created: N
@@ -104,6 +121,7 @@ Write `.deepwork/tmp/migration_log.md`:
 - Skip operational files (TASKS.yaml, SOUL.md, etc.) entirely
 - If a file already conforms to the standard, skip it and note "already compliant" in the log
 - Obsidian callouts are PRESERVED — they are valid markdown
+- Prefer `rg` over `grep` when searching for project-name matches and old link paths
 - For large repos, use batch processing with periodic sanity checks
 - The migration log is transient workflow state. Store it under `.deepwork/tmp/` and do not commit it.
 - Do not declare success while `projects/`, `workflow/`, `spikes/`, or similar legacy directories still contain note-like markdown that should have been migrated.

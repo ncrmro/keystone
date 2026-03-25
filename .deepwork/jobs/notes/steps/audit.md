@@ -10,8 +10,8 @@ on format-specific concerns.
 
 1. **File inventory**: Count all markdown files, grouped by directory:
    ```bash
-   find <notes_path> -name "*.md" -not -path "*/.zk/*" -not -path "*/.git/*" -not -path "*/.obsidian/*" -not -path "*/.deepwork/*" -not -path "*/.claude/*" | wc -l
-   find <notes_path> -name "*.md" -not -path "*/.zk/*" -not -path "*/.git/*" -not -path "*/.obsidian/*" -not -path "*/.deepwork/*" -not -path "*/.claude/*" -printf '%h\n' | sort | uniq -c | sort -rn
+   rg --files <notes_path> -g '*.md' -g '!.zk/**' -g '!.git/**' -g '!.obsidian/**' -g '!.deepwork/**' -g '!.claude/**' | wc -l
+   rg --files <notes_path> -g '*.md' -g '!.zk/**' -g '!.git/**' -g '!.obsidian/**' -g '!.deepwork/**' -g '!.claude/**' | xargs -r -n1 dirname | sort | uniq -c | sort -rn
    ```
 
 2. **Structure detection**: Is the repo flat, shallow (1 level of dirs), or deeply nested?
@@ -25,11 +25,11 @@ on format-specific concerns.
 4. **Link format detection**: Search for existing links:
    ```bash
    # Wikilinks (standard and Obsidian-style)
-   grep -r '\[\[' <notes_path> --include="*.md" | head -20
+   rg -n '\[\[' <notes_path> -g '*.md' | head -20
    # Markdown links to local files
-   grep -rP '\[.*\]\((?!http)' <notes_path> --include="*.md" | head -20
+   rg -n '\[.*\]\((?!http)' <notes_path> -g '*.md' -P | head -20
    # Obsidian embedded files
-   grep -r '!\[\[' <notes_path> --include="*.md" | head -10
+   rg -n '!\[\[' <notes_path> -g '*.md' | head -10
    ```
 
 5. **Naming convention**: Are files named with dates, slugs, titles, or randomly?
@@ -55,12 +55,27 @@ on format-specific concerns.
    - Any dotfiles/directories (.git, .zk, .agents, .deepwork, .envrc, .repos)
    - Build/config files: flake.nix, flake.lock, pyproject.toml, uv.lock, etc.
 
-8. **Legacy tree inventory**: Explicitly identify noncanonical directories that still contain note-like markdown:
+8. **Canonical hub and spike conventions**: Identify whether the repo already uses:
+   - `index/` for project hub notes (`type: index`, usually tagged with `project` plus a project slug)
+   - `reports/` as an extra canonical note group
+   - `spikes/<slug>/README.md` as the canonical spike note, with sibling `scope.md`, `research.md`, or `prototype/` files treated as support artifacts
+   - `.zk/config.toml` ignore rules that intentionally exclude spike support docs from indexing
+
+   If these conventions exist, record them explicitly. Do not treat canonical project hubs or canonical spike README notes as stray legacy content.
+
+9. **Legacy tree inventory**: Explicitly identify noncanonical directories that still contain note-like markdown:
    - Check common legacy trees such as `projects/`, `workflow/`, `research/`, `talks/`, `people/`, `journal/`, `ideas/`, `spikes/`, and `_archive/`
    - Separate them into:
      - note-like markdown that still needs migration
      - operational or generated markdown that should remain excluded
+   - If `spikes/` is present, distinguish canonical spike README notes from support docs and from truly stray spike content
    - If a large legacy tree remains, do not stop at the canonical groups — call it out clearly in the audit
+
+10. **Project tag gap audit**: Look for files that likely need project tags:
+   - Derive project names and aliases from project hub notes in `index/` (title, slug tag, and `subprojects:` if present)
+   - Search across `notes/`, `literature/`, `reports/`, `index/`, and canonical spike `README.md` files for project-name mentions using `rg`
+   - Prefer `scripts/find_missing_project_tags.py <notes_path>` when available, or reproduce its logic manually with `rg`
+   - Record the files that appear to reference a project strongly but do not carry the corresponding project tag yet
 
 ## Output Format
 
@@ -92,8 +107,14 @@ Write `.deepwork/tmp/audit_report.md` with sections:
 ## Naming Conventions
 (observed patterns)
 
+## Canonical hub and spike conventions
+(project hub notes in `index/`, report group usage, spike README conventions, `.zk/config.toml` ignore rules)
+
 ## Legacy Trees Requiring Migration
 (noncanonical directories that still contain note-like markdown, plus which content is operational residue)
+
+## Probable missing project tags
+(files that mention projects but are missing the corresponding project tags)
 
 ## Excluded Files (not to be migrated)
 (list of operational/identity/config files)
@@ -105,4 +126,5 @@ Write `.deepwork/tmp/audit_report.md` with sections:
 - Do NOT read personal note content in detail — only scan structure and metadata
 - Sample files for frontmatter analysis rather than reading every file
 - Exclude `.obsidian/`, `.deepwork/`, `.claude/` from file counts and analysis
+- Prefer `rg` over `grep` for content discovery and for project-name searches
 - The audit report is transient workflow state. Store it under `.deepwork/tmp/` and do not commit it.

@@ -11,7 +11,7 @@ Run post-migration health checks to confirm the notebook is valid and no data wa
 2. **Frontmatter coverage**: Check all markdown files in `notes/`, `literature/`, `decisions/`, and `index/` have valid frontmatter:
    ```bash
    # List files missing frontmatter
-   for f in notes/*.md literature/*.md decisions/*.md index/*.md; do
+   for f in notes/*.md literature/*.md decisions/*.md index/*.md reports/*.md; do
      [ -f "$f" ] && head -1 "$f" | grep -q "^---" || echo "MISSING: $f"
    done
    ```
@@ -27,7 +27,7 @@ Run post-migration health checks to confirm the notebook is valid and no data wa
 5. **Dead link check**: Search for wikilinks pointing to non-existent notes:
    ```bash
    # zk lsp diagnostics can detect this, or:
-   grep -roh '\[\[[0-9]\{12\}\]\]' notes/ literature/ decisions/ index/ | sort -u | while read link; do
+   rg -o '\[\[[0-9]{12}\]\]' notes/ literature/ decisions/ index/ reports/ | sort -u | while read link; do
      id=$(echo "$link" | tr -d '[]')
      zk list --format json --match "id: $id" | grep -q "$id" || echo "DEAD: $link"
    done
@@ -53,6 +53,18 @@ Run post-migration health checks to confirm the notebook is valid and no data wa
    - operational/generated residue that is intentionally excluded, or
    - missed notebook content, which should fail verification
 
+9. **Project hub and spike convention check**:
+   - If `index/` contains project hub notes, confirm they remain in `index/` and are not mixed with stray spike prototypes or migrated artifact docs
+   - If the repo uses root `spikes/`, confirm canonical spike notes live at `spikes/<slug>/README.md`
+   - Confirm spike support docs such as `scope.md`, `research.md`, and `prototype/README.md` are either intentionally ignored by `.zk/config.toml` or explicitly treated as support artifacts
+
+10. **Missing project tag check**:
+   - Run `scripts/find_missing_project_tags.py .` from the repo root, or reproduce its logic with `rg`
+   - Report likely missing project tags in `notes/`, `literature/`, `reports/`, `index/`, and canonical spike README files
+   - Distinguish between:
+     - strong misses that should fail verification
+     - ambiguous matches that should be called out for manual follow-up
+
 ## Output Format
 
 Write `.deepwork/tmp/doctor_report.md`:
@@ -68,6 +80,7 @@ Write `.deepwork/tmp/doctor_report.md`:
 - literature/: N/N
 - decisions/: N/N
 - index/: N/N
+- reports/: N/N
 - inbox/: N/N (frontmatter optional for fleeting)
 
 ## Orphan Notes
@@ -83,6 +96,16 @@ Write `.deepwork/tmp/doctor_report.md`:
 - `workflow/`: migrated / operational-only / failed
 - Other legacy trees: ...
 
+## Project hubs and spikes
+- Project hubs in `index/`: OK / FAIL
+- Canonical spike README notes: OK / FAIL
+- Spike support docs: intentionally ignored / explicit artifacts / failed
+
+## Missing project tags
+- Strong misses: N
+- Ambiguous candidates: N
+- (list strong misses; summarize ambiguous ones)
+
 ## Operational Files
 - TASKS.yaml: unchanged
 - PROJECTS.yaml: unchanged
@@ -95,3 +118,4 @@ Write `.deepwork/tmp/doctor_report.md`:
 
 - The doctor report is transient workflow state. Store it under `.deepwork/tmp/` and do not commit it.
 - The workflow should FAIL if substantial note-like markdown still lives outside canonical groups without an explicit operational-residue justification.
+- The workflow should also FAIL if there are obvious missing project tags on clearly project-owned notes after migration.

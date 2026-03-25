@@ -66,3 +66,9 @@
 - A notes repo is not fully migrated just because `inbox/`, `literature/`, `notes/`, `decisions/`, and `index/` are populated.
 - `projects/`, `workflow/`, `spikes/`, and similar legacy trees must be explicitly audited for remaining note-like markdown.
 - Verification should fail if those trees still contain notebook content that was not either migrated or explicitly classified as operational residue.
+
+### 2026-03-25 — Project hubs and spikes are first-class notebook conventions in `~/notes`
+
+- In the current human notes repo, project hubs live in `index/` and should stay there. See `/home/ncrmro/notes/index/202509151525 projects.md` and the per-project hub notes in `/home/ncrmro/notes/index/`.
+- Root `spikes/` is intentional. Canonical spike notes live at `spikes/<slug>/README.md`, while `scope.md`, `research.md`, and `prototype/` markdown are support artifacts. See `/home/ncrmro/notes/.zk/config.toml` and `/home/ncrmro/notes/spikes/`.
+- When auditing missing project tags, derive project aliases from the project hub notes in `index/`, then use `rg` across `notes/`, `literature/`, `reports/`, `index/`, and spike `README.md` files to find strong ownership matches before editing tags.

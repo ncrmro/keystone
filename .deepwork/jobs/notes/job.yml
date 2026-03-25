@@ -1,5 +1,5 @@
 name: notes
-version: "1.2.0"
+version: "1.3.0"
 summary: "Initialize, migrate, and maintain zk Zettelkasten notebooks for notes repos"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job manages Zettelkasten-structured notes repositories using the `zk` CLI.
@@ -27,7 +27,9 @@ common_job_info_provided_to_all_steps_at_runtime: |
     literature/               # Literature notes (source summaries)
     notes/                    # Permanent notes (atomic, linked)
     decisions/                # Decision records (context, decision, consequences)
-    index/                    # Maps of Content (curated entry points)
+    index/                    # Maps of Content and project hub notes
+    reports/                  # Optional report notes when the repo uses a report group
+    spikes/                   # Optional spike trees with canonical README notes plus support artifacts
     TASKS.yaml                # Agent task state (existing, untouched)
     PROJECTS.yaml             # Agent project config (existing, untouched)
     SCHEDULES.yaml            # Agent schedules (existing, untouched)
@@ -44,7 +46,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
   ---
   id: "202603201430"
   title: "Note title"
-  type: fleeting | literature | permanent | decision | index
+  type: fleeting | literature | permanent | decision | index | report
   created: 2026-03-20T14:30:00-05:00
   author: ncrmro
   tags: [topic1, topic2]
@@ -87,6 +89,20 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - **Keystone agent repo**: Contains TASKS.yaml, AGENTS.md, SOUL.md, or SCHEDULES.yaml.
     When detected, keystone conventions apply silently (operational files excluded,
     agent identity preserved).
+
+  ## Project hub and spike conventions
+
+  Some repos adopt two extra conventions beyond the core zk groups:
+
+  - `index/` may contain project hub notes. These are still `type: index`, but they act as
+    the canonical entry point for a project and often carry tags such as `project` plus the
+    project slug.
+  - `spikes/<slug>/README.md` may be the canonical spike note, while sibling files such as
+    `scope.md`, `research.md`, or `prototype/README.md` remain support artifacts that are
+    intentionally ignored by `zk` via `.zk/config.toml`.
+
+  When those conventions are present, the doctor workflow must preserve them instead of
+  forcing all spike content into `notes/` or treating project hubs as stray notes.
 
 workflows:
   - name: setup
@@ -218,6 +234,7 @@ steps:
           "Link Format Detection": "The audit identifies existing link formats (wikilinks, markdown links, bare URLs)."
           "Source Format Identified": "The audit identifies the source format (Obsidian, Apple Notes, plain markdown) and any format-specific artifacts."
           "Legacy Trees Identified": "The audit explicitly lists noncanonical directories containing note-like markdown that still need migration or explicit exclusion."
+          "Project Ownership Audited": "The audit identifies project hubs, spike conventions, and probable missing project tags using ripgrep-based project-name discovery."
 
   - id: plan_migration
     name: "Plan Migration"
@@ -241,6 +258,7 @@ steps:
           "Operational Files Untouched": "TASKS.yaml, PROJECTS.yaml, SCHEDULES.yaml, SOUL.md, AGENTS.md are explicitly excluded."
           "Format Artifacts Handled": "The plan addresses format-specific artifacts (Obsidian callouts, dataview blocks, Apple Notes HTML, etc.)."
           "Legacy Trees Accounted For": "The plan includes an explicit disposition for every remaining noncanonical directory that contains note-like markdown."
+          "Project Tag Strategy": "The plan explains how project hubs, spike notes, and ripgrep-discovered project mentions will be used to add missing project tags."
 
   # scaffold step is shared with init workflow (defined above)
 
@@ -267,6 +285,7 @@ steps:
           "Commit Per File": "Each file transformation has its own commit for reversibility."
           "Content Preserved": "No content was deleted — only frontmatter additions, directory moves, and link format changes."
           "Legacy Trees Resolved": "Remaining noncanonical note directories were either migrated or explicitly left with only operational files."
+          "Project Ownership Applied": "Migration updates missing project tags where the evidence is strong and preserves canonical project hubs and spike README notes."
 
   - id: verify_doctor
     name: "Verify Migration"
@@ -289,6 +308,7 @@ steps:
           "Frontmatter Coverage": "All markdown files in notes/ have valid frontmatter with id, title, type, created, author, tags."
           "No Dead Links": "No wikilinks point to non-existent notes."
           "No Stray Note Trees": "No note-like markdown remains outside canonical groups unless explicitly classified as operational residue."
+          "Project Tags Verified": "The report checks for likely missing project tags via ripgrep-driven project-name discovery and explains any remaining intentional gaps."
 
   # === process_inbox workflow ===
   - id: review_inbox
