@@ -94,6 +94,7 @@ modules/
 - Secure Boot requires manual key enrollment during installation
 - All ZFS datasets use native encryption with automatic key management
 - `keystone.repos` auto-populates from flake inputs; `keystone.development` enables local checkout paths
+- DeepWork `keystone_system/issue` draft bodies are temporary artifacts. Write them under `.deepwork/tmp/`, not `.deepwork/jobs/`; the GitHub issue is the canonical source.
 
 ## Keystone Config Repo
 

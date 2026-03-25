@@ -38,12 +38,14 @@ ambiguous.
    - Choose a Conventional-Commit-style issue title: `type(scope): subject`
    - Use `gh issue create --repo ncrmro/keystone --title "..." --body-file <file>`
    - If a closely matching issue already exists, do NOT create a duplicate. Update the output file with the existing issue URL and explain why it matches.
-   - Save the final issue body to a local markdown output file before creating the issue so it can be reused in the eventual PR.
+   - Save the final issue body to a temporary local markdown file under `.deepwork/tmp/` before creating the issue. Do NOT place this draft under `.deepwork/jobs/`, because the local file is only a staging artifact for `gh issue create`.
    - After creation, append the created issue URL to the output file.
 
 ## Output Format
 
 ### issue.md
+
+Use a file path under `.deepwork/tmp/`, for example `.deepwork/tmp/keystone-issue.md`. The GitHub issue is the canonical source of record; the local markdown file is temporary workflow output.
 
 ```markdown
 # <Conventional issue title>
