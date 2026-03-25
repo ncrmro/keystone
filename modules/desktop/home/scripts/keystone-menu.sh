@@ -22,7 +22,7 @@ back_to() {
 menu() {
   local prompt="$1"
   local options="$2"
-  local extra="$3"
+  local extra="${3:-}"
 
   read -r -a args <<<"$extra"
 
