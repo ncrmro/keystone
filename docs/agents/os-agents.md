@@ -571,6 +571,7 @@ tasks:                             # REQUIRED: only top-level key
     project: "project-name"       # MAY: from PROJECTS.yaml
     source: "email"               # MAY: email|github-issue|github-pr|forgejo-issue|schedule|calendar|manual
     source_ref: "email-42-u@h"    # MAY: unique ID for deduplication
+    provider: "gemini"            # MAY: claude|gemini — task execution provider override
     model: "sonnet"               # MAY: haiku|sonnet|opus — execution model override
     workflow: "job/workflow"       # MAY: DeepWork workflow to invoke
     needs: ["other-task"]         # MAY: task names that must complete first
@@ -597,6 +598,13 @@ tasks:                             # REQUIRED: only top-level key
 - Scheduler sets workflows at task creation time from `SCHEDULES.yaml`
 - Calendar events do not set workflows at creation — prioritize assigns them
 - Pre-existing workflow fields are always preserved
+
+**Execution fallback rules:**
+- Task execution defaults come from `keystone.os.agents.<name>.notes.taskLoop.defaults`
+- A task-level `provider` overrides the agent default provider
+- A task-level `model` overrides the agent default model
+- If `model` is omitted at both levels, the selected CLI uses its built-in default model
+- `provider: claude` runs via Claude Code, `provider: gemini` runs via Gemini CLI
 
 ### PROJECTS.yaml
 
