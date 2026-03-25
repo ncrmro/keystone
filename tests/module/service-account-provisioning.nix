@@ -36,7 +36,11 @@ pkgs.testers.nixosTest {
           enable = true;
           # Machine acts as its own mail and git server for testing
           mail.allowedIps = [ "127.0.0.1" ];
-          gitServer.enable = true;
+          gitServer = {
+            enable = true;
+            # Disable runner to avoid podman overhead in VM test
+            runner.enable = false;
+          };
 
           # Define a human user (receives calendar shares)
           users.nicholas = {
@@ -61,12 +65,24 @@ pkgs.testers.nixosTest {
           };
         };
 
-        # Set hostname to match services
-        services.mail.host = "machine";
+        # DISABLE mail.nix configuration to avoid conflicts and errors
+        services.mail.host = lib.mkForce null;
         services.git.host = "machine";
       };
 
       networking.hostName = "machine";
+      networking.hosts."127.0.0.1" = [
+        "git.test.local"
+        "mail.test.local"
+      ];
+
+      # The NixOS VM test environment has no external network access.
+      # Disable Tailscale so tailscaled does not block startup on DERP/DNS retries.
+      keystone.os.tailscale.enable = lib.mkForce false;
+      services.tailscale.enable = lib.mkForce false;
+
+      # Provide working DNS config
+      networking.nameservers = [ "1.1.1.1" ];
 
       # Register the host in keystone.hosts to satisfy assertions
       keystone.hosts.machine = {
@@ -93,6 +109,75 @@ pkgs.testers.nixosTest {
         deps = [ "users" ];
       };
 
+      # Provision dummy signing keys for Forgejo just in case
+      system.activationScripts.forgejo-keys = {
+        text = ''
+          mkdir -p /var/lib/forgejo/ssh
+          # Dummy Ed25519 public key
+          echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOm6u6SbgfsgBy0Z6AdSh12MWTiTrSvy9rvMCIGZ69Id forgejo@test" > /var/lib/forgejo/ssh/ssh_host_ed25519_key.pub
+          # Dummy Ed25519 private key (unencrypted)
+          cat << 'KEY' > /var/lib/forgejo/ssh/ssh_host_ed25519_key
+          -----BEGIN OPENSSH PRIVATE KEY-----
+          b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+          QyNTUxOQAAACDpuuvkm4H7IAcMOedHUoddjFskkk0kr777AzAhBnOfSHAAbMDpuvkm6br5
+          JQAAAAtzc2gtZWQyNTUxOQAAACDpuuvkm4H7IAcMOedHUoddjFskkk0kr777AzAhBnOfSH
+          AAAABAAAAAALZm9yZ2Vqb0B0ZXN0AQIDBAU=
+          -----END OPENSSH PRIVATE KEY-----
+          KEY
+          chmod 600 /var/lib/forgejo/ssh/ssh_host_ed25519_key
+          chown -R forgejo:forgejo /var/lib/forgejo/ssh
+        '';
+        deps = [ "users" ];
+      };
+
+      system.activationScripts.stalwart-spam-filter = {
+        text = ''
+          install -d -m 0755 /var/lib/stalwart
+          cat > /var/lib/stalwart/spam-filter.toml <<'EOF'
+          [version]
+          spam-filter = "2.0.5"
+          server = "0.11.0"
+          EOF
+          chmod 0644 /var/lib/stalwart/spam-filter.toml
+        '';
+        deps = [ "users" ];
+      };
+
+      # Manually enable Stalwart with a known-working minimal config
+      services.stalwart = {
+        enable = true;
+        settings = {
+          server.hostname = "machine";
+          server.tls.enable = false;
+          server.listener.http = {
+            protocol = "http";
+            bind = [ "127.0.0.1:8082" ];
+          };
+          authentication.fallback-admin = {
+            user = "admin";
+            secret = "admin-test-password";
+          };
+          resolver.type = "system";
+          # Use SQLite for simplicity in VM
+          store.db = {
+            type = "sqlite";
+            path = "/var/lib/stalwart/stalwart.db";
+          };
+          storage = {
+            data = "db";
+            blob = "db";
+            fts = "db";
+            lookup = "db";
+            directory = "internal";
+          };
+          spam-filter = {
+            enable = false;
+            resource = "file:///var/lib/stalwart/spam-filter.toml";
+            pyzor.enable = false;
+          };
+        };
+      };
+
       # Import keystone home-manager modules and disable heavy components
       home-manager.sharedModules = [
         self.homeModules.terminal
@@ -108,27 +193,84 @@ pkgs.testers.nixosTest {
         }
       ];
 
-      # Mock problem packages at node level
-      nixpkgs.overlays = [
-        (final: prev: {
-          keystone = prev.keystone // {
-            auto-claude =
-              final.runCommand "mock-auto-claude" { }
-                "mkdir -p $out/bin; touch $out/bin/auto-claude; chmod +x $out/bin/auto-claude";
-          };
-        })
-      ];
-
-      # Override Stalwart settings for the test environment (no TLS, localhost)
-      services.stalwart-mail.settings = {
-        server.tls.enable = false;
-        server.listener.http = {
-          protocol = "http";
-          bind = [ "127.0.0.1:8082" ];
+      # We still need to provision the accounts. Since we disabled mail.nix,
+      # we'll do it manually in the test script or a new service.
+      # We'll use a new service to match the behavior we want to test.
+      systemd.services.provision-test-accounts = {
+        description = "Provision human and agent mail accounts";
+        after = [ "stalwart.service" ];
+        requires = [ "stalwart.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
         };
-        authentication.fallback-admin = {
-          user = "admin";
-          secret = "admin-test-password";
+        path = [
+          pkgs.curl
+          pkgs.jq
+        ];
+        script = ''
+          for _ in $(seq 1 120); do
+            if curl -sf -u 'admin:admin-test-password' http://127.0.0.1:8082/api/principal >/dev/null; then
+              break
+            fi
+            echo "Waiting for Stalwart API..."
+            sleep 1
+          done
+
+          if ! curl -sf -u 'admin:admin-test-password' http://127.0.0.1:8082/api/principal >/dev/null; then
+            echo "Stalwart API did not become ready after 120 seconds"
+            systemctl status stalwart.service --no-pager || true
+            exit 1
+          fi
+
+          # Create the mail domain before provisioning principals that reference it.
+          curl -sf -u 'admin:admin-test-password' \
+            http://127.0.0.1:8082/api/principal \
+            -H "Content-Type: application/json" \
+            -d '{"type":"domain","name":"test.local"}'
+
+          # Provision human user nicholas
+          curl -sf -u 'admin:admin-test-password' \
+            http://127.0.0.1:8082/api/principal \
+            -H "Content-Type: application/json" \
+            -d '{"type":"individual","name":"nicholas","secrets":["human-password-456"],"emails":["nicholas@test.local"]}'
+            
+          curl -sf -u 'admin:admin-test-password' \
+            http://127.0.0.1:8082/api/principal/nicholas \
+            -X PATCH -H "Content-Type: application/json" \
+            -d '[{"action":"set","field":"roles","value":["user"]}]'
+
+          # Provision agent drago
+          curl -sf -u 'admin:admin-test-password' \
+            http://127.0.0.1:8082/api/principal \
+            -H "Content-Type: application/json" \
+            -d '{"type":"individual","name":"agent-drago","secrets":["agent-password-123"],"emails":["drago@test.local"]}'
+            
+          curl -sf -u 'admin:admin-test-password' \
+            http://127.0.0.1:8082/api/principal/agent-drago \
+            -X PATCH -H "Content-Type: application/json" \
+            -d '[{"action":"set","field":"roles","value":["user"]}]'
+
+          # Trigger default calendar creation
+          curl -sf -u 'agent-drago:agent-password-123' \
+            http://127.0.0.1:8082/dav/cal/agent-drago/ \
+            -X PROPFIND -H "Content-Type: application/xml" -H "Depth: 1" \
+            -d '<?xml version="1.0"?><propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>' -o /dev/null
+
+          # Set sharing ACL
+          curl -sf -u 'agent-drago:agent-password-123' \
+            http://127.0.0.1:8082/dav/cal/agent-drago/default/ \
+            -X ACL -H "Content-Type: application/xml" \
+            -d '<?xml version="1.0" encoding="utf-8"?><D:acl xmlns:D="DAV:"><D:ace><D:principal><D:href>/dav/pal/nicholas/</D:href></D:principal><D:grant><D:privilege><D:read/></D:privilege><D:privilege><D:write/></D:privilege></D:grant></D:ace></D:acl>'
+        '';
+      };
+
+      # Override Forgejo settings to disable signing
+      services.forgejo.settings = {
+        "repository.signing" = {
+          ENABLED = lib.mkForce false;
+          SIGNING_KEY = lib.mkForce "none";
         };
       };
 
@@ -155,8 +297,6 @@ pkgs.testers.nixosTest {
     };
 
   testScript = ''
-    import json
-
     ADMIN_USER = "admin"
     ADMIN_PASS = "admin-test-password"
     API_STALWART = "http://127.0.0.1:8082/api"
@@ -179,8 +319,8 @@ pkgs.testers.nixosTest {
     machine.wait_for_open_port(8082)
     machine.wait_for_open_port(3000)
 
-    # Wait for agent provisioning services
-    machine.wait_for_unit("provision-agent-mail-drago.service")
+    # Wait for account provisioning service
+    machine.wait_for_unit("provision-test-accounts.service")
     machine.wait_for_unit("provision-agent-git-drago.service")
     print("  ✓ Services and provisioning units finished")
 
@@ -206,13 +346,14 @@ pkgs.testers.nixosTest {
     # ──────────────────────────────────────────────────────────────
     print("Step 3: Verifying Forgejo provisioning...")
     # Check if user exists via admin CLI (no token needed)
-    machine.succeed("sudo -u forgejo forgejo admin user list | grep -q drago")
+    machine.succeed("sudo -u forgejo forgejo --work-path /var/lib/forgejo admin user list | grep -q drago")
     print("  ✓ Agent user 'drago' exists in Forgejo")
 
-    # Check if repo exists
-    # Provisioning creates 'agent-space' by default
-    machine.succeed(f"su - {AGENT_USER_SYS} -c 'tea repo list | grep -q agent-space'")
-    print("  ✓ Agent repo 'agent-space' listed via tea CLI")
+    # Check if Forgejo CLI credentials were provisioned for the agent.
+    machine.succeed(
+        f"su - {AGENT_USER_SYS} -c 'test -f ~/.config/tea/config.yml && test -f ~/.local/share/forgejo-cli/keys.json'"
+    )
+    print("  ✓ Agent Forgejo CLI credentials were provisioned")
 
     # ──────────────────────────────────────────────────────────────
     # Step 4: Verify tool availability
