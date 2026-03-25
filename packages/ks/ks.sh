@@ -61,6 +61,9 @@
 set -euo pipefail
 
 KS_DEBUG=false
+KS_HM_USERS_FILTER=""
+KS_HM_ALL_USERS=false
+HM_ACTIVATION_RECORDS=()
 
 run_with_warning_filter() {
   if [[ "${KS_DEBUG}" == true ]]; then
@@ -408,9 +411,77 @@ list_hm_users() {
     "${override_args[@]}" 2>/dev/null | jq -r '.[]'
 }
 
+list_target_hm_users() {
+  local repo_root="$1"
+  local host="$2"
+  local users
+  users=$(list_hm_users "$repo_root" "$host") || return 1
+  [[ -z "$users" ]] && return 0
+
+  if [[ -n "$KS_HM_USERS_FILTER" ]]; then
+    local matched=()
+    local requested=()
+    IFS=',' read -ra requested <<< "$KS_HM_USERS_FILTER"
+    for requested_user in "${requested[@]}"; do
+      local found=false
+      while IFS= read -r available_user; do
+        [[ -z "$available_user" ]] && continue
+        if [[ "$available_user" == "$requested_user" ]]; then
+          matched+=("$available_user")
+          found=true
+          break
+        fi
+      done <<< "$users"
+
+      if [[ "$found" == false ]]; then
+        echo "Error: home-manager user '$requested_user' is not configured on host '$host'." >&2
+        return 1
+      fi
+    done
+
+    printf '%s\n' "${matched[@]}"
+    return 0
+  fi
+
+  if [[ "$KS_HM_ALL_USERS" == true ]]; then
+    printf '%s\n' "$users"
+    return 0
+  fi
+
+  local current_hostname host_hostname
+  current_hostname=$(hostname)
+  host_hostname=$(nix eval -f "$repo_root/hosts.nix" "$host.hostname" --raw 2>/dev/null || echo "")
+
+  if [[ "$host_hostname" == "$current_hostname" ]]; then
+    local current_user
+    current_user=$(resolve_current_hm_user "$repo_root" "$host")
+    if [[ -n "$current_user" ]]; then
+      printf '%s\n' "$current_user"
+      return 0
+    fi
+  fi
+
+  printf '%s\n' "$users"
+}
+
+find_cached_hm_activation_path() {
+  local host="$1"
+  local user="$2"
+  local record
+  for record in "${HM_ACTIVATION_RECORDS[@]}"; do
+    IFS=$'\t' read -r record_host record_user record_path <<< "$record"
+    if [[ "$record_host" == "$host" && "$record_user" == "$user" ]]; then
+      printf '%s\n' "$record_path"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 # --- Build home-manager activation packages only (REQ-016.1-3) ---
 # Builds home-manager activationPackage for each user on each host, returning
-# a newline-delimited list of "host:user:store-path" entries.
+# cached "host:user:store-path" entries reused during deployment.
 build_home_manager_only() {
   local repo_root="$1"
   shift
@@ -421,10 +492,11 @@ build_home_manager_only() {
 
   local build_targets=()
   local target_map=()   # host:user pairs
+  HM_ACTIVATION_RECORDS=()
 
   for h in "${target_hosts[@]}"; do
     local users
-    users=$(list_hm_users "$repo_root" "$h") || continue
+    users=$(list_target_hm_users "$repo_root" "$h") || continue
     if [[ -z "$users" ]]; then
       echo "Warning: No home-manager users for host $h, skipping." >&2
       continue
@@ -441,7 +513,15 @@ build_home_manager_only() {
   fi
 
   echo "Building home-manager profiles: ${target_map[*]}..."
-  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+  local build_paths=()
+  mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}")
+
+  local i
+  for i in "${!target_map[@]}"; do
+    IFS=':' read -r host user <<< "${target_map[$i]}"
+    HM_ACTIVATION_RECORDS+=("$host"$'\t'"$user"$'\t'"${build_paths[$i]}")
+  done
+
   echo "Home-manager build complete."
 }
 
@@ -462,7 +542,7 @@ deploy_home_manager_only() {
 
   for host in "${target_hosts[@]}"; do
     local users
-    users=$(list_hm_users "$repo_root" "$host") || continue
+    users=$(list_target_hm_users "$repo_root" "$host") || continue
     [[ -z "$users" ]] && continue
 
     local host_json host_hostname ssh_target fallback_ip
@@ -474,12 +554,20 @@ deploy_home_manager_only() {
     while IFS= read -r user; do
       # Resolve the activation package store path
       local activation_path
-      activation_path=$(nix build --no-link --print-out-paths \
-        "$repo_root#nixosConfigurations.$host.config.home-manager.users.\"$user\".home.activationPackage" \
-        "${override_args[@]}" 2>/dev/null) || {
+      activation_path=$(find_cached_hm_activation_path "$host" "$user") || activation_path=""
+      if [[ -z "$activation_path" ]]; then
+        activation_path=$(nix build --no-link --print-out-paths \
+          "$repo_root#nixosConfigurations.$host.config.home-manager.users.\"$user\".home.activationPackage" \
+          "${override_args[@]}" 2>/dev/null) || {
+          echo "Error: Failed to resolve activation package for $user on $host" >&2
+          continue
+        }
+      fi
+
+      if [[ -z "$activation_path" ]]; then
         echo "Error: Failed to resolve activation package for $user on $host" >&2
         continue
-      }
+      fi
 
       if [[ "$host_hostname" == "$current_hostname" ]]; then
         # LOCAL deploy — run activation as the user
@@ -688,6 +776,15 @@ cmd_build() {
     case $1 in
       --dev) shift ;;  # kept for backwards compat, no-op
       --lock) lock=true; shift ;;
+      --user)
+        [[ $# -lt 2 ]] && { echo "Error: --user requires a value" >&2; exit 1; }
+        KS_HM_USERS_FILTER="$2"
+        shift 2
+        ;;
+      --all-users)
+        KS_HM_ALL_USERS=true
+        shift
+        ;;
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) hosts_arg="$1"; shift ;;
     esac
@@ -771,6 +868,9 @@ cmd_switch() {
   local repo_root
   repo_root=$(find_repo)
   local hosts_nix="$repo_root/hosts.nix"
+  KS_HM_USERS_FILTER=""
+  KS_HM_ALL_USERS=false
+  HM_ACTIVATION_RECORDS=()
 
   local target_hosts=()
   if [[ -z "$hosts_arg" ]]; then
@@ -839,8 +939,7 @@ cmd_switch() {
         echo "OS core unchanged. Activating fast home-manager switch locally..."
         deploy_home_manager_only "$repo_root" "$host"
         sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
-        sudo "$path/bin/switch-to-configuration" boot
+        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
       else
         echo "Deploying $host locally ($mode)..."
         sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
@@ -888,7 +987,8 @@ cmd_switch() {
         echo "OS core unchanged. Activating fast home-manager switch remotely..."
         deploy_home_manager_only "$repo_root" "$host"
         # shellcheck disable=SC2029
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration boot"
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path"
+        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
       else
         # shellcheck disable=SC2029
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
@@ -901,6 +1001,9 @@ cmd_switch() {
 # --- Update command ---
 cmd_update() {
   local mode="switch" hosts_arg="" pull=false lock=true
+  KS_HM_USERS_FILTER=""
+  KS_HM_ALL_USERS=false
+  HM_ACTIVATION_RECORDS=()
   while [[ $# -gt 0 ]]; do
     case $1 in
       --debug) KS_DEBUG=true; shift ;;
@@ -908,6 +1011,15 @@ cmd_update() {
       --boot) mode="boot"; shift ;;
       --pull) pull=true; shift ;;
       --lock) lock=true; shift ;;
+      --user)
+        [[ $# -lt 2 ]] && { echo "Error: --user requires a value" >&2; exit 1; }
+        KS_HM_USERS_FILTER="$2"
+        shift 2
+        ;;
+      --all-users)
+        KS_HM_ALL_USERS=true
+        shift
+        ;;
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) hosts_arg="$1"; shift ;;
     esac

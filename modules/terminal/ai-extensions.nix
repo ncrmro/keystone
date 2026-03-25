@@ -446,6 +446,21 @@ in
     # Codex 0.114.0 skips skills whose payload files are symlinks.
     # Manage Keystone-owned Codex skill payloads as regular files directly in
     # activation so Home Manager does not repeatedly back them up on each run.
+    home.activation.codexSkillsPreflight = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+      cleanup_codex_skill_state() {
+        relativePath="$1"
+        targetPath="$HOME/$relativePath"
+
+        # Recover from previous failed activations that left Home Manager backup
+        # files behind for these managed Codex skill payloads before link checks.
+        rm -f "$targetPath.backup"
+      }
+
+      ${concatMapStringsSep "\n" (file: ''
+        cleanup_codex_skill_state ${escapeShellArg file.relativePath}
+      '') codexManagedFiles}
+    '';
+
     home.activation.codexSkills = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       write_codex_skill_file() {
         relativePath="$1"
@@ -454,10 +469,6 @@ in
         targetDir="$(dirname "$targetPath")"
 
         mkdir -p "$targetDir"
-
-        # Recover from previous failed activations that left Home Manager backup
-        # files behind for these managed Codex skill payloads.
-        rm -f "$targetPath.backup"
 
         if [ -L "$targetPath" ]; then
           rm -f "$targetPath"
