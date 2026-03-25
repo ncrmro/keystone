@@ -18,6 +18,8 @@ MAX_TASKS="@maxTasks@"
 AGENT_NAME="@agentName@"
 GITHUB_USERNAME="@githubUsername@"
 FORGEJO_USERNAME="@forgejoUsername@"
+DEFAULT_PROVIDER="@defaultProvider@"
+DEFAULT_MODEL="@defaultModel@"
 
 LOGS_DIR="$HOME/.local/state/agent-task-loop/logs"
 TASK_LOGS_DIR="$LOGS_DIR/tasks"
@@ -234,6 +236,7 @@ while [ $TASK_COUNT -lt "$MAX_TASKS" ]; do
 
   TASK_DESC=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].description" TASKS.yaml)
   TASK_WORKFLOW=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].workflow // \"\"" TASKS.yaml)
+  TASK_PROVIDER=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].provider // \"\"" TASKS.yaml)
   TASK_MODEL=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].model // \"\"" TASKS.yaml)
   TASK_NEEDS=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].needs // []" TASKS.yaml)
 
@@ -267,10 +270,14 @@ while [ $TASK_COUNT -lt "$MAX_TASKS" ]; do
   yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).started_at = \"$TASK_STARTED_AT\"" TASKS.yaml
   yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"in_progress\"" TASKS.yaml
 
-  # Build model flag
-  MODEL_FLAG=""
+  RESOLVED_PROVIDER="$DEFAULT_PROVIDER"
+  if [ -n "$TASK_PROVIDER" ] && [ "$TASK_PROVIDER" != "null" ]; then
+    RESOLVED_PROVIDER="$TASK_PROVIDER"
+  fi
+
+  RESOLVED_MODEL="$DEFAULT_MODEL"
   if [ -n "$TASK_MODEL" ] && [ "$TASK_MODEL" != "null" ]; then
-    MODEL_FLAG="--model $TASK_MODEL"
+    RESOLVED_MODEL="$TASK_MODEL"
   fi
 
   # Build prompt
@@ -286,9 +293,34 @@ Task: $TASK_NAME
 Description: $TASK_DESC"
   fi
 
-  # Execute in a separate claude session
+  TASK_CMD=()
+  case "$RESOLVED_PROVIDER" in
+    claude)
+      TASK_CMD=(claude --print --dangerously-skip-permissions)
+      if [ -n "$RESOLVED_MODEL" ]; then
+        TASK_CMD+=(--model "$RESOLVED_MODEL")
+      fi
+      TASK_CMD+=("$PROMPT")
+      ;;
+    gemini)
+      TASK_CMD=(gemini --prompt "$PROMPT" --yolo)
+      if [ -n "$RESOLVED_MODEL" ]; then
+        TASK_CMD+=(-m "$RESOLVED_MODEL")
+      fi
+      ;;
+    *)
+      yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"error\"" TASKS.yaml
+      log "  Task $TASK_NAME errored (unsupported provider: $RESOLVED_PROVIDER)"
+      CURRENT_TASK=""
+      continue
+      ;;
+  esac
+
+  log "  Using provider=$RESOLVED_PROVIDER model=${RESOLVED_MODEL:-provider-default}"
+
+  # Execute in a separate provider session
   set +o pipefail
-  claude --print --dangerously-skip-permissions $MODEL_FLAG "$PROMPT" 2>&1 | tee "$TASK_LOG" >&2
+  "${TASK_CMD[@]}" 2>&1 | tee "$TASK_LOG" >&2
   TASK_EXIT=${PIPESTATUS[0]}
   set -o pipefail
 
@@ -311,11 +343,10 @@ DURATION=$((END_TIME - START_TIME))
 log "Task loop finished: executed $TASK_COUNT tasks in ${DURATION}s"
 
 # -- Rotate old logs (keep last 20) -------------------------------------------
-for ext in log; do
-  find "$LOGS_DIR" -maxdepth 1 -name "*.$ext" -type f | sort -r | while IFS= read -r file; do
-    COUNT=$((${COUNT:-0} + 1))
-    if [ $COUNT -gt 20 ]; then
-      rm -f "$file"
-    fi
-  done
+COUNT=0
+find "$LOGS_DIR" -maxdepth 1 -name "*.log" -type f | sort -r | while IFS= read -r file; do
+  COUNT=$((COUNT + 1))
+  if [ "$COUNT" -gt 20 ]; then
+    rm -f "$file"
+  fi
 done

@@ -6,7 +6,7 @@ layout {
     tab name="build" {
         pane
     }
-    tab name="claude" {
+    tab name="agent" {
         pane
     }
     tab name="shell" {

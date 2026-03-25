@@ -20,6 +20,10 @@ tasks:
     source_ref: "email-23-..."     # reference to the source
     workflow: "job/workflow"        # deepwork workflow used (if any)
     project: "project-name"        # which project this relates to
+    provider: claude | gemini      # task execution provider override
     model: haiku | sonnet | opus   # model used to execute
     needs: ["other-task-name"]     # task dependencies (if any)
 ```
+
+When `provider` or `model` is omitted, the task loop MUST fall back to the
+agent-level defaults configured under `keystone.os.agents.<name>.notes.taskLoop.defaults`.
