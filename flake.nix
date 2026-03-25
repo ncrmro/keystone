@@ -336,6 +336,16 @@
             inherit pkgs lib nixpkgs;
             self = self;
           };
+          development-evaluation = import ./tests/module/development-evaluation.nix {
+            inherit
+              pkgs
+              lib
+              nixpkgs
+              agenix
+              home-manager
+              ;
+            self = self;
+          };
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)
