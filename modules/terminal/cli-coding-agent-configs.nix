@@ -18,17 +18,26 @@ let
   cfg = config.keystone.terminal.cliCodingAgents;
   terminalCfg = config.keystone.terminal;
   deepworkEnabled = terminalCfg.ai.enable && terminalCfg.deepwork.enable;
+  deepworkAdditionalJobsFolders =
+    config.home.sessionVariables.DEEPWORK_ADDITIONAL_JOBS_FOLDERS or null;
 
-  mkDeepworkServer = platform: {
-    command = "${pkgs.keystone.deepwork}/bin/deepwork";
-    args = [
-      "serve"
-      "--path"
-      "."
-      "--platform"
-      platform
-    ];
-  };
+  mkDeepworkServer =
+    platform:
+    {
+      command = "${pkgs.keystone.deepwork}/bin/deepwork";
+      args = [
+        "serve"
+        "--path"
+        "."
+        "--platform"
+        platform
+      ];
+    }
+    // optionalAttrs (deepworkAdditionalJobsFolders != null && deepworkAdditionalJobsFolders != "") {
+      env = {
+        DEEPWORK_ADDITIONAL_JOBS_FOLDERS = deepworkAdditionalJobsFolders;
+      };
+    };
 
   claudeMcpServers =
     cfg.mcpServers
@@ -127,6 +136,13 @@ in
       description = "MCP servers to configure globally across supported AI CLIs.";
     };
 
+    generatedMcpServers = mkOption {
+      type = types.attrsOf (types.attrsOf types.anything);
+      default = { };
+      internal = true;
+      description = "Resolved MCP server definitions emitted by the shared generator for each CLI.";
+    };
+
     respectGitIgnore = mkOption {
       type = types.bool;
       default = true;
@@ -138,6 +154,13 @@ in
   };
 
   config = mkIf (terminalCfg.enable && cfg.enable) {
+    keystone.terminal.cliCodingAgents.generatedMcpServers = {
+      claude = claudeMcpServers;
+      gemini = geminiMcpServers;
+      codex = codexMcpServers;
+      opencode = opencodeMcpServers;
+    };
+
     # Claude Code / Claude Desktop
     # CRITICAL: ~/.claude.json must be a writable regular file, not a Nix store
     # symlink. Claude Code writes runtime state to this file (feature flags,

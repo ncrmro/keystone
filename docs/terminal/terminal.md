@@ -144,7 +144,7 @@ keystone.terminal.deepwork = {
 };
 ```
 
-When enabled, the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable is set, allowing the DeepWork MCP server to discover project-specific job definitions alongside the built-in ones.
+When enabled, the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable is set and injected into the generated DeepWork MCP server configs, allowing spawned MCP sessions to discover shared project job definitions alongside the built-in ones.
 
 ## Notes
 
@@ -161,6 +161,19 @@ For terminal users, the most relevant parts are:
 
 Use the notes guide for the workflow and the conventions for the authoritative
 schema and policy details.
+
+## Projects and sessions
+
+Keystone project sessions are note-backed. Active project hub notes in
+`~/notes/index/` define the valid project set, related repos, and the context
+that `pz` uses to launch Zellij sessions.
+
+Use [Projects and pz](projects.md) for:
+
+- hub note requirements,
+- repo and worktree path conventions,
+- `pz list` and `pz <project>` usage, and
+- project-to-agent handoff from a running session.
 
 ## Personal Information Management
 

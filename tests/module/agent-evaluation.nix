@@ -71,6 +71,14 @@ let
           builtins.toJSON result.config.home-manager.users.testuser.home.sessionVariables
         else
           "{}";
+      deepworkMcpJson =
+        if result.config ? home-manager && result.config.home-manager.users ? testuser then
+          builtins.toJSON (
+            result.config.home-manager.users.testuser.keystone.terminal.cliCodingAgents.generatedMcpServers.codex.deepwork
+              or { }
+          )
+        else
+          "{}";
     in
     pkgs.runCommand "eval-${name}" { } ''
       echo "Evaluating ${name}..."
@@ -80,6 +88,31 @@ let
       echo "  Timers: ${timersJson}"
       echo "  User Services: ${userServicesJson}"
       echo "  User Timers: ${userTimersJson}"
+
+      if [ "${name}" = "locked-mode" ]; then
+        echo "Verifying DeepWork MCP env in locked mode..."
+        if echo '${deepworkMcpJson}' | grep -q '"DEEPWORK_ADDITIONAL_JOBS_FOLDERS"'; then
+          echo "  ✓ Found DeepWork MCP env key"
+        else
+          echo "  ✗ Missing DeepWork MCP env key"
+          echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
+          exit 1
+        fi
+        if echo '${deepworkMcpJson}' | grep -q 'deepwork-library-jobs'; then
+          echo "  ✓ Found locked deepwork jobs store path"
+        else
+          echo "  ✗ Missing locked deepwork jobs store path"
+          echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
+          exit 1
+        fi
+        if echo '${deepworkMcpJson}' | grep -q 'keystone-deepwork-jobs'; then
+          echo "  ✓ Found locked keystone jobs store path"
+        else
+          echo "  ✗ Missing locked keystone jobs store path"
+          echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
+          exit 1
+        fi
+      fi
 
       # Verify DEEPWORK_ADDITIONAL_JOBS_FOLDERS for development-mode test
       if [ "${name}" = "development-mode" ]; then
@@ -98,6 +131,13 @@ let
         else
           echo "  ✗ Missing local keystone jobs path"
           echo "  Actual Session Vars: ${sessionVarsJson}"
+          exit 1
+        fi
+        if echo '${deepworkMcpJson}' | grep -q '"/home/testuser/.keystone/repos/Unsupervisedcom/deepwork/library/jobs:/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs"'; then
+          echo "  ✓ Found development-mode DeepWork MCP env value"
+        else
+          echo "  ✗ Missing development-mode DeepWork MCP env value"
+          echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
           exit 1
         fi
       fi
@@ -119,6 +159,29 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Locked mode verification
+    locked-mode = eval "locked-mode" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            terminal.enable = true;
+            email = "testuser@example.com";
           };
         };
         fileSystems."/" = {
