@@ -23,6 +23,19 @@ in
   # _module.args infinite recursion when keystoneInputs is used in imports)
 
   config = mkIf cfg.enable {
+    xdg.desktopEntries.keystone-projects = {
+      name = "Projects";
+      genericName = "Project context switcher";
+      comment = "Open the Keystone project selector";
+      exec = "keystone-context-switch";
+      terminal = false;
+      categories = [
+        "Utility"
+        "Development"
+      ];
+      icon = "folder-development";
+    };
+
     # Wofi as the application launcher
     programs.wofi = {
       enable = mkDefault true;

@@ -45,6 +45,78 @@ session_name_matches_slug() {
     || [[ "$session_name" == "obs-${project_slug}" || "$session_name" == "obs-${project_slug}-"* ]]
 }
 
+session_slug_for_project() {
+  local session_name="$1"
+  local project_slug="$2"
+
+  if [[ "$session_name" == "obs-${project_slug}" || "$session_name" == "$project_slug" ]]; then
+    printf "main\n"
+  elif [[ "$session_name" == "obs-${project_slug}-"* ]]; then
+    printf "%s\n" "${session_name#"obs-${project_slug}-"}"
+  elif [[ "$session_name" == "${project_slug}-"* ]]; then
+    printf "%s\n" "${session_name#"${project_slug}-"}"
+  else
+    printf "main\n"
+  fi
+}
+
+session_title_for_project() {
+  local project_slug="$1"
+  local session_slug="${2:-main}"
+
+  if [[ "$session_slug" == "main" || -z "$session_slug" ]]; then
+    printf "%s\n" "$project_slug"
+  else
+    printf "%s-%s\n" "$project_slug" "$session_slug"
+  fi
+}
+
+find_client_for_title() {
+  local expected_title="$1"
+
+  hyprctl clients -j 2>/dev/null | jq -r --arg expected_title "$expected_title" '
+    map(
+      select(.class == "com.mitchellh.ghostty")
+      | select(.title == $expected_title or (.title | startswith($expected_title + " | ")))
+    )
+    | sort_by(.focusHistoryID)
+    | .[0]
+    | if . == null then "" else "\(.address)\t\(.workspace.name)" end
+  '
+}
+
+switch_to_active_project_context() {
+  local project_slug="$1"
+  local zellij_output="$2"
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+
+    local session_name
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+
+    if session_name_matches_slug "$session_name" "$project_slug" && ! printf "%s\n" "$line" | grep -q "EXITED"; then
+      local session_slug expected_title client_info client_address workspace_name
+      session_slug=$(session_slug_for_project "$session_name" "$project_slug")
+      expected_title=$(session_title_for_project "$project_slug" "$session_slug")
+      client_info=$(find_client_for_title "$expected_title")
+
+      if [[ -n "$client_info" ]]; then
+        client_address=${client_info%%$'\t'*}
+        workspace_name=${client_info#*$'\t'}
+        hyprctl dispatch workspace "$workspace_name" >/dev/null 2>&1
+        hyprctl dispatch focuswindow "address:${client_address}" >/dev/null 2>&1
+        return 0
+      fi
+
+      launch_project_context "$project_slug" "$session_slug"
+      return 0
+    fi
+  done <<< "$zellij_output"
+
+  launch_project_context "$project_slug"
+}
+
 launch_project_context() {
   local project_slug="$1"
   local session_slug="${2:-}"
@@ -113,7 +185,7 @@ show_contexts_menu() {
     local selected_slug
     selected_slug=$(echo "$selected" | awk '{print $2}')
     if echo "$selected" | grep -q "^●"; then
-      launch_project_context "$selected_slug"
+      switch_to_active_project_context "$selected_slug" "$zellij_output"
     else
       local session_slug
       session_slug=$(prompt_for_session_slug) || { back_to show_main_menu; return; }
