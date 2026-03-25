@@ -117,6 +117,7 @@ in
                 enable = mkDefault true;
                 # All credentials auto-derived from mail config above
               };
+              ssh.authSock = mkDefault "/run/agent-${name}-ssh-agent/agent.sock";
               ai.ollama =
                 let
                   hostOllamaCfg = config.keystone.os.services.ollama;

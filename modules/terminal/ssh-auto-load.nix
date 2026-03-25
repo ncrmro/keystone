@@ -42,6 +42,7 @@
 with lib;
 let
   cfg = config.keystone.terminal.sshAutoLoad;
+  sshCfg = config.keystone.terminal.ssh;
   hostname = if osConfig ? networking.hostName then osConfig.networking.hostName else "unknown";
 in
 {
@@ -90,6 +91,9 @@ in
         Service = {
           Type = "oneshot";
           RemainAfterExit = true;
+          Environment = [
+            "SSH_AUTH_SOCK=${sshCfg.authSock}"
+          ];
 
           # Poll for ssh-agent socket readiness (converges with agents.nix:1746-1749)
           ExecStartPre = toString (

@@ -106,6 +106,15 @@ in
         description = "SSH key for signing. Path or 'key::' prefix for inline public key.";
       };
     };
+
+    ssh = {
+      authSock = mkOption {
+        type = types.str;
+        default = "%t/ssh-agent";
+        defaultText = literalExpression ''"%t/ssh-agent"'';
+        description = "SSH agent socket exported to non-interactive services that need Git/SSH access.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {

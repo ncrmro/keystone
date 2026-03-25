@@ -24,6 +24,18 @@
 }:
 let
   cfg = config.keystone.notes;
+  sshAuthSock =
+    if
+      lib.hasAttrByPath [
+        "keystone"
+        "terminal"
+        "ssh"
+        "authSock"
+      ] config
+    then
+      config.keystone.terminal.ssh.authSock
+    else
+      "%t/ssh-agent";
 
   # Canonical .zk/config.toml content for the Zettelkasten notebook.
   # This is written to the notes repo (not /nix/store) so it travels with git.
@@ -305,6 +317,9 @@ in
 
       Service = {
         Type = "oneshot";
+        Environment = [
+          "SSH_AUTH_SOCK=${sshAuthSock}"
+        ];
         ExecStart = builtins.concatStringsSep " " [
           "${pkgs.keystone.repo-sync}/bin/repo-sync"
           "--repo ${lib.escapeShellArg cfg.repo}"
