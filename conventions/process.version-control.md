@@ -3,6 +3,8 @@
 
 ## Pre-Commit Hygiene
 
+Before committing, ensure the working tree is clean and matches the intended state. For strategic guidance on searching project history and discovering requirements using git tools, see `process.project-navigation`.
+
 1. Before committing, the working tree MUST be checked for files that should be gitignored (e.g., `.env`, `node_modules/`, build artifacts).
 2. `git status` MUST be reviewed before every commit to verify only intended files are staged.
 3. Files matching `.gitignore` patterns MUST NOT be committed — if they appear in status, the `.gitignore` MUST be fixed first.

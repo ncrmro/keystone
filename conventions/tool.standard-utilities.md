@@ -1,6 +1,6 @@
 # Convention: Standard Utilities (tool.standard-utilities)
 
-Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `sed`, `awk`) within the keystone environment. These tools are pre-installed on all keystone hosts.
+Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `sed`, `awk`) within the keystone environment. These tools are pre-installed on all keystone hosts. For strategic guidance on using these tools for project navigation and discovery, see `process.project-navigation`.
 
 ## JSON Processing (jq)
 
@@ -17,7 +17,7 @@ Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `se
 
 ## Searching (rg/ripgrep)
 
-8. `rg` (ripgrep) MUST be the primary tool for searching text within files.
+8. `rg` (ripgrep) MUST be the primary tool for searching text within files. For requirement discovery using Requirement Prefixes, see `process.project-navigation`.
 9. For searching code, use the `--type` flag (e.g., `rg --type nix`) to narrow results and improve performance.
 10. `rg` SHOULD be used with `--hidden` to include hidden files (e.g., `.env`, `.github/`) and `--no-ignore` if searching ignored files is necessary.
 11. Large search results SHOULD be piped to `head` or `less` to avoid overwhelming the terminal or agent context.
@@ -31,7 +31,7 @@ Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `se
 ## Performance and Safety
 
 15. Tools MUST NOT be used on binary files unless specifically designed for them.
-16. For large-scale find-and-replace, use `git grep` or `rg` with `xargs` to ensure safety and speed.
+16. For large-scale find-and-replace, use `git grep` or `rg` with `xargs` to ensure safety and speed. For using `git grep` in project navigation and requirement discovery, see `process.project-navigation`.
 17. Avoid piping secrets or sensitive data into these utilities unless the output is immediately redirected to a secure location.
 
 ## Environment and Tool Availability

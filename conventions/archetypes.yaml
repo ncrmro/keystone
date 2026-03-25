@@ -67,6 +67,7 @@ archetypes:
       - process.prose
       - tool.standard-utilities
       - process.vcs-context-continuity
+      - process.project-navigation
     referenced_conventions:
       - os.requirements
       - process.agent-cronjobs
@@ -181,6 +182,7 @@ archetypes:
       - process.prose
       - tool.standard-utilities
       - process.vcs-context-continuity
+      - process.project-navigation
     referenced_conventions:
       - process.task-tracking
       - process.project-board
