@@ -19,6 +19,14 @@ in
 
   options.keystone.desktop = {
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities for Home Manager";
+
+    uhk = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Install the Ultimate Hacking Keyboard agent";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -28,6 +36,9 @@ in
     home.packages = [
       # Presentations
       pkgs.keystone.slidev
+    ]
+    ++ optionals cfg.uhk.enable [
+      pkgs.uhk-agent
     ];
   };
 }

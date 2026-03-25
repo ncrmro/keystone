@@ -178,6 +178,7 @@ in
     ./secure-boot.nix
     ./tpm.nix
     ./hardware-key.nix
+    ./uhk.nix
     ./remote-unlock.nix
     ./users.nix
     ./ssh.nix
