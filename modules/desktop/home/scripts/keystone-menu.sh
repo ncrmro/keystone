@@ -37,10 +37,31 @@ open_url() {
   xdg-open "$1" &
 }
 
+session_name_matches_slug() {
+  local session_name="$1"
+  local project_slug="$2"
+
+  [[ "$session_name" == "$project_slug" || "$session_name" == "${project_slug}-"* ]] \
+    || [[ "$session_name" == "obs-${project_slug}" || "$session_name" == "obs-${project_slug}-"* ]]
+}
+
+launch_project_context() {
+  local project_slug="$1"
+  local session_slug="${2:-}"
+
+  if [[ -n "$session_slug" ]]; then
+    ghostty -e pz "$project_slug" "$session_slug" &
+  else
+    ghostty -e pz "$project_slug" &
+  fi
+}
+
+prompt_for_session_slug() {
+  menu "Session slug (optional)" ""
+}
+
 # ============== CONTEXTS MENU ==============
 show_contexts_menu() {
-  SESSION_PREFIX="obs"
-  
   # Check if pz is available for project discovery
   if ! command -v pz >/dev/null 2>&1; then
     notify-send "pz not found" "Project session manager (pz) is required for contexts" -t 3000
@@ -55,20 +76,26 @@ show_contexts_menu() {
   local projects
   projects=$(pz discover-slugs 2>/dev/null || echo "")
 
-  context_list=""
+  local context_list=""
   
-  # Group sessions by their base project name
+  # Show every registered project and mark whether it has a live session.
   for slug in $projects; do
-    # Check if there are any active sessions for this project
-    # We check for exact match or slug- prefix
-    local sessions
-    sessions=$(echo "$zellij_output" | awk '{print $1}' | command grep -E "^${slug}(-|$)" || true)
-    
-    if [[ -n "$sessions" ]]; then
-      # Project has active sessions
+    local has_live_session=false
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+
+      local session_name
+      session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+
+      if session_name_matches_slug "$session_name" "$slug" && ! printf "%s\n" "$line" | grep -q "EXITED"; then
+        has_live_session=true
+        break
+      fi
+    done <<< "$zellij_output"
+
+    if [[ "$has_live_session" == "true" ]]; then
       context_list="${context_list}●  ${slug}\n"
     else
-      # Project is dormant
       context_list="${context_list}○  ${slug}\n"
     fi
   done
@@ -83,19 +110,14 @@ show_contexts_menu() {
   selected=$(echo -e "$context_list" | keystone-launch-walker --dmenu --width 350 --minheight 1 --maxheight 630 -p "Context…" 2>/dev/null) || { back_to show_main_menu; return; }
 
   if [[ -n "$selected" ]]; then
+    local selected_slug
     selected_slug=$(echo "$selected" | awk '{print $2}')
     if echo "$selected" | grep -q "^●"; then
-      # Active — potentially multiple sessions. 
-      # For now, let's just use pz to attach to the main one or show available
-      # Alternatively, we could show another menu with specific sessions.
-      # But pz logic already handles attaching.
-      # If we want to switch workspace in Hyprland:
-      # hyprctl dispatch workspace "name:${selected_slug}" >/dev/null 2>&1
-      # But it's safer to just launch a terminal with pz which handles zellij.
-      ghostty -e pz "$selected_slug" &
+      launch_project_context "$selected_slug"
     else
-      # Not running — launch
-      ghostty -e pz "$selected_slug" &
+      local session_slug
+      session_slug=$(prompt_for_session_slug) || { back_to show_main_menu; return; }
+      launch_project_context "$selected_slug" "$session_slug"
     fi
   else
     back_to show_main_menu
