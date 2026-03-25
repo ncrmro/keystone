@@ -67,6 +67,27 @@ let
     dead-link = "error"
   '';
 
+  notesGitignore = ''
+    # zk local index state
+    .zk/notebook.db
+    .zk/notebook.db-journal
+
+    # Local shell and environment state
+    .direnv/
+    .env
+    .env.local
+    .venv/
+    __pycache__/
+
+    # Nix local outputs
+    result
+    result-*
+
+    # OS/editor junk
+    .DS_Store
+    Thumbs.db
+  '';
+
   # Template: fleeting note
   templateFleeting = ''
     ---
@@ -195,6 +216,10 @@ let
       cat > "$NOTES_PATH/.zk/config.toml" << 'ZKEOF'
     ${zkConfigToml}
     ZKEOF
+
+      cat > "$NOTES_PATH/.gitignore" << 'IGNOREEOF'
+    ${notesGitignore}
+    IGNOREEOF
 
       # Create template directory and files
       mkdir -p "$NOTES_PATH/.zk/templates"

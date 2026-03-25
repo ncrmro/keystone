@@ -9,12 +9,12 @@ for its decisions, reports, repos, and next actions.
 
 1. Search for an existing active hub:
    ```bash
-   zk list index/ --tag "project/<project_slug>" --tag "status/active" --format json
+   zk --notebook-dir <notes_path> list index/ --tag "project/<project_slug>" --tag "status/active" --format json
    ```
 
 2. If no active hub exists, create one:
    ```bash
-   zk new index/ --title "Project: <project_title>" --no-input --print-path \
+   zk --notebook-dir <notes_path> new index/ --title "Project: <project_title>" --no-input --print-path \
      --extra project="<project_slug>"
    ```
 
@@ -35,7 +35,7 @@ for its decisions, reports, repos, and next actions.
 
 5. Discover and link related notes:
    ```bash
-   zk list --tag "project/<project_slug>" --format json
+   zk --notebook-dir <notes_path> list --tag "project/<project_slug>" --format json
    ```
    - add the latest reports to `## Reports`,
    - add decision notes to `## Decisions`,
@@ -44,8 +44,8 @@ for its decisions, reports, repos, and next actions.
 
 6. Include at least one canonical query snippet in `## Queries`, for example:
    ```bash
-   zk list --tag "project/<project_slug>" --format json
-   zk list reports/ --tag "project/<project_slug>" --sort created- --format json
+   zk --notebook-dir <notes_path> list --tag "project/<project_slug>" --format json
+   zk --notebook-dir <notes_path> list reports/ --tag "project/<project_slug>" --sort created- --format json
    ```
 
 ## Output Format

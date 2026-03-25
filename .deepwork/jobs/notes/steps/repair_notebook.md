@@ -45,7 +45,16 @@ archive conventions without rewriting note content unnecessarily.
    - replace `status/active` with `status/archived`,
    - record `archived_at`, `archived_reason`, and `archived_from` when the move is performed.
 
-7. Commit the repair in one logical commit:
+7. Repair the root `.gitignore`:
+   - create it if missing,
+   - ensure it contains required ignore entries for `.zk/notebook.db`,
+     `.zk/notebook.db-journal`, `.direnv/`, `.env`, `.env.local`, `.venv/`,
+     `__pycache__/`, `result`, `result-*`, `.DS_Store`, and `Thumbs.db`,
+   - preserve unrelated existing patterns, and
+   - ensure it does NOT ignore `TASKS.yaml`, `PROJECTS.yaml`, `SCHEDULES.yaml`,
+     `.zk/config.toml`, or `.zk/templates/`.
+
+8. Commit the repair in one logical commit:
    ```bash
    git add -A
    git commit -m "chore(notes): repair notebook structure and project report graph"

@@ -16,7 +16,7 @@ zk new index/ --title "Project: Keystone" --extra project="keystone"
 3. Agents MUST create hubs non-interactively:
 
 ```bash
-zk new index/ --title "Project: Keystone" --no-input --print-path \
+zk --notebook-dir ~/notes new index/ --title "Project: Keystone" --no-input --print-path \
   --extra project="keystone"
 ```
 
@@ -42,7 +42,7 @@ cat system_diagnostics.log | zk new docs/reports/ \
    report content into the created file:
 
 ```bash
-zk new docs/reports/ --title "Keystone fleet health $(date +%Y-%m-%d)" \
+zk --notebook-dir ~/notes new docs/reports/ --title "Keystone fleet health $(date +%Y-%m-%d)" \
   --no-input --print-path \
   --extra report_kind="keystone-system" \
   --extra source_ref="ks.doctor"
@@ -52,7 +52,7 @@ zk new docs/reports/ --title "Keystone fleet health $(date +%Y-%m-%d)" \
    report of the same kind:
 
 ```bash
-zk list docs/reports/ \
+zk --notebook-dir ~/notes list docs/reports/ \
   --tag "report/keystone-system" \
   --tag "repo/ncrmro/nixos-config" \
   --tag "source/deepwork/ks-doctor" \
@@ -76,7 +76,7 @@ zk new docs/presentations/ --title "Keystone architecture briefing"
     Slidev deck template:
 
 ```bash
-zk new docs/presentations/ --title "Keystone architecture briefing" \
+zk --notebook-dir ~/notes new docs/presentations/ --title "Keystone architecture briefing" \
   --no-input --print-path \
   --extra project="keystone" \
   --extra presentation_kind="architecture-briefing"
@@ -88,7 +88,7 @@ zk new docs/presentations/ --title "Keystone architecture briefing" \
     the latest related deck first:
 
 ```bash
-zk list docs/presentations/ \
+zk --notebook-dir ~/notes list docs/presentations/ \
   --tag "presentation/architecture-briefing" \
   --tag "project/keystone" \
   --sort created- --limit 1 --format json
@@ -101,11 +101,11 @@ zk list docs/presentations/ \
 17. Agents SHOULD use these queries during cleanup:
 
 ```bash
-zk list docs/reports/ --format json
-zk list docs/presentations/ --format json
-zk list index/ --tag "status/active" --format json
-zk list notes/ --orphan --format json
-zk tag list
+zk --notebook-dir ~/notes list docs/reports/ --format json
+zk --notebook-dir ~/notes list docs/presentations/ --format json
+zk --notebook-dir ~/notes list index/ --tag "status/active" --format json
+zk --notebook-dir ~/notes list notes/ --orphan --format json
+zk --notebook-dir ~/notes tag list
 ```
 
 18. Cleanup workflows SHOULD normalize:
@@ -122,7 +122,7 @@ zk tag list
 
 20. Archived project material MUST be moved into `archive/`.
 21. Archival workflows SHOULD verify that the hub note and latest report are
-    still discoverable via `zk list --tag "project/<slug>" --format json`.
+    still discoverable via `zk --notebook-dir <notes_path> list --tag "project/<slug>" --format json`.
 22. Archived notes MAY retain project and repo tags. They MUST replace
     `status/active` with `status/archived`.
 
@@ -137,6 +137,8 @@ zk tag list
     promoted project notes back to the relevant project hub.
 27. `/notes.doctor` SHOULD repair and normalize an existing notebook, especially
     `~/notes`, rather than acting only as a one-time migration command.
+28. `/notes.doctor` SHOULD ensure the root `.gitignore` ignores transient zk database
+    files and local junk while keeping tracked YAML state files versioned.
 
 ## References
 

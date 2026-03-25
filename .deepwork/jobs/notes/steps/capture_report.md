@@ -9,19 +9,19 @@ report in the chain, and update the project hub.
 
 1. Ensure the project hub exists by searching for the active hub:
    ```bash
-   zk list index/ --tag "project/<project_slug>" --tag "status/active" --format json
+   zk --notebook-dir <notes_path> list index/ --tag "project/<project_slug>" --tag "status/active" --format json
    ```
    If none exists, create or refresh it first.
 
 2. Find the latest prior report in the same chain:
    ```bash
-   zk list reports/ --tag "project/<project_slug>" --tag "report/<report_kind>" \
+   zk --notebook-dir <notes_path> list reports/ --tag "project/<project_slug>" --tag "report/<report_kind>" \
      --sort created- --limit 1 --format json
    ```
 
 3. Create the new report:
    ```bash
-   zk new reports/ --title "<report_title>" --no-input --print-path \
+   zk --notebook-dir <notes_path> new reports/ --title "<report_title>" --no-input --print-path \
      --extra project="<project_slug>" \
      --extra report_kind="<report_kind>" \
      --extra source_ref="<source_ref>"

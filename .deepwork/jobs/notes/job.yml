@@ -1,5 +1,5 @@
 name: notes
-version: "1.1.0"
+version: "1.2.0"
 summary: "Initialize, repair, and maintain zk notebooks for notes, projects, and reports"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job manages Zettelkasten-structured notes repositories using the `zk` CLI.
@@ -69,7 +69,8 @@ common_job_info_provided_to_all_steps_at_runtime: |
 
   YAML files (TASKS.yaml, PROJECTS.yaml, SCHEDULES.yaml) and identity files (SOUL.md,
   AGENTS.md) are NOT notes and MUST NOT be modified by this job. The zk indexer
-  ignores non-markdown files automatically.
+  ignores non-markdown files automatically, but notes repos still MUST maintain a
+  `.gitignore` for zk database files and other local junk.
 
 workflows:
   - name: init
@@ -160,6 +161,7 @@ steps:
           "Index Clean": "zk index completes without errors."
           "Groups Resolve": "zk list for each group (inbox, literature, notes, decisions, reports, index, archive) returns results or empty without error."
           "Template Works": "A test note created with --no-input has correct frontmatter fields."
+          "Gitignore Present": "A root .gitignore exists and ignores zk database files plus standard local junk without ignoring TASKS.yaml, PROJECTS.yaml, or SCHEDULES.yaml."
 
   # === doctor workflow ===
   - id: audit
@@ -202,6 +204,7 @@ steps:
           "Frontmatter Normalized": "Touched notes have the required fields for their type."
           "Report Chains Updated": "Recurring reports link to the latest prior report when one exists."
           "Project Hubs Updated": "Each active project has one discoverable hub note linked from related reports or decisions."
+          "Gitignore Repaired": "The root .gitignore includes required ignore patterns for zk database files and local junk."
 
   - id: verify_doctor
     name: "Verify Repair"
@@ -223,6 +226,7 @@ steps:
           "Index Clean": "zk index completes without errors."
           "Frontmatter Coverage": "All markdown files in notes/, literature/, decisions/, reports/, index/, and archive/ have valid frontmatter where required."
           "No Dead Links": "No wikilinks point to non-existent notes."
+          "Gitignore Verified": "Verification confirms required .gitignore entries exist and transient zk database files are ignored by git."
 
   # === process_inbox workflow ===
   - id: review_inbox

@@ -25,7 +25,23 @@ Create the `.zk/` configuration, templates, and directory structure for a Zettel
    - `report.md` — Includes project, report_kind, source_ref, previous_report + Findings/Actions sections
    - `index.md` — Includes project tag support + sections for objective, reports, decisions, and queries
 
-5. Create note directories with `.gitkeep` files:
+5. Create a root `.gitignore` with at least these entries:
+   - `.zk/notebook.db`
+   - `.zk/notebook.db-journal`
+   - `.direnv/`
+   - `.env`
+   - `.env.local`
+   - `.venv/`
+   - `__pycache__/`
+   - `result`
+   - `result-*`
+   - `.DS_Store`
+   - `Thumbs.db`
+
+   The `.gitignore` MUST NOT ignore `TASKS.yaml`, `PROJECTS.yaml`, `SCHEDULES.yaml`,
+   `.zk/config.toml`, or `.zk/templates/`.
+
+6. Create note directories with `.gitkeep` files:
    - `inbox/`
    - `literature/`
    - `notes/`
@@ -34,7 +50,7 @@ Create the `.zk/` configuration, templates, and directory structure for a Zettel
    - `index/`
    - `archive/`
 
-6. Verify with `zk index` — should complete without errors.
+7. Verify with `zk --notebook-dir <notes_path> index` — should complete without errors.
 
 ## Output Format
 
@@ -45,6 +61,7 @@ Write `scaffold_report.md` listing every file and directory created, e.g.:
 
 ## Created
 - .zk/config.toml
+- .gitignore
 - .zk/templates/fleeting.md
 - .zk/templates/literature.md
 - .zk/templates/permanent.md
@@ -60,7 +77,7 @@ Write `scaffold_report.md` listing every file and directory created, e.g.:
 - archive/.gitkeep
 
 ## Verification
-- `zk index`: OK
+- `zk --notebook-dir <notes_path> index`: OK
 ```
 
 ## Important Notes

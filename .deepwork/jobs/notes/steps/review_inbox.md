@@ -8,7 +8,7 @@ List all fleeting notes in `inbox/`, read each, and classify them for promotion 
 
 1. List all notes in inbox:
    ```bash
-   zk list inbox/ --format json
+   zk --notebook-dir <notes_path> list inbox/ --format json
    ```
 
 2. If inbox is empty, report "Inbox empty — nothing to process" and output an empty classification.
