@@ -565,6 +565,19 @@ pull_repo() {
   fi
 }
 
+bootstrap_managed_repos() {
+  local repo_root="$1"
+  local registry="$2"
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local key url
+    key=$(echo "$line" | cut -d'|' -f1)
+    url=$(echo "$line" | cut -d'|' -f2)
+    pull_repo "$repo_root" "$key" "$url"
+  done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
+}
+
 # --- Verify repo is clean and pushed ---
 verify_repo_clean() {
   local path="$1" name="$2"
@@ -920,19 +933,14 @@ cmd_update() {
 
   # --- Handle --pull (standalone, no lock) ---
   if [[ "$pull" == true && "$lock" != true ]]; then
-    while IFS= read -r line; do
-      [[ -z "$line" ]] && continue
-      local key url
-      key=$(echo "$line" | cut -d'|' -f1)
-      url=$(echo "$line" | cut -d'|' -f2)
-      pull_repo "$repo_root" "$key" "$url"
-    done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
+    bootstrap_managed_repos "$repo_root" "$registry"
     echo "Pull complete."
     return
   fi
 
   # ── DEV MODE: home-manager only (REQ-016.2) ──────────────────────────────────
   if [[ "$lock" != true ]]; then
+    bootstrap_managed_repos "$repo_root" "$registry"
     build_home_manager_only "$repo_root" "${target_hosts[@]}"
     deploy_home_manager_only "$repo_root" "${target_hosts[@]}"
     echo "Dev mode update complete (home-manager only) for: ${target_hosts[*]}"
@@ -972,13 +980,7 @@ cmd_update() {
   run_with_warning_filter git -C "$repo_root" pull --ff-only
 
   # Step 2: Pull all repos in registry
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    local key url
-    key=$(echo "$line" | cut -d'|' -f1)
-    url=$(echo "$line" | cut -d'|' -f2)
-    pull_repo "$repo_root" "$key" "$url"
-  done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
+  bootstrap_managed_repos "$repo_root" "$registry"
 
   # Step 3: Verify repos are clean and fully pushed before locking
   while IFS= read -r key; do
@@ -1276,7 +1278,7 @@ the local repo immediately, skipping pull, lock, and push phases.
 | Flag | Effect |
 |------|--------|
 | `--debug` | Show warning lines from underlying `git`/`nix` commands |
-| `--dev` | Home-manager only: build + activate user/agent profiles, skip system rebuild |
+| `--dev` | Home-manager only: clone or pull managed repos, then build + activate user/agent profiles |
 | `--boot` | Use `boot` instead of `switch` mode (reboot required to apply) |
 | `--pull` | Pull repos only — no build or deploy |
 | `--lock` | Force locking (default when `--dev` is not set), full system rebuild |
@@ -1712,7 +1714,7 @@ $user_table"
 
 ### Dev Mode Conventions
 
-- \`ks build\` / \`ks update --dev\`: Rebuilds **home-manager profiles only** (users + agents). Fast iteration, no sudo required.
+- \`ks build\` / \`ks update --dev\`: Rebuilds **home-manager profiles only** (users + agents). \`ks update --dev\` also clones or pulls managed repos first so local overrides like DeepWork library jobs appear automatically. Fast iteration, no sudo required.
 - \`ks build --lock\` / \`ks update\` (default): **Full NixOS system rebuild**. Pushes keystone (forks if not a collaborator), locks flake inputs, builds, pushes nixos-config, deploys.
 - Changes to keystone are NOT locked into flake.lock until \`--lock\` is used.
 - When ready to lock: commit + push keystone, then run \`ks update\` (or \`ks build --lock\`)."

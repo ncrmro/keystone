@@ -85,6 +85,11 @@ MUST be performed automatically by NixOS or Home Manager activation.
 **REQ-018.7b** After activation, editing a linked repo-backed shell script in
 development mode MUST NOT require a rebuild for the change to take effect.
 
+**REQ-018.7c** `ks update --dev` MUST clone missing managed repos and pull
+existing managed repos before building Home Manager profiles so newly
+available local overrides (for example `Unsupervisedcom/deepwork` library
+jobs) are reflected in the activated environment in the same run.
+
 **REQ-018.8** Dev mode MUST NOT modify, commit, or push any managed repo.
 
 **REQ-018.9** `ks doctor` and `ks agent` MUST report dev mode status for
