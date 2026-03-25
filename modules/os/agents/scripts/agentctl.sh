@@ -245,14 +245,26 @@ case "$CMD" in
         export PROJECT_PATH="'"${_AGENTCTL_PROJECT_PATH:-}"'"
       fi
 
-      # Resolve auto-approve flags per tool
-      # CRITICAL: Claude gets --dangerously-skip-permissions only,
-      # Gemini gets --yolo only. These are mutually exclusive per-tool.
+      # Resolve default execution flags per tool.
+      # Respect explicit codex approval/sandbox flags provided by the caller.
       TOOL_FLAGS=""
       case "'"$CMD"'" in
         claude) TOOL_FLAGS="--dangerously-skip-permissions" ;;
         gemini) TOOL_FLAGS="--yolo" ;;
-        codex) TOOL_FLAGS="--full-auto" ;;
+        codex)
+          CODEX_HAS_EXECUTION_MODE=0
+          for arg in "$@"; do
+            case "$arg" in
+              --full-auto|--dangerously-bypass-approvals-and-sandbox|--ask-for-approval|--ask-for-approval=*|--sandbox|--sandbox=*)
+                CODEX_HAS_EXECUTION_MODE=1
+                break
+                ;;
+            esac
+          done
+          if [ "$CODEX_HAS_EXECUTION_MODE" -eq 0 ]; then
+            TOOL_FLAGS="--full-auto"
+          fi
+          ;;
       esac
 
       LOCAL_MODEL="'"$LOCAL_MODEL"'"
