@@ -3,8 +3,9 @@
 Standardize all keystone-managed local state under `~/.keystone/`. Replace
 the fragile git-submodule pattern with a declarative repo registry
 (`keystone.repos`) and a convention-based directory layout. Unify notes
-paths for both human users and OS agents under the same root, while keeping
-non-keystone project repos under a separate `$HOME/code/` tree.
+paths for both human users and OS agents under the canonical `notes/` path in
+their home directory, while keeping non-keystone project repos under a
+separate `$HOME/code/` tree.
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
@@ -27,18 +28,20 @@ MAY, REQUIRED, OPTIONAL).
 │   │   └── agenix-secrets/      # flakeInput: "agenix-secrets"
 │   └── Unsupervisedcom/
 │       └── deepwork/            # flakeInput: "deepwork" (via keystone)
-└── notes/                       # user's notes repo (synced via cron)
 
 $HOME/code/
 └── owner/
     └── repo/                    # non-keystone project repo checkout
 
+~/notes/                         # user's notes repo (synced via cron)
+
 /home/agent-{name}/.keystone/
-└── notes/                       # agent's notes repo (synced via cron)
 
 /home/agent-{name}/code/
 └── owner/
     └── repo/                    # non-keystone project repo checkout
+
+/home/agent-{name}/notes/        # agent's notes repo (synced via cron)
 ```
 
 ## Requirements
@@ -58,7 +61,7 @@ users and OS agents. For agent `drago`, the keystone home is
 directories exist for both humans and agents:
 - `~/.keystone/`
 - `~/.keystone/repos/`
-- `~/.keystone/notes/` (or the configured notes path)
+- the configured notes path (`~/notes` by default)
 - `$HOME/code/`
 - `$HOME/.worktrees/`
 
@@ -141,18 +144,17 @@ nixos-config only after a successful build (fail-safe ordering).
 **REQ-018.12** `ks update --pull` MUST pull ALL managed repos (not just
 keystone and agenix-secrets), including repos without a `flakeInput`.
 
-### Notes Under `~/.keystone/`
+### Notes Under `$HOME`
 
 **REQ-018.13** `keystone.notes.path` (REQ-009.3) MUST default to
-`~/.keystone/notes` (currently defaults to `~/notes`).
+`~/notes`.
 
 **REQ-018.14** Agent notes path (`keystone.os.agents.*.notes.path`) MUST
-default to `/home/agent-{name}/.keystone/notes` (currently defaults to
-`/home/agent-{name}/notes`).
+default to `/home/agent-{name}/notes`.
 
 **REQ-018.15** The repo-sync cron job and timer (REQ-009) MUST continue
-to function unchanged — only the default path value changes. Existing
-users who override `notes.path` MUST NOT be affected.
+to function unchanged. Existing users who override `notes.path` MUST NOT be
+affected.
 
 ### Migration from Submodules
 
@@ -208,5 +210,6 @@ remain in effect.
 - Project repo URL normalization MUST support GitHub and Forgejo SSH and HTTPS
   remotes, strip an optional `.git` suffix, and fail on malformed paths instead
   of guessing.
-- Notes path migration: if `~/notes` exists and `~/.keystone/notes` does
-  not, `ks doctor` SHOULD suggest moving the directory.
+- Notes path overrides: if a user sets a non-default `notes.path`, tooling
+  SHOULD respect it and continue exporting that configured location via
+  `NOTES_DIR`.

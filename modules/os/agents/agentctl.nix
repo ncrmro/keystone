@@ -14,6 +14,9 @@ let
   inherit (agentsLib) globalAgentVncPort agentSvcHelper;
   devScripts = import ../../shared/dev-script-link.nix { inherit lib; };
   inherit (devScripts) resolveRepoCheckout;
+  projectIndexHelper = pkgs.writeShellScriptBin "keystone-project-index" (
+    builtins.readFile ./scripts/project-index.sh
+  );
   agentOllamaConfig =
     name:
     let
@@ -80,6 +83,7 @@ let
         NIX="${pkgs.nix}"
         ZELLIJ="${pkgs.zellij}/bin/zellij"
         PODMAN_AGENT="${pkgs.keystone.podman-agent}/bin/podman-agent"
+        PROJECT_INDEX_HELPER="${projectIndexHelper}/bin/keystone-project-index"
         KNOWN_AGENTS="${knownAgents}"
 
         set_agent_helper() {

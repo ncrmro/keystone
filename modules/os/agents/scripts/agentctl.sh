@@ -127,6 +127,22 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${REMAINING_ARGS[@]}"
 
+normalize_repo_url() {
+  "$PROJECT_INDEX_HELPER" normalize-repo "$1"
+}
+
+resolve_repo_path() {
+  local repo_id="$1"
+  local keystone_path="$HOME/.keystone/repos/$repo_id"
+  local code_path="$HOME/code/$repo_id"
+
+  if [[ -d "$keystone_path" ]]; then
+    printf '%s\n' "$keystone_path"
+  elif [[ -d "$code_path" ]]; then
+    printf '%s\n' "$code_path"
+  fi
+}
+
 LOCAL_FLAG_ARGS=()
 if [[ -n "$LOCAL_MODEL" ]]; then
   LOCAL_FLAG_ARGS+=(--local)
@@ -181,27 +197,33 @@ case "$CMD" in
       fi
       shift  # consume session slug
 
-      # Lookup project in PROJECTS.yaml
-      PROJECT_PATH=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
-        ".projects[] | select(.slug == \"$PROJECT\") | .path" "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null)
-      PROJECT_NAME=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
-        ".projects[] | select(.slug == \"$PROJECT\") | .name" "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null)
-      PROJECT_DESC=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
-        ".projects[] | select(.slug == \"$PROJECT\") | .description" "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null)
+      PROJECT_JSON=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec \
+        "$COREUTILS"/bin/env "NOTES_DIR=$NOTES_DIR" "$PROJECT_INDEX_HELPER" get "$PROJECT" 2>/dev/null || true)
 
-      if [ -z "$PROJECT_PATH" ] || [ "$PROJECT_PATH" = "null" ]; then
-        echo "Error: project '$PROJECT' not found in PROJECTS.yaml" >&2
+      if [ -z "$PROJECT_JSON" ]; then
+        echo "Error: project '$PROJECT' not found in zk project index" >&2
         echo "" >&2
         echo "Available projects:" >&2
-        sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
-          '.projects[].slug' "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null | "$GNUSED"/bin/sed 's/^/  /' >&2
+        sudo -u "agent-${AGENT_NAME}" "$HELPER" exec \
+          "$COREUTILS"/bin/env "NOTES_DIR=$NOTES_DIR" "$PROJECT_INDEX_HELPER" list 2>/dev/null \
+          | jq -r '.projects[].slug' | "$GNUSED"/bin/sed 's/^/  /' >&2
         exit 1
       fi
 
-      # Validate project path exists
-      if ! sudo -u "agent-${AGENT_NAME}" "$HELPER" exec test -d "$PROJECT_PATH"; then
-        echo "Error: project path does not exist: $PROJECT_PATH" >&2
-        exit 1
+      PROJECT_NAME=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.name // .slug')
+      PROJECT_DESC=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.description // ""')
+      PROJECT_PATH="$NOTES_DIR"
+
+      REPO_COUNT=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.repos | length')
+      if [[ "$REPO_COUNT" == "1" ]]; then
+        REPO_URL=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.repos[0]')
+        REPO_ID=$(normalize_repo_url "$REPO_URL" 2>/dev/null || true)
+        if [[ -n "$REPO_ID" ]]; then
+          RESOLVED_REPO_PATH=$(resolve_repo_path "$REPO_ID" || true)
+          if [[ -n "$RESOLVED_REPO_PATH" ]]; then
+            PROJECT_PATH="$RESOLVED_REPO_PATH"
+          fi
+        fi
       fi
 
       SESSION_NAME="${PROJECT}-${SESSION_SLUG}"

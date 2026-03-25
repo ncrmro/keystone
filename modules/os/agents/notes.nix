@@ -60,6 +60,10 @@ let
       effort = stageCfg.effort;
     };
 
+  projectIndexHelper = pkgs.writeShellScriptBin "keystone-project-index" (
+    builtins.readFile ./scripts/project-index.sh
+  );
+
   # Task loop script: pre-fetch sources, ingest, prioritize, execute.
   # All tools (yq, jq, bash, git, claude, etc.) come from the agent's
   # home-manager profile PATH — only config values are substituted here.
@@ -89,6 +93,7 @@ let
         notesDir
         prioritizeJson
         profilesJson
+        projectIndexHelper
         ;
       agentName = name;
     };

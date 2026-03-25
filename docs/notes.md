@@ -10,8 +10,8 @@ workflow-generated reports. The same system supports quick captures, durable
 knowledge notes, decision records, operational reports, and archived project
 history.
 
-For a human user, the notebook usually lives at `~/.keystone/notes`. For OS
-agents, it usually lives at `/home/agent-{name}/.keystone/notes/`.
+For a human user, the notebook usually lives at `~/notes`. For OS agents, it
+usually lives at `/home/agent-{name}/notes/`.
 
 ## What the notes system is for
 

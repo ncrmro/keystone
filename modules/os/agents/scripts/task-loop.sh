@@ -14,6 +14,7 @@
 #   @prioritizeJson@   - Prioritize-stage overrides JSON
 #   @executeJson@      - Execute-stage overrides JSON
 #   @profilesJson@     - Merged built-in + custom profile catalog JSON
+#   @projectIndexHelper@ - zk-backed project index helper path
 set -euo pipefail
 
 # Sanity check: Ensure required system utilities are available
@@ -50,6 +51,7 @@ TASK_LOOP_PROFILES_JSON=$(cat <<'EOF'
 @profilesJson@
 EOF
 )
+PROJECT_INDEX_HELPER="@projectIndexHelper@/bin/keystone-project-index"
 
 LOGS_DIR="$HOME/.local/state/agent-task-loop/logs"
 TASK_LOGS_DIR="$LOGS_DIR/tasks"
@@ -313,20 +315,21 @@ else
   log "  Skipping calendar source: calendula not found"
 fi
 
-if [[ -f PROJECTS.yaml ]]; then
-  SOURCE_COUNT=$(yq '.sources | length' PROJECTS.yaml 2>/dev/null || echo "0")
+PROJECT_INDEX_JSON=$("$PROJECT_INDEX_HELPER" list 2>>"$LOG_FILE" || echo '{"projects":[]}')
+SOURCE_COUNT=$(printf '%s\n' "$PROJECT_INDEX_JSON" | jq '[.projects[].sources[]?] | length' 2>/dev/null || echo "0")
 
-  for i in $(seq 0 $((SOURCE_COUNT - 1))); do
-    SOURCE_NAME=$(yq ".sources[$i].name" PROJECTS.yaml)
-    SOURCE_CMD=$(yq ".sources[$i].command" PROJECTS.yaml)
+if [[ "$SOURCE_COUNT" -gt 0 ]]; then
+  while IFS= read -r source_entry; do
+    SOURCE_NAME=$(printf '%s\n' "$source_entry" | jq -r '.name // empty')
+    SOURCE_CMD=$(printf '%s\n' "$source_entry" | jq -r '.command // empty')
 
-    if [[ -n "$SOURCE_CMD" && "$SOURCE_CMD" != "null" ]]; then
+    if [[ -n "$SOURCE_NAME" && -n "$SOURCE_CMD" ]]; then
       log "  Fetching source: $SOURCE_NAME"
       SOURCE_OUTPUT=$(bash -c "$SOURCE_CMD" 2>>"$LOG_FILE" || echo "[]")
       SOURCES_JSON=$(echo "$SOURCES_JSON" | jq --arg name "$SOURCE_NAME" --argjson data "$SOURCE_OUTPUT" \
         '. + [{"source": $name, "data": $data}]')
     fi
-  done
+  done < <(printf '%s\n' "$PROJECT_INDEX_JSON" | jq -c '.projects[].sources[]?')
 fi
 
 log "  Collected sources: $(echo "$SOURCES_JSON" | jq 'length') entries"
@@ -370,10 +373,15 @@ if [[ "$INGEST_RAN" == "false" && "$PENDING_COUNT" == "0" ]]; then
 else
   PRIORITIZE_HASH_FILE="$STATE_DIR/prioritize-inputs.sha256"
   CURRENT_HASH=""
-  if [[ -f TASKS.yaml && -f PROJECTS.yaml ]]; then
-    CURRENT_HASH=$(cat TASKS.yaml PROJECTS.yaml | sha256sum | head -c 64)
-  elif [[ -f TASKS.yaml ]]; then
-    CURRENT_HASH=$(cat TASKS.yaml | sha256sum | head -c 64)
+  PROJECT_INDEX_HASH_INPUT=$(printf '%s\n' "$PROJECT_INDEX_JSON" | jq -S . 2>/dev/null || printf '{"projects":[]}\n')
+  if [[ -f TASKS.yaml ]]; then
+    CURRENT_HASH=$(
+      {
+        cat TASKS.yaml
+        printf '\n'
+        printf '%s\n' "$PROJECT_INDEX_HASH_INPUT"
+      } | sha256sum | head -c 64
+    )
   fi
 
   PREVIOUS_HASH=""
