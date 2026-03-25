@@ -463,6 +463,10 @@ let
             notes.taskLoop = {
               onCalendar = "*:0/15";
               maxTasks = 3;
+              defaults = {
+                provider = "gemini";
+                model = "gemini-2.5-pro";
+              };
             };
             notes.scheduler = {
               onCalendar = "*-*-* 06:00:00";
