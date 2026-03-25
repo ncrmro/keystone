@@ -65,41 +65,23 @@ valid_slug() {
 discover_projects() {
   local zk_json
   local -A seen=()
-  local row note_path frontmatter_project tag_projects resolved_project
+  local row note_path resolved_project
 
-  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --tag status/active --format json --quiet); then
+  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet); then
     echo "error: failed to discover active projects via zk in ${VAULT_ROOT}" >&2
     return 1
   fi
 
   while IFS= read -r row; do
-    IFS=$'\t' read -r note_path frontmatter_project tag_projects <<< "$row"
-
-    resolved_project=""
-    if [[ -n "$frontmatter_project" ]]; then
-      resolved_project="$frontmatter_project"
-    fi
-
-    if [[ -n "$tag_projects" ]]; then
-      IFS=',' read -r -a project_tags <<< "$tag_projects"
-      if [[ -z "$resolved_project" ]]; then
-        if [[ ${#project_tags[@]} -ne 1 ]]; then
-          echo "error: active project hub ${note_path} has ambiguous project tags: ${tag_projects}" >&2
-          return 1
-        fi
-        resolved_project="${project_tags[0]}"
-      else
-        for tag_project in "${project_tags[@]}"; do
-          if [[ "$tag_project" != "$resolved_project" ]]; then
-            echo "error: active project hub ${note_path} disagrees between frontmatter project '${resolved_project}' and tag project '${tag_project}'" >&2
-            return 1
-          fi
-        done
-      fi
-    fi
+    IFS=$'\t' read -r note_path resolved_project <<< "$row"
 
     if [[ -z "$resolved_project" ]]; then
       continue
+    fi
+
+    if [[ "$resolved_project" == __AMBIGUOUS__:* ]]; then
+      echo "error: active project hub ${note_path} has ambiguous project tags: ${resolved_project#__AMBIGUOUS__:}" >&2
+      return 1
     fi
 
     if ! valid_slug "$resolved_project"; then
@@ -113,21 +95,126 @@ discover_projects() {
     fi
   done < <(
     printf "%s\n" "$zk_json" | jq -r '
+      def merged_tags:
+        if ((.metadata.tags // []) | length) > 0 then
+          (.metadata.tags // [])
+        else
+          (.tags // [])
+        end
+        | map(select(type == "string"))
+        | unique;
+
+      def explicit_project_tags:
+        merged_tags
+        | map(select(startswith("project/")) | sub("^project/"; ""))
+        | unique;
+
+      def bare_project_tags:
+        if (merged_tags | index("project")) == null then
+          []
+        else
+          merged_tags
+          | map(
+              select(
+                test("^[a-z0-9]+(-[a-z0-9]+)*$")
+                and . != "index"
+                and . != "project"
+                and . != "archive"
+              )
+            )
+          | unique
+        end;
+
+      def status_markers:
+        merged_tags
+        | map(select(startswith("status/") or . == "archive"))
+        | unique;
+
+      def inferred_project:
+        if (.metadata.project // "") != "" then
+          .metadata.project
+        elif (explicit_project_tags | length) == 1 then
+          explicit_project_tags[0]
+        elif (explicit_project_tags | length) > 1 then
+          "__AMBIGUOUS__:" + (explicit_project_tags | join(","))
+        elif (bare_project_tags | length) == 1 then
+          bare_project_tags[0]
+        elif (bare_project_tags | length) > 1 then
+          "__AMBIGUOUS__:" + (bare_project_tags | join(","))
+        else
+          ""
+        end;
+
       .[]
       | select((.metadata.type // "") == "index")
+      | select((status_markers | index("status/archived")) == null)
+      | select((status_markers | index("archive")) == null)
+      | select((.metadata.status // "") != "archived")
       | [
           .absPath,
-          (.metadata.project // ""),
-          (
-            ((.tags // []) + (.metadata.tags // []))
-            | map(select(type == "string" and startswith("project/")) | sub("^project/"; ""))
-            | unique
-            | join(",")
-          )
+          inferred_project
         ]
       | @tsv
     '
   )
+}
+
+project_hub_path() {
+  local target_slug="$1"
+  local zk_json
+
+  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet); then
+    echo "error: failed to discover project hubs via zk in ${VAULT_ROOT}" >&2
+    return 1
+  fi
+
+  printf "%s\n" "$zk_json" | jq -r --arg slug "$target_slug" '
+    def merged_tags:
+      if ((.metadata.tags // []) | length) > 0 then
+        (.metadata.tags // [])
+      else
+        (.tags // [])
+      end
+      | map(select(type == "string"))
+      | unique;
+
+    def explicit_project_tags:
+      merged_tags
+      | map(select(startswith("project/")) | sub("^project/"; ""))
+      | unique;
+
+    def bare_project_tags:
+      if (merged_tags | index("project")) == null then
+        []
+      else
+        merged_tags
+        | map(
+            select(
+              test("^[a-z0-9]+(-[a-z0-9]+)*$")
+              and . != "index"
+              and . != "project"
+              and . != "archive"
+            )
+          )
+        | unique
+      end;
+
+    def inferred_project:
+      if (.metadata.project // "") != "" then
+        .metadata.project
+      elif (explicit_project_tags | length) == 1 then
+        explicit_project_tags[0]
+      elif (bare_project_tags | length) == 1 then
+        bare_project_tags[0]
+      else
+        ""
+      end;
+
+    .[]
+    | select((.metadata.type // "") == "index")
+    | select(inferred_project == $slug)
+    | .absPath
+  ' | head -n 1
 }
 
 session_status_from_line() {
@@ -235,9 +322,11 @@ cmd_session() {
   local layout="${3:-}"
   local project_path="${VAULT_ROOT}/projects/${slug}"
   local project_readme="${project_path}/README.md"
+  local project_cwd="${VAULT_ROOT}"
   local session_name="$slug"
   local existing
   local project_output
+  local hub_path=""
 
   if ! valid_slug "$slug"; then
     echo "error: invalid project slug '${slug}'" >&2
@@ -264,11 +353,24 @@ cmd_session() {
     exit 1
   fi
 
-  # Preserve the legacy project directory contract for session environment.
-  if [[ ! -f "$project_readme" ]]; then
-    echo "error: project '${slug}' not found" >&2
-    echo "expected: ${project_readme}" >&2
+  if ! hub_path=$(project_hub_path "$slug"); then
     exit 1
+  fi
+
+  if [[ -d "$project_path" ]]; then
+    project_cwd="$project_path"
+  fi
+
+  # Preserve the legacy project directory contract when it still exists.
+  # When projects live only in the notes repo, fall back to the hub note.
+  if [[ -f "$project_readme" ]]; then
+    :
+  elif [[ -n "$hub_path" ]]; then
+    project_readme="$hub_path"
+    project_path="$VAULT_ROOT"
+  else
+    project_readme=""
+    project_path="$VAULT_ROOT"
   fi
 
   # Check if session already exists
@@ -289,7 +391,7 @@ cmd_session() {
       layout_args=(--layout "$layout")
     fi
 
-    exec zellij --session "${session_name}" "${layout_args[@]}" options --default-cwd "${project_path}"
+    exec zellij --session "${session_name}" "${layout_args[@]}" options --default-cwd "${project_cwd}"
   fi
 }
 
@@ -319,7 +421,7 @@ cmd_agent() {
 
 # --- Argument parsing ---
 if [[ $# -eq 0 ]]; then
-  usage
+  cmd_list
   exit 0
 fi
 
@@ -345,7 +447,7 @@ done
 set -- "${POSITIONAL[@]}"
 
 if [[ $# -eq 0 ]]; then
-  usage
+  cmd_list
   exit 0
 fi
 

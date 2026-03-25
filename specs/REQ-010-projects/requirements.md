@@ -12,8 +12,9 @@ MAY, REQUIRED, OPTIONAL).
 ### Standard
 
 **REQ-010.1** An active project MUST have exactly one active hub note in
-`index/` with `type: index`, `status/active`, and a canonical project slug in
-frontmatter and tags.
+`index/` with `type: index`, `status/active`, a canonical project slug in
+frontmatter and tags, and a `repos:` frontmatter list when the project uses one
+or more VCS repositories.
 
 **REQ-010.2** Project slugs MUST be lowercase, hyphen-separated strings
 (e.g., `nixos-config`, `plant-caravan`).
@@ -56,10 +57,26 @@ credentials from the user's home directory.
 
 ### Repo Declarations
 
-**REQ-010.11** Projects MAY declare associated repositories via a `repos:`
-list in note frontmatter or other linked project metadata.
+**REQ-010.11** Active project hub notes MUST declare associated repositories via
+a `repos:` frontmatter list when the project uses one or more VCS repositories.
+The hub note is the source of truth for project-to-repo relationships for both
+humans and agents.
 
-**REQ-010.12** When `repos:` is declared, the module MUST aggregate
+**REQ-010.12** Each `repos:` entry MUST be a full remote repository URL. SSH and
+HTTPS forms are both valid, including GitHub and Forgejo URLs such as
+`git@github.com:ncrmro/website.git` and
+`ssh://forgejo@git.ncrmro.com:2222/drago/notes.git`.
+
+**REQ-010.12a** Tooling that consumes `repos:` MUST normalize each supported
+remote URL into a canonical `owner/repo` identifier by stripping scheme, user,
+host, port, and an optional `.git` suffix. Malformed or unsupported URLs MUST
+fail validation instead of being guessed.
+
+**REQ-010.12b** Repo-scoped note tags and local checkout conventions MUST be
+derived from the normalized `owner/repo` identifier, not handwritten as
+alternate forms.
+
+**REQ-010.12c** When `repos:` is declared, the module MUST aggregate
 `AGENTS.md` files from each declared repository into a single context file
 available at `$AGENTS_MD`.
 

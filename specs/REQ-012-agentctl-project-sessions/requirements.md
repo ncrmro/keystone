@@ -42,7 +42,7 @@ VAULT_ROOT) for all tools.
 ### Worktree Support
 
 **REQ-012.4** agentctl MUST support a `--worktree <branch>` flag that
-creates a git worktree at `{repo}/.worktrees/{branch}/` if it does not
+creates a git worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}/` if it does not
 already exist.
 
 **REQ-012.5** After creating a worktree, agentctl MUST run `direnv allow`
@@ -52,7 +52,15 @@ in the worktree directory.
 AI tool MUST be the worktree path, not the main checkout.
 
 **REQ-012.7** Worktree creation MUST reuse the logic and conventions
-from `bin/worktree` (slug normalization, `.worktrees/` directory).
+from `process.git-worktrees` (branch naming, external worktree root,
+repo-root anchored creation flow).
+
+**REQ-012.7a** When project repo metadata comes from a hub note `repos:` list,
+agentctl MUST resolve the selected repo from the same normalized `owner/repo`
+identity used by `pz`.
+
+**REQ-012.7b** If a project declares multiple repos, agentctl MUST require an
+explicit repo selection before creating or entering a worktree.
 
 ### Sandbox by Default
 

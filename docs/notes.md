@@ -10,8 +10,8 @@ workflow-generated reports. The same system supports quick captures, durable
 knowledge notes, decision records, operational reports, and archived project
 history.
 
-For a human user, the notebook usually lives at `~/notes`. For OS agents, it
-usually lives at `/home/agent-{name}/notes/`.
+For a human user, the notebook usually lives at `~/.keystone/notes`. For OS
+agents, it usually lives at `/home/agent-{name}/.keystone/notes/`.
 
 ## What the notes system is for
 
@@ -56,6 +56,26 @@ The normal flow is:
 Each active initiative should have one hub note in `index/`. The hub is the
 entry point for the work. It should summarize the objective, current state,
 next actions, durable notes, decisions, related repos, and recent reports.
+When the initiative uses one or more repos, the hub should declare them in
+frontmatter as full remote URLs.
+
+Example:
+
+```yaml
+---
+project: "keystone"
+repos:
+  - "git@github.com:ncrmro/keystone.git"
+  - "ssh://forgejo@git.ncrmro.com:2222/drago/notes.git"
+tags: [index, project/keystone, status/active]
+---
+```
+
+Use the declared remote URLs as the source of truth. Humans and agents should
+derive `repo/<owner>/<repo>` tags and local checkout paths from those URLs:
+
+- keystone-managed repos: `~/.keystone/repos/{owner}/{repo}`
+- non-keystone project repos: `$HOME/code/{owner}/{repo}`
 
 ### Report notes
 
@@ -116,7 +136,9 @@ zk list --match "fleet health" --format json
 ```
 
 When the note relates to an active initiative, add the canonical project tag
-and link it from the relevant hub note.
+and link it from the relevant hub note. When the note materially concerns one
+repo, derive the `repo/<owner>/<repo>` tag from the hub note's declared remote
+URL instead of inventing a separate local-path convention.
 
 ## Agent and DeepWork workflow
 

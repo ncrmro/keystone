@@ -31,13 +31,13 @@ curl -sf -H "Authorization: token $FORGEJO_TOKEN" \
 
 ## Checking Out the Branch
 
-2. Agents MUST check out the PR branch before making changes. If the repo is already cloned at `.repos/{owner}/{repo}`, agents MUST use a worktree:
+2. Agents MUST check out the PR branch before making changes. If the repo is already cloned locally, agents MUST use an external worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}` per `process.git-worktrees`:
 
 ```bash
-cd .repos/{owner}/{repo}
+cd {repo-root}
 git fetch origin
-git worktree add .worktrees/{branch} origin/{branch}
-cd .worktrees/{branch}
+git worktree add "$HOME/.worktrees/{owner}/{repo}/{branch}" origin/{branch}
+cd "$HOME/.worktrees/{owner}/{repo}/{branch}"
 ```
 
 3. If the PR branch has been deleted or the PR is merged/closed, agents MUST skip the task and mark it as `completed` with a note that the PR is no longer actionable.
@@ -126,8 +126,8 @@ curl -sf -X PATCH -H "Authorization: token $FORGEJO_TOKEN" \
 2. Ingest creates task: address-review-fix-login-42
    source_ref: https://github.com/ncrmro/catalyst/pull/42#reviews
 3. Agent checks out branch:
-   cd .repos/ncrmro/catalyst
-   git worktree add .worktrees/fix/login-bug origin/fix/login-bug
+   cd $HOME/code/ncrmro/catalyst
+   git worktree add "$HOME/.worktrees/ncrmro/catalyst/fix/login-bug" origin/fix/login-bug
 4. Agent fetches full review comments via gh api
 5. Agent reads src/api.ts, addresses both comments with fix commits
 6. Agent replies to both review comments on PR

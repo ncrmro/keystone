@@ -29,9 +29,9 @@ Discovered from active hub notes via zk per REQ-010.1–010.4.
 |-------|------|--------|-------|
 | slug | string | Hub note frontmatter/tag | Lowercase, hyphen-separated (REQ-010.2) |
 | hub_path | string | zk note path | Active `index/` hub note |
-| path | string | Legacy project directory | `{notes_path}/projects/{slug}` when present |
-| readme | string | Legacy project README | `{path}/README.md` when present |
-| repos | list[string] | Note metadata | Optional (REQ-010.11) |
+| path | string | Notes root or legacy project dir | Session fallback cwd when no repo/worktree is selected |
+| readme | string | Hub note or legacy project README | Project context file |
+| repos | list[string] | Hub note metadata | Full remote URLs from `repos:` |
 
 ### Session
 Derived from Zellij session state.
@@ -64,6 +64,25 @@ to ensure consistent session identification across tools.
 3. If no session exists, the command MUST create a new Zellij session using that same naming rule
 4. The session MUST start with the working directory set to `{notes_path}/projects/{project-slug}` when that legacy directory exists
 5. The command MUST export environment variables per REQ-010.9 before attaching
+
+### `pz <project-slug> [<session-slug>] --repo <owner/repo> [--worktree <branch>]`
+
+Open a project session rooted at a specific repo or repo worktree.
+
+**Arguments**:
+- `--repo <owner/repo>` — normalized repo identity derived from the hub note `repos:` URLs
+- `--worktree <branch>` — branch/worktree name to open under that repo
+
+**Behavior**:
+1. `pz` MUST normalize the hub note `repos:` URLs into canonical `owner/repo` identities and match `--repo` against that set
+2. If `--repo` is omitted and the project declares exactly one repo, `pz` SHOULD use that repo automatically
+3. If `--repo` is omitted and the project declares more than one repo, `pz` MUST fail with a clear error listing the available repo identities
+4. When the selected repo is keystone-managed, `pz` MUST resolve the repo root to `~/.keystone/repos/{owner}/{repo}/`
+5. When the selected repo is not keystone-managed, `pz` MUST resolve the repo root to `$HOME/code/{owner}/{repo}/`
+6. When `--worktree <branch>` is provided, `pz` MUST resolve the worktree path as `$HOME/.worktrees/{owner}/{repo}/{branch}/`
+7. If the requested worktree does not exist, `pz` SHOULD create it according to `process.git-worktrees`
+8. If a repo or worktree is selected, the session working directory MUST be the resolved repo root or worktree path rather than the notes root
+9. The command MUST export repo and worktree context environment variables for the session
 
 **Exit codes**:
 - `0` — session attached or created successfully
@@ -118,32 +137,42 @@ Destroy a project session.
 6. Archived or inactive hub notes MUST be excluded (REQ-010.3).
 7. Project slugs MUST be lowercase, hyphen-separated strings (REQ-010.2).
 8. The `notes_path` MUST be derived from `keystone.notes.path` (REQ-010.4).
+9. Repo-scoped sessions MUST resolve repo roots from hub note `repos:` URLs using REQ-010.12a and REQ-018.19 through REQ-018.19b.
+10. Worktree-scoped sessions MUST resolve paths using `$HOME/.worktrees/{owner}/{repo}/{branch}/` per `process.git-worktrees`.
 
 ### Environment Variables
 
-9. Inside a `pz` session, the following environment variables MUST be set (REQ-010.9):
+11. Inside a `pz` session, the following environment variables MUST be set (REQ-010.9):
    - `PROJECT_NAME` — the project slug
-   - `PROJECT_PATH` — absolute path to the project directory
-   - `PROJECT_README` — path to the project's `README.md`
+   - `PROJECT_PATH` — absolute path to the resolved project cwd
+   - `PROJECT_README` — path to the hub note or legacy `README.md`
    - `VAULT_ROOT` — the notes repo root (`keystone.notes.path`)
    - `CLAUDE_CONFIG_DIR` — project-scoped Claude configuration directory (`{notes_path}/.claude-projects/{project-slug}/`)
    - `AGENTS_MD` — path to the aggregated agents context file for the project (REQ-010.12)
-10. Environment variables MUST be available to all processes spawned within the session.
+   - `PROJECT_REPO` — normalized `owner/repo` for the selected repo, when one is selected
+   - `PROJECT_REPO_URL` — original remote URL for the selected repo, when one is selected
+   - `PROJECT_WORKTREE_BRANCH` — worktree branch name, when one is selected
+   - `PROJECT_WORKTREE_PATH` — resolved worktree path, when one is selected
+12. Environment variables MUST be available to all processes spawned within the session.
 
 ### Shell Completion
 
-11. The `pz` command MUST provide tab completion for project slugs in Zsh (REQ-010.17).
-12. The `pz` command SHOULD provide tab completion for project slugs in Bash (REQ-010.17).
-13. Completions MUST be generated dynamically from active project hub notes at runtime.
+13. The `pz` command MUST provide tab completion for project slugs in Zsh (REQ-010.17).
+14. The `pz` command SHOULD provide tab completion for project slugs in Bash (REQ-010.17).
+15. Completions MUST be generated dynamically from active project hub notes at runtime.
+16. When `--repo` is in scope, completions SHOULD offer normalized repo identities derived from the selected project's declared repo URLs.
 
 ## Edge Cases
 
 - **Stale sessions**: If a Zellij session exists but the project slug is no longer registered by an active hub note, `pz list` MUST exclude the session. `pz <project-slug>` for an inactive or missing project hub MUST fail with exit code `1`.
 - **Concurrent attach**: If a session is already attached in another terminal, `pz <project-slug> <session-slug>` MUST attach to the same session (Zellij supports multiple clients per session).
+- **Multiple repos**: If a project declares multiple repos and `--repo` is omitted, `pz` MUST error instead of guessing.
 - **No active project hubs**: If no active hubs exist, `pz list` MUST output an empty table with headers only. `pz <project-slug>` MUST fail with exit code `1`.
 - **Invalid slug characters**: `pz` MUST reject slugs containing characters other than lowercase alphanumeric and hyphens.
 - **Legacy prefixed sessions**: `obs-*` sessions are outside the contract and MUST be ignored by `pz list` and `pz` attach behavior.
 - **Hub metadata drift**: If an active hub note disagrees between `project: <slug>` frontmatter and `project/<slug>` tag, project discovery MUST fail with a clear error instead of guessing.
+- **Missing repo checkout**: If the selected repo root does not exist locally, `pz` MUST fail with a clear error showing the expected path.
+- **Missing worktree checkout**: If worktree creation fails, `pz` MUST fail with a clear error and MUST NOT silently fall back to the main checkout.
 - **Zellij not running**: If Zellij server is not running, `pz` MUST start a new server automatically (Zellij default behavior).
 
 ## Home Manager Module Options

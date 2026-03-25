@@ -12,6 +12,20 @@
 with lib;
 let
   cfg = config.keystone.terminal;
+  notesPath = config.keystone.notes.path;
+  keystoneHome = "${config.home.homeDirectory}/.keystone";
+  codeRoot = "${config.home.homeDirectory}/code";
+  worktreeRoot = "${config.home.homeDirectory}/.worktrees";
+  ensurePathsScript = pkgs.writeShellScriptBin "keystone-ensure-paths" ''
+    set -euo pipefail
+
+    mkdir -p \
+      "${keystoneHome}" \
+      "${keystoneHome}/repos" \
+      "${notesPath}" \
+      "${codeRoot}" \
+      "${worktreeRoot}"
+  '';
 
   # Generate allowed_signers file content: "<email> <key>" per line
   allowedSignersContent = concatMapStringsSep "\n" (
@@ -155,9 +169,23 @@ in
       };
     };
 
-    home.packages = optionals cfg.git.enable [
-      pkgs.keystone.fetch-github-sources
-    ];
+    home.packages =
+      optionals cfg.git.enable [
+        pkgs.keystone.fetch-github-sources
+      ]
+      ++ [
+        ensurePathsScript
+      ];
+
+    home.activation.keystoneEnsurePaths = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      ${ensurePathsScript}/bin/keystone-ensure-paths
+    '';
+
+    home.sessionVariables = {
+      CODE_DIR = codeRoot;
+      WORKTREE_DIR = worktreeRoot;
+      NOTES_DIR = notesPath;
+    };
 
     programs.lazygit.enable = mkIf cfg.git.enable (mkDefault true);
   };
