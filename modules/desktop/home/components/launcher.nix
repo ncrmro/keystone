@@ -9,6 +9,31 @@ with lib;
 let
   cfg = config.keystone.desktop;
   themeDir = "${config.xdg.configHome}/keystone/current/theme";
+  localBin = "${config.home.homeDirectory}/.local/bin";
+  projectsDesktopEntry = ''
+    [Desktop Entry]
+    Type=Application
+    Version=1.0
+    Name=Projects
+    GenericName=Project context switcher
+    Comment=Open the Keystone project selector
+    Exec=${localBin}/keystone-context-switch
+    Terminal=false
+    Categories=Utility;Development;
+    Icon=folder-development
+  '';
+  notesDesktopEntry = ''
+    [Desktop Entry]
+    Type=Application
+    Version=1.0
+    Name=Notes
+    GenericName=Inbox note capture
+    Comment=Open zk inbox capture in a floating window
+    Exec=${localBin}/keystone-notes-inbox
+    Terminal=false
+    Categories=Utility;Office;
+    Icon=notes
+  '';
 
   # Read and substitute the walker style.css template
   walkerStyleCss = builtins.replaceStrings [ "\${themeDir}" ] [ themeDir ] (
@@ -23,30 +48,14 @@ in
   # _module.args infinite recursion when keystoneInputs is used in imports)
 
   config = mkIf cfg.enable {
-    xdg.desktopEntries.keystone-projects = {
-      name = "Projects";
-      genericName = "Project context switcher";
-      comment = "Open the Keystone project selector";
-      exec = "keystone-context-switch";
-      terminal = false;
-      categories = [
-        "Utility"
-        "Development"
-      ];
-      icon = "folder-development";
+    home.file.".local/share/applications/keystone-projects.desktop" = {
+      text = projectsDesktopEntry;
+      executable = false;
     };
 
-    xdg.desktopEntries.keystone-notes = {
-      name = "Notes";
-      genericName = "Inbox note capture";
-      comment = "Open zk inbox capture in a floating window";
-      exec = "keystone-notes-inbox";
-      terminal = false;
-      categories = [
-        "Utility"
-        "Office"
-      ];
-      icon = "notes";
+    home.file.".local/share/applications/keystone-notes.desktop" = {
+      text = notesDesktopEntry;
+      executable = false;
     };
 
     # Wofi as the application launcher
