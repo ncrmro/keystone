@@ -11,20 +11,21 @@ MAY, REQUIRED, OPTIONAL).
 
 ### Standard
 
-**REQ-010.1** A project MUST be a directory at `{notes_path}/projects/{slug}/`
-containing a `README.md` file.
+**REQ-010.1** An active project MUST have exactly one active hub note in
+`index/` with `type: index`, `status/active`, and a canonical project slug in
+frontmatter and tags.
 
 **REQ-010.2** Project slugs MUST be lowercase, hyphen-separated strings
 (e.g., `nixos-config`, `plant-caravan`).
 
-**REQ-010.3** Directories matching `_archive/` or starting with `_` MUST be
-excluded from project discovery.
+**REQ-010.3** Archived or inactive hub notes MUST be excluded from project
+discovery.
 
 ### Discovery
 
-**REQ-010.4** The module MUST discover projects by scanning
-`{notes_path}/projects/*/README.md`, deriving the notes path from
-`keystone.notes.path` (see REQ-009).
+**REQ-010.4** The module MUST discover projects via
+`zk --notebook-dir {notes_path} list index/ --tag "status/active" --format json`,
+deriving the notes path from `keystone.notes.path` (see REQ-009).
 
 **REQ-010.5** The module MUST expose `keystone.projects.enable` (bool,
 default `true`) to activate project management. When enabled,
@@ -44,9 +45,10 @@ creating a new one.
 
 **REQ-010.9** Inside a project session, the module MUST export the following
 environment variables: `PROJECT_NAME` (slug), `PROJECT_PATH` (absolute path
-to project directory), `PROJECT_README` (path to `README.md`), `VAULT_ROOT`
-(notes repo root), `CLAUDE_CONFIG_DIR` (project-scoped Claude configuration
-directory), and `AGENTS_MD` (path to aggregated agents context file).
+to the legacy project directory when present), `PROJECT_README` (path to the
+legacy `README.md` when present), `VAULT_ROOT` (notes repo root),
+`CLAUDE_CONFIG_DIR` (project-scoped Claude configuration directory), and
+`AGENTS_MD` (path to aggregated agents context file).
 
 **REQ-010.10** The module MUST create a project-scoped Claude configuration
 directory at `{notes_path}/.claude-projects/{slug}/` and symlink shared
@@ -55,7 +57,7 @@ credentials from the user's home directory.
 ### Repo Declarations
 
 **REQ-010.11** Projects MAY declare associated repositories via a `repos:`
-list in the README.md YAML frontmatter.
+list in note frontmatter or other linked project metadata.
 
 **REQ-010.12** When `repos:` is declared, the module MUST aggregate
 `AGENTS.md` files from each declared repository into a single context file

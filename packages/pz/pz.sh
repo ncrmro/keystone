@@ -14,7 +14,7 @@
 #   --layout <name>      Use a named zellij layout (dev, ops, write) on session creation
 #
 # Environment:
-#   VAULT_ROOT  Root directory containing projects/ subdirectory
+#   VAULT_ROOT  Root zk notebook directory
 #               Defaults to $HOME/notes
 #
 # Session naming:
@@ -24,13 +24,14 @@
 #   Example: "pz backend-api review" creates/attaches to session "backend-api-review"
 #
 # Project validation:
-#   A project is considered valid when
-#   $VAULT_ROOT/projects/<slug>/README.md exists.
+#   A project is considered valid when an active hub note exists in the zk
+#   notebook with matching `project: <slug>` frontmatter and/or `project/<slug>`
+#   tag.
 #
 # Environment variables set inside the session:
 #   PROJECT_NAME    The project slug
-#   PROJECT_PATH    Absolute path to the project directory
-#   PROJECT_README  Absolute path to the project README.md
+#   PROJECT_PATH    Absolute path to the legacy project directory
+#   PROJECT_README  Absolute path to the legacy project README.md
 #   VAULT_ROOT      Root directory for all projects
 
 set -euo pipefail
@@ -52,7 +53,7 @@ Options:
   --layout <name>      Use a named zellij layout on session creation (dev, ops, write)
 
 Environment:
-  VAULT_ROOT      Root directory containing projects/ subdirectory (default: ~/notes)
+  VAULT_ROOT      Root zk notebook directory (default: ~/notes)
 EOF
 }
 
@@ -62,25 +63,71 @@ valid_slug() {
 }
 
 discover_projects() {
-  local projects_dir="${VAULT_ROOT}/projects"
+  local zk_json
+  local -A seen=()
+  local row note_path frontmatter_project tag_projects resolved_project
 
-  if [[ ! -d "$projects_dir" ]]; then
-    return 0
+  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --tag status/active --format json --quiet); then
+    echo "error: failed to discover active projects via zk in ${VAULT_ROOT}" >&2
+    return 1
   fi
 
-  find "$projects_dir" -mindepth 2 -maxdepth 2 -type f -name README.md -print 2>/dev/null \
-    | while IFS= read -r readme; do
-        local project_dir slug
-        project_dir=$(dirname "$readme")
-        slug=$(basename "$project_dir")
-        case "$slug" in
-          _* )
-            continue
-            ;;
-        esac
-        printf "%s\n" "$slug"
-      done \
-    | sort -u
+  while IFS= read -r row; do
+    IFS=$'\t' read -r note_path frontmatter_project tag_projects <<< "$row"
+
+    resolved_project=""
+    if [[ -n "$frontmatter_project" ]]; then
+      resolved_project="$frontmatter_project"
+    fi
+
+    if [[ -n "$tag_projects" ]]; then
+      IFS=',' read -r -a project_tags <<< "$tag_projects"
+      if [[ -z "$resolved_project" ]]; then
+        if [[ ${#project_tags[@]} -ne 1 ]]; then
+          echo "error: active project hub ${note_path} has ambiguous project tags: ${tag_projects}" >&2
+          return 1
+        fi
+        resolved_project="${project_tags[0]}"
+      else
+        for tag_project in "${project_tags[@]}"; do
+          if [[ "$tag_project" != "$resolved_project" ]]; then
+            echo "error: active project hub ${note_path} disagrees between frontmatter project '${resolved_project}' and tag project '${tag_project}'" >&2
+            return 1
+          fi
+        done
+      fi
+    fi
+
+    if [[ -z "$resolved_project" ]]; then
+      continue
+    fi
+
+    if ! valid_slug "$resolved_project"; then
+      echo "error: active project hub ${note_path} uses invalid project slug '${resolved_project}'" >&2
+      return 1
+    fi
+
+    if [[ -z "${seen[$resolved_project]:-}" ]]; then
+      seen["$resolved_project"]=1
+      printf "%s\n" "$resolved_project"
+    fi
+  done < <(
+    printf "%s\n" "$zk_json" | jq -r '
+      .[]
+      | select((.metadata.type // "") == "index")
+      | [
+          .absPath,
+          (.metadata.project // ""),
+          (
+            ((.tags // []) + (.metadata.tags // []))
+            | map(select(type == "string" and startswith("project/")) | sub("^project/"; ""))
+            | unique
+            | join(",")
+          )
+        ]
+      | @tsv
+    '
+  )
 }
 
 session_status_from_line() {
@@ -117,6 +164,7 @@ match_registered_project_slug() {
 # list active project sessions for registered projects only
 cmd_list() {
   local project_filter=""
+  local project_output
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --project)
@@ -134,7 +182,10 @@ cmd_list() {
     esac
   done
 
-  mapfile -t projects < <(discover_projects)
+  if ! project_output=$(discover_projects); then
+    exit 1
+  fi
+  mapfile -t projects <<< "$project_output"
 
   echo "PROJECT                       SESSION                       STATUS"
   echo "----------------------------  ----------------------------  --------"
@@ -182,6 +233,11 @@ cmd_session() {
   local slug="$1"
   local session_slug="${2:-main}"
   local layout="${3:-}"
+  local project_path="${VAULT_ROOT}/projects/${slug}"
+  local project_readme="${project_path}/README.md"
+  local session_name="$slug"
+  local existing
+  local project_output
 
   if ! valid_slug "$slug"; then
     echo "error: invalid project slug '${slug}'" >&2
@@ -195,14 +251,20 @@ cmd_session() {
     exit 1
   fi
 
-  local project_path="${VAULT_ROOT}/projects/${slug}"
-  local project_readme="${project_path}/README.md"
-  local session_name="$slug"
   if [[ "$session_slug" != "main" ]]; then
     session_name="${slug}-${session_slug}"
   fi
 
-  # Validate project exists
+  if ! project_output=$(discover_projects); then
+    exit 1
+  fi
+
+  if ! printf "%s\n" "$project_output" | grep -Fxq "$slug"; then
+    echo "error: project '${slug}' is not an active project hub in ${VAULT_ROOT}" >&2
+    exit 1
+  fi
+
+  # Preserve the legacy project directory contract for session environment.
   if [[ ! -f "$project_readme" ]]; then
     echo "error: project '${slug}' not found" >&2
     echo "expected: ${project_readme}" >&2
@@ -210,7 +272,6 @@ cmd_session() {
   fi
 
   # Check if session already exists
-  local existing
   existing=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | grep -x "${session_name}" || true)
 
   if [[ -n "$existing" ]]; then

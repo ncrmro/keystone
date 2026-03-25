@@ -23,14 +23,15 @@ MAY, REQUIRED, OPTIONAL).
 ## Data Models
 
 ### Project
-Discovered from the filesystem per REQ-010.1–010.4.
+Discovered from active hub notes via zk per REQ-010.1–010.4.
 
 | Field | Type | Source | Notes |
 |-------|------|--------|-------|
-| slug | string | Directory name under `{notes_path}/projects/` | Lowercase, hyphen-separated (REQ-010.2) |
-| path | string | Absolute path to project directory | `{notes_path}/projects/{slug}` |
-| readme | string | Path to README.md | `{path}/README.md` |
-| repos | list[string] | YAML frontmatter `repos:` in README.md | Optional (REQ-010.11) |
+| slug | string | Hub note frontmatter/tag | Lowercase, hyphen-separated (REQ-010.2) |
+| hub_path | string | zk note path | Active `index/` hub note |
+| path | string | Legacy project directory | `{notes_path}/projects/{slug}` when present |
+| readme | string | Legacy project README | `{path}/README.md` when present |
+| repos | list[string] | Note metadata | Optional (REQ-010.11) |
 
 ### Session
 Derived from Zellij session state.
@@ -58,10 +59,10 @@ named sessions per project. This naming scheme is also adopted by `agentctl` (RE
 to ensure consistent session identification across tools.
 
 **Behavior**:
-1. The command MUST validate that `{notes_path}/projects/{project-slug}/README.md` exists
+1. The command MUST validate that `{project-slug}` is discoverable from an active hub note via `zk --notebook-dir {notes_path} list index/ --tag "status/active" --format json`
 2. If a Zellij session named `{project-slug}` exists for the default session or `{project-slug}-{session-slug}` exists for a named session, the command MUST attach to it
 3. If no session exists, the command MUST create a new Zellij session using that same naming rule
-4. The session MUST start with the working directory set to `{notes_path}/projects/{project-slug}`
+4. The session MUST start with the working directory set to `{notes_path}/projects/{project-slug}` when that legacy directory exists
 5. The command MUST export environment variables per REQ-010.9 before attaching
 
 **Exit codes**:
@@ -70,7 +71,7 @@ to ensure consistent session identification across tools.
 - `2` — Zellij not available or session creation failed
 
 **Error output**:
-- Missing project: `error: project '{project-slug}' not found at {notes_path}/projects/{project-slug}`
+- Missing project: `error: project '{project-slug}' is not an active project hub in {notes_path}`
 - Missing README: `error: project '{project-slug}' has no README.md`
 
 ### `pz list [--project <project-slug>]`
@@ -78,7 +79,7 @@ to ensure consistent session identification across tools.
 List sessions filtered by project.
 
 **Behavior**:
-1. The command MUST discover valid project slugs from `{notes_path}/projects/*/README.md`
+1. The command MUST discover valid project slugs from active hub notes via `zk --notebook-dir {notes_path} list index/ --tag "status/active" --format json`
 2. The command MUST list only Zellij sessions whose names exactly match a discovered project slug or begin with `{project-slug}-`
 3. When `--project <project-slug>` is provided, the command MUST show only sessions whose discovered project slug matches that value
 4. Sessions whose names do not include a discovered project slug in that format MUST be excluded
@@ -113,8 +114,8 @@ Destroy a project session.
 
 ### Project Discovery
 
-5. Projects MUST be discovered by scanning `{notes_path}/projects/*/README.md` (REQ-010.4).
-6. Directories matching `_archive/` or starting with `_` MUST be excluded (REQ-010.3).
+5. Projects MUST be discovered from active hub notes via `zk --notebook-dir {notes_path} list index/ --tag "status/active" --format json` (REQ-010.4).
+6. Archived or inactive hub notes MUST be excluded (REQ-010.3).
 7. Project slugs MUST be lowercase, hyphen-separated strings (REQ-010.2).
 8. The `notes_path` MUST be derived from `keystone.notes.path` (REQ-010.4).
 
@@ -133,15 +134,16 @@ Destroy a project session.
 
 11. The `pz` command MUST provide tab completion for project slugs in Zsh (REQ-010.17).
 12. The `pz` command SHOULD provide tab completion for project slugs in Bash (REQ-010.17).
-13. Completions MUST be generated dynamically by scanning the projects directory at runtime.
+13. Completions MUST be generated dynamically from active project hub notes at runtime.
 
 ## Edge Cases
 
-- **Stale sessions**: If a Zellij session exists but the project directory has been deleted or is no longer registered under `{notes_path}/projects/*/README.md`, `pz list` MUST exclude the session. `pz <project-slug>` for a deleted project MUST fail with exit code `1`.
+- **Stale sessions**: If a Zellij session exists but the project slug is no longer registered by an active hub note, `pz list` MUST exclude the session. `pz <project-slug>` for an inactive or missing project hub MUST fail with exit code `1`.
 - **Concurrent attach**: If a session is already attached in another terminal, `pz <project-slug> <session-slug>` MUST attach to the same session (Zellij supports multiple clients per session).
-- **Empty projects directory**: If no projects exist, `pz list` MUST output an empty table with headers only. `pz <project-slug>` MUST fail with exit code `1`.
+- **No active project hubs**: If no active hubs exist, `pz list` MUST output an empty table with headers only. `pz <project-slug>` MUST fail with exit code `1`.
 - **Invalid slug characters**: `pz` MUST reject slugs containing characters other than lowercase alphanumeric and hyphens.
 - **Legacy prefixed sessions**: `obs-*` sessions are outside the contract and MUST be ignored by `pz list` and `pz` attach behavior.
+- **Hub metadata drift**: If an active hub note disagrees between `project: <slug>` frontmatter and `project/<slug>` tag, project discovery MUST fail with a clear error instead of guessing.
 - **Zellij not running**: If Zellij server is not running, `pz` MUST start a new server automatically (Zellij default behavior).
 
 ## Home Manager Module Options

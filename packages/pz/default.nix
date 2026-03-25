@@ -1,11 +1,15 @@
 {
+  jq,
   lib,
   writeShellApplication,
+  zk,
   zellij,
 }:
 writeShellApplication {
   name = "pz";
   runtimeInputs = [
+    jq
+    zk
     zellij
   ];
   text = builtins.readFile ./pz.sh;
