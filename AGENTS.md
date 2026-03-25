@@ -94,6 +94,7 @@ modules/
 - Secure Boot requires manual key enrollment during installation
 - All ZFS datasets use native encryption with automatic key management
 - `keystone.repos` auto-populates from flake inputs; `keystone.development` enables local checkout paths
+- **AI Instruction Regeneration**: AI instruction files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are automatically regenerated from `archetypes.yaml` and the `conventions/` directory during `ks build`, `ks switch`, and `ks update --dev`. In development mode (`keystone.development = true`), these files are symlinked from the repository, and `ks switch` regenerates them as committable git diffs to reflect changes.
 - DeepWork `keystone_system/issue` draft bodies are temporary artifacts. Write them under `.deepwork/tmp/`, not `.deepwork/jobs/`; the GitHub issue is the canonical source.
 
 ## Keystone Config Repo
