@@ -2,7 +2,7 @@
 # pz — Projctl Zellij session manager
 #
 # Usage: pz [--help] <command> [args]
-#        pz <project> [--layout <name>]
+#        pz <project> [<session>] [--layout <name>]
 #
 # Commands:
 #   <project>   Create or attach to a Zellij session for the given project slug
@@ -18,8 +18,10 @@
 #               Defaults to $HOME/notes
 #
 # Session naming:
-#   Sessions are created with the prefix "obs-" followed by the project slug.
-#   Example: "pz backend-api" creates/attaches to session "obs-backend-api"
+#   Default sessions are named after the project slug directly.
+#   Named sub-sessions append the session slug with a hyphen.
+#   Example: "pz backend-api" creates/attaches to session "backend-api"
+#   Example: "pz backend-api review" creates/attaches to session "backend-api-review"
 #
 # Project validation:
 #   A project is considered valid when
@@ -33,7 +35,6 @@
 
 set -euo pipefail
 
-SESSION_PREFIX="obs"
 VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
 
 usage() {
@@ -41,7 +42,7 @@ usage() {
 pz — Projctl Zellij session manager
 
 Usage:
-  pz <project> [--layout <name>]  Create or attach to a Zellij session for <project>
+  pz <project> [<session>] [--layout <name>]  Create or attach to a Zellij session
   pz list [--project <slug>]      List active project sessions
   pz agent <agent> <cmd> [args]   Run agentctl within the project context
   pz --help                       Show this help message
@@ -53,6 +54,11 @@ Options:
 Environment:
   VAULT_ROOT      Root directory containing projects/ subdirectory (default: ~/notes)
 EOF
+}
+
+valid_slug() {
+  local slug="$1"
+  [[ "$slug" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]
 }
 
 discover_projects() {
@@ -93,11 +99,10 @@ match_registered_project_slug() {
   local session_name="$1"
   shift
 
-  local suffix="${session_name#"${SESSION_PREFIX}"-}"
   local project_slug=""
 
   for candidate in "$@"; do
-    if [[ "$suffix" == "$candidate" || "$suffix" == "${candidate}-"* ]]; then
+    if [[ "$session_name" == "$candidate" || "$session_name" == "${candidate}-"* ]]; then
       if [[ -z "$project_slug" || ${#candidate} -gt ${#project_slug} ]]; then
         project_slug="$candidate"
       fi
@@ -149,9 +154,6 @@ cmd_list() {
     [[ -z "$line" ]] && continue
 
     name=$(printf "%s\n" "$line" | awk '{print $1}')
-    if [[ "$name" != "${SESSION_PREFIX}-"* ]]; then
-      continue
-    fi
 
     project_slug=$(match_registered_project_slug "$name" "${projects[@]}")
     if [[ -z "$project_slug" ]]; then
@@ -162,7 +164,7 @@ cmd_list() {
       continue
     fi
 
-    suffix="${name#"${SESSION_PREFIX}"-"${project_slug}"}"
+    suffix="${name#"${project_slug}"}"
     if [[ -z "$suffix" ]]; then
       session_slug="main"
     else
@@ -178,18 +180,27 @@ cmd_list() {
 # create or attach to a project session
 cmd_session() {
   local slug="$1"
-  local layout="${2:-}"
+  local session_slug="${2:-main}"
+  local layout="${3:-}"
 
-  # Validate slug: only alphanumeric characters, hyphens, and underscores allowed
-  if [[ ! "$slug" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  if ! valid_slug "$slug"; then
     echo "error: invalid project slug '${slug}'" >&2
-    echo "slugs must contain only letters, digits, hyphens, and underscores" >&2
+    echo "slugs must be lowercase, hyphen-separated strings" >&2
+    exit 1
+  fi
+
+  if ! valid_slug "$session_slug"; then
+    echo "error: invalid session slug '${session_slug}'" >&2
+    echo "session slugs must be lowercase, hyphen-separated strings" >&2
     exit 1
   fi
 
   local project_path="${VAULT_ROOT}/projects/${slug}"
   local project_readme="${project_path}/README.md"
-  local session_name="${SESSION_PREFIX}-${slug}"
+  local session_name="$slug"
+  if [[ "$session_slug" != "main" ]]; then
+    session_name="${slug}-${session_slug}"
+  fi
 
   # Validate project exists
   if [[ ! -f "$project_readme" ]]; then
@@ -296,6 +307,16 @@ case "$1" in
     exit 1
     ;;
   *)
-    cmd_session "$1" "$LAYOUT"
+    project_slug="$1"
+    session_slug="main"
+    if [[ $# -ge 2 ]]; then
+      session_slug="$2"
+    fi
+    if [[ $# -gt 2 ]]; then
+      echo "error: too many positional arguments" >&2
+      usage >&2
+      exit 1
+    fi
+    cmd_session "$project_slug" "$session_slug" "$LAYOUT"
     ;;
 esac

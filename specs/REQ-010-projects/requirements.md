@@ -27,16 +27,14 @@ excluded from project discovery.
 `keystone.notes.path` (see REQ-009).
 
 **REQ-010.5** The module MUST expose `keystone.projects.enable` (bool,
-default `false`) to activate project management. When enabled,
+default `true`) to activate project management. When enabled,
 `keystone.notes.enable` MUST also be `true`.
 
 ### Sessions
 
 **REQ-010.6** The module MUST provide a `pz` command that creates or attaches
-to a Zellij session named `{prefix}-{slug}` for a given project slug.
-
-**REQ-010.7** The module MUST expose `keystone.projects.sessionPrefix`
-(string, default `obs`) for the Zellij session name prefix.
+to a Zellij session named `{slug}` for the default project session or
+`{slug}-{session-slug}` for a named project session.
 
 **REQ-010.8** A `pz` session MUST persist across terminal disconnections.
 Re-running `pz {slug}` MUST attach to the existing session rather than

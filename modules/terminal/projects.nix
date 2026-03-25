@@ -13,7 +13,6 @@
 # keystone.notes = { enable = true; repo = "..."; };
 # keystone.projects = {
 #   enable = true;
-#   # sessionPrefix defaults to "ksp" → sessions named ksp-{slug}
 # };
 # ```
 #
@@ -21,7 +20,6 @@
 #
 # REQ-010.4  Discovers projects by scanning {notes_path}/projects/*/README.md
 # REQ-010.5  keystone.notes.enable MUST be true when projects.enable is true
-# REQ-010.7  sessionPrefix for Zellij session names (default: "ksp")
 {
   config,
   lib,
@@ -41,13 +39,6 @@ in
   options.keystone.projects = {
     enable = mkEnableOption "Keystone project session management" // {
       default = true;
-    };
-
-    sessionPrefix = mkOption {
-      type = types.str;
-      default = "ksp";
-      description = "Prefix for Zellij session names created by `pz` (e.g., 'ksp-{slug}').";
-      example = "ksp";
     };
   };
 

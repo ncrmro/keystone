@@ -37,11 +37,10 @@ Derived from Zellij session state.
 
 | Field | Type | Source | Notes |
 |-------|------|--------|-------|
-| name | string | Zellij session name | Format: `{prefix}-{project-slug}-{session-slug}` |
+| name | string | Zellij session name | Format: `{project-slug}` or `{project-slug}-{session-slug}` |
 | project_slug | string | Extracted from session name | Project identifier |
 | session_slug | string | Extracted from session name | Purpose identifier (default: `main`) |
-| status | enum | Zellij | `attached` or `detached` |
-| created | timestamp | Zellij session metadata | ISO 8601 |
+| status | enum | Zellij | `attached`, `detached`, or `exited` |
 
 ## CLI Contract
 
@@ -53,14 +52,15 @@ Create or attach to a named project Zellij session.
 - `<project-slug>` — the project to open (required)
 - `<session-slug>` — purpose identifier for the session (optional; default: `main`)
 
-Session names use the format `{prefix}-{project-slug}-{session-slug}`, allowing multiple
+Session names use the format `{project-slug}` for the default session and
+`{project-slug}-{session-slug}` for named sub-sessions, allowing multiple
 named sessions per project. This naming scheme is also adopted by `agentctl` (REQ-012.3)
 to ensure consistent session identification across tools.
 
 **Behavior**:
 1. The command MUST validate that `{notes_path}/projects/{project-slug}/README.md` exists
-2. If a Zellij session named `{prefix}-{project-slug}-{session-slug}` exists, the command MUST attach to it
-3. If no session exists, the command MUST create a new Zellij session named `{prefix}-{project-slug}-{session-slug}`
+2. If a Zellij session named `{project-slug}` exists for the default session or `{project-slug}-{session-slug}` exists for a named session, the command MUST attach to it
+3. If no session exists, the command MUST create a new Zellij session using that same naming rule
 4. The session MUST start with the working directory set to `{notes_path}/projects/{project-slug}`
 5. The command MUST export environment variables per REQ-010.9 before attaching
 
@@ -79,11 +79,11 @@ List sessions filtered by project.
 
 **Behavior**:
 1. The command MUST discover valid project slugs from `{notes_path}/projects/*/README.md`
-2. The command MUST list only Zellij sessions whose names start with `{prefix}-` and whose slug includes a discovered project slug
+2. The command MUST list only Zellij sessions whose names exactly match a discovered project slug or begin with `{project-slug}-`
 3. When `--project <project-slug>` is provided, the command MUST show only sessions whose discovered project slug matches that value
-4. Sessions from other prefixes (e.g., manual Zellij sessions) MUST be excluded
-5. Sessions whose names do not include a discovered project slug MUST be excluded
-5. The command MUST exit with code `0` even when no sessions are found (empty list)
+4. Sessions whose names do not include a discovered project slug in that format MUST be excluded
+5. Legacy `obs-*` sessions MUST be ignored
+6. The command MUST exit with code `0` even when no sessions are found (empty list)
 
 **Output format** (stdout, tab-separated):
 ```
@@ -98,10 +98,10 @@ frontend    main        detached
 Destroy a project session.
 
 **Behavior**:
-1. The command MUST kill the Zellij session named `{prefix}-{project-slug}-{session-slug}`
-2. When `<session-slug>` is omitted, the command MUST kill ALL sessions matching `{prefix}-{project-slug}-*`
+1. The command MUST kill the Zellij session named `{project-slug}` for the default session or `{project-slug}-{session-slug}` for a named session
+2. When `<session-slug>` is omitted, the command MUST kill the default session and all named sessions matching `{project-slug}-*`
 3. If the session does not exist, the command MUST print a warning and exit `0`
-4. The command MUST NOT kill sessions that don't match the `{prefix}-` pattern
+4. The command MUST NOT kill sessions that do not match the project session naming rules
 
 ## Behavioral Requirements
 
@@ -109,8 +109,7 @@ Destroy a project session.
 
 1. Sessions MUST persist across terminal disconnections (Zellij default behavior).
 2. Re-running `pz {project-slug} [session-slug]` on an existing session MUST attach, not create a duplicate.
-3. The session prefix MUST be configurable via `keystone.projects.sessionPrefix` (default: `obs`, per REQ-010.7).
-4. Session names MUST use the format `{prefix}-{project-slug}-{session-slug}`. This naming scheme is shared with `agentctl --project <project> <session-slug>` to ensure consistent session identification across tools.
+3. Session names MUST use the format `{project-slug}` for the default session and `{project-slug}-{session-slug}` for named sub-sessions. This naming scheme is shared with `agentctl --project <project> <session-slug>` to ensure consistent session identification across tools.
 
 ### Project Discovery
 
@@ -142,6 +141,7 @@ Destroy a project session.
 - **Concurrent attach**: If a session is already attached in another terminal, `pz <project-slug> <session-slug>` MUST attach to the same session (Zellij supports multiple clients per session).
 - **Empty projects directory**: If no projects exist, `pz list` MUST output an empty table with headers only. `pz <project-slug>` MUST fail with exit code `1`.
 - **Invalid slug characters**: `pz` MUST reject slugs containing characters other than lowercase alphanumeric and hyphens.
+- **Legacy prefixed sessions**: `obs-*` sessions are outside the contract and MUST be ignored by `pz list` and `pz` attach behavior.
 - **Zellij not running**: If Zellij server is not running, `pz` MUST start a new server automatically (Zellij default behavior).
 
 ## Home Manager Module Options
@@ -151,11 +151,6 @@ The `keystone.projects` module provides configuration consumed by `pz`:
 ```nix
 keystone.projects = {
   enable = mkEnableOption "Project session management";
-  sessionPrefix = mkOption {
-    type = types.str;
-    default = "obs";
-    description = "Prefix for Zellij session names";
-  };
 };
 ```
 
