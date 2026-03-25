@@ -46,6 +46,11 @@ in
             default = null;
             description = "LAN IP fallback when sshTarget is unreachable via Tailscale.";
           };
+          tailscaleIP = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "Stable Tailscale IPv4 address for this host when known.";
+          };
           buildOnRemote = mkOption {
             type = types.bool;
             default = true;
@@ -117,6 +122,7 @@ in
       hostNames = filter (x: x != null) [
         hostCfg.hostname
         hostCfg.sshTarget
+        hostCfg.tailscaleIP
         hostCfg.fallbackIP
       ];
     }
