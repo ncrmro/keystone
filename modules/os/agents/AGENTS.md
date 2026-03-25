@@ -85,6 +85,8 @@ keystone.os.agents.drago = {
     syncOnCalendar = "*:0/5";
     taskLoop.onCalendar = "*:0/5";
     taskLoop.maxTasks = 5;
+    taskLoop.defaults.provider = "claude";  # claude|gemini — fallback provider
+    taskLoop.defaults.model = null;         # null = provider CLI default
     scheduler.onCalendar = "*-*-* 05:00:00";
   };
 };
