@@ -15,11 +15,26 @@
   options,
   ...
 }:
-let _ = builtins.trace "SHARED REPOS MODULE LOADING..." null; in
+let
+  _ = builtins.trace "SHARED REPOS MODULE LOADING..." null;
+in
 with lib;
 let
   cfg = config.keystone;
   inputs = cfg._repoInputs;
+  explicitRepos = {
+    "Unsupervisedcom/deepwork" = {
+      url = "https://github.com/Unsupervisedcom/deepwork.git";
+      flakeInput = "deepwork";
+      branch = "main";
+    };
+  };
+  explicitFlakeInputs = listToAttrs (
+    mapAttrsToList (key: value: {
+      name = value.flakeInput;
+      value = key;
+    }) (filterAttrs (_: value: value.flakeInput != null) explicitRepos)
+  );
 
   # Whether we are running inside a Home Manager module that has access to NixOS config
   osConfig =
@@ -32,7 +47,11 @@ let
 
   _trace1 = builtins.trace "SHARED REPOS: config has osConfig: ${if config ? osConfig then "YES" else "NO"}" null;
   _trace2 = builtins.trace "SHARED REPOS: options has osConfig: ${if options ? osConfig then "YES" else "NO"}" null;
-  _trace3 = if osConfig != null then builtins.trace "SHARED REPOS: osConfig.keystone.development is ${builtins.toJSON (osConfig.keystone.development or "MISSING")}" null else null;
+  _trace3 =
+    if osConfig != null then
+      builtins.trace "SHARED REPOS: osConfig.keystone.development is ${builtins.toJSON (osConfig.keystone.development or "MISSING")}" null
+    else
+      null;
 
   # Derive a repo entry from a flake input's sourceInfo.
   # Returns null for inputs without a discoverable git URL.
@@ -97,7 +116,9 @@ let
     else
       null;
 
-  autoEntries = filter (e: e != null) (mapAttrsToList mkRepoEntry inputs);
+  autoEntries = filter (
+    e: e != null && !(builtins.hasAttr (e.value.flakeInput or "") explicitFlakeInputs)
+  ) (mapAttrsToList mkRepoEntry inputs);
   autoRepos = listToAttrs autoEntries;
 in
 {
@@ -148,5 +169,7 @@ in
     };
   };
 
-  config.keystone.repos = mkIf (inputs != { }) (mapAttrs (_: v: mkDefault v) autoRepos);
+  config.keystone.repos = mkIf (inputs != { }) (
+    mapAttrs (_: v: mkDefault v) (autoRepos // explicitRepos)
+  );
 }

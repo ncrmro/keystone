@@ -84,6 +84,13 @@ let
       # Verify DEEPWORK_ADDITIONAL_JOBS_FOLDERS for development-mode test
       if [ "${name}" = "development-mode" ]; then
         echo "Verifying DEEPWORK_ADDITIONAL_JOBS_FOLDERS in development-mode..."
+        if echo '${sessionVarsJson}' | grep -q "/home/testuser/.keystone/repos/Unsupervisedcom/deepwork/library/jobs"; then
+          echo "  ✓ Found local deepwork jobs path"
+        else
+          echo "  ✗ Missing local deepwork jobs path"
+          echo "  Actual Session Vars: ${sessionVarsJson}"
+          exit 1
+        fi
         # We expect /home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs
         # because ncrmro/keystone is the guessed name for the keystone input.
         if echo '${sessionVarsJson}' | grep -q "/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs"; then
