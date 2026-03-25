@@ -343,11 +343,10 @@ DURATION=$((END_TIME - START_TIME))
 log "Task loop finished: executed $TASK_COUNT tasks in ${DURATION}s"
 
 # -- Rotate old logs (keep last 20) -------------------------------------------
-for ext in log; do
-  find "$LOGS_DIR" -maxdepth 1 -name "*.$ext" -type f | sort -r | while IFS= read -r file; do
-    COUNT=$((${COUNT:-0} + 1))
-    if [ $COUNT -gt 20 ]; then
-      rm -f "$file"
-    fi
-  done
+COUNT=0
+find "$LOGS_DIR" -maxdepth 1 -name "*.log" -type f | sort -r | while IFS= read -r file; do
+  COUNT=$((COUNT + 1))
+  if [ "$COUNT" -gt 20 ]; then
+    rm -f "$file"
+  fi
 done
