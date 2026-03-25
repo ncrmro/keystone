@@ -21,6 +21,32 @@ The system MUST provide a unified, hierarchical menu accessible via a global key
 - **dt-menu-001.6**: The "Learn" sub-menu MUST provide access to keybindings help and documentation.
 - **dt-menu-001.7**: The menu MUST support direct navigation to specific sub-menus via command-line arguments.
 - **dt-menu-001.8**: The "Setup" sub-menu MUST provide a "Monitors" section for dynamic display configuration (see dt-monitor-001).
+- **dt-menu-001.9**: The menu MUST provide access to project and desktop context selection behavior defined in `dt-context-001`.
+
+### Desktop contexts (dt-context-001)
+
+The system MUST provide project-aware desktop context selectors that integrate `pz`, Hyprland, and existing desktop session windows.
+
+- **dt-context-001.1**: Desktop context selectors MUST list registered projects from the `pz` project registry.
+- **dt-context-001.2**: When a selected project or session already has an active desktop window, the desktop MUST switch to the Hyprland workspace containing that window instead of opening a new terminal window.
+- **dt-context-001.3**: The desktop MUST determine the target workspace from the live Hyprland client list, rather than assuming the session uses a named workspace.
+- **dt-context-001.4**: If an active zellij session exists for the selected project or session but no matching desktop window exists, the desktop MUST open a new terminal attached to that existing session.
+- **dt-context-001.5**: If no active zellij session exists for the selected project, the desktop MUST offer creation of a new session.
+- **dt-context-001.6**: The project menu MUST always include an explicit "New session" selection for each project.
+- **dt-context-001.7**: Choosing "New session" MUST prompt for a session slug before launch.
+- **dt-context-001.8**: The session slug prompt MAY allow an empty value to create or attach to the project's main session.
+- **dt-context-001.9**: The desktop MUST support both current `pz` session names and legacy `obs-<project>` session names when determining whether a session is active.
+- **dt-context-001.10**: When multiple desktop windows correspond to the same active session, the desktop MUST prefer the focused matching window. If no matching window is focused, the desktop MUST choose a deterministic matching window.
+- **dt-context-001.11**: The same active-session behavior MUST apply in both the dedicated context switcher and the menu-based project selector.
+
+### Project details page (dt-context-002)
+
+The system SHOULD provide a project-specific details page reachable from the project menu.
+
+- **dt-context-002.1**: The project details page MUST display project information sourced from the notes project hub when available.
+- **dt-context-002.2**: The project details page SHOULD display active milestones for the project's GitHub repository.
+- **dt-context-002.3**: For each active milestone shown, the page SHOULD display associated open issues and due dates when available.
+- **dt-context-002.4**: If notes, milestone, or issue data is unavailable, the page MUST degrade gracefully without preventing project and session actions.
 
 ### Monitor Management (dt-monitor-001)
 
