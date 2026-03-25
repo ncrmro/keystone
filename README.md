@@ -50,11 +50,12 @@ reverse proxy, and DNS for each one.
 
 A complete development environment — terminal or full desktop.
 
-**Terminal**: Zsh, Helix editor, Zellij multiplexer, Git with SSH signing, AI coding tools
+**Terminal**: Zsh, Helix editor, Zellij multiplexer, Git with SSH signing, AI coding tools,
+[DeepWork](https://github.com/Unsupervisedcom/deepwork) workflow engine
 
 **Desktop**: Hyprland compositor, 15 themes, app launcher, clipboard history, screenshot tools
 
-[Terminal](docs/terminal/terminal.md) · [Personal Info Management](docs/os/personal-info-management.md) · [Cross-Platform Comparison](docs/comparison.md)
+[Terminal](docs/terminal/terminal.md) · [DeepWork](docs/terminal/deepwork.md) · [Personal Info Management](docs/os/personal-info-management.md) · [Cross-Platform Comparison](docs/comparison.md)
 
 ## OS Agents
 

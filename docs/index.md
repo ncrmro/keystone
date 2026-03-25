@@ -31,6 +31,7 @@ Welcome to the Keystone documentation. Keystone is a NixOS-based self-sovereign 
 
 ### Module Documentation
 - **[Terminal](terminal.md)** (`keystone.terminal`) - Shell, editor, and development tools (Zsh, Helix, Zellij, etc.)
+  - **[DeepWork](terminal/deepwork.md)** - Workflow-driven development with quality gates ([upstream repo](https://github.com/Unsupervisedcom/deepwork))
   - **[Notes](notes.md)** - Shared zk notebook system for humans, agents, and workflow reports
   - **[Personal Information Management](personal-info-management.md)** - Email, calendars, contacts, and timers (Pimalaya suite)
 - **Desktop** (`keystone.desktop`) - Hyprland desktop environment

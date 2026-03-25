@@ -136,7 +136,8 @@ The archetype (set per-agent via `keystone.os.agents.<name>.archetype`, default 
 
 ## DeepWork
 
-The DeepWork module integrates workflow-driven development with quality gates into the terminal environment.
+[DeepWork](https://github.com/Unsupervisedcom/deepwork) integrates workflow-driven development
+with quality gates into the terminal environment.
 
 ```nix
 keystone.terminal.deepwork = {
@@ -144,7 +145,11 @@ keystone.terminal.deepwork = {
 };
 ```
 
-When enabled, the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable is set, allowing the DeepWork MCP server to discover project-specific job definitions alongside the built-in ones.
+When enabled, the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable is set, allowing
+the DeepWork MCP server to discover project-specific job definitions alongside the built-in ones.
+
+See the [DeepWork documentation](deepwork.md) for available jobs, slash commands, and
+development-mode details.
 
 ## Notes
 
