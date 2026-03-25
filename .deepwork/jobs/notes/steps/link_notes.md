@@ -12,8 +12,8 @@ Ensure newly promoted notes are properly linked to the knowledge graph.
 
    a. Search for related existing notes:
       ```bash
-      zk --notebook-dir <notes_path> list --related <new-note-path> --format json
-      zk --notebook-dir <notes_path> list --match "<key terms from title>" --format json
+      zk list --related <new-note-path> --format json
+      zk list --match "<key terms from title>" --format json
       ```
 
    b. Add wikilinks in the new note's `## Links` section to the most relevant existing notes.
@@ -24,7 +24,7 @@ Ensure newly promoted notes are properly linked to the knowledge graph.
 
    a. Find index notes whose topic matches the new note:
       ```bash
-      zk --notebook-dir <notes_path> list index/ --format json --match "<topic>"
+      zk list index/ --format json --match "<topic>"
       ```
 
    b. Add a wikilink to the new note in the index's `## Notes` section.

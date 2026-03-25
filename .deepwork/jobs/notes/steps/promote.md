@@ -14,9 +14,9 @@ Create permanent or literature notes from promotable fleeting notes, then delete
 
    b. Create the new note in the target directory:
       ```bash
-      zk --notebook-dir <notes_path> new notes/ --title "<suggested title>" --no-input --print-path
+      zk new notes/ --title "<suggested title>" --no-input --print-path
       # or
-      zk --notebook-dir <notes_path> new literature/ --title "<suggested title>" --no-input --print-path
+      zk new literature/ --title "<suggested title>" --no-input --print-path
       ```
 
    c. Edit the new note:

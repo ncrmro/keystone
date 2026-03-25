@@ -14,7 +14,7 @@ Create initial Maps of Content (index notes) for the notebook's primary topics.
 
 2. For each topic, create an index note:
    ```bash
-   zk --notebook-dir <notes_path> new index/ --title "<Topic Name>" --no-input --print-path
+   zk new index/ --title "<Topic Name>" --no-input --print-path
    ```
 
 3. Each index note should have:
