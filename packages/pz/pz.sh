@@ -65,16 +65,14 @@ valid_slug() {
 discover_projects() {
   local zk_json
   local -A seen=()
-  local row note_path resolved_project
+  local note_path resolved_project last_active
 
   if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet); then
     echo "error: failed to discover active projects via zk in ${VAULT_ROOT}" >&2
     return 1
   fi
 
-  while IFS= read -r row; do
-    IFS=$'\t' read -r note_path resolved_project <<< "$row"
-
+  while IFS=$'\t' read -r note_path resolved_project last_active; do
     if [[ -z "$resolved_project" ]]; then
       continue
     fi
@@ -91,7 +89,7 @@ discover_projects() {
 
     if [[ -z "${seen[$resolved_project]:-}" ]]; then
       seen["$resolved_project"]=1
-      printf "%s\n" "$resolved_project"
+      printf "%s\t%s\n" "$resolved_project" "$last_active"
     fi
   done < <(
     printf "%s\n" "$zk_json" | jq -r '
@@ -152,7 +150,8 @@ discover_projects() {
       | select((.metadata.status // "") != "archived")
       | [
           .absPath,
-          inferred_project
+          inferred_project,
+          (.metadata.last_active // "")
         ]
       | @tsv
     '
@@ -250,6 +249,7 @@ match_registered_project_slug() {
 
 # list active project sessions for registered projects only
 cmd_list() {
+  set +e
   local project_filter=""
   local project_output
   while [[ $# -gt 0 ]]; do
@@ -270,30 +270,34 @@ cmd_list() {
   done
 
   if ! project_output=$(discover_projects); then
+    set -e
     exit 1
   fi
-  mapfile -t projects <<< "$project_output"
 
-  echo "PROJECT                       SESSION                       STATUS"
-  echo "----------------------------  ----------------------------  --------"
-
-  if [[ ${#projects[@]} -eq 0 ]]; then
-    return 0
-  fi
+  local -A project_last_active
+  local slugs=()
+  while IFS=$'\t' read -r s la; do
+    [[ -z "$s" ]] && continue
+    slugs+=("$s")
+    project_last_active["$s"]="$la"
+  done <<< "$project_output"
 
   local sessions
   sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
   if [[ -z "$sessions" ]]; then
+    set -e
     return 0
   fi
 
+  # Group sessions by project
+  declare -A project_sessions
   while IFS= read -r line; do
     local name project_slug session_slug status suffix
     [[ -z "$line" ]] && continue
 
     name=$(printf "%s\n" "$line" | awk '{print $1}')
 
-    project_slug=$(match_registered_project_slug "$name" "${projects[@]}")
+    project_slug=$(match_registered_project_slug "$name" "${slugs[@]}")
     if [[ -z "$project_slug" ]]; then
       continue
     fi
@@ -302,7 +306,7 @@ cmd_list() {
       continue
     fi
 
-    suffix="${name#"${project_slug}"}"
+    suffix="${name#"$project_slug"}"
     if [[ -z "$suffix" ]]; then
       session_slug="main"
     else
@@ -311,8 +315,55 @@ cmd_list() {
     fi
 
     status=$(session_status_from_line "$line")
-    printf "%-28s  %-28s  %s\n" "$project_slug" "$session_slug" "$status"
+    # Store sessions as a newline-separated list for each project
+    project_sessions["$project_slug"]+="$session_slug|$status"$'\n'
   done <<< "$sessions"
+
+  if [[ ${#project_sessions[@]} -eq 0 ]]; then
+    set -e
+    return 0
+  fi
+
+  echo "PROJECT / SESSION                                           LAST ACTIVE"
+  echo "----------------------------------------------------------  -----------"
+
+  # Sort projects by last_active descending
+  local sorted_projects
+  mapfile -t sorted_projects < <(
+    for p in "${!project_sessions[@]}"; do
+      printf "%s\t%s\n" "${project_last_active[$p]:-0000-00-00}" "$p"
+    done | sort -r | cut -f2
+  )
+
+  for p in "${sorted_projects[@]}"; do
+    printf "%-58s  %s\n" "$p" "${project_last_active[$p]:-}"
+    
+    local p_sess
+    # Use sort -u to avoid duplicates like multiple "main" sessions
+    mapfile -t p_sess < <(printf "%s" "${project_sessions[$p]}" | sort -u -t'|' -k1,1)
+    local total=${#p_sess[@]}
+    local count=0
+
+    for sess_data in "${p_sess[@]}"; do
+      ((count++))
+      local s st prefix
+      
+      # Robustly parse s and st from sess_data
+      s="${sess_data%%|*}"
+      st="${sess_data#*|}"
+      
+      [[ -z "$s" ]] && continue
+      
+      if [[ $count -eq $total ]]; then
+        prefix="└──"
+      else
+        prefix="├──"
+      fi
+      
+      printf "  %s %-54s\n" "$prefix" "$s"
+    done
+  done
+  set -e
 }
 
 # create or attach to a project session
@@ -348,7 +399,7 @@ cmd_session() {
     exit 1
   fi
 
-  if ! printf "%s\n" "$project_output" | grep -Fxq "$slug"; then
+  if ! printf "%s\n" "$project_output" | cut -f1 | grep -Fxq "$slug"; then
     echo "error: project '${slug}' is not an active project hub in ${VAULT_ROOT}" >&2
     exit 1
   fi
@@ -419,6 +470,92 @@ cmd_agent() {
   exec agentctl "$agent_name" "$agent_cmd" --project "$PROJECT_NAME" "$@"
 }
 
+# --- Completion Logic ---
+
+# Generate completions for pz
+__pz_complete() {
+  local cur prev words cword
+  _get_comp_words_by_ref -n : cur prev words cword 2>/dev/null || return 0
+
+  local projects
+  projects=$(discover_projects 2>/dev/null | cut -f1)
+
+  if [[ $cword -eq 1 ]]; then
+    # Complete project slugs or subcommands
+    local opts="list agent --help completion"
+    COMPREPLY=( $(compgen -W "${opts} ${projects}" -- "$cur") )
+    return 0
+  fi
+
+  if [[ $cword -eq 2 ]]; then
+    local project="${words[1]}"
+    if [[ "$project" == "agent" ]]; then
+       # Could complete agent names here if needed
+       return 0
+    fi
+    
+    # Check if we are completing a session for a valid project
+    if printf "%s\n" "${projects}" | grep -Fxq "$project"; then
+      local sessions
+      # Find existing sessions for this project
+      sessions=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | command grep -E "^${project}(-|$)" | sed "s/^${project}-//; s/^${project}$/main/" || true)
+      COMPREPLY=( $(compgen -W "${sessions} new" -- "$cur") )
+      return 0
+    fi
+  fi
+}
+
+# The actual 'completion' command to be sourced or eval'd
+cmd_completion() {
+  cat <<'EOF'
+_pz_completion() {
+  local cur prev words cword
+  if type _get_comp_words_by_ref &>/dev/null; then
+    _get_comp_words_by_ref -n : cur prev words cword
+  else
+    # Fallback if bash-completion is not fully available
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    words=("${COMP_WORDS[@]}")
+    cword="$COMP_CWORD"
+  fi
+
+  local projects
+  # Attempt to use pz to discover slugs, fallback to calling the script directly if needed
+  if command -v pz >/dev/null 2>&1; then
+    projects=$(pz discover-slugs 2>/dev/null)
+  else
+    return 0
+  fi
+
+  if [[ $cword -eq 1 ]]; then
+    local opts="list agent --help completion"
+    COMPREPLY=( $(compgen -W "${opts} ${projects}" -- "$cur") )
+    return 0
+  fi
+
+  if [[ $cword -eq 2 ]]; then
+    local project="${words[1]}"
+    if [[ "$project" == "list" || "$project" == "agent" || "$project" == "completion" ]]; then
+       return 0
+    fi
+    if printf "%s\n" "${projects}" | grep -Fxq "$project"; then
+      local sessions
+      sessions=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | command grep -E "^${project}(-|$)" | sed "s/^${project}-//; s/^${project}$/main/" || true)
+      COMPREPLY=( $(compgen -W "${sessions} new" -- "$cur") )
+      return 0
+    fi
+  fi
+}
+complete -F _pz_completion pz
+EOF
+}
+
+# Add a hidden helper for completion to get slugs without extra info
+cmd_discover_slugs() {
+  discover_projects 2>/dev/null | cut -f1
+}
+
 # --- Argument parsing ---
 if [[ $# -eq 0 ]]; then
   cmd_list
@@ -463,6 +600,12 @@ case "$1" in
   agent)
     shift
     cmd_agent "$@"
+    ;;
+  completion)
+    cmd_completion
+    ;;
+  discover-slugs)
+    cmd_discover_slugs
     ;;
   -*)
     echo "error: unknown option: $1" >&2

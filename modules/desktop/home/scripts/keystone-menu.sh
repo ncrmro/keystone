@@ -40,35 +40,41 @@ open_url() {
 # ============== CONTEXTS MENU ==============
 show_contexts_menu() {
   SESSION_PREFIX="obs"
-  VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
-
-  # Build list of active contexts from zellij sessions
-  context_list=""
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    name=$(echo "$line" | awk '{print $1}')
-    if [[ "$name" == "${SESSION_PREFIX}-"* ]]; then
-      slug="${name#"${SESSION_PREFIX}"-}"
-      if ! echo "$line" | grep -q "EXITED"; then
-        context_list="${context_list}●  ${slug}\n"
-      fi
-    fi
-  done < <(zellij list-sessions --no-formatting 2>/dev/null || true)
-
-  # Add available projects that aren't running
-  if [[ -d "${VAULT_ROOT}/projects" ]]; then
-    active_slugs=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | sed "s/^${SESSION_PREFIX}-//" || true)
-    for project_dir in "${VAULT_ROOT}/projects"/*/; do
-      [[ ! -d "$project_dir" ]] && continue
-      slug=$(basename "$project_dir")
-      if ! echo "$active_slugs" | grep -qx "$slug"; then
-        context_list="${context_list}○  ${slug}\n"
-      fi
-    done
+  
+  # Check if pz is available for project discovery
+  if ! command -v pz >/dev/null 2>&1; then
+    notify-send "pz not found" "Project session manager (pz) is required for contexts" -t 3000
+    back_to show_main_menu
+    return
   fi
 
+  # Build list of active contexts from zellij sessions
+  local zellij_output
+  zellij_output=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  
+  local projects
+  projects=$(pz discover-slugs 2>/dev/null || echo "")
+
+  context_list=""
+  
+  # Group sessions by their base project name
+  for slug in $projects; do
+    # Check if there are any active sessions for this project
+    # We check for exact match or slug- prefix
+    local sessions
+    sessions=$(echo "$zellij_output" | awk '{print $1}' | command grep -E "^${slug}(-|$)" || true)
+    
+    if [[ -n "$sessions" ]]; then
+      # Project has active sessions
+      context_list="${context_list}●  ${slug}\n"
+    else
+      # Project is dormant
+      context_list="${context_list}○  ${slug}\n"
+    fi
+  done
+
   if [[ -z "$context_list" ]]; then
-    notify-send "No contexts" "No active sessions or projects found" -t 2000
+    notify-send "No contexts" "No projects found via pz" -t 2000
     back_to show_main_menu
     return
   fi
@@ -79,11 +85,17 @@ show_contexts_menu() {
   if [[ -n "$selected" ]]; then
     selected_slug=$(echo "$selected" | awk '{print $2}')
     if echo "$selected" | grep -q "^●"; then
-      # Active — switch to workspace
-      hyprctl dispatch workspace "name:${selected_slug}" >/dev/null 2>&1
+      # Active — potentially multiple sessions. 
+      # For now, let's just use pz to attach to the main one or show available
+      # Alternatively, we could show another menu with specific sessions.
+      # But pz logic already handles attaching.
+      # If we want to switch workspace in Hyprland:
+      # hyprctl dispatch workspace "name:${selected_slug}" >/dev/null 2>&1
+      # But it's safer to just launch a terminal with pz which handles zellij.
+      ghostty -e pz "$selected_slug" &
     else
       # Not running — launch
-      keystone-context "$selected_slug"
+      ghostty -e pz "$selected_slug" &
     fi
   else
     back_to show_main_menu
@@ -226,9 +238,9 @@ go_to_menu() {
   esac
 }
 
-if [[ -n "$1" ]]; then
+if [[ -n "${1:-}" ]]; then
   BACK_TO_EXIT=true
   go_to_menu "$1"
 else
-  show_system_menu
+  show_main_menu
 fi

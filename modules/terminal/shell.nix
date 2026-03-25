@@ -152,6 +152,12 @@ in
           ];
           theme = "robbyrussell";
         };
+        initExtra = ''
+          # Register pz completion
+          if command -v pz >/dev/null 2>&1; then
+            eval "$(pz completion)"
+          fi
+        '';
       };
 
       home.sessionPath = [ "$HOME/.local/bin" ];

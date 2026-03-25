@@ -96,16 +96,30 @@ session_exists() {
 
 # Create the zellij session if it doesn't exist
 if ! session_exists; then
-  local_project_path="${VAULT_ROOT}/projects/${SLUG}"
-  local_project_readme="${local_project_path}/README.md"
+  # Use pz to create the session if it's a known project
+  if pz discover-slugs 2>/dev/null | command grep -qx "${SLUG}"; then
+    # Create session with our prefix via pz (which supports sub-sessions)
+    # pz slug session -> zellij session slug-session
+    # We want session name to be obs-SLUG, so we pass SLUG as the session name to pz SLUG
+    # But pz would name it SLUG-obs... that's not quite right.
+    
+    # Actually, pz uses exec and names session based on project name.
+    # Let's just use zellij directly but leverage pz's discovery to validate.
+    # To get the right project path, we can't easily query pz for it yet.
+    
+    # For now, let's keep the manual creation but ensure it's consistent with pz's expectations
+    # if it ever changes. pz currently expects projects in $VAULT_ROOT/projects/$SLUG
+    local_project_path="${VAULT_ROOT}/projects/${SLUG}"
+    local_project_readme="${local_project_path}/README.md"
+    
+    # If not in projects/, it might be a note-only project (pz fallback)
+    if [[ ! -d "$local_project_path" ]]; then
+       local_project_path="$VAULT_ROOT"
+    fi
 
-  if [[ -f "$local_project_readme" ]]; then
-    # Project slug — use pz for session creation (runs in background, detached)
-    # pz uses exec, so we run it in a subshell to avoid replacing this process
     (
       export PROJECT_NAME="${SLUG}"
       export PROJECT_PATH="${local_project_path}"
-      export PROJECT_README="${local_project_readme}"
       export VAULT_ROOT="${VAULT_ROOT}"
       zellij --session "${SESSION_NAME}" --layout "$LAYOUT" options --default-cwd "${local_project_path}" &
     )
