@@ -8,32 +8,30 @@
 {
   pkgs,
   self,
-}:
-{
+}: {
   # Create a module test with common defaults
-  mkModuleTest =
-    {
-      name,
-      module ? null,
-      modules ? [ ],
-      testScript,
-      nodes ? { },
-      ...
-    }@args:
+  mkModuleTest = {
+    name,
+    module ? null,
+    modules ? [],
+    testScript,
+    nodes ? {},
+    ...
+  } @ args:
     pkgs.testers.nixosTest (
       {
         inherit name testScript;
         nodes =
-          if nodes != { } then
-            nodes
-          else
-            {
-              machine =
-                { config, ... }:
-                {
-                  imports = if module != null then [ module ] ++ modules else modules;
-                };
+          if nodes != {}
+          then nodes
+          else {
+            machine = {config, ...}: {
+              imports =
+                if module != null
+                then [module] ++ modules
+                else modules;
             };
+          };
       }
       // removeAttrs args [
         "module"
