@@ -8,20 +8,25 @@
   config,
   ...
 }:
-let
-  osCfg = config.keystone.os;
-  cfg = osCfg.agents;
-in
 {
-  config = lib.mkIf (osCfg.enable && cfg != { } && config.services.grafana.enable) {
-    services.grafana.provision.dashboards.settings.providers = [
-      {
-        name = "Keystone Agents";
-        options.path = ./dashboards;
-      }
+  config = lib.mkIf (config.keystone.os.enable && config.keystone.os.agents != { }) {
+    # Shared keystone dashboards are provisioned by the server-side Grafana
+    # service module so they are available even when the Grafana host does not
+    # run local agents.
+    systemd.tmpfiles.rules = [
+      "d /var/lib/keystone-node-exporter-textfiles 0775 root agents -"
     ];
 
-    # TODO: Add alerting rules for agent failures/stalls
-    # services.grafana.provision.alerting.rules.settings = { ... };
+    services.prometheus.exporters.node = {
+      enable = lib.mkDefault true;
+      enabledCollectors = [
+        "systemd"
+        "processes"
+        "textfile"
+      ];
+      extraFlags = [
+        "--collector.textfile.directory=/var/lib/keystone-node-exporter-textfiles"
+      ];
+    };
   };
 }

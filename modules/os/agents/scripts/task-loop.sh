@@ -57,23 +57,167 @@ LOGS_DIR="$HOME/.local/state/agent-task-loop/logs"
 TASK_LOGS_DIR="$LOGS_DIR/tasks"
 STATE_DIR="$HOME/.local/state/agent-task-loop/state"
 LOCKFILE="$STATE_DIR/task-loop.lock"
+PROMETHEUS_TEXTFILE_DIR="${PROMETHEUS_TEXTFILE_DIR:-}"
 
 mkdir -p "$LOGS_DIR" "$TASK_LOGS_DIR" "$STATE_DIR"
 
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 LOG_FILE="$LOGS_DIR/$TIMESTAMP.log"
 START_TIME=$(date +%s)
+HOST_NAME=$(hostname)
+UNIT_NAME="agent-${AGENT_NAME}-task-loop"
+RUN_ID="${AGENT_NAME}-task-loop-${TIMESTAMP}"
+METRIC_FILE=""
+if [[ -n "$PROMETHEUS_TEXTFILE_DIR" ]]; then
+  METRIC_FILE="${PROMETHEUS_TEXTFILE_DIR}/keystone-agent-task-loop-${AGENT_NAME}.prom"
+fi
 
 CURRENT_STEP="init"
 CURRENT_TASK=""
+RUN_STATUS="success"
+TASKS_COMPLETED=0
+TASKS_FAILED=0
+TASKS_BLOCKED=0
+
+logfmt_escape() {
+  local value="${1:-}"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  printf '"%s"' "$value"
+}
+
+append_log_field() {
+  local key="$1"
+  local value="$2"
+  printf ' %s=%s' "$key" "$(logfmt_escape "$value")"
+}
+
+emit_event() {
+  local event="$1"
+  local message="$2"
+  shift 2
+
+  local line="[$(date '+%H:%M:%S')]"
+  line+=$(append_log_field "event" "$event")
+  line+=$(append_log_field "msg" "$message")
+  line+=$(append_log_field "host" "$HOST_NAME")
+  line+=$(append_log_field "agent" "$AGENT_NAME")
+  line+=$(append_log_field "unit" "$UNIT_NAME")
+  line+=$(append_log_field "run_id" "$RUN_ID")
+  line+=$(append_log_field "step" "$CURRENT_STEP")
+  if [[ -n "$CURRENT_TASK" ]]; then
+    line+=$(append_log_field "task_name" "$CURRENT_TASK")
+  fi
+
+  while [[ $# -ge 2 ]]; do
+    line+=$(append_log_field "$1" "$2")
+    shift 2
+  done
+
+  echo "$line" | tee -a "$LOG_FILE" >&2
+}
 
 log() {
-  local tag="[step=$CURRENT_STEP]"
-  if [[ -n "$CURRENT_TASK" ]]; then
-    tag="${tag}[task=$CURRENT_TASK]"
-  fi
-  echo "[$(date '+%H:%M:%S')] $tag $*" | tee -a "$LOG_FILE" >&2
+  emit_event "log" "$*"
 }
+
+extract_urls_json() {
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    printf '[]\n'
+    return
+  fi
+
+  grep -Eo 'https?://[^ )"'"'"']+' "$file" 2>/dev/null | sort -u | jq -R . | jq -s .
+}
+
+extract_issue_urls_json() {
+  local urls_json="$1"
+  printf '%s\n' "$urls_json" | jq '[.[] | select(test("/issues/[0-9]+"))]'
+}
+
+extract_pr_urls_json() {
+  local urls_json="$1"
+  printf '%s\n' "$urls_json" | jq '[.[] | select(test("/pulls?/([0-9]+)$"))]'
+}
+
+extract_token_total() {
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    printf '0\n'
+    return
+  fi
+
+  local token_value
+  token_value=$(grep -Eo '"(total_tokens|totalTokens)"[[:space:]]*:[[:space:]]*[0-9]+' "$file" 2>/dev/null | tail -n1 | grep -Eo '[0-9]+' | tail -n1 || true)
+  if [[ -z "$token_value" ]]; then
+    token_value=$(grep -Eo '[0-9]+([,][0-9]+)? tokens' "$file" 2>/dev/null | tail -n1 | grep -Eo '[0-9]+' | tr -d '\n' || true)
+  fi
+  printf '%s\n' "${token_value:-0}"
+}
+
+write_metrics() {
+  local exit_code="$1"
+  local duration="$2"
+  local now
+  now=$(date +%s)
+
+  if [[ -z "$METRIC_FILE" || ! -d "$PROMETHEUS_TEXTFILE_DIR" ]]; then
+    return
+  fi
+
+  local tmp_file
+  tmp_file=$(mktemp "${PROMETHEUS_TEXTFILE_DIR}/.${AGENT_NAME}-task-loop.XXXXXX")
+  cat > "$tmp_file" <<EOF
+# HELP keystone_agent_task_loop_last_run_timestamp_seconds Unix timestamp of the last task-loop run.
+# TYPE keystone_agent_task_loop_last_run_timestamp_seconds gauge
+keystone_agent_task_loop_last_run_timestamp_seconds{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${now}
+# HELP keystone_agent_task_loop_last_success_timestamp_seconds Unix timestamp of the last successful task-loop run.
+# TYPE keystone_agent_task_loop_last_success_timestamp_seconds gauge
+keystone_agent_task_loop_last_success_timestamp_seconds{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} $(if [[ "$exit_code" -eq 0 ]]; then printf '%s' "$now"; else printf '0'; fi)
+# HELP keystone_agent_task_loop_last_exit_code Exit code of the last task-loop run.
+# TYPE keystone_agent_task_loop_last_exit_code gauge
+keystone_agent_task_loop_last_exit_code{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${exit_code}
+# HELP keystone_agent_task_loop_last_duration_seconds Duration of the last task-loop run.
+# TYPE keystone_agent_task_loop_last_duration_seconds gauge
+keystone_agent_task_loop_last_duration_seconds{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${duration}
+# HELP keystone_agent_task_loop_tasks_completed_total Number of tasks completed in the last task-loop run.
+# TYPE keystone_agent_task_loop_tasks_completed_total gauge
+keystone_agent_task_loop_tasks_completed_total{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${TASKS_COMPLETED}
+# HELP keystone_agent_task_loop_tasks_failed_total Number of tasks failed in the last task-loop run.
+# TYPE keystone_agent_task_loop_tasks_failed_total gauge
+keystone_agent_task_loop_tasks_failed_total{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${TASKS_FAILED}
+# HELP keystone_agent_task_loop_tasks_blocked_total Number of tasks blocked in the last task-loop run.
+# TYPE keystone_agent_task_loop_tasks_blocked_total gauge
+keystone_agent_task_loop_tasks_blocked_total{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${TASKS_BLOCKED}
+EOF
+  mv "$tmp_file" "$METRIC_FILE"
+}
+
+finish_run() {
+  local exit_code=$?
+  local end_time duration
+  end_time=$(date +%s)
+  duration=$((end_time - START_TIME))
+
+  if [[ "$exit_code" -ne 0 ]]; then
+    RUN_STATUS="error"
+  fi
+
+  CURRENT_STEP="summary"
+  CURRENT_TASK=""
+  emit_event "run_finish" "Task loop finished" \
+    "status" "$RUN_STATUS" \
+    "exit_code" "$exit_code" \
+    "duration_seconds" "$duration" \
+    "tasks_completed" "$TASKS_COMPLETED" \
+    "tasks_failed" "$TASKS_FAILED" \
+    "tasks_blocked" "$TASKS_BLOCKED"
+  write_metrics "$exit_code" "$duration"
+}
+
+trap finish_run EXIT
 
 stage_builtin_profile() {
   local stage_name="$1"
@@ -264,11 +408,11 @@ if [[ ! -d "$NOTES_DIR" ]]; then
   exit 0
 fi
 cd "$NOTES_DIR"
-log "Starting agent task loop for $AGENT_NAME"
+emit_event "run_start" "Starting agent task loop" "status" "started"
 
 # -- Step 1: Pre-fetch sources -----------------------------------------------
 CURRENT_STEP="prefetch"
-log "Step 1: Pre-fetching sources..."
+emit_event "stage_start" "Pre-fetching sources" "stage_name" "prefetch"
 SOURCES_JSON="[]"
 
 if command -v himalaya &>/dev/null; then
@@ -332,12 +476,14 @@ if [[ "$SOURCE_COUNT" -gt 0 ]]; then
   done < <(printf '%s\n' "$PROJECT_INDEX_JSON" | jq -c '.projects[].sources[]?')
 fi
 
-log "  Collected sources: $(echo "$SOURCES_JSON" | jq 'length') entries"
+emit_event "stage_finish" "Finished pre-fetching sources" \
+  "stage_name" "prefetch" \
+  "source_entries" "$(echo "$SOURCES_JSON" | jq 'length')"
 
 # -- Step 2: Ingest -----------------------------------------------------------
 CURRENT_STEP="ingest"
 INGEST_RAN=false
-log "Step 2: Ingesting sources..."
+emit_event "stage_start" "Ingesting sources" "stage_name" "ingest"
 if [[ "$(echo "$SOURCES_JSON" | jq '[.[].data | length] | add // 0')" -gt 0 ]]; then
   INGEST_RUNTIME=$(resolve_stage_runtime "ingest")
   set +o pipefail
@@ -348,6 +494,7 @@ $(echo "$SOURCES_JSON" | jq '.')" 2>&1 | tee -a "$LOG_FILE" >&2
   INGEST_EXIT=${PIPESTATUS[0]}
   set -o pipefail
   if [[ "$INGEST_EXIT" -ne 0 ]]; then
+    RUN_STATUS="degraded"
     log "  WARNING: Ingest step failed, continuing..."
   else
     INGEST_RAN=true
@@ -361,6 +508,7 @@ $(echo "$SOURCES_JSON" | jq '.')" 2>&1 | tee -a "$LOG_FILE" >&2
 else
   log "  No source data to ingest, skipping"
 fi
+emit_event "stage_finish" "Finished ingest stage" "stage_name" "ingest" "status" "$(if [[ "$INGEST_RAN" == "true" ]]; then printf 'ok'; else printf 'skipped'; fi)"
 
 # -- Step 3: Prioritize -------------------------------------------------------
 CURRENT_STEP="prioritize"
@@ -393,12 +541,14 @@ else
     log "Step 3: Inputs unchanged, skipping prioritize"
   else
     log "Step 3: Prioritizing tasks..."
+    emit_event "stage_start" "Prioritizing tasks" "stage_name" "prioritize"
     PRIORITIZE_RUNTIME=$(resolve_stage_runtime "prioritize")
     set +o pipefail
     run_provider_prompt "prioritize" "$PRIORITIZE_RUNTIME" "/deepwork task_loop prioritize" 2>&1 | tee -a "$LOG_FILE" >&2
     PRIORITIZE_EXIT=${PIPESTATUS[0]}
     set -o pipefail
     if [[ "$PRIORITIZE_EXIT" -ne 0 ]]; then
+      RUN_STATUS="degraded"
       log "  WARNING: Prioritize step failed, continuing..."
     else
       if ! yq '.' TASKS.yaml >/dev/null 2>&1; then
@@ -408,6 +558,7 @@ else
         echo -n "$CURRENT_HASH" > "$PRIORITIZE_HASH_FILE"
       fi
     fi
+    emit_event "stage_finish" "Finished prioritize stage" "stage_name" "prioritize" "status" "$(if [[ "$PRIORITIZE_EXIT" -eq 0 ]]; then printf 'ok'; else printf 'error'; fi)"
   fi
 fi
 
@@ -419,7 +570,7 @@ if [[ ! -f TASKS.yaml ]] || \
 fi
 
 CURRENT_STEP="execute"
-log "Step 4: Executing pending tasks (max $MAX_TASKS)..."
+emit_event "stage_start" "Executing pending tasks" "stage_name" "execute" "max_tasks" "$MAX_TASKS"
 TASK_COUNT=0
 ATTEMPTED_TASKS=":"
 
@@ -440,6 +591,8 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
   TASK_DESC=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].description" TASKS.yaml)
   TASK_WORKFLOW=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].workflow // \"\"" TASKS.yaml)
   TASK_NEEDS=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].needs // []" TASKS.yaml)
+  TASK_SOURCE=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].source // \"\"" TASKS.yaml)
+  TASK_SOURCE_REF=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].source_ref // \"\"" TASKS.yaml)
 
   if [[ "$TASK_NEEDS" != "[]" && "$TASK_NEEDS" != "null" ]]; then
     NEEDS_MET=true
@@ -453,6 +606,13 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
     if [[ "$NEEDS_MET" == "false" ]]; then
       log "  Skipping $TASK_NAME (unmet dependencies)"
       yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"blocked\"" TASKS.yaml
+      TASKS_BLOCKED=$((TASKS_BLOCKED + 1))
+      emit_event "task_finish" "Task blocked by unmet dependencies" \
+        "status" "blocked" \
+        "workflow" "$TASK_WORKFLOW" \
+        "source" "$TASK_SOURCE" \
+        "source_ref" "$TASK_SOURCE_REF" \
+        "duration_seconds" "0"
       continue
     fi
   fi
@@ -460,9 +620,13 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
   TASK_COUNT=$((TASK_COUNT + 1))
   TASK_TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
   TASK_LOG="$TASK_LOGS_DIR/${TASK_TIMESTAMP}_${TASK_NAME}.log"
+  TASK_START_TS=$(date +%s)
 
   CURRENT_TASK="$TASK_NAME"
-  log "  Executing task $TASK_COUNT: $TASK_NAME"
+  emit_event "task_start" "Executing task" \
+    "workflow" "$TASK_WORKFLOW" \
+    "source" "$TASK_SOURCE" \
+    "source_ref" "$TASK_SOURCE_REF"
 
   TASK_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).started_at = \"$TASK_STARTED_AT\"" TASKS.yaml
@@ -482,29 +646,51 @@ Description: $TASK_DESC"
 
   TASK_RUNTIME_JSON=$(build_task_runtime_json "$TASK_NAME")
   EXECUTE_RUNTIME=$(resolve_stage_runtime "execute" "$TASK_RUNTIME_JSON")
+  TASK_PROVIDER=$(echo "$EXECUTE_RUNTIME" | jq -r '.provider // ""')
+  TASK_PROFILE=$(echo "$EXECUTE_RUNTIME" | jq -r '.profile // ""')
+  TASK_MODEL=$(echo "$EXECUTE_RUNTIME" | jq -r '.model // ""')
 
   set +o pipefail
   run_provider_prompt "execute" "$EXECUTE_RUNTIME" "$PROMPT" 2>&1 | tee "$TASK_LOG" >&2
   TASK_EXIT=${PIPESTATUS[0]}
   set -o pipefail
 
+  TASK_END_TS=$(date +%s)
+  TASK_DURATION=$((TASK_END_TS - TASK_START_TS))
+  PARSED_URLS_JSON=$(extract_urls_json "$TASK_LOG")
+  ISSUE_URLS_JSON=$(extract_issue_urls_json "$PARSED_URLS_JSON")
+  PR_URLS_JSON=$(extract_pr_urls_json "$PARSED_URLS_JSON")
+  TOKEN_TOTAL=$(extract_token_total "$TASK_LOG")
+
   if [[ "$TASK_EXIT" -eq 0 ]]; then
     TASK_COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).completed_at = \"$TASK_COMPLETED_AT\"" TASKS.yaml
     yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"completed\"" TASKS.yaml
+    TASKS_COMPLETED=$((TASKS_COMPLETED + 1))
     log "  Task $TASK_NAME completed (log: $TASK_LOG)"
   else
     yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"error\"" TASKS.yaml
+    RUN_STATUS="degraded"
+    TASKS_FAILED=$((TASKS_FAILED + 1))
     log "  Task $TASK_NAME errored (exit $TASK_EXIT, log: $TASK_LOG)"
   fi
-done
 
-# -- Summary ------------------------------------------------------------------
-CURRENT_STEP="summary"
-CURRENT_TASK=""
-END_TIME=$(date +%s)
-DURATION=$((END_TIME - START_TIME))
-log "Task loop finished: executed $TASK_COUNT tasks in ${DURATION}s"
+  emit_event "task_finish" "Finished task execution" \
+    "status" "$(if [[ "$TASK_EXIT" -eq 0 ]]; then printf 'completed'; else printf 'error'; fi)" \
+    "workflow" "$TASK_WORKFLOW" \
+    "source" "$TASK_SOURCE" \
+    "source_ref" "$TASK_SOURCE_REF" \
+    "provider" "$TASK_PROVIDER" \
+    "profile" "$TASK_PROFILE" \
+    "model" "$TASK_MODEL" \
+    "duration_seconds" "$TASK_DURATION" \
+    "exit_code" "$TASK_EXIT" \
+    "token_total" "$TOKEN_TOTAL" \
+    "parsed_urls" "$(printf '%s\n' "$PARSED_URLS_JSON" | jq -c .)" \
+    "issue_urls" "$(printf '%s\n' "$ISSUE_URLS_JSON" | jq -c .)" \
+    "pr_urls" "$(printf '%s\n' "$PR_URLS_JSON" | jq -c .)" \
+    "task_log_path" "$TASK_LOG"
+done
 
 # -- Rotate old logs (keep last 20) -------------------------------------------
 COUNT=0

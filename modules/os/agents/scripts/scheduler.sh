@@ -17,6 +17,7 @@ NOTES_DIR="@notesDir@"
 AGENT_NAME="@agentName@"
 
 LOGS_DIR="$HOME/.local/state/agent-scheduler/logs"
+PROMETHEUS_TEXTFILE_DIR="${PROMETHEUS_TEXTFILE_DIR:-}"
 
 mkdir -p "$LOGS_DIR"
 
@@ -25,17 +26,113 @@ LOG_FILE="$LOGS_DIR/$TIMESTAMP.log"
 TODAY=$(date +%Y-%m-%d)
 DOW=$(date +%A | tr '[:upper:]' '[:lower:]')
 DOM=$(date +%-d)
+START_TIME=$(date +%s)
+HOST_NAME=$(hostname)
+UNIT_NAME="agent-${AGENT_NAME}-scheduler"
+RUN_ID="${AGENT_NAME}-scheduler-${TIMESTAMP}"
+METRIC_FILE=""
+if [[ -n "$PROMETHEUS_TEXTFILE_DIR" ]]; then
+  METRIC_FILE="${PROMETHEUS_TEXTFILE_DIR}/keystone-agent-scheduler-${AGENT_NAME}.prom"
+fi
+RUN_STATUS="success"
+
+logfmt_escape() {
+  local value="${1:-}"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  printf '"%s"' "$value"
+}
+
+append_log_field() {
+  local key="$1"
+  local value="$2"
+  printf ' %s=%s' "$key" "$(logfmt_escape "$value")"
+}
+
+emit_event() {
+  local event="$1"
+  local message="$2"
+  shift 2
+
+  local line="[$(date '+%H:%M:%S')]"
+  line+=$(append_log_field "event" "$event")
+  line+=$(append_log_field "msg" "$message")
+  line+=$(append_log_field "host" "$HOST_NAME")
+  line+=$(append_log_field "agent" "$AGENT_NAME")
+  line+=$(append_log_field "unit" "$UNIT_NAME")
+  line+=$(append_log_field "run_id" "$RUN_ID")
+
+  while [[ $# -ge 2 ]]; do
+    line+=$(append_log_field "$1" "$2")
+    shift 2
+  done
+
+  echo "$line" | tee -a "$LOG_FILE" >&2
+}
 
 log() {
-  echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_FILE" >&2
+  emit_event "log" "$*"
 }
+
+write_metrics() {
+  local exit_code="$1"
+  local duration="$2"
+  local now
+  now=$(date +%s)
+
+  if [[ -z "$METRIC_FILE" || ! -d "$PROMETHEUS_TEXTFILE_DIR" ]]; then
+    return
+  fi
+
+  local tmp_file
+  tmp_file=$(mktemp "${PROMETHEUS_TEXTFILE_DIR}/.${AGENT_NAME}-scheduler.XXXXXX")
+  cat > "$tmp_file" <<EOF
+# HELP keystone_agent_scheduler_last_run_timestamp_seconds Unix timestamp of the last scheduler run.
+# TYPE keystone_agent_scheduler_last_run_timestamp_seconds gauge
+keystone_agent_scheduler_last_run_timestamp_seconds{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${now}
+# HELP keystone_agent_scheduler_last_success_timestamp_seconds Unix timestamp of the last successful scheduler run.
+# TYPE keystone_agent_scheduler_last_success_timestamp_seconds gauge
+keystone_agent_scheduler_last_success_timestamp_seconds{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} $(if [[ "$exit_code" -eq 0 ]]; then printf '%s' "$now"; else printf '0'; fi)
+# HELP keystone_agent_scheduler_last_exit_code Exit code of the last scheduler run.
+# TYPE keystone_agent_scheduler_last_exit_code gauge
+keystone_agent_scheduler_last_exit_code{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${exit_code}
+# HELP keystone_agent_scheduler_last_duration_seconds Duration of the last scheduler run.
+# TYPE keystone_agent_scheduler_last_duration_seconds gauge
+keystone_agent_scheduler_last_duration_seconds{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${duration}
+# HELP keystone_agent_scheduler_tasks_created_total Number of tasks created in the last scheduler run.
+# TYPE keystone_agent_scheduler_tasks_created_total gauge
+keystone_agent_scheduler_tasks_created_total{host="${HOST_NAME}",agent="${AGENT_NAME}",unit="${UNIT_NAME}"} ${CREATED:-0}
+EOF
+  mv "$tmp_file" "$METRIC_FILE"
+}
+
+finish_run() {
+  local exit_code=$?
+  local end_time duration
+  end_time=$(date +%s)
+  duration=$((end_time - START_TIME))
+
+  if [[ "$exit_code" -ne 0 ]]; then
+    RUN_STATUS="error"
+  fi
+
+  emit_event "run_finish" "Scheduler finished" \
+    "status" "$RUN_STATUS" \
+    "exit_code" "$exit_code" \
+    "duration_seconds" "$duration" \
+    "tasks_created" "${CREATED:-0}"
+  write_metrics "$exit_code" "$duration"
+}
+
+trap finish_run EXIT
 
 if [ ! -d "$NOTES_DIR" ]; then
   echo "Notes directory $NOTES_DIR does not exist yet, skipping"
   exit 0
 fi
 cd "$NOTES_DIR"
-log "Starting scheduler for $AGENT_NAME (date: $TODAY, dow: $DOW, dom: $DOM)"
+emit_event "run_start" "Starting scheduler" "status" "started" "date" "$TODAY" "day_of_week" "$DOW" "day_of_month" "$DOM"
 
 if [ ! -f SCHEDULES.yaml ]; then
   log "No SCHEDULES.yaml found, exiting"
@@ -108,6 +205,12 @@ for i in $(seq 0 $((SCHEDULE_COUNT - 1))); do
     \"created_at\": \"$TASK_CREATED_AT\"
   }]" TASKS.yaml
 
+  emit_event "task_created" "Created scheduled task" \
+    "task_name" "${SCHED_NAME}-${TODAY}" \
+    "source" "schedule" \
+    "source_ref" "$SOURCE_REF" \
+    "workflow" "$SCHED_WORKFLOW"
+
   CREATED=$((CREATED + 1))
 done
 
@@ -171,6 +274,11 @@ if command -v calendula &>/dev/null; then
         "source_ref": env(CAL_SOURCE_REF),
         "created_at": env(TASK_CREATED_AT)
       }]' TASKS.yaml
+
+      emit_event "task_created" "Created calendar task" \
+        "task_name" "$CAL_TASK_NAME" \
+        "source" "calendar" \
+        "source_ref" "$CAL_SOURCE_REF"
 
       CREATED=$((CREATED + 1))
     done
