@@ -13,10 +13,13 @@ across platforms.
 | Self-hosted services | One-toggle enable with auto TLS/DNS | Manual or Docker | Manual or Docker | Manual or Docker | Manual or Docker |
 | Desktop environment | Hyprland (tiling, 15 themes) | Aqua (proprietary) | Explorer (proprietary) | GNOME | Hyprland |
 | Terminal environment | Zsh + Helix + Zellij + AI tools | Zsh + user choice | PowerShell / WSL | Bash + user choice | Zsh + user choice |
-| AI agents | Sandboxed OS users with own UID, SSH keys, email, desktop ([compare](agents/comparison.md)) | Third-party only | Third-party only | Third-party only | Third-party only |
+| Agents as users | Sandboxed OS users with own UID, SSH keys, email, desktop ([compare](agents/comparison.md)) | Third-party only | Third-party only | Third-party only | Third-party only |
 | Rollbacks | Instant (NixOS generations + ZFS snapshots) | Time Machine (slow) | System Restore (unreliable) | Snapper (if configured) | Timeshift (if configured) |
 | Secure Boot | Custom key enrollment via lanzaboote | Apple Secure Boot | Microsoft keys | shim-signed | No |
-| Multi-user | Declarative user accounts + agents | Yes | Yes | Yes | Yes |
+| User provisioning mechanism | Declarative user accounts + agents | Procedural | Procedural | Procedural | Procedural |
+| Tenancy inside macOS | Home Manager (native Nix) | Native | VM | VM | VM |
+| Tenancy inside Windows | Home Manager (WSL2) | VM | Native | VM (WSL2) | VM (WSL2) |
+| Tenancy inside Linux | Home Manager (native Nix) | VM | VM | Native | Native |
 
 ## keystone.terminal Cross-Platform
 
