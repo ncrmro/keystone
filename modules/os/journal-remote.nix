@@ -7,7 +7,10 @@
 # `journalRemote = true` becomes the server, all other hosts auto-forward
 # via systemd-journal-upload. No per-host config needed in nixos-config.
 #
-# SECURITY: Firewall restricts journal-remote port to the Tailscale interface.
+# TRANSPORT: When keystone.domain is set, uploads use HTTPS via the nginx
+# reverse proxy (journal.<domain>). The server-side nginx vhost is registered
+# by modules/server/services/journal-remote.nix. When no domain is set,
+# falls back to direct HTTP over Tailscale.
 {
   config,
   lib,
@@ -18,6 +21,7 @@ let
   cfg = config.keystone.os.journalRemote;
   osCfg = config.keystone.os;
   hostname = config.networking.hostName;
+  domain = config.keystone.domain;
 
   # Auto-derive serverHost from keystone.hosts registry.
   # Find the host entry with journalRemote = true.
@@ -33,10 +37,14 @@ let
   effectiveServerHost = if cfg.serverHost != null then cfg.serverHost else derivedServerHost;
 
   # Derive the server URL from the serverHost hostname.
-  # Bare hostnames resolve via Tailscale MagicDNS.
+  # When domain is set, use the nginx HTTPS proxy (journal.<domain>).
+  # When no domain, fall back to direct HTTP via Tailscale MagicDNS.
   derivedServerUrl =
     if effectiveServerHost != null then
-      "http://${effectiveServerHost}:${toString cfg.server.port}"
+      if domain != null then
+        "https://journal.${domain}"
+      else
+        "http://${effectiveServerHost}:${toString cfg.server.port}"
     else
       null;
 
@@ -49,6 +57,9 @@ let
 
   # Should this host upload? Only if: not the server, upload enabled, and a URL exists.
   shouldUpload = !isServer && cfg.upload.enable && effectiveServerUrl != null;
+
+  # Whether nginx proxying is active (domain is set)
+  useNginxProxy = domain != null;
 in
 {
   options.keystone.os.journalRemote = {
@@ -128,10 +139,18 @@ in
         listen = "http";
         port = cfg.server.port;
       };
+    })
 
-      # SECURITY: Only accept connections on the Tailscale interface (REQ-020.15).
-      # All keystone hosts run Tailscale, so this is sufficient to restrict access
-      # to fleet members without fragile iptables rules.
+    # When nginx proxies (domain is set), bind journal-remote to localhost only.
+    # Nginx terminates HTTPS and forwards to 127.0.0.1:<port>.
+    (mkIf (isServer && useNginxProxy) {
+      systemd.sockets.systemd-journal-remote.listenStreams = mkForce [
+        "127.0.0.1:${toString cfg.server.port}"
+      ];
+    })
+
+    # When no nginx (no domain), expose port on Tailscale interface directly.
+    (mkIf (isServer && !useNginxProxy) {
       networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ cfg.server.port ];
     })
 
