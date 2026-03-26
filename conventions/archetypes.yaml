@@ -46,6 +46,7 @@ archetypes:
       - tool.nix-devshell
       - tool.nix
       - code.shell-scripts
+      - process.grafana-dashboard-development
       - tool.bitwarden
       - tool.himalaya
       - tool.forgejo

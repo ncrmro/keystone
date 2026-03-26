@@ -63,6 +63,10 @@ enabled, modules derive local paths from the `keystone.repos` registry at
 14. (Future) Server modules MAY use local checkouts for service configs when
     `keystone.development = true`.
 
+For the Grafana-specific application of these development-mode rules, including
+checked-in dashboard JSON and rapid apply flows, see
+`process.grafana-dashboard-development`.
+
 ## Safety
 
 15. `keystone.development` MUST only affect path resolution — it MUST NOT
