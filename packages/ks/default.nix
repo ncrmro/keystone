@@ -1,6 +1,7 @@
 {
   lib,
   writeShellApplication,
+  curl,
   nix,
   git,
   jq,
@@ -10,6 +11,7 @@
 writeShellApplication {
   name = "ks";
   runtimeInputs = [
+    curl
     nix
     git
     jq

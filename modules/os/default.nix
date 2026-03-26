@@ -194,6 +194,7 @@ in
     ./tailscale.nix
     ./containers.nix
     ./journal-remote.nix
+    ./alloy.nix
   ];
 
   options.keystone.os = {
