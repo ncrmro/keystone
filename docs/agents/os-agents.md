@@ -939,22 +939,42 @@ claude --print -p "Do the task. /deepwork task_loop run"
 
 ## Monitoring & Observability
 
-Agents are monitored via Loki logs. A standard "Keystone OS Agents" dashboard is provisioned when `services.grafana.enable` is true.
+Agents are monitored via **Loki** (for structured events and logs) and **Prometheus** (for real-time health and success metrics). A standard "Keystone OS Agents" dashboard is provisioned by the server-side Grafana module.
 
-### Key Metrics (Loki LogQL)
+### Loki Telemetry (logfmt)
 
-| Metric | LogQL Expression |
-|--------|------------------|
-| **Completed Tasks** | `sum(count_over_time({agent!=""} |= "Finished successfully" [1h]))` |
-| **Blocked Tasks** | `sum(count_over_time({agent!=""} |~ "(?i)block" [1h]))` |
-| **Error Rate** | `sum by(agent) (rate({agent!=""} |~ "(?i)error|fail|exception" [5m]))` |
-| **Step Activity** | `sum by(agent_step) (rate({agent!=""} != "" [5m]))` |
+Agent scripts emit structured events using `logfmt`. Key fields available for querying and dashboard extraction:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `event` | Type of event | `task_finish`, `run_start`, `stage_start` |
+| `agent` | Name of the agent | `drago` |
+| `host` | Hostname | `ocean` |
+| `unit` | Systemd unit name | `agent-drago-task-loop` |
+| `status` | Outcome status | `success`, `error`, `blocked`, `degraded` |
+| `duration_seconds` | Execution time | `42` |
+| `token_total` | Total AI tokens used | `1250` |
+| `workflow` | DeepWork workflow | `sweng/sweng` |
+| `parsed_urls` | URLs found in logs | `["https://github.com/..."]` |
+
+### Prometheus Metrics
+
+The `task-loop.sh` and `scheduler.sh` scripts write metrics to the standard node exporter textfile directory (`/var/lib/keystone-node-exporter-textfiles/`).
+
+| Metric | Description |
+|--------|-------------|
+| `keystone_agent_task_loop_last_success_timestamp_seconds` | Last successful run time |
+| `keystone_agent_task_loop_last_exit_code` | Exit code of the most recent run |
+| `keystone_agent_task_loop_tasks_completed_total` | Total tasks completed in last run |
+| `keystone_agent_task_loop_tasks_failed_total` | Total tasks that errored in last run |
+| `keystone_agent_task_loop_tasks_blocked_total` | Total tasks blocked in last run |
 
 ### Alerting Recommendations
 
-1. **Agent Error Spike**: Trigger if error rate > 0.5/s over 5m.
-2. **Agent Stalled**: Trigger if no logs are received for 15m (`rate({agent!=""}[15m]) == 0`).
-3. **Task Blocked**: Trigger on a surge of "blocked" log patterns.
+1. **Agent Stalled**: Trigger if `time() - keystone_agent_task_loop_last_success_timestamp_seconds > 7200` (no success in 2 hours).
+2. **Task Failure**: Trigger on any non-zero `keystone_agent_task_loop_last_exit_code`.
+3. **Blocked Surge**: Trigger if `keystone_agent_task_loop_tasks_blocked_total > 5`.
+
 
 ## Implementation Status
 

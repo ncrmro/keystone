@@ -30,17 +30,21 @@ that apply to all repo-backed assets in development mode.
 6. Nix modules that provision Grafana dashboards MUST treat the checked-in JSON
    files as the canonical input and MUST provision them through
    `services.grafana.provision.dashboards`.
-7. When `keystone.development = true`, dashboard provisioning paths SHOULD
+7. The `keystone.server.services.grafana.extraDashboardPaths` option SHOULD be used
+   to provision non-keystone dashboards. It supports both simple directory paths
+   and complex provider attribute sets (e.g., for dashboards sourced via `linkFarm`
+   or `fetchurl`).
+8. When `keystone.development = true`, dashboard provisioning paths SHOULD
    resolve to the local checkout derived from `keystone.repos`, following the
    same path-resolution model as `process.keystone-development-mode`.
-8. Dashboard development flows MUST preserve the locked-build behavior from
+9. Dashboard development flows MUST preserve the locked-build behavior from
    `process.keystone-development-mode` when `keystone.development = false`;
    development mode MUST only change path resolution and iteration speed.
-9. The repo MUST provide a documented dashboard iteration path, such as a
-   helper command, development-mode provisioning path, or API-driven import
-   flow, that lets a developer edit repo JSON and apply the changed dashboard
-   to Grafana without rebuilding unrelated services.
-10. If a rapid-apply helper imports dashboards through the Grafana API or
+10. The repo MUST provide a documented dashboard iteration path, such as a
+    helper command, development-mode provisioning path, or API-driven import
+    flow, that lets a developer edit repo JSON and apply the changed dashboard
+    to Grafana without rebuilding unrelated services.
+11. If a rapid-apply helper imports dashboards through the Grafana API or
     Grafana MCP, it MUST still write back to the checked-in JSON source and
     MUST NOT create a second, unmanaged source of truth.
 
@@ -49,18 +53,22 @@ that apply to all repo-backed assets in development mode.
 See `os.zfs-backup` for the concrete ZFS metrics and health signals that host
 dashboards are expected to consume.
 
-11. Keystone dashboards MUST prefer Grafana datasources backed by Prometheus and
-    Loki before introducing a new datasource type.
-12. A new datasource, Alloy pipeline change, or JSON/API bridge MAY be added
+12. Keystone dashboards MUST prefer Grafana datasources backed by Prometheus and
+    Loki.
+13. When `keystone.server.services.prometheus` or `loki` are enabled, the Grafana
+    module MUST automatically provision them as datasources using the well-known
+    UIDs (`prometheus` and `loki`).
+14. A new datasource, Alloy pipeline change, or JSON/API bridge MAY be added
     only when the required data cannot be represented cleanly through the
     existing Prometheus and Loki model.
-13. Dashboard JSON, alert rules, and links MUST use the well-known datasource
+15. Dashboard JSON, alert rules, and links MUST use the well-known datasource
     UIDs defined by keystone modules rather than ad hoc per-dashboard strings.
-14. Metrics that represent durable numeric state, such as backup age, backup
+16. Metrics that represent durable numeric state, such as backup age, backup
     success, host health, and timer success timestamps, MUST be exposed to
     Prometheus rather than reconstructed from log lines.
-15. Event streams, execution traces, task transitions, parsed URLs, and
-    human-readable failure context SHOULD be emitted to Loki as structured logs.
+17. Event streams, execution traces, task transitions, parsed URLs, and
+    human-readable failure context SHOULD be emitted to Loki as structured
+    logfmt logs.
 
 ## Dashboard topology
 
