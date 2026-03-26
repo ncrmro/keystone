@@ -134,66 +134,7 @@ prompt_for_session_slug() {
 
 # ============== CONTEXTS MENU ==============
 show_contexts_menu() {
-  # Check if pz is available for project discovery
-  if ! command -v pz >/dev/null 2>&1; then
-    notify-send "pz not found" "Project session manager (pz) is required for contexts" -t 3000
-    back_to show_main_menu
-    return
-  fi
-
-  # Build list of active contexts from zellij sessions
-  local zellij_output
-  zellij_output=$(zellij list-sessions --no-formatting 2>/dev/null || true)
-  
-  local projects
-  projects=$(pz discover-slugs 2>/dev/null || echo "")
-
-  local context_list=""
-  
-  # Show every registered project and mark whether it has a live session.
-  for slug in $projects; do
-    local has_live_session=false
-    while IFS= read -r line; do
-      [[ -z "$line" ]] && continue
-
-      local session_name
-      session_name=$(printf "%s\n" "$line" | awk '{print $1}')
-
-      if session_name_matches_slug "$session_name" "$slug" && ! printf "%s\n" "$line" | grep -q "EXITED"; then
-        has_live_session=true
-        break
-      fi
-    done <<< "$zellij_output"
-
-    if [[ "$has_live_session" == "true" ]]; then
-      context_list="${context_list}●  ${slug}\n"
-    else
-      context_list="${context_list}○  ${slug}\n"
-    fi
-  done
-
-  if [[ -z "$context_list" ]]; then
-    notify-send "No contexts" "No projects found via pz" -t 2000
-    back_to show_main_menu
-    return
-  fi
-
-  context_list="${context_list%\\n}"
-  selected=$(echo -e "$context_list" | keystone-launch-walker --dmenu --width 350 --minheight 1 --maxheight 630 -p "Context…" 2>/dev/null) || { back_to show_main_menu; return; }
-
-  if [[ -n "$selected" ]]; then
-    local selected_slug
-    selected_slug=$(echo "$selected" | awk '{print $2}')
-    if echo "$selected" | grep -q "^●"; then
-      switch_to_active_project_context "$selected_slug" "$zellij_output"
-    else
-      local session_slug
-      session_slug=$(prompt_for_session_slug) || { back_to show_main_menu; return; }
-      launch_project_context "$selected_slug" "$session_slug"
-    fi
-  else
-    back_to show_main_menu
-  fi
+  keystone-context-switch
 }
 
 # ============== LEARN MENU ==============
@@ -264,7 +205,7 @@ show_theme_menu() {
 
   if [[ -n "$selected" ]]; then
     # Extract theme name (remove icon prefix)
-    theme_name=$(echo "$selected" | sed 's/^󰸌  //')
+    theme_name="${selected#󰸌  }"
     keystone-theme-switch "$theme_name"
   else
     show_style_menu

@@ -31,13 +31,14 @@ The system MUST provide project-aware desktop context selectors that integrate `
 - **dt-context-001.2**: When a selected project or session already has an active desktop window, the desktop MUST switch to the Hyprland workspace containing that window instead of opening a new terminal window.
 - **dt-context-001.3**: The desktop MUST determine the target workspace from the live Hyprland client list, rather than assuming the session uses a named workspace.
 - **dt-context-001.4**: If an active zellij session exists for the selected project or session but no matching desktop window exists, the desktop MUST open a new terminal attached to that existing session.
-- **dt-context-001.5**: If no active zellij session exists for the selected project, the desktop MUST offer creation of a new session.
-- **dt-context-001.6**: The project menu MUST always include an explicit "New session" selection for each project.
+- **dt-context-001.5**: Choosing a project from the project list MUST open a project details or actions view before any switch or attach action occurs.
+- **dt-context-001.6**: The project details or actions view MUST always include an explicit "New session" selection for each project, even when that project already has active sessions.
 - **dt-context-001.7**: Choosing "New session" MUST prompt for a session slug before launch.
 - **dt-context-001.8**: The session slug prompt MAY allow an empty value to create or attach to the project's main session.
 - **dt-context-001.9**: The desktop MUST support both current `pz` session names and legacy `obs-<project>` session names when determining whether a session is active.
 - **dt-context-001.10**: When multiple desktop windows correspond to the same active session, the desktop MUST prefer the focused matching window. If no matching window is focused, the desktop MUST choose a deterministic matching window.
 - **dt-context-001.11**: The same active-session behavior MUST apply in both the dedicated context switcher and the menu-based project selector.
+- **dt-context-001.12**: The project details or actions view MUST be reachable by keyboard. When the launcher supports directional key hooks, Right Arrow SHOULD open that view. When it does not, Enter or another primary selection action MAY open that view instead.
 
 ### Project details page (dt-context-002)
 
@@ -45,6 +46,7 @@ The system SHOULD provide a project-specific details page reachable from the pro
 
 - **dt-context-002.1**: The project details page MUST display project information sourced from the notes project hub when available.
 - **dt-context-002.2**: The project details page SHOULD display active milestones for the project's GitHub repository.
+- **dt-context-002.2a**: When GitHub milestone data is unavailable, the page MAY fall back to milestone data stored in the notes project hub.
 - **dt-context-002.3**: For each active milestone shown, the page SHOULD display associated open issues and due dates when available.
 - **dt-context-002.4**: If notes, milestone, or issue data is unavailable, the page MUST degrade gracefully without preventing project and session actions.
 
