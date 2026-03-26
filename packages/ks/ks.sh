@@ -9,6 +9,7 @@
 # Commands:
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
 #   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (home-manager only with --dev, full system default)
+#   grafana dashboards apply|export <uid>              Apply or export keystone dashboard JSON via Grafana API
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
 #   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
 #   doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state
@@ -1287,6 +1288,155 @@ load_conventions() {
   done
 }
 
+grafana_dashboards_dir() {
+  local repo_root="$1"
+  local ks_repo
+  ks_repo=$(find_keystone_repo "$repo_root")
+
+  if [[ -n "$ks_repo" && -d "$ks_repo/modules/server/services/grafana/dashboards" ]]; then
+    printf '%s\n' "$ks_repo/modules/server/services/grafana/dashboards"
+    return
+  fi
+
+  if [[ -d "$repo_root/modules/server/services/grafana/dashboards" ]]; then
+    printf '%s\n' "$repo_root/modules/server/services/grafana/dashboards"
+    return
+  fi
+
+  echo "Error: could not locate keystone Grafana dashboards directory." >&2
+  exit 1
+}
+
+resolve_grafana_url() {
+  local repo_root="$1"
+  if [[ -n "${GRAFANA_URL:-}" ]]; then
+    printf '%s\n' "$GRAFANA_URL"
+    return
+  fi
+
+  local hosts_nix="$repo_root/hosts.nix"
+  if [[ ! -f "$hosts_nix" ]]; then
+    echo "Error: hosts.nix not found while resolving Grafana URL." >&2
+    exit 1
+  fi
+
+  local current_hostname current_host domain subdomain
+  current_hostname=$(hostname)
+  current_host=$(nix eval -f "$hosts_nix" --raw \
+    --apply "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"$current_hostname\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m" \
+    2>/dev/null || true)
+
+  if [[ -z "$current_host" ]]; then
+    echo "Error: set GRAFANA_URL or run ks from a host that exists in hosts.nix." >&2
+    exit 1
+  fi
+
+  subdomain=$(nix eval "$repo_root#nixosConfigurations.${current_host}.config.keystone.server.services.grafana.subdomain" --raw 2>/dev/null || printf 'grafana')
+  domain=$(nix eval "$repo_root#nixosConfigurations.${current_host}.config.keystone.domain" --raw 2>/dev/null || true)
+
+  if [[ -z "$domain" ]]; then
+    echo "Error: could not resolve Grafana URL from config. Set GRAFANA_URL." >&2
+    exit 1
+  fi
+
+  printf 'https://%s.%s\n' "$subdomain" "$domain"
+}
+
+resolve_grafana_api_key() {
+  if [[ -n "${GRAFANA_API_KEY:-}" ]]; then
+    printf '%s\n' "$GRAFANA_API_KEY"
+    return
+  fi
+
+  if [[ -f /run/agenix/grafana-mcp-api-key ]]; then
+    tr -d '\n' < /run/agenix/grafana-mcp-api-key
+    return
+  fi
+
+  echo "Error: set GRAFANA_API_KEY or provision /run/agenix/grafana-mcp-api-key." >&2
+  exit 1
+}
+
+cmd_grafana_dashboards() {
+  local action="${1:-}"
+  shift || true
+
+  local repo_root dashboards_dir grafana_url grafana_api_key
+  repo_root=$(find_repo)
+  dashboards_dir=$(grafana_dashboards_dir "$repo_root")
+  grafana_url=$(resolve_grafana_url "$repo_root")
+  grafana_api_key=$(resolve_grafana_api_key)
+
+  case "$action" in
+    apply)
+      local file uid payload
+      shopt -s nullglob
+      for file in "$dashboards_dir"/*.json; do
+        uid=$(jq -r '.uid // empty' "$file")
+        if [[ -z "$uid" ]]; then
+          echo "Skipping $file (missing uid)" >&2
+          continue
+        fi
+        payload=$(jq -cn --slurpfile dashboard "$file" '{dashboard: $dashboard[0], overwrite: true}')
+        curl -fsS \
+          -H "Authorization: Bearer ${grafana_api_key}" \
+          -H 'Content-Type: application/json' \
+          -X POST \
+          --data "$payload" \
+          "${grafana_url}/api/dashboards/db" >/dev/null
+        echo "Applied ${uid}"
+      done
+      ;;
+    export)
+      local uid="${1:-}"
+      local target_file response body
+      if [[ -z "$uid" ]]; then
+        echo "Usage: ks grafana dashboards export <uid>" >&2
+        exit 1
+      fi
+
+      target_file=$(find "$dashboards_dir" -maxdepth 1 -type f -name '*.json' -print0 | \
+        while IFS= read -r -d '' file; do
+          if [[ "$(jq -r '.uid // empty' "$file")" == "$uid" ]]; then
+            printf '%s\n' "$file"
+            break
+          fi
+        done)
+
+      if [[ -z "$target_file" ]]; then
+        echo "Error: no checked-in dashboard JSON with uid '$uid' under $dashboards_dir." >&2
+        exit 1
+      fi
+
+      response=$(curl -fsS \
+        -H "Authorization: Bearer ${grafana_api_key}" \
+        "${grafana_url}/api/dashboards/uid/${uid}")
+      body=$(printf '%s\n' "$response" | jq '.dashboard | del(.id, .version)')
+      printf '%s\n' "$body" > "$target_file"
+      echo "Exported ${uid} -> ${target_file}"
+      ;;
+    *)
+      echo "Usage: ks grafana dashboards apply|export <uid>" >&2
+      exit 1
+      ;;
+  esac
+}
+
+cmd_grafana() {
+  local subcommand="${1:-}"
+  shift || true
+
+  case "$subcommand" in
+    dashboards)
+      cmd_grafana_dashboards "$@"
+      ;;
+    *)
+      echo "Usage: ks grafana dashboards apply|export <uid>" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # --- Build host table from hosts.nix ---
 build_host_table() {
   local hosts_nix="$1"
@@ -1996,6 +2146,7 @@ if [[ $# -lt 1 ]]; then
   echo "" >&2
   echo "Commands:" >&2
   echo "  build  [--lock] [HOSTS]                            Build (home-manager only; --lock for full system)" >&2
+  echo "  grafana dashboards apply|export <uid>             Apply or export keystone dashboard JSON" >&2
   echo "  update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Pull, lock, build, push, and deploy" >&2
   echo "  switch [--boot] [HOSTS]                            Deploy current state without lock/push (full system)" >&2
   echo "  sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts" >&2
@@ -2012,6 +2163,7 @@ fi
 CMD="$1"; shift
 case "$CMD" in
   build)  cmd_build "$@" ;;
+  grafana) cmd_grafana "$@" ;;
   update) cmd_update "$@" ;;
   switch) cmd_switch "$@" ;;
   sync-host-keys) cmd_sync_host_keys "$@" ;;
@@ -2019,7 +2171,7 @@ case "$CMD" in
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: build, update, switch, sync-host-keys, agent, doctor" >&2
+    echo "Known commands: build, grafana, update, switch, sync-host-keys, agent, doctor" >&2
     exit 1
     ;;
 esac

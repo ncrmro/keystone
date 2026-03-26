@@ -1,0 +1,118 @@
+{
+  "uid": "keystone-system-index",
+  "title": "Keystone System Index",
+  "tags": ["keystone", "system"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 0,
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Hosts Reporting",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "count(count by(host) (up{host!=\"\"}))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Agents With Task Activity",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "count(sum by(agent) (count_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" [24h])))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Recent Blocked Tasks",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" | status=\"blocked\" [24h]))"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Host Health",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "max by(host) (up{host!=\"\"})",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "links": [
+            {
+              "title": "Open host dashboard",
+              "url": "/d/keystone-host-overview/keystone-host-overview?var-host=${__value.raw}"
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Agent Activity",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum by(agent) (count_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" [$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "links": [
+            {
+              "title": "Open agent dashboard",
+              "url": "/d/keystone-agent-overview/keystone-agent-overview?var-agent=${__value.raw}"
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Recent Failures",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{agent!=\"\"} | logfmt | status=~\"error|failed|blocked\""
+        }
+      ]
+    }
+  ]
+}

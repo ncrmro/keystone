@@ -1,0 +1,129 @@
+{
+  "uid": "keystone-host-overview",
+  "title": "Keystone Host Overview",
+  "tags": ["keystone", "host"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 0,
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "refresh": 1,
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(up{host!=\"\"}, host)",
+        "current": { "selected": true, "text": "", "value": "" }
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "System index",
+      "url": "/d/keystone-system-index/keystone-system-index"
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Host Up",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "max(up{host=\"$host\"})"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Backup Age (seconds)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "time() - max(zfs_backup_last_success_timestamp{host=\"$host\"})"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Recent Task Errors",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({agent!=\"\"} | logfmt | host=\"$host\" | event=\"task_finish\" | status=\"error\" [24h]))"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Agents On Host",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum by(agent) (count_over_time({agent!=\"\"} | logfmt | host=\"$host\" | event=\"task_finish\" [$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "links": [
+            {
+              "title": "Open agent dashboard",
+              "url": "/d/keystone-agent-overview/keystone-agent-overview?var-agent=${__value.raw}"
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "ZFS Backup Metrics",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "zfs_snapshot_newest_age_seconds{host=\"$host\"}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "zfs_backup_last_exit_code{host=\"$host\"}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Host Agent Logs",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{agent!=\"\"} | logfmt | host=\"$host\""
+        }
+      ]
+    }
+  ]
+}

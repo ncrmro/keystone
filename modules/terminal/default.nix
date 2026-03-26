@@ -191,6 +191,20 @@ in
       ${ensurePathsScript}/bin/keystone-ensure-paths
     '';
 
+    home.activation.keystoneCloneRepos = lib.hm.dag.entryAfter [ "keystoneEnsurePaths" ] ''
+      export GIT_TERMINAL_PROMPT=0
+      ${lib.concatStringsSep "\n" (
+        lib.mapAttrsToList (name: repo: ''
+          target="${keystoneHome}/repos/${name}"
+          if [ ! -d "$target/.git" ]; then
+            echo "Cloning managed repo ${name}..."
+            mkdir -p "$(dirname "$target")"
+            ${pkgs.git}/bin/git clone "${repo.url}" "$target" || echo "Warning: Failed to clone ${name}, skipping..."
+          fi
+        '') config.keystone.repos
+      )}
+    '';
+
     home.sessionVariables = {
       CODE_DIR = codeRoot;
       WORKTREE_DIR = worktreeRoot;

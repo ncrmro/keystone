@@ -14,9 +14,17 @@
   ...
 }:
 let
-  serverLib = import ../lib.nix { inherit lib; };
+  serverLib = import ../../lib.nix { inherit lib; };
   serverCfg = config.keystone.server;
   cfg = serverCfg.services.grafana;
+  keystoneDashboards = ./dashboards;
+  extraDashboardProviders = lib.imap0 (
+    index: path: {
+      name = "Extra ${toString (index + 1)}";
+      folder = builtins.baseNameOf (toString path);
+      options.path = path;
+    }
+  ) cfg.extraDashboardPaths;
 in
 {
   options.keystone.server.services.grafana =
@@ -29,6 +37,17 @@ in
       registerDNS = true;
     }
     // {
+      extraDashboardPaths = lib.mkOption {
+        type = lib.types.listOf lib.types.path;
+        default = [ ];
+        description = ''
+          Additional dashboard directories to provision alongside the built-in
+          keystone dashboards. This lets nixos-config manage non-keystone
+          Grafana dashboards declaratively without mixing them into the keystone
+          repo.
+        '';
+      };
+
       alerts = {
         defaultEnabled = lib.mkOption {
           type = lib.types.bool;
@@ -61,6 +80,15 @@ in
           root_url = "https://${cfg.subdomain}.${config.keystone.domain}/";
         };
         provision.enable = true;
+        provision.dashboards.settings.providers =
+          [
+            {
+              name = "Keystone";
+              folder = "Keystone";
+              options.path = keystoneDashboards;
+            }
+          ]
+          ++ extraDashboardProviders;
       };
     })
 
