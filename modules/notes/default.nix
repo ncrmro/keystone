@@ -266,6 +266,12 @@ let
     else
       echo "zk notebook already exists at $NOTES_PATH/.zk — skipping scaffold"
     fi
+
+    # Fix permissions for agent-admins group access (setgid + group-writable)
+    if [ -d "$NOTES_PATH/.zk" ]; then
+      chmod -R g+w "$NOTES_PATH/.zk"
+      chmod g+s "$NOTES_PATH/.zk"
+    fi
   '';
 in
 {

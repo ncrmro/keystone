@@ -175,6 +175,7 @@ in
         push.autoSetupRemote = true;
         init.defaultBranch = "main";
         submodule.recurse = true;
+        safe.directory = notesPath;
       };
     };
 
