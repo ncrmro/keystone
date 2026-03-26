@@ -206,6 +206,11 @@ let
     builtins.readFile ./keystone-context-switch.sh
   );
 
+  # Internal helper for Walker/Elephant project menus
+  keystoneProjectMenu = pkgs.writeShellScriptBin "keystone-project-menu" (
+    builtins.readFile ./keystone-project-menu.sh
+  );
+
   # Inbox capture launcher — opens zk edit -i in a dedicated floating Ghostty window
   keystoneNotesInbox = pkgs.writeShellScriptBin "keystone-notes-inbox" (
     builtins.readFile ./keystone-notes-inbox.sh
@@ -269,6 +274,12 @@ let
     })
     (mkHomeScriptCommand {
       inherit config;
+      commandName = "keystone-project-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-project-menu.sh";
+      package = keystoneProjectMenu;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
       commandName = "keystone-notes-inbox";
       relativePath = "modules/desktop/home/scripts/keystone-notes-inbox.sh";
       package = keystoneNotesInbox;
@@ -286,6 +297,7 @@ in
             keystoneIdleToggle
             keystoneNightlightToggle
             keystoneBatteryMonitor
+            keystoneProjectMenu
             # Dependencies that should be available
             pkgs.gpu-screen-recorder
             pkgs.libxkbcommon # for xkbcli in keybindings menu

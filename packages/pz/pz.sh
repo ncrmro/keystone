@@ -7,6 +7,7 @@
 # Commands:
 #   <project>   Create or attach to a Zellij session for the given project slug
 #   list        List active project sessions
+#   info        Show project mission, milestones, and sessions
 #   agent       Run agentctl within the project context
 #
 # Options:
@@ -45,6 +46,7 @@ pz — Projctl Zellij session manager
 Usage:
   pz <project> [<session>] [--layout <name>]  Create or attach to a Zellij session
   pz list [--project <slug>]      List active project sessions
+  pz info <project-slug>          Show project mission, milestones, and sessions
   pz agent <agent> <cmd> [args]   Run agentctl within the project context
   pz --help                       Show this help message
 
@@ -216,6 +218,349 @@ project_hub_path() {
   ' | head -n 1
 }
 
+sanitize_text() {
+  printf "%s" "${1//$'\t'/ }" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
+}
+
+project_note_json() {
+  local target_slug="$1"
+
+  zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet 2>/dev/null | jq -c --arg slug "$target_slug" '
+    def merged_tags:
+      if ((.metadata.tags // []) | length) > 0 then
+        (.metadata.tags // [])
+      else
+        (.tags // [])
+      end
+      | map(select(type == "string"))
+      | unique;
+
+    def explicit_project_tags:
+      merged_tags
+      | map(select(startswith("project/")) | sub("^project/"; ""))
+      | unique;
+
+    def bare_project_tags:
+      if (merged_tags | index("project")) == null then
+        []
+      else
+        merged_tags
+        | map(
+            select(
+              test("^[a-z0-9]+(-[a-z0-9]+)*$")
+              and . != "index"
+              and . != "project"
+              and . != "archive"
+            )
+          )
+        | unique
+      end;
+
+    def inferred_project:
+      if (.metadata.project // "") != "" then
+        .metadata.project
+      elif (explicit_project_tags | length) == 1 then
+        explicit_project_tags[0]
+      elif (bare_project_tags | length) == 1 then
+        bare_project_tags[0]
+      else
+        ""
+      end;
+
+    first(
+      .[]
+      | select((.metadata.type // "") == "index")
+      | select(inferred_project == $slug)
+    )
+  ' | head -n 1
+}
+
+project_mission() {
+  local project_json="$1"
+  local description
+  local body
+  local first_paragraph
+
+  description=$(printf "%s\n" "$project_json" | jq -r '.metadata.description // ""')
+  if [[ -n "$description" && "$description" != "null" ]]; then
+    printf "%s\n" "$(sanitize_text "$description")"
+    return 0
+  fi
+
+  body=$(printf "%s\n" "$project_json" | jq -r '.body // ""')
+  first_paragraph=$(
+    printf "%s\n" "$body" | awk '
+      /^## / { next }
+      /^#/ { next }
+      /^\|/ { next }
+      /^- / { next }
+      /^\s*$/ {
+        if (paragraph != "") {
+          print paragraph
+          exit
+        }
+        next
+      }
+      {
+        if (paragraph == "") {
+          paragraph = $0
+        } else {
+          paragraph = paragraph " " $0
+        }
+      }
+      END {
+        if (paragraph != "") {
+          print paragraph
+        }
+      }
+    '
+  )
+
+  if [[ -n "$first_paragraph" ]]; then
+    printf "%s\n" "$(sanitize_text "$first_paragraph")"
+  else
+    printf "No mission summary found in the project hub.\n"
+  fi
+}
+
+project_milestones() {
+  local project_json="$1"
+
+  printf "%s\n" "$project_json" | jq -r '
+    def milestone_entries:
+      (.metadata.milestones? // empty)
+      | if type == "array" then .[] else . end;
+
+    [
+      milestone_entries
+      | {
+          name: (.name // .title // .summary // .evidence // .description // "Milestone"),
+          date: (.date // .due_date // .due // "")
+        }
+      | if .date != "" then "\(.date) \(.name)" else .name end
+    ][0:3][]
+  ' 2>/dev/null
+}
+
+cmd_info() {
+  local project_slug="$1"
+  local project_json
+  local mission
+  local milestone
+  local had_milestones=0
+  local had_sessions=0
+
+  project_json=$(project_note_json "$project_slug")
+  if [[ -n "$project_json" ]]; then
+    mission=$(project_mission "$project_json")
+  else
+    mission="No project hub details found."
+  fi
+
+  printf "\033[1;34mProject:\033[0m %s\n\n" "$project_slug"
+  printf "\033[1;34mMission:\033[0m\n%s\n\n" "$mission"
+  printf "\033[1;34mMilestones:\033[0m\n"
+
+  if [[ -n "$project_json" ]]; then
+    while IFS= read -r milestone; do
+      [[ -z "$milestone" ]] && continue
+      had_milestones=1
+      printf -- "- %s\n" "$(sanitize_text "$milestone")"
+    done < <(project_milestones "$project_json")
+  fi
+
+  if [[ "$had_milestones" -eq 0 ]]; then
+    printf -- "- none listed\n"
+  fi
+
+  printf "\n\033[1;34mActive Sessions:\033[0m\n"
+  local sessions
+  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+    local session_name
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    if [[ -n "$(match_registered_project_slug "$session_name" "$project_slug")" ]]; then
+      had_sessions=1
+      local session_slug status
+      status=$(session_status_from_line "$line")
+      if [[ "$session_name" == "$project_slug" ]]; then
+        session_slug="main"
+      else
+        session_slug="${session_name#"$project_slug"-}"
+      fi
+      printf -- "- %-20s (%s)\n" "$session_slug" "$status"
+    fi
+  done <<< "$sessions"
+
+  if [[ "$had_sessions" -eq 0 ]]; then
+    printf -- "- none active\n"
+  fi
+}
+
+cmd_sessions() {
+  local project_slug="$1"
+  local line
+
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+
+    local session_name session_slug status
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    if [[ -z "$(match_registered_project_slug "$session_name" "$project_slug")" ]]; then
+      continue
+    fi
+
+    if [[ "$session_name" == "$project_slug" ]]; then
+      session_slug="main"
+    else
+      session_slug="${session_name#"$project_slug"-}"
+    fi
+
+    status=$(session_status_from_line "$line")
+    printf "%s\t%s\n" "$session_slug" "$status"
+  done < <(zellij list-sessions --no-formatting 2>/dev/null || true)
+}
+
+cmd_summary() {
+  local project_slug="$1"
+  local count=0
+  local line
+
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+
+    local session_name
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    if [[ -n "$(match_registered_project_slug "$session_name" "$project_slug")" ]]; then
+      count=$((count + 1))
+    fi
+  done < <(zellij list-sessions --no-formatting 2>/dev/null || true)
+
+  if [[ "$count" -eq 0 ]]; then
+    printf "not running\n"
+  elif [[ "$count" -eq 1 ]]; then
+    printf "1 session active\n"
+  else
+    printf "%s sessions active\n" "$count"
+  fi
+}
+
+cmd_preview() {
+  local project_slug="$1"
+  local project_json
+  local mission
+  local milestone
+  local had_milestones=0
+  local had_sessions=0
+
+  project_json=$(project_note_json "$project_slug")
+  if [[ -n "$project_json" ]]; then
+    mission=$(project_mission "$project_json")
+  else
+    mission="No project hub details found."
+  fi
+
+  printf "Project: %s\n\n" "$project_slug"
+  printf "Mission:\n%s\n\n" "$mission"
+  printf "Milestones:\n"
+
+  if [[ -n "$project_json" ]]; then
+    while IFS= read -r milestone; do
+      [[ -z "$milestone" ]] && continue
+      had_milestones=1
+      printf -- "- %s\n" "$(sanitize_text "$milestone")"
+    done < <(project_milestones "$project_json")
+  fi
+
+  if [[ "$had_milestones" -eq 0 ]]; then
+    printf -- "- none listed\n"
+  fi
+
+  printf "\nActive Sessions:\n"
+  local sessions
+  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+    local session_name
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    if [[ -n "$(match_registered_project_slug "$session_name" "$project_slug")" ]]; then
+      had_sessions=1
+      local session_slug status
+      status=$(session_status_from_line "$line")
+      if [[ "$session_name" == "$project_slug" ]]; then
+        session_slug="main"
+      else
+        session_slug="${session_name#"$project_slug"-}"
+      fi
+      printf -- "- %-20s (%s)\n" "$session_slug" "$status"
+    fi
+  done <<< "$sessions"
+
+  if [[ "$had_sessions" -eq 0 ]]; then
+    printf -- "- none active\n"
+  fi
+}
+
+cmd_export_menu_data() {
+  local project_output
+  local line
+  local -A project_sessions_count=()
+  local -A project_missions=()
+  local slugs=()
+
+  if ! project_output=$(discover_projects); then
+    exit 1
+  fi
+
+  while IFS=$'\t' read -r s la; do
+    [[ -z "$s" ]] && continue
+    slugs+=("$s")
+    project_sessions_count["$s"]=0
+  done <<< "$project_output"
+
+  # Bulk session count
+  local sessions
+  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+    local session_name project_slug
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    project_slug=$(match_registered_project_slug "$session_name" "${slugs[@]}")
+    if [[ -n "$project_slug" ]]; then
+      project_sessions_count["$project_slug"]=$((project_sessions_count["$project_slug"] + 1))
+    fi
+  done <<< "$sessions"
+
+  # Bulk project info (mission)
+  # NOTE: This still calls project_note_json which calls zk list.
+  # We could optimize this further by calling zk once and parsing in jq,
+  # but for now this is 1 call per project instead of N+1 from Lua.
+  for s in "${slugs[@]}"; do
+    local project_json mission
+    project_json=$(project_note_json "$s")
+    if [[ -n "$project_json" ]]; then
+      mission=$(project_mission "$project_json")
+    else
+      mission="not found"
+    fi
+    
+    local session_label
+    local count=${project_sessions_count[$s]}
+    if [[ "$count" -eq 0 ]]; then
+      session_label="not running"
+    elif [[ "$count" -eq 1 ]]; then
+      session_label="1 session active"
+    else
+      session_label="$count sessions active"
+    fi
+
+    printf "%s\t%s\t%s\n" "$s" "$session_label" "$mission"
+  done
+}
+
 session_status_from_line() {
   local line="$1"
 
@@ -292,12 +637,12 @@ cmd_list() {
   # Group sessions by project
   declare -A project_sessions
   while IFS= read -r line; do
-    local name project_slug session_slug status suffix
+    local session_name project_slug session_slug status suffix
     [[ -z "$line" ]] && continue
 
-    name=$(printf "%s\n" "$line" | awk '{print $1}')
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
 
-    project_slug=$(match_registered_project_slug "$name" "${slugs[@]}")
+    project_slug=$(match_registered_project_slug "$session_name" "${slugs[@]}")
     if [[ -z "$project_slug" ]]; then
       continue
     fi
@@ -306,7 +651,7 @@ cmd_list() {
       continue
     fi
 
-    suffix="${name#"$project_slug"}"
+    suffix="${session_name#"$project_slug"}"
     if [[ -z "$suffix" ]]; then
       session_slug="main"
     else
@@ -596,6 +941,26 @@ case "$1" in
   list)
     shift
     cmd_list "$@"
+    ;;
+  summary)
+    shift
+    cmd_summary "$@"
+    ;;
+  sessions)
+    shift
+    cmd_sessions "$@"
+    ;;
+  info)
+    shift
+    cmd_info "$@"
+    ;;
+  preview)
+    shift
+    cmd_preview "$@"
+    ;;
+  export-menu-data)
+    shift
+    cmd_export_menu_data "$@"
     ;;
   agent)
     shift

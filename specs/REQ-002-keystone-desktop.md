@@ -39,6 +39,9 @@ The system MUST provide project-aware desktop context selectors that integrate `
 - **dt-context-001.10**: When multiple desktop windows correspond to the same active session, the desktop MUST prefer the focused matching window. If no matching window is focused, the desktop MUST choose a deterministic matching window.
 - **dt-context-001.11**: The same active-session behavior MUST apply in both the dedicated context switcher and the menu-based project selector.
 - **dt-context-001.12**: The project details or actions view MUST be reachable by keyboard. When the launcher supports directional key hooks, Right Arrow SHOULD open that view. When it does not, Enter or another primary selection action MAY open that view instead.
+- **dt-context-001.13 (Delegation):** Desktop components MUST NOT implement domain logic for project discovery, session management, or metadata retrieval. They MUST delegate all such operations to the `pz` CLI or other terminal-first tools.
+- **dt-context-001.14 (Experience Parity):** The desktop project menus SHOULD provide a visual experience that mirrors the information hierarchy and action set of the `pz` CLI, ensuring a seamless transition for users moving between terminal and desktop contexts.
+- **dt-context-001.15 (Performance):** Desktop menus MUST utilize bulk data retrieval patterns (e.g., a single CLI call returning all required menu state) to ensure menu responsiveness and avoid N+1 performance bottlenecks.
 
 ### Project details page (dt-context-002)
 

@@ -125,6 +125,13 @@ Destroy a project session.
 
 ## Behavioral Requirements
 
+### Workflow Parity and Delegation (pz-parity)
+
+1. **pz-parity-001 (Terminal First):** All project management workflows (discovery, session lifecycle, metadata retrieval) MUST be implemented in the `pz` CLI as the primary interface.
+2. **pz-parity-002 (Consistency):** The `pz` CLI MUST ensure that the same set of project-aware metadata and session actions are available to both interactive terminal users and programmatic desktop consumers.
+3. **pz-parity-003 (Unified State):** There MUST be a single source of truth for project and session state, managed by `pz` and its dependencies (`zk`, `zellij`). Desktop components MUST NOT maintain independent or parallel state for these entities.
+4. **pz-parity-004 (Bulk Provisioning):** The `pz` CLI MUST provide high-performance, machine-readable export formats (e.g., `--json` or `--tsv`) to allow desktop consumers to retrieve all necessary menu state in a single call, preventing N+1 performance bottlenecks.
+
 ### Session Lifecycle
 
 1. Sessions MUST persist across terminal disconnections (Zellij default behavior).

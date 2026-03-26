@@ -42,6 +42,9 @@ let
 
   # Read the layout XML
   walkerLayoutXml = builtins.readFile ./walker-layout.xml;
+  keystoneProjectsMenuLua = builtins.readFile ./keystone-projects.lua;
+  keystoneProjectDetailsMenuLua = builtins.readFile ./keystone-project-details.lua;
+  keystoneProjectSessionMenuLua = builtins.readFile ./keystone-project-session.lua;
 in
 {
   # walker is imported via flake.nix homeModules.desktop (hoisted to avoid
@@ -57,6 +60,12 @@ in
       text = notesDesktopEntry;
       executable = false;
     };
+
+    home.file.".config/elephant/menus/keystone-projects.lua".text = keystoneProjectsMenuLua;
+    home.file.".config/elephant/menus/keystone-project-details.lua".text =
+      keystoneProjectDetailsMenuLua;
+    home.file.".config/elephant/menus/keystone-project-session.lua".text =
+      keystoneProjectSessionMenuLua;
 
     # Wofi as the application launcher
     programs.wofi = {
@@ -85,17 +94,34 @@ in
         force_keyboard_focus = true;
         selection_wrap = true;
         theme = "keystone";
-        hide_action_hints = true;
+        actions_as_menu = true;
+        hide_action_hints = false;
 
         placeholders = {
           default = {
             input = " Search...";
             list = "No Results";
           };
+          "menus:keystone-projects" = {
+            input = " Projects";
+            list = "No projects found";
+          };
+          "menus:keystone-project-details" = {
+            input = " Project actions";
+            list = "No project actions";
+          };
+          "menus:keystone-project-session" = {
+            input = " Session slug";
+            list = "Press Enter to create the session";
+          };
         };
 
         keybinds = {
+          left = [ "Left" ];
+          next = [ "Down" ];
+          previous = [ "Up" ];
           quick_activate = [ ];
+          show_actions = [ "Right" ];
         };
 
         providers = {
@@ -104,6 +130,62 @@ in
             "desktopapplications"
             "websearch"
           ];
+          sets.keystone-projects = {
+            default = [ "menus:keystone-projects" ];
+            empty = [ "menus:keystone-projects" ];
+          };
+          actions = {
+            fallback = [
+              {
+                action = "menus:open";
+                label = "details";
+                after = "Nothing";
+              }
+              {
+                action = "menus:parent";
+                label = "back";
+                bind = "Left";
+                after = "Nothing";
+              }
+              {
+                action = "erase_history";
+                label = "clear hist";
+                bind = "ctrl h";
+                after = "AsyncReload";
+              }
+            ];
+            menus = [
+              {
+                action = "menus:open";
+                label = "details";
+                default = true;
+                bind = "Return";
+                after = "Nothing";
+              }
+              {
+                action = "open_main";
+                label = "open main";
+                bind = "ctrl Return";
+              }
+              {
+                action = "open_session";
+                label = "open";
+                default = true;
+                bind = "Return";
+              }
+              {
+                action = "new_session_menu";
+                label = "new session";
+                bind = "ctrl n";
+              }
+              {
+                action = "create_session";
+                label = "create session";
+                default = true;
+                bind = "Return";
+              }
+            ];
+          };
           prefixes = [
             {
               prefix = "/";

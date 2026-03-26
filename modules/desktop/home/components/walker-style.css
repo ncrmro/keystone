@@ -91,10 +91,10 @@ child:selected .item-box * {
 }
 
 .item-subtext {
-  font-size: 0px;
-  min-height: 0px;
-  margin: 0px;
-  padding: 0px;
+  font-size: 14px;
+  min-height: 14px;
+  margin-top: 4px;
+  opacity: 0.75;
 }
 
 .item-image {
@@ -113,4 +113,8 @@ child:selected .item-box * {
 }
 
 .preview {
+  min-width: 320px;
+  padding: 14px;
+  border-left: 1px solid @border;
+  white-space: pre-wrap;
 }
