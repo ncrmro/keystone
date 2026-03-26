@@ -382,9 +382,6 @@ $ROLE_PROMPT"
           claude)
             SP_FLAGS=("--append-system-prompt" "$SP")
             ;;
-          gemini)
-            SP_FLAGS=("--prompt-interactive" "$SP")
-            ;;
           codex)
             # Codex CLI does not accept --instructions. Feed the composed
             # prompt through its supported model_instructions_file config key.
