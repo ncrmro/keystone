@@ -66,6 +66,253 @@ KS_HM_USERS_FILTER=""
 KS_HM_ALL_USERS=false
 HM_ACTIVATION_RECORDS=()
 
+print_main_help() {
+  cat <<'EOF'
+Usage: ks <command> [options]
+
+Build, deploy, and inspect Keystone-managed hosts.
+
+Commands:
+  help [command]                                    Show general or command-specific help
+  build [--lock] [--user USERS] [--all-users] [HOSTS]
+                                                    Build home-manager profiles, or full systems with --lock
+  update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
+                                                    Pull, lock, build, push, and deploy
+  switch [--boot] [HOSTS]                           Deploy current state without pull, lock, or push
+  sync-host-keys                                    Populate hostPublicKey in hosts.nix from live hosts
+  grafana dashboards apply
+  grafana dashboards export <uid>                   Apply or export Grafana dashboards
+  agent [--local [MODEL]] [args...]                 Launch an AI agent with Keystone context
+  doctor [--local [MODEL]] [args...]                Launch a diagnostic AI agent with system state
+
+HOSTS:
+  Comma-separated host names such as workstation,ocean.
+  Defaults to the current host resolved from hosts.nix.
+
+Repo discovery:
+  1. $NIXOS_CONFIG_DIR if it contains hosts.nix
+  2. The current git repo root if it contains hosts.nix
+  3. ~/.keystone/repos/*/ if it contains hosts.nix
+  4. ~/nixos-config
+
+Examples:
+  ks build
+  ks build --lock workstation,ocean
+  ks update --dev
+  ks help grafana dashboards
+
+Use "ks help <command>" for command-specific help.
+EOF
+}
+
+print_build_help() {
+  cat <<'EOF'
+Usage: ks build [--lock] [--user USERS] [--all-users] [HOSTS]
+
+Build Keystone configurations for one or more hosts.
+
+Options:
+  --lock               Build full NixOS system closures instead of home-manager profiles
+  --user USERS         Limit home-manager builds to a comma-separated user list
+  --all-users          Build all home-manager users on each target host
+  -h, --help           Show this help
+
+Defaults:
+  Without --lock, ks builds home-manager activation packages only.
+  Without HOSTS, ks resolves the current host from hosts.nix.
+
+Examples:
+  ks build
+  ks build workstation,ocean
+  ks build --user alice,agent-coder workstation
+  ks build --lock ocean
+EOF
+}
+
+print_update_help() {
+  cat <<'EOF'
+Usage: ks update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
+
+Pull, verify, build, and deploy Keystone hosts.
+
+Options:
+  --debug              Show warnings from git and nix commands
+  --dev                Build and activate home-manager profiles only
+  --boot               Register the new generation for next boot without switching now
+  --pull               Pull managed repos only; skip build and deploy
+  --lock               Force lock mode explicitly; this is the default unless --dev is set
+  --user USERS         Limit home-manager activation to a comma-separated user list
+  --all-users          Activate all home-manager users on each target host
+  -h, --help           Show this help
+
+Defaults:
+  ks update runs in lock mode by default.
+  HOSTS defaults to the current host resolved from hosts.nix.
+
+Examples:
+  ks update
+  ks update --dev workstation
+  ks update --boot ocean
+  ks update --pull --dev
+EOF
+}
+
+print_switch_help() {
+  cat <<'EOF'
+Usage: ks switch [--boot] [HOSTS]
+
+Build and deploy the current local state without pull, lock, or push steps.
+
+Options:
+  --boot               Register the new generation for next boot without switching now
+  -h, --help           Show this help
+
+Defaults:
+  HOSTS defaults to the current host resolved from hosts.nix.
+
+Examples:
+  ks switch
+  ks switch workstation,ocean
+  ks switch --boot ocean
+EOF
+}
+
+print_sync_host_keys_help() {
+  cat <<'EOF'
+Usage: ks sync-host-keys
+
+Fetch SSH host public keys from live hosts and write them into hosts.nix.
+
+Options:
+  -h, --help           Show this help
+
+Behavior:
+  Hosts without sshTarget are skipped.
+  When sshTarget is unreachable and fallbackIP exists, ks retries over fallbackIP.
+
+Examples:
+  ks sync-host-keys
+EOF
+}
+
+print_agent_help() {
+  cat <<'EOF'
+Usage: ks agent [--local [MODEL]] [args...]
+
+Launch an AI coding agent with Keystone conventions and host context.
+
+Options:
+  --local [MODEL]      Use the local Ollama-backed model, or the configured default model
+  -h, --help           Show this help
+
+Behavior:
+  Any remaining args are passed through to the underlying claude invocation.
+
+Examples:
+  ks agent
+  ks agent --local
+  ks agent --local qwen2.5-coder:14b --continue
+EOF
+}
+
+print_doctor_help() {
+  cat <<'EOF'
+Usage: ks doctor [--local [MODEL]] [args...]
+
+Launch a diagnostic AI agent with fleet and local system state.
+
+Options:
+  --local [MODEL]      Use the local Ollama-backed model, or the configured default model
+  -h, --help           Show this help
+
+Behavior:
+  Any remaining args are passed through to the underlying claude invocation.
+
+Examples:
+  ks doctor
+  ks doctor --local
+  ks doctor --local mistral --continue
+EOF
+}
+
+print_grafana_help() {
+  cat <<'EOF'
+Usage: ks grafana dashboards <apply|export> [uid]
+
+Manage checked-in Keystone Grafana dashboards through the Grafana API.
+
+Subcommands:
+  dashboards apply     Apply every dashboard JSON file in the repo
+  dashboards export <uid>
+                       Export one dashboard by UID into its checked-in JSON file
+
+Options:
+  -h, --help           Show this help
+
+Examples:
+  ks grafana dashboards apply
+  ks grafana dashboards export keystone-host-overview
+EOF
+}
+
+print_grafana_dashboards_help() {
+  cat <<'EOF'
+Usage: ks grafana dashboards <apply|export> [uid]
+
+Apply or export Keystone Grafana dashboards.
+
+Subcommands:
+  apply                Push all checked-in dashboard JSON files to Grafana
+  export <uid>         Pull one dashboard by UID into its checked-in JSON file
+
+Environment:
+  GRAFANA_URL          Override the Grafana base URL
+  GRAFANA_API_KEY      Override the Grafana API key
+
+Examples:
+  ks grafana dashboards apply
+  ks grafana dashboards export keystone-system-index
+EOF
+}
+
+show_help_topic() {
+  case "${1:-}" in
+    ""|ks)
+      print_main_help
+      ;;
+    build)
+      print_build_help
+      ;;
+    update)
+      print_update_help
+      ;;
+    switch)
+      print_switch_help
+      ;;
+    sync-host-keys)
+      print_sync_host_keys_help
+      ;;
+    agent)
+      print_agent_help
+      ;;
+    doctor)
+      print_doctor_help
+      ;;
+    grafana)
+      if [[ "${2:-}" == "dashboards" ]]; then
+        print_grafana_dashboards_help
+      else
+        print_grafana_help
+      fi
+      ;;
+    *)
+      echo "Error: Unknown help topic '$*'" >&2
+      echo "Run 'ks --help' to see available commands." >&2
+      return 1
+      ;;
+  esac
+}
+
 run_with_warning_filter() {
   if [[ "${KS_DEBUG}" == true ]]; then
     "$@"
@@ -515,7 +762,12 @@ build_home_manager_only() {
 
   echo "Building home-manager profiles: ${target_map[*]}..."
   local build_paths=()
-  mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}")
+  local build_output
+  if ! build_output=$(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}"); then
+    echo "Error: Home-manager build failed." >&2
+    exit 1
+  fi
+  mapfile -t build_paths <<< "$build_output"
 
   local i
   for i in "${!target_map[@]}"; do
@@ -693,6 +945,19 @@ verify_repo_clean() {
 # --- Commands ---
 
 cmd_sync_host_keys() {
+  if [[ $# -gt 0 ]]; then
+    case "$1" in
+      -h|--help)
+        print_sync_host_keys_help
+        return 0
+        ;;
+      *)
+        echo "Error: Unknown option '$1'" >&2
+        exit 1
+        ;;
+    esac
+  fi
+
   local repo_root
   repo_root=$(find_repo)
   local hosts_nix="$repo_root/hosts.nix"
@@ -775,6 +1040,10 @@ cmd_build() {
   local hosts_arg="" lock=false
   while [[ $# -gt 0 ]]; do
     case $1 in
+      -h|--help)
+        print_build_help
+        return 0
+        ;;
       --dev) shift ;;  # kept for backwards compat, no-op
       --lock) lock=true; shift ;;
       --user)
@@ -860,6 +1129,10 @@ cmd_switch() {
   local mode="switch" hosts_arg=""
   while [[ $# -gt 0 ]]; do
     case $1 in
+      -h|--help)
+        print_switch_help
+        return 0
+        ;;
       --boot) mode="boot"; shift ;;
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) hosts_arg="$1"; shift ;;
@@ -1007,6 +1280,10 @@ cmd_update() {
   HM_ACTIVATION_RECORDS=()
   while [[ $# -gt 0 ]]; do
     case $1 in
+      -h|--help)
+        print_update_help
+        return 0
+        ;;
       --debug) KS_DEBUG=true; shift ;;
       --dev) lock=false; shift ;;
       --boot) mode="boot"; shift ;;
@@ -1361,6 +1638,18 @@ cmd_grafana_dashboards() {
   local action="${1:-}"
   shift || true
 
+  case "$action" in
+    -h|--help)
+      print_grafana_dashboards_help
+      return 0
+      ;;
+    "")
+      echo "Error: Missing grafana dashboards action" >&2
+      print_grafana_dashboards_help >&2
+      exit 1
+      ;;
+  esac
+
   local repo_root dashboards_dir grafana_url grafana_api_key
   repo_root=$(find_repo)
   dashboards_dir=$(grafana_dashboards_dir "$repo_root")
@@ -1391,7 +1680,7 @@ cmd_grafana_dashboards() {
       local uid="${1:-}"
       local target_file response body
       if [[ -z "$uid" ]]; then
-        echo "Usage: ks grafana dashboards export <uid>" >&2
+        print_grafana_dashboards_help >&2
         exit 1
       fi
 
@@ -1416,7 +1705,8 @@ cmd_grafana_dashboards() {
       echo "Exported ${uid} -> ${target_file}"
       ;;
     *)
-      echo "Usage: ks grafana dashboards apply|export <uid>" >&2
+      echo "Error: Unknown grafana dashboards action '$action'" >&2
+      print_grafana_dashboards_help >&2
       exit 1
       ;;
   esac
@@ -1427,11 +1717,20 @@ cmd_grafana() {
   shift || true
 
   case "$subcommand" in
+    -h|--help)
+      print_grafana_help
+      ;;
+    "")
+      echo "Error: Missing grafana subcommand" >&2
+      print_grafana_help >&2
+      exit 1
+      ;;
     dashboards)
       cmd_grafana_dashboards "$@"
       ;;
     *)
-      echo "Usage: ks grafana dashboards apply|export <uid>" >&2
+      echo "Error: Unknown grafana subcommand '$subcommand'" >&2
+      print_grafana_help >&2
       exit 1
       ;;
   esac
@@ -2039,6 +2338,10 @@ cmd_agent() {
 
   while [[ $# -gt 0 ]]; do
     case $1 in
+      -h|--help)
+        print_agent_help
+        return 0
+        ;;
       --local)
         shift
         if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
@@ -2076,6 +2379,10 @@ cmd_doctor() {
 
   while [[ $# -gt 0 ]]; do
     case $1 in
+      -h|--help)
+        print_doctor_help
+        return 0
+        ;;
       --local)
         shift
         if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
@@ -2142,26 +2449,18 @@ $base_prompt"
 
 # --- Main dispatch ---
 if [[ $# -lt 1 ]]; then
-  echo "Usage: ks <command> [options]" >&2
-  echo "" >&2
-  echo "Commands:" >&2
-  echo "  build  [--lock] [HOSTS]                            Build (home-manager only; --lock for full system)" >&2
-  echo "  grafana dashboards apply|export <uid>             Apply or export keystone dashboard JSON" >&2
-  echo "  update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Pull, lock, build, push, and deploy" >&2
-  echo "  switch [--boot] [HOSTS]                            Deploy current state without lock/push (full system)" >&2
-  echo "  sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts" >&2
-  echo "  agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context" >&2
-  echo "  doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state" >&2
-  echo "" >&2
-  echo "HOSTS: Comma-separated list of host names (e.g. host1,host2). Defaults to current host." >&2
-  echo "Note: Risky hosts should be placed last (e.g. workstation,ocean)." >&2
-  echo "" >&2
-  echo "Repo discovery: \$NIXOS_CONFIG_DIR > git root > ~/.keystone/repos/*/ > ~/nixos-config" >&2
+  print_main_help >&2
   exit 1
 fi
 
 CMD="$1"; shift
 case "$CMD" in
+  -h|--help)
+    print_main_help
+    ;;
+  help)
+    show_help_topic "$@"
+    ;;
   build)  cmd_build "$@" ;;
   grafana) cmd_grafana "$@" ;;
   update) cmd_update "$@" ;;
@@ -2171,7 +2470,7 @@ case "$CMD" in
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: build, grafana, update, switch, sync-host-keys, agent, doctor" >&2
+    echo "Known commands: help, build, grafana, update, switch, sync-host-keys, agent, doctor" >&2
     exit 1
     ;;
 esac

@@ -45,7 +45,7 @@ in
           sysPkgs = pkgs;
         in
         nameValuePair username (
-          { pkgs, ... }:
+          { pkgs, osConfig, ... }:
           {
             imports = [
               ../../terminal/default.nix

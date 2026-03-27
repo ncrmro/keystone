@@ -23,6 +23,11 @@ let
   cfg = config.keystone;
   inputs = cfg._repoInputs;
   explicitRepos = {
+    "ncrmro/keystone" = {
+      url = "https://github.com/ncrmro/keystone.git";
+      flakeInput = "keystone";
+      branch = "main";
+    };
     "Unsupervisedcom/deepwork" = {
       url = "https://github.com/Unsupervisedcom/deepwork.git";
       flakeInput = "deepwork";
@@ -169,7 +174,5 @@ in
     };
   };
 
-  config.keystone.repos = mkIf (inputs != { }) (
-    mapAttrs (_: v: mkDefault v) (autoRepos // explicitRepos)
-  );
+  config.keystone.repos = mapAttrs (_: v: mkDefault v) (autoRepos // explicitRepos);
 }

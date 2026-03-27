@@ -191,19 +191,43 @@ in
       ${ensurePathsScript}/bin/keystone-ensure-paths
     '';
 
-    home.activation.keystoneCloneRepos = lib.hm.dag.entryAfter [ "keystoneEnsurePaths" ] ''
-      export GIT_TERMINAL_PROMPT=0
-      ${lib.concatStringsSep "\n" (
-        lib.mapAttrsToList (name: repo: ''
-          target="${keystoneHome}/repos/${name}"
-          if [ ! -d "$target/.git" ]; then
-            echo "Cloning managed repo ${name}..."
-            mkdir -p "$(dirname "$target")"
-            ${pkgs.git}/bin/git clone "${repo.url}" "$target" || echo "Warning: Failed to clone ${name}, skipping..."
-          fi
-        '') config.keystone.repos
-      )}
-    '';
+    # Keystone Repo Sync Service — clones and pulls managed repositories.
+    # Runs as a oneshot systemd user service during activation and on login.
+    # Logs to journalctl -u keystone-repos-sync.service.
+    systemd.user.services.keystone-repos-sync = {
+      Unit = {
+        Description = "Clone and update managed keystone repositories";
+        After = [ "network-online.target" ];
+        Wants = [ "network-online.target" ];
+      };
+
+      Service = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        Environment = [ "GIT_TERMINAL_PROMPT=0" ];
+        ExecStart = toString (
+          pkgs.writeShellScript "keystone-repos-sync" ''
+            set -euo pipefail
+            ${lib.concatStringsSep "\n" (
+              lib.mapAttrsToList (name: repo: ''
+                target="${keystoneHome}/repos/${name}"
+                if [ ! -d "$target/.git" ]; then
+                  echo "Cloning managed repo ${name} from ${repo.url}..."
+                  mkdir -p "$(dirname "$target")"
+                  ${pkgs.git}/bin/git clone "${repo.url}" "$target" || echo "Warning: Failed to clone ${name}, skipping..."
+                else
+                  echo "Managed repo ${name} already exists at $target"
+                fi
+              '') config.keystone.repos
+            )}
+          ''
+        );
+      };
+
+      Install = {
+        WantedBy = [ "default.target" ];
+      };
+    };
 
     home.sessionVariables = {
       CODE_DIR = codeRoot;
