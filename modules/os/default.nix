@@ -195,10 +195,18 @@ in
     ./containers.nix
     ./journal-remote.nix
     ./alloy.nix
+    ./observability.nix
   ];
 
   options.keystone.os = {
     enable = mkEnableOption "Keystone OS - secure storage, boot, and user management";
+
+    # Observability
+    observability.enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Enable host-level observability (node exporter, etc.)";
+    };
 
     # Storage configuration
     storage = {

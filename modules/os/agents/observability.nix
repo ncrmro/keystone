@@ -13,20 +13,5 @@
     # Shared keystone dashboards are provisioned by the server-side Grafana
     # service module so they are available even when the Grafana host does not
     # run local agents.
-    systemd.tmpfiles.rules = [
-      "d /var/lib/keystone-node-exporter-textfiles 0775 root agents -"
-    ];
-
-    services.prometheus.exporters.node = {
-      enable = lib.mkDefault true;
-      enabledCollectors = [
-        "systemd"
-        "processes"
-        "textfile"
-      ];
-      extraFlags = [
-        "--collector.textfile.directory=/var/lib/keystone-node-exporter-textfiles"
-      ];
-    };
   };
 }

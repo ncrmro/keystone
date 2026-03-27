@@ -131,7 +131,7 @@ in
               PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.nix ]}";
               SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
               GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
-              PROMETHEUS_TEXTFILE_DIR = "/var/lib/keystone-node-exporter-textfiles";
+              PROMETHEUS_TEXTFILE_DIR = config.keystone.os.observability.nodeExporter.textfileDirectory;
             };
             serviceConfig = {
               Type = "oneshot";
@@ -151,7 +151,8 @@ in
             description = "Daily scheduler for ${username}";
             unitConfig.ConditionUser = username;
             environment.PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.nix ]}";
-            environment.PROMETHEUS_TEXTFILE_DIR = "/var/lib/keystone-node-exporter-textfiles";
+            environment.PROMETHEUS_TEXTFILE_DIR =
+              config.keystone.os.observability.nodeExporter.textfileDirectory;
             serviceConfig = {
               Type = "oneshot";
               SyslogIdentifier = "agent-${name}-scheduler";
