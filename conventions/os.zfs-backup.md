@@ -88,6 +88,9 @@ all configuration auto-derives from that single declaration.
 
 ## Monitoring & Metrics
 
+See `process.grafana-dashboard-development` for how keystone dashboards consume
+these metrics and present backup state on system and host dashboard pages.
+
 25. Every host with backups MUST export Prometheus metrics via the node-exporter
     textfile collector:
     - `zfs_snapshot_newest_age_seconds` — age of the newest snapshot per pool
@@ -101,7 +104,8 @@ all configuration auto-derives from that single declaration.
 ## Verification (ks doctor)
 
 See also `tool.journal-remote` rules 15-17 for the parallel pattern of per-subsystem
-`ks doctor` health checks.
+`ks doctor` health checks. See `process.grafana-dashboard-development` for the
+dashboard requirements that consume the health signals defined here.
 
 28. `ks doctor` MUST check the following ZFS backup health indicators on every host:
     - Sanoid timer is active and not in a failure state

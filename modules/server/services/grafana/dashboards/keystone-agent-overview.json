@@ -1,0 +1,113 @@
+{
+  "uid": "keystone-agent-overview",
+  "title": "Keystone Agent Overview",
+  "tags": ["keystone", "agent"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 0,
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "agent",
+        "label": "Agent",
+        "type": "query",
+        "refresh": 1,
+        "datasource": { "type": "loki", "uid": "loki" },
+        "query": "label_values(agent)",
+        "current": { "selected": true, "text": "", "value": "" }
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "System index",
+      "url": "/d/keystone-system-index/keystone-system-index"
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Completed Tasks",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({agent=~\"$agent\"} | logfmt | event=\"task_finish\" | status=\"completed\" [$__range]))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Errored Tasks",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({agent=~\"$agent\"} | logfmt | event=\"task_finish\" | status=\"error\" [$__range]))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Blocked Tasks",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({agent=~\"$agent\"} | logfmt | event=\"task_finish\" | status=\"blocked\" [$__range]))"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Task Durations",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "avg_over_time({agent=~\"$agent\"} | logfmt | event=\"task_finish\" | unwrap duration_seconds [$__interval])"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Task Activity By Workflow",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum by(workflow) (count_over_time({agent=~\"$agent\"} | logfmt | event=\"task_finish\" [$__interval]))"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Task Completion Events",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{agent=~\"$agent\"} | logfmt | event=\"task_finish\""
+        }
+      ]
+    }
+  ]
+}

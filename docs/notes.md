@@ -56,6 +56,26 @@ The normal flow is:
 Each active initiative should have one hub note in `index/`. The hub is the
 entry point for the work. It should summarize the objective, current state,
 next actions, durable notes, decisions, related repos, and recent reports.
+When the initiative uses one or more repos, the hub should declare them in
+frontmatter as full remote URLs.
+
+Example:
+
+```yaml
+---
+project: "keystone"
+repos:
+  - "git@github.com:ncrmro/keystone.git"
+  - "ssh://forgejo@git.ncrmro.com:2222/drago/notes.git"
+tags: [index, project/keystone, status/active]
+---
+```
+
+Use the declared remote URLs as the source of truth. Humans and agents should
+derive `repo/<owner>/<repo>` tags and local checkout paths from those URLs:
+
+- keystone-managed repos: `~/.keystone/repos/{owner}/{repo}`
+- non-keystone project repos: `$HOME/code/{owner}/{repo}`
 
 ### Report notes
 
@@ -116,7 +136,100 @@ zk list --match "fleet health" --format json
 ```
 
 When the note relates to an active initiative, add the canonical project tag
-and link it from the relevant hub note.
+and link it from the relevant hub note. When the note materially concerns one
+repo, derive the `repo/<owner>/<repo>` tag from the hub note's declared remote
+URL instead of inventing a separate local-path convention.
+
+## Editing existing notes with zk
+
+Use `zk edit` when the note already exists and you want to reopen it in your
+editor.
+
+<!-- TODO: Add a terminal screenshot showing `zk edit reports/<TAB>` path completion before the editor opens. -->
+<!-- TODO: Add a terminal screenshot showing `zk edit --interactive` with the fuzzy picker visible and a report selected. -->
+<!-- TODO: Add a short screenshot sequence showing the difference between editing a report note, a project hub note, and a durable idea note. -->
+
+### Edit a report by path completion
+
+If you know the note lives under `reports/`, the fastest workflow is often
+shell completion:
+
+```bash
+zk edit reports/<TAB>
+```
+
+That lets the shell expand the report path before `zk` opens the file in your
+editor.
+
+Examples:
+
+```bash
+zk edit reports/202603241230-keystone-doctor.md
+zk edit reports/<TAB>
+```
+
+Use this when:
+
+- you already know the note family,
+- the report name is recent enough to recognize, and
+- you want direct file selection instead of search.
+
+### Edit a note with the interactive picker
+
+If you do not remember the path, use the interactive picker:
+
+```bash
+zk edit --interactive
+```
+
+Short form:
+
+```bash
+zk edit -i
+```
+
+This opens zk's fuzzy selection UI so you can search by title, path, or nearby
+matches and then open the chosen note in your editor.
+
+Use this when:
+
+- you remember part of the note title but not the path,
+- you want to scan several similar notes quickly, or
+- you are not sure whether the note belongs in `reports/`, `notes/`, or `index/`.
+
+### Recommended editing workflow
+
+Use these defaults:
+
+- `zk edit reports/<TAB>` when you already know you want a report note
+- `zk edit -i` when you need fuzzy selection across the notebook
+
+A practical pattern looks like this:
+
+```bash
+cd ~/notes
+zk edit reports/<TAB>
+```
+
+Or:
+
+```bash
+cd ~/notes
+zk edit -i
+```
+
+### Reopening report notes
+
+When reopening a report note, usually update:
+
+- the latest findings,
+- links to related reports,
+- links to the relevant project hub,
+- repo tags derived from the hub note's declared remote URLs, and
+- any explicit next actions or decisions that came out of the work.
+
+If the report belongs to a recurring series, keep the series link structure
+consistent so the history remains easy to follow.
 
 ## Agent and DeepWork workflow
 

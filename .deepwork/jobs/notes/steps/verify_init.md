@@ -14,9 +14,7 @@ Confirm the notebook structure is valid and functional.
    zk list literature/ --format json 2>&1
    zk list notes/ --format json 2>&1
    zk list decisions/ --format json 2>&1
-   zk list reports/ --format json 2>&1
    zk list index/ --format json 2>&1
-   zk list archive/ --format json 2>&1
    ```
    Each should return an empty array or results — no errors.
 
@@ -45,16 +43,13 @@ Write `init_report.md`:
 | literature | OK | 0 |
 | notes | OK | 0 |
 | decisions | OK | 0 |
-| reports | OK | 0 |
 | index | OK | 3 |
-| archive | OK | 0 |
 
 ## Template Verification
 - fleeting: OK (id, title, type, created, author, tags present)
 - literature: OK (includes source, source_url)
 - permanent: OK
 - decision: OK (includes status, supersedes)
-- report: OK (includes project, report_kind, source_ref)
 - index: OK (includes index tag)
 
 ## Overall: PASS

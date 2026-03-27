@@ -1,0 +1,144 @@
+name: spike
+version: 1.4.2
+summary: Time-boxed investigation to answer a technical question or validate feasibility for a project
+common_job_info_provided_to_all_steps_at_runtime: 'Time-boxed research and prototyping to reduce uncertainty for a project.
+
+  Scopes the investigation, gathers information (web search and/or codebase),
+
+  builds a minimal prototype, and produces a findings report with next steps.
+
+
+  Outputs are saved to spikes/[spike_name]/ (git-tracked, excluded from zk indexing). When
+  a project is detected, a symlink is created at projects/[ProjectName]/spikes/[spike_name].
+
+  If a .zk/ notebook is present, the learn step also creates a report note in reports/ and
+  an ADR in decisions/ (when a clear architectural decision was reached), both using
+  zk new --print-path. Notes are tagged project/<slug> when a project is scoped.
+
+  Learn step captures takeaways back into the project file.
+
+  '
+workflows:
+- name: spike
+  summary: Time-boxed investigation from scoping through findings report
+  steps:
+  - scope
+  - research
+  - prototype
+  - report
+  - learn
+steps:
+- id: scope
+  name: Define Spike Scope
+  description: Define the question or hypothesis, constraints, success criteria, and validate the project exists
+  instructions_file: steps/scope.md
+  inputs:
+  - name: project
+    description: Project name (must match an existing project in projects/)
+  - name: question
+    description: The technical question or hypothesis to investigate
+  - name: context
+    description: 'Relevant context: constraints, existing code references, links, or background'
+  outputs:
+    scope:
+      type: file
+      description: Output from Define Spike Scope step
+      required: true
+  dependencies: []
+  reviews: []
+- id: research
+  name: Gather Information
+  description: Research the question using web search, codebase exploration, or both
+  instructions_file: steps/research.md
+  inputs:
+  - file: spikes/[spike_name]/scope.md
+    from_step: scope
+  outputs:
+    research:
+      type: file
+      description: Output from Gather Information step
+      required: true
+  dependencies:
+  - scope
+  hooks:
+    after_agent:
+    - prompt: 'Verify the research:
+
+        1. Directly addresses the question defined in scope.md
+
+        2. Consulted at least 3 sources (web, docs, or codebase)
+
+        3. Each finding includes its source reference
+
+        '
+  reviews: []
+- id: prototype
+  name: Build Prototype
+  description: Build a minimal proof-of-concept or code sketch to validate feasibility
+  instructions_file: steps/prototype.md
+  inputs:
+  - file: spikes/[spike_name]/scope.md
+    from_step: scope
+  - file: spikes/[spike_name]/research.md
+    from_step: research
+  outputs:
+    prototype:
+      type: files
+      description: Output from Build Prototype step
+      required: true
+  dependencies:
+  - scope
+  - research
+  reviews: []
+- id: report
+  name: Write Findings Report
+  description: Synthesize findings into a README with conclusions, code references, and next steps
+  instructions_file: steps/report.md
+  inputs:
+  - file: spikes/[spike_name]/scope.md
+    from_step: scope
+  - file: spikes/[spike_name]/research.md
+    from_step: research
+  - file: spikes/[spike_name]/prototype/
+    from_step: prototype
+  outputs:
+    README:
+      type: file
+      description: Output from Write Findings Report step
+      required: true
+  dependencies:
+  - scope
+  - research
+  - prototype
+  hooks:
+    after_agent:
+    - prompt: 'Verify the report:
+
+        1. README.md summarizes the spike question and conclusion
+
+        2. References research sources and prototype code where applicable
+
+        3. Includes a clear recommendation or decision
+
+        4. Lists concrete next steps
+
+        5. If a project was specified in scope.md, a symlink exists at projects/[ProjectName]/spikes/[spike_name] AND resolves
+        to the correct target (verify with readlink)
+
+        '
+  reviews: []
+- id: learn
+  name: Capture Learnings
+  description: Update the project file with key takeaways and link the spike
+  instructions_file: steps/learn.md
+  inputs:
+  - file: spikes/[spike_name]/README.md
+    from_step: report
+  outputs:
+    project:
+      type: file
+      description: Output from Capture Learnings step
+      required: true
+  dependencies:
+  - report
+  reviews: []

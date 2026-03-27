@@ -2,11 +2,12 @@
 # pz — Projctl Zellij session manager
 #
 # Usage: pz [--help] <command> [args]
-#        pz <project> [--layout <name>]
+#        pz <project> [<session>] [--layout <name>]
 #
 # Commands:
 #   <project>   Create or attach to a Zellij session for the given project slug
 #   list        List active project sessions
+#   info        Show project mission, milestones, and sessions
 #   agent       Run agentctl within the project context
 #
 # Options:
@@ -14,26 +15,28 @@
 #   --layout <name>      Use a named zellij layout (dev, ops, write) on session creation
 #
 # Environment:
-#   VAULT_ROOT  Root directory containing projects/ subdirectory
+#   VAULT_ROOT  Root zk notebook directory
 #               Defaults to $HOME/notes
 #
 # Session naming:
-#   Sessions are created with the prefix "obs-" followed by the project slug.
-#   Example: "pz backend-api" creates/attaches to session "obs-backend-api"
+#   Default sessions are named after the project slug directly.
+#   Named sub-sessions append the session slug with a hyphen.
+#   Example: "pz backend-api" creates/attaches to session "backend-api"
+#   Example: "pz backend-api review" creates/attaches to session "backend-api-review"
 #
 # Project validation:
-#   A project is considered valid when
-#   $VAULT_ROOT/projects/<slug>/README.md exists.
+#   A project is considered valid when an active hub note exists in the zk
+#   notebook with matching `project: <slug>` frontmatter and/or `project/<slug>`
+#   tag.
 #
 # Environment variables set inside the session:
 #   PROJECT_NAME    The project slug
-#   PROJECT_PATH    Absolute path to the project directory
-#   PROJECT_README  Absolute path to the project README.md
+#   PROJECT_PATH    Absolute path to the legacy project directory
+#   PROJECT_README  Absolute path to the legacy project README.md
 #   VAULT_ROOT      Root directory for all projects
 
 set -euo pipefail
 
-SESSION_PREFIX="obs"
 VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
 
 usage() {
@@ -41,8 +44,9 @@ usage() {
 pz — Projctl Zellij session manager
 
 Usage:
-  pz <project> [--layout <name>]  Create or attach to a Zellij session for <project>
+  pz <project> [<session>] [--layout <name>]  Create or attach to a Zellij session
   pz list [--project <slug>]      List active project sessions
+  pz info <project-slug>          Show project mission, milestones, and sessions
   pz agent <agent> <cmd> [args]   Run agentctl within the project context
   pz --help                       Show this help message
 
@@ -51,30 +55,510 @@ Options:
   --layout <name>      Use a named zellij layout on session creation (dev, ops, write)
 
 Environment:
-  VAULT_ROOT      Root directory containing projects/ subdirectory (default: ~/notes)
+  VAULT_ROOT      Root zk notebook directory (default: ~/notes)
 EOF
 }
 
-discover_projects() {
-  local projects_dir="${VAULT_ROOT}/projects"
+valid_slug() {
+  local slug="$1"
+  [[ "$slug" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]
+}
 
-  if [[ ! -d "$projects_dir" ]]; then
+discover_projects() {
+  local zk_json
+  local -A seen=()
+  local note_path resolved_project last_active
+
+  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet); then
+    echo "error: failed to discover active projects via zk in ${VAULT_ROOT}" >&2
+    return 1
+  fi
+
+  while IFS=$'\t' read -r note_path resolved_project last_active; do
+    if [[ -z "$resolved_project" ]]; then
+      continue
+    fi
+
+    if [[ "$resolved_project" == __AMBIGUOUS__:* ]]; then
+      echo "error: active project hub ${note_path} has ambiguous project tags: ${resolved_project#__AMBIGUOUS__:}" >&2
+      return 1
+    fi
+
+    if ! valid_slug "$resolved_project"; then
+      echo "error: active project hub ${note_path} uses invalid project slug '${resolved_project}'" >&2
+      return 1
+    fi
+
+    if [[ -z "${seen[$resolved_project]:-}" ]]; then
+      seen["$resolved_project"]=1
+      printf "%s\t%s\n" "$resolved_project" "$last_active"
+    fi
+  done < <(
+    printf "%s\n" "$zk_json" | jq -r '
+      def merged_tags:
+        if ((.metadata.tags // []) | length) > 0 then
+          (.metadata.tags // [])
+        else
+          (.tags // [])
+        end
+        | map(select(type == "string"))
+        | unique;
+
+      def explicit_project_tags:
+        merged_tags
+        | map(select(startswith("project/")) | sub("^project/"; ""))
+        | unique;
+
+      def bare_project_tags:
+        if (merged_tags | index("project")) == null then
+          []
+        else
+          merged_tags
+          | map(
+              select(
+                test("^[a-z0-9]+(-[a-z0-9]+)*$")
+                and . != "index"
+                and . != "project"
+                and . != "archive"
+              )
+            )
+          | unique
+        end;
+
+      def status_markers:
+        merged_tags
+        | map(select(startswith("status/") or . == "archive"))
+        | unique;
+
+      def inferred_project:
+        if (.metadata.project // "") != "" then
+          .metadata.project
+        elif (explicit_project_tags | length) == 1 then
+          explicit_project_tags[0]
+        elif (explicit_project_tags | length) > 1 then
+          "__AMBIGUOUS__:" + (explicit_project_tags | join(","))
+        elif (bare_project_tags | length) == 1 then
+          bare_project_tags[0]
+        elif (bare_project_tags | length) > 1 then
+          "__AMBIGUOUS__:" + (bare_project_tags | join(","))
+        else
+          ""
+        end;
+
+      .[]
+      | select((.metadata.type // "") == "index")
+      | select((status_markers | index("status/archived")) == null)
+      | select((status_markers | index("archive")) == null)
+      | select((.metadata.status // "") != "archived")
+      | [
+          .absPath,
+          inferred_project,
+          (.metadata.last_active // "")
+        ]
+      | @tsv
+    '
+  )
+}
+
+project_hub_path() {
+  local target_slug="$1"
+  local zk_json
+
+  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet); then
+    echo "error: failed to discover project hubs via zk in ${VAULT_ROOT}" >&2
+    return 1
+  fi
+
+  printf "%s\n" "$zk_json" | jq -r --arg slug "$target_slug" '
+    def merged_tags:
+      if ((.metadata.tags // []) | length) > 0 then
+        (.metadata.tags // [])
+      else
+        (.tags // [])
+      end
+      | map(select(type == "string"))
+      | unique;
+
+    def explicit_project_tags:
+      merged_tags
+      | map(select(startswith("project/")) | sub("^project/"; ""))
+      | unique;
+
+    def bare_project_tags:
+      if (merged_tags | index("project")) == null then
+        []
+      else
+        merged_tags
+        | map(
+            select(
+              test("^[a-z0-9]+(-[a-z0-9]+)*$")
+              and . != "index"
+              and . != "project"
+              and . != "archive"
+            )
+          )
+        | unique
+      end;
+
+    def inferred_project:
+      if (.metadata.project // "") != "" then
+        .metadata.project
+      elif (explicit_project_tags | length) == 1 then
+        explicit_project_tags[0]
+      elif (bare_project_tags | length) == 1 then
+        bare_project_tags[0]
+      else
+        ""
+      end;
+
+    .[]
+    | select((.metadata.type // "") == "index")
+    | select(inferred_project == $slug)
+    | .absPath
+  ' | head -n 1
+}
+
+sanitize_text() {
+  printf "%s" "${1//$'\t'/ }" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
+}
+
+project_note_json() {
+  local target_slug="$1"
+
+  zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet 2>/dev/null | jq -c --arg slug "$target_slug" '
+    def merged_tags:
+      if ((.metadata.tags // []) | length) > 0 then
+        (.metadata.tags // [])
+      else
+        (.tags // [])
+      end
+      | map(select(type == "string"))
+      | unique;
+
+    def explicit_project_tags:
+      merged_tags
+      | map(select(startswith("project/")) | sub("^project/"; ""))
+      | unique;
+
+    def bare_project_tags:
+      if (merged_tags | index("project")) == null then
+        []
+      else
+        merged_tags
+        | map(
+            select(
+              test("^[a-z0-9]+(-[a-z0-9]+)*$")
+              and . != "index"
+              and . != "project"
+              and . != "archive"
+            )
+          )
+        | unique
+      end;
+
+    def inferred_project:
+      if (.metadata.project // "") != "" then
+        .metadata.project
+      elif (explicit_project_tags | length) == 1 then
+        explicit_project_tags[0]
+      elif (bare_project_tags | length) == 1 then
+        bare_project_tags[0]
+      else
+        ""
+      end;
+
+    first(
+      .[]
+      | select((.metadata.type // "") == "index")
+      | select(inferred_project == $slug)
+    )
+  ' | head -n 1
+}
+
+project_mission() {
+  local project_json="$1"
+  local description
+  local body
+  local first_paragraph
+
+  description=$(printf "%s\n" "$project_json" | jq -r '.metadata.description // ""')
+  if [[ -n "$description" && "$description" != "null" ]]; then
+    printf "%s\n" "$(sanitize_text "$description")"
     return 0
   fi
 
-  find "$projects_dir" -mindepth 2 -maxdepth 2 -type f -name README.md -print 2>/dev/null \
-    | while IFS= read -r readme; do
-        local project_dir slug
-        project_dir=$(dirname "$readme")
-        slug=$(basename "$project_dir")
-        case "$slug" in
-          _* )
-            continue
-            ;;
-        esac
-        printf "%s\n" "$slug"
-      done \
-    | sort -u
+  body=$(printf "%s\n" "$project_json" | jq -r '.body // ""')
+  first_paragraph=$(
+    printf "%s\n" "$body" | awk '
+      /^## / { next }
+      /^#/ { next }
+      /^\|/ { next }
+      /^- / { next }
+      /^\s*$/ {
+        if (paragraph != "") {
+          print paragraph
+          exit
+        }
+        next
+      }
+      {
+        if (paragraph == "") {
+          paragraph = $0
+        } else {
+          paragraph = paragraph " " $0
+        }
+      }
+      END {
+        if (paragraph != "") {
+          print paragraph
+        }
+      }
+    '
+  )
+
+  if [[ -n "$first_paragraph" ]]; then
+    printf "%s\n" "$(sanitize_text "$first_paragraph")"
+  else
+    printf "No mission summary found in the project hub.\n"
+  fi
+}
+
+project_milestones() {
+  local project_json="$1"
+
+  printf "%s\n" "$project_json" | jq -r '
+    def milestone_entries:
+      (.metadata.milestones? // empty)
+      | if type == "array" then .[] else . end;
+
+    [
+      milestone_entries
+      | {
+          name: (.name // .title // .summary // .evidence // .description // "Milestone"),
+          date: (.date // .due_date // .due // "")
+        }
+      | if .date != "" then "\(.date) \(.name)" else .name end
+    ][0:3][]
+  ' 2>/dev/null
+}
+
+cmd_info() {
+  local project_slug="$1"
+  local project_json
+  local mission
+  local milestone
+  local had_milestones=0
+  local had_sessions=0
+
+  project_json=$(project_note_json "$project_slug")
+  if [[ -n "$project_json" ]]; then
+    mission=$(project_mission "$project_json")
+  else
+    mission="No project hub details found."
+  fi
+
+  printf "\033[1;34mProject:\033[0m %s\n\n" "$project_slug"
+  printf "\033[1;34mMission:\033[0m\n%s\n\n" "$mission"
+  printf "\033[1;34mMilestones:\033[0m\n"
+
+  if [[ -n "$project_json" ]]; then
+    while IFS= read -r milestone; do
+      [[ -z "$milestone" ]] && continue
+      had_milestones=1
+      printf -- "- %s\n" "$(sanitize_text "$milestone")"
+    done < <(project_milestones "$project_json")
+  fi
+
+  if [[ "$had_milestones" -eq 0 ]]; then
+    printf -- "- none listed\n"
+  fi
+
+  printf "\n\033[1;34mActive Sessions:\033[0m\n"
+  local sessions
+  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+    local session_name
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    if [[ -n "$(match_registered_project_slug "$session_name" "$project_slug")" ]]; then
+      had_sessions=1
+      local session_slug status
+      status=$(session_status_from_line "$line")
+      if [[ "$session_name" == "$project_slug" ]]; then
+        session_slug="main"
+      else
+        session_slug="${session_name#"$project_slug"-}"
+      fi
+      printf -- "- %-20s (%s)\n" "$session_slug" "$status"
+    fi
+  done <<< "$sessions"
+
+  if [[ "$had_sessions" -eq 0 ]]; then
+    printf -- "- none active\n"
+  fi
+}
+
+cmd_sessions() {
+  local project_slug="$1"
+  local line
+
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+
+    local session_name session_slug status
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    if [[ -z "$(match_registered_project_slug "$session_name" "$project_slug")" ]]; then
+      continue
+    fi
+
+    if [[ "$session_name" == "$project_slug" ]]; then
+      session_slug="main"
+    else
+      session_slug="${session_name#"$project_slug"-}"
+    fi
+
+    status=$(session_status_from_line "$line")
+    printf "%s\t%s\n" "$session_slug" "$status"
+  done < <(zellij list-sessions --no-formatting 2>/dev/null || true)
+}
+
+cmd_summary() {
+  local project_slug="$1"
+  local count=0
+  local line
+
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+
+    local session_name
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    if [[ -n "$(match_registered_project_slug "$session_name" "$project_slug")" ]]; then
+      count=$((count + 1))
+    fi
+  done < <(zellij list-sessions --no-formatting 2>/dev/null || true)
+
+  if [[ "$count" -eq 0 ]]; then
+    printf "not running\n"
+  elif [[ "$count" -eq 1 ]]; then
+    printf "1 session active\n"
+  else
+    printf "%s sessions active\n" "$count"
+  fi
+}
+
+cmd_preview() {
+  local project_slug="$1"
+  local project_json
+  local mission
+  local milestone
+  local had_milestones=0
+  local had_sessions=0
+
+  project_json=$(project_note_json "$project_slug")
+  if [[ -n "$project_json" ]]; then
+    mission=$(project_mission "$project_json")
+  else
+    mission="No project hub details found."
+  fi
+
+  printf "Project: %s\n\n" "$project_slug"
+  printf "Mission:\n%s\n\n" "$mission"
+  printf "Milestones:\n"
+
+  if [[ -n "$project_json" ]]; then
+    while IFS= read -r milestone; do
+      [[ -z "$milestone" ]] && continue
+      had_milestones=1
+      printf -- "- %s\n" "$(sanitize_text "$milestone")"
+    done < <(project_milestones "$project_json")
+  fi
+
+  if [[ "$had_milestones" -eq 0 ]]; then
+    printf -- "- none listed\n"
+  fi
+
+  printf "\nActive Sessions:\n"
+  local sessions
+  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+    local session_name
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    if [[ -n "$(match_registered_project_slug "$session_name" "$project_slug")" ]]; then
+      had_sessions=1
+      local session_slug status
+      status=$(session_status_from_line "$line")
+      if [[ "$session_name" == "$project_slug" ]]; then
+        session_slug="main"
+      else
+        session_slug="${session_name#"$project_slug"-}"
+      fi
+      printf -- "- %-20s (%s)\n" "$session_slug" "$status"
+    fi
+  done <<< "$sessions"
+
+  if [[ "$had_sessions" -eq 0 ]]; then
+    printf -- "- none active\n"
+  fi
+}
+
+cmd_export_menu_data() {
+  local project_output
+  local line
+  local -A project_sessions_count=()
+  local -A project_missions=()
+  local slugs=()
+
+  if ! project_output=$(discover_projects); then
+    exit 1
+  fi
+
+  while IFS=$'\t' read -r s la; do
+    [[ -z "$s" ]] && continue
+    slugs+=("$s")
+    project_sessions_count["$s"]=0
+  done <<< "$project_output"
+
+  # Bulk session count
+  local sessions
+  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+    local session_name project_slug
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    project_slug=$(match_registered_project_slug "$session_name" "${slugs[@]}")
+    if [[ -n "$project_slug" ]]; then
+      project_sessions_count["$project_slug"]=$((project_sessions_count["$project_slug"] + 1))
+    fi
+  done <<< "$sessions"
+
+  # Bulk project info (mission)
+  # NOTE: This still calls project_note_json which calls zk list.
+  # We could optimize this further by calling zk once and parsing in jq,
+  # but for now this is 1 call per project instead of N+1 from Lua.
+  for s in "${slugs[@]}"; do
+    local project_json mission
+    project_json=$(project_note_json "$s")
+    if [[ -n "$project_json" ]]; then
+      mission=$(project_mission "$project_json")
+    else
+      mission="not found"
+    fi
+    
+    local session_label
+    local count=${project_sessions_count[$s]}
+    if [[ "$count" -eq 0 ]]; then
+      session_label="not running"
+    elif [[ "$count" -eq 1 ]]; then
+      session_label="1 session active"
+    else
+      session_label="$count sessions active"
+    fi
+
+    printf "%s\t%s\t%s\n" "$s" "$session_label" "$mission"
+  done
 }
 
 session_status_from_line() {
@@ -93,11 +577,10 @@ match_registered_project_slug() {
   local session_name="$1"
   shift
 
-  local suffix="${session_name#"${SESSION_PREFIX}"-}"
   local project_slug=""
 
   for candidate in "$@"; do
-    if [[ "$suffix" == "$candidate" || "$suffix" == "${candidate}-"* ]]; then
+    if [[ "$session_name" == "$candidate" || "$session_name" == "${candidate}-"* ]]; then
       if [[ -z "$project_slug" || ${#candidate} -gt ${#project_slug} ]]; then
         project_slug="$candidate"
       fi
@@ -111,7 +594,9 @@ match_registered_project_slug() {
 
 # list active project sessions for registered projects only
 cmd_list() {
+  set +e
   local project_filter=""
+  local project_output
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --project)
@@ -129,31 +614,35 @@ cmd_list() {
     esac
   done
 
-  mapfile -t projects < <(discover_projects)
-
-  echo "PROJECT                       SESSION                       STATUS"
-  echo "----------------------------  ----------------------------  --------"
-
-  if [[ ${#projects[@]} -eq 0 ]]; then
-    return 0
+  if ! project_output=$(discover_projects); then
+    set -e
+    exit 1
   fi
+
+  local -A project_last_active
+  local slugs=()
+  while IFS=$'\t' read -r s la; do
+    [[ -z "$s" ]] && continue
+    slugs+=("$s")
+    project_last_active["$s"]="$la"
+  done <<< "$project_output"
 
   local sessions
   sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
   if [[ -z "$sessions" ]]; then
+    set -e
     return 0
   fi
 
+  # Group sessions by project
+  declare -A project_sessions
   while IFS= read -r line; do
-    local name project_slug session_slug status suffix
+    local session_name project_slug session_slug status suffix
     [[ -z "$line" ]] && continue
 
-    name=$(printf "%s\n" "$line" | awk '{print $1}')
-    if [[ "$name" != "${SESSION_PREFIX}-"* ]]; then
-      continue
-    fi
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
 
-    project_slug=$(match_registered_project_slug "$name" "${projects[@]}")
+    project_slug=$(match_registered_project_slug "$session_name" "${slugs[@]}")
     if [[ -z "$project_slug" ]]; then
       continue
     fi
@@ -162,7 +651,7 @@ cmd_list() {
       continue
     fi
 
-    suffix="${name#"${SESSION_PREFIX}"-"${project_slug}"}"
+    suffix="${session_name#"$project_slug"}"
     if [[ -z "$suffix" ]]; then
       session_slug="main"
     else
@@ -171,35 +660,116 @@ cmd_list() {
     fi
 
     status=$(session_status_from_line "$line")
-    printf "%-28s  %-28s  %s\n" "$project_slug" "$session_slug" "$status"
+    # Store sessions as a newline-separated list for each project
+    project_sessions["$project_slug"]+="$session_slug|$status"$'\n'
   done <<< "$sessions"
+
+  if [[ ${#project_sessions[@]} -eq 0 ]]; then
+    set -e
+    return 0
+  fi
+
+  echo "PROJECT / SESSION                                           LAST ACTIVE"
+  echo "----------------------------------------------------------  -----------"
+
+  # Sort projects by last_active descending
+  local sorted_projects
+  mapfile -t sorted_projects < <(
+    for p in "${!project_sessions[@]}"; do
+      printf "%s\t%s\n" "${project_last_active[$p]:-0000-00-00}" "$p"
+    done | sort -r | cut -f2
+  )
+
+  for p in "${sorted_projects[@]}"; do
+    printf "%-58s  %s\n" "$p" "${project_last_active[$p]:-}"
+    
+    local p_sess
+    # Use sort -u to avoid duplicates like multiple "main" sessions
+    mapfile -t p_sess < <(printf "%s" "${project_sessions[$p]}" | sort -u -t'|' -k1,1)
+    local total=${#p_sess[@]}
+    local count=0
+
+    for sess_data in "${p_sess[@]}"; do
+      ((count++))
+      local s st prefix
+      
+      # Robustly parse s and st from sess_data
+      s="${sess_data%%|*}"
+      st="${sess_data#*|}"
+      
+      [[ -z "$s" ]] && continue
+      
+      if [[ $count -eq $total ]]; then
+        prefix="└──"
+      else
+        prefix="├──"
+      fi
+      
+      printf "  %s %-54s\n" "$prefix" "$s"
+    done
+  done
+  set -e
 }
 
 # create or attach to a project session
 cmd_session() {
   local slug="$1"
-  local layout="${2:-}"
+  local session_slug="${2:-main}"
+  local layout="${3:-}"
+  local project_path="${VAULT_ROOT}/projects/${slug}"
+  local project_readme="${project_path}/README.md"
+  local project_cwd="${VAULT_ROOT}"
+  local session_name="$slug"
+  local existing
+  local project_output
+  local hub_path=""
 
-  # Validate slug: only alphanumeric characters, hyphens, and underscores allowed
-  if [[ ! "$slug" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  if ! valid_slug "$slug"; then
     echo "error: invalid project slug '${slug}'" >&2
-    echo "slugs must contain only letters, digits, hyphens, and underscores" >&2
+    echo "slugs must be lowercase, hyphen-separated strings" >&2
     exit 1
   fi
 
-  local project_path="${VAULT_ROOT}/projects/${slug}"
-  local project_readme="${project_path}/README.md"
-  local session_name="${SESSION_PREFIX}-${slug}"
-
-  # Validate project exists
-  if [[ ! -f "$project_readme" ]]; then
-    echo "error: project '${slug}' not found" >&2
-    echo "expected: ${project_readme}" >&2
+  if ! valid_slug "$session_slug"; then
+    echo "error: invalid session slug '${session_slug}'" >&2
+    echo "session slugs must be lowercase, hyphen-separated strings" >&2
     exit 1
+  fi
+
+  if [[ "$session_slug" != "main" ]]; then
+    session_name="${slug}-${session_slug}"
+  fi
+
+  if ! project_output=$(discover_projects); then
+    exit 1
+  fi
+
+  if ! printf "%s\n" "$project_output" | cut -f1 | grep -Fxq "$slug"; then
+    echo "error: project '${slug}' is not an active project hub in ${VAULT_ROOT}" >&2
+    exit 1
+  fi
+
+  if ! hub_path=$(project_hub_path "$slug"); then
+    exit 1
+  fi
+
+  if [[ -d "$project_path" ]]; then
+    project_cwd="$project_path"
+  fi
+
+  # Preserve the legacy project directory contract when it still exists.
+  # When projects live only in the notes repo, fall back to the hub note.
+  if [[ -f "$project_readme" ]]; then
+    :
+  elif [[ -n "$hub_path" ]]; then
+    project_readme="$hub_path"
+    project_path="$VAULT_ROOT"
+  else
+    project_readme=""
+    project_path="$VAULT_ROOT"
   fi
 
   # Check if session already exists
-  local existing
   existing=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | grep -x "${session_name}" || true)
 
   if [[ -n "$existing" ]]; then
@@ -217,7 +787,7 @@ cmd_session() {
       layout_args=(--layout "$layout")
     fi
 
-    exec zellij --session "${session_name}" "${layout_args[@]}" options --default-cwd "${project_path}"
+    exec zellij --session "${session_name}" "${layout_args[@]}" options --default-cwd "${project_cwd}"
   fi
 }
 
@@ -245,9 +815,95 @@ cmd_agent() {
   exec agentctl "$agent_name" "$agent_cmd" --project "$PROJECT_NAME" "$@"
 }
 
+# --- Completion Logic ---
+
+# Generate completions for pz
+__pz_complete() {
+  local cur prev words cword
+  _get_comp_words_by_ref -n : cur prev words cword 2>/dev/null || return 0
+
+  local projects
+  projects=$(discover_projects 2>/dev/null | cut -f1)
+
+  if [[ $cword -eq 1 ]]; then
+    # Complete project slugs or subcommands
+    local opts="list agent --help completion"
+    COMPREPLY=( $(compgen -W "${opts} ${projects}" -- "$cur") )
+    return 0
+  fi
+
+  if [[ $cword -eq 2 ]]; then
+    local project="${words[1]}"
+    if [[ "$project" == "agent" ]]; then
+       # Could complete agent names here if needed
+       return 0
+    fi
+    
+    # Check if we are completing a session for a valid project
+    if printf "%s\n" "${projects}" | grep -Fxq "$project"; then
+      local sessions
+      # Find existing sessions for this project
+      sessions=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | command grep -E "^${project}(-|$)" | sed "s/^${project}-//; s/^${project}$/main/" || true)
+      COMPREPLY=( $(compgen -W "${sessions} new" -- "$cur") )
+      return 0
+    fi
+  fi
+}
+
+# The actual 'completion' command to be sourced or eval'd
+cmd_completion() {
+  cat <<'EOF'
+_pz_completion() {
+  local cur prev words cword
+  if type _get_comp_words_by_ref &>/dev/null; then
+    _get_comp_words_by_ref -n : cur prev words cword
+  else
+    # Fallback if bash-completion is not fully available
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    words=("${COMP_WORDS[@]}")
+    cword="$COMP_CWORD"
+  fi
+
+  local projects
+  # Attempt to use pz to discover slugs, fallback to calling the script directly if needed
+  if command -v pz >/dev/null 2>&1; then
+    projects=$(pz discover-slugs 2>/dev/null)
+  else
+    return 0
+  fi
+
+  if [[ $cword -eq 1 ]]; then
+    local opts="list agent --help completion"
+    COMPREPLY=( $(compgen -W "${opts} ${projects}" -- "$cur") )
+    return 0
+  fi
+
+  if [[ $cword -eq 2 ]]; then
+    local project="${words[1]}"
+    if [[ "$project" == "list" || "$project" == "agent" || "$project" == "completion" ]]; then
+       return 0
+    fi
+    if printf "%s\n" "${projects}" | grep -Fxq "$project"; then
+      local sessions
+      sessions=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | command grep -E "^${project}(-|$)" | sed "s/^${project}-//; s/^${project}$/main/" || true)
+      COMPREPLY=( $(compgen -W "${sessions} new" -- "$cur") )
+      return 0
+    fi
+  fi
+}
+complete -F _pz_completion pz
+EOF
+}
+
+# Add a hidden helper for completion to get slugs without extra info
+cmd_discover_slugs() {
+  discover_projects 2>/dev/null | cut -f1
+}
+
 # --- Argument parsing ---
 if [[ $# -eq 0 ]]; then
-  usage
+  cmd_list
   exit 0
 fi
 
@@ -273,7 +929,7 @@ done
 set -- "${POSITIONAL[@]}"
 
 if [[ $# -eq 0 ]]; then
-  usage
+  cmd_list
   exit 0
 fi
 
@@ -286,9 +942,35 @@ case "$1" in
     shift
     cmd_list "$@"
     ;;
+  summary)
+    shift
+    cmd_summary "$@"
+    ;;
+  sessions)
+    shift
+    cmd_sessions "$@"
+    ;;
+  info)
+    shift
+    cmd_info "$@"
+    ;;
+  preview)
+    shift
+    cmd_preview "$@"
+    ;;
+  export-menu-data)
+    shift
+    cmd_export_menu_data "$@"
+    ;;
   agent)
     shift
     cmd_agent "$@"
+    ;;
+  completion)
+    cmd_completion
+    ;;
+  discover-slugs)
+    cmd_discover_slugs
     ;;
   -*)
     echo "error: unknown option: $1" >&2
@@ -296,6 +978,16 @@ case "$1" in
     exit 1
     ;;
   *)
-    cmd_session "$1" "$LAYOUT"
+    project_slug="$1"
+    session_slug="main"
+    if [[ $# -ge 2 ]]; then
+      session_slug="$2"
+    fi
+    if [[ $# -gt 2 ]]; then
+      echo "error: too many positional arguments" >&2
+      usage >&2
+      exit 1
+    fi
+    cmd_session "$project_slug" "$session_slug" "$LAYOUT"
     ;;
 esac

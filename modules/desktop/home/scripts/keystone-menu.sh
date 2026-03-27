@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+set -euo pipefail
 
 # Keystone Menu - A hierarchical menu system using Walker
 
@@ -20,7 +22,7 @@ back_to() {
 menu() {
   local prompt="$1"
   local options="$2"
-  local extra="$3"
+  local extra="${3:-}"
 
   read -r -a args <<<"$extra"
 
@@ -35,57 +37,104 @@ open_url() {
   xdg-open "$1" &
 }
 
-# ============== CONTEXTS MENU ==============
-show_contexts_menu() {
-  SESSION_PREFIX="obs"
-  VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
+session_name_matches_slug() {
+  local session_name="$1"
+  local project_slug="$2"
 
-  # Build list of active contexts from zellij sessions
-  context_list=""
+  [[ "$session_name" == "$project_slug" || "$session_name" == "${project_slug}-"* ]] \
+    || [[ "$session_name" == "obs-${project_slug}" || "$session_name" == "obs-${project_slug}-"* ]]
+}
+
+session_slug_for_project() {
+  local session_name="$1"
+  local project_slug="$2"
+
+  if [[ "$session_name" == "obs-${project_slug}" || "$session_name" == "$project_slug" ]]; then
+    printf "main\n"
+  elif [[ "$session_name" == "obs-${project_slug}-"* ]]; then
+    printf "%s\n" "${session_name#"obs-${project_slug}-"}"
+  elif [[ "$session_name" == "${project_slug}-"* ]]; then
+    printf "%s\n" "${session_name#"${project_slug}-"}"
+  else
+    printf "main\n"
+  fi
+}
+
+session_title_for_project() {
+  local project_slug="$1"
+  local session_slug="${2:-main}"
+
+  if [[ "$session_slug" == "main" || -z "$session_slug" ]]; then
+    printf "%s\n" "$project_slug"
+  else
+    printf "%s-%s\n" "$project_slug" "$session_slug"
+  fi
+}
+
+find_client_for_title() {
+  local expected_title="$1"
+
+  hyprctl clients -j 2>/dev/null | jq -r --arg expected_title "$expected_title" '
+    map(
+      select(.class == "com.mitchellh.ghostty")
+      | select(.title == $expected_title or (.title | startswith($expected_title + " | ")))
+    )
+    | sort_by(.focusHistoryID)
+    | .[0]
+    | if . == null then "" else "\(.address)\t\(.workspace.name)" end
+  '
+}
+
+switch_to_active_project_context() {
+  local project_slug="$1"
+  local zellij_output="$2"
+
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    name=$(echo "$line" | awk '{print $1}')
-    if [[ "$name" == "${SESSION_PREFIX}-"* ]]; then
-      slug="${name#"${SESSION_PREFIX}"-}"
-      if ! echo "$line" | grep -q "EXITED"; then
-        context_list="${context_list}●  ${slug}\n"
+
+    local session_name
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+
+    if session_name_matches_slug "$session_name" "$project_slug" && ! printf "%s\n" "$line" | grep -q "EXITED"; then
+      local session_slug expected_title client_info client_address workspace_name
+      session_slug=$(session_slug_for_project "$session_name" "$project_slug")
+      expected_title=$(session_title_for_project "$project_slug" "$session_slug")
+      client_info=$(find_client_for_title "$expected_title")
+
+      if [[ -n "$client_info" ]]; then
+        client_address=${client_info%%$'\t'*}
+        workspace_name=${client_info#*$'\t'}
+        hyprctl dispatch workspace "$workspace_name" >/dev/null 2>&1
+        hyprctl dispatch focuswindow "address:${client_address}" >/dev/null 2>&1
+        return 0
       fi
+
+      launch_project_context "$project_slug" "$session_slug"
+      return 0
     fi
-  done < <(zellij list-sessions --no-formatting 2>/dev/null || true)
+  done <<< "$zellij_output"
 
-  # Add available projects that aren't running
-  if [[ -d "${VAULT_ROOT}/projects" ]]; then
-    active_slugs=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | sed "s/^${SESSION_PREFIX}-//" || true)
-    for project_dir in "${VAULT_ROOT}/projects"/*/; do
-      [[ ! -d "$project_dir" ]] && continue
-      slug=$(basename "$project_dir")
-      if ! echo "$active_slugs" | grep -qx "$slug"; then
-        context_list="${context_list}○  ${slug}\n"
-      fi
-    done
-  fi
+  launch_project_context "$project_slug"
+}
 
-  if [[ -z "$context_list" ]]; then
-    notify-send "No contexts" "No active sessions or projects found" -t 2000
-    back_to show_main_menu
-    return
-  fi
+launch_project_context() {
+  local project_slug="$1"
+  local session_slug="${2:-}"
 
-  context_list="${context_list%\\n}"
-  selected=$(echo -e "$context_list" | keystone-launch-walker --dmenu --width 350 --minheight 1 --maxheight 630 -p "Context…" 2>/dev/null) || { back_to show_main_menu; return; }
-
-  if [[ -n "$selected" ]]; then
-    selected_slug=$(echo "$selected" | awk '{print $2}')
-    if echo "$selected" | grep -q "^●"; then
-      # Active — switch to workspace
-      hyprctl dispatch workspace "name:${selected_slug}" >/dev/null 2>&1
-    else
-      # Not running — launch
-      keystone-context "$selected_slug"
-    fi
+  if [[ -n "$session_slug" ]]; then
+    ghostty -e pz "$project_slug" "$session_slug" &
   else
-    back_to show_main_menu
+    ghostty -e pz "$project_slug" &
   fi
+}
+
+prompt_for_session_slug() {
+  menu "Session slug (optional)" ""
+}
+
+# ============== CONTEXTS MENU ==============
+show_contexts_menu() {
+  keystone-context-switch
 }
 
 # ============== LEARN MENU ==============
@@ -156,7 +205,7 @@ show_theme_menu() {
 
   if [[ -n "$selected" ]]; then
     # Extract theme name (remove icon prefix)
-    theme_name=$(echo "$selected" | sed 's/^󰸌  //')
+    theme_name="${selected#󰸌  }"
     keystone-theme-switch "$theme_name"
   else
     show_style_menu
@@ -224,9 +273,9 @@ go_to_menu() {
   esac
 }
 
-if [[ -n "$1" ]]; then
+if [[ -n "${1:-}" ]]; then
   BACK_TO_EXIT=true
   go_to_menu "$1"
 else
-  show_system_menu
+  show_main_menu
 fi

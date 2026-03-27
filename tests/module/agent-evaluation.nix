@@ -71,6 +71,14 @@ let
           builtins.toJSON result.config.home-manager.users.testuser.home.sessionVariables
         else
           "{}";
+      deepworkMcpJson =
+        if result.config ? home-manager && result.config.home-manager.users ? testuser then
+          builtins.toJSON (
+            result.config.home-manager.users.testuser.keystone.terminal.cliCodingAgents.generatedMcpServers.codex.deepwork
+              or { }
+          )
+        else
+          "{}";
     in
     pkgs.runCommand "eval-${name}" { } ''
       echo "Evaluating ${name}..."
@@ -81,9 +89,41 @@ let
       echo "  User Services: ${userServicesJson}"
       echo "  User Timers: ${userTimersJson}"
 
+      if [ "${name}" = "locked-mode" ]; then
+        echo "Verifying DeepWork MCP env in locked mode..."
+        if echo '${deepworkMcpJson}' | grep -q '"DEEPWORK_ADDITIONAL_JOBS_FOLDERS"'; then
+          echo "  ✓ Found DeepWork MCP env key"
+        else
+          echo "  ✗ Missing DeepWork MCP env key"
+          echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
+          exit 1
+        fi
+        if echo '${deepworkMcpJson}' | grep -q 'deepwork-library-jobs'; then
+          echo "  ✓ Found locked deepwork jobs store path"
+        else
+          echo "  ✗ Missing locked deepwork jobs store path"
+          echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
+          exit 1
+        fi
+        if echo '${deepworkMcpJson}' | grep -q 'keystone-deepwork-jobs'; then
+          echo "  ✓ Found locked keystone jobs store path"
+        else
+          echo "  ✗ Missing locked keystone jobs store path"
+          echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
+          exit 1
+        fi
+      fi
+
       # Verify DEEPWORK_ADDITIONAL_JOBS_FOLDERS for development-mode test
       if [ "${name}" = "development-mode" ]; then
         echo "Verifying DEEPWORK_ADDITIONAL_JOBS_FOLDERS in development-mode..."
+        if echo '${sessionVarsJson}' | grep -q "/home/testuser/.keystone/repos/Unsupervisedcom/deepwork/library/jobs"; then
+          echo "  ✓ Found local deepwork jobs path"
+        else
+          echo "  ✗ Missing local deepwork jobs path"
+          echo "  Actual Session Vars: ${sessionVarsJson}"
+          exit 1
+        fi
         # We expect /home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs
         # because ncrmro/keystone is the guessed name for the keystone input.
         if echo '${sessionVarsJson}' | grep -q "/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs"; then
@@ -91,6 +131,13 @@ let
         else
           echo "  ✗ Missing local keystone jobs path"
           echo "  Actual Session Vars: ${sessionVarsJson}"
+          exit 1
+        fi
+        if echo '${deepworkMcpJson}' | grep -q '"/home/testuser/.keystone/repos/Unsupervisedcom/deepwork/library/jobs:/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs"'; then
+          echo "  ✓ Found development-mode DeepWork MCP env value"
+        else
+          echo "  ✗ Missing development-mode DeepWork MCP env value"
+          echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
           exit 1
         fi
       fi
@@ -112,6 +159,29 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Locked mode verification
+    locked-mode = eval "locked-mode" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            terminal.enable = true;
+            email = "testuser@example.com";
           };
         };
         fileSystems."/" = {
@@ -454,8 +524,36 @@ let
             # SSH public key now set via keystone.keys."agent-tester"
             notes.repo = "git@example.com:test/notes.git";
             notes.taskLoop = {
+              defaults = {
+                provider = "claude";
+                profile = "medium";
+                fallbackModel = "opus";
+                effort = "medium";
+              };
+              profiles = {
+                max = {
+                  claude = {
+                    model = "opus";
+                    effort = "max";
+                  };
+                  gemini.model = "auto-gemini-3";
+                };
+              };
+              ingest = {
+                profile = "fast";
+                provider = "gemini";
+              };
               onCalendar = "*:0/15";
               maxTasks = 3;
+              prioritize = {
+                profile = "fast";
+                model = "gemini-3-flash-preview";
+              };
+              execute = {
+                profile = "max";
+                provider = "claude";
+                fallbackModel = "sonnet";
+              };
             };
             notes.scheduler = {
               onCalendar = "*-*-* 06:00:00";

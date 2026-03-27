@@ -36,5 +36,21 @@ in
         registerDNS
         ;
     };
+
+    services.prometheus = {
+      enable = true;
+      port = cfg.port;
+      retentionTime = "90d";
+      checkConfig = "syntax-only";
+
+      exporters.node = {
+        enable = true;
+        enabledCollectors = [
+          "systemd"
+          "processes"
+        ];
+        port = 9100;
+      };
+    };
   };
 }

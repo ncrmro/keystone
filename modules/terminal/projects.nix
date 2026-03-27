@@ -13,7 +13,6 @@
 # keystone.notes = { enable = true; repo = "..."; };
 # keystone.projects = {
 #   enable = true;
-#   # sessionPrefix defaults to "ksp" → sessions named ksp-{slug}
 # };
 # ```
 #
@@ -21,7 +20,6 @@
 #
 # REQ-010.4  Discovers projects by scanning {notes_path}/projects/*/README.md
 # REQ-010.5  keystone.notes.enable MUST be true when projects.enable is true
-# REQ-010.7  sessionPrefix for Zellij session names (default: "ksp")
 {
   config,
   lib,
@@ -31,6 +29,14 @@
 with lib;
 let
   cfg = config.keystone.projects;
+  devScripts = import ../shared/dev-script-link.nix { inherit lib; };
+  inherit (devScripts) mkHomeScriptCommand;
+  pzCommand = mkHomeScriptCommand {
+    inherit config;
+    commandName = "pz";
+    relativePath = "packages/pz/pz.sh";
+    package = pkgs.keystone.pz;
+  };
 in
 {
   # Import notes module so keystone.notes options are declared and accessible
@@ -42,26 +48,18 @@ in
     enable = mkEnableOption "Keystone project session management" // {
       default = true;
     };
-
-    sessionPrefix = mkOption {
-      type = types.str;
-      default = "ksp";
-      description = "Prefix for Zellij session names created by `pz` (e.g., 'ksp-{slug}').";
-      example = "ksp";
-    };
   };
 
-  config = mkIf cfg.enable {
-    # REQ-010.5: keystone.notes.enable MUST be true when projects.enable is true
-    assertions = [
-      {
-        assertion = config.keystone.notes.enable;
-        message = "keystone.notes.enable must be true when keystone.projects.enable is true (REQ-010.5)";
-      }
-    ];
-
-    home.packages = [
-      pkgs.keystone.pz
-    ];
-  };
+  config = mkIf cfg.enable (mkMerge [
+    {
+      # REQ-010.5: keystone.notes.enable MUST be true when projects.enable is true
+      assertions = [
+        {
+          assertion = config.keystone.notes.enable;
+          message = "keystone.notes.enable must be true when keystone.projects.enable is true (REQ-010.5)";
+        }
+      ];
+    }
+    pzCommand
+  ]);
 }

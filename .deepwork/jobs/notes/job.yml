@@ -1,6 +1,6 @@
 name: notes
-version: "1.1.0"
-summary: "Initialize, repair, and maintain zk notebooks for notes, projects, and reports"
+version: "1.3.0"
+summary: "Initialize, migrate, and maintain zk Zettelkasten notebooks for notes repos"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job manages Zettelkasten-structured notes repositories using the `zk` CLI.
   It applies to both human user notes repos and OS agent notes repos (agent-space).
@@ -11,8 +11,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
   Human users: `keystone.notes` (home-manager module, syncs to `~/notes`).
   OS agents: `keystone.os.agents.<name>.notes` (NixOS module, syncs to `/home/agent-{name}/notes`).
 
-  ## Zettelkasten Structure (standardized by process.knowledge-management and
-  process.notes conventions)
+  ## Zettelkasten Structure (standardized by process.knowledge-management convention)
 
   ```
   notes-repo/
@@ -23,15 +22,14 @@ common_job_info_provided_to_all_steps_at_runtime: |
         literature.md         # Template for source summaries
         permanent.md          # Template for atomic ideas
         decision.md           # Template for ADRs
-        report.md             # Template for time-stamped workflow reports
         index.md              # Template for Maps of Content
     inbox/                    # Fleeting notes (ephemeral, to be processed)
     literature/               # Literature notes (source summaries)
     notes/                    # Permanent notes (atomic, linked)
     decisions/                # Decision records (context, decision, consequences)
-    reports/                  # Report notes (diagnostics, research, run outputs)
-    index/                    # Maps of Content (curated entry points)
-    archive/                  # Archived project notes retained in zk
+    index/                    # Maps of Content and project hub notes
+    reports/                  # Optional report notes when the repo uses a report group
+    spikes/                   # Optional spike trees with canonical README notes plus support artifacts
     TASKS.yaml                # Agent task state (existing, untouched)
     PROJECTS.yaml             # Agent project config (existing, untouched)
     SCHEDULES.yaml            # Agent schedules (existing, untouched)
@@ -48,7 +46,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
   ---
   id: "202603201430"
   title: "Note title"
-  type: fleeting | literature | permanent | decision | report | index
+  type: fleeting | literature | permanent | decision | index | report
   created: 2026-03-20T14:30:00-05:00
   author: ncrmro
   tags: [topic1, topic2]
@@ -62,7 +60,6 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - `zk list --format json --match "query"` — Search notes
   - `zk list --orphan --format json` — Find unlinked notes
   - `zk list --linked-by <path> --format json` — Find outgoing links
-  - `zk list reports/ --sort created- --format json` — Inspect report chains
   - `zk index` — Rebuild note index
 
   ## Operational Files
@@ -71,7 +68,53 @@ common_job_info_provided_to_all_steps_at_runtime: |
   AGENTS.md) are NOT notes and MUST NOT be modified by this job. The zk indexer
   ignores non-markdown files automatically.
 
+  ## Transient Workflow Outputs
+
+  Step outputs such as audit reports, migration plans, scaffold reports, migration logs,
+  and doctor reports are transient workflow artifacts. Write them under `.deepwork/tmp/`
+  and pass those paths back to the workflow engine. They MUST NOT be written at the repo
+  root or committed to git.
+
+  ## Source Format Detection
+
+  The `setup` and `doctor` workflows handle repos that may originate from different
+  note-taking systems. Detection markers:
+
+  - **Obsidian vault**: `.obsidian/` directory present. May contain Obsidian-specific
+    syntax (callouts `> [!note]`, dataview queries `\`\`\`dataview`, embedded files
+    `![[file]]`, aliases in frontmatter, folder-based organization).
+  - **Apple Notes export**: Typically flat or shallow directory structure, HTML fragments
+    in markdown, exported attachments in separate folders, no frontmatter.
+  - **Plain markdown**: No app-specific markers. May have arbitrary structure.
+  - **Keystone agent repo**: Contains TASKS.yaml, AGENTS.md, SOUL.md, or SCHEDULES.yaml.
+    When detected, keystone conventions apply silently (operational files excluded,
+    agent identity preserved).
+
+  ## Project hub and spike conventions
+
+  Some repos adopt two extra conventions beyond the core zk groups:
+
+  - `index/` may contain project hub notes. These are still `type: index`, but they act as
+    the canonical entry point for a project and often carry tags such as `project` plus the
+    project slug.
+  - `spikes/<slug>/README.md` may be the canonical spike note, while sibling files such as
+    `scope.md`, `research.md`, or `prototype/README.md` remain support artifacts that are
+    intentionally ignored by `zk` via `.zk/config.toml`.
+
+  When those conventions are present, the doctor workflow must preserve them instead of
+  forcing all spike content into `notes/` or treating project hubs as stray notes.
+
 workflows:
+  - name: setup
+    summary: "Detect source format and convert to zk Zettelkasten structure"
+    steps:
+      - detect
+      - audit
+      - plan_migration
+      - scaffold
+      - migrate
+      - verify_doctor
+
   - name: init
     summary: "Initialize a new notes repo with the zk Zettelkasten structure"
     steps:
@@ -80,10 +123,12 @@ workflows:
       - verify_init
 
   - name: doctor
-    summary: "Diagnose and repair an existing notes repo to the standardized notebook structure"
+    summary: "Diagnose and migrate an existing notes repo to standardized zk structure"
     steps:
       - audit
-      - repair_notebook
+      - plan_migration
+      - scaffold
+      - migrate
       - verify_doctor
 
   - name: process_inbox
@@ -94,17 +139,23 @@ workflows:
       - link_notes
       - sync
 
-  - name: project_hub
-    summary: "Create or refresh a single project hub note and ensure linked project context is discoverable"
-    steps:
-      - project_hub
-
-  - name: report
-    summary: "Create a standardized report note, chain it to the latest prior report, and link it to the project hub"
-    steps:
-      - capture_report
-
 steps:
+  # === setup workflow (new) ===
+  - id: detect
+    name: "Detect Source Format"
+    description: "Identify the source note-taking system and whether this is a keystone repo"
+    instructions_file: steps/detect.md
+    inputs:
+      - name: notes_path
+        description: "Path to the notes repo to convert"
+    outputs:
+      detection_report.md:
+        type: file
+        description: "Source format, keystone status, and format-specific artifacts found"
+        required: true
+    dependencies: []
+    reviews: []
+
   # === init workflow ===
   - id: scaffold
     name: "Scaffold Notebook"
@@ -158,21 +209,21 @@ steps:
       - run_each: init_report.md
         quality_criteria:
           "Index Clean": "zk index completes without errors."
-          "Groups Resolve": "zk list for each group (inbox, literature, notes, decisions, reports, index, archive) returns results or empty without error."
+          "Groups Resolve": "zk list for each group (inbox, literature, notes, decisions, index) returns results or empty without error."
           "Template Works": "A test note created with --no-input has correct frontmatter fields."
 
-  # === doctor workflow ===
+  # === doctor / setup workflow ===
   - id: audit
     name: "Audit Existing Repo"
     description: "Inventory existing files, detect structure, frontmatter patterns, and naming conventions"
     instructions_file: steps/audit.md
     inputs:
       - name: notes_path
-        description: "Path to the existing notes repo to repair"
+        description: "Path to the existing notes repo to migrate"
     outputs:
       audit_report.md:
         type: file
-        description: "Inventory of existing files, structure analysis, frontmatter patterns, link formats"
+        description: "Inventory of existing files, structure analysis, frontmatter patterns, link formats, source format details"
         required: true
     dependencies: []
     reviews:
@@ -181,48 +232,83 @@ steps:
           "File Count": "The audit includes total markdown file count and breakdown by directory."
           "Frontmatter Analysis": "The audit identifies which files have frontmatter and which fields are present."
           "Link Format Detection": "The audit identifies existing link formats (wikilinks, markdown links, bare URLs)."
+          "Source Format Identified": "The audit identifies the source format (Obsidian, Apple Notes, plain markdown) and any format-specific artifacts."
+          "Legacy Trees Identified": "The audit explicitly lists noncanonical directories containing note-like markdown that still need migration or explicit exclusion."
+          "Project Ownership Audited": "The audit identifies project hubs, spike conventions, and probable missing project tags using ripgrep-based project-name discovery."
 
-  - id: repair_notebook
-    name: "Repair Notebook"
-    description: "Normalize groups, frontmatter, report chains, project hubs, and archive placement"
-    instructions_file: steps/repair_notebook.md
+  - id: plan_migration
+    name: "Plan Migration"
+    description: "Based on audit, propose a migration plan with file mappings, ID strategy, and directory moves"
+    instructions_file: steps/plan_migration.md
     inputs:
       - file: audit_report.md
         from_step: audit
     outputs:
-      repair_log.md:
+      migration_plan.md:
         type: file
-        description: "Log of note repairs, archive moves, report chaining, and project hub updates"
+        description: "Migration plan: file-to-type mappings, ID assignment strategy, directory moves, frontmatter additions, format-specific conversions"
         required: true
     dependencies:
       - audit
     reviews:
-      - run_each: repair_log.md
+      - run_each: migration_plan.md
         quality_criteria:
-          "Frontmatter Normalized": "Touched notes have the required fields for their type."
-          "Report Chains Updated": "Recurring reports link to the latest prior report when one exists."
-          "Project Hubs Updated": "Each active project has one discoverable hub note linked from related reports or decisions."
+          "No Data Loss": "The plan does not delete any existing content — only moves and augments."
+          "ID Strategy Clear": "The plan specifies how IDs will be assigned (git history, mtime, or new timestamp)."
+          "Operational Files Untouched": "TASKS.yaml, PROJECTS.yaml, SCHEDULES.yaml, SOUL.md, AGENTS.md are explicitly excluded."
+          "Format Artifacts Handled": "The plan addresses format-specific artifacts (Obsidian callouts, dataview blocks, Apple Notes HTML, etc.)."
+          "Legacy Trees Accounted For": "The plan includes an explicit disposition for every remaining noncanonical directory that contains note-like markdown."
+          "Project Tag Strategy": "The plan explains how project hubs, spike notes, and ripgrep-discovered project mentions will be used to add missing project tags."
+
+  # scaffold step is shared with init workflow (defined above)
+
+  - id: migrate
+    name: "Execute Migration"
+    description: "Execute the migration plan: add frontmatter, assign IDs, move files, convert links"
+    instructions_file: steps/migrate.md
+    inputs:
+      - file: migration_plan.md
+        from_step: plan_migration
+      - file: scaffold_report.md
+        from_step: scaffold
+    outputs:
+      migration_log.md:
+        type: file
+        description: "Log of all file transformations with before/after paths and commit hashes"
+        required: true
+    dependencies:
+      - plan_migration
+      - scaffold
+    reviews:
+      - run_each: migration_log.md
+        quality_criteria:
+          "Commit Per File": "Each file transformation has its own commit for reversibility."
+          "Content Preserved": "No content was deleted — only frontmatter additions, directory moves, and link format changes."
+          "Legacy Trees Resolved": "Remaining noncanonical note directories were either migrated or explicitly left with only operational files."
+          "Project Ownership Applied": "Migration updates missing project tags where the evidence is strong and preserves canonical project hubs and spike README notes."
 
   - id: verify_doctor
-    name: "Verify Repair"
-    description: "Run zk index, check for orphans, dead links, report chains, and missing frontmatter"
+    name: "Verify Migration"
+    description: "Run zk index, check for orphans, dead links, and missing frontmatter"
     instructions_file: steps/verify_doctor.md
     inputs:
-      - file: repair_log.md
-        from_step: repair_notebook
+      - file: migration_log.md
+        from_step: migrate
     outputs:
       doctor_report.md:
         type: file
-        description: "Post-repair health check: index status, orphan count, dead links, frontmatter coverage, and report chain status"
+        description: "Post-migration health check: index status, orphan count, dead links, frontmatter coverage"
         required: true
     dependencies:
-      - repair_notebook
+      - migrate
     reviews:
       - run_each: doctor_report.md
         quality_criteria:
           "Index Clean": "zk index completes without errors."
-          "Frontmatter Coverage": "All markdown files in notes/, literature/, decisions/, reports/, index/, and archive/ have valid frontmatter where required."
+          "Frontmatter Coverage": "All markdown files in notes/ have valid frontmatter with id, title, type, created, author, tags."
           "No Dead Links": "No wikilinks point to non-existent notes."
+          "No Stray Note Trees": "No note-like markdown remains outside canonical groups unless explicitly classified as operational residue."
+          "Project Tags Verified": "The report checks for likely missing project tags via ripgrep-driven project-name discovery and explains any remaining intentional gaps."
 
   # === process_inbox workflow ===
   - id: review_inbox
@@ -272,7 +358,7 @@ steps:
       - run_each: link_report.md
         quality_criteria:
           "No Orphans": "Every newly promoted permanent note links to at least one other note."
-          "Index Updated": "Relevant index notes, especially project hub notes, have been updated with links to the new notes."
+          "Index Updated": "Relevant index notes have been updated with links to the new notes."
 
   - id: sync
     name: "Sync Changes"
@@ -289,51 +375,3 @@ steps:
     dependencies:
       - link_notes
     reviews: []
-
-  - id: project_hub
-    name: "Create or Refresh Project Hub"
-    description: "Ensure the project has one active hub note with the standard sections and links"
-    instructions_file: steps/project_hub.md
-    inputs:
-      - name: project_slug
-        description: "Canonical project slug used in tags and frontmatter"
-      - name: project_title
-        description: "Human-readable project name for the hub note title"
-    outputs:
-      project_hub_report.md:
-        type: file
-        description: "Hub note path plus linked reports, decisions, and repos discovered during creation or refresh"
-        required: true
-    dependencies: []
-    reviews:
-      - run_each: project_hub_report.md
-        quality_criteria:
-          "Single Active Hub": "Exactly one active index note exists for the project."
-          "Required Sections": "The hub note includes objective, current state, next actions, curated links, and report ledger sections."
-          "Canonical Tags": "The hub note includes project/<slug> and status/active."
-
-  - id: capture_report
-    name: "Capture Report"
-    description: "Create a standardized report note, chain it to the latest prior report, and link it to the project hub"
-    instructions_file: steps/capture_report.md
-    inputs:
-      - name: project_slug
-        description: "Canonical project slug used in tags and frontmatter"
-      - name: report_title
-        description: "Human-readable report title"
-      - name: report_kind
-        description: "Canonical report kind slug, e.g. fleet-health"
-      - name: source_ref
-        description: "Workflow, command, file path, or source that generated the report"
-    outputs:
-      report_capture.md:
-        type: file
-        description: "Created report path, applied tags, previous report link, and project hub update status"
-        required: true
-    dependencies: []
-    reviews:
-      - run_each: report_capture.md
-        quality_criteria:
-          "Report Created": "A report note exists in reports/ with the requested title and canonical frontmatter."
-          "Chain Maintained": "If a previous report exists, the new note references it."
-          "Hub Linked": "The project hub links to the new report note."

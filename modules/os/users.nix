@@ -233,6 +233,7 @@ in
                 # Desktop configuration (Hyprland) — only set when desktop NixOS module is imported
                 keystone.desktop = mkIf userCfg.desktop.enable {
                   enable = mkDefault true;
+                  uhk.enable = mkDefault config.keystone.hardware.uhk.enable;
                   hyprland = {
                     enable = mkDefault true;
                     modifierKey = mkDefault userCfg.desktop.hyprland.modifierKey;

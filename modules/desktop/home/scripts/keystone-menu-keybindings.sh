@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+set -euo pipefail
 
 # Keystone Menu Keybindings - Displays Hyprland keybindings in a searchable Walker menu
 

@@ -14,9 +14,21 @@
   ...
 }:
 let
-  serverLib = import ../lib.nix { inherit lib; };
+  serverLib = import ../../lib.nix { inherit lib; };
   serverCfg = config.keystone.server;
   cfg = serverCfg.services.grafana;
+  keystoneDashboards = ./dashboards;
+  extraDashboardProviders = lib.imap0 (
+    index: pathOrAttr:
+    if lib.isAttrs pathOrAttr then
+      pathOrAttr
+    else
+      {
+        name = "Extra ${toString (index + 1)}";
+        folder = builtins.baseNameOf (toString pathOrAttr);
+        options.path = pathOrAttr;
+      }
+  ) cfg.extraDashboardPaths;
 in
 {
   options.keystone.server.services.grafana =
@@ -29,6 +41,17 @@ in
       registerDNS = true;
     }
     // {
+      extraDashboardPaths = lib.mkOption {
+        type = lib.types.listOf (lib.types.either lib.types.path lib.types.attrs);
+        default = [ ];
+        description = ''
+          Additional dashboard directories to provision alongside the built-in
+          keystone dashboards. Can be a list of paths or { name, folder, options.path }
+          attrsets. This lets nixos-config manage non-keystone Grafana dashboards
+          declaratively without mixing them into the keystone repo.
+        '';
+      };
+
       alerts = {
         defaultEnabled = lib.mkOption {
           type = lib.types.bool;
@@ -61,6 +84,29 @@ in
           root_url = "https://${cfg.subdomain}.${config.keystone.domain}/";
         };
         provision.enable = true;
+        provision.dashboards.settings.providers = [
+          {
+            name = "Keystone";
+            folder = "Keystone";
+            options.path = keystoneDashboards;
+          }
+        ]
+        ++ extraDashboardProviders;
+
+        provision.datasources.settings.datasources =
+          (lib.optional serverCfg.services.prometheus.enable {
+            name = "Prometheus";
+            type = "prometheus";
+            uid = serverLib.datasourceUids.prometheus;
+            url = "http://127.0.0.1:${toString serverCfg.services.prometheus.port}";
+            isDefault = true;
+          })
+          ++ (lib.optional serverCfg.services.loki.enable {
+            name = "Loki";
+            type = "loki";
+            uid = serverLib.datasourceUids.loki;
+            url = "http://127.0.0.1:${toString serverCfg.services.loki.port}";
+          });
       };
     })
 

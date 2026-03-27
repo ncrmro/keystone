@@ -51,6 +51,7 @@ in
 
           # Make .desktop files available for wofi
           "XDG_DATA_DIRS,$XDG_DATA_DIRS:$HOME/.nix-profile/share:/nix/var/nix/profiles/default/share"
+          "PATH,$HOME/.local/bin:$PATH"
 
           # Use XCompose file
           "XCOMPOSEFILE,~/.XCompose"

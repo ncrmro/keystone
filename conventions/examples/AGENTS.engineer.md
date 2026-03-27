@@ -84,7 +84,7 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 ## Branch and Early PR
 
 9. A branch MUST be created from the default branch using `process.version-control` naming conventions (semantic prefix + short description).
-10. All implementation work MUST be done in a git worktree at `.repos/{owner}/{repo}/.worktrees/{branch}`. The main checkout at `.repos/{owner}/{repo}/` MUST remain on the default branch.
+10. All implementation work MUST be done in a git worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}`. The main checkout at `{repo-root}/` MUST remain on the default branch.
 11. On GitHub, if the active issue's milestone is known but not set on the issue, the authoring agent MUST repair it before or during PR creation with `gh issue edit <issue_number> --milestone "<milestone_name>"`.
 12. On GitHub, if the issue's milestone has a project board, the issue MUST be present on that board. If auto-add is not enabled or did not add it, the authoring agent MUST add it with `gh project item-add <project_number> --owner <owner_name> --url <issue_url>`. Board discovery, field lookup, and status transitions remain governed by `process.project-board`.
 13. A dummy commit MUST be created immediately after branching (e.g., empty commit or minimal scaffold) to enable opening a PR.
@@ -125,13 +125,13 @@ End-to-end walkthrough for implementing issue #12 ("Add search endpoint") from m
 
 ```bash
 # 1. From the main checkout, create a branch and worktree (rules 9-10)
-cd .repos/acme/api
+cd "$HOME/code/acme/api"
 git fetch origin
 git branch feat/add-search-endpoint origin/main
-git worktree add .worktrees/feat/add-search-endpoint feat/add-search-endpoint
+git worktree add "$HOME/.worktrees/acme/api/feat/add-search-endpoint" feat/add-search-endpoint
 
 # 2. Work in the worktree
-cd .worktrees/feat/add-search-endpoint
+cd "$HOME/.worktrees/acme/api/feat/add-search-endpoint"
 
 # 3. Dummy commit to enable PR creation (rule 13)
 git commit --allow-empty -m "chore: start work on search endpoint"
@@ -222,8 +222,8 @@ git commit -m "test(api): add search integration tests"
 # GitHub: gh pr merge <number> --squash --delete-branch
 
 # 10. Clean up worktree after merge
-cd .repos/acme/api
-git worktree remove .worktrees/feat/add-search-endpoint
+cd "$HOME/code/acme/api"
+git worktree remove "$HOME/.worktrees/acme/api/feat/add-search-endpoint"
 
 # 11. Post demo artifacts on the issue (rule 31)
 ```

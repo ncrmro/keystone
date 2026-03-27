@@ -12,6 +12,20 @@
 with lib;
 let
   cfg = config.keystone.terminal;
+  notesPath = config.keystone.notes.path;
+  keystoneHome = "${config.home.homeDirectory}/.keystone";
+  codeRoot = "${config.home.homeDirectory}/code";
+  worktreeRoot = "${config.home.homeDirectory}/.worktrees";
+  ensurePathsScript = pkgs.writeShellScriptBin "keystone-ensure-paths" ''
+    set -euo pipefail
+
+    mkdir -p \
+      "${keystoneHome}" \
+      "${keystoneHome}/repos" \
+      "${notesPath}" \
+      "${codeRoot}" \
+      "${worktreeRoot}"
+  '';
 
   # Generate allowed_signers file content: "<email> <key>" per line
   allowedSignersContent = concatMapStringsSep "\n" (
@@ -92,6 +106,15 @@ in
         description = "SSH key for signing. Path or 'key::' prefix for inline public key.";
       };
     };
+
+    ssh = {
+      authSock = mkOption {
+        type = types.str;
+        default = "%t/ssh-agent";
+        defaultText = literalExpression ''"%t/ssh-agent"'';
+        description = "SSH agent socket exported to non-interactive services that need Git/SSH access.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -152,12 +175,41 @@ in
         push.autoSetupRemote = true;
         init.defaultBranch = "main";
         submodule.recurse = true;
+        safe.directory = notesPath;
       };
     };
 
-    home.packages = optionals cfg.git.enable [
-      pkgs.keystone.fetch-github-sources
-    ];
+    home.packages =
+      optionals cfg.git.enable [
+        pkgs.keystone.fetch-github-sources
+      ]
+      ++ [
+        ensurePathsScript
+      ];
+
+    home.activation.keystoneEnsurePaths = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      ${ensurePathsScript}/bin/keystone-ensure-paths
+    '';
+
+    home.activation.keystoneCloneRepos = lib.hm.dag.entryAfter [ "keystoneEnsurePaths" ] ''
+      export GIT_TERMINAL_PROMPT=0
+      ${lib.concatStringsSep "\n" (
+        lib.mapAttrsToList (name: repo: ''
+          target="${keystoneHome}/repos/${name}"
+          if [ ! -d "$target/.git" ]; then
+            echo "Cloning managed repo ${name}..."
+            mkdir -p "$(dirname "$target")"
+            ${pkgs.git}/bin/git clone "${repo.url}" "$target" || echo "Warning: Failed to clone ${name}, skipping..."
+          fi
+        '') config.keystone.repos
+      )}
+    '';
+
+    home.sessionVariables = {
+      CODE_DIR = codeRoot;
+      WORKTREE_DIR = worktreeRoot;
+      NOTES_DIR = notesPath;
+    };
 
     programs.lazygit.enable = mkIf cfg.git.enable (mkDefault true);
   };

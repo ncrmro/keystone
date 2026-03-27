@@ -24,6 +24,18 @@
 }:
 let
   cfg = config.keystone.notes;
+  sshAuthSock =
+    if
+      lib.hasAttrByPath [
+        "keystone"
+        "terminal"
+        "ssh"
+        "authSock"
+      ] config
+    then
+      config.keystone.terminal.ssh.authSock
+    else
+      "%t/ssh-agent";
 
   # Canonical .zk/config.toml content for the Zettelkasten notebook.
   # This is written to the notes repo (not /nix/store) so it travels with git.
@@ -65,6 +77,27 @@ let
     [lsp.diagnostics]
     wiki-title = "hint"
     dead-link = "error"
+  '';
+
+  notesGitignore = ''
+    # zk local index state
+    .zk/notebook.db
+    .zk/notebook.db-journal
+
+    # Local shell and environment state
+    .direnv/
+    .env
+    .env.local
+    .venv/
+    __pycache__/
+
+    # Nix local outputs
+    result
+    result-*
+
+    # OS/editor junk
+    .DS_Store
+    Thumbs.db
   '';
 
   # Template: fleeting note
@@ -196,6 +229,10 @@ let
     ${zkConfigToml}
     ZKEOF
 
+      cat > "$NOTES_PATH/.gitignore" << 'IGNOREEOF'
+    ${notesGitignore}
+    IGNOREEOF
+
       # Create template directory and files
       mkdir -p "$NOTES_PATH/.zk/templates"
 
@@ -228,6 +265,12 @@ let
       echo "zk notebook scaffolded successfully"
     else
       echo "zk notebook already exists at $NOTES_PATH/.zk — skipping scaffold"
+    fi
+
+    # Fix permissions for agent-admins group access (setgid + group-writable)
+    if [ -d "$NOTES_PATH/.zk" ]; then
+      chmod -R g+w "$NOTES_PATH/.zk"
+      chmod g+s "$NOTES_PATH/.zk"
     fi
   '';
 in
@@ -280,6 +323,9 @@ in
 
       Service = {
         Type = "oneshot";
+        Environment = [
+          "SSH_AUTH_SOCK=${sshAuthSock}"
+        ];
         ExecStart = builtins.concatStringsSep " " [
           "${pkgs.keystone.repo-sync}/bin/repo-sync"
           "--repo ${lib.escapeShellArg cfg.repo}"

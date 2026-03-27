@@ -83,8 +83,14 @@ keystone.os.agents.drago = {
   mcp.servers = {};
   notes = {
     syncOnCalendar = "*:0/5";
-    taskLoop.onCalendar = "*:0/5";
-    taskLoop.maxTasks = 5;
+    taskLoop = {
+      onCalendar = "*:0/5";
+      maxTasks = 5;
+      defaults = { provider = "claude"; profile = "medium"; };
+      ingest.profile = "fast";
+      prioritize.profile = "fast";
+      execute.profile = "medium";
+    };
     scheduler.onCalendar = "*-*-* 05:00:00";
   };
 };

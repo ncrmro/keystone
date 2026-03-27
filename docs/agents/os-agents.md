@@ -75,9 +75,9 @@ flowchart TB
         direction LR
         prefetch["1. Pre-fetch<br/>Sources JSON"]
         hash["2. Hash Check<br/>Skip if unchanged"]
-        ingest["3. Ingest<br/>(haiku)"]
-        prioritize["4. Prioritize<br/>(haiku)<br/>model + workflow"]
-        execute["5. Execute Loop<br/>(per-task model)"]
+        ingest["3. Ingest<br/>(stage resolver)"]
+        prioritize["4. Prioritize<br/>(stage resolver)<br/>workflow assignment"]
+        execute["5. Execute Loop<br/>(profile + raw overrides)"]
     end
 
     subgraph ExternalSources["External Sources"]
@@ -99,7 +99,7 @@ flowchart TB
     prefetch --> hash --> ingest
     ingest -->|"updates"| tasks
     ingest --> prioritize
-    prioritize -->|"assigns model + workflow"| tasks
+    prioritize -->|"reorders + assigns workflow"| tasks
     prioritize --> execute
 
     execute -->|"workflow field?"| deepwork_jobs
@@ -420,10 +420,10 @@ flowchart LR
 
     subgraph Pipeline["task-loop.sh Pipeline"]
         prefetch["1. Pre-fetch<br/>Sources → JSON"]
-        ingest["2. Ingest<br/>(haiku)"]
+        ingest["2. Ingest<br/>(stage resolver)"]
         hash["3. Hash Check<br/>Skip prioritize if unchanged"]
-        prioritize["4. Prioritize<br/>(haiku)<br/>model + workflow"]
-        execute["5. Execute Loop<br/>(per-task model)"]
+        prioritize["4. Prioritize<br/>(stage resolver)<br/>workflow assignment"]
+        execute["5. Execute Loop<br/>(profile + raw overrides)"]
 
         prefetch --> ingest --> hash --> prioritize --> execute
     end
@@ -441,7 +441,7 @@ flowchart LR
     email & github & forgejo --> prefetch
     projects -->|"source commands"| prefetch
     ingest -->|"creates/updates tasks"| tasks
-    prioritize -->|"reorders + assigns<br/>model + workflow"| tasks
+    prioritize -->|"reorders + assigns<br/>workflow"| tasks
     execute -->|"workflow field set"| deepwork
     execute -->|"no workflow"| generic
     execute -->|"updates status"| tasks
@@ -475,31 +475,22 @@ Both `task-loop.sh` and `scheduler.sh` are shell scripts in `modules/os/agents/s
 ```
 task-loop.sh Pipeline:
 
-1. PRE-FETCH          ──▶  PROJECTS.yaml sources → shell commands → JSON
-                            + built-in: himalaya envelope list (email)
-2. INGEST  (haiku)    ──▶  /deepwork task_loop ingest
-                            Parse source JSON → update TASKS.yaml
-                            Rule: do NOT assign workflows during ingest
-3. HASH CHECK         ──▶  SHA256(TASKS.yaml + PROJECTS.yaml) → skip if unchanged
-4. PRIORITIZE (haiku) ──▶  /deepwork task_loop prioritize
-                            Reorder TASKS.yaml by PROJECTS.yaml priority
-                            + assign model (haiku/sonnet/opus)
-                            + assign workflow (decision tree):
-                              ├── Existing workflow → preserve
-                              ├── schedule source → skip (scheduler sets it)
-                              ├── CAD keywords or ks-systems-hardware → cadeng/cadeng
-                              ├── github-issue/github-pr/forgejo-issue → sweng/sweng
-                              ├── repos project + code keywords → sweng/sweng
-                              ├── "press release"/"working backwards" → press_release/write
-                              └── No match → no workflow (generic execution)
-                            + validate model-workflow coherence (workflow → min sonnet)
-5. EXECUTE LOOP        ──▶  For each pending task (max N per run):
-   │                         ├── Check `needs` dependencies (yq+jq)
-   │                         ├── Read task model + workflow
-   │                         ├── If workflow: claude -p "/deepwork {workflow} ..."
-   │                         ├── If no workflow: claude -p "Execute this task. ..."
-   │                         ├── Model flag from task's model field
-   │                         └── Log to ~/.local/state/agent-task-loop/logs/tasks/
+1. PRE-FETCH             ──▶  PROJECTS.yaml sources → shell commands → JSON
+                               + built-in: himalaya envelope list (email)
+2. INGEST                ──▶  /deepwork task_loop ingest
+                               Parse source JSON → update TASKS.yaml
+                               Provider/model/profile resolved from ingest stage config
+3. HASH CHECK            ──▶  SHA256(TASKS.yaml + PROJECTS.yaml) → skip if unchanged
+4. PRIORITIZE            ──▶  /deepwork task_loop prioritize
+                               Reorder TASKS.yaml by PROJECTS.yaml priority
+                               Assign workflow via decision tree
+                               Provider/model/profile resolved from prioritize stage config
+5. EXECUTE LOOP          ──▶  For each pending task (max N per run):
+   │                            ├── Check `needs` dependencies (yq+jq)
+   │                            ├── Read task profile/provider/model/fallback_model/effort
+   │                            ├── Resolve against execute stage + global defaults
+   │                            ├── Invoke Claude, Gemini, or Codex
+   │                            └── Log to ~/.local/state/agent-task-loop/logs/tasks/
    │
    └── Stop conditions: max tasks reached, no more pending tasks, already-attempted guard
 ```
@@ -534,20 +525,23 @@ Available workflows that can be auto-assigned by the prioritize decision tree:
 | `cadeng/cadeng` | CAD keywords, hardware project | Planned (will be migrated to DeepWork job) |
 | `press_release/write` | "press release" or "working backwards" in description | Exists |
 
-### Model Separation Strategy
+### Model control strategy
 
-| Step | Default Model | Rationale |
-|------|--------------|-----------|
-| Ingest | haiku | Fast parsing, no reasoning needed |
-| Prioritize | haiku | Simple reordering and classification, cost-efficient |
-| Execute | per-task (sonnet default) | Reasoning-heavy, model matches task complexity |
+| Step | Default profile | Default provider | Notes |
+|------|-----------------|------------------|-------|
+| Ingest | `fast` | `claude` | Provider, model, fallback model, and effort come from the ingest-stage resolver |
+| Prioritize | `fast` | `claude` | Provider, model, fallback model, and effort come from the prioritize-stage resolver |
+| Execute | `medium` | `claude` | Task-level `profile` and raw overrides take precedence over execute-stage defaults |
 
-The prioritize step assigns models based on task complexity:
-- **haiku** — Simple mechanical tasks (reply pong, forward message, single-command)
-- **sonnet** — Standard multi-step work (research, coding, email composition, tool chaining)
-- **opus** — Advanced tasks (complex architecture, multi-system debugging, novel problem-solving)
+Built-in semantic profiles:
+- `embedding` — reserved for later embedding/vector workflows; not intended for current task-loop chat stages
+- `fast` — Claude `haiku` with `sonnet` fallback and `low` effort, Gemini `gemini-3-flash-preview`
+- `medium` — Claude `sonnet` with `opus` fallback and `medium` effort, Gemini `auto-gemini-3`
+- `max` — Claude `opus` with `max` effort, Gemini `auto-gemini-3`
 
-**Model-workflow coherence**: Any task with a `workflow` field MUST have at least `sonnet` as its model. If prioritize assigns `haiku` but also assigns a workflow, the model is upgraded to `sonnet`.
+Claude supports `model`, `fallback_model`, and `effort`. Gemini and Codex
+currently consume `model` only; `fallback_model` and `effort` are ignored for
+those providers until their CLIs support equivalent controls.
 
 ### Key Design Decisions
 
@@ -571,7 +565,11 @@ tasks:                             # REQUIRED: only top-level key
     project: "project-name"       # MAY: from PROJECTS.yaml
     source: "email"               # MAY: email|github-issue|github-pr|forgejo-issue|schedule|calendar|manual
     source_ref: "email-42-u@h"    # MAY: unique ID for deduplication
-    model: "sonnet"               # MAY: haiku|sonnet|opus — execution model override
+    profile: "fast"               # MAY: semantic profile override (embedding|fast|medium|max or custom)
+    provider: "gemini"            # MAY: claude|gemini|codex — task execution provider override
+    model: "sonnet"               # MAY: provider-specific model override
+    fallback_model: "opus"        # MAY: fallback model override (Claude only today)
+    effort: "medium"              # MAY: low|medium|high|max (Claude only today)
     workflow: "job/workflow"       # MAY: DeepWork workflow to invoke
     needs: ["other-task"]         # MAY: task names that must complete first
     blocked_reason: "..."         # MAY: explanation when status is blocked
@@ -582,7 +580,7 @@ tasks:                             # REQUIRED: only top-level key
 2. NO other top-level keys (`summary:`, `metadata:`, etc.)
 3. Every task MUST have `name`, `description`, `status`
 4. Status MUST be one of: `pending`, `in_progress`, `completed`, `blocked`
-5. Field names MUST match exactly — no `id`, `priority`, `urgency`, `effort`, `depends_on`
+5. Field names MUST match exactly — no `id`, `priority`, `urgency`, `depends_on`
 6. Validate after every write: `yq e '.' TASKS.yaml`
 
 **Source ref formats:**
@@ -598,6 +596,68 @@ tasks:                             # REQUIRED: only top-level key
 - Calendar events do not set workflows at creation — prioritize assigns them
 - Pre-existing workflow fields are always preserved
 
+**Execution fallback rules:**
+- The resolver evaluates `provider`, `profile`, `model`, `fallback_model`, and `effort`
+- Resolution order is: task fields → stage config (`ingest`, `prioritize`, or `execute`) → global `notes.taskLoop.defaults` → built-in stage/profile defaults
+- `profile` selects provider-aware semantic defaults such as `fast`, `medium`, and `max`
+- Raw task fields override profile-derived values
+- `provider: claude` runs via Claude Code, `provider: gemini` runs via Gemini CLI, and `provider: codex` runs via `codex exec`
+- `fallback_model` and `effort` currently apply to Claude only
+
+**Configuration example:**
+
+```nix
+keystone.os.agents.researcher = {
+  fullName = "Research Agent";
+  notes.repo = "ssh://forgejo@git.example.com:2222/researcher/agent-space.git";
+  notes.taskLoop = {
+    defaults = {
+      provider = "claude";
+      profile = "medium";
+    };
+    ingest = {
+      provider = "gemini";
+      profile = "fast";
+    };
+    execute = {
+      profile = "max";
+      fallbackModel = "opus";
+    };
+    profiles.max = {
+      claude = {
+        model = "opus";
+        effort = "max";
+      };
+      gemini.model = "auto-gemini-3";
+    };
+  };
+};
+```
+
+With that config:
+- ingest runs on Gemini with the `fast` profile
+- prioritize falls back to Claude with the built-in `fast` profile
+- execute falls back to Claude with the `max` profile unless the task overrides it
+
+**Task override example:**
+
+```yaml
+tasks:
+  - name: "review-agent-provider-docs"
+    description: "Add docs for per-task providers and defaults."
+    status: pending
+    source: manual
+    source_ref: "manual-review-agent-provider-docs"
+    profile: "medium"
+    provider: claude
+    model: sonnet
+    fallback_model: opus
+    effort: high
+```
+
+That task overrides the stage and agent defaults and runs on Claude Code with
+`sonnet`, `opus` as the fallback model, and `high` effort.
+
 ### PROJECTS.yaml
 
 ```yaml
@@ -608,13 +668,20 @@ projects:
     status: active                # REQUIRED: active|archived
     priority: 1                   # REQUIRED: numeric (list order = priority)
     updated: "2026-02-15"         # REQUIRED: last updated date
-    repos:                        # MAY: associated repositories
-      - "owner/repo-name"
+    repos:                        # SHOULD mirror the hub note's remote URLs
+      - "git@github.com:owner/repo-name.git"
+      - "ssh://forgejo@git.example.com:2222/owner/infra.git"
 
 sources:                           # Top-level: pre-fetch source definitions
   - name: "github-issues"         # REQUIRED: identifier
     command: "gh issue list --json number,title,body --assignee @me"  # REQUIRED: outputs JSON
 ```
+
+Agent and human notes should use the same repo declarations. The active hub
+note is the source of truth, `repos:` entries should be full remote URLs, and
+non-keystone local worktrees should resolve to `$HOME/code/{owner}/{repo}`.
+Repos explicitly managed by `keystone.repos` continue to live under
+`~/.keystone/repos/{owner}/{repo}`.
 
 ### SCHEDULES.yaml
 
@@ -739,7 +806,7 @@ Each agent-space includes DeepWork job definitions via the `.agents/` submodule.
 The `task_loop` job (v3.3.1) has three workflows that map to the pipeline steps:
 
 - **ingest** (`parse_sources` step): Parse pre-fetched JSON, compare with TASKS.yaml, create new tasks. Quality gates verify: no duplicates, required fields, project association, schema preservation, reply email parsing.
-- **prioritize** (`reorder_tasks` step): Reorder pending tasks by project priority, assign `model` field, assign `workflow` via decision tree. Quality gates verify: priority order, model assignment, workflow assignment, model-workflow coherence, schema preservation.
+- **prioritize** (`reorder_tasks` step): Reorder pending tasks by project priority and assign `workflow` via decision tree. Quality gates verify: priority order, workflow assignment, and schema preservation.
 - **run** (`execute` + `report` steps): Execute one task, update status, write JSON report. Quality gates verify: work actually performed, status updated, conventions followed.
 
 ### Planned Jobs (Not Yet DeepWork Definitions)
@@ -872,22 +939,42 @@ claude --print -p "Do the task. /deepwork task_loop run"
 
 ## Monitoring & Observability
 
-Agents are monitored via Loki logs. A standard "Keystone OS Agents" dashboard is provisioned when `services.grafana.enable` is true.
+Agents are monitored via **Loki** (for structured events and logs) and **Prometheus** (for real-time health and success metrics). A standard "Keystone OS Agents" dashboard is provisioned by the server-side Grafana module.
 
-### Key Metrics (Loki LogQL)
+### Loki Telemetry (logfmt)
 
-| Metric | LogQL Expression |
-|--------|------------------|
-| **Completed Tasks** | `sum(count_over_time({agent!=""} |= "Finished successfully" [1h]))` |
-| **Blocked Tasks** | `sum(count_over_time({agent!=""} |~ "(?i)block" [1h]))` |
-| **Error Rate** | `sum by(agent) (rate({agent!=""} |~ "(?i)error|fail|exception" [5m]))` |
-| **Step Activity** | `sum by(agent_step) (rate({agent!=""} != "" [5m]))` |
+Agent scripts emit structured events using `logfmt`. Key fields available for querying and dashboard extraction:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `event` | Type of event | `task_finish`, `run_start`, `stage_start` |
+| `agent` | Name of the agent | `drago` |
+| `host` | Hostname | `ocean` |
+| `unit` | Systemd unit name | `agent-drago-task-loop` |
+| `status` | Outcome status | `success`, `error`, `blocked`, `degraded` |
+| `duration_seconds` | Execution time | `42` |
+| `token_total` | Total AI tokens used | `1250` |
+| `workflow` | DeepWork workflow | `sweng/sweng` |
+| `parsed_urls` | URLs found in logs | `["https://github.com/..."]` |
+
+### Prometheus Metrics
+
+The `task-loop.sh` and `scheduler.sh` scripts write metrics to the standard node exporter textfile directory (`/var/lib/keystone-node-exporter-textfiles/`).
+
+| Metric | Description |
+|--------|-------------|
+| `keystone_agent_task_loop_last_success_timestamp_seconds` | Last successful run time |
+| `keystone_agent_task_loop_last_exit_code` | Exit code of the most recent run |
+| `keystone_agent_task_loop_tasks_completed_total` | Total tasks completed in last run |
+| `keystone_agent_task_loop_tasks_failed_total` | Total tasks that errored in last run |
+| `keystone_agent_task_loop_tasks_blocked_total` | Total tasks blocked in last run |
 
 ### Alerting Recommendations
 
-1. **Agent Error Spike**: Trigger if error rate > 0.5/s over 5m.
-2. **Agent Stalled**: Trigger if no logs are received for 15m (`rate({agent!=""}[15m]) == 0`).
-3. **Task Blocked**: Trigger on a surge of "blocked" log patterns.
+1. **Agent Stalled**: Trigger if `time() - keystone_agent_task_loop_last_success_timestamp_seconds > 7200` (no success in 2 hours).
+2. **Task Failure**: Trigger on any non-zero `keystone_agent_task_loop_last_exit_code`.
+3. **Blocked Surge**: Trigger if `keystone_agent_task_loop_tasks_blocked_total > 5`.
+
 
 ## Implementation Status
 

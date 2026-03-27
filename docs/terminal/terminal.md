@@ -166,6 +166,19 @@ For terminal users, the most relevant parts are:
 Use the notes guide for the workflow and the conventions for the authoritative
 schema and policy details.
 
+## Projects and sessions
+
+Keystone project sessions are note-backed. Active project hub notes in
+`~/notes/index/` define the valid project set, related repos, and the context
+that `pz` uses to launch Zellij sessions.
+
+Use [Projects and pz](projects.md) for:
+
+- hub note requirements,
+- repo and worktree path conventions,
+- `pz list` and `pz <project>` usage, and
+- project-to-agent handoff from a running session.
+
 ## Personal Information Management
 
 Keystone integrates the [Pimalaya](https://pimalaya.org/) CLI suite for email, calendars, contacts, and timers:

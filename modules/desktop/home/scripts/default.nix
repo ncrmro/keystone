@@ -8,6 +8,8 @@
 with lib;
 let
   cfg = config.keystone.desktop;
+  devScripts = import ../../../shared/dev-script-link.nix { inherit lib; };
+  inherit (devScripts) mkHomeScriptCommand;
   hyprlandPkg = keystoneInputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
 
   # Screen recording script using gpu-screen-recorder
@@ -204,6 +206,16 @@ let
     builtins.readFile ./keystone-context-switch.sh
   );
 
+  # Internal helper for Walker/Elephant project menus
+  keystoneProjectMenu = pkgs.writeShellScriptBin "keystone-project-menu" (
+    builtins.readFile ./keystone-project-menu.sh
+  );
+
+  # Inbox capture launcher — opens zk edit -i in a dedicated floating Ghostty window
+  keystoneNotesInbox = pkgs.writeShellScriptBin "keystone-notes-inbox" (
+    builtins.readFile ./keystone-notes-inbox.sh
+  );
+
   # Battery monitor script
   keystoneBatteryMonitor = pkgs.writeShellScriptBin "keystone-battery-monitor" ''
     BATTERY_THRESHOLD=10
@@ -228,48 +240,96 @@ let
       fi
     fi
   '';
+
+  linkedCommands = [
+    (mkHomeScriptCommand {
+      inherit config;
+      commandName = "keystone-launch-walker";
+      relativePath = "modules/desktop/home/scripts/keystone-launch-walker.sh";
+      package = keystoneLaunchWalker;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
+      commandName = "keystone-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-menu.sh";
+      package = keystoneMenu;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
+      commandName = "keystone-menu-keybindings";
+      relativePath = "modules/desktop/home/scripts/keystone-menu-keybindings.sh";
+      package = keystoneMenuKeybindings;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
+      commandName = "keystone-context";
+      relativePath = "modules/desktop/home/scripts/keystone-context.sh";
+      package = keystoneContext;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
+      commandName = "keystone-context-switch";
+      relativePath = "modules/desktop/home/scripts/keystone-context-switch.sh";
+      package = keystoneContextSwitch;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
+      commandName = "keystone-project-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-project-menu.sh";
+      package = keystoneProjectMenu;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
+      commandName = "keystone-notes-inbox";
+      relativePath = "modules/desktop/home/scripts/keystone-notes-inbox.sh";
+      package = keystoneNotesInbox;
+    })
+  ];
 in
 {
-  config = mkIf cfg.enable {
-    home.packages = [
-      keystoneScreenrecord
-      keystoneAudioSwitch
-      keystoneIdleToggle
-      keystoneNightlightToggle
-      keystoneBatteryMonitor
-      keystoneLaunchWalker
-      keystoneMenu
-      keystoneMenuKeybindings
-      keystoneContext
-      keystoneContextSwitch
-      # Dependencies that should be available
-      pkgs.gpu-screen-recorder
-      pkgs.libxkbcommon # for xkbcli in keybindings menu
-      pkgs.hypridle
-    ];
+  config = mkIf cfg.enable (
+    mkMerge (
+      [
+        {
+          home.packages = [
+            keystoneScreenrecord
+            keystoneAudioSwitch
+            keystoneIdleToggle
+            keystoneNightlightToggle
+            keystoneBatteryMonitor
+            keystoneProjectMenu
+            # Dependencies that should be available
+            pkgs.gpu-screen-recorder
+            pkgs.libxkbcommon # for xkbcli in keybindings menu
+            pkgs.hypridle
+          ];
 
-    # Periodically check battery level and send a notification when low
-    systemd.user.services.keystone-battery-monitor = {
-      Unit = {
-        Description = "Keystone low battery notification";
-      };
-      Service = {
-        Type = "oneshot";
-        ExecStart = "${keystoneBatteryMonitor}/bin/keystone-battery-monitor";
-      };
-    };
+          # Periodically check battery level and send a notification when low
+          systemd.user.services.keystone-battery-monitor = {
+            Unit = {
+              Description = "Keystone low battery notification";
+            };
+            Service = {
+              Type = "oneshot";
+              ExecStart = "${keystoneBatteryMonitor}/bin/keystone-battery-monitor";
+            };
+          };
 
-    systemd.user.timers.keystone-battery-monitor = {
-      Unit = {
-        Description = "Timer for low battery notification";
-      };
-      Timer = {
-        OnBootSec = "1min";
-        OnUnitActiveSec = "1min";
-      };
-      Install = {
-        WantedBy = [ "timers.target" ];
-      };
-    };
-  };
+          systemd.user.timers.keystone-battery-monitor = {
+            Unit = {
+              Description = "Timer for low battery notification";
+            };
+            Timer = {
+              OnBootSec = "1min";
+              OnUnitActiveSec = "1min";
+            };
+            Install = {
+              WantedBy = [ "timers.target" ];
+            };
+          };
+        }
+      ]
+      ++ linkedCommands
+    )
+  );
 }

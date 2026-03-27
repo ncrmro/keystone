@@ -74,6 +74,8 @@ For general Nix packaging conventions, see `tool.nix`. For dev shell dependency 
 25. Scripts that require build-time values (tool paths, generated code, configuration) MUST use `replaceVars` with the `@placeholder@` pattern — not string interpolation in Nix.
 26. Placeholders in `replaceVars` scripts MUST use the format `@descriptiveName@` and MUST be documented with a comment at the top of the script listing all placeholders and their sources.
 27. Runtime dependencies MUST be declared in `runtimeInputs` (for `writeShellApplication`) or injected via `replaceVars` absolute paths — scripts MUST NOT assume tools are globally installed.
+28. User-facing repo-backed `.sh` entrypoints SHOULD live as standalone files instead of inline Nix strings so development mode can link them directly into `PATH`.
+29. When development mode links a standalone script from the repo checkout, the script file itself MUST remain directly executable.
 
 ```nix
 # writeShellApplication — preferred for CLI tools
@@ -92,9 +94,9 @@ pkgs.replaceVars ./scripts/my-script.sh {
 
 ## Logging
 
-28. Scripts that run as services or in automation SHOULD use structured logging with timestamps: `echo "[$(date '+%H:%M:%S')] $*"`.
-29. Log files SHOULD use ISO date filenames: `$(date +%Y-%m-%d_%H%M%S).log`.
-30. Long-running scripts MAY use `tee -a "$LOG_FILE"` to write to both stdout and a log file simultaneously.
+30. Scripts that run as services or in automation SHOULD use structured logging with timestamps: `echo "[$(date '+%H:%M:%S')] $*"`.
+31. Log files SHOULD use ISO date filenames: `$(date +%Y-%m-%d_%H%M%S).log`.
+32. Long-running scripts MAY use `tee -a "$LOG_FILE"` to write to both stdout and a log file simultaneously.
 
 ## Golden Example
 

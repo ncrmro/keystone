@@ -178,6 +178,7 @@ in
     ./secure-boot.nix
     ./tpm.nix
     ./hardware-key.nix
+    ./uhk.nix
     ./remote-unlock.nix
     ./users.nix
     ./ssh.nix
@@ -193,6 +194,8 @@ in
     ./tailscale.nix
     ./containers.nix
     ./journal-remote.nix
+    ./alloy.nix
+    ./observability.nix
   ];
 
   options.keystone.os = {

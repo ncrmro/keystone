@@ -96,8 +96,9 @@ Generates `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md` fro
 ## Development Mode vs Locked Mode (`development` + `repos` in `terminal/default.nix`)
 
 **Development mode** (`development = true` with repos registered): Generated files
-(`~/.claude/commands/`, `~/.claude/CLAUDE.md`, etc.) are out-of-store symlinks →
-edits take effect immediately without rebuild.
+(`~/.claude/commands/`, `~/.claude/CLAUDE.md`, etc.) are out-of-store symlinks, and
+repo-backed shell entrypoints in the user path are linked from the checkout →
+edits take effect immediately without rebuild after activation.
 
 **Codex exception**: Codex 0.114.0 does not reliably discover skills when
 `SKILL.md` and `agents/openai.yaml` are symlinks. Keystone therefore materializes
@@ -118,7 +119,9 @@ The `development` boolean and `repos` attrset are bridged from NixOS-level
 look up local checkout paths via `repos` entries by `flakeInput` name.
 
 New file-generating modules MUST use `config.lib.file.mkOutOfStoreSymlink` when
-development mode is active, falling back to Nix store `source` otherwise.
+development mode is active, falling back to Nix store `source` otherwise. New
+user-facing repo `.sh` commands SHOULD use the same development-mode path
+switching instead of always packaging an immutable store copy.
 
 ## Tasks / Calendar / Contacts / Timer
 

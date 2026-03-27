@@ -3,21 +3,15 @@
 # Dispatches to the per-agent Nix store helper via sudo (no SETENV needed).
 # All defined agents are manageable via agentctl.
 
-# Paths substituted by NixOS module via pkgs.replaceVars
-PYTHON3="@python3@"
-TASKS_FORMATTER="@tasksFormatter@"
-OPENSSH="@openssh@"
-VIRT_VIEWER="@virtViewer@"
-YQ_BIN="@yqBin@"
-TOP_DOMAIN="@topDomain@"
-MAIL_HOST="@mailHost@"
-OPENSSL="@openssl@"
-COREUTILS="@coreutils@"
-GNUGREP="@gnugrep@"
-GNUSED="@gnused@"
-NIX="@nix@"
-ZELLIJ="@zellij@"
-PODMAN_AGENT="@podmanAgent@"
+AGENTCTL_ENV_FILE="${AGENTCTL_ENV_FILE:-$HOME/.config/keystone/agentctl.env}"
+if [ ! -f "$AGENTCTL_ENV_FILE" ]; then
+  echo "Error: agentctl env file not found: $AGENTCTL_ENV_FILE" >&2
+  echo "Rebuild the system or activate the development profile that provides it." >&2
+  exit 1
+fi
+
+# shellcheck source=/dev/null
+. "$AGENTCTL_ENV_FILE"
 
 if [ $# -lt 2 ]; then
   echo "Usage: agentctl <agent-name> <command> [args...]" >&2
@@ -76,39 +70,23 @@ if [ $# -lt 2 ]; then
 fi
 AGENT_NAME="$1"; shift
 
-# Static lookup — no runtime id(1) call needed
-case "$AGENT_NAME" in
-@agentHelperCases@
-  *)
-    echo "Error: unknown agent '$AGENT_NAME'" >&2
-    echo "Known agents: @knownAgents@" >&2
-    exit 1
-    ;;
-esac
-
-# Static lookup — agent name -> notes directory
-case "$AGENT_NAME" in
-@agentNotesCases@
-esac
+if ! set_agent_helper "$AGENT_NAME"; then
+  exit 1
+fi
+set_agent_notes_dir "$AGENT_NAME"
 
 # Static lookup — agent name -> VNC port (desktop agents only)
 VNC_PORT=""
-case "$AGENT_NAME" in
-@agentVncCases@
-esac
+set_agent_vnc_port "$AGENT_NAME"
 
 # Resolve agent's host for remote dispatch
 AGENT_HOST=""
-case "$AGENT_NAME" in
-@agentHostCases@
-esac
+set_agent_host "$AGENT_NAME"
 
 OLLAMA_ENABLED="false"
 OLLAMA_HOST="http://localhost:11434"
 OLLAMA_DEFAULT_MODEL=""
-case "$AGENT_NAME" in
-@agentOllamaCases@
-esac
+set_agent_ollama "$AGENT_NAME"
 
 THIS_HOST="$(cat /etc/hostname)"
 
@@ -148,6 +126,22 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 set -- "${REMAINING_ARGS[@]}"
+
+normalize_repo_url() {
+  "$PROJECT_INDEX_HELPER" normalize-repo "$1"
+}
+
+resolve_repo_path() {
+  local repo_id="$1"
+  local keystone_path="$HOME/.keystone/repos/$repo_id"
+  local code_path="$HOME/code/$repo_id"
+
+  if [[ -d "$keystone_path" ]]; then
+    printf '%s\n' "$keystone_path"
+  elif [[ -d "$code_path" ]]; then
+    printf '%s\n' "$code_path"
+  fi
+}
 
 LOCAL_FLAG_ARGS=()
 if [[ -n "$LOCAL_MODEL" ]]; then
@@ -203,27 +197,33 @@ case "$CMD" in
       fi
       shift  # consume session slug
 
-      # Lookup project in PROJECTS.yaml
-      PROJECT_PATH=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
-        ".projects[] | select(.slug == \"$PROJECT\") | .path" "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null)
-      PROJECT_NAME=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
-        ".projects[] | select(.slug == \"$PROJECT\") | .name" "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null)
-      PROJECT_DESC=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
-        ".projects[] | select(.slug == \"$PROJECT\") | .description" "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null)
+      PROJECT_JSON=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec \
+        "$COREUTILS"/bin/env "NOTES_DIR=$NOTES_DIR" "$PROJECT_INDEX_HELPER" get "$PROJECT" 2>/dev/null || true)
 
-      if [ -z "$PROJECT_PATH" ] || [ "$PROJECT_PATH" = "null" ]; then
-        echo "Error: project '$PROJECT' not found in PROJECTS.yaml" >&2
+      if [ -z "$PROJECT_JSON" ]; then
+        echo "Error: project '$PROJECT' not found in zk project index" >&2
         echo "" >&2
         echo "Available projects:" >&2
-        sudo -u "agent-${AGENT_NAME}" "$HELPER" exec "$YQ_BIN" e \
-          '.projects[].slug' "$NOTES_DIR/PROJECTS.yaml" 2>/dev/null | "$GNUSED"/bin/sed 's/^/  /' >&2
+        sudo -u "agent-${AGENT_NAME}" "$HELPER" exec \
+          "$COREUTILS"/bin/env "NOTES_DIR=$NOTES_DIR" "$PROJECT_INDEX_HELPER" list 2>/dev/null \
+          | jq -r '.projects[].slug' | "$GNUSED"/bin/sed 's/^/  /' >&2
         exit 1
       fi
 
-      # Validate project path exists
-      if ! sudo -u "agent-${AGENT_NAME}" "$HELPER" exec test -d "$PROJECT_PATH"; then
-        echo "Error: project path does not exist: $PROJECT_PATH" >&2
-        exit 1
+      PROJECT_NAME=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.name // .slug')
+      PROJECT_DESC=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.description // ""')
+      PROJECT_PATH="$NOTES_DIR"
+
+      REPO_COUNT=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.repos | length')
+      if [[ "$REPO_COUNT" == "1" ]]; then
+        REPO_URL=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.repos[0]')
+        REPO_ID=$(normalize_repo_url "$REPO_URL" 2>/dev/null || true)
+        if [[ -n "$REPO_ID" ]]; then
+          RESOLVED_REPO_PATH=$(resolve_repo_path "$REPO_ID" || true)
+          if [[ -n "$RESOLVED_REPO_PATH" ]]; then
+            PROJECT_PATH="$RESOLVED_REPO_PATH"
+          fi
+        fi
       fi
 
       SESSION_NAME="${PROJECT}-${SESSION_SLUG}"
@@ -267,14 +267,26 @@ case "$CMD" in
         export PROJECT_PATH="'"${_AGENTCTL_PROJECT_PATH:-}"'"
       fi
 
-      # Resolve auto-approve flags per tool
-      # CRITICAL: Claude gets --dangerously-skip-permissions only,
-      # Gemini gets --yolo only. These are mutually exclusive per-tool.
+      # Resolve default execution flags per tool.
+      # Respect explicit codex approval/sandbox flags provided by the caller.
       TOOL_FLAGS=""
       case "'"$CMD"'" in
         claude) TOOL_FLAGS="--dangerously-skip-permissions" ;;
         gemini) TOOL_FLAGS="--yolo" ;;
-        codex) TOOL_FLAGS="--full-auto" ;;
+        codex)
+          CODEX_HAS_EXECUTION_MODE=0
+          for arg in "$@"; do
+            case "$arg" in
+              --full-auto|--dangerously-bypass-approvals-and-sandbox|--ask-for-approval|--ask-for-approval=*|--sandbox|--sandbox=*)
+                CODEX_HAS_EXECUTION_MODE=1
+                break
+                ;;
+            esac
+          done
+          if [ "$CODEX_HAS_EXECUTION_MODE" -eq 0 ]; then
+            TOOL_FLAGS="--full-auto"
+          fi
+          ;;
       esac
 
       LOCAL_MODEL="'"$LOCAL_MODEL"'"
@@ -364,16 +376,18 @@ $ROLE_PROMPT"
 
       # Per-tool prompt injection using each tool'\''s native mechanism
       SP_FLAGS=()
+      CODEX_MODEL_INSTRUCTIONS_FILE=""
       if [ -n "$SP" ]; then
         case "'"$CMD"'" in
           claude)
             SP_FLAGS=("--append-system-prompt" "$SP")
             ;;
-          gemini)
-            SP_FLAGS=("--prompt-interactive" "$SP")
-            ;;
           codex)
-            SP_FLAGS=("--instructions" "$SP")
+            # Codex CLI does not accept --instructions. Feed the composed
+            # prompt through its supported model_instructions_file config key.
+            CODEX_MODEL_INSTRUCTIONS_FILE="$(mktemp)"
+            printf "%s\n" "$SP" > "$CODEX_MODEL_INSTRUCTIONS_FILE"
+            SP_FLAGS=("-c" "model_instructions_file=\"$CODEX_MODEL_INSTRUCTIONS_FILE\"")
             ;;
           opencode)
             # opencode reads AGENTS.md natively from the working directory
@@ -399,6 +413,12 @@ $ROLE_PROMPT"
       if [ -n "'"$SANDBOX"'" ]; then
         # --sandbox: opt-in Podman sandboxing for interactive sessions.
         # podman-agent adds auto-approve flags and handles mounts, SSH, cache volumes.
+        if [ "'"$CMD"'" = "codex" ] && [ -n "$CODEX_MODEL_INSTRUCTIONS_FILE" ]; then
+          "'"$PODMAN_AGENT"'" "'"$CMD"'" "${SP_FLAGS[@]}" "$@"
+          status=$?
+          rm -f "$CODEX_MODEL_INSTRUCTIONS_FILE"
+          exit $status
+        fi
         exec "'"$PODMAN_AGENT"'" "'"$CMD"'" "${SP_FLAGS[@]}" "$@"
       else
         # Default: direct execution as the agent user (REQ-013 sandbox scope).
@@ -409,9 +429,22 @@ $ROLE_PROMPT"
           if [ -f .gitmodules ]; then
             FLAKE_REF="git+file:.?submodules=1"
           fi
+          if [ "'"$CMD"'" = "codex" ] && [ -n "$CODEX_MODEL_INSTRUCTIONS_FILE" ]; then
+            nix develop "$FLAKE_REF" --no-update-lock-file --accept-flake-config \
+              --command "'"$CMD"'" $TOOL_FLAGS "${SP_FLAGS[@]}" "$@"
+            status=$?
+            rm -f "$CODEX_MODEL_INSTRUCTIONS_FILE"
+            exit $status
+          fi
           exec nix develop "$FLAKE_REF" --no-update-lock-file --accept-flake-config \
             --command "'"$CMD"'" $TOOL_FLAGS "${SP_FLAGS[@]}" "$@"
         else
+          if [ "'"$CMD"'" = "codex" ] && [ -n "$CODEX_MODEL_INSTRUCTIONS_FILE" ]; then
+            "'"$CMD"'" $TOOL_FLAGS "${SP_FLAGS[@]}" "$@"
+            status=$?
+            rm -f "$CODEX_MODEL_INSTRUCTIONS_FILE"
+            exit $status
+          fi
           exec "'"$CMD"'" $TOOL_FLAGS "${SP_FLAGS[@]}" "$@"
         fi
       fi
@@ -424,9 +457,7 @@ $ROLE_PROMPT"
     # Resolve provision metadata (compiled-in)
     PROVISION_AGENT_HOST=""
     MAIL_PROVISION=false
-    case "$AGENT_NAME" in
-@agentProvisionCases@
-    esac
+    set_agent_provision "$AGENT_NAME"
 
     # Parse flags
     SKIP_REKEY=false

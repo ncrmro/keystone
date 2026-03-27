@@ -68,7 +68,7 @@ in
     ./services/immich.nix
     ./services/vaultwarden.nix
     ./services/forgejo.nix
-    ./services/grafana.nix
+    ./services/grafana
     ./services/prometheus.nix
     ./services/loki.nix
     ./services/headscale.nix

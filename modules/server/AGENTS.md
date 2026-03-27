@@ -83,6 +83,6 @@ share a port — no manual check needed.
 recommended config (e.g., `keystone.domain == null`). Evaluation always succeeds;
 only deploy warns.
 
-**Legacy modules**: `binaryCache`, `monitoring`, `vpn`, `mail`, `headscale` use the old
+**Legacy modules**: `vpn`, `mail`, `headscale` use the old
 pattern (configure service only; consumer handles nginx/TLS/access). Migration to
 `services.*` pattern is pending.

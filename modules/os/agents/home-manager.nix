@@ -33,6 +33,12 @@ in
         name: agentCfg:
         let
           username = "agent-${name}";
+          ollamaHostMeta = config.keystone.hosts.${config.networking.hostName} or { };
+          ollamaHostAddress =
+            if (ollamaHostMeta.tailscaleIP or null) != null then
+              ollamaHostMeta.tailscaleIP
+            else
+              config.networking.hostName;
           # Capture NixOS system pkgs before they're shadowed by home-manager's pkgs
           # argument. The keystone overlay is applied at the system level, so we use
           # this to resolve keystone package store paths for MCP server commands.
@@ -111,6 +117,17 @@ in
                 enable = mkDefault true;
                 # All credentials auto-derived from mail config above
               };
+              ssh.authSock = mkDefault "/run/agent-${name}-ssh-agent/agent.sock";
+              ai.ollama =
+                let
+                  hostOllamaCfg = config.keystone.os.services.ollama;
+                  defaultModel = if hostOllamaCfg.models == [ ] then null else head hostOllamaCfg.models;
+                in
+                {
+                  enable = mkDefault hostOllamaCfg.enable;
+                  host = mkDefault "http://${ollamaHostAddress}:${toString hostOllamaCfg.port}";
+                  defaultModel = mkDefault defaultModel;
+                };
               secrets = {
                 enable = mkDefault true;
                 email = mkDefault (

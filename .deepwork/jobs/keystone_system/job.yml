@@ -1,5 +1,5 @@
 name: keystone_system
-version: "1.9.0"
+version: "1.9.1"
 summary: "Keystone development lifecycle: worktree, build, review, merge, deploy, validate, update, and convention management"
 common_job_info_provided_to_all_steps_at_runtime: |
   Keystone is a NixOS-based infrastructure platform. Development follows a strict

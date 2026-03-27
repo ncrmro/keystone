@@ -51,6 +51,12 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
   3. Updated `common_job_info` to mandate issue creation and URL output
 - **Reference**: `steps/write_press_release.md` step 10, `job.yml` write_press_release outputs and reviews
 
+### 2026-03-25: Stage press release workflow artifacts under `.deepwork/tmp/`
+- **Source**: User feedback after running `project/press_release` for `keystone.development`
+- **Issue**: The workflow instructions were clear about the published issue, but ambiguous about the local output path. That allowed the run to use ad hoc `/tmp/...` files even though this repo's DeepWork convention is to keep transient workflow artifacts under `.deepwork/tmp/`.
+- **Resolution**: Updated `steps/write_press_release.md` and `job.yml` so the workflow now stages `press_release.mdx` and `press_release_issue_url.md` under `.deepwork/tmp/`. The instructions now distinguish transient local artifacts from canonical publication: the GitHub/Forgejo issue is always published, and `posts/press_releases/` is only used when the project explicitly stores press releases in-repo.
+- **Reference**: `steps/write_press_release.md` output format and publication steps, `job.yml` common_job_info
+
 ## Editing Guidelines
 
 1. **Use workflows** for structural changes (adding steps, modifying job.yml)

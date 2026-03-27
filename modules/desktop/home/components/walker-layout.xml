@@ -110,6 +110,7 @@
                     <style>
                       <class name="preview"></class>
                     </style>
+                    <property name="width-request">340</property>
                   </object>
                 </child>
               </object>

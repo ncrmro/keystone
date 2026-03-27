@@ -229,7 +229,6 @@ let
   commandDisplayName = name: (parseCommandTemplate name).displayName;
 
   codexSkillName = name: replaceStrings [ "." ] [ "-" ] (commandBaseName name);
-  codexManagedSkillNames = [ "deepwork" ] ++ map codexSkillName commandFiles;
 
   codexSkillBody =
     name:
@@ -319,6 +318,46 @@ let
 
     ${body}
   '';
+
+  codexManagedFiles = [
+    {
+      relativePath = ".codex/skills/deepwork/SKILL.md";
+      source = pkgs.writeText "codex-skill-deepwork-SKILL.md" (mkSkillMd skillMetadata deepworkSkillBody);
+    }
+    {
+      relativePath = ".codex/skills/deepwork/agents/openai.yaml";
+      source = pkgs.writeText "codex-skill-deepwork-openai.yaml" ''
+        interface:
+          display_name: "DeepWork"
+          short_description: "Start or continue DeepWork workflows using MCP tools"
+
+        dependencies:
+          tools:
+            - type: "mcp"
+              value: "deepwork"
+              description: "DeepWork MCP server"
+      '';
+    }
+  ]
+  ++ flatten (
+    map (
+      name:
+      let
+        skillName = codexSkillName name;
+        skillDir = ".codex/skills/${skillName}";
+      in
+      [
+        {
+          relativePath = "${skillDir}/SKILL.md";
+          source = pkgs.writeText "codex-skill-${skillName}-SKILL.md" (mkCodexSkillMd name);
+        }
+        {
+          relativePath = "${skillDir}/agents/openai.yaml";
+          source = pkgs.writeText "codex-skill-${skillName}-openai.yaml" (mkCodexSkillOpenAiYaml name).text;
+        }
+      ]
+    ) commandFiles
+  );
 in
 {
   options.keystone.terminal.aiExtensions = {
@@ -378,7 +417,6 @@ in
               ".claude"
               ".gemini"
               ".config/opencode"
-              ".codex"
             ];
 
         deepworkSkillsByTool =
@@ -395,71 +433,58 @@ in
                 // {
                   "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
                 }
-                // optionalAttrs (toolDir == ".codex") {
-                  "${skillDir}/agents/openai.yaml".text = ''
-                    interface:
-                      display_name: "DeepWork"
-                      short_description: "Start or continue DeepWork workflows using MCP tools"
-
-                    dependencies:
-                      tools:
-                        - type: "mcp"
-                          value: "deepwork"
-                          description: "DeepWork MCP server"
-                  '';
-                }
             )
             { }
             [
               ".claude"
               ".gemini"
               ".config/opencode"
-              ".codex"
             ];
-
-        codexCommandSkills = listToAttrs (
-          flatten (
-            map (
-              name:
-              let
-                skillDir = ".codex/skills/${codexSkillName name}";
-              in
-              [
-                {
-                  name = "${skillDir}/SKILL.md";
-                  value = {
-                    text = mkCodexSkillMd name;
-                  };
-                }
-                {
-                  name = "${skillDir}/agents/openai.yaml";
-                  value = mkCodexSkillOpenAiYaml name;
-                }
-              ]
-            ) commandFiles
-          )
-        );
       in
-      commandFilesByTool // deepworkSkillsByTool // codexCommandSkills;
+      commandFilesByTool // deepworkSkillsByTool;
 
     # Codex 0.114.0 skips skills whose payload files are symlinks.
-    # Home Manager creates symlinks for home.file entries in both locked mode
-    # and development mode, so materialize the managed Codex skill files as
-    # regular files after the link generation step.
+    # Manage Keystone-owned Codex skill payloads as regular files directly in
+    # activation so Home Manager does not repeatedly back them up on each run.
+    home.activation.codexSkillsPreflight = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+      cleanup_codex_skill_state() {
+        relativePath="$1"
+        targetPath="$HOME/$relativePath"
+
+        # Recover from previous failed activations that left Home Manager backup
+        # files behind for these managed Codex skill payloads before link checks.
+        rm -f "$targetPath.backup"
+      }
+
+      ${concatMapStringsSep "\n" (file: ''
+        cleanup_codex_skill_state ${escapeShellArg file.relativePath}
+      '') codexManagedFiles}
+    '';
+
     home.activation.codexSkills = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      codexSkillsRoot="$HOME/.codex/skills"
+      write_codex_skill_file() {
+        relativePath="$1"
+        sourcePath="$2"
+        targetPath="$HOME/$relativePath"
+        targetDir="$(dirname "$targetPath")"
 
-      for skillName in ${lib.escapeShellArgs codexManagedSkillNames}; do
-        skillDir="$codexSkillsRoot/$skillName"
-        [ -d "$skillDir" ] || continue
+        mkdir -p "$targetDir"
 
-        find "$skillDir" -type l | while read -r linkPath; do
-          targetPath="$(readlink -f "$linkPath")"
-          [ -f "$targetPath" ] || continue
-          rm -f "$linkPath"
-          cp "$targetPath" "$linkPath"
-        done
-      done
+        if [ -L "$targetPath" ]; then
+          rm -f "$targetPath"
+        fi
+
+        tmpPath="$(mktemp "$targetPath.tmp.XXXXXX")"
+        cp "$sourcePath" "$tmpPath"
+        chmod 644 "$tmpPath"
+        mv "$tmpPath" "$targetPath"
+      }
+
+      ${concatMapStringsSep "\n" (file: ''
+        write_codex_skill_file \
+          ${escapeShellArg file.relativePath} \
+          ${escapeShellArg (toString file.source)}
+      '') codexManagedFiles}
     '';
   };
 }

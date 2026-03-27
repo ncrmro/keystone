@@ -10,6 +10,59 @@ with lib;
 let
   agentsLib = import ./lib.nix { inherit lib config pkgs; };
   inherit (agentsLib) osCfg localAgents;
+  builtInTaskLoopProfiles = {
+    embedding = {
+      claude = { };
+      gemini = { };
+      codex = { };
+    };
+    fast = {
+      claude = {
+        model = "haiku";
+        fallbackModel = "sonnet";
+        effort = "low";
+      };
+      gemini = {
+        model = "gemini-3-flash-preview";
+      };
+      codex = { };
+    };
+    medium = {
+      claude = {
+        model = "sonnet";
+        fallbackModel = "opus";
+        effort = "medium";
+      };
+      gemini = {
+        model = "auto-gemini-3";
+      };
+      codex = { };
+    };
+    max = {
+      claude = {
+        model = "opus";
+        effort = "max";
+      };
+      gemini = {
+        model = "auto-gemini-3";
+      };
+      codex = { };
+    };
+  };
+
+  serializeTaskLoopStage =
+    stageCfg:
+    builtins.toJSON {
+      profile = stageCfg.profile;
+      provider = stageCfg.provider;
+      model = stageCfg.model;
+      fallbackModel = stageCfg.fallbackModel;
+      effort = stageCfg.effort;
+    };
+
+  projectIndexHelper = pkgs.writeShellScriptBin "keystone-project-index" (
+    builtins.readFile ./scripts/project-index.sh
+  );
 
   # Task loop script: pre-fetch sources, ingest, prioritize, execute.
   # All tools (yq, jq, bash, git, claude, etc.) come from the agent's
@@ -19,12 +72,29 @@ let
     let
       notesDir = agentCfg.notes.path;
       maxTasks = agentCfg.notes.taskLoop.maxTasks;
+      defaultsJson = serializeTaskLoopStage agentCfg.notes.taskLoop.defaults;
+      ingestJson = serializeTaskLoopStage agentCfg.notes.taskLoop.ingest;
+      prioritizeJson = serializeTaskLoopStage agentCfg.notes.taskLoop.prioritize;
+      executeJson = serializeTaskLoopStage agentCfg.notes.taskLoop.execute;
+      profilesJson = builtins.toJSON (
+        lib.recursiveUpdate builtInTaskLoopProfiles agentCfg.notes.taskLoop.profiles
+      );
       githubUsername = agentCfg.github.username;
       forgejoUsername = agentCfg.forgejo.username;
     in
     pkgs.replaceVars ./scripts/task-loop.sh {
-      notesDir = notesDir;
-      inherit maxTasks githubUsername forgejoUsername;
+      inherit
+        defaultsJson
+        executeJson
+        forgejoUsername
+        githubUsername
+        ingestJson
+        maxTasks
+        notesDir
+        prioritizeJson
+        profilesJson
+        projectIndexHelper
+        ;
       agentName = name;
     };
 
@@ -61,6 +131,7 @@ in
               PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.nix ]}";
               SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
               GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
+              PROMETHEUS_TEXTFILE_DIR = config.keystone.os.observability.nodeExporter.textfileDirectory;
             };
             serviceConfig = {
               Type = "oneshot";
@@ -80,6 +151,8 @@ in
             description = "Daily scheduler for ${username}";
             unitConfig.ConditionUser = username;
             environment.PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.nix ]}";
+            environment.PROMETHEUS_TEXTFILE_DIR =
+              config.keystone.os.observability.nodeExporter.textfileDirectory;
             serviceConfig = {
               Type = "oneshot";
               SyslogIdentifier = "agent-${name}-scheduler";

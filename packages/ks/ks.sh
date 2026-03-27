@@ -9,6 +9,7 @@
 # Commands:
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
 #   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (home-manager only with --dev, full system default)
+#   grafana dashboards apply|export <uid>              Apply or export keystone dashboard JSON via Grafana API
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
 #   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
 #   doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state
@@ -61,6 +62,9 @@
 set -euo pipefail
 
 KS_DEBUG=false
+KS_HM_USERS_FILTER=""
+KS_HM_ALL_USERS=false
+HM_ACTIVATION_RECORDS=()
 
 run_with_warning_filter() {
   if [[ "${KS_DEBUG}" == true ]]; then
@@ -408,9 +412,77 @@ list_hm_users() {
     "${override_args[@]}" 2>/dev/null | jq -r '.[]'
 }
 
+list_target_hm_users() {
+  local repo_root="$1"
+  local host="$2"
+  local users
+  users=$(list_hm_users "$repo_root" "$host") || return 1
+  [[ -z "$users" ]] && return 0
+
+  if [[ -n "$KS_HM_USERS_FILTER" ]]; then
+    local matched=()
+    local requested=()
+    IFS=',' read -ra requested <<< "$KS_HM_USERS_FILTER"
+    for requested_user in "${requested[@]}"; do
+      local found=false
+      while IFS= read -r available_user; do
+        [[ -z "$available_user" ]] && continue
+        if [[ "$available_user" == "$requested_user" ]]; then
+          matched+=("$available_user")
+          found=true
+          break
+        fi
+      done <<< "$users"
+
+      if [[ "$found" == false ]]; then
+        echo "Error: home-manager user '$requested_user' is not configured on host '$host'." >&2
+        return 1
+      fi
+    done
+
+    printf '%s\n' "${matched[@]}"
+    return 0
+  fi
+
+  if [[ "$KS_HM_ALL_USERS" == true ]]; then
+    printf '%s\n' "$users"
+    return 0
+  fi
+
+  local current_hostname host_hostname
+  current_hostname=$(hostname)
+  host_hostname=$(nix eval -f "$repo_root/hosts.nix" "$host.hostname" --raw 2>/dev/null || echo "")
+
+  if [[ "$host_hostname" == "$current_hostname" ]]; then
+    local current_user
+    current_user=$(resolve_current_hm_user "$repo_root" "$host")
+    if [[ -n "$current_user" ]]; then
+      printf '%s\n' "$current_user"
+      return 0
+    fi
+  fi
+
+  printf '%s\n' "$users"
+}
+
+find_cached_hm_activation_path() {
+  local host="$1"
+  local user="$2"
+  local record
+  for record in "${HM_ACTIVATION_RECORDS[@]}"; do
+    IFS=$'\t' read -r record_host record_user record_path <<< "$record"
+    if [[ "$record_host" == "$host" && "$record_user" == "$user" ]]; then
+      printf '%s\n' "$record_path"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 # --- Build home-manager activation packages only (REQ-016.1-3) ---
 # Builds home-manager activationPackage for each user on each host, returning
-# a newline-delimited list of "host:user:store-path" entries.
+# cached "host:user:store-path" entries reused during deployment.
 build_home_manager_only() {
   local repo_root="$1"
   shift
@@ -421,10 +493,11 @@ build_home_manager_only() {
 
   local build_targets=()
   local target_map=()   # host:user pairs
+  HM_ACTIVATION_RECORDS=()
 
   for h in "${target_hosts[@]}"; do
     local users
-    users=$(list_hm_users "$repo_root" "$h") || continue
+    users=$(list_target_hm_users "$repo_root" "$h") || continue
     if [[ -z "$users" ]]; then
       echo "Warning: No home-manager users for host $h, skipping." >&2
       continue
@@ -441,7 +514,15 @@ build_home_manager_only() {
   fi
 
   echo "Building home-manager profiles: ${target_map[*]}..."
-  nix build --no-link "${build_targets[@]}" "${override_args[@]}"
+  local build_paths=()
+  mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}")
+
+  local i
+  for i in "${!target_map[@]}"; do
+    IFS=':' read -r host user <<< "${target_map[$i]}"
+    HM_ACTIVATION_RECORDS+=("$host"$'\t'"$user"$'\t'"${build_paths[$i]}")
+  done
+
   echo "Home-manager build complete."
 }
 
@@ -462,7 +543,7 @@ deploy_home_manager_only() {
 
   for host in "${target_hosts[@]}"; do
     local users
-    users=$(list_hm_users "$repo_root" "$host") || continue
+    users=$(list_target_hm_users "$repo_root" "$host") || continue
     [[ -z "$users" ]] && continue
 
     local host_json host_hostname ssh_target fallback_ip
@@ -474,12 +555,20 @@ deploy_home_manager_only() {
     while IFS= read -r user; do
       # Resolve the activation package store path
       local activation_path
-      activation_path=$(nix build --no-link --print-out-paths \
-        "$repo_root#nixosConfigurations.$host.config.home-manager.users.\"$user\".home.activationPackage" \
-        "${override_args[@]}" 2>/dev/null) || {
+      activation_path=$(find_cached_hm_activation_path "$host" "$user") || activation_path=""
+      if [[ -z "$activation_path" ]]; then
+        activation_path=$(nix build --no-link --print-out-paths \
+          "$repo_root#nixosConfigurations.$host.config.home-manager.users.\"$user\".home.activationPackage" \
+          "${override_args[@]}" 2>/dev/null) || {
+          echo "Error: Failed to resolve activation package for $user on $host" >&2
+          continue
+        }
+      fi
+
+      if [[ -z "$activation_path" ]]; then
         echo "Error: Failed to resolve activation package for $user on $host" >&2
         continue
-      }
+      fi
 
       if [[ "$host_hostname" == "$current_hostname" ]]; then
         # LOCAL deploy — run activation as the user
@@ -563,6 +652,19 @@ pull_repo() {
     mkdir -p "$(dirname "$target")"
     git clone "$url" "$target"
   fi
+}
+
+bootstrap_managed_repos() {
+  local repo_root="$1"
+  local registry="$2"
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local key url
+    key=$(echo "$line" | cut -d'|' -f1)
+    url=$(echo "$line" | cut -d'|' -f2)
+    pull_repo "$repo_root" "$key" "$url"
+  done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
 }
 
 # --- Verify repo is clean and pushed ---
@@ -675,6 +777,15 @@ cmd_build() {
     case $1 in
       --dev) shift ;;  # kept for backwards compat, no-op
       --lock) lock=true; shift ;;
+      --user)
+        [[ $# -lt 2 ]] && { echo "Error: --user requires a value" >&2; exit 1; }
+        KS_HM_USERS_FILTER="$2"
+        shift 2
+        ;;
+      --all-users)
+        KS_HM_ALL_USERS=true
+        shift
+        ;;
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) hosts_arg="$1"; shift ;;
     esac
@@ -758,6 +869,9 @@ cmd_switch() {
   local repo_root
   repo_root=$(find_repo)
   local hosts_nix="$repo_root/hosts.nix"
+  KS_HM_USERS_FILTER=""
+  KS_HM_ALL_USERS=false
+  HM_ACTIVATION_RECORDS=()
 
   local target_hosts=()
   if [[ -z "$hosts_arg" ]]; then
@@ -826,8 +940,7 @@ cmd_switch() {
         echo "OS core unchanged. Activating fast home-manager switch locally..."
         deploy_home_manager_only "$repo_root" "$host"
         sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
-        sudo "$path/bin/switch-to-configuration" boot
+        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
       else
         echo "Deploying $host locally ($mode)..."
         sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
@@ -875,7 +988,8 @@ cmd_switch() {
         echo "OS core unchanged. Activating fast home-manager switch remotely..."
         deploy_home_manager_only "$repo_root" "$host"
         # shellcheck disable=SC2029
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration boot"
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path"
+        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
       else
         # shellcheck disable=SC2029
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
@@ -888,6 +1002,9 @@ cmd_switch() {
 # --- Update command ---
 cmd_update() {
   local mode="switch" hosts_arg="" pull=false lock=true
+  KS_HM_USERS_FILTER=""
+  KS_HM_ALL_USERS=false
+  HM_ACTIVATION_RECORDS=()
   while [[ $# -gt 0 ]]; do
     case $1 in
       --debug) KS_DEBUG=true; shift ;;
@@ -895,6 +1012,15 @@ cmd_update() {
       --boot) mode="boot"; shift ;;
       --pull) pull=true; shift ;;
       --lock) lock=true; shift ;;
+      --user)
+        [[ $# -lt 2 ]] && { echo "Error: --user requires a value" >&2; exit 1; }
+        KS_HM_USERS_FILTER="$2"
+        shift 2
+        ;;
+      --all-users)
+        KS_HM_ALL_USERS=true
+        shift
+        ;;
       -*) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
       *) hosts_arg="$1"; shift ;;
     esac
@@ -920,19 +1046,14 @@ cmd_update() {
 
   # --- Handle --pull (standalone, no lock) ---
   if [[ "$pull" == true && "$lock" != true ]]; then
-    while IFS= read -r line; do
-      [[ -z "$line" ]] && continue
-      local key url
-      key=$(echo "$line" | cut -d'|' -f1)
-      url=$(echo "$line" | cut -d'|' -f2)
-      pull_repo "$repo_root" "$key" "$url"
-    done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
+    bootstrap_managed_repos "$repo_root" "$registry"
     echo "Pull complete."
     return
   fi
 
   # ── DEV MODE: home-manager only (REQ-016.2) ──────────────────────────────────
   if [[ "$lock" != true ]]; then
+    bootstrap_managed_repos "$repo_root" "$registry"
     build_home_manager_only "$repo_root" "${target_hosts[@]}"
     deploy_home_manager_only "$repo_root" "${target_hosts[@]}"
     echo "Dev mode update complete (home-manager only) for: ${target_hosts[*]}"
@@ -972,13 +1093,7 @@ cmd_update() {
   run_with_warning_filter git -C "$repo_root" pull --ff-only
 
   # Step 2: Pull all repos in registry
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    local key url
-    key=$(echo "$line" | cut -d'|' -f1)
-    url=$(echo "$line" | cut -d'|' -f2)
-    pull_repo "$repo_root" "$key" "$url"
-  done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
+  bootstrap_managed_repos "$repo_root" "$registry"
 
   # Step 3: Verify repos are clean and fully pushed before locking
   while IFS= read -r key; do
@@ -1173,6 +1288,155 @@ load_conventions() {
   done
 }
 
+grafana_dashboards_dir() {
+  local repo_root="$1"
+  local ks_repo
+  ks_repo=$(find_keystone_repo "$repo_root")
+
+  if [[ -n "$ks_repo" && -d "$ks_repo/modules/server/services/grafana/dashboards" ]]; then
+    printf '%s\n' "$ks_repo/modules/server/services/grafana/dashboards"
+    return
+  fi
+
+  if [[ -d "$repo_root/modules/server/services/grafana/dashboards" ]]; then
+    printf '%s\n' "$repo_root/modules/server/services/grafana/dashboards"
+    return
+  fi
+
+  echo "Error: could not locate keystone Grafana dashboards directory." >&2
+  exit 1
+}
+
+resolve_grafana_url() {
+  local repo_root="$1"
+  if [[ -n "${GRAFANA_URL:-}" ]]; then
+    printf '%s\n' "$GRAFANA_URL"
+    return
+  fi
+
+  local hosts_nix="$repo_root/hosts.nix"
+  if [[ ! -f "$hosts_nix" ]]; then
+    echo "Error: hosts.nix not found while resolving Grafana URL." >&2
+    exit 1
+  fi
+
+  local current_hostname current_host domain subdomain
+  current_hostname=$(hostname)
+  current_host=$(nix eval -f "$hosts_nix" --raw \
+    --apply "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"$current_hostname\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m" \
+    2>/dev/null || true)
+
+  if [[ -z "$current_host" ]]; then
+    echo "Error: set GRAFANA_URL or run ks from a host that exists in hosts.nix." >&2
+    exit 1
+  fi
+
+  subdomain=$(nix eval "$repo_root#nixosConfigurations.${current_host}.config.keystone.server.services.grafana.subdomain" --raw 2>/dev/null || printf 'grafana')
+  domain=$(nix eval "$repo_root#nixosConfigurations.${current_host}.config.keystone.domain" --raw 2>/dev/null || true)
+
+  if [[ -z "$domain" ]]; then
+    echo "Error: could not resolve Grafana URL from config. Set GRAFANA_URL." >&2
+    exit 1
+  fi
+
+  printf 'https://%s.%s\n' "$subdomain" "$domain"
+}
+
+resolve_grafana_api_key() {
+  if [[ -n "${GRAFANA_API_KEY:-}" ]]; then
+    printf '%s\n' "$GRAFANA_API_KEY"
+    return
+  fi
+
+  if [[ -f /run/agenix/grafana-mcp-api-key ]]; then
+    tr -d '\n' < /run/agenix/grafana-mcp-api-key
+    return
+  fi
+
+  echo "Error: set GRAFANA_API_KEY or provision /run/agenix/grafana-mcp-api-key." >&2
+  exit 1
+}
+
+cmd_grafana_dashboards() {
+  local action="${1:-}"
+  shift || true
+
+  local repo_root dashboards_dir grafana_url grafana_api_key
+  repo_root=$(find_repo)
+  dashboards_dir=$(grafana_dashboards_dir "$repo_root")
+  grafana_url=$(resolve_grafana_url "$repo_root")
+  grafana_api_key=$(resolve_grafana_api_key)
+
+  case "$action" in
+    apply)
+      local file uid payload
+      shopt -s nullglob
+      for file in "$dashboards_dir"/*.json; do
+        uid=$(jq -r '.uid // empty' "$file")
+        if [[ -z "$uid" ]]; then
+          echo "Skipping $file (missing uid)" >&2
+          continue
+        fi
+        payload=$(jq -cn --slurpfile dashboard "$file" '{dashboard: $dashboard[0], overwrite: true}')
+        curl -fsS \
+          -H "Authorization: Bearer ${grafana_api_key}" \
+          -H 'Content-Type: application/json' \
+          -X POST \
+          --data "$payload" \
+          "${grafana_url}/api/dashboards/db" >/dev/null
+        echo "Applied ${uid}"
+      done
+      ;;
+    export)
+      local uid="${1:-}"
+      local target_file response body
+      if [[ -z "$uid" ]]; then
+        echo "Usage: ks grafana dashboards export <uid>" >&2
+        exit 1
+      fi
+
+      target_file=$(find "$dashboards_dir" -maxdepth 1 -type f -name '*.json' -print0 | \
+        while IFS= read -r -d '' file; do
+          if [[ "$(jq -r '.uid // empty' "$file")" == "$uid" ]]; then
+            printf '%s\n' "$file"
+            break
+          fi
+        done)
+
+      if [[ -z "$target_file" ]]; then
+        echo "Error: no checked-in dashboard JSON with uid '$uid' under $dashboards_dir." >&2
+        exit 1
+      fi
+
+      response=$(curl -fsS \
+        -H "Authorization: Bearer ${grafana_api_key}" \
+        "${grafana_url}/api/dashboards/uid/${uid}")
+      body=$(printf '%s\n' "$response" | jq '.dashboard | del(.id, .version)')
+      printf '%s\n' "$body" > "$target_file"
+      echo "Exported ${uid} -> ${target_file}"
+      ;;
+    *)
+      echo "Usage: ks grafana dashboards apply|export <uid>" >&2
+      exit 1
+      ;;
+  esac
+}
+
+cmd_grafana() {
+  local subcommand="${1:-}"
+  shift || true
+
+  case "$subcommand" in
+    dashboards)
+      cmd_grafana_dashboards "$@"
+      ;;
+    *)
+      echo "Usage: ks grafana dashboards apply|export <uid>" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # --- Build host table from hosts.nix ---
 build_host_table() {
   local hosts_nix="$1"
@@ -1276,7 +1540,7 @@ the local repo immediately, skipping pull, lock, and push phases.
 | Flag | Effect |
 |------|--------|
 | `--debug` | Show warning lines from underlying `git`/`nix` commands |
-| `--dev` | Home-manager only: build + activate user/agent profiles, skip system rebuild |
+| `--dev` | Home-manager only: clone or pull managed repos, then build + activate user/agent profiles |
 | `--boot` | Use `boot` instead of `switch` mode (reboot required to apply) |
 | `--pull` | Pull repos only — no build or deploy |
 | `--lock` | Force locking (default when `--dev` is not set), full system rebuild |
@@ -1712,7 +1976,7 @@ $user_table"
 
 ### Dev Mode Conventions
 
-- \`ks build\` / \`ks update --dev\`: Rebuilds **home-manager profiles only** (users + agents). Fast iteration, no sudo required.
+- \`ks build\` / \`ks update --dev\`: Rebuilds **home-manager profiles only** (users + agents). \`ks update --dev\` also clones or pulls managed repos first so local overrides like DeepWork library jobs appear automatically. Fast iteration, no sudo required.
 - \`ks build --lock\` / \`ks update\` (default): **Full NixOS system rebuild**. Pushes keystone (forks if not a collaborator), locks flake inputs, builds, pushes nixos-config, deploys.
 - Changes to keystone are NOT locked into flake.lock until \`--lock\` is used.
 - When ready to lock: commit + push keystone, then run \`ks update\` (or \`ks build --lock\`)."
@@ -1882,6 +2146,7 @@ if [[ $# -lt 1 ]]; then
   echo "" >&2
   echo "Commands:" >&2
   echo "  build  [--lock] [HOSTS]                            Build (home-manager only; --lock for full system)" >&2
+  echo "  grafana dashboards apply|export <uid>             Apply or export keystone dashboard JSON" >&2
   echo "  update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Pull, lock, build, push, and deploy" >&2
   echo "  switch [--boot] [HOSTS]                            Deploy current state without lock/push (full system)" >&2
   echo "  sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts" >&2
@@ -1898,6 +2163,7 @@ fi
 CMD="$1"; shift
 case "$CMD" in
   build)  cmd_build "$@" ;;
+  grafana) cmd_grafana "$@" ;;
   update) cmd_update "$@" ;;
   switch) cmd_switch "$@" ;;
   sync-host-keys) cmd_sync_host_keys "$@" ;;
@@ -1905,7 +2171,7 @@ case "$CMD" in
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: build, update, switch, sync-host-keys, agent, doctor" >&2
+    echo "Known commands: build, grafana, update, switch, sync-host-keys, agent, doctor" >&2
     exit 1
     ;;
 esac
