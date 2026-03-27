@@ -208,15 +208,19 @@ in
         ExecStart = toString (
           pkgs.writeShellScript "keystone-repos-sync" ''
             set -euo pipefail
+            mkdir_bin="${pkgs.coreutils}/bin/mkdir"
+            dirname_bin="${pkgs.coreutils}/bin/dirname"
+            git_bin="${pkgs.git}/bin/git"
             ${lib.concatStringsSep "\n" (
               lib.mapAttrsToList (name: repo: ''
                 target="${keystoneHome}/repos/${name}"
                 if [ ! -d "$target/.git" ]; then
                   echo "Cloning managed repo ${name} from ${repo.url}..."
-                  mkdir -p "$(dirname "$target")"
-                  ${pkgs.git}/bin/git clone "${repo.url}" "$target" || echo "Warning: Failed to clone ${name}, skipping..."
+                  "$mkdir_bin" -p "$("$dirname_bin" "$target")"
+                  "$git_bin" clone "${repo.url}" "$target" || echo "Warning: Failed to clone ${name}, skipping..."
                 else
-                  echo "Managed repo ${name} already exists at $target"
+                  echo "Pulling managed repo ${name} at $target..."
+                  "$git_bin" -C "$target" pull --ff-only || echo "Warning: Failed to pull ${name}, skipping..."
                 fi
               '') config.keystone.repos
             )}
