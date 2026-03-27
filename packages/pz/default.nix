@@ -1,4 +1,5 @@
 {
+  curl,
   jq,
   lib,
   writeShellApplication,
@@ -8,6 +9,7 @@
 writeShellApplication {
   name = "pz";
   runtimeInputs = [
+    curl
     jq
     zk
     zellij

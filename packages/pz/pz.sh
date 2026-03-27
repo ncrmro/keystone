@@ -40,6 +40,7 @@ set -euo pipefail
 VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
 PZ_MENU_CACHE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/keystone/project-menu"
 PZ_MENU_CACHE_PATH="${PZ_MENU_CACHE_DIR}/projects-v1.json"
+PZ_ICON_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/keystone/project-icons"
 
 usage() {
   cat <<'EOF'
@@ -223,6 +224,100 @@ project_hub_path() {
 
 sanitize_text() {
   printf "%s" "${1//$'\t'/ }" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
+}
+
+project_icon_value() {
+  local project_json="$1"
+  printf "%s\n" "$project_json" | jq -r '.metadata.icon // ""'
+}
+
+icon_extension_from_source() {
+  local source="$1"
+  local candidate=""
+
+  candidate=$(printf "%s\n" "$source" | sed 's/[?#].*$//' | awk -F/ '{print $NF}')
+  if [[ "$candidate" == *.* ]]; then
+    candidate=".${candidate##*.}"
+  else
+    candidate=""
+  fi
+
+  if [[ "$candidate" =~ ^\.[A-Za-z0-9]{1,5}$ ]]; then
+    printf "%s\n" "${candidate,,}"
+  else
+    printf ".img\n"
+  fi
+}
+
+resolve_local_icon_path() {
+  local icon_value="$1"
+  local hub_path="$2"
+  local candidate=""
+
+  [[ -n "$icon_value" ]] || return 1
+
+  if [[ "$icon_value" = /* ]]; then
+    candidate="$icon_value"
+  elif [[ -n "$hub_path" ]]; then
+    candidate="$(cd "$(dirname "$hub_path")" && realpath -m "$icon_value")"
+  else
+    candidate="$(realpath -m "$icon_value")"
+  fi
+
+  if [[ -f "$candidate" ]]; then
+    printf "%s\n" "$candidate"
+    return 0
+  fi
+
+  return 1
+}
+
+download_icon_to_cache() {
+  local project_slug="$1"
+  local icon_url="$2"
+  local icon_ext cache_key cache_path tmp_path
+
+  mkdir -p "$PZ_ICON_CACHE_DIR"
+  icon_ext=$(icon_extension_from_source "$icon_url")
+  cache_key=$(printf "%s" "$icon_url" | sha256sum | awk '{print $1}')
+  cache_path="${PZ_ICON_CACHE_DIR}/${project_slug}-${cache_key}${icon_ext}"
+  tmp_path="${cache_path}.tmp.$$"
+
+  if curl -fsSL --connect-timeout 5 --max-time 20 "$icon_url" -o "$tmp_path"; then
+    mv "$tmp_path" "$cache_path"
+    printf "%s\n" "$cache_path"
+    return 0
+  fi
+
+  rm -f "$tmp_path"
+  if [[ -f "$cache_path" ]]; then
+    printf "%s\n" "$cache_path"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_project_icon() {
+  local project_slug="$1"
+  local project_json="$2"
+  local hub_path="$3"
+  local icon_value local_icon
+
+  icon_value=$(project_icon_value "$project_json")
+  [[ -n "$icon_value" ]] || return 1
+
+  if [[ "$icon_value" =~ ^https?:// ]]; then
+    download_icon_to_cache "$project_slug" "$icon_value"
+    return $?
+  fi
+
+  if local_icon=$(resolve_local_icon_path "$icon_value" "$hub_path"); then
+    printf "%s\n" "$local_icon"
+    return 0
+  fi
+
+  return 1
 }
 
 menu_cache_path() {
@@ -583,7 +678,7 @@ cmd_export_menu_cache() {
     esac
   done
 
-  local project_output project_slug project_json mission
+  local project_output project_slug project_json mission hub_path icon_path
   local sessions line session_name session_slug status
   local -a slugs=()
   local project_json_lines=""
@@ -599,17 +694,23 @@ cmd_export_menu_cache() {
     [[ -z "$project_slug" ]] && continue
     slugs+=("$project_slug")
 
+    hub_path=$(project_hub_path "$project_slug" || true)
     project_json=$(project_note_json "$project_slug")
     if [[ -n "$project_json" ]]; then
       mission=$(project_mission "$project_json")
     else
       mission="No project hub details found."
     fi
+    icon_path=""
+    if [[ -n "$project_json" ]]; then
+      icon_path=$(resolve_project_icon "$project_slug" "$project_json" "$hub_path" || true)
+    fi
 
     project_json_lines+="$(
       printf "%s\n" "$project_json" | jq -cn \
         --arg slug "$project_slug" \
         --arg mission "$(sanitize_text "$mission")" \
+        --arg icon_path "$icon_path" \
         --argjson note "${project_json:-null}" '
           def milestone_lines:
             if ($note | type) != "object" then
@@ -630,6 +731,7 @@ cmd_export_menu_cache() {
           {
             slug: $slug,
             mission: $mission,
+            icon: $icon_path,
             milestones: milestone_lines,
             last_active: (
               if ($note | type) == "object" then

@@ -166,6 +166,7 @@ cmd_projects_json() {
           Text: .slug,
           Subtext: (.summary // "not running"),
           Value: .slug,
+          Icon: (.icon // ""),
           SubMenu: "keystone-project-details",
           Preview: ("keystone-project-menu project-preview " + (.slug | @sh)),
           PreviewType: "command"
