@@ -13,6 +13,49 @@ history.
 For a human user, the notebook usually lives at `~/notes`. For OS agents, it
 usually lives at `/home/agent-{name}/notes/`.
 
+## Why notes matter in Keystone
+
+Keystone uses the notes directory as shared operating context, not just a place
+to store personal writing.
+
+### Project discovery
+
+Active hub notes in `~/notes/index/` are the source of truth for project
+discovery.
+
+That project metadata is used by:
+
+- [`pz`](terminal/projects.md) to discover valid projects and launch
+  project-aware Zellij sessions,
+- Keystone Desktop to populate the Walker project menu, and
+- related project tooling that needs repo URLs, summaries, and current state.
+
+If the hub notes are stale, the `pz` project list and the Walker project menu
+are stale too. For the session and desktop workflow, see
+[Projects and pz](terminal/projects.md).
+
+### Long-term memory for agents
+
+Agents use their notes repo as long-term memory.
+
+That includes:
+
+- project hub notes,
+- report chains,
+- decision records,
+- promoted research output, and
+- other durable artifacts that should survive beyond the current task run.
+
+### Automatic sync
+
+Keystone automatically fetches and pushes the notes repo on a timer.
+
+- Human users typically rely on `keystone-notes-sync` for `~/notes`
+- OS agents use `agent-{name}-notes-sync` for `/home/agent-{name}/notes`
+
+This makes the notes repo usable as shared state between the human operator,
+desktop project navigation, `pz`, and agent workflows.
+
 ## What the notes system is for
 
 Use the notes system to:
@@ -250,6 +293,18 @@ Typical agent behavior:
 - mirror important decisions into the related issue or pull request,
 - link new reports back to the hub note.
 
+Agents are configured to put durable workflow output into notes automatically
+when that output should be kept. Common examples include:
+
+- spike output,
+- research summaries,
+- status reports,
+- review writeups, and
+- refreshed project hubs.
+
+That is what turns notes into long-term memory instead of just temporary task
+scratch space.
+
 ### Example: human report capture
 
 ```bash
@@ -275,6 +330,8 @@ and update a relevant system or operations hub if one exists.
 - OS agents use the same notebook model in their agent-space.
 - The AI command layer exposes the notes workflows across the supported coding
   agents, with tool-specific UX differences.
+- Notes sync is handled by `repo-sync`, which clones if absent and then
+  fetches, commits, rebases, and pushes changes automatically.
 
 ## Related docs
 

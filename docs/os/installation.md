@@ -1,15 +1,15 @@
 ---
-title: Keystone Installation Guide
+title: Keystone OS install
 description: Complete guide for installing NixOS using the Keystone installer ISO and nixos-anywhere
 ---
 
-# Keystone Installation Guide
+# Keystone OS install
 
 Complete guide for installing NixOS using the Keystone installer ISO and nixos-anywhere.
 
 ## Prerequisites
 
-- Keystone ISO generated and burned to USB (see [ISO Generation Guide](iso-generation.md))
+- Keystone ISO generated and burned to USB (see [ISO Generation](iso-generation.md))
 - Target machine capable of booting from USB
 - Network connectivity for the target machine
 
@@ -54,6 +54,7 @@ The installation process:
 ### What Disko Handles
 
 Disko configures the root disk with:
+
 - Partitioning (UEFI boot, swap, root)
 - LUKS encryption (if configured)
 - ZFS root pool creation
@@ -193,7 +194,7 @@ lsblk -f
 After successful installation:
 
 1. **Configure users and access control**
-2. **Set up backup destinations**  
+2. **Set up backup destinations**
 3. **Configure VPN and networking**
 4. **Install application-specific services**
 5. **Enable automatic updates**

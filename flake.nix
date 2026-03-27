@@ -443,11 +443,14 @@
           path = ./templates/default;
           description = "Keystone infrastructure starter with OS module and home-manager";
           welcomeText = ''
-            # Keystone Infrastructure Configuration
+            # keystone-config
 
-            Your project has been initialized!
+            Your Keystone config repo has been initialized.
 
             ## Quick Start
+
+            Recommended scaffold command:
+               nix flake new -t github:ncrmro/keystone keystone-config
 
             1. Edit configuration.nix - search for TODO: to find required changes
             2. Generate hostId: head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
