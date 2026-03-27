@@ -1599,22 +1599,41 @@ resolve_grafana_url() {
     exit 1
   fi
 
-  local current_hostname current_host domain subdomain
+  local current_hostname current_host domain subdomain grafana_host
   current_hostname=$(hostname)
   current_host=$(nix eval -f "$hosts_nix" --raw \
     --apply "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"$current_hostname\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m" \
     2>/dev/null || true)
 
-  if [[ -z "$current_host" ]]; then
-    echo "Error: set GRAFANA_URL or run ks from a host that exists in hosts.nix." >&2
+  # Try to find a host with grafana enabled
+  if [[ -n "$current_host" ]]; then
+    if [[ "$(nix eval "$repo_root#nixosConfigurations.${current_host}.config.keystone.server.services.grafana.enable" --json 2>/dev/null)" == "true" ]]; then
+      grafana_host="$current_host"
+    fi
+  fi
+
+  if [[ -z "$grafana_host" ]]; then
+    # Scan all server hosts for grafana.enable
+    local server_hosts
+    server_hosts=$(nix eval -f "$hosts_nix" --json --apply "hosts: builtins.filter (k: (builtins.getAttr k hosts).role == \"server\") (builtins.attrNames hosts)" 2>/dev/null || echo "[]")
+    for host in $(echo "$server_hosts" | jq -r '.[]'); do
+      if [[ "$(nix eval "$repo_root#nixosConfigurations.${host}.config.keystone.server.services.grafana.enable" --json 2>/dev/null)" == "true" ]]; then
+        grafana_host="$host"
+        break
+      fi
+    done
+  fi
+
+  if [[ -z "$grafana_host" ]]; then
+    echo "Error: could not find any host with keystone.server.services.grafana.enable = true. Set GRAFANA_URL." >&2
     exit 1
   fi
 
-  subdomain=$(nix eval "$repo_root#nixosConfigurations.${current_host}.config.keystone.server.services.grafana.subdomain" --raw 2>/dev/null || printf 'grafana')
-  domain=$(nix eval "$repo_root#nixosConfigurations.${current_host}.config.keystone.domain" --raw 2>/dev/null || true)
+  subdomain=$(nix eval "$repo_root#nixosConfigurations.${grafana_host}.config.keystone.server.services.grafana.subdomain" --raw 2>/dev/null || printf 'grafana')
+  domain=$(nix eval "$repo_root#nixosConfigurations.${grafana_host}.config.keystone.domain" --raw 2>/dev/null || true)
 
   if [[ -z "$domain" ]]; then
-    echo "Error: could not resolve Grafana URL from config. Set GRAFANA_URL." >&2
+    echo "Error: could not resolve Grafana URL from config for host '$grafana_host'. Set GRAFANA_URL." >&2
     exit 1
   fi
 
@@ -1632,8 +1651,7 @@ resolve_grafana_api_key() {
     return
   fi
 
-  echo "Error: set GRAFANA_API_KEY or provision /run/agenix/grafana-mcp-api-key." >&2
-  exit 1
+  return 1
 }
 
 cmd_grafana_dashboards() {
@@ -1655,8 +1673,18 @@ cmd_grafana_dashboards() {
   local repo_root dashboards_dir grafana_url grafana_api_key
   repo_root=$(find_repo)
   dashboards_dir=$(grafana_dashboards_dir "$repo_root")
-  grafana_url=$(resolve_grafana_url "$repo_root")
-  grafana_api_key=$(resolve_grafana_api_key)
+  
+  grafana_url=$(resolve_grafana_url "$repo_root" 2>/dev/null || true)
+  if [[ -z "$grafana_url" ]]; then
+    echo "Warning: skipping dashboard sync (could not resolve Grafana URL). Set GRAFANA_URL." >&2
+    return 0
+  fi
+
+  grafana_api_key=$(resolve_grafana_api_key 2>/dev/null || true)
+  if [[ -z "$grafana_api_key" ]]; then
+    echo "Warning: skipping dashboard sync (missing API key). Set GRAFANA_API_KEY or provision /run/agenix/grafana-mcp-api-key." >&2
+    return 0
+  fi
 
   case "$action" in
     apply)
