@@ -1599,7 +1599,7 @@ resolve_grafana_url() {
     exit 1
   fi
 
-  local current_hostname current_host domain subdomain grafana_host
+  local current_hostname current_host domain subdomain grafana_host=""
   current_hostname=$(hostname)
   current_host=$(nix eval -f "$hosts_nix" --raw \
     --apply "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"$current_hostname\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m" \
