@@ -27,6 +27,8 @@ The system MUST provide a unified, hierarchical menu accessible via a global key
 
 The system MUST provide project-aware desktop context selectors that integrate `pz`, Hyprland, and existing desktop session windows.
 
+Detailed project desktop menu requirements are defined in `REQ-026`.
+
 - **dt-context-001.1**: Desktop context selectors MUST list registered projects from the `pz` project registry.
 - **dt-context-001.2**: When a selected project or session already has an active desktop window, the desktop MUST switch to the Hyprland workspace containing that window instead of opening a new terminal window.
 - **dt-context-001.3**: The desktop MUST determine the target workspace from the live Hyprland client list, rather than assuming the session uses a named workspace.

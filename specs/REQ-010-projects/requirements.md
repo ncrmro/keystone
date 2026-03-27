@@ -100,6 +100,8 @@ notes directory.
 
 ### Desktop Integration (Optional)
 
+Detailed desktop project menu behavior is defined in `REQ-026`.
+
 **REQ-010.18** When `keystone.desktop` is enabled, a Walker plugin SHOULD
 read from `keystone.notes` configuration to discover projects and present
 them as launchable items alongside desktop applications.

@@ -12,6 +12,9 @@ MAY, REQUIRED, OPTIONAL).
 - US-002: Resume existing terminal sessions
 - US-003: List terminal sessions by project
 
+Desktop menu behavior that consumes this session model is specified in
+REQ-026.
+
 ## Affected Modules
 - `packages/pz/pz.sh` — new CLI script
 - `packages/pz/default.nix` — Nix package definition
