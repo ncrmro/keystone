@@ -111,8 +111,8 @@ in
         force_keyboard_focus = true;
         selection_wrap = true;
         theme = "keystone";
-        actions_as_menu = false;
-        hide_action_hints = true;
+        actions_as_menu = true;
+        hide_action_hints = false;
 
         placeholders = {
           default = {
@@ -134,11 +134,10 @@ in
         };
 
         keybinds = {
-          left = [ "Left" ];
-          right = [ "Right" ];
           next = [ "Down" ];
           previous = [ "Up" ];
           quick_activate = [ ];
+          show_actions = [ ];
         };
 
         providers = {
@@ -154,24 +153,16 @@ in
           actions = {
             fallback = [
               {
-                action = "menus:parent";
-                label = "back";
-                bind = "Left";
+                action = "menus:open";
+                label = "open";
                 after = "Nothing";
+                default = true;
               }
               {
                 action = "erase_history";
                 label = "clear hist";
                 bind = "ctrl h";
                 after = "AsyncReload";
-              }
-            ];
-            menus = [
-              {
-                action = "menus:open";
-                label = "details";
-                bind = "Right";
-                after = "Nothing";
               }
             ];
           };

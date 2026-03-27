@@ -5,6 +5,7 @@ Icon = "folder-development"
 HideFromProviderlist = true
 History = false
 FixedOrder = true
+Action = "lua:CreateSession"
 
 local function shell_quote(value)
     return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
@@ -21,10 +22,6 @@ local function current_project()
     return slug
 end
 
-Actions = {
-    create_session = "lua:CreateSession",
-}
-
 function GetEntries()
     local slug = current_project()
     if slug == "" then
@@ -38,9 +35,6 @@ function GetEntries()
             Value = slug,
             Preview = "keystone-project-menu preview " .. shell_quote(slug),
             PreviewType = "command",
-            Actions = {
-                create_session = "lua:CreateSession",
-            },
         }
     }
 end

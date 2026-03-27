@@ -2,4 +2,4 @@
 
 set -euo pipefail
 
-exec keystone-launch-walker -m "menus:keystone-projects"
+exec keystone-launch-walker -m menus:keystone-projects

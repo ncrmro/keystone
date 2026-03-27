@@ -15,6 +15,24 @@ shell_quote() {
   printf "'%s'" "${1//\'/\'\\\'\'}"
 }
 
+match_project_slug() {
+  local session_name="$1"
+  shift
+
+  local project_slug=""
+  local candidate=""
+
+  for candidate in "$@"; do
+    if [[ "$session_name" == "$candidate" || "$session_name" == "${candidate}-"* ]]; then
+      if [[ -z "$project_slug" || ${#candidate} -gt ${#project_slug} ]]; then
+        project_slug="$candidate"
+      fi
+    fi
+  done
+
+  printf "%s\n" "$project_slug"
+}
+
 cache_path_for_key() {
   local cache_key="$1"
   printf "%s/%s.cache\n" "$CACHE_DIR" "$cache_key"
@@ -120,24 +138,68 @@ cmd_open_session_menu() {
 
 cmd_projects_json() {
   local cache_path payload
-  cache_path=$(cache_path_for_key "projects-json")
+  local project_output=""
+  local -a slugs=()
+  local -A project_session_lines=()
+  local line=""
+  local slug=""
+  local summary=""
+  local session_name=""
+  local project_slug=""
+  local session_slug=""
+  local session_status=""
+
+  cache_path=$(cache_path_for_key "projects-json-v2")
   if cache_is_fresh "$cache_path" "$CACHE_TTL_SECONDS"; then
     cat "$cache_path"
     return 0
   fi
 
-  payload=$(pz export-menu-data 2>/dev/null | jq -Rsc '
-    split("\n")
-    | map(select(length > 0) | split("\t"))
-    | map({
-        Text: .[0],
-        Subtext: (.[1] // "not running"),
-        Value: .[0],
-        Submenu: "keystone-project-details",
-        Preview: ("keystone-project-menu project-preview " + (.[0] | @sh)),
-        PreviewType: "command"
-      })
-  ')
+  project_output=$(pz export-menu-data 2>/dev/null)
+
+  while IFS=$'\t' read -r slug summary _; do
+    [[ -z "$slug" ]] && continue
+    slugs+=("$slug")
+  done <<< "$project_output"
+
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    project_slug=$(match_project_slug "$session_name" "${slugs[@]}")
+    [[ -z "$project_slug" || "$session_name" == "$project_slug" ]] && continue
+
+    session_slug="${session_name#"$project_slug"-}"
+    if [[ "$line" == *"(current)"* ]]; then
+      session_status="attached"
+    else
+      session_status="detached"
+    fi
+
+    project_session_lines["$project_slug"]+="$session_slug|$session_status"$'\n'
+  done < <(zellij list-sessions --no-formatting 2>/dev/null || true)
+
+  payload=$(
+    while IFS=$'\t' read -r slug summary _; do
+      [[ -z "$slug" ]] && continue
+
+      local quoted
+      quoted=$(shell_quote "$slug")
+
+      jq -nc \
+        --arg slug "$slug" \
+        --arg summary "${summary:-not running}" \
+        --arg quoted "$quoted" \
+        '{
+          Text: $slug,
+          Subtext: $summary,
+          Value: $slug,
+          SubMenu: "keystone-project-details",
+          Preview: ("keystone-project-menu project-preview " + $quoted),
+          PreviewType: "command"
+        }'
+    done <<< "$project_output" | jq -s '.'
+  )
 
   write_cache "$cache_path" "$payload"
   printf "%s\n" "$payload"
