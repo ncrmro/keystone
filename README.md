@@ -31,16 +31,16 @@ reverse proxy, and DNS for each one.
 
 | Service | What it replaces |
 |---------|-----------------|
-| Immich | Google Photos |
-| Forgejo | GitHub |
-| Vaultwarden | 1Password |
-| Stalwart | Gmail |
-| AdGuard | Pi-hole |
-| Headscale | Tailscale control |
-| Grafana + Prometheus + Loki | Datadog |
-| Miniflux | Feedly |
-| Attic | Cachix |
-| SeaweedFS | S3 |
+| [Immich](https://immich.app) | Google Photos |
+| [Forgejo](https://forgejo.org) | GitHub |
+| [Vaultwarden](https://github.com/dani-garcia/vaultwarden) | 1Password |
+| [Stalwart](https://stalw.art) | Gmail |
+| [AdGuard Home](https://github.com/AdguardTeam/AdGuardHome) | Pi-hole |
+| [Headscale](https://github.com/juanfont/headscale) | Tailscale control |
+| [Grafana](https://grafana.com) + [Prometheus](https://prometheus.io) + [Loki](https://grafana.com/oss/loki/) | Datadog |
+| [Miniflux](https://miniflux.app) | Feedly |
+| [Attic](https://github.com/zhaofengli/attic) | Cachix |
+| [SeaweedFS](https://github.com/seaweedfs/seaweedfs) | S3 |
 
 [Server Documentation](docs/os/server.md)
 
@@ -50,11 +50,12 @@ reverse proxy, and DNS for each one.
 
 A complete development environment — terminal or full desktop.
 
-**Terminal**: Zsh, Helix editor, Zellij multiplexer, Git with SSH signing, AI coding tools
+**Terminal**: [Zsh](https://www.zsh.org), [Helix](https://helix-editor.com) editor, [Zellij](https://zellij.dev) multiplexer, Git with SSH signing, AI coding tools,
+[DeepWork](https://github.com/Unsupervisedcom/deepwork) workflow engine
 
-**Desktop**: Hyprland compositor, 15 themes, app launcher, clipboard history, screenshot tools
+**Desktop**: [Hyprland](https://hyprland.org) compositor, 15 themes, app launcher, clipboard history, screenshot tools
 
-[Terminal](docs/terminal/terminal.md) · [Personal Info Management](docs/os/personal-info-management.md) · [Cross-Platform Comparison](docs/comparison.md)
+[Terminal](docs/terminal/terminal.md) · [DeepWork](docs/terminal/deepwork.md) · [Personal Info Management](docs/os/personal-info-management.md) · [Cross-Platform Comparison](docs/comparison.md)
 
 ## OS Agents
 
