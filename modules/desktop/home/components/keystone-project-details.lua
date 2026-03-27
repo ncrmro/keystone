@@ -6,9 +6,18 @@ HideFromProviderlist = true
 Parent = "keystone-projects"
 History = false
 FixedOrder = true
+Action = "keystone-project-menu dispatch '%VALUE%'"
 
-local function shell_quote(value)
-    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+local function json_decode(value)
+    if jsonDecode ~= nil then
+        return jsonDecode(value)
+    end
+
+    if jsonDecodes ~= nil then
+        return jsonDecodes(value)
+    end
+
+    return nil
 end
 
 local function current_project()
@@ -16,56 +25,27 @@ local function current_project()
 end
 
 function GetEntries()
-    local entries = {}
     local slug = current_project()
 
     if slug == "" then
-        return entries
+        return {}
     end
 
-    local quoted = shell_quote(slug)
-    local preview = "keystone-project-menu preview " .. quoted
+    local handle = io.popen("keystone-project-menu project-details-json " .. "'" .. slug:gsub("'", "'\\''") .. "' 2>/dev/null")
+    if not handle then
+        return {}
+    end
 
-    table.insert(entries, {
-        Text = "Open main session",
-        Subtext = "Focus or launch the main project session",
-        Value = slug,
-        Preview = preview,
-        PreviewType = "command",
-        Actions = {
-            open_session = "keystone-project-menu open " .. quoted .. " main",
-        },
-    })
+    local payload = handle:read("*a") or ""
+    handle:close()
 
-    table.insert(entries, {
-        Text = "New session",
-        Subtext = "Type a new slug in the next step",
-        Value = slug,
-        Preview = preview,
-        PreviewType = "command",
-        Actions = {
-            new_session_menu = "keystone-project-menu open-session-menu " .. quoted,
-        },
-    })
+    if payload == "" then
+        return {}
+    end
 
-    local handle = io.popen("keystone-project-menu sessions " .. quoted)
-    if handle then
-        for line in handle:lines() do
-            local session, workspace = line:match("([^\t]+)\t(.+)")
-            if session and session ~= "main" then
-                table.insert(entries, {
-                    Text = session,
-                    Subtext = workspace,
-                    Value = slug,
-                    Preview = preview,
-                    PreviewType = "command",
-                    Actions = {
-                        open_session = "keystone-project-menu open " .. quoted .. " " .. shell_quote(session),
-                    },
-                })
-            end
-        end
-        handle:close()
+    local ok, entries = pcall(json_decode, payload)
+    if not ok or type(entries) ~= "table" then
+        return {}
     end
 
     return entries

@@ -8,46 +8,35 @@ History = true
 HistoryWhenEmpty = true
 FixedOrder = true
 
-local function shell_quote(value)
-    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+local function json_decode(value)
+    if jsonDecode ~= nil then
+        return jsonDecode(value)
+    end
+
+    if jsonDecodes ~= nil then
+        return jsonDecodes(value)
+    end
+
+    return nil
 end
 
 function GetEntries()
-    local entries = {}
-    -- Bulk load all project data in one pass to avoid N+1 bottleneck
-    local handle = io.popen("pz export-menu-data 2>/dev/null")
+    local handle = io.popen("keystone-project-menu projects-json 2>/dev/null")
     if not handle then
-        return entries
+        return {}
     end
 
-    for line in handle:lines() do
-        -- Format: slug \t summary \t mission
-        local parts = {}
-        for part in string.gmatch(line .. "\t", "([^\t]*)\t") do
-            table.insert(parts, part)
-        end
-
-        local slug = parts[1] or ""
-        local summary = parts[2] or "not running"
-        local mission = parts[3] or ""
-
-        if slug ~= "" then
-            local quoted = shell_quote(slug)
-            table.insert(entries, {
-                Text = slug,
-                Subtext = summary,
-                Value = slug,
-                Submenu = "keystone-project-details",
-                Preview = "keystone-project-menu preview " .. quoted,
-                PreviewType = "command",
-                Actions = {
-                    open_main = "keystone-project-menu open " .. quoted,
-                    new_session_menu = "keystone-project-menu open-session-menu " .. quoted,
-                },
-            })
-        end
-    end
-
+    local payload = handle:read("*a") or ""
     handle:close()
+
+    if payload == "" then
+        return {}
+    end
+
+    local ok, entries = pcall(json_decode, payload)
+    if not ok or type(entries) ~= "table" then
+        return {}
+    end
+
     return entries
 end

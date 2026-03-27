@@ -111,8 +111,8 @@ in
         force_keyboard_focus = true;
         selection_wrap = true;
         theme = "keystone";
-        actions_as_menu = true;
-        hide_action_hints = false;
+        actions_as_menu = false;
+        hide_action_hints = true;
 
         placeholders = {
           default = {
@@ -135,10 +135,10 @@ in
 
         keybinds = {
           left = [ "Left" ];
+          right = [ "Right" ];
           next = [ "Down" ];
           previous = [ "Up" ];
           quick_activate = [ ];
-          show_actions = [ "Right" ];
         };
 
         providers = {
@@ -153,11 +153,6 @@ in
           };
           actions = {
             fallback = [
-              {
-                action = "menus:open";
-                label = "details";
-                after = "Nothing";
-              }
               {
                 action = "menus:parent";
                 label = "back";
@@ -175,31 +170,8 @@ in
               {
                 action = "menus:open";
                 label = "details";
-                default = true;
-                bind = "Return";
+                bind = "Right";
                 after = "Nothing";
-              }
-              {
-                action = "open_main";
-                label = "open main";
-                bind = "ctrl Return";
-              }
-              {
-                action = "open_session";
-                label = "open";
-                default = true;
-                bind = "Return";
-              }
-              {
-                action = "new_session_menu";
-                label = "new session";
-                bind = "ctrl n";
-              }
-              {
-                action = "create_session";
-                label = "create session";
-                default = true;
-                bind = "Return";
               }
             ];
           };

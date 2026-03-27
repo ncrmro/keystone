@@ -224,8 +224,13 @@ sanitize_text() {
 
 project_note_json() {
   local target_slug="$1"
+  local zk_json
 
-  zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet 2>/dev/null | jq -c --arg slug "$target_slug" '
+  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet 2>/dev/null); then
+    return 1
+  fi
+
+  printf "%s\n" "$zk_json" | jq -c --arg slug "$target_slug" '
     def merged_tags:
       if ((.metadata.tags // []) | length) > 0 then
         (.metadata.tags // [])
@@ -506,9 +511,7 @@ cmd_preview() {
 
 cmd_export_menu_data() {
   local project_output
-  local line
   local -A project_sessions_count=()
-  local -A project_missions=()
   local slugs=()
 
   if ! project_output=$(discover_projects); then
@@ -534,19 +537,7 @@ cmd_export_menu_data() {
     fi
   done <<< "$sessions"
 
-  # Bulk project info (mission)
-  # NOTE: This still calls project_note_json which calls zk list.
-  # We could optimize this further by calling zk once and parsing in jq,
-  # but for now this is 1 call per project instead of N+1 from Lua.
   for s in "${slugs[@]}"; do
-    local project_json mission
-    project_json=$(project_note_json "$s")
-    if [[ -n "$project_json" ]]; then
-      mission=$(project_mission "$project_json")
-    else
-      mission="not found"
-    fi
-    
     local session_label
     local count=${project_sessions_count[$s]}
     if [[ "$count" -eq 0 ]]; then
@@ -557,7 +548,7 @@ cmd_export_menu_data() {
       session_label="$count sessions active"
     fi
 
-    printf "%s\t%s\t%s\n" "$s" "$session_label" "$mission"
+    printf "%s\t%s\t\n" "$s" "$session_label"
   done
 }
 

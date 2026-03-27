@@ -8,6 +8,34 @@ set -euo pipefail
 
 STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}/keystone-project-menu"
 CURRENT_PROJECT_FILE="${STATE_DIR}/current-project"
+CACHE_DIR="${STATE_DIR}/cache"
+CACHE_TTL_SECONDS="${KEYSTONE_PROJECT_MENU_CACHE_TTL_SECONDS:-3}"
+
+shell_quote() {
+  printf "'%s'" "${1//\'/\'\\\'\'}"
+}
+
+cache_path_for_key() {
+  local cache_key="$1"
+  printf "%s/%s.cache\n" "$CACHE_DIR" "$cache_key"
+}
+
+cache_is_fresh() {
+  local cache_path="$1"
+  local ttl="$2"
+
+  [[ -f "$cache_path" ]] || return 1
+  (( $(date +%s) - $(stat -c %Y "$cache_path" 2>/dev/null) < ttl ))
+}
+
+write_cache() {
+  local cache_path="$1"
+  local payload="$2"
+
+  mkdir -p "$CACHE_DIR"
+  printf "%s" "$payload" > "${cache_path}.tmp"
+  mv "${cache_path}.tmp" "$cache_path"
+}
 
 session_title_for_project() {
   local project_slug="$1"
@@ -90,6 +118,119 @@ cmd_open_session_menu() {
   setsid keystone-launch-walker -m "menus:keystone-project-session" -p "Session slug…" >/dev/null 2>&1 &
 }
 
+cmd_projects_json() {
+  local cache_path payload
+  cache_path=$(cache_path_for_key "projects-json")
+  if cache_is_fresh "$cache_path" "$CACHE_TTL_SECONDS"; then
+    cat "$cache_path"
+    return 0
+  fi
+
+  payload=$(pz export-menu-data 2>/dev/null | jq -Rsc '
+    split("\n")
+    | map(select(length > 0) | split("\t"))
+    | map({
+        Text: .[0],
+        Subtext: (.[1] // "not running"),
+        Value: .[0],
+        Submenu: "keystone-project-details",
+        Preview: ("keystone-project-menu project-preview " + (.[0] | @sh)),
+        PreviewType: "command"
+      })
+  ')
+
+  write_cache "$cache_path" "$payload"
+  printf "%s\n" "$payload"
+}
+
+cmd_project_details_json() {
+  local project_slug="$1"
+  local quoted_project
+  local cache_path payload
+  quoted_project=$(shell_quote "$project_slug")
+  cache_path=$(cache_path_for_key "project-details-${project_slug}")
+
+  if cache_is_fresh "$cache_path" "$CACHE_TTL_SECONDS"; then
+    cat "$cache_path"
+    return 0
+  fi
+
+  payload=$({
+    jq -nc --arg slug "$project_slug" --arg quoted "$quoted_project" '{
+      Text: "Open main session",
+      Subtext: "Focus or launch the main project session",
+      Value: ("open\t" + $slug + "\tmain"),
+      Preview: ("keystone-project-menu project-preview " + $quoted),
+      PreviewType: "command"
+    }'
+
+    jq -nc --arg slug "$project_slug" --arg quoted "$quoted_project" '{
+      Text: "New session",
+      Subtext: "Type a new slug in the next step",
+      Value: ("new-session-menu\t" + $slug),
+      Preview: ("keystone-project-menu project-preview " + $quoted),
+      PreviewType: "command"
+    }'
+
+    keystone-project-menu sessions "$project_slug" | while IFS=$'\t' read -r session workspace; do
+      [[ -z "$session" || "$session" == "main" ]] && continue
+
+      jq -nc \
+        --arg slug "$project_slug" \
+        --arg quoted "$quoted_project" \
+        --arg session "$session" \
+        --arg workspace "$workspace" \
+        '{
+          Text: $session,
+          Subtext: $workspace,
+          Value: ("open\t" + $slug + "\t" + $session),
+          Preview: ("keystone-project-menu project-preview " + $quoted),
+          PreviewType: "command"
+        }'
+    done
+  } | jq -s '.')
+
+  write_cache "$cache_path" "$payload"
+  printf "%s\n" "$payload"
+}
+
+cmd_project_preview() {
+  local project_slug="$1"
+  local cache_path payload
+  cache_path=$(cache_path_for_key "project-preview-${project_slug}")
+
+  if cache_is_fresh "$cache_path" "$CACHE_TTL_SECONDS"; then
+    cat "$cache_path"
+    return 0
+  fi
+
+  payload=$(pz preview "$project_slug")
+  write_cache "$cache_path" "$payload"
+  printf "%s\n" "$payload"
+}
+
+cmd_dispatch() {
+  local payload="${1:-}"
+  local action=""
+  local project_slug=""
+  local session_slug=""
+
+  IFS=$'\t' read -r action project_slug session_slug <<< "$payload"
+
+  case "$action" in
+    open)
+      cmd_open "$project_slug" "${session_slug:-main}"
+      ;;
+    new-session-menu)
+      cmd_open_session_menu "$project_slug"
+      ;;
+    *)
+      printf "Unknown dispatch action: %s\n" "$action" >&2
+      exit 1
+      ;;
+  esac
+}
+
 case "${1:-}" in
   open)
     shift
@@ -107,6 +248,22 @@ case "${1:-}" in
     shift
     cmd_open_session_menu "$@"
     ;;
+  projects-json)
+    shift
+    cmd_projects_json "$@"
+    ;;
+  project-details-json)
+    shift
+    cmd_project_details_json "$@"
+    ;;
+  project-preview)
+    shift
+    cmd_project_preview "$@"
+    ;;
+  dispatch)
+    shift
+    cmd_dispatch "$@"
+    ;;
   # Domain logic commands — delegate directly to pz
   summary|sessions|preview|export-menu-data)
     cmd="$1"
@@ -114,7 +271,7 @@ case "${1:-}" in
     exec pz "$cmd" "$@"
     ;;
   *)
-    echo "Usage: keystone-project-menu {open|set-current-project|get-current-project|open-session-menu|summary|sessions|preview|export-menu-data} ..." >&2
+    echo "Usage: keystone-project-menu {open|set-current-project|get-current-project|open-session-menu|projects-json|project-details-json|project-preview|dispatch|summary|sessions|preview|export-menu-data} ..." >&2
     exit 1
     ;;
 esac
