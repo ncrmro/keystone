@@ -1688,7 +1688,7 @@ cmd_grafana_dashboards() {
     echo "  2. Assign it to this host's public key" >&2
     echo "  3. Rebuild and switch this host: ks switch" >&2
     echo "" >&2
-    echo "TODO: In the future, keystone can automate this by submitting a PR to your nixos-config." >&2
+    # TODO: In the future, keystone can automate this by submitting a PR to your nixos-config.
     echo "For now, you can also set the GRAFANA_API_KEY environment variable." >&2
     return 0
   fi
