@@ -40,6 +40,7 @@ Welcome to the Keystone documentation. Keystone is a NixOS-based self-sovereign 
   - **[SSH Agent](ssh-agent.md)** - SSH agent setup for hardware keys
 
 ### Advanced Topics
+- **[ks CLI Reference](ks.md)** - Command reference for the `ks` infrastructure CLI
 - **[Build Platforms](build-platforms.md)** - Cross-platform build configuration
 - **[Hardware NAS](HW_NAS.md)** - Network Attached Storage setup
 

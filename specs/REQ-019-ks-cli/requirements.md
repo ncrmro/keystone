@@ -22,6 +22,7 @@ MAY, REQUIRED, OPTIONAL).
 | `ks sync-host-keys` | Populate `hostPublicKey` in `hosts.nix` from live hosts |
 | `ks agent [--local [MODEL]] [args...]` | Launch AI agent with keystone OS context |
 | `ks doctor [--local [MODEL]] [args...]` | Launch diagnostic AI agent with system state |
+| `ks help [command]` | Show top-level or command-specific help |
 
 `HOSTS` is a comma-separated list of host names. Defaults to the current
 machine's hostname as resolved from `hosts.nix`.
@@ -38,6 +39,24 @@ the following priority chain:
 
 **REQ-019.2** All discovered paths MUST be resolved via `readlink -f`
 to eliminate symlinks, because Nix `path:` flake URIs break on symlinks.
+
+### Help and usage
+
+**REQ-019.2a** `ks` MUST support top-level help via `ks --help`, `ks -h`, and `ks help`.
+
+**REQ-019.2b** `ks` MUST support command-specific help via `ks help <command>`,
+`ks <command> --help`, and `ks <command> -h`.
+
+**REQ-019.2c** `ks` MUST provide help text for every public command:
+`build`, `update`, `switch`, `sync-host-keys`, `grafana`, `agent`, and
+`doctor`, plus the nested `grafana dashboards` command surface.
+
+**REQ-019.2d** Help output MUST include a usage line, a concise purpose
+statement, documented flags and positional arguments, and at least one
+example invocation.
+
+**REQ-019.2e** Help requests MUST exit successfully. Invalid usage and
+unknown commands MUST remain non-zero.
 
 ### Build
 

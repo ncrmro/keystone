@@ -1,0 +1,168 @@
+---
+title: ks CLI reference
+description: Command reference for the Keystone infrastructure CLI
+---
+
+# ks CLI reference
+
+The `ks` command is the primary interface for building, deploying, and inspecting Keystone-managed infrastructure.
+
+## Help
+
+Use any of these forms to view help:
+
+```bash
+ks --help
+ks -h
+ks help
+ks help update
+ks update --help
+ks update -h
+```
+
+## Global behavior
+
+- `HOSTS` is a comma-separated list such as `workstation,ocean`.
+- When `HOSTS` is omitted, `ks` resolves the current host from `hosts.nix`.
+- Repo discovery checks `$NIXOS_CONFIG_DIR`, the current git repo root, `~/.keystone/repos/*/`, then `~/nixos-config`.
+
+## Commands
+
+### `ks build`
+
+```bash
+ks build [--lock] [--user USERS] [--all-users] [HOSTS]
+```
+
+Build Keystone configurations for one or more hosts.
+
+- `--lock`: Build full NixOS system closures instead of home-manager profiles.
+- `--user USERS`: Limit home-manager builds to a comma-separated user list.
+- `--all-users`: Build all home-manager users on each target host.
+
+Examples:
+
+```bash
+ks build
+ks build workstation,ocean
+ks build --user alice,agent-coder workstation
+ks build --lock ocean
+```
+
+### `ks update`
+
+```bash
+ks update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
+```
+
+Pull, verify, build, and deploy Keystone hosts.
+
+- `--debug`: Show warnings from `git` and `nix` commands.
+- `--dev`: Build and activate home-manager profiles only.
+- `--boot`: Register the new generation for next boot without switching now.
+- `--pull`: Pull managed repos only, then stop.
+- `--lock`: Force lock mode explicitly. This is the default unless `--dev` is set.
+- `--user USERS`: Limit home-manager activation to a comma-separated user list.
+- `--all-users`: Activate all home-manager users on each target host.
+
+Examples:
+
+```bash
+ks update
+ks update --dev workstation
+ks update --boot ocean
+ks update --pull --dev
+```
+
+### `ks switch`
+
+```bash
+ks switch [--boot] [HOSTS]
+```
+
+Build and deploy the current local state without pull, lock, or push steps.
+
+- `--boot`: Register the new generation for next boot without switching now.
+
+Examples:
+
+```bash
+ks switch
+ks switch workstation,ocean
+ks switch --boot ocean
+```
+
+### `ks sync-host-keys`
+
+```bash
+ks sync-host-keys
+```
+
+Fetch SSH host public keys from live hosts and write them into `hosts.nix`.
+
+- Hosts without `sshTarget` are skipped.
+- If `sshTarget` is unreachable and `fallbackIP` exists, `ks` retries over `fallbackIP`.
+
+Example:
+
+```bash
+ks sync-host-keys
+```
+
+### `ks grafana dashboards`
+
+```bash
+ks grafana dashboards <apply|export> [uid]
+```
+
+Manage checked-in Keystone Grafana dashboards through the Grafana API.
+
+- `apply`: Push every checked-in dashboard JSON file to Grafana.
+- `export <uid>`: Pull one dashboard by UID into its checked-in JSON file.
+- `GRAFANA_URL`: Override the Grafana base URL.
+- `GRAFANA_API_KEY`: Override the Grafana API key.
+
+Examples:
+
+```bash
+ks grafana dashboards apply
+ks grafana dashboards export keystone-host-overview
+```
+
+### `ks agent`
+
+```bash
+ks agent [--local [MODEL]] [args...]
+```
+
+Launch an AI coding agent with Keystone conventions and host context.
+
+- `--local [MODEL]`: Use the local Ollama-backed model, or the configured default model.
+- Remaining args are passed through to the underlying `claude` invocation.
+
+Examples:
+
+```bash
+ks agent
+ks agent --local
+ks agent --local qwen2.5-coder:14b --continue
+```
+
+### `ks doctor`
+
+```bash
+ks doctor [--local [MODEL]] [args...]
+```
+
+Launch a diagnostic AI agent with fleet and local system state.
+
+- `--local [MODEL]`: Use the local Ollama-backed model, or the configured default model.
+- Remaining args are passed through to the underlying `claude` invocation.
+
+Examples:
+
+```bash
+ks doctor
+ks doctor --local
+ks doctor --local mistral --continue
+```

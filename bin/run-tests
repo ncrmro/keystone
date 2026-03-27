@@ -57,6 +57,11 @@ run_checks() {
     nix flake check
     log_success "Main flake checks passed"
 
+    log_section "Running ks Help Regression"
+    log_info "Running: ./bin/test-ks-help"
+    ./bin/test-ks-help
+    log_success "ks help regression passed"
+
     log_section "Running Flake Checks (Tests - Evaluation Only)"
     log_info "Running: nix flake check ./tests --no-build"
     log_info "(Use 'module' or 'integration' commands to run actual VM tests)"
@@ -118,6 +123,7 @@ Usage: ./bin/run-tests [command]
 Commands:
     (no args)      Run all tests (checks + module + integration)
     checks         Run fast flake checks only (nix flake check)
+    ks-help        Run ks CLI help regression checks
     module         Run module isolation tests
     integration    Run integration tests
     <test-name>    Run a specific test by name
@@ -129,6 +135,9 @@ Available Tests:
         test-os-evaluation      - OS module configuration evaluation
         test-iso-evaluation     - ISO installer module evaluation
 
+    Shell Tests:
+        ks-help                 - ks CLI help and usage regression coverage
+
     Integration Tests:
         test-installer          - Full installer TUI walkthrough
         test-remote-unlock      - Remote disk unlock via SSH
@@ -136,6 +145,7 @@ Available Tests:
 Examples:
     ./bin/run-tests                        # Run all tests
     ./bin/run-tests checks                 # Quick validation
+    ./bin/run-tests ks-help                # Help regression only
     ./bin/run-tests test-installer         # Run installer test only
     ./bin/run-tests test-desktop-isolation # Run desktop test only
 
@@ -156,6 +166,12 @@ case "${1:-all}" in
         ;;
     checks)
         run_checks
+        ;;
+    ks-help)
+        log_section "Running ks Help Regression"
+        log_info "Running: ./bin/test-ks-help"
+        ./bin/test-ks-help
+        log_success "ks help regression passed"
         ;;
     module)
         run_module_tests
