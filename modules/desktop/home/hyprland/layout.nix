@@ -35,10 +35,6 @@ in
         # Settings management
         "float, match:class ^(org.pulseaudio.pavucontrol|blueberry.py)$"
 
-        # Float Steam, fullscreen RetroArch
-        "float, match:class ^(steam)$"
-        "fullscreen, match:class ^(com.libretro.RetroArch)$"
-
         # Slight transparency
         "opacity 0.97 0.9, match:class .*"
         # Full opacity for video content
