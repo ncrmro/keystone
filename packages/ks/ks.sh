@@ -1270,6 +1270,7 @@ cmd_switch() {
     fi
     echo "Update complete for $host"
   done
+  cmd_grafana "dashboards" "apply"
 }
 
 # --- Update command ---
@@ -1532,6 +1533,7 @@ cmd_update() {
     [[ "$mode" == "boot" ]] && echo "Reboot required to apply changes for $host."
     echo "Update complete for $host"
   done
+  cmd_grafana "dashboards" "apply"
 }
 
 # --- Find keystone repo (where conventions/ lives) ---

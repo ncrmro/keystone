@@ -8,7 +8,7 @@
   "editable": true,
   "refresh": "1m",
   "time": {
-    "from": "now-24h",
+    "from": "now-1h",
     "to": "now"
   },
   "panels": [
@@ -16,7 +16,7 @@
       "id": 1,
       "title": "Hosts Reporting",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 },
       "targets": [
         {
           "refId": "A",
@@ -27,83 +27,221 @@
     },
     {
       "id": 2,
-      "title": "Agents With Task Activity",
+      "title": "Active Agents",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 0 },
       "targets": [
         {
           "refId": "A",
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "count(sum by(agent) (count_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" [24h])))"
+          "expr": "count(sum by(agent) (count_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" [$__range])))"
         }
       ]
+    },
+    {
+      "id": 8,
+      "title": "Avg Task Latency",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "avg(avg_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" | unwrap duration_seconds [$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
     },
     {
       "id": 3,
-      "title": "Recent Blocked Tasks",
+      "title": "Total Zpools",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum(count_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" | status=\"blocked\" [24h]))"
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "count(node_zfs_zpool_state == 0)"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        }
+      }
     },
     {
       "id": 4,
-      "title": "Host Health",
+      "title": "Failing Backups",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "count(zfs_backup_last_exit_code != 0)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "links": [
+          {
+            "title": "Open backups overview",
+            "url": "/d/keystone-backups-overview/keystone-backups-overview"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "title": "Alert Count",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(ALERTS{alertstate=\"firing\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Infrastructure Health",
       "type": "table",
       "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
       "targets": [
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "max by(host) (up{host!=\"\"})",
+          "expr": "up{host!=\"\"}",
           "format": "table",
           "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
           "links": [
             {
               "title": "Open host dashboard",
-              "url": "/d/keystone-host-overview/keystone-host-overview?var-host=${__value.raw}"
+              "url": "/d/keystone-host-overview/keystone-host-overview?var-host=${__data.fields.host}"
             }
           ]
-        },
-        "overrides": []
+        }
       }
     },
     {
-      "id": 5,
-      "title": "Agent Activity",
+      "id": 6,
+      "title": "Zpool Health & Usage",
       "type": "table",
       "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum by(agent) (count_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" [$__range]))"
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "node_zfs_zpool_state",
+          "format": "table",
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "(1 - (node_zfs_zpool_free_bytes / node_zfs_zpool_size_bytes)) * 100",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "seriesToColumns",
+          "options": { "byField": "zpool" }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true
+            },
+            "renameByName": {
+              "Value #A": "State",
+              "Value #B": "Usage"
+            }
+          }
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "links": [
-            {
-              "title": "Open agent dashboard",
-              "url": "/d/keystone-agent-overview/keystone-agent-overview?var-agent=${__value.raw}"
-            }
-          ]
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "percent"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "State" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "0": { "text": "Online", "color": "green" } } },
+                  { "type": "range", "options": { "from": 1, "to": 100, "result": { "text": "Faulted", "color": "red" } } }
+                ]
+              },
+              { "id": "unit", "value": "none" }
+            ]
+          }
+        ]
       }
     },
     {
-      "id": 6,
-      "title": "Recent Failures",
+      "id": 7,
+      "title": "Recent Agent Failures",
       "type": "logs",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
       "targets": [
