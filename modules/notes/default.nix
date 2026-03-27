@@ -333,6 +333,7 @@ in
           "--commit-prefix ${lib.escapeShellArg cfg.commitPrefix}"
           "--log-dir ${config.home.homeDirectory}/.local/state/notes-sync/logs"
         ];
+        ExecStartPost = "${pkgs.bash}/bin/bash -lc 'if command -v pz >/dev/null 2>&1; then pz export-menu-cache --write-state >/dev/null 2>&1 || true; fi'";
       };
     };
 

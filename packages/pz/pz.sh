@@ -38,6 +38,8 @@
 set -euo pipefail
 
 VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
+PZ_MENU_CACHE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/keystone/project-menu"
+PZ_MENU_CACHE_PATH="${PZ_MENU_CACHE_DIR}/projects-v1.json"
 
 usage() {
   cat <<'EOF'
@@ -47,6 +49,7 @@ Usage:
   pz <project> [<session>] [--layout <name>]  Create or attach to a Zellij session
   pz list [--project <slug>]      List active project sessions
   pz info <project-slug>          Show project mission, milestones, and sessions
+  pz export-menu-cache [--write-state]  Export snapshot JSON for desktop menus
   pz agent <agent> <cmd> [args]   Run agentctl within the project context
   pz --help                       Show this help message
 
@@ -220,6 +223,14 @@ project_hub_path() {
 
 sanitize_text() {
   printf "%s" "${1//$'\t'/ }" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
+}
+
+menu_cache_path() {
+  printf "%s\n" "$PZ_MENU_CACHE_PATH"
+}
+
+cmd_menu_cache_path() {
+  menu_cache_path
 }
 
 project_note_json() {
@@ -550,6 +561,176 @@ cmd_export_menu_data() {
 
     printf "%s\t%s\t\n" "$s" "$session_label"
   done
+}
+
+cmd_export_menu_cache() {
+  local write_state=0
+  local arg=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --write-state)
+        write_state=1
+        shift
+        ;;
+      --json)
+        shift
+        ;;
+      *)
+        echo "error: unknown option for 'export-menu-cache': $1" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  local project_output project_slug project_json mission
+  local sessions line session_name session_slug status
+  local -a slugs=()
+  local project_json_lines=""
+  local session_json_lines=""
+  local generated_at
+  local payload=""
+
+  if ! project_output=$(discover_projects); then
+    exit 1
+  fi
+
+  while IFS=$'\t' read -r project_slug _; do
+    [[ -z "$project_slug" ]] && continue
+    slugs+=("$project_slug")
+
+    project_json=$(project_note_json "$project_slug")
+    if [[ -n "$project_json" ]]; then
+      mission=$(project_mission "$project_json")
+    else
+      mission="No project hub details found."
+    fi
+
+    project_json_lines+="$(
+      printf "%s\n" "$project_json" | jq -cn \
+        --arg slug "$project_slug" \
+        --arg mission "$(sanitize_text "$mission")" \
+        --argjson note "${project_json:-null}" '
+          def milestone_lines:
+            if ($note | type) != "object" then
+              []
+            else
+              [
+                (($note.metadata.milestones? // empty)
+                  | if type == "array" then .[] else . end
+                  | {
+                      name: (.name // .title // .summary // .evidence // .description // "Milestone"),
+                      date: (.date // .due_date // .due // "")
+                    }
+                  | if .date != "" then "\(.date) \(.name)" else .name end
+                )
+              ][0:3]
+            end;
+
+          {
+            slug: $slug,
+            mission: $mission,
+            milestones: milestone_lines,
+            last_active: (
+              if ($note | type) == "object" then
+                ($note.metadata.last_active // "")
+              else
+                ""
+              end
+            )
+          }
+        '
+    )"$'\n'
+  done <<< "$project_output"
+
+  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    project_slug=$(match_registered_project_slug "$session_name" "${slugs[@]}")
+    [[ -z "$project_slug" ]] && continue
+
+    if [[ "$session_name" == "$project_slug" ]]; then
+      session_slug="main"
+    else
+      session_slug="${session_name#"$project_slug"-}"
+    fi
+
+    status=$(session_status_from_line "$line")
+    session_json_lines+="$(
+      jq -cn \
+        --arg project_slug "$project_slug" \
+        --arg session_slug "$session_slug" \
+        --arg status "$status" '
+          {
+            project_slug: $project_slug,
+            session_slug: $session_slug,
+            status: $status
+          }
+        '
+    )"$'\n'
+  done <<< "$sessions"
+
+  generated_at=$(date --iso-8601=seconds)
+  payload=$(
+    jq -n \
+      --arg generated_at "$generated_at" \
+      --arg cache_path "$PZ_MENU_CACHE_PATH" \
+      --argjson projects "$(printf "%s" "$project_json_lines" | jq -s '.')" \
+      --argjson sessions "$(printf "%s" "$session_json_lines" | jq -s '.')" '
+        {
+          schema_version: 1,
+          generated_at: $generated_at,
+          cache_path: $cache_path,
+          projects: (
+            $projects
+            | sort_by(.last_active, .slug)
+            | reverse
+            | map(
+                . as $project
+                | ($sessions
+                    | map(select(.project_slug == $project.slug))
+                    | unique_by(.session_slug)
+                    | sort_by(.session_slug)
+                  ) as $project_sessions
+                | $project + {
+                    sessions: (
+                      $project_sessions
+                      | map({
+                          slug: .session_slug,
+                          status: .status
+                        })
+                    ),
+                    summary: (
+                      ($project_sessions | length) as $count
+                      | if $count == 0 then
+                          "not running"
+                        elif $count == 1 then
+                          "1 session active"
+                        else
+                          "\($count) sessions active"
+                        end
+                    )
+                  }
+              )
+          )
+        }
+      '
+  )
+
+  if [[ "$write_state" -eq 1 ]]; then
+    local cache_path tmp_path
+    cache_path=$(menu_cache_path)
+    tmp_path="${cache_path}.tmp.$$"
+    mkdir -p "$(dirname "$cache_path")"
+    printf "%s\n" "$payload" > "$tmp_path"
+    mv "$tmp_path" "$cache_path"
+    printf "%s\n" "$cache_path"
+    return 0
+  fi
+
+  printf "%s\n" "$payload"
 }
 
 session_status_from_line() {
@@ -949,6 +1130,10 @@ case "$1" in
     shift
     cmd_preview "$@"
     ;;
+  export-menu-cache)
+    shift
+    cmd_export_menu_cache "$@"
+    ;;
   export-menu-data)
     shift
     cmd_export_menu_data "$@"
@@ -962,6 +1147,9 @@ case "$1" in
     ;;
   discover-slugs)
     cmd_discover_slugs
+    ;;
+  menu-cache-path)
+    cmd_menu_cache_path
     ;;
   -*)
     echo "error: unknown option: $1" >&2

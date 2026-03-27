@@ -3,4 +3,4 @@
 set -euo pipefail
 
 # Simple wrapper for Walker with consistent menu dimensions
-exec walker --width 644 --maxheight 300 --minheight 300 "$@"
+exec walker --width 1288 --maxheight 600 --minheight 600 "$@"
