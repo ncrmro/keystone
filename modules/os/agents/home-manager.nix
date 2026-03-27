@@ -218,8 +218,8 @@ in
             # Export GRAFANA_API_KEY from agenix secret at shell login (REQ-017.11).
             # Can't use home.sessionVariables — the secret is a runtime file, not a Nix store path.
             programs.zsh.initExtra = mkIf agentCfg.grafana.mcp.enable ''
-              if [ -f /run/agenix/grafana-mcp-api-key ]; then
-                export GRAFANA_API_KEY="$(tr -d '\n' < /run/agenix/grafana-mcp-api-key)"
+              if [ -f /run/agenix/grafana-api-token ]; then
+                export GRAFANA_API_KEY="$(tr -d '\n' < /run/agenix/grafana-api-token)"
               fi
             '';
 

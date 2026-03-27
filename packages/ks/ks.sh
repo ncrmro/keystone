@@ -1646,8 +1646,8 @@ resolve_grafana_api_key() {
     return
   fi
 
-  if [[ -f /run/agenix/grafana-mcp-api-key ]]; then
-    tr -d '\n' < /run/agenix/grafana-mcp-api-key
+  if [[ -f /run/agenix/grafana-api-token ]]; then
+    tr -d '\n' < /run/agenix/grafana-api-token
     return
   fi
 
@@ -1682,7 +1682,14 @@ cmd_grafana_dashboards() {
 
   grafana_api_key=$(resolve_grafana_api_key 2>/dev/null || true)
   if [[ -z "$grafana_api_key" ]]; then
-    echo "Warning: skipping dashboard sync (missing API key). Set GRAFANA_API_KEY or provision /run/agenix/grafana-mcp-api-key." >&2
+    echo "Warning: Keystone Grafana API token is not configured on this host." >&2
+    echo "To enable dashboard synchronization and Grafana MCP, you must:" >&2
+    echo "  1. Define 'secrets/grafana-api-token.age' in your nixos-config/secrets.nix" >&2
+    echo "  2. Assign it to this host's public key" >&2
+    echo "  3. Rebuild and switch this host: ks switch" >&2
+    echo "" >&2
+    echo "TODO: In the future, keystone can automate this by submitting a PR to your nixos-config." >&2
+    echo "For now, you can also set the GRAFANA_API_KEY environment variable." >&2
     return 0
   fi
 
