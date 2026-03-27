@@ -149,13 +149,27 @@ cmd_get_current_project() {
 
 cmd_open_session_menu() {
   local project_slug="$1"
+  local session_slug=""
 
   cmd_set_current_project "$project_slug"
 
-  # Restart walker to ensure it picks up the set
   walker -q >/dev/null 2>&1 || true
-  sleep 0.05
-  setsid keystone-launch-walker -m "menus:keystone-project-session" -p "Session slug…" >/dev/null 2>&1 &
+
+  session_slug=$(
+    printf '\n' \
+      | keystone-launch-walker --dmenu --inputonly --placeholder "Session slug… (leave empty for main)" 2>/dev/null \
+      | tr -d '\r'
+  ) || true
+
+  if [[ -z "$session_slug" ]]; then
+    return 0
+  fi
+
+  if [[ "$session_slug" == "CNCLD" ]]; then
+    session_slug="main"
+  fi
+
+  cmd_open "$project_slug" "$session_slug"
 }
 
 cmd_projects_json() {
