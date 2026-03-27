@@ -116,5 +116,4 @@ child:selected .item-box * {
   min-width: 320px;
   padding: 14px;
   border-left: 1px solid @border;
-  white-space: pre-wrap;
 }

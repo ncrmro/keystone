@@ -42,9 +42,26 @@ let
 
   # Read the layout XML
   walkerLayoutXml = builtins.readFile ./walker-layout.xml;
-  keystoneProjectsMenuLua = builtins.readFile ./keystone-projects.lua;
-  keystoneProjectDetailsMenuLua = builtins.readFile ./keystone-project-details.lua;
-  keystoneProjectSessionMenuLua = builtins.readFile ./keystone-project-session.lua;
+
+  # Substitute tool paths in the walker lua scripts
+  substituteLua =
+    text:
+    builtins.replaceStrings
+      [
+        "pz export-menu-data"
+        "pz sessions"
+        "keystone-project-menu"
+      ]
+      [
+        "${localBin}/pz export-menu-data"
+        "${localBin}/pz sessions"
+        "${localBin}/keystone-project-menu"
+      ]
+      text;
+
+  keystoneProjectsMenuLua = substituteLua (builtins.readFile ./keystone-projects.lua);
+  keystoneProjectDetailsMenuLua = substituteLua (builtins.readFile ./keystone-project-details.lua);
+  keystoneProjectSessionMenuLua = substituteLua (builtins.readFile ./keystone-project-session.lua);
 in
 {
   # walker is imported via flake.nix homeModules.desktop (hoisted to avoid

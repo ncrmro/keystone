@@ -22,8 +22,16 @@ function GetEntries()
 
     for line in handle:lines() do
         -- Format: slug \t summary \t mission
-        local slug, summary, mission = line:match("([^\t]+)\t([^\t]+)\t(.*)")
-        if slug then
+        local parts = {}
+        for part in string.gmatch(line .. "\t", "([^\t]*)\t") do
+            table.insert(parts, part)
+        end
+
+        local slug = parts[1] or ""
+        local summary = parts[2] or "not running"
+        local mission = parts[3] or ""
+
+        if slug ~= "" then
             local quoted = shell_quote(slug)
             table.insert(entries, {
                 Text = slug,
