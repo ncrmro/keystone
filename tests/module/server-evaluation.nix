@@ -134,6 +134,19 @@ let
         };
       }
     ];
+
+    journal-remote-proxy = eval "journal-remote-proxy" [
+      {
+        keystone = {
+          domain = "example.com";
+          server.enable = true;
+        };
+        services.journald.remote = {
+          enable = true;
+          port = 19532;
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-server-evaluation"
@@ -152,6 +165,7 @@ pkgs.runCommand "test-server-evaluation"
     echo "  - seaweedfs-with-s3-config: SeaweedFS with S3 credentials file"
     echo "  - seaweedfs-custom: SeaweedFS with custom ports and subdomain"
     echo "  - seaweedfs-with-forgejo: SeaweedFS alongside Forgejo (no port conflict)"
+    echo "  - journal-remote-proxy: Journal HTTPS proxy registration"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out

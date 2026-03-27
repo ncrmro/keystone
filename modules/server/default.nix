@@ -77,6 +77,7 @@ in
     ./services/mail.nix
     ./services/adguard.nix
     ./services/seaweedfs.nix
+    ./services/journal-remote.nix
 
     # Headscale DNS integration
     ./headscale/dns-import.nix
