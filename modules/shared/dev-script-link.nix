@@ -33,9 +33,59 @@ let
       "${homeDir}/.keystone/repos/${repoEntry}"
     else
       null;
+
+  mkHomeRepoFile =
+    {
+      config,
+      targetPath,
+      relativePath,
+      sourcePath,
+      repoFlakeInput ? "keystone",
+      executable ? null,
+    }:
+    let
+      repoCheckout = resolveRepoCheckout config repoFlakeInput;
+      fileValue =
+        if repoCheckout != null then
+          {
+            source = config.lib.file.mkOutOfStoreSymlink "${repoCheckout}/${relativePath}";
+          }
+        else
+          {
+            source = sourcePath;
+          };
+    in
+    {
+      home.file.${targetPath} =
+        fileValue // lib.optionalAttrs (executable != null) { inherit executable; };
+    };
+
+  mkHomeRepoFiles =
+    {
+      config,
+      files,
+      repoFlakeInput ? "keystone",
+    }:
+    lib.mkMerge (
+      map (
+        file:
+        mkHomeRepoFile (
+          {
+            inherit config;
+            repoFlakeInput = file.repoFlakeInput or repoFlakeInput;
+          }
+          // file
+        )
+      ) files
+    );
 in
 {
-  inherit resolveRepoCheckout resolveNixOSRepoCheckout;
+  inherit
+    resolveRepoCheckout
+    resolveNixOSRepoCheckout
+    mkHomeRepoFile
+    mkHomeRepoFiles
+    ;
 
   mkHomeScriptCommand =
     {
@@ -52,10 +102,11 @@ in
       (lib.mkIf (repoCheckout == null) {
         home.packages = [ package ];
       })
-      (lib.mkIf (repoCheckout != null) {
-        home.file.".local/bin/${commandName}".source =
-          config.lib.file.mkOutOfStoreSymlink "${repoCheckout}/${relativePath}";
-      })
+      (lib.mkIf (repoCheckout != null) (mkHomeRepoFile {
+        inherit config relativePath repoFlakeInput;
+        targetPath = ".local/bin/${commandName}";
+        sourcePath = "${package}/bin/${commandName}";
+      }))
     ];
 
   # NixOS system-level counterpart to mkHomeScriptCommand.

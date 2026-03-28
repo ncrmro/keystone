@@ -191,6 +191,16 @@ let
   # Main menu script
   keystoneMenu = pkgs.writeShellScriptBin "keystone-menu" (builtins.readFile ./keystone-menu.sh);
 
+  # Audio defaults controller for Elephant/Walker and terminal use
+  keystoneAudioMenu = pkgs.writeShellScriptBin "keystone-audio-menu" (
+    builtins.readFile ./keystone-audio-menu.sh
+  );
+
+  # Hyprland monitor controller for Elephant/Walker
+  keystoneMonitorMenu = pkgs.writeShellScriptBin "keystone-monitor-menu" (
+    builtins.readFile ./keystone-monitor-menu.sh
+  );
+
   # Keybindings viewer script
   keystoneMenuKeybindings = pkgs.writeShellScriptBin "keystone-menu-keybindings" (
     builtins.readFile ./keystone-menu-keybindings.sh
@@ -256,6 +266,18 @@ let
     })
     (mkHomeScriptCommand {
       inherit config;
+      commandName = "keystone-audio-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-audio-menu.sh";
+      package = keystoneAudioMenu;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
+      commandName = "keystone-monitor-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-monitor-menu.sh";
+      package = keystoneMonitorMenu;
+    })
+    (mkHomeScriptCommand {
+      inherit config;
       commandName = "keystone-menu-keybindings";
       relativePath = "modules/desktop/home/scripts/keystone-menu-keybindings.sh";
       package = keystoneMenuKeybindings;
@@ -298,11 +320,24 @@ in
             keystoneNightlightToggle
             keystoneBatteryMonitor
             keystoneProjectMenu
+            pkgs.jq
+            pkgs.pulseaudio
+            pkgs.python3
             # Dependencies that should be available
             pkgs.gpu-screen-recorder
             pkgs.libxkbcommon # for xkbcli in keybindings menu
             pkgs.hypridle
           ];
+
+          wayland.windowManager.hyprland.settings.exec-once =
+            mkIf (cfg.audio.defaults.sink != null || cfg.audio.defaults.source != null)
+              (mkAfter [
+                "env KEYSTONE_AUDIO_DEFAULT_SINK='${
+                  if cfg.audio.defaults.sink != null then cfg.audio.defaults.sink else ""
+                }' KEYSTONE_AUDIO_DEFAULT_SOURCE='${
+                  if cfg.audio.defaults.source != null then cfg.audio.defaults.source else ""
+                }' keystone-audio-menu apply-config-defaults"
+              ]);
 
           # Periodically check battery level and send a notification when low
           systemd.user.services.keystone-battery-monitor = {

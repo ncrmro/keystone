@@ -27,15 +27,6 @@ let
   terminalCfg = config.keystone.terminal;
   cfg = terminalCfg.aiExtensions;
   isDev = config.keystone.development;
-  repos = config.keystone.repos;
-  homeDir = config.home.homeDirectory;
-
-  # Look up the keystone repo's local checkout path.
-  keystoneEntry = findFirst (name: (repos.${name}.flakeInput or null) == "keystone") null (
-    attrNames repos
-  );
-  devPath =
-    if isDev && keystoneEntry != null then "${homeDir}/.keystone/repos/${keystoneEntry}" else null;
 
   # DeepWork Workflow slash commands (templates in ./ai-commands/)
   commandFiles = [
@@ -74,18 +65,6 @@ let
     "task.ingest.md"
     "task.run.md"
   ];
-
-  # Helper to resolve source path (symlink in dev mode, Nix store otherwise)
-  mkSource =
-    subpath:
-    if devPath != null then
-      {
-        source = config.lib.file.mkOutOfStoreSymlink "${devPath}/modules/terminal/${subpath}";
-      }
-    else
-      {
-        source = ./. + "/${subpath}";
-      };
 
   stripMatchingQuotes =
     value:
@@ -378,6 +357,9 @@ in
   ];
 
   config = mkIf (terminalCfg.enable && terminalCfg.ai.enable && cfg.enable) {
+    # TODO(REQ-018.7a): These files remain generated because Claude, Gemini,
+    # OpenCode, and Codex each require transformed payloads rather than direct
+    # repo-backed source files.
     home.file =
       let
         commandFilesByTool =

@@ -215,10 +215,10 @@ show_theme_menu() {
 # ============== SETUP MENU ==============
 show_setup_menu() {
   case $(menu "Setup" "  Audio\n  Wifi\n󰂯  Bluetooth\n󰍹  Monitors") in
-  *Audio*) not_implemented "Audio setup" ;;
+  *Audio*) keystone-audio-menu open-menu ;;
   *Wifi*) not_implemented "WiFi setup" ;;
   *Bluetooth*) not_implemented "Bluetooth setup" ;;
-  *Monitors*) not_implemented "Monitor setup" ;;
+  *Monitors*) keystone-monitor-menu open-menu ;;
   *) show_main_menu ;;
   esac
 }

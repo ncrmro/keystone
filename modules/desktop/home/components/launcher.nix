@@ -1,214 +1,235 @@
 {
   config,
   lib,
-  pkgs,
-  keystoneInputs,
   ...
 }:
 with lib;
 let
   cfg = config.keystone.desktop;
+  devScripts = import ../../../shared/dev-script-link.nix { inherit lib; };
+  inherit (devScripts) mkHomeRepoFiles;
   themeDir = "${config.xdg.configHome}/keystone/current/theme";
-  localBin = "${config.home.homeDirectory}/.local/bin";
-  projectsDesktopEntry = ''
-    [Desktop Entry]
-    Type=Application
-    Version=1.0
-    Name=Projects
-    GenericName=Project context switcher
-    Comment=Open the Keystone project selector
-    Exec=${localBin}/keystone-context-switch
-    Terminal=false
-    Categories=Utility;Development;
-    Icon=folder-development
-  '';
-  notesDesktopEntry = ''
-    [Desktop Entry]
-    Type=Application
-    Version=1.0
-    Name=Notes
-    GenericName=Inbox note capture
-    Comment=Open zk inbox capture in a floating window
-    Exec=${localBin}/keystone-notes-inbox
-    Terminal=false
-    Categories=Utility;Office;
-    Icon=notes
-  '';
 
   # Read and substitute the walker style.css template
   walkerStyleCss = builtins.replaceStrings [ "\${themeDir}" ] [ themeDir ] (
     builtins.readFile ./walker-style.css
   );
 
-  # Read the layout XML
+  # TODO(REQ-018.7a): Home Manager's Walker module currently embeds layout XML
+  # inline, so this remains generated until Walker layouts can be referenced by
+  # path without losing dev-mode behavior.
   walkerLayoutXml = builtins.readFile ./walker-layout.xml;
-
-  # Substitute tool paths in the walker lua scripts
-  substituteLua =
-    text:
-    builtins.replaceStrings
-      [
-        "pz export-menu-data"
-        "pz sessions"
-        "keystone-project-menu"
-      ]
-      [
-        "${localBin}/pz export-menu-data"
-        "${localBin}/pz sessions"
-        "${localBin}/keystone-project-menu"
-      ]
-      text;
-
-  keystoneProjectsMenuLua = substituteLua (builtins.readFile ./keystone-projects.lua);
-  keystoneProjectDetailsMenuLua = substituteLua (builtins.readFile ./keystone-project-details.lua);
-  keystoneProjectNotesMenuLua = substituteLua (builtins.readFile ./keystone-project-notes.lua);
-  keystoneProjectSessionMenuLua = substituteLua (builtins.readFile ./keystone-project-session.lua);
 in
 {
   # walker is imported via flake.nix homeModules.desktop (hoisted to avoid
   # _module.args infinite recursion when keystoneInputs is used in imports)
 
-  config = mkIf cfg.enable {
-    home.file.".local/share/applications/keystone-projects.desktop" = {
-      text = projectsDesktopEntry;
-      executable = false;
-    };
-
-    home.file.".local/share/applications/keystone-notes.desktop" = {
-      text = notesDesktopEntry;
-      executable = false;
-    };
-
-    home.file.".config/elephant/menus/keystone-projects.lua".text = keystoneProjectsMenuLua;
-    home.file.".config/elephant/menus/keystone-project-details.lua".text =
-      keystoneProjectDetailsMenuLua;
-    home.file.".config/elephant/menus/keystone-project-notes.lua".text = keystoneProjectNotesMenuLua;
-    home.file.".config/elephant/menus/keystone-project-session.lua".text =
-      keystoneProjectSessionMenuLua;
-
-    # Wofi as the application launcher
-    programs.wofi = {
-      enable = mkDefault true;
-      settings = {
-        show = "drun";
-        width = 600;
-        height = 400;
-        term = "ghostty";
-        prompt = "Search...";
-        allow_images = true;
-        image_size = 24;
-        insensitive = true;
+  config = mkIf cfg.enable (mkMerge [
+    (mkHomeRepoFiles {
+      inherit config;
+      files = [
+        {
+          targetPath = ".local/share/applications/keystone-projects.desktop";
+          relativePath = "modules/desktop/home/components/keystone-projects.desktop";
+          sourcePath = ./keystone-projects.desktop;
+        }
+        {
+          targetPath = ".local/share/applications/keystone-notes.desktop";
+          relativePath = "modules/desktop/home/components/keystone-notes.desktop";
+          sourcePath = ./keystone-notes.desktop;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-projects.lua";
+          relativePath = "modules/desktop/home/components/keystone-projects.lua";
+          sourcePath = ./keystone-projects.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-project-details.lua";
+          relativePath = "modules/desktop/home/components/keystone-project-details.lua";
+          sourcePath = ./keystone-project-details.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-project-notes.lua";
+          relativePath = "modules/desktop/home/components/keystone-project-notes.lua";
+          sourcePath = ./keystone-project-notes.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-project-session.lua";
+          relativePath = "modules/desktop/home/components/keystone-project-session.lua";
+          sourcePath = ./keystone-project-session.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-monitors.lua";
+          relativePath = "modules/desktop/home/components/keystone-monitors.lua";
+          sourcePath = ./keystone-monitors.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-monitor-actions.lua";
+          relativePath = "modules/desktop/home/components/keystone-monitor-actions.lua";
+          sourcePath = ./keystone-monitor-actions.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-monitor-values.lua";
+          relativePath = "modules/desktop/home/components/keystone-monitor-values.lua";
+          sourcePath = ./keystone-monitor-values.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-audio.lua";
+          relativePath = "modules/desktop/home/components/keystone-audio.lua";
+          sourcePath = ./keystone-audio.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-audio-devices.lua";
+          relativePath = "modules/desktop/home/components/keystone-audio-devices.lua";
+          sourcePath = ./keystone-audio-devices.lua;
+        }
+      ];
+    })
+    {
+      # Wofi as the application launcher
+      programs.wofi = {
+        enable = mkDefault true;
+        settings = {
+          show = "drun";
+          width = 600;
+          height = 400;
+          term = "ghostty";
+          prompt = "Search...";
+          allow_images = true;
+          image_size = 24;
+          insensitive = true;
+        };
+        style = ''
+          @import "${config.xdg.configHome}/keystone/current/theme/wofi.css";
+        '';
       };
-      style = ''
-        @import "${config.xdg.configHome}/keystone/current/theme/wofi.css";
-      '';
-    };
 
-    # Walker launcher using the official home-manager module
-    programs.walker = {
-      enable = mkDefault true;
-      runAsService = true;
+      # Walker launcher using the official home-manager module
+      programs.walker = {
+        enable = mkDefault true;
+        runAsService = true;
 
-      config = {
-        force_keyboard_focus = true;
-        selection_wrap = true;
-        theme = "keystone";
-        resume_last_query = false;
-        actions_as_menu = true;
-        hide_action_hints = false;
+        config = {
+          force_keyboard_focus = true;
+          selection_wrap = true;
+          theme = "keystone";
+          resume_last_query = false;
+          actions_as_menu = true;
+          hide_action_hints = false;
 
-        placeholders = {
-          default = {
-            input = " Search...";
-            list = "No Results";
+          placeholders = {
+            default = {
+              input = " Search...";
+              list = "No Results";
+            };
+            "menus:keystone-projects" = {
+              input = " Projects";
+              list = "No projects found";
+            };
+            "menus:keystone-project-details" = {
+              input = " Project actions";
+              list = "No project actions";
+            };
+            "menus:keystone-project-notes" = {
+              input = " Project notes";
+              list = "No project notes";
+            };
+            "menus:keystone-project-session" = {
+              input = " Session slug";
+              list = "Press Enter to create the session";
+            };
+            "menus:keystone-monitors" = {
+              input = " Monitors";
+              list = "No monitors found";
+            };
+            "menus:keystone-monitor-actions" = {
+              input = " Monitor actions";
+              list = "No actions available";
+            };
+            "menus:keystone-monitor-values" = {
+              input = " Monitor values";
+              list = "No values available";
+            };
+            "menus:keystone-audio" = {
+              input = " Audio";
+              list = "No audio actions available";
+            };
+            "menus:keystone-audio-devices" = {
+              input = " Audio devices";
+              list = "No audio devices found";
+            };
           };
-          "menus:keystone-projects" = {
-            input = " Projects";
-            list = "No projects found";
-          };
-          "menus:keystone-project-details" = {
-            input = " Project actions";
-            list = "No project actions";
-          };
-          "menus:keystone-project-notes" = {
-            input = " Project notes";
-            list = "No project notes";
-          };
-          "menus:keystone-project-session" = {
-            input = " Session slug";
-            list = "Press Enter to create the session";
-          };
-        };
 
-        keybinds = {
-          next = [ "Down" ];
-          previous = [ "Up" ];
-          quick_activate = [ ];
-          show_actions = [ ];
-        };
-
-        providers = {
-          max_results = 256;
-          default = [
-            "desktopapplications"
-            "websearch"
-          ];
-          sets.keystone-projects = {
-            default = [ "menus:keystone-projects" ];
-            empty = [ "menus:keystone-projects" ];
+          keybinds = {
+            next = [ "Down" ];
+            previous = [ "Up" ];
+            quick_activate = [ ];
+            show_actions = [ ];
           };
-          actions = {
-            fallback = [
+
+          providers = {
+            max_results = 256;
+            default = [
+              "desktopapplications"
+              "websearch"
+            ];
+            sets.keystone-projects = {
+              default = [ "menus:keystone-projects" ];
+              empty = [ "menus:keystone-projects" ];
+            };
+            actions = {
+              fallback = [
+                {
+                  action = "menus:open";
+                  label = "open";
+                  after = "Nothing";
+                  default = true;
+                }
+                {
+                  action = "erase_history";
+                  label = "clear hist";
+                  bind = "ctrl h";
+                  after = "AsyncReload";
+                }
+              ];
+            };
+            prefixes = [
               {
-                action = "menus:open";
-                label = "open";
-                after = "Nothing";
-                default = true;
+                prefix = "/";
+                provider = "providerlist";
               }
               {
-                action = "erase_history";
-                label = "clear hist";
-                bind = "ctrl h";
-                after = "AsyncReload";
+                prefix = ".";
+                provider = "files";
+              }
+              {
+                prefix = ":";
+                provider = "symbols";
+              }
+              {
+                prefix = "=";
+                provider = "calc";
+              }
+              {
+                prefix = "@";
+                provider = "websearch";
+              }
+              {
+                prefix = "$";
+                provider = "clipboard";
               }
             ];
           };
-          prefixes = [
-            {
-              prefix = "/";
-              provider = "providerlist";
-            }
-            {
-              prefix = ".";
-              provider = "files";
-            }
-            {
-              prefix = ":";
-              provider = "symbols";
-            }
-            {
-              prefix = "=";
-              provider = "calc";
-            }
-            {
-              prefix = "@";
-              provider = "websearch";
-            }
-            {
-              prefix = "$";
-              provider = "clipboard";
-            }
-          ];
         };
-      };
 
-      # Define the keystone theme
-      themes.keystone = {
-        style = walkerStyleCss;
-        layouts = {
-          layout = walkerLayoutXml;
+        # Define the keystone theme
+        themes.keystone = {
+          style = walkerStyleCss;
+          layouts = {
+            layout = walkerLayoutXml;
+          };
         };
       };
-    };
-  };
+    }
+  ]);
 }

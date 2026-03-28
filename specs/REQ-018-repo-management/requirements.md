@@ -118,12 +118,20 @@ directories as `--override-input` for every repo that has a non-null
 `flakeInput`, without requiring clean or pushed state.
 
 **REQ-018.7a** When dev mode is active, Home Manager-managed user shell
-entrypoints backed by checked-in repo scripts MUST resolve from the local
-checkout path instead of immutable Nix store copies. The initial link setup
-MUST be performed automatically by NixOS or Home Manager activation.
+entrypoints and repo-backed static user assets backed by checked-in repo files
+MUST resolve from the local checkout path instead of immutable Nix store
+copies whenever the target format supports direct linking. The initial link
+setup MUST be performed automatically by NixOS or Home Manager activation.
 
-**REQ-018.7b** After activation, editing a linked repo-backed shell script in
-development mode MUST NOT require a rebuild for the change to take effect.
+**REQ-018.7b** After activation, editing a linked repo-backed shell script or
+linked repo-backed static user asset in development mode MUST NOT require a
+rebuild for the change to take effect.
+
+**REQ-018.7d** When a user-facing desktop control generates persistent state
+that cannot reasonably live in the keystone source repo, that generated state
+MUST be written into the user's personal keystone config repository
+(`nixos-config` or equivalent) so it can be reviewed and committed there as the
+source of truth.
 
 **REQ-018.7c** `ks update --dev` MUST clone missing managed repos and pull
 existing managed repos before building Home Manager profiles so newly

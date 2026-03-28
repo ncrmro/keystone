@@ -14,7 +14,7 @@ with lib;
 let
   cfg = config.keystone.terminal;
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
-  inherit (devScripts) mkHomeScriptCommand;
+  inherit (devScripts) mkHomeRepoFiles mkHomeScriptCommand;
   ksCommand = mkHomeScriptCommand {
     inherit config;
     commandName = "ks";
@@ -104,12 +104,6 @@ in
           };
         };
       };
-
-      # Zellij layouts — pre-configured tab presets for context system
-      # Used by: pz --layout <name>, keystone-context <slug> --layout <name>
-      xdg.configFile."zellij/layouts/dev.kdl".source = ./layouts/dev.kdl;
-      xdg.configFile."zellij/layouts/ops.kdl".source = ./layouts/ops.kdl;
-      xdg.configFile."zellij/layouts/write.kdl".source = ./layouts/write.kdl;
 
       # Fzf - A command-line fuzzy finder
       # https://github.com/junegunn/fzf
@@ -251,6 +245,26 @@ in
         nixfmt-rfc-style
       ];
     }
+    (mkHomeRepoFiles {
+      inherit config;
+      files = [
+        {
+          targetPath = ".config/zellij/layouts/dev.kdl";
+          relativePath = "modules/terminal/layouts/dev.kdl";
+          sourcePath = ./layouts/dev.kdl;
+        }
+        {
+          targetPath = ".config/zellij/layouts/ops.kdl";
+          relativePath = "modules/terminal/layouts/ops.kdl";
+          sourcePath = ./layouts/ops.kdl;
+        }
+        {
+          targetPath = ".config/zellij/layouts/write.kdl";
+          relativePath = "modules/terminal/layouts/write.kdl";
+          sourcePath = ./layouts/write.kdl;
+        }
+      ];
+    })
     ksCommand
   ]);
 }
