@@ -143,8 +143,7 @@ let
     fi
 
     TEMP_ID=$(mktemp)
-    TEMP_PLAIN=$(mktemp)
-    trap "rm -f $TEMP_ID $TEMP_PLAIN" EXIT
+    trap "rm -f $TEMP_ID" EXIT
 
     # Parse identity file: lines starting with "# serial:<N>" tag the next identity
     CURRENT_SERIAL=""
@@ -266,14 +265,17 @@ let
           done
 
           # Decrypt and re-encrypt with retry for pcscd contention
+          # Pipe plaintext through memory only — no cleartext written to disk
           MAX_ATTEMPTS=3
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
-            if age --decrypt -i "$TEMP_ID" "$secret" > "$TEMP_PLAIN" 2>/dev/null; then
-              age --encrypt "''${AGE_ARGS[@]}" -o "$secret" "$TEMP_PLAIN"
+            if age --decrypt -i "$TEMP_ID" "$secret" 2>/dev/null \
+              | age --encrypt "''${AGE_ARGS[@]}" -o "''${secret}.tmp"; then
+              mv "''${secret}.tmp" "$secret"
               REKEYED_FILES+=("$secret")
               echo "  Rekeyed: $secret"
               break
             fi
+            rm -f "''${secret}.tmp"
             if [ "$attempt" -eq "$MAX_ATTEMPTS" ]; then
               echo "Error: Failed to rekey $secret after $MAX_ATTEMPTS attempts."
               exit 1
