@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: Presentation Components (code.presentation-components)
 
 ## Principle

@@ -101,6 +101,7 @@ using `calendula event list`.
 **REQ-024.4** Calendar events with a recognized naming pattern MUST be
 converted into tasks in `TASKS.yaml`. The naming pattern MUST use bracket
 prefixes:
+
 - `[Team] <name>` — team-wide cadence events (all agents participate)
 - `[AgentName] <name>` — agent-specific events (only the named agent acts)
 
@@ -135,11 +136,11 @@ MAY create or update tasks based on event content, attendees, and timing.
 **REQ-024.12** The following recurring events MUST be defined as the
 default team cadence, matching `process.agentic-team` convention rule 30:
 
-| Event | Schedule | Participants | Workflow |
-|-------|----------|-------------|----------|
-| `[Team] Weekly Retrospective` | Friday 20:00 | All agents | `project/status_report` |
-| `[Team] Weekly Strategic Review` | Friday 10:00 | Product agent | `project/status_report` |
-| `[Team] Monthly Portfolio Review` | 1st Monday 09:00 | Product agent | `project/status_report` |
+| Event                                | Schedule              | Participants  | Workflow                |
+| ------------------------------------ | --------------------- | ------------- | ----------------------- |
+| `[Team] Weekly Retrospective`        | Friday 20:00          | All agents    | `project/status_report` |
+| `[Team] Weekly Strategic Review`     | Friday 10:00          | Product agent | `project/status_report` |
+| `[Team] Monthly Portfolio Review`    | 1st Monday 09:00      | Product agent | `project/status_report` |
 | `[Team] Quarterly Direction Setting` | 1st Monday of Q 09:00 | Product agent | `project/status_report` |
 
 **REQ-024.13** The Friday evening retrospective (`[Team] Weekly
@@ -233,16 +234,19 @@ be queried without explicit configuration.
 ## Implementation Phases
 
 ### Phase 1: Calendar source in task loop + scheduler reads CalDAV
+
 - Add `calendula event list` as a prefetch source in `task-loop.sh`
 - Add CalDAV event reading to `scheduler.sh` with `source: "calendar"` tasks
 - Deduplication via `calendar-<uid>-<date>` source_ref
 
 ### Phase 2: Team cadence events + retrospective
+
 - Create the default team cadence events via calendula
 - Wire Friday retrospective to produce a GitHub issue
 - Wire product agent status reports to calendar events
 
 ### Phase 3: Cross-calendar visibility + SCHEDULES.yaml migration
+
 - Configure Stalwart ACLs for cross-calendar read access
 - Add optional `SCHEDULES.yaml` → CalDAV migration command
 - Add `calendar.teamEvents` NixOS option
@@ -252,6 +256,7 @@ be queried without explicit configuration.
 This spec does not supersede any existing spec. It implements the remaining
 high-priority user stories from GitHub issue #175 (Calendar Integration
 milestone):
+
 - "Agent scheduler reads calendar events"
 - "Agents create calendar events for planned work"
 - "Calendar-to-task bridge in the task loop"

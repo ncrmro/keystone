@@ -24,6 +24,7 @@ Do NOT announce keystone detection to the user. Just record it in the report and
 Check for app-specific artifacts:
 
 **Obsidian vault:**
+
 ```bash
 [ -d .obsidian ] && echo "OBSIDIAN"
 ls .obsidian/plugins/ 2>/dev/null  # List installed plugins
@@ -31,6 +32,7 @@ ls .obsidian/workspace.json 2>/dev/null
 ```
 
 Obsidian-specific syntax to watch for (sample 5 files):
+
 - Callouts: `> [!note]`, `> [!warning]`, `> [!tip]`
 - Dataview queries: ` ```dataview `
 - Embedded files: `![[filename]]`
@@ -39,6 +41,7 @@ Obsidian-specific syntax to watch for (sample 5 files):
 - Tags as `#tag` inline (not just frontmatter)
 
 **Apple Notes export:**
+
 ```bash
 # Apple Notes exports typically have HTML fragments, no frontmatter, and attachment dirs
 # Check for HTML tags in markdown files
@@ -52,6 +55,7 @@ ls -d Attachments Media 2>/dev/null
 ### 3. Structure Summary
 
 Quick directory stats (no content reading):
+
 ```bash
 # Top-level dirs
 ls -d */ 2>/dev/null
@@ -69,22 +73,27 @@ Write `detection_report.md`:
 # Detection Report
 
 ## Source Format
+
 - **Detected**: Obsidian | Apple Notes | Plain Markdown
 - **Confidence**: High | Medium (explain why)
 
 ## Keystone Repo
+
 - **Is keystone**: yes | no
 - **Markers found**: (list files found)
 
 ## Format-Specific Artifacts
+
 - (list what was found: plugins, callouts, dataview, HTML fragments, etc.)
 
 ## Structure
+
 - **Top-level directories**: (list)
 - **Total markdown files**: N
 - **Existing zk setup**: yes | no
 
 ## Recommendations
+
 - (brief notes for downstream steps, e.g., "Obsidian callouts should be preserved as-is" or "Apple Notes HTML needs stripping")
 ```
 

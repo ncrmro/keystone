@@ -1,4 +1,3 @@
-
 ## Chrome DevTools MCP
 
 ## MCP Server Configuration

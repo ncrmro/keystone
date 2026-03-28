@@ -80,6 +80,7 @@ The task loop orchestrator has read the next pending task from TASKS.yaml and pa
 The updated task file with this task's status changed.
 
 **Structure**:
+
 ```yaml
 tasks:
   - name: "previous-task"
@@ -87,7 +88,7 @@ tasks:
     status: completed
   - name: "this-task"
     description: "The task that was just executed"
-    status: completed          # or blocked
+    status: completed # or blocked
     project: "agent-space"
     source: "github-issue"
     source_ref: "https://github.com/ncrmro/agent-space/issues/5"
@@ -106,6 +107,7 @@ issues:
 ```
 
 If no issues:
+
 ```yaml
 issues: []
 ```

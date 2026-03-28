@@ -8,9 +8,11 @@ Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
 
 ## Stories Covered
+
 - US-004: Launch sub-agent sessions in worktrees
 
 ## Affected Modules
+
 - `modules/os/agents/scripts/agentctl.sh` — main CLI script
 - `modules/os/agents/agentctl.nix` — Nix module with replaceVars
 - `packages/podman-agent/podman-agent.sh` — sandbox backend
@@ -134,11 +136,12 @@ context, role prompt) MUST be computed for all AI tools.
 
 **REQ-012.26** Per-tool prompt injection MUST use each tool's native
 mechanism:
-  - Claude: `--append-system-prompt`
-  - Gemini: reads GEMINI.md from `~/` (mounted by sandbox)
-  - Codex: reads AGENTS.md from `~/` (mounted by sandbox)
-  - OpenCode: reads config from `~/` (mounted by sandbox)
-  - Ollama (--local): system prompt passed via stdin or `--system`
+
+- Claude: `--append-system-prompt`
+- Gemini: reads GEMINI.md from `~/` (mounted by sandbox)
+- Codex: reads AGENTS.md from `~/` (mounted by sandbox)
+- OpenCode: reads config from `~/` (mounted by sandbox)
+- Ollama (--local): system prompt passed via stdin or `--system`
 
 **REQ-012.27** When running in sandbox mode (default), context files
 mounted at `~/` provide the system prompt. The `--append-system-prompt`

@@ -6,16 +6,16 @@ This is the canonical schema for TASKS.yaml. All steps that modify this file MUS
 
 ```yaml
 tasks:
-  - name: "task-name"                    # REQUIRED: kebab-case identifier
-    description: "What needs to be done"  # REQUIRED: human-readable description
-    status: pending                       # REQUIRED: pending | in_progress | completed | blocked
-    project: "project-name"              # MAY: project from PROJECTS.yaml
-    source: "email"                      # MAY: where the task came from
-    source_ref: "email-42-user@host"     # MAY: unique identifier for deduplication
-    model: "sonnet"                      # MAY: execution model override
-    workflow: "job/workflow"             # MAY: DeepWork workflow to invoke
-    needs: ["other-task-name"]           # MAY: task names that must complete first
-    blocked_reason: "why it's blocked"   # MAY: explanation when status is blocked
+  - name: "task-name" # REQUIRED: kebab-case identifier
+    description: "What needs to be done" # REQUIRED: human-readable description
+    status: pending # REQUIRED: pending | in_progress | completed | blocked
+    project: "project-name" # MAY: project from PROJECTS.yaml
+    source: "email" # MAY: where the task came from
+    source_ref: "email-42-user@host" # MAY: unique identifier for deduplication
+    model: "sonnet" # MAY: execution model override
+    workflow: "job/workflow" # MAY: DeepWork workflow to invoke
+    needs: ["other-task-name"] # MAY: task names that must complete first
+    blocked_reason: "why it's blocked" # MAY: explanation when status is blocked
 ```
 
 ## Rules
@@ -31,6 +31,7 @@ tasks:
 ## Validation
 
 After modifying TASKS.yaml, validate with:
+
 ```bash
 yq e '.' TASKS.yaml > /dev/null 2>&1 && echo "Valid" || echo "INVALID"
 ```

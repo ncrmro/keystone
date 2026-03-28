@@ -45,6 +45,7 @@ Use web search to find events across multiple platforms and sources. Cast a wide
 Raw list of all discovered events.
 
 **Structure**:
+
 ```markdown
 # Event Candidates
 
@@ -55,6 +56,7 @@ Raw list of all discovered events.
 ## Events
 
 ### 1. [Event Name]
+
 - **Date**: [date and time]
 - **Location**: [venue, city, state OR "Remote"]
 - **URL**: [registration/info link]
@@ -65,19 +67,23 @@ Raw list of all discovered events.
 - **Matched Interest**: [which interest area this relates to]
 
 ### 2. [Event Name]
+
 [same structure]
 
 [Continue for all discovered events]
 
 ## Search Coverage
+
 - **Sources Searched**: [list of platforms/sites checked]
 - **Interest Areas Covered**: [which interests had results, which didn't]
 - **Gaps**: [any interest areas with no events found]
 ```
 
 **Example**:
+
 ```markdown
 ### 1. NixCon 2026
+
 - **Date**: 2026-05-15 to 2026-05-17
 - **Location**: Berlin, Germany
 - **URL**: https://nixcon.org/2026

@@ -36,10 +36,12 @@ Ask structured questions to fully understand the event the user wants to plan. U
 A structured requirements document capturing every parameter for the event.
 
 **Structure**:
+
 ```markdown
 # Event Requirements
 
 ## Overview
+
 - **Event**: [event name/description]
 - **Type**: [e.g., team offsite, dinner, workshop]
 - **Date Range**: [preferred dates]
@@ -47,22 +49,26 @@ A structured requirements document capturing every parameter for the event.
 - **Budget**: [range]
 
 ## Venue Requirements
+
 - **Location**: [city/area preference]
 - **Setting**: [indoor/outdoor/hybrid]
 - **Capacity**: [minimum needed]
 - **Accessibility**: [requirements]
 
 ## Catering
+
 - **Meal Type**: [breakfast/lunch/dinner/snacks]
 - **Dietary Restrictions**: [list]
 - **Beverage**: [open bar/cash bar/non-alcoholic only]
 
 ## Equipment & Logistics
+
 - **AV Needs**: [projector, microphone, etc.]
 - **Special Equipment**: [whiteboards, breakout rooms, etc.]
 - **Accommodation**: [needed/not needed, details]
 
 ## Constraints
+
 - **Must-Haves**: [non-negotiable requirements]
 - **Deal-Breakers**: [things to avoid]
 - **Other Notes**: [any additional context]

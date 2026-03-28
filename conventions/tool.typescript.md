@@ -1,4 +1,3 @@
-
 ## TypeScript
 
 ## Type Safety

@@ -1,4 +1,3 @@
-
 ## Product-Engineering Handoff
 
 ## Purpose

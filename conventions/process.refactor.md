@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: Refactor Discipline (process.refactor)
 
 This convention ensures that significant refactors are tracked, reviewed, and merged independently from feature work.
@@ -53,11 +54,13 @@ clean and reviewable.
 ## Expected end state
 
 ```
+
 src/routes/
-  index.ts      — re-exports all route registrations
-  users.ts      — /api/users handlers
-  products.ts   — /api/products handlers
-  health.ts     — /api/health handler
+index.ts — re-exports all route registrations
+users.ts — /api/users handlers
+products.ts — /api/products handlers
+health.ts — /api/health handler
+
 ```
 
 All existing tests pass unchanged.

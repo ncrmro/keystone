@@ -11,6 +11,7 @@ A NixOS module that creates user accounts with home directories backed by indivi
 ## User Requirements
 
 As a system administrator, I want to:
+
 - Create user accounts that automatically get ZFS-backed home directories
 - Grant users permissions to manage their own ZFS datasets (snapshots, quotas, etc.)
 - Ensure proper ZFS dataset organization and naming conventions
@@ -100,6 +101,7 @@ As a system administrator, I want to:
 ## Test Verification
 
 The `bin/test-deployment` script includes automated checks for (7 active tests):
+
 1. ✅ ZFS dataset exists at `rpool/crypt/home/<username>`
 2. ✅ Dataset is mounted at `/home/<username>`
 3. ⏸️ User can create child datasets - COMMENTED OUT (Linux kernel mount restriction, see GitHub #10648)

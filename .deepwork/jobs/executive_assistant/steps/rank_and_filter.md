@@ -40,6 +40,7 @@ Apply a structured scoring system to evaluate each event candidate against the i
 Events ranked by relevance with scores and rationale.
 
 **Structure**:
+
 ```markdown
 # Ranked Events
 
@@ -50,6 +51,7 @@ Events ranked by relevance with scores and rationale.
 ## Top Events
 
 ### Rank 1: [Event Name] — Score: [X/8]
+
 - **Date**: [date]
 - **Location**: [location]
 - **Cost**: [cost]
@@ -62,14 +64,15 @@ Events ranked by relevance with scores and rationale.
 - **Best For**: [which interest area / goal]
 
 ### Rank 2: [Event Name] — Score: [X/8]
+
 [same structure]
 
 [Continue for all ranked events]
 
 ## Filtered Out
 
-| Event | Score | Reason |
-|-------|-------|--------|
+| Event  | Score   | Reason                                                                |
+| ------ | ------- | --------------------------------------------------------------------- |
 | [name] | [score] | [why it was cut — e.g., wrong location, too expensive, low relevance] |
 ```
 

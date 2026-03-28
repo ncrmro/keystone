@@ -52,6 +52,7 @@ Read all available project data and compile a comprehensive state assessment. Th
 # State Assessment: [Project Name]
 
 ## Project Profile
+
 - **Name**: [name]
 - **Slug**: [slug]
 - **Status**: [from PROJECTS.yaml]
@@ -60,13 +61,16 @@ Read all available project data and compile a comprehensive state assessment. Th
 - **Type**: [commercial / nonprofit / open-source / mission-focused]
 
 ## Existing Charter
+
 [Summary of current charter if it exists, or "No charter exists"]
+
 - **Last Updated**: [date or N/A]
 - **Current Mission**: [from charter or "not defined"]
 - **KPIs Defined**: [count and list, or "none"]
 - **Goals Defined**: [which horizons have goals, or "none"]
 
 ## Previous Reviews
+
 - **Last Review**: [date or "none"]
 - **Last Verdict**: [verdict or "N/A"]
 - **Last Confidence**: [level or "N/A"]
@@ -75,10 +79,11 @@ Read all available project data and compile a comprehensive state assessment. Th
 ## Milestone Status
 
 | Milestone | Open Issues | Closed Issues | Completion |
-|-----------|------------|---------------|------------|
-| [title]   | [n]        | [n]           | [%]        |
+| --------- | ----------- | ------------- | ---------- |
+| [title]   | [n]         | [n]           | [%]        |
 
 ## Recent Activity (Last 30 Days)
+
 - **Issues Opened**: [n]
 - **Issues Closed**: [n]
 - **Last Commit**: [date]
@@ -86,11 +91,13 @@ Read all available project data and compile a comprehensive state assessment. Th
 - **Active Contributors**: [list]
 
 ## Activity Balance
+
 - **Engineering Activity**: [summary — PRs merged, code issues, deployments]
 - **Business Activity**: [summary — milestones created, user stories, research, press releases]
 - **Balance Assessment**: [e.g., "heavily engineering-skewed" or "balanced" or "mostly business planning"]
 
 ## Raw Data for Charter
+
 - **Lean Canvas Problem**: [from README.yaml]
 - **Customer Segments**: [from README.yaml]
 - **UVP**: [from README.yaml]

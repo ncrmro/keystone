@@ -21,6 +21,7 @@ Keystone uses a VM-based testing workflow for validating deployments and testing
 **Purpose**: Full VM deployment testing (fresh install)
 
 **What it does**:
+
 1. Stops/resets existing test VM
 2. Optionally rebuilds ISO with SSH keys
 3. Creates/starts VM from ISO (TPM emulation enabled)
@@ -31,6 +32,7 @@ Keystone uses a VM-based testing workflow for validating deployments and testing
 8. Verifies deployment (SSH, ZFS, Secure Boot)
 
 **Usage**:
+
 ```bash
 ./bin/test-deployment                    # Normal test run
 ./bin/test-deployment --rebuild-iso      # Rebuild ISO first
@@ -49,6 +51,7 @@ Keystone uses a VM-based testing workflow for validating deployments and testing
 **Purpose**: Incremental configuration updates (fast iteration)
 
 **What it does**:
+
 1. Verifies VM is running and accessible
 2. Builds configuration locally (or on VM with `--build-host`)
 3. Copies closure to VM via nixos-rebuild
@@ -56,6 +59,7 @@ Keystone uses a VM-based testing workflow for validating deployments and testing
 5. Optionally reboots VM
 
 **Usage**:
+
 ```bash
 ./bin/update-test-vm                    # Quick update (no reboot)
 ./bin/update-test-vm --reboot           # Update and reboot
@@ -75,12 +79,14 @@ Keystone uses a VM-based testing workflow for validating deployments and testing
 **Purpose**: VM lifecycle management
 
 **What it does**:
+
 - Creates VMs with UEFI Secure Boot (Setup Mode)
 - Configures TPM 2.0 emulation
 - Manages VM lifecycle (start, stop, reset)
 - Post-installation workflows (snapshot, ISO removal)
 
 **Usage**:
+
 ```bash
 ./bin/virtual-machine --name test-vm --start          # Create and start
 ./bin/virtual-machine --post-install-reboot test-vm   # Post-install cleanup
@@ -97,11 +103,13 @@ Keystone uses a VM-based testing workflow for validating deployments and testing
 **Purpose**: Build Keystone installer ISO with optional SSH keys
 
 **What it does**:
+
 - Builds installation media from `.#iso`
 - Optionally injects SSH public keys for remote installation
 - Creates symlink: `result` → ISO file
 
 **Usage**:
+
 ```bash
 ./bin/build-iso                                      # No SSH keys
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub     # With SSH key
@@ -208,10 +216,12 @@ ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@192.168.100
 ### Why These Options?
 
 Test VMs are recreated frequently, causing:
+
 - Host key changes (new SSH keys on each deploy)
 - "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!" errors
 
 These options:
+
 - Disable host key checking (safe for test VMs)
 - Don't modify ~/.ssh/known_hosts
 - No manual cleanup needed
@@ -296,12 +306,14 @@ sudo nixos-rebuild switch --rollback
 ## Script Maintenance
 
 **IMPORTANT**: When modifying testing scripts, update this document to reflect:
+
 - New flags or options
 - Changed behavior
 - New workflows
 - Updated timings
 
 Testing scripts to keep in sync:
+
 - `bin/test-deployment`
 - `bin/update-test-vm`
 - `bin/virtual-machine`

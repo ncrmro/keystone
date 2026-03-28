@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: Code Review Ownership (process.code-review-ownership)
 
 This convention defines code ownership areas, maps them to team roles from `TEAM.md`, and ensures the right reviewers are automatically notified when a PR is ready for review. It relies on CODEOWNERS files with the task loop's notification-driven ingestion as the discovery mechanism.
@@ -11,13 +12,13 @@ This convention defines code ownership areas, maps them to team roles from `TEAM
 2. Usernames for each role MUST be resolved from `TEAM.md` using the platform-appropriate column.
 3. The ownership areas MUST follow this matrix:
 
-| Area | File Patterns | Reviewer Role(s) |
-|------|--------------|-------------------|
-| Documentation & content | `docs/`, `specs/`, `blog/` | CPO |
-| Infrastructure & Nix | `*.nix`, `flake.*`, `modules/`, `hosts/` | CTO, CEO |
-| CI/CD pipelines | `.github/workflows/`, `.forgejo/workflows/`, `Makefile`, `Dockerfile`, `docker-compose.*` | CTO, CEO |
-| Application source code | `src/`, `packages/`, `*.ts`, `*.rs`, `*.py`, `*.go` | CTO |
-| Agent & root config | `CLAUDE.md`, `TEAM.md`, `SOUL.md`, `AGENTS.md` | CEO |
+| Area                    | File Patterns                                                                             | Reviewer Role(s) |
+| ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
+| Documentation & content | `docs/`, `specs/`, `blog/`                                                                | CPO              |
+| Infrastructure & Nix    | `*.nix`, `flake.*`, `modules/`, `hosts/`                                                  | CTO, CEO         |
+| CI/CD pipelines         | `.github/workflows/`, `.forgejo/workflows/`, `Makefile`, `Dockerfile`, `docker-compose.*` | CTO, CEO         |
+| Application source code | `src/`, `packages/`, `*.ts`, `*.rs`, `*.py`, `*.go`                                       | CTO              |
+| Agent & root config     | `CLAUDE.md`, `TEAM.md`, `SOUL.md`, `AGENTS.md`                                            | CEO              |
 
 4. When a file matches multiple ownership areas, ALL matching owners MUST be requested as reviewers.
 5. The CPO SHOULD be added as reviewer for any PR that modifies cross-references between documentation files, even if the PR is primarily code.

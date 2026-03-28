@@ -31,6 +31,7 @@ Use the himalaya CLI to fetch messages from the user's inbox. Produce a clean, p
 A structured list of all messages in the inbox for the period.
 
 **Structure**:
+
 ```markdown
 # Inbox Snapshot
 
@@ -42,27 +43,33 @@ A structured list of all messages in the inbox for the period.
 - **Fetched**: [timestamp]
 
 ## Priority Rules
+
 [Copy of user's priority rules for reference by categorization step]
 
 ## Messages
 
 ### [ID]: [Subject]
+
 - **From**: [sender name <email>]
 - **Date**: [date and time]
 - **Status**: [unread/read/flagged]
 - **Preview**: [first 1-2 sentences if available]
 
 ### [ID]: [Subject]
+
 [same structure, repeat for all messages]
 
 ## Quick Stats
+
 - **Top senders**: [list of most frequent senders]
 - **Threads**: [any notable multi-message threads]
 ```
 
 **Example**:
+
 ```markdown
 ### 142: Q1 Budget Review
+
 - **From**: Alice Chen <alice@example.com>
 - **Date**: 2026-03-18 14:30
 - **Status**: unread

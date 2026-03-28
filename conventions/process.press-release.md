@@ -1,4 +1,3 @@
-
 # Convention: Press Release (process.press-release)
 
 Standards for drafting "Working Backwards" style press releases to define

@@ -16,6 +16,7 @@ keystone.hardwareKey.enable = true;
 ```
 
 This enables:
+
 - `pcscd` service for smart card communication
 - GPG agent with SSH support
 - YubiKey management tools (`ykman`, `age-plugin-yubikey`, `pam_u2f`, etc.)
@@ -24,16 +25,17 @@ This enables:
 
 Use two YubiKeys: a **primary** for daily carry and a **backup** stored securely. Distinguish them with color stickers (YubiKey sells sticker packs) and use color names throughout your configuration.
 
-| Key Name | Role | Storage | Color |
-|----------|------|---------|-------|
-| `yubi-black` | Primary - daily carry | Keychain | Black (default) |
-| `yubi-green` | Backup - safe storage | Home safe / lockbox | Green sticker |
+| Key Name     | Role                  | Storage             | Color           |
+| ------------ | --------------------- | ------------------- | --------------- |
+| `yubi-black` | Primary - daily carry | Keychain            | Black (default) |
+| `yubi-green` | Backup - safe storage | Home safe / lockbox | Green sticker   |
 
 Both keys should be enrolled for SSH, age encryption, and authorized on all hosts. If the primary is lost, the backup can decrypt all secrets and re-key without downtime.
 
 ### Naming Convention
 
 Use `yubi-<color>` as the key name everywhere:
+
 - NixOS module: `keystone.hardwareKey.keys.yubi-black`, `keystone.hardwareKey.keys.yubi-green`
 - SSH application: `-O application=ssh:ncrmro-yubi-black`, `-O application=ssh:ncrmro-yubi-green`
 - SSH comment: `-C "ncrmro-yubi-black"`, `-C "ncrmro-yubi-green"`
@@ -119,11 +121,13 @@ age-plugin-yubikey
 ```
 
 When prompted:
+
 - **Slot**: Choose `1`
 - **PIN policy**: `once` (enter PIN once per session)
 - **Touch policy**: `always` (touch YubiKey for each encrypt/decrypt)
 
 It outputs two values:
+
 - **Identity** (private): `AGE-PLUGIN-YUBIKEY-1...` — goes in home-manager config
 - **Recipient** (public): `age1yubikey1q...` — goes in `secrets.nix`
 
@@ -218,6 +222,7 @@ hwrekey
 ```
 
 This runs the full workflow:
+
 1. `agenix --rekey` using your YubiKey identity (touch prompt per secret, no SSH password)
 2. Commits and pushes the rekeyed secrets in the submodule
 3. Runs `nix flake update <secretsFlakeInput>` in the parent repo
@@ -252,11 +257,11 @@ sudo nixos-rebuild switch --flake .#<hostname>
 
 ### Firmware Requirements
 
-| Feature | Firmware Required |
-|---------|------------------|
-| ECDSA-SK (non-resident) | 5.0+ |
-| Ed25519-SK (non-resident) | 5.2.3+ |
-| Resident keys | 5.2.3+ |
+| Feature                   | Firmware Required |
+| ------------------------- | ----------------- |
+| ECDSA-SK (non-resident)   | 5.0+              |
+| Ed25519-SK (non-resident) | 5.2.3+            |
+| Resident keys             | 5.2.3+            |
 
 Check your firmware: `ykman info`
 

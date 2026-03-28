@@ -18,6 +18,7 @@ As maintainer imsnif stated:
 > "The CLI is not aware of multiple clients and can never be (because multiple clients being focused on the terminal is a Zellij concept)."
 
 **Related issues**:
+
 - [zellij#4591](https://github.com/zellij-org/zellij/issues/4591) — rename panes/tabs by index
 - [zellij#4602](https://github.com/zellij-org/zellij/issues/4602) — rename specific tab by ID
 - [zellij#3728](https://github.com/zellij-org/zellij/issues/3728) — NewTab + RenameTab renames wrong tab

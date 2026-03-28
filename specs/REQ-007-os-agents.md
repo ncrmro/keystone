@@ -101,6 +101,7 @@ The system MUST manage all agent secrets via agenix with a consistent structure:
 - `/run/agenix/agent-{name}-tailscale-auth-key` — Tailscale pre-auth key
 
 Secrets:
+
 - MUST be encrypted to the host's SSH host key and the admin's personal key
 - MUST be readable only by the agent's user account (via agenix `owner`/`group`)
 - MUST be rotatable without reboot (systemd reload triggers re-decryption)

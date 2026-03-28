@@ -8,6 +8,7 @@
 **Organization**: Tasks grouped by user story to enable independent implementation and testing
 
 **IMPLEMENTATION NOTE**: This feature was implemented using a Python-based approach (`bin/post-install-provisioner`) instead of separate bash scripts. This provides:
+
 - Better maintainability and error handling
 - Integration with existing Python test infrastructure (bin/test-deployment)
 - Extensibility for future provisioning tasks (TPM enrollment, etc.)
@@ -16,6 +17,7 @@
 The implementation fulfills all user stories and contracts, but using Python instead of bash scripts.
 
 ## Format: `[ID] [P?] [Story] Description`
+
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (US1, US2, US3)
 - Include exact file paths in descriptions
@@ -26,10 +28,10 @@ The implementation fulfills all user stories and contracts, but using Python ins
 
 **Purpose**: Project initialization and directory structure
 
-- [X] T001 Create scripts/ directory for Secure Boot shell scripts
-- [X] T002 [P] Ensure sbctl is available in NixOS environment (added to examples/test-server.nix)
-- [X] T003 [P] Verify bootctl availability in target environment
-- [X] T004 [P] Create documentation structure in specs/004-specify-scripts-bash/
+- [x] T001 Create scripts/ directory for Secure Boot shell scripts
+- [x] T002 [P] Ensure sbctl is available in NixOS environment (added to examples/test-server.nix)
+- [x] T003 [P] Verify bootctl availability in target environment
+- [x] T004 [P] Create documentation structure in specs/004-specify-scripts-bash/
 
 ---
 
@@ -183,18 +185,21 @@ The implementation fulfills all user stories and contracts, but using Python ins
 ### Within Each User Story
 
 **User Story 1** (Generate Keys):
+
 1. Create script file (T009)
 2. Argument parsing (T010)
 3. Pre-conditions → Key detection → sbctl invocation → Post-validation → Output formatting (T011-T017)
 4. Make executable (T018)
 
 **User Story 2** (Enroll Keys):
+
 1. Create script file (T019)
 2. Argument parsing (T020)
 3. Pre-conditions → Setup Mode check → Enrollment → Post-verification → Output formatting (T021-T030)
 4. Make executable (T031)
 
 **User Story 3** (Verify Status):
+
 1. Create script file (T032)
 2. Argument parsing (T033)
 3. Pre-conditions → Status detection → Aggregation → Output formatting → Exit codes (T034-T042)
@@ -202,6 +207,7 @@ The implementation fulfills all user stories and contracts, but using Python ins
 5. Make executable (T044)
 
 **Test Integration**:
+
 1. Import dependencies (T045)
 2. Create verification function (T046-T049)
 3. Integrate into main workflow (T050-T054)
@@ -274,6 +280,7 @@ With 3 developers after Foundational phase (T008) completes:
 - **Developer C**: User Story 3 (T032-T044) - Verification script
 
 Then:
+
 - **Developer D**: Test Integration (T045-T054) - depends on Developer C completing
 - **All developers**: Polish phase (T055-T064) - parallelizable tasks
 
@@ -282,6 +289,7 @@ Then:
 ## Task Checklist Summary
 
 **Total Tasks**: 64
+
 - **Phase 1 (Setup)**: 4 tasks
 - **Phase 2 (Foundational)**: 4 tasks (CRITICAL - blocks all user stories)
 - **Phase 3 (User Story 1 - P1)**: 10 tasks (MVP)
@@ -293,6 +301,7 @@ Then:
 **Parallel Opportunities**: 15 tasks marked [P] (can run concurrently within phases)
 
 **Independent Test Criteria**:
+
 - **US1**: Key generation produces 12 files with correct permissions, JSON output valid
 - **US2**: Enrollment transitions SetupMode 1→0, SecureBoot 0→1, PK/KEK/db enrolled
 - **US3**: Verification correctly detects setup/user/disabled modes, JSON output valid, exit codes correct

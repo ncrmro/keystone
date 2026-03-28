@@ -6,6 +6,7 @@ argument-hint: <optional task source>
 Start the task_loop/ingest DeepWork workflow to ingest tasks from source files.
 
 Use the DeepWork MCP tools to start the workflow:
+
 - job_name: "task_loop"
 - workflow_name: "ingest"
 - goal: "$ARGUMENTS" (optional, a specific task source JSON file or directory)

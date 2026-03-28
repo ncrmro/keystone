@@ -43,6 +43,7 @@ Execute the changes proposed in the calendar analysis. This step involves side e
 A log of all changes made and invitations sent.
 
 **Structure**:
+
 ```markdown
 # Calendar Changes Log
 
@@ -53,6 +54,7 @@ A log of all changes made and invitations sent.
 ## Changes Applied
 
 ### Change 1: [Brief Description]
+
 - **Action**: [reschedule / cancel / create / modify]
 - **Event**: [event name]
 - **Before**: [original time/details]
@@ -61,15 +63,17 @@ A log of all changes made and invitations sent.
 - **Notes**: [any issues or comments]
 
 ### Change 2: [Brief Description]
+
 [same structure]
 
 ## Invitations Sent
 
-| Recipient | Event | Date/Time | Method | Status |
-|-----------|-------|-----------|--------|--------|
-| [email] | [event] | [when] | [email/calendar] | [sent/failed] |
+| Recipient | Event   | Date/Time | Method           | Status        |
+| --------- | ------- | --------- | ---------------- | ------------- |
+| [email]   | [event] | [when]    | [email/calendar] | [sent/failed] |
 
 ## Summary
+
 - **Successful changes**: [count]
 - **Failed changes**: [count with reasons]
 - **Pending items**: [anything that still needs attention]

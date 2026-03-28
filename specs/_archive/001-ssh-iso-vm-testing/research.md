@@ -14,12 +14,14 @@ This research document captures decisions and best practices for implementing VM
 
 **Decision**: Individual shell scripts for each VM operation
 **Rationale**:
+
 - Follows Unix philosophy of single-purpose tools
 - Enables composition in workflows (pipes, scripts)
 - Easier to test and debug individual operations
 - Consistent with existing `bin/build-iso` pattern
 
 **Alternatives considered**:
+
 - Single monolithic VM management script: Rejected due to complexity and harder maintenance
 - Python/Go tool: Rejected to avoid additional dependencies and maintain consistency with bash tooling
 
@@ -27,11 +29,13 @@ This research document captures decisions and best practices for implementing VM
 
 **Decision**: Use PID files and quickemu's native process management
 **Rationale**:
+
 - quickemu already creates PID files (`server.pid`)
 - Standard Unix approach for daemon management
 - Easy to check if VM is running via PID existence and process validation
 
 **Alternatives considered**:
+
 - systemd services: Rejected as too complex for development VMs
 - Docker containers: Rejected due to nested virtualization complexity
 
@@ -39,11 +43,13 @@ This research document captures decisions and best practices for implementing VM
 
 **Decision**: Poll SSH port with timeout using `nc` (netcat) or native bash TCP
 **Rationale**:
+
 - Lightweight, no additional dependencies
 - Bash supports `/dev/tcp` for simple port checking
 - Clear success/failure semantics
 
 **Alternatives considered**:
+
 - SSH with retry loop: Rejected as it generates auth failures in logs
 - VM guest agent: Rejected as too complex for simple testing
 
@@ -51,11 +57,13 @@ This research document captures decisions and best practices for implementing VM
 
 **Decision**: Check port availability before VM start, offer alternative ports
 **Rationale**:
+
 - Proactive error prevention
 - Clear user feedback about conflicts
 - Suggest next available port in range (22220-22229)
 
 **Alternatives considered**:
+
 - Random port selection: Rejected as unpredictable for users
 - Fail fast only: Rejected as not user-friendly
 
@@ -63,11 +71,13 @@ This research document captures decisions and best practices for implementing VM
 
 **Decision**: Defensive scripting with clear error messages
 **Rationale**:
+
 - Set `-euo pipefail` for robust error handling
 - Provide actionable error messages
 - Exit codes follow conventions (0=success, 1=general error, 2=usage error)
 
 **Best Practices**:
+
 - Check preconditions early (quickemu installed, ISO exists)
 - Clean up on failure (trap EXIT)
 - Log verbose output to files for debugging
@@ -194,6 +204,7 @@ vm-test: ## Run complete VM test workflow
 ### Documentation Integration
 
 Update README with VM testing workflow:
+
 - Quick start section showing `vm-test` usage
 - Troubleshooting guide for common issues
 - Port forwarding configuration options
@@ -228,6 +239,7 @@ Update README with VM testing workflow:
 ### Automated Testing Approach
 
 Future consideration: Shell script tests using `bats` framework
+
 - Test individual script functions
 - Mock quickemu for unit tests
 - Integration tests with real VMs in CI

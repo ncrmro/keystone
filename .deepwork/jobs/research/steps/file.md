@@ -19,10 +19,11 @@ File the parsed research material into the user's notes directory (`$NOTES_RESEA
    a. **Environment variable `NOTES_RESEARCH_DIR`**: If set, use it directly.
    b. **Environment variable `NOTES_DIR`**: If set, use `$NOTES_DIR/research/`.
    c. **Neither set**: Ask structured questions using the AskUserQuestion tool:
-      - Where would you like research notes stored? (Look for common locations: `~/obsidian/research/`, `~/notes/research/`, or ask)
-      - After filing, **always** inform the user: "Consider adding `export NOTES_DIR=/path/to/your/notes` to your shell profile (`.zshrc`/`.bashrc`) so future ingest runs file automatically."
+   - Where would you like research notes stored? (Look for common locations: `~/obsidian/research/`, `~/notes/research/`, or ask)
+   - After filing, **always** inform the user: "Consider adding `export NOTES_DIR=/path/to/your/notes` to your shell profile (`.zshrc`/`.bashrc`) so future ingest runs file automatically."
 
    Create the target directory if it doesn't exist:
+
    ```bash
    mkdir -p "$NOTES_RESEARCH_DIR/[topic_slug]"
    ```
@@ -41,7 +42,6 @@ File the parsed research material into the user's notes directory (`$NOTES_RESEA
    - Create a symlink: `projects/[ProjectName]/research/[topic_slug]` → the filed location
 
 5. **Verify the filing**
-
    - Confirm the file exists at the target location
    - Confirm frontmatter is intact
    - Confirm symlink resolves (if created)

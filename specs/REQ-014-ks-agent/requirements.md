@@ -10,6 +10,7 @@ Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
 
 ## Affected Modules
+
 - `packages/ks/ks.sh` — ks CLI script
 - `conventions/ks-agent.md` — keystone OS archetype definition (new)
 - `modules/os/agents/scripts/agentctl.sh` — invoked by ks

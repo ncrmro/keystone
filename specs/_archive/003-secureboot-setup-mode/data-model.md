@@ -14,6 +14,7 @@ This feature enhances the bin/virtual-machine script to manage Secure Boot state
 Represents the persistent libvirt domain configuration (XML) for a virtual machine.
 
 **Attributes**:
+
 - `name` (string): Unique VM identifier (e.g., "keystone-test-vm")
 - `ovmf_code_path` (string): Absolute path to OVMF firmware CODE file (read-only)
 - `ovmf_vars_template` (string): Absolute path to OVMF VARS template file
@@ -24,16 +25,19 @@ Represents the persistent libvirt domain configuration (XML) for a virtual machi
 - `machine_type` (string): QEMU machine type (must be "q35" for UEFI)
 
 **Relationships**:
+
 - Has one NVRAM State (stored in nvram_path)
 - References one OVMF Firmware (via ovmf_code_path and ovmf_vars_template)
 
 **Validation Rules**:
+
 - `machine_type` MUST be "q35" when `secure_boot_enabled` is true
 - `smm_enabled` MUST be true when `secure_boot_enabled` is true
 - `nvram_path` MUST exist and be writable
 - `ovmf_code_path` MUST exist and contain "secure" in filename for Secure Boot support
 
 **State Transitions**:
+
 1. **Undefined** → **Defined**: VM created via bin/virtual-machine script
 2. **Defined** → **Running**: VM started (domain.create())
 3. **Running** → **Shut Off**: VM stopped (domain.shutdown())
@@ -46,6 +50,7 @@ Represents the persistent libvirt domain configuration (XML) for a virtual machi
 Represents the firmware variables stored in the VM's NVRAM file (OVMF_VARS.fd copy).
 
 **Attributes**:
+
 - `file_path` (string): Absolute path to NVRAM file
 - `file_size` (integer): Size in bytes (540,672 = empty template)
 - `setup_mode` (boolean): Whether firmware is in Setup Mode (no PK enrolled)
@@ -56,21 +61,25 @@ Represents the firmware variables stored in the VM's NVRAM file (OVMF_VARS.fd co
 - `template_source` (string): Path to original OVMF_VARS template
 
 **Relationships**:
+
 - Belongs to one VM Configuration
 - Initialized from one OVMF Firmware template
 
 **Validation Rules**:
+
 - `file_path` MUST exist before VM can boot
 - `file_size` MUST be > 0 and match expected NVRAM size
 - For setup mode: `setup_mode` = true, `platform_key_enrolled` = false
 - If `file_size` != 540,672 bytes, may contain pre-enrolled keys
 
 **State Transitions**:
+
 1. **Uninitialized** → **Setup Mode**: Fresh copy from empty OVMF_VARS template
 2. **Setup Mode** → **User Mode**: Platform Key enrolled (via OS installer or firmware UI)
 3. **User Mode** → **Setup Mode**: PK deleted or NVRAM reset (via --reset-setup-mode)
 
 **Invariants**:
+
 - `setup_mode = true` ⟺ `platform_key_enrolled = false`
 - `secure_boot_active = true` ⟺ `platform_key_enrolled = true AND setup_mode = false`
 
@@ -81,6 +90,7 @@ Represents the firmware variables stored in the VM's NVRAM file (OVMF_VARS.fd co
 Represents the UEFI firmware files provided by NixOS/QEMU.
 
 **Attributes**:
+
 - `code_path` (string): Path to firmware CODE file (e.g., edk2-x86_64-secure-code.fd)
 - `vars_template_path` (string): Path to VARS template (e.g., edk2-i386-vars.fd)
 - `supports_secure_boot` (boolean): Whether CODE file includes Secure Boot support
@@ -88,15 +98,18 @@ Represents the UEFI firmware files provided by NixOS/QEMU.
 - `detection_method` (string): How firmware was located ("qemu-share", "nix-store", "traditional")
 
 **Relationships**:
+
 - Referenced by multiple VM Configurations
 - Provides initial template for NVRAM State
 
 **Validation Rules**:
+
 - `code_path` MUST contain "secure" in filename if `supports_secure_boot` is true
 - `vars_template_path` MUST exist and be readable
 - Both files MUST be in same directory or discoverable via find_ovmf_firmware()
 
 **Static Properties** (for NixOS QEMU):
+
 - CODE path: `/nix/store/{hash}-qemu-{version}/share/qemu/edk2-x86_64-secure-code.fd`
 - VARS template: `/nix/store/{hash}-qemu-{version}/share/qemu/edk2-i386-vars.fd`
 - Expected VARS size: 540,672 bytes (empty, no pre-enrolled keys)

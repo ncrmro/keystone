@@ -1,4 +1,3 @@
-
 ## Terminal Screenshots
 
 ## Pipeline Overview
@@ -54,9 +53,11 @@ tail -n +5 tests/snapshots/render__render_welcome_screen.snap | freeze \
 ## Demo
 
 ### Welcome Screen
+
 ![Welcome Screen](https://raw.githubusercontent.com/{owner}/{repo}/{sha}/assets/tui/welcome.png)
 
 ### Dashboard
+
 ![Dashboard](https://raw.githubusercontent.com/{owner}/{repo}/{sha}/assets/tui/dashboard.png)
 ```
 

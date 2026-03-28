@@ -22,29 +22,29 @@ generate `virtualHosts` and DNS records automatically.
 
 ## Access Presets
 
-| Preset | Networks |
-|--------|----------|
-| `tailscale` | 100.64.0.0/10, fd7a:115c:a1e0::/48 |
-| `tailscaleAndLocal` | Tailscale + 192.168.1.0/24 |
-| `public` | No restrictions |
-| `local` | 192.168.1.0/24 only |
+| Preset              | Networks                           |
+| ------------------- | ---------------------------------- |
+| `tailscale`         | 100.64.0.0/10, fd7a:115c:a1e0::/48 |
+| `tailscaleAndLocal` | Tailscale + 192.168.1.0/24         |
+| `public`            | No restrictions                    |
+| `local`             | 192.168.1.0/24 only                |
 
 ## Available Services
 
-| Service | Subdomain | Port | Access |
-|---------|-----------|------|--------|
-| attic | cache | 8199 | tailscale |
-| immich | photos | 2283 | tailscale |
-| vaultwarden | vaultwarden | 8222 | tailscale |
-| forgejo | git | 3001 | tailscale |
-| grafana | grafana | 3002 | tailscale |
-| prometheus | prometheus | 9090 | tailscale |
-| loki | loki | 3100 | tailscale |
-| headscale | mercury | 8080 | **public** |
-| miniflux | miniflux | 8070 | tailscale |
-| mail | mail | 8082 | tailscale |
-| adguard | adguard.home | 3000 | tailscaleAndLocal |
-| seaweedfs | s3 | 8333 | tailscale |
+| Service     | Subdomain    | Port | Access            |
+| ----------- | ------------ | ---- | ----------------- |
+| attic       | cache        | 8199 | tailscale         |
+| immich      | photos       | 2283 | tailscale         |
+| vaultwarden | vaultwarden  | 8222 | tailscale         |
+| forgejo     | git          | 3001 | tailscale         |
+| grafana     | grafana      | 3002 | tailscale         |
+| prometheus  | prometheus   | 9090 | tailscale         |
+| loki        | loki         | 3100 | tailscale         |
+| headscale   | mercury      | 8080 | **public**        |
+| miniflux    | miniflux     | 8070 | tailscale         |
+| mail        | mail         | 8082 | tailscale         |
+| adguard     | adguard.home | 3000 | tailscaleAndLocal |
+| seaweedfs   | s3           | 8333 | tailscale         |
 
 ## Adding a New Service
 

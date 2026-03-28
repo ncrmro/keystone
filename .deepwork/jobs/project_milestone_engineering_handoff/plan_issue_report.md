@@ -1,10 +1,12 @@
 # Plan Issue Report: Projctl Terminal Session Management
 
 ## Platform
+
 - **Platform**: github
 - **Repository**: ncrmro/keystone
 
 ## Plan Issue
+
 - **Number**: #108
 - **Title**: Plan: Projctl Terminal Session Management
 - **URL**: https://github.com/ncrmro/keystone/issues/108
@@ -13,18 +15,19 @@
 - **Labels**: engineering, plan
 
 ## References
+
 - **Milestone Issue**: #102
 - **Specs PR**: #107 (https://github.com/ncrmro/keystone/pull/107)
 
 ## Stories Included
 
-| Story | Happy Path | Tests | Mockup | Demo |
-|-------|-----------|-------|--------|------|
-| US-001: Create named terminal sessions per project | yes | yes | yes | yes |
-| US-002: Resume existing terminal sessions | yes | yes | yes | yes |
-| US-003: List terminal sessions by project | yes | yes | yes | yes |
-| US-004: Launch sub-agent sessions in worktrees | yes | yes | yes | yes |
-| US-005: Manage multiple sub-agents in containers | yes | yes | yes | yes |
+| Story                                              | Happy Path | Tests | Mockup | Demo |
+| -------------------------------------------------- | ---------- | ----- | ------ | ---- |
+| US-001: Create named terminal sessions per project | yes        | yes   | yes    | yes  |
+| US-002: Resume existing terminal sessions          | yes        | yes   | yes    | yes  |
+| US-003: List terminal sessions by project          | yes        | yes   | yes    | yes  |
+| US-004: Launch sub-agent sessions in worktrees     | yes        | yes   | yes    | yes  |
+| US-005: Manage multiple sub-agents in containers   | yes        | yes   | yes    | yes  |
 
 ## Implementation Order
 

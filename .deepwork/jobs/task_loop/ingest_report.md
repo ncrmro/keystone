@@ -4,14 +4,14 @@
 
 ## Sources Processed
 
-| Source | Items Found | New Tasks | Skipped (duplicate) | Skipped (not actionable) |
-|--------|-------------|-----------|---------------------|-----------------------------|
-| email | 20 | 0 | 20 | 0 |
-| github-issues | 4 | 1 | 3 | 0 |
-| github-prs | 2 | 0 | 2 | 0 |
-| github-pr-reviews | 18 | 0 | 18 | 0 |
-| github-issue-comments | 4 | 0 | 4 | 0 |
-| forgejo | 0 | 0 | 0 | 0 |
+| Source                | Items Found | New Tasks | Skipped (duplicate) | Skipped (not actionable) |
+| --------------------- | ----------- | --------- | ------------------- | ------------------------ |
+| email                 | 20          | 0         | 20                  | 0                        |
+| github-issues         | 4           | 1         | 3                   | 0                        |
+| github-prs            | 2           | 0         | 2                   | 0                        |
+| github-pr-reviews     | 18          | 0         | 18                  | 0                        |
+| github-issue-comments | 4           | 0         | 4                   | 0                        |
+| forgejo               | 0           | 0         | 0                   | 0                        |
 
 **Total**: 48 items processed, 1 new task created, 47 duplicates/skipped.
 
@@ -22,6 +22,7 @@
 ## Skipped Items
 
 ### Duplicates (already tracked in TASKS.yaml)
+
 - Email #39 (2026-03-14): Create native app spike — tracked as `create-native-app-ios-wayland-spike`
 - Email #38 (2026-03-14): [status] — tracked as `review-nicholas-status-email`
 - Email #37 (2026-03-13): Execute cross-account cloud resources phase 1 — tracked as `execute-cross-account-cloud-resources-phase-1`

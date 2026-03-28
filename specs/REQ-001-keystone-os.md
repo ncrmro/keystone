@@ -62,9 +62,9 @@ The filesystem MUST support efficient snapshots and data integrity when ZFS is s
 
 The system MUST support two storage backends:
 
-| Type | Use Case | Features |
-|------|----------|----------|
-| `zfs` | Default, recommended | Snapshots, compression, checksums, encryption, quotas |
+| Type   | Use Case             | Features                                              |
+| ------ | -------------------- | ----------------------------------------------------- |
+| `zfs`  | Default, recommended | Snapshots, compression, checksums, encryption, quotas |
 | `ext4` | Laptops, hibernation | LUKS encryption, minimal overhead, wide compatibility |
 
 - When `ext4` is selected, the system MUST use LUKS encryption directly on the partition

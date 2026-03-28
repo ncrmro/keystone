@@ -19,6 +19,7 @@
      with long node chains overflow horizontally or get compressed into
      unreadable thumbnails. TD/TB flows fit the tall-but-narrow viewport
      and remain legible without horizontal scrolling. -->
+
 6. Mermaid flowcharts with more than 4 nodes in a single chain MUST use `TD` or `TB` direction, not `LR`.
 7. `flowchart LR` MAY be used only when the diagram has 4 or fewer nodes in its longest chain.
 8. Long node chains SHOULD be declared as separate edge statements rather than single-line chains (e.g., `A --> B` then `B --> C` instead of `A --> B --> C --> D --> E`).

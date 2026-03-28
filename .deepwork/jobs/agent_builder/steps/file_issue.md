@@ -13,6 +13,7 @@ Create the GitHub issue on ncrmro/keystone using the draft from the previous ste
 ### 1. Parse the draft
 
 Read `issue_draft.md` and extract:
+
 - Title (from the `## Metadata` section)
 - Body (the `## Body` section content)
 - Labels (from metadata)

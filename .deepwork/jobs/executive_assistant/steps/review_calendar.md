@@ -35,6 +35,7 @@ Access the specified calendar source and retrieve all entries within the request
 A complete snapshot of the calendar for the specified period.
 
 **Structure**:
+
 ```markdown
 # Calendar Snapshot
 
@@ -47,17 +48,19 @@ A complete snapshot of the calendar for the specified period.
 
 ### [Day, Date]
 
-| Time | Duration | Event | Location | Attendees |
-|------|----------|-------|----------|-----------|
-| 9:00 AM | 1h | Team Standup | Zoom | Alice, Bob |
-| 11:00 AM | 30m | 1:1 with CEO | Office | Nicholas |
+| Time     | Duration | Event        | Location | Attendees  |
+| -------- | -------- | ------------ | -------- | ---------- |
+| 9:00 AM  | 1h       | Team Standup | Zoom     | Alice, Bob |
+| 11:00 AM | 30m      | 1:1 with CEO | Office   | Nicholas   |
 
 **Free blocks**: 10:00-11:00, 11:30-1:00, 3:00-5:00
 
 ### [Next Day, Date]
+
 [same structure]
 
 ## Summary
+
 - **Busiest day**: [day]
 - **Most free time**: [day]
 - **Recurring events**: [list]

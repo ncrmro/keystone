@@ -1,6 +1,7 @@
 ## [0.1.0] - 2025-11-08
 
 ### Added
+
 - Disko single-disk module for declarative ZFS + LUKS partitioning ([`8458ef2`](https://github.com/ncrmro/keystone/commit/8458ef2))
 - Server, client, and observability NixOS modules ([`1f2aab2`](https://github.com/ncrmro/keystone/commit/1f2aab2))
 - SSH-based ISO with automated VM testing framework ([#9](https://github.com/ncrmro/keystone/pull/9))
@@ -18,9 +19,11 @@
 - Spec-kit integration for spec-driven development ([`acdc92b`](https://github.com/ncrmro/keystone/commit/acdc92b))
 
 ### Changed
+
 - Deployment tooling refactored from QEMU scripts to Python libvirt ([`5c104f9`](https://github.com/ncrmro/keystone/commit/5c104f9))
 - Test deployment updated to use SSH-based unlock ([`731e2f8`](https://github.com/ncrmro/keystone/commit/731e2f8))
 
 ### Fixed
+
 - Simplified LUKS password entry — removed redundant manual step ([`43f19ef`](https://github.com/ncrmro/keystone/commit/43f19ef))
 - Corrected sbctl key paths for Secure Boot enrollment (multiple commits)

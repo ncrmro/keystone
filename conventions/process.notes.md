@@ -29,17 +29,17 @@ material in a shared zk notebook. It extends
    a `repos:` frontmatter list with one full remote URL per repo. SSH and HTTPS
    URLs are both valid.
 9. The hub MUST summarize:
-    - the objective,
-    - the current state,
-    - the next actions,
-    - curated links to permanent notes and decision notes,
-    - links to related repos and trackers, and
-    - a report ledger or query snippet for project reports and presentations.
+   - the objective,
+   - the current state,
+   - the next actions,
+   - curated links to permanent notes and decision notes,
+   - links to related repos and trackers, and
+   - a report ledger or query snippet for project reports and presentations.
 10. Repo links and `repo/<owner>/<repo>` tags MUST be derived from the declared
     remote URLs rather than handwritten in a competing format.
 11. The hub SHOULD act as a dynamic ledger. It MAY include canonical `zk`
-   queries that list related reports, presentations, inbox captures, or recent
-   activity.
+    queries that list related reports, presentations, inbox captures, or recent
+    activity.
 12. Agents MUST link new initiative decisions, reports, and presentations from
     the relevant hub before they consider the note complete, when a suitable
     hub exists.

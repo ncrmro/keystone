@@ -137,6 +137,7 @@ structured querying. They are complementary.
 **REQ-020.19** The journal server host SHOULD be queryable from
 `ks agent` / `ks doctor` sessions for cross-host log diagnosis without
 SSH:
+
 ```bash
 journalctl --directory /var/log/journal/remote/ \
   -u <service> --since '1 hour ago'

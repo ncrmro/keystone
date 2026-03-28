@@ -1,10 +1,12 @@
 # Spec: Nix Flake Parsing and Modification
 
 ## Stories Covered
+
 - US-005: Display all keystone hosts
 - US-009: Create new keystone host configurations
 
 ## Affected Modules
+
 - `packages/keystone-tui/src/nix.rs` — flake.nix AST parser (read-only today; needs write support)
 - `packages/keystone-tui/src/screens/hosts.rs` — hosts dashboard
 - `packages/keystone-tui/src/screens/create_config.rs` — config creation form
@@ -105,6 +107,7 @@ pub fn add_nixos_configuration(
 ```
 
 The function MUST:
+
 - Parse `flake_content` with `rnix`
 - Locate the `nixosConfigurations` attrset
 - Insert a new entry: `"<hostname>" = nixpkgs.lib.nixosSystem { system = "x86_64-linux"; modules = [ <config_path> ]; };`
@@ -163,6 +166,7 @@ The function MUST:
 ```
 
 ## Cross-References
+
 - Spec 001 (Config Generation): `GenerateConfig` is used to generate files for the new host.
 - Spec 003 (ISO Pipeline): Deployment from host detail screen (US-008) references this spec.
 - Spec 004 (TUI App Framework): Screen routing and git commit integration.

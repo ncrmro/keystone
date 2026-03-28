@@ -58,11 +58,7 @@
     },
     "workflow": {
       "type": "object",
-      "required": [
-        "name",
-        "summary",
-        "steps"
-      ],
+      "required": ["name", "summary", "steps"],
       "additionalProperties": false,
       "description": "A named workflow grouping steps into a sequence",
       "properties": {
@@ -208,10 +204,7 @@
     },
     "userParameterInput": {
       "type": "object",
-      "required": [
-        "name",
-        "description"
-      ],
+      "required": ["name", "description"],
       "additionalProperties": false,
       "description": "A user-provided parameter input that will be requested at runtime",
       "properties": {
@@ -229,10 +222,7 @@
     },
     "fileInput": {
       "type": "object",
-      "required": [
-        "file",
-        "from_step"
-      ],
+      "required": ["file", "from_step"],
       "additionalProperties": false,
       "description": "A file input from a previous step's output",
       "properties": {
@@ -250,20 +240,13 @@
     },
     "stepOutput": {
       "type": "object",
-      "required": [
-        "type",
-        "description",
-        "required"
-      ],
+      "required": ["type", "description", "required"],
       "additionalProperties": false,
       "description": "Output specification with type information indicating single file or multiple files",
       "properties": {
         "type": {
           "type": "string",
-          "enum": [
-            "file",
-            "files"
-          ],
+          "enum": ["file", "files"],
           "description": "Whether this output is a single file ('file') or multiple files ('files')"
         },
         "description": {
@@ -310,9 +293,7 @@
       "description": "A hook action - exactly one of: prompt (inline text), prompt_file (external file), or script (shell script)",
       "oneOf": [
         {
-          "required": [
-            "prompt"
-          ],
+          "required": ["prompt"],
           "additionalProperties": false,
           "properties": {
             "prompt": {
@@ -323,9 +304,7 @@
           }
         },
         {
-          "required": [
-            "prompt_file"
-          ],
+          "required": ["prompt_file"],
           "additionalProperties": false,
           "properties": {
             "prompt_file": {
@@ -336,9 +315,7 @@
           }
         },
         {
-          "required": [
-            "script"
-          ],
+          "required": ["script"],
           "additionalProperties": false,
           "properties": {
             "script": {
@@ -352,10 +329,7 @@
     },
     "review": {
       "type": "object",
-      "required": [
-        "run_each",
-        "quality_criteria"
-      ],
+      "required": ["run_each", "quality_criteria"],
       "additionalProperties": false,
       "description": "A quality review that evaluates step outputs against criteria",
       "properties": {

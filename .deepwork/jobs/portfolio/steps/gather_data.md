@@ -26,16 +26,20 @@ history, and existing notes repo files.
    For each repo in `project_repos`:
 
    **GitHub repos** (platform: github):
+
    ```bash
    gh api repos/{owner}/{repo}/milestones --jq '.[] | {title, open_issues, closed_issues, due_on, state, description}'
    ```
+
    Also fetch open issues and PRs:
+
    ```bash
    gh issue list --repo {owner}/{repo} --state open --limit 20
    gh pr list --repo {owner}/{repo} --state open --limit 10
    ```
 
    **Forgejo repos** (platform: forgejo):
+
    ```bash
    # Use tea or curl with the Forgejo API
    tea milestones list --repo {owner}/{repo}
@@ -48,9 +52,10 @@ history, and existing notes repo files.
    - Due date (if set)
    - State (open/closed)
 
-2. **Fetch git activity (last 30 days)**
+3. **Fetch git activity (last 30 days)**
 
    If a local clone exists (check `~/code/{owner}/{repo}/`):
+
    ```bash
    git -C ~/code/{owner}/{repo} log --oneline --since="30 days ago" | head -30
    git -C ~/code/{owner}/{repo} log --oneline --since="30 days ago" | wc -l
@@ -58,6 +63,7 @@ history, and existing notes repo files.
    ```
 
    If no local clone, try:
+
    ```bash
    gh api repos/{owner}/{repo}/commits --jq '.[0:20] | .[] | {date: .commit.author.date, message: .commit.message}' 2>/dev/null
    ```
@@ -72,7 +78,7 @@ history, and existing notes repo files.
    follow a repetitive pattern (e.g., "chore: relock", "Auto-sync"), note this in the
    data so the summary step can distinguish human activity from automation.
 
-3. **Read existing project files from notes repo**
+4. **Read existing project files from notes repo**
 
    Check `{notes_path}/projects/{project_slug}/` for:
    - `charter.md` — extract mission, KPIs, goals
@@ -82,7 +88,7 @@ history, and existing notes repo files.
 
    If the project directory doesn't exist, note "No existing profile in notes repo."
 
-4. **Record everything as raw data**
+5. **Record everything as raw data**
 
    Combine all collected data into a single raw data file. Include actual CLI output
    and file contents — do not summarize or interpret at this stage.
@@ -100,6 +106,7 @@ history, and existing notes repo files.
 Raw collected data for one project.
 
 **Structure**:
+
 ```markdown
 # Project Data: [project_slug]
 
@@ -110,38 +117,44 @@ Raw collected data for one project.
 
 ### [repo: owner/repo (platform)]
 
-| Milestone | Open | Closed | Total | % Complete | Due Date |
-|-----------|------|--------|-------|------------|----------|
-| Desktop Integration | 4 | 8 | 12 | 67% | 2026-04-01 |
-| v2.0 Release | 10 | 2 | 12 | 17% | — |
+| Milestone           | Open | Closed | Total | % Complete | Due Date   |
+| ------------------- | ---- | ------ | ----- | ---------- | ---------- |
+| Desktop Integration | 4    | 8      | 12    | 67%        | 2026-04-01 |
+| v2.0 Release        | 10   | 2      | 12    | 17%        | —          |
 
 ### Open Issues (top 20)
+
 - #123: Fix boot sequence on AMD hardware (bug, open 5 days)
 - #120: Add LUKS2 support (enhancement, open 12 days)
 
 ### Open PRs
+
 - PR #125: feat(desktop): add hyprland bindings (draft, 3 days old)
 
 ## Git Activity (Last 30 Days)
 
 ### [repo: owner/repo]
+
 - **Total commits**: 23
 - **Last commit**: 2026-03-19
 - **Recent commits**:
   - bfb55a5 Merge branch 'worktree-keystone-desktop-integration'
   - 2f3a9d4 fix(deepwork): add PR Demo section update to sweng review step
   - 5ce7401 fix(desktop): quote parameter expansions in prefix stripping
-  [...]
+    [...]
 
 ## Existing Profile (from notes repo)
 
 ### charter.md
+
 [Full content or "Not found"]
 
 ### status.md
+
 [Full content or "Not found"]
 
 ### README.yaml / README.md
+
 [Full content or "Not found"]
 ```
 

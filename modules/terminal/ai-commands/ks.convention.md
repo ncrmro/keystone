@@ -6,6 +6,7 @@ argument-hint: <goal>
 Start the keystone_system/convention DeepWork workflow.
 
 Use the DeepWork MCP tools to start the workflow:
+
 - job_name: "keystone_system"
 - workflow_name: "convention"
 - goal: "$ARGUMENTS" (use the user's arguments as the goal)

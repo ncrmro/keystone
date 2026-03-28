@@ -7,57 +7,61 @@ NixOS-based self-sovereign infrastructure platform for deploying secure, encrypt
 ---
 
 ## v0.0.1 — Secure Foundation
+
 **Status**: Core complete, polish pending
 
 Encrypted NixOS server with TPM2 auto-unlock and Secure Boot.
 
-| Component | Status |
-|-----------|--------|
-| ZFS root with native encryption (credstore pattern) | Done |
-| TPM2 enrollment with PCR binding | Done |
-| Secure Boot via Lanzaboote | Done |
-| ISO installer with nixos-anywhere support | Done |
-| Server base module (SSH, mDNS, firewall) | Done |
-| Installation documentation | Pending |
-| TPM error recovery procedures | Pending |
-| Multi-disk configurations | Pending |
+| Component                                           | Status  |
+| --------------------------------------------------- | ------- |
+| ZFS root with native encryption (credstore pattern) | Done    |
+| TPM2 enrollment with PCR binding                    | Done    |
+| Secure Boot via Lanzaboote                          | Done    |
+| ISO installer with nixos-anywhere support           | Done    |
+| Server base module (SSH, mDNS, firewall)            | Done    |
+| Installation documentation                          | Pending |
+| TPM error recovery procedures                       | Pending |
+| Multi-disk configurations                           | Pending |
 
 ---
 
 ## v0.0.2 — Developer Environment
+
 **Status**: Core complete, integration pending
 
 Terminal development environment accessible via SSH from any client OS.
 
-| Component | Status |
-|-----------|--------|
-| Terminal dev module (Helix, Zsh, Zellij, Ghostty, Git) | Done |
-| User management with home-manager integration | Done |
-| Server-side home-manager integration | Pending |
-| Remote development documentation | Pending |
+| Component                                              | Status  |
+| ------------------------------------------------------ | ------- |
+| Terminal dev module (Helix, Zsh, Zellij, Ghostty, Git) | Done    |
+| User management with home-manager integration          | Done    |
+| Server-side home-manager integration                   | Pending |
+| Remote development documentation                       | Pending |
 
 ---
 
 ## v0.0.3 — Workstation Desktop
+
 **Status**: Implemented, testing phase
 
 Hyprland desktop for local or remote workstation use.
 
-| Component | Status |
-|-----------|--------|
-| Hyprland + UWSM session management | Done |
-| Greetd login manager | Done |
-| PipeWire audio | Done |
-| Desktop applications (Firefox, VS Code, VLC) | Done |
-| Screen locking (Hyprlock/Hypridle) | Done |
-| Remote desktop access (RDP/VNC/Sunshine) | Pending |
-| Multi-monitor configuration | Pending |
+| Component                                    | Status  |
+| -------------------------------------------- | ------- |
+| Hyprland + UWSM session management           | Done    |
+| Greetd login manager                         | Done    |
+| PipeWire audio                               | Done    |
+| Desktop applications (Firefox, VS Code, VLC) | Done    |
+| Screen locking (Hyprlock/Hypridle)           | Done    |
+| Remote desktop access (RDP/VNC/Sunshine)     | Pending |
+| Multi-monitor configuration                  | Pending |
 
 **Out of scope**: Laptop-specific features, multi-GPU, fractional scaling.
 
 ---
 
 ## v0.0.4 — Universal Development
+
 **Status**: Planning
 
 Portable home-manager configuration for Codespaces, macOS, and any Nix platform.
@@ -71,11 +75,11 @@ Portable home-manager configuration for Codespaces, macOS, and any Nix platform.
 
 ## Future Releases
 
-| Version | Focus |
-|---------|-------|
-| 0.1.0 | Production: backups, monitoring, secrets management, disaster recovery |
-| 0.2.0 | Infrastructure: k3s, self-hosted services, mesh VPN, distributed storage |
-| 0.3.0 | Enterprise: LDAP, compliance automation, audit logging, PKI |
+| Version | Focus                                                                    |
+| ------- | ------------------------------------------------------------------------ |
+| 0.1.0   | Production: backups, monitoring, secrets management, disaster recovery   |
+| 0.2.0   | Infrastructure: k3s, self-hosted services, mesh VPN, distributed storage |
+| 0.3.0   | Enterprise: LDAP, compliance automation, audit logging, PKI              |
 
 ---
 

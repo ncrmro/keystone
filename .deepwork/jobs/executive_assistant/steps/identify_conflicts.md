@@ -37,6 +37,7 @@ Review the calendar snapshot systematically for issues and optimization opportun
 Analysis of conflicts and suggested changes.
 
 **Structure**:
+
 ```markdown
 # Calendar Analysis
 
@@ -47,6 +48,7 @@ Analysis of conflicts and suggested changes.
 ## Conflicts
 
 ### Conflict 1: [Brief Description]
+
 - **Type**: [double-booking / tight transition / overload / location conflict]
 - **Events**: [event A] vs. [event B]
 - **When**: [date and time]
@@ -55,22 +57,24 @@ Analysis of conflicts and suggested changes.
 - **Alternative Slot**: [proposed new time if rescheduling]
 
 ### Conflict 2: [Brief Description]
+
 [same structure]
 
 ## Optimization Suggestions
 
 ### Suggestion 1: [Brief Description]
+
 - **Current State**: [what it looks like now]
 - **Proposed Change**: [what to do]
 - **Benefit**: [why this helps]
 
 ## Proposed Changes Summary
 
-| # | Action | Event | Current Time | New Time | Status |
-|---|--------|-------|-------------|----------|--------|
-| 1 | Reschedule | [event] | [old time] | [new time] | Pending |
-| 2 | Cancel | [event] | [time] | — | Pending |
-| 3 | Add buffer | [event] | [time] | [adjusted] | Pending |
+| #   | Action     | Event   | Current Time | New Time   | Status  |
+| --- | ---------- | ------- | ------------ | ---------- | ------- |
+| 1   | Reschedule | [event] | [old time]   | [new time] | Pending |
+| 2   | Cancel     | [event] | [time]       | —          | Pending |
+| 3   | Add buffer | [event] | [time]       | [adjusted] | Pending |
 ```
 
 ## Quality Criteria

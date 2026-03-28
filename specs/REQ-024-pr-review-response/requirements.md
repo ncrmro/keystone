@@ -98,6 +98,7 @@ intervention.
 **REQ-024.4** The ingest step MUST recognize `github-pr-reviews` and `forgejo-pr-reviews` as distinct source categories in the pre-fetched JSON.
 
 **REQ-024.5** For each PR review entry, the ingest step MUST create a task with:
+
 - `source`: `"github-pr-review"` or `"forgejo-pr-review"`
 - `source_ref`: `"{pr_url}#review-{review_id}"` (unique per review, enables deduplication)
 - `name`: kebab-case derived from the PR title (e.g., `address-review-fix-login-bug-42`)

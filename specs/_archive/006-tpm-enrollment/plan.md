@@ -23,33 +23,38 @@ Implement a TPM2-based disk encryption enrollment system for Keystone that autom
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Core Principles Alignment
 
 **I. Declarative Infrastructure** ✅
+
 - Implementation uses NixOS module system (keystone.tpmEnrollment namespace)
 - All configuration defined in module options
 - Reproducible across hardware via module composition
 
 **II. Security by Default** ✅
+
 - Enforces Secure Boot as prerequisite for TPM enrollment
 - Removes default "keystone" password after enrollment
 - Validates PCR measurements (PCRs 1,7) for boot integrity
 - No change to existing encryption architecture (LUKS + ZFS native encryption)
 
 **III. Modular Composability** ✅
+
 - Self-contained module with clear dependencies (secureBoot, disko)
 - Optional enable flag: `keystone.tpmEnrollment.enable`
 - Integrates with existing modules without modification
 - Can be used independently in server or client configurations
 
 **IV. Hardware Agnostic** ✅
+
 - Graceful degradation when TPM2 unavailable (VMs, older hardware)
 - Works with both bare-metal and virtualized environments
 - No vendor-specific TPM implementation dependencies
 
 **V. Cryptographic Sovereignty** ✅
+
 - Users retain full control of recovery keys and custom passwords
 - No key escrow or external dependencies
 - TPM-sealed keys remain on local hardware
@@ -58,23 +63,27 @@ Implement a TPM2-based disk encryption enrollment system for Keystone that autom
 ### NixOS-Specific Constraints
 
 **Module Development Standards** ✅
+
 - Will use `mkEnableOption` for keystone.tpmEnrollment.enable
 - Will include assertions for Secure Boot and TPM prerequisites
 - Will document all options with descriptions and examples
 - Will use activation scripts for first-boot provisioning
 
 **Development Tooling** ✅
+
 - Testing with bin/virtual-machine (TPM2 emulation enabled)
 - ISO building with bin/build-iso for deployment testing
 - nixos-anywhere for VM installation validation
 
 **Testing Requirements** ✅
+
 - Build-time validation (nix build succeeds)
 - VM boot testing with TPM emulation
 - Manual enrollment workflow testing
 - PCR mismatch recovery testing
 
 **Documentation Standards** ✅
+
 - Module options documented in NixOS manual format
 - Usage examples in docs/ directory
 - Recovery scenarios documented for users
@@ -125,6 +134,7 @@ tests/
 ```
 
 **Structure Decision**: Single NixOS module structure chosen because:
+
 1. This is a system-level security feature, not a multi-component application
 2. All functionality is cohesive (TPM enrollment workflow)
 3. Follows existing Keystone module pattern (secure-boot, disko-single-disk-root)
@@ -132,4 +142,4 @@ tests/
 
 ## Complexity Tracking
 
-*No constitution violations - this section is empty*
+_No constitution violations - this section is empty_

@@ -27,6 +27,7 @@ Run status checks for all three timers. Detect execution context first:
 - **If running as root or another user with sudo**: use `agentctl ${agent_name} status`
 
 Direct (as agent user):
+
 ```bash
 systemctl --user status agent-${agent_name}-notes-sync.timer
 systemctl --user status agent-${agent_name}-notes-sync.service
@@ -37,6 +38,7 @@ systemctl --user status agent-${agent_name}-scheduler.service
 ```
 
 For each timer, record:
+
 - Active state (active/inactive/failed)
 - Last trigger time
 - Next trigger time
@@ -46,18 +48,18 @@ For each timer, record:
 
 Verify these prerequisites as the agent user:
 
-| Check | Command | Pass Criteria |
-|-------|---------|---------------|
-| Git repo | `ls ${notes_dir}/.git` | Exists |
-| SSH agent | `ssh-add -l` | At least one key listed |
-| rbw vault | `rbw unlocked` | Exit 0 |
-| direnv | `ls ${notes_dir}/.envrc` | Exists |
-| Nix flake | `ls ${notes_dir}/flake.nix` | Exists |
-| gh CLI | `gh auth status` | Authenticated |
-| fj CLI | `fj whoami` | Returns username |
-| TASKS.yaml | `ls ${notes_dir}/TASKS.yaml` | Exists |
-| SCHEDULES.yaml | `ls ${notes_dir}/SCHEDULES.yaml` | Exists |
-| SOUL.md | `ls ${notes_dir}/SOUL.md` | Exists |
+| Check          | Command                          | Pass Criteria           |
+| -------------- | -------------------------------- | ----------------------- |
+| Git repo       | `ls ${notes_dir}/.git`           | Exists                  |
+| SSH agent      | `ssh-add -l`                     | At least one key listed |
+| rbw vault      | `rbw unlocked`                   | Exit 0                  |
+| direnv         | `ls ${notes_dir}/.envrc`         | Exists                  |
+| Nix flake      | `ls ${notes_dir}/flake.nix`      | Exists                  |
+| gh CLI         | `gh auth status`                 | Authenticated           |
+| fj CLI         | `fj whoami`                      | Returns username        |
+| TASKS.yaml     | `ls ${notes_dir}/TASKS.yaml`     | Exists                  |
+| SCHEDULES.yaml | `ls ${notes_dir}/SCHEDULES.yaml` | Exists                  |
+| SOUL.md        | `ls ${notes_dir}/SOUL.md`        | Exists                  |
 
 ### 4. Check for lock contention
 
@@ -73,6 +75,7 @@ cd ${notes_dir} && git log --oneline -5
 ```
 
 Look for:
+
 - Uncommitted changes (dirty working tree)
 - Rebase in progress (`.git/rebase-merge/` or `.git/rebase-apply/`)
 - Merge conflicts
@@ -90,19 +93,19 @@ Write `health_snapshot.md` with this structure:
 
 ## Timer Status
 
-| Timer | State | Last Run | Result | Next Run |
-|-------|-------|----------|--------|----------|
-| notes-sync | active | ... | success | ... |
-| task-loop | active | ... | failure | ... |
-| scheduler | active | ... | success | ... |
+| Timer      | State  | Last Run | Result  | Next Run |
+| ---------- | ------ | -------- | ------- | -------- |
+| notes-sync | active | ...      | success | ...      |
+| task-loop  | active | ...      | failure | ...      |
+| scheduler  | active | ...      | success | ...      |
 
 ## Prerequisites
 
-| Check | Status | Detail |
-|-------|--------|--------|
-| Git repo | PASS | ... |
-| SSH agent | FAIL | No keys loaded |
-| ... | ... | ... |
+| Check     | Status | Detail         |
+| --------- | ------ | -------------- |
+| Git repo  | PASS   | ...            |
+| SSH agent | FAIL   | No keys loaded |
+| ...       | ...    | ...            |
 
 ## Git State
 
@@ -121,6 +124,7 @@ Write `health_snapshot.md` with this structure:
 ```
 
 Overall status rules:
+
 - **HEALTHY** — all timers active with recent success, all prerequisites pass
 - **DEGRADED** — some timers failed or some prerequisites missing, but agent is partially operational
 - **UNHEALTHY** — critical failures (no SSH key, vault locked, timers inactive)

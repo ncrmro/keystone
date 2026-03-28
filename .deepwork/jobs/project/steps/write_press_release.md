@@ -96,6 +96,7 @@ URL of the issue created for the press release (e.g.,
 downstream workflows like `milestone/setup` link back to the press release via this URL.
 
 **Structure**:
+
 ```mdx
 ## [Headline: Customer Benefit in Plain Language]
 
@@ -108,9 +109,10 @@ downstream workflows like `milestone/setup` link back to the press release via t
 **How**: [How the product solves it — customer outcomes — 1-3 sentences]
 
 **What**: [Key features at a high level — 1-3 sentences]
-
 ```
+
 [ASCII art mockup showing the product in use — realistic data, box-drawing characters]
+
 ```
 
 [Call to action: how to get started]
@@ -123,6 +125,7 @@ downstream workflows like `milestone/setup` link back to the press release via t
 ```
 
 **Do NOT include:**
+
 - City dateline (e.g., "San Francisco, CA —") — omit unless user explicitly requests
 - Fictional customer quotes — no fabricated testimonials
 

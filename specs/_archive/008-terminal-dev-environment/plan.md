@@ -23,38 +23,48 @@ Create a composable home-manager module `terminal-dev-environment` that provides
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Core Principles Compliance
 
 #### I. Declarative Infrastructure
+
 **Status**: ✅ PASS
+
 - All tool configurations defined as Nix code in home-manager module
 - Version controlled and reproducible across different machines
 - Pure declarative configuration with no imperative setup steps
 
 #### II. Security by Default
+
 **Status**: ✅ PASS (N/A for this feature)
+
 - This module does not handle encryption, TPM, or boot security
 - Configures git SSH signing support (optional security enhancement)
 - No security violations or degradation of existing security posture
 
 #### III. Modular Composability
+
 **Status**: ✅ PASS
+
 - Implemented as self-contained home-manager module with clear `enable` option
 - Composable with existing Keystone client/server modules
 - Each tool configuration can be overridden independently
 - No hard dependencies on other Keystone modules (optional integration with client desktop)
 
 #### IV. Hardware Agnostic
+
 **Status**: ✅ PASS
+
 - Pure software configuration, no hardware-specific dependencies
 - Compatible with x86_64 and aarch64 architectures
 - Works on both bare-metal and virtualized environments
 - Terminal tools are platform-agnostic within Linux
 
 #### V. Cryptographic Sovereignty
+
 **Status**: ✅ PASS (N/A for this feature)
+
 - Module does not manage encryption keys or authentication
 - Git SSH signing configured to use user's own SSH keys (~/.ssh/id_ed25519)
 - No vendor dependencies or external key management
@@ -62,20 +72,26 @@ Create a composable home-manager module `terminal-dev-environment` that provides
 ### NixOS-Specific Constraints
 
 #### Module Development Standards
+
 **Status**: ✅ PASS
+
 - Will use `lib.mkEnableOption` for enable option
 - Will use `lib.mkOption` with proper types for configuration options
 - Will include assertions for configuration validation
 - Will provide comprehensive documentation with examples
 
 #### Development Tooling
+
 **Status**: ✅ PASS
+
 - Can be tested with existing `bin/virtual-machine` infrastructure
 - Compatible with ISO building and nixos-anywhere deployment
 - No new development tooling requirements
 
 #### Testing Requirements
+
 **Status**: ✅ PASS
+
 - Build-time validation with `nix build .#nixosConfigurations.test-config`
 - Self-contained bin/test-home-manager script for automated testing as non-root testuser
 - Script called from bin/test-deployment, returns exit code 0/1 to pass/fail outer test
@@ -83,7 +99,9 @@ Create a composable home-manager module `terminal-dev-environment` that provides
 - Manual testing via standalone `./bin/test-home-manager` execution
 
 #### Documentation Standards
+
 **Status**: ✅ PASS
+
 - Will provide NixOS option documentation for all configurable settings
 - Will include usage example in module documentation
 - Will document integration patterns with existing Keystone modules
@@ -173,7 +191,6 @@ docs/
 
 ## Complexity Tracking
 
-*Fill ONLY if Constitution Check has violations that must be justified*
+_Fill ONLY if Constitution Check has violations that must be justified_
 
 N/A - No constitution violations. All gates passed.
-

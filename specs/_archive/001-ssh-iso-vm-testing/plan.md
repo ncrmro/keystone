@@ -22,6 +22,7 @@ This feature provides an integrated VM testing workflow for Keystone ISOs with S
 **Scale/Scope**: Developer tooling for single-user VM testing workflows
 
 **Existing Implementation**:
+
 - `bin/build-iso`: Bash script with SSH key embedding support
 - `modules/iso-installer.nix`: NixOS module for SSH-enabled ISOs
 - `vms/server.conf`: quickemu VM configuration
@@ -29,41 +30,50 @@ This feature provides an integrated VM testing workflow for Keystone ISOs with S
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### I. Declarative Infrastructure ✅
+
 **Status**: PASS
 **Compliance**: VM configuration uses declarative quickemu config files (`vms/server.conf`). ISO building references NixOS modules for declarative SSH configuration. All configuration is version-controlled and reproducible.
 
 ### II. Security by Default ✅
+
 **Status**: PASS
 **Compliance**:
+
 - SSH key-based authentication (no passwords)
 - Builds upon existing ISO installer with SSH hardening
 - VM testing does not modify security defaults
 - SSH keys embedded at build time, not runtime
 
 ### III. Modular Composability ✅
+
 **Status**: PASS
 **Compliance**:
+
 - ISO building (`bin/build-iso`) is independent module
 - VM management will be separate scripts in `bin/` or `scripts/`
 - Each component can be used independently (build ISO, launch VM, manage lifecycle)
 - Existing `modules/iso-installer.nix` follows modular architecture
 
 ### IV. Hardware Agnostic ✅
+
 **Status**: PASS
 **Compliance**: quickemu provides hardware abstraction for VM testing. Testing workflow is independent of deployment target hardware. ISOs generated work on any x86_64 system (VM or bare metal).
 
 ### V. Cryptographic Sovereignty ✅
+
 **Status**: PASS
 **Compliance**: User provides their own SSH keys. No key generation or escrow. Keys remain under user control throughout workflow.
 
 ### NixOS Module Standards ✅
+
 **Status**: PASS
 **Compliance**: Existing `modules/iso-installer.nix` follows NixOS module standards with proper options, assertions, and documentation. New work is shell scripting (tooling), not module development.
 
 ### Testing Requirements ⚠️
+
 **Status**: PARTIAL
 **Compliance**: Manual integration testing workflow. Automated boot validation not yet implemented.
 **Mitigation**: Testing requirement applies to production modules, not developer tooling scripts.
@@ -116,5 +126,4 @@ modules/
 
 ## Complexity Tracking
 
-*No violations identified - all constitution checks passed.*
-
+_No violations identified - all constitution checks passed._

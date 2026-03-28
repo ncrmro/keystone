@@ -1,10 +1,12 @@
 # Spec: Theme asset pipeline and runtime reload
 
 ## Stories Covered
+
 - US-001: Link supported repo-backed assets from local checkouts
 - US-002: Apply linked changes without another rebuild for supported assets
 
 ## Affected Modules
+
 - `modules/desktop/home/theming/default.nix`
 - `modules/desktop/home/theming/themes/royal-green/`
 - `modules/desktop/home/components/ghostty.nix`
@@ -17,25 +19,28 @@
 ## Data Models
 
 ### Theme asset payload
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| themeName | string | yes | Example: `royal-green` |
-| sourceRepo | string | yes | Managed repo key when repo-backed |
-| relativePath | string | yes | Theme directory inside the repo |
-| assetFile | string | yes | e.g. `waybar.css`, `ghostty.conf`, `hyprland.conf` |
-| liveEditable | bool | yes | Whether checkout edits should apply after activation |
-| generated | bool | yes | Distinguishes copied files from derived files |
+
+| Field        | Type   | Required | Notes                                                |
+| ------------ | ------ | -------- | ---------------------------------------------------- |
+| themeName    | string | yes      | Example: `royal-green`                               |
+| sourceRepo   | string | yes      | Managed repo key when repo-backed                    |
+| relativePath | string | yes      | Theme directory inside the repo                      |
+| assetFile    | string | yes      | e.g. `waybar.css`, `ghostty.conf`, `hyprland.conf`   |
+| liveEditable | bool   | yes      | Whether checkout edits should apply after activation |
+| generated    | bool   | yes      | Distinguishes copied files from derived files        |
 
 ### Runtime theme link contract
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| currentThemeLink | string | yes | `~/.config/keystone/current/theme` |
-| targetThemeDir | string | yes | Active theme directory |
-| consumers | list | yes | Runtime components that read through the current-theme link |
+
+| Field            | Type   | Required | Notes                                                       |
+| ---------------- | ------ | -------- | ----------------------------------------------------------- |
+| currentThemeLink | string | yes      | `~/.config/keystone/current/theme`                          |
+| targetThemeDir   | string | yes      | Active theme directory                                      |
+| consumers        | list   | yes      | Runtime components that read through the current-theme link |
 
 ## Interface definitions
 
 ### Supported theme files
+
 - Direct theme payloads such as `hyprland.conf`, `hyprlock.conf`, `waybar.css`, `mako.ini`, `walker.css`, `btop.theme`, `ghostty.conf`, and `zellij.kdl` SHOULD be eligible for checkout-backed linking when they live in an explicitly supported repo-backed theme directory.
 - Generated files such as mapped theme-name shims MAY remain activation-generated if the target application cannot consume the raw repo file directly.
 
@@ -59,5 +64,6 @@
 - If a user switches themes at runtime, the current-theme symlink MUST remain valid even when the previously active theme was checkout-backed.
 
 ## Cross-spec dependencies
+
 - `specs/001-shared-dev-mode-path-resolution.md`
 - `specs/004-lock-and-deploy-safety.md`

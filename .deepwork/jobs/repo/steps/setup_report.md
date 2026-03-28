@@ -38,6 +38,7 @@ Compile a pass/fail readiness report across all four concerns: labels, branch pr
 # Repo Setup Report
 
 ## Repository
+
 - **Repo**: [owner/repo]
 - **Platform**: [github | forgejo]
 - **Default Branch**: [branch]
@@ -47,28 +48,33 @@ Compile a pass/fail readiness report across all four concerns: labels, branch pr
 
 ## Concerns
 
-| Concern | Status | Details |
-|---------|--------|---------|
-| Labels | [PASS \| FAIL] | [summary] |
-| Branch Protection | [PASS \| WARN \| FAIL] | [summary] |
-| Milestones | [PASS \| WARN \| FAIL] | [summary] |
-| Boards | [PASS \| WARN \| FAIL \| N/A] | [summary] |
+| Concern           | Status                        | Details   |
+| ----------------- | ----------------------------- | --------- |
+| Labels            | [PASS \| FAIL]                | [summary] |
+| Branch Protection | [PASS \| WARN \| FAIL]        | [summary] |
+| Milestones        | [PASS \| WARN \| FAIL]        | [summary] |
+| Boards            | [PASS \| WARN \| FAIL \| N/A] | [summary] |
 
 ## Details
 
 ### Labels
+
 [Key findings from labels_report.md]
 
 ### Branch Protection
+
 [Key findings from branch_protection_report.md]
 
 ### Milestones
+
 [Key findings from milestones_report.md]
 
 ### Boards
+
 [Key findings from boards_report.md]
 
 ## Recommended Actions
+
 - [Numbered list of next steps to reach READY status, or "None — repo is ready for work"]
 ```
 

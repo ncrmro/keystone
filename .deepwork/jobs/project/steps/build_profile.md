@@ -7,6 +7,7 @@ Synthesize all gathered information and investigation findings into a structured
 ## Task
 
 Read both intake_notes.md and investigation_report.md, then produce two outputs:
+
 1. A comprehensive `projects/{slug}/README.yaml` — the canonical structured profile for this project
 2. An updated `PROJECTS.yaml` — with the new project appended
 
@@ -26,7 +27,7 @@ Read both intake_notes.md and investigation_report.md, then produce two outputs:
    - For repos, include access status from the investigation
 
 4. **Prioritize riskiest assumptions**
-   - Rank assumptions by: impact if wrong * likelihood of being wrong
+   - Rank assumptions by: impact if wrong \* likelihood of being wrong
    - Map each risky assumption to the downstream workflow that would help validate it:
      - Market/customer uncertainty → `research` (competitive analysis, market research)
      - Product/feature uncertainty → `user_story` (user story definition)
@@ -49,6 +50,7 @@ Read both intake_notes.md and investigation_report.md, then produce two outputs:
 ### projects/{slug}/README.yaml
 
 **Structure**:
+
 ```yaml
 ---
 name: "[Project Name]"
@@ -111,11 +113,11 @@ notes: "[Any additional context]"
 The existing file with the new project appended. Example new entry:
 
 ```yaml
-  - name: "[project-name]"
-    description: "[One-sentence description]"
-    status: active
-    priority: [next number]
-    updated: "[YYYY-MM-DD]"
+- name: "[project-name]"
+  description: "[One-sentence description]"
+  status: active
+  priority: [next number]
+  updated: "[YYYY-MM-DD]"
 ```
 
 ## Quality Criteria

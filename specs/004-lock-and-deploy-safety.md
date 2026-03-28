@@ -1,10 +1,12 @@
 # Spec: Lock and deploy safety for development mode
 
 ## Stories Covered
+
 - US-003: Preserve the locked build and deploy path
 - US-005: Document how to use and publish development-mode changes
 
 ## Affected Modules
+
 - `packages/ks/ks.sh`
 - `modules/shared/repos.nix`
 - `specs/REQ-018-repo-management/requirements.md`
@@ -17,20 +19,22 @@
 ## Data Models
 
 ### Command mode contract
-| Command | Mode | Expected source behavior | Publish gate |
-|--------|------|---------------------------|--------------|
-| `ks build` | dev | Local overrides allowed | none |
-| `ks update --dev` | dev | Local overrides allowed | none |
-| `ks build --lock` | locked | Immutable inputs and lock updates | clean and pushed repos |
-| `ks update` | locked | Immutable inputs and deployable build | clean and pushed repos |
+
+| Command           | Mode   | Expected source behavior              | Publish gate           |
+| ----------------- | ------ | ------------------------------------- | ---------------------- |
+| `ks build`        | dev    | Local overrides allowed               | none                   |
+| `ks update --dev` | dev    | Local overrides allowed               | none                   |
+| `ks build --lock` | locked | Immutable inputs and lock updates     | clean and pushed repos |
+| `ks update`       | locked | Immutable inputs and deployable build | clean and pushed repos |
 
 ### Release guidance contract
-| Topic | Required output |
-|------|------------------|
-| Enablement | How to set `keystone.development = true` and register repos |
-| Live-edit matrix | Which assets are live-editable after activation |
-| Lock path | When to commit, push, and run `ks build --lock` or `ks update` |
-| Exceptions | Which assets still require regeneration or rebuild |
+
+| Topic            | Required output                                                |
+| ---------------- | -------------------------------------------------------------- |
+| Enablement       | How to set `keystone.development = true` and register repos    |
+| Live-edit matrix | Which assets are live-editable after activation                |
+| Lock path        | When to commit, push, and run `ks build --lock` or `ks update` |
+| Exceptions       | Which assets still require regeneration or rebuild             |
 
 ## Behavioral Requirements
 
@@ -52,6 +56,7 @@
 - If a supported asset requires an activation step before live editing begins, the docs MUST state that prerequisite explicitly.
 
 ## Cross-spec dependencies
+
 - `specs/001-shared-dev-mode-path-resolution.md`
 - `specs/003-theme-asset-pipeline-and-runtime-reload.md`
 - `specs/005-agent-development-parity.md`

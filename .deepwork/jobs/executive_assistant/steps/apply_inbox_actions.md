@@ -48,6 +48,7 @@ Using the categorized inbox and draft replies, apply all planned actions. This s
 Complete log of all actions taken.
 
 **Structure**:
+
 ```markdown
 # Inbox Actions Log
 
@@ -59,32 +60,34 @@ Complete log of all actions taken.
 
 ## Replies Sent
 
-| ID | To | Subject | Status |
-|----|-----|---------|--------|
+| ID   | To      | Subject   | Status        |
+| ---- | ------- | --------- | ------------- |
 | [id] | [email] | [subject] | [sent/failed] |
 
 ## Messages Archived
 
-| ID | Subject | From | Reason |
-|----|---------|------|--------|
+| ID   | Subject   | From     | Reason     |
+| ---- | --------- | -------- | ---------- |
 | [id] | [subject] | [sender] | [category] |
 
 ## Messages Deleted
 
-| ID | Subject | From | Reason |
-|----|---------|------|--------|
+| ID   | Subject   | From     | Reason            |
+| ---- | --------- | -------- | ----------------- |
 | [id] | [subject] | [sender] | [spam/irrelevant] |
 
 ## Messages Flagged
 
-| ID | Subject | Flag Reason |
-|----|---------|-------------|
+| ID   | Subject   | Flag Reason        |
+| ---- | --------- | ------------------ |
 | [id] | [subject] | [follow-up needed] |
 
 ## Errors
+
 [Any failed actions with details]
 
 ## Summary
+
 - **Inbox before**: [count] messages
 - **Inbox after**: [estimated count]
 - **Time saved**: [rough estimate]

@@ -44,9 +44,9 @@ For host-bound services, use `--chrome` flag to run Chromium inside the containe
 
 ## When to Use Sandbox vs Bare-Metal
 
-| Use Case | Path |
-|----------|------|
-| Agent coding tasks (default) | `agentctl <agent> claude` (sandbox) |
-| Infrastructure work (nixos-config) | `ks agent` or `ks doctor` (bare-metal, full repo) |
-| Debugging sandbox issues | `agentctl <agent> claude --nosandbox` (bare-metal) |
-| Interactive diagnostics | `agentctl <agent> shell` (bare-metal as agent user) |
+| Use Case                           | Path                                                |
+| ---------------------------------- | --------------------------------------------------- |
+| Agent coding tasks (default)       | `agentctl <agent> claude` (sandbox)                 |
+| Infrastructure work (nixos-config) | `ks agent` or `ks doctor` (bare-metal, full repo)   |
+| Debugging sandbox issues           | `agentctl <agent> claude --nosandbox` (bare-metal)  |
+| Interactive diagnostics            | `agentctl <agent> shell` (bare-metal as agent user) |

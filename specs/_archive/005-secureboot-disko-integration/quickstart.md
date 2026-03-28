@@ -123,6 +123,7 @@ If deployment fails with Setup Mode error:
 ### Keys Already Enrolled
 
 If you see "Already in User Mode":
+
 - System already has Secure Boot configured
 - Deployment continues using existing keys
 - To re-enroll, reset to Setup Mode first

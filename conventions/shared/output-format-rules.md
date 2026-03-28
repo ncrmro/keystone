@@ -13,4 +13,4 @@ These rules apply to all role outputs unless a role explicitly overrides them.
 - Tables SHOULD be used for structured comparisons (3+ items with 2+ attributes).
 - Output MUST NOT contain emojis unless the requesting context explicitly allows them.
 - All output MUST be succinct. Prefer structured formats (bullets, tables, headers) over verbose prose. Avoid redundancy and filler.
-- Code comments MUST be nuanced explanations of *why* — not *what*. Comments MUST be succinct: one line for inline, a short block for file-level context. Never restate what the code already says.
+- Code comments MUST be nuanced explanations of _why_ — not _what_. Comments MUST be succinct: one line for inline, a short block for file-level context. Never restate what the code already says.

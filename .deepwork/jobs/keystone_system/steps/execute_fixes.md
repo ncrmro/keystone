@@ -75,23 +75,23 @@ Work through the update plan's triage lists: fix small issues in keystone worktr
 
 ## Ad-Hoc Fixes Applied
 
-| # | Fix | Commit | Branch | Status |
-|---|-----|--------|--------|--------|
-| 1 | Add default for foo.bar | `abc1234` | fix/foo-bar-default | merged ✓ |
-| 2 | Reset stale agent timer | `def5678` | fix/agent-timer | merged ✓ |
+| #   | Fix                     | Commit    | Branch              | Status   |
+| --- | ----------------------- | --------- | ------------------- | -------- |
+| 1   | Add default for foo.bar | `abc1234` | fix/foo-bar-default | merged ✓ |
+| 2   | Reset stale agent timer | `def5678` | fix/agent-timer     | merged ✓ |
 
 ## Issues Filed
 
-| # | Problem | Issue URL | Severity |
-|---|---------|-----------|----------|
-| 1 | Service X API migration | https://github.com/ncrmro/keystone/issues/42 | medium |
+| #   | Problem                 | Issue URL                                    | Severity |
+| --- | ----------------------- | -------------------------------------------- | -------- |
+| 1   | Service X API migration | https://github.com/ncrmro/keystone/issues/42 | medium   |
 
 ## Pre-Existing Issues
 
-| # | Issue | Resolution |
-|---|-------|------------|
-| 1 | Agent-drago offline 13d | Filed as issue (see above) |
-| 2 | Stale flake.lock warning | Will be resolved by ks update --lock |
+| #   | Issue                    | Resolution                           |
+| --- | ------------------------ | ------------------------------------ |
+| 1   | Agent-drago offline 13d  | Filed as issue (see above)           |
+| 2   | Stale flake.lock warning | Will be resolved by ks update --lock |
 
 ## Readiness Assessment
 

@@ -45,33 +45,41 @@ Synthesize the spike's research and prototype results into a README.md with a cl
 # Spike: [Short Title]
 
 ## Question
+
 [The original spike question from scope.md]
 
 ## Conclusion
+
 [One paragraph: Was the question answered? What's the recommendation?]
 
 ## Evidence
 
 ### Research Findings
+
 - [Key finding 1 with source reference]
 - [Key finding 2 with source reference]
 
 ### Prototype Results
+
 - [What the prototype demonstrated]
 - [What worked / what didn't]
 
 ## Recommendation
+
 [Clear recommendation: proceed, don't proceed, or investigate further with specifics]
 
 ## Iteration Notes
+
 [What to change in the next revision — design improvements, pain points, things that were annoying or fragile. Group by category (e.g., Power, Wiring, Enclosure, Software).]
 
 ## Next Steps
+
 - [ ] [Concrete action item 1]
 - [ ] [Concrete action item 2]
 - [ ] [Concrete action item 3]
 
 ## Graduation Notes
+
 [If prototype code will move to a repo, note what must change for production readiness. Prototypes should already use the project's established tooling, so graduation is about integration (registering parts, adding tests, wiring into CI) rather than rewriting from scratch.]
 ```
 

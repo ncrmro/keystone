@@ -9,19 +9,20 @@ Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
 
 ## Affected Modules
+
 - `packages/ks/ks.sh` — CLI script
 - `packages/ks/default.nix` — Nix packaging
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `ks build [--lock] [HOSTS]` | Build home-manager profiles (default) or full system (`--lock`) |
-| `ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]` | Pull, lock, build, push, and deploy to hosts |
-| `ks switch [--boot] [HOSTS]` | Fast deploy current state without pull/lock/push |
-| `ks sync-host-keys` | Populate `hostPublicKey` in `hosts.nix` from live hosts |
-| `ks agent [--local [MODEL]] [args...]` | Launch AI agent with keystone OS context |
-| `ks doctor [--local [MODEL]] [args...]` | Launch diagnostic AI agent with system state |
+| Command                                                | Description                                                     |
+| ------------------------------------------------------ | --------------------------------------------------------------- |
+| `ks build [--lock] [HOSTS]`                            | Build home-manager profiles (default) or full system (`--lock`) |
+| `ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]` | Pull, lock, build, push, and deploy to hosts                    |
+| `ks switch [--boot] [HOSTS]`                           | Fast deploy current state without pull/lock/push                |
+| `ks sync-host-keys`                                    | Populate `hostPublicKey` in `hosts.nix` from live hosts         |
+| `ks agent [--local [MODEL]] [args...]`                 | Launch AI agent with keystone OS context                        |
+| `ks doctor [--local [MODEL]] [args...]`                | Launch diagnostic AI agent with system state                    |
 
 `HOSTS` is a comma-separated list of host names. Defaults to the current
 machine's hostname as resolved from `hosts.nix`.
@@ -32,6 +33,7 @@ machine's hostname as resolved from `hosts.nix`.
 
 **REQ-019.1** `ks` MUST discover the nixos-config repository root using
 the following priority chain:
+
 1. `$NIXOS_CONFIG_DIR` environment variable (if it contains `hosts.nix`)
 2. Git repository root of the current working directory (if it contains `hosts.nix`)
 3. `~/nixos-config` as fallback
@@ -62,6 +64,7 @@ directly for deployment to prevent redundant Nix evaluations.
 ### Lock Mode (repo management)
 
 **REQ-019.8** Lock mode (`ks build --lock`, `ks update` default) MUST:
+
 1. Pull nixos-config, keystone, and agenix-secrets before building
 2. Verify keystone and agenix-secrets are clean and fully pushed
 3. Push keystone (with fork fallback per REQ-016.9)
@@ -98,6 +101,7 @@ skipping the pull, lock, and push phases required by `ks update`.
 **REQ-019.16** Smart Deploy: `ks update` and `ks switch` MUST automatically
 detect if an update only modifies home-manager profiles by comparing the
 newly built `toplevel` against the currently running system.
+
 - It MUST compare `sw`, `kernel`, `initrd`, and `/etc` (excluding `per-user`).
 - If only home-manager files changed (no core OS changes), it MUST bypass
   the slow `switch-to-configuration switch` and instead activate the
@@ -144,6 +148,7 @@ command-line argument to `claude` or `agentctl`, because large prompts
 (fleet health + agent tasks + conventions) exceed the Linux execve
 `ARG_MAX` limit (~4MB including environment). Prompts MUST be written
 to a temp file and passed via a mechanism that avoids `ARG_MAX`:
+
 - Write to a checksummed temp file (`/tmp/ks-prompt-{hash}`)
 - Read back via `$(cat "$file")` in the `--append-system-prompt` flag
 

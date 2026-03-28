@@ -41,21 +41,26 @@ This is a **human-in-the-loop** step. The agent cannot run `ks update --lock` be
 # Deploy Result
 
 ## Command
+
 `ks update --lock` in nixos-config
 
 ## Keystone Revision
+
 - **Locked commit**: `<hash from flake.lock>`
 - **Previous commit**: `<previous hash>`
 
 ## Build Output
+
 - **Status**: [success | failed]
 - **Warnings**: [notable warnings, or "none beyond upstream deprecations"]
 
 ## Deploy Output
+
 - **Status**: [success | failed]
 - **NixOS generation**: [generation number if available]
 
 ## Notes
+
 - [Any relevant observations from the deploy output]
 ```
 

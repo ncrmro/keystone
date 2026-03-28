@@ -1,4 +1,3 @@
-
 ## Copilot Agent
 
 ## Assigning Copilot to Issues

@@ -43,19 +43,23 @@ Merge the completed, reviewed, and built changes from the worktree into the main
 # Merge Result
 
 ## Branch Merged
+
 - **Branch**: `<branch-name>`
 - **Commits**: [number of commits merged]
 - **Final commit on main**: `<hash>`
 
 ## Merge Details
+
 - **Conflicts**: [none | resolved — description]
 - **Push status**: [success | failed — reason]
 
 ## Cleanup
+
 - **Worktree removed**: [yes/no]
 - **Branch deleted**: [yes/no]
 
 ## Ready for Deploy
+
 The changes are now on keystone main at commit `<hash>`.
 The human can now run `ks update --lock` in nixos-config to deploy.
 ```

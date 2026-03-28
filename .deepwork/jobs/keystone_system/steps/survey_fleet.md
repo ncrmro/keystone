@@ -113,20 +113,22 @@ Build a comprehensive snapshot of the fleet's current state to inform the update
 
 ### Changelog (oldest → newest)
 
-| Hash | Message | Modules Touched |
-|------|---------|-----------------|
-| `abc1234` | feat(os): add new agent option | modules/os/agents/ |
-| `def5678` | fix(terminal): shell prompt color | modules/terminal/ |
-| ... | ... | ... |
+| Hash      | Message                           | Modules Touched    |
+| --------- | --------------------------------- | ------------------ |
+| `abc1234` | feat(os): add new agent option    | modules/os/agents/ |
+| `def5678` | fix(terminal): shell prompt color | modules/terminal/  |
+| ...       | ...                               | ...                |
 
 ## nixos-config Status
 
 - **Branch**: [main]
 - **Clean**: [yes | no — details]
 - **Recent commits**:
-  ```
-  [last 10 commits one-line]
-  ```
+```
+
+[last 10 commits one-line]
+
+```
 
 ## Preliminary Health (Current Host)
 

@@ -40,19 +40,23 @@ Synthesize the requirements and researched options into a cohesive event plan. M
 The complete draft event plan.
 
 **Structure**:
+
 ```markdown
 # Event Plan: [Event Name]
 
 ## Recommendation Summary
+
 [2-3 sentences summarizing the recommended approach]
 
 ## Venue
+
 - **Selected**: [venue name]
 - **Why**: [rationale for this choice]
 - **Alternative**: [backup option if first choice falls through]
 - **Booking Details**: [what needs to happen to secure it]
 
 ## Catering
+
 - **Selected**: [caterer/approach]
 - **Menu Concept**: [overview]
 - **Per-Person Cost**: [estimate]
@@ -60,24 +64,25 @@ The complete draft event plan.
 
 ## Agenda
 
-| Time | Activity | Notes |
-|------|----------|-------|
+| Time   | Activity   | Notes     |
+| ------ | ---------- | --------- |
 | [time] | [activity] | [details] |
 
 ## Logistics
+
 - **Transportation**: [plan]
 - **Accommodation**: [plan if applicable]
 - **Equipment**: [AV and special needs]
 
 ## Budget Estimate
 
-| Category | Estimated Cost |
-|----------|---------------|
-| Venue | $X |
-| Catering | $X |
-| Logistics | $X |
-| Contingency (10%) | $X |
-| **Total** | **$X** |
+| Category          | Estimated Cost |
+| ----------------- | -------------- |
+| Venue             | $X             |
+| Catering          | $X             |
+| Logistics         | $X             |
+| Contingency (10%) | $X             |
+| **Total**         | **$X**         |
 
 ## Draft Invitation
 
@@ -89,11 +94,12 @@ The complete draft event plan.
 
 ## Execution Timeline
 
-| Deadline | Task | Owner |
-|----------|------|-------|
-| [date] | [task] | [who] |
+| Deadline | Task   | Owner |
+| -------- | ------ | ----- |
+| [date]   | [task] | [who] |
 
 ## Open Questions
+
 [Any decisions that still need user input]
 ```
 

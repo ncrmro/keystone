@@ -16,6 +16,7 @@ bin/virtual-machine [OPTIONS]
 ```
 
 **Options**:
+
 - `--name NAME` - VM name (default: "keystone-test-vm")
 - `--memory MB` - RAM in MB (default: 4096)
 - `--vcpus NUM` - Number of vCPUs (default: 2)
@@ -27,6 +28,7 @@ bin/virtual-machine [OPTIONS]
 - `--reset VM_NAME` - Delete VM and all files
 
 **Exit Codes**:
+
 - `0` - Success
 - `1` - Error (firmware not found, VM creation failed, etc.)
 
@@ -53,16 +55,19 @@ bin/virtual-machine [OPTIONS]
 When creating a new VM:
 
 **Preconditions**:
+
 - OVMF Secure Boot firmware available (edk2-x86_64-secure-code.fd)
 - Empty OVMF_VARS template available (edk2-i386-vars.fd)
 - libvirt daemon running
 
 **Postconditions**:
+
 - VM created with fresh NVRAM file (no pre-enrolled keys)
 - Firmware configuration: Secure Boot enabled, Setup Mode active
 - Running `bootctl status` in VM shows "Secure Boot: disabled (setup)"
 
 **Implementation**:
+
 1. Copy empty OVMF_VARS template to `vms/{vm_name}/OVMF_VARS.fd`
 2. Configure libvirt XML with:
    - `<loader secure='yes'>` (Secure Boot enabled)
@@ -73,6 +78,7 @@ When creating a new VM:
 ### Verification Contract
 
 **User Action**:
+
 ```bash
 # 1. Create and start VM
 ./bin/virtual-machine --name test-vm --start
@@ -87,6 +93,7 @@ bootctl status
 ```
 
 **Expected Output**:
+
 ```
 System:
      Firmware: UEFI 2.70 (EDK II 1.00)
@@ -95,10 +102,12 @@ System:
 ```
 
 **Key Indicators**:
+
 - `Secure Boot: disabled (setup)` - Secure Boot enabled in firmware but not enforcing (no keys)
 - `Setup Mode: setup` - Firmware allows key enrollment
 
 **Alternative Verification** (from host):
+
 ```bash
 # Check NVRAM file size (empty template indicator)
 stat -f%z vms/test-vm/OVMF_VARS.fd
@@ -112,6 +121,7 @@ stat -f%z vms/test-vm/OVMF_VARS.fd
 **Condition**: OVMF Secure Boot firmware not found in NixOS
 
 **Output**:
+
 ```
 ERROR: OVMF firmware not found!
 On NixOS, ensure you have OVMF available:
@@ -126,6 +136,7 @@ On NixOS, ensure you have OVMF available:
 **Condition**: OVMF_VARS template file size != 540,672 bytes (future enhancement)
 
 **Output**:
+
 ```
 WARNING: OVMF_VARS template may contain pre-enrolled keys
 Template: /nix/store/.../edk2-i386-vars.fd
@@ -140,6 +151,7 @@ VM may not boot in Setup Mode
 **Condition**: Cannot connect to qemu:///system
 
 **Output**:
+
 ```
 ERROR: Failed to open connection to qemu:///system
 On NixOS, ensure libvirtd is enabled:
@@ -159,6 +171,7 @@ On NixOS, ensure libvirtd is enabled:
 ```
 
 **New Section**:
+
 ```
 SECURE BOOT SETUP MODE:
   VMs are created with Secure Boot enabled in Setup Mode (no keys enrolled).
@@ -250,6 +263,7 @@ def validate_setup_mode(nvram_path):
 ### Existing VMs
 
 VMs created before this enhancement:
+
 - Continue to work unchanged
 - May or may not be in Setup Mode depending on OVMF_VARS template used
 - Can be verified with `bootctl status` if needed

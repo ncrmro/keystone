@@ -19,6 +19,7 @@ Verify that the three required labels (`product`, `engineering`, `plan`) exist o
 3. **Create missing labels**
 
    **GitHub:**
+
    ```bash
    gh label create "product" --repo {owner}/{repo} --color "7057ff" --description "Product/UX scope"
    gh label create "engineering" --repo {owner}/{repo} --color "0075ca" --description "Technical scope"
@@ -26,9 +27,11 @@ Verify that the three required labels (`product`, `engineering`, `plan`) exist o
    ```
 
    **Forgejo:**
+
    ```bash
    tea label create --login forgejo --repo {owner}/{repo} --name "product" --color "#7057ff" --description "Product/UX scope"
    ```
+
    (repeat for each missing label)
 
 4. **Verify creation**
@@ -42,6 +45,7 @@ Verify that the three required labels (`product`, `engineering`, `plan`) exist o
 # Labels Report
 
 ## Summary
+
 - **Required Labels**: 3
 - **Already Present**: [count]
 - **Created**: [count]
@@ -49,11 +53,11 @@ Verify that the three required labels (`product`, `engineering`, `plan`) exist o
 
 ## Details
 
-| Label | Status | Notes |
-|-------|--------|-------|
-| product | [present \| created \| case mismatch] | [details] |
+| Label       | Status                                | Notes     |
+| ----------- | ------------------------------------- | --------- |
+| product     | [present \| created \| case mismatch] | [details] |
 | engineering | [present \| created \| case mismatch] | [details] |
-| plan | [present \| created \| case mismatch] | [details] |
+| plan        | [present \| created \| case mismatch] | [details] |
 ```
 
 ## Quality Criteria

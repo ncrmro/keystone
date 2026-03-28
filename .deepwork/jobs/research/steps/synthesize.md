@@ -9,7 +9,6 @@ Analyze the gathered sources to produce a structured analysis that directly answ
 ### Process
 
 1. **Read inputs**
-
    - Read `research/[topic_slug]/scope.md` for the research question and sub-questions
    - Read `research/[topic_slug]/sources.md` for all gathered findings and the coverage matrix
 
@@ -32,7 +31,6 @@ Analyze the gathered sources to produce a structured analysis that directly answ
    - Findings not anticipated in the original scope
 
 4. **Document contradictions and gaps**
-
    - Where do sources disagree? What might explain the disagreement?
    - Which sub-questions have weak evidence coverage?
    - What important questions remain unanswered?

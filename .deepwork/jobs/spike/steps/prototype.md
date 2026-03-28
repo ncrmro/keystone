@@ -49,6 +49,7 @@ prototype/
 ```
 
 Each file should include a header comment:
+
 ```
 # Spike: [spike_name]
 # Testing: [what this file validates]
@@ -66,9 +67,10 @@ Each file should include a header comment:
 ## When to Build vs. Skip
 
 Not every spike needs a full prototype:
+
 - **Build** when the question is about feasibility — "can this work?" needs running code to answer
 - **Demonstrate** when research already answers the question — create a minimal config or script showing the approach
-- **Skip building** is never an option — always produce *something* in `prototype/`, even if it's a single config file or annotated code sketch
+- **Skip building** is never an option — always produce _something_ in `prototype/`, even if it's a single config file or annotated code sketch
 
 If the prototype involves Nix flakes, infrastructure, or build outputs: ensure build artifacts are gitignored and document build/run steps in a prototype `README.md`. **Always include a `.envrc` with `use flake` alongside any `flake.nix`** so that direnv automatically activates the dev shell when entering the prototype directory.
 

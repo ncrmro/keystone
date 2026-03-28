@@ -77,19 +77,19 @@ See `docs/hardware-keys.md` for enrollment workflow.
 
 ## Other OS Services
 
-| Service | Option | Key Detail |
-|---------|--------|------------|
-| SSH | `keystone.os.ssh.enable` | No password auth, no root password login |
-| Eternal Terminal | `keystone.os.services.eternalTerminal` | Port 2022, Tailscale-only |
-| AirPlay | `keystone.os.services.airplay` | Shairport Sync |
-| systemd-resolved | `keystone.os.services.resolved` | Required for Tailscale MagicDNS |
-| Containers | `keystone.os.containers.enable` | Podman + fuse-overlayfs for ZFS |
-| Tailscale | `keystone.os.tailscale` | VPN client |
-| iPhone Tether | `keystone.os.iphoneTether.enable` | libimobiledevice + usbmuxd |
-| Ollama | `keystone.os.ollama` | LLM runtime |
-| Mail | `keystone.mail.host` | Stalwart (auto-enables on matching host) |
-| Git Server | `keystone.os.gitServer` | Forgejo + agent repo provisioning |
-| Journal Remote | `keystone.os.journalRemote` | Port 19532, Tailscale-only |
+| Service          | Option                                 | Key Detail                               |
+| ---------------- | -------------------------------------- | ---------------------------------------- |
+| SSH              | `keystone.os.ssh.enable`               | No password auth, no root password login |
+| Eternal Terminal | `keystone.os.services.eternalTerminal` | Port 2022, Tailscale-only                |
+| AirPlay          | `keystone.os.services.airplay`         | Shairport Sync                           |
+| systemd-resolved | `keystone.os.services.resolved`        | Required for Tailscale MagicDNS          |
+| Containers       | `keystone.os.containers.enable`        | Podman + fuse-overlayfs for ZFS          |
+| Tailscale        | `keystone.os.tailscale`                | VPN client                               |
+| iPhone Tether    | `keystone.os.iphoneTether.enable`      | libimobiledevice + usbmuxd               |
+| Ollama           | `keystone.os.ollama`                   | LLM runtime                              |
+| Mail             | `keystone.mail.host`                   | Stalwart (auto-enables on matching host) |
+| Git Server       | `keystone.os.gitServer`                | Forgejo + agent repo provisioning        |
+| Journal Remote   | `keystone.os.journalRemote`            | Port 19532, Tailscale-only               |
 
 ## Deployment Patterns
 

@@ -49,6 +49,7 @@ Read the raw scope document and decompose it into discrete user stories followin
 ### refined_stories.md
 
 **Structure**:
+
 ```markdown
 # User Stories
 
@@ -59,6 +60,7 @@ Read the raw scope document and decompose it into discrete user stories followin
 **As a** [persona], **I want** [action], **so that** [benefit].
 
 **Acceptance Criteria:**
+
 - [ ] [Testable criterion 1]
 - [ ] [Testable criterion 2]
 - [ ] [Testable criterion 3]
@@ -82,6 +84,7 @@ Read the raw scope document and decompose it into discrete user stories followin
 ```
 
 **Concrete example**:
+
 ```markdown
 # User Stories
 
@@ -92,6 +95,7 @@ Read the raw scope document and decompose it into discrete user stories followin
 **As a** homelab operator, **I want** Prometheus deployed and scraping all nodes, **so that** I have centralized metrics for troubleshooting and capacity planning.
 
 **Acceptance Criteria:**
+
 - [ ] Prometheus server is deployed and accessible
 - [ ] Node exporter is installed on all managed machines
 - [ ] Scrape targets are auto-discovered or explicitly configured
@@ -107,6 +111,7 @@ Read the raw scope document and decompose it into discrete user stories followin
 **As a** homelab operator, **I want** Grafana dashboards showing key system metrics, **so that** I can monitor health at a glance.
 
 **Acceptance Criteria:**
+
 - [ ] Grafana is deployed and connected to Prometheus
 - [ ] Dashboard exists for CPU, memory, disk, and network per node
 - [ ] Dashboards are provisioned as code (not manual)
@@ -121,6 +126,7 @@ Read the raw scope document and decompose it into discrete user stories followin
 **As a** homelab operator, **I want** alerts sent to Slack when services are unhealthy, **so that** I'm notified of problems without watching dashboards.
 
 **Acceptance Criteria:**
+
 - [ ] Alertmanager is configured with Slack webhook
 - [ ] Alerts fire for node-down, high CPU, high disk usage
 - [ ] Alert messages include actionable context (which node, which metric)
@@ -138,11 +144,13 @@ Read the raw scope document and decompose it into discrete user stories followin
 A single-line file containing the milestone title.
 
 **Structure**:
+
 ```
 [Milestone Title in Title Case]
 ```
 
 **Example**:
+
 ```
 Homelab Monitoring Stack
 ```

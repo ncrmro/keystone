@@ -44,19 +44,19 @@ Read the agent's configuration files and produce a structured onboarding plan th
 
 ## Accounts Inventory
 
-| Service | Host | Username | Auth Method | Status | Action Required |
-|---------|------|----------|-------------|--------|-----------------|
-| Google/Gmail | google.com | [email] | Password | Not signed in | Sign in via browser |
-| GitHub | github.com | [username] | Google OAuth | Not signed in | Sign in via Google, configure gh CLI |
-| Forgejo | git.ncrmro.com | [username] | API token | Not signed in | Sign in, configure fj CLI |
+| Service      | Host           | Username   | Auth Method  | Status        | Action Required                      |
+| ------------ | -------------- | ---------- | ------------ | ------------- | ------------------------------------ |
+| Google/Gmail | google.com     | [email]    | Password     | Not signed in | Sign in via browser                  |
+| GitHub       | github.com     | [username] | Google OAuth | Not signed in | Sign in via Google, configure gh CLI |
+| Forgejo      | git.ncrmro.com | [username] | API token    | Not signed in | Sign in, configure fj CLI            |
 
 ## CLI Status
 
 | Tool | Installed | Authenticated | Action Required |
-|------|-----------|---------------|-----------------|
-| rbw | Yes/No | Yes/No | [action] |
-| gh | Yes/No | Yes/No | [action] |
-| fj | Yes/No | Yes/No | [action] |
+| ---- | --------- | ------------- | --------------- |
+| rbw  | Yes/No    | Yes/No        | [action]        |
+| gh   | Yes/No    | Yes/No        | [action]        |
+| fj   | Yes/No    | Yes/No        | [action]        |
 
 ## Onboarding Order
 

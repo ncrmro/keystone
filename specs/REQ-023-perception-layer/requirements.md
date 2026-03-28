@@ -159,6 +159,7 @@ name and host name for filtering.
 that queries the Immich API for assets matching a search query.
 
 **REQ-023.20** The `immich-search` tool MUST support search by:
+
 - Face/person name (using Immich's face recognition index)
 - Text content (using Immich's OCR/CLIP index)
 - Date range
@@ -200,6 +201,7 @@ defaulting to `*:0/30` (every 30 minutes).
 
 **REQ-023.29** The perception processor MUST scan for new inputs since the
 last run:
+
 - PDF markdown outputs and their bounding box metadata
 - Voice transcripts
 - Immich search results (recent screenshots, tagged photos)

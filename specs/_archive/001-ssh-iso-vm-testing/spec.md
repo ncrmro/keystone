@@ -10,6 +10,7 @@
 **Note**: This feature builds upon existing work in the `feat/quickemu-server` branch.
 
 ### Already Implemented ✅
+
 - **ISO Building with SSH Keys** (`bin/build-iso` script)
   - Accepts SSH keys via file path (`--ssh-key ~/.ssh/id_ed25519.pub`)
   - Accepts SSH keys via string input (`--ssh-key "ssh-ed25519..."`)
@@ -21,11 +22,12 @@
   - Makefile target `make vm-server` to launch VM
 
 ### Remaining Work 🚧
+
 - Automated VM lifecycle management
 - SSH connection helper/display
 - Integration testing workflow
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Automated VM Testing Workflow (Priority: P1)
 
@@ -85,11 +87,12 @@ A developer wants the system to automatically detect and display the correct SSH
 - What happens when trying to launch a second VM while one is already running?
 - How does the system handle stale VM state files from crashed instances?
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
 #### Already Implemented ✅
+
 - **FR-001**: ✅ System accepts SSH public key input during ISO build via file path
 - **FR-002**: ✅ System accepts SSH public key input during ISO build via direct string input
 - **FR-003**: ✅ System generates bootable installer ISO with embedded SSH authorized_keys configuration
@@ -99,6 +102,7 @@ A developer wants the system to automatically detect and display the correct SSH
 - **FR-010**: ✅ System uses secure defaults for SSH configuration (disable password auth when key is present)
 
 #### Remaining Requirements 🚧
+
 - **FR-006**: System MUST provide integrated command to build ISO and launch VM in one step
 - **FR-007**: System MUST display SSH connection command with correct port and authentication details
 - **FR-008**: System MUST detect if quickemu is installed and provide clear error if missing
@@ -118,7 +122,7 @@ A developer wants the system to automatically detect and display the correct SSH
 - **VM Artifacts**: Disk image, OVMF vars, logs, port files in `vms/server/`
 - **Build Artifacts**: ISO file in `vms/keystone-installer.iso`
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

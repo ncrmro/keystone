@@ -19,6 +19,7 @@ This document consolidates research findings for implementing TPM2-based disk en
 ### Decision: PCR 7 Only (Secure Boot State)
 
 **Command Syntax**:
+
 ```bash
 systemd-cryptenroll \
   --tpm2-device=auto \
@@ -36,27 +37,30 @@ systemd-cryptenroll \
 - **Validated Pattern**: Current disko module already uses `tpm2-measure-pcr=yes` expecting this approach
 
 **Why NOT PCR 1** (originally in spec):
+
 - PCR 1 (firmware configuration) changes on BIOS setting modifications
 - Causes automatic unlock failures after legitimate hardware tuning
 - Contradicts systemd best practices: "It is typically not advisable to use PCRs such as 0 and 2, since the program code they cover should already be covered indirectly through the certificates measured into PCR 7"
 
 **Why NOT PCR 11** (kernel image):
+
 - Changes on every kernel update → re-enrollment required after each `nixos-rebuild`
 - Requires signed PCR policies infrastructure (deferred to future enhancement)
 - Incompatible with automatic system updates
 
 ### PCR Comparison Matrix
 
-| PCR | Content | Change Frequency | Impact on Auto-Unlock |
-|-----|---------|------------------|----------------------|
-| 0 | Firmware code | Firmware updates | ❌ Breaks on updates |
-| 1 | Firmware config | BIOS changes | ❌ Breaks on tuning |
-| 7 | Secure Boot certs | Key re-enrollment | ✅ Stable during updates |
-| 11 | Kernel image (UKI) | Every kernel update | ❌ Requires re-enrollment |
+| PCR | Content            | Change Frequency    | Impact on Auto-Unlock     |
+| --- | ------------------ | ------------------- | ------------------------- |
+| 0   | Firmware code      | Firmware updates    | ❌ Breaks on updates      |
+| 1   | Firmware config    | BIOS changes        | ❌ Breaks on tuning       |
+| 7   | Secure Boot certs  | Key re-enrollment   | ✅ Stable during updates  |
+| 11  | Kernel image (UKI) | Every kernel update | ❌ Requires re-enrollment |
 
 ### Integration with Existing Disko Module
 
 **Current Configuration** (modules/disko-single-disk-root/default.nix:111-114):
+
 ```nix
 luks.devices.credstore = {
   device = "/dev/zvol/rpool/credstore";
@@ -82,6 +86,7 @@ cryptsetup luksDump /dev/zvol/rpool/credstore | grep -q "systemd-tpm2"
 ### Error Handling Patterns
 
 **No TPM Device**:
+
 ```bash
 if ! systemd-cryptenroll --tpm2-device=list &>/dev/null; then
   echo "ERROR: No TPM2 device found"
@@ -91,6 +96,7 @@ fi
 ```
 
 **Secure Boot Not Enabled**:
+
 ```bash
 if ! bootctl status | grep -q "Secure Boot: enabled"; then
   echo "ERROR: Secure Boot is not enabled"
@@ -100,6 +106,7 @@ fi
 ```
 
 **Enrollment Failure**:
+
 ```bash
 if ! systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/zvol/rpool/credstore; then
   echo "ERROR: TPM enrollment failed"
@@ -110,6 +117,7 @@ fi
 ### Recovery Scenarios
 
 **PCR 7 Mismatch** (Secure Boot keys changed):
+
 1. Boot prompts for password (automatic unlock fails)
 2. User enters recovery key or custom password
 3. System boots successfully
@@ -120,6 +128,7 @@ fi
    ```
 
 **TPM Hardware Failure**:
+
 - Automatic unlock fails (no TPM device)
 - Recovery key/custom password provides fallback
 - System continues working (TPM optional)
@@ -141,12 +150,14 @@ fi
 **Implementation**: System-wide shell profile script with persistent state tracking
 
 **Components**:
+
 1. Script: `/etc/profile.d/tpm-enrollment-warning.sh`
 2. State marker: `/var/lib/keystone/tpm-enrollment-complete`
 
 ### Rationale
 
 **Why Shell Profile**:
+
 - **Universal Coverage**: Works for both server (SSH) and client (desktop terminal)
 - **Native Integration**: Standard Linux login notification mechanism
 - **Immediate Visibility**: Banner appears on first interactive shell after login
@@ -154,6 +165,7 @@ fi
 - **NixOS Friendly**: Declarative configuration via `environment.etc`
 
 **Why NOT Alternatives**:
+
 - **PAM Module (pam_exec)**: Could block login on script errors, too complex
 - **greetd Banner**: Only works for client configs, cannot be conditionally suppressed
 - **/etc/motd**: Static content, not conditional
@@ -165,6 +177,7 @@ fi
 **Marker File Creation**: Enrollment scripts create `/var/lib/keystone/tpm-enrollment-complete` after successful TPM enrollment
 
 **Validation Logic**:
+
 ```bash
 # Check for marker file
 if [[ -f /var/lib/keystone/tpm-enrollment-complete ]]; then
@@ -225,6 +238,7 @@ show_enrollment_warning_banner
 ### Implementation
 
 **NixOS Module Configuration**:
+
 ```nix
 environment.etc."profile.d/tpm-enrollment-warning.sh" = {
   text = ''
@@ -239,6 +253,7 @@ environment.etc."profile.d/tpm-enrollment-warning.sh" = {
 ```
 
 **Marker File Management**:
+
 ```nix
 systemd.tmpfiles.rules = [
   "d /var/lib/keystone 0755 root root -"
@@ -252,6 +267,7 @@ systemd.tmpfiles.rules = [
 ### Decision: Length-Focused Validation
 
 **Rules Enforced**:
+
 1. Minimum 12 characters (FR-008 requirement)
 2. Maximum 64 characters (NIST 2025 guideline)
 3. No character class complexity requirements
@@ -261,17 +277,20 @@ systemd.tmpfiles.rules = [
 ### Rationale: Security vs Usability
 
 **Why 12 Characters Minimum**:
+
 - **Entropy**: 12 mixed alphanumeric = ~71 bits entropy
 - **LUKS Key Stretching**: PBKDF2/Argon2id makes offline attacks expensive (2M+ iterations)
 - **Research Finding**: "Passwords with complexity requirements become near-impossible to crack via brute-force techniques when over 15 characters in length"
 
 **Why NO Complexity Requirements**:
+
 - **NIST 2025 Guidance**: Modern standards moved away from mandatory character classes
 - **Predictable Patterns**: Forced complexity leads to "Password1!" type patterns
 - **Memorability**: This is a recovery password - users may not use it for months/years
 - **Length > Complexity**: "coffeemorninglaptop" (19 chars) > "P@ssw0rd" (8 chars)
 
 **Recovery Context Considerations**:
+
 - Password used infrequently (only when TPM unlock fails)
 - Must be memorable after long periods without use
 - Too complex = forgotten = permanent data loss
@@ -317,6 +336,7 @@ validate_password() {
 ### Error Messages: User-Friendly Approach
 
 **Too Short**:
+
 ```
 ERROR: Password must be at least 12 characters
 
@@ -330,6 +350,7 @@ Examples of strong passwords:
 ```
 
 **Passwords Don't Match**:
+
 ```
 ERROR: Passwords do not match
 
@@ -338,6 +359,7 @@ Please try again carefully.
 ```
 
 **Success**:
+
 ```
 ✓ Password validated successfully
 
@@ -377,49 +399,57 @@ check_password_strength() {
 
 ## Summary: Implementation Decisions
 
-| Component | Decision | Key Points |
-|-----------|----------|-----------|
-| **TPM PCRs** | PCR 7 only | Secure Boot state, update-resilient, spec update needed |
-| **Enrollment Command** | `systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 --wipe-slot=empty` | Standard approach, safe credential handling |
-| **Status Detection** | `systemd-cryptenroll` + `cryptsetup luksDump` | Dual validation, self-healing |
-| **First-Boot Notification** | Shell profile script + state marker | Universal coverage, NixOS-friendly |
-| **State Tracking** | `/var/lib/keystone/tpm-enrollment-complete` | Persistent, inspectable, self-validates |
-| **Password Min Length** | 12 characters | FR-008 compliance, adequate entropy |
-| **Password Max Length** | 64 characters | NIST 2025 guideline |
-| **Password Complexity** | None required | Length prioritized, NIST 2025 alignment |
-| **Password Validation** | Bash script loop | Simple, reliable, clear error messages |
+| Component                   | Decision                                                                 | Key Points                                              |
+| --------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| **TPM PCRs**                | PCR 7 only                                                               | Secure Boot state, update-resilient, spec update needed |
+| **Enrollment Command**      | `systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 --wipe-slot=empty` | Standard approach, safe credential handling             |
+| **Status Detection**        | `systemd-cryptenroll` + `cryptsetup luksDump`                            | Dual validation, self-healing                           |
+| **First-Boot Notification** | Shell profile script + state marker                                      | Universal coverage, NixOS-friendly                      |
+| **State Tracking**          | `/var/lib/keystone/tpm-enrollment-complete`                              | Persistent, inspectable, self-validates                 |
+| **Password Min Length**     | 12 characters                                                            | FR-008 compliance, adequate entropy                     |
+| **Password Max Length**     | 64 characters                                                            | NIST 2025 guideline                                     |
+| **Password Complexity**     | None required                                                            | Length prioritized, NIST 2025 alignment                 |
+| **Password Validation**     | Bash script loop                                                         | Simple, reliable, clear error messages                  |
 
 ## Spec Updates Required
 
 **Original Assumption 7** (spec.md:141):
+
 > PCR 1 (firmware configuration) and PCR 7 (Secure Boot state) are sufficient
 
 **Recommended Update**:
+
 > PCR 7 (Secure Boot state) is sufficient for most use cases while maintaining maximum resilience to firmware updates. PCR 1 (firmware configuration) is intentionally excluded due to brittleness with BIOS setting changes.
 
 **Original FR-006**:
+
 > System MUST enroll TPM unlock using PCRs 1 and 7
 
 **Recommended Update**:
+
 > System MUST enroll TPM unlock using PCR 7 (Secure Boot state)
 
 ## References
 
 ### systemd-cryptenroll
+
 - [systemd-cryptenroll man page](https://www.freedesktop.org/software/systemd/man/latest/systemd-cryptenroll.html)
 - [ArchWiki: systemd-cryptenroll](https://wiki.archlinux.org/title/Systemd-cryptenroll)
 - [Lennart Poettering: Unlocking LUKS2 with TPM2](https://0pointer.net/blog/unlocking-luks2-volumes-with-tpm2-fido2-pkcs11-security-hardware-on-systemd-248.html)
 
 ### TPM and PCRs
+
 - [ArchWiki: Trusted Platform Module](https://wiki.archlinux.org/title/Trusted_Platform_Module)
 - [Linux TPM PCR Registry](https://uapi-group.org/specifications/specs/linux_tpm_pcr_registry/)
 
 ### Password Standards
+
 - NIST SP 800-63B (Digital Identity Guidelines)
 - OWASP Password Guidelines
 - Mozilla Security Guidelines
 
 ### Keystone Codebase
+
 - Disko module: modules/disko-single-disk-root/default.nix
 - Secure Boot module: modules/secure-boot/default.nix
 - Spec: specs/006-tpm-enrollment/spec.md

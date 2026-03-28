@@ -7,6 +7,7 @@
 Primary NixOS module for Secure Boot configuration.
 
 **Options**:
+
 ```nix
 {
   enable = mkEnableOption "Secure Boot with lanzaboote";
@@ -32,6 +33,7 @@ Primary NixOS module for Secure Boot configuration.
 ```
 
 **State Transitions**:
+
 - Disabled → Enabled: Triggers lanzaboote activation
 - Setup Mode → User Mode: One-way transition after enrollment
 - Keys Absent → Keys Present: During disko hook execution
@@ -39,6 +41,7 @@ Primary NixOS module for Secure Boot configuration.
 ### Disko Hook Configuration
 
 **Hook Data Flow**:
+
 ```
 Input: UEFI Setup Mode
   ↓
@@ -54,6 +57,7 @@ Output: UEFI User Mode + Keys Ready
 ```
 
 **File Structure**:
+
 ```
 /var/lib/sbctl/
 ├── keys/
@@ -72,6 +76,7 @@ Output: UEFI User Mode + Keys Ready
 ### Integration Points
 
 **Module Dependencies**:
+
 ```mermaid
 graph TD
     A[keystone.secureBoot] --> B[boot.lanzaboote]
@@ -81,6 +86,7 @@ graph TD
 ```
 
 **Configuration Flow**:
+
 1. User enables `keystone.secureBoot.enable`
 2. Module activates `boot.lanzaboote`
 3. Disko hook generates keys during deployment
@@ -92,11 +98,13 @@ graph TD
 ### RecoverableErrors
 
 **SetupModeNotDetected**:
+
 - Condition: Setup Mode = 0 but keys don't exist
 - Recovery: Check if keys already enrolled
 - Action: Skip enrollment, proceed with existing keys
 
 **EnrollmentPartialFailure**:
+
 - Condition: Some keys enrolled but not all
 - Recovery: Log warning, continue deployment
 - Action: May require manual intervention post-boot
@@ -104,11 +112,13 @@ graph TD
 ### FatalErrors
 
 **KeyGenerationFailed**:
+
 - Condition: sbctl create-keys returns non-zero
 - Recovery: None - deployment cannot continue
 - Action: Abort deployment with clear error
 
 **NoEFISupport**:
+
 - Condition: /sys/firmware/efi not present
 - Recovery: None - Secure Boot requires UEFI
 - Action: Abort with compatibility error
@@ -116,16 +126,19 @@ graph TD
 ## Validation Rules
 
 ### Pre-Deployment
+
 - UEFI firmware must be accessible
 - sbctl must be in installer environment
 - Target disk must have ESP partition
 
 ### During Hook Execution
+
 - Setup Mode should equal 1 (unless force-enrolled)
 - /mnt must be mounted and writable
 - PKI directory must not exist (unless force mode)
 
 ### Post-Deployment
+
 - All key files must exist and be readable
 - Lanzaboote must successfully sign bootloader
 - bootctl status must show Secure Boot enabled
@@ -133,16 +146,19 @@ graph TD
 ## Module Interactions
 
 ### With keystone.disko
+
 - Adds postCreateHook to root filesystem
 - Ensures keys generated before NixOS build
 - Maintains separation of concerns
 
 ### With boot.lanzaboote
+
 - Provides pkiBundle path
 - Enables module conditionally
 - Configures systemd-boot integration
 
 ### With keystone.server
+
 - Automatically included when server enabled
 - No additional configuration required
 - Transparent to end user
@@ -150,6 +166,7 @@ graph TD
 ## Configuration Examples
 
 ### Minimal Configuration
+
 ```nix
 {
   keystone.secureBoot.enable = true;
@@ -157,6 +174,7 @@ graph TD
 ```
 
 ### With Microsoft Certificates
+
 ```nix
 {
   keystone.secureBoot = {
@@ -167,6 +185,7 @@ graph TD
 ```
 
 ### Manual Enrollment
+
 ```nix
 {
   keystone.secureBoot = {

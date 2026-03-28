@@ -6,15 +6,15 @@ configuration, desktop environments, terminal tooling, and server services.
 
 ## Module Navigation
 
-| Module | Editing Guide | User-facing Docs |
-|--------|--------------|-----------------|
-| `modules/os/` | [modules/os/AGENTS.md](modules/os/AGENTS.md) | [docs/os-agents.md](docs/os-agents.md) |
-| `modules/os/agents/` | [modules/os/agents/AGENTS.md](modules/os/agents/AGENTS.md) | [docs/agents.md](docs/agents.md) |
-| `modules/terminal/` | [modules/terminal/AGENTS.md](modules/terminal/AGENTS.md) | [docs/terminal.md](docs/terminal.md) |
-| `modules/desktop/` | [modules/desktop/AGENTS.md](modules/desktop/AGENTS.md) | — |
-| `modules/server/` | [modules/server/AGENTS.md](modules/server/AGENTS.md) | [docs/server.md](docs/server.md) |
-| `packages/keystone-tui/` | [packages/keystone-tui/AGENTS.md](packages/keystone-tui/AGENTS.md) | — |
-| `conventions/` | [conventions/AGENTS.md](conventions/AGENTS.md) | — |
+| Module                   | Editing Guide                                                      | User-facing Docs                       |
+| ------------------------ | ------------------------------------------------------------------ | -------------------------------------- |
+| `modules/os/`            | [modules/os/AGENTS.md](modules/os/AGENTS.md)                       | [docs/os-agents.md](docs/os-agents.md) |
+| `modules/os/agents/`     | [modules/os/agents/AGENTS.md](modules/os/agents/AGENTS.md)         | [docs/agents.md](docs/agents.md)       |
+| `modules/terminal/`      | [modules/terminal/AGENTS.md](modules/terminal/AGENTS.md)           | [docs/terminal.md](docs/terminal.md)   |
+| `modules/desktop/`       | [modules/desktop/AGENTS.md](modules/desktop/AGENTS.md)             | —                                      |
+| `modules/server/`        | [modules/server/AGENTS.md](modules/server/AGENTS.md)               | [docs/server.md](docs/server.md)       |
+| `packages/keystone-tui/` | [packages/keystone-tui/AGENTS.md](packages/keystone-tui/AGENTS.md) | —                                      |
+| `conventions/`           | [conventions/AGENTS.md](conventions/AGENTS.md)                     | —                                      |
 
 ## Module File Tree
 
@@ -56,16 +56,16 @@ modules/
 
 ### NixOS Modules (`keystone.nixosModules.*`)
 
-| Module | Description |
-|--------|-------------|
-| `operating-system` | Core OS — storage, Secure Boot, TPM, users, agents (includes disko + lanzaboote) |
-| `server` | Server services (includes domain) |
-| `desktop` | Hyprland desktop environment |
-| `binaryCacheClient` | Attic binary cache client |
-| `hardwareKey` | YubiKey/FIDO2 support |
-| `isoInstaller` | Bootable installer |
-| `domain`, `hosts`, `repos`, `services`, `keys` | Shared options modules |
-| `headscale-dns` | Consume server DNS records on headscale host |
+| Module                                         | Description                                                                      |
+| ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `operating-system`                             | Core OS — storage, Secure Boot, TPM, users, agents (includes disko + lanzaboote) |
+| `server`                                       | Server services (includes domain)                                                |
+| `desktop`                                      | Hyprland desktop environment                                                     |
+| `binaryCacheClient`                            | Attic binary cache client                                                        |
+| `hardwareKey`                                  | YubiKey/FIDO2 support                                                            |
+| `isoInstaller`                                 | Bootable installer                                                               |
+| `domain`, `hosts`, `repos`, `services`, `keys` | Shared options modules                                                           |
+| `headscale-dns`                                | Consume server DNS records on headscale host                                     |
 
 ### Home-Manager Modules (`keystone.homeModules.*`)
 

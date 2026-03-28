@@ -6,6 +6,7 @@ argument-hint: <feature description>
 Start the keystone_system/issue DeepWork workflow to create a GitHub issue.
 
 Use the DeepWork MCP tools to start the workflow:
+
 - job_name: "keystone_system"
 - workflow_name: "issue"
 - goal: "$ARGUMENTS" (use the user's arguments as the feature description)

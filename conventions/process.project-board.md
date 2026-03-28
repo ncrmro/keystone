@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: Project Board (process.project-board)
 
 This convention defines how project boards (Kanban boards) are created, populated, and maintained to track milestone progress.
@@ -13,25 +14,25 @@ This convention defines how project boards (Kanban boards) are created, populate
 
 4. Every board MUST use these five columns:
 
-| Column | Meaning |
-|--------|---------|
-| Backlog | Issue exists, not yet prioritized |
-| To Do | Prioritized and ready to pick up |
-| In Progress | Branch created, active work |
-| In Review | Non-draft PR open, review requested |
-| Done | Issue closed / PR merged |
+| Column      | Meaning                             |
+| ----------- | ----------------------------------- |
+| Backlog     | Issue exists, not yet prioritized   |
+| To Do       | Prioritized and ready to pick up    |
+| In Progress | Branch created, active work         |
+| In Review   | Non-draft PR open, review requested |
+| Done        | Issue closed / PR merged            |
 
 ## Transition Rules
 
 5. Issues MUST progress through columns as work advances. The mechanism depends on the platform:
 
-| Event | From → To | GitHub | Forgejo |
-|-------|-----------|--------|---------|
-| Issue added to milestone | → Backlog | Agent: `gh project item-add` + set status | Agent: `forgejo-project item add` |
-| Issue prioritized for work | Backlog → To Do | Agent: `gh project item-edit` | Agent: `forgejo-project item move` |
-| Branch created, work starts | To Do → In Progress | Agent: `gh project item-edit` | Agent: `forgejo-project item move` |
-| PR marked ready for review | In Progress → In Review | Agent: `gh project item-edit` | Agent: `forgejo-project item move` |
-| PR merged / issue closed | → Done | **Automatic** (built-in workflow) | Agent: `forgejo-project item move` |
+| Event                       | From → To               | GitHub                                    | Forgejo                            |
+| --------------------------- | ----------------------- | ----------------------------------------- | ---------------------------------- |
+| Issue added to milestone    | → Backlog               | Agent: `gh project item-add` + set status | Agent: `forgejo-project item add`  |
+| Issue prioritized for work  | Backlog → To Do         | Agent: `gh project item-edit`             | Agent: `forgejo-project item move` |
+| Branch created, work starts | To Do → In Progress     | Agent: `gh project item-edit`             | Agent: `forgejo-project item move` |
+| PR marked ready for review  | In Progress → In Review | Agent: `gh project item-edit`             | Agent: `forgejo-project item move` |
+| PR merged / issue closed    | → Done                  | **Automatic** (built-in workflow)         | Agent: `forgejo-project item move` |
 
 6. Agents MUST NOT duplicate automatic transitions — if the platform handles a transition, the agent MUST NOT also fire it.
 

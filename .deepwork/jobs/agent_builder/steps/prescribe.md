@@ -19,6 +19,7 @@ Produce an ordered list of actionable fix commands for each diagnosed issue. Fix
 ### 2. Write fix actions
 
 For each diagnosed issue, produce:
+
 - The exact commands to run (using `agentctl` patterns from common job info)
 - What the commands do and why
 - Expected output after the fix
@@ -39,6 +40,7 @@ For each failure category from the diagnosis, write the specific fix+verify+roll
 ### 4. Flag dangerous operations
 
 Any fix that involves killing processes, git reset, or credential changes must include:
+
 - A clear warning about what could go wrong
 - Confirmation that the operator should verify before proceeding
 - Rollback commands
@@ -47,7 +49,7 @@ Any fix that involves killing processes, git reset, or credential changes must i
 
 Write `prescription.md`:
 
-```markdown
+````markdown
 # Prescription: agent-{name}
 
 **Date:** {timestamp}
@@ -68,18 +70,22 @@ Write `prescription.md`:
 **Risk:** low / medium / high
 
 **Commands:**
+
 ```bash
 {exact commands}
 ```
+````
 
 **Expected result:** {what should happen}
 
 **Verify:**
+
 ```bash
 {verification command}
 ```
 
 **Rollback:**
+
 ```bash
 {rollback commands if applicable}
 ```
@@ -87,6 +93,7 @@ Write `prescription.md`:
 ---
 
 ### Fix 2: {title}
+
 ...
 
 ## Post-Fix Verification
@@ -96,6 +103,7 @@ After applying all fixes, verify overall agent health by checking all three time
 ## No Fixes Needed
 
 {If the agent is healthy: "Agent is healthy. No fixes required."}
+
 ```
 
 ## Quality Criteria
@@ -109,3 +117,4 @@ After applying all fixes, verify overall agent health by checking all three time
 ## Context
 
 This is the final step of the doctor workflow. The prescription should be immediately actionable — the operator should be able to copy-paste commands and fix the agent. Avoid vague advice like "check the configuration" — always provide the specific command.
+```

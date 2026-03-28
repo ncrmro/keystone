@@ -58,9 +58,10 @@ Use a file path under `.deepwork/tmp/`, for example `.deepwork/tmp/keystone-issu
 - As a [role], I want [capability] so that [benefit].
 
 ## Architecture
-
 ```
+
 [ASCII diagram showing module relationships, data flow, or system topology]
+
 ```
 
 ## Affected Modules

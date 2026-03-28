@@ -16,12 +16,12 @@ The operator is built using Rust and the `kube-rs` ecosystem. It runs as a deplo
 ### Core Components
 
 1.  **CRD Definitions**: Rust structs deriving `CustomResource` for:
-    *   `Grant`
-    *   `Realm`
-    *   `SuperEntity`
+    - `Grant`
+    - `Realm`
+    - `SuperEntity`
 2.  **Controllers**:
-    *   **Grant Controller**: Reconciles `Grant` objects. It creates and manages underlying Kubernetes `ResourceQuota` and `NetworkPolicy` objects to enforce the grant's terms.
-    *   **Realm Controller**: Manages connection details and health checks for remote realms (integration with Tailscale/Headscale).
+    - **Grant Controller**: Reconciles `Grant` objects. It creates and manages underlying Kubernetes `ResourceQuota` and `NetworkPolicy` objects to enforce the grant's terms.
+    - **Realm Controller**: Manages connection details and health checks for remote realms (integration with Tailscale/Headscale).
 3.  **Webhook Server** (Optional/Future): For validating admission of workloads against active grants if standard Quotas are insufficient.
 
 ## Custom Resource Definitions (CRDs)
@@ -80,12 +80,12 @@ status:
 1.  **Watch** `Grant` resources.
 2.  **Validate**: Ensure `granteeRealm` is a known/valid `Realm`.
 3.  **Enforce Resources**:
-    *   Create/Update a Kubernetes `ResourceQuota` in the namespace dedicated to the `granteeRealm`.
-    *   Namespace naming convention: `guest-<realm-name>`.
+    - Create/Update a Kubernetes `ResourceQuota` in the namespace dedicated to the `granteeRealm`.
+    - Namespace naming convention: `guest-<realm-name>`.
 4.  **Enforce Network**:
-    *   Create/Update a Kubernetes `NetworkPolicy` in the guest namespace.
-    *   Default: Deny all egress except to `localhost` and the `granteeRealm`'s ingress (if applicable).
-    *   If `egressAllowed: true`, allow traffic to `allowedDestinations`.
+    - Create/Update a Kubernetes `NetworkPolicy` in the guest namespace.
+    - Default: Deny all egress except to `localhost` and the `granteeRealm`'s ingress (if applicable).
+    - If `egressAllowed: true`, allow traffic to `allowedDestinations`.
 5.  **Update Status**: Reflect current usage and phase (e.g., set to `Expired` if `validUntil` is passed).
 
 ### Realm Reconciliation Loop
@@ -96,18 +96,18 @@ status:
 
 ## Dependencies
 
-*   `kube`: Kubernetes client and runtime.
-*   `k8s-openapi`: Kubernetes API definitions.
-*   `schemars`: JSON schema generation for CRDs.
-*   `tokio`: Async runtime.
-*   `serde`: Serialization.
+- `kube`: Kubernetes client and runtime.
+- `k8s-openapi`: Kubernetes API definitions.
+- `schemars`: JSON schema generation for CRDs.
+- `tokio`: Async runtime.
+- `serde`: Serialization.
 
 ## Development Plan
 
 1.  **Project Init**: Initialize Rust project with `kube-rs`.
 2.  **CRD Codegen**: Define structs and generate CRD manifests.
 3.  **Controller Implementation**:
-    *   Implement `Grant` controller logic.
-    *   Implement `ResourceQuota` mapping.
-    *   Implement `NetworkPolicy` mapping.
+    - Implement `Grant` controller logic.
+    - Implement `ResourceQuota` mapping.
+    - Implement `NetworkPolicy` mapping.
 4.  **Integration Testing**: Run against a local k3s cluster.

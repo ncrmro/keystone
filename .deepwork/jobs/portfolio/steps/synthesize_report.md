@@ -68,7 +68,7 @@ other source. Every number in the report must trace back to the input files.
    - Are there resource conflicts (same person/agent needed across projects)?
    - Are any projects drifting without clear direction (no milestones, no charter)?
 
-6. **Write priority recommendations**
+7. **Write priority recommendations**
 
    Based on the data, recommend where to focus:
    - Which projects need immediate attention (🔴 Behind or overdue milestones)?
@@ -80,7 +80,7 @@ other source. Every number in the report must trace back to the input files.
    workflow to run if applicable (e.g., "Run `project/success` for catalyst to update
    the charter").
 
-7. **Write the report and open a PR in the notes repo**
+8. **Write the report and open a PR in the notes repo**
 
    The report is delivered as a pull request into the notes repo so the user can
    review, refine, and discuss it before merging.
@@ -94,6 +94,7 @@ other source. Every number in the report must trace back to the input files.
    Write the report to `projects/portfolio/reviews/YYYY-MM.md`.
 
    Then commit and push:
+
    ```bash
    git add projects/portfolio/reviews/YYYY-MM.md
    git commit -m "docs(portfolio): add YYYY-MM portfolio review"
@@ -106,6 +107,7 @@ other source. Every number in the report must trace back to the input files.
    - `git.ncrmro.com` or other Forgejo → use `tea pr create`
 
    **GitHub**:
+
    ```bash
    gh pr create --title "docs(portfolio): YYYY-MM portfolio review" \
      --body "$(cat <<'PREOF'
@@ -120,6 +122,7 @@ other source. Every number in the report must trace back to the input files.
    ```
 
    **Forgejo** (tea CLI):
+
    ```bash
    tea pr create --repo ncrmro/notes \
      --title "docs(portfolio): YYYY-MM portfolio review" \
@@ -140,7 +143,7 @@ other source. Every number in the report must trace back to the input files.
    PR merges automatically after a 72-hour review window. This gives the user time
    to comment but prevents stale PRs.
 
-8. **Output the PR URL**
+9. **Output the PR URL**
 
    After creating the PR, output the PR URL prominently so the user can navigate
    directly to it for review. This is the primary deliverable of the workflow — the
@@ -153,6 +156,7 @@ other source. Every number in the report must trace back to the input files.
 The final portfolio review report.
 
 **Structure**:
+
 ```markdown
 # Portfolio Review — [Month YYYY]
 
@@ -168,48 +172,53 @@ the biggest risk, and the recommended focus area.]
 
 ## Project Status
 
-| Project | Status | Active Milestone | Progress | Activity | Top Blocker |
-|---------|--------|-----------------|----------|----------|-------------|
-| keystone | 🟡 At Risk | Desktop Integration | 67% | High (23) | Installer TUI |
-| catalyst | 🟢 On Track | MVP Launch | 45% | Medium (8) | — |
-| meze | ⚪ Deferred | — | — | Stagnant (0) | No active work |
-| eonmun | ⚪ Deferred | — | — | Stagnant (0) | — |
+| Project  | Status      | Active Milestone    | Progress | Activity     | Top Blocker    |
+| -------- | ----------- | ------------------- | -------- | ------------ | -------------- |
+| keystone | 🟡 At Risk  | Desktop Integration | 67%      | High (23)    | Installer TUI  |
+| catalyst | 🟢 On Track | MVP Launch          | 45%      | Medium (8)   | —              |
+| meze     | ⚪ Deferred | —                   | —        | Stagnant (0) | No active work |
+| eonmun   | ⚪ Deferred | —                   | —        | Stagnant (0) | —              |
+
 [...]
 
 ## In-Flight Milestones
 
-| Project | Milestone | Open | Closed | Progress | Due Date | Health |
-|---------|-----------|------|--------|----------|----------|--------|
-| keystone | Desktop Integration | 4 | 8 | 67% | 2026-04-01 | 🟡 |
-| catalyst | MVP Launch | 6 | 5 | 45% | 2026-05-01 | 🟢 |
+| Project  | Milestone           | Open | Closed | Progress | Due Date   | Health |
+| -------- | ------------------- | ---- | ------ | -------- | ---------- | ------ |
+| keystone | Desktop Integration | 4    | 8      | 67%      | 2026-04-01 | 🟡     |
+| catalyst | MVP Launch          | 6    | 5      | 45%      | 2026-05-01 | 🟢     |
+
 [...]
 
 **Recently Completed**: keystone/Terminal Module (2026-02-15)
 
 ## Activity (Last 30 Days)
 
-| Project | Commits | Last Commit | Trend |
-|---------|---------|-------------|-------|
-| keystone | 23 | 2026-03-19 | High |
-| catalyst | 8 | 2026-03-15 | Medium |
-| nixos-config | 5 | 2026-03-10 | Medium |
-| meze | 0 | 2025-12-01 | Stagnant |
+| Project      | Commits | Last Commit | Trend    |
+| ------------ | ------- | ----------- | -------- |
+| keystone     | 23      | 2026-03-19  | High     |
+| catalyst     | 8       | 2026-03-15  | Medium   |
+| nixos-config | 5       | 2026-03-10  | Medium   |
+| meze         | 0       | 2025-12-01  | Stagnant |
+
 [...]
 
 ## Portfolio Priority Matrix
-
 ```
+
                       URGENT                             NOT URGENT
             ┌────────────────────────────┬────────────────────────────┐
             │ Q1: DO FIRST               │ Q2: SCHEDULE               │
- IMPORTANT  │ keystone (TUI 95%)         │ catalyst (Cloud Platform)  │
-            │ nixos-config (infra maint) │ obsidian (zk migration)    │
-            ├────────────────────────────┼────────────────────────────┤
-            │ Q3: DELEGATE               │ Q4: ELIMINATE / ARCHIVE    │
- NOT        │ plant-caravan (0% milestone)│ meze, eonmun, tetrastack  │
- IMPORTANT  │                            │ ks.systems, latinum-space  │
-            │                            │ ncrmro-website, ks-hw      │
-            └────────────────────────────┴────────────────────────────┘
+
+IMPORTANT │ keystone (TUI 95%) │ catalyst (Cloud Platform) │
+│ nixos-config (infra maint) │ obsidian (zk migration) │
+├────────────────────────────┼────────────────────────────┤
+│ Q3: DELEGATE │ Q4: ELIMINATE / ARCHIVE │
+NOT │ plant-caravan (0% milestone)│ meze, eonmun, tetrastack │
+IMPORTANT │ │ ks.systems, latinum-space │
+│ │ ncrmro-website, ks-hw │
+└────────────────────────────┴────────────────────────────┘
+
 ```
 
 **Reading the matrix**: Q1 projects need your time NOW. Q2 projects are strategic

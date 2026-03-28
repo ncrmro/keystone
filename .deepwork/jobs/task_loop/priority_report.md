@@ -29,10 +29,10 @@
 
 ## Model Assignments
 
-| Task | Model | Reason |
-|------|-------|--------|
-| track-agentctl-sandbox-podman | haiku | Simple monitoring and status tracking of ongoing PR work |
-| review-task-loop-sources-pr | sonnet | Standard multi-step PR review requiring assessment of implementation, test coverage, and architectural fit |
+| Task                          | Model  | Reason                                                                                                     |
+| ----------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
+| track-agentctl-sandbox-podman | haiku  | Simple monitoring and status tracking of ongoing PR work                                                   |
+| review-task-loop-sources-pr   | sonnet | Standard multi-step PR review requiring assessment of implementation, test coverage, and architectural fit |
 
 ## Changes
 

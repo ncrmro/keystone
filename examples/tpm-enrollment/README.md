@@ -118,6 +118,7 @@ $ sudo reboot
 After reboot, the system should unlock automatically without password prompt.
 
 **Check enrollment status**:
+
 ```bash
 $ sudo systemd-cryptenroll /dev/zvol/rpool/credstore
 SLOT TYPE
@@ -161,6 +162,7 @@ keystone.tpmEnrollment = {
 ```
 
 **Use When**:
+
 - Frequent firmware/BIOS updates
 - Experimental hardware (firmware instability)
 - Home server with physical security
@@ -177,6 +179,7 @@ keystone.tpmEnrollment = {
 ```
 
 **Use When**:
+
 - Standard deployment scenario
 - Moderate firmware update frequency
 - Balance between security and convenience
@@ -193,6 +196,7 @@ keystone.tpmEnrollment = {
 ```
 
 **Use When**:
+
 - High-security requirements
 - Rare firmware updates
 - Server in locked data center

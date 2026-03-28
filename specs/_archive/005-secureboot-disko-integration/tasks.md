@@ -8,28 +8,28 @@
 
 **Goal**: Initialize project structure and dependencies
 
-- [X] T001 Add lanzaboote as flake input in flake.nix
-- [X] T002 Add sbctl to installer environment in modules/iso-installer.nix
-- [X] T003 Create modules/secure-boot directory structure
+- [x] T001 Add lanzaboote as flake input in flake.nix
+- [x] T002 Add sbctl to installer environment in modules/iso-installer.nix
+- [x] T003 Create modules/secure-boot directory structure
 
 ## Phase 2: Foundational
 
 **Goal**: Create base module structure and configuration options
 
-- [X] T004 Create modules/secure-boot/default.nix with module skeleton
-- [X] T005 Define keystone.secureBoot options (enable, includeMS, autoEnroll, pkiBundle)
-- [X] T006 Add module assertions and validation logic in modules/secure-boot/default.nix
+- [x] T004 Create modules/secure-boot/default.nix with module skeleton
+- [x] T005 Define keystone.secureBoot options (enable, includeMS, autoEnroll, pkiBundle)
+- [x] T006 Add module assertions and validation logic in modules/secure-boot/default.nix
 
 ## Phase 3: User Story 1 - Automatic Key Generation [US1]
 
 **Goal**: Generate Secure Boot keys during disko partitioning
 **Test**: Keys exist at /var/lib/sbctl/keys after disko execution
 
-- [X] T007 [US1] Create secure boot hook script in modules/secure-boot/hook.sh
-- [X] T008 [US1] Implement Setup Mode detection logic in modules/secure-boot/hook.sh
-- [X] T009 [US1] Implement key generation with sbctl in modules/secure-boot/hook.sh
-- [X] T010 [US1] Add error handling for key generation failures in modules/secure-boot/hook.sh
-- [X] T011 [P] [US1] Integrate hook into disko module at modules/disko-single-disk-root/default.nix
+- [x] T007 [US1] Create secure boot hook script in modules/secure-boot/hook.sh
+- [x] T008 [US1] Implement Setup Mode detection logic in modules/secure-boot/hook.sh
+- [x] T009 [US1] Implement key generation with sbctl in modules/secure-boot/hook.sh
+- [x] T010 [US1] Add error handling for key generation failures in modules/secure-boot/hook.sh
+- [x] T011 [P] [US1] Integrate hook into disko module at modules/disko-single-disk-root/default.nix
 
 ## Phase 4: User Story 2 - Key Enrollment [US2]
 
@@ -76,11 +76,13 @@
 ## Dependencies & Execution Order
 
 ### Story Dependencies
+
 ```
 Setup → Foundational → US1 (Key Generation) → US2 (Enrollment) → US3 (Lanzaboote) → US4 (Verification) → Polish
 ```
 
 ### Critical Path
+
 1. Flake input (T001) blocks all lanzaboote tasks
 2. Module creation (T004-T006) blocks all module configuration
 3. Hook script (T007-T010) blocks disko integration
@@ -90,26 +92,33 @@ Setup → Foundational → US1 (Key Generation) → US2 (Enrollment) → US3 (La
 ### Parallel Execution Opportunities
 
 **Within US1** (after T007):
+
 - T008, T009, T010 can be developed in parallel (different functions in hook.sh)
 
 **Within US3** (after T016):
+
 - T019 and T020 can be done in parallel (different files)
 
 **Within US4**:
+
 - T024 and T025 can be done in parallel (independent examples)
 
 **Within Polish**:
+
 - T026, T027, T028 can all be done in parallel (independent documentation)
 
 ## Implementation Strategy
 
 ### MVP Scope (Minimal Viable Product)
+
 Complete Phases 1-3 (US1 only) for basic key generation functionality:
+
 - Tasks T001-T011
 - Provides: Keys generated during deployment
 - Missing: Enrollment, signing, verification
 
 ### Incremental Delivery
+
 1. **Iteration 1**: Setup + US1 (Key Generation) - Keys exist but not enrolled
 2. **Iteration 2**: US2 (Key Enrollment) - Keys enrolled, firmware in User Mode
 3. **Iteration 3**: US3 (Lanzaboote) - Bootloader signed
@@ -117,6 +126,7 @@ Complete Phases 1-3 (US1 only) for basic key generation functionality:
 5. **Iteration 5**: Polish - Production ready
 
 ### Risk Mitigation
+
 - Test each story independently before integration
 - Keep existing post-install-provisioner as fallback until US4 complete
 - Use VM testing throughout to avoid hardware issues

@@ -24,9 +24,9 @@ Abstract the "edit config → git commit → push → nixos-rebuild" loop into a
 
 ## Risks
 
-| Risk | Mitigation |
-|------|------------|
-| Concurrent edits | File locking, check git status before writes |
-| Broken config | Validate syntax before commit |
-| Network failure | Queue pushes for later, allow local operation |
-| Auth failure | Check SSH/Git credentials on startup |
+| Risk             | Mitigation                                    |
+| ---------------- | --------------------------------------------- |
+| Concurrent edits | File locking, check git status before writes  |
+| Broken config    | Validate syntax before commit                 |
+| Network failure  | Queue pushes for later, allow local operation |
+| Auth failure     | Check SSH/Git credentials on startup          |

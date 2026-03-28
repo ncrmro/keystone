@@ -18,6 +18,7 @@ A terminal user interface for managing cross-realm resource sharing between Keys
 Allow another entity to use resources on your infrastructure.
 
 **Flow**:
+
 1. Select "Create Grant" from main menu
 2. Enter grantee realm identifier (Tailscale/Headscale domain or manual ID)
 3. Configure resource limits:
@@ -48,6 +49,7 @@ Allow another entity to use resources on your infrastructure.
 #### View/Revoke Grants
 
 **Flow**:
+
 1. Select "My Grants" from main menu
 2. View list of active grants (granted by you)
 3. Select a grant to view details or revoke
@@ -62,6 +64,7 @@ Allow another entity to use resources on your infrastructure.
 Use resources granted to you by another entity.
 
 **Flow**:
+
 1. Select "Connect Realm" from main menu
 2. Enter connection method:
    - **Tailscale/Headscale**: Enter their machine name or IP on shared tailnet
@@ -79,6 +82,7 @@ Use resources granted to you by another entity.
 #### View Connected Realms
 
 **Flow**:
+
 1. Select "Connected Realms" from main menu
 2. View list showing:
    - Realm name/ID
@@ -95,6 +99,7 @@ Use resources granted to you by another entity.
 #### Deploy Workload to Remote Realm
 
 **Flow**:
+
 1. Select "Deploy Workload" from main menu
 2. Select target realm (your own or connected remote)
 3. Configure workload:
@@ -114,6 +119,7 @@ Use resources granted to you by another entity.
 Create shared infrastructure with other entities (e.g., family backup pool).
 
 **Flow**:
+
 1. Select "Super Entities" → "Create New"
 2. Enter name and purpose
 3. Add member realms (by domain/ID)
@@ -127,6 +133,7 @@ Create shared infrastructure with other entities (e.g., family backup pool).
 #### Contribute to Super Entity
 
 **Flow**:
+
 1. Select super entity from list
 2. Select "Contribute Resources"
 3. Choose storage device/pool to contribute
@@ -139,6 +146,7 @@ Create shared infrastructure with other entities (e.g., family backup pool).
 #### View Backup Status
 
 **Flow**:
+
 1. Select "Backups" from main menu
 2. View backup sets:
    - Local backups
@@ -183,6 +191,7 @@ Create shared infrastructure with other entities (e.g., family backup pool).
 ## Key Interactions
 
 ### Keyboard Navigation
+
 - Arrow keys / j,k: Navigate lists
 - Enter: Select/confirm
 - Esc: Back/cancel

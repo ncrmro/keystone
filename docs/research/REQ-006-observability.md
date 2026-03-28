@@ -4,19 +4,19 @@
 
 ## Stack
 
-| Component | Role |
-|-----------|------|
-| kube-prometheus-stack | Prometheus + Grafana + Alertmanager + node-exporter + kube-state-metrics |
-| Loki (Simple Scalable) | Log aggregation with S3/Ceph RGW backend |
-| Grafana Alloy | Unified collection agent (replaces Promtail) — logs, metrics, traces |
+| Component              | Role                                                                     |
+| ---------------------- | ------------------------------------------------------------------------ |
+| kube-prometheus-stack  | Prometheus + Grafana + Alertmanager + node-exporter + kube-state-metrics |
+| Loki (Simple Scalable) | Log aggregation with S3/Ceph RGW backend                                 |
+| Grafana Alloy          | Unified collection agent (replaces Promtail) — logs, metrics, traces     |
 
 ## Key Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| Loki Simple Scalable mode | Handles up to 100GB/day, separates read/write paths, simpler than microservices |
-| Alloy over Promtail | Unified agent for logs+metrics+traces, active development, component-based config |
-| Dashboard provisioning | Dashboards-as-code via ConfigMap with `grafana_dashboard: "1"` label |
+| Decision                  | Rationale                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| Loki Simple Scalable mode | Handles up to 100GB/day, separates read/write paths, simpler than microservices   |
+| Alloy over Promtail       | Unified agent for logs+metrics+traces, active development, component-based config |
+| Dashboard provisioning    | Dashboards-as-code via ConfigMap with `grafana_dashboard: "1"` label              |
 
 ## Retention
 

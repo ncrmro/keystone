@@ -55,6 +55,7 @@ keystone-theme-switch <theme-name>
 ```
 
 This command:
+
 1. Updates the `current` symlink
 2. Reloads Hyprland configuration
 3. Signals waybar to reload CSS
@@ -64,14 +65,14 @@ This command:
 
 Themes export these standard variables in `colors.sh`:
 
-| Variable | Description |
-|----------|-------------|
-| `KEYSTONE_COLOR_BG` | Primary background |
-| `KEYSTONE_COLOR_FG` | Primary foreground |
-| `KEYSTONE_COLOR_ACCENT` | Accent/highlight color |
-| `KEYSTONE_COLOR_BORDER_ACTIVE` | Active window border |
+| Variable                         | Description            |
+| -------------------------------- | ---------------------- |
+| `KEYSTONE_COLOR_BG`              | Primary background     |
+| `KEYSTONE_COLOR_FG`              | Primary foreground     |
+| `KEYSTONE_COLOR_ACCENT`          | Accent/highlight color |
+| `KEYSTONE_COLOR_BORDER_ACTIVE`   | Active window border   |
 | `KEYSTONE_COLOR_BORDER_INACTIVE` | Inactive window border |
-| `KEYSTONE_COLOR_URGENT` | Urgent/error color |
+| `KEYSTONE_COLOR_URGENT`          | Urgent/error color     |
 
 ## Menu System (Super+Escape)
 
@@ -113,14 +114,14 @@ Setup → Monitors
 
 #### Monitor Modes
 
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| **Auto Left** | External positioned left of laptop display | Desk setup with monitor on left |
-| **Auto Right** | External positioned right of laptop display | Desk setup with monitor on right |
-| **Mirror** | Same content on both displays | Presentations, screen sharing |
-| **External Only** | Laptop display disabled | Docked at desk, lid closed |
-| **Laptop Only** | External display disabled | Undocking, travel |
-| **Detect** | Query connected monitors and show status | Troubleshooting, verification |
+| Mode              | Description                                 | Use Case                         |
+| ----------------- | ------------------------------------------- | -------------------------------- |
+| **Auto Left**     | External positioned left of laptop display  | Desk setup with monitor on left  |
+| **Auto Right**    | External positioned right of laptop display | Desk setup with monitor on right |
+| **Mirror**        | Same content on both displays               | Presentations, screen sharing    |
+| **External Only** | Laptop display disabled                     | Docked at desk, lid closed       |
+| **Laptop Only**   | External display disabled                   | Undocking, travel                |
+| **Detect**        | Query connected monitors and show status    | Troubleshooting, verification    |
 
 #### Implementation Details
 
@@ -148,9 +149,10 @@ hyprctl keyword monitor "eDP-1,preferred,auto,1"
 #### Auto-Detection
 
 The monitor script should:
+
 1. Query connected monitors via `hyprctl monitors -j`
 2. Identify laptop display (typically `eDP-1` or `eDP-2`)
-3. Identify external displays (HDMI-A-*, DP-*)
+3. Identify external displays (HDMI-A-_, DP-_)
 4. Apply appropriate configuration based on selection
 
 ```bash
@@ -164,16 +166,17 @@ hyprctl monitors -j | jq '.[] | {name, description, make, model}'
 #### Persistence
 
 Monitor configurations are runtime-only by default. For persistent configurations:
+
 - Add to `keystone.desktop.hyprland.monitors` in Nix config
 - Or save to `~/.config/keystone/monitors.conf` for user overrides
 
 ### Menu Keybinding
 
-| Keybinding | Action |
-|------------|--------|
-| `$mod+Escape` | Open main menu |
+| Keybinding     | Action                       |
+| -------------- | ---------------------------- |
+| `$mod+Escape`  | Open main menu               |
 | `XF86PowerOff` | Open system submenu directly |
-| `$mod+K` | Open keybindings reference |
+| `$mod+K`       | Open keybindings reference   |
 
 ## Keybindings Reference
 
@@ -185,45 +188,45 @@ Monitor configurations are runtime-only by default. For persistent configuration
 
 ### Core Navigation
 
-| Keybinding | Action |
-|------------|--------|
-| `$mod+Return` | Open terminal |
-| `$mod+Space` | Application launcher |
-| `$mod+B` | Open browser |
-| `$mod+E` | Open file manager |
-| `$mod+W` | Close active window |
+| Keybinding    | Action               |
+| ------------- | -------------------- |
+| `$mod+Return` | Open terminal        |
+| `$mod+Space`  | Application launcher |
+| `$mod+B`      | Open browser         |
+| `$mod+E`      | Open file manager    |
+| `$mod+W`      | Close active window  |
 
 ### Window Management
 
-| Keybinding | Action |
-|------------|--------|
-| `$mod+H/L` | Move focus left/right |
-| `$mod+Arrow` | Move focus in direction |
+| Keybinding         | Action                   |
+| ------------------ | ------------------------ |
+| `$mod+H/L`         | Move focus left/right    |
+| `$mod+Arrow`       | Move focus in direction  |
 | `$mod+Shift+Arrow` | Swap window in direction |
-| `$mod+F` | Toggle fullscreen |
-| `$mod+Shift+V` | Toggle floating |
-| `$mod+T` | Toggle split direction |
+| `$mod+F`           | Toggle fullscreen        |
+| `$mod+Shift+V`     | Toggle floating          |
+| `$mod+T`           | Toggle split direction   |
 
 ### Workspaces
 
-| Keybinding | Action |
-|------------|--------|
-| `$mod+1-0` | Switch to workspace 1-10 |
+| Keybinding       | Action                   |
+| ---------------- | ------------------------ |
+| `$mod+1-0`       | Switch to workspace 1-10 |
 | `$mod+Shift+1-0` | Move window to workspace |
-| `$mod+Tab` | Next workspace |
-| `$mod+Shift+Tab` | Previous workspace |
-| `$mod+S` | Toggle scratchpad |
+| `$mod+Tab`       | Next workspace           |
+| `$mod+Shift+Tab` | Previous workspace       |
+| `$mod+S`         | Toggle scratchpad        |
 
 ### Utilities
 
-| Keybinding | Action |
-|------------|--------|
-| `Print` | Screenshot with editing |
+| Keybinding    | Action                  |
+| ------------- | ----------------------- |
+| `Print`       | Screenshot with editing |
 | `Shift+Print` | Screenshot to clipboard |
-| `$mod+Ctrl+V` | Clipboard history |
-| `$mod+Ctrl+E` | Emoji picker |
-| `$mod+Ctrl+I` | Toggle idle inhibitor |
-| `$mod+Ctrl+N` | Toggle nightlight |
+| `$mod+Ctrl+V` | Clipboard history       |
+| `$mod+Ctrl+E` | Emoji picker            |
+| `$mod+Ctrl+I` | Toggle idle inhibitor   |
+| `$mod+Ctrl+N` | Toggle nightlight       |
 
 ## Nix Options
 
@@ -281,12 +284,13 @@ keystone.desktop.hyprland = {
 
 The desktop module supports keyboard remapping options:
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `modifierKey` | `SUPER` | Primary modifier for all keybindings (`$mod`). With `altwin:swap_alt_win`, physical Alt triggers these. |
-| `capslockAsControl` | `true` | Remaps Caps Lock to Control via `ctrl:nocaps` |
+| Option              | Default | Description                                                                                             |
+| ------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `modifierKey`       | `SUPER` | Primary modifier for all keybindings (`$mod`). With `altwin:swap_alt_win`, physical Alt triggers these. |
+| `capslockAsControl` | `true`  | Remaps Caps Lock to Control via `ctrl:nocaps`                                                           |
 
 **Ergonomic defaults** (recommended):
+
 - `modifierKey = "SUPER"` with `altwin:swap_alt_win` means physical Alt = Hyprland commands
 - Physical Alt is in a more accessible thumb position than Super/Win key
 - Physical Super + Left/Right = browser back/forward (sends Alt + arrow after swap)

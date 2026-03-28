@@ -8,6 +8,7 @@ Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
 
 ## Affected Modules
+
 - `packages/ks/ks.sh` — dev mode build, lock workflow, agent prompt
 
 ## Requirements
@@ -29,6 +30,7 @@ for each home-manager-managed user on each target host.
 
 **REQ-016.4** Dev mode deploy MUST activate home-manager profiles for
 each user/agent on each target host:
+
 - Local: run the activation script as the owning user
 - Remote: SSH to the host, then run the activation script as the user
 
@@ -48,6 +50,7 @@ deploy via `nixos-rebuild switch`, exactly as today.
 > REQ-016.9 (fork fallback) remains referenced by REQ-018.
 
 **REQ-016.7** `ks build --lock` MUST be a new code path that performs:
+
 1. Find local keystone repo, verify it is clean and fully pushed
 2. Push keystone (with fork fallback per REQ-016.9)
 3. Lock flake inputs (`nix flake update keystone agenix-secrets`)
@@ -62,6 +65,7 @@ after verifying repos are clean and before locking flake inputs.
 **REQ-016.9** The lock workflow MUST detect whether the current user has
 push access to the keystone GitHub repo by checking collaborator
 permission via `gh api repos/{owner}/{repo}/collaborators/{user}/permission`.
+
 - If the user has `write`, `maintain`, or `admin` permission → push
   directly to the keystone remote.
 - Otherwise → fork the repo via `gh repo fork --clone=false` (if not
@@ -78,12 +82,14 @@ nixos-config, to prevent pushing a broken flake.lock.
 (via `find_local_repo`).
 
 **REQ-016.12** The dev mode section MUST report:
+
 - Status: active/inactive
 - Path to the local keystone checkout
 - Current branch
 - Whether there are uncommitted changes (dirty state)
 
 **REQ-016.13** The dev mode section MUST document the dev-mode convention:
+
 - `ks build` / `ks update --dev` rebuilds home-manager profiles only (fast)
 - `ks build --lock` / `ks update` (default) performs full system rebuild
 - Lock flow: commit + push keystone → lock flake → build → push nixos-config

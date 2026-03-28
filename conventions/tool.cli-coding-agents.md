@@ -28,6 +28,7 @@ tool loads conventions natively (without prompt injection).
 - **Auto memory**: `~/.claude/projects/<project>/memory/MEMORY.md` — Claude writes this itself; first 200 lines loaded per session
 
 **Keystone generates**:
+
 - `~/.claude/CLAUDE.md` — system-wide conventions from `keystone-conventions` derivation
 - `~/.claude.json` — MCP server configs (deepwork, chrome-devtools, grafana)
 - `.claude/rules/` — not generated (project-specific, not keystone's concern)
@@ -45,6 +46,7 @@ tool loads conventions natively (without prompt injection).
 - **Configurable filenames**: `settings.json` → `context.fileName` array can include `["AGENTS.md", "CONTEXT.md", "GEMINI.md"]`
 
 **Keystone generates**:
+
 - `~/.gemini/GEMINI.md` — system-wide conventions from `keystone-conventions` derivation
 - `~/.gemini/settings.json` — MCP server configs + context settings
 
@@ -61,6 +63,7 @@ tool loads conventions natively (without prompt injection).
 - **Profile switching**: `CODEX_HOME=$(pwd)/.codex codex exec "command"`
 
 **Keystone generates**:
+
 - `~/.codex/AGENTS.md` — system-wide conventions (note: Codex calls this `instructions.md` in some versions; use `AGENTS.md` for compatibility)
 - `~/.codex/config.toml` — managed MCP server configs, merged with the user's existing Codex settings
 - `~/.codex/skills/` — Codex-native skills generated from keystone workflow command templates
@@ -84,6 +87,7 @@ appearing instantly through out-of-store symlinks.
 - **MCP config**: `~/.config/opencode/opencode.json`
 
 **Keystone generates**:
+
 - `~/.config/opencode/AGENTS.md` — system-wide conventions
 - `~/.config/opencode/opencode.json` — MCP server configs
 
@@ -108,18 +112,19 @@ when OpenCode-specific configuration is needed.
 - **Priority**: System > Repository > Organization agents
 
 **Keystone generates**:
+
 - Not currently provisioned by keystone (Copilot is a GitHub-hosted service, not a local CLI tool packaged by keystone)
 - Project-level `AGENTS.md` at repo root is read by Copilot automatically
 
 ## Summary Table
 
-| Tool | User Instruction File | Project Instruction File | MCP Config |
-|------|----------------------|--------------------------|------------|
-| Claude Code | `~/.claude/CLAUDE.md` | `./CLAUDE.md` or `./.claude/CLAUDE.md` | `~/.claude.json` |
-| Gemini CLI | `~/.gemini/GEMINI.md` | `./GEMINI.md` | `~/.gemini/settings.json` |
-| Codex | `~/.codex/AGENTS.md` | `./AGENTS.md` | `~/.codex/config.toml` |
-| OpenCode | `~/.config/opencode/AGENTS.md` | `./AGENTS.md` | `~/.config/opencode/opencode.json` |
-| Copilot CLI | `~/.copilot/agents/*.md` | `.github/copilot-instructions.md` + `AGENTS.md` | `~/.copilot/mcp-config.json` |
+| Tool        | User Instruction File          | Project Instruction File                        | MCP Config                         |
+| ----------- | ------------------------------ | ----------------------------------------------- | ---------------------------------- |
+| Claude Code | `~/.claude/CLAUDE.md`          | `./CLAUDE.md` or `./.claude/CLAUDE.md`          | `~/.claude.json`                   |
+| Gemini CLI  | `~/.gemini/GEMINI.md`          | `./GEMINI.md`                                   | `~/.gemini/settings.json`          |
+| Codex       | `~/.codex/AGENTS.md`           | `./AGENTS.md`                                   | `~/.codex/config.toml`             |
+| OpenCode    | `~/.config/opencode/AGENTS.md` | `./AGENTS.md`                                   | `~/.config/opencode/opencode.json` |
+| Copilot CLI | `~/.copilot/agents/*.md`       | `.github/copilot-instructions.md` + `AGENTS.md` | `~/.copilot/mcp-config.json`       |
 
 ## Keystone Module Responsibilities
 

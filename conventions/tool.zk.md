@@ -1,4 +1,3 @@
-
 ## Zk (Zettelkasten CLI)
 
 ## Notebook Initialization

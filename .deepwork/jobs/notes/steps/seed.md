@@ -13,6 +13,7 @@ Create initial Maps of Content (index notes) for the notebook's primary topics.
    - If no context is available, create a minimal set: one index note for "Getting Started"
 
 2. For each topic, create an index note:
+
    ```bash
    zk new index/ --title "<Topic Name>" --no-input --print-path
    ```
@@ -33,8 +34,8 @@ Write `seed_report.md`:
 
 ## Index Notes Created
 
-| ID | Title | File |
-|----|-------|------|
+| ID           | Title               | File                                      |
+| ------------ | ------------------- | ----------------------------------------- |
 | 202603201430 | NixOS Configuration | index/202603201430 nixos-configuration.md |
-| 202603201431 | Infrastructure | index/202603201431 infrastructure.md |
+| 202603201431 | Infrastructure      | index/202603201431 infrastructure.md      |
 ```

@@ -48,6 +48,7 @@ Identify the platform, verify CLI authentication, determine the default branch, 
 # Platform Context
 
 ## Platform
+
 - **Platform**: [github | forgejo]
 - **Repository**: [owner/repo]
 - **Default Branch**: [main | master | etc.]
@@ -57,20 +58,20 @@ Identify the platform, verify CLI authentication, determine the default branch, 
 ## Existing Labels
 
 | Name | Color | Description |
-|------|-------|-------------|
-| ... | ... | ... |
+| ---- | ----- | ----------- |
+| ...  | ...   | ...         |
 
 ## Milestones
 
 | Title | Number | State | Open | Closed |
-|-------|--------|-------|------|--------|
-| ... | ... | ... | ... | ... |
+| ----- | ------ | ----- | ---- | ------ |
+| ...   | ...    | ...   | ...  | ...    |
 
 ## Boards (GitHub only)
 
 | Title | Number | URL |
-|-------|--------|-----|
-| ... | ... | ... |
+| ----- | ------ | --- |
+| ...   | ...    | ... |
 
 [Or "N/A — Forgejo does not support project boards via API"]
 ```

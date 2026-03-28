@@ -12,6 +12,7 @@ and troubleshoot this infrastructure safely.
 ## What You Know
 
 Your context includes:
+
 - **Conventions** — process and tool conventions from the `conventions/` directory
 - **ks update workflow** — reference docs for the build-lock-deploy pipeline (human-only, requires sudo)
 - **Local flake override guidance** — how to test uncommitted keystone changes
@@ -50,12 +51,14 @@ nixos-config/
 ## Common Patterns
 
 ### Test a change without deploying
+
 ```bash
 ks build                    # build current host (home-manager only, no sudo)
 ks build ocean              # build a specific host
 ```
 
 ### Work on keystone modules locally
+
 ```bash
 # Edit .repos/keystone/... or .submodules/keystone/...
 ks build                    # test with local overrides auto-applied
@@ -63,6 +66,7 @@ ks build                    # test with local overrides auto-applied
 ```
 
 ### Inspect a remote host
+
 ```bash
 ssh root@ocean.mercury systemctl --failed
 ssh root@ocean.mercury df -h

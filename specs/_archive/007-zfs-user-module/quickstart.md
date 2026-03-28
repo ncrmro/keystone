@@ -35,6 +35,7 @@ Create a single user with ZFS-backed home directory:
 ```
 
 **What this does:**
+
 - Creates user `alice` with UID 1000
 - Creates ZFS dataset at `rpool/crypt/home/alice`
 - Mounts dataset at `/home/alice`
@@ -181,6 +182,7 @@ sudo zfs mount rpool/crypt/home/alice/documents
 ```
 
 Alternatively, if you create without `canmount=off`, the dataset will be created but you'll see:
+
 ```
 filesystem successfully created, but it may only be mounted by root
 ```
@@ -225,6 +227,7 @@ zfs list -H -o name -t snapshot -S creation | grep "alice@" | tail -n +8 | xargs
 ```
 
 Add to crontab:
+
 ```bash
 crontab -e
 
@@ -394,6 +397,7 @@ zfs destroy rpool/crypt/home/alice/test
 **Cause:** zfs-user-datasets service didn't run or failed
 
 **Solution:**
+
 ```bash
 # Check service status
 systemctl status zfs-user-datasets.service
@@ -412,6 +416,7 @@ zfs list rpool/crypt/home
 **Cause:** Delegated permissions not granted
 
 **Solution:**
+
 ```bash
 # Check permissions
 zfs allow rpool/crypt/home/alice
@@ -429,6 +434,7 @@ zfs allow -u alice \
 **Cause:** This is expected! Users can only destroy descendants, not the parent.
 
 **Solution:** This is by design for safety. To delete the parent, an administrator must do it:
+
 ```bash
 # As root
 zfs destroy -r rpool/crypt/home/alice
@@ -496,11 +502,13 @@ zfs destroy -r rpool/crypt/home/alice
 If you have existing users and want to migrate to ZFS datasets:
 
 1. **Backup existing home directories:**
+
    ```bash
    tar czf /root/home-backup.tar.gz /home
    ```
 
 2. **Add module to configuration:**
+
    ```nix
    keystone.zfsUsers.enable = true;
    keystone.zfsUsers.users.alice = {
@@ -511,6 +519,7 @@ If you have existing users and want to migrate to ZFS datasets:
    ```
 
 3. **Before rebuilding, manually create dataset:**
+
    ```bash
    # Move existing home
    mv /home/alice /home/alice.old
@@ -526,6 +535,7 @@ If you have existing users and want to migrate to ZFS datasets:
    ```
 
 4. **Rebuild system:**
+
    ```bash
    nixos-rebuild switch
    ```
@@ -542,12 +552,14 @@ If you have existing users and want to migrate to ZFS datasets:
 To remove the module and revert to standard home directories:
 
 1. **Backup datasets:**
+
    ```bash
    zfs snapshot -r rpool/crypt/home@before-removal
    zfs send -R rpool/crypt/home@before-removal > /root/zfs-home-backup.zfs
    ```
 
 2. **Remove module from configuration:**
+
    ```nix
    # Comment out or remove:
    # keystone.zfsUsers.enable = true;
@@ -562,6 +574,7 @@ To remove the module and revert to standard home directories:
    ```
 
 3. **Rebuild (will NOT delete datasets):**
+
    ```bash
    nixos-rebuild switch
    ```
@@ -578,6 +591,7 @@ To remove the module and revert to standard home directories:
 ### Password Management
 
 ✅ **DO:** Use hashed passwords in production:
+
 ```bash
 # Generate hashed password
 mkpasswd -m sha-512
@@ -609,6 +623,7 @@ hashedPassword = "$6$rounds=656000$...";
 - **Before Major Changes:** Manual snapshots
 
 Example automation:
+
 ```bash
 #!/bin/bash
 # /etc/cron.daily/zfs-snapshot-homes

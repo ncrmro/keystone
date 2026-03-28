@@ -1,4 +1,3 @@
-
 ## Knowledge Management
 
 ## Purpose
@@ -9,16 +8,16 @@ This convention defines a Zettelkasten-based knowledge management system for key
 
 1. Every markdown note MUST belong to exactly one type, stored in its corresponding directory.
 
-| Type | Directory | Purpose |
-|------|-----------|---------|
-| fleeting | `inbox/` | Raw captures, quick thoughts, unprocessed session output |
-| literature | `literature/` | Summaries of external sources written in your own words |
-| permanent | `notes/` | Distilled, atomic ideas — one idea per note |
-| decision | `decisions/` | Architectural Decision Records (ADRs) with context, decision, consequences |
-| report | `docs/reports/` | Time-stamped operational, research, or workflow reports |
-| presentation | `docs/presentations/` | Slidev decks and other Markdown-native presentation artifacts |
-| index | `index/` | Maps of Content — curated entry points linking to related permanent notes |
-| archive | `archive/` | Archived project notes retained in the zk graph |
+| Type         | Directory             | Purpose                                                                    |
+| ------------ | --------------------- | -------------------------------------------------------------------------- |
+| fleeting     | `inbox/`              | Raw captures, quick thoughts, unprocessed session output                   |
+| literature   | `literature/`         | Summaries of external sources written in your own words                    |
+| permanent    | `notes/`              | Distilled, atomic ideas — one idea per note                                |
+| decision     | `decisions/`          | Architectural Decision Records (ADRs) with context, decision, consequences |
+| report       | `docs/reports/`       | Time-stamped operational, research, or workflow reports                    |
+| presentation | `docs/presentations/` | Slidev decks and other Markdown-native presentation artifacts              |
+| index        | `index/`              | Maps of Content — curated entry points linking to related permanent notes  |
+| archive      | `archive/`            | Archived project notes retained in the zk graph                            |
 
 2. Fleeting notes are ephemeral — they MUST be processed (promoted or discarded) within a few days.
 3. Literature notes MUST be written in your own words to verify understanding — do not copy-paste.
@@ -50,31 +49,31 @@ tags: [zfs, storage]
 ---
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | Yes | 12-digit timestamp ID |
-| `title` | Yes | Human-readable title |
-| `type` | Yes | `fleeting`, `literature`, `permanent`, `decision`, `report`, `presentation`, `index`, or `archive` |
-| `created` | Yes | ISO 8601 creation timestamp |
-| `author` | Yes | Unix username of creator (e.g., `ncrmro`, `agent-drago`) |
-| `tags` | Yes | List of lowercase hyphenated tags |
+| Field     | Required | Description                                                                                        |
+| --------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `id`      | Yes      | 12-digit timestamp ID                                                                              |
+| `title`   | Yes      | Human-readable title                                                                               |
+| `type`    | Yes      | `fleeting`, `literature`, `permanent`, `decision`, `report`, `presentation`, `index`, or `archive` |
+| `created` | Yes      | ISO 8601 creation timestamp                                                                        |
+| `author`  | Yes      | Unix username of creator (e.g., `ncrmro`, `agent-drago`)                                           |
+| `tags`    | Yes      | List of lowercase hyphenated tags                                                                  |
 
 13. Type-specific optional fields:
 
-| Field | Types | Description |
-|-------|-------|-------------|
-| `source` | literature | Title/author of external source |
-| `source_url` | literature | URL of external source |
-| `status` | decision | `proposed`, `accepted`, `deprecated`, `superseded` |
-| `supersedes` | decision | ID of the decision this one replaces |
-| `project` | any | Project name for cross-reference |
-| `report_kind` | report | Canonical report kind, e.g. `fleet-health` |
-| `previous_report` | report | Prior report note ID in the same chain |
-| `source_ref` | report | Workflow, command, file, or source that generated the report |
-| `presentation_kind` | presentation | Canonical deck kind, e.g. `architecture-briefing` |
-| `archived_at` | archive | ISO 8601 timestamp when the note was archived |
-| `archived_reason` | archive | Why the note moved out of the active workspace |
-| `archived_from` | archive | Original group before archival |
+| Field               | Types        | Description                                                  |
+| ------------------- | ------------ | ------------------------------------------------------------ |
+| `source`            | literature   | Title/author of external source                              |
+| `source_url`        | literature   | URL of external source                                       |
+| `status`            | decision     | `proposed`, `accepted`, `deprecated`, `superseded`           |
+| `supersedes`        | decision     | ID of the decision this one replaces                         |
+| `project`           | any          | Project name for cross-reference                             |
+| `report_kind`       | report       | Canonical report kind, e.g. `fleet-health`                   |
+| `previous_report`   | report       | Prior report note ID in the same chain                       |
+| `source_ref`        | report       | Workflow, command, file, or source that generated the report |
+| `presentation_kind` | presentation | Canonical deck kind, e.g. `architecture-briefing`            |
+| `archived_at`       | archive      | ISO 8601 timestamp when the note was archived                |
+| `archived_reason`   | archive      | Why the note moved out of the active workspace               |
+| `archived_from`     | archive      | Original group before archival                               |
 
 ## Linking
 

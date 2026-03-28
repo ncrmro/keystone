@@ -8,6 +8,7 @@ Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
 
 ## Affected Modules
+
 - `flake.nix` — new `keystone-deepwork-jobs` derivation
 - `modules/terminal/deepwork.nix` — extend `DEEPWORK_ADDITIONAL_JOBS_FOLDERS`
 - `.deepwork/jobs/` — new directory for consolidated jobs

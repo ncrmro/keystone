@@ -23,7 +23,7 @@ This feature implements custom Secure Boot key generation and enrollment for the
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### I. Declarative Infrastructure ✅ PASS
 
@@ -74,21 +74,25 @@ This feature implements custom Secure Boot key generation and enrollment for the
 ### NixOS-Specific Constraints ✅ PASS
 
 **Module Development Standards**:
+
 - Not applicable (shell scripts, not NixOS modules yet)
 - Future: Can be wrapped in NixOS module with `enable` option
 
 **Development Tooling** ✅ PASS:
+
 - Uses bin/virtual-machine for VM creation (per Constitution v1.0.1)
 - Integrates with bin/test-deployment for automated testing
 - Uses bin/build-iso for installer preparation
 - Follows standardized workflow patterns
 
 **Testing Requirements** ✅ PASS:
+
 - Build-time validation: scripts must execute without errors
 - Boot testing: automated verification in bin/test-deployment
 - Regression tests: Secure Boot status verification (FR-009, FR-010)
 
 **Documentation Standards**:
+
 - Deferred to implementation phase (quickstart.md will be generated in Phase 1)
 
 ### Summary
@@ -134,7 +138,7 @@ vms/
 
 ## Complexity Tracking
 
-*No constitutional violations - section not applicable.*
+_No constitutional violations - section not applicable._
 
 ---
 
@@ -154,6 +158,7 @@ All technical unknowns resolved through web research and lanzaboote documentatio
 5. **Test Integration**: Extend bin/test-deployment with SSH-based verification
 
 **Key Decisions Documented**:
+
 - Decision 1: Use sbctl (not efitools or direct UEFI manipulation)
 - Decision 2: Store keys in /var/lib/sbctl
 - Decision 3: NO Microsoft certificates in VM tests (sovereignty principle)
@@ -162,6 +167,7 @@ All technical unknowns resolved through web research and lanzaboote documentatio
 - Decision 6: Generate keys during deployment (fresh keys per test)
 
 **Performance Analysis**:
+
 - Key generation: 2-5 seconds (within SC-001: <30s)
 - Enrollment: 5-10 seconds (within SC-002: <60s)
 - Verification: <1 second (within SC-003: immediate)
@@ -176,18 +182,21 @@ All technical unknowns resolved through web research and lanzaboote documentatio
 ### Design Artifacts
 
 **data-model.md**: Defines 4 key entities
+
 1. **SecureBootKeyPair**: Cryptographic key files (PK/KEK/db)
 2. **FirmwareVariable**: UEFI variables (SetupMode, SecureBoot, key databases)
 3. **SecureBootStatus**: Aggregated firmware state (Setup/User/Disabled)
 4. **KeyEnrollmentOperation**: Transaction representing enrollment workflow
 
 **contracts/script-interfaces.md**: Defines 4 interface contracts
+
 1. **secureboot-generate-keys.sh**: Generate PK/KEK/db using sbctl
 2. **secureboot-enroll-keys.sh**: Enroll keys in firmware (Setup → User Mode)
 3. **secureboot-verify.sh**: Verify status with JSON/text output
 4. **bin/test-deployment integration**: Python function for automated testing
 
 **quickstart.md**: Developer guide covering
+
 - Prerequisites (NixOS, libvirtd, bin/virtual-machine)
 - Step-by-step workflow (VM creation → key generation → enrollment → verification)
 - Automated testing with bin/test-deployment
@@ -197,6 +206,7 @@ All technical unknowns resolved through web research and lanzaboote documentatio
 ### Agent Context Update
 
 Updated `CLAUDE.md` with:
+
 - Language: Python 3.x (test scripts), Bash (enrollment scripts), NixOS
 - Dependencies: sbctl, efivar/bootctl, OVMF
 - Storage: Filesystem (/var/lib/sbctl), UEFI NVRAM
@@ -208,6 +218,7 @@ Updated `CLAUDE.md` with:
 **Note**: This plan document stops after Phase 1. Task generation is handled by the `/speckit.tasks` command (separate workflow).
 
 **Next Steps for Implementation**:
+
 1. Run `/speckit.tasks` to generate dependency-ordered tasks.md
 2. Implement scripts per contracts/script-interfaces.md
 3. Integrate verification into bin/test-deployment per Contract 4
@@ -220,6 +231,7 @@ Updated `CLAUDE.md` with:
 **Planning Status**: ✅ COMPLETE (Phases 0-1)
 
 **Deliverables**:
+
 - ✅ Technical Context defined (NixOS, sbctl, Python, Bash)
 - ✅ Constitution Check passed (all 5 principles + NixOS constraints)
 - ✅ Project Structure documented (scripts/, bin/, vms/)
@@ -233,4 +245,3 @@ Updated `CLAUDE.md` with:
 
 **Branch**: `004-specify-scripts-bash`
 **Specification**: `specs/004-specify-scripts-bash/spec.md`
-

@@ -41,15 +41,18 @@ Using the event requirements document, search for and evaluate options across ve
 A structured document presenting all researched options.
 
 **Structure**:
+
 ```markdown
 # Event Options Research
 
 ## Requirements Summary
+
 [Brief recap of key requirements from the input document]
 
 ## Venue Options
 
 ### Option 1: [Venue Name]
+
 - **Address**: [full address]
 - **Capacity**: [number]
 - **Estimated Cost**: [price range]
@@ -59,14 +62,17 @@ A structured document presenting all researched options.
 - **Source**: [URL or reference]
 
 ### Option 2: [Venue Name]
+
 [same structure]
 
 ### Option 3: [Venue Name]
+
 [same structure]
 
 ## Catering Options
 
 ### Option 1: [Caterer/Service Name]
+
 - **Cuisine**: [type]
 - **Per-Person Cost**: [estimate]
 - **Dietary Accommodations**: [what they handle]
@@ -77,22 +83,25 @@ A structured document presenting all researched options.
 ## Logistics
 
 ### Transportation
+
 [Options and costs]
 
 ### Accommodation
+
 [Options if needed]
 
 ### Equipment Rental
+
 [AV or special equipment if not included with venue]
 
 ## Budget Summary
 
-| Category | Low Estimate | High Estimate |
-|----------|-------------|---------------|
-| Venue | $X | $Y |
-| Catering | $X | $Y |
-| Logistics | $X | $Y |
-| **Total** | **$X** | **$Y** |
+| Category  | Low Estimate | High Estimate |
+| --------- | ------------ | ------------- |
+| Venue     | $X           | $Y            |
+| Catering  | $X           | $Y            |
+| Logistics | $X           | $Y            |
+| **Total** | **$X**       | **$Y**        |
 ```
 
 ## Quality Criteria

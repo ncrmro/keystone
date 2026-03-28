@@ -6,19 +6,19 @@ The TUI follows the same architecture as `packages/keystone-ha/tui/`: a main eve
 
 ## Library Choices
 
-| Library | Version | Purpose |
-|---------|---------|---------|
-| ratatui | 0.29 | TUI framework (proven in keystone-ha/tui) |
-| crossterm | 0.28 | Terminal backend |
-| tokio | 1 | Async runtime for subprocesses |
-| clap | 4 | CLI argument parsing |
-| git2 | 0.19 | Git operations (clone, commit, push, diff) |
-| ssh-key | 0.6 | SSH key parsing and generation |
-| rnix | 0.11 | Nix file parsing and AST manipulation |
-| age | 0.11 | agenix-compatible encryption/decryption |
-| directories | 6 | XDG config/data paths |
-| serde + toml | 1 / 0.8 | Config serialization |
-| anyhow + thiserror | 1 / 2 | Error handling |
+| Library            | Version | Purpose                                    |
+| ------------------ | ------- | ------------------------------------------ |
+| ratatui            | 0.29    | TUI framework (proven in keystone-ha/tui)  |
+| crossterm          | 0.28    | Terminal backend                           |
+| tokio              | 1       | Async runtime for subprocesses             |
+| clap               | 4       | CLI argument parsing                       |
+| git2               | 0.19    | Git operations (clone, commit, push, diff) |
+| ssh-key            | 0.6     | SSH key parsing and generation             |
+| rnix               | 0.11    | Nix file parsing and AST manipulation      |
+| age                | 0.11    | agenix-compatible encryption/decryption    |
+| directories        | 6       | XDG config/data paths                      |
+| serde + toml       | 1 / 0.8 | Config serialization                       |
+| anyhow + thiserror | 1 / 2   | Error handling                             |
 
 ### FIDO2
 
@@ -51,6 +51,7 @@ src/
 ## Reference Implementation
 
 The `packages/keystone-ha/tui/` crate provides the pattern for:
+
 - Terminal setup/teardown with panic hook (`src/main.rs`)
 - App state with screen enum (`src/app.rs`)
 - Event handling with crossterm (`src/input.rs`)

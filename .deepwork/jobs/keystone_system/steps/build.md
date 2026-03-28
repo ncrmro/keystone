@@ -43,30 +43,34 @@ Run targeted, fast verification first. Escalate to broader builds only when the 
 # Build Result
 
 ## Change Scope
+
 - **Type**: [OS-level | home-manager-only | both]
 - **Modified files**: [list of key files changed]
 
 ## Targeted Checks
 
-| Check | Status | Time |
-|-------|--------|------|
-| shellcheck [file] | PASS/FAIL/N/A | Xs |
-| nix parse [file] | PASS/FAIL | Xs |
-| module test [test] | PASS/FAIL/N/A | Xs |
+| Check              | Status        | Time |
+| ------------------ | ------------- | ---- |
+| shellcheck [file]  | PASS/FAIL/N/A | Xs   |
+| nix parse [file]   | PASS/FAIL     | Xs   |
+| module test [test] | PASS/FAIL/N/A | Xs   |
 
 ## Evaluation Check
+
 - **Command**: `nix flake check --no-build`
 - **Status**: [PASS | FAIL]
 - **Time**: [Xs]
 - **Errors**: [none | error details]
 
 ## Build Check
+
 - **Command**: [ks build | skipped — OS changes build at deploy]
 - **Status**: [PASS | FAIL | SKIPPED]
 - **Time**: [Xs]
 - **Warnings**: [notable warnings, or "none beyond upstream deprecations"]
 
 ## Decision
+
 - **Proceed to merge**: [yes | no — loop back to implement]
 ```
 

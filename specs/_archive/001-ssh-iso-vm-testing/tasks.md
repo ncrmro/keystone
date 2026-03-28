@@ -8,11 +8,13 @@
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
 ## Format: `[ID] [P?] [Story] Description`
+
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
 - Include exact file paths in descriptions
 
 ## Path Conventions
+
 - Makefile targets at repository root
 - Shell scripts in `bin/` directory (if needed for complex logic)
 - VM artifacts in `vms/` directory
@@ -23,9 +25,9 @@
 
 **Purpose**: Verify existing infrastructure and prepare for new targets
 
-- [X] T001 Verify existing bin/build-iso script functionality
-- [X] T002 Verify existing vms/server.conf quickemu configuration (created)
-- [X] T003 Test existing make vm-server target functionality (implemented)
+- [x] T001 Verify existing bin/build-iso script functionality
+- [x] T002 Verify existing vms/server.conf quickemu configuration (created)
+- [x] T003 Test existing make vm-server target functionality (implemented)
 
 ---
 
@@ -35,8 +37,8 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [X] T004 Add quickemu prerequisite check to Makefile
-- [X] T005 Verify SSH port 22220 availability in environment
+- [x] T004 Add quickemu prerequisite check to Makefile
+- [x] T005 Verify SSH port 22220 availability in environment
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -50,10 +52,10 @@
 
 ### Implementation for User Story 1
 
-- [X] T006 [US1] Add vm-test target to Makefile with ISO build integration
-- [X] T007 [US1] Implement VM launch logic in vm-test target in Makefile
-- [X] T008 [US1] Add SSH readiness check loop to vm-test target in Makefile
-- [X] T009 [US1] Add SSH connection display logic to vm-test target in Makefile
+- [x] T006 [US1] Add vm-test target to Makefile with ISO build integration
+- [x] T007 [US1] Implement VM launch logic in vm-test target in Makefile
+- [x] T008 [US1] Add SSH readiness check loop to vm-test target in Makefile
+- [x] T009 [US1] Add SSH connection display logic to vm-test target in Makefile
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -67,10 +69,10 @@
 
 ### Implementation for User Story 2
 
-- [X] T010 [P] [US2] Add vm-stop target to Makefile with pkill logic
-- [X] T011 [P] [US2] Add vm-clean target to Makefile for artifact cleanup
-- [X] T012 [US2] Add error handling for VM already running in vm-test target
-- [X] T013 [US2] Add force cleanup option handling to vm-clean target in Makefile
+- [x] T010 [P] [US2] Add vm-stop target to Makefile with pkill logic
+- [x] T011 [P] [US2] Add vm-clean target to Makefile for artifact cleanup
+- [x] T012 [US2] Add error handling for VM already running in vm-test target
+- [x] T013 [US2] Add force cleanup option handling to vm-clean target in Makefile
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -84,9 +86,9 @@
 
 ### Implementation for User Story 3
 
-- [X] T014 [US3] Add vm-ssh target to Makefile with connection info display
-- [X] T015 [US3] Add environment variable support for custom SSH port in vm-ssh target
-- [X] T016 [US3] Update vm-test target to reference vm-ssh for connection display
+- [x] T014 [US3] Add vm-ssh target to Makefile with connection info display
+- [x] T015 [US3] Add environment variable support for custom SSH port in vm-ssh target
+- [x] T016 [US3] Update vm-test target to reference vm-ssh for connection display
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -96,10 +98,10 @@
 
 **Purpose**: Documentation and improvements that affect multiple user stories
 
-- [X] T017 [P] Update README.md with VM testing workflow documentation
-- [X] T018 [P] Add help text to each Makefile target using ## comments
-- [X] T019 Add .PHONY declarations for all new Makefile targets
-- [X] T020 Test complete workflow end-to-end with all targets
+- [x] T017 [P] Update README.md with VM testing workflow documentation
+- [x] T018 [P] Add help text to each Makefile target using ## comments
+- [x] T019 Add .PHONY declarations for all new Makefile targets
+- [x] T020 Test complete workflow end-to-end with all targets
 
 ---
 

@@ -8,11 +8,13 @@ Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
 
 ## Stories Covered
+
 - US-001: Create named terminal sessions per project
 - US-002: Resume existing terminal sessions
 - US-003: List terminal sessions by project
 
 ## Affected Modules
+
 - `packages/pz/pz.sh` — new CLI script
 - `packages/pz/default.nix` — Nix package definition
 - `modules/terminal/projects.nix` — new home-manager module (shared with REQ-012)
@@ -23,25 +25,27 @@ MAY, REQUIRED, OPTIONAL).
 ## Data Models
 
 ### Project
+
 Discovered from active hub notes via zk per REQ-010.1–010.4.
 
-| Field | Type | Source | Notes |
-|-------|------|--------|-------|
-| slug | string | Hub note frontmatter/tag | Lowercase, hyphen-separated (REQ-010.2) |
-| hub_path | string | zk note path | Active `index/` hub note |
-| path | string | Notes root or legacy project dir | Session fallback cwd when no repo/worktree is selected |
-| readme | string | Hub note or legacy project README | Project context file |
-| repos | list[string] | Hub note metadata | Full remote URLs from `repos:` |
+| Field    | Type         | Source                            | Notes                                                  |
+| -------- | ------------ | --------------------------------- | ------------------------------------------------------ |
+| slug     | string       | Hub note frontmatter/tag          | Lowercase, hyphen-separated (REQ-010.2)                |
+| hub_path | string       | zk note path                      | Active `index/` hub note                               |
+| path     | string       | Notes root or legacy project dir  | Session fallback cwd when no repo/worktree is selected |
+| readme   | string       | Hub note or legacy project README | Project context file                                   |
+| repos    | list[string] | Hub note metadata                 | Full remote URLs from `repos:`                         |
 
 ### Session
+
 Derived from Zellij session state.
 
-| Field | Type | Source | Notes |
-|-------|------|--------|-------|
-| name | string | Zellij session name | Format: `{project-slug}` or `{project-slug}-{session-slug}` |
-| project_slug | string | Extracted from session name | Project identifier |
-| session_slug | string | Extracted from session name | Purpose identifier (default: `main`) |
-| status | enum | Zellij | `attached`, `detached`, or `exited` |
+| Field        | Type   | Source                      | Notes                                                       |
+| ------------ | ------ | --------------------------- | ----------------------------------------------------------- |
+| name         | string | Zellij session name         | Format: `{project-slug}` or `{project-slug}-{session-slug}` |
+| project_slug | string | Extracted from session name | Project identifier                                          |
+| session_slug | string | Extracted from session name | Purpose identifier (default: `main`)                        |
+| status       | enum   | Zellij                      | `attached`, `detached`, or `exited`                         |
 
 ## CLI Contract
 
@@ -50,6 +54,7 @@ Derived from Zellij session state.
 Create or attach to a named project Zellij session.
 
 **Arguments**:
+
 - `<project-slug>` — the project to open (required)
 - `<session-slug>` — purpose identifier for the session (optional; default: `main`)
 
@@ -59,6 +64,7 @@ named sessions per project. This naming scheme is also adopted by `agentctl` (RE
 to ensure consistent session identification across tools.
 
 **Behavior**:
+
 1. The command MUST validate that `{project-slug}` is discoverable from an active hub note via `zk --notebook-dir {notes_path} list index/ --tag "status/active" --format json`
 2. If a Zellij session named `{project-slug}` exists for the default session or `{project-slug}-{session-slug}` exists for a named session, the command MUST attach to it
 3. If no session exists, the command MUST create a new Zellij session using that same naming rule
@@ -70,10 +76,12 @@ to ensure consistent session identification across tools.
 Open a project session rooted at a specific repo or repo worktree.
 
 **Arguments**:
+
 - `--repo <owner/repo>` — normalized repo identity derived from the hub note `repos:` URLs
 - `--worktree <branch>` — branch/worktree name to open under that repo
 
 **Behavior**:
+
 1. `pz` MUST normalize the hub note `repos:` URLs into canonical `owner/repo` identities and match `--repo` against that set
 2. If `--repo` is omitted and the project declares exactly one repo, `pz` SHOULD use that repo automatically
 3. If `--repo` is omitted and the project declares more than one repo, `pz` MUST fail with a clear error listing the available repo identities
@@ -85,11 +93,13 @@ Open a project session rooted at a specific repo or repo worktree.
 9. The command MUST export repo and worktree context environment variables for the session
 
 **Exit codes**:
+
 - `0` — session attached or created successfully
 - `1` — project slug not found (no matching directory)
 - `2` — Zellij not available or session creation failed
 
 **Error output**:
+
 - Missing project: `error: project '{project-slug}' is not an active project hub in {notes_path}`
 - Missing README: `error: project '{project-slug}' has no README.md`
 
@@ -98,6 +108,7 @@ Open a project session rooted at a specific repo or repo worktree.
 List sessions filtered by project.
 
 **Behavior**:
+
 1. The command MUST discover valid project slugs from active hub notes via `zk --notebook-dir {notes_path} list index/ --tag "status/active" --format json`
 2. The command MUST list only Zellij sessions whose names exactly match a discovered project slug or begin with `{project-slug}-`
 3. When `--project <project-slug>` is provided, the command MUST show only sessions whose discovered project slug matches that value
@@ -106,6 +117,7 @@ List sessions filtered by project.
 6. The command MUST exit with code `0` even when no sessions are found (empty list)
 
 **Output format** (stdout, tab-separated):
+
 ```
 PROJECT     SESSION     STATUS
 backend     main        attached
@@ -118,6 +130,7 @@ frontend    main        detached
 Destroy a project session.
 
 **Behavior**:
+
 1. The command MUST kill the Zellij session named `{project-slug}` for the default session or `{project-slug}-{session-slug}` for a named session
 2. When `<session-slug>` is omitted, the command MUST kill the default session and all named sessions matching `{project-slug}-*`
 3. If the session does not exist, the command MUST print a warning and exit `0`
@@ -150,16 +163,18 @@ Destroy a project session.
 ### Environment Variables
 
 11. Inside a `pz` session, the following environment variables MUST be set (REQ-010.9):
-   - `PROJECT_NAME` — the project slug
-   - `PROJECT_PATH` — absolute path to the resolved project cwd
-   - `PROJECT_README` — path to the hub note or legacy `README.md`
-   - `VAULT_ROOT` — the notes repo root (`keystone.notes.path`)
-   - `CLAUDE_CONFIG_DIR` — project-scoped Claude configuration directory (`{notes_path}/.claude-projects/{project-slug}/`)
-   - `AGENTS_MD` — path to the aggregated agents context file for the project (REQ-010.12)
-   - `PROJECT_REPO` — normalized `owner/repo` for the selected repo, when one is selected
-   - `PROJECT_REPO_URL` — original remote URL for the selected repo, when one is selected
-   - `PROJECT_WORKTREE_BRANCH` — worktree branch name, when one is selected
-   - `PROJECT_WORKTREE_PATH` — resolved worktree path, when one is selected
+
+- `PROJECT_NAME` — the project slug
+- `PROJECT_PATH` — absolute path to the resolved project cwd
+- `PROJECT_README` — path to the hub note or legacy `README.md`
+- `VAULT_ROOT` — the notes repo root (`keystone.notes.path`)
+- `CLAUDE_CONFIG_DIR` — project-scoped Claude configuration directory (`{notes_path}/.claude-projects/{project-slug}/`)
+- `AGENTS_MD` — path to the aggregated agents context file for the project (REQ-010.12)
+- `PROJECT_REPO` — normalized `owner/repo` for the selected repo, when one is selected
+- `PROJECT_REPO_URL` — original remote URL for the selected repo, when one is selected
+- `PROJECT_WORKTREE_BRANCH` — worktree branch name, when one is selected
+- `PROJECT_WORKTREE_PATH` — resolved worktree path, when one is selected
+
 12. Environment variables MUST be available to all processes spawned within the session.
 
 ### Shell Completion

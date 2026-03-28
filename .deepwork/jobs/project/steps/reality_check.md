@@ -66,31 +66,37 @@ Read the state assessment and charter, then produce a dated success review repor
 
 ## KPI Scorecard
 
-| KPI | Current | Target | Progress | Trend |
-|-----|---------|--------|----------|-------|
+| KPI      | Current | Target   | Progress         | Trend                              |
+| -------- | ------- | -------- | ---------------- | ---------------------------------- |
 | [metric] | [value] | [target] | [% or indicator] | [improving / stagnant / declining] |
 
 ### KPI Analysis
+
 [2-3 sentences on overall KPI health. Flag any that are significantly off-target.]
 
 ## Goal Progress
 
 ### 1 Month — [on-track / at-risk / off-track]
+
 - [criterion 1]: [status with evidence]
 - [criterion 2]: [status with evidence]
 
 ### 6 Months — [on-track / at-risk / off-track]
+
 - [criterion 1]: [status with evidence]
 - [criterion 2]: [status with evidence]
 
 ### 1 Year — [on-track / at-risk / off-track]
+
 - [criterion 1]: [status with evidence]
 - [criterion 2]: [status with evidence]
 
 ### 5 Years — [on-track / at-risk / off-track]
+
 [Trajectory assessment — is current direction aligned?]
 
 ### 10 Years — [on-track / at-risk / off-track]
+
 [Vision alignment assessment]
 
 ## Business Thread Check
@@ -106,10 +112,12 @@ Flag specific concerns if the human appears to be losing the business thread.]
 **Confidence**: [high / medium / low]
 
 ### Reasoning
+
 [3-5 sentences explaining why this verdict was reached, citing specific KPI data,
 goal progress, and business thread observations.]
 
 ### What Would Change This Verdict
+
 [What data or events would shift the recommendation in either direction?
 e.g., "If MRR reaches $X in the next 2 months, upgrade to accelerate.
 If no customer signups in 60 days, consider pause."]

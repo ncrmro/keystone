@@ -55,6 +55,7 @@ project using the `portfolio/review_one` sub-workflow.
 Combined per-project status summaries from all sub-workflow runs.
 
 **Structure**:
+
 ```markdown
 # Per-Project Status Summaries
 
@@ -69,18 +70,22 @@ Combined per-project status summaries from all sub-workflow runs.
 **Status**: 🟡 At Risk
 
 ### Milestones
-| Milestone | Progress | Target Date |
-|-----------|----------|-------------|
-| Desktop Integration | 8/12 (67%) | 2026-04-01 |
+
+| Milestone           | Progress   | Target Date |
+| ------------------- | ---------- | ----------- |
+| Desktop Integration | 8/12 (67%) | 2026-04-01  |
 
 ### Recent Activity (30 days)
+
 - 23 commits across 3 PRs
 - Last commit: 2026-03-19
 
 ### Blockers
+
 - Installer TUI broken (PR #50)
 
 ### Next Actions
+
 1. Complete desktop integration milestone
 2. Fix installer TUI
 
@@ -97,6 +102,7 @@ Combined per-project status summaries from all sub-workflow runs.
 ## Failed Reviews
 
 ### some-project
+
 **Error**: Repository ncrmro/some-project not accessible via gh CLI
 ```
 

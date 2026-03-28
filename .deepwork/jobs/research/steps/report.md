@@ -9,7 +9,6 @@ Produce the final `README.md` research report with inline citations and key take
 ### Process
 
 1. **Read all inputs**
-
    - Read `research/[topic_slug]/scope.md` for metadata (type, depth, project, question)
    - Read `research/[topic_slug]/analysis.md` for synthesized findings and insights
    - Read `research/[topic_slug]/sources.md` for source details and URLs
@@ -17,7 +16,6 @@ Produce the final `README.md` research report with inline citations and key take
 2. **Write README.md**
 
    Structure the report as a polished, standalone document:
-
    - **Overview**: Research metadata (type, depth, project, date)
    - **Research Question**: Clear statement of what was investigated
    - **Findings**: Organized into logical sections, each citing sources with inline markdown links
