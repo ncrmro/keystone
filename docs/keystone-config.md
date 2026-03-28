@@ -5,7 +5,7 @@ description: Minimal keystone-config flake showing a realistic multi-host Keysto
 
 # Keystone Config
 
-Most Keystone setups start with a `keystone-config` repository.
+Most Keystone setups start with a `keystone-config` repository. It uses [Nix flakes](https://nixos.wiki/wiki/Flakes) for reproducible builds and [Home Manager](https://nix-community.github.io/home-manager/) for user environments.
 
 Create one from the template:
 

@@ -7,7 +7,7 @@ description: Overview of Keystone Desktop, including launchers, keybindings, and
 
 Keystone Desktop is the graphical layer of Keystone OS.
 
-It combines Hyprland, Walker, Waybar, Ghostty, notifications, screenshots, and
+It combines [Hyprland](https://wiki.hypr.land/Getting-Started/Installation/), [Walker](https://github.com/abenz1267/walker), [Waybar](https://github.com/Alexays/Waybar), [Ghostty](https://ghostty.org/docs), notifications, screenshots, and
 project-aware desktop navigation into a keyboard-first environment.
 
 ## Getting started

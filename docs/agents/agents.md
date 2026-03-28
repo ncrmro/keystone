@@ -123,7 +123,7 @@ before ingest and prioritization.
 Use this when you want to drive the agent directly instead of waiting for the
 next timer-based pickup.
 
-Open an interactive session as the agent:
+Open an interactive [Claude Code](https://docs.anthropic.com/en/docs/claude-code/getting-started) session as the agent:
 
 ```bash
 agentctl luce claude

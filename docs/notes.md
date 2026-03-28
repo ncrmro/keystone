@@ -188,9 +188,6 @@ URL instead of inventing a separate local-path convention.
 Use `zk edit` when the note already exists and you want to reopen it in your
 editor.
 
-<!-- TODO: Add a terminal screenshot showing `zk edit reports/<TAB>` path completion before the editor opens. -->
-<!-- TODO: Add a terminal screenshot showing `zk edit --interactive` with the fuzzy picker visible and a report selected. -->
-<!-- TODO: Add a short screenshot sequence showing the difference between editing a report note, a project hub note, and a durable idea note. -->
 
 ### Edit a report by path completion
 

@@ -17,16 +17,16 @@ keystone.terminal.enable = true;
 
 This installs and configures:
 
-- **Helix**: Modal text editor (default)
-- **Zsh**: Interactive shell with Starship prompt
-- **Zellij**: Terminal multiplexer
-- **Lazygit**: Git TUI
+- **[Helix](https://helix-editor.com/)**: Modal text editor (default)
+- **[Zsh](https://www.zsh.org/)**: Interactive shell with Starship prompt
+- **[Zellij](https://zellij.dev/documentation/)**: Terminal multiplexer
+- **[Lazygit](https://github.com/jesseduffield/lazygit)**: Git TUI
 - **Git**: Configured with LFS and sensible defaults
 - **Utilities**: `eza`, `ripgrep`, `htop`, `zoxide`, `direnv`, `yazi`
 
 ## Helix Editor
 
-Keystone configures [Helix](https://helix-editor.com/) as the default editor (`EDITOR` and `VISUAL` environment variables are set to `hx`).
+Keystone configures [Helix](https://helix-editor.com/) as the default editor (`EDITOR` and `VISUAL` environment variables are set to `hx`). New to Helix? Start with the [Basics guide](https://helix-editor.vercel.app/start-here/basics/) — it uses a modal editing model similar to Vim.
 
 ### Key Features
 

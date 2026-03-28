@@ -12,8 +12,6 @@ sessions in the right context.
 This page covers the current user workflow for project notes, repo roots,
 worktrees, and `pz`.
 
-<!-- TODO: Add terminal screenshots for `pz list`, `pz keystone`, and a repo worktree session once repo/worktree launch support lands. -->
-<!-- TODO: Add one screenshot per stable Zellij layout after the layout set and visual structure stop changing. -->
 
 ## Source of truth
 
