@@ -20,7 +20,7 @@ in
       subdomain = "journal";
       port = journalRemotePort;
       access = "tailscale";
-      maxBodySize = null;
+      maxBodySize = "0";
       websockets = false;
       registerDNS = true;
     };
