@@ -65,8 +65,12 @@ See `conventions/tool.himalaya.md` for full himalaya CLI reference.
 
 ## Age-YubiKey / hwrekey (`age-yubikey.nix`)
 
-The `hwrekey` workflow: detect YubiKey → match serial → `agenix --rekey` →
+The `hwrekey` workflow: detect YubiKey → match serial → selective rekey →
 commit+push secrets submodule → update parent flake input.
+
+By default, `hwrekey` only re-encrypts secrets whose recipients changed
+(comparing `secrets.nix` against `.recipients-hashes`). Use `--full` to
+force re-encryption of all secrets via `agenix --rekey`.
 
 Retries up to 3x with 3s backoff for pcscd contention. Requires `secretsFlakeInput`
 and `configRepoPath` options to be set.

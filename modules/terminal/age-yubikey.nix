@@ -21,8 +21,12 @@
 #
 # ## hwrekey
 #
+# By default, hwrekey only re-encrypts secrets whose recipients changed
+# (selective rekey). Use `--full` to force re-encryption of all secrets.
+#
 # ```bash
-# hwrekey -m "chore: add ocean host key"     # from anywhere (uses configRepoPath)
+# hwrekey -m "chore: add ocean host key"     # selective rekey (default)
+# hwrekey --full -m "chore: rekey all"       # force full rekey of all secrets
 # cd agenix-secrets && hwrekey -m "msg"      # also works from inside submodule
 # hwrekey                                    # rekey only (no secretsFlakeInput set)
 # hwrekey -h                                 # show usage
@@ -45,6 +49,12 @@ let
 
   hwrekeyScript = pkgs.writeShellScriptBin "hwrekey" ''
     set -euo pipefail
+    export PATH="${
+      lib.makeBinPath [
+        pkgs.jq
+        pkgs.age
+      ]
+    }:$PATH"
 
     IDENTITY_PATH="${cfg.identityPath}"
     SECRETS_FLAKE_INPUT="${toString cfg.secretsFlakeInput}"
@@ -52,6 +62,7 @@ let
 
     # --- Parse arguments ---
     COMMIT_MSG=""
+    FULL_REKEY=false
     while [[ $# -gt 0 ]]; do
       case "$1" in
         -m)
@@ -63,11 +74,17 @@ let
           COMMIT_MSG="$1"
           shift
           ;;
+        --full)
+          FULL_REKEY=true
+          shift
+          ;;
         -h|--help)
-          echo "Usage: hwrekey [-m <message>] [-h|--help]"
+          echo "Usage: hwrekey [-m <message>] [--full] [-h|--help]"
           echo ""
           echo "Re-encrypt agenix secrets using the connected YubiKey."
+          echo "By default, only secrets whose recipients changed are re-encrypted."
           echo ""
+          echo "  --full        Force re-encryption of ALL secrets (delegates to agenix --rekey)."
           if [ -n "$SECRETS_FLAKE_INPUT" ]; then
             echo "  -m <message>  Commit message (required). Describes what changed in secrets."
             echo "                The submodule commit uses this message directly."
@@ -126,7 +143,8 @@ let
     fi
 
     TEMP_ID=$(mktemp)
-    trap "rm -f $TEMP_ID" EXIT
+    TEMP_PLAIN=$(mktemp)
+    trap "rm -f $TEMP_ID $TEMP_PLAIN" EXIT
 
     # Parse identity file: lines starting with "# serial:<N>" tag the next identity
     CURRENT_SERIAL=""
@@ -151,21 +169,131 @@ let
     fi
 
     # --- Step 2: Rekey secrets ---
-    # ykman's pcscd/CCID session may still be held when age-plugin-yubikey tries
-    # to open the key. Retry with backoff since pcscd release timing varies.
-    echo "==> Rekeying secrets with YubiKey identity..."
-    MAX_ATTEMPTS=3
-    for attempt in $(seq 1 $MAX_ATTEMPTS); do
-      if agenix --rekey -i "$TEMP_ID"; then
-        break
+    REKEYED_FILES=()
+    HASHES_FILE=".recipients-hashes"
+
+    # Attempt to evaluate secrets.nix for selective rekey
+    if [ "$FULL_REKEY" != true ]; then
+      if SECRETS_JSON=$(nix eval --file secrets.nix --json 2>/dev/null); then
+        : # secrets.nix evaluated successfully, proceed with selective rekey
+      else
+        echo "Warning: Failed to evaluate secrets.nix, falling back to full rekey."
+        FULL_REKEY=true
       fi
-      if [ "$attempt" -eq "$MAX_ATTEMPTS" ]; then
-        echo "Error: Failed to rekey after $MAX_ATTEMPTS attempts. Is pcscd stuck?"
-        exit 1
+    fi
+
+    if [ "$FULL_REKEY" = true ]; then
+      # Full rekey: delegate to agenix --rekey (original behavior)
+      echo "==> Full rekey: re-encrypting ALL secrets..."
+      MAX_ATTEMPTS=3
+      for attempt in $(seq 1 $MAX_ATTEMPTS); do
+        if agenix --rekey -i "$TEMP_ID"; then
+          break
+        fi
+        if [ "$attempt" -eq "$MAX_ATTEMPTS" ]; then
+          echo "Error: Failed to rekey after $MAX_ATTEMPTS attempts. Is pcscd stuck?"
+          exit 1
+        fi
+        echo "==> YubiKey busy (pcscd contention), retrying in 3s... (attempt $attempt/$MAX_ATTEMPTS)"
+        sleep 3
+      done
+
+      # Track all .age files as rekeyed
+      while IFS= read -r f; do
+        REKEYED_FILES+=("$f")
+      done < <(find . -name '*.age' -type f | sed 's|^\./||')
+
+      # Update recipient hashes after full rekey
+      if [ -z "''${SECRETS_JSON:-}" ]; then
+        SECRETS_JSON=$(nix eval --file secrets.nix --json 2>/dev/null) || true
       fi
-      echo "==> YubiKey busy (pcscd contention), retrying in 3s... (attempt $attempt/$MAX_ATTEMPTS)"
-      sleep 3
-    done
+      if [ -n "''${SECRETS_JSON:-}" ]; then
+        NEW_HASHES="{}"
+        while IFS= read -r key; do
+          [ -z "$key" ] && continue
+          hash=$(echo "$SECRETS_JSON" | jq -r --arg k "$key" '.[$k].publicKeys | sort | .[]' | sha256sum | cut -d' ' -f1)
+          NEW_HASHES=$(echo "$NEW_HASHES" | jq --arg k "$key" --arg v "$hash" '. + {($k): $v}')
+        done < <(echo "$SECRETS_JSON" | jq -r 'keys[]')
+        echo "$NEW_HASHES" > "$HASHES_FILE"
+      fi
+    else
+      # Selective rekey: only re-encrypt secrets whose recipients changed
+      echo "==> Checking which secrets need re-encryption..."
+      NEEDS_REKEY=()
+      SKIPPED=()
+
+      while IFS= read -r secret; do
+        [ -z "$secret" ] && continue
+
+        # Compute hash of sorted recipients for this secret
+        expected_hash=$(echo "$SECRETS_JSON" | jq -r --arg s "$secret" '.[$s].publicKeys | sort | .[]' | sha256sum | cut -d' ' -f1)
+
+        # Get stored hash (if hashes file exists)
+        stored_hash=""
+        if [ -f "$HASHES_FILE" ]; then
+          stored_hash=$(jq -r --arg s "$secret" '.[$s] // ""' "$HASHES_FILE")
+        fi
+
+        # Skip if the .age file doesn't exist yet
+        if [ ! -f "$secret" ]; then
+          echo "  Skipping $secret (file does not exist yet)"
+          continue
+        fi
+
+        if [ "$expected_hash" = "$stored_hash" ]; then
+          SKIPPED+=("$secret")
+        else
+          NEEDS_REKEY+=("$secret")
+        fi
+      done < <(echo "$SECRETS_JSON" | jq -r 'keys[]')
+
+      if [ ''${#NEEDS_REKEY[@]} -eq 0 ]; then
+        echo "No secrets need rekeying."
+      else
+        echo "==> Re-encrypting ''${#NEEDS_REKEY[@]} secret(s)..."
+        if [ ''${#SKIPPED[@]} -gt 0 ]; then
+          echo "    (''${#SKIPPED[@]} secret(s) unchanged, skipped)"
+        fi
+
+        for secret in "''${NEEDS_REKEY[@]}"; do
+          # Get recipients for this secret
+          mapfile -t recipients < <(echo "$SECRETS_JSON" | jq -r --arg s "$secret" '.[$s].publicKeys[]')
+
+          # Build age encrypt arguments
+          AGE_ARGS=()
+          for key in "''${recipients[@]}"; do
+            AGE_ARGS+=(-r "$key")
+          done
+
+          # Decrypt and re-encrypt with retry for pcscd contention
+          MAX_ATTEMPTS=3
+          for attempt in $(seq 1 $MAX_ATTEMPTS); do
+            if age --decrypt -i "$TEMP_ID" "$secret" > "$TEMP_PLAIN" 2>/dev/null; then
+              age --encrypt "''${AGE_ARGS[@]}" -o "$secret" "$TEMP_PLAIN"
+              REKEYED_FILES+=("$secret")
+              echo "  Rekeyed: $secret"
+              break
+            fi
+            if [ "$attempt" -eq "$MAX_ATTEMPTS" ]; then
+              echo "Error: Failed to rekey $secret after $MAX_ATTEMPTS attempts."
+              exit 1
+            fi
+            echo "  Retry $secret in 3s... ($attempt/$MAX_ATTEMPTS)"
+            sleep 3
+          done
+        done
+      fi
+
+      # Update recipient hashes for all secrets
+      NEW_HASHES="{}"
+      while IFS= read -r key; do
+        [ -z "$key" ] && continue
+        hash=$(echo "$SECRETS_JSON" | jq -r --arg k "$key" '.[$k].publicKeys | sort | .[]' | sha256sum | cut -d' ' -f1)
+        NEW_HASHES=$(echo "$NEW_HASHES" | jq --arg k "$key" --arg v "$hash" '. + {($k): $v}')
+      done < <(echo "$SECRETS_JSON" | jq -r 'keys[]')
+      echo "$NEW_HASHES" > "$HASHES_FILE"
+    fi
+
     echo "==> Rekey complete."
 
     # If no flake input configured, we're done
@@ -175,14 +303,39 @@ let
     fi
 
     # --- Step 3: Commit and push in secrets submodule ---
-    if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-      echo "==> Committing rekeyed secrets..."
-      git add -A
-      git commit -m "$COMMIT_MSG"
-      echo "==> Pushing secrets submodule..."
-      git push
+    if [ "$FULL_REKEY" = true ]; then
+      # Full rekey: stage everything (original behavior)
+      if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+        echo "==> Committing rekeyed secrets..."
+        git add -A
+        git commit -m "$COMMIT_MSG"
+        echo "==> Pushing secrets submodule..."
+        git push
+      else
+        echo "==> No changes to commit in secrets submodule."
+      fi
     else
-      echo "==> No changes to commit in secrets submodule."
+      # Selective: stage only rekeyed .age files + secrets.nix + .recipients-hashes
+      STAGED=false
+      for f in "''${REKEYED_FILES[@]}"; do
+        git add "$f" && STAGED=true
+      done
+      # Stage secrets.nix if it has changes
+      if ! git diff --quiet -- secrets.nix 2>/dev/null; then
+        git add secrets.nix && STAGED=true
+      fi
+      # Stage .recipients-hashes
+      if [ -f "$HASHES_FILE" ]; then
+        git add "$HASHES_FILE" && STAGED=true
+      fi
+      if [ "$STAGED" = true ] && ! git diff --cached --quiet; then
+        echo "==> Committing rekeyed secrets..."
+        git commit -m "$COMMIT_MSG"
+        echo "==> Pushing secrets submodule..."
+        git push
+      else
+        echo "==> No changes to commit in secrets submodule."
+      fi
     fi
 
     # --- Step 4: Update parent flake input ---

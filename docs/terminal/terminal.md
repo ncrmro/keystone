@@ -76,6 +76,8 @@ The module installs and configures the following language servers automatically:
 
 The `hwrekey` command automates re-encrypting agenix secrets with your YubiKey and (optionally) handling the full submodule commit/push/flake-update workflow.
 
+By default, `hwrekey` performs **selective rekey** — only secrets whose recipients changed in `secrets.nix` are re-encrypted. This produces clean git diffs that show exactly which secrets were affected by each change.
+
 ### Enable
 
 `hwrekey` is available when `keystone.terminal.ageYubikey.enable = true`.
@@ -92,18 +94,24 @@ keystone.terminal.ageYubikey = {
 ### Usage
 
 ```bash
-cd agenix-secrets
-hwrekey
+hwrekey -m "chore: add ocean host key"     # selective rekey (default)
+hwrekey --full -m "chore: rekey all"       # force full rekey of all secrets
+hwrekey                                    # rekey only (no secretsFlakeInput set)
 ```
 
 ### What It Does
 
-1. Runs `agenix --rekey` using the YubiKey identity file (touch prompt per secret, no SSH password)
-2. If `secretsFlakeInput` is set:
+1. Evaluates `secrets.nix` to determine which secrets have changed recipients
+2. Re-encrypts only the affected `.age` files using the YubiKey identity (touch prompt per secret)
+3. Updates `.recipients-hashes` to track the current recipient fingerprints
+4. If `secretsFlakeInput` is set:
+   - Stages only the changed `.age` files, `secrets.nix` (if modified), and `.recipients-hashes`
    - Commits and pushes the rekeyed secrets in the current (submodule) repo
    - Runs `nix flake update <secretsFlakeInput>` in the parent repo
    - Commits the submodule pointer + `flake.lock` together in the parent repo
-3. If `secretsFlakeInput` is null, only runs the rekey — you commit manually
+5. If `secretsFlakeInput` is null, only runs the rekey — you commit manually
+
+With `--full`, all secrets are re-encrypted using `agenix --rekey` (original behavior).
 
 ### Options
 
