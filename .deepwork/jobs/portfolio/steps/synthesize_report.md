@@ -119,26 +119,23 @@ other source. Every number in the report must trace back to the input files.
    gh pr merge --auto --squash
    ```
 
-   **Forgejo** (tea CLI):
+   **Forgejo** (`fj` CLI):
    ```bash
-   tea pr create --repo ncrmro/notes \
-     --title "docs(portfolio): YYYY-MM portfolio review" \
-     --description "$(cat <<'PREOF'
-   ## Portfolio Review — YYYY-MM
+   cd {notes_path}
+   fj pr create \
+     --head portfolio-review/YYYY-MM \
+     --base main \
+     --body "## Portfolio Review — YYYY-MM
 
    [Portfolio Summary section from report]
 
-   > This PR will auto-merge in 72 hours. Comment or request changes before then.
-   PREOF
-   )"
+   > Review, comment, and merge when satisfied." \
+     "docs(portfolio): YYYY-MM portfolio review"
    ```
 
    The PR allows the user to comment on specific sections, request changes,
-   and refine the report before it lands on main.
-
-   **Auto-merge convention**: If the platform supports auto-merge, enable it so the
-   PR merges automatically after a 72-hour review window. This gives the user time
-   to comment but prevents stale PRs.
+   and refine the report before it lands on main. The human reviews and merges
+   manually — do NOT enable auto-merge on the notes repo.
 
 8. **Output the PR URL**
 

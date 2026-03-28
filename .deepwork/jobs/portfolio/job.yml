@@ -1,5 +1,5 @@
 name: portfolio
-version: "1.2.0"
+version: "1.3.0"
 summary: "Holistic portfolio review across all projects with milestone status, activity, and health assessment"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job performs a holistic review of the user's entire project portfolio. It replaces
@@ -82,6 +82,19 @@ workflows:
     steps:
       - gather_data
       - write_summary
+
+  - name: setup_gaps
+    summary: "Find projects with no active milestones and interactively propose retroactive milestone setup"
+    steps:
+      - find_gap_projects
+      - inspect_all_gaps
+      - apply_milestones
+
+  - name: inspect_one_gap
+    summary: "Inspect a single project with no milestones and produce a concrete milestone proposal"
+    steps:
+      - inspect_repo
+      - write_proposal
 
 steps:
   # === review workflow (main) ===
@@ -199,3 +212,111 @@ steps:
           "Milestones Covered": "All open milestones are listed with completion percentage and target date if available."
           "Activity Assessed": "Recent activity (commits, PRs, issues) is summarized to show momentum or stagnation."
           "Actionable": "Next actions are concrete and specific, not vague aspirations."
+
+  # === setup_gaps workflow ===
+
+  - id: find_gap_projects
+    name: "Find Gap Projects"
+    description: "Scan all active projects and identify those with no open milestones on any of their repos"
+    instructions_file: steps/find_gap_projects.md
+    inputs:
+      - name: notes_path
+        description: "Path to the notes repo (e.g., ~/notes)"
+    outputs:
+      gap_projects.md:
+        type: file
+        description: "List of projects with no active milestones: name, slug, repos, platform, last release/tag, last commit date, open issue count"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: gap_projects.md
+        quality_criteria:
+          "Active Projects Scanned": "Every active project from the notes repo was checked, not just a subset."
+          "Only True Gaps": "Only projects with zero open milestones on all their repos are included — projects with at least one milestone are excluded."
+          "Repo Info Present": "Each gap project entry includes at least one repo reference with platform, last release/tag, and last commit date."
+
+  - id: inspect_all_gaps
+    name: "Inspect All Gap Projects"
+    description: "Launch inspect_one_gap sub-workflow for each gap project in parallel via sub-agents; collect all proposals"
+    instructions_file: steps/inspect_all_gaps.md
+    inputs:
+      - file: gap_projects.md
+        from_step: find_gap_projects
+    outputs:
+      gap_proposals.md:
+        type: file
+        description: "Combined milestone proposals for all gap projects — one section per project with current state summary and proposed milestone scope"
+        required: true
+    dependencies:
+      - find_gap_projects
+    reviews:
+      - run_each: gap_proposals.md
+        additional_review_guidance: "Read gap_projects.md to verify every listed gap project has a corresponding proposal."
+        quality_criteria:
+          "Full Coverage": "Every project listed in gap_projects.md has a proposal section."
+          "Concrete Scope": "Each proposal names specific issues, features, or changes to include in the milestone — not vague descriptions."
+          "Realistic": "Proposed milestone scope reflects actual repo state (releases, commits, open issues) rather than speculation."
+
+  - id: apply_milestones
+    name: "Apply Gap Milestones"
+    description: "Present milestone proposals to the user and create approved milestones on GitHub or Forgejo"
+    instructions_file: steps/apply_milestones.md
+    inputs:
+      - file: gap_proposals.md
+        from_step: inspect_all_gaps
+    outputs:
+      milestones_created.md:
+        type: file
+        description: "Log of milestones created: project, milestone title, URL, and any that were skipped with reason"
+        required: true
+    dependencies:
+      - inspect_all_gaps
+    reviews:
+      - run_each: milestones_created.md
+        quality_criteria:
+          "All Proposals Actioned": "Every proposal from gap_proposals.md is either created or explicitly noted as skipped."
+          "URLs Present": "Each created milestone has a platform URL so the user can navigate directly to it."
+
+  # === inspect_one_gap sub-workflow (per project) ===
+
+  - id: inspect_repo
+    name: "Inspect Gap Project Repo"
+    description: "Fetch releases, tags, recent commits, open issues, and README for a single project with no milestones"
+    instructions_file: steps/inspect_repo.md
+    inputs:
+      - name: project_slug
+        description: "The project slug (e.g., 'meze', 'eonmun')"
+      - name: project_repos
+        description: "Comma-separated list of repos as owner/repo:platform (e.g., 'ncrmro/meze:github')"
+      - name: notes_path
+        description: "Path to the notes repo for reading existing charter/profile files"
+    outputs:
+      repo_snapshot.md:
+        type: file
+        description: "Raw data: releases/tags list, last 20 commits with dates, open issue titles, README excerpt, charter/profile excerpt if available"
+        required: true
+    dependencies: []
+    reviews: []
+
+  - id: write_proposal
+    name: "Write Milestone Proposal"
+    description: "Synthesize repo snapshot into a concrete milestone proposal with title, scope, and suggested due date"
+    instructions_file: steps/write_proposal.md
+    inputs:
+      - file: repo_snapshot.md
+        from_step: inspect_repo
+    outputs:
+      milestone_proposal.md:
+        type: file
+        description: "Milestone proposal: title, description, proposed issues or scope items, suggested due date, rationale"
+        required: true
+    dependencies:
+      - inspect_repo
+    reviews:
+      - run_each: milestone_proposal.md
+        additional_review_guidance: "Read repo_snapshot.md to verify the proposal is grounded in actual repo data."
+        quality_criteria:
+          "Grounded in Reality": "The proposed milestone scope references specific existing issues, recent commits, or known work — not invented tasks."
+          "Actionable Title": "The milestone title is specific and outcome-oriented (e.g., 'v0.2 stability release' not 'improvements')."
+          "Scope Defined": "At least 2-3 concrete scope items are listed that would form the milestone's acceptance criteria."
+          "Rationale Provided": "The proposal explains why this milestone makes sense given the project's current state."
