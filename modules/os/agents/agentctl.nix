@@ -13,7 +13,7 @@ let
   inherit (agentsLib) osCfg cfg topDomain;
   inherit (agentsLib) globalAgentVncPort agentSvcHelper;
   devScripts = import ../../shared/dev-script-link.nix { inherit lib; };
-  inherit (devScripts) resolveRepoCheckout;
+  inherit (devScripts) resolveRepoCheckout mkSystemScriptPackage;
   projectIndexHelper = pkgs.writeShellScriptBin "keystone-project-index" (
     builtins.readFile ./scripts/project-index.sh
   );
@@ -127,17 +127,19 @@ let
           esac
         }
   '';
-  agentctlScriptPath = ./scripts/agentctl.sh;
 in
 {
   config = mkIf (osCfg.enable && cfg != { }) (
     {
       environment.systemPackages =
         let
-          agentctl = pkgs.writeShellScriptBin "agentctl" ''
-            export AGENTCTL_ENV_FILE="${agentctlEnv}"
-            exec ${pkgs.bash}/bin/bash ${agentctlScriptPath} "$@"
-          '';
+          agentctl = mkSystemScriptPackage {
+            inherit config pkgs;
+            commandName = "agentctl";
+            relativePath = "modules/os/agents/scripts/agentctl.sh";
+            nixStorePath = ./scripts/agentctl.sh;
+            extraEnvSetup = ''export AGENTCTL_ENV_FILE="${agentctlEnv}"'';
+          };
 
           # Per-agent wrapper scripts: `drago claude` = `agentctl drago claude`
           agentAliases = mapAttrsToList (
