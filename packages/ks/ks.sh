@@ -1094,7 +1094,7 @@ cmd_build() {
     echo "Locking flake inputs..."
     local inputs
     inputs=$(get_repos_registry "$repo_root" | jq -r 'to_entries[].value.flakeInput | select(. != null)')
-    # shellcheck disable=SC2086
+    # shellcheck disable=SC2086  # $inputs is a space-separated list; word-splitting is intentional to pass each input as a separate argument
     nix flake update $inputs --flake "$repo_root"
 
     # Step 4: Full system build with local overrides (REQ-019.5)
@@ -1119,7 +1119,7 @@ cmd_build() {
     git -C "$repo_root" push
     echo "Lock + build complete for: ${target_hosts[*]}"
   else
-    # ── DEV MODE (REQ-016.1): home-manager only build ──
+    # ── DEFAULT MODE (REQ-016.1): home-manager only build ──
     build_home_manager_only "$repo_root" "${target_hosts[@]}"
   fi
 }
@@ -1254,17 +1254,17 @@ cmd_switch() {
           echo 'OS'
         fi
       "
-      # shellcheck disable=SC2029
+      # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
       remote_status=$(ssh "root@$resolved" "$check_cmd")
 
       if [[ "$remote_status" == "HM" ]]; then
         echo "OS core unchanged. Activating fast home-manager switch remotely..."
         deploy_home_manager_only "$repo_root" "$host"
-        # shellcheck disable=SC2029
+        # shellcheck disable=SC2029  # $path intentionally expanded client-side; remote only receives the resolved store path string
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path"
         echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
       else
-        # shellcheck disable=SC2029
+        # shellcheck disable=SC2029  # $path and $mode intentionally expanded client-side; remote receives the resolved store path and mode strings
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
       fi
     fi
@@ -1391,7 +1391,7 @@ cmd_update() {
   echo "Locking flake inputs..."
   local inputs
   inputs=$(echo "$registry" | jq -r 'to_entries[].value.flakeInput | select(. != null)')
-  # shellcheck disable=SC2086
+  # shellcheck disable=SC2086  # $inputs is a space-separated list; word-splitting is intentional to pass each input as a separate argument
   run_with_warning_filter nix flake update $inputs --flake "$repo_root"
 
   # Step 5: Commit flake.lock (if changed)
@@ -1448,7 +1448,7 @@ cmd_update() {
     exit 1
   fi
 
-  # Step 2: Deploy sequentially using the built store paths
+  # Step 7: Deploy sequentially using the built store paths
   for i in "${!target_hosts[@]}"; do
     local host="${target_hosts[$i]}"
     local path="${build_paths[$i]}"
@@ -1517,16 +1517,16 @@ cmd_update() {
           echo 'OS'
         fi
       "
-      # shellcheck disable=SC2029
+      # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
       remote_status=$(ssh "root@$resolved" "$check_cmd")
 
       if [[ "$remote_status" == "HM" ]]; then
         echo "OS core unchanged. Activating fast home-manager switch remotely..."
         deploy_home_manager_only "$repo_root" "$host"
-        # shellcheck disable=SC2029
+        # shellcheck disable=SC2029  # $path intentionally expanded client-side; remote only receives the resolved store path string
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration boot"
       else
-        # shellcheck disable=SC2029
+        # shellcheck disable=SC2029  # $path and $mode intentionally expanded client-side; remote receives the resolved store path and mode strings
         ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
       fi
     fi
@@ -2366,6 +2366,7 @@ launch_agent() {
   local prompt_file
   prompt_file="/tmp/ks-prompt-$(printf '%s' "$prompt" | md5sum | cut -d' ' -f1).md"
   printf '%s' "$prompt" > "$prompt_file"
+  trap 'rm -f "$prompt_file"' EXIT
 
   if [[ -n "$local_model" ]]; then
     if [[ -z "$current_host" ]]; then
