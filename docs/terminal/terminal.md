@@ -128,11 +128,15 @@ The conventions module writes keystone conventions to each CLI coding tool's nat
 
 ```nix
 keystone.terminal.conventions = {
-  enable = true;            # Default: true
+  enable = true;                       # Default: true
+  archetype = "keystone-system-host";  # Default: keystone-system-host
+  maxGlobalBytes = 16000;              # Default: 16000 bytes (~4000 tokens)
 };
 ```
 
-The archetype (set per-agent via `keystone.os.agents.<name>.archetype`, default `"engineer"`) controls which convention set is inlined vs referenced. See `conventions/tool.cli-coding-agents.md` for details on each tool's file discovery.
+The `archetype` option controls which convention set is inlined vs referenced. The default is `"keystone-system-host"`. Per-agent overrides are set via `keystone.os.agents.<name>.archetype`. See `conventions/tool.cli-coding-agents.md` for details on each tool's file discovery.
+
+`maxGlobalBytes` sets the budget for the generated file. A build warning is emitted when the content exceeds this limit.
 
 ## DeepWork
 

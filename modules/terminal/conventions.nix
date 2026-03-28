@@ -1,7 +1,9 @@
 # Tool-native instruction file generation from keystone conventions.
 #
 # See conventions/tool.cli-coding-agents.md
+# See conventions/process.keystone-development-mode.md (dev-mode repos AGENTS.md)
 # Implements REQ-017 (Conventions and Grafana MCP)
+# Implements REQ-021 (Agent Context Budget)
 #
 # Reads archetypes.yaml from the keystone-conventions Nix store derivation and
 # writes conventions to each CLI coding tool's native instruction file path:
