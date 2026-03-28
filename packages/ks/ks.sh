@@ -1642,14 +1642,44 @@ resolve_grafana_url() {
 }
 
 resolve_grafana_api_key() {
-  if [[ -n "${GRAFANA_API_KEY:-}" ]]; then
-    printf '%s\n' "$GRAFANA_API_KEY"
-    return
-  fi
+  local repo_root="${1:-}"
 
+  # 1. Runtime agenix secret (fastest, no decryption overhead)
   if [[ -f /run/agenix/grafana-api-token ]]; then
     tr -d '\n' < /run/agenix/grafana-api-token
     return
+  fi
+
+  # 2. Decrypt from agenix-secrets repo using age directly
+  if [[ -n "$repo_root" ]]; then
+    local secrets_repo
+    secrets_repo=$(find_local_repo "$repo_root" "ncrmro/agenix-secrets")
+    local age_file="${secrets_repo}/secrets/grafana-api-token.age"
+    if [[ -n "$secrets_repo" && -f "$age_file" ]]; then
+      # Resolve the age binary from the agenix wrapper (avoids hardcoding nix store paths)
+      local age_bin
+      age_bin=$(grep -o '/nix/store/[^"]*bin/age' "$(command -v agenix)" 2>/dev/null | head -1)
+      [[ -z "$age_bin" || ! -x "$age_bin" ]] && return 1
+      local decrypted
+      # Try host key via sudo (works when sudo credentials are cached)
+      local host_key="/etc/ssh/ssh_host_ed25519_key"
+      if [[ -f "$host_key" ]]; then
+        decrypted=$(sudo -n "$age_bin" -d -i "$host_key" "$age_file" 2>/dev/null | tr -d '\n')
+        if [[ -n "$decrypted" ]]; then
+          printf '%s' "$decrypted"
+          return
+        fi
+      fi
+      # Try user SSH key (works when terminal is available for passphrase prompt)
+      local user_key="$HOME/.ssh/id_ed25519"
+      if [[ -f "$user_key" ]]; then
+        decrypted=$("$age_bin" -d -i "$user_key" "$age_file" 2>/dev/null | tr -d '\n')
+        if [[ -n "$decrypted" ]]; then
+          printf '%s' "$decrypted"
+          return
+        fi
+      fi
+    fi
   fi
 
   return 1
@@ -1681,7 +1711,7 @@ cmd_grafana_dashboards() {
     return 0
   fi
 
-  grafana_api_key=$(resolve_grafana_api_key 2>/dev/null || true)
+  grafana_api_key=$(resolve_grafana_api_key "$repo_root" 2>/dev/null || true)
   if [[ -z "$grafana_api_key" ]]; then
     echo "Warning: Keystone Grafana API token is not configured on this host." >&2
     echo "To enable dashboard synchronization and Grafana MCP, you must:" >&2
@@ -1690,7 +1720,6 @@ cmd_grafana_dashboards() {
     echo "  3. Rebuild and switch this host: ks switch" >&2
     echo "" >&2
     # TODO: In the future, keystone can automate this by submitting a PR to your nixos-config.
-    echo "For now, you can also set the GRAFANA_API_KEY environment variable." >&2
     return 0
   fi
 
