@@ -331,7 +331,7 @@ in
 
           repoName = mkOption {
             type = types.str;
-            default = "agent-space";
+            default = "notes";
             description = "Name of auto-created notes repository.";
           };
         };

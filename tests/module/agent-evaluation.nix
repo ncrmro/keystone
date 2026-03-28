@@ -429,7 +429,7 @@ let
           };
           agents.drago = {
             fullName = "Drago";
-            notes.repo = "git@git.ncrmro.com:drago/agent-space.git";
+            notes.repo = "git@git.ncrmro.com:drago/notes.git";
           };
         };
         fileSystems."/" = {
@@ -454,7 +454,7 @@ let
           };
           agents.drago = {
             fullName = "Drago";
-            notes.repo = "git@git.ncrmro.com:drago/agent-space.git";
+            notes.repo = "git@git.ncrmro.com:drago/notes.git";
             # SSH public key now set via keystone.keys."agent-drago"
           };
         };
