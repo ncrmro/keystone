@@ -14,6 +14,7 @@
   agenix,
   deepwork,
   grafana-mcp-src,
+  lfs-s3-src,
 }:
 let
   # Paths must be captured in `let` BEFORE the overlay function, otherwise they
@@ -32,6 +33,7 @@ let
   pz-src = ../packages/pz;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
+  lfs-s3-pkg-src = ../packages/lfs-s3;
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
   keystone-deepwork-jobs-src = ../packages/keystone-deepwork-jobs;
   keystone-conventions-src = ../packages/keystone-conventions;
@@ -113,6 +115,9 @@ final: prev: {
     chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src { };
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;
+    };
+    lfs-s3 = final.callPackage lfs-s3-pkg-src {
+      inherit lfs-s3-src;
     };
     slidev = final.callPackage slidev-src { };
   };
