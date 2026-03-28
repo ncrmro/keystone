@@ -21,7 +21,6 @@ Read the scope analysis and specs PR report from prior steps, then compose and c
 
 2. **Compose the plan issue body**
    For each user story from the milestone issue, include:
-
    - **Happy path requirements** — the expected user flow when everything works correctly
    - **Red/green test expectations** — what test should fail before implementation (red) and pass after (green). Be specific about the assertion, not just "it should work."
    - **ASCII art design mockups** — for any new UI components, page layouts, or visual elements. Show the layout, key elements, and user interaction points.
@@ -40,17 +39,21 @@ Read the scope analysis and specs PR report from prior steps, then compose and c
    ## Tasks
 
    ### Phase 1: Infrastructure (parallel — no dependencies)
+
    - [ ] chore: add recipes database migration
    - [ ] chore: set up image upload infrastructure
 
    ### Phase 2: Features (parallel — depends on Phase 1)
+
    - [ ] feat: add recipe creation form
    - [ ] feat: add recipe search
 
    ### Phase 3: Integration Tests (depends on Phase 2)
+
    - [ ] test: add recipe API integration tests
 
    ### Future Work (out of milestone scope)
+
    - Recipe ratings and reviews
    - Recipe import from external sites
    ```
@@ -64,6 +67,7 @@ Read the scope analysis and specs PR report from prior steps, then compose and c
 4. **Create the plan issue**
 
    **GitHub**:
+
    ```bash
    gh issue create --repo {owner}/{repo} \
      --title "Plan: {milestone title}" \
@@ -74,14 +78,15 @@ Read the scope analysis and specs PR report from prior steps, then compose and c
    ```
 
    **Forgejo**:
+
    ```bash
    fj issue create "Plan: {milestone title}" \
      --body "$BODY" \
      --label "engineering" --label "plan" \
      -r {owner}/{repo}
    ```
-   Then link to milestone and assign via API.
 
+   Then link to milestone and assign via API.
    - Ensure `engineering` and `plan` labels exist (create if missing)
    - Assign to Drago (CTO) — read username from `.agents/TEAM.md`
    - Link to the milestone
@@ -95,14 +100,17 @@ Read the scope analysis and specs PR report from prior steps, then compose and c
 A report documenting the created plan issue.
 
 **Structure**:
+
 ```markdown
 # Plan Issue Report: [Milestone Title]
 
 ## Platform
+
 - **Platform**: [github | forgejo]
 - **Repository**: [owner/repo]
 
 ## Plan Issue
+
 - **Number**: #[number]
 - **Title**: Plan: [milestone title]
 - **URL**: [issue URL]
@@ -111,24 +119,29 @@ A report documenting the created plan issue.
 - **Labels**: engineering, plan
 
 ## References
+
 - **Milestone Issue**: #[milestone_issue_number]
 - **Specs PR**: #[specs_pr_number] ([URL])
 
 ## Stories Included
 
-| Story | Happy Path | Tests | Mockup | Demo |
-|-------|-----------|-------|--------|------|
-| US-001: [title] | yes | yes | yes/no | yes |
-| US-002: [title] | yes | yes | yes/no | yes |
+| Story           | Happy Path | Tests | Mockup | Demo |
+| --------------- | ---------- | ----- | ------ | ---- |
+| US-001: [title] | yes        | yes   | yes/no | yes  |
+| US-002: [title] | yes        | yes   | yes/no | yes  |
+
 ...
 
 ## Implementation Order
+
 [Summary of the phasing — what can be parallel, what must be sequential]
 
 ## Feature Flags
+
 [List of stories requiring feature flags, or "None"]
 
 ## Notes
+
 [Any issues or items needing attention]
 ```
 
@@ -147,6 +160,7 @@ The issue body created on the platform should follow this structure:
 ### US-001: [Story title]
 
 **Happy Path**:
+
 1. User navigates to /recipes/new
 2. User fills in title, ingredients, and instructions
 3. User clicks "Save Recipe"
@@ -154,6 +168,7 @@ The issue body created on the platform should follow this structure:
 5. Recipe appears in the user's recipe list
 
 **Test Expectations**:
+
 - RED: `POST /api/recipes` with valid payload returns 404 (route doesn't exist yet)
 - GREEN: `POST /api/recipes` with valid payload returns 201 with recipe ID
 - RED: Recipe form component renders without crashing (component doesn't exist yet)
@@ -161,22 +176,24 @@ The issue body created on the platform should follow this structure:
 
 **Design Mockup**:
 ```
+
 ┌─────────────────────────────────┐
-│  New Recipe                     │
+│ New Recipe │
 ├─────────────────────────────────┤
-│  Title: [________________]      │
-│                                 │
-│  Ingredients:                   │
-│  [________________] [+ Add]     │
-│  • Flour                        │
-│  • Sugar                        │
-│                                 │
-│  Instructions:                  │
-│  [                            ] │
-│  [                            ] │
-│                                 │
-│  [Save Recipe]  [Cancel]        │
+│ Title: [________________] │
+│ │
+│ Ingredients: │
+│ [________________] [+ Add] │
+│ • Flour │
+│ • Sugar │
+│ │
+│ Instructions: │
+│ [ ] │
+│ [ ] │
+│ │
+│ [Save Recipe] [Cancel] │
 └─────────────────────────────────┘
+
 ```
 
 **Demo Artifacts**:

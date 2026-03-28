@@ -5,18 +5,18 @@ across platforms.
 
 ## OS Comparison
 
-| Feature | Keystone (NixOS) | macOS | Windows | Ubuntu | Omarchy (Arch) |
-|---------|-----------------|-------|---------|--------|----------------|
-| Full disk encryption | ZFS native + TPM2 auto-unlock | FileVault (APFS) | BitLocker (TPM) | LUKS (manual) | LUKS (manual) |
-| Declarative config | Entire system via Nix flakes | Partial (defaults, profiles) | No | No | No |
-| Reproducible builds | Yes — pinned inputs, binary cache | No | No | No | No |
-| Self-hosted services | One-toggle enable with auto TLS/DNS | Manual or Docker | Manual or Docker | Manual or Docker | Manual or Docker |
-| Desktop environment | Hyprland (tiling, 15 themes) | Aqua (proprietary) | Explorer (proprietary) | GNOME | Hyprland |
-| Terminal environment | Zsh + Helix + Zellij + AI tools | Zsh + user choice | PowerShell / WSL | Bash + user choice | Zsh + user choice |
-| AI agents | Sandboxed OS users with own UID, SSH keys, email, desktop ([compare](agents/comparison.md)) | Third-party only | Third-party only | Third-party only | Third-party only |
-| Rollbacks | Instant (NixOS generations + ZFS snapshots) | Time Machine (slow) | System Restore (unreliable) | Snapper (if configured) | Timeshift (if configured) |
-| Secure Boot | Custom key enrollment via lanzaboote | Apple Secure Boot | Microsoft keys | shim-signed | No |
-| Multi-user | Declarative user accounts + agents | Yes | Yes | Yes | Yes |
+| Feature              | Keystone (NixOS)                                                                            | macOS                        | Windows                     | Ubuntu                  | Omarchy (Arch)            |
+| -------------------- | ------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------- | ----------------------- | ------------------------- |
+| Full disk encryption | ZFS native + TPM2 auto-unlock                                                               | FileVault (APFS)             | BitLocker (TPM)             | LUKS (manual)           | LUKS (manual)             |
+| Declarative config   | Entire system via Nix flakes                                                                | Partial (defaults, profiles) | No                          | No                      | No                        |
+| Reproducible builds  | Yes — pinned inputs, binary cache                                                           | No                           | No                          | No                      | No                        |
+| Self-hosted services | One-toggle enable with auto TLS/DNS                                                         | Manual or Docker             | Manual or Docker            | Manual or Docker        | Manual or Docker          |
+| Desktop environment  | Hyprland (tiling, 15 themes)                                                                | Aqua (proprietary)           | Explorer (proprietary)      | GNOME                   | Hyprland                  |
+| Terminal environment | Zsh + Helix + Zellij + AI tools                                                             | Zsh + user choice            | PowerShell / WSL            | Bash + user choice      | Zsh + user choice         |
+| AI agents            | Sandboxed OS users with own UID, SSH keys, email, desktop ([compare](agents/comparison.md)) | Third-party only             | Third-party only            | Third-party only        | Third-party only          |
+| Rollbacks            | Instant (NixOS generations + ZFS snapshots)                                                 | Time Machine (slow)          | System Restore (unreliable) | Snapper (if configured) | Timeshift (if configured) |
+| Secure Boot          | Custom key enrollment via lanzaboote                                                        | Apple Secure Boot            | Microsoft keys              | shim-signed             | No                        |
+| Multi-user           | Declarative user accounts + agents                                                          | Yes                          | Yes                         | Yes                     | Yes                       |
 
 ## keystone.terminal Cross-Platform
 

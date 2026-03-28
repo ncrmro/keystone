@@ -7,6 +7,7 @@ List all fleeting notes in `inbox/`, read each, and classify them for promotion 
 ## Task
 
 1. List all notes in inbox:
+
    ```bash
    zk list inbox/ --format json
    ```
@@ -30,13 +31,14 @@ Write `inbox_review.md`:
 
 ## Classification
 
-| ID | Title | Action | Target Type | Suggested Title | Tags |
-|----|-------|--------|-------------|-----------------|------|
-| 202603201430 | CI failure pattern | promote | permanent | CI failures from missing flake inputs | [ci, nix] |
-| 202603201445 | Quick thought | discard | - | - | - |
-| 202603201500 | NixOS manual notes | promote | literature | NixOS module system overview | [nix, docs] |
+| ID           | Title              | Action  | Target Type | Suggested Title                       | Tags        |
+| ------------ | ------------------ | ------- | ----------- | ------------------------------------- | ----------- |
+| 202603201430 | CI failure pattern | promote | permanent   | CI failures from missing flake inputs | [ci, nix]   |
+| 202603201445 | Quick thought      | discard | -           | -                                     | -           |
+| 202603201500 | NixOS manual notes | promote | literature  | NixOS module system overview          | [nix, docs] |
 
 ## Summary
+
 - Total inbox notes: N
 - Promote to permanent: N
 - Promote to literature: N

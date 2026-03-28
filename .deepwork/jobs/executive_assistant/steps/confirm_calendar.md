@@ -31,6 +31,7 @@ Cross-reference the changes log against the actual calendar to confirm everythin
 Final calendar summary confirming all changes are in place.
 
 **Structure**:
+
 ```markdown
 # Calendar Summary
 
@@ -40,26 +41,28 @@ Final calendar summary confirming all changes are in place.
 
 ## Verification Results
 
-| # | Change | Expected | Actual | Verified |
-|---|--------|----------|--------|----------|
-| 1 | [description] | [expected state] | [actual state] | [yes/no] |
+| #   | Change        | Expected         | Actual         | Verified |
+| --- | ------------- | ---------------- | -------------- | -------- |
+| 1   | [description] | [expected state] | [actual state] | [yes/no] |
 
 ## Updated Schedule
 
 ### [Day, Date]
 
-| Time | Duration | Event | Status |
-|------|----------|-------|--------|
-| 9:00 AM | 1h | Team Standup | unchanged |
-| 2:00 PM | 30m | 1:1 with CEO | **rescheduled** |
+| Time    | Duration | Event        | Status          |
+| ------- | -------- | ------------ | --------------- |
+| 9:00 AM | 1h       | Team Standup | unchanged       |
+| 2:00 PM | 30m      | 1:1 with CEO | **rescheduled** |
 
 [Repeat for each day in the period]
 
 ## Remaining Items
+
 - [Any follow-up actions needed]
 - [Any failed changes that need manual attention]
 
 ## Summary
+
 [1-2 sentences confirming the calendar is in order or noting issues]
 ```
 

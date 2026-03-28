@@ -22,6 +22,7 @@ Unlike traditional API contracts (REST/GraphQL), NixOS contracts are declarative
 **Purpose**: Defines the structure and requirements for a minimal Keystone server deployment configuration.
 
 **Required Fields**:
+
 - `system`: Target architecture
 - `modules`: List including disko and server modules
 - `networking.hostName`: Unique system identifier
@@ -30,12 +31,14 @@ Unlike traditional API contracts (REST/GraphQL), NixOS contracts are declarative
 - `users.users.root.openssh.authorizedKeys.keys`: At least one SSH key
 
 **Optional Fields**:
+
 - `keystone.disko.enableEncryptedSwap`: Boolean (default: true)
 - `keystone.disko.swapSize`: String (default: "64G")
 - `keystone.disko.espSize`: String (default: "1G")
 - `keystone.server.enable`: Boolean (default: true)
 
 **Validation**:
+
 - NixOS type system enforces types at evaluation time
 - Assertions in modules check required options
 - Build fails if contract violated
@@ -49,34 +52,41 @@ Unlike traditional API contracts (REST/GraphQL), NixOS contracts are declarative
 **Commands**:
 
 #### Deploy to VM
+
 ```bash
 nixos-anywhere --flake .#test-server root@<target-ip>
 ```
 
 **Parameters**:
+
 - `--flake`: Path to flake with `#` separator and configuration name
 - Target: SSH connection string (`root@<ip-address>`)
 
 **Preconditions**:
+
 - Target system booted from Keystone ISO
 - SSH access enabled on target
 - Network connectivity between dev machine and target
 
 **Postconditions**:
+
 - System installed and configured
 - Target reboots into installed system
 - SSH access available with configured keys
 
 #### Verify Deployment
+
 ```bash
 ./scripts/verify-deployment.sh test-server <target-ip>
 ```
 
 **Parameters**:
+
 - Configuration name (matches flake output)
 - Target IP address or hostname
 
 **Exit Codes**:
+
 - `0`: All checks passed
 - `1`: One or more checks failed
 - `2`: Cannot connect to target
@@ -88,6 +98,7 @@ nixos-anywhere --flake .#test-server root@<target-ip>
 **Purpose**: Defines how modules interact and their dependencies.
 
 **Module Dependencies**:
+
 ```
 test-server configuration
   ├─ disko.nixosModules.disko (external)
@@ -101,6 +112,7 @@ test-server configuration
 ```
 
 **Interface Points**:
+
 - **Input**: Flake reference (`.#test-server`)
 - **Composition**: Module list evaluation
 - **Output**: Bootable system closure
@@ -113,6 +125,7 @@ test-server configuration
 **Purpose**: Defines the checks performed to verify successful deployment.
 
 **Required Checks**:
+
 1. **SSH Connectivity**: Can connect to target via SSH
 2. **Hostname Verification**: System reports correct hostname
 3. **Firewall Status**: Only SSH port 22 is open
@@ -122,12 +135,14 @@ test-server configuration
 7. **mDNS Advertisement**: System responds to `<hostname>.local`
 
 **Check Format**:
+
 ```
 ✓ PASS: [Check name] - [Details]
 ✗ FAIL: [Check name] - [Error details]
 ```
 
 **Failure Handling**:
+
 - Critical failures (SSH, hostname) stop verification
 - Non-critical failures (mDNS) are logged but don't fail deployment
 - All failures included in summary report
@@ -236,6 +251,7 @@ Verification script validates post-deployment:
 ### Extension Points
 
 Contracts can be extended via:
+
 - Additional module imports
 - Extra configuration options
 - Custom systemd services
@@ -246,6 +262,7 @@ All extensions must maintain compatibility with core contract requirements.
 ## Summary
 
 These contracts define the interface between:
+
 - Developer and deployment system (configuration structure)
 - Deployment tool and target system (installation protocol)
 - Modules and NixOS (option types and behavior)

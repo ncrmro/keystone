@@ -113,10 +113,10 @@ flowchart TB
 
 The system deploys two agents with complementary roles:
 
-| Agent | Role | Responsibility | Runs On |
-|-------|------|---------------|---------|
-| **Product agent** (CPO) | Business analysis, scoping | Press releases, milestones, user stories | VPS / headless server |
-| **Engineering agent** (CTO) | Implementation, delivery | Code, PRs, deployments, code review | Workstation with dev tooling |
+| Agent                       | Role                       | Responsibility                           | Runs On                      |
+| --------------------------- | -------------------------- | ---------------------------------------- | ---------------------------- |
+| **Product agent** (CPO)     | Business analysis, scoping | Press releases, milestones, user stories | VPS / headless server        |
+| **Engineering agent** (CTO) | Implementation, delivery   | Code, PRs, deployments, code review      | Workstation with dev tooling |
 
 ### Artifact Handoff Chain
 
@@ -137,6 +137,7 @@ Both agents share the same composable prompt architecture from the `.agents/` su
 ### Identity Documents
 
 Each agent has:
+
 - **SOUL.md** — Agent identity, name, email, accounts table
 - **TEAM.md** — Full roster of humans and agents with roles and handles
 - **SERVICES.md** — Intranet services (Git, Mail, Grafana, Vaultwarden)
@@ -169,6 +170,7 @@ The `agent-{name}-notes-sync` service uses the agent's SSH agent socket (`SSH_AU
 ### Required Agenix Secrets
 
 Each agent with SSH configured needs:
+
 - `agent-{name}-ssh-key` — Private SSH key (ed25519)
 - `agent-{name}-ssh-passphrase` — Passphrase for the key
 
@@ -183,19 +185,19 @@ journalctl --user -u agent-{name}-notes-sync -n 20
 
 ## What Each Agent Gets
 
-| Feature | Service/Config | Details |
-|---------|---------------|---------|
-| User account | `agent-{name}` | UID 4001+, group `agents`, no sudo |
-| Home directory | `/home/agent-{name}` | chmod 750, readable by `agent-admins` group |
-| SSH agent | `agent-{name}-ssh-agent.service` | Auto-loads agenix key with passphrase |
-| Git signing | `agent-{name}-git-config.service` | SSH-based commit signing |
-| Desktop | `agent-{name}-labwc.service` | Headless Wayland (labwc + wayvnc) |
-| Browser | `agent-{name}-chromium.service` | Chromium with remote debugging |
-| Mail | himalaya CLI | Stalwart IMAP/SMTP via agenix password |
-| Calendar | calendula CLI | Stalwart CalDAV (auto-configured from mail) |
-| Contacts | cardamum CLI | Stalwart CardDAV (auto-configured from mail) |
-| Bitwarden | `bw` CLI | Configured for Vaultwarden instance |
-| Workspace | `clone-agent-space-{name}.service` | Clones `notes.repo` on first boot |
+| Feature        | Service/Config                     | Details                                      |
+| -------------- | ---------------------------------- | -------------------------------------------- |
+| User account   | `agent-{name}`                     | UID 4001+, group `agents`, no sudo           |
+| Home directory | `/home/agent-{name}`               | chmod 750, readable by `agent-admins` group  |
+| SSH agent      | `agent-{name}-ssh-agent.service`   | Auto-loads agenix key with passphrase        |
+| Git signing    | `agent-{name}-git-config.service`  | SSH-based commit signing                     |
+| Desktop        | `agent-{name}-labwc.service`       | Headless Wayland (labwc + wayvnc)            |
+| Browser        | `agent-{name}-chromium.service`    | Chromium with remote debugging               |
+| Mail           | himalaya CLI                       | Stalwart IMAP/SMTP via agenix password       |
+| Calendar       | calendula CLI                      | Stalwart CalDAV (auto-configured from mail)  |
+| Contacts       | cardamum CLI                       | Stalwart CardDAV (auto-configured from mail) |
+| Bitwarden      | `bw` CLI                           | Configured for Vaultwarden instance          |
+| Workspace      | `clone-agent-space-{name}.service` | Clones `notes.repo` on first boot            |
 
 ## Debugging
 
@@ -214,6 +216,7 @@ journalctl --user -u agent-{name}-notes-sync -n 20
      -p 2222 -T forgejo@git.example.com
    ```
 5. **Check key fingerprint matches:**
+
    ```bash
    # Fingerprint of the agenix private key
    ssh-keygen -lf /run/agenix/agent-{name}-ssh-key
@@ -225,6 +228,7 @@ journalctl --user -u agent-{name}-notes-sync -n 20
 ### Service dependency order
 
 The notes-sync service requires:
+
 - The agent's home directory (`agent-homes.service` or `zfs-agent-datasets.service` on ZFS)
 - The agent's SSH agent (`agent-{name}-ssh-agent.service`) for authentication
 
@@ -302,10 +306,10 @@ The agent-space is the agent's primary working directory (`/home/agent-{name}/no
 
 ## Accounts
 
-| Service | Host | Username | Auth Method | Credentials |
-|---------|------|----------|-------------|-------------|
-| GitHub  | github.com | kdrgo | OAuth device flow | `~/.config/gh/hosts.yml` |
-| Forgejo | git.example.com | drago | API token | fj keyfile |
+| Service | Host            | Username | Auth Method       | Credentials              |
+| ------- | --------------- | -------- | ----------------- | ------------------------ |
+| GitHub  | github.com      | kdrgo    | OAuth device flow | `~/.config/gh/hosts.yml` |
+| Forgejo | git.example.com | drago    | API token         | fj keyfile               |
 ```
 
 **TEAM.md** — Full roster of humans and agents:
@@ -315,26 +319,26 @@ The agent-space is the agent's primary working directory (`/home/agent-{name}/no
 
 ## Humans
 
-| Name | Role | GitHub | Forgejo | Email |
-|------|------|--------|---------|-------|
-| Nicholas Romero | CEO | ncrmro | ncrmro | nicholas.romero@example.com |
+| Name            | Role | GitHub | Forgejo | Email                       |
+| --------------- | ---- | ------ | ------- | --------------------------- |
+| Nicholas Romero | CEO  | ncrmro | ncrmro  | nicholas.romero@example.com |
 
 ## Agents
 
-| Name | Role | GitHub | Forgejo | Email |
-|------|------|--------|---------|-------|
-| Luce | CPO | luce-ncrmro | luce | luce@example.com |
-| Drago | CTO | kdrgo | drago | drago@example.com |
+| Name  | Role | GitHub      | Forgejo | Email             |
+| ----- | ---- | ----------- | ------- | ----------------- |
+| Luce  | CPO  | luce-ncrmro | luce    | luce@example.com  |
+| Drago | CTO  | kdrgo       | drago   | drago@example.com |
 ```
 
 **SERVICES.md** — Intranet services accessible via Tailscale:
 
 ```markdown
-| Service | URL |
-|---------|-----|
-| Git | git.example.com |
-| Mail | mail.example.com |
-| Grafana | grafana.example.com |
+| Service     | URL                     |
+| ----------- | ----------------------- |
+| Git         | git.example.com         |
+| Mail        | mail.example.com        |
+| Grafana     | grafana.example.com     |
 | Vaultwarden | vaultwarden.example.com |
 ```
 
@@ -353,15 +357,15 @@ Each agent-space includes the shared agents library as a git submodule at `.agen
 
 ### Components
 
-| Component | Path | Purpose |
-|-----------|------|---------|
-| **Conventions** | `conventions/` | 27+ RFC 2119 operational docs (version control, CI, feature delivery, tool usage) |
-| **Roles** | `roles/` | 10 composable role templates (architect, software-engineer, code-reviewer, business-analyst, project-lead, etc.) |
-| **Shared fragments** | `shared/` | Reusable prompt fragments (RFC 2119 preamble, output format rules) |
-| **Archetypes** | `archetypes.yaml` | Pre-built convention bundles: `engineer` and `product` |
-| **Composition tool** | `compose.sh` | Assembles prompts from manifest + mode: shared → roles → conventions |
-| **DeepWork jobs** | `.deepwork/jobs/` | 9 workflow definitions (task loop, daily status, research, etc.) |
-| **Examples** | `examples/` | Reference agent-space layouts and manifest examples |
+| Component            | Path              | Purpose                                                                                                          |
+| -------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **Conventions**      | `conventions/`    | 27+ RFC 2119 operational docs (version control, CI, feature delivery, tool usage)                                |
+| **Roles**            | `roles/`          | 10 composable role templates (architect, software-engineer, code-reviewer, business-analyst, project-lead, etc.) |
+| **Shared fragments** | `shared/`         | Reusable prompt fragments (RFC 2119 preamble, output format rules)                                               |
+| **Archetypes**       | `archetypes.yaml` | Pre-built convention bundles: `engineer` and `product`                                                           |
+| **Composition tool** | `compose.sh`      | Assembles prompts from manifest + mode: shared → roles → conventions                                             |
+| **DeepWork jobs**    | `.deepwork/jobs/` | 9 workflow definitions (task loop, daily status, research, etc.)                                                 |
+| **Examples**         | `examples/`       | Reference agent-space layouts and manifest examples                                                              |
 
 ### Prompt Composition
 
@@ -378,7 +382,7 @@ Each agent-space has a `manifests/modes.yaml` that maps operational modes to rol
 
 ```yaml
 agents_repo: ../.agents
-archetype: engineer              # Inherits engineer conventions
+archetype: engineer # Inherits engineer conventions
 defaults:
   shared:
     - rfc2119-preamble.md
@@ -386,7 +390,8 @@ defaults:
 modes:
   implementation:
     roles: [software-engineer]
-    conventions: [process.feature-delivery, process.pull-request, tool.nix-devshell]
+    conventions:
+      [process.feature-delivery, process.pull-request, tool.nix-devshell]
   code-review:
     roles: [code-reviewer]
     conventions: [process.continuous-integration, process.version-control]
@@ -399,10 +404,10 @@ modes:
 
 Archetypes are pre-built sets of conventions that apply to an agent role:
 
-| Archetype | Inlined Conventions | Purpose |
-|-----------|-------------------|---------|
+| Archetype  | Inlined Conventions                                                     | Purpose                  |
+| ---------- | ----------------------------------------------------------------------- | ------------------------ |
 | `engineer` | version-control, feature-delivery, continuous-integration, nix-devshell | Engineering agents (CTO) |
-| `product` | product-engineering-handoff, press-release | Product agents (CPO) |
+| `product`  | product-engineering-handoff, press-release                              | Product agents (CPO)     |
 
 When a manifest declares `archetype: engineer`, the archetype's conventions are automatically included in every mode.
 
@@ -446,6 +451,31 @@ flowchart LR
     execute -->|"no workflow"| generic
     execute -->|"updates status"| tasks
 ```
+
+### Task loop source discovery
+
+The pre-fetch step is where an agent discovers new work from external systems.
+
+Built-in sources include:
+
+- email via `himalaya`,
+- GitHub via `gh`,
+- Forgejo via `tea`, and
+- project-defined source commands from `PROJECTS.yaml`.
+
+In practice, this is the bridge from platform activity to agent execution:
+
+- assigned issues become candidate work,
+- pull request and review activity becomes candidate work, and
+- email requests become candidate work.
+
+This is why issue-driven assignment works well for agentic feature delivery. If
+you assign a press release issue or related planning issue to the right agent,
+the next task-loop pre-fetch run can ingest it into `TASKS.yaml`.
+
+For review-specific ownership and notification behavior, see
+`process.code-review-ownership`, which defines notification-driven discovery via
+the platform APIs and explicitly ties that discovery to task-loop pre-fetch.
 
 ### Timer Design
 
@@ -519,21 +549,22 @@ The execute step checks each task for a `workflow` field:
 
 Available workflows that can be auto-assigned by the prioritize decision tree:
 
-| Workflow | Trigger | Status |
-|----------|---------|--------|
-| `sweng/sweng` | Code-related issues/PRs, repos with code keywords | Planned (will be migrated to DeepWork job) |
-| `cadeng/cadeng` | CAD keywords, hardware project | Planned (will be migrated to DeepWork job) |
-| `press_release/write` | "press release" or "working backwards" in description | Exists |
+| Workflow              | Trigger                                               | Status                                     |
+| --------------------- | ----------------------------------------------------- | ------------------------------------------ |
+| `sweng/sweng`         | Code-related issues/PRs, repos with code keywords     | Planned (will be migrated to DeepWork job) |
+| `cadeng/cadeng`       | CAD keywords, hardware project                        | Planned (will be migrated to DeepWork job) |
+| `press_release/write` | "press release" or "working backwards" in description | Exists                                     |
 
 ### Model control strategy
 
-| Step | Default profile | Default provider | Notes |
-|------|-----------------|------------------|-------|
-| Ingest | `fast` | `claude` | Provider, model, fallback model, and effort come from the ingest-stage resolver |
-| Prioritize | `fast` | `claude` | Provider, model, fallback model, and effort come from the prioritize-stage resolver |
-| Execute | `medium` | `claude` | Task-level `profile` and raw overrides take precedence over execute-stage defaults |
+| Step       | Default profile | Default provider | Notes                                                                               |
+| ---------- | --------------- | ---------------- | ----------------------------------------------------------------------------------- |
+| Ingest     | `fast`          | `claude`         | Provider, model, fallback model, and effort come from the ingest-stage resolver     |
+| Prioritize | `fast`          | `claude`         | Provider, model, fallback model, and effort come from the prioritize-stage resolver |
+| Execute    | `medium`        | `claude`         | Task-level `profile` and raw overrides take precedence over execute-stage defaults  |
 
 Built-in semantic profiles:
+
 - `embedding` — reserved for later embedding/vector workflows; not intended for current task-loop chat stages
 - `fast` — Claude `haiku` with `sonnet` fallback and `low` effort, Gemini `gemini-3-flash-preview`
 - `medium` — Claude `sonnet` with `opus` fallback and `medium` effort, Gemini `auto-gemini-3`
@@ -558,24 +589,25 @@ those providers until their CLIs support equivalent controls.
 ### TASKS.yaml
 
 ```yaml
-tasks:                             # REQUIRED: only top-level key
-  - name: "task-name"              # REQUIRED: kebab-case identifier
-    description: "What to do"      # REQUIRED: human-readable
-    status: pending                # REQUIRED: pending|in_progress|completed|blocked
-    project: "project-name"       # MAY: from PROJECTS.yaml
-    source: "email"               # MAY: email|github-issue|github-pr|forgejo-issue|schedule|calendar|manual
-    source_ref: "email-42-u@h"    # MAY: unique ID for deduplication
-    profile: "fast"               # MAY: semantic profile override (embedding|fast|medium|max or custom)
-    provider: "gemini"            # MAY: claude|gemini|codex — task execution provider override
-    model: "sonnet"               # MAY: provider-specific model override
-    fallback_model: "opus"        # MAY: fallback model override (Claude only today)
-    effort: "medium"              # MAY: low|medium|high|max (Claude only today)
-    workflow: "job/workflow"       # MAY: DeepWork workflow to invoke
-    needs: ["other-task"]         # MAY: task names that must complete first
-    blocked_reason: "..."         # MAY: explanation when status is blocked
+tasks: # REQUIRED: only top-level key
+  - name: "task-name" # REQUIRED: kebab-case identifier
+    description: "What to do" # REQUIRED: human-readable
+    status: pending # REQUIRED: pending|in_progress|completed|blocked
+    project: "project-name" # MAY: from PROJECTS.yaml
+    source: "email" # MAY: email|github-issue|github-pr|forgejo-issue|schedule|calendar|manual
+    source_ref: "email-42-u@h" # MAY: unique ID for deduplication
+    profile: "fast" # MAY: semantic profile override (embedding|fast|medium|max or custom)
+    provider: "gemini" # MAY: claude|gemini|codex — task execution provider override
+    model: "sonnet" # MAY: provider-specific model override
+    fallback_model: "opus" # MAY: fallback model override (Claude only today)
+    effort: "medium" # MAY: low|medium|high|max (Claude only today)
+    workflow: "job/workflow" # MAY: DeepWork workflow to invoke
+    needs: ["other-task"] # MAY: task names that must complete first
+    blocked_reason: "..." # MAY: explanation when status is blocked
 ```
 
 **Rules:**
+
 1. Valid YAML, single top-level key `tasks` (a sequence)
 2. NO other top-level keys (`summary:`, `metadata:`, etc.)
 3. Every task MUST have `name`, `description`, `status`
@@ -584,12 +616,14 @@ tasks:                             # REQUIRED: only top-level key
 6. Validate after every write: `yq e '.' TASKS.yaml`
 
 **Source ref formats:**
+
 - Email: `email-{id}-{sender_address}`
 - GitHub issue: full URL
 - Schedule: `schedule-{name}-{YYYY-MM-DD}`
 - Calendar: `calendar-{uid}-{YYYY-MM-DD}`
 
 **Workflow assignment rules:**
+
 - Ingest MUST NOT set workflows — only appends new tasks with required fields
 - Prioritize assigns workflows via a deterministic decision tree (first match wins)
 - Scheduler sets workflows at task creation time from `SCHEDULES.yaml`
@@ -597,6 +631,7 @@ tasks:                             # REQUIRED: only top-level key
 - Pre-existing workflow fields are always preserved
 
 **Execution fallback rules:**
+
 - The resolver evaluates `provider`, `profile`, `model`, `fallback_model`, and `effort`
 - Resolution order is: task fields → stage config (`ingest`, `prioritize`, or `execute`) → global `notes.taskLoop.defaults` → built-in stage/profile defaults
 - `profile` selects provider-aware semantic defaults such as `fast`, `medium`, and `max`
@@ -635,6 +670,7 @@ keystone.os.agents.researcher = {
 ```
 
 With that config:
+
 - ingest runs on Gemini with the `fast` profile
 - prioritize falls back to Claude with the built-in `fast` profile
 - execute falls back to Claude with the `max` profile unless the task overrides it
@@ -662,19 +698,19 @@ That task overrides the stage and agent defaults and runs on Claude Code with
 
 ```yaml
 projects:
-  - name: "project-name"          # REQUIRED: display name
-    slug: "project-name"          # REQUIRED: kebab-case
-    description: "What it is"     # REQUIRED: human-readable
-    status: active                # REQUIRED: active|archived
-    priority: 1                   # REQUIRED: numeric (list order = priority)
-    updated: "2026-02-15"         # REQUIRED: last updated date
-    repos:                        # SHOULD mirror the hub note's remote URLs
+  - name: "project-name" # REQUIRED: display name
+    slug: "project-name" # REQUIRED: kebab-case
+    description: "What it is" # REQUIRED: human-readable
+    status: active # REQUIRED: active|archived
+    priority: 1 # REQUIRED: numeric (list order = priority)
+    updated: "2026-02-15" # REQUIRED: last updated date
+    repos: # SHOULD mirror the hub note's remote URLs
       - "git@github.com:owner/repo-name.git"
       - "ssh://forgejo@git.example.com:2222/owner/infra.git"
 
-sources:                           # Top-level: pre-fetch source definitions
-  - name: "github-issues"         # REQUIRED: identifier
-    command: "gh issue list --json number,title,body --assignee @me"  # REQUIRED: outputs JSON
+sources: # Top-level: pre-fetch source definitions
+  - name: "github-issues" # REQUIRED: identifier
+    command: "gh issue list --json number,title,body --assignee @me" # REQUIRED: outputs JSON
 ```
 
 Agent and human notes should use the same repo declarations. The active hub
@@ -687,9 +723,9 @@ Repos explicitly managed by `keystone.repos` continue to live under
 
 ```yaml
 schedules:
-  - name: "daily-priorities"      # REQUIRED: kebab-case identifier
-    description: "..."            # REQUIRED: human-readable
-    schedule: "daily"             # REQUIRED: daily | weekly:<day> | monthly:<day>
+  - name: "daily-priorities" # REQUIRED: kebab-case identifier
+    description: "..." # REQUIRED: human-readable
+    schedule: "daily" # REQUIRED: daily | weekly:<day> | monthly:<day>
     workflow: "daily_status/send" # REQUIRED: DeepWork workflow to invoke
 ```
 
@@ -699,13 +735,13 @@ The scheduler creates tasks with `source: "schedule"` and `source_ref: "schedule
 
 ```yaml
 issues:
-  - name: "issue-name"            # REQUIRED: kebab-case
-    description: "What happened"   # REQUIRED: detailed
+  - name: "issue-name" # REQUIRED: kebab-case
+    description: "What happened" # REQUIRED: detailed
     discovered_during: "task-name" # REQUIRED: which task surfaced this
-    status: open                   # REQUIRED: open|mitigated|resolved
-    severity: medium               # MAY: low|medium|high|critical
-    workaround: "..."             # MAY: temporary mitigation
-    fix: "..."                    # MAY: permanent resolution
+    status: open # REQUIRED: open|mitigated|resolved
+    severity: medium # MAY: low|medium|high|critical
+    workaround: "..." # MAY: temporary mitigation
+    fix: "..." # MAY: permanent resolution
 ```
 
 ## Cronjob Convention
@@ -743,6 +779,7 @@ log "Completed {job-name}"
 ```
 
 **Critical rules:**
+
 - Always use `SCRIPT_DIR` for relative paths, never hardcode absolute paths
 - Always source `shared/lib.sh` for logging and error handling
 - Capture subprocess exit codes explicitly: `OUTPUT=$(cmd); EXIT_CODE=$?` — do NOT pipe through `tee` (masks exit codes)
@@ -773,17 +810,17 @@ Each agent-space includes DeepWork job definitions via the `.agents/` submodule.
 
 ### Available Jobs
 
-| Job | Version | Agent | Workflows | Purpose |
-|-----|---------|-------|-----------|---------|
-| `task_loop` | 3.3.1 | Both | `ingest`, `prioritize`, `run` | Autonomous work orchestration — ingest sources, prioritize, execute |
-| `daily_status` | 1.2.1 | Both | `send` | Compile and send daily status digest email to human |
-| `press_release` | 1.0.0 | Product | `write` | Working-backwards press release to scope product features |
-| `product_engineering_handoff` | 1.1.0 | Product | `handoff` | Convert press release → milestone + consolidated user stories issue |
-| `project_intake` | 1.1.0 | Both | `onboard` | Interactive onboarding for new projects (Lean Canvas, repo investigation) |
-| `research` | 1.1.0 | Both | `research` | Structured research with platform selection and cited bibliography |
-| `agent_onboarding` | 1.0.1 | Both | `setup_all` | Bootstrap agent into environment: unlock vault, sign into services, verify |
-| `agent_builder` | 2.3.0 | Both | `bootstrap` | Scaffold new agent-space repo (SOUL.md, manifest, submodule, task loop) |
-| `agent_convention` | 1.1.0 | Both | `create` | Create RFC 2119 convention docs and wire into mode manifests |
+| Job                           | Version | Agent   | Workflows                     | Purpose                                                                    |
+| ----------------------------- | ------- | ------- | ----------------------------- | -------------------------------------------------------------------------- |
+| `task_loop`                   | 3.3.1   | Both    | `ingest`, `prioritize`, `run` | Autonomous work orchestration — ingest sources, prioritize, execute        |
+| `daily_status`                | 1.2.1   | Both    | `send`                        | Compile and send daily status digest email to human                        |
+| `press_release`               | 1.0.0   | Product | `write`                       | Working-backwards press release to scope product features                  |
+| `product_engineering_handoff` | 1.1.0   | Product | `handoff`                     | Convert press release → milestone + consolidated user stories issue        |
+| `project_intake`              | 1.1.0   | Both    | `onboard`                     | Interactive onboarding for new projects (Lean Canvas, repo investigation)  |
+| `research`                    | 1.1.0   | Both    | `research`                    | Structured research with platform selection and cited bibliography         |
+| `agent_onboarding`            | 1.0.1   | Both    | `setup_all`                   | Bootstrap agent into environment: unlock vault, sign into services, verify |
+| `agent_builder`               | 2.3.0   | Both    | `bootstrap`                   | Scaffold new agent-space repo (SOUL.md, manifest, submodule, task loop)    |
+| `agent_convention`            | 1.1.0   | Both    | `create`                      | Create RFC 2119 convention docs and wire into mode manifests               |
 
 ### Job Directory Structure
 
@@ -813,10 +850,10 @@ The `task_loop` job (v3.3.1) has three workflows that map to the pipeline steps:
 
 These workflows are referenced in the prioritize decision tree but do not yet have full DeepWork job definitions:
 
-| Workflow | Purpose | Status |
-|----------|---------|--------|
-| `sweng/sweng` | Software engineering task execution (GitHub/Forgejo issues, code tasks) | Referenced in decision tree — will be migrated to DeepWork job |
-| `cadeng/cadeng` | CAD/hardware engineering (OpenSCAD, FreeCAD, 3D printing) | Referenced in decision tree — will be migrated to DeepWork job |
+| Workflow        | Purpose                                                                 | Status                                                         |
+| --------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `sweng/sweng`   | Software engineering task execution (GitHub/Forgejo issues, code tasks) | Referenced in decision tree — will be migrated to DeepWork job |
+| `cadeng/cadeng` | CAD/hardware engineering (OpenSCAD, FreeCAD, 3D printing)               | Referenced in decision tree — will be migrated to DeepWork job |
 
 ## Coding Subagent Usage
 
@@ -847,6 +884,7 @@ agent.coding-agent.{provider} REPO_DIR SYSTEM_PROMPT_FILE TIMEOUT [--model MODEL
 ```
 
 Available providers:
+
 - `agent.coding-agent.claude` — Uses Claude Code CLI with `--dangerously-skip-permissions`
 - `agent.coding-agent.codex` — Stub (not yet implemented)
 - `agent.coding-agent.gemini` — Stub (not yet implemented)
@@ -854,6 +892,7 @@ Available providers:
 ### Orchestrator/Subagent Split
 
 The bash orchestrator handles all git and platform operations:
+
 1. Pre-flight: verify repo exists in `.repos/`, detect remote type (GitHub/Forgejo), ensure clean state
 2. Create branch: `{prefix}/{slugified-task}`
 3. Generate system prompt with task context and 7 rules for the agent
@@ -897,6 +936,7 @@ This matches the pattern used by `agentSvcHelper` in `lib.nix` and ensures that 
 Agents have the full Pimalaya tool suite — himalaya (email), calendula (calendar), and cardamum (contacts). All auto-configured from the agent's mail credentials. See [Personal Information Management](personal-info-management.md) for usage details.
 
 **Email (himalaya):**
+
 - Always pipe email content via stdin, never use inline body arguments
 - Use ASCII only — no unicode characters in email bodies
 - Use `printf` with `\r\n` line endings (SMTP standard)
@@ -945,29 +985,29 @@ Agents are monitored via **Loki** (for structured events and logs) and **Prometh
 
 Agent scripts emit structured events using `logfmt`. Key fields available for querying and dashboard extraction:
 
-| Field | Description | Example |
-|-------|-------------|---------|
-| `event` | Type of event | `task_finish`, `run_start`, `stage_start` |
-| `agent` | Name of the agent | `drago` |
-| `host` | Hostname | `ocean` |
-| `unit` | Systemd unit name | `agent-drago-task-loop` |
-| `status` | Outcome status | `success`, `error`, `blocked`, `degraded` |
-| `duration_seconds` | Execution time | `42` |
-| `token_total` | Total AI tokens used | `1250` |
-| `workflow` | DeepWork workflow | `sweng/sweng` |
-| `parsed_urls` | URLs found in logs | `["https://github.com/..."]` |
+| Field              | Description          | Example                                   |
+| ------------------ | -------------------- | ----------------------------------------- |
+| `event`            | Type of event        | `task_finish`, `run_start`, `stage_start` |
+| `agent`            | Name of the agent    | `drago`                                   |
+| `host`             | Hostname             | `ocean`                                   |
+| `unit`             | Systemd unit name    | `agent-drago-task-loop`                   |
+| `status`           | Outcome status       | `success`, `error`, `blocked`, `degraded` |
+| `duration_seconds` | Execution time       | `42`                                      |
+| `token_total`      | Total AI tokens used | `1250`                                    |
+| `workflow`         | DeepWork workflow    | `sweng/sweng`                             |
+| `parsed_urls`      | URLs found in logs   | `["https://github.com/..."]`              |
 
 ### Prometheus Metrics
 
 The `task-loop.sh` and `scheduler.sh` scripts write metrics to the standard node exporter textfile directory (`/var/lib/keystone-node-exporter-textfiles/`).
 
-| Metric | Description |
-|--------|-------------|
-| `keystone_agent_task_loop_last_success_timestamp_seconds` | Last successful run time |
-| `keystone_agent_task_loop_last_exit_code` | Exit code of the most recent run |
-| `keystone_agent_task_loop_tasks_completed_total` | Total tasks completed in last run |
-| `keystone_agent_task_loop_tasks_failed_total` | Total tasks that errored in last run |
-| `keystone_agent_task_loop_tasks_blocked_total` | Total tasks blocked in last run |
+| Metric                                                    | Description                          |
+| --------------------------------------------------------- | ------------------------------------ |
+| `keystone_agent_task_loop_last_success_timestamp_seconds` | Last successful run time             |
+| `keystone_agent_task_loop_last_exit_code`                 | Exit code of the most recent run     |
+| `keystone_agent_task_loop_tasks_completed_total`          | Total tasks completed in last run    |
+| `keystone_agent_task_loop_tasks_failed_total`             | Total tasks that errored in last run |
+| `keystone_agent_task_loop_tasks_blocked_total`            | Total tasks blocked in last run      |
 
 ### Alerting Recommendations
 
@@ -975,42 +1015,41 @@ The `task-loop.sh` and `scheduler.sh` scripts write metrics to the standard node
 2. **Task Failure**: Trigger on any non-zero `keystone_agent_task_loop_last_exit_code`.
 3. **Blocked Surge**: Trigger if `keystone_agent_task_loop_tasks_blocked_total > 5`.
 
-
 ## Implementation Status
 
 ### Implemented
 
-| Feature | Module/Script | Notes |
-|---------|--------------|-------|
-| Agent provisioning | `modules/os/agents/` (8 submodules) | User, SSH, desktop, browser, mail, terminal, agentctl |
-| Task loop | `scripts/task-loop.sh` (282 lines) | Pre-fetch → ingest → prioritize → execute, flock concurrency |
-| Scheduler | `scripts/scheduler.sh` (120 lines) | SCHEDULES.yaml → pending tasks, pure bash |
-| agentctl CLI | `scripts/agentctl.sh` (391 lines) | services, tasks, email, claude/gemini/codex, mail, vnc, provision |
-| Notes sync | `notes.nix` + repo-sync package | Timer-triggered git commit/push |
-| DeepWork jobs | `.agents/.deepwork/jobs/` (9 jobs) | task_loop, daily_status, research, press_release, handoff, intake, onboarding, builder, convention |
-| Shared agents library | `.agents/` submodule | 27+ conventions, 10 roles, compose.sh, archetypes |
-| D-Bus socket fix | `dbus.nix` | ConditionUser guard prevents race |
-| MCP config | `agentctl.nix` | Generates `.mcp.json` per agent |
+| Feature               | Module/Script                       | Notes                                                                                              |
+| --------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Agent provisioning    | `modules/os/agents/` (8 submodules) | User, SSH, desktop, browser, mail, terminal, agentctl                                              |
+| Task loop             | `scripts/task-loop.sh` (282 lines)  | Pre-fetch → ingest → prioritize → execute, flock concurrency                                       |
+| Scheduler             | `scripts/scheduler.sh` (120 lines)  | SCHEDULES.yaml → pending tasks, pure bash                                                          |
+| agentctl CLI          | `scripts/agentctl.sh` (391 lines)   | services, tasks, email, claude/gemini/codex, mail, vnc, provision                                  |
+| Notes sync            | `notes.nix` + repo-sync package     | Timer-triggered git commit/push                                                                    |
+| DeepWork jobs         | `.agents/.deepwork/jobs/` (9 jobs)  | task_loop, daily_status, research, press_release, handoff, intake, onboarding, builder, convention |
+| Shared agents library | `.agents/` submodule                | 27+ conventions, 10 roles, compose.sh, archetypes                                                  |
+| D-Bus socket fix      | `dbus.nix`                          | ConditionUser guard prevents race                                                                  |
+| MCP config            | `agentctl.nix`                      | Generates `.mcp.json` per agent                                                                    |
 
 ### Partially Implemented
 
-| Feature | Status | What's Missing |
-|---------|--------|---------------|
-| Mail provisioning (FR-004) | himalaya works | Stalwart account auto-provisioning not fully wired |
-| Bitwarden provisioning (FR-005) | rbw configured | Per-agent Vaultwarden collection not created |
-| Tailscale per-agent (FR-006) | Code exists | Disabled due to agenix.service dependency |
-| MCP config access (FR-015) | .mcp.json generated | No `/etc/keystone/agent-mcp/{name}.json` for human access |
+| Feature                         | Status              | What's Missing                                            |
+| ------------------------------- | ------------------- | --------------------------------------------------------- |
+| Mail provisioning (FR-004)      | himalaya works      | Stalwart account auto-provisioning not fully wired        |
+| Bitwarden provisioning (FR-005) | rbw configured      | Per-agent Vaultwarden collection not created              |
+| Tailscale per-agent (FR-006)    | Code exists         | Disabled due to agenix.service dependency                 |
+| MCP config access (FR-015)      | .mcp.json generated | No `/etc/keystone/agent-mcp/{name}.json` for human access |
 
 ### Not Yet Implemented
 
-| Feature | Description |
-|---------|-------------|
-| Agent-space scaffold mode (FR-009) | Auto-generate agent-space for new agents without existing repo |
-| Audit trail (FR-011) | Immutable append-only log, Loki forwarding |
-| Full security tests (FR-012) | Basic VM test exists, full suite pending |
-| Coding subagent in Nix (FR-013) | Shell script exists but not Nix-packaged with provider interface |
-| Incident log (FR-014) | Shared incident database, auto-escalation |
-| Cronjob Nix scaffold (FR-016) | `.cronjobs/` convention documented but not auto-generated |
-| Agent-space flake (FR-017) | `flake.nix` convention documented but not auto-generated |
-| sweng DeepWork job | Referenced in decision tree, not yet a job definition |
-| cadeng DeepWork job | Referenced in decision tree, not yet a job definition |
+| Feature                            | Description                                                      |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| Agent-space scaffold mode (FR-009) | Auto-generate agent-space for new agents without existing repo   |
+| Audit trail (FR-011)               | Immutable append-only log, Loki forwarding                       |
+| Full security tests (FR-012)       | Basic VM test exists, full suite pending                         |
+| Coding subagent in Nix (FR-013)    | Shell script exists but not Nix-packaged with provider interface |
+| Incident log (FR-014)              | Shared incident database, auto-escalation                        |
+| Cronjob Nix scaffold (FR-016)      | `.cronjobs/` convention documented but not auto-generated        |
+| Agent-space flake (FR-017)         | `flake.nix` convention documented but not auto-generated         |
+| sweng DeepWork job                 | Referenced in decision tree, not yet a job definition            |
+| cadeng DeepWork job                | Referenced in decision tree, not yet a job definition            |

@@ -1,11 +1,13 @@
 # Spec: Repo-backed terminal assets
 
 ## Stories Covered
+
 - US-001: Link supported repo-backed assets from local checkouts
 - US-002: Apply linked changes without another rebuild for supported assets
 - US-004: Use the same development-mode model for users and OS agents
 
 ## Affected Modules
+
 - `modules/shared/dev-script-link.nix`
 - `modules/desktop/home/scripts/default.nix`
 - `modules/terminal/ai-extensions.nix`
@@ -16,29 +18,32 @@
 ## Data Models
 
 ### Terminal asset family matrix
-| Family | Current consumer | Mutable after activation | Primary source |
-|--------|------------------|--------------------------|----------------|
-| Shell entrypoints | `~/.local/bin/*` | yes | repo checkout or package fallback |
-| AI command templates | tool config directories | yes | repo checkout or module source |
-| DeepWork jobs | `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` | yes | repo checkout or packaged jobs |
-| Zellij layouts | `~/.config/zellij/layouts/*.kdl` | yes | repo checkout or module source |
-| Agent helper script | `~/.local/bin/agentctl` | yes after activation | repo checkout or packaged helper |
+
+| Family               | Current consumer                   | Mutable after activation | Primary source                    |
+| -------------------- | ---------------------------------- | ------------------------ | --------------------------------- |
+| Shell entrypoints    | `~/.local/bin/*`                   | yes                      | repo checkout or package fallback |
+| AI command templates | tool config directories            | yes                      | repo checkout or module source    |
+| DeepWork jobs        | `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` | yes                      | repo checkout or packaged jobs    |
+| Zellij layouts       | `~/.config/zellij/layouts/*.kdl`   | yes                      | repo checkout or module source    |
+| Agent helper script  | `~/.local/bin/agentctl`            | yes after activation     | repo checkout or packaged helper  |
 
 ## Interface definitions
 
 ### Shell entrypoint contract
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| targetPath | string | yes | User-visible path under `~/.local/bin/` |
-| relativeRepoPath | string | yes | Checkout path to the backing script |
-| executable | bool | yes | Backing file must remain executable |
+
+| Field            | Type   | Required | Notes                                   |
+| ---------------- | ------ | -------- | --------------------------------------- |
+| targetPath       | string | yes      | User-visible path under `~/.local/bin/` |
+| relativeRepoPath | string | yes      | Checkout path to the backing script     |
+| executable       | bool   | yes      | Backing file must remain executable     |
 
 ### Zellij layout contract
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| name | string | yes | Layout name such as `dev`, `ops`, or `write` |
-| targetPath | string | yes | `~/.config/zellij/layouts/{name}.kdl` |
-| sourcePath | string | yes | Checkout-backed path or immutable fallback |
+
+| Field      | Type   | Required | Notes                                        |
+| ---------- | ------ | -------- | -------------------------------------------- |
+| name       | string | yes      | Layout name such as `dev`, `ops`, or `write` |
+| targetPath | string | yes      | `~/.config/zellij/layouts/{name}.kdl`        |
+| sourcePath | string | yes      | Checkout-backed path or immutable fallback   |
 
 ## Behavioral Requirements
 
@@ -60,5 +65,6 @@
 - If a supported asset path collides with a user-created regular file, activation MUST surface the conflict instead of silently overwriting it.
 
 ## Cross-spec dependencies
+
 - `specs/001-shared-dev-mode-path-resolution.md`
 - `specs/005-agent-development-parity.md`

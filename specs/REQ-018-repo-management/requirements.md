@@ -11,6 +11,7 @@ Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
 
 ## Affected Modules
+
 - `packages/ks/ks.sh` — repo discovery, pull, push, override-input, lock
 - `modules/notes/default.nix` — user notes path default
 - `modules/os/agents/types.nix` — agent notes path default
@@ -59,6 +60,7 @@ users and OS agents. For agent `drago`, the keystone home is
 
 **REQ-018.2a** Home Manager activation MUST ensure the standard workspace
 directories exist for both humans and agents:
+
 - `~/.keystone/`
 - `~/.keystone/repos/`
 - the configured notes path (`~/notes` by default)
@@ -67,6 +69,7 @@ directories exist for both humans and agents:
 
 **REQ-018.2b** Home Manager MUST export standardized environment variables so
 non-`ks` tooling can discover the shared workspace paths:
+
 - `NOTES_DIR` — the configured notes path
 - `CODE_DIR` — `$HOME/code`
 - `WORKTREE_DIR` — `$HOME/.worktrees`
@@ -76,6 +79,7 @@ non-`ks` tooling can discover the shared workspace paths:
 **REQ-018.3** A new option `keystone.repos` MUST declare managed
 repositories as an attrset keyed by `owner/repo` (e.g.,
 `"ncrmro/keystone"`) with the following per-repo options:
+
 - `url` (string, REQUIRED) — git remote URL
 - `flakeInput` (string, nullable, default `null`) — corresponding input
   name in the consumer's `flake.nix`. When set, `ks` generates
@@ -101,6 +105,7 @@ for OS agents.
 
 **REQ-018.6** The following repos MUST be declared for core keystone
 operation:
+
 - `ncrmro/nixos-config` — the consumer NixOS configuration
 - `ncrmro/agenix-secrets` — encrypted secrets (`flakeInput: "agenix-secrets"`)
 - `ncrmro/keystone` — keystone modules (`flakeInput: "keystone"`)
@@ -134,6 +139,7 @@ each managed repo: path, branch, dirty state, commits ahead/behind remote.
 
 **REQ-018.10** Lock mode (`ks build --lock`, `ks update` default) MUST,
 for each repo with a non-null `flakeInput`:
+
 1. Verify the local checkout is clean and fully pushed
 2. Push if needed (with fork fallback per REQ-016.9)
 3. Run `nix flake update <flakeInput>` to lock the input

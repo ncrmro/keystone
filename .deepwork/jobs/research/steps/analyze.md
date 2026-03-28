@@ -20,7 +20,6 @@ Analyze ingested research material to identify reproducible claims, experiments,
 2. **Identify reproducible items**
 
    Scan the material for items that can be independently reproduced or validated:
-
    - **Experiments**: Specific experiments with measurable outcomes
    - **Claims**: Technical claims that can be verified through implementation
    - **Methodologies**: Approaches or techniques that can be applied in a different context
@@ -35,7 +34,6 @@ Analyze ingested research material to identify reproducible claims, experiments,
 3. **Assess feasibility**
 
    For each reproducible item, evaluate:
-
    - **Complexity**: How much engineering effort is needed? (low / medium / high)
    - **Prerequisites**: What tools, data, infrastructure, or knowledge is required?
    - **Data availability**: Is the data publicly available, or would substitutes be needed?
@@ -80,6 +78,7 @@ Analyze ingested research material to identify reproducible claims, experiments,
 **Success criteria**: [What constitutes successful reproduction]
 
 **Feasibility**:
+
 - Complexity: [low | medium | high]
 - Prerequisites: [tools, data, infrastructure needed]
 - Data availability: [available | partially available | unavailable]
@@ -100,15 +99,16 @@ Analyze ingested research material to identify reproducible claims, experiments,
 
 ## Priority Summary
 
-| Priority | Count | Items |
-|---|---|---|
-| P0 | [n] | [item names] |
-| P1 | [n] | [item names] |
-| P2 | [n] | [item names] |
+| Priority | Count | Items        |
+| -------- | ----- | ------------ |
+| P0       | [n]   | [item names] |
+| P1       | [n]   | [item names] |
+| P2       | [n]   | [item names] |
 
 ## Resource Requirements
 
 **Combined prerequisites for all P0 items**:
+
 - Tools: [list]
 - Data: [list]
 - Infrastructure: [list]
@@ -138,6 +138,7 @@ Analyzed the Flash Attention 3 paper identifying 4 reproducible items: the core 
 **Success criteria**: Achieve within 10% of reported TFLOPS numbers for each sequence length.
 
 **Feasibility**:
+
 - Complexity: medium
 - Prerequisites: H100 GPU, CUDA 12+, PyTorch 2.x
 - Data availability: available (synthetic random tensors)

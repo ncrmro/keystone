@@ -30,17 +30,17 @@ OS-level changes require a full `nixos-rebuild switch` — not just `ks build`.
 
 Enabled via `keystone.desktop.enable = true` in home-manager config. Components:
 
-| Component | File | Key Detail |
-|-----------|------|------------|
-| Ghostty | `components/ghostty.nix` | JetBrains Mono Nerd Font, 12pt, 0.95 opacity |
-| Waybar | `components/waybar.nix` | Named workspaces, clock, CPU, battery, BT, audio |
-| Walker | `components/walker.nix` | Apps, files, emoji, calculator, web search, clipboard |
-| Mako | `components/mako.nix` | Notification daemon (themed) |
-| Clipboard | `components/clipboard.nix` | clipse (100 items) + wl-clipboard + wl-clip-persist |
-| Screenshot | `components/screenshot.nix` | grim + slurp + satty annotation |
-| SwayOSD | `components/swayosd.nix` | Volume/brightness OSD |
-| Btop | `components/btop.nix` | System monitor (themed) |
-| Slidev | `home/default.nix` | Markdown presentation tool (`pkgs.keystone.slidev`) |
+| Component  | File                        | Key Detail                                            |
+| ---------- | --------------------------- | ----------------------------------------------------- |
+| Ghostty    | `components/ghostty.nix`    | JetBrains Mono Nerd Font, 12pt, 0.95 opacity          |
+| Waybar     | `components/waybar.nix`     | Named workspaces, clock, CPU, battery, BT, audio      |
+| Walker     | `components/walker.nix`     | Apps, files, emoji, calculator, web search, clipboard |
+| Mako       | `components/mako.nix`       | Notification daemon (themed)                          |
+| Clipboard  | `components/clipboard.nix`  | clipse (100 items) + wl-clipboard + wl-clip-persist   |
+| Screenshot | `components/screenshot.nix` | grim + slurp + satty annotation                       |
+| SwayOSD    | `components/swayosd.nix`    | Volume/brightness OSD                                 |
+| Btop       | `components/btop.nix`       | System monitor (themed)                               |
+| Slidev     | `home/default.nix`          | Markdown presentation tool (`pkgs.keystone.slidev`)   |
 
 ## Key Hyprland Options
 
@@ -68,6 +68,7 @@ provides: Hyprland colors, hyprlock, waybar CSS, mako, walker CSS, ghostty, heli
 zellij, btop, swayosd, and wallpapers.
 
 When adding a new theme:
+
 1. Create `home/theming/<name>/` with the required component files
 2. Register in `home/theming/default.nix`
 3. Runtime switcher picks it up automatically
@@ -80,12 +81,12 @@ osaka-jade, ristretto, rose-pine, royal-green.
 
 `$mod` = configured `modifierKey` (physical Alt when `altwin:swap_alt_win` active).
 
-| Binding | Action |
-|---------|--------|
-| `$mod+Return` | Terminal |
-| `$mod+Space` | Walker launcher |
-| `$mod+W` | Close window |
-| `$mod+F` | Fullscreen |
-| `$mod+D` | Context switcher |
-| `$mod+1-0` | Workspaces 1-10 |
-| `Print` | Screenshot |
+| Binding       | Action           |
+| ------------- | ---------------- |
+| `$mod+Return` | Terminal         |
+| `$mod+Space`  | Walker launcher  |
+| `$mod+W`      | Close window     |
+| `$mod+F`      | Fullscreen       |
+| `$mod+D`      | Context switcher |
+| `$mod+1-0`    | Workspaces 1-10  |
+| `Print`       | Screenshot       |

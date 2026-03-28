@@ -37,11 +37,13 @@ Before diving into specific issues, run through this quick checklist:
 ### Issue: ISO Build Fails
 
 **Symptoms**:
+
 ```
 error: builder for '/nix/store/...iso.drv' failed
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Check Nix installation
 nix --version
@@ -57,6 +59,7 @@ df -h /nix
 
 1. **Insufficient disk space**
    - **Solution**: Free up space in /nix/store
+
    ```bash
    nix-collect-garbage -d
    sudo nix-collect-garbage -d
@@ -65,6 +68,7 @@ df -h /nix
 2. **Network issues downloading packages**
    - **Solution**: Check internet connection
    - **Solution**: Try binary cache manually:
+
    ```bash
    nix-store --verify --check-contents
    ```
@@ -74,6 +78,7 @@ df -h /nix
    - **Solution**: Run `nix flake show` to validate
 
 **Prevention**:
+
 - Keep at least 10GB free in /nix/store
 - Regularly run garbage collection
 - Test flake syntax before building ISOs
@@ -83,6 +88,7 @@ df -h /nix
 ### Issue: Configuration Validation Fails
 
 **Symptoms**:
+
 ```
 error: attribute 'nixosConfigurations.test-server' missing
 error: infinite recursion encountered
@@ -90,6 +96,7 @@ error: undefined variable 'config'
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Test configuration evaluation
 nix eval .#nixosConfigurations.test-server.config.system.name
@@ -105,6 +112,7 @@ nix flake show
 
 1. **Missing module imports**
    - **Solution**: Ensure all required modules are imported in flake.nix
+
    ```nix
    modules = [
      disko.nixosModules.disko  # Required!
@@ -125,6 +133,7 @@ nix flake show
      - `users.users.root.openssh.authorizedKeys.keys`
 
 **Prevention**:
+
 - Use `nix build` to validate before deployment
 - Keep configurations in version control
 - Use examples as templates
@@ -136,12 +145,14 @@ nix flake show
 ### Issue: "disk device not found" during deployment
 
 **Symptoms**:
+
 ```
 error: disk /dev/vda not found
 error: cannot stat '/dev/sda': No such file or directory
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # SSH to target and list available disks
 ssh root@target-ip "lsblk"
@@ -151,6 +162,7 @@ ssh root@target-ip "ls -l /dev/disk/by-id/"
 **Solution**:
 
 1. **Identify correct disk device**:
+
    ```bash
    # On target (booted from ISO)
    lsblk -d -o NAME,SIZE,TYPE
@@ -166,12 +178,14 @@ ssh root@target-ip "ls -l /dev/disk/by-id/"
    ```
 
 **Common Device Paths**:
+
 - QEMU/KVM VMs: `/dev/vda`
 - VirtualBox VMs: `/dev/sda`
 - Physical NVMe: `/dev/disk/by-id/nvme-...`
 - Physical SATA: `/dev/disk/by-id/ata-...`
 
 **Prevention**:
+
 - Always verify disk device on target before deployment
 - Use `/dev/disk/by-id/` paths for production
 - Document device paths in configuration comments
@@ -181,6 +195,7 @@ ssh root@target-ip "ls -l /dev/disk/by-id/"
 ### Issue: SSH Access Fails After Deployment
 
 **Symptoms**:
+
 ```
 Permission denied (publickey)
 Connection refused
@@ -188,6 +203,7 @@ ssh: connect to host X.X.X.X port 22: No route to host
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Test SSH with verbose output
 ssh -vvv root@target-ip
@@ -203,6 +219,7 @@ ping target-ip
 
 1. **SSH keys not added to configuration**
    - **Solution**: Add your public key:
+
    ```nix
    users.users.root.openssh.authorizedKeys.keys = [
      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host"
@@ -215,10 +232,12 @@ ping target-ip
 
 3. **Firewall blocking SSH**
    - **Diagnostic**: Check from target console
+
    ```bash
    nft list ruleset | grep 22
    systemctl status firewall
    ```
+
    - **Solution**: The server module should allow SSH by default
 
 4. **Network configuration issues**
@@ -226,6 +245,7 @@ ping target-ip
    - **Solution**: Verify routing and gateway settings
 
 **Prevention**:
+
 - Always test SSH keys before deployment
 - Keep backup of SSH private keys
 - Document which key is used for which system
@@ -237,12 +257,14 @@ ping target-ip
 ### Issue: Target Not Reachable
 
 **Symptoms**:
+
 ```
 ssh: connect to host X.X.X.X port 22: No route to host
 ping: X.X.X.X: Host is unreachable
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Check local network
 ip addr
@@ -267,6 +289,7 @@ traceroute target-ip
 
 3. **Firewall on development machine**
    - **Solution**: Allow outbound SSH
+
    ```bash
    # Check firewall rules
    sudo ufw status
@@ -278,6 +301,7 @@ traceroute target-ip
    - **Solution**: Check network segmentation/VLANs
 
 **Prevention**:
+
 - Use static IPs or DHCP reservations
 - Document network topology
 - Test connectivity before deploying
@@ -287,6 +311,7 @@ traceroute target-ip
 ### Issue: Deployment Hangs "Building system closure"
 
 **Symptoms**:
+
 ```
 >>> Building system closure...
 building '/nix/store/...drv'...
@@ -294,6 +319,7 @@ building '/nix/store/...drv'...
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Check if actually hanging or just slow
 # Watch nix build progress in another terminal
@@ -314,6 +340,7 @@ nethogs  # or iftop, bmon
    - **Cause**: Package not in binary cache
    - **Solution**: Wait for build (can take time)
    - **Prevention**: Use binary cache:
+
    ```nix
    nix.settings.substituters = [
      "https://cache.nixos.org"
@@ -329,6 +356,7 @@ nethogs  # or iftop, bmon
    ```
 
 **Prevention**:
+
 - Pre-populate binary cache
 - Use local cache server for team deployments
 - Test configuration builds locally first
@@ -340,6 +368,7 @@ nethogs  # or iftop, bmon
 ### Issue: "ZFS modules not available"
 
 **Symptoms**:
+
 ```
 error: cannot load zfs modules
 modprobe: FATAL: Module zfs not found
@@ -347,6 +376,7 @@ The following modules could not be loaded: zfs
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Check if ZFS is available in ISO
 ssh root@target-ip "modprobe zfs && lsmod | grep zfs"
@@ -360,6 +390,7 @@ ssh root@target-ip "uname -r"
 1. **Kernel/ZFS version mismatch**
    - **Solution**: Rebuild ISO with compatible kernel
    - **Fix**: Update modules/iso-installer.nix:
+
    ```nix
    boot.kernelPackages = pkgs.linuxPackages_6_12;
    ```
@@ -371,6 +402,7 @@ ssh root@target-ip "uname -r"
    ```
 
 **Prevention**:
+
 - Always use freshly built ISO
 - Document ISO kernel version
 - Test ZFS availability before deployment
@@ -380,6 +412,7 @@ ssh root@target-ip "uname -r"
 ### Issue: Disk Formatting Fails
 
 **Symptoms**:
+
 ```
 error: cannot create partition table
 error: device or resource busy
@@ -387,6 +420,7 @@ wipefs: error: /dev/vda: probing initialization failed
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Check if disk is in use
 ssh root@target-ip "lsblk"
@@ -400,6 +434,7 @@ ssh root@target-ip "fdisk -l /dev/vda"
 
 1. **Disk already mounted**
    - **Solution**: Unmount before deployment
+
    ```bash
    umount /mnt/*
    swapoff -a
@@ -407,6 +442,7 @@ ssh root@target-ip "fdisk -l /dev/vda"
 
 2. **Existing ZFS pool**
    - **Solution**: Export pool first
+
    ```bash
    zpool export -a
    ```
@@ -419,6 +455,7 @@ ssh root@target-ip "fdisk -l /dev/vda"
    ```
 
 **Prevention**:
+
 - Start with clean disk
 - Document disk preparation steps
 - Use `--hard-reset` flag in test script
@@ -428,6 +465,7 @@ ssh root@target-ip "fdisk -l /dev/vda"
 ### Issue: Deployment Hangs at Pool Export
 
 **Symptoms**:
+
 ```
 >>> Rebooting system...
 [Hangs indefinitely]
@@ -436,6 +474,7 @@ ssh root@target-ip "fdisk -l /dev/vda"
 **This Issue is FIXED in Current Version**
 
 **Diagnostic Steps**:
+
 ```bash
 # Check if credstore cleanup is in script
 grep "cryptsetup close credstore" bin/test-deployment
@@ -445,11 +484,13 @@ grep "cryptsetup" scripts/deploy-vm.sh
 ```
 
 **Explanation**:
+
 - Old versions hung because credstore LUKS device remained open
 - ZFS cannot export pool when zvol devices are in use
 - **Fix**: Close credstore before exporting pool
 
 **If Using Old Version**:
+
 1. Interrupt deployment (Ctrl+C)
 2. Manually close credstore:
    ```bash
@@ -458,6 +499,7 @@ grep "cryptsetup" scripts/deploy-vm.sh
 3. Update to latest version with fix
 
 **Prevention**:
+
 - Use latest version of deployment scripts
 - Test with `./bin/test-deployment --hard-reset`
 
@@ -470,26 +512,31 @@ grep "cryptsetup" scripts/deploy-vm.sh
 **THIS IS NOT A BUG - User Action Required**
 
 **Symptoms**:
+
 - Console shows: "Please enter passphrase for disk..."
 - System appears to be waiting
 
 **Explanation**:
+
 - VMs don't have TPM2, so manual password is required
 - This is **expected behavior** for encrypted storage
 - System is waiting for you to enter password
 
 **Solution**:
+
 1. Look at VM console window or physical system screen
 2. Type a password (any password for first boot)
 3. Press Enter
 4. System will continue booting
 
 **Remember this password**:
+
 - You'll need it on every boot
 - Store in password manager
 - Document in secure location
 
 **Prevention**:
+
 - Expect this prompt on VMs
 - For production with TPM2: automatic unlock
 - Test password entry during initial deployment
@@ -499,11 +546,13 @@ grep "cryptsetup" scripts/deploy-vm.sh
 ### Issue: System Won't Boot After Deployment
 
 **Symptoms**:
+
 - System reboots but doesn't reach login prompt
 - Stuck at GRUB/bootloader
 - Kernel panic
 
 **Diagnostic Steps**:
+
 ```bash
 # Boot from ISO again
 # Check ZFS pool
@@ -519,12 +568,14 @@ ls /mnt/boot/loader/
 
 1. **Boot partition not mounted**
    - **Solution**: Reinstall bootloader
+
    ```bash
    nixos-install --root /mnt
    ```
 
 2. **ZFS pool not exported cleanly**
    - **Solution**: Force import and re-export
+
    ```bash
    zpool import -f rpool
    zpool scrub rpool
@@ -535,6 +586,7 @@ ls /mnt/boot/loader/
    - **Solution**: Redeploy with fresh installation
 
 **Prevention**:
+
 - Use credstore cleanup fix
 - Don't interrupt deployment during boot setup
 - Verify boot configuration before deployment
@@ -544,12 +596,14 @@ ls /mnt/boot/loader/
 ### Issue: Can't SSH After First Boot
 
 **Symptoms**:
+
 ```
 ssh: connect to host X.X.X.X port 22: Connection refused
 ssh: connect to host X.X.X.X port 22: Connection timed out
 ```
 
 **Diagnostic Steps**:
+
 1. Check if system booted successfully (look at console)
 2. Verify network configuration
 3. Check SSH service status (from console):
@@ -566,6 +620,7 @@ ssh: connect to host X.X.X.X port 22: Connection timed out
 
 2. **Wrong IP address**
    - **Solution**: Check actual IP on target
+
    ```bash
    ip addr show
    ```
@@ -579,6 +634,7 @@ ssh: connect to host X.X.X.X port 22: Connection timed out
    - **Check**: `systemctl is-system-running`
 
 **Prevention**:
+
 - Wait 2-3 minutes after reboot before attempting SSH
 - Verify deployment with verification script
 - Check system logs after first successful SSH
@@ -590,12 +646,14 @@ ssh: connect to host X.X.X.X port 22: Connection timed out
 ### Issue: ZFS Pool Not Imported
 
 **Symptoms**:
+
 ```
 cannot open 'rpool': no such pool
 zfs list: cannot open 'rpool/crypt': dataset does not exist
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Check available pools
 zpool import
@@ -611,6 +669,7 @@ journalctl | grep zfs
 
 1. **Pool needs manual import**
    - **Solution**:
+
    ```bash
    zpool import -N rpool
    zpool import rpool
@@ -624,6 +683,7 @@ journalctl | grep zfs
    - **Solution**: Investigate disk issues
 
 **Prevention**:
+
 - Verify credstore unlock procedure
 - Test pool import after deployment
 - Monitor pool health regularly
@@ -633,12 +693,14 @@ journalctl | grep zfs
 ### Issue: Cannot Access Encrypted Datasets
 
 **Symptoms**:
+
 ```
 cannot mount '/': Input/output error
 Key load error: Key material not available
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Check encryption status
 zfs get encryption rpool/crypt
@@ -654,6 +716,7 @@ ls -l /etc/credstore/
 
 1. **Encryption key not loaded**
    - **Solution**:
+
    ```bash
    zfs load-key -L file:///etc/credstore/zfs-rpool-crypt-enckey rpool/crypt
    zfs mount -a
@@ -667,6 +730,7 @@ ls -l /etc/credstore/
    - **Prevention**: Back up encryption keys securely
 
 **Prevention**:
+
 - Test encryption setup during deployment
 - Document key management procedures
 - Regular backup of credstore
@@ -676,11 +740,13 @@ ls -l /etc/credstore/
 ### Issue: "pool export failed" Error
 
 **Symptoms**:
+
 ```
 cannot export 'rpool': pool is busy
 ```
 
 **Diagnostic Steps**:
+
 ```bash
 # Check what's using the pool
 lsof | grep rpool
@@ -695,6 +761,7 @@ cryptsetup status credstore
 
 1. **Credstore still open** (should be fixed in current version)
    - **Solution**:
+
    ```bash
    cryptsetup close credstore
    zpool export rpool
@@ -702,6 +769,7 @@ cryptsetup status credstore
 
 2. **Datasets still mounted**
    - **Solution**:
+
    ```bash
    umount -R /mnt
    zpool export rpool
@@ -715,6 +783,7 @@ cryptsetup status credstore
    ```
 
 **Prevention**:
+
 - Use deployment wrapper with credstore cleanup
 - Follow proper shutdown procedure
 - Don't interrupt reboot process
@@ -726,11 +795,13 @@ cryptsetup status credstore
 ### Issue: Deployment Takes Too Long
 
 **Symptoms**:
+
 - Deployment exceeds 20 minutes
 - "Building system closure" takes > 10 minutes
 - Network copy very slow
 
 **Diagnostic Steps**:
+
 ```bash
 # Check network speed
 iperf3 -s  # on target
@@ -762,6 +833,7 @@ nix build --print-build-logs
    - **Solution**: Use mirror closer to your location
 
 **Prevention**:
+
 - Configure binary cache
 - Test deployment in VM first
 - Use fast network connections
@@ -771,11 +843,13 @@ nix build --print-build-logs
 ### Issue: System Slow After Deployment
 
 **Symptoms**:
+
 - SSH commands slow to respond
 - High CPU usage
 - System feels sluggish
 
 **Diagnostic Steps**:
+
 ```bash
 # Check system load
 top
@@ -801,6 +875,7 @@ journalctl -p err -n 50
 2. **Insufficient RAM**
    - **ZFS wants lots of RAM**
    - **Solution**: Add more RAM or tune ARC
+
    ```nix
    boot.kernelParams = ["zfs.zfs_arc_max=4294967296"];  # 4GB
    ```
@@ -810,6 +885,7 @@ journalctl -p err -n 50
    - **Solution**: Add more swap or RAM
 
 **Prevention**:
+
 - Size system appropriately (16GB+ RAM recommended)
 - Tune ZFS for your workload
 - Monitor system resources
@@ -825,22 +901,26 @@ If you can't SSH to the deployed system:
 1. **Boot from Keystone ISO**
 
 2. **Import ZFS pool**:
+
    ```bash
    zpool import -f rpool
    ```
 
 3. **Unlock credstore**:
+
    ```bash
    cryptsetup open /dev/zvol/rpool/credstore-enc credstore
    mount /dev/mapper/credstore /mnt
    ```
 
 4. **Load ZFS keys**:
+
    ```bash
    zfs load-key -L file:///mnt/zfs-rpool-crypt-enckey rpool/crypt
    ```
 
 5. **Mount filesystems**:
+
    ```bash
    mount -t zfs rpool/crypt/root /mnt
    mount -t zfs rpool/crypt/nix /mnt/nix
@@ -875,6 +955,7 @@ If deployment fails partway through:
    - Free up disk space
 
 4. **Try again**:
+
    ```bash
    # Clean start recommended
    ./bin/test-deployment --hard-reset
@@ -899,6 +980,7 @@ If system is completely broken:
 2. **Boot from ISO**
 
 3. **Wipe disk completely**:
+
    ```bash
    wipefs -a /dev/vda
    sgdisk --zap-all /dev/vda

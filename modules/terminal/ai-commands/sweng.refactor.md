@@ -6,6 +6,7 @@ argument-hint: <task source>
 Start the sweng/refactor DeepWork workflow for code restructuring without behavior change.
 
 Use the DeepWork MCP tools to start the workflow:
+
 - job_name: "sweng"
 - workflow_name: "refactor"
 - goal: "$ARGUMENTS" (task source: TASKS.yaml entry, user description, or issue URL)

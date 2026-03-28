@@ -5,7 +5,7 @@
 **Status**: Draft
 **Input**: User description: "The test machine needs to be booted into the virtual machine with secureboot in setup mode."
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Boot VM in Secure Boot Setup Mode (Priority: P1)
 
@@ -31,7 +31,7 @@ As a Keystone developer, I need to create test VMs that boot into Secure Boot se
 - How does the system handle VMs that have already transitioned out of setup mode?
 - What happens if the OVMF_VARS template already has keys enrolled?
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -52,7 +52,7 @@ As a Keystone developer, I need to create test VMs that boot into Secure Boot se
 - **NVRAM State**: Stores firmware variables including Secure Boot status (setup mode vs user mode), persisted across reboots
 - **OVMF Firmware**: Read-only firmware code (OVMF_CODE) and writable variables template (OVMF_VARS) without pre-enrolled keys
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

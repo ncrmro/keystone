@@ -80,6 +80,7 @@ When deploying the same or similar configuration again:
 ### Phase 1: Preparation
 
 #### ISO Build (First Time)
+
 - **Expected**: 2-5 minutes
 - **Factors**: CPU speed, available cores, network (for downloads)
 - **Cached**: Instant on subsequent builds
@@ -90,11 +91,13 @@ When deploying the same or similar configuration again:
   - Injects SSH keys
 
 **Troubleshooting slow ISO builds**:
+
 - Check internet connection (downloads required)
 - Verify sufficient disk space (5GB+ free)
 - Consider using binary cache: `nix.settings.substituters`
 
 #### Configuration Validation
+
 - **Expected**: 1-2 minutes (first time), 10-30 seconds (cached)
 - **What's Happening**:
   - Nix evaluates configuration
@@ -103,11 +106,13 @@ When deploying the same or similar configuration again:
   - Builds system closure
 
 **Troubleshooting**:
+
 - Configuration errors appear here
 - Check syntax and module imports
 - Verify all required options are set
 
 #### Target Boot
+
 - **Expected**: 30-60 seconds
 - **VM**: Usually 30-45 seconds
 - **Physical Hardware**: 45-90 seconds (depends on POST time)
@@ -119,6 +124,7 @@ When deploying the same or similar configuration again:
   - Network configuration
 
 **Troubleshooting slow boots**:
+
 - Check BIOS/UEFI settings (fast boot)
 - Verify boot order (ISO/USB first)
 - Check network configuration (DHCP delays)
@@ -126,6 +132,7 @@ When deploying the same or similar configuration again:
 ### Phase 2: Deployment
 
 #### System Closure Build
+
 - **Expected**: 2-4 minutes (first time), 30-60 seconds (cached)
 - **What's Happening**:
   - nixos-anywhere builds complete system
@@ -136,6 +143,7 @@ When deploying the same or similar configuration again:
 **This is the longest step on first deployment**
 
 **Factors affecting build time**:
+
 - Number of packages in configuration
 - Binary cache availability
 - Network speed (for downloads)
@@ -143,6 +151,7 @@ When deploying the same or similar configuration again:
 - Available RAM
 
 #### Disk Partitioning
+
 - **Expected**: 10-30 seconds
 - **What's Happening**:
   - Creates GPT partition table
@@ -150,11 +159,13 @@ When deploying the same or similar configuration again:
   - Creates ZFS partition
 
 **Troubleshooting**:
+
 - Disk in use errors: ensure disk is not mounted
 - Device not found: verify disk path is correct
 - Permission errors: check SSH access as root
 
 #### ZFS Pool Creation
+
 - **Expected**: 30-60 seconds
 - **What's Happening**:
   - Creates ZFS pool "rpool"
@@ -165,6 +176,7 @@ When deploying the same or similar configuration again:
 **This step is CPU-intensive (key generation)**
 
 #### Credstore Setup
+
 - **Expected**: 20-40 seconds
 - **What's Happening**:
   - Creates credstore zvol
@@ -173,6 +185,7 @@ When deploying the same or similar configuration again:
   - Stores ZFS encryption keys
 
 #### System Installation
+
 - **Expected**: 2-4 minutes
 - **What's Happening**:
   - Copies Nix store to target
@@ -183,6 +196,7 @@ When deploying the same or similar configuration again:
 **Network-dependent**: slow networks = longer install
 
 #### Configuration Apply
+
 - **Expected**: 30-60 seconds
 - **What's Happening**:
   - Activates systemd services
@@ -193,6 +207,7 @@ When deploying the same or similar configuration again:
 ### Phase 3: First Boot
 
 #### System Reboot
+
 - **Expected**: 10-20 seconds
 - **What's Happening**:
   - Cleanly unmounts filesystems
@@ -203,12 +218,14 @@ When deploying the same or similar configuration again:
 **With fix**: Credstore cleanup prevents hanging
 
 #### UEFI/BIOS Post
+
 - **Expected**: 5-15 seconds (VM), 15-60 seconds (hardware)
 - **Hardware Factor**: Varies greatly by system
 - **VMs**: Usually very fast
 - **Physical**: Can be slow on servers with lots of RAM
 
 #### Bootloader
+
 - **Expected**: 2-5 seconds
 - **What's Happening**:
   - systemd-boot menu (may not be visible)
@@ -216,6 +233,7 @@ When deploying the same or similar configuration again:
   - Loads initrd
 
 #### Initrd Execution
+
 - **Expected**: 5-10 seconds
 - **What's Happening**:
   - Mounts ESP
@@ -223,6 +241,7 @@ When deploying the same or similar configuration again:
   - Prepares to unlock credstore
 
 #### **🔐 Credstore Password Entry** (User Action Required)
+
 - **Expected**: 10-60 seconds (depends on user)
 - **VMs**: Always requires password (no TPM2)
 - **Hardware with TPM2**: Automatic unlock (no password)
@@ -234,12 +253,14 @@ When deploying the same or similar configuration again:
 **This is a BLOCKING step - system will wait indefinitely**
 
 **Tips**:
+
 - Use strong but memorable passphrase
 - Store passphrase securely
 - Test password entry in VM before production
 - Consider hardware TPM2 for automatic unlock
 
 #### ZFS Pool Import
+
 - **Expected**: 5-10 seconds
 - **What's Happening**:
   - Imports rpool
@@ -247,6 +268,7 @@ When deploying the same or similar configuration again:
   - Mounts encrypted datasets
 
 #### Root Filesystem Mount
+
 - **Expected**: 2-5 seconds
 - **What's Happening**:
   - Mounts root (rpool/crypt/root)
@@ -256,6 +278,7 @@ When deploying the same or similar configuration again:
   - Pivots to real root
 
 #### SystemD Initialization
+
 - **Expected**: 10-20 seconds
 - **What's Happening**:
   - SystemD starts
@@ -263,6 +286,7 @@ When deploying the same or similar configuration again:
   - Starts system services
 
 #### Service Startup
+
 - **Expected**: 10-20 seconds
 - **What's Happening**:
   - SSH daemon starts
@@ -288,6 +312,7 @@ When deploying the same or similar configuration again:
 ### For Faster Deployments
 
 1. **Use Binary Cache**:
+
    ```nix
    nix.settings.substituters = [
      "https://cache.nixos.org"
@@ -295,6 +320,7 @@ When deploying the same or similar configuration again:
    ```
 
 2. **Optimize Build Settings**:
+
    ```nix
    nix.settings = {
      max-jobs = "auto";  # Use all available cores
@@ -320,6 +346,7 @@ When deploying the same or similar configuration again:
    - Set boot timeout to minimum
 
 2. **SystemD Optimization**:
+
    ```nix
    systemd.services = {
      # Disable unnecessary services
@@ -363,74 +390,83 @@ NixOS 24.11 (x86_64) - tty1               # Login prompt
 ## Troubleshooting Slow Deployments
 
 ### Deployment Hangs at "Building system closure"
+
 - **Cause**: Downloading packages or building from source
 - **Solution**: Check network connection, wait for completion
 - **Prevention**: Pre-populate binary cache
 
 ### Deployment Hangs at "Installing system"
+
 - **Cause**: Network issues during file copy
 - **Solution**: Check SSH connection stability
 - **Prevention**: Use wired connection, not WiFi
 
 ### Deployment Hangs at "Rebooting system"
+
 - **Cause**: Pool export failing (credstore still open)
 - **Solution**: This is fixed in current version
 - **Verification**: Check for credstore cleanup messages
 
 ### Boot Hangs at Password Prompt
+
 - **Cause**: Waiting for user input
 - **Solution**: Enter the credstore password
 - **Not a hang**: System is waiting for you!
 
 ### Boot Hangs After Password
+
 - **Cause**: ZFS import or mount issues
 - **Solution**: Check console for error messages
 - **Recovery**: Boot from ISO and inspect pool
 
 ## Expected Timeline Summary
 
-| Scenario | First Time | Cached | With Binary Cache |
-|----------|-----------|--------|-------------------|
-| **Development VM** | 10-15 min | 5-8 min | 6-10 min |
-| **Production Server** | 15-25 min | 8-12 min | 10-15 min |
-| **High-spec Hardware** | 8-12 min | 4-6 min | 5-8 min |
-| **Low-spec Hardware** | 20-30 min | 10-15 min | 12-18 min |
+| Scenario               | First Time | Cached    | With Binary Cache |
+| ---------------------- | ---------- | --------- | ----------------- |
+| **Development VM**     | 10-15 min  | 5-8 min   | 6-10 min          |
+| **Production Server**  | 15-25 min  | 8-12 min  | 10-15 min         |
+| **High-spec Hardware** | 8-12 min   | 4-6 min   | 5-8 min           |
+| **Low-spec Hardware**  | 20-30 min  | 10-15 min | 12-18 min         |
 
 ## When to Be Concerned
 
-| Phase | Normal | Concerning | Investigate |
-|-------|--------|------------|-------------|
-| ISO Build | < 5 min | 5-10 min | > 10 min |
-| Config Build | < 2 min | 2-5 min | > 5 min |
-| System Closure | < 4 min | 4-8 min | > 8 min |
-| Disk Format | < 30 sec | 30-60 sec | > 60 sec |
-| ZFS Create | < 60 sec | 1-2 min | > 2 min |
-| Installation | < 4 min | 4-8 min | > 8 min |
-| First Boot | < 3 min | 3-5 min | > 5 min |
-| Password Wait | Any | - | Never hangs |
-| Post-Password | < 30 sec | 30-60 sec | > 60 sec |
+| Phase          | Normal   | Concerning | Investigate |
+| -------------- | -------- | ---------- | ----------- |
+| ISO Build      | < 5 min  | 5-10 min   | > 10 min    |
+| Config Build   | < 2 min  | 2-5 min    | > 5 min     |
+| System Closure | < 4 min  | 4-8 min    | > 8 min     |
+| Disk Format    | < 30 sec | 30-60 sec  | > 60 sec    |
+| ZFS Create     | < 60 sec | 1-2 min    | > 2 min     |
+| Installation   | < 4 min  | 4-8 min    | > 8 min     |
+| First Boot     | < 3 min  | 3-5 min    | > 5 min     |
+| Password Wait  | Any      | -          | Never hangs |
+| Post-Password  | < 30 sec | 30-60 sec  | > 60 sec    |
 
 ## Real-World Examples
 
 ### Example 1: Development Laptop
+
 - **Hardware**: i7-10700K, 32GB RAM, NVMe SSD, QEMU VM
 - **First Deployment**: 11 minutes
 - **Second Deployment**: 6 minutes
 - **Notes**: Binary cache enabled, fast internet
 
 ### Example 2: Cloud VPS
+
 - **Hardware**: 4 vCPU, 8GB RAM, 80GB SSD
 - **First Deployment**: 18 minutes
 - **Second Deployment**: 9 minutes
 - **Notes**: Network latency to binary cache
 
 ### Example 3: Home Server
+
 - **Hardware**: Raspberry Pi 4, 8GB RAM, USB SSD
 - **First Deployment**: 45 minutes
 - **Second Deployment**: 22 minutes
 - **Notes**: ARM architecture, limited cache hits
 
 ### Example 4: Workstation (Bare Metal)
+
 - **Hardware**: AMD Ryzen 9 5950X, 64GB RAM, NVMe RAID
 - **First Deployment**: 8 minutes
 - **Second Deployment**: 4 minutes
@@ -446,6 +482,7 @@ NixOS 24.11 (x86_64) - tty1               # Login prompt
 ## Conclusion
 
 Understanding deployment timelines helps you:
+
 - Set realistic expectations
 - Identify performance issues early
 - Optimize your deployment workflow

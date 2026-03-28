@@ -28,6 +28,7 @@ make vm-stop
 ```
 
 Output:
+
 ```
 ✅ ISO built successfully!
 📁 Location: vms/keystone-installer.iso
@@ -91,6 +92,7 @@ tail -f vms/server/server.log
 ### "quickemu not found"
 
 Install quickemu:
+
 ```bash
 nix-env -iA nixpkgs.quickemu
 ```
@@ -98,11 +100,13 @@ nix-env -iA nixpkgs.quickemu
 ### Port 22220 already in use
 
 Stop any existing VM:
+
 ```bash
 make vm-stop
 ```
 
 Or check what's using the port:
+
 ```bash
 lsof -i :22220
 ```
@@ -110,6 +114,7 @@ lsof -i :22220
 ### SSH key not working
 
 Ensure you're using the public key when building the ISO:
+
 ```bash
 # Correct (public key)
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub

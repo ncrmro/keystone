@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: Agentic Team Operations (process.agentic-team)
 
 This convention defines how a human operator works with a team of keystone agents to execute high-impact projects. It governs the interplay between the archetype/role system (context engineering), DeepWork jobs (structured workflows), and the human's role as decision-maker, reviewer, and strategic planner. The goal is to maximize human leverage by batching decisions, scheduling reviews, and keeping focused planning sessions separate from execution.
@@ -69,13 +70,13 @@ This convention defines how a human operator works with a team of keystone agent
 
 30. The human MUST establish a review cadence — a recurring schedule for processing accumulated agent output:
 
-| Cadence | Scope | What to review |
-|---------|-------|----------------|
-| 2x daily | PR reviews | Code PRs per `process.feature-delivery` review and merge section |
-| 1x daily | Artifact reviews | Documents, research outputs, DeepWork quality gates |
-| 1x weekly | Strategic review | Milestone progress per `process.project-board`, roadmap health, blocker trends per `process.blocker` |
-| 1x monthly | Portfolio review | Cross-project priorities, agent utilization, archetype/role effectiveness |
-| 1x quarterly | Direction setting | OKR review, initiative planning, team structure changes |
+| Cadence      | Scope             | What to review                                                                                       |
+| ------------ | ----------------- | ---------------------------------------------------------------------------------------------------- |
+| 2x daily     | PR reviews        | Code PRs per `process.feature-delivery` review and merge section                                     |
+| 1x daily     | Artifact reviews  | Documents, research outputs, DeepWork quality gates                                                  |
+| 1x weekly    | Strategic review  | Milestone progress per `process.project-board`, roadmap health, blocker trends per `process.blocker` |
+| 1x monthly   | Portfolio review  | Cross-project priorities, agent utilization, archetype/role effectiveness                            |
+| 1x quarterly | Direction setting | OKR review, initiative planning, team structure changes                                              |
 
 31. Agents MUST NOT block on human review for more than one review cycle. If a review is not completed within two cycles, the agent SHOULD escalate per `process.blocker`.
 32. The human's review session MUST follow this order:

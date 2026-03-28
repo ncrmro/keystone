@@ -28,6 +28,7 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 ## Learning History
 
 ### 2026-03-20: Press release tone — succinct, no quotes, no city
+
 - **Source**: User feedback after running `project/press_release` workflow
 - **Issue**: Press releases were too verbose with marketing-style prose. They included fictional customer quotes (fabricated testimonials) and city datelines that the user didn't want. The tone should be direct and informational.
 - **Resolution**: Three changes applied to `steps/write_press_release.md` and `steps/gather_context.md`:
@@ -37,12 +38,14 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 - **Reference**: `steps/write_press_release.md` (template and quality criteria), `steps/gather_context.md` (removed quote direction), `job.yml` common_job_info and write_press_release reviews
 
 ### 2026-03-20: Press releases must include ASCII art mockups
+
 - **Source**: User feedback on Desktop Context System press release (#174) — lacked a visual showing the context switcher UI
 - **Issue**: Press releases for products with a UI shipped without showing what the product looks like in use. An ASCII art mockup grounds the reader and makes the promise concrete.
 - **Resolution**: Added ASCII art mockup as a required step in `steps/write_press_release.md` (step 6). Added mockup section to the template. Added "ASCII Art Mockup" quality criterion to `job.yml` write_press_release reviews. Products without a UI may omit the mockup.
 - **Reference**: `steps/write_press_release.md` step 6 and template, `job.yml` write_press_release reviews
 
 ### 2026-03-21: Press releases must create an issue and output the full URL
+
 - **Source**: User feedback after running `project/press_release` workflow for Keystone perception layer
 - **Issue**: The workflow produced only a local `.mdx` file but did not create an issue or provide a URL. Downstream workflows (e.g., `milestone/setup`) need a stable, linkable reference to the press release for traceability.
 - **Resolution**: Three changes applied:
@@ -52,6 +55,7 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 - **Reference**: `steps/write_press_release.md` step 10, `job.yml` write_press_release outputs and reviews
 
 ### 2026-03-25: Stage press release workflow artifacts under `.deepwork/tmp/`
+
 - **Source**: User feedback after running `project/press_release` for `keystone.development`
 - **Issue**: The workflow instructions were clear about the published issue, but ambiguous about the local output path. That allowed the run to use ad hoc `/tmp/...` files even though this repo's DeepWork convention is to keep transient workflow artifacts under `.deepwork/tmp/`.
 - **Resolution**: Updated `steps/write_press_release.md` and `job.yml` so the workflow now stages `press_release.mdx` and `press_release_issue_url.md` under `.deepwork/tmp/`. The instructions now distinguish transient local artifacts from canonical publication: the GitHub/Forgejo issue is always published, and `posts/press_releases/` is only used when the project explicitly stores press releases in-repo.

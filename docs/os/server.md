@@ -54,19 +54,19 @@ modules/server/
 
 ## Available Services
 
-| Service | Subdomain | Port | Default Access | Notes |
-|---------|-----------|------|----------------|-------|
-| immich | photos | 2283 | tailscale | maxBodySize=50G |
-| vaultwarden | vaultwarden | 8222 | tailscale | |
-| forgejo | git | 3001 | tailscale | |
-| grafana | grafana | 3002 | tailscale | |
-| prometheus | prometheus | 9090 | tailscale | |
-| loki | loki | 3100 | tailscale | |
-| headscale | mercury | 8080 | **public** | VPN control server |
-| miniflux | miniflux | 8070 | tailscale | |
-| harmonia | harmonia | 5000 | tailscale | Nix binary cache |
-| mail | mail | 8082 | tailscale | Stalwart admin |
-| adguard | adguard.home | 3000 | tailscaleAndLocal | DNS admin |
+| Service     | Subdomain    | Port | Default Access    | Notes              |
+| ----------- | ------------ | ---- | ----------------- | ------------------ |
+| immich      | photos       | 2283 | tailscale         | maxBodySize=50G    |
+| vaultwarden | vaultwarden  | 8222 | tailscale         |                    |
+| forgejo     | git          | 3001 | tailscale         |                    |
+| grafana     | grafana      | 3002 | tailscale         |                    |
+| prometheus  | prometheus   | 9090 | tailscale         |                    |
+| loki        | loki         | 3100 | tailscale         |                    |
+| headscale   | mercury      | 8080 | **public**        | VPN control server |
+| miniflux    | miniflux     | 8070 | tailscale         |                    |
+| harmonia    | harmonia     | 5000 | tailscale         | Nix binary cache   |
+| mail        | mail         | 8082 | tailscale         | Stalwart admin     |
+| adguard     | adguard.home | 3000 | tailscaleAndLocal | DNS admin          |
 
 ## Configuration Reference
 
@@ -125,12 +125,12 @@ keystone.server.services.immich = {
 
 ## Access Control Presets
 
-| Preset | Description | Allowed Networks |
-|--------|-------------|-----------------|
-| `tailscale` | Tailscale VPN only | 100.64.0.0/10, fd7a:115c:a1e0::/48 |
-| `tailscaleAndLocal` | Tailscale + LAN | Above + 192.168.1.0/24 |
-| `public` | No restrictions | All |
-| `local` | LAN only | 192.168.1.0/24 |
+| Preset              | Description        | Allowed Networks                   |
+| ------------------- | ------------------ | ---------------------------------- |
+| `tailscale`         | Tailscale VPN only | 100.64.0.0/10, fd7a:115c:a1e0::/48 |
+| `tailscaleAndLocal` | Tailscale + LAN    | Above + 192.168.1.0/24             |
+| `public`            | No restrictions    | All                                |
+| `local`             | LAN only           | 192.168.1.0/24                     |
 
 ## DNS Integration with Headscale
 

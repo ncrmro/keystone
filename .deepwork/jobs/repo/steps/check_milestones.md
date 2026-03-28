@@ -13,19 +13,19 @@ Verify milestone-issue consistency: each milestone's issues are properly labeled
 2. **For each open milestone, verify:**
 
    a. **Issues exist** — milestone has at least one issue
-      - GitHub: `gh issue list --repo {owner}/{repo} --milestone "{title}" --state all --json number,title,state,labels`
-      - Forgejo: `tea issue list --login forgejo --repo {owner}/{repo} --milestone "{title}"`
+   - GitHub: `gh issue list --repo {owner}/{repo} --milestone "{title}" --state all --json number,title,state,labels`
+   - Forgejo: `tea issue list --login forgejo --repo {owner}/{repo} --milestone "{title}"`
 
    b. **Consolidated issue exists** — look for an issue whose title matches the milestone title
-      (this is the "tracking issue" pattern where a parent issue tracks the milestone's work)
-      - Flag if missing, but do not create it (just report)
+   (this is the "tracking issue" pattern where a parent issue tracks the milestone's work)
+   - Flag if missing, but do not create it (just report)
 
    c. **Labels are correct** — each issue should have at least one of the required labels
-      (`product`, `engineering`, or `plan`)
-      - Flag issues missing all three labels
+   (`product`, `engineering`, or `plan`)
+   - Flag issues missing all three labels
 
    d. **State consistency** — if all issues are closed, the milestone should be closeable
-      - Flag milestones where all issues are closed but milestone is still open
+   - Flag milestones where all issues are closed but milestone is still open
 
 3. **Compile findings per milestone**
 
@@ -37,6 +37,7 @@ Verify milestone-issue consistency: each milestone's issues are properly labeled
 # Milestones Report
 
 ## Summary
+
 - **Total Open Milestones**: [count]
 - **Milestones with Issues**: [count]
 - **Empty Milestones**: [count]
@@ -45,6 +46,7 @@ Verify milestone-issue consistency: each milestone's issues are properly labeled
 ## Milestones
 
 ### [Milestone Title] (#[number])
+
 - **Open Issues**: [count]
 - **Closed Issues**: [count]
 - **Consolidated Issue**: [found (#N) | missing]

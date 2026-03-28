@@ -34,6 +34,7 @@ The `ks` CLI defaults to `--lock` for reproducible builds, supports targeting mu
 ### Terminal Productivity
 
 New terminal tools expand the PIM (Personal Information Management) suite:
+
 - **Calendula** — calendar management
 - **cardamum** — contact management
 - **comodoro** — Pomodoro timer

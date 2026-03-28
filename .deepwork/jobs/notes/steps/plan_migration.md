@@ -93,36 +93,45 @@ Write `.deepwork/tmp/migration_plan.md`:
 # Migration Plan
 
 ## Source Format
+
 (Obsidian / Apple Notes / Plain Markdown — from audit)
 
 ## ID Assignment Strategy
+
 (backdating method + collision handling)
 
 ## File Mappings
 
-| Current Path | Target Path | Type | ID | Notes |
-|-------------|-------------|------|-----|-------|
+| Current Path          | Target Path                         | Type      | ID           | Notes             |
+| --------------------- | ----------------------------------- | --------- | ------------ | ----------------- |
 | journal/2026-03-15.md | notes/202603151200 daily-journal.md | permanent | 202603151200 | Backdate from git |
 
 ## Frontmatter Additions
+
 (summary of what needs to be added per file or batch)
 
 ## Link Conversions
+
 (before/after examples for each link type found)
 
 ## Format-Specific Conversions
+
 (callout handling, dataview handling, HTML stripping, etc.)
 
 ## Batch Strategy
+
 (for large repos: processing order, batch sizes)
 
 ## Legacy Tree Disposition
+
 (explicit per-directory treatment for `projects/`, `workflow/`, `spikes/`, etc.)
 
 ## Project tag remediation
+
 (files or batches that will receive missing project tags, plus any ambiguous leftovers)
 
 ## Excluded (no action)
+
 (list of operational files skipped)
 ```
 

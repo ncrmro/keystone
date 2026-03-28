@@ -16,7 +16,6 @@ be aggregated into the portfolio report.
 1. **Assess overall project health**
 
    Determine the status indicator based on the data:
-
    - **🟢 On Track** — Active milestones progressing, recent commits, no critical blockers
    - **🟡 At Risk** — Milestones behind schedule, activity declining, or non-critical blockers
    - **🔴 Behind** — Milestones significantly overdue, minimal recent activity, critical blockers
@@ -66,7 +65,7 @@ be aggregated into the portfolio report.
    Actions should be specific (e.g., "Close milestone X" or "Review and merge PR #45")
    not vague (e.g., "Make progress on the project").
 
-6. **Incorporate existing charter/status context**
+7. **Incorporate existing charter/status context**
 
    If a charter.md or status.md exists, reference it:
    - Are the charter goals still being pursued?
@@ -80,6 +79,7 @@ be aggregated into the portfolio report.
 Formatted status summary for one project.
 
 **Structure**:
+
 ```markdown
 ## [Project Name]
 
@@ -88,26 +88,28 @@ Formatted status summary for one project.
 
 ### Milestones
 
-| Milestone | Progress | Due Date | Health |
-|-----------|----------|----------|--------|
-| Desktop Integration | 8/12 (67%) | 2026-04-01 | 🟡 |
-| v2.0 Release | 2/12 (17%) | — | ⚪ |
+| Milestone           | Progress   | Due Date   | Health |
+| ------------------- | ---------- | ---------- | ------ |
+| Desktop Integration | 8/12 (67%) | 2026-04-01 | 🟡     |
+| v2.0 Release        | 2/12 (17%) | —          | ⚪     |
 
 **Recently Completed**: Terminal Module (closed 2026-02-15)
 
 ### Milestone Priority Matrix
-
 ```
+
                     URGENT                          NOT URGENT
           ┌─────────────────────────┬─────────────────────────┐
           │ DO FIRST                │ SCHEDULE                │
-IMPORTANT │ Desktop Integration     │ v2.0 Release            │
-          │  67%, due 2026-04-01    │  17%, no due date       │
-          ├─────────────────────────┼─────────────────────────┤
-          │ DELEGATE                │ ELIMINATE               │
-NOT       │                         │                         │
-IMPORTANT │                         │                         │
-          └─────────────────────────┴─────────────────────────┘
+
+IMPORTANT │ Desktop Integration │ v2.0 Release │
+│ 67%, due 2026-04-01 │ 17%, no due date │
+├─────────────────────────┼─────────────────────────┤
+│ DELEGATE │ ELIMINATE │
+NOT │ │ │
+IMPORTANT │ │ │
+└─────────────────────────┴─────────────────────────┘
+
 ```
 
 ### Key Issues & PRs
@@ -128,6 +130,7 @@ IMPORTANT │                         │                         │
 ```
 
 **Example with minimal data** (no milestones, no local clone):
+
 ```markdown
 ## eonmun
 

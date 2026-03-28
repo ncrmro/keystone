@@ -36,6 +36,7 @@ For each message that needs a response, read the full message content and draft 
 All draft replies, organized by urgency.
 
 **Structure**:
+
 ```markdown
 # Draft Replies
 
@@ -45,12 +46,14 @@ All draft replies, organized by urgency.
 ## Urgent Replies
 
 ### Reply to: [Subject] (ID: [id])
+
 - **To**: [recipient email]
 - **Original From**: [sender]
 - **Original Date**: [date]
 - **Context**: [1-sentence summary of what they asked/said]
 
 **Draft**:
+
 > [Full draft reply text]
 
 **Notes**: [Any caveats, missing info, or suggestions for the user]
@@ -60,10 +63,12 @@ All draft replies, organized by urgency.
 ## Standard Replies
 
 ### Reply to: [Subject] (ID: [id])
+
 - **To**: [recipient email]
 - **Context**: [1-sentence summary]
 
 **Draft**:
+
 > [Full draft reply text]
 
 **Notes**: [Any caveats]
@@ -73,16 +78,20 @@ All draft replies, organized by urgency.
 ## Skipped (Manual Reply Recommended)
 
 ### [Subject] (ID: [id])
+
 - **Reason**: [Why this needs manual handling — e.g., requires information only the user has]
 ```
 
 **Example draft**:
+
 ```markdown
 ### Reply to: Q1 Budget Review (ID: 142)
+
 - **To**: alice@example.com
 - **Context**: Alice asked for budget review before Thursday meeting
 
 **Draft**:
+
 > Hi Alice,
 >
 > Thanks for sending over the Q1 budget. I've reviewed it and have a few questions

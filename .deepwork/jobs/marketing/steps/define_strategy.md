@@ -51,6 +51,7 @@ Using the platform status from the previous step, create a content strategy tail
 # Content Strategy: [Project Name]
 
 ## Brand Overview
+
 - **Value Proposition**: [one sentence]
 - **Target Audience**: [description]
 - **Brand Personality**: [3-4 adjectives]
@@ -58,42 +59,50 @@ Using the platform status from the previous step, create a content strategy tail
 ## Content Pillars
 
 ### 1. [Pillar Name]
+
 - **Purpose**: [what this content achieves]
 - **Topics**: [example topics]
 - **Content ratio**: [% of total content]
 
 ### 2. [Pillar Name]
+
 ...
 
 [3-5 pillars total]
 
 ## Posting Schedule
 
-| Platform | Frequency | Best Times | Content Focus |
-|----------|-----------|------------|---------------|
-| [active platform] | [cadence] | [times] | [focus] |
+| Platform          | Frequency | Best Times | Content Focus |
+| ----------------- | --------- | ---------- | ------------- |
+| [active platform] | [cadence] | [times]    | [focus]       |
+
 [one row per active platform only — omit skipped platforms]
 
 ## Brand Voice
 
 ### Tone
+
 [Description of overall tone]
 
 ### Do's
+
 - [example of good voice]
 - [example of good voice]
 
 ### Don'ts
+
 - [example of what to avoid]
 - [example of what to avoid]
 
 ### Platform Adaptations
+
 - **X**: [how voice adapts]
 - **LinkedIn**: [how voice adapts]
 - **Instagram**: [how voice adapts]
 - **Bluesky**: [how voice adapts]
 
 ## Topics to Avoid
+
 - [list any sensitive or off-brand topics]
 ```
 

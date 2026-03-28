@@ -1,6 +1,7 @@
 # Spec: TUI App Framework
 
 ## Stories Covered
+
 - US-004: Build interactive TUI with cross-platform support
 - US-006: Implement git and GitHub publishing
 - US-010: Document TUI installation and usage
@@ -9,6 +10,7 @@
 Note: US-005 and US-008 overlap with this boundary but are detailed in Spec 002 and Spec 003.
 
 ## Affected Modules
+
 - `packages/keystone-tui/src/main.rs` — entry point, mode detection, CLI args
 - `packages/keystone-tui/src/app.rs` — `AppScreen` enum, screen transitions
 - `packages/keystone-tui/src/input.rs` — key dispatch and action handling
@@ -30,6 +32,7 @@ The TUI already compiles and runs on both Linux and macOS. The `crossterm` backe
 platform differences. No additional cross-platform work is needed for the core TUI loop.
 
 macOS-specific considerations:
+
 - `/dev/disk*` paths differ; disk detection uses `sysinfo` which is cross-platform.
 - `tailscale status --json` may not be available; the TUI already handles missing tailscale.
 - SSH key paths and `~/.ssh/` layout are consistent across platforms.
@@ -39,9 +42,11 @@ macOS-specific considerations:
 ### `AppScreen` (extended — `src/app.rs`)
 
 Current variants:
+
 - `Welcome`, `CreateConfig`, `Hosts`, `HostDetail`, `Build`, `Iso`, `Install`, `FirstBoot`
 
 New variants to add:
+
 - `Deploy` — ISO instance discovery + nixos-anywhere deployment (US-008)
 - `Git` — diff preview, commit, push (US-006)
 
@@ -163,11 +168,13 @@ For non-interactive `--json` mode. Mirrors `GenerateConfig` as a JSON-deserializ
 The implementation MUST follow these phases:
 
 ### Phase 1 — Config Contract (prerequisite, no TUI code)
+
 - **Deliverables**: Spec 001 implemented — `disko` in generated flake.nix, data model
   complete, Nix check at `checks.x86_64-linux.template-evaluation` with 4 variants.
 - **Exit criteria**: `nix flake check` passes; all 4 test configs evaluate.
 
 ### Phase 2 — Interactive TUI + Publishing
+
 - **Deliverables**: SSH key auto-detection (US-004), hardware key detection (US-004),
   JSON mode (US-004), host display with `keystone.hosts` metadata (US-005), new host
   creation into existing flake (US-009), git init + commit (US-006), GitHub repo creation (US-006).
@@ -176,6 +183,7 @@ The implementation MUST follow these phases:
   and Linux.
 
 ### Phase 3 — ISO Build + Deployment
+
 - **Deliverables**: Agenix secrets baking into ISO (US-007), mDNS ISO discovery (US-008),
   nixos-anywhere deployment (US-008).
 - **Entry criteria**: Phase 2 complete; user has a functioning nixos-config repo.
@@ -183,6 +191,7 @@ The implementation MUST follow these phases:
   without manual Nix commands.
 
 ### Documentation
+
 - **Deliverables**: README covers install, quick-start, all screens, JSON mode, ISO workflow.
 - **Timing**: Updated alongside Phase 2 and Phase 3 feature work; finalized before milestone close.
 
@@ -194,6 +203,7 @@ approach: replace the 7-phase plan in `PLAN.md` with the 3-phase structure from 
 keeping the module structure section unchanged.
 
 ## Cross-References
+
 - Spec 001 (Config Generation): JSON mode populates `GenerateConfig` from `JsonInputConfig`.
 - Spec 002 (Nix Flake): New host creation and hosts screen are driven from the app framework.
 - Spec 003 (ISO Pipeline): `AppScreen::Deploy` is added by this spec.

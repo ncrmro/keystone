@@ -28,9 +28,9 @@ worktrees for active implementation work.
 ## Creation and lifecycle
 
 10. Worktrees MUST be created from the main checkout after fetching the latest
-   remote state.
+    remote state.
 11. If the branch does not exist locally, the branch SHOULD be created from the
-   appropriate base branch before adding the worktree.
+    appropriate base branch before adding the worktree.
 12. Reusing an existing worktree for the same branch SHOULD be preferred over
     creating duplicates.
 13. After a branch is merged or abandoned, the external worktree SHOULD be

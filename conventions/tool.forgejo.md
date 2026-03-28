@@ -64,17 +64,20 @@ All examples below omit the `-H` host flag for brevity. Prepend it to every `fj`
 ### Happy Path
 
 1. **Create a branch** with a semantic prefix:
+
    ```bash
    git checkout -b feat/short-description
    ```
 
 2. **Push and create the PR:**
+
    ```bash
    git push -u origin feat/short-description
    fj pr create "feat: short description" --head feat/short-description --base main --body "Closes #123"
    ```
 
 3. **Request the repo owner as reviewer** (`fj` has no reviewer command; token is read from tea config since `fj auth list` only shows `user@host`):
+
    ```bash
    TOKEN=$(yq '.logins[] | select(.name == "forgejo") | .token' ~/.config/tea/config.yml)
    curl -s -X POST \
@@ -85,6 +88,7 @@ All examples below omit the `-H` host flag for brevity. Prepend it to every `fj`
    ```
 
 4. **Wait for approval.** Check status with:
+
    ```bash
    fj pr view {number}
    ```

@@ -47,6 +47,7 @@ vm-clean: ## Clean VM artifacts
 ## Usage Examples
 
 ### Complete Test Workflow
+
 ```bash
 # Build ISO and start VM with SSH
 make vm-test
@@ -62,6 +63,7 @@ make vm-clean
 ```
 
 ### Manual Workflow (existing)
+
 ```bash
 # Build ISO with SSH key
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
@@ -105,6 +107,7 @@ Makefile
 ## Future Enhancements
 
 Once this simple interface is working, could add:
+
 - `vm-status` to check if VM is running
 - `vm-rebuild` to force ISO rebuild
 - `vm-console` for serial console access

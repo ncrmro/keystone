@@ -7,19 +7,23 @@ This convention outlines the system-level prerequisites handled by the underlyin
 ## Pre-Configured Integrations
 
 ### Commit Signing
+
 1. All commits are automatically signed using the agent's SSH key.
 2. Keystone ensures Git is pre-configured for SSH signing by default via `commit.gpgsign = true` and `user.signingkey`.
 3. Agents do not need to manually configure commit signing.
 
 ### SSH Keys
+
 4. SSH keys are provisioned automatically at `/home/{agent}/.ssh/id_ed25519`.
 5. These keys are authorized for both Git operations (Forgejo/GitHub) and SSH access.
 
 ### Email Configuration
+
 6. The `himalaya` CLI is pre-configured with the agent's credentials.
 7. SMTP and IMAP settings are automatically managed, allowing immediate use of `himalaya` for sending and receiving emails.
 
 ### Calendar and Contacts
+
 8. The `calendula` CLI is pre-configured with the agent's CalDAV credentials; agents can
    use `calendula calendars list` immediately with no additional configuration.
 9. The `cardamum` CLI is pre-configured with the agent's CardDAV credentials; agents can
@@ -27,6 +31,7 @@ This convention outlines the system-level prerequisites handled by the underlyin
    See `tool.stalwart` for how CalDAV/CardDAV collections are provisioned.
 
 ### MCP Servers
+
 10. **Chrome DevTools**: The `chrome-devtools` MCP server is globally available and pre-configured to connect to the local headless Chrome instance.
 11. **DeepWork**: The `deepwork` MCP server is pre-installed and available in the Nix development shell, providing workflow orchestration.
 

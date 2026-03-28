@@ -54,12 +54,14 @@ Compile a clear access matrix showing which agents can reach which repos.
 ### investigation_report.md
 
 **Structure**:
+
 ```markdown
 # Investigation Report: [Project Name]
 
 ## Repository Investigation
 
 ### [Repo Name] — [repo_url]
+
 - **Platform**: GitHub / Forgejo / other
 - **Agent Access**: drago: [yes/no/untested] | luce: [yes/no/untested]
 - **Primary Language**: [language]
@@ -74,11 +76,13 @@ Compile a clear access matrix showing which agents can reach which repos.
 ## Website Investigation
 
 ### [domain.com]
+
 - **Status**: [up / down / redirect / not registered]
 - **Hosting**: [detected hosting/CDN/framework]
 - **Screenshot**: [taken / not applicable]
 
 #### Current Website State
+
 [5-10 line summary of what the site communicates: headline, positioning, product/pricing,
 key pages and their state (live vs demo vs placeholder), navigation structure, blog activity,
 any calls to action. This summary feeds directly into the project profile.]
@@ -87,15 +91,17 @@ any calls to action. This summary feeds directly into the project profile.]
 
 ## Access Matrix
 
-| Resource | drago | luce | Notes |
-|----------|-------|------|-------|
-| [repo1]  | yes   | yes  |       |
+| Resource | drago | luce | Notes                |
+| -------- | ----- | ---- | -------------------- |
+| [repo1]  | yes   | yes  |                      |
 | [repo2]  | no    | no   | Need to add SSH keys |
 
 ## Issues Found
+
 - [Any access problems, broken links, missing repos, etc.]
 
 ## Additional Context Discovered
+
 - [Anything learned from repo/website investigation that enriches the project profile]
 ```
 

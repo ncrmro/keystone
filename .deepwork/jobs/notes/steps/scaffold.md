@@ -41,6 +41,7 @@ Write `.deepwork/tmp/scaffold_report.md` listing every file and directory create
 # Scaffold Report
 
 ## Created
+
 - .zk/config.toml
 - .zk/templates/fleeting.md
 - .zk/templates/literature.md
@@ -54,6 +55,7 @@ Write `.deepwork/tmp/scaffold_report.md` listing every file and directory create
 - index/.gitkeep
 
 ## Verification
+
 - `zk index`: OK
 ```
 

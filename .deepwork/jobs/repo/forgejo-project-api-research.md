@@ -12,28 +12,28 @@ API tokens (Basic auth, OAuth2 Bearer) do NOT work on these routes.
 
 ### Repo-Level Projects (`/{owner}/{repo}/projects/...`)
 
-| Method | Path | Handler | Form Params | Auth |
-|--------|------|---------|-------------|------|
-| GET | `/projects` | `repo.Projects` | `sort`, `state`, `q`, `page` | read |
-| GET | `/projects/{id}` | `repo.ViewProject` | — | read |
-| GET | `/projects/new` | `repo.RenderNewProject` | — | write |
-| POST | `/projects/new` | `repo.NewProjectPost` | `Title`, `Content`, `TemplateType`, `CardType` | write |
-| POST | `/projects/{id}` | `repo.AddColumnToProjectPost` | `Title`, `Color` | write |
-| POST | `/projects/{id}/move` | `project.MoveColumns` | JSON body | write |
-| POST | `/projects/{id}/delete` | `repo.DeleteProject` | — | write |
-| GET | `/projects/{id}/edit` | `repo.RenderEditProject` | — | write |
-| POST | `/projects/{id}/edit` | `repo.EditProjectPost` | `Title`, `Content`, `CardType` | write |
-| POST | `/projects/{id}/{open\|close}` | `repo.ChangeProjectStatus` | — | write |
-| PUT | `/projects/{id}/{columnID}` | `repo.EditProjectColumn` | `Title`, `Sorting`, `Color` | write |
-| DELETE | `/projects/{id}/{columnID}` | `repo.DeleteProjectColumn` | — | write |
-| POST | `/projects/{id}/{columnID}/default` | `repo.SetDefaultProjectColumn` | — | write |
-| POST | `/projects/{id}/{columnID}/move` | `repo.MoveIssues` | JSON: `{"issues": [{"issueID": N, "sorting": N}]}` | write |
+| Method | Path                                | Handler                        | Form Params                                        | Auth  |
+| ------ | ----------------------------------- | ------------------------------ | -------------------------------------------------- | ----- |
+| GET    | `/projects`                         | `repo.Projects`                | `sort`, `state`, `q`, `page`                       | read  |
+| GET    | `/projects/{id}`                    | `repo.ViewProject`             | —                                                  | read  |
+| GET    | `/projects/new`                     | `repo.RenderNewProject`        | —                                                  | write |
+| POST   | `/projects/new`                     | `repo.NewProjectPost`          | `Title`, `Content`, `TemplateType`, `CardType`     | write |
+| POST   | `/projects/{id}`                    | `repo.AddColumnToProjectPost`  | `Title`, `Color`                                   | write |
+| POST   | `/projects/{id}/move`               | `project.MoveColumns`          | JSON body                                          | write |
+| POST   | `/projects/{id}/delete`             | `repo.DeleteProject`           | —                                                  | write |
+| GET    | `/projects/{id}/edit`               | `repo.RenderEditProject`       | —                                                  | write |
+| POST   | `/projects/{id}/edit`               | `repo.EditProjectPost`         | `Title`, `Content`, `CardType`                     | write |
+| POST   | `/projects/{id}/{open\|close}`      | `repo.ChangeProjectStatus`     | —                                                  | write |
+| PUT    | `/projects/{id}/{columnID}`         | `repo.EditProjectColumn`       | `Title`, `Sorting`, `Color`                        | write |
+| DELETE | `/projects/{id}/{columnID}`         | `repo.DeleteProjectColumn`     | —                                                  | write |
+| POST   | `/projects/{id}/{columnID}/default` | `repo.SetDefaultProjectColumn` | —                                                  | write |
+| POST   | `/projects/{id}/{columnID}/move`    | `repo.MoveIssues`              | JSON: `{"issues": [{"issueID": N, "sorting": N}]}` | write |
 
 ### Assign Issue to Project (`/{owner}/{repo}/issues/projects`)
 
-| Method | Path | Handler | Form Params | Auth |
-|--------|------|---------|-------------|------|
-| POST | `/issues/projects` | `repo.UpdateIssueProject` | `issue_ids` (comma-sep), `id` (project ID) | write |
+| Method | Path               | Handler                   | Form Params                                | Auth  |
+| ------ | ------------------ | ------------------------- | ------------------------------------------ | ----- |
+| POST   | `/issues/projects` | `repo.UpdateIssueProject` | `issue_ids` (comma-sep), `id` (project ID) | write |
 
 ### Org-Level Projects (`/{org}/-/projects/...`)
 
@@ -63,6 +63,7 @@ type EditProjectColumnForm struct {
 ### What works: Session cookie
 
 The web auth chain is: OAuth2 → Basic → ReverseProxy → Session.
+
 - **OAuth2**: Explicitly skips non-API paths (line 221-224 of `services/auth/oauth2.go`)
 - **Basic**: Explicitly skips non-API paths (line 47 of `services/auth/basic.go`)
 - **Session**: Works — checks `uid` in session store
@@ -72,6 +73,7 @@ The web auth chain is: OAuth2 → Basic → ReverseProxy → Session.
 ### CSRF / Cross-Origin Protection
 
 Forgejo uses Go 1.25's `net/http.CrossOriginProtection` (replaced older CSRF tokens).
+
 - Checks `Sec-Fetch-Site` header (browser-only) and `Origin` vs `Host`
 - **curl passes by default** — no `Sec-Fetch-Site` or `Origin` headers means the
   request is treated as same-origin or non-browser
@@ -108,6 +110,7 @@ curl -b cookies.txt -X POST 'https://git.ncrmro.com/{owner}/{repo}/projects/{id}
 ## Data Model (`models/project/`)
 
 ### Project (`project.go`)
+
 - `ID`, `Title`, `Description`, `CreatorID`, `RepoID`
 - `TemplateType` — preset column layout
 - `CardType` — how cards display
@@ -115,16 +118,19 @@ curl -b cookies.txt -X POST 'https://git.ncrmro.com/{owner}/{repo}/projects/{id}
 - `IsClosed`
 
 ### Column (`column.go`)
+
 - `ID`, `Title`, `Color`, `ProjectID`, `CreatorID`, `Sorting`
 - Default column marked via `Default` bool
 
 ### Issue-Project Link (`issue.go`)
+
 - `ProjectIssue` table: `IssueID`, `ProjectID`, `ProjectColumnID`, `Sorting`
 - Issues are assigned to both a project and a specific column within it
 
 ## Template Types
 
 From `template.go`:
+
 - `TemplateTypeNone` (0) — no preset columns
 - `TemplateTypeBasicKanban` (1) — creates: Uncategorized, To Do, In Progress, Done
 - `TemplateTypeBugTriage` (2) — creates: Needs Triage, High Priority, Low Priority, Closed
@@ -144,6 +150,7 @@ From `template.go`:
 ## Feasibility Assessment
 
 **Feasible with caveats:**
+
 - Need to maintain a session cookie (login once, reuse)
 - Session may expire — need to handle re-login
 - `NewProjectPost` redirects instead of returning JSON — parse the redirect URL to get the project ID
@@ -154,15 +161,15 @@ From `template.go`:
 
 All operations tested successfully against `git.ncrmro.com/ncrmro/agents`:
 
-| Operation | Endpoint | HTTP Status | Response |
-|-----------|----------|-------------|----------|
-| Login | `POST /user/login` | 303 | Session cookie set |
-| List projects | `GET /{owner}/{repo}/projects` | 200 | HTML page |
-| Create project | `POST /{owner}/{repo}/projects/new` | 303 | Redirect to `/projects` |
-| Add column | `POST /{owner}/{repo}/projects/{id}` | 200 | `{"ok":true}` |
-| Assign issue to project | `POST /{owner}/{repo}/issues/projects` | 200 | `{"ok":true}` |
-| Move issue to column | `POST /{owner}/{repo}/projects/{id}/{colID}/move` | 200 | `{"ok":true}` |
-| Delete project | `POST /{owner}/{repo}/projects/{id}/delete` | 200 | `{"redirect":"..."}` |
+| Operation               | Endpoint                                          | HTTP Status | Response                |
+| ----------------------- | ------------------------------------------------- | ----------- | ----------------------- |
+| Login                   | `POST /user/login`                                | 303         | Session cookie set      |
+| List projects           | `GET /{owner}/{repo}/projects`                    | 200         | HTML page               |
+| Create project          | `POST /{owner}/{repo}/projects/new`               | 303         | Redirect to `/projects` |
+| Add column              | `POST /{owner}/{repo}/projects/{id}`              | 200         | `{"ok":true}`           |
+| Assign issue to project | `POST /{owner}/{repo}/issues/projects`            | 200         | `{"ok":true}`           |
+| Move issue to column    | `POST /{owner}/{repo}/projects/{id}/{colID}/move` | 200         | `{"ok":true}`           |
+| Delete project          | `POST /{owner}/{repo}/projects/{id}/delete`       | 200         | `{"redirect":"..."}`    |
 
 **All operations work with session cookie auth + no special headers.**
 

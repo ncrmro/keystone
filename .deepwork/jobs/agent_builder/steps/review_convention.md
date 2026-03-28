@@ -21,7 +21,6 @@ Read the new convention file and compare it against related existing conventions
 3. **Read the related conventions** (at least 2-3 of the most relevant ones).
 
 4. **Check for issues**
-
    - **Rule duplication**: Does any rule in the new convention duplicate a rule already in an existing convention? If so, note which convention and rule number.
    - **Contradictions**: Does any rule contradict an existing rule? (e.g., new convention says "MUST use X" but existing says "MUST NOT use X")
    - **Scope overlap**: Does the new convention cover territory that another convention already owns? If so, is the boundary clear?
@@ -38,6 +37,7 @@ Read the new convention file and compare it against related existing conventions
 A markdown report on the review findings.
 
 **Structure (clean)**:
+
 ```markdown
 # Convention Review: {dotted.name}
 
@@ -56,6 +56,7 @@ Proceed to wire the convention into modes.yaml.
 ```
 
 **Structure (issues found)**:
+
 ```markdown
 # Convention Review: {dotted.name}
 

@@ -52,19 +52,55 @@ yq '.jobs[] | select(.workflows[].steps[] | type == "!!seq") | .name' jobs.yaml
 - name: incident_response
   summary: Incident detection, triage, resolution, and postmortem
   domain: software_engineering
-  steps: [detect_alert, triage, assign_responders, investigate, mitigate, resolve,
-          draft_postmortem, root_cause_analysis, action_items, publish_postmortem]
+  steps:
+    [
+      detect_alert,
+      triage,
+      assign_responders,
+      investigate,
+      mitigate,
+      resolve,
+      draft_postmortem,
+      root_cause_analysis,
+      action_items,
+      publish_postmortem,
+    ]
   reusable_steps: []
   workflows:
     full:
-      steps: [detect_alert, triage, assign_responders, investigate, mitigate, resolve,
-              draft_postmortem, root_cause_analysis, action_items, publish_postmortem]
+      steps:
+        [
+          detect_alert,
+          triage,
+          assign_responders,
+          investigate,
+          mitigate,
+          resolve,
+          draft_postmortem,
+          root_cause_analysis,
+          action_items,
+          publish_postmortem,
+        ]
       quality_gates: [resolve]
     response:
-      steps: [detect_alert, triage, assign_responders, investigate, mitigate, resolve]
+      steps:
+        [
+          detect_alert,
+          triage,
+          assign_responders,
+          investigate,
+          mitigate,
+          resolve,
+        ]
       quality_gates: []
     postmortem:
-      steps: [draft_postmortem, root_cause_analysis, action_items, publish_postmortem]
+      steps:
+        [
+          draft_postmortem,
+          root_cause_analysis,
+          action_items,
+          publish_postmortem,
+        ]
       quality_gates: []
 ```
 
@@ -75,6 +111,7 @@ yq '.jobs[] | select(.workflows[].steps[] | type == "!!seq") | .name' jobs.yaml
 The original research brief requested a comprehensive catalog of standardized DeepWork jobs and workflows enabling multiple agents to make coordinated progress across business, engineering, scientific, and operational missions. Each job was to be decomposed into reusable steps shareable across workflows.
 
 The brief specified the DeepWork architecture primitives:
+
 - **Job**: A named capability containing steps and workflows
 - **Step**: An atomic unit of work with defined inputs, outputs, and instructions
 - **Workflow**: A named execution path through a subset of a job's steps
@@ -90,6 +127,7 @@ The research covered 17+ domains: Business & Strategy, Competitive Intelligence,
 All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 
 #### Business & Strategy (10)
+
 - `lean_canvas` — Generate and validate a Lean Canvas
 - `working_backwards` — Amazon-style press release and FAQ
 - `business_model_validation` — Validate assumptions through evidence gathering
@@ -102,6 +140,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `pricing_strategy` — Analyze and recommend pricing models
 
 #### Competitive Intelligence & Market Research (7)
+
 - `competitive_landscape` — Map the competitive landscape
 - `swot_analysis` — SWOT analysis
 - `market_sizing` — TAM, SAM, SOM estimation
@@ -111,6 +150,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `brand_positioning_audit` — Assess brand positioning
 
 #### Finance & Investment (7)
+
 - `financial_modeling` — DCF, comparables, scenario analysis
 - `budget_variance` — Budget planning and variance analysis
 - `investment_due_diligence` — Due diligence on target company or asset
@@ -120,6 +160,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `tax_compliance` — Tax planning and compliance review
 
 #### Software Engineering (10)
+
 - `spec_driven_development` — Design, implement, test, ship from spec
 - `code_review` — Quality, security, and style checks
 - `architecture_decision_record` — Document architectural decisions
@@ -132,6 +173,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `test_strategy` — Test strategy, coverage, infrastructure
 
 #### Mechanical Engineering (6)
+
 - `design_review` — FEA, tolerance, manufacturing analysis
 - `bom_management` — Bill of materials lifecycle
 - `manufacturing_process_plan` — Process sequence, tooling, quality
@@ -140,6 +182,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `prototype_tracking` — Track prototype iterations
 
 #### Aerospace Engineering (7)
+
 - `mission_design` — Trajectory, launch window, delta-v budget
 - `systems_requirements_verification` — Requirements traceability and verification
 - `flight_readiness_review` — Go/no-go assessment
@@ -149,6 +192,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `launch_operations` — Integration through post-separation checklist
 
 #### Electrical Engineering (6)
+
 - `schematic_review` — Correctness, completeness, standards compliance
 - `pcb_layout_review` — Signal integrity, thermal, DFM
 - `power_budget` — Subsystem power consumption and margins
@@ -157,6 +201,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `test_fixture_design` — Board-level or system-level test fixtures
 
 #### Art & Creative (6)
+
 - `brand_identity` — Visual language, voice, guidelines
 - `creative_brief` — Structured creative brief
 - `asset_production` — Creative asset pipeline
@@ -165,6 +210,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `style_guide` — Visual and verbal style guide
 
 #### Marketing (7)
+
 - `campaign_planning` — Strategy through execution
 - `content_calendar` — Content calendar across channels
 - `seo_audit` — Technical and content SEO audit
@@ -174,6 +220,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `analytics_attribution` — Performance and attribution models
 
 #### Medicine & Healthcare (7)
+
 - `patient_intake` — Virtual intake and triage
 - `clinical_checklist` — WHO surgical safety and similar
 - `emergency_response` — Emergency protocol execution
@@ -183,6 +230,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `medical_literature_review` — Systematic or rapid literature review
 
 #### Physical Security (6)
+
 - `threat_assessment` — Threat to personnel, facilities, operations
 - `site_security_audit` — Comprehensive physical security audit
 - `access_control_policy` — Access control policy design
@@ -191,6 +239,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `personnel_clearance` — Security clearance processing
 
 #### Compliance & Legal (7)
+
 - `regulatory_compliance_audit` — Audit against regulatory frameworks
 - `contract_review` — Review, annotate, redline contracts
 - `policy_drafting` — Draft, review, approve policies
@@ -200,6 +249,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `export_control` — Export control classification and licensing
 
 #### Geopolitical Affairs & Policy (6)
+
 - `country_risk_assessment` — Political, economic, security risk
 - `sanctions_screening` — Screen against sanctions lists
 - `political_stability_analysis` — Governance risk assessment
@@ -208,6 +258,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `intelligence_briefing` — Structured intelligence briefing
 
 #### Deep Space Missions (8)
+
 - `mission_concept_study` — Phase A concept study
 - `systems_engineering_review` — SRR, PDR, CDR equivalent
 - `subsystem_trade_study` — Quantitative design trade studies
@@ -218,6 +269,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `planetary_protection` — Planetary protection protocol compliance
 
 #### Operations & Project Management (7)
+
 - `project_charter` — Scope, stakeholders, success criteria
 - `risk_management` — Identify, assess, mitigate risks
 - `resource_planning` — Resource allocation and capacity
@@ -227,6 +279,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `sla_management` — SLA definition and monitoring
 
 #### Human Resources & Talent (6)
+
 - `job_description` — Structured job descriptions
 - `interview_design` — Interview process with rubrics
 - `onboarding` — Employee onboarding workflow
@@ -235,6 +288,7 @@ All 118 jobs are in [jobs.yaml](jobs.yaml). Below is the index.
 - `succession_planning` — Succession candidate development
 
 #### Education & Training (5)
+
 - `curriculum_design` — Curriculum with learning objectives
 - `assessment_creation` — Assessments aligned to objectives
 - `training_evaluation` — Training program effectiveness

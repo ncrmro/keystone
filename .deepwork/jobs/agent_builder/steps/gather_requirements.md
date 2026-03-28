@@ -21,7 +21,6 @@ Ask structured questions to understand what convention the user wants to create,
 3. **Gather the rules**
 
    Ask structured questions to understand what rules should be in the convention:
-
    - What are the key practices or constraints for this tool/language/process?
    - Are there things agents MUST do? MUST NOT do?
    - Are there recommended practices (SHOULD) vs. optional ones (MAY)?
@@ -47,6 +46,7 @@ Ask structured questions to understand what convention the user wants to create,
 A markdown file summarizing the convention to be created.
 
 **Structure**:
+
 ```markdown
 # Convention Requirements: {Display Name}
 
@@ -80,6 +80,7 @@ A markdown file summarizing the convention to be created.
 ```
 
 **Example** (filled in):
+
 ```markdown
 # Convention Requirements: Docker
 

@@ -32,6 +32,7 @@ Check for recent log files in the state directories listed in common job info. R
 ### 4. Extract and classify log entries
 
 For each service, extract:
+
 - **Errors** — lines containing `error`, `Error`, `ERROR`, `FATAL`, `panic`, non-zero exit codes
 - **Warnings** — lines containing `warn`, `Warning`, `WARN`, `timeout`, `retry`
 - **Structured tags** — extract phase/task identifiers from structured log tags
@@ -40,6 +41,7 @@ For each service, extract:
 ### 5. Identify patterns
 
 Look for:
+
 - **Recurring errors** — same error appearing across multiple runs
 - **Cascading failures** — one service failure causing downstream failures (e.g., notes-sync failure blocking task-loop)
 - **Time correlation** — errors that started at a specific time (suggests external change)
@@ -58,18 +60,22 @@ Write `log_analysis.md` with this structure:
 ## {Service Name}
 
 ### Errors
+
 - {timestamp} — {error message}
 - ...
 
 ### Warnings
+
 - ...
 
 ### Recent Task Failures
+
 | Task | Step | Error | Timestamp |
-|------|------|-------|-----------|
-| ... | ... | ... | ... |
+| ---- | ---- | ----- | --------- |
+| ...  | ...  | ...   | ...       |
 
 ### Pattern: {pattern name}
+
 {description of recurring pattern}
 
 {Repeat for each service}

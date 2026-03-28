@@ -5,7 +5,7 @@
 **Status**: Draft
 **Input**: User description: "After the test-vm boots for the first time, secureboot is fully enabled with our custom keys. We now need a TPM nix module..."
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - First-Boot TPM Enrollment Notification (Priority: P1)
 
@@ -89,7 +89,7 @@ After the user has configured either a recovery key or custom password, the syst
 - What happens if the user loses their recovery key and forgets their custom password after TPM fails?
 - How does the system behave during the transition period where both "keystone" and the new credential exist?
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -110,7 +110,7 @@ After the user has configured either a recovery key or custom password, the syst
 - **FR-015**: System MUST use systemd-cryptenroll with --wipe-slot=empty to avoid removing existing credentials during enrollment
 - **FR-016**: System MUST provide documentation explaining when recovery key or custom password would be needed (PCR changes, TPM failure, hardware replacement)
 
-### Key Entities *(include if feature involves data)*
+### Key Entities _(include if feature involves data)_
 
 - **TPM Enrollment State**: Represents whether TPM-based unlock has been configured; tracked via presence of TPM keyslot in LUKS header
 - **Credstore Volume**: The LUKS-encrypted ZFS volume at /dev/zvol/rpool/credstore that stores encryption keys for the main filesystem
@@ -118,7 +118,7 @@ After the user has configured either a recovery key or custom password, the syst
 - **Recovery Key**: A cryptographically secure credential that allows disk unlock when TPM is unavailable; must be stored offline by user
 - **PCR Values**: Platform Configuration Register measurements that represent system boot state; changes to PCRs invalidate TPM unlock
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

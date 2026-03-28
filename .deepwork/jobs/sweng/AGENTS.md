@@ -15,13 +15,13 @@ The workflows are accessible as Claude Code slash commands:
 
 ## Workflows
 
-| Workflow | Steps | Purpose |
-|----------|-------|---------|
-| `design` | design | Standalone architecture/design document |
-| `implement` | plan → assign → review → postflight | New feature lifecycle |
-| `fix` | plan → assign → review → postflight | Bug fix lifecycle |
-| `refactor` | plan → assign → review → postflight | Refactoring lifecycle |
-| `audit` | audit | Dev environment health check |
+| Workflow    | Steps                               | Purpose                                 |
+| ----------- | ----------------------------------- | --------------------------------------- |
+| `design`    | design                              | Standalone architecture/design document |
+| `implement` | plan → assign → review → postflight | New feature lifecycle                   |
+| `fix`       | plan → assign → review → postflight | Bug fix lifecycle                       |
+| `refactor`  | plan → assign → review → postflight | Refactoring lifecycle                   |
+| `audit`     | audit                               | Dev environment health check            |
 
 ## Key Conventions
 
@@ -35,6 +35,7 @@ The workflows are accessible as Claude Code slash commands:
 ## Convention Dependencies
 
 This job integrates several keystone conventions. Steps reference them by name:
+
 - `process.feature-delivery` — Branch naming, worktrees, draft PR, squash merge
 - `process.version-control` — Conventional commits, commit discipline
 - `process.continuous-integration` — CI gating, log handling, fix loop
@@ -47,6 +48,7 @@ This job integrates several keystone conventions. Steps reference them by name:
 ## Project Board Integration
 
 Every step that changes issue state MUST also update the project board column:
+
 - **plan**: Issue comment + move to "In Progress" when branch created
 - **review**: Move to "In Review" when PR marked ready for review
 - **review (failure)**: Move back to "Backlog" when max fix attempts exceeded
@@ -60,6 +62,7 @@ Forgejo has no project board API — use `forgejo-project` CLI for all board ope
 ## Platform Detection
 
 Platform is inferred from git remote URL at runtime:
+
 - `*github.com*` → github → use `gh` CLI
 - `*git.ncrmro.com*` → forgejo → use `fj` CLI + `forgejo-project` for boards
 

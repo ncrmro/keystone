@@ -43,6 +43,7 @@ Read the convention file and the current modes.yaml, determine which mode(s) the
 The updated `manifests/modes.yaml` file.
 
 **Example change** (before/after):
+
 ```yaml
 # Before
 modes:
@@ -75,6 +76,7 @@ modes:
    ```
 
    Then commit in the keystone repo with a conventional commit message:
+
    ```bash
    cd .repos/ncrmro/keystone
    git add conventions/{domain}.{topic}.md
@@ -96,6 +98,7 @@ modes:
 This is the final step. Without wiring, the convention exists as a file but is never loaded into any agent's system prompt. Proper wiring ensures that agents operating in the relevant mode automatically follow the new convention.
 
 Conventions currently live in two places:
+
 - `.agents/conventions/` — the agent-space submodule (used by compose.sh)
 - `.repos/ncrmro/keystone/conventions/` — the upstream shared library
 

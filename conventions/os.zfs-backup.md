@@ -136,6 +136,7 @@ ncrmro-workstation = {
 ```
 
 This single declaration auto-derives:
+
 - **On ncrmro-workstation** (sender): sanoid snapshots rpool children hourly, syncoid
   replicates to both ocean and maia every hour using the host SSH key
 - **On ocean** (receiver): `ncrmro-workstation-sync` user created, backup dataset

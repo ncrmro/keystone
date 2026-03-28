@@ -5,7 +5,7 @@
 **Status**: Draft
 **Input**: User description: "Now that we have the ability to ssh into a VM booted from our built iso, We need to run nixos-anywhere to install it. We should do the most bare minimum straight forward server install to get started using the current flake. It should again allow us to ssh into it and verify that it has installed."
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Basic Server Deployment to VM (Priority: P1)
 
@@ -67,7 +67,7 @@ A developer wants to be able to repeatedly deploy fresh server installations to 
 - What happens when trying to deploy to a VM that already has a system installed?
 - How does the installation handle systems without TPM2 support (VM environment)?
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -92,7 +92,7 @@ A developer wants to be able to repeatedly deploy fresh server installations to 
 - **Deployment Target**: Represents a VM or physical machine accessible via SSH running the Keystone installer ISO
 - **Installed System**: Represents the final deployed NixOS server with all configured services, encryption, and network access
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

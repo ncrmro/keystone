@@ -9,6 +9,7 @@ on format-specific concerns.
 ## Task
 
 1. **File inventory**: Count all markdown files, grouped by directory:
+
    ```bash
    rg --files <notes_path> -g '*.md' -g '!.zk/**' -g '!.git/**' -g '!.obsidian/**' -g '!.deepwork/**' -g '!.claude/**' | wc -l
    rg --files <notes_path> -g '*.md' -g '!.zk/**' -g '!.git/**' -g '!.obsidian/**' -g '!.deepwork/**' -g '!.claude/**' | xargs -r -n1 dirname | sort | uniq -c | sort -rn
@@ -23,6 +24,7 @@ on format-specific concerns.
    - Is there any existing ID scheme?
 
 4. **Link format detection**: Search for existing links:
+
    ```bash
    # Wikilinks (standard and Obsidian-style)
    rg -n '\[\[' <notes_path> -g '*.md' | head -20
@@ -72,10 +74,11 @@ on format-specific concerns.
    - If a large legacy tree remains, do not stop at the canonical groups — call it out clearly in the audit
 
 10. **Project tag gap audit**: Look for files that likely need project tags:
-   - Derive project names and aliases from project hub notes in `index/` (title, slug tag, and `subprojects:` if present)
-   - Search across `notes/`, `literature/`, `reports/`, `index/`, and canonical spike `README.md` files for project-name mentions using `rg`
-   - Prefer `scripts/find_missing_project_tags.py <notes_path>` when available, or reproduce its logic manually with `rg`
-   - Record the files that appear to reference a project strongly but do not carry the corresponding project tag yet
+
+- Derive project names and aliases from project hub notes in `index/` (title, slug tag, and `subprojects:` if present)
+- Search across `notes/`, `literature/`, `reports/`, `index/`, and canonical spike `README.md` files for project-name mentions using `rg`
+- Prefer `scripts/find_missing_project_tags.py <notes_path>` when available, or reproduce its logic manually with `rg`
+- Record the files that appear to reference a project strongly but do not carry the corresponding project tag yet
 
 ## Output Format
 
@@ -85,6 +88,7 @@ Write `.deepwork/tmp/audit_report.md` with sections:
 # Audit Report
 
 ## Summary
+
 - Total markdown files: N
 - Files with frontmatter: N
 - Files without frontmatter: N
@@ -93,30 +97,39 @@ Write `.deepwork/tmp/audit_report.md` with sections:
 - Keystone repo: yes / no
 
 ## Directory Structure
+
 (tree or listing)
 
 ## Frontmatter Analysis
+
 (field frequency table)
 
 ## Link Analysis
+
 (existing link patterns)
 
 ## Format-Specific Findings
+
 (Obsidian callouts count, dataview usage, Apple Notes HTML fragments, etc.)
 
 ## Naming Conventions
+
 (observed patterns)
 
 ## Canonical hub and spike conventions
+
 (project hub notes in `index/`, report group usage, spike README conventions, `.zk/config.toml` ignore rules)
 
 ## Legacy Trees Requiring Migration
+
 (noncanonical directories that still contain note-like markdown, plus which content is operational residue)
 
 ## Probable missing project tags
+
 (files that mention projects but are missing the corresponding project tags)
 
 ## Excluded Files (not to be migrated)
+
 (list of operational/identity/config files)
 ```
 

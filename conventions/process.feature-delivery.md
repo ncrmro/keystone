@@ -1,4 +1,3 @@
-
 ## Code Delivery
 
 This convention defines the end-to-end lifecycle of delivering features and fixes via code changes: from milestone/issue through to merged PR. It orchestrates existing conventions rather than duplicating them.
@@ -82,6 +81,7 @@ git push -u origin feat/add-search-endpoint
 ```
 
 **Forgejo:**
+
 ```bash
 fj pr create "WIP: feat(api): add search endpoint" \
   --head feat/add-search-endpoint --base main \
@@ -110,6 +110,7 @@ EOF
 ```
 
 **GitHub:**
+
 ```bash
 gh pr create --draft \
   --title "feat(api): add search endpoint" \

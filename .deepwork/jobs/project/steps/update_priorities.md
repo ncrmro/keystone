@@ -18,7 +18,6 @@ Read the success review and charter, then produce a prioritized list of recommen
 2. **Map verdict to action patterns**
 
    Each verdict implies a different set of actions:
-
    - **Accelerate**:
      - Recommend increasing investment: more milestones, faster cadence
      - Suggest which goals to push harder on
@@ -72,7 +71,7 @@ Read the success review and charter, then produce a prioritized list of recommen
 
 ### priority_recommendations.md
 
-```markdown
+````markdown
 # Priority Recommendations: [Project Name]
 
 **Based on**: Success Review [Month YYYY]
@@ -81,12 +80,14 @@ Read the success review and charter, then produce a prioritized list of recommen
 ## Immediate Actions
 
 ### 1. [Most urgent action]
+
 - **What**: [specific action]
 - **Workflow**: `[job/workflow]` or manual action
 - **Why**: [tied to verdict reasoning]
 - **Owner**: [human / luce / drago]
 
 ### 2. [Next action]
+
 ...
 
 ## Priority Adjustment
@@ -96,6 +97,7 @@ Read the success review and charter, then produce a prioritized list of recommen
 **Reasoning**: [why, tied to verdict]
 
 ### Proposed PROJECTS.yaml Change
+
 ```yaml
 # Before
 - name: [project]
@@ -107,19 +109,24 @@ Read the success review and charter, then produce a prioritized list of recommen
   priority: [new]
   status: [new]
 ```
+````
 
 ## Charter Updates Needed
+
 - [Goal or KPI that should be revised, and suggested revision]
 - [Or "No updates needed — charter is current"]
 
 ## Next Review
+
 - **Recommended**: [date — quarterly for active, semi-annual for paused]
 - **Focus Areas**: [what to pay attention to before next review]
 
 ## Decision Points
+
 [Key questions for the human to decide on — things the agent can't decide unilaterally.
 e.g., "Should we pivot the target segment from developers to data scientists?"
 or "Is the $X/month budget still available for this project?"]
+
 ```
 
 ## Quality Criteria
@@ -134,3 +141,4 @@ or "Is the $X/month budget still available for this project?"]
 ## Context
 
 This is the final step that turns analysis into action. The recommendations should be specific enough that the human can say "yes, do it" and the agents can execute immediately. Avoid vague recommendations like "consider improving marketing" — instead say "run `project/press_release` for the X feature to test messaging with customers." The human is busy and focused on engineering — these recommendations are the business thread that keeps the project strategically coherent.
+```

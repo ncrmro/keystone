@@ -44,6 +44,7 @@ automatically via built-in board automations (PR merged → Done), so no action
 needed on GitHub per `process.project-board`.
 
 **Forgejo:**
+
 ```bash
 forgejo-project item move --project $PROJECT_NUM --issue $ISSUE_NUMBER --column "Done"
 ```
@@ -53,6 +54,7 @@ forgejo-project item move --project $PROJECT_NUM --issue $ISSUE_NUMBER --column 
 #### Step 4: Update TASKS.yaml
 
 Update the task entry in TASKS.yaml:
+
 - Set `status: completed`
 
 ```bash

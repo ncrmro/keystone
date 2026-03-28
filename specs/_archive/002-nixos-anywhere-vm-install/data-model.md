@@ -17,16 +17,19 @@ This document describes the configuration structure and data entities for the ni
 **Description**: A complete system configuration that can be deployed to a target machine.
 
 **Attributes**:
+
 - `system`: Target architecture (e.g., "x86_64-linux")
 - `modules`: List of NixOS modules to include
 - `specialArgs`: Additional arguments passed to modules (optional)
 
 **Relationships**:
+
 - Composes multiple NixOS modules (server, disko, etc.)
 - References external inputs (nixpkgs, disko)
 - Defines a buildable system derivation
 
 **Example Structure**:
+
 ```nix
 nixosConfigurations.test-server = {
   system = "x86_64-linux";
@@ -40,6 +43,7 @@ nixosConfigurations.test-server = {
 ```
 
 **Validation Rules**:
+
 - `system` must be a supported NixOS platform
 - All module paths must exist and be valid NixOS modules
 - Required options must be set (hostname, disk device, SSH keys)
@@ -51,20 +55,24 @@ nixosConfigurations.test-server = {
 **Description**: Disk partitioning and encryption configuration.
 
 **Required Attributes**:
+
 - `enable`: Boolean to activate disko configuration
 - `device`: Absolute path to target disk device
 
 **Optional Attributes**:
+
 - `enableEncryptedSwap`: Whether to create encrypted swap (default: true)
 - `swapSize`: Size of swap partition (default: "64G")
 - `espSize`: Size of EFI system partition (default: "1G")
 
 **Relationships**:
+
 - Controls disk layout and ZFS pool creation
 - Defines encryption parameters
 - Creates filesystem mount structure
 
 **Validation Rules**:
+
 - `device` must be absolute path starting with `/dev/`
 - `swapSize` and `espSize` must be valid size strings (e.g., "64G", "1G")
 - Cannot be enabled without disko module imported
@@ -76,9 +84,11 @@ nixosConfigurations.test-server = {
 **Description**: Server-specific system configuration.
 
 **Attributes**:
+
 - `enable`: Boolean to activate server configuration (default: true)
 
 **Implied Configuration**:
+
 - SSH server enabled with key-only authentication
 - mDNS service (Avahi) for network discovery
 - Firewall enabled with SSH port 22 allowed
@@ -86,11 +96,13 @@ nixosConfigurations.test-server = {
 - System administration tools installed
 
 **Relationships**:
+
 - Depends on base NixOS system
 - Integrates with disko for storage
 - Provides networking and security baseline
 
 **Validation Rules**:
+
 - Requires at least one SSH authorized key configured
 - Hostname must be set
 
@@ -101,14 +113,17 @@ nixosConfigurations.test-server = {
 **Description**: Unique identifier for the deployed system.
 
 **Attributes**:
+
 - String value representing the system hostname
 
 **Validation Rules**:
+
 - Must be valid hostname (alphanumeric, hyphens, no spaces)
 - Should be unique within the network
 - Used by mDNS for `<hostname>.local` resolution
 
 **Relationships**:
+
 - Advertised via mDNS/Avahi
 - Used in system logging and identification
 - Part of SSH host identification
@@ -120,16 +135,19 @@ nixosConfigurations.test-server = {
 **Description**: List of SSH public keys authorized to access the system.
 
 **Attributes**:
+
 - Array of SSH public key strings
 - Typically configured for root user
 - Each key is a complete SSH public key line
 
 **Validation Rules**:
+
 - Each key must be valid SSH public key format
 - Keys should include identifying comments
 - At least one key required for remote access
 
 **Relationships**:
+
 - Controls post-deployment SSH access
 - Integrates with OpenSSH server configuration
 - Required for automated deployments

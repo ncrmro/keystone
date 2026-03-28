@@ -41,6 +41,7 @@ Transform the ranked event list into an executive-ready recommendations document
 The final curated recommendations document.
 
 **Structure**:
+
 ```markdown
 # Event Recommendations
 
@@ -50,28 +51,32 @@ The final curated recommendations document.
 - **Top Picks**: [count]
 
 ## Executive Summary
+
 [2-3 sentences: what was searched, how many events found, top highlight]
 
 ## Quick Comparison
 
-| Event | Date | Location | Cost | Match |
-|-------|------|----------|------|-------|
-| [name] | [date] | [city] | [cost] | [primary interest] |
+| Event  | Date   | Location | Cost   | Match              |
+| ------ | ------ | -------- | ------ | ------------------ |
+| [name] | [date] | [city]   | [cost] | [primary interest] |
 
 ## Recommendations
 
 ### 1. [Event Name]
+
 **Date**: [date] | **Location**: [location] | **Cost**: [cost]
 **Registration**: [URL]
 
 **Why Attend**: [2-3 sentences on why this matters for the user's goals]
 
 **Highlights**:
+
 - [Speaker or session highlight]
 - [Networking opportunity]
 - [Other notable feature]
 
 **Action Items**:
+
 - [ ] Register by [deadline] for early bird pricing
 - [ ] Submit talk proposal by [CFP deadline] (if applicable)
 - [ ] Book travel by [date] for best rates
@@ -79,11 +84,13 @@ The final curated recommendations document.
 ---
 
 ### 2. [Event Name]
+
 [same structure]
 
 ---
 
 ## Next Steps
+
 1. Review recommendations and select events to attend
 2. [Specific action for the top-priority event]
 3. [Calendar blocking suggestion]

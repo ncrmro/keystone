@@ -37,6 +37,7 @@ Review every message in the inbox snapshot and assign it to a category. Apply th
 Messages organized by category with action notes.
 
 **Structure**:
+
 ```markdown
 # Categorized Inbox
 
@@ -45,11 +46,13 @@ Messages organized by category with action notes.
 - **Categorization Date**: [timestamp]
 
 ## Priority Rules Applied
+
 [Copy of rules and how they were applied]
 
 ## Urgent ([count])
 
 ### [ID]: [Subject]
+
 - **From**: [sender]
 - **Date**: [date]
 - **Why Urgent**: [reason]
@@ -59,6 +62,7 @@ Messages organized by category with action notes.
 ## Needs Reply ([count])
 
 ### [ID]: [Subject]
+
 - **From**: [sender]
 - **Date**: [date]
 - **Reply Should Address**: [key points to cover]
@@ -66,20 +70,21 @@ Messages organized by category with action notes.
 ## FYI ([count])
 
 ### [ID]: [Subject]
+
 - **From**: [sender]
 - **Date**: [date]
 - **Summary**: [1 sentence]
 
 ## Archive ([count])
 
-| ID | Subject | From | Reason |
-|----|---------|------|--------|
+| ID   | Subject   | From     | Reason        |
+| ---- | --------- | -------- | ------------- |
 | [id] | [subject] | [sender] | [why archive] |
 
 ## Delete ([count])
 
-| ID | Subject | From | Reason |
-|----|---------|------|--------|
+| ID   | Subject   | From     | Reason       |
+| ---- | --------- | -------- | ------------ |
 | [id] | [subject] | [sender] | [why delete] |
 ```
 

@@ -38,6 +38,7 @@ Combine the user-provided interest areas with context from the project environme
 A structured profile to guide event search.
 
 **Structure**:
+
 ```markdown
 # Interest Profile
 
@@ -49,20 +50,24 @@ A structured profile to guide event search.
 ## Interest Areas
 
 ### 1. [Interest Area] (Priority: high/medium/low)
+
 - **Keywords**: [search terms]
 - **Related Projects**: [current projects in this area]
 - **Event Types**: [conferences, meetups, workshops, etc.]
 
 ### 2. [Interest Area] (Priority: high/medium/low)
+
 [same structure]
 
 ## Event Preferences
+
 - **Preferred Size**: [range]
 - **Format**: [in-person / remote / hybrid]
 - **Networking Goals**: [what the user wants from events]
 - **Speaking Interest**: [yes/no — open to CFPs?]
 
 ## Active Projects Context
+
 [Brief summary of current projects that might influence event relevance]
 ```
 

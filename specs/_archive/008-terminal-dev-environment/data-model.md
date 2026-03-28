@@ -30,11 +30,11 @@ programs.terminal-dev-environment = {
 
 ### Attributes
 
-| Attribute | Type | Default | Required | Description |
-|-----------|------|---------|----------|-------------|
-| `enable` | `boolean` | `false` | Yes | Master switch to enable/disable the entire environment |
-| `tools` | `ToolsConfig` | `{}` | No | Configuration for which tool categories to enable |
-| `extraPackages` | `list[Package]` | `[]` | No | Additional packages to include in the environment |
+| Attribute       | Type            | Default | Required | Description                                            |
+| --------------- | --------------- | ------- | -------- | ------------------------------------------------------ |
+| `enable`        | `boolean`       | `false` | Yes      | Master switch to enable/disable the entire environment |
+| `tools`         | `ToolsConfig`   | `{}`    | No       | Configuration for which tool categories to enable      |
+| `extraPackages` | `list[Package]` | `[]`    | No       | Additional packages to include in the environment      |
 
 ### Relationships
 
@@ -50,13 +50,13 @@ programs.terminal-dev-environment = {
 
 ### Attributes
 
-| Attribute | Type | Default | Required | Description |
-|-----------|------|---------|----------|-------------|
-| `git` | `boolean` | `true` | No | Enable Git version control and UI tools (git, lazygit) |
-| `editor` | `boolean` | `true` | No | Enable Helix text editor with language servers |
-| `shell` | `boolean` | `true` | No | Enable Zsh shell with productivity utilities |
-| `multiplexer` | `boolean` | `true` | No | Enable Zellij terminal multiplexer |
-| `terminal` | `boolean` | `true` | No | Enable Ghostty terminal emulator |
+| Attribute     | Type      | Default | Required | Description                                            |
+| ------------- | --------- | ------- | -------- | ------------------------------------------------------ |
+| `git`         | `boolean` | `true`  | No       | Enable Git version control and UI tools (git, lazygit) |
+| `editor`      | `boolean` | `true`  | No       | Enable Helix text editor with language servers         |
+| `shell`       | `boolean` | `true`  | No       | Enable Zsh shell with productivity utilities           |
+| `multiplexer` | `boolean` | `true`  | No       | Enable Zellij terminal multiplexer                     |
+| `terminal`    | `boolean` | `true`  | No       | Enable Ghostty terminal emulator                       |
 
 ### Validation Rules
 
@@ -72,12 +72,12 @@ programs.terminal-dev-environment = {
 
 ### Attributes
 
-| Attribute | Type | Default | Required | Description |
-|-----------|------|---------|----------|-------------|
-| `enable` | `boolean` | inherited | No | Enable Git (controlled by `tools.git`) |
-| `enableLfs` | `boolean` | `true` | No | Enable Git Large File Storage support |
-| `enableLazygit` | `boolean` | `true` | No | Enable lazygit TUI for Git operations |
-| `aliases` | `attrset[string]` | see below | No | Git command aliases |
+| Attribute       | Type              | Default   | Required | Description                            |
+| --------------- | ----------------- | --------- | -------- | -------------------------------------- |
+| `enable`        | `boolean`         | inherited | No       | Enable Git (controlled by `tools.git`) |
+| `enableLfs`     | `boolean`         | `true`    | No       | Enable Git Large File Storage support  |
+| `enableLazygit` | `boolean`         | `true`    | No       | Enable lazygit TUI for Git operations  |
+| `aliases`       | `attrset[string]` | see below | No       | Git command aliases                    |
 
 ### Default Aliases
 
@@ -107,13 +107,13 @@ programs.terminal-dev-environment = {
 
 ### Attributes
 
-| Attribute | Type | Default | Required | Description |
-|-----------|------|---------|----------|-------------|
-| `enable` | `boolean` | inherited | No | Enable Helix editor (controlled by `tools.editor`) |
-| `package` | `package` | `pkgs.helix` | No | Helix package to install |
-| `theme` | `string` | `"default"` | No | Editor color theme |
-| `settings` | `attrset` | see below | No | Editor settings (see Helix documentation) |
-| `languageServers` | `list[Package]` | see below | No | Language server packages to install |
+| Attribute         | Type            | Default      | Required | Description                                        |
+| ----------------- | --------------- | ------------ | -------- | -------------------------------------------------- |
+| `enable`          | `boolean`       | inherited    | No       | Enable Helix editor (controlled by `tools.editor`) |
+| `package`         | `package`       | `pkgs.helix` | No       | Helix package to install                           |
+| `theme`           | `string`        | `"default"`  | No       | Editor color theme                                 |
+| `settings`        | `attrset`       | see below    | No       | Editor settings (see Helix documentation)          |
+| `languageServers` | `list[Package]` | see below    | No       | Language server packages to install                |
 
 ### Default Language Servers
 
@@ -156,16 +156,16 @@ Sets `EDITOR=hx` and `VISUAL=hx` when enabled.
 
 ### Attributes
 
-| Attribute | Type | Default | Required | Description |
-|-----------|------|---------|----------|-------------|
-| `enable` | `boolean` | inherited | No | Enable Zsh shell (controlled by `tools.shell`) |
-| `enableOhMyZsh` | `boolean` | `true` | No | Enable oh-my-zsh framework |
-| `enableStarship` | `boolean` | `true` | No | Enable starship cross-shell prompt |
-| `enableZoxide` | `boolean` | `true` | No | Enable zoxide smart directory navigation |
-| `enableDirenv` | `boolean` | `true` | No | Enable direnv for automatic environment loading |
-| `shellAliases` | `attrset[string]` | see below | No | Shell command aliases |
-| `ohMyZshPlugins` | `list[string]` | `["git"]` | No | Oh-my-zsh plugins to enable |
-| `ohMyZshTheme` | `string` | `"robbyrussell"` | No | Oh-my-zsh theme |
+| Attribute        | Type              | Default          | Required | Description                                     |
+| ---------------- | ----------------- | ---------------- | -------- | ----------------------------------------------- |
+| `enable`         | `boolean`         | inherited        | No       | Enable Zsh shell (controlled by `tools.shell`)  |
+| `enableOhMyZsh`  | `boolean`         | `true`           | No       | Enable oh-my-zsh framework                      |
+| `enableStarship` | `boolean`         | `true`           | No       | Enable starship cross-shell prompt              |
+| `enableZoxide`   | `boolean`         | `true`           | No       | Enable zoxide smart directory navigation        |
+| `enableDirenv`   | `boolean`         | `true`           | No       | Enable direnv for automatic environment loading |
+| `shellAliases`   | `attrset[string]` | see below        | No       | Shell command aliases                           |
+| `ohMyZshPlugins` | `list[string]`    | `["git"]`        | No       | Oh-my-zsh plugins to enable                     |
+| `ohMyZshTheme`   | `string`          | `"robbyrussell"` | No       | Oh-my-zsh theme                                 |
 
 ### Default Shell Aliases
 
@@ -194,12 +194,12 @@ Sets `EDITOR=hx` and `VISUAL=hx` when enabled.
 
 ### Attributes
 
-| Attribute | Type | Default | Required | Description |
-|-----------|------|---------|----------|-------------|
-| `enable` | `boolean` | inherited | No | Enable Zellij (controlled by `tools.multiplexer`) |
-| `package` | `package` | `pkgs.zellij` | No | Zellij package to install |
-| `theme` | `string` | `"tokyo-night-dark"` | No | UI theme |
-| `settings` | `attrset` | see below | No | Zellij configuration options |
+| Attribute  | Type      | Default              | Required | Description                                       |
+| ---------- | --------- | -------------------- | -------- | ------------------------------------------------- |
+| `enable`   | `boolean` | inherited            | No       | Enable Zellij (controlled by `tools.multiplexer`) |
+| `package`  | `package` | `pkgs.zellij`        | No       | Zellij package to install                         |
+| `theme`    | `string`  | `"tokyo-night-dark"` | No       | UI theme                                          |
+| `settings` | `attrset` | see below            | No       | Zellij configuration options                      |
 
 ### Default Settings
 
@@ -224,10 +224,10 @@ Sets `EDITOR=hx` and `VISUAL=hx` when enabled.
 
 ### Attributes
 
-| Attribute | Type | Default | Required | Description |
-|-----------|------|---------|----------|-------------|
-| `enable` | `boolean` | inherited | No | Enable lazygit (controlled by `git.enableLazygit`) |
-| `package` | `package` | `pkgs.lazygit` | No | Lazygit package to install |
+| Attribute | Type      | Default        | Required | Description                                        |
+| --------- | --------- | -------------- | -------- | -------------------------------------------------- |
+| `enable`  | `boolean` | inherited      | No       | Enable lazygit (controlled by `git.enableLazygit`) |
+| `package` | `package` | `pkgs.lazygit` | No       | Lazygit package to install                         |
 
 ### Notes
 
@@ -243,12 +243,12 @@ Sets `EDITOR=hx` and `VISUAL=hx` when enabled.
 
 ### Attributes
 
-| Attribute | Type | Default | Required | Description |
-|-----------|------|---------|----------|-------------|
-| `enable` | `boolean` | inherited | No | Enable Ghostty (controlled by `tools.terminal`) |
-| `package` | `package` | `pkgs.ghostty` | No | Ghostty package to install |
-| `enableZshIntegration` | `boolean` | `true` | No | Enable Ghostty-specific zsh shell integration |
-| `settings` | `attrset` | `{}` | No | Ghostty configuration (see Ghostty documentation) |
+| Attribute              | Type      | Default        | Required | Description                                       |
+| ---------------------- | --------- | -------------- | -------- | ------------------------------------------------- |
+| `enable`               | `boolean` | inherited      | No       | Enable Ghostty (controlled by `tools.terminal`)   |
+| `package`              | `package` | `pkgs.ghostty` | No       | Ghostty package to install                        |
+| `enableZshIntegration` | `boolean` | `true`         | No       | Enable Ghostty-specific zsh shell integration     |
+| `settings`             | `attrset` | `{}`           | No       | Ghostty configuration (see Ghostty documentation) |
 
 ### Example Settings
 
@@ -281,6 +281,7 @@ Sets `EDITOR=hx` and `VISUAL=hx` when enabled.
 ### Type Safety
 
 All options use explicit Nix types:
+
 - `lib.types.bool` for boolean flags
 - `lib.types.str` for string values
 - `lib.types.package` for package references
@@ -326,6 +327,7 @@ This enables all tools with default settings.
 ```
 
 This configuration is used by the bin/test-home-manager self-contained test script which:
+
 - Installs home-manager for testuser via nix-channel
 - Copies config to testuser's ~/.config/home-manager/
 - Runs `home-manager switch` as testuser
@@ -333,6 +335,7 @@ This configuration is used by the bin/test-home-manager self-contained test scri
 - Returns exit code 0 on success, 1 on failure (fails bin/test-deployment if verification fails)
 
 **Automated Verification Checks:**
+
 - Home-manager successfully installed for testuser
 - All tools in PATH: helix, git, zsh, zellij, lazygit, ghostty
 - Zsh is testuser's default shell ($SHELL check)
@@ -460,6 +463,7 @@ User Shell Environment (all tools available)
 ### Exports
 
 The module exports configured programs and environment to:
+
 - `$PATH`: All tool binaries
 - `$EDITOR` / `$VISUAL`: Set to `hx` (helix)
 - `$XDG_CONFIG_HOME`: Tool configuration files

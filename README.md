@@ -29,18 +29,18 @@ user creation, and service configuration — no config files required.
 Enable services with a single toggle. Keystone auto-configures TLS certificates,
 reverse proxy, and DNS for each one.
 
-| Service | What it replaces |
-|---------|-----------------|
-| Immich | Google Photos |
-| Forgejo | GitHub |
-| Vaultwarden | 1Password |
-| Stalwart | Gmail |
-| AdGuard | Pi-hole |
-| Headscale | Tailscale control |
-| Grafana + Prometheus + Loki | Datadog |
-| Miniflux | Feedly |
-| Attic | Cachix |
-| SeaweedFS | S3 |
+| Service                     | What it replaces  |
+| --------------------------- | ----------------- |
+| Immich                      | Google Photos     |
+| Forgejo                     | GitHub            |
+| Vaultwarden                 | 1Password         |
+| Stalwart                    | Gmail             |
+| AdGuard                     | Pi-hole           |
+| Headscale                   | Tailscale control |
+| Grafana + Prometheus + Loki | Datadog           |
+| Miniflux                    | Feedly            |
+| Attic                       | Cachix            |
+| SeaweedFS                   | S3                |
 
 [Server Documentation](docs/os/server.md)
 

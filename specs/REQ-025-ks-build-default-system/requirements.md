@@ -31,6 +31,7 @@ config by default so that I can verify system-level changes (like
 ```
 
 ## Affected Modules
+
 - `packages/ks/ks.sh` — restructure `cmd_build` flag parsing and build paths
 - `specs/REQ-019-ks-cli/requirements.md` — update REQ-019.3 and REQ-019.4
 

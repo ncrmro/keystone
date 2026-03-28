@@ -23,6 +23,7 @@ This configuration is essential for testing Keystone's lanzaboote integration an
 ```
 
 **What this does**:
+
 - Creates a VM with UEFI Secure Boot enabled
 - Initializes NVRAM from empty OVMF_VARS template (no pre-enrolled keys)
 - Automatically boots in Setup Mode
@@ -47,6 +48,7 @@ bootctl status
 ```
 
 **Expected output**:
+
 ```
 System:
      Firmware: UEFI 2.70 (EDK II 1.00)
@@ -55,6 +57,7 @@ System:
 ```
 
 **Interpretation**:
+
 - `Secure Boot: disabled (setup)` - Firmware has Secure Boot capability, currently in setup mode
 - `Setup Mode: setup` - No Platform Key enrolled, ready for key enrollment
 - This is the **correct state** for testing the Keystone installer
@@ -127,6 +130,7 @@ bootctl status
 ```
 
 **Setup Mode Output**:
+
 ```
 System:
      Firmware: UEFI 2.70 (EDK II 1.00)
@@ -135,6 +139,7 @@ System:
 ```
 
 **User Mode Output** (after key enrollment):
+
 ```
 System:
      Firmware: UEFI 2.70 (EDK II 1.00)
@@ -219,11 +224,13 @@ ls /sys/firmware/efi/efivars/ | grep -i secure
 ### OVMF Firmware Not Found
 
 **Error**:
+
 ```
 ERROR: OVMF firmware not found!
 ```
 
 **Solution**:
+
 ```bash
 # Ensure libvirtd is enabled (provides OVMF firmware)
 # In configuration.nix:
@@ -240,6 +247,7 @@ sudo nixos-rebuild switch
 **Cause**: NVRAM file already has Platform Key enrolled
 
 **Solution**:
+
 ```bash
 # Reset to setup mode by deleting and recreating
 ./bin/virtual-machine --reset <vm-name>
@@ -251,11 +259,13 @@ sudo nixos-rebuild switch
 **Symptom**: `bootctl status` doesn't show Secure Boot information
 
 **Possible Causes**:
+
 1. VM didn't boot with UEFI (check machine type = q35)
 2. Kernel doesn't expose efivars
 3. Running bootctl outside of UEFI environment
 
 **Solution**:
+
 ```bash
 # Verify UEFI boot
 ls /sys/firmware/efi
@@ -316,6 +326,7 @@ The script creates VMs with:
 ```
 
 Key attributes:
+
 - `secure='yes'` - Enables Secure Boot in firmware
 - `template` - Source for NVRAM initialization
 - `smm state='on'` - Required for Secure Boot (System Management Mode)
@@ -323,12 +334,14 @@ Key attributes:
 ## Expected Timeline
 
 **VM Creation**: 15-30 seconds
+
 - Firmware detection: ~2 seconds
 - NVRAM copy: <1 second
 - VM definition: ~5 seconds
 - VM start: ~10 seconds
 
 **First Boot**: 20-40 seconds
+
 - UEFI firmware init: ~5 seconds
 - Boot from ISO: ~15-30 seconds
 
@@ -348,10 +361,12 @@ After following this guide, you should be able to:
 ## Reference
 
 **Related Scripts**:
+
 - `bin/virtual-machine` - VM creation and management
 - `bin/build-iso` - Build Keystone installer ISO
 
 **UEFI/Secure Boot Resources**:
+
 - `bootctl(1)` man page
 - UEFI Specification 2.10
 - OVMF Documentation: https://github.com/tianocore/tianocore.github.io/wiki/OVMF

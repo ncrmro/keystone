@@ -8,11 +8,13 @@
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
 ## Format: `[ID] [P?] [Story] Description`
+
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3, US4)
 - Include exact file paths in descriptions
 
 ## Path Conventions
+
 - **Module path**: `modules/tpm-enrollment/`
 - **Documentation**: `docs/`
 - **Examples**: `examples/tpm-enrollment/`
@@ -273,6 +275,7 @@ Stories integrate independently - US1 works alone, US2/US3 initially duplicate T
 The module uses a configurable PCR list that converts to systemd-cryptenroll format:
 
 **NixOS Configuration**:
+
 ```nix
 keystone.tpmEnrollment = {
   enable = true;
@@ -282,6 +285,7 @@ keystone.tpmEnrollment = {
 ```
 
 **Conversion in default.nix** (Task T010):
+
 ```nix
 # Helper function converts list to comma-separated string
 tpmPCRString = lib.concatStringsSep "," (map toString cfg.tpmPCRs);
@@ -289,6 +293,7 @@ tpmPCRString = lib.concatStringsSep "," (map toString cfg.tpmPCRs);
 ```
 
 **Usage in enrollment scripts** (Tasks T021, T029, T033):
+
 ```bash
 systemd-cryptenroll \
   --tpm2-device=auto \
@@ -298,6 +303,7 @@ systemd-cryptenroll \
 ```
 
 **Alternative PCR configurations users can set**:
+
 - `tpmPCRs = [ 7 ]` - Secure Boot only (more update-resilient)
 - `tpmPCRs = [ 0 1 7 ]` - Firmware + config + Secure Boot (more restrictive)
 - `tpmPCRs = [ 7 11 ]` - Secure Boot + kernel UKI (requires signed policies)

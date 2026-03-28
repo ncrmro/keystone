@@ -21,7 +21,7 @@ This feature introduces a set of NixOS and home-manager modules to configure a c
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 - **I. Declarative Infrastructure**: `PASS` - The feature will be implemented entirely as declarative NixOS and home-manager modules.
 - **II. Security by Default**: `PASS` - The feature includes `hyprlock` and `hypridle` for automatic session locking, adhering to security-by-default principles.

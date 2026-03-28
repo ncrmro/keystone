@@ -99,6 +99,7 @@ The `attic-server-token-key` secret must contain `ATTIC_SERVER_TOKEN_RS256_SECRE
 After the first deploy, the Attic server runs but has **no cache**. You must create one manually:
 
 1. **Generate an admin token** on the server host:
+
    ```bash
    sudo atticd-atticadm make-token --sub "admin" --validity "10y" \
      --push "*" --pull "*" --create-cache "*" --delete-cache "*" \
@@ -106,18 +107,22 @@ After the first deploy, the Attic server runs but has **no cache**. You must cre
    ```
 
 2. **Login and create the cache**:
+
    ```bash
    attic login cache https://cache.example.com <admin-token>
    attic cache create cache:main
    ```
 
 3. **Retrieve the public signing key**:
+
    ```bash
    curl -s https://cache.example.com/main/nix-cache-info
    ```
+
    The `StoreDir` and `WantMassQuery` fields confirm the cache works. The signing public key is shown in the output.
 
 4. **Set the public key** in your NixOS config so all machines trust the cache:
+
    ```nix
    keystone.binaryCache = {
      enable = true;
@@ -131,6 +136,7 @@ After the first deploy, the Attic server runs but has **no cache**. You must cre
 ### Client (all machines)
 
 1. **Login to the Attic server**:
+
    ```bash
    attic login server https://attic.example.com <token>
    ```

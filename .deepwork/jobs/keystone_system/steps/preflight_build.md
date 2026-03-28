@@ -56,9 +56,10 @@ Build all target hosts from the deployment plan to verify Nix evaluation and bui
 **Keystone rev in flake.lock**: `[hash]`
 
 ## Build Command
-
 ```
+
 ks build <host1>,<host2>,<host3>
+
 ```
 
 ## Per-Host Results

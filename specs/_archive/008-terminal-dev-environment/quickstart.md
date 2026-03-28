@@ -194,12 +194,14 @@ Now pressing `Super+Enter` in Hyprland will open Ghostty with your configured sh
 ### Helix Editor
 
 **Open files:**
+
 ```bash
 hx filename.md
 hx src/main.rs
 ```
 
 **Key bindings (normal mode):**
+
 - `i` - Enter insert mode
 - `Esc` - Return to normal mode
 - `Return` - Save file (custom binding)
@@ -211,12 +213,14 @@ hx src/main.rs
 - `gd` - Go to definition (when LSP available)
 
 **Environment variables set:**
+
 - `EDITOR=hx`
 - `VISUAL=hx`
 
 ### Git & Lazygit
 
 **Git aliases available:**
+
 ```bash
 git s    # git switch
 git f    # git fetch
@@ -228,6 +232,7 @@ git c    # git commit
 ```
 
 **Lazygit TUI:**
+
 ```bash
 lg    # or 'lazygit'
 ```
@@ -237,6 +242,7 @@ Use arrow keys to navigate, `?` for help, `q` to quit.
 ### Zsh Shell
 
 **Aliases:**
+
 ```bash
 l       # eza -1l (list files)
 ls      # eza -1l (list files)
@@ -247,6 +253,7 @@ hx      # helix
 ```
 
 **Smart navigation with zoxide:**
+
 ```bash
 # After cd'ing to directories a few times
 cd ~/code/keystone
@@ -260,6 +267,7 @@ z website    # Jumps to ~/projects/website
 ```
 
 **Auto-load environments with direnv:**
+
 ```bash
 # In your project directory, create .envrc:
 echo 'use flake' > .envrc
@@ -271,11 +279,13 @@ direnv allow
 ### Zellij Multiplexer
 
 **Start session:**
+
 ```bash
 zellij
 ```
 
 **Key bindings (default mode is locked):**
+
 - `Ctrl+g` - Enter mode selection
 - `Ctrl+p` - Pane mode (split, move, close panes)
 - `Ctrl+t` - Tab mode (new, switch, close tabs)
@@ -286,11 +296,13 @@ zellij
 ### Ghostty Terminal
 
 **Launch:**
+
 ```bash
 ghostty
 ```
 
 **Features:**
+
 - GPU-accelerated rendering
 - Native Wayland support
 - Font ligature support
@@ -303,6 +315,7 @@ ghostty
 ### Issue: Helix language servers not working
 
 **Solution:** Verify language servers are installed:
+
 ```bash
 which bash-language-server
 which yaml-language-server
@@ -314,6 +327,7 @@ If missing, ensure the module is enabled and rebuild.
 ### Issue: Zsh completions not working
 
 **Solution:** Completions are generated on first shell start. Try:
+
 ```bash
 rm -rf ~/.cache/zsh
 exec zsh
@@ -322,6 +336,7 @@ exec zsh
 ### Issue: Zoxide not finding directories
 
 **Solution:** Zoxide learns from your navigation. Use `cd` normally for a while, then `z` will work:
+
 ```bash
 # Navigate normally first
 cd ~/code/project1
@@ -335,6 +350,7 @@ z project1  # Success!
 ### Issue: Git signing fails
 
 **Solution:** Ensure your SSH key exists and is configured:
+
 ```bash
 ls -la ~/.ssh/id_ed25519      # Check key exists
 ssh-add -L                     # Verify key is loaded
@@ -441,6 +457,7 @@ Put this in `~/.config/home-manager/home.nix`:
 ```
 
 Then:
+
 ```bash
 home-manager switch
 exec zsh

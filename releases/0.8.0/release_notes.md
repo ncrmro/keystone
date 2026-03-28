@@ -23,22 +23,23 @@ The architectural refactor from a single 2k-line `agents.nix` into focused sub-m
 
 The monolithic `agents.nix` (2k+ lines) is refactored into focused sub-modules, each responsible for a single concern:
 
-| Module | Responsibility |
-|--------|---------------|
-| `base.nix` | User creation, groups, sudo, home dirs, activation |
-| `agentctl.nix` | CLI + alias wrappers + MCP config |
-| `desktop.nix` | labwc + wayvnc headless Wayland |
-| `chrome.nix` | Chromium remote debugging |
-| `dbus.nix` | D-Bus socket race fix |
-| `mail-client.nix` | himalaya + mail assertions |
-| `tailscale.nix` | Per-agent Tailscale |
-| `ssh.nix` | ssh-agent + assertions |
-| `notes.nix` | notes-sync, task-loop, scheduler |
-| `home-manager.nix` | Terminal integration |
+| Module             | Responsibility                                     |
+| ------------------ | -------------------------------------------------- |
+| `base.nix`         | User creation, groups, sudo, home dirs, activation |
+| `agentctl.nix`     | CLI + alias wrappers + MCP config                  |
+| `desktop.nix`      | labwc + wayvnc headless Wayland                    |
+| `chrome.nix`       | Chromium remote debugging                          |
+| `dbus.nix`         | D-Bus socket race fix                              |
+| `mail-client.nix`  | himalaya + mail assertions                         |
+| `tailscale.nix`    | Per-agent Tailscale                                |
+| `ssh.nix`          | ssh-agent + assertions                             |
+| `notes.nix`        | notes-sync, task-loop, scheduler                   |
+| `home-manager.nix` | Terminal integration                               |
 
 ### Agent Identity
 
 Each agent is a real Linux user (UID 4000+) with full isolation:
+
 - **Own home directory** with private permissions
 - **Own password manager** (rbw/Bitwarden) for credential storage
 - **Own email account** (himalaya client + Stalwart server) for communication

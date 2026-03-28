@@ -1,4 +1,3 @@
-
 # Convention: Pull Request (process.pull-request)
 
 Standards for summarizing work and providing validation evidence in pull requests.

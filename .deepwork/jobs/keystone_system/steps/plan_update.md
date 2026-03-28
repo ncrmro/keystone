@@ -66,33 +66,35 @@ Read the fleet survey from the previous step and produce an update plan that cat
 
 ### Verify Only
 
-| # | Commit | Summary | Affected Hosts | Post-Deploy Check |
-|---|--------|---------|----------------|-------------------|
-| 1 | `abc1234` | feat(terminal): add shell alias | workstations | `type ll` in terminal |
-| 2 | `def5678` | docs(os): update AGENTS.md | none (docs only) | — |
+| #   | Commit    | Summary                         | Affected Hosts   | Post-Deploy Check     |
+| --- | --------- | ------------------------------- | ---------------- | --------------------- |
+| 1   | `abc1234` | feat(terminal): add shell alias | workstations     | `type ll` in terminal |
+| 2   | `def5678` | docs(os): update AGENTS.md      | none (docs only) | —                     |
 
 ### Ad-Hoc Fixes (before deploy)
 
-| # | Issue | Fix | Estimated Effort | Commit Ref |
-|---|-------|-----|------------------|------------|
-| 1 | Missing default for `foo.bar` option | Add `default = true` | 5 min | `ghi9012` |
-| 2 | ks doctor shows stale agent timer | Reset timer in agent config | 10 min | pre-existing |
+| #   | Issue                                | Fix                         | Estimated Effort | Commit Ref   |
+| --- | ------------------------------------ | --------------------------- | ---------------- | ------------ |
+| 1   | Missing default for `foo.bar` option | Add `default = true`        | 5 min            | `ghi9012`    |
+| 2   | ks doctor shows stale agent timer    | Reset timer in agent config | 10 min           | pre-existing |
 
 ### Needs Issue
 
-| # | Problem | Why Not Ad-Hoc | Severity |
-|---|---------|----------------|----------|
-| 1 | Service X needs migration to new API | Multi-host coordination, rollback plan needed | medium |
+| #   | Problem                              | Why Not Ad-Hoc                                | Severity |
+| --- | ------------------------------------ | --------------------------------------------- | -------- |
+| 1   | Service X needs migration to new API | Multi-host coordination, rollback plan needed | medium   |
 
 ## Deployment Plan
 
 ### Order
+
 1. ncrmro-workstation (current host) — `ks update --lock`
 2. ocean — remote deploy via Tailscale
 3. mercury — remote deploy via VPS IP
 4. [deferred: mox — unreachable]
 
 ### Flags
+
 - `--boot` required: [yes — reason | no]
 - Expected build time: [estimate based on change scope]
 

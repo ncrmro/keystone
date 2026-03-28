@@ -9,7 +9,6 @@ Synthesize the gathered sources and produce a concise research summary in a sing
 ### Process
 
 1. **Read inputs**
-
    - Read `research/[topic_slug]/scope.md` for the research question, sub-questions, and project context
    - Read `research/[topic_slug]/sources.md` for gathered sources and findings
 
@@ -37,6 +36,7 @@ Synthesize the gathered sources and produce a concise research summary in a sing
 5. **Create project symlink (if applicable)**
 
    If scope.md specifies a project tag:
+
    ```bash
    mkdir -p projects/[ProjectName]/research
    ln -s ../../../research/[topic_slug] projects/[ProjectName]/research/[topic_slug]
@@ -89,11 +89,11 @@ Synthesize the gathered sources and produce a concise research summary in a sing
 
 ## Sources
 
-| # | Title | URL |
-|---|-------|-----|
-| 1 | [Source Title] | [url] |
-| 2 | [Source Title] | [url] |
-| 3 | [Source Title] | [url] |
+| #   | Title          | URL   |
+| --- | -------------- | ----- |
+| 1   | [Source Title] | [url] |
+| 2   | [Source Title] | [url] |
+| 3   | [Source Title] | [url] |
 ```
 
 **Concrete example**:
@@ -137,12 +137,12 @@ Using `--max-jobs` and `--cores` on remote machines provides near-linear scaling
 
 ## Sources
 
-| # | Title | URL |
-|---|-------|-----|
-| 1 | NixOS Wiki: Distributed build | https://nixos.wiki/wiki/Distributed_build |
-| 2 | Nix Manual: Remote Builds | https://nix.dev/manual/nix/latest |
-| 3 | Blog: Scaling Nix Builds | https://example.com/nix-scaling |
-| 4 | Discourse: Remote builder experience | https://discourse.nixos.org/t/... |
+| #   | Title                                | URL                                       |
+| --- | ------------------------------------ | ----------------------------------------- |
+| 1   | NixOS Wiki: Distributed build        | https://nixos.wiki/wiki/Distributed_build |
+| 2   | Nix Manual: Remote Builds            | https://nix.dev/manual/nix/latest         |
+| 3   | Blog: Scaling Nix Builds             | https://example.com/nix-scaling           |
+| 4   | Discourse: Remote builder experience | https://discourse.nixos.org/t/...         |
 ```
 
 ## Quality Criteria

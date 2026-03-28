@@ -41,6 +41,7 @@ Gather the project context and audit existing credentials so the next step only 
 # Social Media Discovery: [Project Name]
 
 ## Project Context
+
 - **Project**: [name from PROJECTS.yaml]
 - **Description**: [brief project description]
 - **Account Type**: [business / personal / mixed]
@@ -48,15 +49,18 @@ Gather the project context and audit existing credentials so the next step only 
 
 ## Existing Credentials
 
-| Platform | Status | Credential Item | Notes |
-|----------|--------|-----------------|-------|
+| Platform   | Status              | Credential Item  | Notes       |
+| ---------- | ------------------- | ---------------- | ----------- |
 | [platform] | [found / not found] | [item name or —] | [any notes] |
+
 [one row per supported platform]
 
 ## Platforms Needing Setup
+
 - [list of platforms that need credentials created]
 
 ## Platforms to Skip
+
 - [any platforms the user wants to skip, with reason]
 ```
 

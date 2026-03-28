@@ -15,12 +15,12 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 
 ## Workflows
 
-| Workflow | Steps | Purpose |
-|----------|-------|---------|
-| `develop` | plan → implement → review → build → merge → deploy → validate | Full lifecycle |
-| `update` | survey_fleet → plan_update → execute_fixes → preflight_build → run_update → validate | Catch-up deploy |
-| `convention` | draft_convention → cross_reference → apply_convention → commit_convention | Convention CRUD |
-| `doctor` | survey_fleet → validate | Standalone fleet health check |
+| Workflow     | Steps                                                                                | Purpose                       |
+| ------------ | ------------------------------------------------------------------------------------ | ----------------------------- |
+| `develop`    | plan → implement → review → build → merge → deploy → validate                        | Full lifecycle                |
+| `update`     | survey_fleet → plan_update → execute_fixes → preflight_build → run_update → validate | Catch-up deploy               |
+| `convention` | draft_convention → cross_reference → apply_convention → commit_convention            | Convention CRUD               |
+| `doctor`     | survey_fleet → validate                                                              | Standalone fleet health check |
 
 ## Key Conventions
 
@@ -91,6 +91,7 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 The standard way to get hosts/users/agents/services is via `nix eval` against `~/.keystone/repos/nixos-config`. This is the canonical path — agents MUST use this, not hardcoded paths.
 
 ### Agents (compact)
+
 ```bash
 nix eval ~/.keystone/repos/nixos-config#nixosConfigurations.<HOST>.config.keystone.os.agents \
   --json --apply 'a: builtins.mapAttrs (_: v: {
@@ -101,17 +102,20 @@ nix eval ~/.keystone/repos/nixos-config#nixosConfigurations.<HOST>.config.keysto
 ```
 
 ### Users (compact)
+
 ```bash
 nix eval ~/.keystone/repos/nixos-config#nixosConfigurations.<HOST>.config.keystone.os.users \
   --json --apply 'u: builtins.mapAttrs (_: v: { fullName = v.fullName or ""; }) u'
 ```
 
 ### Hosts
+
 ```bash
 nix eval -f ~/.keystone/repos/nixos-config/hosts.nix --json
 ```
 
 ### Enabled Services
+
 ```bash
 nix eval ~/.keystone/repos/nixos-config#nixosConfigurations.<HOST>.config.keystone.server._enabledServices \
   --json 2>/dev/null

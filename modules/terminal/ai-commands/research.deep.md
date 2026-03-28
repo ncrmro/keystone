@@ -6,6 +6,7 @@ argument-hint: <research topic or question>
 Start the research/deep DeepWork workflow for a comprehensive multi-platform investigation.
 
 Use the DeepWork MCP tools to start the workflow:
+
 - job_name: "research"
 - workflow_name: "deep"
 - goal: "$ARGUMENTS" (the research topic or question)

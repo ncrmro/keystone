@@ -23,6 +23,7 @@ keystone.users = {
 ```
 
 Creates:
+
 - System user with UID 1000
 - ZFS dataset at `rpool/crypt/home/alice`
 - Delegated ZFS permissions (snapshot, send, receive, properties)
@@ -37,6 +38,7 @@ Home directory backed by dedicated ZFS dataset at `rpool/crypt/home/<username>`.
 ### Permissions
 
 Users can:
+
 - Create snapshots: `zfs snapshot rpool/crypt/home/alice@backup`
 - Send/receive: `zfs send ... | ssh backup zfs receive ...`
 - Set properties: `zfs set compression=lz4 ...`
@@ -54,6 +56,7 @@ sudo zfs create rpool/crypt/home/alice/documents
 ### Snapshot Exclusion
 
 Common datasets auto-created by Keystone modules (future):
+
 - `.cache` - Excluded from snapshots (auto-created by users module)
 - `.local/share/containers` - Excluded from snapshots (docker-rootless module)
 
@@ -64,6 +67,7 @@ Users rarely need to manually create ZFS child datasets - most common use cases 
 ### Two Deployment Modes
 
 **System-wide** (NixOS integration):
+
 ```nix
 # In system configuration
 keystone.users.alice.homeManager = {
@@ -71,15 +75,18 @@ keystone.users.alice.homeManager = {
   # ... other home-manager config
 };
 ```
+
 - Managed with `nixos-rebuild switch`
 - Requires root/sudo
 - Changes apply system-wide
 
 **Standalone** (Rootless):
+
 ```nix
 # In ~/.config/home-manager/home.nix
 programs.helix.enable = true;
 ```
+
 - Updated with `home-manager switch` (no sudo)
 - Faster iteration (doesn't rebuild NixOS)
 - User controls deployment timing
@@ -89,6 +96,7 @@ programs.helix.enable = true;
 **Replaces**: stow, .dotfiles repos, manual config syncing
 
 **Enables**:
+
 - Same shell/lazygit/helix themes on NixOS, macOS, Codespaces
 - Corporate environments requiring GitHub Codespaces
 - Cross-platform development consistency

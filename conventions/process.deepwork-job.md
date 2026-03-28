@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: DeepWork Job Design (process.deepwork-job)
 
 This convention governs the design of [DeepWork](https://deepwork.dev) jobs — when to create a job vs. a workflow, how to structure steps, when to create slash commands, and how to version and document jobs. The job schema at `.deepwork/job.schema.json` is authoritative for structural validation; this convention covers design decisions.
@@ -59,15 +60,15 @@ version: "1.1.0"
 summary: "Conduct structured research on any topic"
 
 workflows:
-  - name: research          # Primary workflow shares job name (rule 9)
+  - name: research # Primary workflow shares job name (rule 9)
     summary: "Full research from scoping through final report"
     steps:
-      - scope               # All steps appear in at least one workflow (rule 8)
-      - [search_web, search_docs]  # Parallel — truly independent (rule 11)
+      - scope # All steps appear in at least one workflow (rule 8)
+      - [search_web, search_docs] # Parallel — truly independent (rule 11)
       - synthesize
       - report
 
-  - name: quick_check       # Subset for a real scenario (rule 10)
+  - name: quick_check # Subset for a real scenario (rule 10)
     summary: "Fast web-only research without deep synthesis"
     steps:
       - scope
@@ -75,7 +76,7 @@ workflows:
       - report
 
 steps:
-  - id: scope         # Reusable across both workflows (rule 12)
+  - id: scope # Reusable across both workflows (rule 12)
     # ...
   - id: search_web
     # ...

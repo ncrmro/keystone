@@ -55,21 +55,25 @@ Review the change summary, stage only convention-related files, create a properl
 Written to `.deepwork/tmp/commit_result.md`.
 
 **Structure**:
+
 ```markdown
 # Commit Result
 
 ## Commit
+
 - **Hash**: {short hash}
 - **Message**: {commit message first line}
 - **Branch**: main
 - **Pushed**: Yes/No
 
 ## Files in Commit
+
 - `conventions/{prefix}.{topic}.md` (new)
 - `conventions/{existing}.md` (modified)
 - `conventions/archetypes.yaml` (modified)
 
 ## Verification
+
 - `git status` clean: Yes/No
 - Push to origin/main: Success/Failed
 ```

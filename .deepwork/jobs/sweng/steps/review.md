@@ -37,6 +37,7 @@ Review the diff against TASK.md acceptance criteria. For each criterion:
 3. **Check scope**: Does every changed file/hunk trace back to an acceptance criterion?
 
 **Scope validation is critical.** Flag changes NOT required by any acceptance criterion:
+
 - Reformatting/linting code not part of the task
 - Refactoring existing code (extracting, renaming, restructuring)
 - Adding features or elements not in acceptance criteria
@@ -45,6 +46,7 @@ Review the diff against TASK.md acceptance criteria. For each criterion:
 If out-of-scope changes exist, verdict is **FAIL** with instructions to revert them.
 
 **Task-type-specific review focus:**
+
 - **implement**: Verify new behavior works, tests cover it, no existing tests broken
 - **fix**: Verify bug is fixed, regression test exists, root cause addressed (not just symptoms)
 - **refactor**: Verify behavior is UNCHANGED, structure improved, all tests still pass
@@ -63,6 +65,7 @@ Update TASK.md status to `in-review`.
 #### Step 4: CI Gate
 
 **GitHub:**
+
 ```bash
 # Verify CI exists
 CI_COUNT=$(gh pr view $PR_NUM --repo OWNER/REPO --json statusCheckRollup --jq '.statusCheckRollup | length')
@@ -77,6 +80,7 @@ If CI fails, download and search logs per `process.continuous-integration`:
 
 **Check for missing secrets first** — a common cause of CI failures on new or recently
 configured repos:
+
 ```bash
 gh secret list --repo OWNER/REPO
 gh variable list --repo OWNER/REPO
@@ -84,17 +88,20 @@ gh variable list --repo OWNER/REPO
 
 If secrets are missing (empty output), tell the user what secrets are needed and offer
 the CLI commands to set them. After secrets are configured, offer to rerun:
+
 ```bash
 gh run rerun $RUN_ID --repo OWNER/REPO
 ```
 
 For Cloudflare Workers projects, also check wrangler secrets:
+
 ```bash
 # Wrangler secrets must be set from the server or via wrangler CLI
 wrangler secret list
 ```
 
 Then download and search logs:
+
 ```bash
 RUN_ID=$(gh run list --repo OWNER/REPO --branch $BRANCH -L 1 --json databaseId --jq '.[0].databaseId')
 gh run view "$RUN_ID" --repo OWNER/REPO --log > /tmp/ci-$RUN_ID.log
@@ -102,6 +109,7 @@ rg -i 'error|fail|fatal|exit code' /tmp/ci-$RUN_ID.log
 ```
 
 **Forgejo:**
+
 ```bash
 SHA=$(git -C $WORKTREE rev-parse HEAD)
 
@@ -111,6 +119,7 @@ tea api --login forgejo /repos/OWNER/REPO/commits/$SHA/status
 ```
 
 If CI fails on Forgejo:
+
 ```bash
 # Find job ID
 tea api --login forgejo /repos/OWNER/REPO/actions/runs
@@ -128,6 +137,7 @@ verify the changes on the deployed preview environment:
 
 1. **Check for preview URL**: Look for deploy preview comments on the PR from
    platform bots (Cloudflare, Vercel, Netlify):
+
    ```bash
    gh pr view $PR_NUM --repo OWNER/REPO --comments | grep -i 'preview\|deploy'
    ```
@@ -187,6 +197,7 @@ but not sufficient — verify the actual deployed behavior.
 **Request review:**
 
 **GitHub:**
+
 ```bash
 # Mark PR ready for review
 gh pr ready $PR_NUM --repo OWNER/REPO
@@ -197,6 +208,7 @@ gh pr edit $PR_NUM --repo OWNER/REPO --add-reviewer copilot 2>/dev/null || \
 ```
 
 **Forgejo:**
+
 ```bash
 # Remove WIP: prefix to mark ready
 fj pr edit $PR_NUM --repo OWNER/REPO --title "$TYPE(scope): task title"
@@ -208,12 +220,14 @@ fj pr edit $PR_NUM --repo OWNER/REPO --add-reviewer REPO_OWNER
 **Move issue to "In Review"** on the project board:
 
 **GitHub:**
+
 ```bash
 gh project item-edit --id $ITEM_ID --project-id $PROJECT_ID \
   --field-id $STATUS_FIELD_ID --single-select-option-id $IN_REVIEW_OPTION_ID
 ```
 
 **Forgejo:**
+
 ```bash
 forgejo-project item move --project $PROJECT_NUM --issue $ISSUE_NUMBER --column "In Review"
 ```
@@ -223,11 +237,13 @@ forgejo-project item move --project $PROJECT_NUM --issue $ISSUE_NUMBER --column 
 #### Step 6: Auto-Merge (PASS Verdict)
 
 **GitHub:**
+
 ```bash
 gh pr merge $PR_NUM --repo OWNER/REPO --auto --squash --delete-branch
 ```
 
 **Forgejo:**
+
 ```bash
 # Poll until CI passes, then merge
 fj pr merge $PR_NUM --repo OWNER/REPO --method squash --delete
@@ -240,11 +256,13 @@ Update TASK.md status to `merged`.
 If review verdict is FAIL or CI fails, send work back to the same agent.
 
 **Track attempts in run.md:**
+
 ```yaml
-fix_attempts: 1  # Increment on each failure
+fix_attempts: 1 # Increment on each failure
 ```
 
 **Send fix instructions:**
+
 ```bash
 cd $WORKTREE
 
@@ -269,6 +287,7 @@ git push
 ```
 
 Re-launch the agent via agentctl:
+
 ```bash
 agentctl drago AGENT --project SLUG --worktree $WORKTREE
 ```
@@ -276,6 +295,7 @@ agentctl drago AGENT --project SLUG --worktree $WORKTREE
 After fixes, loop back to Step 1 (collect → review → CI → merge or fix again).
 
 **Max 3 fix attempts.** After 3 failures:
+
 1. Update TASK.md status to `failed`
 2. Update TASKS.yaml with status `blocked`
 3. Move issue to "Blocked" on the project board (if applicable):
@@ -318,16 +338,17 @@ task_type: implement
 
 ## Acceptance Criteria
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| GET /api/search returns results | Pass | src/routes/search.ts:45 |
-| Input validation | Pass | src/routes/search.ts:12 |
-| Integration tests | Pass | tests/search.test.ts — 8/8 passed |
-| Existing tests pass | Pass | CI green |
+| Criterion                       | Status | Evidence                          |
+| ------------------------------- | ------ | --------------------------------- |
+| GET /api/search returns results | Pass   | src/routes/search.ts:45           |
+| Input validation                | Pass   | src/routes/search.ts:12           |
+| Integration tests               | Pass   | tests/search.test.ts — 8/8 passed |
+| Existing tests pass             | Pass   | CI green                          |
 
 ## Scope Check
 
 All changes are in-scope. Each modified file traces to acceptance criteria:
+
 - `src/routes/search.ts` — search endpoint (criteria 1, 2)
 - `tests/search.test.ts` — test coverage (criterion 3)
 
@@ -393,6 +414,7 @@ This is the most complex phase. The key design principle: **keep the human OUT
 of the loop for successful tasks.** CI passes + review approval = merged.
 
 If a task can't be fixed in 3 attempts, that's a signal the task needs replanning:
+
 - Task description was ambiguous → fix in planning
 - Acceptance criteria didn't cover the failure case → fix in planning
 - Agent choice wasn't capable enough → try a different agent

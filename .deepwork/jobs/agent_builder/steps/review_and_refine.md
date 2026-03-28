@@ -66,24 +66,24 @@ Walk the user through what was created, verify everything works, and make adjust
 
 ## Files Created
 
-| File | Purpose |
-|------|---------|
-| SOUL.md | Agent identity and accounts |
-| AGENTS.md | Operational rules and tool conventions |
-| CLAUDE.md | Symlink to AGENTS.md |
-| PROJECTS.yaml | {N} projects, priority-ordered |
-| TASKS.yaml | Empty task queue |
-| SCHEDULES.yaml | {N} scheduled tasks |
-| ISSUES.yaml | Empty issues list |
-| manifests/modes.yaml | {N} modes mapped to shared roles |
-| .agents/ | Git submodule (ncrmro/agents shared library) |
-| .mcp.json | MCP server config (deepwork + chrome-devtools) |
-| .deepwork | Symlink to shared DeepWork config |
+| File                 | Purpose                                        |
+| -------------------- | ---------------------------------------------- |
+| SOUL.md              | Agent identity and accounts                    |
+| AGENTS.md            | Operational rules and tool conventions         |
+| CLAUDE.md            | Symlink to AGENTS.md                           |
+| PROJECTS.yaml        | {N} projects, priority-ordered                 |
+| TASKS.yaml           | Empty task queue                               |
+| SCHEDULES.yaml       | {N} scheduled tasks                            |
+| ISSUES.yaml          | Empty issues list                              |
+| manifests/modes.yaml | {N} modes mapped to shared roles               |
+| .agents/             | Git submodule (ncrmro/agents shared library)   |
+| .mcp.json            | MCP server config (deepwork + chrome-devtools) |
+| .deepwork            | Symlink to shared DeepWork config              |
 
 ## Modes Available
 
-| Mode | Roles | Conventions |
-|------|-------|-------------|
+| Mode   | Roles   | Conventions   |
+| ------ | ------- | ------------- |
 | {mode} | {roles} | {conventions} |
 
 ## Compose.sh Verification

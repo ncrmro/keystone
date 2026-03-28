@@ -20,33 +20,39 @@ For each issue in the health snapshot's "Issues Found" section, find the corresp
 For each issue, walk through this decision tree to identify the root cause:
 
 **Timer inactive/failed:**
+
 - Is the service unit file present? → NixOS config may not have been applied
 - Did it fail with exit code? → Check the specific error in logs
 - Is it masked or disabled? → Intentional or accidental `systemctl mask`
 
 **Auth failures (gh/fj/rbw):**
+
 - Token expired? → Needs re-authentication (credential rotation)
 - Wrong username? → SOUL.md mismatch
 - Network unreachable? → DNS or firewall issue
 - Vault locked? → rbw needs unlock (session expired)
 
 **Git/sync failures:**
+
 - Rebase conflict? → Manual conflict resolution needed
 - Permission denied? → SSH key not loaded or not authorized
 - Remote not found? → Forgejo repo deleted or renamed
 
 **Task loop failures:**
+
 - Flock held? → Previous run still active or zombie process
 - Timeout? → Task took >1h, may need `maxTasks` reduction
 - Step failure? → Specific task error (check per-task logs)
 
 **Scheduler failures:**
+
 - YAML parse error? → Malformed SCHEDULES.yaml
 - No tasks created? → Schedule conditions not matching (check day/date logic)
 
 ### 3. Classify each issue
 
 For each diagnosed issue, assign:
+
 - **Severity:** critical (agent non-functional), warning (degraded), info (cosmetic)
 - **Category:** auth, git, timer, config, resource, task
 - **Affected components:** which timers/services are impacted
@@ -77,6 +83,7 @@ Write `diagnosis.md`:
   - {another piece of evidence}
 
 ### Issue 2: {title}
+
 ...
 
 ## Dependency Graph

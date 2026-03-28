@@ -65,10 +65,10 @@ show the user what a complete identity looks like.
 
 ## Accounts
 
-| Service | Host | Username | Auth Method | Credentials |
-|---------|------|----------|-------------|-------------|
-| Forgejo | git.ncrmro.com | {agent_name} | API token | fj keyfile |
-| GitHub | github.com | {github_username} | OAuth device flow | `~/.config/gh/hosts.yml` |
+| Service | Host           | Username          | Auth Method       | Credentials              |
+| ------- | -------------- | ----------------- | ----------------- | ------------------------ |
+| Forgejo | git.ncrmro.com | {agent_name}      | API token         | fj keyfile               |
+| GitHub  | github.com     | {github_username} | OAuth device flow | `~/.config/gh/hosts.yml` |
 
 ## Personality
 
@@ -92,11 +92,11 @@ show the user what a complete identity looks like.
 
 ## Accounts
 
-| Service | Host | Username | Auth Method | Credentials |
-|---------|------|----------|-------------|-------------|
-| GitHub | github.com | kdrgo | OAuth device flow | `~/.config/gh/hosts.yml` |
-| Forgejo | git.ncrmro.com | drago | API token | fj keyfile |
-| Bitwarden | vaultwarden.ncrmro.com | drago@ncrmro.com | Password file | `/run/agenix/agent-drago-bitwarden-password` |
+| Service   | Host                   | Username         | Auth Method       | Credentials                                  |
+| --------- | ---------------------- | ---------------- | ----------------- | -------------------------------------------- |
+| GitHub    | github.com             | kdrgo            | OAuth device flow | `~/.config/gh/hosts.yml`                     |
+| Forgejo   | git.ncrmro.com         | drago            | API token         | fj keyfile                                   |
+| Bitwarden | vaultwarden.ncrmro.com | drago@ncrmro.com | Password file     | `/run/agenix/agent-drago-bitwarden-password` |
 ```
 
 ## Quality Criteria

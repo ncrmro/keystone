@@ -1,4 +1,3 @@
-
 ## Himalaya Email
 
 ## Sending Email
@@ -40,6 +39,7 @@ himalaya message read -o json <ID>
 ```
 
 **JSON shapes:**
+
 - `envelope list` returns an array of objects with `id`, `flags`, `subject`, `from` (`name`, `addr`), `to`, `date`, `has_attachment`.
 - `message read` returns a JSON string containing the raw RFC 2822 message (headers + body).
 

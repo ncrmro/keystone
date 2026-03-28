@@ -1,4 +1,3 @@
-
 ## Bitwarden CLI
 
 ## How It Works

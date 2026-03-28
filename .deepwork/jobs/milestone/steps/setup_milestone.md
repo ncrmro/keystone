@@ -61,16 +61,19 @@ Using the refined stories and milestone title from the previous step, set up the
 A summary of everything that was created or updated.
 
 **Structure**:
+
 ```markdown
 # Milestone Setup Report
 
 ## Milestone
+
 - **Title**: [milestone title]
 - **Number**: [milestone number]
 - **URL**: [milestone URL]
 - **Status**: [created | already existed]
 
 ## Issue
+
 - **Number**: [issue number]
 - **Title**: [issue title]
 - **URL**: [issue URL]
@@ -79,27 +82,32 @@ A summary of everything that was created or updated.
 - **Assigned To**: [agent username]
 
 ## Actions Taken
+
 1. [Description of each action, e.g., "Created milestone 'Homelab Monitoring Stack'"]
 2. [e.g., "Updated issue #42 body with 4 refined user stories"]
 3. [e.g., "Added user-story label to issue #42"]
 4. [e.g., "Linked issue #42 to milestone #3"]
 
 ## Platform
+
 - **Platform**: [github | forgejo]
 - **Repository**: [owner/repo]
 ```
 
 **Concrete example**:
+
 ```markdown
 # Milestone Setup Report
 
 ## Milestone
+
 - **Title**: Homelab Monitoring Stack
 - **Number**: 3
 - **URL**: https://github.com/ncrmro/homelab/milestone/3
 - **Status**: created
 
 ## Issue
+
 - **Number**: 42
 - **Title**: Homelab Monitoring Stack: User Stories for Review
 - **URL**: https://github.com/ncrmro/homelab/issues/42
@@ -108,6 +116,7 @@ A summary of everything that was created or updated.
 - **Assigned To**: luce-ncrmro
 
 ## Actions Taken
+
 1. Created milestone "Homelab Monitoring Stack" (#3)
 2. Created labels: product, engineering
 3. Updated issue #42 body with 4 refined user stories
@@ -116,6 +125,7 @@ A summary of everything that was created or updated.
 6. Assigned issue #42 to luce-ncrmro
 
 ## Platform
+
 - **Platform**: github
 - **Repository**: ncrmro/homelab
 ```

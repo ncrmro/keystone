@@ -7,12 +7,14 @@ Integrate Secure Boot key generation and enrollment directly into the disko depl
 ## Problem Statement
 
 Currently, the Keystone deployment process requires:
+
 1. Initial deployment with nixos-anywhere
 2. VM reboot to installed system
 3. Manual execution of post-install-provisioner script
 4. Another reboot to activate Secure Boot
 
 This multi-step process has several issues:
+
 - Lanzaboote cannot sign the bootloader during initial deployment because keys don't exist yet
 - The system boots insecurely on the first boot after installation
 - Manual intervention is required to achieve full security
@@ -21,6 +23,7 @@ This multi-step process has several issues:
 ## Proposed Solution
 
 Move Secure Boot key generation and enrollment into a disko hook that runs during nixos-anywhere deployment, before the NixOS configuration is built. This ensures:
+
 - Keys are generated in the correct location (/var/lib/sbctl/keys) before NixOS builds
 - Lanzaboote can sign the bootloader during initial system build
 - First boot after installation has Secure Boot fully enabled

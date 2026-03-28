@@ -14,6 +14,7 @@ This document defines the key entities and their relationships for Secure Boot c
 Represents a cryptographic key pair used in the UEFI Secure Boot trust chain.
 
 **Attributes**:
+
 - **Type** (enum): `PK` (Platform Key), `KEK` (Key Exchange Key), or `db` (Signature Database)
 - **PrivateKeyPath** (filesystem path): Location of private key file (e.g., `/var/lib/sbctl/keys/PK/PK.key`)
 - **PublicKeyPath** (filesystem path): Location of public certificate (e.g., `/var/lib/sbctl/keys/PK/PK.pem`)
@@ -25,12 +26,14 @@ Represents a cryptographic key pair used in the UEFI Secure Boot trust chain.
 - **Permissions** (octal): File permissions (private key: `600`, public: `644`)
 
 **Validation Rules**:
+
 - Private key file MUST have permissions `600` (root-only read/write)
 - Public key file MUST be readable by all users (`644`)
 - Owner GUID MUST be a valid RFC 4122 UUID
 - Type MUST be one of: `PK`, `KEK`, `db`
 
 **State Transitions**:
+
 ```
 [Not Exist] --generate--> [Generated] --enroll--> [Enrolled in Firmware]
                             |
@@ -38,6 +41,7 @@ Represents a cryptographic key pair used in the UEFI Secure Boot trust chain.
 ```
 
 **Example Instance**:
+
 ```json
 {
   "type": "PK",
@@ -59,6 +63,7 @@ Represents a cryptographic key pair used in the UEFI Secure Boot trust chain.
 Represents a UEFI firmware variable that stores Secure Boot state or enrolled keys.
 
 **Attributes**:
+
 - **Name** (string): Variable name (e.g., `SetupMode`, `SecureBoot`, `PK`, `KEK`, `db`, `dbx`)
 - **GUID** (UUID): Variable namespace (typically `8be4df61-93ca-11d2-aa0d-00e098032b8c` for EFI_GLOBAL_VARIABLE)
 - **FilePath** (filesystem path): Path to variable in efivars (e.g., `/sys/firmware/efi/efivars/SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c`)
@@ -67,11 +72,13 @@ Represents a UEFI firmware variable that stores Secure Boot state or enrolled ke
 - **ReadOnly** (boolean): Whether variable can be modified (depends on firmware state)
 
 **Validation Rules**:
+
 - GUID MUST be valid RFC 4122 UUID
 - FilePath MUST exist in `/sys/firmware/efi/efivars/`
 - Value format depends on variable type (integer for SetupMode/SecureBoot, signature list for PK/KEK/db)
 
 **State-Critical Variables**:
+
 1. **SetupMode**: `1` = Setup Mode (keys can be enrolled), `0` = User Mode (keys enrolled)
 2. **SecureBoot**: `1` = Enforcing signatures, `0` = Not enforcing
 3. **PK**: Contains enrolled Platform Key (empty in Setup Mode)
@@ -80,6 +87,7 @@ Represents a UEFI firmware variable that stores Secure Boot state or enrolled ke
 6. **dbx**: Contains forbidden signatures (revocation list)
 
 **State Diagram**:
+
 ```
 [Setup Mode: SetupMode=1, SecureBoot=0]
     |
@@ -89,6 +97,7 @@ Represents a UEFI firmware variable that stores Secure Boot state or enrolled ke
 ```
 
 **Example Instance**:
+
 ```json
 {
   "name": "SetupMode",
@@ -107,6 +116,7 @@ Represents a UEFI firmware variable that stores Secure Boot state or enrolled ke
 Aggregates firmware state to represent overall Secure Boot status.
 
 **Attributes**:
+
 - **Mode** (enum): `Setup`, `User`, `Disabled`, `Unknown`
 - **Enforcing** (boolean): Whether signature verification is active
 - **FirmwareType** (string): UEFI firmware implementation (e.g., `EDK II 1.00`)
@@ -118,6 +128,7 @@ Aggregates firmware state to represent overall Secure Boot status.
 - **VerifiedAt** (timestamp): When status was checked
 
 **Derivation Logic**:
+
 ```
 if SetupMode == 1 and SecureBoot == 0:
     Mode = Setup, Enforcing = false
@@ -130,11 +141,13 @@ else:
 ```
 
 **Validation Rules**:
+
 - Mode MUST be one of: `Setup`, `User`, `Disabled`, `Unknown`
 - If Mode == `User`, then PKEnrolled, KEKEnrolled, dbEnrolled MUST be true
 - If Mode == `Setup`, then PKEnrolled SHOULD be false
 
 **Example Instance** (Setup Mode):
+
 ```json
 {
   "mode": "Setup",
@@ -150,6 +163,7 @@ else:
 ```
 
 **Example Instance** (User Mode):
+
 ```json
 {
   "mode": "User",
@@ -171,6 +185,7 @@ else:
 Represents a single key enrollment operation (transaction).
 
 **Attributes**:
+
 - **OperationID** (UUID): Unique identifier for this enrollment operation
 - **KeysToEnroll** (array of SecureBootKeyPair): PK, KEK, db keys being enrolled
 - **IncludeMicrosoft** (boolean): Whether to include Microsoft OEM certificates
@@ -183,12 +198,14 @@ Represents a single key enrollment operation (transaction).
 - **DurationSeconds** (integer): Time taken for enrollment
 
 **Validation Rules**:
+
 - PreEnrollmentStatus.Mode MUST be `Setup` (cannot enroll in User Mode)
 - If Success == true, then PostEnrollmentStatus.Mode MUST be `User`
 - If Success == true, then PostEnrollmentStatus.PKEnrolled MUST be true
 - DurationSeconds MUST be <= 60 (per SC-002 success criteria)
 
 **State Transitions**:
+
 ```
 [Initiated] --> [Validating Setup Mode] --> [Enrolling Keys] --> [Verifying] --> [Complete]
                          |                        |                    |
@@ -196,17 +213,18 @@ Represents a single key enrollment operation (transaction).
 ```
 
 **Example Instance** (Success):
+
 ```json
 {
   "operationID": "f3a5b8c2-1234-5678-9abc-def012345678",
   "keysToEnroll": [
-    {"type": "PK", "ownerGUID": "8ec4b2c3-dc7f-4362-b9a3-0cc17e5a34cd"},
-    {"type": "KEK", "ownerGUID": "8ec4b2c3-dc7f-4362-b9a3-0cc17e5a34cd"},
-    {"type": "db", "ownerGUID": "8ec4b2c3-dc7f-4362-b9a3-0cc17e5a34cd"}
+    { "type": "PK", "ownerGUID": "8ec4b2c3-dc7f-4362-b9a3-0cc17e5a34cd" },
+    { "type": "KEK", "ownerGUID": "8ec4b2c3-dc7f-4362-b9a3-0cc17e5a34cd" },
+    { "type": "db", "ownerGUID": "8ec4b2c3-dc7f-4362-b9a3-0cc17e5a34cd" }
   ],
   "includeMicrosoft": false,
-  "preEnrollmentStatus": {"mode": "Setup", "enforcing": false},
-  "postEnrollmentStatus": {"mode": "User", "enforcing": true},
+  "preEnrollmentStatus": { "mode": "Setup", "enforcing": false },
+  "postEnrollmentStatus": { "mode": "User", "enforcing": true },
   "success": true,
   "errorMessage": null,
   "startedAt": "2025-11-01T10:30:00Z",
@@ -216,6 +234,7 @@ Represents a single key enrollment operation (transaction).
 ```
 
 **Example Instance** (Failure):
+
 ```json
 {
   "operationID": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
@@ -252,6 +271,7 @@ SecureBootStatus
 ```
 
 **Cardinality**:
+
 - One KeyEnrollmentOperation enrolls exactly 3 SecureBootKeyPairs (PK, KEK, db)
 - One KeyEnrollmentOperation updates multiple FirmwareVariables (SetupMode, PK, KEK, db)
 - One SecureBootStatus aggregates 2+ FirmwareVariables (SetupMode, SecureBoot, at minimum)

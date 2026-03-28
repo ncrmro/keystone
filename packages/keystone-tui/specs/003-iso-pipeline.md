@@ -1,10 +1,12 @@
 # Spec: ISO Pipeline
 
 ## Stories Covered
+
 - US-007: Build ISO installers with baked-in agenix secrets
 - US-008: Detect and deploy to Keystone ISO instances
 
 ## Affected Modules
+
 - `packages/keystone-tui/src/screens/iso.rs` — ISO build + write to USB (phases exist)
 - `packages/keystone-tui/src/template.rs` — `generate_iso_flake_nix` (already implemented)
 - `packages/keystone-tui/src/app.rs` — new `AppScreen::Deploy` variant needed for US-008
@@ -14,12 +16,14 @@
 ## Existing State
 
 The `IsoScreen` already supports:
+
 - **Phase SelectTarget**: listing USB devices + ~/Downloads
 - **Phase Building**: runs `nix build .#iso` in the active repo
 - **Phase Writing**: `dd` to USB or `cp` to ~/Downloads
 - **Phase Done/Failed**
 
 The `generate_iso_flake_nix` function already produces a flake that:
+
 - Uses `keystone.nixosModules.isoInstaller`
 - Embeds target config files at `/etc/keystone/install-config/`
 - Accepts SSH keys via `keystone.installer.sshKeys`
@@ -29,6 +33,7 @@ The `generate_iso_flake_nix` function already produces a flake that:
 ### US-007: Agenix Secrets Baking
 
 The current ISO build does not include agenix secrets. The agenix-secrets integration requires:
+
 1. Determining the path to the user's secrets repo
 2. Copying or symlinking the secrets into the ISO build directory as `agenix-secrets/`
 3. Wiring the secrets path into the generated ISO flake
@@ -41,35 +46,35 @@ No deployment flow exists yet. A new `Deploy` screen must be created.
 
 ### `IsoTarget` (existing — `src/screens/iso.rs`)
 
-| Field | Type | Notes |
-|-------|------|-------|
-| label | `String` | Display name |
-| path | `String` | Device path or file path |
-| is_usb | `bool` | USB vs file destination |
-| size | `String` | Human-readable size |
+| Field  | Type     | Notes                    |
+| ------ | -------- | ------------------------ |
+| label  | `String` | Display name             |
+| path   | `String` | Device path or file path |
+| is_usb | `bool`   | USB vs file destination  |
+| size   | `String` | Human-readable size      |
 
 ### `AgenixSecretsConfig` (new — `src/template.rs` or new module)
 
-| Field | Type | Notes |
-|-------|------|-------|
-| secrets_repo_path | `PathBuf` | Absolute path to the user's agenix-secrets repo |
-| secrets_subdir | `Option<String>` | Subdirectory within the secrets repo; defaults to root |
+| Field             | Type             | Notes                                                  |
+| ----------------- | ---------------- | ------------------------------------------------------ |
+| secrets_repo_path | `PathBuf`        | Absolute path to the user's agenix-secrets repo        |
+| secrets_subdir    | `Option<String>` | Subdirectory within the secrets repo; defaults to root |
 
 ### `IsoInstanceDiscovery` (new — `src/screens/deploy.rs`)
 
-| Field | Type | Notes |
-|-------|------|-------|
-| hostname | `String` | mDNS hostname or user-provided |
-| ip_address | `String` | Discovered or manually entered IP |
-| discovered_via | `DiscoveryMethod` | `Mdns` \| `Manual` |
+| Field          | Type              | Notes                             |
+| -------------- | ----------------- | --------------------------------- |
+| hostname       | `String`          | mDNS hostname or user-provided    |
+| ip_address     | `String`          | Discovered or manually entered IP |
+| discovered_via | `DiscoveryMethod` | `Mdns` \| `Manual`                |
 
 ### `DeployTarget` (new — `src/screens/deploy.rs`)
 
-| Field | Type | Notes |
-|-------|------|-------|
-| instance | `IsoInstanceDiscovery` | The discovered ISO instance |
-| config_hostname | `String` | Target nixosConfigurations key |
-| ssh_key_path | `Option<PathBuf>` | SSH key to use for deployment |
+| Field           | Type                   | Notes                          |
+| --------------- | ---------------------- | ------------------------------ |
+| instance        | `IsoInstanceDiscovery` | The discovered ISO instance    |
+| config_hostname | `String`               | Target nixosConfigurations key |
+| ssh_key_path    | `Option<PathBuf>`      | SSH key to use for deployment  |
 
 ## Behavioral Requirements
 
@@ -178,5 +183,6 @@ No deployment flow exists yet. A new `Deploy` screen must be created.
 ```
 
 ## Cross-References
+
 - Spec 001 (Config Generation): `generate_iso_flake_nix` produces the ISO flake.
 - Spec 004 (TUI App Framework): `AppScreen::Iso` and new `AppScreen::Deploy` routing.

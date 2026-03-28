@@ -21,20 +21,22 @@ Requires `platform_context.md` (board inventory) and `milestones_report.md` (mil
 2. **For each open milestone:**
 
    a. **Check for corresponding board**
-      - Match board title against milestone title (from `platform_context.md` boards inventory)
-      - GitHub: `gh project list --owner {owner} --format json` and filter by title
+   - Match board title against milestone title (from `platform_context.md` boards inventory)
+   - GitHub: `gh project list --owner {owner} --format json` and filter by title
 
    b. **If board exists, verify item count**
-      ```bash
-      gh project item-list {project_number} --owner {owner} --format json --jq 'length'
-      ```
-      - Compare board item count against milestone issue count (from `milestones_report.md`)
-      - Flag mismatches
+
+   ```bash
+   gh project item-list {project_number} --owner {owner} --format json --jq 'length'
+   ```
+
+   - Compare board item count against milestone issue count (from `milestones_report.md`)
+   - Flag mismatches
 
    c. **If no board exists**
-      - Flag as missing
-      - Do NOT create it in the setup workflow — only report
-      - Note: the `project_board` job can be used to create and populate boards
+   - Flag as missing
+   - Do NOT create it in the setup workflow — only report
+   - Note: the `project_board` job can be used to create and populate boards
 
 3. **Check board columns** (for existing boards)
    - Verify the five standard columns exist: Backlog, To Do, In Progress, In Review, Done
@@ -50,10 +52,12 @@ Requires `platform_context.md` (board inventory) and `milestones_report.md` (mil
 # Boards Report
 
 ## Platform
+
 - **Platform**: [github | forgejo]
 - **Boards API**: [true | false]
 
 ## Summary
+
 - **Milestones Checked**: [count]
 - **Boards Found**: [count]
 - **Boards Missing**: [count]
@@ -62,6 +66,7 @@ Requires `platform_context.md` (board inventory) and `milestones_report.md` (mil
 ## Milestones
 
 ### [Milestone Title]
+
 - **Board**: [found (#{number}) | missing]
 - **Board URL**: [url | N/A]
 - **Milestone Issues**: [count]

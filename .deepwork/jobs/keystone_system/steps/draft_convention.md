@@ -53,8 +53,10 @@ Gather requirements about the convention topic, study existing conventions for f
 The drafted convention file. Written to `.deepwork/tmp/convention_draft.md`.
 
 **Structure**:
+
 ```markdown
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: {Display Name} ({prefix.topic})
 
 {One-paragraph description of what this convention covers and why it exists.}
@@ -77,8 +79,10 @@ where appropriate. This section is optional but recommended for non-trivial conv
 ```
 
 **Filled example** (for a hypothetical `code.shell-scripts` convention):
+
 ```markdown
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: Shell Scripts (code.shell-scripts)
 
 Standards for authoring fault-tolerant, succinct shell scripts within keystone

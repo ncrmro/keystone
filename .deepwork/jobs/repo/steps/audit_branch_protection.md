@@ -13,11 +13,13 @@ Deep check of branch protection rules on the default branch. Attempt to enable m
 2. **Fetch current branch protection** (same as check_branch_protection)
 
    **GitHub:**
+
    ```bash
    gh api repos/{owner}/{repo}/branches/{default_branch}/protection
    ```
 
    **Forgejo:**
+
    ```bash
    tea api --login forgejo /repos/{owner}/{repo}/branch_protections
    ```
@@ -34,6 +36,7 @@ Deep check of branch protection rules on the default branch. Attempt to enable m
 4. **Attempt to enable missing protections**
 
    **GitHub:**
+
    ```bash
    gh api repos/{owner}/{repo}/branches/{default_branch}/protection \
      --method PUT \
@@ -51,6 +54,7 @@ Deep check of branch protection rules on the default branch. Attempt to enable m
    }
    EOF
    ```
+
    - Be careful: this replaces the entire protection config. Read existing settings first and merge.
 
    **Forgejo:**
@@ -69,24 +73,27 @@ Deep check of branch protection rules on the default branch. Attempt to enable m
 # Branch Protection Audit
 
 ## Repository
+
 - **Repo**: [owner/repo]
 - **Default Branch**: [branch name]
 - **Platform**: [github | forgejo]
 
 ## Findings
 
-| Protection | Before | After | Action |
-|------------|--------|-------|--------|
-| Require PR reviews | [enabled \| missing] | [enabled \| missing] | [enabled via API \| already set \| failed: reason] |
-| Dismiss stale reviews | ... | ... | ... |
-| Require status checks | ... | ... | ... |
-| Restrict force pushes | ... | ... | ... |
-| Restrict deletions | ... | ... | ... |
+| Protection            | Before               | After                | Action                                             |
+| --------------------- | -------------------- | -------------------- | -------------------------------------------------- |
+| Require PR reviews    | [enabled \| missing] | [enabled \| missing] | [enabled via API \| already set \| failed: reason] |
+| Dismiss stale reviews | ...                  | ...                  | ...                                                |
+| Require status checks | ...                  | ...                  | ...                                                |
+| Restrict force pushes | ...                  | ...                  | ...                                                |
+| Restrict deletions    | ...                  | ...                  | ...                                                |
 
 ## Actions Taken
+
 - [List of API calls made and their results]
 
 ## Remaining Gaps
+
 - [Protections that could not be enabled, with reasons]
 - [Or "None — all protections are in place"]
 ```

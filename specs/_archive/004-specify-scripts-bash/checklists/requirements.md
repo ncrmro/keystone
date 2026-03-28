@@ -36,6 +36,7 @@
 All checklist items pass. The specification is complete and ready for planning.
 
 **Key Strengths**:
+
 - Clear separation of concerns with three prioritized user stories (P1: Key Generation, P2: Enrollment, P3: Verification)
 - Each user story is independently testable with specific acceptance criteria
 - Comprehensive edge cases identified (existing keys, non-Setup Mode, missing tools, partial enrollment)
@@ -45,12 +46,14 @@ All checklist items pass. The specification is complete and ready for planning.
 - Out of Scope section explicitly excludes lanzaboote installation, signing, key rotation, TPM integration
 
 **Technology-Agnostic Check**:
+
 - ✓ Success criteria focus on outcomes (time, accuracy, error clarity) not implementation
 - ✓ Functional requirements describe "what" not "how" (e.g., "MUST generate keys" not "MUST use sbctl")
 - ✓ User stories describe value from deployer perspective
 - ✓ No references to specific tools/frameworks in requirements (tools mentioned only in Assumptions)
 
 **Edge Case Coverage**:
+
 - ✓ Pre-existing keys scenario
 - ✓ Firmware not in Setup Mode
 - ✓ Missing verification tools (bootctl)

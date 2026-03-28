@@ -19,6 +19,7 @@ This research evaluates tools and approaches for implementing custom Secure Boot
 **Decision**: Use `sbctl` as the primary tool for Secure Boot key generation and enrollment.
 
 **Rationale**:
+
 - **NixOS Integration**: Available in nixpkgs, designed to work with lanzaboote
 - **User-Friendly**: Clear command syntax with visual feedback (✔/✘ indicators)
 - **Safety**: Explicit warning flag for custom-only enrollment (`--yes-this-might-brick-my-machine`)
@@ -26,10 +27,12 @@ This research evaluates tools and approaches for implementing custom Secure Boot
 - **Single-Command Operations**: Key generation and enrollment in one command each
 
 **Alternatives Considered**:
+
 1. **efitools (KeyTool, sign-efi-sig-list)**: Rejected due to complex multi-step workflow requiring manual file format conversions, UEFI shell access, and cryptic error messages
 2. **Direct UEFI variable manipulation (efivar)**: Rejected as too dangerous (easy to brick firmware) and lacking key generation/signing capabilities
 
 **Implementation**:
+
 ```bash
 # Generate keys
 sudo sbctl create-keys
@@ -45,16 +48,19 @@ sudo sbctl enroll-keys --yes-this-might-brick-my-machine
 **Decision**: Store generated keys in `/var/lib/sbctl/` (sbctl default location).
 
 **Rationale**:
+
 - **Standard Location**: sbctl's default since v0.6+
 - **Proper Permissions**: Private keys automatically created with 600 (root-only)
 - **lanzaboote Compatibility**: Configure `boot.lanzaboote.pkiBundle = "/var/lib/sbctl"`
 - **Separate from System Config**: Keys in /var (mutable state) not /etc (configuration)
 
 **Alternatives Considered**:
+
 1. **`/etc/secureboot`**: Rejected (legacy sbctl location, pre-v0.6)
 2. **`vms/keystone-test-vm/secureboot`**: Rejected for production keys, but viable for VM-specific test keys
 
 **Key File Structure**:
+
 ```
 /var/lib/sbctl/
 ├── GUID                  # Owner UUID
@@ -72,17 +78,20 @@ sudo sbctl enroll-keys --yes-this-might-brick-my-machine
 **Decision**: DO NOT include Microsoft certificates in VM test environment (custom keys only).
 
 **Rationale**:
+
 - **Cryptographic Sovereignty**: Aligns with Keystone Constitution Principle V (users control all keys)
 - **No Hardware Dependencies**: VMs use emulated hardware with no physical option ROMs
 - **Minimal Attack Surface**: Only code signed with user's keys can execute
 - **Safe for Testing**: `--yes-this-might-brick-my-machine` flag safe in VMs (no physical firmware to brick)
 
 **Exception for Physical Hardware**:
+
 - Use `sbctl enroll-keys --microsoft` for bare-metal deployments
 - Required for discrete GPUs, network cards, and Windows dual-boot
 - Document as optional flag in production deployment guide
 
 **Security Implications**:
+
 - **Custom Only**: Maximum sovereignty, minimal trust dependencies
 - **With Microsoft**: Hardware compatibility, extended trust to Microsoft CA
 - **Keystone Philosophy**: Prioritize sovereignty in default configuration
@@ -94,12 +103,14 @@ sudo sbctl enroll-keys --yes-this-might-brick-my-machine
 **Decision**: Use `bootctl status` as primary verification, with EFI variable fallback for troubleshooting.
 
 **Rationale**:
+
 - **Clear Output**: Human-readable "Secure Boot: enabled (user)" vs "disabled (setup)"
 - **Always Available**: systemd-boot included in NixOS by default
 - **Reliable**: Directly reads `/sys/firmware/efi/efivars/`
 - **Comprehensive**: Also shows firmware version, TPM support
 
 **Primary Verification**:
+
 ```bash
 bootctl status
 # Expected after enrollment:
@@ -108,6 +119,7 @@ bootctl status
 ```
 
 **Fallback Verification** (for troubleshooting):
+
 ```bash
 # Check SetupMode variable directly
 od --address-radix=n --format=u1 \
@@ -116,6 +128,7 @@ od --address-radix=n --format=u1 \
 ```
 
 **Alternatives Considered**:
+
 1. **`sbctl status`**: Viable alternative, shows same information
 2. **Direct EFI variable reading**: Too cryptic for primary method, useful for debugging
 3. **`dmesg | grep 'secure boot'`**: Insufficient (doesn't distinguish setup from disabled)
@@ -127,12 +140,14 @@ od --address-radix=n --format=u1 \
 **Decision**: Add verification steps to `bin/test-deployment` script after deployment completes.
 
 **Rationale**:
+
 - **Existing Infrastructure**: bin/test-deployment already orchestrates VM deployment
 - **Python Framework**: Existing SSH-based verification pattern can be extended
 - **Automated Testing**: Ensures Secure Boot status checked on every deployment
 - **Fail Fast**: Test fails immediately if enrollment unsuccessful
 
 **Integration Approach**:
+
 ```python
 # Add to bin/test-deployment after deployment completes
 def verify_secureboot_enabled():
@@ -151,6 +166,7 @@ def verify_secureboot_enabled():
 ```
 
 **Alternatives Considered**:
+
 1. **Separate verification script**: Rejected (adds complexity, duplicate SSH logic)
 2. **Manual verification**: Rejected (doesn't align with automated testing principle)
 
@@ -161,11 +177,13 @@ def verify_secureboot_enabled():
 **Decision**: Generate keys during deployment in the NixOS installer environment, before enrollment.
 
 **Rationale**:
+
 - **Fresh Keys Per Deployment**: Each test run gets unique keys
 - **Installer Availability**: sbctl available in Keystone installer ISO
 - **Isolation**: Keys specific to test VM, not shared across deployments
 
 **Workflow**:
+
 1. VM boots from Keystone ISO (Setup Mode)
 2. Deployment script SSHs to VM
 3. Generate keys: `ssh root@vm 'sbctl create-keys'`
@@ -174,6 +192,7 @@ def verify_secureboot_enabled():
 6. Verify: `ssh root@vm 'bootctl status'`
 
 **Alternatives Considered**:
+
 1. **Pre-generated keys**: Rejected (reduces sovereignty, keys should be unique)
 2. **Post-deployment generation**: Rejected (requires reboot, complicates workflow)
 
@@ -184,6 +203,7 @@ def verify_secureboot_enabled():
 ### Phase 1: Key Generation Script
 
 Create `scripts/secureboot-generate-keys.sh`:
+
 - Wrapper around `sbctl create-keys`
 - Validates sbctl availability
 - Confirms Setup Mode before generation
@@ -192,6 +212,7 @@ Create `scripts/secureboot-generate-keys.sh`:
 ### Phase 2: Key Enrollment Script
 
 Create `scripts/secureboot-enroll-keys.sh`:
+
 - Wrapper around `sbctl enroll-keys --yes-this-might-brick-my-machine`
 - Pre-enrollment verification (Setup Mode check)
 - Post-enrollment verification (User Mode check)
@@ -200,6 +221,7 @@ Create `scripts/secureboot-enroll-keys.sh`:
 ### Phase 3: Verification Script
 
 Create `scripts/secureboot-verify.sh`:
+
 - Checks `bootctl status` output
 - Fallback to EFI variable reading
 - Returns exit code: 0 (enabled), 1 (setup mode), 2 (disabled), 3 (unknown)
@@ -208,6 +230,7 @@ Create `scripts/secureboot-verify.sh`:
 ### Phase 4: Test Integration
 
 Update `bin/test-deployment`:
+
 - Add new test step after deployment: "Verify Secure Boot Enabled"
 - Call verification script via SSH
 - Fail test if not in User Mode
@@ -225,6 +248,7 @@ Based on research and typical sbctl behavior:
 - **Total Overhead**: ~15-20 seconds added to deployment workflow
 
 All within success criteria:
+
 - SC-001: Key generation <30 seconds ✅
 - SC-002: Enrollment <60 seconds ✅
 - SC-003: Verification immediate ✅

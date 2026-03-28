@@ -8,11 +8,13 @@
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
 ## Format: `[ID] [P?] [Story] Description`
+
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
 - Include exact file paths in descriptions
 
 ## Path Conventions
+
 - **Home-manager module**: `home-manager/modules/terminal-dev-environment/`
 - **Examples**: `examples/`
 - **Documentation**: `docs/modules/`
@@ -23,9 +25,9 @@
 
 **Purpose**: Create module directory structure per plan.md
 
-- [X] T001 Create home-manager module directory at home-manager/modules/terminal-dev-environment/
-- [X] T002 Create examples directory for usage demonstrations
-- [X] T003 [P] Create docs directory at docs/modules/ for module documentation
+- [x] T001 Create home-manager module directory at home-manager/modules/terminal-dev-environment/
+- [x] T002 Create examples directory for usage demonstrations
+- [x] T003 [P] Create docs directory at docs/modules/ for module documentation
 
 ---
 
@@ -35,11 +37,11 @@
 
 **⚠️ CRITICAL**: No tool implementation can begin until this phase is complete
 
-- [X] T004 Create main module orchestrator in home-manager/modules/terminal-dev-environment/default.nix with module structure (imports, options, config sections)
-- [X] T005 Define top-level enable option in home-manager/modules/terminal-dev-environment/default.nix using lib.mkEnableOption
-- [X] T006 Define tools category toggles (git, editor, shell, multiplexer, terminal) in home-manager/modules/terminal-dev-environment/default.nix
-- [X] T007 Define extraPackages option in home-manager/modules/terminal-dev-environment/default.nix using lib.mkOption with list type
-- [X] T008 Add meta.maintainers section to home-manager/modules/terminal-dev-environment/default.nix
+- [x] T004 Create main module orchestrator in home-manager/modules/terminal-dev-environment/default.nix with module structure (imports, options, config sections)
+- [x] T005 Define top-level enable option in home-manager/modules/terminal-dev-environment/default.nix using lib.mkEnableOption
+- [x] T006 Define tools category toggles (git, editor, shell, multiplexer, terminal) in home-manager/modules/terminal-dev-environment/default.nix
+- [x] T007 Define extraPackages option in home-manager/modules/terminal-dev-environment/default.nix using lib.mkOption with list type
+- [x] T008 Add meta.maintainers section to home-manager/modules/terminal-dev-environment/default.nix
 
 **Checkpoint**: Foundation ready - tool implementation can now begin in parallel
 
@@ -54,59 +56,68 @@
 ### Implementation for User Story 1
 
 #### Git Configuration (Entity: GitConfig)
-- [X] T009 [P] [US1] Create git sub-module in home-manager/modules/terminal-dev-environment/git.nix with programs.git configuration
-- [X] T010 [P] [US1] Configure Git LFS support in home-manager/modules/terminal-dev-environment/git.nix (enableLfs = true)
-- [X] T011 [P] [US1] Add Git aliases (s, f, p, b, st, co, c) in home-manager/modules/terminal-dev-environment/git.nix using lib.mkDefault
-- [X] T012 [P] [US1] Configure git extraConfig (push.autoSetupRemote, init.defaultBranch) in home-manager/modules/terminal-dev-environment/git.nix
+
+- [x] T009 [P] [US1] Create git sub-module in home-manager/modules/terminal-dev-environment/git.nix with programs.git configuration
+- [x] T010 [P] [US1] Configure Git LFS support in home-manager/modules/terminal-dev-environment/git.nix (enableLfs = true)
+- [x] T011 [P] [US1] Add Git aliases (s, f, p, b, st, co, c) in home-manager/modules/terminal-dev-environment/git.nix using lib.mkDefault
+- [x] T012 [P] [US1] Configure git extraConfig (push.autoSetupRemote, init.defaultBranch) in home-manager/modules/terminal-dev-environment/git.nix
 
 #### Lazygit Configuration (Entity: LazygitConfig)
-- [X] T013 [P] [US1] Add lazygit package installation in home-manager/modules/terminal-dev-environment/git.nix when tools.git enabled
-- [X] T014 [P] [US1] Enable programs.lazygit in home-manager/modules/terminal-dev-environment/git.nix using lib.mkDefault
+
+- [x] T013 [P] [US1] Add lazygit package installation in home-manager/modules/terminal-dev-environment/git.nix when tools.git enabled
+- [x] T014 [P] [US1] Enable programs.lazygit in home-manager/modules/terminal-dev-environment/git.nix using lib.mkDefault
 
 #### Helix Editor Configuration (Entity: HelixConfig)
-- [X] T015 [P] [US1] Create helix sub-module in home-manager/modules/terminal-dev-environment/helix.nix with programs.helix configuration
-- [X] T016 [P] [US1] Configure helix editor settings (line-number: relative, mouse: true, cursor-shape) in home-manager/modules/terminal-dev-environment/helix.nix using lib.mkDefault
-- [X] T017 [P] [US1] Add essential language server packages (bash-language-server, yaml-language-server, dockerfile-language-server-nodejs, vscode-langservers-extracted, marksman, nixfmt) to home.packages in home-manager/modules/terminal-dev-environment/helix.nix
-- [X] T018 [P] [US1] Configure helix language servers in programs.helix.languages.language-server section in home-manager/modules/terminal-dev-environment/helix.nix
-- [X] T019 [P] [US1] Configure helix language configurations in programs.helix.languages.language array in home-manager/modules/terminal-dev-environment/helix.nix for nix, bash, yaml, dockerfile, json, markdown
-- [X] T020 [P] [US1] Set EDITOR and VISUAL environment variables to "hx" in home-manager/modules/terminal-dev-environment/helix.nix
+
+- [x] T015 [P] [US1] Create helix sub-module in home-manager/modules/terminal-dev-environment/helix.nix with programs.helix configuration
+- [x] T016 [P] [US1] Configure helix editor settings (line-number: relative, mouse: true, cursor-shape) in home-manager/modules/terminal-dev-environment/helix.nix using lib.mkDefault
+- [x] T017 [P] [US1] Add essential language server packages (bash-language-server, yaml-language-server, dockerfile-language-server-nodejs, vscode-langservers-extracted, marksman, nixfmt) to home.packages in home-manager/modules/terminal-dev-environment/helix.nix
+- [x] T018 [P] [US1] Configure helix language servers in programs.helix.languages.language-server section in home-manager/modules/terminal-dev-environment/helix.nix
+- [x] T019 [P] [US1] Configure helix language configurations in programs.helix.languages.language array in home-manager/modules/terminal-dev-environment/helix.nix for nix, bash, yaml, dockerfile, json, markdown
+- [x] T020 [P] [US1] Set EDITOR and VISUAL environment variables to "hx" in home-manager/modules/terminal-dev-environment/helix.nix
 
 #### Zsh Shell Configuration (Entity: ZshConfig)
-- [X] T021 [P] [US1] Create zsh sub-module in home-manager/modules/terminal-dev-environment/zsh.nix with programs.zsh configuration
-- [X] T022 [P] [US1] Enable zsh with completion, autosuggestion, and syntax highlighting in home-manager/modules/terminal-dev-environment/zsh.nix
-- [X] T023 [P] [US1] Configure oh-my-zsh with plugins (git, colored-man-pages) and robbyrussell theme in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
-- [X] T024 [P] [US1] Add shell aliases (l, ls, grep, g, lg, hx) in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
-- [X] T025 [P] [US1] Enable and configure starship prompt in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
-- [X] T026 [P] [US1] Enable and configure zoxide with zsh integration in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
-- [X] T027 [P] [US1] Enable and configure direnv with nix-direnv and zsh integration in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
-- [X] T028 [P] [US1] Add utility packages (eza, ripgrep, tree, jq, htop) to home.packages in home-manager/modules/terminal-dev-environment/zsh.nix
+
+- [x] T021 [P] [US1] Create zsh sub-module in home-manager/modules/terminal-dev-environment/zsh.nix with programs.zsh configuration
+- [x] T022 [P] [US1] Enable zsh with completion, autosuggestion, and syntax highlighting in home-manager/modules/terminal-dev-environment/zsh.nix
+- [x] T023 [P] [US1] Configure oh-my-zsh with plugins (git, colored-man-pages) and robbyrussell theme in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
+- [x] T024 [P] [US1] Add shell aliases (l, ls, grep, g, lg, hx) in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
+- [x] T025 [P] [US1] Enable and configure starship prompt in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
+- [x] T026 [P] [US1] Enable and configure zoxide with zsh integration in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
+- [x] T027 [P] [US1] Enable and configure direnv with nix-direnv and zsh integration in home-manager/modules/terminal-dev-environment/zsh.nix using lib.mkDefault
+- [x] T028 [P] [US1] Add utility packages (eza, ripgrep, tree, jq, htop) to home.packages in home-manager/modules/terminal-dev-environment/zsh.nix
 
 #### Zellij Multiplexer Configuration (Entity: ZellijConfig)
-- [X] T029 [P] [US1] Create zellij sub-module in home-manager/modules/terminal-dev-environment/zellij.nix with programs.zellij configuration
-- [X] T030 [P] [US1] Configure zellij settings (theme: tokyo-night-dark, startup_tips: false) in home-manager/modules/terminal-dev-environment/zellij.nix using lib.mkDefault
-- [X] T031 [P] [US1] Disable zellij zsh integration (enableZshIntegration = false) in home-manager/modules/terminal-dev-environment/zellij.nix to avoid auto-nesting
+
+- [x] T029 [P] [US1] Create zellij sub-module in home-manager/modules/terminal-dev-environment/zellij.nix with programs.zellij configuration
+- [x] T030 [P] [US1] Configure zellij settings (theme: tokyo-night-dark, startup_tips: false) in home-manager/modules/terminal-dev-environment/zellij.nix using lib.mkDefault
+- [x] T031 [P] [US1] Disable zellij zsh integration (enableZshIntegration = false) in home-manager/modules/terminal-dev-environment/zellij.nix to avoid auto-nesting
 
 #### Ghostty Terminal Configuration (Entity: GhosttyConfig)
-- [X] T032 [P] [US1] Create ghostty sub-module in home-manager/modules/terminal-dev-environment/ghostty.nix with programs.ghostty configuration
-- [X] T033 [P] [US1] Enable ghostty zsh integration in home-manager/modules/terminal-dev-environment/ghostty.nix using lib.mkDefault
-- [X] T034 [P] [US1] Add empty settings attrset in home-manager/modules/terminal-dev-environment/ghostty.nix for user overrides
+
+- [x] T032 [P] [US1] Create ghostty sub-module in home-manager/modules/terminal-dev-environment/ghostty.nix with programs.ghostty configuration
+- [x] T033 [P] [US1] Enable ghostty zsh integration in home-manager/modules/terminal-dev-environment/ghostty.nix using lib.mkDefault
+- [x] T034 [P] [US1] Add empty settings attrset in home-manager/modules/terminal-dev-environment/ghostty.nix for user overrides
 
 #### Module Orchestration
-- [X] T035 [US1] Import all tool sub-modules (git.nix, helix.nix, zsh.nix, zellij.nix, ghostty.nix) in home-manager/modules/terminal-dev-environment/default.nix
-- [X] T036 [US1] Add conditional configs using lib.mkIf for each tool toggle (tools.git, tools.editor, tools.shell, tools.multiplexer, tools.terminal) in home-manager/modules/terminal-dev-environment/default.nix
-- [X] T037 [US1] Add extraPackages to home.packages in home-manager/modules/terminal-dev-environment/default.nix config section
+
+- [x] T035 [US1] Import all tool sub-modules (git.nix, helix.nix, zsh.nix, zellij.nix, ghostty.nix) in home-manager/modules/terminal-dev-environment/default.nix
+- [x] T036 [US1] Add conditional configs using lib.mkIf for each tool toggle (tools.git, tools.editor, tools.shell, tools.multiplexer, tools.terminal) in home-manager/modules/terminal-dev-environment/default.nix
+- [x] T037 [US1] Add extraPackages to home.packages in home-manager/modules/terminal-dev-environment/default.nix config section
 
 #### Documentation & Examples
-- [X] T038 [P] [US1] Create basic usage example in examples/terminal-dev-environment-example.nix showing minimal configuration with all defaults
-- [X] T039 [P] [US1] Create module documentation in docs/modules/terminal-dev-environment.md with option descriptions and quickstart
+
+- [x] T038 [P] [US1] Create basic usage example in examples/terminal-dev-environment-example.nix showing minimal configuration with all defaults
+- [x] T039 [P] [US1] Create module documentation in docs/modules/terminal-dev-environment.md with option descriptions and quickstart
 
 #### Integration Testing (bin/test-home-manager script)
-- [X] T040 [US1] Create bin/test-home-manager self-contained test script following bin/test-deployment pattern (Python, colored output, checks array)
-- [X] T041 [US1] Create testuser home-manager configuration in vms/test-server/home-manager/home.nix importing terminal-dev-environment module with git identity
-- [X] T042 [US1] Implement home-manager installation logic in bin/test-home-manager (nix-channel add/update, nix-shell install)
-- [X] T043 [US1] Implement config copy and home-manager switch in bin/test-home-manager (copy to ~/.config/home-manager/, run switch as testuser)
-- [X] T044 [US1] Implement verification checks in bin/test-home-manager (tools in PATH, zsh default, helix LSPs, lazygit, zellij theme, aliases, starship, zoxide)
-- [X] T045 [US1] Add call to bin/test-home-manager in bin/test-deployment main() after ZFS user permissions check (new step in workflow)
+
+- [x] T040 [US1] Create bin/test-home-manager self-contained test script following bin/test-deployment pattern (Python, colored output, checks array)
+- [x] T041 [US1] Create testuser home-manager configuration in vms/test-server/home-manager/home.nix importing terminal-dev-environment module with git identity
+- [x] T042 [US1] Implement home-manager installation logic in bin/test-home-manager (nix-channel add/update, nix-shell install)
+- [x] T043 [US1] Implement config copy and home-manager switch in bin/test-home-manager (copy to ~/.config/home-manager/, run switch as testuser)
+- [x] T044 [US1] Implement verification checks in bin/test-home-manager (tools in PATH, zsh default, helix LSPs, lazygit, zellij theme, aliases, starship, zoxide)
+- [x] T045 [US1] Add call to bin/test-home-manager in bin/test-deployment main() after ZFS user permissions check (new step in workflow)
 
 **Checkpoint**: User Story 1 complete - full terminal development environment functional with single enable = true, verified via bin/test-home-manager script as non-root testuser
 
@@ -191,6 +202,7 @@
 ### Within Each User Story
 
 For User Story 1:
+
 1. Foundation from Phase 2 must be complete
 2. All tool sub-modules marked [P] can be created in parallel:
    - T009-T014 (Git + Lazygit)
@@ -203,12 +215,14 @@ For User Story 1:
 5. Integration testing T040-T046 done sequentially after implementation
 
 For User Story 2:
+
 1. US1 must be complete
 2. All example additions T047-T051 marked [P] can be done in parallel
 3. Documentation T052 after examples
 4. Testing T053-T056 done sequentially
 
 For User Story 3:
+
 1. US1 must be complete
 2. All example files T057-T059 marked [P] can be done in parallel
 3. Documentation T060-T061 can be done in parallel with examples
@@ -217,23 +231,29 @@ For User Story 3:
 ### Parallel Opportunities
 
 **Within Setup (Phase 1):**
+
 - T002 and T003 can run in parallel (different directories)
 
 **Within Foundational (Phase 2):**
+
 - All tasks sequential (same file: default.nix)
 
 **Within User Story 1 (Phase 3):**
+
 - Parallel batch 1: T009-T034 (all tool sub-modules, different files)
 - Parallel batch 2: T038-T039 (documentation, different files)
 
 **Within User Story 2 (Phase 4):**
+
 - Parallel batch: T047-T051 (example configurations)
 
 **Within User Story 3 (Phase 5):**
+
 - Parallel batch 1: T057-T059 (example files)
 - Parallel batch 2: T060-T061 (documentation sections)
 
 **Within Polish (Phase 6):**
+
 - T065-T068 can all run in parallel (different concerns)
 
 ---
@@ -297,11 +317,13 @@ Total MVP time: ~5-7 hours for a complete, functional terminal development envir
 With 2 developers after Foundational phase:
 
 **Developer A**: User Story 1 core tools
+
 - T009-T020 (Git, Lazygit, Helix)
 - T035-T037 (Orchestration)
 - T040-T046 (Testing)
 
 **Developer B**: User Story 1 shell environment
+
 - T021-T034 (Zsh, Zellij, Ghostty)
 - T038-T039 (Documentation)
 
@@ -326,6 +348,7 @@ Both complete in parallel, integrate at T035.
 ## Total Task Count: 77 tasks
 
 **By Phase:**
+
 - Phase 1 (Setup): 3 tasks
 - Phase 2 (Foundational): 5 tasks
 - Phase 3 (User Story 1 - MVP): 44 tasks (includes bin/test-home-manager script)

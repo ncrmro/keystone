@@ -59,17 +59,17 @@ Compare the current SOUL.md accounts table against what was actually configured 
 
 ## SOUL.md Changes
 
-| Field | Before | After | Reason |
-|-------|--------|-------|--------|
-| GitHub username | TBD | [actual-username] | Account created during onboarding |
-| GitHub auth method | OAuth device flow | Google OAuth | Signed in via Google |
-| GitHub credentials | ~/.config/gh/hosts.yml | rbw `github.com` | Stored in vault |
+| Field              | Before                 | After             | Reason                            |
+| ------------------ | ---------------------- | ----------------- | --------------------------------- |
+| GitHub username    | TBD                    | [actual-username] | Account created during onboarding |
+| GitHub auth method | OAuth device flow      | Google OAuth      | Signed in via Google              |
+| GitHub credentials | ~/.config/gh/hosts.yml | rbw `github.com`  | Stored in vault                   |
 
 ## rbw Changes
 
-| Entry | Action | Username | URI |
-|-------|--------|----------|-----|
-| github.com | Added | [username] | https://github.com |
+| Entry      | Action | Username   | URI                |
+| ---------- | ------ | ---------- | ------------------ |
+| github.com | Added  | [username] | https://github.com |
 
 ## No Changes Needed
 

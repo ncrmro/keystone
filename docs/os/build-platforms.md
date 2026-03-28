@@ -26,6 +26,7 @@ cd keystone
 ## Platform Setup
 
 ### Ubuntu/Debian
+
 ```bash
 # Install Nix
 curl -L https://nixos.org/nix/install | sh
@@ -33,6 +34,7 @@ source ~/.bashrc
 ```
 
 ### macOS
+
 ```bash
 # Install Nix
 curl -L https://nixos.org/nix/install | sh
@@ -41,6 +43,7 @@ brew install nix
 ```
 
 ### Windows
+
 ```powershell
 # Install WSL2 + Ubuntu
 wsl --install -d Ubuntu
@@ -58,7 +61,7 @@ on:
   workflow_dispatch:
     inputs:
       ssh_key:
-        description: 'SSH public key to embed in ISO'
+        description: "SSH public key to embed in ISO"
         required: false
         type: string
 
@@ -68,16 +71,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v22
-      
+
       - name: Build ISO with SSH key
         if: github.event.inputs.ssh_key != ''
         run: |
           ./bin/build-iso --ssh-key '${{ github.event.inputs.ssh_key }}'
-          
+
       - name: Build ISO without SSH key
         if: github.event.inputs.ssh_key == ''
         run: nix build .#iso
-        
+
       - uses: actions/upload-artifact@v3
         with:
           name: keystone-iso

@@ -132,7 +132,7 @@ archetypes:
           - tool.github
           - process.version-control
           - process.version-control-advanced
-          
+
       # Role: software-engineer
       # The primary role for writing code, fixing bugs, and executing technical tasks.
       # Serves as the core implementation subagent.
@@ -151,7 +151,7 @@ archetypes:
           - tool.nix-devshell
           - process.version-control
           - process.version-control-advanced
-          
+
       # Role: architect
       # Used for high-level system design, evaluating trade-offs, and writing technical specs.
       # Focuses on structure and dependencies before implementation begins.
@@ -164,7 +164,7 @@ archetypes:
           - tool.forgejo
           - process.version-control
           - process.version-control-advanced
-          
+
       # Role: project-manager
       # Used for breaking down large issues, epics, or specs into actionable, sequential tasks.
       project-manager:
@@ -181,7 +181,7 @@ archetypes:
           - process.feature-delivery
           - tool.forgejo
           - process.task-tracking
-          
+
       # Role: default
       # The default "idle" or administrative role. Used for checking email, triaging notifications,
       # running scheduled cronjobs, and managing the agent's internal state.
@@ -227,7 +227,7 @@ archetypes:
           - process.competitive-analysis
           - tool.himalaya
           - tool.forgejo
-          
+
       # Role: press-release-writer
       # Used specifically for drafting and refining "Working Backwards" style press releases
       # which serve as the primary handoff mechanism to engineering.
@@ -235,7 +235,7 @@ archetypes:
         conventions:
           - process.press-release
           - tool.forgejo
-          
+
       # Role: project-manager
       # Used for taking an approved press release and turning it into milestones and user stories
       # to be published on the git service for engineering consumption.
@@ -251,7 +251,7 @@ archetypes:
         conventions:
           - tool.forgejo
           - process.task-tracking
-          
+
       # Role: designer
       # Used to review UX/UI proposals, user flows, and ensure alignment with the product vision.
       designer:

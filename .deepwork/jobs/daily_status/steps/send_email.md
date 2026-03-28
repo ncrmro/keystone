@@ -29,6 +29,7 @@ Read the draft email body from status_draft.md (produced by the gather_status st
 ### send_confirmation.md
 
 **Structure (success)**:
+
 ```markdown
 # Send Confirmation
 
@@ -39,6 +40,7 @@ Read the draft email body from status_draft.md (produced by the gather_status st
 ```
 
 **Structure (failure)**:
+
 ```markdown
 # Send Confirmation
 

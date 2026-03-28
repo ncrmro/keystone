@@ -9,12 +9,12 @@ Keystone provides a suite of CLI tools from the [Pimalaya](https://pimalaya.org/
 
 ## Tools Overview
 
-| Tool | Purpose | Backend | Module |
-|------|---------|---------|--------|
-| [Himalaya](https://github.com/pimalaya/himalaya) | Email | IMAP/SMTP (Stalwart) | `keystone.terminal.mail` |
-| [Calendula](https://github.com/pimalaya/calendula) | Calendars | CalDAV (Stalwart) | `keystone.terminal.calendar` |
-| [Cardamum](https://github.com/pimalaya/cardamum) | Contacts | CardDAV (Stalwart) | `keystone.terminal.contacts` |
-| [Comodoro](https://github.com/pimalaya/comodoro) | Timers | Local (Unix socket) | `keystone.terminal.timer` |
+| Tool                                               | Purpose   | Backend              | Module                       |
+| -------------------------------------------------- | --------- | -------------------- | ---------------------------- |
+| [Himalaya](https://github.com/pimalaya/himalaya)   | Email     | IMAP/SMTP (Stalwart) | `keystone.terminal.mail`     |
+| [Calendula](https://github.com/pimalaya/calendula) | Calendars | CalDAV (Stalwart)    | `keystone.terminal.calendar` |
+| [Cardamum](https://github.com/pimalaya/cardamum)   | Contacts  | CardDAV (Stalwart)   | `keystone.terminal.contacts` |
+| [Comodoro](https://github.com/pimalaya/comodoro)   | Timers    | Local (Unix socket)  | `keystone.terminal.timer`    |
 
 ## Configuration
 
@@ -44,12 +44,12 @@ Calendar and contacts inherit `accountName`, `host`, `login`, and `passwordComma
 
 Each tool gets a TOML config in `~/.config/`:
 
-| Tool | Config Path |
-|------|-------------|
-| Himalaya | `~/.config/himalaya/config.toml` |
+| Tool      | Config Path                       |
+| --------- | --------------------------------- |
+| Himalaya  | `~/.config/himalaya/config.toml`  |
 | Calendula | `~/.config/calendula/config.toml` |
-| Cardamum | `~/.config/cardamum/config.toml` |
-| Comodoro | `~/.config/comodoro/config.toml` |
+| Cardamum  | `~/.config/cardamum/config.toml`  |
+| Comodoro  | `~/.config/comodoro/config.toml`  |
 
 These are managed by Home Manager — don't edit them manually.
 
@@ -88,10 +88,10 @@ Message body here" | himalaya message send
 Stalwart uses different folder names than Himalaya defaults. The module auto-maps them:
 
 | Himalaya Default | Stalwart Name |
-|------------------|---------------|
-| Sent | Sent Items |
-| Drafts | Drafts |
-| Trash | Deleted Items |
+| ---------------- | ------------- |
+| Sent             | Sent Items    |
+| Drafts           | Drafts        |
+| Trash            | Deleted Items |
 
 ## Calendars (Calendula)
 
@@ -149,14 +149,14 @@ Comodoro is a centralized Pomodoro timer with a client-server architecture. Mult
 
 The keystone module configures standard Pomodoro cycles:
 
-| Cycle | Duration |
-|-------|----------|
-| Work | 25 min |
-| Rest | 5 min |
-| Work | 25 min |
-| Rest | 5 min |
-| Work | 25 min |
-| Long rest | 30 min |
+| Cycle     | Duration |
+| --------- | -------- |
+| Work      | 25 min   |
+| Rest      | 5 min    |
+| Work      | 25 min   |
+| Rest      | 5 min    |
+| Work      | 25 min   |
+| Long rest | 30 min   |
 
 ### Start the Server
 
@@ -176,6 +176,7 @@ comodoro timer resume   # Resume
 ### Notifications
 
 The module enables desktop notifications by default:
+
 - **Work started** — "Work started!"
 - **Rest started** — "Take a break!"
 - **Long rest started** — "Long break time!"
@@ -184,11 +185,11 @@ The module enables desktop notifications by default:
 
 Agents provisioned via `keystone.os.agents` automatically receive email, calendar, and contacts when mail is enabled. No extra configuration is needed — credentials are derived from the agent's mail account.
 
-| Tool | Agent Config |
-|------|-------------|
-| Himalaya | `keystone.terminal.mail.enable = true` (auto-configured) |
+| Tool      | Agent Config                                                 |
+| --------- | ------------------------------------------------------------ |
+| Himalaya  | `keystone.terminal.mail.enable = true` (auto-configured)     |
 | Calendula | `keystone.terminal.calendar.enable = true` (auto-configured) |
-| Cardamum | `keystone.terminal.contacts.enable = true` (auto-configured) |
+| Cardamum  | `keystone.terminal.contacts.enable = true` (auto-configured) |
 
 Verify an agent's access:
 
@@ -202,10 +203,10 @@ agentctl drago exec cardamum addressbooks list
 
 All CalDAV/CardDAV access goes through Stalwart's built-in DAV support:
 
-| Protocol | Well-Known | Direct URI |
-|----------|-----------|------------|
-| CalDAV | `/.well-known/caldav` | `/dav/cal` |
-| CardDAV | `/.well-known/carddav` | `/dav/card` |
+| Protocol | Well-Known             | Direct URI  |
+| -------- | ---------------------- | ----------- |
+| CalDAV   | `/.well-known/caldav`  | `/dav/cal`  |
+| CardDAV  | `/.well-known/carddav` | `/dav/card` |
 
 The modules use direct URIs (`home-uri`) rather than discovery because Stalwart's well-known redirects trigger a nginx 400 on the follow-up PROPFIND.
 

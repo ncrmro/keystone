@@ -1,4 +1,3 @@
-
 ## Competitive Analysis
 
 ## Scope

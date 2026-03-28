@@ -22,6 +22,7 @@ The Linux kernel **intentionally provides no stable internal API** for kernel mo
 > "Linux does not have a stable in-kernel API."
 
 This means:
+
 - Functions appear, disappear, or change signatures between kernel versions
 - Struct fields are added, removed, or reordered
 - How you're supposed to do things shifts with each release
@@ -40,13 +41,13 @@ This process takes time. A new kernel might release, but ZFS support could lag b
 
 ## OpenZFS Version Compatibility Matrix
 
-| OpenZFS Version | Release Date | Linux Kernel Support | Status |
-|-----------------|--------------|---------------------|--------|
-| **2.4** | Dec 18, 2025 | 4.18 - 6.18 | Current |
-| **2.3** | Oct 17, 2024 | 4.18 - 6.15 | Supported |
-| **2.2** | Jul 27, 2023 | 4.18 - 6.15 | LTS |
-| 2.1 | Apr 19, 2021 | 3.10 - 6.7 | EOL |
-| 2.0 | Nov 30, 2020 | 3.10 - 5.15 | EOL |
+| OpenZFS Version | Release Date | Linux Kernel Support | Status    |
+| --------------- | ------------ | -------------------- | --------- |
+| **2.4**         | Dec 18, 2025 | 4.18 - 6.18          | Current   |
+| **2.3**         | Oct 17, 2024 | 4.18 - 6.15          | Supported |
+| **2.2**         | Jul 27, 2023 | 4.18 - 6.15          | LTS       |
+| 2.1             | Apr 19, 2021 | 3.10 - 6.7           | EOL       |
+| 2.0             | Nov 30, 2020 | 3.10 - 5.15          | EOL       |
 
 Source: [endoflife.date/openzfs](https://endoflife.date/openzfs)
 
@@ -117,11 +118,13 @@ Previously, `config.boot.zfs.package.latestCompatibleLinuxPackages` provided aut
 ### The Problem
 
 AMD RDNA4 GPUs (RX 9070 series) require kernel 6.14+ for:
+
 - SMU (System Management Unit) resume functionality
 - Proper suspend/resume without fan issues
 - Avoiding hard reboot requirements
 
 But at the time of writing:
+
 - `linuxPackages` (default) = 6.12.x — **too old for RDNA4**
 - `linuxPackages_latest` = 6.18.x — **ZFS compatible** (OpenZFS 2.4 supports up to 6.18)
 
@@ -163,6 +166,7 @@ assertions = [{
 ### For Keystone Users
 
 1. **Check current compatibility** before upgrading:
+
    ```bash
    # In a nix shell
    nix eval nixpkgs#linuxPackages_latest.kernel.version

@@ -26,6 +26,7 @@ Read the updated TASKS.yaml and ISSUES.yaml from the execute step and produce a 
 A JSON object matching the following schema.
 
 **Structure**:
+
 ```json
 {
   "task_name": "string (the name of the task)",
@@ -37,13 +38,12 @@ A JSON object matching the following schema.
   "pull_requests_created": [
     "string (URLs or branch names of PRs created during this task)"
   ],
-  "issues_created": [
-    "string (URLs or titles of any new issues opened)"
-  ]
+  "issues_created": ["string (URLs or titles of any new issues opened)"]
 }
 ```
 
 **Concrete example (completed)**:
+
 ```json
 {
   "task_name": "reply-to-nicholas-timeline",
@@ -56,6 +56,7 @@ A JSON object matching the following schema.
 ```
 
 **Concrete example (blocked)**:
+
 ```json
 {
   "task_name": "deploy-grafana-dashboards",

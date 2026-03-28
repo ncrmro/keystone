@@ -40,6 +40,7 @@ Present the draft plan to the user, gather feedback on each section, and produce
 The finalized, approved event plan.
 
 **Structure**:
+
 ```markdown
 # Final Event Plan: [Event Name]
 
@@ -47,6 +48,7 @@ The finalized, approved event plan.
 **Approved Date**: [date]
 
 ## Event Summary
+
 - **What**: [event description]
 - **When**: [confirmed date and time]
 - **Where**: [confirmed venue with address]
@@ -54,25 +56,30 @@ The finalized, approved event plan.
 - **Budget**: [confirmed total budget]
 
 ## Venue
+
 [Final venue details — no alternatives, just the decision]
 
 ## Catering
+
 [Final catering plan]
 
 ## Agenda
+
 [Final time-blocked agenda]
 
 ## Logistics
+
 [Final logistics plan]
 
 ## Budget
 
-| Category | Amount |
-|----------|--------|
-| [item] | $X |
+| Category  | Amount |
+| --------- | ------ |
+| [item]    | $X     |
 | **Total** | **$X** |
 
 ## Invitation
+
 [Final invitation text]
 
 ## Execution Checklist

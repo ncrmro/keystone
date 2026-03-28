@@ -36,10 +36,11 @@ Read the platform status and content strategy outputs, then add a `social_media`
 
 **Save to**: `projects/[project_name]/marketing/projects_yaml_diff.md`
 
-~~~markdown
+````markdown
 # PROJECTS.yaml Update: [Project Name]
 
 ## Changes Made
+
 - [Added / Updated] `social_media` section under project `[name]`
 - [count] platform entries added
 - Strategy summary added
@@ -70,15 +71,17 @@ social_media:
 ```
 
 ## Verification
+
 - [ ] PROJECTS.yaml parses as valid YAML
 - [ ] Existing project data preserved
 - [ ] No credentials appear in YAML — only Bitwarden item references
-~~~
+````
 
 **Bad example — do NOT include secrets in YAML:**
+
 ```yaml
 twitter:
-  api_key: "sk-abc123"   # NEVER store credentials in PROJECTS.yaml
+  api_key: "sk-abc123" # NEVER store credentials in PROJECTS.yaml
 ```
 
 ## Quality Criteria

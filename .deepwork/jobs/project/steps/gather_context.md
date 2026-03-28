@@ -43,65 +43,81 @@ If the feature brief is ambiguous about the customer segment, the problem being 
 A structured markdown document that provides all the raw material needed to write the press release.
 
 **Structure**:
+
 ```markdown
 # Context Brief: [Feature/Product Name]
 
 ## Project
+
 - **Name**: [project name]
 - **Mission**: [project's overall business mission, derived from the brief]
 
 ## Customer
+
 - **Segment**: [who the customer is]
 - **Role/Context**: [their situation — e.g., "developers building web applications"]
 - **Primary Need**: [what they need most]
 
 ## Problem
+
 [2-3 sentences describing what the customer struggles with today. Be specific and concrete — not "it's hard to do X" but "developers spend 3 hours configuring Y before they can Z."]
 
 ## Solution
+
 [2-3 sentences describing what the feature enables. Focus on what the customer can now do, not how the technology works.]
 
 ## Key Claims
+
 - [Claim 1 — must be deliverable by the planned feature set]
 - [Claim 2]
 - [Claim 3]
 
 ## Call to Action
+
 [How the customer gets started — sign up, visit a page, try a demo, etc.]
 
 ## Scope Notes
+
 [What this feature implies must be built. This section helps development teams understand the commitment the press release makes.]
 ```
 
 **Concrete example** (for reference):
+
 ```markdown
 # Context Brief: Amazon S3
 
 ## Project
+
 - **Name**: Amazon Web Services
 - **Mission**: Make web-scale computing accessible and affordable for developers
 
 ## Customer
+
 - **Segment**: Web developers and startups
 - **Role/Context**: Developers building web applications who need to store and serve files
 - **Primary Need**: Reliable, scalable storage without managing infrastructure
 
 ## Problem
+
 Developers building web applications must provision, manage, and scale their own storage servers. When traffic spikes, storage fails. When it's quiet, they're paying for idle hardware. Most of their time goes to infrastructure instead of their actual product.
 
 ## Solution
+
 Amazon S3 provides a simple web services interface to store and retrieve any amount of data, at any time, from anywhere on the web. Developers get the same storage infrastructure Amazon uses internally — without managing a single server.
 
 ## Key Claims
+
 - Store and retrieve any amount of data
 - Simple web services interface (REST/SOAP)
 - Same infrastructure Amazon uses for its own sites
 - Pay only for what you use
 
 ## Call to Action
+
 Sign up for the Amazon S3 beta at aws.amazon.com/s3.
 
 ## Scope Notes
+
 Implies building: REST API for object storage, pay-per-use billing, multi-region availability, and a developer console for account management.
 ```
 

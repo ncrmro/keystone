@@ -17,6 +17,7 @@ Ask structured questions if needed:
 - **repo_path**: Path to the repository to audit. Defaults to current working directory.
 
 If a repo path is provided, verify it exists and is a git repository:
+
 ```bash
 git -C $REPO_PATH rev-parse --is-inside-work-tree
 ```
@@ -26,27 +27,33 @@ git -C $REPO_PATH rev-parse --is-inside-work-tree
 Check Nix devshell setup:
 
 1. **flake.nix exists**:
+
    ```bash
    test -f $REPO_PATH/flake.nix && echo "PASS" || echo "FAIL: No flake.nix"
    ```
 
 2. **flake.lock committed**:
+
    ```bash
    git -C $REPO_PATH ls-files flake.lock | grep -q flake.lock && echo "PASS" || echo "FAIL: flake.lock not tracked"
    ```
 
 3. **Devshell builds**:
+
    ```bash
    cd $REPO_PATH && nix develop --command true 2>&1
    ```
+
    Record the exit code and any error output.
 
 4. **.envrc exists with `use flake`**:
+
    ```bash
    grep -q 'use flake' $REPO_PATH/.envrc 2>/dev/null && echo "PASS" || echo "FAIL: No .envrc or missing 'use flake'"
    ```
 
 5. **.direnv/ in .gitignore**:
+
    ```bash
    grep -q '.direnv' $REPO_PATH/.gitignore 2>/dev/null && echo "PASS" || echo "FAIL: .direnv not in .gitignore"
    ```
@@ -62,6 +69,7 @@ Check Nix devshell setup:
 Check git hygiene:
 
 1. **.gitignore covers common artifacts**:
+
    ```bash
    # Check for standard entries
    for pattern in node_modules .env dist build target .direnv; do
@@ -70,17 +78,21 @@ Check git hygiene:
    ```
 
 2. **No gitignored files in repo**:
+
    ```bash
    git -C $REPO_PATH status --ignored --short 2>/dev/null | head -20
    ```
 
 3. **Conventional commit format** (check recent commits):
+
    ```bash
    git -C $REPO_PATH log --oneline -20
    ```
+
    Verify messages follow `type(scope): subject` format.
 
 4. **CODEOWNERS file exists**:
+
    ```bash
    test -f $REPO_PATH/CODEOWNERS || test -f $REPO_PATH/.github/CODEOWNERS || test -f $REPO_PATH/docs/CODEOWNERS
    ```
@@ -100,12 +112,14 @@ Check that a clean TDD path exists:
    - Check for test directory (`tests/`, `test/`, `__tests__/`, `spec/`)
 
 2. **Tests can execute**:
+
    ```bash
    cd $REPO_PATH
    # Try common test runners (adapt to detected tech stack)
    nix develop --command npm test 2>&1 | tail -5
    # or: nix develop --command cargo test 2>&1 | tail -5
    ```
+
    Record pass/fail and count.
 
 3. **TDD commit pattern supported**:
@@ -118,6 +132,7 @@ Check that a clean TDD path exists:
 Check CI configuration:
 
 1. **CI config exists**:
+
    ```bash
    ls $REPO_PATH/.github/workflows/*.yml 2>/dev/null || \
    ls $REPO_PATH/.forgejo/workflows/*.yml 2>/dev/null
@@ -127,11 +142,13 @@ Check CI configuration:
    Check workflow triggers include `pull_request` or equivalent.
 
 3. **CI includes test step**:
+
    ```bash
    rg -l 'test|check|lint' $REPO_PATH/.github/workflows/ $REPO_PATH/.forgejo/workflows/ 2>/dev/null
    ```
 
 4. **Recent CI status** (if on a platform):
+
    ```bash
    # GitHub:
    gh run list --repo OWNER/REPO -L 5 --json conclusion,name,status
@@ -151,14 +168,17 @@ If the project deploys to a platform, check that required secrets and variables
 are configured:
 
 1. **GitHub Actions secrets/variables**:
+
    ```bash
    gh secret list --repo OWNER/REPO
    gh variable list --repo OWNER/REPO
    ```
+
    Cross-reference with what the deploy workflow expects (search for `${{ secrets.*}}`
    and `${{ vars.*}}` in `.github/workflows/`).
 
 2. **For Cloudflare Workers projects** (detected by `wrangler.jsonc` or `wrangler.toml`):
+
    ```bash
    # Check wrangler config exists
    test -f $REPO_PATH/wrangler.jsonc || test -f $REPO_PATH/wrangler.toml
@@ -199,56 +219,60 @@ mkdir -p .deepwork/tmp/sweng
 
 ## Devshell (tool.nix-devshell)
 
-| Check | Status | Details |
-|-------|--------|---------|
-| flake.nix exists | PASS | |
-| flake.lock committed | PASS | |
-| Devshell builds | PASS | nix develop --command true succeeded |
-| .envrc with use flake | FAIL | No .envrc file found |
-| .direnv in .gitignore | FAIL | .direnv not listed |
-| No global tool usage | PASS | No npx/global installs found |
+| Check                 | Status | Details                              |
+| --------------------- | ------ | ------------------------------------ |
+| flake.nix exists      | PASS   |                                      |
+| flake.lock committed  | PASS   |                                      |
+| Devshell builds       | PASS   | nix develop --command true succeeded |
+| .envrc with use flake | FAIL   | No .envrc file found                 |
+| .direnv in .gitignore | FAIL   | .direnv not listed                   |
+| No global tool usage  | PASS   | No npx/global installs found         |
 
 ### Remediation
+
 - Create `.envrc` with content: `use flake`
 - Add `.direnv/` to `.gitignore`
 
 ## Git Conventions (process.version-control)
 
-| Check | Status | Details |
-|-------|--------|---------|
-| .gitignore coverage | PASS | All standard patterns present |
-| No gitignored files tracked | PASS | |
-| Conventional commits | WARN | 3/20 recent commits don't follow format |
-| CODEOWNERS exists | FAIL | No CODEOWNERS file found |
-| Commit discipline | PASS | No bundled unrelated changes found |
+| Check                       | Status | Details                                 |
+| --------------------------- | ------ | --------------------------------------- |
+| .gitignore coverage         | PASS   | All standard patterns present           |
+| No gitignored files tracked | PASS   |                                         |
+| Conventional commits        | WARN   | 3/20 recent commits don't follow format |
+| CODEOWNERS exists           | FAIL   | No CODEOWNERS file found                |
+| Commit discipline           | PASS   | No bundled unrelated changes found      |
 
 ### Remediation
+
 - Create `CODEOWNERS` file per process.code-review-ownership convention
 - Fix commit message format for: [list specific commits]
 
 ## TDD Infrastructure
 
-| Check | Status | Details |
-|-------|--------|---------|
-| Test framework present | PASS | vitest in devDependencies |
-| Test directory exists | PASS | tests/ with 12 test files |
-| Tests execute | PASS | 47/47 tests passed |
-| Watch mode available | PASS | vitest --watch configured |
+| Check                  | Status | Details                   |
+| ---------------------- | ------ | ------------------------- |
+| Test framework present | PASS   | vitest in devDependencies |
+| Test directory exists  | PASS   | tests/ with 12 test files |
+| Tests execute          | PASS   | 47/47 tests passed        |
+| Watch mode available   | PASS   | vitest --watch configured |
 
 ### Remediation
+
 (none needed)
 
 ## CI Pipeline (process.continuous-integration)
 
-| Check | Status | Details |
-|-------|--------|---------|
-| CI config exists | PASS | .github/workflows/ci.yml |
-| CI runs on PRs | PASS | pull_request trigger configured |
-| CI includes tests | PASS | test step in workflow |
-| Recent CI status | PASS | Last 5 runs: 5 success |
-| Branch protection | WARN | No branch protection rules configured |
+| Check             | Status | Details                               |
+| ----------------- | ------ | ------------------------------------- |
+| CI config exists  | PASS   | .github/workflows/ci.yml              |
+| CI runs on PRs    | PASS   | pull_request trigger configured       |
+| CI includes tests | PASS   | test step in workflow                 |
+| Recent CI status  | PASS   | Last 5 runs: 5 success                |
+| Branch protection | WARN   | No branch protection rules configured |
 
 ### Remediation
+
 - Enable branch protection requiring CI checks to pass before merge
 
 ## Summary
@@ -258,6 +282,7 @@ mkdir -p .deepwork/tmp/sweng
 **Failed**: Z checks
 
 ### Priority Fixes
+
 1. [Most critical finding with specific remediation]
 2. [Second most critical]
 3. [Third]
@@ -280,6 +305,7 @@ It verifies the conventions that the `implement`, `fix`, and `refactor` workflow
 depend on — if the audit fails, those workflows are likely to hit friction.
 
 Run the audit when:
+
 - Setting up a new project
 - Onboarding to an unfamiliar repository
 - Debugging why the implementation workflow keeps failing

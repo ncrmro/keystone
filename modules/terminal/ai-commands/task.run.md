@@ -6,6 +6,7 @@ argument-hint: <optional task ID or context>
 Start the task_loop/run DeepWork workflow to execute a single pending task.
 
 Use the DeepWork MCP tools to start the workflow:
+
 - job_name: "task_loop"
 - workflow_name: "run"
 - goal: "$ARGUMENTS" (optional, a specific task name from TASKS.yaml or user prompt)

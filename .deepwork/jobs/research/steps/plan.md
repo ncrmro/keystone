@@ -19,7 +19,6 @@ Transform the reproducibility analysis into a structured engineering plan with a
 2. **Design the task breakdown**
 
    For each reproducible item (starting with P0):
-
    - Break it into concrete engineering tasks
    - Each task should be independently assignable and completable
    - Define clear acceptance criteria (what "done" looks like)
@@ -44,12 +43,12 @@ Transform the reproducibility analysis into a structured engineering plan with a
 
    a. **Check for explicit user preference**: Did the user specify they want issues created?
    b. **Check system context**: Is there a configured Forgejo or GitHub repo? Check for:
-      - `FORGEJO_HOST` / `FORGEJO_USER` environment variables
-      - `.git/config` for remote URL (GitHub or Forgejo)
-      - `gh` CLI availability
-      - `forgejo-project` CLI availability
-   c. **Default to markdown only**: If no clear context for issue creation, produce the markdown plan.
-   d. **If issue creation is appropriate**: Ask the user to confirm before creating issues.
+   - `FORGEJO_HOST` / `FORGEJO_USER` environment variables
+   - `.git/config` for remote URL (GitHub or Forgejo)
+   - `gh` CLI availability
+   - `forgejo-project` CLI availability
+     c. **Default to markdown only**: If no clear context for issue creation, produce the markdown plan.
+     d. **If issue creation is appropriate**: Ask the user to confirm before creating issues.
 
 5. **Write reproduction_plan.md**
 
@@ -60,6 +59,7 @@ Transform the reproducibility analysis into a structured engineering plan with a
    If the user wants issues and a repo is available:
 
    **For GitHub** (`gh` CLI):
+
    ```bash
    gh issue create --title "[Task title]" --body "[Task body with acceptance criteria]" --label "reproduction"
    ```
@@ -108,6 +108,7 @@ Transform the reproducibility analysis into a structured engineering plan with a
 [What to do, in enough detail for an engineer to start working]
 
 **Acceptance criteria**:
+
 - [ ] [Specific, verifiable criterion]
 - [ ] [Another criterion]
 
@@ -122,10 +123,11 @@ Transform the reproducibility analysis into a structured engineering plan with a
 [Repeat for all tasks]
 
 ## Dependency Graph
-
 ```
+
 Task 1 (setup) ──→ Task 2 (implement) ──→ Task 4 (validate)
-                ──→ Task 3 (implement) ──↗
+──→ Task 3 (implement) ──↗
+
 ```
 
 ## Handoff Notes
@@ -144,6 +146,7 @@ If not: "To create issues, run this workflow again with a configured repo, or ma
 ### issues (optional)
 
 If issues were created, report their URLs/numbers. Each issue should contain:
+
 - Task description from the plan
 - Acceptance criteria as a checklist
 - Link back to the reproduction plan and original research

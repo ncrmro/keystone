@@ -39,21 +39,25 @@ Use the DeepWork review system to validate the changes made in the implement ste
 # Review Report
 
 ## Reviews Run
+
 - [review_name_1]: [PASSED | X findings]
 - [review_name_2]: [PASSED | X findings]
 
 ## Findings Addressed
 
 ### Finding: [brief description]
+
 - **Review**: [which review rule]
 - **Action**: Fixed — [what was changed]
 - **Commit**: `<hash>` — `<message>`
 
 ### Finding: [brief description]
+
 - **Review**: [which review rule]
 - **Action**: Skipped — [justification for why this is not applicable]
 
 ## Final Status
+
 - **Total findings**: X
 - **Fixed**: Y
 - **Skipped**: Z (with justification)

@@ -18,6 +18,7 @@ intentionally.
 ## Editor (`editor.nix`)
 
 Helix with custom keybindings and 25+ language servers. Key bindings:
+
 - `Return` → `:write`, `F6` → markdown preview, `F7` → toggle soft wrap
 
 When adding a new LSP, add both the package and the language config. `harper-ls`
@@ -40,6 +41,7 @@ tool command and skill generation. Each file MUST use YAML frontmatter with at
 least a `description` field.
 
 Keystone maps those templates into each tool's native format:
+
 - Claude Code commands keep YAML frontmatter in `~/.claude/commands/*.md`
 - Gemini commands are rendered as `~/.gemini/commands/*.toml`
 - Codex skills are rendered as `~/.codex/skills/*/SKILL.md` with YAML frontmatter
@@ -55,11 +57,11 @@ NOT the email address. Using the email as login causes auth failures.
 
 **Folder mappings** (Stalwart defaults):
 
-| Himalaya | Stalwart |
-|----------|----------|
-| Sent | Sent Items |
-| Drafts | Drafts |
-| Trash | Deleted Items |
+| Himalaya | Stalwart      |
+| -------- | ------------- |
+| Sent     | Sent Items    |
+| Drafts   | Drafts        |
+| Trash    | Deleted Items |
 
 See `conventions/tool.himalaya.md` for full himalaya CLI reference.
 

@@ -14,6 +14,7 @@ This document captures research findings for implementing a home-manager module 
 ### Decision: Use Ghostty as the terminal emulator
 
 **Rationale:**
+
 - Ghostty is available in nixpkgs 25.05 stable (the target version for Keystone)
 - Package was backported to NixOS 24.11 stable in January 2025
 - Home-Manager includes native `programs.ghostty` support with shell integrations
@@ -21,12 +22,14 @@ This document captures research findings for implementing a home-manager module 
 - Aligns with Keystone's goal of providing modern infrastructure tools
 
 **Package Details:**
+
 - Package name: `pkgs.ghostty`
 - Home-Manager module: `programs.ghostty`
 - Configuration location: `$XDG_CONFIG_HOME/ghostty/config`
 - Shell integration options: `enableBashIntegration`, `enableZshIntegration`, `enableFishIntegration`
 
 **Alternatives Considered:**
+
 1. **Kitty** - Already default for Hyprland in Keystone's client module, proven stability
 2. **Foot** - Lightweight Wayland-native option, minimal resource usage
 3. **Alacritty** - Cross-platform, GPU-accelerated, simple configuration
@@ -40,12 +43,14 @@ This document captures research findings for implementing a home-manager module 
 ### Decision: Use modular structure with individual tool files
 
 **Rationale:**
+
 - Follows official home-manager module patterns
 - Separates concerns for maintainability (one file per tool)
 - Allows individual tools to be updated independently
 - Matches Keystone's existing module structure (e.g., `modules/client/`)
 
 **Module Structure Pattern:**
+
 ```nix
 { config, lib, pkgs, ... }:
 
@@ -76,6 +81,7 @@ in
 ```
 
 **Key Patterns Discovered:**
+
 1. **Enable Options**: Use `lib.mkEnableOption` for boolean toggles
 2. **Package Options**: Use `lib.mkPackageOption pkgs "packageName" { }` for consistency
 3. **Settings**: Use `pkgs.formats.toml/yaml/json` with `freeformType` for flexible configuration
@@ -90,11 +96,13 @@ in
 ### Decision: Provide sensible defaults with individual tool enable toggles
 
 **Rationale:**
+
 - Users want "it just works" out of the box
 - Advanced users need granular control to disable specific tools
 - Follows NixOS principle of composability
 
 **Recommended Option Structure:**
+
 ```nix
 options.programs.terminal-dev-environment = {
   enable = lib.mkEnableOption "terminal development environment";
@@ -118,6 +126,7 @@ options.programs.terminal-dev-environment = {
 ```
 
 **Implementation Pattern:**
+
 ```nix
 config = lib.mkIf cfg.enable (lib.mkMerge [
   # Always included
@@ -131,6 +140,7 @@ config = lib.mkIf cfg.enable (lib.mkMerge [
 ```
 
 **Alternatives Considered:**
+
 1. **All-or-nothing approach** - Rejected: Too opinionated, no flexibility
 2. **Individual enable per package** - Rejected: Too granular, complex for simple cases
 3. **Category-based toggles** - Selected: Right balance of convenience and control
@@ -142,11 +152,13 @@ config = lib.mkIf cfg.enable (lib.mkMerge [
 ### Decision: Include essential language servers by default
 
 **Rationale:**
+
 - Helix is useless without language servers for modern development
 - Essential LSPs (Nix, Bash, YAML, JSON, Dockerfile) are small and widely useful
 - Language-specific LSPs (TypeScript, Python, Rust, etc.) should be opt-in
 
 **Default Language Servers:**
+
 - `nixfmt` - Nix formatting
 - `bash-language-server` - Shell script support
 - `yaml-language-server` - YAML configuration files
@@ -155,6 +167,7 @@ config = lib.mkIf cfg.enable (lib.mkMerge [
 - `marksman` - Markdown support (documentation)
 
 **Configuration Pattern:**
+
 ```nix
 home.packages = with pkgs; [
   bash-language-server
@@ -190,6 +203,7 @@ programs.helix = {
 ```
 
 **Alternatives Considered:**
+
 1. **No LSPs by default** - Rejected: Editor would be nearly non-functional
 2. **All possible LSPs** - Rejected: Bloats closure size, includes unused dependencies
 3. **Essential + opt-in extras** - Selected: Best balance
@@ -201,6 +215,7 @@ programs.helix = {
 ### Decision: Use oh-my-zsh with starship, zoxide, and direnv
 
 **Rationale:**
+
 - oh-my-zsh provides familiar plugin ecosystem and git integration
 - starship gives modern, fast prompt with useful context
 - zoxide enables smart directory navigation
@@ -208,6 +223,7 @@ programs.helix = {
 - These tools work together without conflicts
 
 **Configuration Pattern:**
+
 ```nix
 programs.zsh = {
   enable = true;
@@ -247,6 +263,7 @@ programs.direnv = {
 ```
 
 **Benefits:**
+
 - Single `enable = true` activates complete shell environment
 - All integrations configured automatically
 - Users can override individual settings with standard home-manager options
@@ -258,12 +275,14 @@ programs.direnv = {
 ### Decision: Provide SSH signing support, let users configure identity
 
 **Rationale:**
+
 - Git identity (name, email) is user-specific and should not have defaults
 - SSH signing is a security best practice but requires user's SSH key
 - Git aliases for common operations improve productivity
 - LFS support is lightweight and enables large file handling
 
 **Configuration Pattern:**
+
 ```nix
 programs.git = {
   enable = true;
@@ -293,6 +312,7 @@ programs.lazygit.enable = lib.mkDefault true;
 ```
 
 **User Responsibility:**
+
 - Setting `programs.git.userName` and `programs.git.userEmail`
 - Optionally enabling SSH signing with their own keys
 - Module documentation will provide example configuration
@@ -304,12 +324,14 @@ programs.lazygit.enable = lib.mkDefault true;
 ### Decision: Use Keystone's existing VM testing infrastructure
 
 **Rationale:**
+
 - Keystone already has `bin/virtual-machine` for testing
 - Can create test configuration that enables the module
 - Allows verification of shell environment and tool integration
 - No new testing infrastructure needed
 
 **Testing Approach:**
+
 1. **Build-time validation**: `nix build .#nixosConfigurations.test-config` checks syntax and evaluation
 2. **bin/test-home-manager script**: Self-contained automated test script following bin/test-deployment pattern
    - Python script with colored output and checks array
@@ -323,6 +345,7 @@ programs.lazygit.enable = lib.mkDefault true;
 4. **Manual integration testing**: Can run `./bin/test-home-manager` independently for debugging
 
 **Test Configuration Example:**
+
 ```nix
 # vms/test-server/home-manager/home.nix
 # Used by bin/test-home-manager for automated testing
@@ -340,6 +363,7 @@ programs.lazygit.enable = lib.mkDefault true;
 ```
 
 **bin/test-home-manager Script Structure:**
+
 ```python
 #!/usr/bin/env python3
 """Test terminal-dev-environment module via home-manager as testuser"""
@@ -365,6 +389,7 @@ checks = [
 ```
 
 **bin/test-deployment Integration:**
+
 ```python
 # In main() after verify_zfs_user_permissions()
 current_step += 1
@@ -384,16 +409,19 @@ if not result:
 ### Decision: Optional integration, not required dependency
 
 **Rationale:**
+
 - Terminal dev environment should work standalone (e.g., on servers)
 - When used with client module, provides enhanced desktop integration
 - Follows Keystone's modular composability principle
 
 **Integration Points:**
+
 - Ghostty can be set as default terminal for Hyprland via `$TERMINAL` environment variable
 - Module works independently of desktop environment
 - No hard dependency on client module
 
 **Example Integrated Configuration:**
+
 ```nix
 {
   imports = [
@@ -413,17 +441,17 @@ if not result:
 
 ## Summary of Key Decisions
 
-| Area | Decision | Rationale |
-|------|----------|-----------|
-| Terminal Emulator | Ghostty | Available in nixpkgs 25.05, modern features, native HM support |
-| Module Structure | Modular with per-tool files | Maintainability, follows Keystone patterns |
-| Default Behavior | Sensible defaults, all tools enabled | "Just works" out of box |
-| Customization | Individual tool toggles + overrides | Granular control when needed |
-| Language Servers | Essential LSPs included | Helix functional for common tasks |
-| Shell Setup | Zsh + oh-my-zsh + starship + zoxide | Modern, productive shell environment |
-| Git Identity | User-configured | Respects user sovereignty |
-| Testing | Keystone VM infrastructure | Reuses existing tooling |
-| Desktop Integration | Optional, not required | Works standalone or with client module |
+| Area                | Decision                             | Rationale                                                      |
+| ------------------- | ------------------------------------ | -------------------------------------------------------------- |
+| Terminal Emulator   | Ghostty                              | Available in nixpkgs 25.05, modern features, native HM support |
+| Module Structure    | Modular with per-tool files          | Maintainability, follows Keystone patterns                     |
+| Default Behavior    | Sensible defaults, all tools enabled | "Just works" out of box                                        |
+| Customization       | Individual tool toggles + overrides  | Granular control when needed                                   |
+| Language Servers    | Essential LSPs included              | Helix functional for common tasks                              |
+| Shell Setup         | Zsh + oh-my-zsh + starship + zoxide  | Modern, productive shell environment                           |
+| Git Identity        | User-configured                      | Respects user sovereignty                                      |
+| Testing             | Keystone VM infrastructure           | Reuses existing tooling                                        |
+| Desktop Integration | Optional, not required               | Works standalone or with client module                         |
 
 ---
 

@@ -88,6 +88,7 @@ step instructions (step 13).
 ### Convention Sync: .agents/ <-> keystone (v3.0.0)
 
 Conventions live in two locations that must be kept in sync:
+
 - `.agents/conventions/` — agent-space submodule (used by compose.sh to build AGENTS.md)
 - `.repos/ncrmro/keystone/conventions/` — upstream shared library (canonical source)
 
@@ -96,6 +97,7 @@ The wire_mode step includes a sync instruction (step 7) to copy new conventions 
 #### Out-of-sync conventions (as of 2026-03-19)
 
 These conventions exist in `.agents/conventions/` but not yet in keystone:
+
 - `process.blocker.md`
 - `process.code-review-ownership.md`
 - `process.deepwork-job.md`

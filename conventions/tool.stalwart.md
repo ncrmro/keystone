@@ -13,6 +13,7 @@ is a prerequisite for DAV provisioning (see `process.agentic-team`).
    `127.0.0.1:9010` (Tailscale-only, not open to the public internet).
 
 2. The Prometheus tracer MUST be enabled in Stalwart settings:
+
    ```nix
    services.stalwart-mail.settings = {
      tracer.prometheus = {
@@ -45,6 +46,7 @@ is a prerequisite for DAV provisioning (see `process.agentic-team`).
    exists (HTTP 207 = exists, HTTP 404 = needs creation).
 
 7. Calendar creation MUST use the WebDAV `MKCALENDAR` method authenticated as the agent:
+
    ```bash
    # Check if calendar exists (207 = exists, 404 = needs creation)
    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \

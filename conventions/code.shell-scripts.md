@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: Shell Scripts (code.shell-scripts)
 
 Standards for authoring fault-tolerant, succinct shell scripts within keystone and related repositories. These rules apply to standalone `.sh` files, inline scripts in Nix builders (`writeShellApplication`, `writeShellScriptBin`), and extracted scripts used with `replaceVars`.

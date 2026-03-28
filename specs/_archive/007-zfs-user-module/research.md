@@ -244,12 +244,14 @@ zfs create -p -o mountpoint=/home/username rpool/crypt/home/username
 ```
 
 **Advantages:**
+
 - Built-in idempotency (no error if exists)
 - Automatically creates parents if missing
 - Single command, no conditionals needed
 - No race conditions
 
 **Caveat:**
+
 - Does NOT update properties if dataset exists
 - Properties only set on creation
 
@@ -262,6 +264,7 @@ zfs set quota=100G rpool/crypt/home/username
 ```
 
 **Characteristics:**
+
 - Setting a property to its current value is a no-op
 - No data loss or side effects
 - Can take 5-50 seconds under heavy load (rare)
@@ -274,6 +277,7 @@ zfs allow -u username create,snapshot,send,receive rpool/crypt/home/username
 ```
 
 **Characteristics:**
+
 - Re-granting existing permissions is safe
 - No errors or warnings
 - Immediately takes effect
@@ -288,6 +292,7 @@ fi
 ```
 
 **Flags:**
+
 - `-H`: Scripting mode (no headers)
 - `-o name`: Only output the name property
 - `> /dev/null 2>&1`: Suppress both stdout and stderr (important!)
@@ -415,6 +420,7 @@ users.users = lib.mapAttrs (username: userCfg: {
 ```
 
 **Why `createHome = false`:**
+
 - ZFS dataset IS the home directory (mounted at `/home/<username>`)
 - Prevents NixOS from creating a regular directory
 - Avoids conflicts between ZFS mount and filesystem directory
@@ -587,15 +593,18 @@ if not verify_zfs_user_permissions():
 ### Issue - Verified Through Testing
 
 **Test Results**: 7 out of 9 ZFS delegation tests pass. The 2 failures are:
+
 1. ❌ User cannot create child datasets that auto-mount
 2. ❌ User cannot destroy datasets that don't exist (dependent on #1)
 
 When users create child datasets on Linux, they may receive:
+
 ```
 filesystem successfully created, but it may only be mounted by root
 ```
 
 Or simply:
+
 ```
 cannot create 'rpool/crypt/home/alice/documents': permission denied
 ```
@@ -622,6 +631,7 @@ Verified through automated testing on NixOS with ZFS 2.3.4:
 ### Workarounds
 
 **Option 1: Create with `canmount=off`** (Recommended - Works Today):
+
 ```bash
 # User command - creates dataset without attempting to mount
 zfs create -o canmount=off rpool/crypt/home/alice/documents
@@ -632,6 +642,7 @@ sudo zfs mount rpool/crypt/home/alice/documents
 ```
 
 **Option 2: Sudo rules for mount operations**:
+
 ```nix
 security.sudo.extraRules = [{
   users = [ "alice" ];
@@ -649,6 +660,7 @@ security.sudo.extraRules = [{
 ```
 
 **Option 3: Helper binary with setuid** (Complex - see GitHub discussion #10648):
+
 - C-based helper that validates ZFS ACLs before mounting
 - Requires setuid or CAP_SYS_ADMIN capability
 - Community prototypes exist but not production-ready
@@ -658,6 +670,7 @@ security.sudo.extraRules = [{
 ### Upstream Discussion
 
 See [OpenZFS Discussion #10648](https://github.com/openzfs/zfs/discussions/10648) for:
+
 - Helper binary approaches (setuid wrapper, daemon-based)
 - Capability-based solutions
 - Community prototype implementations
@@ -684,11 +697,13 @@ ZFS User Checks - Passed: 7, Failed: 2
 ### Recommendation
 
 **For most use cases, the current implementation is sufficient**:
+
 - Snapshots and backups work perfectly
 - Users can manage properties and quotas
 - Security isolation is maintained
 
 **For users who need child datasets**:
+
 - Document the `canmount=off` workaround in quickstart.md
 - Consider sudo rules for specific use cases
 - Future enhancement: Implement helper binary per GitHub #10648
@@ -715,14 +730,14 @@ ZFS User Checks - Passed: 7, Failed: 2
 
 ### Key Decisions Summary
 
-| Aspect | Decision | Rationale |
-|--------|----------|-----------|
-| Activation Method | Systemd oneshot service | Proper ordering, error handling, proven pattern |
-| Dataset Creation | `zfs create -p` | Native idempotency, no race conditions |
-| Property Updates | Always run `zfs set` | Idempotent, simple |
-| Permissions | Descendants-only `destroy` | Protects parent dataset from accidental deletion |
-| Testing | Integration tests in bin/test-deployment | Automated verification, matches existing pattern |
-| Module Location | modules/users/default.nix | Standalone, composable, follows Keystone pattern |
+| Aspect            | Decision                                 | Rationale                                        |
+| ----------------- | ---------------------------------------- | ------------------------------------------------ |
+| Activation Method | Systemd oneshot service                  | Proper ordering, error handling, proven pattern  |
+| Dataset Creation  | `zfs create -p`                          | Native idempotency, no race conditions           |
+| Property Updates  | Always run `zfs set`                     | Idempotent, simple                               |
+| Permissions       | Descendants-only `destroy`               | Protects parent dataset from accidental deletion |
+| Testing           | Integration tests in bin/test-deployment | Automated verification, matches existing pattern |
+| Module Location   | modules/users/default.nix                | Standalone, composable, follows Keystone pattern |
 
 ---
 
@@ -740,6 +755,7 @@ ZFS User Checks - Passed: 7, Failed: 2
 ✅ Research complete - all NEEDS CLARIFICATION resolved
 
 Ready to proceed to Phase 1:
+
 - Generate data-model.md (module options schema)
 - Generate quickstart.md (usage guide)
 - Update agent context

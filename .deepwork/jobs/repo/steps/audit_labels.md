@@ -39,6 +39,7 @@ Deep audit of repository labels: verify required labels, find case-insensitive d
 # Labels Audit
 
 ## Summary
+
 - **Total Labels**: [count]
 - **Required Labels OK**: [count]/3
 - **Created**: [count]
@@ -47,28 +48,30 @@ Deep audit of repository labels: verify required labels, find case-insensitive d
 
 ## Required Labels
 
-| Label | Status | Action |
-|-------|--------|--------|
-| product | [ok \| created \| renamed] | [details] |
+| Label       | Status                     | Action    |
+| ----------- | -------------------------- | --------- |
+| product     | [ok \| created \| renamed] | [details] |
 | engineering | [ok \| created \| renamed] | [details] |
-| plan | [ok \| created \| renamed] | [details] |
+| plan        | [ok \| created \| renamed] | [details] |
 
 ## Case-Insensitive Duplicates
 
-| Lowercase Name | Variants | Recommendation |
-|----------------|----------|----------------|
-| ... | Bug, bug | Keep "bug", delete "Bug" |
+| Lowercase Name | Variants | Recommendation           |
+| -------------- | -------- | ------------------------ |
+| ...            | Bug, bug | Keep "bug", delete "Bug" |
 
 ## Zero-Issue Labels
 
-| Label | Created | Recommendation |
-|-------|---------|----------------|
-| ... | [date] | Consider removing |
+| Label | Created | Recommendation    |
+| ----- | ------- | ----------------- |
+| ...   | [date]  | Consider removing |
 
 ## Actions Taken
+
 - [List of changes made]
 
 ## Manual Actions Needed
+
 - [List of changes requiring human intervention, or "None"]
 ```
 
