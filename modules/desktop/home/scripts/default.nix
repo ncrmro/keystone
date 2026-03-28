@@ -322,7 +322,6 @@ in
             keystoneProjectMenu
             pkgs.jq
             pkgs.pulseaudio
-            pkgs.python3
             # Dependencies that should be available
             pkgs.gpu-screen-recorder
             pkgs.libxkbcommon # for xkbcli in keybindings menu
