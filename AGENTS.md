@@ -49,7 +49,7 @@ modules/
     ├── headscale/, services/
     └── services/ (attic, grafana, prometheus, loki, immich,
                    vaultwarden, forgejo, headscale, miniflux,
-                   mail, adguard, seaweedfs)
+                   mail, adguard, seaweedfs, journal-remote)
 ```
 
 ## Flake Exports

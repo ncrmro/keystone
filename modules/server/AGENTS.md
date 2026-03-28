@@ -45,6 +45,11 @@ generate `virtualHosts` and DNS records automatically.
 | mail | mail | 8082 | tailscale |
 | adguard | adguard.home | 3000 | tailscaleAndLocal |
 | seaweedfs | s3 | 8333 | tailscale |
+| journal-remote | journal | dynamic† | tailscale |
+
+†`journal-remote` auto-activates when `services.journald.remote.enable = true`. It has no
+`keystone.server.services.*` option; its port is read directly from
+`services.journald.remote.port` (NixOS default: 19532).
 
 ## Adding a New Service
 

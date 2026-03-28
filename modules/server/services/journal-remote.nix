@@ -4,6 +4,9 @@
 # server module and journal-remote are both active. This provides HTTPS
 # termination via the ACME wildcard certificate, with access restricted to
 # the Tailscale network.
+#
+# See conventions/tool.journal-remote.md
+# See specs/REQ-020-journal-remote/requirements.md
 {
   lib,
   config,
