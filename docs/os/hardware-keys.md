@@ -208,20 +208,26 @@ keystone.terminal.ageYubikey = {
 };
 ```
 
-### 4. Re-key All Secrets
+### 4. Re-key Secrets
 
-Use `hwrekey` to re-encrypt all secrets and handle the submodule workflow automatically:
+Use `hwrekey` to re-encrypt secrets whose recipients changed and handle the submodule workflow automatically:
 
 ```bash
-cd agenix-secrets
-hwrekey
+hwrekey -m "chore: add ocean host key"
+```
+
+By default, `hwrekey` performs **selective rekey** — only secrets whose recipients in `secrets.nix` differ from the last rekey are re-encrypted. Use `--full` to force re-encryption of all secrets:
+
+```bash
+hwrekey --full -m "chore: rekey all secrets"
 ```
 
 This runs the full workflow:
-1. `agenix --rekey` using your YubiKey identity (touch prompt per secret, no SSH password)
-2. Commits and pushes the rekeyed secrets in the submodule
-3. Runs `nix flake update <secretsFlakeInput>` in the parent repo
-4. Commits the submodule pointer + `flake.lock` together in the parent repo
+1. Evaluates `secrets.nix` and compares recipients against `.recipients-hashes`
+2. Re-encrypts only changed `.age` files using your YubiKey identity (touch prompt per secret)
+3. Commits and pushes only the affected files in the submodule
+4. Runs `nix flake update <secretsFlakeInput>` in the parent repo
+5. Commits the submodule pointer + `flake.lock` together in the parent repo
 
 `hwrekey` is provided by `keystone.terminal.ageYubikey` — see the [Terminal Module](terminal.md#hwrekey---secrets-rekeying) docs for configuration.
 
