@@ -51,6 +51,7 @@ in
     ./secrets.nix
     ./ssh-auto-load.nix
     ./forgejo.nix
+    ./grafana.nix
     ./projects.nix
     ./cli-coding-agent-configs.nix
     ./conventions.nix
