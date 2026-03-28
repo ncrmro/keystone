@@ -45,6 +45,7 @@ let
     "agent.onboard.md"
     "daily_status.send.md"
     "deepwork.review.md"
+    "engineer.md"
     "ks.convention.md"
     "ks.develop.md"
     "ks.doctor.md"
