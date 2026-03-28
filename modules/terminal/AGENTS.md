@@ -36,6 +36,24 @@ Required options: `keystone.terminal.git.userName` and `keystone.terminal.git.us
 Four tools: Claude Code (NPM), Gemini CLI, Codex, OpenCode (last three from llm-agents flake).
 All available when `keystone.terminal.enable = true` — agents get the identical environment.
 
+### llm-agents input strategy
+
+Keystone keeps `llm-agents` at nightly-latest. Consumer flakes choose one of two patterns:
+
+**Contributor / nightly-latest** — follow keystone's pin so relocking keystone bumps agents automatically:
+```nix
+llm-agents.follows = "keystone/llm-agents";
+```
+
+**Stable consumer** — declare an independent pin and override keystone's input. Bump manually with `nix flake update llm-agents`:
+```nix
+llm-agents = {
+  url = "github:numtide/llm-agents.nix";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+keystone.inputs.llm-agents.follows = "llm-agents";
+```
+
 `modules/terminal/ai-commands/*.md` are shared metadata-aware templates for AI
 tool command and skill generation. Each file MUST use YAML frontmatter with at
 least a `description` field.

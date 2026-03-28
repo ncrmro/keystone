@@ -85,6 +85,20 @@ modules/
 `keystone-conventions`, `chrome-devtools-mcp`, `grafana-mcp`, `google-chrome`, `ghostty`,
 `yazi`, `himalaya`, `calendula`, `cardamum`, `comodoro`, `cfait`, `agenix`, `slidev`
 
+#### llm-agents input strategy
+
+AI agent packages (`claude-code`, `gemini-cli`, `codex`, `opencode`) come from the
+`llm-agents` flake input. Keystone keeps this pin at nightly-latest. Consumer flakes
+choose one of two strategies:
+
+- **Contributor / nightly-latest**: `llm-agents.follows = "keystone/llm-agents"` —
+  relocking keystone automatically bumps agent versions.
+- **Stable consumer**: declare an independent `llm-agents` input and override with
+  `keystone.inputs.llm-agents.follows = "llm-agents"` — bump manually via
+  `nix flake update llm-agents`.
+
+See `modules/terminal/AGENTS.md` § "llm-agents input strategy" for full examples.
+
 ## Important Notes
 
 - ZFS pool is **always** named `rpool`

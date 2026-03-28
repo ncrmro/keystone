@@ -36,6 +36,12 @@
       url = "github:pimalaya/comodoro";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # AI coding agents (claude-code, gemini-cli, codex, opencode).
+    # Keystone keeps this input at nightly-latest. Contributors should follow
+    # keystone's pin (llm-agents.follows = "keystone/llm-agents") so that
+    # relocking keystone automatically bumps agent versions.
+    # Consumers who prefer a stable pin can declare their own llm-agents input
+    # and override keystone's with: keystone.inputs.llm-agents.follows = "llm-agents".
     llm-agents = {
       url = "github:numtide/llm-agents.nix";
       inputs.nixpkgs.follows = "nixpkgs";
