@@ -113,10 +113,11 @@ under `~/.keystone/repos/OWNER/REPO/`.
 > Run `ks build` (which defaults to the current host) to ensure your changes integrate correctly.
 
 ```bash
-ks build              # Build full system for current host (verify changes here!)
+ks build              # Build home-manager profiles for current host (verify changes here!)
 ks build --lock       # Full system build + lock + push (requires sudo)
 ks update --dev       # Deploy home-manager profiles only
 ks update             # Full system: pull, lock, build, push, deploy (requires sudo)
 ks update --lock      # Pull, lock, build, push, deploy (human-only, requires sudo)
+ks switch             # Fast deploy current local state (no pull/lock/push)
 ks doctor             # Diagnose system health and validate host status
 ```

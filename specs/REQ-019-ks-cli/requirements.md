@@ -35,7 +35,8 @@ machine's hostname as resolved from `hosts.nix`.
 the following priority chain:
 1. `$NIXOS_CONFIG_DIR` environment variable (if it contains `hosts.nix`)
 2. Git repository root of the current working directory (if it contains `hosts.nix`)
-3. `~/nixos-config` as fallback
+3. Any directory under `~/.keystone/repos/` (up to depth 3) that contains `hosts.nix`
+4. `~/nixos-config` as fallback
 
 **REQ-019.2** All discovered paths MUST be resolved via `readlink -f`
 to eliminate symlinks, because Nix `path:` flake URIs break on symlinks.
@@ -164,7 +165,7 @@ command-line argument to `claude` or `agentctl`, because large prompts
 `ARG_MAX` limit (~4MB including environment). Prompts MUST be written
 to a temp file and passed via a mechanism that avoids `ARG_MAX`:
 - Write to a checksummed temp file (`/tmp/ks-prompt-{hash}`)
-- Read back via `$(cat "$file")` in the `--append-system-prompt` flag
+- Pass to `claude` via `--append-system-prompt "@/tmp/ks-prompt-{hash}"` (the `@path` syntax instructs Claude Code to read the file from disk, keeping the argv small)
 
 **REQ-019.23** `ks agent` MUST pass through additional arguments to the
 underlying claude invocation.
