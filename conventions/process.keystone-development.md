@@ -50,22 +50,23 @@ at the Nix module level, see `process.keystone-development-mode`.
     nix flake update keystone   # update keystone input only — NEVER bare nix flake update
     git add flake.lock && git commit -m "feat: update keystone (<description>)"
     ```
-12. `nix flake update` WITHOUT a target input MUST NOT be used — it pulls new nixpkgs
-    and all inputs, causing massive unrelated rebuilds.
+12. Always target a specific input — bare `nix flake update` MUST NOT be used. See
+    `tool.nix` rule 4 for the authoritative prohibition and rationale.
 
 ## Conventions and AI instruction files
 
 13. Convention files (`conventions/*.md`) and `archetypes.yaml` in `ncrmro/keystone`
     are the source of truth for agent instructions. Edit them here; the Nix build
     regenerates all downstream instruction files (`~/.claude/CLAUDE.md`, etc.).
+    See `process.keystone-development-mode` rule 11 for the module-level specification.
 14. After editing a convention or archetype, run `ks update --dev` to regenerate
     instruction files. In development mode, regenerated files appear as git diffs
     in the live repo checkout — commit them to persist the change.
 
 ## DeepWork jobs
 
-15. `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` (set by keystone in dev mode) points at two
-    live job roots:
+15. `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` (set by keystone in dev mode — see
+    `process.keystone-development-mode` rule 10) points at two live job roots:
     - `~/.keystone/repos/Unsupervisedcom/deepwork/library/jobs/` — shared library jobs
     - `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs/` — keystone-native jobs
 16. Edits to job files in these directories take effect immediately without rebuild.

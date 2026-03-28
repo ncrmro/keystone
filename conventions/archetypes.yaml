@@ -58,7 +58,28 @@ archetypes:
       - process.enable-by-default
       - os.zfs-backup
       - tool.stalwart
+
+  # Archetype for working directly on keystone platform repos:
+  # ncrmro/keystone, ncrmro/nixos-config, Unsupervisedcom/deepwork.
+  keystone-developer:
+    description: "Keystone platform developer — editing nixos-config, keystone modules, and deepwork jobs"
+    inlined_conventions:
+      - process.version-control
+      - process.prose
+      - tool.nix
+      - process.project-navigation
       - tool.standard-utilities
+      - process.keystone-development
+    referenced_conventions:
+      - process.keystone-development-mode
+      - tool.nix-devshell
+      - tool.forgejo
+      - tool.github
+      - code.shell-scripts
+      - process.vcs-context-continuity
+      - process.enable-by-default
+      - os.requirements
+      - process.deepwork-job
 
   engineer:
     description: "Engineering agents — implementation, code review, architecture"
