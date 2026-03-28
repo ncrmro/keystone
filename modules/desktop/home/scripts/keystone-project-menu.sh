@@ -172,6 +172,14 @@ cmd_open_session_menu() {
   cmd_open "$project_slug" "$session_slug"
 }
 
+cmd_open_notes_menu() {
+  local project_slug="$1"
+
+  cmd_set_current_project "$project_slug"
+  walker -q >/dev/null 2>&1 || true
+  setsid keystone-launch-walker -m "menus:keystone-project-notes" -p "Project notes" >/dev/null 2>&1 &
+}
+
 cmd_projects_json() {
   read_snapshot | jq '
     [
@@ -210,6 +218,13 @@ cmd_project_details_json() {
           Value: ("new-session-menu\t" + $slug),
           Preview: ("keystone-project-menu project-preview " + $quoted),
           PreviewType: "command"
+        },
+        {
+          Text: "Notes",
+          Subtext: "Browse notes tagged to this project",
+          Value: ("open-notes-menu\t" + $slug),
+          Preview: ("keystone-project-menu project-preview " + $quoted),
+          PreviewType: "command"
         }
       ]
       + (
@@ -224,6 +239,35 @@ cmd_project_details_json() {
             })
         )
   '
+}
+
+cmd_project_notes_json() {
+  local project_slug="$1"
+
+  zk --notebook-dir "$HOME/notes" list \
+    --tag project \
+    --tag "$project_slug" \
+    --sort modified- \
+    --limit 50 \
+    --format json \
+    --quiet \
+    | jq '
+      [
+        .[]
+        | {
+            Text: .title,
+            Subtext: (
+              [
+                (.metadata.type // "note"),
+                ((.modified // "") | split("T")[0])
+              ]
+              | map(select(. != ""))
+              | join(" · ")
+            ),
+            Value: ("open-note\t" + .absPath)
+          }
+      ]
+    '
 }
 
 cmd_project_preview() {
@@ -271,6 +315,12 @@ cmd_refresh_cache() {
   printf "%s\n" "$SNAPSHOT_PATH"
 }
 
+cmd_open_note() {
+  local note_path="$1"
+
+  ghostty -e zk --notebook-dir "$HOME/notes" edit "$note_path" &
+}
+
 cmd_dispatch() {
   local payload="${1:-}"
   local action=""
@@ -285,6 +335,12 @@ cmd_dispatch() {
       ;;
     new-session-menu)
       cmd_open_session_menu "$project_slug"
+      ;;
+    open-notes-menu)
+      cmd_open_notes_menu "$project_slug"
+      ;;
+    open-note)
+      cmd_open_note "$project_slug"
       ;;
     *)
       printf "Unknown dispatch action: %s\n" "$action" >&2
@@ -322,6 +378,10 @@ case "${1:-}" in
     shift
     cmd_project_details_json "$@"
     ;;
+  project-notes-json)
+    shift
+    cmd_project_notes_json "$@"
+    ;;
   project-preview)
     shift
     cmd_project_preview "$@"
@@ -337,7 +397,7 @@ case "${1:-}" in
     exec pz "$cmd" "$@"
     ;;
   *)
-    echo "Usage: keystone-project-menu {open|set-current-project|get-current-project|open-session-menu|refresh-cache|projects-json|project-details-json|project-preview|dispatch|summary|sessions|preview|export-menu-data|export-menu-cache|menu-cache-path} ..." >&2
+    echo "Usage: keystone-project-menu {open|set-current-project|get-current-project|open-session-menu|refresh-cache|projects-json|project-details-json|project-notes-json|project-preview|dispatch|summary|sessions|preview|export-menu-data|export-menu-cache|menu-cache-path} ..." >&2
     exit 1
     ;;
 esac

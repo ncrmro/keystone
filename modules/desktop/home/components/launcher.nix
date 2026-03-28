@@ -61,6 +61,7 @@ let
 
   keystoneProjectsMenuLua = substituteLua (builtins.readFile ./keystone-projects.lua);
   keystoneProjectDetailsMenuLua = substituteLua (builtins.readFile ./keystone-project-details.lua);
+  keystoneProjectNotesMenuLua = substituteLua (builtins.readFile ./keystone-project-notes.lua);
   keystoneProjectSessionMenuLua = substituteLua (builtins.readFile ./keystone-project-session.lua);
 in
 {
@@ -81,6 +82,7 @@ in
     home.file.".config/elephant/menus/keystone-projects.lua".text = keystoneProjectsMenuLua;
     home.file.".config/elephant/menus/keystone-project-details.lua".text =
       keystoneProjectDetailsMenuLua;
+    home.file.".config/elephant/menus/keystone-project-notes.lua".text = keystoneProjectNotesMenuLua;
     home.file.".config/elephant/menus/keystone-project-session.lua".text =
       keystoneProjectSessionMenuLua;
 
@@ -111,6 +113,7 @@ in
         force_keyboard_focus = true;
         selection_wrap = true;
         theme = "keystone";
+        resume_last_query = false;
         actions_as_menu = true;
         hide_action_hints = false;
 
@@ -126,6 +129,10 @@ in
           "menus:keystone-project-details" = {
             input = " Project actions";
             list = "No project actions";
+          };
+          "menus:keystone-project-notes" = {
+            input = " Project notes";
+            list = "No project notes";
           };
           "menus:keystone-project-session" = {
             input = " Session slug";
