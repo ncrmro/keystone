@@ -1335,6 +1335,7 @@ cmd_update() {
     build_home_manager_only "$repo_root" "${target_hosts[@]}"
     deploy_home_manager_only "$repo_root" "${target_hosts[@]}"
     echo "Dev mode update complete (home-manager only) for: ${target_hosts[*]}"
+    cmd_grafana "dashboards" "apply"
     return
   fi
 
