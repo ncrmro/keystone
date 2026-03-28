@@ -33,10 +33,8 @@ in
   };
 
   config = lib.mkIf (config.keystone.os.enable && cfg.enable) {
-    systemd.tmpfiles.rules = [
-      "d ${cfg.nodeExporter.textfileDirectory} 0775 root agents -"
-    ];
-
+    # The textfile directory tmpfiles rule lives in agents/notes.nix (the
+    # producer). This module only configures the node exporter (the consumer).
     services.prometheus.exporters.node = lib.mkIf cfg.nodeExporter.enable {
       enable = true;
       enabledCollectors = [

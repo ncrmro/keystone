@@ -112,6 +112,17 @@ let
 in
 {
   config = mkIf (osCfg.enable && localAgents != { }) {
+    # Ensure the Prometheus textfile collector directory exists and is writable
+    # by agents. The task loop and scheduler scripts write .prom metric files
+    # here via atomic mktemp + mv. The directory is group-owned by "agents"
+    # so each agent user can create temp files and write metrics with tight
+    # permissions — no world-writable dirs, no setuid, no sudo.
+    systemd.tmpfiles.rules =
+      let
+        textfileDir = config.keystone.os.observability.nodeExporter.textfileDirectory;
+      in
+      [ "d ${textfileDir} 0775 root agents -" ];
+
     # Agent task loop and scheduler as systemd user services.
     # Notes sync is handled by the home-manager notes module (keystone-notes-sync).
     systemd.user.services = mkMerge (
