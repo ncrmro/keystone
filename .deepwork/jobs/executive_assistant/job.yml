@@ -1,5 +1,5 @@
 name: executive_assistant
-version: "1.3.1"
+version: "1.4.0"
 summary: "Executive assistant workflows: event planning, calendar management, inbox cleanup, event discovery, and zk-backed task coordination"
 common_job_info_provided_to_all_steps_at_runtime: |
   Executive assistant workflows for the human operator. These workflows handle
@@ -31,6 +31,30 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Do not invent tag namespaces for milestone, issue, PR, or assignee identity
 
   Output audience: The human operator (CEO). Keep outputs concise and decision-ready.
+
+  ## Portfolio review
+
+  The portfolio_review workflow performs a holistic review of the user's entire project portfolio.
+  It replaces per-project status.md files with a single comprehensive report covering all active projects.
+
+  Data sources per project:
+  - GitHub/Forgejo milestones — open milestones, issue counts, completion percentages
+  - Git log — recent commit activity to gauge momentum (last 30 days)
+  - Existing project profiles — charter.md, README.yaml, status.md from notes repo's `projects/{slug}/`
+
+  Projects are discovered from `projects/README.md` (primary) or `PROJECTS.yaml` at the notes repo root.
+
+  Platform tools:
+  - GitHub repos: `gh` CLI for milestones, issues, PRs, and activity
+  - Forgejo repos: `fj` or `tea` CLI, or `curl` with Forgejo API
+  - Git activity: `git log --oneline --since="30 days ago"` on local clones in `~/code/ncrmro/`
+
+  The final report is delivered as a pull request into the notes repo at:
+  `projects/portfolio/reviews/YYYY-MM.md` (dated, accumulates over time).
+  Branch naming: `portfolio-review/YYYY-MM`. PRs are created with `gh pr merge --auto --squash`
+  enabled (72-hour review window before auto-merge).
+
+  Status indicators: 🟢 On Track, 🟡 At Risk, 🔴 Behind, ⚪ Not Started/Deferred
 
 workflows:
   - name: plan_event
@@ -76,6 +100,19 @@ workflows:
       - rollover_daily_note
       - sync_owner_notes
       - publish_next_actions
+
+  - name: portfolio_review
+    summary: "Full portfolio review across all active projects with synthesized health report and Eisenhower matrix"
+    steps:
+      - portfolio_discover_projects
+      - portfolio_review_all_projects
+      - portfolio_synthesize_report
+
+  - name: portfolio_review_one
+    summary: "Status review for a single project: milestones, activity, and health assessment"
+    steps:
+      - portfolio_gather_data
+      - portfolio_write_summary
 
 steps:
   # ── plan_event workflow ──────────────────────────────────────────────
@@ -621,3 +658,119 @@ steps:
           "Decision Ready": "The summary gives the operator a short, concrete list of what to do now, what is delegated, and what is blocked."
           "Paths Included": "The summary names the updated daily note and any mirrored owner notes."
           "Do Now Has Owner and Time": "Each item in the Do Now list names an explicit owner and a specific deadline or time reference."
+
+  # ── portfolio_review workflow ────────────────────────────────────────
+
+  - id: portfolio_discover_projects
+    name: "Discover Projects"
+    description: "Scan the notes repo to build a list of all active projects with their repos and platforms"
+    instructions_file: steps/portfolio_discover_projects.md
+    inputs:
+      - name: notes_path
+        description: "Path to the notes repo (e.g., ~/code/ncrmro/obsidian or ~/notes)"
+    outputs:
+      project_list.md:
+        type: file
+        description: "Structured list of all active projects with name, slug, repos (owner/repo), platform (github/forgejo), and local clone paths"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: project_list.md
+        quality_criteria:
+          "All Active Projects Listed": "Every active project from the notes repo is included with at least one repo reference."
+          "Platform Identified": "Each repo entry specifies whether it is on GitHub or Forgejo."
+          "Archived Excluded": "Archived or inactive projects are excluded from the list or clearly marked as excluded."
+
+  - id: portfolio_review_all_projects
+    name: "Review All Projects"
+    description: "Launch portfolio_review_one sub-workflow for each project in parallel via sub-agents"
+    instructions_file: steps/portfolio_review_all_projects.md
+    inputs:
+      - file: project_list.md
+        from_step: portfolio_discover_projects
+    outputs:
+      all_summaries.md:
+        type: file
+        description: "Combined per-project status summaries collected from all sub-workflow runs"
+        required: true
+    dependencies:
+      - portfolio_discover_projects
+    reviews:
+      - run_each: all_summaries.md
+        additional_review_guidance: "Read project_list.md to verify every active project from the list has a corresponding summary."
+        quality_criteria:
+          "Full Coverage": "Every active project from project_list.md has a status summary in the combined output."
+          "Consistent Format": "All per-project summaries follow the same structure (status, milestones, activity, blockers)."
+
+  - id: portfolio_synthesize_report
+    name: "Synthesize Portfolio Report"
+    description: "Combine all per-project summaries into a single portfolio health report with cross-project analysis"
+    instructions_file: steps/portfolio_synthesize_report.md
+    inputs:
+      - file: all_summaries.md
+        from_step: portfolio_review_all_projects
+      - file: project_list.md
+        from_step: portfolio_discover_projects
+    outputs:
+      portfolio_report.md:
+        type: file
+        description: "The final portfolio review report written to projects/portfolio/reviews/YYYY-MM.md in the notes repo"
+        required: true
+    dependencies:
+      - portfolio_review_all_projects
+      - portfolio_discover_projects
+    reviews:
+      - run_each: portfolio_report.md
+        additional_review_guidance: "Read all_summaries.md to verify the report accurately reflects the per-project data without fabrication."
+        quality_criteria:
+          "Portfolio Summary Present": "The report opens with an overall portfolio health assessment and project count."
+          "Per-Project Table": "A summary table lists every project with status indicator, active milestone, and activity level."
+          "Milestone Detail": "All open milestones across projects are listed with completion percentages and target dates."
+          "Cross-Project Analysis": "The report identifies cross-project blockers, resource conflicts, or dependencies."
+          "Priority Recommendations": "Actionable recommendations for where to focus next are included, ordered by impact."
+          "Eisenhower Matrices": "A portfolio-level Eisenhower matrix classifies all projects into 4 quadrants (urgent/important). Projects with 2+ milestones also have a per-project matrix."
+          "Data-Backed": "All status indicators and assessments cite specific data (commit counts, issue counts, dates) rather than vague assertions."
+
+  # ── portfolio_review_one workflow (sub-workflow, per project) ────────
+
+  - id: portfolio_gather_data
+    name: "Gather Project Data"
+    description: "Fetch milestones, git activity, and existing profile/charter data for a single project"
+    instructions_file: steps/portfolio_gather_data.md
+    inputs:
+      - name: project_slug
+        description: "The project slug (e.g., 'keystone', 'catalyst', 'meze')"
+      - name: project_repos
+        description: "Comma-separated list of repos as owner/repo:platform (e.g., 'ncrmro/keystone:github,ncrmro/keystone:forgejo')"
+      - name: notes_path
+        description: "Path to the notes repo for reading existing project profile/charter files"
+    outputs:
+      project_data.md:
+        type: file
+        description: "Raw collected data: milestone list with issue counts, recent git commits, charter/profile excerpts"
+        required: true
+    dependencies: []
+    reviews: []
+
+  - id: portfolio_write_summary
+    name: "Write Project Summary"
+    description: "Synthesize raw data into a formatted per-project status summary"
+    instructions_file: steps/portfolio_write_summary.md
+    inputs:
+      - file: project_data.md
+        from_step: portfolio_gather_data
+    outputs:
+      project_summary.md:
+        type: file
+        description: "Formatted status summary: status indicator, goals, milestones, recent activity, blockers, next actions"
+        required: true
+    dependencies:
+      - portfolio_gather_data
+    reviews:
+      - run_each: project_summary.md
+        additional_review_guidance: "Read project_data.md to verify the summary accurately reflects the raw data."
+        quality_criteria:
+          "Status Justified": "The status indicator (on-track/at-risk/behind/deferred) is justified by specific data points."
+          "Milestones Covered": "All open milestones are listed with completion percentage and target date if available."
+          "Activity Assessed": "Recent activity (commits, PRs, issues) is summarized to show momentum or stagnation."
+          "Actionable": "Next actions are concrete and specific, not vague aspirations."

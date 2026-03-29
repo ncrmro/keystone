@@ -2,13 +2,13 @@
 
 ## Objective
 
-Launch the `review_one` sub-workflow for each active project in parallel via sub-agents,
+Launch the `portfolio_review_one` sub-workflow for each active project in parallel via sub-agents,
 then collect all per-project summaries into a single combined output.
 
 ## Task
 
 Read the project list from the previous step and orchestrate parallel reviews of every
-project using the `portfolio/review_one` sub-workflow.
+project using the `executive_assistant/portfolio_review_one` sub-workflow.
 
 ### Process
 
@@ -17,8 +17,8 @@ project using the `portfolio/review_one` sub-workflow.
    - Extract each project's slug, repos (with platforms), local clone paths, and notes path
 
 2. **Launch sub-workflows in parallel**
-   - For each project, launch the `portfolio/review_one` workflow as a sub-agent using
-     the Agent tool (Task tool)
+   - For each project, launch the `executive_assistant/portfolio_review_one` workflow as
+     a sub-agent using the Agent tool (Task tool)
    - Pass these inputs to each sub-workflow:
      - `project_slug`: the project's slug (e.g., "keystone")
      - `project_repos`: comma-separated repo list as `owner/repo:platform`
@@ -27,8 +27,8 @@ project using the `portfolio/review_one` sub-workflow.
    - Launch ALL projects concurrently — do not wait for one to finish before starting
      the next
    - Use the `mcp__deepwork__start_workflow` tool with:
-     - `job_name`: "portfolio"
-     - `workflow_name`: "review_one"
+     - `job_name`: "executive_assistant"
+     - `workflow_name`: "portfolio_review_one"
      - `goal`: "Review project {slug} for portfolio status"
 
 3. **Collect results**
