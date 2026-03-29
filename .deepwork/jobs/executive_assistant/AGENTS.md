@@ -29,3 +29,89 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 
 1. **Use workflows** for structural changes (adding steps, modifying job.yml)
 2. **Direct edits** are fine for minor instruction tweaks
+
+## Job-Specific Context
+
+### Primary interface
+
+- `executive_assistant/task_loop` is the primary entrypoint for new work that
+  needs cross-project coordination.
+- Use the other workflows when the task is narrowly about event planning,
+  inbox cleanup, calendar edits, or event discovery.
+
+### Notes model
+
+- This job uses zk notes as the source of truth for task coordination.
+- For this job's task-loop workflow, do not read from or write to legacy
+  YAML task ledgers such as `.deepwork/jobs/task_loop/TASKS.yaml`.
+- Keep tags within the approved namespaces from `process.notes`:
+  - `project/<slug>`
+  - `repo/<owner>/<repo>`
+  - `status/<value>`
+  - `source/<value>`
+- Store milestone, issue, pull request, assignee, and deduplication references
+  in frontmatter fields instead of inventing new tag namespaces.
+
+### Daily rollover
+
+- The human operator's notes repo is the coordination source of truth.
+- The executive-assistant task loop maintains one dated daily note per day and
+  carries unfinished work forward by linking existing task notes.
+- Agent-owner notes repos should receive only assigned-work mirror notes plus
+  backlinks to the human daily note.
+
+### Learnings from task_loop rollout (2026-03-28)
+
+1. After adding or restructuring a job, run a DeepWork MCP validation pass on
+   the job itself. `deepwork_jobs/learn` is the right fit for instruction and
+   schema review.
+2. `deepwork_jobs/repair` is not a general job-review workflow. It expects a
+   workspace `.claude/settings.json` and is not applicable when that file is
+   absent.
+3. The executive-assistant task loop now relies on a shared task-note
+   frontmatter contract at `steps/shared/task_note_frontmatter.md`. Keep task
+   discovery, rollover, and owner mirroring aligned with that file.
+4. The current `ncrmro/notes` notebook may contain project hub notes with
+   `project:` frontmatter but without `status/active`. When that happens, the
+   canonical zk active-hub query returns zero notes. Treat this as notebook
+   drift, use the frontmatter notes as provisional hubs, and report the need
+   for normalization.
+5. During the smoke test, `zk new reports/ ...` only worked reliably when run
+   from inside the notebook workdir. Future note-creation steps should not rely
+   on relative note-group creation from an arbitrary cwd, even when a notebook
+   path is otherwise known.
+
+### Zellij fleet survey (added 2026-03-28)
+
+6. **The most efficient way to see what agents are doing right now is the zellij
+   fleet survey** — it takes seconds and reveals live activity not yet captured
+   in notes repos or git log:
+
+   ```bash
+   # List non-EXITED sessions
+   zellij list-sessions 2>/dev/null | grep -v EXITED
+
+   # Dump focused pane of each active session in parallel
+   for session in <names>; do
+     zellij --session "$session" action dump-screen /tmp/zellij-dump-${session}.txt
+   done
+   ```
+
+   Interpreting dumps:
+   - Claude Code idle prompt (`❯`) → agent waiting for work
+   - DeepWork MCP tool call JSON in the pane → identifies job/step/workflow exactly
+   - `agentctl <owner> claude` launch line → identifies which agent is running
+   - Shell prompt with no agent → session is human-operated or unoccupied
+
+7. **Session naming conventions on this keystone host:**
+   - Sessions named after projects (`keystone`, `catalyst`, `plant-caravan`) are
+     usually human or agent workspaces for that project's repo.
+   - Sessions named `<project>-<feature>` (e.g., `keystone-tui`,
+     `keystone-ks-web-docs`) are agent sessions for a specific feature branch.
+   - Sessions named after owners (`luce-catalyst`, `drago-pull-request`) are
+     agent sessions scoped to that agent.
+   - `notes` is typically the human operator's current session.
+
+8. **`dump-screen` captures only the focused pane.** For multi-pane sessions,
+   run `dump-layout` first to understand the structure, then interpret the dump
+   accordingly. Single-pane claude agent sessions are unambiguous.

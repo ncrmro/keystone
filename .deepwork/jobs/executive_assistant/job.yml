@@ -1,6 +1,6 @@
 name: executive_assistant
-version: "1.0.0"
-summary: "Executive assistant workflows: event planning, calendar management, inbox cleanup, and event discovery"
+version: "1.2.0"
+summary: "Executive assistant workflows: event planning, calendar management, inbox cleanup, event discovery, and zk-backed task coordination"
 common_job_info_provided_to_all_steps_at_runtime: |
   Executive assistant workflows for the human operator. These workflows handle
   common administrative and strategic tasks that support the CEO's productivity.
@@ -10,6 +10,8 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Calendar: Check for calendar tools or integrations available in the environment
   - Web search: Use WebSearch and WebFetch for research tasks
   - File management: Standard file tools for creating reports and plans
+  - zk notes: Use `zk --notebook-dir <path>` for note discovery, creation, linking, and indexing
+  - Zellij fleet survey: Use `zellij list-sessions` and `zellij --session <name> action dump-screen <path>` to inspect live agent activity. See collect_agent_activity.md for the full pattern.
 
   Conventions:
   - Always act on behalf of the human operator (see TEAM.md for identity)
@@ -17,6 +19,9 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Use plain, professional language in all written outputs
   - Include actionable next steps in every deliverable
   - Reference specific dates, times, and contacts where possible
+  - Prefer active project hub notes in `index/` as the source of truth for project scope
+  - For task coordination, create and update zk notes in notes repos instead of writing to legacy TASKS.yaml ledgers
+  - Keep tags within approved namespaces (`project/*`, `repo/*`, `status/*`, `source/*`); store milestone, issue, PR, assignee, and owner references in frontmatter
 
   Output audience: The human operator (CEO). Keep outputs concise and decision-ready.
 
@@ -52,6 +57,18 @@ workflows:
       - search_events
       - rank_and_filter
       - present_recommendations
+
+  - name: task_loop
+    summary: "Review calendar, active work, agent assignments, and milestone state; update zk notes; publish next actions"
+    steps:
+      - discover_notes_repos
+      - review_calendar_context
+      - collect_active_task_notes
+      - collect_agent_activity
+      - synthesize_daily_priorities
+      - rollover_daily_note
+      - sync_owner_notes
+      - publish_next_actions
 
 steps:
   # ── plan_event workflow ──────────────────────────────────────────────
@@ -396,3 +413,201 @@ steps:
           "Decision Ready": "Each recommendation includes enough information to decide whether to attend."
           "Clear Value Proposition": "For each event, the reason it matters to the human's goals is stated."
           "Actionable": "Registration links or next steps are included for each recommended event."
+
+  # ── task_loop workflow ───────────────────────────────────────────────
+
+  - id: discover_notes_repos
+    name: "Discover Notes Repos"
+    description: "Find the human and agent notes repos under the keystone owner layout and establish the working date"
+    instructions_file: steps/discover_notes_repos.md
+    inputs:
+      - name: notes_root
+        description: "Root directory containing owner repos (default: ~/.keystone/repos)"
+      - name: human_owner
+        description: "Owner slug for the human operator's notes repo (default: ncrmro)"
+      - name: owner_filter
+        description: "Optional comma-separated owner list to limit sync targets"
+      - name: target_date
+        description: "Optional ISO date to replay the workflow for a specific day"
+    outputs:
+      notes_repo_inventory.md:
+        type: file
+        description: "Discovered notes repos, owner roles, working date, and any missing repos"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: notes_repo_inventory.md
+        quality_criteria:
+          "Working Date Established": "The inventory records one working date and one human owner."
+          "Repo Coverage": "Each discovered owner repo includes an absolute notes path and existence status."
+
+  - id: review_calendar_context
+    name: "Review Calendar Context"
+    description: "Gather calendar events and timing pressure that should influence today's priorities"
+    instructions_file: steps/review_calendar_context.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: discover_notes_repos
+      - name: calendar_source
+        description: "Calendar account or command source to inspect"
+      - name: focus_window
+        description: "Near-term horizon to prioritize, such as 'today' or 'next 48 hours'"
+    outputs:
+      calendar_context.md:
+        type: file
+        description: "Calendar-critical events, deadlines, and task implications for the working date"
+        required: true
+    dependencies:
+      - discover_notes_repos
+    reviews:
+      - run_each: calendar_context.md
+        quality_criteria:
+          "Absolute Dates": "The report uses specific dates and times for every event it cites."
+          "Priority Signal": "Each calendar item states whether it should promote, defer, or monitor related work."
+
+  - id: collect_active_task_notes
+    name: "Collect Active Task Notes"
+    description: "Discover existing zk task notes, project hubs, and shared-surface references relevant to active work"
+    instructions_file: steps/collect_active_task_notes.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: discover_notes_repos
+      - file: calendar_context.md
+        from_step: review_calendar_context
+    outputs:
+      active_task_notes.md:
+        type: file
+        description: "Inventory of active task notes, linked projects, milestones, issues, and pull requests"
+        required: true
+    dependencies:
+      - discover_notes_repos
+      - review_calendar_context
+    reviews:
+      - run_each: active_task_notes.md
+        quality_criteria:
+          "zk First": "Task discovery is grounded in zk notes and active project hubs, not legacy YAML task ledgers."
+          "Shared Surface Captured": "Each tracked task records available project, repo, milestone, issue, and PR references."
+
+  - id: collect_agent_activity
+    name: "Collect Agent Activity"
+    description: "Summarize assigned agent work, mirrored notes, and active-session context across owner repos"
+    instructions_file: steps/collect_agent_activity.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: discover_notes_repos
+      - file: active_task_notes.md
+        from_step: collect_active_task_notes
+    outputs:
+      agent_activity.md:
+        type: file
+        description: "Current agent assignments, note mirrors, recent progress, and blockers"
+        required: true
+    dependencies:
+      - discover_notes_repos
+      - collect_active_task_notes
+    reviews:
+      - run_each: agent_activity.md
+        quality_criteria:
+          "Assignment Coverage": "Each active agent owner has either current assignments or an explicit 'none' status."
+          "Cross-Repo Awareness": "Mirrored task-note state between the human repo and agent repos is described accurately."
+
+  - id: synthesize_daily_priorities
+    name: "Synthesize Daily Priorities"
+    description: "Combine calendar pressure, task notes, and agent activity into one ranked action plan"
+    instructions_file: steps/synthesize_daily_priorities.md
+    inputs:
+      - file: calendar_context.md
+        from_step: review_calendar_context
+      - file: active_task_notes.md
+        from_step: collect_active_task_notes
+      - file: agent_activity.md
+        from_step: collect_agent_activity
+    outputs:
+      daily_priorities.md:
+        type: file
+        description: "Calendar-first ranked priorities, follow-ups, and carry-forward decisions for the day"
+        required: true
+    dependencies:
+      - review_calendar_context
+      - collect_active_task_notes
+      - collect_agent_activity
+    reviews:
+      - run_each: daily_priorities.md
+        quality_criteria:
+          "Calendar First": "Calendar-critical items outrank backlog work when they conflict."
+          "Explicit Next Actions": "Every priority entry has an owner, a concrete next action, and a reason for its rank."
+
+  - id: rollover_daily_note
+    name: "Rollover Daily Note"
+    description: "Create or update the executive-assistant daily note and carry unfinished work forward by link"
+    instructions_file: steps/rollover_daily_note.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: discover_notes_repos
+      - file: daily_priorities.md
+        from_step: synthesize_daily_priorities
+    outputs:
+      executive_assistant_daily.md:
+        type: file
+        description: "The dated executive-assistant daily note with priorities, delegation, blockers, and carry-forward links"
+        required: true
+    dependencies:
+      - discover_notes_repos
+      - synthesize_daily_priorities
+    reviews:
+      - run_each: executive_assistant_daily.md
+        quality_criteria:
+          "Single Daily Note": "The output identifies exactly one daily note for the working date."
+          "Carry Forward By Link": "Unfinished work is carried forward by linking existing task notes instead of duplicating content."
+
+  - id: sync_owner_notes
+    name: "Sync Owner Notes"
+    description: "Mirror assigned task state into owner notes repos while preserving the human daily note as the coordination source"
+    instructions_file: steps/sync_owner_notes.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: discover_notes_repos
+      - file: daily_priorities.md
+        from_step: synthesize_daily_priorities
+      - file: executive_assistant_daily.md
+        from_step: rollover_daily_note
+    outputs:
+      owner_sync_log.md:
+        type: file
+        description: "Per-owner sync actions, mirrored notes updated, and any skipped repos or conflicts"
+        required: true
+    dependencies:
+      - discover_notes_repos
+      - synthesize_daily_priorities
+      - rollover_daily_note
+    reviews:
+      - run_each: owner_sync_log.md
+        quality_criteria:
+          "Human Repo Canonical": "The log treats the human notes repo as the coordination source of truth."
+          "Scoped Mirrors": "Agent repos receive only assigned-work mirrors plus backlinks to the human daily note."
+
+  - id: publish_next_actions
+    name: "Publish Next Actions"
+    description: "Produce the final operator-facing summary and identify what the workflow updated"
+    instructions_file: steps/publish_next_actions.md
+    inputs:
+      - file: daily_priorities.md
+        from_step: synthesize_daily_priorities
+      - file: executive_assistant_daily.md
+        from_step: rollover_daily_note
+      - file: owner_sync_log.md
+        from_step: sync_owner_notes
+    outputs:
+      task_loop_summary.md:
+        type: file
+        description: "Final summary with today's priorities, delegated work, blockers, and note paths"
+        required: true
+    dependencies:
+      - synthesize_daily_priorities
+      - rollover_daily_note
+      - sync_owner_notes
+    reviews:
+      - run_each: task_loop_summary.md
+        quality_criteria:
+          "Decision Ready": "The summary gives the operator a short, concrete list of what to do now, what is delegated, and what is blocked."
+          "Paths Included": "The summary names the updated daily note and any mirrored owner notes."
