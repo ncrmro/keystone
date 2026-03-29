@@ -194,7 +194,7 @@
         {
           "refId": "A",
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum by(agent) (count_over_time({agent!=\"\"} | logfmt | host=\"$host\" | event=\"task_finish\" [$__range]))"
+          "expr": "sum by(agent) (count_over_time({agent!=\"\"} | logfmt | host=\"$host\" | event=\"run_finish\" [$__range]))"
         }
       ],
       "fieldConfig": {

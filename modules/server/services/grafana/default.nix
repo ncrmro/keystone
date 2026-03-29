@@ -18,6 +18,7 @@ let
   serverCfg = config.keystone.server;
   cfg = serverCfg.services.grafana;
   keystoneDashboards = ./dashboards;
+  provisionKeystoneDashboards = !(config.keystone.development or false);
   extraDashboardProviders = lib.imap0 (
     index: pathOrAttr:
     if lib.isAttrs pathOrAttr then
@@ -84,14 +85,15 @@ in
           root_url = "https://${cfg.subdomain}.${config.keystone.domain}/";
         };
         provision.enable = true;
-        provision.dashboards.settings.providers = [
-          {
-            name = "Keystone";
-            folder = "Keystone";
-            options.path = keystoneDashboards;
-          }
-        ]
-        ++ extraDashboardProviders;
+        provision.dashboards.settings.providers =
+          (lib.optionals provisionKeystoneDashboards [
+            {
+              name = "Keystone";
+              folder = "Keystone";
+              options.path = keystoneDashboards;
+            }
+          ])
+          ++ extraDashboardProviders;
 
         provision.datasources.settings.datasources =
           (lib.optional serverCfg.services.prometheus.enable {
