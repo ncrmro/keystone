@@ -192,6 +192,12 @@ let
           echo "  ✗ Missing privileged approval guidance in ~/.keystone/AGENTS.md"
           exit 1
         fi
+        if echo ${canonicalAgentsTextJson} | grep -q 'Route durable note capture' && echo ${canonicalAgentsTextJson} | grep -q 'gh:ncrmro/keystone#123'; then
+          echo "  ✓ Found notes routing and normalized shared-surface ref guidance in ~/.keystone/AGENTS.md"
+        else
+          echo "  ✗ Missing notes routing or normalized shared-surface ref guidance in ~/.keystone/AGENTS.md"
+          exit 1
+        fi
       fi
 
       # Verify DEEPWORK_ADDITIONAL_JOBS_FOLDERS for development-mode test
@@ -245,6 +251,12 @@ let
           echo "  ✓ Found privileged approval guidance in ~/.keystone/repos/AGENTS.md"
         else
           echo "  ✗ Missing privileged approval guidance in ~/.keystone/repos/AGENTS.md"
+          exit 1
+        fi
+        if echo ${reposAgentsTextJson} | grep -q 'Route durable note capture' && echo ${reposAgentsTextJson} | grep -q 'gh:ncrmro/keystone#123'; then
+          echo "  ✓ Found notes routing and normalized shared-surface ref guidance in ~/.keystone/repos/AGENTS.md"
+        else
+          echo "  ✗ Missing notes routing or normalized shared-surface ref guidance in ~/.keystone/repos/AGENTS.md"
           exit 1
         fi
       fi

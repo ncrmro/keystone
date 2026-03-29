@@ -99,6 +99,13 @@ let
           if aiCommandIds == [ ] then "_none_" else concatStringsSep ", " aiCommandIds
         }
       ''
+      (optionalString (elem "notes" aiCapabilities) ''
+        ## Notes command guidance
+
+        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - Shared-surface note refs MUST use normalized VCS frontmatter values such as `repo_ref: gh:ncrmro/keystone`, `issue_ref: gh:ncrmro/keystone#123`, `milestone_ref: gh:ncrmro/keystone#12`, or `pr_ref: gh:ncrmro/keystone#456`.
+        - Agents MUST NOT use placeholder note refs such as `gh:owner/repo-name#ID`.
+      '')
     ]
     ++ inlinedConventions
     ++ optional (referencedConventions != [ ]) ''
@@ -152,6 +159,13 @@ let
 
         ${reposList}
       ''
+      (optionalString (elem "notes" aiCapabilities) ''
+        ## Notes command guidance
+
+        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - Shared-surface note refs MUST use normalized VCS frontmatter values such as `repo_ref: gh:ncrmro/keystone`, `issue_ref: gh:ncrmro/keystone#123`, `milestone_ref: gh:ncrmro/keystone#12`, or `pr_ref: gh:ncrmro/keystone#456`.
+        - Agents MUST NOT use placeholder note refs such as `gh:owner/repo-name#ID`.
+      '')
     ]
     ++ reposInlinedConventions
     ++ optional (reposReferencedConventions != [ ]) ''

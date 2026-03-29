@@ -112,6 +112,18 @@ let
   ksNotesCommandBody = ''
     Route note-related requests to the appropriate notes DeepWork workflow.
 
+    ## When to use this route
+
+    - Use `ks.notes` when the task is primarily about durable note capture, note cleanup, inbox promotion, notebook repair, or notebook setup.
+    - If the user is working from an issue, pull request, milestone, or repo thread, preserve those links in the note as frontmatter fields rather than tags.
+    - Shared-surface refs in notes MUST use normalized VCS forms:
+      - GitHub repo: `gh:owner/repo`
+      - GitHub issue, milestone, or PR: `gh:owner/repo#123`
+      - Forgejo repo: `fj:owner/repo`
+      - Forgejo issue, milestone, or PR: `fj:owner/repo#123`
+    - Preferred frontmatter fields for these refs are `repo_ref`, `milestone_ref`, `issue_ref`, and `pr_ref`.
+    - When a quick brain dump is needed before deeper organization, capture the durable note first, include any known shared-surface refs, then continue with the appropriate notes workflow.
+
     ## Available workflows
 
     - **notes/process_inbox** — review and promote fleeting notes from inbox/ to permanent notes
