@@ -5,7 +5,7 @@ title: Team Schedules
 
 # Team Schedules
 
-Keystone agent teams operate on a shared calendar hosted on Stalwart CalDAV. Recurring cadence events are created by the CPO agent (Luce) using `calendula` and are visible to any CalDAV client connected to the same Stalwart instance.
+Keystone agent teams operate against a shared cadence defined in Stalwart CalDAV. Today, recurring cadence events are created in the CPO agent's (Luce) own CalDAV account using `calendula` and are only visible to that agent's CalDAV client. Full cross-account visibility for all agents and the human operator is planned for Phase 3 (ncrmro/keystone#199).
 
 ## Recurring cadences
 
