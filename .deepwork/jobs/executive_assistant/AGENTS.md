@@ -115,3 +115,25 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 8. **`dump-screen` captures only the focused pane.** For multi-pane sessions,
    run `dump-layout` first to understand the structure, then interpret the dump
    accordingly. Single-pane claude agent sessions are unambiguous.
+
+### Eisenhower matrix + project stats (added 2026-03-28)
+
+9. **The `synthesize_daily_priorities` step now produces an Eisenhower 2x2
+   matrix.** Projects with no recent merges, no active milestone, or no
+   assignee are strong Q4 candidates. Use project stats from
+   `collect_active_task_notes` to make the placement defensible, not just
+   intuitive.
+
+10. **Q4 disposal vocabulary** (agreed with operator 2026-03-28):
+    - **Defer** — important but not ready; add to a future milestone with date
+    - **Delegate** — assign to drago (engineering) or luce (product/scoping)
+    - **Icebox** — apply `icebox` GitHub label, remove from milestone, leave a comment
+    - **Delete** — close as "not planned" with a one-line explanation
+
+11. **Known active projects on this keystone instance** (for Eisenhower placement):
+    - `gh:ncrmro/keystone` — infrastructure platform; high importance always
+    - `gh:ncrmro/catalyst` — revenue-generating SaaS; high importance
+    - `gh:ncrmro/plant-caravan` — active milestone; medium importance
+    - `gh:ncrmro/meze` — no milestone, stalled; review each run — may be Q4
+    - `gh:ncrmro/ks.systems` — marketing/docs site; low urgency unless launch imminent
+    - `Unsupervised.com` — separate org; check separately via `gh:Unsupervisedcom`

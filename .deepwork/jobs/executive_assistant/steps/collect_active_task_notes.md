@@ -31,7 +31,33 @@ before the workflow creates or updates anything.
      provisional hubs for the report, and call out that they need
      `status/active` normalization for future runs.
 
-3. **Discover active task notes**
+3. **Pull project stats and recent PRs**
+
+   For each project with a known repo (e.g., `gh:ncrmro/catalyst`), run:
+
+   ```bash
+   # Open issues count + milestone summary
+   gh issue list --repo <owner/repo> --state open --json number,title,milestone \
+     --jq 'length as $count | {open_issues: $count, items: .}'
+
+   # Open PRs
+   gh pr list --repo <owner/repo> --state open \
+     --json number,title,author,reviewDecision
+
+   # Recently merged PRs (last 5)
+   gh pr list --repo <owner/repo> --state merged --limit 5 \
+     --json number,title,mergedAt
+
+   # Active milestones
+   gh api repos/<owner/repo>/milestones \
+     --jq '.[] | {title, open_issues, state}'
+   ```
+
+   Record a compact stats block per project in the output. This data feeds the
+   Eisenhower matrix in the next step — a project with no recent merges and no
+   active milestone is likely a candidate for icebox or delegation.
+
+4. **Discover active task notes**
    - Search `notes/`, `reports/`, and other notebook groups as needed for notes
      that appear to represent active work.
    - Use frontmatter and links first. Useful fields include:
@@ -78,7 +104,8 @@ before the workflow creates or updates anything.
 ### catalyst
 
 - **Hub**: /abs/path/to/index/202603101200 catalyst.md
-- **Repos**: repo/ncrmro/catalyst
+- **Repo**: gh:ncrmro/catalyst
+- **Stats**: 12 open issues · 2 open PRs · last merge 2026-03-25 · milestone: Cloud Platform (#5, 2 open)
 
 #### Tasks
 
@@ -92,6 +119,13 @@ before the workflow creates or updates anything.
    - **PR Ref**: none
    - **Source Ref**: calendar-investor-update-2026-03-28
    - **Calendar Alignment**: supports event on 2026-03-28 14:00
+
+#### Recent Merged PRs
+
+| PR | Title | Merged |
+|----|-------|--------|
+| #91 | fix: billing webhook retry logic | 2026-03-25 |
+| #90 | feat: cloud account onboarding UI | 2026-03-22 |
 
 ## Legacy Context
 
