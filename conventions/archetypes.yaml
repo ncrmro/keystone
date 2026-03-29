@@ -38,6 +38,7 @@ archetypes:
     description: "NixOS host — Nix devshells, direnv, declarative config"
     inlined_conventions:
       - process.version-control
+      - process.privileged-approval
       - process.prose
       - tool.standard-utilities
       - process.vcs-context-continuity
@@ -65,6 +66,7 @@ archetypes:
     description: "Keystone platform developer — editing nixos-config, keystone modules, and deepwork jobs"
     inlined_conventions:
       - process.version-control
+      - process.privileged-approval
       - process.prose
       - tool.nix
       - process.project-navigation

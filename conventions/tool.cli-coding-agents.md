@@ -8,6 +8,9 @@ its own instruction file format, discovery paths, and MCP configuration.
 This convention documents the correct paths, naming, and nuances for each
 tool so that keystone modules generate the right files in the right places.
 
+Keystone also maintains a canonical user-level instruction file at
+`~/.keystone/AGENTS.md`. Tool-native files are generated from that same content.
+
 ## Instruction File Paths
 
 Each tool discovers project and user-level instruction files at specific
@@ -29,6 +32,7 @@ tool loads conventions natively (without prompt injection).
 
 **Keystone generates**:
 
+- `~/.keystone/AGENTS.md` — canonical Keystone instruction file for the user profile
 - `~/.claude/CLAUDE.md` — system-wide conventions from `keystone-conventions` derivation
 - `~/.claude.json` — MCP server configs (deepwork, chrome-devtools, grafana)
 - `.claude/rules/` — not generated (project-specific, not keystone's concern)
@@ -47,6 +51,7 @@ tool loads conventions natively (without prompt injection).
 
 **Keystone generates**:
 
+- `~/.keystone/AGENTS.md` — canonical Keystone instruction file for the user profile
 - `~/.gemini/GEMINI.md` — system-wide conventions from `keystone-conventions` derivation
 - `~/.gemini/settings.json` — MCP server configs + context settings
 
@@ -64,9 +69,10 @@ tool loads conventions natively (without prompt injection).
 
 **Keystone generates**:
 
+- `~/.keystone/AGENTS.md` — canonical Keystone instruction file for the user profile
 - `~/.codex/AGENTS.md` — system-wide conventions (note: Codex calls this `instructions.md` in some versions; use `AGENTS.md` for compatibility)
 - `~/.codex/config.toml` — managed MCP server configs, merged with the user's existing Codex settings
-- `~/.codex/skills/` — Codex-native skills generated from keystone workflow command templates
+- `~/.codex/skills/` — Codex-native skills generated for the curated Keystone surface (`$ks`, `$ks-dev`, `$deepwork`)
 
 **Important nuance**: Codex 0.114.0 does not reliably discover skills when
 `SKILL.md` and `agents/openai.yaml` are symlinks. Keystone MUST materialize its
@@ -88,6 +94,7 @@ appearing instantly through out-of-store symlinks.
 
 **Keystone generates**:
 
+- `~/.keystone/AGENTS.md` — canonical Keystone instruction file for the user profile
 - `~/.config/opencode/AGENTS.md` — system-wide conventions
 - `~/.config/opencode/opencode.json` — MCP server configs
 
@@ -131,17 +138,17 @@ when OpenCode-specific configuration is needed.
 ### `modules/terminal/conventions.nix`
 
 1. MUST generate the system-wide conventions content from `keystone-conventions` derivation
-2. MUST write to ALL tool-native user-level paths listed in the summary table above (Claude, Gemini, Codex)
-3. MUST NOT write a separate canonical copy — the tool-native files ARE the source of truth
+2. MUST write the canonical user-level instruction file to `~/.keystone/AGENTS.md`
+3. MUST derive the tool-native user-level files from the same generated content
 4. MUST symlink `~/.config/keystone/conventions/` to the conventions store path for on-demand reading
 
 ### `modules/terminal/ai-extensions.nix`
 
-1. MUST treat `modules/terminal/ai-commands/*.md` as metadata-aware templates with required YAML frontmatter
-2. MUST derive tool-facing descriptions and labels from parsed frontmatter, not the first line of the Markdown body
-3. MUST preserve YAML frontmatter for tools that natively consume Markdown metadata, including Claude Code commands and Codex skills
-4. MUST render Gemini commands as native TOML rather than Markdown-based skill files
-5. MUST strip command frontmatter from rendered bodies only for targets that do not consume it natively
+1. MUST generate only the curated Keystone command surface by default: `/ks`, optional `/ks.dev`, and `/deepwork`
+2. MUST gate `/ks.dev` on `keystone.development = true`
+3. MUST derive tool-facing descriptions and labels from the generated command definitions
+4. MUST preserve YAML frontmatter for tools that natively consume Markdown metadata, including Claude Code commands and Codex skills
+5. MUST render Gemini commands as native TOML rather than Markdown-based skill files
 6. MUST keep command filenames and Codex skill ids stable unless a breaking rename is explicitly intended
 
 ### `modules/terminal/cli-coding-agent-configs.nix`

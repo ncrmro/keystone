@@ -58,7 +58,7 @@ ks update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-use
 Pull, verify, build, and deploy Keystone hosts.
 
 - `--debug`: Show warnings from `git` and `nix` commands.
-- `--dev`: Build and activate home-manager profiles only.
+- `--dev`: Build and deploy the current unlocked checkout without pull, lock, or push.
 - `--boot`: Register the new generation for next boot without switching now.
 - `--pull`: Pull managed repos only, then stop.
 - `--lock`: Force lock mode explicitly. This is the default unless `--dev` is set.
@@ -117,10 +117,11 @@ ks grafana dashboards <apply|export> [uid]
 
 Manage checked-in Keystone Grafana dashboards through the Grafana API.
 
-- `apply`: Push every checked-in dashboard JSON file to Grafana.
+- `apply`: Push every checked-in dashboard JSON file to Grafana, and delete stale keystone-managed dashboards that are no longer in the repo.
 - `export <uid>`: Pull one dashboard by UID into its checked-in JSON file.
 - `GRAFANA_URL`: Override the Grafana base URL.
 - `GRAFANA_API_KEY`: Override the Grafana API key.
+- In development mode, `ks update --dev`, `ks update`, and `ks switch` automatically sync keystone dashboards after deployment.
 
 Examples:
 
@@ -136,6 +137,11 @@ ks agent [--local [MODEL]] [args...]
 ```
 
 Launch an AI coding agent with Keystone conventions and host context.
+
+`ks agent` launches `claude` by default. Its static base prompt comes from the
+generated `~/.keystone/AGENTS.md`, then `ks` appends live host and fleet context.
+The generated command surface inside the session is curated to `/ks`, optional
+`/ks.dev` in development mode, and `/deepwork`.
 
 - `--local [MODEL]`: Use the local Ollama-backed model, or the configured default model.
 - Remaining args are passed through to the underlying `claude` invocation.

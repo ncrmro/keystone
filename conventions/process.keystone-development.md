@@ -23,12 +23,15 @@ at the Nix module level, see `process.keystone-development-mode`.
 
 4. `ks build` MUST be used to verify changes compile before deploying. It builds
    the full system for the current host using local keystone checkouts in dev mode.
-5. `ks update --dev` deploys **home-manager profiles only** (fast, no sudo). Use
-   this after editing terminal config, conventions, or deepwork jobs.
-6. `ks update` runs the full update cycle: pull, lock, build, push, deploy. Requires
-   sudo. Use after keystone or nixos-config changes that affect NixOS system config.
+5. `ks update --dev` deploys **home-manager profiles only**. Use this after editing
+   terminal config, conventions, or deepwork jobs. Despite the narrower scope,
+   it MUST still be treated as an approval-gated operation per
+   `process.privileged-approval`.
+6. `ks update` runs the full update cycle: pull, lock, build, push, deploy. It MUST
+   be treated as an approval-gated operation per `process.privileged-approval`.
 7. `ks doctor` MUST be run when diagnosing fleet health or after a failed deploy.
-8. `ks switch` (alias for the NixOS rebuild path) applies immediately, requires sudo.
+8. `ks switch` (alias for the NixOS rebuild path) applies immediately and MUST be
+   treated as an approval-gated operation per `process.privileged-approval`.
 
 ## Keystone dev workflow (in-repo iteration)
 
@@ -40,7 +43,7 @@ at the Nix module level, see `process.keystone-development-mode`.
    ```
 10. When `keystone.development = true`, `ks build` and `ks update --dev` automatically
     use the live `ncrmro/keystone` checkout — no `keystone-dev` wrapper needed for
-    home-manager profile changes.
+    home-manager profile changes. Approval policy still applies to `ks update --dev`.
 
 ## Change flow: keystone → nixos-config
 
@@ -61,15 +64,27 @@ at the Nix module level, see `process.keystone-development-mode`.
     See `process.keystone-development-mode` rule 11 for the module-level specification.
 14. After editing a convention or archetype, run `ks update --dev` to regenerate
     instruction files. In development mode, regenerated files appear as git diffs
-    in the live repo checkout — commit them to persist the change.
+    in the live repo checkout — commit them to persist the change. Because this is
+    a deploy path, request approval before running it.
+
+## Notes metadata
+
+15. When keystone workflows create or update zk notes that reference a GitHub or
+    Forgejo shared surface, those refs MUST use normalized frontmatter fields:
+    `repo_ref`, `milestone_ref`, `issue_ref`, and `pr_ref`.
+16. GitHub refs MUST use `gh:<owner>/<repo>#<number>`. Forgejo refs MUST use
+    `fj:<owner>/<repo>#<number>`. Repo-only refs MUST use
+    `gh:<owner>/<repo>` or `fj:<owner>/<repo>`.
+17. Bare issue numbers, local path aliases, and custom tracker prefixes MUST NOT
+    be used in note frontmatter when a shared-surface ref exists.
 
 ## DeepWork jobs
 
-15. `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` (set by keystone in dev mode — see
+18. `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` (set by keystone in dev mode — see
     `process.keystone-development-mode` rule 10) points at two live job roots:
     - `~/.keystone/repos/Unsupervisedcom/deepwork/library/jobs/` — shared library jobs
     - `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs/` — keystone-native jobs
-16. Edits to job files in these directories take effect immediately without rebuild.
-17. When fixing or extending a shared library job, edit it in
+19. Edits to job files in these directories take effect immediately without rebuild.
+20. When fixing or extending a shared library job, edit it in
     `Unsupervisedcom/deepwork/library/jobs/`. For keystone-specific jobs, edit in
     `ncrmro/keystone/.deepwork/jobs/`.
