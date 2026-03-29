@@ -1,8 +1,8 @@
 name: project
-version: "1.4.2"
-summary: "Project onboarding, press releases, and success charter reviews"
+version: "1.5.0"
+summary: "Project onboarding, press releases, milestone planning, engineering handoff, and success charter reviews"
 common_job_info_provided_to_all_steps_at_runtime: |
-  This job covers three project-level business workflows:
+  This job covers the full project lifecycle from onboarding through engineering handoff:
 
   1. **Onboard** — Interactive onboarding for new projects: collect info, investigate repos/sites,
      build a structured profile. Projects can be commercial ventures, nonprofits, open-source
@@ -12,11 +12,31 @@ common_job_info_provided_to_all_steps_at_runtime: |
      announces a product feature to customers AND scopes the development work required to deliver
      on the promise.
 
-  3. **Success** — Define and review a project's mission, KPIs, charter, and goals across
+  3. **Milestone** — Creates or adopts a milestone for a project repo, starting from either a
+     press release issue URL, an existing issue, or freehand notes. Refines raw content into
+     properly formatted user stories, creates the milestone, and links the issue.
+     Usually follows `project/press_release`.
+
+  4. **Milestone Engineering Handoff** — The engineering response to a product milestone.
+     Produces an internal FAQ (feasibility, architecture, cost, risk), conducts a document
+     review with optional technical spikes, writes functional requirement specs, and creates
+     a single plan issue tracking all implementation work. PRs are opened against the plan
+     issue directly — no child issues. Implementation work flows through `engineer/implement`.
+
+  5. **Success** — Define and review a project's mission, KPIs, charter, and goals across
      5 horizons (1 month, 6 month, 1 year, 5 year, 10 year). Produces a living charter doc
      and dated status reports with a verdict (accelerate/continue/pivot/pause/archive) plus
      confidence score. Serves as the backbone for prioritization and reality checks — keeps
      the human from losing the business thread while focused on engineering.
+
+  The complete project pipeline:
+    1. project/press_release                 — working-backwards press release
+    2. project/milestone                     — milestone + user stories (accepts press_release_issue_url)
+    3. project/milestone_engineering_handoff — internal FAQ → document review → specs → plan issue
+    4. engineer/implement                    — implementation task by task (one PR per task)
+
+  After completing any project workflow, use `ks.notes` / `notes/process_inbox` to capture
+  key decisions, risks, and learnings into personal notes and keep shared surfaces up to date.
 
   Key data files:
   - PROJECTS.yaml: Priority-ordered project list at repo root. New projects are appended
@@ -56,7 +76,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
     workflows (milestone/setup, etc.) link back to the press release via this URL.
 
   Downstream workflows this profile feeds into:
-  - `milestone/setup` — creates milestone and user stories from press release scope
+  - `project/milestone` — creates milestone and user stories from press release scope
   - Research workflows for competitive analysis, market research, technical research
 
   Lean Canvas fields collected during intake:
@@ -90,6 +110,22 @@ workflows:
     steps:
       - gather_context
       - write_press_release
+
+  - name: milestone
+    summary: "Parse press release or scope notes, refine user stories, create milestone, and link issue"
+    steps:
+      - gather_and_parse
+      - refine_stories
+      - setup_milestone
+
+  - name: milestone_engineering_handoff
+    summary: "Internal FAQ, document review, optional spikes, specs, and plan issue — full engineering gate before implementation"
+    steps:
+      - review_milestone
+      - write_internal_faq
+      - document_review
+      - create_specs
+      - create_plan_issue
 
   - name: success
     summary: "Define or review project charter, KPIs, goals, and produce a verdict with recommendations"
@@ -250,6 +286,236 @@ steps:
         quality_criteria:
           "Full URL Present": "The file contains a full URL (starting with https://) pointing to the issue that holds the press release."
           "Issue Accessible": "The URL points to an actual issue on GitHub or Forgejo, not a file path or placeholder."
+
+  - id: gather_and_parse
+    name: "Gather and Parse Input"
+    description: "Read an existing issue or accept freehand notes and extract raw scope. Optionally fetches press release content from a press_release_issue_url."
+    instructions_file: steps/gather_and_parse.md
+    inputs:
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo) where the milestone will live"
+      - name: issue_number
+        description: "Issue number or URL to use as the starting point (leave blank if providing freehand notes)"
+      - name: freehand_notes
+        description: "Freehand scope notes if no existing issue (leave blank if using an existing issue)"
+      - name: press_release_issue_url
+        description: "Full URL of the press release issue created by project/press_release — embed in milestone issue body if provided (optional)"
+    outputs:
+      raw_scope.md:
+        type: file
+        description: "Extracted raw scope content from the issue body or freehand notes, with source metadata and press release content if provided"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: raw_scope.md
+        quality_criteria:
+          "Source Captured": "The raw scope includes the full original content without omissions."
+          "Metadata Present": "The file includes metadata about the source (issue number/URL, repo, platform) or notes that input was freehand."
+          "Press Release Captured": "If press_release_issue_url was provided, the press release content is recorded under a '## Press Release' heading."
+
+  - id: refine_stories
+    name: "Refine User Stories"
+    description: "Transform raw scope into properly formatted user stories with acceptance criteria"
+    instructions_file: steps/refine_stories.md
+    inputs:
+      - file: raw_scope.md
+        from_step: gather_and_parse
+    outputs:
+      refined_stories.md:
+        type: file
+        description: "User stories in standard format with acceptance criteria, priority tags, and ownership labels"
+        required: true
+      milestone_title.md:
+        type: file
+        description: "Auto-generated milestone title derived from the scope content"
+        required: true
+    dependencies:
+      - gather_and_parse
+    reviews:
+      - run_each: refined_stories.md
+        additional_review_guidance: "Read the raw_scope.md from the previous step to verify all scope items are covered."
+        quality_criteria:
+          "Full Coverage": "Every distinct scope item from the raw input maps to at least one user story."
+          "Standard Format": "Each story follows: As a [persona], I want [action], so that [benefit] — with a checklist of acceptance criteria."
+          "Ownership Tagged": "Each story is tagged as product or engineering with a logical distinction."
+          "Priority Assigned": "Each story has a priority tag (high / medium / low)."
+
+  - id: setup_milestone
+    name: "Set Up Milestone and Link Issue"
+    description: "Check for existing milestone, create if needed, update issue body, and link issue to milestone"
+    instructions_file: steps/setup_milestone.md
+    inputs:
+      - file: refined_stories.md
+        from_step: refine_stories
+      - file: milestone_title.md
+        from_step: refine_stories
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo)"
+      - name: issue_number
+        description: "Issue number to update (blank if a new issue should be created)"
+    outputs:
+      setup_report.md:
+        type: file
+        description: "Summary of created/found milestone, issue number, URLs, and what was updated"
+        required: true
+    dependencies:
+      - refine_stories
+    reviews:
+      - run_each: setup_report.md
+        additional_review_guidance: "Read the refined_stories.md to verify the issue body contains all refined stories."
+        quality_criteria:
+          "Milestone Exists": "A milestone was found or created and its title and URL are recorded."
+          "Issue Linked": "The issue is associated with the milestone."
+          "Issue Body Updated": "The issue body was updated with the refined user stories in standard format."
+          "Labels Applied": "The product label is on the issue."
+          "Report Complete": "The report includes milestone title, issue number, and URLs."
+          "Press Release Embedded": "If a press release issue URL was provided in gather_and_parse, the full press release text is embedded in the issue body under a '## Press Release' heading — not as a link or vault path."
+          "Milestone Description Short": "The milestone description is a short summary (2-3 sentences), not a wall of text."
+          "Milestone Description Motivating": "The milestone description includes both WHY (the problem or motivation) and WHAT (the deliverable) — not just a feature label."
+
+  - id: review_milestone
+    name: "Review Milestone and Analyze Scope"
+    description: "Fetch the milestone issue, analyze the codebase, and map user stories to systems"
+    instructions_file: steps/review_milestone.md
+    inputs:
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo)"
+      - name: milestone_issue_number
+        description: "The milestone's consolidated user stories issue number (must already exist)"
+    outputs:
+      scope_analysis.md:
+        type: file
+        description: "Systems map, affected files/modules, shared boundaries, prerequisites, and ambiguity flags"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: scope_analysis.md
+        quality_criteria:
+          "Full Story Coverage": "Every user story from the milestone issue is analyzed and mapped to affected codebase files or modules."
+          "Codebase Grounding": "References actual files and directories in the project repository, not hypothetical or generic paths."
+          "Boundary Identification": "Shared system boundaries across stories are identified and documented."
+          "Gap Detection": "Implied prerequisites not explicitly listed in the user stories are identified and flagged."
+
+  - id: write_internal_faq
+    name: "Write Internal FAQ"
+    description: "Engineering reality check — answer feasibility, architecture, cost/effort, and risk questions for every user story. Produce a summary verdict and list required spikes."
+    instructions_file: steps/write_internal_faq.md
+    inputs:
+      - file: scope_analysis.md
+        from_step: review_milestone
+    outputs:
+      internal_faq.md:
+        type: file
+        description: "Per-story feasibility/architecture/cost/risk analysis, required spikes list, and summary verdict (green/yellow/red)"
+        required: true
+    dependencies:
+      - review_milestone
+    reviews:
+      - run_each: internal_faq.md
+        quality_criteria:
+          "Full Story Coverage": "Every user story from the scope analysis has a feasibility, architecture, cost/effort, and risk answer."
+          "T-shirt Sizing Concrete": "Every story has a T-shirt size (XS/S/M/L/XL) with a written justification — no 'TBD' entries."
+          "Spikes Identified": "Any stories relying on novel or unproven technology have a corresponding spike entry with a clear blocking question."
+          "Verdict Stated": "The document opens with a summary verdict of green, yellow, or red with supporting rationale."
+          "Posted as Comment": "The internal FAQ was posted as a comment on the milestone issue."
+
+  - id: document_review
+    name: "Document Review"
+    description: "Crucible — present internal FAQ, run required spikes via spike/spike, negotiate scope to MVP, and produce a binding review decision green-lighting the agreed scope for specs."
+    instructions_file: steps/document_review.md
+    inputs:
+      - file: internal_faq.md
+        from_step: write_internal_faq
+      - file: scope_analysis.md
+        from_step: review_milestone
+    outputs:
+      review_decision.md:
+        type: file
+        description: "Binding scope decision: in-scope stories, deferred stretch goals, renegotiated stories, spike findings, and explicit green-light for specs"
+        required: true
+    dependencies:
+      - write_internal_faq
+      - review_milestone
+    reviews:
+      - run_each: review_decision.md
+        additional_review_guidance: "Read internal_faq.md to verify all required spikes were completed and all red/yellow items were resolved before the green-light."
+        quality_criteria:
+          "Spikes Completed": "If the internal FAQ listed required spikes, each spike's findings are documented in the review decision."
+          "Stories Categorized": "Every story is explicitly categorized as in scope, deferred, or renegotiated — no uncategorized stories."
+          "Renegotiations Documented": "For each renegotiated story, the original promise, the revised scope, and the technical constraint are recorded."
+          "Milestone Issue Updated": "The milestone issue body was updated to reflect the negotiated scope."
+          "Green-lit": "The document ends with an explicit 'Green-lit for specs' statement."
+
+  - id: create_specs
+    name: "Create Functional Requirement Specs"
+    description: "Write spec files grouped by system boundary with behavioral requirements and data contracts, covering only approved MVP scope from the review decision"
+    instructions_file: steps/create_specs.md
+    inputs:
+      - file: scope_analysis.md
+        from_step: review_milestone
+      - file: review_decision.md
+        from_step: document_review
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo)"
+      - name: milestone_issue_number
+        description: "The milestone's consolidated user stories issue number"
+    outputs:
+      specs_pr_report.md:
+        type: file
+        description: "Report of created spec files and the draft PR with links"
+        required: true
+    dependencies:
+      - review_milestone
+      - document_review
+    reviews:
+      - run_each: specs_pr_report.md
+        additional_review_guidance: "Read the scope_analysis.md and review_decision.md to verify all approved system boundaries are covered by specs and deferred stories are excluded."
+        quality_criteria:
+          "Full Boundary Coverage": "Every system boundary for approved stories has a corresponding spec file."
+          "Behavioral Requirements": "Specs use RFC 2119 keywords (MUST, SHOULD, MAY) for behavioral requirements."
+          "Data Contracts": "API contracts, data models, or interface definitions are specified where applicable."
+          "PR Created": "A draft PR has been created with the spec files and assigned to reviewers."
+          "Edge Cases": "Edge cases and error handling are documented in each spec."
+          "Approved Scope Only": "No specs were written for deferred stories from the review decision."
+
+  - id: create_plan_issue
+    name: "Create Implementation Plan Issue"
+    description: "Create a single plan issue that tracks all milestone work — with task checklist, parallelism notes, and blocking dependencies. PRs are opened against this issue directly."
+    instructions_file: steps/create_plan_issue.md
+    inputs:
+      - file: scope_analysis.md
+        from_step: review_milestone
+      - file: review_decision.md
+        from_step: document_review
+      - file: specs_pr_report.md
+        from_step: create_specs
+      - name: project_repo
+        description: "Repo slug (owner/repo) and platform (github or forgejo)"
+      - name: milestone_issue_number
+        description: "The milestone's consolidated user stories issue number"
+    outputs:
+      plan_issue_report.md:
+        type: file
+        description: "Report of the created plan issue with number, URL, and content summary"
+        required: true
+    dependencies:
+      - review_milestone
+      - document_review
+      - create_specs
+    reviews:
+      - run_each: plan_issue_report.md
+        additional_review_guidance: "Read scope_analysis.md, review_decision.md, and specs_pr_report.md to verify the plan covers all approved stories. Verify that NO child issues were created — all work is tracked in the single plan issue's task checklist."
+        quality_criteria:
+          "Single Issue": "Only ONE plan issue was created. No child issues exist."
+          "Task Checklist": "The plan issue includes a phased task checklist with conventional commit prefixes (feat:, chore:, test:)."
+          "Parallelism Documented": "The plan issue documents which tasks can be done in parallel and which are blocking."
+          "Approved Stories Present": "Every approved story from the review decision appears in the plan with happy path requirements."
+          "Test Expectations": "Each story includes red/green test expectations describing what fails before and passes after implementation."
+          "Design Mockups": "ASCII art mockups are included for new UI components or layouts."
+          "Demo Descriptions": "Expected demo artifacts are described for each story."
+          "Specs Referenced": "The specs PR is referenced in the plan issue body."
+          "Review Decision Referenced": "The review decision is referenced so implementers understand scope constraints."
+          "Milestone Linked": "The plan issue is linked to the milestone."
 
   - id: assess_state
     name: "Assess Project State"
