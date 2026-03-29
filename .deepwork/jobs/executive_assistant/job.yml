@@ -53,6 +53,14 @@ workflows:
       - rank_and_filter
       - present_recommendations
 
+  - name: create_slide_deck
+    summary: "Create a Slidev presentation stored as a zk note in ~/notes/presentations/"
+    steps:
+      - gather_slide_requirements
+      - scaffold_presentation
+      - write_slides
+      - preview_and_capture
+
 steps:
   # ── plan_event workflow ──────────────────────────────────────────────
 
@@ -396,3 +404,102 @@ steps:
           "Decision Ready": "Each recommendation includes enough information to decide whether to attend."
           "Clear Value Proposition": "For each event, the reason it matters to the human's goals is stated."
           "Actionable": "Registration links or next steps are included for each recommended event."
+
+  # ── create_slide_deck workflow ────────────────────────────────────────
+
+  - id: gather_slide_requirements
+    name: "Gather Slide Requirements"
+    description: "Collect topic, audience, project/milestone, key messages, tone, and existing artifacts"
+    instructions_file: steps/create_slide_gather_requirements.md
+    inputs:
+      - name: topic
+        description: "What is the presentation about? (e.g., 'Plant Caravan Q1 milestone review')"
+      - name: audience
+        description: "Who will see this? (e.g., 'internal team', 'investors', 'CEO')"
+      - name: project
+        description: "Project slug this relates to (e.g., 'plant-caravan'), or leave blank"
+      - name: milestone
+        description: "Milestone slug this relates to (e.g., 'hydrotower-v1'), or leave blank"
+    outputs:
+      slide_requirements.md:
+        type: file
+        description: "Structured requirements document covering topic, audience, key messages, tone, and artifacts"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: slide_requirements.md
+        quality_criteria:
+          "Audience Named": "The audience is a specific named group, not a generic placeholder."
+          "Key Messages Present": "At least 3 key messages are listed."
+          "Actionable Topic": "The topic is specific enough for a writer to produce targeted slides."
+
+  - id: scaffold_presentation
+    name: "Scaffold Presentation"
+    description: "Create the zk note directory in ~/notes/presentations/ with index.md, slides.md, and assets/; initialize Git LFS"
+    instructions_file: steps/create_slide_scaffold.md
+    inputs:
+      - file: slide_requirements.md
+        from_step: gather_slide_requirements
+    outputs:
+      scaffold_report.md:
+        type: file
+        description: "Report confirming directory structure, file creation, and LFS status"
+        required: true
+    dependencies:
+      - gather_slide_requirements
+    reviews:
+      - run_each: scaffold_report.md
+        additional_review_guidance: "Verify that the listed directory and files actually exist on disk."
+        quality_criteria:
+          "Directory Created": "The scaffold report names a ~/notes/presentations/{id} {slug}/ path that exists."
+          "Required Files Present": "Both index.md and slides.md are listed as created."
+          "LFS Documented": "Git LFS status (installed or not) is documented."
+
+  - id: write_slides
+    name: "Write Slides"
+    description: "Produce the full slides.md content in Slidev format covering all key messages"
+    instructions_file: steps/create_slide_write.md
+    inputs:
+      - file: slide_requirements.md
+        from_step: gather_slide_requirements
+      - file: scaffold_report.md
+        from_step: scaffold_presentation
+    outputs:
+      slides_draft_report.md:
+        type: file
+        description: "Report confirming slide count, sections, and key message coverage"
+        required: true
+    dependencies:
+      - gather_slide_requirements
+      - scaffold_presentation
+    reviews:
+      - run_each: slides_draft_report.md
+        additional_review_guidance: "Read slide_requirements.md and verify all key messages appear in the draft report's coverage checklist."
+        quality_criteria:
+          "Key Messages Covered": "Every key message from requirements is marked as covered."
+          "Slide Count in Range": "The reported slide count is within the requested range."
+          "Valid Slidev Structure": "The report confirms slides.md starts with a YAML front matter block."
+
+  - id: preview_and_capture
+    name: "Preview and Capture"
+    description: "Launch Slidev on port 3031, screenshot the opening slide, and commit all artifacts to git"
+    instructions_file: steps/create_slide_preview.md
+    inputs:
+      - file: scaffold_report.md
+        from_step: scaffold_presentation
+      - file: slides_draft_report.md
+        from_step: write_slides
+    outputs:
+      preview_report.md:
+        type: file
+        description: "Report confirming dev server outcome, screenshot status, LFS tracking, and git commit SHA"
+        required: true
+    dependencies:
+      - scaffold_presentation
+      - write_slides
+    reviews:
+      - run_each: preview_report.md
+        quality_criteria:
+          "Git Commit Present": "The preview report includes a git commit SHA."
+          "Deck Path Confirmed": "The report confirms the final deck path in ~/notes/presentations/."
+          "Outcomes Documented": "Dev server and screenshot outcomes (success or failure) are both documented."
