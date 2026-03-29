@@ -11,8 +11,17 @@ local function shell_quote(value)
     return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
 end
 
+local function command_path(name)
+    local home = os.getenv("HOME") or ""
+    if home ~= "" then
+        return home .. "/.local/bin/" .. name
+    end
+
+    return name
+end
+
 local function current_project()
-    local handle = io.popen("keystone-project-menu get-current-project")
+    local handle = io.popen(command_path("keystone-project-menu") .. " get-current-project")
     if not handle then
         return ""
     end
@@ -33,7 +42,7 @@ function GetEntries()
             Text = "Create session",
             Subtext = "Project: " .. slug .. " · leave empty for main",
             Value = slug,
-            Preview = "keystone-project-menu preview " .. shell_quote(slug),
+            Preview = command_path("keystone-project-menu") .. " preview " .. shell_quote(slug),
             PreviewType = "command",
         }
     }
@@ -45,5 +54,5 @@ function CreateSession(value, args, query)
         session = "main"
     end
 
-    os.execute("keystone-project-menu open " .. shell_quote(value) .. " " .. shell_quote(session) .. " >/dev/null 2>&1 &")
+    os.execute(command_path("keystone-project-menu") .. " open " .. shell_quote(value) .. " " .. shell_quote(session) .. " >/dev/null 2>&1")
 end

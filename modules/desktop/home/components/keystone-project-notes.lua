@@ -6,7 +6,6 @@ HideFromProviderlist = true
 Parent = "keystone-project-details"
 History = false
 FixedOrder = true
-Action = "keystone-project-menu dispatch '%VALUE%'"
 
 local function json_decode(value)
     if jsonDecode ~= nil then
@@ -20,8 +19,19 @@ local function json_decode(value)
     return nil
 end
 
+local function command_path(name)
+    local home = os.getenv("HOME") or ""
+    if home ~= "" then
+        return home .. "/.local/bin/" .. name
+    end
+
+    return name
+end
+
+Action = command_path("keystone-project-menu") .. " dispatch '%VALUE%'"
+
 local function current_project()
-    local handle = io.popen("keystone-project-menu get-current-project")
+    local handle = io.popen(command_path("keystone-project-menu") .. " get-current-project")
     if not handle then
         return ""
     end
@@ -38,7 +48,7 @@ function GetEntries()
         return {}
     end
 
-    local handle = io.popen("keystone-project-menu project-notes-json " .. "'" .. slug:gsub("'", "'\\''") .. "' 2>/dev/null")
+    local handle = io.popen(command_path("keystone-project-menu") .. " project-notes-json " .. "'" .. slug:gsub("'", "'\\''") .. "' 2>/dev/null")
     if not handle then
         return {}
     end

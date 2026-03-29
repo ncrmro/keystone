@@ -22,6 +22,7 @@ The system MUST provide a unified, hierarchical menu accessible via a global key
 - **dt-menu-001.7**: The menu MUST support direct navigation to specific sub-menus via command-line arguments.
 - **dt-menu-001.8**: The "Setup" sub-menu MUST provide a "Monitors" section for dynamic display configuration (see dt-monitor-001).
 - **dt-menu-001.9**: The menu MUST provide access to project and desktop context selection behavior defined in `dt-context-001`.
+- **dt-menu-001.10**: Walker or Elephant MUST remain presentation-layer launchers only. Any long-lived terminal, editor, browser, or GUI process started from the menu MUST be detached from the menu process tree before the target command begins running.
 
 ### Desktop contexts (dt-context-001)
 
@@ -44,6 +45,7 @@ Detailed project desktop menu requirements are defined in `REQ-026`.
 - **dt-context-001.13 (Delegation):** Desktop components MUST NOT implement domain logic for project discovery, session management, or metadata retrieval. They MUST delegate all such operations to the `pz` CLI or other terminal-first tools.
 - **dt-context-001.14 (Experience Parity):** The desktop project menus SHOULD provide a visual experience that mirrors the information hierarchy and action set of the `pz` CLI, ensuring a seamless transition for users moving between terminal and desktop contexts.
 - **dt-context-001.15 (Performance):** Desktop menus MUST utilize bulk data retrieval patterns (e.g., a single CLI call returning all required menu state) to ensure menu responsiveness and avoid N+1 performance bottlenecks.
+- **dt-context-001.16 (Launcher Independence):** Opening or attaching a project session from the desktop menu MUST NOT tie the spawned terminal window or editor lifecycle to Walker or Elephant service lifetime. Restarting the launcher services MUST NOT close or interrupt the started session.
 
 ### Project details page (dt-context-002)
 

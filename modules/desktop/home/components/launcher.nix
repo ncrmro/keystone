@@ -39,6 +39,46 @@ in
           sourcePath = ./keystone-notes.desktop;
         }
         {
+          targetPath = ".config/elephant/menus/keystone-main.lua";
+          relativePath = "modules/desktop/home/components/keystone-main.lua";
+          sourcePath = ./keystone-main.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-learn.lua";
+          relativePath = "modules/desktop/home/components/keystone-learn.lua";
+          sourcePath = ./keystone-learn.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-capture.lua";
+          relativePath = "modules/desktop/home/components/keystone-capture.lua";
+          sourcePath = ./keystone-capture.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-screenshot.lua";
+          relativePath = "modules/desktop/home/components/keystone-screenshot.lua";
+          sourcePath = ./keystone-screenshot.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-toggle.lua";
+          relativePath = "modules/desktop/home/components/keystone-toggle.lua";
+          sourcePath = ./keystone-toggle.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-style.lua";
+          relativePath = "modules/desktop/home/components/keystone-style.lua";
+          sourcePath = ./keystone-style.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-theme.lua";
+          relativePath = "modules/desktop/home/components/keystone-theme.lua";
+          sourcePath = ./keystone-theme.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-system.lua";
+          relativePath = "modules/desktop/home/components/keystone-system.lua";
+          sourcePath = ./keystone-system.lua;
+        }
+        {
           targetPath = ".config/elephant/menus/keystone-projects.lua";
           relativePath = "modules/desktop/home/components/keystone-projects.lua";
           sourcePath = ./keystone-projects.lua;
@@ -57,6 +97,16 @@ in
           targetPath = ".config/elephant/menus/keystone-project-session.lua";
           relativePath = "modules/desktop/home/components/keystone-project-session.lua";
           sourcePath = ./keystone-project-session.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-setup.lua";
+          relativePath = "modules/desktop/home/components/keystone-setup.lua";
+          sourcePath = ./keystone-setup.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-hardware.lua";
+          relativePath = "modules/desktop/home/components/keystone-hardware.lua";
+          sourcePath = ./keystone-hardware.lua;
         }
         {
           targetPath = ".config/elephant/menus/keystone-monitors.lua";
@@ -82,6 +132,31 @@ in
           targetPath = ".config/elephant/menus/keystone-audio-devices.lua";
           relativePath = "modules/desktop/home/components/keystone-audio-devices.lua";
           sourcePath = ./keystone-audio-devices.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-accounts.lua";
+          relativePath = "modules/desktop/home/components/keystone-accounts.lua";
+          sourcePath = ./keystone-accounts.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-account-sections.lua";
+          relativePath = "modules/desktop/home/components/keystone-account-sections.lua";
+          sourcePath = ./keystone-account-sections.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-account-mailbox.lua";
+          relativePath = "modules/desktop/home/components/keystone-account-mailbox.lua";
+          sourcePath = ./keystone-account-mailbox.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-account-calendar.lua";
+          relativePath = "modules/desktop/home/components/keystone-account-calendar.lua";
+          sourcePath = ./keystone-account-calendar.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-account-events.lua";
+          relativePath = "modules/desktop/home/components/keystone-account-events.lua";
+          sourcePath = ./keystone-account-events.lua;
         }
       ];
     })
@@ -122,6 +197,38 @@ in
               input = " Search...";
               list = "No Results";
             };
+            "menus:keystone-main" = {
+              input = " Go";
+              list = "No menu items available";
+            };
+            "menus:keystone-learn" = {
+              input = " Learn";
+              list = "No learn actions available";
+            };
+            "menus:keystone-capture" = {
+              input = " Capture";
+              list = "No capture actions available";
+            };
+            "menus:keystone-screenshot" = {
+              input = " Screenshot";
+              list = "No screenshot actions available";
+            };
+            "menus:keystone-toggle" = {
+              input = " Toggle";
+              list = "No toggle actions available";
+            };
+            "menus:keystone-style" = {
+              input = " Style";
+              list = "No style actions available";
+            };
+            "menus:keystone-theme" = {
+              input = " Theme";
+              list = "No themes found";
+            };
+            "menus:keystone-system" = {
+              input = " System";
+              list = "No system actions available";
+            };
             "menus:keystone-projects" = {
               input = " Projects";
               list = "No projects found";
@@ -142,6 +249,14 @@ in
               input = " Monitors";
               list = "No monitors found";
             };
+            "menus:keystone-setup" = {
+              input = " Setup";
+              list = "No setup actions available";
+            };
+            "menus:keystone-hardware" = {
+              input = " Hardware";
+              list = "No hardware actions available";
+            };
             "menus:keystone-monitor-actions" = {
               input = " Monitor actions";
               list = "No actions available";
@@ -157,6 +272,26 @@ in
             "menus:keystone-audio-devices" = {
               input = " Audio devices";
               list = "No audio devices found";
+            };
+            "menus:keystone-accounts" = {
+              input = " Accounts";
+              list = "No accounts found";
+            };
+            "menus:keystone-account-sections" = {
+              input = " Account actions";
+              list = "No account actions available";
+            };
+            "menus:keystone-account-mailbox" = {
+              input = " Mail";
+              list = "No mail found";
+            };
+            "menus:keystone-account-calendar" = {
+              input = " Calendars";
+              list = "No calendars found";
+            };
+            "menus:keystone-account-events" = {
+              input = " Events";
+              list = "No events found";
             };
           };
 

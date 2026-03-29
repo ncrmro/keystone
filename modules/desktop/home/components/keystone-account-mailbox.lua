@@ -1,9 +1,8 @@
-Name = "keystone-project-details"
-NamePretty = "Project details"
-Description = "Project sessions and actions"
-Icon = "folder-development"
+Name = "keystone-account-mailbox"
+NamePretty = "Account mailbox"
+Description = "Recent inbox and search results"
+Icon = "mail-unread"
 HideFromProviderlist = true
-Parent = "keystone-projects"
 History = false
 FixedOrder = true
 
@@ -28,20 +27,10 @@ local function command_path(name)
     return name
 end
 
-Action = command_path("keystone-project-menu") .. " dispatch '%VALUE%'"
-
-local function current_project()
-    return lastMenuValue("keystone-projects") or ""
-end
+Action = command_path("keystone-accounts-menu") .. " dispatch '%VALUE%'"
 
 function GetEntries()
-    local slug = current_project()
-
-    if slug == "" then
-        return {}
-    end
-
-    local handle = io.popen(command_path("keystone-project-menu") .. " project-details-json " .. "'" .. slug:gsub("'", "'\\''") .. "' 2>/dev/null")
+    local handle = io.popen(command_path("keystone-accounts-menu") .. " mailbox-json 2>/dev/null")
     if not handle then
         return {}
     end

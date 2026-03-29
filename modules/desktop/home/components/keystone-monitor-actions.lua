@@ -6,7 +6,6 @@ HideFromProviderlist = true
 Parent = "keystone-monitors"
 History = false
 FixedOrder = true
-Action = "keystone-monitor-menu dispatch '%VALUE%'"
 
 local function json_decode(value)
     if jsonDecode ~= nil then
@@ -20,6 +19,17 @@ local function json_decode(value)
     return nil
 end
 
+local function command_path(name)
+    local home = os.getenv("HOME") or ""
+    if home ~= "" then
+        return home .. "/.local/bin/" .. name
+    end
+
+    return name
+end
+
+Action = command_path("keystone-monitor-menu") .. " dispatch '%VALUE%'"
+
 local function current_monitor()
     return lastMenuValue("keystone-monitors") or ""
 end
@@ -30,7 +40,7 @@ function GetEntries()
         return {}
     end
 
-    local handle = io.popen("keystone-monitor-menu monitor-actions-json " .. "'" .. monitor:gsub("'", "'\\''") .. "' 2>/dev/null")
+    local handle = io.popen(command_path("keystone-monitor-menu") .. " monitor-actions-json " .. "'" .. monitor:gsub("'", "'\\''") .. "' 2>/dev/null")
     if not handle then
         return {}
     end

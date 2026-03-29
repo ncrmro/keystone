@@ -20,8 +20,17 @@ local function json_decode(value)
     return nil
 end
 
+local function command_path(name)
+    local home = os.getenv("HOME") or ""
+    if home ~= "" then
+        return home .. "/.local/bin/" .. name
+    end
+
+    return name
+end
+
 function GetEntries()
-    local handle = io.popen("keystone-project-menu projects-json 2>/dev/null")
+    local handle = io.popen(command_path("keystone-project-menu") .. " projects-json 2>/dev/null")
     if not handle then
         return {}
     end

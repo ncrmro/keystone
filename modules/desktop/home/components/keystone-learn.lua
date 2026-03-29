@@ -1,9 +1,9 @@
-Name = "keystone-project-details"
-NamePretty = "Project details"
-Description = "Project sessions and actions"
-Icon = "folder-development"
+Name = "keystone-learn"
+NamePretty = "Learn"
+Description = "Learning links and keybindings"
+Icon = "help-browser"
 HideFromProviderlist = true
-Parent = "keystone-projects"
+Parent = "keystone-main"
 History = false
 FixedOrder = true
 
@@ -28,20 +28,10 @@ local function command_path(name)
     return name
 end
 
-Action = command_path("keystone-project-menu") .. " dispatch '%VALUE%'"
-
-local function current_project()
-    return lastMenuValue("keystone-projects") or ""
-end
+Action = command_path("keystone-main-menu") .. " dispatch '%VALUE%'"
 
 function GetEntries()
-    local slug = current_project()
-
-    if slug == "" then
-        return {}
-    end
-
-    local handle = io.popen(command_path("keystone-project-menu") .. " project-details-json " .. "'" .. slug:gsub("'", "'\\''") .. "' 2>/dev/null")
+    local handle = io.popen(command_path("keystone-main-menu") .. " learn-json 2>/dev/null")
     if not handle then
         return {}
     end
