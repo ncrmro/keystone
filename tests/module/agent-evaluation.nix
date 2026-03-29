@@ -192,10 +192,10 @@ let
           echo "  ✗ Missing privileged approval guidance in ~/.keystone/AGENTS.md"
           exit 1
         fi
-        if echo ${canonicalAgentsTextJson} | grep -q 'Route durable note capture' && echo ${canonicalAgentsTextJson} | grep -q 'gh:ncrmro/keystone#123'; then
-          echo "  ✓ Found notes routing and normalized shared-surface ref guidance in ~/.keystone/AGENTS.md"
+        if echo ${canonicalAgentsTextJson} | grep -q 'Route durable note capture' && echo ${canonicalAgentsTextJson} | grep -q '~/.config/keystone/conventions/process.notes.md'; then
+          echo "  ✓ Found notes routing and conventions guidance in ~/.keystone/AGENTS.md"
         else
-          echo "  ✗ Missing notes routing or normalized shared-surface ref guidance in ~/.keystone/AGENTS.md"
+          echo "  ✗ Missing notes routing or conventions guidance in ~/.keystone/AGENTS.md"
           exit 1
         fi
       fi
@@ -253,10 +253,10 @@ let
           echo "  ✗ Missing privileged approval guidance in ~/.keystone/repos/AGENTS.md"
           exit 1
         fi
-        if echo ${reposAgentsTextJson} | grep -q 'Route durable note capture' && echo ${reposAgentsTextJson} | grep -q 'gh:ncrmro/keystone#123'; then
-          echo "  ✓ Found notes routing and normalized shared-surface ref guidance in ~/.keystone/repos/AGENTS.md"
+        if echo ${reposAgentsTextJson} | grep -q 'Route durable note capture' && echo ${reposAgentsTextJson} | grep -q '~/.config/keystone/conventions/process.notes.md'; then
+          echo "  ✓ Found notes routing and conventions guidance in ~/.keystone/repos/AGENTS.md"
         else
-          echo "  ✗ Missing notes routing or normalized shared-surface ref guidance in ~/.keystone/repos/AGENTS.md"
+          echo "  ✗ Missing notes routing or conventions guidance in ~/.keystone/repos/AGENTS.md"
           exit 1
         fi
       fi

@@ -103,8 +103,7 @@ let
         ## Notes command guidance
 
         - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
-        - Shared-surface note refs MUST use normalized VCS frontmatter values such as `repo_ref: gh:ncrmro/keystone`, `issue_ref: gh:ncrmro/keystone#123`, `milestone_ref: gh:ncrmro/keystone#12`, or `pr_ref: gh:ncrmro/keystone#456`.
-        - Agents MUST NOT use placeholder note refs such as `gh:owner/repo-name#ID`.
+        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
       '')
     ]
     ++ inlinedConventions
@@ -163,8 +162,7 @@ let
         ## Notes command guidance
 
         - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
-        - Shared-surface note refs MUST use normalized VCS frontmatter values such as `repo_ref: gh:ncrmro/keystone`, `issue_ref: gh:ncrmro/keystone#123`, `milestone_ref: gh:ncrmro/keystone#12`, or `pr_ref: gh:ncrmro/keystone#456`.
-        - Agents MUST NOT use placeholder note refs such as `gh:owner/repo-name#ID`.
+        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
       '')
     ]
     ++ reposInlinedConventions
