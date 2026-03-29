@@ -61,6 +61,7 @@ in
             keystone.terminal = {
               enable = mkDefault agentCfg.terminal.enable;
               conventions.archetype = mkDefault agentCfg.archetype;
+              aiExtensions.capabilities = mkDefault agentCfg.capabilities;
 
               # development and repos are no longer bridged here;
               # they are inherited globally from keystone.development

@@ -135,6 +135,28 @@ in
           example = "product";
         };
 
+        capabilities = mkOption {
+          type = types.listOf (
+            types.enum [
+              "ks"
+              "ks-dev"
+              "notes"
+              "engineer"
+              "executive-assistant"
+            ]
+          );
+          default = [ ];
+          description = ''
+            Extra Keystone AI workflow capabilities for this agent. These
+            capabilities are merged with archetype and dev-mode defaults and
+            gate what the generated `/ks` and `/ks.dev` skills may do.
+          '';
+          example = [
+            "notes"
+            "executive-assistant"
+          ];
+        };
+
         host = mkOption {
           type = types.nullOr types.str;
           default = null;

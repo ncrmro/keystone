@@ -326,6 +326,8 @@ run_provider_prompt() {
           [
             "claude",
             "--print",
+            "--output-format",
+            "json",
             "--dangerously-skip-permissions"
           ]
           + (if $model != "" then ["--model", $model] else [] end)
