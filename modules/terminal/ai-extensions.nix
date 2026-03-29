@@ -1,21 +1,9 @@
-# AI CLI slash commands and skills generalized for all supported tools.
+# AI CLI commands and skills for the curated Keystone workflow surface.
 #
-# Generates slash commands for tools that support them and registers DeepWork
-# skills across Claude Code, Gemini CLI, OpenCode, and Codex.
-#
-# Each tool has its own directory structure and configuration requirements:
-# - Claude: ~/.claude/commands/*.md with YAML frontmatter, ~/.claude/skills/deepwork/SKILL.md
-# - Gemini: ~/.gemini/commands/*.toml
-# - OpenCode: ~/.config/opencode/commands/*.md, ~/.config/opencode/skills/deepwork/SKILL.md
-# - Codex: ~/.codex/skills/*.md-based skills
-#
-# TODO: As other AI coding CLIs gain support for custom workflow commands or
-# skill plugins, add their respective configuration directories to the
-# generation logic below.
-#
-# Development mode (REQ-018): When keystone.development is true and
-# a keystone repo is registered, templates are out-of-store symlinks to the
-# checkout — editable in place.
+# Generates only the user-facing Keystone entrypoints:
+# - /ks      for Keystone guidance, issue filing, notes, and capability-aware routing
+# - /ks.dev  for development-mode Keystone implementation flows
+# - /deepwork remains available as the low-level escape hatch
 {
   config,
   lib,
@@ -27,104 +15,186 @@ let
   terminalCfg = config.keystone.terminal;
   cfg = terminalCfg.aiExtensions;
   isDev = config.keystone.development;
+  archetype = terminalCfg.conventions.archetype;
 
-  # DeepWork Workflow slash commands (templates in ./ai-commands/)
-  commandFiles = [
-    "agent.bootstrap.md"
-    "agent.doctor.md"
-    "agent.issue.md"
-    "agent.onboard.md"
-    "daily_status.send.md"
-    "deepwork.review.md"
-    "engineer.md"
-    "ks.convention.md"
-    "ks.develop.md"
-    "ks.doctor.md"
-    "ks.issue.md"
-    "ks.update.md"
-    "marketing.social_media_setup.md"
-    "milestone.eng_handoff.md"
-    "milestone.setup.md"
-    "notes.process_inbox.md"
-    "notes.doctor.md"
-    "notes.project.md"
-    "notes.report.md"
-    "portfolio.review.md"
-    "project.onboard.md"
-    "project.press_release.md"
-    "project.success.md"
-    "repo.doctor.md"
-    "repo.setup.md"
-    "research.deep.md"
-    "research.quick.md"
-    "sweng.audit.md"
-    "sweng.design.md"
-    "sweng.fix.md"
-    "sweng.implement.md"
-    "sweng.refactor.md"
-    "task.ingest.md"
-    "task.run.md"
+  capabilityType = types.enum [
+    "ks"
+    "ks-dev"
+    "notes"
+    "project"
+    "engineer"
+    "executive-assistant"
   ];
 
-  stripMatchingQuotes =
-    value:
-    if hasPrefix "\"" value && hasSuffix "\"" value then
-      removeSuffix "\"" (removePrefix "\"" value)
-    else if hasPrefix "'" value && hasSuffix "'" value then
-      removeSuffix "'" (removePrefix "'" value)
-    else
-      value;
+  baseCapabilities = [
+    "ks"
+    "notes"
+    "project"
+  ];
 
-  parseFrontmatterLine =
-    line:
-    let
-      match = builtins.match "([A-Za-z0-9_-]+):[[:space:]]*(.*)" line;
-    in
-    if match == null then
-      null
-    else
-      {
-        name = elemAt match 0;
-        value = stripMatchingQuotes (elemAt match 1);
-      };
+  explicitCapabilities = filter (capability: capability != "ks-dev" || isDev) cfg.capabilities;
 
-  findFrontmatterEnd =
-    lines: idx:
-    if idx >= length lines then
-      null
-    else if elemAt lines idx == "---" then
-      idx
-    else
-      findFrontmatterEnd lines (idx + 1);
+  archetypeCapabilities = if archetype == "engineer" then [ "engineer" ] else [ ];
 
-  parseCommandTemplate =
-    name:
-    let
-      content = builtins.readFile (./ai-commands + "/${name}");
-      lines = splitString "\n" content;
-      hasFrontmatter = length lines > 0 && head lines == "---";
-      frontmatterEnd = if hasFrontmatter then findFrontmatterEnd lines 1 else null;
-      frontmatterLines =
-        if hasFrontmatter && frontmatterEnd != null then sublist 1 (frontmatterEnd - 1) lines else [ ];
-      bodyLines =
-        if hasFrontmatter && frontmatterEnd != null then
-          sublist (frontmatterEnd + 1) (length lines - frontmatterEnd - 1) lines
-        else
-          lines;
-      frontmatterEntries = filter (entry: entry != null) (map parseFrontmatterLine frontmatterLines);
-      frontmatter = listToAttrs frontmatterEntries;
-      body = concatStringsSep "\n" bodyLines;
-    in
+  resolvedCapabilities = unique (
+    baseCapabilities ++ archetypeCapabilities ++ explicitCapabilities ++ optionals isDev [ "ks-dev" ]
+  );
+
+  publishedCommandIds = [
+    "ks"
+  ]
+  ++ optionals (elem "notes" resolvedCapabilities) [ "ks.notes" ]
+  ++ optionals (elem "project" resolvedCapabilities) [ "ks.projects" ]
+  ++ optionals (elem "ks-dev" resolvedCapabilities) [ "ks.dev" ];
+
+  formatCapabilities =
+    capabilities: if capabilities == [ ] then "_none_" else concatStringsSep ", " capabilities;
+
+  ksAllowedRoutes = [
+    "- Keystone usage help, module discovery, configuration guidance, and workflow recommendations: answer directly when no workflow is needed."
+    "- Feature requests, bug reports, paper cuts, and missing Keystone capabilities: start `keystone_system/issue`."
+    "- Keystone health checks and troubleshooting: start `keystone_system/doctor` when the user wants diagnosis rather than documentation."
+  ]
+  ++ optionals (elem "notes" resolvedCapabilities) [
+    "- Notes workflows (repair, inbox, init, setup): direct the user to `/ks.notes` instead of starting a notes workflow directly."
+  ]
+  ++ optionals (elem "project" resolvedCapabilities) [
+    "- Project workflows (onboard, press release, success): direct the user to `/ks.projects` instead of starting a project workflow directly."
+  ]
+  ++ optionals (elem "executive-assistant" resolvedCapabilities) [
+    "- Calendar triage and scheduling: start `executive_assistant/manage_calendar`."
+    "- Inbox cleanup and reply drafting: start `executive_assistant/clean_inbox`."
+    "- Event planning and recommendations: start `executive_assistant/plan_event` or `executive_assistant/discover_events`."
+    "- Daily priority and owner-note coordination: start `executive_assistant/task_loop`."
+  ];
+
+  ksCommandBody = ''
+    Help the user get the most out of Keystone.
+
+    ## Session context
+
+    - Capabilities: ${formatCapabilities resolvedCapabilities}
+    - Development mode: ${if isDev then "enabled" else "disabled"}
+    - Published commands: ${concatStringsSep ", " publishedCommandIds}
+
+    ## Operating rules
+
+    - Prefer a direct answer for usage questions about `ks`, keystone modules, repo layout, conventions, or how to configure the system.
+    - Use DeepWork MCP tools only when the request benefits from a workflow or should create durable artifacts.
+    - Do not start workflows outside the allowed routes below.
+    - If the user asks to implement Keystone code changes and `/ks.dev` is available, direct the request through the development route instead of improvising a separate workflow.
+    - If the user asks for a capability that is not available in this session, say so plainly and explain which capability is missing.
+
+    ## Allowed routes
+
+    ${concatStringsSep "\n" ksAllowedRoutes}
+  '';
+
+  ksDevCommandBody = ''
+    Handle Keystone development requests in development mode.
+
+    ## Session context
+
+    - Capabilities: ${formatCapabilities resolvedCapabilities}
+    - Development mode: enabled
+    - Primary workflow: `keystone_system/develop`
+
+    ## Routing rules
+
+    - Default to `keystone_system/develop` for feature work, bug fixes, refactors, and implementation requests in Keystone-managed repos.
+    - Use `keystone_system/issue` when the user clearly wants issue creation rather than implementation.
+    - Use `keystone_system/convention` when the request is specifically to create or update a Keystone convention.
+    - Use `keystone_system/doctor` when the request is diagnostic rather than implementation.
+    - Reuse the standard engineering lifecycle under `keystone_system/develop`; do not invent a second implementation workflow.
+    - If the request is only a simple explanation or repo navigation question, answer directly instead of forcing a workflow.
+  '';
+
+  ksNotesCommandBody = ''
+    Route note-related requests to the appropriate notes DeepWork workflow.
+
+    ## Available workflows
+
+    - **notes/process_inbox** — review and promote fleeting notes from inbox/ to permanent notes
+    - **notes/doctor** — audit, repair, and normalize a zk notebook
+    - **notes/init** — bootstrap a new zk notes repo from scratch
+    - **notes/setup** — configure an existing zk notebook
+
+    ## Routing rules
+
+    - Mentions of processing, reviewing, or promoting inbox notes → `notes/process_inbox`
+    - Mentions of repair, health check, audit, or normalize → `notes/doctor`
+    - Mentions of new notebook, bootstrap, or initializing → `notes/init`
+    - Mentions of setup or configure → `notes/setup`
+    - If unclear, ask the user which workflow to run before starting
+
+    ## How to start a workflow
+
+    1. Call `get_workflows` to confirm available notes workflows.
+    2. Call `start_workflow` with `job_name: "notes"`, `workflow_name: <chosen>`, and `goal: "$ARGUMENTS"`.
+    3. Follow the step instructions returned by the MCP server.
+  '';
+
+  ksProjectsCommandBody = ''
+    Route project-related requests to the appropriate project DeepWork workflow.
+
+    ## Available workflows
+
+    - **project/onboard** — onboard a new project: create hub note, scaffold structure, link repos
+    - **project/press_release** — draft a press release or announcement for a project
+    - **project/success** — run a project success review or retrospective
+
+    ## Routing rules
+
+    - Mentions of onboarding, starting, or registering a new project → `project/onboard`
+    - Mentions of press release, announcement, or launch copy → `project/press_release`
+    - Mentions of success, retro, retrospective, or wrapping up → `project/success`
+    - If unclear, ask the user which workflow to run before starting
+
+    ## How to start a workflow
+
+    1. Call `get_workflows` to confirm available project workflows.
+    2. Call `start_workflow` with `job_name: "project"`, `workflow_name: <chosen>`, and `goal: "$ARGUMENTS"`.
+    3. Follow the step instructions returned by the MCP server.
+  '';
+
+  publishedCommands = [
     {
-      inherit body;
-      frontmatter = frontmatter // {
-        inherit (frontmatter) description;
-      };
-      description =
-        frontmatter.description or (throw "ai-command ${name} is missing required frontmatter.description");
-      argumentHint = frontmatter.argument-hint or null;
-      displayName = frontmatter.display-name or frontmatter.description or null;
-    };
+      id = "ks";
+      description = "Help the user get the most out of Keystone and route capability-aware workflows";
+      argumentHint = "<request>";
+      displayName = "Keystone assistant";
+      body = ksCommandBody;
+    }
+  ]
+  ++ optionals (elem "notes" resolvedCapabilities) [
+    {
+      id = "ks.notes";
+      description = "Route note-taking requests to the notes DeepWork job workflows";
+      argumentHint = "<request>";
+      displayName = "Keystone notes";
+      body = ksNotesCommandBody;
+    }
+  ]
+  ++ optionals (elem "project" resolvedCapabilities) [
+    {
+      id = "ks.projects";
+      description = "Route project management requests to the project DeepWork job workflows";
+      argumentHint = "<request>";
+      displayName = "Keystone projects";
+      body = ksProjectsCommandBody;
+    }
+  ]
+  ++ optionals (elem "ks-dev" resolvedCapabilities) [
+    {
+      id = "ks.dev";
+      description = "Route Keystone development work through the standard DeepWork engineer lifecycle";
+      argumentHint = "<goal>";
+      displayName = "Keystone development";
+      body = ksDevCommandBody;
+    }
+  ];
+
+  commandBaseName = command: command.id;
 
   renderYamlScalar =
     value:
@@ -143,13 +213,6 @@ let
         "description"
         "argument-hint"
         "display-name"
-        "disable-model-invocation"
-        "user-invocable"
-        "allowed-tools"
-        "model"
-        "effort"
-        "context"
-        "agent"
       ];
       orderedKeys = filter (key: builtins.hasAttr key frontmatter) preferredOrder;
       extraKeys = filter (key: !(elem key preferredOrder)) (attrNames frontmatter);
@@ -163,62 +226,38 @@ let
     '';
 
   renderClaudeCommand =
-    name:
+    command:
     let
-      template = parseCommandTemplate name;
+      frontmatter = {
+        name = command.id;
+        description = command.description;
+        "argument-hint" = command.argumentHint;
+        "display-name" = command.displayName;
+      };
     in
     ''
-      ${renderFrontmatter template.frontmatter}
+      ${renderFrontmatter frontmatter}
 
-      ${template.body}
+      ${command.body}
     '';
 
-  # Helper to generate Gemini-compatible TOML from a Markdown template.
-  # Gemini commands require .toml files with `prompt` and optionally `description`.
-  #
-  # CRITICAL: builtins.readFile requires a path type (e.g. ./path) or a path
-  # relative to the flake root to work in pure evaluation mode. Absolute
-  # path strings (like devPath) are forbidden.
-  mkGeminiToml = name: {
-    text =
-      let
-        template = parseCommandTemplate name;
-        # Replace $ARGUMENTS with Gemini's native {{args}}
-        prompt = replaceStrings [ "$ARGUMENTS" ] [ "{{args}}" ] template.body;
-      in
-      ''
-        description = ${builtins.toJSON template.description}
-        prompt = ${builtins.toJSON prompt}
-      '';
+  mkGeminiToml = command: {
+    text = ''
+      description = ${builtins.toJSON command.description}
+      prompt = ${builtins.toJSON command.body}
+    '';
   };
 
-  mkGeminiDeepworkToml = {
-    text =
-      let
-        prompt = replaceStrings [ "$ARGUMENTS" ] [ "{{args}}" ] deepworkSkillBody;
-      in
-      ''
-        description = ${builtins.toJSON skillMetadata.description}
-        prompt = ${builtins.toJSON prompt}
-      '';
-  };
-
-  commandBaseName = name: lib.removeSuffix ".md" name;
-
-  commandDescription = name: (parseCommandTemplate name).description;
-  commandDisplayName = name: (parseCommandTemplate name).displayName;
-
-  codexSkillName = name: replaceStrings [ "." ] [ "-" ] (commandBaseName name);
+  codexSkillName = name: replaceStrings [ "." ] [ "-" ] name;
 
   codexSkillBody =
-    name:
+    command:
     let
-      template = parseCommandTemplate name;
-      skillName = codexSkillName name;
+      skillName = codexSkillName command.id;
       skillToken = "$" + skillName;
     in
     ''
-      ${template.body}
+      ${command.body}
 
       ## Codex skill invocation
 
@@ -227,18 +266,27 @@ let
       provide extra text, continue without additional arguments.
     '';
 
-  mkCodexSkillMd =
-    name:
-    mkSkillMd {
-      name = codexSkillName name;
-      description = commandDescription name;
-    } (codexSkillBody name);
+  mkSkillMd = meta: body: ''
+    ---
+    name: ${meta.name}
+    description: "${meta.description}"
+    ---
 
-  mkCodexSkillOpenAiYaml = name: {
+    ${body}
+  '';
+
+  mkCodexSkillMd =
+    command:
+    mkSkillMd {
+      name = codexSkillName command.id;
+      description = command.description;
+    } (codexSkillBody command);
+
+  mkCodexSkillOpenAiYaml = command: {
     text = ''
       interface:
-        display_name: ${builtins.toJSON (commandDisplayName name)}
-        short_description: ${builtins.toJSON (commandDescription name)}
+        display_name: ${builtins.toJSON command.displayName}
+        short_description: ${builtins.toJSON command.description}
 
       dependencies:
         tools:
@@ -248,55 +296,35 @@ let
     '';
   };
 
-  # Shared metadata for skills
   skillMetadata = {
     name = "deepwork";
     description = "Start or continue DeepWork workflows using MCP tools";
   };
 
-  # Shared Markdown body for the DeepWork skill (no frontmatter)
   deepworkSkillBody = ''
-    # DeepWork Workflow Manager
+    # DeepWork workflow manager
 
     Execute multi-step workflows with quality gate checkpoints.
 
     ## Terminology
 
-    A **job** is a collection of related **workflows**. For example, a "code_review" job
-    might contain workflows like "review_pr" and "review_diff". Users may use the terms
-    "job" and "workflow" somewhat interchangeably when describing the work they want done —
-    use context and the available workflows from `get_workflows` to determine the best match.
+    A **job** is a collection of related **workflows**. Users may use the terms
+    "job" and "workflow" interchangeably. Use `get_workflows` to discover the
+    currently available jobs and workflows before deciding.
 
-    > **IMPORTANT**: Use the DeepWork MCP server tools. All workflow operations
-    > are performed through MCP tool calls and following the instructions they return,
-    > not by reading instructions from files.
+    ## How to use
 
-    ## How to Use
+    1. Call `get_workflows` to discover available workflows.
+    2. Call `start_workflow` with the chosen `goal`, `job_name`, and `workflow_name`.
+    3. Follow the step instructions returned by the MCP server.
+    4. Call `finished_step` with the outputs when a step is complete.
+    5. Handle the response: `needs_work`, `next_step`, or `workflow_complete`.
 
-    1. Call `get_workflows` to discover available workflows
-    2. Call `start_workflow` with goal, job_name, and workflow_name
-    3. Follow the step instructions returned
-    4. Call `finished_step` with your outputs when done
-    5. Handle the response: `needs_work`, `next_step`, or `workflow_complete`
+    ## Intent parsing
 
-    ## Intent Parsing
-
-    When the user invokes `/deepwork`, parse their intent:
-    1. **ALWAYS**: Call `get_workflows` to discover available workflows
-    2. Based on the available flows and what the user said in their request, proceed:
-        - **Explicit workflow**: `/deepwork <a workflow name>` → start the `<a workflow name>` workflow
-        - **General request**: `/deepwork <a request>` → infer best match from available workflows
-        - **No context**: `/deepwork` alone → ask user to choose from available workflows
-  '';
-
-  # Generate standard SKILL.md with YAML frontmatter
-  mkSkillMd = meta: body: ''
-    ---
-    name: ${meta.name}
-    description: "${meta.description}"
-    ---
-
-    ${body}
+    - Explicit workflow: `/deepwork <workflow>` means start that workflow.
+    - General request: `/deepwork <goal>` means infer the best workflow from `get_workflows`.
+    - No context: `/deepwork` alone means ask the user to choose from available workflows.
   '';
 
   codexManagedFiles = [
@@ -321,34 +349,102 @@ let
   ]
   ++ flatten (
     map (
-      name:
+      command:
       let
-        skillName = codexSkillName name;
+        skillName = codexSkillName command.id;
         skillDir = ".codex/skills/${skillName}";
       in
       [
         {
           relativePath = "${skillDir}/SKILL.md";
-          source = pkgs.writeText "codex-skill-${skillName}-SKILL.md" (mkCodexSkillMd name);
+          source = pkgs.writeText "codex-skill-${skillName}-SKILL.md" (mkCodexSkillMd command);
         }
         {
           relativePath = "${skillDir}/agents/openai.yaml";
-          source = pkgs.writeText "codex-skill-${skillName}-openai.yaml" (mkCodexSkillOpenAiYaml name).text;
+          source = pkgs.writeText "codex-skill-${skillName}-openai.yaml" (mkCodexSkillOpenAiYaml command)
+          .text;
         }
       ]
-    ) commandFiles
+    ) publishedCommands
   );
+
+  legacyCodexSkillNames = [
+    "agent-bootstrap"
+    "agent-doctor"
+    "agent-issue"
+    "agent-onboard"
+    "daily_status-send"
+    "deepwork-review"
+    "engineer"
+    "ks-convention"
+    "ks-develop"
+    "ks-doctor"
+    "ks-issue"
+    "ks-update"
+    "marketing-social_media_setup"
+    "milestone-eng_handoff"
+    "milestone-setup"
+    "notes-doctor"
+    "notes-process_inbox"
+    "notes-project"
+    "notes-report"
+    "portfolio-review"
+    "project-onboard"
+    "project-press_release"
+    "project-success"
+    "repo-doctor"
+    "repo-setup"
+    "research-deep"
+    "research-quick"
+    "sweng-audit"
+    "sweng-design"
+    "sweng-fix"
+    "sweng-implement"
+    "sweng-refactor"
+    "task-ingest"
+    "task-run"
+  ];
+
+  activeCodexSkillNames = [
+    "deepwork"
+  ]
+  ++ map (command: codexSkillName command.id) publishedCommands;
+
+  staleCodexSkillNames = filter (name: !(elem name activeCodexSkillNames)) legacyCodexSkillNames;
 in
 {
   options.keystone.terminal.aiExtensions = {
     enable = mkOption {
       type = types.bool;
       default = true;
-      description = "Generate slash commands and register skills for DeepWork workflows.";
+      description = "Generate curated Keystone commands and skills for supported AI CLIs.";
+    };
+
+    capabilities = mkOption {
+      type = types.listOf capabilityType;
+      default = [ ];
+      description = ''
+        Extra Keystone AI workflow capabilities for this profile. The final
+        capability set is merged with terminal defaults, archetype defaults,
+        and dev-mode gating.
+      '';
+    };
+
+    resolvedCapabilities = mkOption {
+      type = types.listOf capabilityType;
+      default = [ ];
+      internal = true;
+      description = "Resolved capability set used to generate `/ks` and `/ks.dev`.";
+    };
+
+    publishedCommands = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      internal = true;
+      description = "Curated Keystone command ids published for this profile.";
     };
   };
 
-  # Backward compatibility for the old option name
   imports = [
     (mkAliasOptionModule
       [ "keystone" "terminal" "claudeCodeCommands" "enable" ]
@@ -357,42 +453,47 @@ in
   ];
 
   config = mkIf (terminalCfg.enable && terminalCfg.ai.enable && cfg.enable) {
-    # TODO(REQ-018.7a): These files remain generated because Claude, Gemini,
-    # OpenCode, and Codex each require transformed payloads rather than direct
-    # repo-backed source files.
+    keystone.terminal.aiExtensions.resolvedCapabilities = resolvedCapabilities;
+    keystone.terminal.aiExtensions.publishedCommands = publishedCommandIds;
+
     home.file =
       let
         commandFilesByTool =
           foldl'
             (
               acc: toolDir:
-              if (toolDir == ".codex") then
+              if toolDir == ".codex" then
                 acc
               else
                 acc
                 // (listToAttrs (
-                  map (name: {
-                    name =
-                      if (toolDir == ".gemini") then
-                        let
-                          relPath = replaceStrings [ "." ] [ "/" ] (commandBaseName name);
-                        in
-                        "${toolDir}/commands/${relPath}.toml"
-                      else
-                        "${toolDir}/commands/${name}";
-
-                    value =
-                      if (toolDir == ".gemini") then
-                        mkGeminiToml name
-                      else if (toolDir == ".claude") then
-                        {
-                          text = renderClaudeCommand name;
-                        }
-                      else
-                        {
-                          text = (parseCommandTemplate name).body;
-                        };
-                  }) commandFiles
+                  map (
+                    command:
+                    let
+                      name =
+                        if toolDir == ".gemini" then
+                          let
+                            relPath = replaceStrings [ "." ] [ "/" ] (commandBaseName command);
+                          in
+                          "${toolDir}/commands/${relPath}.toml"
+                        else
+                          "${toolDir}/commands/${command.id}.md";
+                    in
+                    {
+                      inherit name;
+                      value =
+                        if toolDir == ".gemini" then
+                          mkGeminiToml command
+                        else if toolDir == ".claude" then
+                          {
+                            text = renderClaudeCommand command;
+                          }
+                        else
+                          {
+                            text = command.body;
+                          };
+                    }
+                  ) publishedCommands
                 ))
             )
             { }
@@ -410,7 +511,13 @@ in
                 skillDir = "${toolDir}/skills/deepwork";
               in
               if toolDir == ".gemini" then
-                acc // { "${toolDir}/commands/deepwork.toml" = mkGeminiDeepworkToml; }
+                acc
+                // {
+                  "${toolDir}/commands/deepwork.toml".text = ''
+                    description = ${builtins.toJSON skillMetadata.description}
+                    prompt = ${builtins.toJSON deepworkSkillBody}
+                  '';
+                }
               else
                 acc
                 // {
@@ -426,18 +533,21 @@ in
       in
       commandFilesByTool // deepworkSkillsByTool;
 
-    # Codex 0.114.0 skips skills whose payload files are symlinks.
-    # Manage Keystone-owned Codex skill payloads as regular files directly in
-    # activation so Home Manager does not repeatedly back them up on each run.
     home.activation.codexSkillsPreflight = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
       cleanup_codex_skill_state() {
         relativePath="$1"
         targetPath="$HOME/$relativePath"
-
-        # Recover from previous failed activations that left Home Manager backup
-        # files behind for these managed Codex skill payloads before link checks.
         rm -f "$targetPath.backup"
       }
+
+      cleanup_stale_codex_skill() {
+        skillName="$1"
+        rm -rf "$HOME/.codex/skills/$skillName"
+      }
+
+      ${concatMapStringsSep "\n" (skillName: ''
+        cleanup_stale_codex_skill ${escapeShellArg skillName}
+      '') staleCodexSkillNames}
 
       ${concatMapStringsSep "\n" (file: ''
         cleanup_codex_skill_state ${escapeShellArg file.relativePath}
