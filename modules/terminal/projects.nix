@@ -32,7 +32,7 @@ let
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
   inherit (devScripts) mkHomeScriptCommand;
   pzCommand = mkHomeScriptCommand {
-    inherit config;
+    inherit config pkgs;
     commandName = "pz";
     relativePath = "packages/pz/pz.sh";
     package = pkgs.keystone.pz;

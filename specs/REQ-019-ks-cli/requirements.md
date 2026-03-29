@@ -109,7 +109,8 @@ of the run.
 
 **REQ-019.13** `ks update --dev` MUST build and activate only home-manager
 profiles (users + agents) across all target hosts, skipping the full
-NixOS system rebuild. Dev mode deploy SHOULD NOT require sudo.
+NixOS system rebuild. Keystone policy MAY still require an approval flow
+before this command runs.
 
 **REQ-019.14** `ks update --boot` and `ks switch --boot` MUST set the
 NixOS configuration for next boot without activating it immediately.

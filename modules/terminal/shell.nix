@@ -16,7 +16,7 @@ let
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
   inherit (devScripts) mkHomeRepoFiles mkHomeScriptCommand;
   ksCommand = mkHomeScriptCommand {
-    inherit config;
+    inherit config pkgs;
     commandName = "ks";
     relativePath = "packages/ks/ks.sh";
     package = pkgs.keystone.ks;

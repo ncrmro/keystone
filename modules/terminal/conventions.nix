@@ -30,6 +30,8 @@ let
   cfg = config.keystone.terminal.conventions;
   terminalCfg = config.keystone.terminal;
   conventionsPath = pkgs.keystone.keystone-conventions;
+  aiCapabilities = config.keystone.terminal.aiExtensions.resolvedCapabilities or [ ];
+  aiCommandIds = config.keystone.terminal.aiExtensions.publishedCommands or [ ];
 
   # Read archetypes.yaml from the conventions derivation.
   # Guard: if the file doesn't exist, produce empty config (graceful degradation).
@@ -84,6 +86,18 @@ let
 
         Archetype: **${cfg.archetype}**
         ${archetypeConfig.description or ""}
+      ''
+      ''
+        ## Keystone session
+
+        - Canonical instruction path: `~/.keystone/AGENTS.md`
+        - Development mode: ${if config.keystone.development then "enabled" else "disabled"}
+        - Available Keystone capabilities: ${
+          if aiCapabilities == [ ] then "_none_" else concatStringsSep ", " aiCapabilities
+        }
+        - Published Keystone commands: ${
+          if aiCommandIds == [ ] then "_none_" else concatStringsSep ", " aiCommandIds
+        }
       ''
     ]
     ++ inlinedConventions
@@ -209,11 +223,13 @@ in
         optional (isDev && overlappingConventions != [ ])
           "keystone.terminal.conventions: ${toString (length overlappingConventions)} convention(s) are inlined in both CLAUDE.md (${cfg.archetype}) and repos AGENTS.md (keystone-developer), consuming duplicate context tokens: ${concatStringsSep ", " overlappingConventions}. Consider moving them to referenced_conventions in the keystone-developer archetype.";
 
-    # Write conventions to each tool's native instruction file path.
-    # OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file.
+    # Generate the canonical Keystone instruction file and derive tool-native
+    # instruction files from the same content.
+    home.file.".keystone/AGENTS.md".text = agentsMdContent;
     home.file.".claude/CLAUDE.md".text = agentsMdContent;
     home.file.".gemini/GEMINI.md".text = agentsMdContent;
     home.file.".codex/AGENTS.md".text = agentsMdContent;
+    home.file.".config/opencode/AGENTS.md".text = agentsMdContent;
 
     # Expose the full conventions directory for on-demand reading
     # (referenced conventions link to Nix store paths in this directory)

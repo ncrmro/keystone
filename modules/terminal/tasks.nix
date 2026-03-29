@@ -44,6 +44,49 @@ let
   cfg = config.keystone.terminal.tasks;
   mailCfg = config.keystone.terminal.mail;
 
+  mailLegacyConfigured =
+    mailCfg.accountName != ""
+    || mailCfg.email != ""
+    || mailCfg.displayName != ""
+    || mailCfg.login != ""
+    || mailCfg.passwordCommand != ""
+    || mailCfg.host != "";
+
+  mailLegacyName = if mailCfg.accountName != "" then mailCfg.accountName else "default";
+
+  mailLegacyAccount = {
+    inherit (mailCfg)
+      email
+      displayName
+      login
+      passwordCommand
+      host
+      ;
+  };
+
+  declaredMailAccounts =
+    mailCfg.accounts
+    // optionalAttrs (mailLegacyConfigured && !(builtins.hasAttr mailLegacyName mailCfg.accounts)) {
+      "${mailLegacyName}" = mailLegacyAccount;
+    };
+
+  sortedMailAccountNames = sort builtins.lessThan (attrNames declaredMailAccounts);
+
+  defaultMailAccountName =
+    if
+      mailCfg.defaultAccount != null && builtins.hasAttr mailCfg.defaultAccount declaredMailAccounts
+    then
+      mailCfg.defaultAccount
+    else if builtins.hasAttr mailLegacyName declaredMailAccounts then
+      mailLegacyName
+    else if sortedMailAccountNames != [ ] then
+      head sortedMailAccountNames
+    else
+      null;
+
+  defaultMailAccount =
+    if defaultMailAccountName != null then declaredMailAccounts.${defaultMailAccountName} else null;
+
   # Use explicit url if set; otherwise build Stalwart's default path.
   # Stalwart's /.well-known/caldav redirects to /dav/cal, but PROPFIND
   # to the root URL gets a 400 from nginx — use direct path instead.
@@ -84,19 +127,19 @@ in
 
     host = mkOption {
       type = types.str;
-      default = mailCfg.host;
+      default = if defaultMailAccount != null then defaultMailAccount.host else "";
       description = "CalDAV server hostname (defaults to mail host)";
     };
 
     login = mkOption {
       type = types.str;
-      default = mailCfg.login;
+      default = if defaultMailAccount != null then defaultMailAccount.login else "";
       description = "CalDAV username (defaults to mail login)";
     };
 
     passwordCommand = mkOption {
       type = types.str;
-      default = mailCfg.passwordCommand;
+      default = if defaultMailAccount != null then defaultMailAccount.passwordCommand else "";
       description = "Command to retrieve the password (defaults to mail passwordCommand)";
     };
 

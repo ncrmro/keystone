@@ -660,7 +660,6 @@ cmd_export_menu_data() {
 
 cmd_export_menu_cache() {
   local write_state=0
-  local arg=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -965,11 +964,10 @@ cmd_list() {
 
     for sess_data in "${p_sess[@]}"; do
       ((count++))
-      local s st prefix
+      local s prefix
       
-      # Robustly parse s and st from sess_data
+      # Print the session name; the status component is not rendered here.
       s="${sess_data%%|*}"
-      st="${sess_data#*|}"
       
       [[ -z "$s" ]] && continue
       
@@ -1093,8 +1091,8 @@ cmd_agent() {
 
 # Generate completions for pz
 __pz_complete() {
-  local cur prev words cword
-  _get_comp_words_by_ref -n : cur prev words cword 2>/dev/null || return 0
+  local cur words cword
+  _get_comp_words_by_ref -n : cur words cword 2>/dev/null || return 0
 
   local projects
   projects=$(discover_projects 2>/dev/null | cut -f1)
@@ -1102,7 +1100,7 @@ __pz_complete() {
   if [[ $cword -eq 1 ]]; then
     # Complete project slugs or subcommands
     local opts="list agent --help completion"
-    COMPREPLY=( $(compgen -W "${opts} ${projects}" -- "$cur") )
+    mapfile -t COMPREPLY < <(compgen -W "${opts} ${projects}" -- "$cur")
     return 0
   fi
 
@@ -1118,7 +1116,7 @@ __pz_complete() {
       local sessions
       # Find existing sessions for this project
       sessions=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | command grep -E "^${project}(-|$)" | sed "s/^${project}-//; s/^${project}$/main/" || true)
-      COMPREPLY=( $(compgen -W "${sessions} new" -- "$cur") )
+      mapfile -t COMPREPLY < <(compgen -W "${sessions} new" -- "$cur")
       return 0
     fi
   fi
@@ -1149,7 +1147,7 @@ _pz_completion() {
 
   if [[ $cword -eq 1 ]]; then
     local opts="list agent --help completion"
-    COMPREPLY=( $(compgen -W "${opts} ${projects}" -- "$cur") )
+    mapfile -t COMPREPLY < <(compgen -W "${opts} ${projects}" -- "$cur")
     return 0
   fi
 
@@ -1161,7 +1159,7 @@ _pz_completion() {
     if printf "%s\n" "${projects}" | grep -Fxq "$project"; then
       local sessions
       sessions=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | command grep -E "^${project}(-|$)" | sed "s/^${project}-//; s/^${project}$/main/" || true)
-      COMPREPLY=( $(compgen -W "${sessions} new" -- "$cur") )
+      mapfile -t COMPREPLY < <(compgen -W "${sessions} new" -- "$cur")
       return 0
     fi
   fi
