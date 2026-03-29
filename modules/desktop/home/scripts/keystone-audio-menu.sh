@@ -222,7 +222,7 @@ devices_json() {
           }
         ]
       else
-    | sort_by([(.name != $current), (.description // .properties."device.description" // .name)])
+        sort_by([(.name != $current), (.description // .properties."device.description" // .name)])
     | map({
         Text: (
           (if .name == $current then "  " else "󰓃  " end)
