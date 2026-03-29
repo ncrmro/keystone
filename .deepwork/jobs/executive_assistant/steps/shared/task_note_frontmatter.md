@@ -43,5 +43,9 @@ coordination_note: /abs/path/to/human/daily-note.md
   `status/*`, and `source/*`.
 - Do not invent tag namespaces for milestone, issue, PR, or assignee identity.
 - Use frontmatter for shared-surface references and owner assignment.
+- Shared-surface refs MUST use normalized VCS format:
+  - GitHub: `gh:<owner>/<repo>#<number>`
+  - Forgejo: `fj:<owner>/<repo>#<number>`
+  - Repo only: `gh:<owner>/<repo>` or `fj:<owner>/<repo>`
 - Reuse the same `source_ref` for deduplication across the human note and owner
   mirrors.

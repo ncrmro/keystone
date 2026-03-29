@@ -41,6 +41,7 @@ workflows:
     steps:
       - execute
       - report
+      - write_note
 
 steps:
   # ── ingest workflow ──────────────────────────────────────────────────────
@@ -128,6 +129,22 @@ steps:
           "Status Updated": "The specified task's status has been changed from pending/in_progress to completed or blocked."
           "Blocked Documented": "If the task is blocked, a corresponding entry exists in ISSUES.yaml with the reason."
           "Conventions Followed": "External tools were used according to AGENTS.md conventions (e.g., printf ... | himalaya message send for email)."
+
+  - id: write_note
+    name: "Write Note"
+    description: "Write a report note to ~/notes documenting the task outcome"
+    instructions_file: steps/write_note.md
+    inputs:
+      - file: task_report.json
+        from_step: report
+    outputs:
+      note_status.md:
+        type: file
+        description: "Path of the note created, or reason it was skipped"
+        required: true
+    dependencies:
+      - report
+    reviews: []
 
   - id: report
     name: "Report Results"
