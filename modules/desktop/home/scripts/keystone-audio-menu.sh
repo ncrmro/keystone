@@ -184,7 +184,8 @@ categories_json() {
           Value: "output",
           SubMenu: "keystone-audio-devices",
           Preview: ($audio_menu + " preview-kind " + ("output" | @sh)),
-          PreviewType: "command"
+          PreviewType: "command",
+          Async: ($audio_menu + " volume-display output")
         },
         {
           Text: "Input defaults",
@@ -192,7 +193,8 @@ categories_json() {
           Value: "input",
           SubMenu: "keystone-audio-devices",
           Preview: ($audio_menu + " preview-kind " + ("input" | @sh)),
-          PreviewType: "command"
+          PreviewType: "command",
+          Async: ($audio_menu + " volume-display input")
         }
       ]
     '
@@ -237,7 +239,8 @@ devices_json() {
         ),
         Value: ("set-default\t" + $kind + "\t" + .name),
         Preview: ($audio_menu + " preview-device " + ($kind | @sh) + " " + (.name | @sh)),
-        PreviewType: "command"
+        PreviewType: "command",
+        Async: ($audio_menu + " device-volume-display " + ($kind | @sh) + " " + (.name | @sh))
       })
       end
   '
@@ -340,6 +343,72 @@ preview_device() {
     "$(if [[ "$name" == "$current_default" ]]; then printf "yes"; else printf "no"; fi)"
 }
 
+volume_display() {
+  local kind="$1"
+
+  if ! audio_cli_available; then
+    printf "Unavailable\n"
+    return 0
+  fi
+
+  local name
+  name=$(default_device_name "$kind")
+  if [[ -z "$name" ]]; then
+    printf "No device\n"
+    return 0
+  fi
+
+  local list_type
+  case "$kind" in
+    output) list_type="sinks" ;;
+    input) list_type="sources" ;;
+    *)
+      printf "Unknown kind: %s\n" "$kind" >&2
+      exit 1
+      ;;
+  esac
+
+  pactl -f json list "$list_type" \
+    | jq -r --arg name "$name" '
+        map(select(.name == $name)) | first
+        | if .mute then
+            "Muted (" + (.volume | to_entries | first | .value.value_percent) + ")"
+          else
+            (.volume | to_entries | first | .value.value_percent)
+          end
+      '
+}
+
+device_volume_display() {
+  local kind="$1"
+  local name="$2"
+
+  if ! audio_cli_available; then
+    printf "Unavailable\n"
+    return 0
+  fi
+
+  local list_type
+  case "$kind" in
+    output) list_type="sinks" ;;
+    input) list_type="sources" ;;
+    *)
+      printf "Unknown kind: %s\n" "$kind" >&2
+      exit 1
+      ;;
+  esac
+
+  pactl -f json list "$list_type" \
+    | jq -r --arg name "$name" '
+        map(select(.name == $name)) | first
+        | if .mute then
+            "Muted (" + (.volume | to_entries | first | .value.value_percent) + ")"
+          else
+            (.volume | to_entries | first | .value.value_percent)
+          end
+      '
+}
+
 summary() {
   if ! audio_cli_available; then
     printf "Audio unavailable\n%s" "$(audio_unavailable_reason)"
@@ -413,6 +482,14 @@ case "${1:-}" in
     shift
     preview_device "$@"
     ;;
+  volume-display)
+    shift
+    volume_display "$@"
+    ;;
+  device-volume-display)
+    shift
+    device_volume_display "$@"
+    ;;
   summary)
     shift
     summary "$@"
@@ -430,7 +507,7 @@ case "${1:-}" in
     dispatch "$@"
     ;;
   *)
-    echo "Usage: keystone-audio-menu {open-menu|categories-json|devices-json|list|set-default|preview-kind|preview-device|summary|apply-config-defaults|save-defaults|dispatch} ..." >&2
+    echo "Usage: keystone-audio-menu {open-menu|categories-json|devices-json|list|set-default|preview-kind|preview-device|volume-display|device-volume-display|summary|apply-config-defaults|save-defaults|dispatch} ..." >&2
     exit 1
     ;;
 esac
