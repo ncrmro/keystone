@@ -67,6 +67,7 @@ remains blocked.
 - The summary is short and decision-ready.
 - The updated daily note path is included.
 - Delegated work and blockers are explicit.
+- Each Do Now item names an explicit owner and a specific deadline or time reference.
 
 ## Context
 

@@ -73,17 +73,17 @@ before the workflow creates or updates anything.
      - `next_review`
    - Treat notes with completed or archived status as history, not active work.
 
-4. **Normalize shared-surface refs**
+5. **Normalize shared-surface refs**
    - Keep tags within the approved namespaces only.
    - If a note encodes milestone, issue, PR, or repo identity in tags or body
      text, record that in the report and recommend frontmatter normalization in
      later updates.
 
-5. **Avoid legacy TASKS.yaml**
+6. **Avoid legacy TASKS.yaml**
    - Do not use legacy task ledgers as the source of truth for this workflow.
    - If you notice them, list them under legacy context only.
 
-6. **Group by project and urgency**
+7. **Group by project and urgency**
    - Organize the inventory by project when possible.
    - Highlight notes that directly support calendar-critical work.
    - If no active task notes yet use the executive-assistant frontmatter

@@ -1,5 +1,5 @@
 name: executive_assistant
-version: "1.3.0"
+version: "1.3.1"
 summary: "Executive assistant workflows: event planning, calendar management, inbox cleanup, event discovery, and zk-backed task coordination"
 common_job_info_provided_to_all_steps_at_runtime: |
   Executive assistant workflows for the human operator. These workflows handle
@@ -22,6 +22,13 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Prefer active project hub notes in `index/` as the source of truth for project scope
   - For task coordination, create and update zk notes in notes repos instead of writing to legacy TASKS.yaml ledgers
   - Keep tags within approved namespaces (`project/*`, `repo/*`, `status/*`, `source/*`); store milestone, issue, PR, assignee, and owner references in frontmatter
+
+  Task note frontmatter contract (see steps/shared/task_note_frontmatter.md for full examples):
+  - Required baseline fields: `id`, `title`, `type`, `created`, `author`, `tags`
+  - Coordination fields (add when known): `project`, `owner`, `status`, `assigned_agent`,
+    `milestone_ref`, `issue_ref`, `pr_ref`, `repo_ref`, `source_ref`, `next_review`, `coordination_note`
+  - Use the same `source_ref` for deduplication across the human note and all owner mirrors
+  - Do not invent tag namespaces for milestone, issue, PR, or assignee identity
 
   Output audience: The human operator (CEO). Keep outputs concise and decision-ready.
 
@@ -613,3 +620,4 @@ steps:
         quality_criteria:
           "Decision Ready": "The summary gives the operator a short, concrete list of what to do now, what is delegated, and what is blocked."
           "Paths Included": "The summary names the updated daily note and any mirrored owner notes."
+          "Do Now Has Owner and Time": "Each item in the Do Now list names an explicit owner and a specific deadline or time reference."
