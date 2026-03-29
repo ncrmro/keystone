@@ -8,7 +8,7 @@
 #
 # Commands:
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
-#   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (home-manager only with --dev, full system default)
+#   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (unlocked current checkout with --dev, locked full system by default)
 #   grafana dashboards apply|export <uid>              Apply or export keystone dashboard JSON via Grafana API
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
 #   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
@@ -65,6 +65,13 @@ KS_DEBUG=false
 KS_HM_USERS_FILTER=""
 KS_HM_ALL_USERS=false
 HM_ACTIVATION_RECORDS=()
+
+ks_bool_true() {
+  case "${1:-}" in
+    true|1|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 print_main_help() {
   cat <<'EOF'
@@ -137,7 +144,7 @@ Pull, verify, build, and deploy Keystone hosts.
 
 Options:
   --debug              Show warnings from git and nix commands
-  --dev                Build and activate home-manager profiles only
+  --dev                Build and deploy the current unlocked checkout without pull, lock, or push
   --boot               Register the new generation for next boot without switching now
   --pull               Pull managed repos only; skip build and deploy
   --lock               Force lock mode explicitly; this is the default unless --dev is set
@@ -942,6 +949,138 @@ verify_repo_clean() {
   fi
 }
 
+# --- Build and deploy current unlocked state ---
+deploy_unlocked_current_state() {
+  local repo_root="$1"
+  local mode="$2"
+  shift 2
+  local target_hosts=("$@")
+  local hosts_nix="$repo_root/hosts.nix"
+
+  local needs_sudo=false current_hostname
+  current_hostname=$(hostname)
+  for h in "${target_hosts[@]}"; do
+    local h_hostname
+    h_hostname=$(nix eval -f "$hosts_nix" "$h.hostname" --raw)
+    if [[ "$h_hostname" == "$current_hostname" ]]; then
+      needs_sudo=true
+      break
+    fi
+  done
+
+  if [[ "$needs_sudo" == true ]]; then
+    echo "Caching sudo credentials..."
+    sudo -v
+  fi
+
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+
+  local build_targets=()
+  for h in "${target_hosts[@]}"; do
+    build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
+  done
+
+  echo "Building current unlocked state: ${target_hosts[*]}..."
+  local build_paths=()
+  if ! mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}"); then
+    echo "Error: build failed for current unlocked state." >&2
+    return 1
+  fi
+
+  if [[ ${#build_paths[@]} -ne ${#target_hosts[@]} ]]; then
+    echo "Error: nix build returned ${#build_paths[@]} path(s) for ${#target_hosts[@]} target host(s)." >&2
+    return 1
+  fi
+
+  for i in "${!target_hosts[@]}"; do
+    local host="${target_hosts[$i]}"
+    local path="${build_paths[$i]}"
+    local host_json ssh_target fallback_ip host_hostname
+    host_json=$(nix eval -f "$hosts_nix" "$host" --json)
+    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+    fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
+    host_hostname=$(echo "$host_json" | jq -r '.hostname')
+
+    if [[ "$host_hostname" == "$current_hostname" ]]; then
+      local old_sw new_sw old_kernel new_kernel old_initrd new_initrd etc_changed=false
+      old_sw=$(readlink -f /run/current-system/sw 2>/dev/null || echo "old")
+      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
+      old_kernel=$(readlink -f /run/current-system/kernel 2>/dev/null || echo "old")
+      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
+      old_initrd=$(readlink -f /run/current-system/initrd 2>/dev/null || echo "old")
+      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
+
+      if ! diff -r -q --exclude="per-user" "$(readlink -f /run/current-system/etc)" "$(readlink -f "$path/etc")" >/dev/null 2>&1; then
+        etc_changed=true
+      fi
+
+      if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
+        echo "OS core unchanged. Activating fast home-manager switch locally..."
+        deploy_home_manager_only "$repo_root" "$host"
+        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
+        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
+      else
+        echo "Deploying $host locally ($mode)..."
+        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
+        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        sudo "$path/bin/switch-to-configuration" "$mode"
+      fi
+    else
+      if [[ -z "$ssh_target" ]]; then
+        echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2
+        exit 1
+      fi
+      local resolved="$ssh_target"
+      if [[ -n "$fallback_ip" ]]; then
+        if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+          resolved="$fallback_ip"
+        fi
+      fi
+
+      echo "Deploying $host to root@$resolved ($mode)..."
+      nix copy --to "ssh://root@$resolved" "$path"
+
+      local new_sw new_kernel new_initrd check_cmd remote_status
+      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
+      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
+      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
+
+      check_cmd="
+        old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
+        old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
+        old_initrd=\$(readlink -f /run/current-system/initrd 2>/dev/null || echo 'old')
+        if [[ \"\$old_sw\" == \"$new_sw\" && \"\$old_kernel\" == \"$new_kernel\" && \"\$old_initrd\" == \"$new_initrd\" ]]; then
+          if ! diff -r -q --exclude='per-user' \"\$(readlink -f /run/current-system/etc)\" \"\$(readlink -f $path/etc)\" >/dev/null 2>&1; then
+            echo 'OS'
+          else
+            echo 'HM'
+          fi
+        else
+          echo 'OS'
+        fi
+      "
+      # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
+      remote_status=$(ssh "root@$resolved" "$check_cmd")
+
+      if [[ "$remote_status" == "HM" ]]; then
+        echo "OS core unchanged. Activating fast home-manager switch remotely..."
+        deploy_home_manager_only "$repo_root" "$host"
+        # shellcheck disable=SC2029  # $path intentionally expanded client-side; remote only receives the resolved store path string
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path"
+        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
+      else
+        # shellcheck disable=SC2029  # $path and $mode intentionally expanded client-side; remote receives the resolved store path and mode strings
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
+      fi
+    fi
+
+    [[ "$mode" == "boot" ]] && echo "Reboot required to apply changes for $host."
+    echo "Update complete for $host"
+  done
+  maybe_sync_grafana_dashboards "$repo_root"
+}
+
 # --- Commands ---
 
 cmd_sync_host_keys() {
@@ -1157,120 +1296,7 @@ cmd_switch() {
     done
   fi
 
-  # Cache sudo if local host is targeted
-  local needs_sudo=false current_hostname
-  current_hostname=$(hostname)
-  for h in "${target_hosts[@]}"; do
-    local h_hostname
-    h_hostname=$(nix eval -f "$hosts_nix" "$h.hostname" --raw)
-    if [[ "$h_hostname" == "$current_hostname" ]]; then
-      needs_sudo=true; break
-    fi
-  done
-
-  if [[ "$needs_sudo" == true ]]; then
-    echo "Caching sudo credentials..."
-    sudo -v
-  fi
-
-  local override_args=()
-  read -ra override_args <<< "$(local_override_args "$repo_root")"
-
-  # Step 1: Build ALL in parallel for efficiency
-  local build_targets=()
-  for h in "${target_hosts[@]}"; do
-    build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
-  done
-
-  echo "Building: ${target_hosts[*]}..."
-  local build_paths=()
-  mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}")
-
-  # Step 2: Deploy sequentially using the built store paths
-  for i in "${!target_hosts[@]}"; do
-    local host="${target_hosts[$i]}"
-    local path="${build_paths[$i]}"
-    local host_json ssh_target fallback_ip host_hostname
-    host_json=$(nix eval -f "$hosts_nix" "$host" --json)
-    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
-    fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
-    host_hostname=$(echo "$host_json" | jq -r '.hostname')
-
-    if [[ "$host_hostname" == "$current_hostname" ]]; then
-      local old_sw new_sw old_kernel new_kernel old_initrd new_initrd etc_changed=false
-      old_sw=$(readlink -f /run/current-system/sw 2>/dev/null || echo "old")
-      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
-      old_kernel=$(readlink -f /run/current-system/kernel 2>/dev/null || echo "old")
-      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
-      old_initrd=$(readlink -f /run/current-system/initrd 2>/dev/null || echo "old")
-      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
-
-      if ! diff -r -q --exclude="per-user" "$(readlink -f /run/current-system/etc)" "$(readlink -f "$path/etc")" >/dev/null 2>&1; then
-        etc_changed=true
-      fi
-
-      if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
-        echo "OS core unchanged. Activating fast home-manager switch locally..."
-        deploy_home_manager_only "$repo_root" "$host"
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
-      else
-        echo "Deploying $host locally ($mode)..."
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
-        sudo "$path/bin/switch-to-configuration" "$mode"
-      fi
-    else
-      if [[ -z "$ssh_target" ]]; then
-        echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2; exit 1
-      fi
-      local resolved="$ssh_target"
-      if [[ -n "$fallback_ip" ]]; then
-        if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
-          resolved="$fallback_ip"
-        fi
-      fi
-      
-      echo "Deploying $host to root@$resolved ($mode)..."
-      nix copy --to "ssh://root@$resolved" "$path"
-      
-      # Check remote OS state
-      local new_sw new_kernel new_initrd check_cmd remote_status
-      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
-      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
-      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
-      
-      check_cmd="
-        old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
-        old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
-        old_initrd=\$(readlink -f /run/current-system/initrd 2>/dev/null || echo 'old')
-        if [[ \"\$old_sw\" == \"$new_sw\" && \"\$old_kernel\" == \"$new_kernel\" && \"\$old_initrd\" == \"$new_initrd\" ]]; then
-          if ! diff -r -q --exclude='per-user' \"\$(readlink -f /run/current-system/etc)\" \"\$(readlink -f $path/etc)\" >/dev/null 2>&1; then
-            echo 'OS'
-          else
-            echo 'HM'
-          fi
-        else
-          echo 'OS'
-        fi
-      "
-      # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
-      remote_status=$(ssh "root@$resolved" "$check_cmd")
-
-      if [[ "$remote_status" == "HM" ]]; then
-        echo "OS core unchanged. Activating fast home-manager switch remotely..."
-        deploy_home_manager_only "$repo_root" "$host"
-        # shellcheck disable=SC2029  # $path intentionally expanded client-side; remote only receives the resolved store path string
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path"
-        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
-      else
-        # shellcheck disable=SC2029  # $path and $mode intentionally expanded client-side; remote receives the resolved store path and mode strings
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
-      fi
-    fi
-    echo "Update complete for $host"
-  done
-  cmd_grafana "dashboards" "apply"
+  deploy_unlocked_current_state "$repo_root" "$mode" "${target_hosts[@]}"
 }
 
 # --- Update command ---
@@ -1329,13 +1355,10 @@ cmd_update() {
     return
   fi
 
-  # ── DEV MODE: home-manager only (REQ-016.2) ──────────────────────────────────
+  # ── DEV MODE: deploy current unlocked checkout without lock/push ─────────────
   if [[ "$lock" != true ]]; then
-    bootstrap_managed_repos "$repo_root" "$registry"
-    build_home_manager_only "$repo_root" "${target_hosts[@]}"
-    deploy_home_manager_only "$repo_root" "${target_hosts[@]}"
-    echo "Dev mode update complete (home-manager only) for: ${target_hosts[*]}"
-    cmd_grafana "dashboards" "apply"
+    deploy_unlocked_current_state "$repo_root" "$mode" "${target_hosts[@]}"
+    echo "Dev mode update complete (current unlocked checkout) for: ${target_hosts[*]}"
     return
   fi
 
@@ -1534,7 +1557,7 @@ cmd_update() {
     [[ "$mode" == "boot" ]] && echo "Reboot required to apply changes for $host."
     echo "Update complete for $host"
   done
-  cmd_grafana "dashboards" "apply"
+  maybe_sync_grafana_dashboards "$repo_root"
 }
 
 # --- Find keystone repo (where conventions/ lives) ---
@@ -1585,6 +1608,68 @@ grafana_dashboards_dir() {
 
   echo "Error: could not locate keystone Grafana dashboards directory." >&2
   exit 1
+}
+
+grafana_managed_tag() {
+  printf '%s\n' "keystone-managed"
+}
+
+grafana_api_request() {
+  local method="$1"
+  local url="$2"
+  local api_key="$3"
+  local data="${4:-}"
+  local body_file
+  local http_code
+
+  body_file=$(mktemp)
+  if [[ -n "$data" ]]; then
+    http_code=$(curl -sS -o "$body_file" -w '%{http_code}' \
+      -H "Authorization: Bearer ${api_key}" \
+      -H 'Content-Type: application/json' \
+      -X "$method" \
+      --data "$data" \
+      "$url")
+  else
+    http_code=$(curl -sS -o "$body_file" -w '%{http_code}' \
+      -H "Authorization: Bearer ${api_key}" \
+      -X "$method" \
+      "$url")
+  fi
+
+  if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+    echo "Grafana API request failed: ${method} ${url} (HTTP ${http_code})" >&2
+    if [[ -s "$body_file" ]]; then
+      cat "$body_file" >&2
+      echo >&2
+    fi
+    rm -f "$body_file"
+    return 1
+  fi
+
+  cat "$body_file"
+  rm -f "$body_file"
+}
+
+keystone_development_enabled() {
+  local repo_root="$1"
+  local current_host
+  current_host=$(resolve_host "$repo_root/hosts.nix" "")
+
+  local value
+  value=$(nix eval "$repo_root#nixosConfigurations.${current_host}.config.keystone.development" --json 2>/dev/null || echo "false")
+  ks_bool_true "$(echo "$value" | jq -r '.')"
+}
+
+maybe_sync_grafana_dashboards() {
+  local repo_root="$1"
+
+  if ! keystone_development_enabled "$repo_root"; then
+    return 0
+  fi
+
+  echo "Syncing keystone Grafana dashboards via API..."
+  cmd_grafana "dashboards" "apply"
 }
 
 resolve_grafana_url() {
@@ -1707,12 +1792,21 @@ cmd_grafana_dashboards() {
   
   grafana_url=$(resolve_grafana_url "$repo_root" 2>/dev/null || true)
   if [[ -z "$grafana_url" ]]; then
+    if keystone_development_enabled "$repo_root"; then
+      echo "Error: could not resolve Grafana URL for dashboard sync in development mode. Set GRAFANA_URL." >&2
+      return 1
+    fi
     echo "Warning: skipping dashboard sync (could not resolve Grafana URL). Set GRAFANA_URL." >&2
     return 0
   fi
 
   grafana_api_key=$(resolve_grafana_api_key "$repo_root" 2>/dev/null || true)
   if [[ -z "$grafana_api_key" ]]; then
+    if keystone_development_enabled "$repo_root"; then
+      echo "Error: Keystone Grafana API token is required for dashboard sync in development mode." >&2
+      echo "Define 'secrets/grafana-api-token.age' for this host and rebuild." >&2
+      return 1
+    fi
     echo "Warning: Keystone Grafana API token is not configured on this host." >&2
     echo "To enable dashboard synchronization and Grafana MCP, you must:" >&2
     echo "  1. Define 'secrets/grafana-api-token.age' in your nixos-config/secrets.nix" >&2
@@ -1725,7 +1819,9 @@ cmd_grafana_dashboards() {
 
   case "$action" in
     apply)
-      local file uid payload
+      local file uid payload managed_tag
+      local -a desired_uids remote_managed_uids
+      managed_tag=$(grafana_managed_tag)
       shopt -s nullglob
       for file in "$dashboards_dir"/*.json; do
         uid=$(jq -r '.uid // empty' "$file")
@@ -1733,14 +1829,37 @@ cmd_grafana_dashboards() {
           echo "Skipping $file (missing uid)" >&2
           continue
         fi
-        payload=$(jq -cn --slurpfile dashboard "$file" '{dashboard: $dashboard[0], overwrite: true}')
-        curl -fsS \
-          -H "Authorization: Bearer ${grafana_api_key}" \
-          -H 'Content-Type: application/json' \
-          -X POST \
-          --data "$payload" \
-          "${grafana_url}/api/dashboards/db" >/dev/null
+        desired_uids+=("$uid")
+        payload=$(jq -cn --slurpfile dashboard "$file" --arg managed_tag "$managed_tag" '
+          {
+            dashboard: (
+              $dashboard[0]
+              | .tags = (((.tags // []) + [$managed_tag]) | unique)
+            ),
+            overwrite: true
+          }
+        ')
+        grafana_api_request POST \
+          "${grafana_url}/api/dashboards/db" \
+          "${grafana_api_key}" \
+          "$payload" >/dev/null
         echo "Applied ${uid}"
+      done
+
+      mapfile -t remote_managed_uids < <(
+        grafana_api_request GET \
+          "${grafana_url}/api/search?type=dash-db&tag=${managed_tag}" \
+          "${grafana_api_key}" |
+          jq -r '.[].uid // empty'
+      )
+
+      for uid in "${remote_managed_uids[@]}"; do
+        if [[ ! " ${desired_uids[*]} " =~ [[:space:]]${uid}[[:space:]] ]]; then
+          grafana_api_request DELETE \
+            "${grafana_url}/api/dashboards/uid/${uid}" \
+            "${grafana_api_key}" >/dev/null
+          echo "Deleted stale ${uid}"
+        fi
       done
       ;;
     export)
@@ -1764,9 +1883,9 @@ cmd_grafana_dashboards() {
         exit 1
       fi
 
-      response=$(curl -fsS \
-        -H "Authorization: Bearer ${grafana_api_key}" \
-        "${grafana_url}/api/dashboards/uid/${uid}")
+      response=$(grafana_api_request GET \
+        "${grafana_url}/api/dashboards/uid/${uid}" \
+        "${grafana_api_key}")
       body=$(printf '%s\n' "$response" | jq '.dashboard | del(.id, .version)')
       printf '%s\n' "$body" > "$target_file"
       echo "Exported ${uid} -> ${target_file}"
@@ -1906,7 +2025,7 @@ the local repo immediately, skipping pull, lock, and push phases.
 | Flag | Effect |
 |------|--------|
 | `--debug` | Show warning lines from underlying `git`/`nix` commands |
-| `--dev` | Home-manager only: clone or pull managed repos, then build + activate user/agent profiles |
+| `--dev` | Build and deploy the current unlocked checkout, skipping pull, lock, and push |
 | `--boot` | Use `boot` instead of `switch` mode (reboot required to apply) |
 | `--pull` | Pull repos only — no build or deploy |
 | `--lock` | Force locking (default when `--dev` is not set), full system rebuild |
@@ -2235,14 +2354,21 @@ build_agent_prompt() {
 
   local prompt=""
 
-  # 1. Conventions from keystone repo (REQ-014.8, REQ-014.14, REQ-014.16)
-  if [[ -n "$ks_repo" ]]; then
+  # 1. Static conventions. Prefer the generated canonical per-user context at
+  # ~/.keystone/AGENTS.md. Fall back to repo conventions for pre-activation or
+  # ad-hoc checkout usage.
+  local canonical_prompt="$HOME/.keystone/AGENTS.md"
+  if [[ -f "$canonical_prompt" ]]; then
+    prompt="$(cat "$canonical_prompt")"
+  elif [[ -n "$ks_repo" ]]; then
     local conventions
     conventions=$(load_conventions "$ks_repo")
     if [[ -n "$conventions" ]]; then
       prompt="$conventions"
     fi
+  fi
 
+  if [[ -n "$ks_repo" ]]; then
     # Load ks-agent archetype (provides identity and constraints for ks agent sessions)
     local archetype_file="$ks_repo/modules/os/agents/archetypes/ks-agent.md"
     if [[ -f "$archetype_file" ]]; then
@@ -2342,7 +2468,8 @@ $user_table"
 
 ### Dev Mode Conventions
 
-- \`ks build\` / \`ks update --dev\`: Rebuilds **home-manager profiles only** (users + agents). \`ks update --dev\` also clones or pulls managed repos first so local overrides like DeepWork library jobs appear automatically. Fast iteration, no sudo required.
+- \`ks build\`: Rebuilds **home-manager profiles only** (users + agents).
+- \`ks update --dev\` / \`ks switch\`: Deploy the **current unlocked checkout** to the selected hosts, skipping pull, lock, and push.
 - \`ks build --lock\` / \`ks update\` (default): **Full NixOS system rebuild**. Pushes keystone (forks if not a collaborator), locks flake inputs, builds, pushes nixos-config, deploys.
 - Changes to keystone are NOT locked into flake.lock until \`--lock\` is used.
 - When ready to lock: commit + push keystone, then run \`ks update\` (or \`ks build --lock\`)."
