@@ -57,6 +57,54 @@ let
     credstoreDevice = credstoreDevice;
     tpmPCRs = tpmPCRString;
   };
+
+  # FIDO2 enrollment script
+  enrollFido2Script = makeExecutableScript "enroll-fido2.sh" ./scripts/enroll-fido2.sh {
+    cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
+    systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
+    bootctl = "${pkgs.systemd}/bin/bootctl";
+    credstoreDevice = credstoreDevice;
+  };
+
+  refreshDiskUnlockStatusScript = pkgs.writeShellScript "refresh-disk-unlock-status.sh" ''
+        set -euo pipefail
+
+        STATUS_FILE="/var/lib/keystone/disk-unlock-status.json"
+        MARKER_FILE="/var/lib/keystone/tpm-enrollment-complete"
+        DEVICE="${credstoreDevice}"
+        TOKENS="$(${pkgs.cryptsetup}/bin/cryptsetup luksDump "$DEVICE" 2>/dev/null || true)"
+        TPM_ENROLLED=false
+        FIDO2_ENROLLED=false
+
+        if printf "%s\n" "$TOKENS" | grep -q "systemd-tpm2"; then
+          TPM_ENROLLED=true
+        fi
+
+        if printf "%s\n" "$TOKENS" | grep -q "systemd-fido2"; then
+          FIDO2_ENROLLED=true
+        fi
+
+        mkdir -p /var/lib/keystone
+
+        if [ "$TPM_ENROLLED" = true ]; then
+          cat > "$MARKER_FILE" <<MARKER
+    TPM enrollment verified: $(date -Iseconds)
+    Device: ${credstoreDevice}
+    MARKER
+        else
+          rm -f "$MARKER_FILE"
+        fi
+
+        cat > "$STATUS_FILE" <<EOF
+    {
+      "checked_at": "$(date -Iseconds)",
+      "device": "${credstoreDevice}",
+      "tpm_enrolled": $TPM_ENROLLED,
+      "fido2_enrolled": $FIDO2_ENROLLED
+    }
+    EOF
+        chmod 0644 "$STATUS_FILE"
+  '';
 in
 {
   config = mkIf (osCfg.enable && cfg.enable) {
@@ -80,7 +128,7 @@ in
     # Regular users cannot read block devices, so this must run as a systemd
     # service rather than in interactiveShellInit.
     systemd.services.keystone-tpm-check = {
-      description = "Check TPM enrollment status and update marker file";
+      description = "Check disk unlock enrollment status and update marker files";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
         Type = "oneshot";
@@ -88,19 +136,7 @@ in
       };
       path = [ pkgs.cryptsetup ];
       script = ''
-        MARKER_FILE="/var/lib/keystone/tpm-enrollment-complete"
-        mkdir -p /var/lib/keystone
-
-        if cryptsetup luksDump "${credstoreDevice}" 2>/dev/null | grep -q "systemd-tpm2"; then
-          # TPM enrolled — create/update marker
-          cat > "$MARKER_FILE" <<MARKER
-        TPM enrollment verified: $(date -Iseconds)
-        Device: ${credstoreDevice}
-        MARKER
-        else
-          # Not enrolled — remove stale marker if present
-          rm -f "$MARKER_FILE"
-        fi
+        exec ${refreshDiskUnlockStatusScript}
       '';
     };
 
@@ -155,6 +191,16 @@ in
       # TPM enrollment (standalone)
       (pkgs.writeShellScriptBin "keystone-enroll-tpm" ''
         exec ${enrollTpmScript} "$@"
+      '')
+
+      # FIDO2 hardware-key enrollment for disk unlock
+      (pkgs.writeShellScriptBin "keystone-enroll-fido2" ''
+        exec ${enrollFido2Script} "$@"
+      '')
+
+      # Root helper to refresh the world-readable disk unlock status file
+      (pkgs.writeShellScriptBin "keystone-refresh-disk-unlock-status" ''
+        exec ${refreshDiskUnlockStatusScript}
       '')
     ];
   };
