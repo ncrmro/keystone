@@ -350,7 +350,9 @@ for command_id in "${published_commands[@]}"; do
   display_name="$(command_display_name "$command_id")"
   template_name="$(command_template_name "$command_id")"
   command_body="$(render_template "$templates_dir/$template_name")"
+  skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
 
+  # Command files (user-invocable slash commands)
   claude_content="$(render_frontmatter "$command_id" "$description" "$argument_hint" "$display_name")"$'\n\n'"$command_body"$'\n'
   write_file "$HOME/.claude/commands/${command_id}.md" "$claude_content"
 
@@ -367,6 +369,11 @@ for command_id in "${published_commands[@]}"; do
   write_file "$HOME/.gemini/commands/$gemini_rel" "$gemini_content"
 
   write_file "$HOME/.config/opencode/commands/${command_id}.md" "$command_body"$'\n'
+
+  # Skill files (agent-callable, available to all LLM agents)
+  ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"
+  write_file "$HOME/.claude/skills/${skill_name}/SKILL.md" "$ks_skill_md"
+  write_file "$HOME/.config/opencode/skills/${skill_name}/SKILL.md" "$ks_skill_md"
 done
 
 deepwork_body="$(cat "$templates_dir/deepwork-skill.template.md")"

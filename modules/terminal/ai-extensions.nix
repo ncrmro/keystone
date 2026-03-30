@@ -618,8 +618,44 @@ in
               ".gemini"
               ".config/opencode"
             ];
+        ksSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              acc
+              // (listToAttrs (
+                map (
+                  command:
+                  let
+                    skillName = codexSkillName command.id;
+                    skillDir = "${toolDir}/skills/${skillName}";
+                  in
+                  if toolDir == ".gemini" then
+                    {
+                      name = "${toolDir}/commands/${replaceStrings [ "." ] [ "/" ] command.id}.toml";
+                      value = mkGeminiToml command;
+                    }
+                  else
+                    {
+                      name = "${skillDir}/SKILL.md";
+                      value = {
+                        text = mkSkillMd {
+                          name = skillName;
+                          description = command.description;
+                        } command.body;
+                      };
+                    }
+                ) publishedCommands
+              ))
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
       in
-      commandFilesByTool // deepworkSkillsByTool // wrapUpSkillsByTool
+      commandFilesByTool // deepworkSkillsByTool // wrapUpSkillsByTool // ksSkillsByTool
     );
 
     home.activation = mkIf (!isDev) {
