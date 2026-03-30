@@ -18,8 +18,10 @@ what is and isn't available inside the sandbox.
 - **Package manager caches**: npm, pip, uv, cargo, go, pnpm, bun (persistent named volumes)
 - **Nix store**: persistent named volume (`nix-agent-store`)
 - **Project devshell**: `nix develop` auto-entered if `flake.nix` exists in working directory
-- **Utilities**: `gh`, `ripgrep`, `procps` (pre-resolved or nix-built)
-- **Optional Chrome**: headless Chromium + chrome-devtools-mcp (via `--chrome` flag)
+- **Utilities**: `gh`, `ripgrep`, `procps`, `process-compose` (pre-resolved or nix-built)
+- **Process Compose**: `PC_SOCKET_PATH` (Unix Domain Socket) and `PC_API_TOKEN` forwarded if set. See `tool.process-compose-agent` for interaction standards.
+- **MCP Servers**: `process-compose-mcp`, `chrome-devtools-mcp` (via `--chrome` flag)
+- **Optional Chrome**: headless Chromium (via `--chrome` flag)
 
 ## What's NOT Available
 
