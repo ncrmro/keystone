@@ -73,14 +73,20 @@ to an appropriate milestone before commenting.
 14. The issue ref MUST be recorded in the report note frontmatter using the canonical
     format: `gh:<owner>/<repo>#<number>` or `fj:<owner>/<repo>#<number>`.
 
-## Hub note update
+## Project linkage
 
-15. After creating the report and commenting on issues/PRs, agents SHOULD update the
-    relevant project hub note to link the new report and any new issues.
+15. Wrap-up MUST NOT update the project hub note just to record a session check-in,
+    report, or tracking issue.
+16. Instead, the report note and any created tracking issue MUST carry the project
+    linkage directly through canonical refs such as `repo_ref`, `milestone_ref`,
+    and `issue_ref`, plus the appropriate project or repo tags.
+17. If a project hub note is already in scope for unrelated substantive work, it MAY
+    be updated as part of that separate work, but wrap-up itself MUST NOT treat hub
+    mutation as a required or default step.
 
 ## Completion
 
-16. Wrap-up is complete when the agent has:
+18. Wrap-up is complete when the agent has:
     - Confirmed the report note path.
     - Listed every issue/PR that received a comment with its URL.
     - Noted any step that failed and the manual fallback.
