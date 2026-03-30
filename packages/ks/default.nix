@@ -7,6 +7,8 @@
   jq,
   openssh,
   hostname,
+  pandoc,
+  python3Packages,
 }:
 writeShellApplication {
   name = "ks";
@@ -17,6 +19,8 @@ writeShellApplication {
     jq
     openssh
     hostname
+    pandoc
+    python3Packages.weasyprint
   ];
   text = builtins.readFile ./ks.sh;
   meta = with lib; {
