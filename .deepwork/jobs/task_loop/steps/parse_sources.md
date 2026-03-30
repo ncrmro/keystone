@@ -47,7 +47,12 @@ The task loop orchestrator has already run declarative shell commands to fetch s
    - When writing the file, copy existing task entries character-for-character and only append new entries at the end
    - After writing, validate with `yq e '.' TASKS.yaml` to confirm the file is valid YAML
 
-6. **Write the ingest report**
+6. **Verify counts before reporting**
+   - Count the total tasks in the written TASKS.yaml (use `grep -c '^\s*- name:' TASKS.yaml` or the Read tool)
+   - Count how many are new (tasks you appended) vs existing (tasks that were already there)
+   - These verified counts MUST be used in the ingest report — do not estimate or calculate from memory
+
+7. **Write the ingest report**
 
 ### Core rules
 

@@ -157,6 +157,113 @@ extract_token_total() {
   printf '%s\n' "${token_value:-0}"
 }
 
+# Parse provider-specific JSON into a normalized result file.
+# Usage: parse_provider_json <provider> <raw_file> <result_file>
+parse_provider_json() {
+  local provider="$1"
+  local raw_file="$2"
+  local result_file="$3"
+
+  case "$provider" in
+    claude)
+      jq '{
+        result_text:   (.result // ""),
+        is_error:      (.is_error // false),
+        input_tokens:  (.usage.input_tokens // 0),
+        output_tokens: (.usage.output_tokens // 0),
+        token_total:   ((.usage.input_tokens // 0) + (.usage.output_tokens // 0)),
+        cost_usd:      (.total_cost_usd // null),
+        duration_ms:   (.duration_ms // null),
+        session_id:    (.session_id // null),
+        num_turns:     (.num_turns // null)
+      }' "$raw_file" > "$result_file"
+      ;;
+    gemini)
+      jq '{
+        result_text:   (.response // ""),
+        is_error:      false,
+        input_tokens:  ([.stats.models[]?.tokens.input // 0] | add // 0),
+        output_tokens: ([.stats.models[]?.tokens.candidates // 0] | add // 0),
+        token_total:   (([.stats.models[]?.tokens.input // 0] | add // 0) + ([.stats.models[]?.tokens.candidates // 0] | add // 0)),
+        cost_usd:      null,
+        duration_ms:   ([.stats.models[]?.api.totalLatencyMs // 0] | add // 0),
+        session_id:    (.session_id // null),
+        num_turns:     null
+      }' "$raw_file" > "$result_file"
+      ;;
+    codex)
+      # Codex outputs JSONL — slurp all lines into an array
+      jq -s '
+        (map(select(.type == "turn.completed" or .type == "turn.failed")) | last // {}) as $last_turn |
+        ([map(select(.type == "item.completed")) | .[] | .item.text // empty] | join("\n")) as $text |
+        {
+          result_text:   $text,
+          is_error:      ($last_turn.type == "turn.failed"),
+          input_tokens:  ($last_turn.usage.input_tokens // 0),
+          output_tokens: ($last_turn.usage.output_tokens // 0),
+          token_total:   (($last_turn.usage.input_tokens // 0) + ($last_turn.usage.output_tokens // 0)),
+          cost_usd:      null,
+          duration_ms:   null,
+          session_id:    ((map(select(.type == "thread.started")) | first // {}).thread_id // null),
+          num_turns:     ([.[] | select(.type == "turn.completed" or .type == "turn.failed")] | length)
+        }' "$raw_file" > "$result_file"
+      ;;
+    *)
+      # Unknown provider — write empty result
+      echo '{"result_text":"","is_error":true,"input_tokens":0,"output_tokens":0,"token_total":0,"cost_usd":null,"duration_ms":null,"session_id":null,"num_turns":null}' > "$result_file"
+      return 1
+      ;;
+  esac
+}
+
+# Run a provider prompt with JSON output and parse the result.
+# Sets LAST_RESULT_FILE to the normalized result JSON path.
+# Usage: run_and_parse <stage_name> <runtime_json> <prompt>
+LAST_RESULT_FILE=""
+run_and_parse() {
+  local stage_name="$1"
+  local runtime_json="$2"
+  local prompt="$3"
+
+  local provider
+  provider=$(echo "$runtime_json" | jq -r '.provider // ""')
+
+  local raw_file="$LOGS_DIR/.raw-${stage_name}-${TIMESTAMP}.json"
+  local result_file="$LOGS_DIR/.result-${stage_name}-${TIMESTAMP}.json"
+  LAST_RESULT_FILE="$result_file"
+
+  local exit_code=0
+  run_provider_prompt "$stage_name" "$runtime_json" "$prompt" > "$raw_file" 2>>"$LOG_FILE" || exit_code=$?
+
+  if [[ -s "$raw_file" ]] && parse_provider_json "$provider" "$raw_file" "$result_file" 2>/dev/null; then
+    # Log the result text for debugging
+    local result_text
+    result_text=$(jq -r '.result_text // ""' "$result_file" 2>/dev/null || true)
+    if [[ -n "$result_text" ]]; then
+      printf '%s\n' "$result_text" >> "$LOG_FILE"
+    fi
+  else
+    # Fallback: construct minimal result from exit code + grep-based extraction
+    local fallback_tokens
+    fallback_tokens=$(extract_token_total "$raw_file")
+    jq -cn --argjson tokens "$fallback_tokens" --argjson err "$(if [[ "$exit_code" -ne 0 ]]; then echo 'true'; else echo 'false'; fi)" '{
+      result_text: "",
+      is_error: $err,
+      input_tokens: 0,
+      output_tokens: 0,
+      token_total: $tokens,
+      cost_usd: null,
+      duration_ms: null,
+      session_id: null,
+      num_turns: null
+    }' > "$result_file"
+    # Copy raw output to log for debugging
+    cat "$raw_file" >> "$LOG_FILE" 2>/dev/null || true
+  fi
+
+  return "$exit_code"
+}
+
 write_metrics() {
   local exit_code="$1"
   local duration="$2"
@@ -215,6 +322,7 @@ finish_run() {
     "tasks_failed" "$TASKS_FAILED" \
     "tasks_blocked" "$TASKS_BLOCKED"
   write_metrics "$exit_code" "$duration"
+  rm -f "$LOGS_DIR"/.raw-*.json "$LOGS_DIR"/.result-*.json
 }
 
 trap finish_run EXIT
@@ -326,7 +434,8 @@ run_provider_prompt() {
           [
             "claude",
             "--print",
-            "--dangerously-skip-permissions"
+            "--dangerously-skip-permissions",
+            "--output-format", "json"
           ]
           + (if $model != "" then ["--model", $model] else [] end)
           + (if $fallback_model != "" then ["--fallback-model", $fallback_model] else [] end)
@@ -342,7 +451,8 @@ run_provider_prompt() {
             "gemini",
             "--prompt",
             $prompt,
-            "--yolo"
+            "--yolo",
+            "--output-format", "json"
           ]
           + (if $model != "" then ["-m", $model] else [] end)
         ')
@@ -354,7 +464,8 @@ run_provider_prompt() {
           [
             "codex",
             "exec",
-            "--full-auto"
+            "--full-auto",
+            "--json"
           ]
           + (if $model != "" then ["-m", $model] else [] end)
           + [$prompt]
@@ -486,13 +597,14 @@ INGEST_RAN=false
 emit_event "stage_start" "Ingesting sources" "stage_name" "ingest"
 if [[ "$(echo "$SOURCES_JSON" | jq '[.[].data | length] | add // 0')" -gt 0 ]]; then
   INGEST_RUNTIME=$(resolve_stage_runtime "ingest")
-  set +o pipefail
-  run_provider_prompt "ingest" "$INGEST_RUNTIME" "/deepwork task_loop ingest
+  TASK_COUNT_BEFORE=$(yq '.tasks | length' TASKS.yaml 2>/dev/null || echo 0)
+
+  INGEST_EXIT=0
+  run_and_parse "ingest" "$INGEST_RUNTIME" "/deepwork task_loop ingest
 
 Source data (pre-fetched):
-$(echo "$SOURCES_JSON" | jq '.')" 2>&1 | tee -a "$LOG_FILE" >&2
-  INGEST_EXIT=${PIPESTATUS[0]}
-  set -o pipefail
+$(echo "$SOURCES_JSON" | jq '.')" || INGEST_EXIT=$?
+
   if [[ "$INGEST_EXIT" -ne 0 ]]; then
     RUN_STATUS="degraded"
     log "  WARNING: Ingest step failed, continuing..."
@@ -504,6 +616,13 @@ $(echo "$SOURCES_JSON" | jq '.')" 2>&1 | tee -a "$LOG_FILE" >&2
     log "  ERROR: TASKS.yaml corrupted during ingest. Reverting..."
     git checkout TASKS.yaml || git restore TASKS.yaml || true
     INGEST_RAN=false
+  elif [[ "$INGEST_RAN" == "true" ]]; then
+    TASK_COUNT_AFTER=$(yq '.tasks | length' TASKS.yaml 2>/dev/null || echo 0)
+    if [[ "$TASK_COUNT_AFTER" -lt "$TASK_COUNT_BEFORE" ]]; then
+      log "  ERROR: Tasks lost during ingest ($TASK_COUNT_BEFORE -> $TASK_COUNT_AFTER). Reverting..."
+      git checkout TASKS.yaml || git restore TASKS.yaml || true
+      INGEST_RAN=false
+    fi
   fi
 else
   log "  No source data to ingest, skipping"
@@ -543,10 +662,11 @@ else
     log "Step 3: Prioritizing tasks..."
     emit_event "stage_start" "Prioritizing tasks" "stage_name" "prioritize"
     PRIORITIZE_RUNTIME=$(resolve_stage_runtime "prioritize")
-    set +o pipefail
-    run_provider_prompt "prioritize" "$PRIORITIZE_RUNTIME" "/deepwork task_loop prioritize" 2>&1 | tee -a "$LOG_FILE" >&2
-    PRIORITIZE_EXIT=${PIPESTATUS[0]}
-    set -o pipefail
+    TASK_COUNT_BEFORE_PRIO=$(yq '.tasks | length' TASKS.yaml 2>/dev/null || echo 0)
+
+    PRIORITIZE_EXIT=0
+    run_and_parse "prioritize" "$PRIORITIZE_RUNTIME" "/deepwork task_loop prioritize" || PRIORITIZE_EXIT=$?
+
     if [[ "$PRIORITIZE_EXIT" -ne 0 ]]; then
       RUN_STATUS="degraded"
       log "  WARNING: Prioritize step failed, continuing..."
@@ -555,7 +675,13 @@ else
         log "  ERROR: TASKS.yaml corrupted during prioritize. Reverting..."
         git checkout TASKS.yaml || git restore TASKS.yaml || true
       else
-        echo -n "$CURRENT_HASH" > "$PRIORITIZE_HASH_FILE"
+        TASK_COUNT_AFTER_PRIO=$(yq '.tasks | length' TASKS.yaml 2>/dev/null || echo 0)
+        if [[ "$TASK_COUNT_AFTER_PRIO" -ne "$TASK_COUNT_BEFORE_PRIO" ]]; then
+          log "  ERROR: Task count changed during prioritize ($TASK_COUNT_BEFORE_PRIO -> $TASK_COUNT_AFTER_PRIO). Reverting..."
+          git checkout TASKS.yaml || git restore TASKS.yaml || true
+        else
+          echo -n "$CURRENT_HASH" > "$PRIORITIZE_HASH_FILE"
+        fi
       fi
     fi
     emit_event "stage_finish" "Finished prioritize stage" "stage_name" "prioritize" "status" "$(if [[ "$PRIORITIZE_EXIT" -eq 0 ]]; then printf 'ok'; else printf 'error'; fi)"
@@ -619,7 +745,6 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
 
   TASK_COUNT=$((TASK_COUNT + 1))
   TASK_TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
-  TASK_LOG="$TASK_LOGS_DIR/${TASK_TIMESTAMP}_${TASK_NAME}.log"
   TASK_START_TS=$(date +%s)
 
   CURRENT_TASK="$TASK_NAME"
@@ -650,17 +775,24 @@ Description: $TASK_DESC"
   TASK_PROFILE=$(echo "$EXECUTE_RUNTIME" | jq -r '.profile // ""')
   TASK_MODEL=$(echo "$EXECUTE_RUNTIME" | jq -r '.model // ""')
 
-  set +o pipefail
-  run_provider_prompt "execute" "$EXECUTE_RUNTIME" "$PROMPT" 2>&1 | tee "$TASK_LOG" >&2
-  TASK_EXIT=${PIPESTATUS[0]}
-  set -o pipefail
+  TASK_EXIT=0
+  run_and_parse "execute-${TASK_NAME}" "$EXECUTE_RUNTIME" "$PROMPT" || TASK_EXIT=$?
+  # Copy result text to task-specific log for URL extraction and debugging
+  TASK_LOG="$TASK_LOGS_DIR/${TASK_TIMESTAMP}_${TASK_NAME}.log"
+  jq -r '.result_text // ""' "$LAST_RESULT_FILE" > "$TASK_LOG" 2>/dev/null || true
 
   TASK_END_TS=$(date +%s)
   TASK_DURATION=$((TASK_END_TS - TASK_START_TS))
   PARSED_URLS_JSON=$(extract_urls_json "$TASK_LOG")
   ISSUE_URLS_JSON=$(extract_issue_urls_json "$PARSED_URLS_JSON")
   PR_URLS_JSON=$(extract_pr_urls_json "$PARSED_URLS_JSON")
-  TOKEN_TOTAL=$(extract_token_total "$TASK_LOG")
+  TOKEN_TOTAL=$(jq -r '.token_total // 0' "$LAST_RESULT_FILE" 2>/dev/null || echo 0)
+  INPUT_TOKENS=$(jq -r '.input_tokens // 0' "$LAST_RESULT_FILE" 2>/dev/null || echo 0)
+  OUTPUT_TOKENS=$(jq -r '.output_tokens // 0' "$LAST_RESULT_FILE" 2>/dev/null || echo 0)
+  COST_USD=$(jq -r '.cost_usd // 0' "$LAST_RESULT_FILE" 2>/dev/null || echo 0)
+  API_DURATION_MS=$(jq -r '.duration_ms // 0' "$LAST_RESULT_FILE" 2>/dev/null || echo 0)
+  SESSION_ID=$(jq -r '.session_id // ""' "$LAST_RESULT_FILE" 2>/dev/null || echo "")
+  NUM_TURNS=$(jq -r '.num_turns // 0' "$LAST_RESULT_FILE" 2>/dev/null || echo 0)
 
   if [[ "$TASK_EXIT" -eq 0 ]]; then
     TASK_COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -686,6 +818,12 @@ Description: $TASK_DESC"
     "duration_seconds" "$TASK_DURATION" \
     "exit_code" "$TASK_EXIT" \
     "token_total" "$TOKEN_TOTAL" \
+    "input_tokens" "$INPUT_TOKENS" \
+    "output_tokens" "$OUTPUT_TOKENS" \
+    "cost_usd" "$COST_USD" \
+    "api_duration_ms" "$API_DURATION_MS" \
+    "session_id" "$SESSION_ID" \
+    "num_turns" "$NUM_TURNS" \
     "parsed_urls" "$(printf '%s\n' "$PARSED_URLS_JSON" | jq -c .)" \
     "issue_urls" "$(printf '%s\n' "$ISSUE_URLS_JSON" | jq -c .)" \
     "pr_urls" "$(printf '%s\n' "$PR_URLS_JSON" | jq -c .)" \

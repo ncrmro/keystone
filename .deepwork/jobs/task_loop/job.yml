@@ -1,5 +1,5 @@
 name: task_loop
-version: "3.3.2"
+version: "3.3.3"
 summary: "Ingest tasks from sources, prioritize by project, and execute tasks individually"
 common_job_info_provided_to_all_steps_at_runtime: |
   TASKS.yaml at the repo root tracks work items with fields: name, description, status,
@@ -72,6 +72,10 @@ steps:
           "Core Rules Applied": "Core rules (e.g., ping/pong) are applied — any source item matching a core rule has a corresponding task."
           "Reply Emails Parsed": "Emails that are replies (Re: ...) to agent-sent messages are evaluated for new task content in the reply body above the quoted text. A reply containing instructions is NOT 'not actionable'."
           "Schema Preserved": "TASKS.yaml has exactly one top-level key ('tasks') containing a list. No other top-level keys (summary, metadata, etc.) exist. Task fields use the canonical names (name, description, status, project, source, source_ref, model, workflow, needs) -- no renamed or invented fields."
+      - run_each: ingest_report.md
+        additional_review_guidance: "Count the actual tasks in TASKS.yaml and compare against the counts reported in ingest_report.md. The totals must match."
+        quality_criteria:
+          "Counts Accurate": "The ingest report's stated counts (new tasks created, existing tasks, total) match the actual TASKS.yaml content when counted independently."
 
   # ── prioritize workflow ──────────────────────────────────────────────────
 

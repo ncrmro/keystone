@@ -44,6 +44,19 @@ means the admin never learns about the problem.
 See `steps/execute.md` for the updated guidelines (step 7, "If the task is blocked by an
 external issue" and the "Infrastructure issues go to keystone" guideline).
 
+### Ingest report counts must be verified against the file (v3.3.3)
+
+A sub-agent running parse_sources claimed "357 tasks (354 existing + 3 new)" in the
+author notes, but the actual TASKS.yaml contained 50 tasks. The count was fabricated
+from memory rather than verified against the written file. The quality gate reviewed
+TASKS.yaml schema and fields but had no criterion for report accuracy, so the
+discrepancy passed uncaught.
+
+**Fix**: Added step 6 ("Verify counts before reporting") to `steps/parse_sources.md`
+requiring a `grep -c` or Read-based count before writing the ingest report. Added a
+`run_each: ingest_report.md` review with a "Counts Accurate" quality criterion to
+`job.yml`.
+
 ### agentctl vs direct commands
 
 When the task loop runs as the agent user (which it always does via systemd), use direct
