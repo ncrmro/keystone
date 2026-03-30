@@ -490,10 +490,9 @@ INGEST_RAN=false
 if [[ "$(echo "$SOURCES_JSON" | jq '[.[].data | length] | add // 0')" -gt 0 ]]; then
   INGEST_HASH_FILE="$STATE_DIR/ingest-inputs.sha256"
   CURRENT_HASH=$(
-    {
-      echo "$SOURCES_JSON"
-      if [[ -f TASKS.yaml ]]; then cat TASKS.yaml; fi
-    } | sha256sum | head -c 64
+    # Hash only the normalized pre-fetched source payload. TASKS.yaml is the
+    # output of ingest, so including it here makes the cache key self-invalidating.
+    printf '%s\n' "$SOURCES_JSON" | jq -cS . | sha256sum | head -c 64
   )
 
   PREVIOUS_HASH=""

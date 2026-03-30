@@ -90,8 +90,6 @@ in
   };
 
   config = mkIf cfg.enable {
-    services.elephant.enable = mkDefault true;
-
     # Flatpak support (declarative via nix-flatpak)
     services.flatpak.enable = mkDefault true;
 
