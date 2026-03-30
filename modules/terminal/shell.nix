@@ -199,6 +199,10 @@ in
         # https://github.com/charmbracelet/glow
         glow
 
+        # WeasyPrint - HTML/CSS to PDF converter (used by ks print)
+        # https://weasyprint.org/
+        python3Packages.weasyprint
+
         # GNU Make - Build automation tool
         # https://www.gnu.org/software/make/
         gnumake
