@@ -276,6 +276,7 @@ Arguments:
 Options:
   -o, --output PATH    Output PDF path (default: same as input with .pdf extension)
   --open               Open the PDF in the system viewer after generation
+  --no-print           Generate the PDF only; do not send to the default printer
   -h, --help           Show this help
 
 Engine selection (first available wins):

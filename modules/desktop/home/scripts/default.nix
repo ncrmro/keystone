@@ -502,12 +502,6 @@ in
                 }' keystone-audio-menu apply-config-defaults"
               ]);
 
-          wayland.windowManager.hyprland.settings.exec-once = mkIf (cfg.printer.default != null) (mkAfter [
-            "env KEYSTONE_PRINTER_DEFAULT='${
-              if cfg.printer.default != null then cfg.printer.default else ""
-            }' keystone-printer-menu apply-config-defaults"
-          ]);
-
           # Periodically check battery level and send a notification when low
           systemd.user.services.keystone-battery-monitor = {
             Unit = {
@@ -532,6 +526,11 @@ in
             };
           };
         }
+        (mkIf (cfg.printer.default != null) {
+          wayland.windowManager.hyprland.settings.exec-once = mkAfter [
+            "env KEYSTONE_PRINTER_DEFAULT='${cfg.printer.default}' keystone-printer-menu apply-config-defaults"
+          ];
+        })
       ]
       ++ linkedCommands
     )
