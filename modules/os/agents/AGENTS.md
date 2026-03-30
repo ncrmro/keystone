@@ -81,6 +81,33 @@ keystone.os.agents.drago = {
   git = { provision = false; username = "drago"; repoName = "agent-space"; };
   passwordManager.provision = false;
   mcp.servers = {};
+  # Perception layer: PDF parsing, voice transcription, photo search,
+  # screenshot sync, contact linking, activity reconstruction (REQ-023.34).
+  perception = {
+    enable = false;           # Master switch; all sub-options default to enabled when true
+    pdf = {
+      enable = true;
+      inputDir = null;        # Defaults to ~/documents/inbox
+      outputDir = null;       # Defaults to ~/documents/parsed
+    };
+    voice = {
+      enable = true;
+      inputDir = null;        # Defaults to ~/voice/inbox
+      outputDir = null;       # Defaults to ~/voice/transcripts
+      model = "base";         # tiny | base | small | medium | large
+    };
+    screenshots = {
+      enable = true;
+      syncOnCalendar = "*:0/5";
+    };
+    search.enable = true;
+    contacts.enable = true;
+    processor = {
+      enable = true;
+      onCalendar = "*:0/30";
+      useOllama = false;
+    };
+  };
   notes = {
     syncOnCalendar = "*:0/5";
     taskLoop = {
