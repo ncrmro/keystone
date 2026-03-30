@@ -17,10 +17,16 @@ drives the rest of the portfolio review — every project in it will be reviewed
    The portfolio review MUST run against the latest `main` branch in a dedicated
    worktree so it doesn't interfere with any in-progress notes work.
 
+   Per `process.git-repos`, worktrees MUST live at `$WORKTREE_DIR/{owner}/{repo}/{branch}/`
+   — never inside the repo itself.
+
    ```bash
-   NOTES_PATH="${notes_path:-$HOME/notes}"
+   NOTES_PATH="${NOTES_DIR:-$HOME/notes}"
    BRANCH="portfolio-review/$(date +%Y-%m)"
-   WORKTREE_PATH="${NOTES_PATH}/.worktrees/portfolio-review/$(date +%Y-%m)"
+   # Resolve owner/repo from the notes remote, defaulting to ncrmro/notes
+   NOTES_OWNER_REPO=$(git -C "$NOTES_PATH" remote get-url origin \
+     | sed 's|.*[:/]\([^/]*/[^/]*\)\.git|\1|')
+   WORKTREE_PATH="${WORKTREE_DIR:-$HOME/.worktrees}/${NOTES_OWNER_REPO}/${BRANCH}"
    ```
 
    a. **Switch the primary checkout to `main` and pull**:
@@ -35,8 +41,8 @@ drives the rest of the portfolio review — every project in it will be reviewed
    b. **Create (or reuse) a worktree for this review**:
       ```bash
       if git -C "$NOTES_PATH" worktree list | grep -q "$WORKTREE_PATH"; then
-        # Worktree already exists — reuse it and pull latest main
-        git -C "$WORKTREE_PATH" pull --ff-only
+        # Worktree already exists — reuse it
+        echo "Reusing existing worktree at $WORKTREE_PATH"
       else
         mkdir -p "$(dirname "$WORKTREE_PATH")"
         git -C "$NOTES_PATH" worktree add -b "$BRANCH" "$WORKTREE_PATH" main

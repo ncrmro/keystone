@@ -87,7 +87,9 @@ other source. Every number in the report must trace back to the input files.
    primary `notes_path` checkout).
 
    ```bash
-   WORKTREE_PATH="${NOTES_PATH}/.worktrees/portfolio-review/$(date +%Y-%m)"
+   NOTES_OWNER_REPO=$(git -C "$NOTES_PATH" remote get-url origin \
+     | sed 's|.*[:/]\([^/]*/[^/]*\)\.git|\1|')
+   WORKTREE_PATH="${WORKTREE_DIR:-$HOME/.worktrees}/${NOTES_OWNER_REPO}/portfolio-review/$(date +%Y-%m)"
    mkdir -p "${WORKTREE_PATH}/projects/portfolio/reviews/"
    ```
 
