@@ -51,7 +51,7 @@ assert_contains() {
   local combined="$TMP_DIR/${name}.combined"
 
   cat "$TMP_DIR/${name}.out" "$TMP_DIR/${name}.err" >"$combined"
-  if ! rg -F --quiet -- "$pattern" "$combined"; then
+  if ! grep -Fq -- "$pattern" "$combined"; then
     echo "FAIL: $name missing pattern: $pattern" >&2
     echo "--- combined output ---" >&2
     cat "$combined" >&2 || true
