@@ -67,6 +67,37 @@ list_printers_raw() {
   lpstat -p 2>/dev/null | awk '/^printer / {print $2}'
 }
 
+list_discoverable_raw() {
+  # Output: one dnssd URI per line. Timeout after 5s to avoid blocking Walker.
+  if ! cups_available; then
+    return 0
+  fi
+  timeout 5 lpinfo --include-schemes=dnssd -v 2>/dev/null | awk '{print $2}' || true
+}
+
+uri_display_name() {
+  local uri="$1"
+  # Extract the host component from dnssd://NAME._service._tcp.local/path
+  # then URL-decode it.
+  local encoded
+  encoded=$(printf '%s' "$uri" | sed 's|dnssd://||; s|\._.*/.*||; s|\._.*||')
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c "from urllib.parse import unquote; print(unquote('${encoded//\'/\\'\\'}'))" 2>/dev/null || printf '%s' "$encoded"
+  else
+    # Fallback: decode only %20 → space
+    printf '%s' "$encoded" | sed 's/%20/ /g'
+  fi
+}
+
+uri_to_slug() {
+  local display_name="$1"
+  # Lowercase, spaces and special chars → underscore, collapse runs, strip leading/trailing
+  printf '%s' "$display_name" \
+    | tr '[:upper:]' '[:lower:]' \
+    | tr -cs '[:alnum:]' '_' \
+    | sed 's/^_//; s/_$//'
+}
+
 printer_description() {
   local name="$1"
   # lpstat -l -p shows description; fall back to name if unavailable
@@ -87,18 +118,28 @@ printers_json() {
   local current_default=""
   current_default=$(default_printer_name)
 
-  local printers=()
+  # Build list of configured printers
+  local configured=()
   while IFS= read -r name; do
-    [[ -n "$name" ]] && printers+=("$name")
+    [[ -n "$name" ]] && configured+=("$name")
   done < <(list_printers_raw)
 
-  if [[ ${#printers[@]} -eq 0 ]]; then
-    blocked_entry_json "No printers found" "No CUPS printers are configured on this system."
+  # Build list of discoverable URIs
+  local discoverable_uris=()
+  while IFS= read -r uri; do
+    [[ -n "$uri" ]] && discoverable_uris+=("$uri")
+  done < <(list_discoverable_raw)
+
+  # If nothing at all, show blocked entry
+  if [[ ${#configured[@]} -eq 0 && ${#discoverable_uris[@]} -eq 0 ]]; then
+    blocked_entry_json "No printers found" "No CUPS printers are configured and none were discovered on the network."
     return 0
   fi
 
   local entries_json="[]"
-  for name in "${printers[@]}"; do
+
+  # --- Configured printers first ---
+  for name in "${configured[@]}"; do
     local is_default=false
     [[ "$name" == "$current_default" ]] && is_default=true
 
@@ -128,6 +169,39 @@ printers_json() {
     entries_json=$(jq -n --argjson arr "$entries_json" --argjson entry "$entry" '$arr + [$entry]')
   done
 
+  # --- Discoverable but not yet configured ---
+  for uri in "${discoverable_uris[@]}"; do
+    local display_name
+    display_name=$(uri_display_name "$uri")
+    local slug
+    slug=$(uri_to_slug "$display_name")
+
+    # Skip if a configured printer already has this slug or a matching name
+    local already_configured=false
+    for existing in "${configured[@]}"; do
+      if [[ "$existing" == "$slug" || "$(uri_to_slug "$existing")" == "$slug" ]]; then
+        already_configured=true
+        break
+      fi
+    done
+    $already_configured && continue
+
+    local entry
+    entry=$(jq -n \
+      --arg display_name "$display_name" \
+      --arg slug "$slug" \
+      --arg uri "$uri" \
+      --arg printer_menu "$printer_menu" \
+      '{
+        Text: ("  " + $display_name),
+        Subtext: "add and set as default",
+        Value: ("add-and-default\t" + $slug + "\t" + $uri),
+        Preview: ($printer_menu + " preview-discoverable " + ($display_name | @sh) + " " + ($uri | @sh)),
+        PreviewType: "command"
+      }')
+    entries_json=$(jq -n --argjson arr "$entries_json" --argjson entry "$entry" '$arr + [$entry]')
+  done
+
   printf "%s\n" "$entries_json"
 }
 
@@ -142,6 +216,19 @@ set_default_printer() {
   lpoptions -d "$name"
   save_printer_defaults
   notify "Printer default updated" "Default printer: ${name}"
+}
+
+add_and_set_default_printer() {
+  local slug="$1"
+  local uri="$2"
+
+  if ! cups_available; then
+    printf "lpstat is not available\n" >&2
+    exit 1
+  fi
+
+  lpadmin -p "$slug" -E -v "$uri"
+  set_default_printer "$slug"
 }
 
 printer_defaults_snippet() {
@@ -191,6 +278,15 @@ preview_printer() {
     "$(if [[ "$name" == "$current_default" ]]; then printf "yes"; else printf "no"; fi)"
 }
 
+preview_discoverable() {
+  local display_name="$1"
+  local uri="$2"
+
+  printf "Discovered printer: %s\n\nURI: %s\n\nSelecting this will add it to CUPS and set it as the default printer.\n" \
+    "$display_name" \
+    "$uri"
+}
+
 summary() {
   if ! cups_available; then
     printf "Printers unavailable\n%s" "$(cups_unavailable_reason)"
@@ -209,13 +305,16 @@ summary() {
 
 dispatch() {
   local payload="${1:-}"
-  local action="" name=""
+  local action="" name="" uri=""
 
-  IFS=$'\t' read -r action name <<<"$payload"
+  IFS=$'\t' read -r action name uri <<<"$payload"
 
   case "$action" in
     set-default)
       set_default_printer "$name"
+      ;;
+    add-and-default)
+      add_and_set_default_printer "$name" "$uri"
       ;;
     blocked)
       notify "Printers unavailable" "$(cups_unavailable_reason)"
@@ -240,9 +339,17 @@ case "${1:-}" in
     shift
     set_default_printer "$@"
     ;;
+  add-and-default)
+    shift
+    add_and_set_default_printer "$@"
+    ;;
   preview-printer)
     shift
     preview_printer "$@"
+    ;;
+  preview-discoverable)
+    shift
+    preview_discoverable "$@"
     ;;
   summary)
     shift
@@ -261,7 +368,7 @@ case "${1:-}" in
     dispatch "$@"
     ;;
   *)
-    echo "Usage: keystone-printer-menu {open-menu|printers-json|set-default|preview-printer|summary|apply-config-defaults|save-defaults|dispatch} ..." >&2
+    echo "Usage: keystone-printer-menu {open-menu|printers-json|set-default|add-and-default|preview-printer|preview-discoverable|summary|apply-config-defaults|save-defaults|dispatch} ..." >&2
     exit 1
     ;;
 esac
