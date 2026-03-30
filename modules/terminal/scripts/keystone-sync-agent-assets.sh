@@ -112,6 +112,26 @@ $body
 EOF
 }
 
+write_gemini_command() {
+  local rel_path="$1"
+  local description="$2"
+  local body="$3"
+  write_file "$HOME/.gemini/commands/$rel_path" "description = $(yaml_quote "$description")"$'\n'"prompt = $(yaml_quote "$body")"$'\n'
+}
+
+write_codex_skill() {
+  local skill_name="$1"
+  local display_name="$2"
+  local description="$3"
+  local skill_md="$4"
+  local extra_yaml="${5:-}"
+  write_file "$HOME/.codex/skills/$skill_name/SKILL.md" "$skill_md"
+  write_file "$HOME/.codex/skills/$skill_name/agents/openai.yaml" "interface:
+  display_name: $(yaml_quote "$display_name")
+  short_description: $(yaml_quote "$description")
+${extra_yaml}"
+}
+
 render_codex_skill_body() {
   local command_body="$1"
   local skill_name="$2"
@@ -365,8 +385,7 @@ for command_id in "${published_commands[@]}"; do
   else
     gemini_rel="ks.toml"
   fi
-  gemini_content="description = $(jq -Rn --arg value "$description" '$value')"$'\n'"prompt = $(jq -Rn --arg value "$command_body" '$value')"$'\n'
-  write_file "$HOME/.gemini/commands/$gemini_rel" "$gemini_content"
+  write_gemini_command "$gemini_rel" "$description" "$command_body"
 
   write_file "$HOME/.config/opencode/commands/${command_id}.md" "$command_body"$'\n'
 
@@ -381,13 +400,9 @@ deepwork_skill_md="$(render_skill_md "deepwork" "Start or continue DeepWork work
 write_file "$HOME/.claude/skills/deepwork/SKILL.md" "$deepwork_skill_md"
 write_file "$HOME/.config/opencode/skills/deepwork/SKILL.md" "$deepwork_skill_md"
 
-write_file "$HOME/.gemini/commands/deepwork.toml" "description = $(jq -Rn --arg value "Start or continue DeepWork workflows using MCP tools" '$value')"$'\n'"prompt = $(jq -Rn --arg value "$deepwork_body" '$value')"$'\n'
+write_gemini_command "deepwork.toml" "Start or continue DeepWork workflows using MCP tools" "$deepwork_body"
 
-write_file "$HOME/.codex/skills/deepwork/SKILL.md" "$deepwork_skill_md"
-write_file "$HOME/.codex/skills/deepwork/agents/openai.yaml" 'interface:
-  display_name: "DeepWork"
-  short_description: "Start or continue DeepWork workflows using MCP tools"
-
+write_codex_skill "deepwork" "DeepWork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_skill_md" '
 dependencies:
   tools:
     - type: "mcp"
@@ -400,13 +415,9 @@ wrapup_skill_md="$(render_skill_md "wrap-up" "Checkpoint the session: create a ~
 write_file "$HOME/.claude/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
 write_file "$HOME/.config/opencode/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
 
-write_file "$HOME/.gemini/commands/wrap-up.toml" "description = $(jq -Rn --arg value "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human" '$value')"$'\n'"prompt = $(jq -Rn --arg value "$wrapup_body" '$value')"$'\n'
+write_gemini_command "wrap-up.toml" "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body"
 
-write_file "$HOME/.codex/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
-write_file "$HOME/.codex/skills/wrap-up/agents/openai.yaml" 'interface:
-  display_name: "Wrap-up"
-  short_description: "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human"
-'
+write_codex_skill "wrap-up" "Wrap-up" "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_skill_md"
 
 legacy_codex_skill_names=(
   agent-bootstrap agent-doctor agent-issue agent-onboard daily_status-send
@@ -431,15 +442,11 @@ for command_id in "${published_commands[@]}"; do
   skill_body="$(render_codex_skill_body "$command_body" "$skill_name")"
   skill_md="$(render_skill_md "$skill_name" "$description" "$skill_body")"
 
-  write_file "$HOME/.codex/skills/$skill_name/SKILL.md" "$skill_md"
-  write_file "$HOME/.codex/skills/$skill_name/agents/openai.yaml" "interface:
-  display_name: $(jq -Rn --arg value "$display_name" '$value')
-  short_description: $(jq -Rn --arg value "$description" '$value')
-
+  write_codex_skill "$skill_name" "$display_name" "$description" "$skill_md" '
 dependencies:
   tools:
-    - type: \"mcp\"
-      value: \"deepwork\"
-      description: \"DeepWork MCP server\"
-"
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"
+'
 done

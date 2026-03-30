@@ -166,11 +166,8 @@ agent-generated notes and reports. The user-facing guide is [Notes](../notes.md)
 
 For terminal users, the most relevant parts are:
 
-- `zk` for manual note creation and search,
-- `/notes.project` for hub notes,
-- `/notes.report` for report capture,
-- `/notes.doctor` for notebook repair and normalization, and
-- `/notes.process_inbox` for inbox review.
+- `zk` for manual note creation and search, and
+- `/ks.notes` to route notes workflows (hub notes, report capture, inbox review, notebook repair).
 
 Use the notes guide for the workflow and the conventions for the authoritative
 schema and policy details.

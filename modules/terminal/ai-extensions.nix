@@ -4,6 +4,9 @@
 # - /ks      for Keystone guidance, issue filing, notes, and capability-aware routing
 # - /ks.dev  for development-mode Keystone implementation flows
 # - /deepwork remains available as the low-level escape hatch
+#
+# See conventions/tool.cli-coding-agents.md
+# See specs/002-repo-backed-terminal-assets.md
 {
   config,
   lib,
