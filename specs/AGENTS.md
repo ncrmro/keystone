@@ -36,9 +36,9 @@ is `REQ-029`.
    out from a broader spec.
 3. Revisions to an existing spec keep the same `REQ-*` number when scope is
    still fundamentally the same.
-4. Note: `REQ-021` and `REQ-024` each have two files with different slugs —
-   a known numbering collision from legacy migration. Do not reuse those numbers
-   for new unrelated specs.
+4. Note: `REQ-002`, `REQ-021`, and `REQ-024` each have two files with different
+   slugs — known numbering collisions from legacy migration. Do not reuse those
+   numbers for new unrelated specs.
 
 ## Verification
 
