@@ -124,6 +124,11 @@ in
           sourcePath = ./keystone-monitor-values.lua;
         }
         {
+          targetPath = ".config/elephant/menus/keystone-printer.lua";
+          relativePath = "modules/desktop/home/components/keystone-printer.lua";
+          sourcePath = ./keystone-printer.lua;
+        }
+        {
           targetPath = ".config/elephant/menus/keystone-audio.lua";
           relativePath = "modules/desktop/home/components/keystone-audio.lua";
           sourcePath = ./keystone-audio.lua;
@@ -264,6 +269,10 @@ in
             "menus:keystone-monitor-values" = {
               input = " Monitor values";
               list = "No values available";
+            };
+            "menus:keystone-printer" = {
+              input = " Printers";
+              list = "No printers found";
             };
             "menus:keystone-audio" = {
               input = " Audio";

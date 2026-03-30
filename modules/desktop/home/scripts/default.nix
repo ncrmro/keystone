@@ -232,6 +232,11 @@ let
     builtins.readFile ./keystone-audio-menu.sh
   );
 
+  # CUPS printer default controller for Elephant/Walker and terminal use
+  keystonePrinterMenu = pkgs.writeShellScriptBin "keystone-printer-menu" (
+    builtins.readFile ./keystone-printer-menu.sh
+  );
+
   # Hyprland monitor controller for Elephant/Walker
   keystoneMonitorMenu = pkgs.writeShellScriptBin "keystone-monitor-menu" (
     builtins.readFile ./keystone-monitor-menu.sh
@@ -358,6 +363,19 @@ let
         pkgs.jq
         pkgs.libnotify
         pkgs.pulseaudio
+        pkgs.python3
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-printer-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-printer-menu.sh";
+      package = keystonePrinterMenu;
+      runtimeInputs = [
+        pkgs.cups
+        pkgs.jq
+        pkgs.libnotify
         pkgs.python3
         pkgs.walker
       ];
@@ -508,6 +526,11 @@ in
             };
           };
         }
+        (mkIf (cfg.printer.default != null) {
+          wayland.windowManager.hyprland.settings.exec-once = mkAfter [
+            "env KEYSTONE_PRINTER_DEFAULT='${cfg.printer.default}' keystone-printer-menu apply-config-defaults"
+          ];
+        })
       ]
       ++ linkedCommands
     )

@@ -92,7 +92,7 @@ Read the context brief from the previous step and the conventions at `.agents/co
 12. **Publish the canonical copy**
     - After the press release file is written and passes the final check, create an issue on the project's repo
     - Use `gh issue create` (GitHub) or `fj issue create` (Forgejo) depending on where the project is hosted
-    - The issue title should match the press release headline
+    - The issue title MUST be `Press Release: <Product Label>` (e.g., "Press Release: KS Project Agent"). The product label is a short name for the feature or product, not the headline.
     - The issue body MUST be the **audience-facing press release** rendered inside a Markdown blockquote (`>` prefix on each content line)
     - The `>` blockquote is what readers see — it must be high-level narrative prose, NOT the internal `**Current state** / **Why this** / **How** / **What**` labeled structure. Convert the internal draft into flowing paragraphs before publishing.
     - Label the issue with `press-release` (create the label if it doesn't exist)
@@ -132,19 +132,25 @@ URL of the issue created for the press release (e.g.,
 `https://github.com/owner/repo/issues/42`). This URL is required for traceability —
 downstream workflows like `milestone/setup` link back to the press release via this URL.
 
-The issue body has four parts, in order:
+The issue body has five parts, in order:
 
-1. **`>` blockquote** — the audience-facing press release. Clean narrative prose readable by anyone. No internal labels. Just headline, paragraphs, ASCII mockup (if applicable), and CTA.
+1. **Context header** (plain text) — a short human-readable summary of what this feature does. Written for someone who has never heard of the project. No jargon, no internal tool names, no pipeline notation. 1-3 sentences max.
 
-2. **Internal context** (outside the blockquote, after `---`) — the current state / why / how / what breakdown for the development team and future agents. These labels MUST appear here, not inside the blockquote.
+2. **`---` separator** before the press release.
 
-3. **User stories** — a short list of user stories derived from the press release scope.
+3. **`>` blockquote** — the audience-facing press release. Clean narrative prose readable by anyone. No internal labels. Just headline, paragraphs, ASCII mockup (if applicable), and CTA.
 
-4. **FAQ** — anticipated questions and concise answers.
+4. **`---` separator** after the press release.
+
+5. **Below the second `---`** — user stories (with unique IDs), internal context (current state / why / how / what), FAQ, and scope notes.
 
 **Issue body structure**:
 
 ```
+[1-3 sentence human-readable summary — no jargon, no internal tool names]
+
+---
+
 > ## [Headline: Customer Benefit in Plain Language]
 >
 > [Opening paragraph — who the customer is, what they can now do]
@@ -173,9 +179,9 @@ The issue body has four parts, in order:
 
 ### User Stories
 
-- As a [persona], I want to [goal] so that [benefit]
-- As a [persona], I want to [goal] so that [benefit]
-- As a [persona], I want to [goal] so that [benefit]
+- **US-1**: As a [persona], I want to [goal] so that [benefit]
+- **US-2**: As a [persona], I want to [goal] so that [benefit]
+- **US-3**: As a [persona], I want to [goal] so that [benefit]
 
 ### FAQ
 
@@ -207,7 +213,10 @@ The issue body has four parts, in order:
 - Local `.deepwork/tmp/` artifact filenames are unique to the run topic and do not reuse generic shared basenames
 - The `>` blockquote in the published issue is audience-facing narrative prose — no `**Current state**` / `**Why this**` / `**How**` / `**What**` labels visible to readers
 - The issue body (outside the blockquote) includes the `**Current state**` / `**Why this**` / `**How**` / `**What**` context sections for the development team
-- The issue body includes a user stories section with 3-5 stories derived from the press release scope
+- The issue body includes a user stories section with 3-5 stories, each with a unique identifier (US-1, US-2, etc.)
+- The issue title follows the `Press Release: <Product Label>` format
+- The issue body has a human-readable context header above the first `---` — no jargon or internal tool names
+- The press release blockquote is enclosed between two `---` separators
 
 ## Next Steps
 

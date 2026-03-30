@@ -8,6 +8,7 @@
   openssh,
   hostname,
   pandoc,
+  cups,
   python3Packages,
 }:
 writeShellApplication {
@@ -20,6 +21,7 @@ writeShellApplication {
     openssh
     hostname
     pandoc
+    cups
     python3Packages.weasyprint
   ];
   text = builtins.readFile ./ks.sh;

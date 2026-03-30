@@ -83,6 +83,7 @@ archetypes:
       - process.enable-by-default
       - os.requirements
       - process.deepwork-job
+      - tool.process-compose-agent
 
   engineer:
     description: "Engineering agents — implementation, code review, architecture"
@@ -93,6 +94,7 @@ archetypes:
       - tool.standard-utilities
       - process.vcs-context-continuity
       - process.project-navigation
+      - tool.process-compose-agent
     referenced_conventions:
       - os.requirements
       - process.agent-cronjobs
@@ -155,6 +157,7 @@ archetypes:
           - tool.nix-devshell
           - process.version-control
           - process.version-control-advanced
+          - tool.process-compose-agent
 
       # Role: architect
       # Used for high-level system design, evaluating trade-offs, and writing technical specs.

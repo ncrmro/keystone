@@ -342,6 +342,12 @@
             inherit pkgs lib nixpkgs;
             self = self;
           };
+          ks-help = import ./tests/module/ks-help.nix {
+            inherit pkgs;
+          };
+          agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
+            inherit pkgs lib;
+          };
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)
@@ -433,9 +439,11 @@
               echo "  ./bin/build-iso        - Build installer ISO"
               echo "  ./bin/build-vm         - Fast VM testing (terminal/desktop)"
               echo "  ./bin/virtual-machine  - Full stack VM with libvirt"
-              echo "  nix flake check        - Validate flake"
+              echo "  ci                     - Run nix flake check"
               echo ""
               echo "Rust packages:  packages/keystone-ha/, packages/keystone-tui/"
+
+              alias ci='nix flake check'
             '';
 
             # Rust environment variables

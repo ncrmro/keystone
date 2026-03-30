@@ -27,14 +27,14 @@ tool loads conventions natively (without prompt injection).
 - **Path-scoped rules**: `.claude/rules/*.md` — loaded when Claude reads matching files (supports `paths:` frontmatter glob patterns)
 - **Imports**: `@path/to/file.md` syntax, relative to the file containing the import, max 5 hops
 - **Size guidance**: Target under 200 lines per file; longer files reduce adherence
-- **MCP config**: `~/.claude.json` (global MCP servers)
+- **MCP config**: `~/.claude.json` — MCP server configs (deepwork, chrome-devtools, grafana, process-compose)
 - **Auto memory**: `~/.claude/projects/<project>/memory/MEMORY.md` — Claude writes this itself; first 200 lines loaded per session
 
 **Keystone generates**:
 
 - `~/.keystone/AGENTS.md` — canonical Keystone instruction file for the user profile
 - `~/.claude/CLAUDE.md` — system-wide conventions from `keystone-conventions` derivation
-- `~/.claude.json` — MCP server configs (deepwork, chrome-devtools, grafana)
+- `~/.claude.json` — MCP server configs (deepwork, chrome-devtools, grafana, process-compose)
 - `.claude/rules/` — not generated (project-specific, not keystone's concern)
 
 ### Gemini CLI

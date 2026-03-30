@@ -43,6 +43,14 @@ in
         };
       };
     };
+
+    printer = {
+      default = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Default CUPS printer name to apply at desktop session start.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
