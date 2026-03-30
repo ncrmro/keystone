@@ -26,7 +26,6 @@ You MUST always use your own accounts and credentials as defined in
 
 Read about the convention system in [conventions/AGENTS.md](conventions/AGENTS.md).
 
-
 ## Version Control
 
 ## Pre-Commit Hygiene
@@ -61,7 +60,6 @@ Read about the convention system in [conventions/AGENTS.md](conventions/AGENTS.m
 ## Rebasing & Lock Files
 
 For rebase conflict resolution, lockfile handling, and advanced git operations, see `process.version-control-advanced`.
-
 
 ## Code Delivery
 
@@ -125,7 +123,7 @@ End-to-end walkthrough for implementing issue #12 ("Add search endpoint") from m
 
 ```bash
 # 1. From the main checkout, create a branch and worktree (rules 9-10)
-cd "$HOME/code/acme/api"
+cd "$HOME/repos/acme/api"
 git fetch origin
 git branch feat/add-search-endpoint origin/main
 git worktree add "$HOME/.worktrees/acme/api/feat/add-search-endpoint" feat/add-search-endpoint
@@ -145,6 +143,7 @@ git push -u origin feat/add-search-endpoint
 ```
 
 **Forgejo:**
+
 ```bash
 fj pr create "WIP: feat(api): add search endpoint" \
   --head feat/add-search-endpoint --base main \
@@ -173,6 +172,7 @@ EOF
 ```
 
 **GitHub:**
+
 ```bash
 gh pr create --draft \
   --title "feat(api): add search endpoint" \
@@ -222,12 +222,11 @@ git commit -m "test(api): add search integration tests"
 # GitHub: gh pr merge <number> --squash --delete-branch
 
 # 10. Clean up worktree after merge
-cd "$HOME/code/acme/api"
+cd "$HOME/repos/acme/api"
 git worktree remove "$HOME/.worktrees/acme/api/feat/add-search-endpoint"
 
 # 11. Post demo artifacts on the issue (rule 31)
 ```
-
 
 ## Continuous Integration
 
@@ -347,7 +346,6 @@ tea api --login forgejo /repos/{owner}/{repo}/commits/$(git rev-parse HEAD)/stat
 fj pr merge 42 --method squash --delete
 ```
 
-
 ## Copilot Agent
 
 ## Assigning Copilot to Issues
@@ -392,7 +390,6 @@ Copilot can review PRs, be assigned to issues, and respond to `@copilot` mention
 18. Copilot availability depends on the GitHub user's account (individual Copilot subscription or org-level enablement) — agents MUST handle permission errors gracefully when Copilot features are unavailable.
 19. Copilot reviews MAY miss domain-specific issues — agents SHOULD treat Copilot feedback as supplementary, not authoritative.
 20. Copilot MUST NOT be requested as a reviewer on draft PRs unless the agent explicitly intends early feedback.
-
 
 ## Nix Dev Shell
 

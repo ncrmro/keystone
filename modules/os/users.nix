@@ -212,6 +212,7 @@ in
                 # handles gating.
                 keystone.terminal = {
                   enable = mkDefault userCfg.terminal.enable;
+                  aiExtensions.capabilities = mkDefault userCfg.capabilities;
 
                   # development and repos are no longer bridged here;
                   # they are inherited globally from keystone.development

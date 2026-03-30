@@ -10,17 +10,20 @@
 ### Added
 
 #### Infrastructure Foundation
+
 - Disko single-disk module for declarative disk partitioning ([`8458ef2`](https://github.com/ncrmro/keystone/commit/8458ef2))
 - Server, client, and observability NixOS modules ([`1f2aab2`](https://github.com/ncrmro/keystone/commit/1f2aab2))
 - Nix formatting and CI tooling ([`69e1e67`](https://github.com/ncrmro/keystone/commit/69e1e67), [`d9f0623`](https://github.com/ncrmro/keystone/commit/d9f0623))
 - Spec-kit integration for spec-driven development ([`acdc92b`](https://github.com/ncrmro/keystone/commit/acdc92b))
 
 #### Installation & Deployment (PRs #9-#10)
+
 - SSH-based ISO with VM testing framework ([PR #9](https://github.com/ncrmro/keystone/pull/9))
 - Automated encrypted installation via nixos-anywhere ([PR #10](https://github.com/ncrmro/keystone/pull/10))
 - Libvirt VM management script (`bin/virtual-machine`) for test deployments
 
 #### Security (PRs #11-#14)
+
 - Secure Boot setup mode for VMs and bare metal ([PR #11](https://github.com/ncrmro/keystone/pull/11))
 - Secure Boot key enrollment on first install via Lanzaboote ([`f0d449a`](https://github.com/ncrmro/keystone/commit/f0d449a))
 - TPM2 enrollment with PCR binding for automatic disk unlock ([PR #14](https://github.com/ncrmro/keystone/pull/14))
@@ -28,16 +31,19 @@
 - Initrd SSH for remote disk unlocking on headless servers ([`2dcf94f`](https://github.com/ncrmro/keystone/commit/2dcf94f))
 
 #### User Management (PR #15)
+
 - ZFS user module with per-user datasets and delegated permissions ([PR #15](https://github.com/ncrmro/keystone/pull/15))
 - Optional per-user ZFS quotas
 - Home-manager integration foundation
 
 #### Terminal Environment (PR #16)
+
 - Terminal development module: Helix, Zsh, Zellij, Git ([PR #16](https://github.com/ncrmro/keystone/pull/16))
 - Starship prompt configuration
 - Ghostty terminal emulator support
 
 #### Hyprland Desktop (PR #19)
+
 - Hyprland compositor with UWSM session management ([PR #19](https://github.com/ncrmro/keystone/pull/19))
 - greetd login manager with tuigreet
 - PipeWire audio with ALSA/Pulse/Jack compatibility
@@ -46,10 +52,12 @@
 - Desktop applications (Firefox, VS Code, VLC)
 
 ### Changed
+
 - Deployment tooling refactored from QEMU scripts to Python libvirt ([`5c104f9`](https://github.com/ncrmro/keystone/commit/5c104f9))
 - Test deployment updated to use SSH-based unlock ([`731e2f8`](https://github.com/ncrmro/keystone/commit/731e2f8))
 
 ### Fixed
+
 - LUKS password entry simplified — removed manual step ([`43f19ef`](https://github.com/ncrmro/keystone/commit/43f19ef))
 - sbctl key paths corrected for Secure Boot enrollment ([multiple commits in PR #11-#14 range](https://github.com/ncrmro/keystone/compare/f516c72...f0d449a))
 

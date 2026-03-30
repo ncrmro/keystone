@@ -29,17 +29,17 @@ material in a shared zk notebook. It extends
    a `repos:` frontmatter list with one full remote URL per repo. SSH and HTTPS
    URLs are both valid.
 9. The hub MUST summarize:
-    - the objective,
-    - the current state,
-    - the next actions,
-    - curated links to permanent notes and decision notes,
-    - links to related repos and trackers, and
-    - a report ledger or query snippet for project reports and presentations.
+   - the objective,
+   - the current state,
+   - the next actions,
+   - curated links to permanent notes and decision notes,
+   - links to related repos and trackers, and
+   - a report ledger or query snippet for project reports and presentations.
 10. Repo links and `repo/<owner>/<repo>` tags MUST be derived from the declared
     remote URLs rather than handwritten in a competing format.
 11. The hub SHOULD act as a dynamic ledger. It MAY include canonical `zk`
-   queries that list related reports, presentations, inbox captures, or recent
-   activity.
+    queries that list related reports, presentations, inbox captures, or recent
+    activity.
 12. Agents MUST link new initiative decisions, reports, and presentations from
     the relevant hub before they consider the note complete, when a suitable
     hub exists.
@@ -64,36 +64,66 @@ material in a shared zk notebook. It extends
 19. Workflows that generate a report repeatedly, such as `ks.doctor`, SHOULD
     search for the latest matching report note before creating a new one.
 
+## Shared-surface references
+
+20. Notes that refer to VCS shared-surface artifacts such as milestones, issues,
+    pull requests, or repos MUST store those references in frontmatter fields,
+    not ad hoc tags.
+21. GitHub tracker references MUST use the format
+    `gh:<owner>/<repo>#<number>`.
+22. Forgejo tracker references MUST use the format
+    `fj:<owner>/<repo>#<number>`.
+23. Repo references without an issue-like number MUST use the format
+    `gh:<owner>/<repo>` or `fj:<owner>/<repo>`.
+24. Recommended frontmatter fields for shared-surface references are:
+    - `repo_ref`
+    - `milestone_ref`
+    - `issue_ref`
+    - `pr_ref`
+25. These fields MUST store real normalized refs, not placeholders. Values such as
+    `gh:owner/repo-name#ID`, `gh:repo#123`, or bare `#123` are invalid.
+26. When a note includes one of these fields, any corresponding `repo/<owner>/<repo>`
+    tag MUST agree with the normalized repo identity in the frontmatter ref.
+27. Agents MUST NOT invent alternate tracker formats such as bare issue numbers,
+    local path aliases, or custom prefixes when a GitHub or Forgejo shared
+    surface exists.
+28. If both a human notes repo and one or more owner mirror notes refer to the
+    same shared-surface artifact, they SHOULD reuse the same normalized
+    `gh:` or `fj:` ref string.
+29. When milestone, issue, or pull request identity is known during note capture,
+    agents SHOULD record all known refs together so later workflows do not have
+    to reconstruct the shared-surface context from prose alone.
+
 ## Presentation decks
 
-20. Slidev decks and other Markdown-native presentation artifacts MUST be
+30. Slidev decks and other Markdown-native presentation artifacts MUST be
     stored as `presentation` notes in `docs/presentations/`.
-21. Presentation notes MUST include these frontmatter fields: `id`, `title`,
+31. Presentation notes MUST include these frontmatter fields: `id`, `title`,
     `type`, `created`, `author`, `tags`, and `presentation_kind`. `project` MAY
     be omitted for non-initiative decks.
-22. Initiative presentation decks MUST link to the relevant hub note, and the
+32. Initiative presentation decks MUST link to the relevant hub note, and the
     hub SHOULD link back to the active deck.
-23. Presentation notes SHOULD include a concise statement of objective,
+33. Presentation notes SHOULD include a concise statement of objective,
     references to source notes or decisions, and explicit next actions when the
     deck drives follow-up work.
-24. Presentation notes SHOULD preserve valid Slidev frontmatter, slide
+34. Presentation notes SHOULD preserve valid Slidev frontmatter, slide
     separators, and any speaker-note links needed to trace source material.
 
 ## Decisions and VCS continuity
 
-25. Agents MUST record repo-level or initiative-level decisions that materially affect
+35. Agents MUST record repo-level or initiative-level decisions that materially affect
     implementation, operations, or prioritization in the zk notebook.
-26. If a decision relates to a Git issue or pull request, the note MUST link to
+36. If a decision relates to a Git issue or pull request, the note MUST link to
     the tracker item, and the tracker item MUST reference the note ID or path.
-27. Decision notes SHOULD live in `decisions/` when the decision is durable and
+37. Decision notes SHOULD live in `decisions/` when the decision is durable and
     worth preserving independently of a single report.
-28. If a report captures a short-lived operational decision, the report MAY hold
+38. If a report captures a short-lived operational decision, the report MAY hold
     it directly, and a relevant hub SHOULD link to that report when one exists.
 
 ## Tagging
 
-29. Tags MUST use a constrained namespace.
-30. The primary tags are:
+39. Tags MUST use a constrained namespace.
+40. The primary tags are:
     - `project/<slug>`
     - `repo/<owner>/<repo>`
     - `report/<kind>`
@@ -104,46 +134,46 @@ material in a shared zk notebook. It extends
     - `source/agent`
     - `source/deepwork`
     - `source/deepwork/ks-doctor`
-31. Project tags MUST be the primary discovery path for initiative-scoped notes.
-32. Repo tags SHOULD be added when a note materially concerns one specific repo and MAY be the primary discovery path for operational reports or decks.
-33. Repo tags MUST be derived from the normalized `owner/repo` identity implied
+41. Project tags MUST be the primary discovery path for initiative-scoped notes.
+42. Repo tags SHOULD be added when a note materially concerns one specific repo and MAY be the primary discovery path for operational reports or decks.
+43. Repo tags MUST be derived from the normalized `owner/repo` identity implied
     by the hub note's declared remote URL or the note's explicit repo reference.
-34. Agents SHOULD NOT introduce new tag namespaces.
-35. Agents MAY introduce new values within an approved namespace only when the
+44. Agents SHOULD NOT introduce new tag namespaces.
+45. Agents MAY introduce new values within an approved namespace only when the
     value is directly derived from an existing project slug, repo path, or
     recurring report or presentation kind already established by the workflow.
-36. If a workflow appears to need an ad hoc tag outside the approved namespaces,
+46. If a workflow appears to need an ad hoc tag outside the approved namespaces,
     the agent SHOULD avoid creating it and SHOULD prefer frontmatter fields or
     explicit links instead.
 
 ## Archival lifecycle
 
-37. When an initiative is completed, abandoned, or superseded, its active hub note
+47. When an initiative is completed, abandoned, or superseded, its active hub note
     and associated initiative-specific notes SHOULD be moved to `archive/`.
-38. Archived notes MUST replace `status/active` with `status/archived`.
-39. Archived notes SHOULD record `archived_at`, `archived_reason`, and
+48. Archived notes MUST replace `status/active` with `status/archived`.
+49. Archived notes SHOULD record `archived_at`, `archived_reason`, and
     `archived_from` in frontmatter when the workflow performs the move.
-40. Archiving MUST preserve backlinks, report chains, presentation deck
+50. Archiving MUST preserve backlinks, report chains, presentation deck
     provenance, and project discoverability.
-41. Active workflows, dashboards, and periodic reviews SHOULD exclude
+51. Active workflows, dashboards, and periodic reviews SHOULD exclude
     archived notes by policy unless the task is historical research.
 
 ## Agent workflow integration
 
-42. Before starting work, agents SHOULD search for the relevant hub and recent
+52. Before starting work, agents SHOULD search for the relevant hub and recent
     reports with tags that match the note's identity, such as `project/<slug>`,
     `repo/<owner>/<repo>`, `report/<kind>`, or `presentation/<kind>`.
-43. After completing a task that produced meaningful findings, agents SHOULD
+53. After completing a task that produced meaningful findings, agents SHOULD
     create or update either a project decision note, a report note, or a
     presentation note.
-44. DeepWork workflows that produce documentation for later use MUST write their
+54. DeepWork workflows that produce documentation for later use MUST write their
     durable output into the notebook rather than leaving it only in scratch files.
-45. Inbox processing workflows SHOULD attach promoted notes to a hub when the
+55. Inbox processing workflows SHOULD attach promoted notes to a hub when the
     note contains a recognized `project/<slug>` tag or another clear hub relationship.
-46. Humans and agents SHOULD resolve non-keystone project repos to
-    `$HOME/code/{owner}/{repo}` and keystone-managed repos to
+56. Humans and agents SHOULD resolve non-keystone project repos to
+    `$HOME/repos/{owner}/{repo}` and keystone-managed repos to
     `~/.keystone/repos/{owner}/{repo}` after normalizing the declared remote URL.
-47. Notes repos MUST gitignore transient notebook database files and other local
+57. Notes repos MUST gitignore transient notebook database files and other local
     junk while keeping `.zk/config.toml`, `.zk/templates/`, and operational YAML
     state files tracked.
 

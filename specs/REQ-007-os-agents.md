@@ -101,6 +101,7 @@ The system MUST manage all agent secrets via agenix with a consistent structure:
 - `/run/agenix/agent-{name}-tailscale-auth-key` — Tailscale pre-auth key
 
 Secrets:
+
 - MUST be encrypted to the host's SSH host key and the admin's personal key
 - MUST be readable only by the agent's user account (via agenix `owner`/`group`)
 - MUST be rotatable without reboot (systemd reload triggers re-decryption)
@@ -140,8 +141,10 @@ Secrets:
 - The task loop MUST follow a pre-fetch, ingest, prioritize, execute cycle driven by the LLM
 - The task loop MUST use hash-based change detection to skip unchanged source data
 - The task loop MUST use lock management to prevent concurrent executions
+- The task loop MUST honor a pause marker in its state directory and exit before pre-fetch, ingest, prioritize, or execute work when paused
 - The task loop MUST implement configurable stop conditions (max tasks per run, max wall time, error threshold)
 - The task loop MUST handle failures gracefully (log failure, mark task as failed, continue to next)
+- The system MUST expose operator controls to pause, resume, and inspect task-loop pause state without disabling the timer units
 - The system MUST support a three-tier model strategy:
   - A fast model for ingest (default: haiku)
   - A fast model for prioritize (default: haiku)

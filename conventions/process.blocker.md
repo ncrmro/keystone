@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: Blocker Escalation (process.blocker)
 
 This convention defines how agents identify, report, and recover from platform and infrastructure blockers that prevent task completion.
@@ -45,9 +46,11 @@ This convention defines how agents identify, report, and recover from platform a
 
 16. When a blocker issue is closed, the agent MUST verify the fix is available in the environment before resuming.
 17. After verification, the agent MUST:
-   - Update the task's status from `blocked` to `pending` in TASKS.yaml.
-   - Remove the `blocked` label from the original task's issue.
-   - Move the task's project board item to "To Do" per `process.project-board`.
+
+- Update the task's status from `blocked` to `pending` in TASKS.yaml.
+- Remove the `blocked` label from the original task's issue.
+- Move the task's project board item to "To Do" per `process.project-board`.
+
 18. The task SHOULD be picked up in the next task loop iteration.
 19. Agents SHOULD monitor blocker issues for resolution by checking issue status during task loop runs.
 
@@ -77,8 +80,10 @@ The agent environment does not have access to the CLI auth token.
 ## Error evidence
 
 ```
+
 $ gh issue create --repo {org}/{project} --title "test"
 error: authentication required
+
 ```
 
 ## Suggested fix

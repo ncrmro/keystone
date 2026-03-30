@@ -43,6 +43,7 @@ Collect the agent's current operational state from local YAML files and git forg
 Plain-text email body. No HTML, no markdown formatting - just clean text with simple section headers that reads well in any email client.
 
 **Structure**:
+
 ```
 Daily Status - [YYYY-MM-DD]
 
@@ -66,6 +67,7 @@ BLOCKERS
 ```
 
 **Concrete example**:
+
 ```
 Daily Status - 2026-02-20
 

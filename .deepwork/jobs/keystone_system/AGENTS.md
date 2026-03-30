@@ -15,12 +15,12 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 
 ## Workflows
 
-| Workflow | Steps | Purpose |
-|----------|-------|---------|
-| `develop` | plan → implement → review → build → merge → deploy → validate | Full lifecycle |
-| `update` | survey_fleet → plan_update → execute_fixes → preflight_build → run_update → validate | Catch-up deploy |
-| `convention` | draft_convention → cross_reference → apply_convention → commit_convention | Convention CRUD |
-| `doctor` | survey_fleet → validate | Standalone fleet health check |
+| Workflow     | Steps                                                                                | Purpose                       |
+| ------------ | ------------------------------------------------------------------------------------ | ----------------------------- |
+| `develop`    | plan → implement → review → build → merge → deploy → validate                        | Full lifecycle                |
+| `update`     | survey_fleet → plan_update → execute_fixes → preflight_build → run_update → validate | Catch-up deploy               |
+| `convention` | draft_convention → cross_reference → apply_convention → commit_convention            | Convention CRUD               |
+| `doctor`     | survey_fleet → validate                                                              | Standalone fleet health check |
 
 ## Key Conventions
 
@@ -55,6 +55,11 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 - **Doctor reports belong in `~/notes/`, not in the keystone open-source repo**: fleet_survey.md and validation_report.md contain personal deployment data (host names, IPs, generations, service failures) specific to the user's keystone deployment — not the open-source project. After completing the validate step, archive a summary to `~/notes/` using `zk new --notebook ~/notes --title "keystone fleet health YYYY-MM-DD" --no-input`.
 - **`~/notes/` is the primary zk notebook** — it has `journal/`, `notes/`, `inbox/`, and other directories. The zk config auto-names notes as `YYYYMMDDHHMM slug-title.md`. The note should contain a concise summary (not the full raw output files).
 - **The `.deepwork/jobs/` folder is scratch space** — it's fine for working files during execution but is not the final destination for personal system data.
+
+### v1.9.2 — Issue workflow output hygiene (2026-03-30)
+
+- **Use a unique slug-based filename per issue**: `.deepwork/tmp/keystone-issue-<slug>.md`, not a generic `keystone-issue.md`. Multiple issues filed in the same session will silently overwrite a shared name.
+- **Archive issues to notes if notes are enabled**: After `gh issue create`, check if `keystone.notes` is enabled and create a brief `zk` note in `~/notes/` with the issue URL and a one-paragraph summary. This mirrors how doctor reports are archived (see v1.8.0 learning). See `steps/write_issue.md` step 5 for the exact commands.
 
 ### v1.8.1 — Issue workflow correction (2026-03-24)
 
@@ -91,6 +96,7 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 The standard way to get hosts/users/agents/services is via `nix eval` against `~/.keystone/repos/nixos-config`. This is the canonical path — agents MUST use this, not hardcoded paths.
 
 ### Agents (compact)
+
 ```bash
 nix eval ~/.keystone/repos/nixos-config#nixosConfigurations.<HOST>.config.keystone.os.agents \
   --json --apply 'a: builtins.mapAttrs (_: v: {
@@ -101,17 +107,20 @@ nix eval ~/.keystone/repos/nixos-config#nixosConfigurations.<HOST>.config.keysto
 ```
 
 ### Users (compact)
+
 ```bash
 nix eval ~/.keystone/repos/nixos-config#nixosConfigurations.<HOST>.config.keystone.os.users \
   --json --apply 'u: builtins.mapAttrs (_: v: { fullName = v.fullName or ""; }) u'
 ```
 
 ### Hosts
+
 ```bash
 nix eval -f ~/.keystone/repos/nixos-config/hosts.nix --json
 ```
 
 ### Enabled Services
+
 ```bash
 nix eval ~/.keystone/repos/nixos-config#nixosConfigurations.<HOST>.config.keystone.server._enabledServices \
   --json 2>/dev/null

@@ -12,8 +12,6 @@ sessions in the right context.
 This page covers the current user workflow for project notes, repo roots,
 worktrees, and `pz`.
 
-<!-- TODO: Add terminal screenshots for `pz list`, `pz keystone`, and a repo worktree session once repo/worktree launch support lands. -->
-<!-- TODO: Add one screenshot per stable Zellij layout after the layout set and visual structure stop changing. -->
 
 ## Source of truth
 
@@ -89,6 +87,120 @@ Current built-in layout names:
 - `ops`
 - `write`
 
+## Workflow
+
+The normal Keystone project workflow is:
+
+1. Keep the notes repo current so the active hub notes reflect reality.
+2. Open the project session with `pz`.
+3. Use Zellij to keep the session persistent and organized.
+4. Use Helix for editing and Lazygit for git operations inside that session.
+
+Typical flow:
+
+```bash
+systemctl --user status keystone-notes-sync
+pz keystone
+hx .
+lazygit
+```
+
+### Zellij
+
+`pz` is the preferred entry point because it creates or attaches to the right
+Zellij session with project-aware environment variables already set.
+
+Use plain Zellij concepts inside the project session:
+
+- tabs for contexts such as coding, logs, and review,
+- panes for side-by-side work,
+- detach and reattach instead of rebuilding your workspace.
+
+Examples:
+
+```bash
+pz keystone
+pz keystone review
+zellij list-sessions
+```
+
+### Helix
+
+Use Helix as the default editor for code, notes, and docs:
+
+```bash
+hx .
+hx ~/notes/index
+```
+
+Helix works especially well in Keystone because the terminal module already
+ships the editor, language tooling, and zk-aware workflow defaults.
+
+### Lazygit
+
+Use Lazygit for fast review and commit workflows without leaving the session:
+
+```bash
+lazygit
+```
+
+That is the recommended git UI when iterating inside a `pz` session.
+
+## Projects, notes, and review
+
+Projects in Keystone are note-backed, not directory-backed.
+
+The active hub note in `~/notes/index/` is what makes a project discoverable to:
+
+- `pz`,
+- project-aware agent workflows, and
+- desktop project navigation.
+
+Keep `~/notes` current before assuming the project list is correct. For humans,
+that usually means letting `keystone-notes-sync` run or checking it directly:
+
+```bash
+systemctl --user status keystone-notes-sync
+journalctl --user -u keystone-notes-sync -n 20
+```
+
+When you need to review or refresh the hub note itself:
+
+```bash
+cd ~/notes
+zk edit -i
+```
+
+Or refresh the hub through the workflow command:
+
+```text
+/notes.project
+```
+
+Use [Notes](../notes.md) for the canonical hub-note structure and note flow.
+
+## Desktop project navigation with Walker
+
+Keystone Desktop uses Walker as the quick project switcher. The desktop menu is
+an adapter over the same project data that powers `pz`, so there is no separate
+desktop-only project registry.
+
+Relevant commands and scripts:
+
+- `keystone-context-switch` opens the Walker project switcher
+- `keystone-project-menu` delegates session data and launch behavior to `pz`
+- `pz` remains the source of truth for sessions and project metadata
+
+The practical effect is:
+
+- active hub note in `~/notes/index/` creates a discoverable project,
+- `pz` resolves the project session and metadata,
+- Walker lets you jump to the right Ghostty/Zellij window or launch it if it is
+  not already open.
+
+That is why stale notes state leads to stale desktop project menus. Keep the
+notes repo synchronized and keep the project hub note accurate.
+
 ## Session naming
 
 Session names are deterministic:
@@ -148,4 +260,4 @@ and standard `git worktree` commands for branch worktrees.
 
 - [Notes](../notes.md)
 - [Terminal module](terminal.md)
-- [`process.git-worktrees`](../../conventions/process.git-worktrees.md)
+- [`process.git-repos`](../../conventions/process.git-repos.md)

@@ -11,13 +11,13 @@
 
 ## Hardware Translation Table
 
-| Action | UHK (NixOS) | Framework (NixOS) | QMK/ZMK (NixOS) |
-|--------|-------------|-------------------|------------------|
-| WM Focus Left | Fn2+J → Alt+J → Super+J | Alt+J → Super+J | Lower+J → Alt+J → Super+J |
-| WM Focus Down | Fn2+K → Alt+K → Super+K | Alt+K → Super+K | Lower+K → Alt+K → Super+K |
-| Previous Tab | Mod+W → Ctrl+PgUp | Ctrl+Shift+Tab | Mod+W → Alt+W |
-| New Tab | Mod+E → Ctrl+T | Ctrl+T | Mod+E → Alt+E |
-| Close Tab | Mod+C → Ctrl+W | Ctrl+W | Mod+C → Alt+C |
+| Action        | UHK (NixOS)             | Framework (NixOS) | QMK/ZMK (NixOS)           |
+| ------------- | ----------------------- | ----------------- | ------------------------- |
+| WM Focus Left | Fn2+J → Alt+J → Super+J | Alt+J → Super+J   | Lower+J → Alt+J → Super+J |
+| WM Focus Down | Fn2+K → Alt+K → Super+K | Alt+K → Super+K   | Lower+K → Alt+K → Super+K |
+| Previous Tab  | Mod+W → Ctrl+PgUp       | Ctrl+Shift+Tab    | Mod+W → Alt+W             |
+| New Tab       | Mod+E → Ctrl+T          | Ctrl+T            | Mod+E → Alt+E             |
+| Close Tab     | Mod+C → Ctrl+W          | Ctrl+W            | Mod+C → Alt+C             |
 
 **Key mechanism**: `altwin:swap_alt_win` XKB option swaps Alt and Super at input level. Physical Alt → Super → Hyprland receives Super. All keyboards work identically with zero Nix config changes.
 

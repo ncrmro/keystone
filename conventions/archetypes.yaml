@@ -38,6 +38,8 @@ archetypes:
     description: "NixOS host — Nix devshells, direnv, declarative config"
     inlined_conventions:
       - process.version-control
+      - process.git-repos
+      - process.privileged-approval
       - process.prose
       - tool.standard-utilities
       - process.vcs-context-continuity
@@ -58,7 +60,30 @@ archetypes:
       - process.enable-by-default
       - os.zfs-backup
       - tool.stalwart
+
+  # Archetype for working directly on keystone platform repos:
+  # ncrmro/keystone, ncrmro/nixos-config, Unsupervisedcom/deepwork.
+  keystone-developer:
+    description: "Keystone platform developer — editing nixos-config, keystone modules, and deepwork jobs"
+    inlined_conventions:
+      - process.version-control
+      - process.privileged-approval
+      - process.prose
+      - tool.nix
+      - process.project-navigation
       - tool.standard-utilities
+      - process.keystone-development
+    referenced_conventions:
+      - process.keystone-development-mode
+      - tool.nix-devshell
+      - tool.forgejo
+      - tool.github
+      - code.shell-scripts
+      - process.vcs-context-continuity
+      - process.enable-by-default
+      - os.requirements
+      - process.deepwork-job
+      - tool.process-compose-agent
 
   engineer:
     description: "Engineering agents — implementation, code review, architecture"
@@ -69,6 +94,7 @@ archetypes:
       - tool.standard-utilities
       - process.vcs-context-continuity
       - process.project-navigation
+      - tool.process-compose-agent
     referenced_conventions:
       - os.requirements
       - process.agent-cronjobs
@@ -88,6 +114,7 @@ archetypes:
       - tool.himalaya
       - tool.nix-devshell
       - process.version-control-advanced
+      - process.git-repos
       - tool.github
       - tool.journal-remote
       - os.zfs-backup
@@ -111,7 +138,7 @@ archetypes:
           - tool.github
           - process.version-control
           - process.version-control-advanced
-          
+
       # Role: software-engineer
       # The primary role for writing code, fixing bugs, and executing technical tasks.
       # Serves as the core implementation subagent.
@@ -130,7 +157,8 @@ archetypes:
           - tool.nix-devshell
           - process.version-control
           - process.version-control-advanced
-          
+          - tool.process-compose-agent
+
       # Role: architect
       # Used for high-level system design, evaluating trade-offs, and writing technical specs.
       # Focuses on structure and dependencies before implementation begins.
@@ -143,7 +171,7 @@ archetypes:
           - tool.forgejo
           - process.version-control
           - process.version-control-advanced
-          
+
       # Role: project-manager
       # Used for breaking down large issues, epics, or specs into actionable, sequential tasks.
       project-manager:
@@ -160,7 +188,7 @@ archetypes:
           - process.feature-delivery
           - tool.forgejo
           - process.task-tracking
-          
+
       # Role: default
       # The default "idle" or administrative role. Used for checking email, triaging notifications,
       # running scheduled cronjobs, and managing the agent's internal state.
@@ -206,7 +234,7 @@ archetypes:
           - process.competitive-analysis
           - tool.himalaya
           - tool.forgejo
-          
+
       # Role: press-release-writer
       # Used specifically for drafting and refining "Working Backwards" style press releases
       # which serve as the primary handoff mechanism to engineering.
@@ -214,7 +242,7 @@ archetypes:
         conventions:
           - process.press-release
           - tool.forgejo
-          
+
       # Role: project-manager
       # Used for taking an approved press release and turning it into milestones and user stories
       # to be published on the git service for engineering consumption.
@@ -230,7 +258,7 @@ archetypes:
         conventions:
           - tool.forgejo
           - process.task-tracking
-          
+
       # Role: designer
       # Used to review UX/UI proposals, user flows, and ensure alignment with the product vision.
       designer:

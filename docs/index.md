@@ -1,157 +1,126 @@
 ---
 title: Keystone Documentation
-description: Self-sovereign infrastructure platform with secure, encrypted NixOS deployments
+description: Getting started with Keystone OS, the Keystone terminal module, and keystone-config
 ---
 
 # Keystone Documentation
 
-Welcome to the Keystone documentation. Keystone is a NixOS-based self-sovereign infrastructure platform that enables users to deploy secure, encrypted infrastructure on any hardware.
+Keystone can be adopted in two ways:
+
+- **Keystone OS** for full-machine ownership, including encrypted storage, services, users, and optional desktop tooling
+- **The Keystone terminal module** for a portable developer environment on an existing macOS, Linux, or NixOS system
+
+Most users should think in terms of a **`keystone-config`** repository. That repo is where you declare machines, users, enabled modules, and deployment settings.
+
+## Choose your path
+
+### Keystone OS
+
+Choose Keystone OS when you want Keystone to manage the machine itself.
+
+Use this path for:
+
+- Servers
+- Workstations
+- Laptops
+- Fresh NixOS installs
+- Existing NixOS systems you want to reconfigure around Keystone modules
+
+What you get:
+
+- Disk layout and installation flow
+- Secure Boot and TPM support
+- ZFS-based storage defaults
+- User management
+- Optional desktop environment
+- The Keystone terminal environment included for users who enable it
+
+Start here:
+
+- [ISO Generation](os/iso-generation.md)
+- [Keystone OS install](os/installation.md)
+- [OS module reference](os/server.md)
+
+### Keystone terminal module
+
+Choose the Keystone terminal module when you want the Keystone developer experience without replacing your operating system.
+
+Use this path for:
+
+- macOS
+- Existing Linux distributions
+- Existing NixOS machines
+- Remote development boxes
+- Thin clients
+
+What you get:
+
+- Zsh, Helix, Zellij, Git, and core CLI tooling
+- Reproducible development environments
+- A consistent terminal workflow across machines
+
+Start here:
+
+- [Install the terminal environment](terminal/tui-install.md)
+- [Terminal module overview](terminal/terminal.md)
+
+## Core concept: `keystone-config`
+
+`keystone-config` is the repo that captures your Keystone setup. It is your flake, your machine definitions, and your configuration history.
+
+Create a new config repo from the Keystone template:
+
+```bash
+nix flake new -t github:ncrmro/keystone keystone-config
+cd keystone-config
+```
+
+This template gives you:
+
+- `flake.nix` with Keystone and Home Manager wired in
+- `configuration.nix` with the main Keystone options scaffolded
+- `hardware.nix` for machine-specific hardware settings
+- `README.md` with the post-scaffold checklist
+
+Once created, edit the generated files, search for `TODO:`, and choose whether that repo will drive:
+
+- A full Keystone OS machine
+- A desktop-enabled Keystone OS machine
+- A smaller terminal-first setup that still reuses Keystone modules
+
+## Recommended decisions
+
+### If you are new to Keystone
+
+Start with **one machine** and **one admin user** in `keystone-config`.
+
+Recommended first decision:
+
+- Use **Keystone OS** if you are provisioning a new server, workstation, or laptop
+- Use the **terminal module** if you want Keystone’s CLI environment on a machine you already manage another way
+
+### If you want the fastest safe first deployment
+
+Use the template, keep the default single-machine structure, and work through:
+
+1. [ISO Generation](os/iso-generation.md)
+2. [Keystone OS install](os/installation.md)
+3. [Terminal module overview](terminal/terminal.md)
+
+### If you are iterating or contributing
+
+Keep development workflows separate from initial setup:
+
+- [Developer workflow](terminal/tui-developer-workflow.md)
+- [Thin client workflow](terminal/tui-developer-workflow-thin-client.md)
+- [Testing procedures](os/testing-procedure.md)
+- [VM testing](os/testing-vm.md)
 
 ## Quick Links
 
 - **[Project Roadmap](https://github.com/ncrmro/keystone/blob/main/ROADMAP.md)** - Development milestones and future plans
 - **[GitHub Repository](https://github.com/ncrmro/keystone)** - Source code and issue tracking
-- **[Quick Start](#quick-start)** - Get up and running quickly
-
-## Documentation Overview
-
-### Getting Started
-
-#### Installation & Deployment
-- **[Installation Guide](installation.md)** - Complete installation process from ISO generation to first boot
-- **[ISO Generation](iso-generation.md)** - Building custom installation media
-- **[Examples](examples.md)** - Server and client deployment examples
-- **[VM Testing](testing-vm.md)** - Virtual machine testing workflows
-- **[Testing Procedures](testing-procedure.md)** - Comprehensive testing guide
-
-#### Security & Encryption
-- **[TPM Enrollment](tpm-enrollment.md)** - TPM2-based disk encryption setup
-- **[Secure Boot Testing](examples/vm-secureboot-testing.md)** - Secure Boot configuration and testing
-- **[User Management](users.md)** - User configuration and access control
-
-### Module Documentation
-- **[Terminal](terminal.md)** (`keystone.terminal`) - Shell, editor, and development tools (Zsh, Helix, Zellij, etc.)
-  - **[Notes](notes.md)** - Shared zk notebook system for humans, agents, and workflow reports
-  - **[Projects and pz](terminal/projects.md)** - Project hubs, repo roots, worktrees, and Zellij sessions
-  - **[Personal Information Management](personal-info-management.md)** - Email, calendars, contacts, and timers (Pimalaya suite)
-- **Desktop** (`keystone.desktop`) - Hyprland desktop environment
-  - **[Screen Recording](screen-recording.md)** - GPU-accelerated screen recording with audio capture
-- **[Server](server.md)** (`keystone.server`) - Server services with unified nginx/ACME/DNS configuration
-  - **[SSH Agent](ssh-agent.md)** - SSH agent setup for hardware keys
-
-### Advanced Topics
-- **[ks CLI Reference](ks.md)** - Command reference for the `ks` infrastructure CLI
-- **[Build Platforms](build-platforms.md)** - Cross-platform build configuration
-- **[Hardware NAS](HW_NAS.md)** - Network Attached Storage setup
-
-## Quick Start
-
-### 1. Build Installation ISO
-
-```bash
-# Clone the repository
-git clone https://github.com/ncrmro/keystone.git
-cd keystone
-
-# Build ISO with your SSH key
-./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
-```
-
-### 2. Test in a VM (Optional)
-
-```bash
-# Quick VM test with automated build
-./bin/build-vm terminal    # Terminal environment
-./bin/build-vm desktop     # Full desktop environment
-
-# Or use the full-stack VM testing
-./bin/virtual-machine --name keystone-test-vm --start
-```
-
-### 3. Deploy to Hardware
-
-```bash
-# Boot target machine from ISO
-# Get IP address from installer console
-
-# Deploy from your development machine
-nixos-anywhere --flake .#test-server root@<installer-ip>
-```
-
-### 4. Post-Installation
-
-```bash
-# SSH into deployed system
-ssh root@<server-ip>
-
-# Enroll TPM for automatic unlock
-keystone-enroll-tpm
-
-# Verify secure boot status
-bootctl status
-```
-
-## Architecture Overview
-
-### System Types
-
-#### Servers
-Always-on infrastructure providing:
-- Network gateway and VPN services
-- DNS with ad/tracker blocking
-- Storage and backup services
-- Media streaming
-- Container hosting
-
-#### Clients
-Interactive systems featuring:
-- **Workstations** - Always-on development machines with remote access
-- **Laptops** - Portable devices with full desktop environments
-- Hyprland Wayland compositor
-- Terminal development environment
-- Secure boot and full disk encryption
-
-### Security Features
-
-- **TPM2 Integration** - Hardware-based key storage and attestation
-- **Full Disk Encryption** - LUKS + ZFS native encryption
-- **Secure Boot** - Lanzaboote with custom key enrollment
-- **Zero-Knowledge** - All data encrypted before leaving devices
-
-### Key Technologies
-
-- **NixOS** - Declarative, reproducible system configuration
-- **ZFS** - Advanced filesystem with snapshots and compression
-- **Disko** - Declarative disk partitioning
-- **Home Manager** - User environment management
-- **SystemD** - Service orchestration and boot management
-
-## Development Roadmap
-
-### Current Release: v0.0.1 (Alpha)
-- ✅ Encrypted server with TPM2 unlock
-- ✅ Secure Boot support
-- ✅ ISO installer
-- 🔧 Documentation and polish needed
-
-### Upcoming Releases
-
-#### v0.0.2 - Developer Environment
-- Terminal development via SSH
-- Home-manager integration
-- Cross-platform development
-
-#### v0.0.3 - Workstation Desktop
-- Hyprland compositor
-- Remote desktop access
-- Full application suite
-
-#### v0.0.4 - Universal Development
-- GitHub Codespaces support
-- macOS compatibility
-- Portable configurations
-
-See the full **[Roadmap](https://github.com/ncrmro/keystone/blob/main/ROADMAP.md)** for detailed version plans and future features.
+- **[Create `keystone-config`](#core-concept-keystone-config)** - Scaffold a new Keystone configuration repo
 
 ## Contributing
 
@@ -177,4 +146,4 @@ Keystone is open source software licensed under the [MIT License](https://github
 
 ---
 
-*This documentation is continuously updated. For the latest information, please check the [GitHub repository](https://github.com/ncrmro/keystone).*
+_This documentation is continuously updated. For the latest information, please check the [GitHub repository](https://github.com/ncrmro/keystone)._

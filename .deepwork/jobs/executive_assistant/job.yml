@@ -1,6 +1,6 @@
 name: executive_assistant
-version: "1.0.0"
-summary: "Executive assistant workflows: event planning, calendar management, inbox cleanup, and event discovery"
+version: "2.0.0"
+summary: "Executive assistant workflows: event planning, calendar management, inbox cleanup, event discovery, portfolio review, and zk-backed task coordination"
 common_job_info_provided_to_all_steps_at_runtime: |
   Executive assistant workflows for the human operator. These workflows handle
   common administrative and strategic tasks that support the CEO's productivity.
@@ -10,6 +10,8 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Calendar: Check for calendar tools or integrations available in the environment
   - Web search: Use WebSearch and WebFetch for research tasks
   - File management: Standard file tools for creating reports and plans
+  - zk notes: Use `zk --notebook-dir <path>` for note discovery, creation, linking, and indexing
+  - Zellij fleet survey: Use `zellij list-sessions` and `zellij --session <name> action dump-screen <path>` to inspect live agent activity. See task_loop_collect_agent_activity.md for the full pattern.
 
   Conventions:
   - Always act on behalf of the human operator (see TEAM.md for identity)
@@ -17,49 +19,108 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Use plain, professional language in all written outputs
   - Include actionable next steps in every deliverable
   - Reference specific dates, times, and contacts where possible
+  - Prefer active project hub notes in `index/` as the source of truth for project scope
+  - For task coordination, create and update zk notes in notes repos instead of writing to legacy TASKS.yaml ledgers
+  - Keep tags within approved namespaces (`project/*`, `repo/*`, `status/*`, `source/*`); store milestone, issue, PR, assignee, and owner references in frontmatter
+
+  Task note frontmatter contract (see steps/shared/task_note_frontmatter.md for full examples):
+  - Required baseline fields: `id`, `title`, `type`, `created`, `author`, `tags`
+  - Coordination fields (add when known): `project`, `owner`, `status`, `assigned_agent`,
+    `milestone_ref`, `issue_ref`, `pr_ref`, `repo_ref`, `source_ref`, `next_review`, `coordination_note`
+  - Use the same `source_ref` for deduplication across the human note and all owner mirrors
+  - Do not invent tag namespaces for milestone, issue, PR, or assignee identity
 
   Output audience: The human operator (CEO). Keep outputs concise and decision-ready.
+
+  ## Portfolio review
+
+  The portfolio_review workflow performs a holistic review of the user's entire project portfolio.
+  It replaces per-project status.md files with a single comprehensive report covering all active projects.
+
+  Data sources per project:
+  - GitHub/Forgejo milestones — open milestones, issue counts, completion percentages
+  - Git log — recent commit activity to gauge momentum (last 30 days)
+  - Existing project profiles — charter.md, README.yaml, status.md from notes repo's `projects/{slug}/`
+
+  Projects are discovered from `projects/README.md` (primary) or `PROJECTS.yaml` at the notes repo root.
+
+  Platform tools:
+  - GitHub repos: `gh` CLI for milestones, issues, PRs, and activity
+  - Forgejo repos: `fj` or `tea` CLI, or `curl` with Forgejo API
+  - Git activity: `git log --oneline --since="30 days ago"` on local clones in `~/code/ncrmro/`
+
+  The final report is delivered as a pull request into the notes repo at:
+  `projects/portfolio/reviews/YYYY-MM.md` (dated, accumulates over time).
+  Branch naming: `portfolio-review/YYYY-MM`. PRs are created with `gh pr merge --auto --squash`
+  enabled (72-hour review window before auto-merge).
+
+  Status indicators: 🟢 On Track, 🟡 At Risk, 🔴 Behind, ⚪ Not Started/Deferred
 
 workflows:
   - name: plan_event
     summary: "Plan an event end-to-end: venue ideas, agenda, invitations, logistics"
     steps:
-      - gather_event_requirements
-      - research_event_options
-      - draft_event_plan
-      - finalize_event_plan
+      - event_gather_requirements
+      - event_research_options
+      - event_draft_plan
+      - event_finalize_plan
 
   - name: manage_calendar
     summary: "Review calendar, resolve conflicts, update entries, and send invitations"
     steps:
-      - review_calendar
-      - identify_conflicts
-      - update_and_invite
-      - confirm_calendar
+      - calendar_review
+      - calendar_identify_conflicts
+      - calendar_update_and_invite
+      - calendar_confirm
 
   - name: clean_inbox
     summary: "Review inbox, categorize messages, draft replies, and archive clutter"
     steps:
-      - fetch_messages
-      - categorize_messages
-      - draft_responses
-      - apply_inbox_actions
+      - inbox_fetch_messages
+      - inbox_categorize_messages
+      - inbox_draft_responses
+      - inbox_apply_actions
 
   - name: discover_events
     summary: "Find events relevant to the human's projects and interests"
     steps:
-      - gather_interests
-      - search_events
-      - rank_and_filter
-      - present_recommendations
+      - discover_gather_interests
+      - discover_search_events
+      - discover_rank_and_filter
+      - discover_present_recommendations
+
+  - name: task_loop
+    summary: "Review calendar, active work, agent assignments, and milestone state; update zk notes; publish next actions"
+    steps:
+      - task_loop_discover_notes_repos
+      - task_loop_review_calendar_context
+      - task_loop_collect_active_task_notes
+      - task_loop_collect_agent_activity
+      - task_loop_synthesize_daily_priorities
+      - task_loop_rollover_daily_note
+      - task_loop_sync_owner_notes
+      - task_loop_publish_next_actions
+
+  - name: portfolio_review
+    summary: "Full portfolio review across all active projects with synthesized health report and Eisenhower matrix"
+    steps:
+      - portfolio_discover_projects
+      - portfolio_review_all_projects
+      - portfolio_synthesize_report
+
+  - name: portfolio_review_one
+    summary: "Status review for a single project: milestones, activity, and health assessment"
+    steps:
+      - portfolio_gather_data
+      - portfolio_write_summary
 
 steps:
   # ── plan_event workflow ──────────────────────────────────────────────
 
-  - id: gather_event_requirements
+  - id: event_gather_requirements
     name: "Gather Event Requirements"
     description: "Collect event details: purpose, date range, attendee count, budget, preferences"
-    instructions_file: steps/gather_event_requirements.md
+    instructions_file: steps/event_gather_requirements.md
     inputs:
       - name: event_description
         description: "What is the event? (e.g., team offsite, product launch dinner, investor meeting)"
@@ -77,20 +138,20 @@ steps:
     dependencies: []
     reviews: []
 
-  - id: research_event_options
+  - id: event_research_options
     name: "Research Event Options"
     description: "Research venues, catering, and logistics options matching requirements"
-    instructions_file: steps/research_event_options.md
+    instructions_file: steps/event_research_options.md
     inputs:
       - file: event_requirements.md
-        from_step: gather_event_requirements
+        from_step: event_gather_requirements
     outputs:
       event_options.md:
         type: file
         description: "Researched options for venues, catering, and logistics with pros/cons"
         required: true
     dependencies:
-      - gather_event_requirements
+      - event_gather_requirements
     reviews:
       - run_each: event_options.md
         additional_review_guidance: "Read event_requirements.md to verify options match the stated requirements and budget."
@@ -98,23 +159,23 @@ steps:
           "Requirements Match": "All options fall within the stated budget and date range."
           "Actionable Options": "Each option includes enough detail (name, cost estimate, capacity) to make a decision."
 
-  - id: draft_event_plan
+  - id: event_draft_plan
     name: "Draft Event Plan"
     description: "Create a comprehensive event plan with agenda, logistics, and invitation list"
-    instructions_file: steps/draft_event_plan.md
+    instructions_file: steps/event_draft_plan.md
     inputs:
       - file: event_requirements.md
-        from_step: gather_event_requirements
+        from_step: event_gather_requirements
       - file: event_options.md
-        from_step: research_event_options
+        from_step: event_research_options
     outputs:
       event_plan.md:
         type: file
         description: "Complete event plan with agenda, venue selection, logistics, and draft invitations"
         required: true
     dependencies:
-      - gather_event_requirements
-      - research_event_options
+      - event_gather_requirements
+      - event_research_options
     reviews:
       - run_each: event_plan.md
         additional_review_guidance: "Read event_requirements.md and event_options.md to verify the plan is consistent with requirements and chosen options."
@@ -123,20 +184,20 @@ steps:
           "Timeline Included": "A clear timeline of tasks and deadlines is present."
           "Invitation Ready": "Draft invitation text is included and ready to customize."
 
-  - id: finalize_event_plan
+  - id: event_finalize_plan
     name: "Finalize Event Plan"
     description: "Review plan with user, incorporate feedback, and produce final deliverable"
-    instructions_file: steps/finalize_event_plan.md
+    instructions_file: steps/event_finalize_plan.md
     inputs:
       - file: event_plan.md
-        from_step: draft_event_plan
+        from_step: event_draft_plan
     outputs:
       final_event_plan.md:
         type: file
         description: "Final approved event plan ready for execution"
         required: true
     dependencies:
-      - draft_event_plan
+      - event_draft_plan
     reviews:
       - run_each: final_event_plan.md
         quality_criteria:
@@ -145,10 +206,10 @@ steps:
 
   # ── manage_calendar workflow ─────────────────────────────────────────
 
-  - id: review_calendar
+  - id: calendar_review
     name: "Review Calendar"
     description: "Fetch and review calendar entries for the specified time range"
-    instructions_file: steps/review_calendar.md
+    instructions_file: steps/calendar_review.md
     inputs:
       - name: time_range
         description: "Time range to review (e.g., 'this week', 'next 2 weeks', 'March 2026')"
@@ -162,20 +223,20 @@ steps:
     dependencies: []
     reviews: []
 
-  - id: identify_conflicts
+  - id: calendar_identify_conflicts
     name: "Identify Conflicts"
     description: "Analyze calendar for conflicts, gaps, and optimization opportunities"
-    instructions_file: steps/identify_conflicts.md
+    instructions_file: steps/calendar_identify_conflicts.md
     inputs:
       - file: calendar_snapshot.md
-        from_step: review_calendar
+        from_step: calendar_review
     outputs:
       calendar_analysis.md:
         type: file
         description: "Analysis of conflicts, double-bookings, gaps, and suggested changes"
         required: true
     dependencies:
-      - review_calendar
+      - calendar_review
     reviews:
       - run_each: calendar_analysis.md
         additional_review_guidance: "Read calendar_snapshot.md to verify that identified conflicts are real and suggestions are reasonable."
@@ -183,20 +244,20 @@ steps:
           "Accurate Conflicts": "All identified conflicts correspond to actual overlapping entries."
           "Practical Suggestions": "Suggested resolutions are specific and actionable."
 
-  - id: update_and_invite
+  - id: calendar_update_and_invite
     name: "Update and Invite"
     description: "Apply calendar changes and send meeting invitations"
-    instructions_file: steps/update_and_invite.md
+    instructions_file: steps/calendar_update_and_invite.md
     inputs:
       - file: calendar_analysis.md
-        from_step: identify_conflicts
+        from_step: calendar_identify_conflicts
     outputs:
       calendar_changes.md:
         type: file
         description: "Log of changes made and invitations sent"
         required: true
     dependencies:
-      - identify_conflicts
+      - calendar_identify_conflicts
     reviews:
       - run_each: calendar_changes.md
         additional_review_guidance: "Read calendar_analysis.md to verify that only the suggested changes were applied and no unintended modifications were made."
@@ -205,20 +266,20 @@ steps:
           "Invitations Confirmed": "All invitations sent are logged with recipient and confirmation status."
           "No Unintended Side Effects": "No calendar entries were modified or deleted beyond what was planned."
 
-  - id: confirm_calendar
+  - id: calendar_confirm
     name: "Confirm Calendar"
     description: "Verify all changes applied correctly and summarize final state"
-    instructions_file: steps/confirm_calendar.md
+    instructions_file: steps/calendar_confirm.md
     inputs:
       - file: calendar_changes.md
-        from_step: update_and_invite
+        from_step: calendar_update_and_invite
     outputs:
       calendar_summary.md:
         type: file
         description: "Final calendar summary confirming all changes are in place"
         required: true
     dependencies:
-      - update_and_invite
+      - calendar_update_and_invite
     reviews:
       - run_each: calendar_summary.md
         quality_criteria:
@@ -227,10 +288,10 @@ steps:
 
   # ── clean_inbox workflow ─────────────────────────────────────────────
 
-  - id: fetch_messages
+  - id: inbox_fetch_messages
     name: "Fetch Messages"
     description: "Retrieve messages from the inbox for the specified time range"
-    instructions_file: steps/fetch_messages.md
+    instructions_file: steps/inbox_fetch_messages.md
     inputs:
       - name: inbox_account
         description: "Email account to clean (e.g., luce@ncrmro.com)"
@@ -246,20 +307,20 @@ steps:
     dependencies: []
     reviews: []
 
-  - id: categorize_messages
+  - id: inbox_categorize_messages
     name: "Categorize Messages"
     description: "Sort messages into categories: urgent, needs reply, FYI, archive, delete"
-    instructions_file: steps/categorize_messages.md
+    instructions_file: steps/inbox_categorize_messages.md
     inputs:
       - file: inbox_snapshot.md
-        from_step: fetch_messages
+        from_step: inbox_fetch_messages
     outputs:
       categorized_inbox.md:
         type: file
         description: "Messages categorized by priority and action needed"
         required: true
     dependencies:
-      - fetch_messages
+      - inbox_fetch_messages
     reviews:
       - run_each: categorized_inbox.md
         additional_review_guidance: "Read inbox_snapshot.md and check that the priority_rules input was respected in categorization."
@@ -267,43 +328,43 @@ steps:
           "Complete Coverage": "Every message from the snapshot is categorized."
           "Priority Rules Applied": "The user's priority rules are reflected in the categorization."
 
-  - id: draft_responses
+  - id: inbox_draft_responses
     name: "Draft Responses"
     description: "Draft replies for messages that need a response"
-    instructions_file: steps/draft_responses.md
+    instructions_file: steps/inbox_draft_responses.md
     inputs:
       - file: categorized_inbox.md
-        from_step: categorize_messages
+        from_step: inbox_categorize_messages
     outputs:
       draft_replies.md:
         type: file
         description: "Draft replies for messages flagged as needing a response"
         required: true
     dependencies:
-      - categorize_messages
+      - inbox_categorize_messages
     reviews:
       - run_each: draft_replies.md
         quality_criteria:
           "Professional Tone": "All drafts use professional, concise language appropriate for the recipient."
           "Actionable Content": "Each draft addresses the sender's question or request with a clear next step."
 
-  - id: apply_inbox_actions
+  - id: inbox_apply_actions
     name: "Apply Inbox Actions"
     description: "Execute categorized actions: send replies, archive, delete, flag"
-    instructions_file: steps/apply_inbox_actions.md
+    instructions_file: steps/inbox_apply_actions.md
     inputs:
       - file: categorized_inbox.md
-        from_step: categorize_messages
+        from_step: inbox_categorize_messages
       - file: draft_replies.md
-        from_step: draft_responses
+        from_step: inbox_draft_responses
     outputs:
       inbox_actions_log.md:
         type: file
         description: "Log of all actions taken on inbox messages"
         required: true
     dependencies:
-      - categorize_messages
-      - draft_responses
+      - inbox_categorize_messages
+      - inbox_draft_responses
     reviews:
       - run_each: inbox_actions_log.md
         quality_criteria:
@@ -312,10 +373,10 @@ steps:
 
   # ── discover_events workflow ─────────────────────────────────────────
 
-  - id: gather_interests
+  - id: discover_gather_interests
     name: "Gather Interests"
     description: "Identify the human's interests, projects, and event preferences"
-    instructions_file: steps/gather_interests.md
+    instructions_file: steps/discover_gather_interests.md
     inputs:
       - name: interest_areas
         description: "Areas of interest (e.g., 'AI/ML, startups, Nix/NixOS, Rust')"
@@ -331,20 +392,20 @@ steps:
     dependencies: []
     reviews: []
 
-  - id: search_events
+  - id: discover_search_events
     name: "Search Events"
     description: "Search for events matching the interest profile"
-    instructions_file: steps/search_events.md
+    instructions_file: steps/discover_search_events.md
     inputs:
       - file: interest_profile.md
-        from_step: gather_interests
+        from_step: discover_gather_interests
     outputs:
       event_candidates.md:
         type: file
         description: "Raw list of discovered events with details"
         required: true
     dependencies:
-      - gather_interests
+      - discover_gather_interests
     reviews:
       - run_each: event_candidates.md
         additional_review_guidance: "Read interest_profile.md to verify events are relevant to the stated interests and location."
@@ -352,23 +413,23 @@ steps:
           "Relevance": "All listed events are plausibly relevant to at least one stated interest area."
           "Complete Details": "Each event includes name, date, location, URL, and brief description."
 
-  - id: rank_and_filter
+  - id: discover_rank_and_filter
     name: "Rank and Filter"
     description: "Score and rank events by relevance, filter out low-value ones"
-    instructions_file: steps/rank_and_filter.md
+    instructions_file: steps/discover_rank_and_filter.md
     inputs:
       - file: interest_profile.md
-        from_step: gather_interests
+        from_step: discover_gather_interests
       - file: event_candidates.md
-        from_step: search_events
+        from_step: discover_search_events
     outputs:
       ranked_events.md:
         type: file
         description: "Events ranked by relevance with scores and rationale"
         required: true
     dependencies:
-      - gather_interests
-      - search_events
+      - discover_gather_interests
+      - discover_search_events
     reviews:
       - run_each: ranked_events.md
         additional_review_guidance: "Read interest_profile.md and event_candidates.md to verify scoring rationale aligns with stated interests."
@@ -376,23 +437,340 @@ steps:
           "Scoring Rationale": "Each event has a clear score and rationale tied to specific interest areas."
           "Filter Logic": "Low-relevance events are excluded with brief justification."
 
-  - id: present_recommendations
+  - id: discover_present_recommendations
     name: "Present Recommendations"
     description: "Create a polished recommendations document with top events"
-    instructions_file: steps/present_recommendations.md
+    instructions_file: steps/discover_present_recommendations.md
     inputs:
       - file: ranked_events.md
-        from_step: rank_and_filter
+        from_step: discover_rank_and_filter
     outputs:
       event_recommendations.md:
         type: file
         description: "Final curated list of recommended events with action items"
         required: true
     dependencies:
-      - rank_and_filter
+      - discover_rank_and_filter
     reviews:
       - run_each: event_recommendations.md
         quality_criteria:
           "Decision Ready": "Each recommendation includes enough information to decide whether to attend."
           "Clear Value Proposition": "For each event, the reason it matters to the human's goals is stated."
           "Actionable": "Registration links or next steps are included for each recommended event."
+
+  # ── task_loop workflow ───────────────────────────────────────────────
+
+  - id: task_loop_discover_notes_repos
+    name: "Discover Notes Repos"
+    description: "Find the human and agent notes repos under the keystone owner layout and establish the working date"
+    instructions_file: steps/task_loop_discover_notes_repos.md
+    inputs:
+      - name: notes_root
+        description: "Root directory containing owner repos (default: ~/.keystone/repos)"
+      - name: human_owner
+        description: "Owner slug for the human operator's notes repo (default: ncrmro)"
+      - name: owner_filter
+        description: "Optional comma-separated owner list to limit sync targets"
+      - name: target_date
+        description: "Optional ISO date to replay the workflow for a specific day"
+    outputs:
+      notes_repo_inventory.md:
+        type: file
+        description: "Discovered notes repos, owner roles, working date, and any missing repos"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: notes_repo_inventory.md
+        quality_criteria:
+          "Working Date Established": "The inventory records one working date and one human owner."
+          "Repo Coverage": "Each discovered owner repo includes an absolute notes path and existence status."
+
+  - id: task_loop_review_calendar_context
+    name: "Review Calendar Context"
+    description: "Gather calendar events and timing pressure that should influence today's priorities"
+    instructions_file: steps/task_loop_review_calendar_context.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: task_loop_discover_notes_repos
+      - name: calendar_source
+        description: "Calendar account or command source to inspect"
+      - name: focus_window
+        description: "Near-term horizon to prioritize, such as 'today' or 'next 48 hours'"
+    outputs:
+      calendar_context.md:
+        type: file
+        description: "Calendar-critical events, deadlines, and task implications for the working date"
+        required: true
+    dependencies:
+      - task_loop_discover_notes_repos
+    reviews:
+      - run_each: calendar_context.md
+        quality_criteria:
+          "Absolute Dates": "The report uses specific dates and times for every event it cites."
+          "Priority Signal": "Each calendar item states whether it should promote, defer, or monitor related work."
+
+  - id: task_loop_collect_active_task_notes
+    name: "Collect Active Task Notes"
+    description: "Discover existing zk task notes, project hubs, and shared-surface references relevant to active work"
+    instructions_file: steps/task_loop_collect_active_task_notes.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: task_loop_discover_notes_repos
+      - file: calendar_context.md
+        from_step: task_loop_review_calendar_context
+    outputs:
+      active_task_notes.md:
+        type: file
+        description: "Inventory of active task notes, linked projects, milestones, issues, and pull requests"
+        required: true
+    dependencies:
+      - task_loop_discover_notes_repos
+      - task_loop_review_calendar_context
+    reviews:
+      - run_each: active_task_notes.md
+        quality_criteria:
+          "zk First": "Task discovery is grounded in zk notes and active project hubs, not legacy YAML task ledgers."
+          "Shared Surface Captured": "Each tracked task records available project, repo, milestone, issue, and PR references."
+
+  - id: task_loop_collect_agent_activity
+    name: "Collect Agent Activity"
+    description: "Summarize assigned agent work, mirrored notes, and active-session context across owner repos"
+    instructions_file: steps/task_loop_collect_agent_activity.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: task_loop_discover_notes_repos
+      - file: active_task_notes.md
+        from_step: task_loop_collect_active_task_notes
+    outputs:
+      agent_activity.md:
+        type: file
+        description: "Current agent assignments, note mirrors, recent progress, and blockers"
+        required: true
+    dependencies:
+      - task_loop_discover_notes_repos
+      - task_loop_collect_active_task_notes
+    reviews:
+      - run_each: agent_activity.md
+        quality_criteria:
+          "Assignment Coverage": "Each active agent owner has either current assignments or an explicit 'none' status."
+          "Cross-Repo Awareness": "Mirrored task-note state between the human repo and agent repos is described accurately."
+
+  - id: task_loop_synthesize_daily_priorities
+    name: "Synthesize Daily Priorities"
+    description: "Combine calendar pressure, task notes, and agent activity into one ranked action plan with Eisenhower matrix"
+    instructions_file: steps/task_loop_synthesize_daily_priorities.md
+    inputs:
+      - file: calendar_context.md
+        from_step: task_loop_review_calendar_context
+      - file: active_task_notes.md
+        from_step: task_loop_collect_active_task_notes
+      - file: agent_activity.md
+        from_step: task_loop_collect_agent_activity
+    outputs:
+      daily_priorities.md:
+        type: file
+        description: "Eisenhower-matrix priorities with ranked next actions and explicit Q4 disposal plan"
+        required: true
+    dependencies:
+      - task_loop_review_calendar_context
+      - task_loop_collect_active_task_notes
+      - task_loop_collect_agent_activity
+    reviews:
+      - run_each: daily_priorities.md
+        quality_criteria:
+          "Calendar First": "Calendar-critical items outrank backlog work when they conflict."
+          "Explicit Next Actions": "Every priority entry has an owner, a concrete next action, and a reason for its rank."
+          "Eisenhower Matrix Present": "The output contains a 2x2 matrix mapping active work to Q1/Q2/Q3/Q4 quadrants."
+          "Q4 Disposal Actions": "Every Q4 item has an explicit disposal action: defer, delegate, icebox, or delete."
+
+  - id: task_loop_rollover_daily_note
+    name: "Rollover Daily Note"
+    description: "Create or update the executive-assistant daily note and carry unfinished work forward by link"
+    instructions_file: steps/task_loop_rollover_daily_note.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: task_loop_discover_notes_repos
+      - file: daily_priorities.md
+        from_step: task_loop_synthesize_daily_priorities
+    outputs:
+      executive_assistant_daily.md:
+        type: file
+        description: "The dated executive-assistant daily note with priorities, delegation, blockers, and carry-forward links"
+        required: true
+    dependencies:
+      - task_loop_discover_notes_repos
+      - task_loop_synthesize_daily_priorities
+    reviews:
+      - run_each: executive_assistant_daily.md
+        quality_criteria:
+          "Single Daily Note": "The output identifies exactly one daily note for the working date."
+          "Carry Forward By Link": "Unfinished work is carried forward by linking existing task notes instead of duplicating content."
+
+  - id: task_loop_sync_owner_notes
+    name: "Sync Owner Notes"
+    description: "Mirror assigned task state into owner notes repos while preserving the human daily note as the coordination source"
+    instructions_file: steps/task_loop_sync_owner_notes.md
+    inputs:
+      - file: notes_repo_inventory.md
+        from_step: task_loop_discover_notes_repos
+      - file: daily_priorities.md
+        from_step: task_loop_synthesize_daily_priorities
+      - file: executive_assistant_daily.md
+        from_step: task_loop_rollover_daily_note
+    outputs:
+      owner_sync_log.md:
+        type: file
+        description: "Per-owner sync actions, mirrored notes updated, and any skipped repos or conflicts"
+        required: true
+    dependencies:
+      - task_loop_discover_notes_repos
+      - task_loop_synthesize_daily_priorities
+      - task_loop_rollover_daily_note
+    reviews:
+      - run_each: owner_sync_log.md
+        quality_criteria:
+          "Human Repo Canonical": "The log treats the human notes repo as the coordination source of truth."
+          "Scoped Mirrors": "Agent repos receive only assigned-work mirrors plus backlinks to the human daily note."
+
+  - id: task_loop_publish_next_actions
+    name: "Publish Next Actions"
+    description: "Produce the final operator-facing summary and identify what the workflow updated"
+    instructions_file: steps/task_loop_publish_next_actions.md
+    inputs:
+      - file: daily_priorities.md
+        from_step: task_loop_synthesize_daily_priorities
+      - file: executive_assistant_daily.md
+        from_step: task_loop_rollover_daily_note
+      - file: owner_sync_log.md
+        from_step: task_loop_sync_owner_notes
+    outputs:
+      task_loop_summary.md:
+        type: file
+        description: "Final summary with today's priorities, delegated work, blockers, and note paths"
+        required: true
+    dependencies:
+      - task_loop_synthesize_daily_priorities
+      - task_loop_rollover_daily_note
+      - task_loop_sync_owner_notes
+    reviews:
+      - run_each: task_loop_summary.md
+        quality_criteria:
+          "Decision Ready": "The summary gives the operator a short, concrete list of what to do now, what is delegated, and what is blocked."
+          "Paths Included": "The summary names the updated daily note and any mirrored owner notes."
+          "Do Now Has Owner and Time": "Each item in the Do Now list names an explicit owner and a specific deadline or time reference."
+
+  # ── portfolio_review workflow ────────────────────────────────────────
+
+  - id: portfolio_discover_projects
+    name: "Discover Projects"
+    description: "Scan the notes repo to build a list of all active projects with their repos and platforms"
+    instructions_file: steps/portfolio_discover_projects.md
+    inputs:
+      - name: notes_path
+        description: "Path to the notes repo (e.g., ~/code/ncrmro/obsidian or ~/notes)"
+    outputs:
+      project_list.md:
+        type: file
+        description: "Structured list of all active projects with name, slug, repos (owner/repo), platform (github/forgejo), and local clone paths"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: project_list.md
+        quality_criteria:
+          "All Active Projects Listed": "Every active project from the notes repo is included with at least one repo reference."
+          "Platform Identified": "Each repo entry specifies whether it is on GitHub or Forgejo."
+          "Archived Excluded": "Archived or inactive projects are excluded from the list or clearly marked as excluded."
+
+  - id: portfolio_review_all_projects
+    name: "Review All Projects"
+    description: "Launch portfolio_review_one sub-workflow for each project in parallel via sub-agents"
+    instructions_file: steps/portfolio_review_all_projects.md
+    inputs:
+      - file: project_list.md
+        from_step: portfolio_discover_projects
+    outputs:
+      all_summaries.md:
+        type: file
+        description: "Combined per-project status summaries collected from all sub-workflow runs"
+        required: true
+    dependencies:
+      - portfolio_discover_projects
+    reviews:
+      - run_each: all_summaries.md
+        additional_review_guidance: "Read project_list.md to verify every active project from the list has a corresponding summary."
+        quality_criteria:
+          "Full Coverage": "Every active project from project_list.md has a status summary in the combined output."
+          "Consistent Format": "All per-project summaries follow the same structure (status, milestones, activity, blockers)."
+
+  - id: portfolio_synthesize_report
+    name: "Synthesize Portfolio Report"
+    description: "Combine all per-project summaries into a single portfolio health report with cross-project analysis"
+    instructions_file: steps/portfolio_synthesize_report.md
+    inputs:
+      - file: all_summaries.md
+        from_step: portfolio_review_all_projects
+      - file: project_list.md
+        from_step: portfolio_discover_projects
+    outputs:
+      portfolio_report.md:
+        type: file
+        description: "The final portfolio review report written to projects/portfolio/reviews/YYYY-MM.md in the notes repo"
+        required: true
+    dependencies:
+      - portfolio_review_all_projects
+      - portfolio_discover_projects
+    reviews:
+      - run_each: portfolio_report.md
+        additional_review_guidance: "Read all_summaries.md to verify the report accurately reflects the per-project data without fabrication."
+        quality_criteria:
+          "Portfolio Summary Present": "The report opens with an overall portfolio health assessment and project count."
+          "Per-Project Table": "A summary table lists every project with status indicator, active milestone, and activity level."
+          "Milestone Detail": "All open milestones across projects are listed with completion percentages and target dates."
+          "Cross-Project Analysis": "The report identifies cross-project blockers, resource conflicts, or dependencies."
+          "Priority Recommendations": "Actionable recommendations for where to focus next are included, ordered by impact."
+          "Eisenhower Matrices": "A portfolio-level Eisenhower matrix classifies all projects into 4 quadrants (urgent/important). Projects with 2+ milestones also have a per-project matrix."
+          "Data-Backed": "All status indicators and assessments cite specific data (commit counts, issue counts, dates) rather than vague assertions."
+
+  # ── portfolio_review_one workflow (sub-workflow, per project) ────────
+
+  - id: portfolio_gather_data
+    name: "Gather Project Data"
+    description: "Fetch milestones, git activity, and existing profile/charter data for a single project"
+    instructions_file: steps/portfolio_gather_data.md
+    inputs:
+      - name: project_slug
+        description: "The project slug (e.g., 'keystone', 'catalyst', 'meze')"
+      - name: project_repos
+        description: "Comma-separated list of repos as owner/repo:platform (e.g., 'ncrmro/keystone:github,ncrmro/keystone:forgejo')"
+      - name: notes_path
+        description: "Path to the notes repo for reading existing project profile/charter files"
+    outputs:
+      project_data.md:
+        type: file
+        description: "Raw collected data: milestone list with issue counts, recent git commits, charter/profile excerpts"
+        required: true
+    dependencies: []
+    reviews: []
+
+  - id: portfolio_write_summary
+    name: "Write Project Summary"
+    description: "Synthesize raw data into a formatted per-project status summary"
+    instructions_file: steps/portfolio_write_summary.md
+    inputs:
+      - file: project_data.md
+        from_step: portfolio_gather_data
+    outputs:
+      project_summary.md:
+        type: file
+        description: "Formatted status summary: status indicator, goals, milestones, recent activity, blockers, next actions"
+        required: true
+    dependencies:
+      - portfolio_gather_data
+    reviews:
+      - run_each: project_summary.md
+        additional_review_guidance: "Read project_data.md to verify the summary accurately reflects the raw data."
+        quality_criteria:
+          "Status Justified": "The status indicator (on-track/at-risk/behind/deferred) is justified by specific data points."
+          "Milestones Covered": "All open milestones are listed with completion percentage and target date if available."
+          "Activity Assessed": "Recent activity (commits, PRs, issues) is summarized to show momentum or stagnation."
+          "Actionable": "Next actions are concrete and specific, not vague aspirations."

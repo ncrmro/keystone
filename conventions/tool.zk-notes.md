@@ -62,17 +62,27 @@ zk --notebook-dir ~/notes list docs/reports/ \
 9. If a prior report exists, the new note MUST record it in `previous_report`.
 10. Operational reports MAY omit the `project` field when they are better
     identified by `report/<kind>`, `repo/<owner>/<repo>`, and source tags.
+11. When a report or durable note is based on a repo tracker artifact, agents
+    SHOULD record the shared-surface refs in frontmatter during initial capture,
+    for example:
+
+```yaml
+repo_ref: gh:ncrmro/keystone
+milestone_ref: gh:ncrmro/keystone#12
+issue_ref: gh:ncrmro/keystone#88
+pr_ref: gh:ncrmro/keystone#91
+```
 
 ## Presentation deck capture
 
-11. Slidev decks MUST be created in `docs/presentations/`.
-12. Humans SHOULD create a deck with:
+12. Slidev decks MUST be created in `docs/presentations/`.
+13. Humans SHOULD create a deck with:
 
 ```bash
 zk new docs/presentations/ --title "Keystone architecture briefing"
 ```
 
-13. Agents MUST create decks non-interactively and then apply the canonical
+14. Agents MUST create decks non-interactively and then apply the canonical
     Slidev deck template:
 
 ```bash
@@ -82,9 +92,9 @@ zk --notebook-dir ~/notes new docs/presentations/ --title "Keystone architecture
   --extra presentation_kind="architecture-briefing"
 ```
 
-14. New decks SHOULD be initialized with Slidev YAML frontmatter, `---` slide
+15. New decks SHOULD be initialized with Slidev YAML frontmatter, `---` slide
     separators, and a speaker-notes block that can contain zk wikilinks.
-15. Before writing a replacement or recurring deck, agents SHOULD search for
+16. Before writing a replacement or recurring deck, agents SHOULD search for
     the latest related deck first:
 
 ```bash
@@ -96,9 +106,9 @@ zk --notebook-dir ~/notes list docs/presentations/ \
 
 ## Repair and cleanup
 
-16. Notebook cleanup SHOULD start with a search-driven audit rather than manual
+17. Notebook cleanup SHOULD start with a search-driven audit rather than manual
     browsing of the entire notebook.
-17. Agents SHOULD use these queries during cleanup:
+18. Agents SHOULD use these queries during cleanup:
 
 ```bash
 zk --notebook-dir ~/notes list docs/reports/ --format json
@@ -108,36 +118,36 @@ zk --notebook-dir ~/notes list notes/ --orphan --format json
 zk --notebook-dir ~/notes tag list
 ```
 
-18. Cleanup workflows SHOULD normalize:
+19. Cleanup workflows SHOULD normalize:
     - missing required frontmatter,
     - report chains,
     - presentation deck metadata,
     - missing hub links,
     - stale status tags, and
     - notes that should move to `archive/`.
-19. Cleanup workflows SHOULD prefer frontmatter updates and directory moves over
+20. Cleanup workflows SHOULD prefer frontmatter updates and directory moves over
     destructive rewriting of note bodies.
 
 ## Archive handling
 
-20. Archived project material MUST be moved into `archive/`.
-21. Archival workflows SHOULD verify that the hub note and latest report are
+21. Archived project material MUST be moved into `archive/`.
+22. Archival workflows SHOULD verify that the hub note and latest report are
     still discoverable via `zk --notebook-dir <notes_path> list --tag "project/<slug>" --format json`.
-22. Archived notes MAY retain project and repo tags. They MUST replace
+23. Archived notes MAY retain project and repo tags. They MUST replace
     `status/active` with `status/archived`.
 
 ## Slash command mapping
 
-23. `/notes.project` SHOULD create or refresh a hub note.
-24. `/notes.report` SHOULD create a report note, apply the canonical tags, and
+24. `/notes.project` SHOULD create or refresh a hub note.
+25. `/notes.report` SHOULD create a report note, apply the canonical tags, and
     chain it to the latest prior report.
-25. Deck-focused workflows SHOULD create or refresh a presentation note in
+26. Deck-focused workflows SHOULD create or refresh a presentation note in
     `docs/presentations/` rather than storing the deck in ad hoc folders.
-26. `/notes.process_inbox` SHOULD continue to promote inbox notes and SHOULD link
+27. `/notes.process_inbox` SHOULD continue to promote inbox notes and SHOULD link
     promoted project notes back to the relevant project hub.
-27. `/notes.doctor` SHOULD repair and normalize an existing notebook, especially
+28. `/notes.doctor` SHOULD repair and normalize an existing notebook, especially
     `~/notes`, rather than acting only as a one-time migration command.
-28. `/notes.doctor` SHOULD ensure the root `.gitignore` ignores transient zk database
+29. `/notes.doctor` SHOULD ensure the root `.gitignore` ignores transient zk database
     files and local junk while keeping tracked YAML state files versioned.
 
 ## References

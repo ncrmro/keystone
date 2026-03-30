@@ -1,4 +1,3 @@
-
 ## Advanced VCS
 
 ## Branch Analysis

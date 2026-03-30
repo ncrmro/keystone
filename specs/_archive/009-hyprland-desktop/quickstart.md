@@ -20,6 +20,7 @@ The easiest way to test the Hyprland desktop is using the automated test scripts
 ```
 
 This will:
+
 - Create a VM with ISO
 - Deploy base NixOS configuration with disk encryption
 - Set up SSH access
@@ -33,6 +34,7 @@ This will:
 ```
 
 This will:
+
 - Check if desktop is already installed (via marker file `/var/lib/keystone-desktop-installed`)
 - Build the Hyprland desktop configuration
 - Deploy to the running VM via nixos-rebuild
@@ -51,6 +53,7 @@ remote-viewer $(virsh domdisplay keystone-test-vm)
 ```
 
 Login credentials:
+
 - Username: `testuser`
 - Password: `testpass`
 
@@ -61,6 +64,7 @@ Login credentials:
 **Test**: Boot the VM and verify greetd displays
 
 1. Connect to VM console:
+
    ```bash
    remote-viewer $(virsh domdisplay keystone-test-vm)
    ```
@@ -70,6 +74,7 @@ Login credentials:
 4. Expected: Hyprland session launches via uwsm
 
 **Success Criteria**:
+
 - ✅ greetd login screen appears on boot
 - ✅ Valid credentials launch Hyprland session
 - ✅ Desktop environment is visible
@@ -79,27 +84,32 @@ Login credentials:
 **Test**: Verify desktop components are running
 
 1. After login, check for waybar:
+
    ```bash
    # In a terminal (Super+Enter to launch)
    pgrep waybar
    ```
 
 2. Test notifications:
+
    ```bash
    notify-send "Test" "This is a test notification"
    ```
+
    Expected: mako displays the notification
 
 3. Launch applications:
+
    ```bash
    # Launch chromium
    chromium &
-   
+
    # Launch ghostty
    ghostty &
    ```
 
 **Success Criteria**:
+
 - ✅ waybar is visible on screen
 - ✅ mako displays notifications
 - ✅ chromium launches successfully
@@ -116,6 +126,7 @@ Login credentials:
 4. Expected: Session unlocks and returns to active desktop
 
 **Success Criteria**:
+
 - ✅ Screen locks after idle timeout
 - ✅ hyprlock displays lock screen
 - ✅ Correct password unlocks session
@@ -141,20 +152,24 @@ After deployment, verify these items:
 ## Troubleshooting
 
 ### greetd doesn't start
+
 - Check: `systemctl status greetd`
 - Verify: greetd service is enabled in NixOS configuration
 
 ### Hyprland session fails to launch
+
 - Check: `journalctl -u greetd -b`
 - Verify: uwsm is installed and available
 - Verify: User has proper permissions (video, audio groups)
 
 ### Desktop components missing
+
 - Check: `echo $PATH` in Hyprland session
 - Verify: home-manager module is enabled for the user
 - Rebuild: `home-manager switch` for the user
 
 ### Screen doesn't lock
+
 - Check: `pgrep hypridle`
 - Verify: hypridle configuration is valid
 - Check: `journalctl --user -u hypridle`

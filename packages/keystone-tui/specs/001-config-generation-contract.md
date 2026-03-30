@@ -1,6 +1,7 @@
 # Spec: Config Generation Contract
 
 ## Stories Covered
+
 - US-001: Define config generation output contract
 - US-002: Define template data model
 - US-003: Implement build validation test suite
@@ -8,6 +9,7 @@
 Derived from: REQ-001 (Config Generation), REQ-002 (Template Data Model), REQ-003 (Build Validation)
 
 ## Affected Modules
+
 - `packages/keystone-tui/src/template.rs` — `GenerateConfig`, all generator functions
 - `packages/keystone-tui/tests/nix_build.rs` — `#[ignore]`d eval/build tests
 - `packages/keystone-tui/flake.nix` — must expose `checks.x86_64-linux.template-evaluation`
@@ -17,61 +19,62 @@ Derived from: REQ-001 (Config Generation), REQ-002 (Template Data Model), REQ-00
 
 ### `GenerateConfig` (Rust struct — `src/template.rs`)
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| hostname | `String` | yes | Maps to `networking.hostName` |
-| host_id | `String` | yes | 8-char hex; generated randomly by TUI; maps to `networking.hostId` |
-| state_version | `String` | yes | Defaults to `"25.05"`; maps to `system.stateVersion` |
-| time_zone | `String` | yes | Defaults to `"UTC"`; maps to `time.timeZone` |
-| machine_type | `MachineType` | yes | Server \| Workstation \| Laptop |
-| storage | `StorageConfig` | yes | See below |
-| security | `SecurityConfig` | yes | See below |
-| users | `Vec<UserConfig>` | yes | At least one entry required |
-| github_username | `Option<String>` | no | For fetching SSH keys via GitHub API |
+| Field           | Type              | Required | Notes                                                              |
+| --------------- | ----------------- | -------- | ------------------------------------------------------------------ |
+| hostname        | `String`          | yes      | Maps to `networking.hostName`                                      |
+| host_id         | `String`          | yes      | 8-char hex; generated randomly by TUI; maps to `networking.hostId` |
+| state_version   | `String`          | yes      | Defaults to `"25.05"`; maps to `system.stateVersion`               |
+| time_zone       | `String`          | yes      | Defaults to `"UTC"`; maps to `time.timeZone`                       |
+| machine_type    | `MachineType`     | yes      | Server \| Workstation \| Laptop                                    |
+| storage         | `StorageConfig`   | yes      | See below                                                          |
+| security        | `SecurityConfig`  | yes      | See below                                                          |
+| users           | `Vec<UserConfig>` | yes      | At least one entry required                                        |
+| github_username | `Option<String>`  | no       | For fetching SSH keys via GitHub API                               |
 
 ### `StorageConfig`
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| storage_type | `StorageType` (Zfs \| Ext4) | yes | Maps to `keystone.os.storage.type` |
-| devices | `Vec<String>` | yes | ≥1 entry; SHOULD be `/dev/disk/by-id/` paths |
-| mode | `StorageMode` | no | Single \| Mirror \| Stripe \| Raidz1 \| Raidz2 \| Raidz3; default `Single` |
-| swap_size | `Option<String>` | no | E.g. `"16G"`; defaults to `"16G"` |
-| hibernate | `bool` | no | Only valid when `storage_type = Ext4`; default `false` |
+| Field        | Type                        | Required | Notes                                                                      |
+| ------------ | --------------------------- | -------- | -------------------------------------------------------------------------- |
+| storage_type | `StorageType` (Zfs \| Ext4) | yes      | Maps to `keystone.os.storage.type`                                         |
+| devices      | `Vec<String>`               | yes      | ≥1 entry; SHOULD be `/dev/disk/by-id/` paths                               |
+| mode         | `StorageMode`               | no       | Single \| Mirror \| Stripe \| Raidz1 \| Raidz2 \| Raidz3; default `Single` |
+| swap_size    | `Option<String>`            | no       | E.g. `"16G"`; defaults to `"16G"`                                          |
+| hibernate    | `bool`                      | no       | Only valid when `storage_type = Ext4`; default `false`                     |
 
 ### `SecurityConfig`
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| secure_boot | `bool` | no | Maps to `keystone.os.secureBoot.enable`; default `true` |
-| tpm | `bool` | no | Maps to `keystone.os.tpm.enable`; default `true` |
-| remote_unlock | `RemoteUnlockConfig` | no | See below |
+| Field         | Type                 | Required | Notes                                                   |
+| ------------- | -------------------- | -------- | ------------------------------------------------------- |
+| secure_boot   | `bool`               | no       | Maps to `keystone.os.secureBoot.enable`; default `true` |
+| tpm           | `bool`               | no       | Maps to `keystone.os.tpm.enable`; default `true`        |
+| remote_unlock | `RemoteUnlockConfig` | no       | See below                                               |
 
 ### `RemoteUnlockConfig`
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| enable | `bool` | yes | Maps to `keystone.os.remoteUnlock.enable` |
-| authorized_keys | `Vec<String>` | no | SSH public keys for initrd unlock |
+| Field           | Type          | Required | Notes                                     |
+| --------------- | ------------- | -------- | ----------------------------------------- |
+| enable          | `bool`        | yes      | Maps to `keystone.os.remoteUnlock.enable` |
+| authorized_keys | `Vec<String>` | no       | SSH public keys for initrd unlock         |
 
 ### `UserConfig`
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| username | `String` | yes | Maps to `keystone.os.users.<name>` key |
-| full_name | `String` | yes | Maps to `fullName` |
-| email | `Option<String>` | no | Maps to `email`; defaults to `{username}@localhost` |
-| initial_password | `String` | yes | Maps to `initialPassword`; SHOULD warn user to change post-install |
-| authorized_keys | `Vec<String>` | no | SSH public keys |
-| extra_groups | `Vec<String>` | no | Default: `["wheel"]` for first user, `["wheel", "networkmanager", "video", "audio"]` for desktop |
-| terminal_enable | `bool` | no | Default `true` |
-| desktop_enable | `bool` | no | Default based on `MachineType` (false for Server, true for Workstation/Laptop) |
+| Field            | Type             | Required | Notes                                                                                            |
+| ---------------- | ---------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| username         | `String`         | yes      | Maps to `keystone.os.users.<name>` key                                                           |
+| full_name        | `String`         | yes      | Maps to `fullName`                                                                               |
+| email            | `Option<String>` | no       | Maps to `email`; defaults to `{username}@localhost`                                              |
+| initial_password | `String`         | yes      | Maps to `initialPassword`; SHOULD warn user to change post-install                               |
+| authorized_keys  | `Vec<String>`    | no       | SSH public keys                                                                                  |
+| extra_groups     | `Vec<String>`    | no       | Default: `["wheel"]` for first user, `["wheel", "networkmanager", "video", "audio"]` for desktop |
+| terminal_enable  | `bool`           | no       | Default `true`                                                                                   |
+| desktop_enable   | `bool`           | no       | Default based on `MachineType` (false for Server, true for Workstation/Laptop)                   |
 
 ## Generated File Contracts
 
 ### `flake.nix`
 
 The generated flake.nix MUST:
+
 1. Declare `nixpkgs`, `keystone`, `home-manager`, and `disko` as inputs, with
    `nixpkgs.follows = "nixpkgs"` on all derived inputs.
 2. Import `keystone.nixosModules.operating-system` in the modules list.
@@ -83,6 +86,7 @@ The generated flake.nix MUST:
 ### `configuration.nix`
 
 The generated configuration.nix MUST:
+
 1. Set `networking.hostName`, `networking.hostId`, `system.stateVersion`.
 2. Set `time.timeZone`.
 3. Set `keystone.os.enable = true`.
@@ -95,6 +99,7 @@ The generated configuration.nix MUST:
 ### `hardware.nix`
 
 The generated hardware.nix MUST:
+
 1. Be a minimal valid NixOS module: `{ ... }: { }` with an imports list pointing to
    `(modulesPath + "/installer/scan/not-detected.nix")`.
 2. NOT configure any hardware — hardware.nix is populated post-installation by
@@ -151,5 +156,6 @@ The generated hardware.nix MUST:
   be skipped (not a build failure), but a warning SHOULD be logged.
 
 ## Cross-References
+
 - Spec 004 (TUI App Framework): the `GenerateConfig` model is populated by the interactive form
   in `create_config.rs` and by the JSON mode parser.

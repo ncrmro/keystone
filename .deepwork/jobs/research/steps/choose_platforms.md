@@ -15,7 +15,6 @@ Select which AI research platforms to use for deep research and create an execut
 2. **Present platform options**
 
    Ask structured questions using the AskUserQuestion tool with multiSelect enabled to let the user choose one or more platforms:
-
    - **Local only** — Use Claude's built-in WebSearch and WebFetch tools. Fast, stays in session.
    - **Gemini Deep Research** — Comprehensive web crawling via Chrome. Best for broad topic coverage and discovering sources. Note: Gemini asks clarifying questions and shows a research plan before starting.
    - **ChatGPT Deep Research** — Thorough investigation with citations. Good for structured analysis and academic topics. Note: ChatGPT may ask clarifying questions before starting.
@@ -50,6 +49,7 @@ Select which AI research platforms to use for deep research and create an execut
 ## Selected Platforms
 
 ### [Platform Name]
+
 - **Role**: [What this platform contributes — e.g., "broad source discovery", "academic focus"]
 - **Query approach**: [How to query this platform for best results]
 - **Expected output**: [What kind of sources/findings to extract]

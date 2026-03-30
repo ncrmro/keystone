@@ -58,7 +58,7 @@ ks update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-use
 Pull, verify, build, and deploy Keystone hosts.
 
 - `--debug`: Show warnings from `git` and `nix` commands.
-- `--dev`: Build and activate home-manager profiles only.
+- `--dev`: Build and deploy the current unlocked checkout without pull, lock, or push.
 - `--boot`: Register the new generation for next boot without switching now.
 - `--pull`: Pull managed repos only, then stop.
 - `--lock`: Force lock mode explicitly. This is the default unless `--dev` is set.
@@ -72,6 +72,27 @@ ks update
 ks update --dev workstation
 ks update --boot ocean
 ks update --pull --dev
+```
+
+### `ks agents`
+
+```bash
+ks agents <pause|resume|status> <agent|all> [reason]
+```
+
+Control task-loop pause state for one agent or the full agent fleet.
+
+- `pause`: Create the pause marker so scheduled task-loop runs exit before ingest and execution.
+- `resume`: Remove the pause marker and allow scheduled task-loop runs again.
+- `status`: Show whether the target agent task loop is paused.
+
+Examples:
+
+```bash
+ks agents pause drago "waiting for human review"
+ks agents pause all "human focus block"
+ks agents status luce
+ks agents resume all
 ```
 
 ### `ks switch`
@@ -90,6 +111,25 @@ Examples:
 ks switch
 ks switch workstation,ocean
 ks switch --boot ocean
+```
+
+### `ks sync-agent-assets`
+
+```bash
+ks sync-agent-assets
+```
+
+Refresh generated Keystone agent assets for the current user from the current
+profile manifest.
+
+- Rewrites generated instruction files, curated command files, and managed
+  Codex skills from the live keystone checkout in development mode.
+- This is the supported no-sudo refresh path for development-mode agent assets.
+
+Example:
+
+```bash
+ks sync-agent-assets
 ```
 
 ### `ks sync-host-keys`
@@ -117,10 +157,11 @@ ks grafana dashboards <apply|export> [uid]
 
 Manage checked-in Keystone Grafana dashboards through the Grafana API.
 
-- `apply`: Push every checked-in dashboard JSON file to Grafana.
+- `apply`: Push every checked-in dashboard JSON file to Grafana, and delete stale keystone-managed dashboards that are no longer in the repo.
 - `export <uid>`: Pull one dashboard by UID into its checked-in JSON file.
 - `GRAFANA_URL`: Override the Grafana base URL.
 - `GRAFANA_API_KEY`: Override the Grafana API key.
+- In development mode, `ks update --dev`, `ks update`, and `ks switch` automatically sync keystone dashboards after deployment.
 
 Examples:
 
@@ -136,6 +177,11 @@ ks agent [--local [MODEL]] [args...]
 ```
 
 Launch an AI coding agent with Keystone conventions and host context.
+
+`ks agent` launches `claude` by default. Its static base prompt comes from the
+generated `~/.keystone/AGENTS.md`, then `ks` appends live host and fleet context.
+The generated command surface inside the session is curated to `/ks`, optional
+`/ks.dev` in development mode, and `/deepwork`.
 
 - `--local [MODEL]`: Use the local Ollama-backed model, or the configured default model.
 - Remaining args are passed through to the underlying `claude` invocation.

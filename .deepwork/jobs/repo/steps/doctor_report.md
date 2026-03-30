@@ -34,6 +34,7 @@ Compile a summary of all audit findings, fixes applied, and remaining issues acr
 # Doctor Report
 
 ## Repository
+
 - **Repo**: [owner/repo]
 - **Platform**: [github | forgejo]
 - **Date**: [YYYY-MM-DD]
@@ -42,38 +43,43 @@ Compile a summary of all audit findings, fixes applied, and remaining issues acr
 
 ## Summary
 
-| Concern | Findings | Fixed | Remaining | Status |
-|---------|----------|-------|-----------|--------|
-| Labels | [count] | [count] | [count] | [HEALTHY \| FIXED \| NEEDS ATTENTION] |
-| Branch Protection | [count] | [count] | [count] | [HEALTHY \| FIXED \| NEEDS ATTENTION] |
-| Milestones | [count] | [count] | [count] | [HEALTHY \| FIXED \| NEEDS ATTENTION] |
-| Boards | [count] | [count] | [count] | [HEALTHY \| FIXED \| NEEDS ATTENTION] |
+| Concern           | Findings | Fixed   | Remaining | Status                                |
+| ----------------- | -------- | ------- | --------- | ------------------------------------- |
+| Labels            | [count]  | [count] | [count]   | [HEALTHY \| FIXED \| NEEDS ATTENTION] |
+| Branch Protection | [count]  | [count] | [count]   | [HEALTHY \| FIXED \| NEEDS ATTENTION] |
+| Milestones        | [count]  | [count] | [count]   | [HEALTHY \| FIXED \| NEEDS ATTENTION] |
+| Boards            | [count]  | [count] | [count]   | [HEALTHY \| FIXED \| NEEDS ATTENTION] |
 
 ## Details
 
 ### Labels
+
 - **Findings**: [summary from labels_audit.md]
 - **Actions Taken**: [list]
 - **Remaining**: [list or "None"]
 
 ### Branch Protection
+
 - **Findings**: [summary from branch_protection_audit.md]
 - **Actions Taken**: [list]
 - **Remaining**: [list or "None"]
 
 ### Milestones
+
 - **Findings**: [summary from milestones_audit.md]
 - **Actions Taken**: [list]
 - **Remaining**: [list or "None"]
 
 ### Boards
+
 - **Findings**: [summary from boards_audit.md]
 - **Actions Taken**: [list]
 - **Remaining**: [list or "None"]
 
 ## Manual Actions Needed
+
 1. [Numbered list of items requiring human attention]
-[Or "None — repository is healthy"]
+   [Or "None — repository is healthy"]
 ```
 
 ## Quality Criteria

@@ -14,12 +14,15 @@ Check branch protection rules on the repository's default branch and report any 
 2. **Fetch branch protection rules**
 
    **GitHub:**
+
    ```bash
    gh api repos/{owner}/{repo}/branches/{default_branch}/protection
    ```
+
    - If 404, no protection rules are configured
 
    **Forgejo:**
+
    ```bash
    tea api --login forgejo /repos/{owner}/{repo}/branch_protections
    ```
@@ -45,21 +48,23 @@ Check branch protection rules on the repository's default branch and report any 
 # Branch Protection Report
 
 ## Repository
+
 - **Repo**: [owner/repo]
 - **Default Branch**: [branch name]
 - **Platform**: [github | forgejo]
 
 ## Protection Status
 
-| Protection | Status | Details |
-|------------|--------|---------|
-| Require PR reviews | [enabled \| missing] | [min approvals or N/A] |
-| Dismiss stale reviews | [enabled \| missing] | |
-| Require status checks | [enabled \| missing \| N/A (no CI)] | [required checks] |
-| Restrict force pushes | [enabled \| missing] | |
-| Restrict deletions | [enabled \| missing] | |
+| Protection            | Status                              | Details                |
+| --------------------- | ----------------------------------- | ---------------------- |
+| Require PR reviews    | [enabled \| missing]                | [min approvals or N/A] |
+| Dismiss stale reviews | [enabled \| missing]                |                        |
+| Require status checks | [enabled \| missing \| N/A (no CI)] | [required checks]      |
+| Restrict force pushes | [enabled \| missing]                |                        |
+| Restrict deletions    | [enabled \| missing]                |                        |
 
 ## Summary
+
 - **Protections Enabled**: [count]/5
 - **Missing Protections**: [list]
 - **Overall**: [protected \| partially protected \| unprotected]

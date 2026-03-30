@@ -34,7 +34,6 @@ Read the state assessment, then work with the human interactively to define or r
 4. **Define goals at 5 horizons**
 
    For each horizon, ask what success looks like. Guide the conversation:
-
    - **1 Month**: "What's the most important thing to accomplish in the next 30 days?"
      - Should be tactical, specific, and achievable
    - **6 Months**: "Where should this project be in 6 months?"
@@ -78,46 +77,56 @@ Read the state assessment, then work with the human interactively to define or r
 
 ## Key Performance Indicators
 
-| KPI | Current | Target | Timeframe | How Measured |
-|-----|---------|--------|-----------|--------------|
+| KPI      | Current | Target   | Timeframe | How Measured  |
+| -------- | ------- | -------- | --------- | ------------- |
 | [metric] | [value] | [target] | [by when] | [data source] |
 
 ## Goals
 
 ### 1 Month
+
 **Goal**: [specific, tactical goal]
 **Success Criteria**:
+
 - [ ] [measurable criterion 1]
 - [ ] [measurable criterion 2]
 
 ### 6 Months
+
 **Goal**: [milestone-level goal]
 **Success Criteria**:
+
 - [ ] [measurable criterion 1]
 - [ ] [measurable criterion 2]
 
 ### 1 Year
+
 **Goal**: [annual goal covering product and business]
 **Success Criteria**:
+
 - [ ] [measurable criterion 1]
 - [ ] [measurable criterion 2]
 
 ### 5 Years
+
 **Goal**: [strategic positioning goal]
 **Success Criteria**:
+
 - [ ] [measurable criterion 1]
 - [ ] [measurable criterion 2]
 
 ### 10 Years
+
 **Goal**: [long-term vision]
 **Success Criteria**:
+
 - [ ] [measurable criterion 1]
 - [ ] [measurable criterion 2]
 
 ## Change Log
 
-| Date | Change |
-|------|--------|
+| Date         | Change                  |
+| ------------ | ----------------------- |
 | [YYYY-MM-DD] | Initial charter created |
 ```
 

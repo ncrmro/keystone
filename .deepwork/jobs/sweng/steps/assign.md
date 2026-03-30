@@ -19,6 +19,7 @@ cat $WORKTREE/TASK.md
 ```
 
 Extract from frontmatter:
+
 - `repo` — owner/repo
 - `branch` — branch name
 - `agent` — agent type (claude, gemini, opencode, claude-local)
@@ -51,6 +52,7 @@ agentctl drago AGENT --project SLUG --worktree $WORKTREE
 ```
 
 Where:
+
 - `AGENT` is one of: `claude`, `gemini`, `opencode`, `claude-local`
 - `SLUG` is a short project identifier derived from the repo name
 - `$WORKTREE` is the absolute path to the worktree
@@ -100,7 +102,7 @@ mkdir -p .deepwork/tmp/sweng
 
 ### run.md
 
-```markdown
+````markdown
 ---
 agent: claude
 started: 2026-03-21T14:30:00Z
@@ -124,6 +126,7 @@ Agent launched to implement: Add Search Endpoint
 ```bash
 agentctl drago claude --project catalyst --worktree .repos/ncrmro/catalyst/.worktrees/feat/add-search-endpoint
 ```
+````
 
 ## Timing
 
@@ -139,6 +142,7 @@ agentctl drago claude --project catalyst --worktree .repos/ncrmro/catalyst/.work
 ## Test Results
 
 [Will be populated after agent completes]
+
 ```
 
 ## Quality Criteria
@@ -158,3 +162,4 @@ and launches. The heavy lifting happens in the agent's execution and the review 
 1. The agent MUST commit its work — uncommitted work is lost
 2. The agent reads TASK.md for requirements, AGENTS.md for environment setup
 3. agentctl handles the agent lifecycle (launch, monitor, signal completion)
+```

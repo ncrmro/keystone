@@ -80,7 +80,25 @@ Based on the audit report, propose a concrete migration plan that converts the e
    - `projects/` and `workflow/` are not automatically exempt. The plan must explicitly decide whether their markdown is notebook content or operational residue.
    - If the repo already uses root `spikes/` with canonical README notes, classify that as an intentional convention, not a failed migration
 
-9. **Project tag remediation plan**:
+9. **VCS ref field normalization plan**: Based on the audit's ref field findings:
+
+   - For each non-standard field name (e.g., `issue: 225`, `github_issue: foo/bar#3`):
+     - Map to the canonical field name (`issue_ref`, `repo_ref`, etc.)
+     - Convert raw URLs to `gh:<owner>/<repo>#<number>` or `fj:<owner>/<repo>#<number>`
+     - Drop the old field and add the normalized one
+
+   Conversion rules:
+   - `https://github.com/<owner>/<repo>/issues/<N>` → `issue_ref: gh:<owner>/<repo>#<N>`
+   - `https://github.com/<owner>/<repo>/pull/<N>` → `pr_ref: gh:<owner>/<repo>#<N>`
+   - `https://github.com/<owner>/<repo>/milestone/<N>` → `milestone_ref: gh:<owner>/<repo>#<N>`
+   - `https://github.com/<owner>/<repo>` → `repo_ref: gh:<owner>/<repo>`
+   - Forgejo (`git.ncrmro.com`): same patterns with `fj:` prefix
+   - Bare number fields (e.g., `issue: 225` with no repo context): derive the repo from
+     `repo_ref` if present in the same frontmatter, or from project hub notes
+
+   Record each file that needs ref field corrections so the migrate step can apply them.
+
+10. **Project tag remediation plan**:
    - Use the audit's ripgrep-based findings to list files that likely need project tags
    - Decide whether each gap should be fixed during migration or left as ambiguous/manual follow-up
    - For ambiguous matches, explain why the project ownership is not strong enough to tag automatically
@@ -93,36 +111,49 @@ Write `.deepwork/tmp/migration_plan.md`:
 # Migration Plan
 
 ## Source Format
+
 (Obsidian / Apple Notes / Plain Markdown — from audit)
 
 ## ID Assignment Strategy
+
 (backdating method + collision handling)
 
 ## File Mappings
 
-| Current Path | Target Path | Type | ID | Notes |
-|-------------|-------------|------|-----|-------|
+| Current Path          | Target Path                         | Type      | ID           | Notes             |
+| --------------------- | ----------------------------------- | --------- | ------------ | ----------------- |
 | journal/2026-03-15.md | notes/202603151200 daily-journal.md | permanent | 202603151200 | Backdate from git |
 
 ## Frontmatter Additions
+
 (summary of what needs to be added per file or batch)
 
 ## Link Conversions
+
 (before/after examples for each link type found)
 
 ## Format-Specific Conversions
+
 (callout handling, dataview handling, HTML stripping, etc.)
 
 ## Batch Strategy
+
 (for large repos: processing order, batch sizes)
 
 ## Legacy Tree Disposition
+
 (explicit per-directory treatment for `projects/`, `workflow/`, `spikes/`, etc.)
 
+## VCS ref field normalization
+
+(list of files with non-canonical refs, proposed field name mappings, and conversion approach for each URL/bare-number pattern found)
+
 ## Project tag remediation
+
 (files or batches that will receive missing project tags, plus any ambiguous leftovers)
 
 ## Excluded (no action)
+
 (list of operational files skipped)
 ```
 

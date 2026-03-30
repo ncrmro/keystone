@@ -13,6 +13,7 @@ Draft a GitHub issue for the admin's nixos-config repo (ncrmro/keystone) documen
 ### 1. Gather issue context
 
 If the description is vague, ask structured questions to clarify:
+
 - Which agent is affected?
 - What service or component is broken?
 - What error message or symptom was observed?
@@ -25,12 +26,12 @@ If a doctor workflow was recently run, read the diagnosis and prescription files
 
 Classify the issue to select the right label:
 
-| Category | Label | Examples |
-|----------|-------|----------|
-| NixOS agent config | `agent` | Missing timer, wrong schedule, service unit error |
+| Category            | Label    | Examples                                              |
+| ------------------- | -------- | ----------------------------------------------------- |
+| NixOS agent config  | `agent`  | Missing timer, wrong schedule, service unit error     |
 | Secrets/credentials | `agenix` | Missing SSH key secret, mail password not provisioned |
-| Nix store/packages | `nix` | Permission denied on store path, missing package |
-| Infrastructure | `infra` | DNS, firewall, service down |
+| Nix store/packages  | `nix`    | Permission denied on store path, missing package      |
+| Infrastructure      | `infra`  | DNS, firewall, service down                           |
 
 ### 3. Draft the issue
 
@@ -65,9 +66,10 @@ Write `issue_draft.md`:
 ### Evidence
 
 {Exact error messages, log lines, or status output. Use code blocks.}
-
 ```
+
 {error output}
+
 ```
 
 ### Expected Behavior

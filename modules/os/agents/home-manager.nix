@@ -61,6 +61,7 @@ in
             keystone.terminal = {
               enable = mkDefault agentCfg.terminal.enable;
               conventions.archetype = mkDefault agentCfg.archetype;
+              aiExtensions.capabilities = mkDefault agentCfg.capabilities;
 
               # development and repos are no longer bridged here;
               # they are inherited globally from keystone.development
@@ -183,17 +184,6 @@ in
                     ];
                   };
                 }
-                // optionalAttrs (agentCfg.grafana.mcp.enable) {
-                  # Grafana MCP server (REQ-017.10) — provides Prometheus/Loki query access
-                  # GRAFANA_API_KEY is exported via programs.zsh.initExtra below.
-                  grafana = {
-                    command = "${sysPkgs.keystone.grafana-mcp}/bin/mcp-grafana";
-                    args = [ ];
-                    env = {
-                      GRAFANA_URL = agentCfg.grafana.mcp.url;
-                    };
-                  };
-                }
                 // mapAttrs (
                   _: srv:
                   {
@@ -215,13 +205,11 @@ in
               zk.enable = mkDefault true;
             };
 
-            # Export GRAFANA_API_KEY from agenix secret at shell login (REQ-017.11).
-            # Can't use home.sessionVariables — the secret is a runtime file, not a Nix store path.
-            programs.zsh.initExtra = mkIf agentCfg.grafana.mcp.enable ''
-              if [ -f /run/agenix/grafana-api-token ]; then
-                export GRAFANA_API_KEY="$(tr -d '\n' < /run/agenix/grafana-api-token)"
-              fi
-            '';
+            # Delegate Grafana MCP to the terminal module (REQ-017.10, REQ-017.11).
+            keystone.terminal.grafana.mcp = mkIf agentCfg.grafana.mcp.enable {
+              enable = true;
+              url = agentCfg.grafana.mcp.url;
+            };
 
             # Add chrome-devtools-mcp to PATH when chrome MCP is enabled.
             # The MCP server command in cliCodingAgents uses an absolute Nix store

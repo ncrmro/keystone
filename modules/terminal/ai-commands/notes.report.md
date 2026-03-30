@@ -6,6 +6,7 @@ argument-hint: <project and report context>
 Start the notes/report DeepWork workflow to capture a standardized project report note.
 
 Use the DeepWork MCP tools to start the workflow:
+
 - job_name: "notes"
 - workflow_name: "report"
 - goal: "$ARGUMENTS" (the project plus report context, such as "keystone fleet health")

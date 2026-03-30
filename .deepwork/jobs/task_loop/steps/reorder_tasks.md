@@ -61,6 +61,7 @@ Reorder the pending tasks in TASKS.yaml based on project priority defined in PRO
 The reordered task file.
 
 **Structure**:
+
 ```yaml
 tasks:
   # Completed/blocked tasks stay in place
@@ -89,6 +90,7 @@ tasks:
 Brief explanation of the ordering.
 
 **Structure**:
+
 ```markdown
 # Priority Report
 
@@ -98,7 +100,7 @@ Brief explanation of the ordering.
 
 1. [project-name] — [n] pending tasks
 2. [project-name] — [n] pending tasks
-...
+   ...
 
 ## Reordering Summary
 
@@ -108,11 +110,11 @@ Brief explanation of the ordering.
 
 ## Model Assignments
 
-| Task | Model | Reason |
-|------|-------|--------|
-| [task-name] | opus | Complex multi-system debugging |
-| [task-name] | sonnet | Multi-step system interaction |
-| [task-name] | haiku | Simple reply |
+| Task        | Model  | Reason                         |
+| ----------- | ------ | ------------------------------ |
+| [task-name] | opus   | Complex multi-system debugging |
+| [task-name] | sonnet | Multi-step system interaction  |
+| [task-name] | haiku  | Simple reply                   |
 
 ## Changes
 

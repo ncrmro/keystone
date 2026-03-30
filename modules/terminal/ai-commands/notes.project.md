@@ -6,6 +6,7 @@ argument-hint: <project name or slug>
 Start the notes/project_hub DeepWork workflow to create or refresh a project hub note.
 
 Use the DeepWork MCP tools to start the workflow:
+
 - job_name: "notes"
 - workflow_name: "project_hub"
 - goal: "$ARGUMENTS" (the project name or slug)

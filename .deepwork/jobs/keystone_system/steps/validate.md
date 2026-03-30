@@ -38,7 +38,7 @@ Verify that the deployed changes are working correctly across all hosts. This st
      - `agentctl <agent> jobs` (or equivalent) — what are the 3-5 most recent jobs? Are any stuck/failed?
      - `agentctl <agent> email` — is mail flowing?
    - For agents on remote hosts, SSH in and run equivalent checks
-   - **Tailscale note**: `tailscale status` shows per-agent Tailscale nodes. Agent Tailscale integration is a **TODO feature** — offline agent nodes are expected and informational only. Only flag if a *host-level* Tailscale node goes offline.
+   - **Tailscale note**: `tailscale status` shows per-agent Tailscale nodes. Agent Tailscale integration is a **TODO feature** — offline agent nodes are expected and informational only. Only flag if a _host-level_ Tailscale node goes offline.
 
 4. **Cross-reference issues with GitHub**
    - For each issue found (failed units, stuck agents, unhealthy services), search GitHub before treating it as new:
@@ -110,6 +110,7 @@ Verify that the deployed changes are working correctly across all hosts. This st
 # Validation Report
 
 ## Current Host
+
 - **Hostname**: [hostname]
 - **System state**: [running | degraded | maintenance]
 - **Failed units**: [from `systemctl --failed`, or "None"]
@@ -117,22 +118,24 @@ Verify that the deployed changes are working correctly across all hosts. This st
 
 ## Plan Validation Criteria
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
+| Criterion             | Status    | Evidence                        |
+| --------------------- | --------- | ------------------------------- |
 | [criterion from plan] | PASS/FAIL | [command output or observation] |
 | [criterion from plan] | PASS/FAIL | [command output or observation] |
 
 ## Agent Health
 
 ### [agent-name] (host: [host])
+
 - **Services**: [running | failed — details]
 - **Tasks**: [N pending | idle | stuck since HH:MM]
 - **Recent jobs**: [last 3-5 job names or "none in last 24h"]
 - **Blocking issues**: [description or "none"]
 - **Mail**: [ok | down]
-- **Tailscale**: [online | offline] *(offline is expected — agent Tailscale integration is a TODO)*
+- **Tailscale**: [online | offline] _(offline is expected — agent Tailscale integration is a TODO)_
 
 ## Fleet Impact Assessment
+
 - **Changes affect**: [list of affected hosts, or "current host only"]
 - **Hosts checked**: [list]
 - **Hosts needing update**: [list, or "none"]
@@ -140,17 +143,19 @@ Verify that the deployed changes are working correctly across all hosts. This st
 ## Remote Host Status
 
 ### [hostname] (if applicable)
+
 - **Status**: [nominal | issues found | needs update]
 - **Details**: [findings]
 
 ## Issues Found
 
-| Issue | Existing tracker item | Status |
-|-------|----------------------|--------|
-| [e.g., syncoid-rpool-to-ocean.service failed] | [#42 — link] | pre-existing |
-| [e.g., unknown service crash] | none — new issue needed | new |
+| Issue                                         | Existing tracker item   | Status       |
+| --------------------------------------------- | ----------------------- | ------------ |
+| [e.g., syncoid-rpool-to-ocean.service failed] | [#42 — link]            | pre-existing |
+| [e.g., unknown service crash]                 | none — new issue needed | new          |
 
 ## Overall Status
+
 - **System nominal**: [yes | no — details]
 - **All validation criteria met**: [yes | no — which failed]
 - **Action needed**: [none | list of follow-up actions]

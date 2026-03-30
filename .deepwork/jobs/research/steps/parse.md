@@ -37,7 +37,6 @@ Parse and clean external research material (markdown copies of deep research, re
    - **Tags**: 3-5 descriptive tags for the content (e.g., `#machine-learning`, `#attention`, `#benchmarks`)
 
 4. **Clean and normalize the content**
-
    - Remove HTML artifacts, broken formatting, navigation elements, ads
    - Fix broken links where possible
    - Preserve code blocks, tables, and structured data

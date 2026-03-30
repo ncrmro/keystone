@@ -21,21 +21,21 @@ agentctl <agent-name> <command> [args...]
 
 **Commands**:
 
-| Command | Description |
-|---------|-------------|
-| `status`, `start`, `stop`, `restart` | Manage agent user services |
-| `enable`, `disable` | Enable/disable agent user services |
-| `list-units`, `list-timers` | List agent's systemd units/timers |
-| `show`, `cat`, `is-active`, `is-enabled`, `is-failed` | Inspect service state |
-| `daemon-reload`, `reset-failed` | Reload/reset agent service manager |
-| `journalctl` | View agent user service logs |
-| `exec` | Run an arbitrary command as the agent (diagnostics) |
-| `tasks` | Show agent tasks in a table (pending/in_progress first) |
-| `email` | Show the agent's inbox (recent envelopes) |
-| `claude` | Start interactive Claude session in agent notes directory |
-| `mail` | Send structured email to the agent |
-| `vnc` | Open remote-viewer to the agent's VNC desktop |
-| `provision` | Generate SSH keypair, mail password, and agenix secrets |
+| Command                                               | Description                                               |
+| ----------------------------------------------------- | --------------------------------------------------------- |
+| `status`, `start`, `stop`, `restart`                  | Manage agent user services                                |
+| `enable`, `disable`                                   | Enable/disable agent user services                        |
+| `list-units`, `list-timers`                           | List agent's systemd units/timers                         |
+| `show`, `cat`, `is-active`, `is-enabled`, `is-failed` | Inspect service state                                     |
+| `daemon-reload`, `reset-failed`                       | Reload/reset agent service manager                        |
+| `journalctl`                                          | View agent user service logs                              |
+| `exec`                                                | Run an arbitrary command as the agent (diagnostics)       |
+| `tasks`                                               | Show agent tasks in a table (pending/in_progress first)   |
+| `email`                                               | Show the agent's inbox (recent envelopes)                 |
+| `claude`                                              | Start interactive Claude session in agent notes directory |
+| `mail`                                                | Send structured email to the agent                        |
+| `vnc`                                                 | Open remote-viewer to the agent's VNC desktop             |
+| `provision`                                           | Generate SSH keypair, mail password, and agenix secrets   |
 
 **Examples**:
 
@@ -57,13 +57,13 @@ agentctl drago provision --skip-rekey     # skip hwrekey at end
 
 The `mail` command sends structured email templates to agents. It opens a pre-filled template in `$EDITOR`, then sends via `himalaya message send`.
 
-| Template | Subject Tag | Purpose |
-|----------|-------------|---------|
-| `project.new` | `[project.new]` | New project request (lean canvas format) |
-| `spike` | `[spike]` | Technical spike with time box and constraints |
-| `task` | `[task]` | Ad-hoc task with acceptance criteria |
-| `status` | `[status]` | Status request for a project |
-| `research` | `[research]` | Research request with scope and key questions |
+| Template      | Subject Tag     | Purpose                                       |
+| ------------- | --------------- | --------------------------------------------- |
+| `project.new` | `[project.new]` | New project request (lean canvas format)      |
+| `spike`       | `[spike]`       | Technical spike with time box and constraints |
+| `task`        | `[task]`        | Ad-hoc task with acceptance criteria          |
+| `status`      | `[status]`      | Status request for a project                  |
+| `research`    | `[research]`    | Research request with scope and key questions |
 
 **How it works**:
 
@@ -86,6 +86,63 @@ agentctl drago mail project.new --subject "Plant Caravan"
 ```
 
 The agent's task loop picks up emails and processes them based on the `[template-type]` subject tag. See [mail templates](#mail-templates) above for available templates.
+
+## Jumpstarting agentic feature development
+
+There are two good ways to start a new feature with agents.
+
+### Option 1: Asynchronous issue-driven flow
+
+Use this when you want the product or engineering agent to pick work up through
+their normal task loop.
+
+Recommended path:
+
+1. Create or refresh the project hub note and repo links.
+2. Create a press release issue or working-backwards issue on the project's
+   primary git platform.
+3. Assign that issue to the product agent.
+4. Let the task loop ingest it and turn it into structured work.
+
+This fits the standard artifact chain documented in
+[OS Agents](os-agents.md#two-agent-coordination):
+
+- press release,
+- milestone setup,
+- engineering handoff,
+- implementation issues,
+- pull requests.
+
+For how the agent actually discovers platform work, see
+[Task loop source discovery](os-agents.md#task-loop-source-discovery). That
+section explains how the task loop pre-fetches GitHub and Forgejo sources
+before ingest and prioritization.
+
+### Option 2: Manual interactive flow
+
+Use this when you want to drive the agent directly instead of waiting for the
+next timer-based pickup.
+
+Open an interactive [Claude Code](https://docs.anthropic.com/en/docs/claude-code/getting-started) session as the agent:
+
+```bash
+agentctl luce claude
+```
+
+Then run the press-release workflow directly:
+
+```text
+/project.press_release
+```
+
+That path is useful when:
+
+- you are actively shaping scope with the agent,
+- you want to iterate on the prompt or framing in real time, or
+- you are drafting from rough notes before filing the canonical issue.
+
+After the press release exists, continue with the usual handoff flow described
+by `process.product-engineering-handoff`.
 
 ## Agent notes
 

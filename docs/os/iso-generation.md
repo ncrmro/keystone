@@ -1,9 +1,9 @@
 ---
-title: ISO Generation Guide
+title: ISO Generation
 description: Generate a Keystone installer ISO with SSH keys for remote installation
 ---
 
-# ISO Generation Guide
+# ISO Generation
 
 Generate a Keystone installer ISO with SSH keys for remote installation.
 
@@ -29,6 +29,7 @@ cd keystone
 The `--ssh-key` option accepts either:
 
 ### File Path
+
 ```bash
 # File paths (starts with /, ~, or .)
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
@@ -37,6 +38,7 @@ The `--ssh-key` option accepts either:
 ```
 
 ### Direct Key String
+
 ```bash
 # SSH key string directly
 ./bin/build-iso --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host"
@@ -103,6 +105,6 @@ Need to install Nix first? See **[Build Platforms](build-platforms.md)** for set
 When using a file path, SSH keys file should contain one public key per line:
 
 ```
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@workstation  
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@workstation
 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD... admin@server
 ```

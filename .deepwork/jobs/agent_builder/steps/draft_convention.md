@@ -19,7 +19,6 @@ Read the requirements summary from the previous step and produce the convention 
 3. **Write the convention file**
 
    Follow the convention format rules from the shared job context. Additional writing guidance:
-
    - Keep rules concise — one sentence per rule where possible
    - End each rule with a period
    - Each rule should contain exactly one RFC 2119 keyword
@@ -41,8 +40,8 @@ Read the requirements summary from the previous step and produce the convention 
 The convention markdown file written to its final path.
 
 **Example** (showing the expected structure):
-```markdown
 
+```markdown
 # Convention: Docker (ops.docker)
 
 ## Images

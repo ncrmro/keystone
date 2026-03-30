@@ -11,7 +11,6 @@ Define the research question, classify the research type and depth level, and de
 1. **Gather inputs using structured questions**
 
    Ask structured questions using the AskUserQuestion tool to collect any inputs not already provided:
-
    - **Topic**: The research question or subject. Get a clear, specific statement.
    - **Type**: One of: science, business, competitive, market, technical.
    - **Depth**: One of:
@@ -42,16 +41,15 @@ Define the research question, classify the research type and depth level, and de
 
    Based on the type and depth, outline what kinds of sources to seek:
 
-   | Research Type | Priority Sources |
-   |---|---|
-   | science | Academic papers, preprints, review articles, research institutions |
-   | business | Industry reports, company filings, business news, analyst coverage |
-   | competitive | Competitor websites, product reviews, pricing, feature comparisons |
-   | market | Market size reports, consumer surveys, trend analysis, demographic data |
-   | technical | Official docs, benchmarks, architecture posts, GitHub repos, RFCs |
+   | Research Type | Priority Sources                                                        |
+   | ------------- | ----------------------------------------------------------------------- |
+   | science       | Academic papers, preprints, review articles, research institutions      |
+   | business      | Industry reports, company filings, business news, analyst coverage      |
+   | competitive   | Competitor websites, product reviews, pricing, feature comparisons      |
+   | market        | Market size reports, consumer surveys, trend analysis, demographic data |
+   | technical     | Official docs, benchmarks, architecture posts, GitHub repos, RFCs       |
 
 6. **Create the research directory and scope file**
-
    - Create `research/[topic_slug]/` directory
    - Write `research/[topic_slug]/scope.md`
 
@@ -87,6 +85,7 @@ Define the research question, classify the research type and depth level, and de
 **Source types to prioritize**: [based on research type]
 
 **Depth guidance**:
+
 - Minimum sources: [3 for quick, 5 for standard, 8 for deep]
 - Source diversity: [what kinds of sources to include]
 - Platform approach: [local only for quick, user-selected for deep]
@@ -124,6 +123,7 @@ What are the current state-of-the-art alternatives to standard multi-head attent
 **Source types to prioritize**: Academic papers (arXiv, conference proceedings), benchmark results, engineering blog posts
 
 **Depth guidance**:
+
 - Minimum sources: 8
 - Source diversity: academic papers, benchmark comparisons, engineering blogs, documentation
 - Platform approach: Gemini Deep Research + local WebSearch

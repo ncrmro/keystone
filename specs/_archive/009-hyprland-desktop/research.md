@@ -3,8 +3,8 @@
 ## 1. Module Structure and Integration
 
 - **Decision**: The feature will be split into two main modules:
-    1.  A NixOS module located at `modules/client/desktop/hyprland.nix`.
-    2.  A home-manager module located at `home-manager/modules/desktop/hyprland/default.nix`.
+  1.  A NixOS module located at `modules/client/desktop/hyprland.nix`.
+  2.  A home-manager module located at `home-manager/modules/desktop/hyprland/default.nix`.
 - **Rationale**: This separation aligns with the project's modular architecture, cleanly separating system-wide concerns (like the login manager) from user-specific configurations (like the status bar and wallpaper).
 - **Integration**: The NixOS module will handle the `greetd` setup to launch `uwsm`, while the home-manager module will manage the user's desktop applications and configuration files. This follows standard Nix patterns.
 

@@ -77,10 +77,10 @@ The agent-space is the agent's primary working directory (`/home/agent-{name}/no
 
 ## Accounts
 
-| Service | Host | Username | Auth Method | Credentials |
-|---------|------|----------|-------------|-------------|
-| GitHub  | github.com | atls | OAuth device flow | `~/.config/gh/hosts.yml` |
-| Forgejo | git.example.com | atlas | API token | fj keyfile |
+| Service | Host            | Username | Auth Method       | Credentials              |
+| ------- | --------------- | -------- | ----------------- | ------------------------ |
+| GitHub  | github.com      | atls     | OAuth device flow | `~/.config/gh/hosts.yml` |
+| Forgejo | git.example.com | atlas    | API token         | fj keyfile               |
 ```
 
 **TEAM.md** — Full roster of humans and agents:
@@ -90,26 +90,26 @@ The agent-space is the agent's primary working directory (`/home/agent-{name}/no
 
 ## Humans
 
-| Name | Role | GitHub | Forgejo | Email |
-|------|------|--------|---------|-------|
-| Alex Morgan | CEO | amorgan | amorgan | alex.morgan@example.com |
+| Name        | Role | GitHub  | Forgejo | Email                   |
+| ----------- | ---- | ------- | ------- | ----------------------- |
+| Alex Morgan | CEO  | amorgan | amorgan | alex.morgan@example.com |
 
 ## Agents
 
-| Name | Role | GitHub | Forgejo | Email |
-|------|------|--------|---------|-------|
-| Nova | CPO | nova-acme | nova | nova@example.com |
-| Atlas | CTO | atls | atlas | atlas@example.com |
+| Name  | Role | GitHub    | Forgejo | Email             |
+| ----- | ---- | --------- | ------- | ----------------- |
+| Nova  | CPO  | nova-acme | nova    | nova@example.com  |
+| Atlas | CTO  | atls      | atlas   | atlas@example.com |
 ```
 
 **SERVICES.md** — Intranet services accessible via Tailscale:
 
 ```markdown
-| Service | URL |
-|---------|-----|
-| Git | git.example.com |
-| Mail | mail.example.com |
-| Grafana | grafana.example.com |
+| Service     | URL                     |
+| ----------- | ----------------------- |
+| Git         | git.example.com         |
+| Mail        | mail.example.com        |
+| Grafana     | grafana.example.com     |
 | Vaultwarden | vaultwarden.example.com |
 ```
 
@@ -128,15 +128,15 @@ Each agent-space includes the shared agents library as a git submodule at `.agen
 
 ### Components
 
-| Component | Path | Purpose |
-|-----------|------|---------|
-| **Conventions** | `conventions/` | 27+ RFC 2119 operational docs (version control, CI, feature delivery, tool usage) |
-| **Roles** | `roles/` | 10 composable role templates (architect, software-engineer, code-reviewer, business-analyst, project-lead, etc.) |
-| **Shared fragments** | `shared/` | Reusable prompt fragments (RFC 2119 preamble, output format rules) |
-| **Archetypes** | `archetypes.yaml` | Pre-built convention bundles: `engineer` and `product` |
-| **Composition tool** | `compose.sh` | Assembles prompts from manifest + mode: shared → roles → conventions |
-| **DeepWork jobs** | `.deepwork/jobs/` | 9 workflow definitions (task loop, daily status, research, etc.) |
-| **Examples** | `examples/` | Reference agent-space layouts and manifest examples |
+| Component            | Path              | Purpose                                                                                                          |
+| -------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **Conventions**      | `conventions/`    | 27+ RFC 2119 operational docs (version control, CI, feature delivery, tool usage)                                |
+| **Roles**            | `roles/`          | 10 composable role templates (architect, software-engineer, code-reviewer, business-analyst, project-lead, etc.) |
+| **Shared fragments** | `shared/`         | Reusable prompt fragments (RFC 2119 preamble, output format rules)                                               |
+| **Archetypes**       | `archetypes.yaml` | Pre-built convention bundles: `engineer` and `product`                                                           |
+| **Composition tool** | `compose.sh`      | Assembles prompts from manifest + mode: shared → roles → conventions                                             |
+| **DeepWork jobs**    | `.deepwork/jobs/` | 9 workflow definitions (task loop, daily status, research, etc.)                                                 |
+| **Examples**         | `examples/`       | Reference agent-space layouts and manifest examples                                                              |
 
 ### Prompt Composition
 
@@ -153,7 +153,7 @@ Each agent-space has a `manifests/modes.yaml` that maps operational modes to rol
 
 ```yaml
 agents_repo: ../.agents
-archetype: engineer              # Inherits engineer conventions
+archetype: engineer # Inherits engineer conventions
 defaults:
   shared:
     - rfc2119-preamble.md
@@ -161,7 +161,8 @@ defaults:
 modes:
   implementation:
     roles: [software-engineer]
-    conventions: [process.feature-delivery, process.pull-request, tool.nix-devshell]
+    conventions:
+      [process.feature-delivery, process.pull-request, tool.nix-devshell]
   code-review:
     roles: [code-reviewer]
     conventions: [process.continuous-integration, process.version-control]
@@ -174,9 +175,9 @@ modes:
 
 Archetypes are pre-built sets of conventions that apply to an agent role:
 
-| Archetype | Inlined Conventions | Purpose |
-|-----------|-------------------|---------|
+| Archetype  | Inlined Conventions                                                     | Purpose                  |
+| ---------- | ----------------------------------------------------------------------- | ------------------------ |
 | `engineer` | version-control, feature-delivery, continuous-integration, nix-devshell | Engineering agents (CTO) |
-| `product` | product-engineering-handoff, press-release | Product agents (CPO) |
+| `product`  | product-engineering-handoff, press-release                              | Product agents (CPO)     |
 
 When a manifest declares `archetype: engineer`, the archetype's conventions are automatically included in every mode.

@@ -2,10 +2,12 @@
 # Defines the schema for keystone.os.agents.<name>.
 #
 # Implements REQ-007 (OS Agents)
-# See specs/REQ-017-conventions-grafana-mcp/requirements.md (REQ-017.9: Grafana MCP options)
-# See specs/REQ-018-repo-management/requirements.md (agent notes path default)
-# See specs/REQ-023-perception-layer/requirements.md (REQ-023.34: perception options)
+# See specs/REQ-017-conventions-grafana-mcp.md (REQ-017.9: Grafana MCP options)
+# See specs/REQ-018-repo-management.md (REQ-018.14: agent notes path default)
+# See specs/REQ-023-executive-assistant-perception-layer.md (REQ-023.34: perception options)
+# See specs/REQ-024-agentic-calendar.md (REQ-024.22: calendar.teamEvents)
 # See conventions/os.requirements.md
+# See conventions/process.keystone-principal-parity.md
 {
   lib,
   config,
@@ -133,6 +135,28 @@ in
           default = "engineer";
           description = "Convention archetype for this agent. Controls which conventions are inlined vs referenced. Available: engineer, product. See conventions/archetypes.yaml.";
           example = "product";
+        };
+
+        capabilities = mkOption {
+          type = types.listOf (
+            types.enum [
+              "ks"
+              "ks-dev"
+              "notes"
+              "engineer"
+              "executive-assistant"
+            ]
+          );
+          default = [ ];
+          description = ''
+            Extra Keystone AI workflow capabilities for this agent. These
+            capabilities are merged with archetype and dev-mode defaults and
+            gate what the generated `/ks` and `/ks.dev` skills may do.
+          '';
+          example = [
+            "notes"
+            "executive-assistant"
+          ];
         };
 
         host = mkOption {
@@ -523,7 +547,7 @@ in
 
         # Perception layer: document parsing, voice transcription, photo search,
         # screenshot syncing, contact linking, and activity reconstruction.
-        # See specs/REQ-023-perception-layer/requirements.md
+        # See specs/REQ-023-executive-assistant-perception-layer.md
         perception = {
           enable = mkOption {
             type = types.bool;

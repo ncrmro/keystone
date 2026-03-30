@@ -1,9 +1,9 @@
 ---
-title: VM Testing Guide
+title: VM Testing
 description: Testing Keystone configurations in QEMU/KVM virtual machines
 ---
 
-# VM Testing Guide
+# VM Testing
 
 This document covers testing Keystone configurations in QEMU/KVM virtual machines, including setup requirements, known issues, and troubleshooting.
 
@@ -47,6 +47,7 @@ The `qemu-guest.nix` profile provides:
 4. **Graphics backend support** - DRM/KMS drivers for VM graphics
 
 Without this profile, you may experience:
+
 - Missing virtio drivers
 - Graphics initialization failures
 - Poor VM performance
@@ -154,12 +155,14 @@ While QXL is primarily designed for SPICE protocol and has some limitations with
 **Result:** ❌ Failed - Missing virgl 3D acceleration, Hyprland cannot initialize EGL
 
 **Explanation:**
+
 - Plain virtio-gpu provides basic 2D framebuffer support
 - Hyprland requires OpenGL ES 2.0 minimum for compositing
 - Without virgl/GL acceleration, virtio-gpu cannot provide the required OpenGL context
 - Attempting to use virtio results in: `libEGL warning: egl: failed to create dri2 screen`
 
 **QXL vs virtio:**
+
 - QXL provides sufficient DRM/KMS despite being designed for SPICE
 - virtio requires GL acceleration (virgl) for Wayland compositors
 - Since virgl/GL is unavailable (NVIDIA host incompatibility), QXL is the only viable option
@@ -171,21 +174,25 @@ Extensive testing was conducted to enable hardware-accelerated graphics (OpenGL/
 ### Attempted GL Acceleration Solutions
 
 #### 3. SDL with GL (incorrect XML syntax)
+
 ```xml
 <graphics type='sdl' display=':0' gl='yes'/>
 <video>
   <model type='virtio-vga-gl'/>
 </video>
 ```
+
 **Result:** ❌ Failed - Attribute syntax incorrect (should be child element)
 
 **Error:**
+
 ```
 The display backend does not have OpenGL support enabled
 It can be enabled with '-display BACKEND,gl=on'
 ```
 
 #### 4. SDL with GL (correct XML syntax)
+
 ```xml
 <graphics type='sdl' display=':0'>
   <gl enable='yes'/>
@@ -194,11 +201,13 @@ It can be enabled with '-display BACKEND,gl=on'
   <model type='virtio-vga-gl'/>
 </video>
 ```
+
 **Result:** ❌ Failed - Same error as above
 
 **Analysis:** libvirt not properly translating XML to QEMU command-line arguments
 
 #### 5. SPICE with GL and explicit rendernode
+
 ```xml
 <graphics type='spice'>
   <listen type='none'/>
@@ -211,9 +220,11 @@ It can be enabled with '-display BACKEND,gl=on'
   </model>
 </video>
 ```
+
 **Result:** ❌ Failed
 
 **Error:**
+
 ```
 qemu-system-x86_64: egl: eglInitialize failed: EGL_NOT_INITIALIZED
 qemu-system-x86_64: egl: render node init failed
@@ -224,6 +235,7 @@ qemu-system-x86_64: egl: render node init failed
 **NixOS Issue #164436**: "libvirt: openGL does not work with Nvidia GPUs"
 
 The fundamental problem is an incompatibility between:
+
 - NVIDIA proprietary drivers
 - libvirt's EGL initialization
 - QEMU in `qemu:///system` mode
@@ -233,6 +245,7 @@ This is a **known, unresolved issue** on NixOS when using NVIDIA GPUs with libvi
 ### Web Research Findings
 
 Extensive web research confirmed:
+
 - Multiple NixOS users reporting identical `eglInitialize failed` errors
 - NVIDIA proprietary drivers have compatibility issues with QEMU/libvirt EGL
 - SDL GL child element syntax (`<gl enable='yes'/>`) is correct per libvirt docs (added 2018)
@@ -253,6 +266,7 @@ If hardware acceleration is unavailable, Hyprland can use software rendering (ll
 ### In VM Configuration
 
 Keep basic virtio graphics (no GL):
+
 ```xml
 <graphics type='spice' autoport='yes'>
   <listen type='address' address='127.0.0.1'/>
@@ -265,6 +279,7 @@ Keep basic virtio graphics (no GL):
 ### In Guest NixOS Configuration
 
 Add to `modules/client/desktop/hyprland.nix` or system configuration:
+
 ```nix
 environment.sessionVariables = {
   WLR_RENDERER_ALLOW_SOFTWARE = "1";
@@ -277,25 +292,28 @@ environment.sessionVariables = {
 - ✅ Works with any GPU/driver combination
 - ✅ No host EGL/GL dependencies
 - ✅ Reliable for development/testing
-- ⚠️  Slower graphics performance (CPU-based rendering)
-- ⚠️  Higher CPU usage during compositing
-- ⚠️  Not suitable for graphics-intensive workloads
+- ⚠️ Slower graphics performance (CPU-based rendering)
+- ⚠️ Higher CPU usage during compositing
+- ⚠️ Not suitable for graphics-intensive workloads
 
 **Recommendation:** Only use software rendering if hardware acceleration is confirmed unavailable. With proper qemu-guest.nix configuration, basic virtio graphics should work for most testing scenarios.
 
 ## Testing Procedure
 
 ### 1. Build ISO
+
 ```bash
 ./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
 ### 2. Create VM
+
 ```bash
 ./bin/virtual-machine --name keystone-test-vm --start
 ```
 
 ### 3. Connect to VM
+
 ```bash
 # Graphical (for installer)
 remote-viewer $(virsh domdisplay keystone-test-vm)
@@ -305,12 +323,14 @@ virsh console keystone-test-vm
 ```
 
 ### 4. Deploy Configuration
+
 ```bash
 # From installer or host
 nixos-anywhere --flake .#test-hyprland root@192.168.100.99
 ```
 
 ### 5. Post-Installation
+
 ```bash
 # Shutdown VM
 virsh shutdown keystone-test-vm
@@ -320,6 +340,7 @@ virsh shutdown keystone-test-vm
 ```
 
 ### 6. Verify Configuration
+
 ```bash
 # SSH into VM
 ./bin/test-vm-ssh
@@ -335,11 +356,13 @@ systemctl status hyprland   # Check desktop service
 ### VM Won't Start
 
 **Check OVMF firmware:**
+
 ```bash
 ls -la /nix/store/*-OVMF-*/FV/
 ```
 
 **Verify libvirtd:**
+
 ```bash
 systemctl status libvirtd
 virsh version
@@ -360,16 +383,19 @@ virsh version
 ### Hyprland Won't Start
 
 **Check compositor logs:**
+
 ```bash
 journalctl --user -u hyprland
 ```
 
 **Verify environment variables:**
+
 ```bash
 printenv | grep -E "WAYLAND|XDG|WLR"
 ```
 
 **Test with basic Weston:**
+
 ```bash
 # Install weston for testing
 nix-shell -p weston
@@ -379,6 +405,7 @@ weston --backend=drm-backend.so
 ### Serial Console Issues
 
 **Enable in kernel params:**
+
 ```nix
 boot.kernelParams = [
   "console=ttyS0,115200n8"
@@ -387,6 +414,7 @@ boot.kernelParams = [
 ```
 
 **Connect:**
+
 ```bash
 virsh console keystone-test-vm
 # Press Ctrl+] to exit

@@ -26,7 +26,6 @@ You MUST always use your own accounts and credentials as defined in
 
 Read about the convention system in [conventions/AGENTS.md](conventions/AGENTS.md).
 
-
 ## Product-Engineering Handoff
 
 ## Purpose
@@ -111,7 +110,6 @@ user stories issue MUST exist before engineering planning starts.
 
 33. The press release is published (committed to the project's blog directory) when the milestone is closed.
 34. The milestone closing does NOT require updating the press release content — the press release stands as written at handoff time.
-
 
 ## Press Release
 

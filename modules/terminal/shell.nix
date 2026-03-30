@@ -14,9 +14,9 @@ with lib;
 let
   cfg = config.keystone.terminal;
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
-  inherit (devScripts) mkHomeScriptCommand;
+  inherit (devScripts) mkHomeRepoFiles mkHomeScriptCommand;
   ksCommand = mkHomeScriptCommand {
-    inherit config;
+    inherit config pkgs;
     commandName = "ks";
     relativePath = "packages/ks/ks.sh";
     package = pkgs.keystone.ks;
@@ -32,7 +32,7 @@ in
 
       # Zoxide - A smarter cd command that learns your navigation patterns
       # Tracks your most used directories and lets you jump to them with 'z <partial-name>'
-      # Example: 'z proj' jumps to ~/code/projects, 'zi' for interactive selection
+      # Example: 'z proj' jumps to ~/repos/projects, 'zi' for interactive selection
       # https://github.com/ajeetdsouza/zoxide
       programs.zoxide = {
         enable = true;
@@ -104,12 +104,6 @@ in
           };
         };
       };
-
-      # Zellij layouts — pre-configured tab presets for context system
-      # Used by: pz --layout <name>, keystone-context <slug> --layout <name>
-      xdg.configFile."zellij/layouts/dev.kdl".source = ./layouts/dev.kdl;
-      xdg.configFile."zellij/layouts/ops.kdl".source = ./layouts/ops.kdl;
-      xdg.configFile."zellij/layouts/write.kdl".source = ./layouts/write.kdl;
 
       # Fzf - A command-line fuzzy finder
       # https://github.com/junegunn/fzf
@@ -191,12 +185,6 @@ in
         # https://direnv.net/
         direnv
 
-        # Ghostty terminfo - Required for SSH connections from Ghostty terminal
-        # Without this, remote systems don't recognize TERM="xterm-ghostty" and
-        # ncurses applications fail with "cannot initialize terminal type" errors.
-        # This enables proper terminal handling when SSHing into this machine from Ghostty.
-        ghostty.terminfo
-
         # Eza - Modern replacement for ls with colors and git integration
         # https://github.com/eza-community/eza
         eza
@@ -204,6 +192,10 @@ in
         # Glow - Render markdown on the CLI with style
         # https://github.com/charmbracelet/glow
         glow
+
+        # WeasyPrint - HTML/CSS to PDF converter (used by ks print)
+        # https://weasyprint.org/
+        python3Packages.weasyprint
 
         # GNU Make - Build automation tool
         # https://www.gnu.org/software/make/
@@ -249,8 +241,42 @@ in
         # Nixfmt - Official Nix code formatter (RFC style)
         # https://github.com/NixOS/nixfmt
         nixfmt-rfc-style
+      ] ++ lib.optionals pkgs.stdenv.isLinux [
+        # Ghostty terminfo - Required for SSH connections from Ghostty terminal
+        # Without this, remote systems don't recognize TERM="xterm-ghostty" and
+        # ncurses applications fail with "cannot initialize terminal type" errors.
+        # This enables proper terminal handling when SSHing into this machine from Ghostty.
+        # (Only available on Linux - macOS users install Ghostty via native app)
+        ghostty.terminfo
       ];
     }
+    # Enable flakes for Darwin (standalone home-manager)
+    # On NixOS this is handled by keystone.os.nix.flakes
+    (mkIf pkgs.stdenv.isDarwin {
+      home.file.".config/nix/nix.conf".text = ''
+        experimental-features = nix-command flakes
+      '';
+    })
+    (mkHomeRepoFiles {
+      inherit config;
+      files = [
+        {
+          targetPath = ".config/zellij/layouts/dev.kdl";
+          relativePath = "modules/terminal/layouts/dev.kdl";
+          sourcePath = ./layouts/dev.kdl;
+        }
+        {
+          targetPath = ".config/zellij/layouts/ops.kdl";
+          relativePath = "modules/terminal/layouts/ops.kdl";
+          sourcePath = ./layouts/ops.kdl;
+        }
+        {
+          targetPath = ".config/zellij/layouts/write.kdl";
+          relativePath = "modules/terminal/layouts/write.kdl";
+          sourcePath = ./layouts/write.kdl;
+        }
+      ];
+    })
     ksCommand
   ]);
 }

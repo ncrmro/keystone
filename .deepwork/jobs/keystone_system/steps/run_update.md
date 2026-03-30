@@ -15,7 +15,6 @@ This is a **human-in-the-loop** step. The agent cannot run `ks update --lock` be
    - **Always use `--lock` explicitly** — never omit it, even though it's the default
 
    **Determine deployment strategy based on risk:**
-
    - **Low risk (docs, conventions, terminal/desktop features)**: All hosts in one command:
      ```
      ks update --lock <host1>,<host2>,<host3>,<host4>
@@ -38,6 +37,7 @@ This is a **human-in-the-loop** step. The agent cannot run `ks update --lock` be
      **WARNING**: A past lanzaboote update broke Secure Boot on a remote server and required physical BIOS intervention. NEVER deploy bootloader changes to remote hosts first.
 
    **When `--boot` requires a reboot**, the current session will be lost. Before the human reboots, output clear resume instructions:
+
    ```
    After reboot, resume this workflow:
      claude --resume    # or: gemini
@@ -45,12 +45,13 @@ This is a **human-in-the-loop** step. The agent cannot run `ks update --lock` be
      > I just rebooted after `ks update --lock --boot <host>`.
      > Boot was [successful / failed]. Next: [deploy remotes / run validate].
    ```
+
    Also write a `.deepwork/tmp/resume_context.md` file with:
    - Current workflow step (`run_update`)
    - Which hosts have been deployed and which remain
    - The verification checklist from the plan
    - The exact next command to run
-   This file survives the reboot and gives the next session full context.
+     This file survives the reboot and gives the next session full context.
 
    - Include a brief summary of what's being deployed:
      - Number of keystone commits since last lock
@@ -101,19 +102,19 @@ This is a **human-in-the-loop** step. The agent cannot run `ks update --lock` be
 
 ## Build Results
 
-| Host | Build Status | Notes |
-|------|-------------|-------|
-| ncrmro-workstation | success | — |
-| ocean | success | built remotely |
-| mercury | success | — |
+| Host               | Build Status | Notes          |
+| ------------------ | ------------ | -------------- |
+| ncrmro-workstation | success      | —              |
+| ocean              | success      | built remotely |
+| mercury            | success      | —              |
 
 ## Deployment Results
 
-| Host | Deploy Status | Generation | Notes |
-|------|--------------|------------|-------|
-| ncrmro-workstation | success | 476 | switched in-place |
-| ocean | success | 367 | deployed via Tailscale |
-| mercury | failed | 49 | connection timeout — deferred |
+| Host               | Deploy Status | Generation | Notes                         |
+| ------------------ | ------------- | ---------- | ----------------------------- |
+| ncrmro-workstation | success       | 476        | switched in-place             |
+| ocean              | success       | 367        | deployed via Tailscale        |
+| mercury            | failed        | 49         | connection timeout — deferred |
 
 ## Warnings
 

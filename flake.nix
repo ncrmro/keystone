@@ -36,6 +36,12 @@
       url = "github:pimalaya/comodoro";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # AI coding agents (claude-code, gemini-cli, codex, opencode).
+    # Keystone keeps this input at nightly-latest. Contributors should follow
+    # keystone's pin (llm-agents.follows = "keystone/llm-agents") so that
+    # relocking keystone automatically bumps agent versions.
+    # Consumers who prefer a stable pin can declare their own llm-agents input
+    # and override keystone's with: keystone.inputs.llm-agents.follows = "llm-agents".
     llm-agents = {
       url = "github:numtide/llm-agents.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -343,6 +349,12 @@
             inherit pkgs lib nixpkgs;
             self = self;
           };
+          ks-help = import ./tests/module/ks-help.nix {
+            inherit pkgs;
+          };
+          agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
+            inherit pkgs lib;
+          };
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)
@@ -435,9 +447,11 @@
               echo "  ./bin/build-iso        - Build installer ISO"
               echo "  ./bin/build-vm         - Fast VM testing (terminal/desktop)"
               echo "  ./bin/virtual-machine  - Full stack VM with libvirt"
-              echo "  nix flake check        - Validate flake"
+              echo "  ci                     - Run nix flake check"
               echo ""
               echo "Rust packages:  packages/keystone-ha/, packages/keystone-tui/"
+
+              alias ci='nix flake check'
             '';
 
             # Rust environment variables
@@ -451,11 +465,14 @@
           path = ./templates/default;
           description = "Keystone infrastructure starter with OS module and home-manager";
           welcomeText = ''
-            # Keystone Infrastructure Configuration
+            # keystone-config
 
-            Your project has been initialized!
+            Your Keystone config repo has been initialized.
 
             ## Quick Start
+
+            Recommended scaffold command:
+               nix flake new -t github:ncrmro/keystone keystone-config
 
             1. Edit configuration.nix - search for TODO: to find required changes
             2. Generate hostId: head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '

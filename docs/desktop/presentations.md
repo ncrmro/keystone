@@ -1,20 +1,20 @@
 ---
-title: Demos & Presentations Guide
+title: Demos & Presentations
 description: Choosing the right tool for screen recordings, slide decks, and video post-processing
 ---
 
-# Demos & Presentations Guide
+# Demos & Presentations
 
 Keystone supports several approaches to creating demos and presentations. Each targets a different scenario — pick the one that fits your use case.
 
 ## Decision Matrix
 
-| Scenario | Tool | Audio | Slides | Effort |
-|----------|------|-------|--------|--------|
-| Quick PR demo / bug report | `keystone-screenrecord` | Optional | No | ~1 min |
-| Slide-based presentation | Slidev | Built-in | Yes | Medium |
-| Complex multi-source recording | OBS Studio | Full mixer | Optional | High |
-| Convert existing video to slides | `video-slidev` | Preserves original | Generated | Medium |
+| Scenario                         | Tool                    | Audio              | Slides    | Effort |
+| -------------------------------- | ----------------------- | ------------------ | --------- | ------ |
+| Quick PR demo / bug report       | `keystone-screenrecord` | Optional           | No        | ~1 min |
+| Slide-based presentation         | Slidev                  | Built-in           | Yes       | Medium |
+| Complex multi-source recording   | OBS Studio              | Full mixer         | Optional  | High   |
+| Convert existing video to slides | `video-slidev`          | Preserves original | Generated | Medium |
 
 ## Quick PR / Bug Demos (keystone-screenrecord)
 
@@ -35,7 +35,7 @@ keystone-screenrecord --with-desktop-audio --with-microphone-audio
 
 Click the red Waybar indicator to stop recording. Output lands in `~/Videos/`.
 
-For full details, see [Screen Recording User Guide](screen-recording.md).
+For full details, see [Screen Recording](screen-recording.md).
 
 ## Slide-Based Presentations (Slidev)
 
@@ -80,12 +80,12 @@ Content goes here.
 
 \`\`\`python
 def hello():
-    print("Hello from the presentation")
+print("Hello from the presentation")
 \`\`\`
 
 ---
-layout: presenter
----
+
+## layout: presenter
 
 # Live Demo
 
@@ -116,6 +116,7 @@ Slidev's built-in recording captures both the slide view and presenter view simu
 ### Presenter Mode
 
 Presenter mode (`/presenter` route) shows:
+
 - Current slide + next slide preview
 - Speaker notes
 - Timer and progress
@@ -150,15 +151,15 @@ nix run nixpkgs#obs-studio
 
 ### OBS vs keystone-screenrecord
 
-| Feature | keystone-screenrecord | OBS Studio |
-|---------|----------------------|------------|
-| Setup time | Zero (built-in) | Requires config |
-| Scene switching | No | Yes |
-| Webcam overlay | No | Yes |
-| Audio mixing | Basic (mic + desktop) | Full mixer |
-| Streaming | No | Yes (Twitch, YouTube, etc.) |
-| GPU encoding | Yes | Yes |
-| Wayland support | Native (portal) | Via PipeWire |
+| Feature         | keystone-screenrecord | OBS Studio                  |
+| --------------- | --------------------- | --------------------------- |
+| Setup time      | Zero (built-in)       | Requires config             |
+| Scene switching | No                    | Yes                         |
+| Webcam overlay  | No                    | Yes                         |
+| Audio mixing    | Basic (mic + desktop) | Full mixer                  |
+| Streaming       | No                    | Yes (Twitch, YouTube, etc.) |
+| GPU encoding    | Yes                   | Yes                         |
+| Wayland support | Native (portal)       | Via PipeWire                |
 
 **Rule of thumb:** If `keystone-screenrecord` can do it, use that. Reach for OBS when you need features it doesn't have.
 
@@ -217,6 +218,6 @@ Already have a video, want slides from it?
 
 ## See Also
 
-- [Screen Recording User Guide](screen-recording.md) — full `keystone-screenrecord` reference
+- [Screen Recording](screen-recording.md) — full `keystone-screenrecord` reference
 - [Slidev Documentation](https://sli.dev) — upstream Slidev docs
 - [OBS Studio Wiki](https://obsproject.com/wiki/) — upstream OBS docs

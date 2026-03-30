@@ -15,11 +15,11 @@ Primer Server acts as OIDC Identity Provider. AWS trusts Primer-issued JWTs via 
 
 ## Key Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| IRSA over Pod Identity | Works with any K8s cluster, not EKS-only |
-| kubebuilder for operator | Official K8s SIG, strong Go typing, clean scaffolding |
-| Launch Templates + cloud-init | Proven pattern, supports NixOS bootstrap |
+| Decision                      | Rationale                                             |
+| ----------------------------- | ----------------------------------------------------- |
+| IRSA over Pod Identity        | Works with any K8s cluster, not EKS-only              |
+| kubebuilder for operator      | Official K8s SIG, strong Go typing, clean scaffolding |
+| Launch Templates + cloud-init | Proven pattern, supports NixOS bootstrap              |
 
 ## Security
 

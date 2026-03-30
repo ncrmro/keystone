@@ -7,9 +7,11 @@ description: How to install the Keystone Terminal UI environment
 
 Keystone TUI is a curated terminal environment powered by Nix. It provides a consistent, high-performance developer experience across macOS and Linux.
 
+**What's included:** [Zsh](https://www.zsh.org/), [Helix](https://helix-editor.com/) editor, [Zellij](https://zellij.dev/) terminal multiplexer, [Lazygit](https://github.com/jesseduffield/lazygit), [Direnv](https://direnv.net/), [Zoxide](https://github.com/ajeetdsouza/zoxide), Ripgrep, Eza, and language servers for Bash, Nix, TypeScript, YAML, and more.
+
 ## Keystone OS Users
 
-If you are using **Keystone OS**, you don't need to do anything! Keystone TUI comes pre-installed and configured out of the box.
+If you are using **Keystone OS**, you don't need to do anything. Keystone TUI comes pre-installed and configured out of the box.
 
 ## Non-Keystone OS Users (macOS / Linux)
 
@@ -17,10 +19,16 @@ For users on macOS or other Linux distributions (Ubuntu, Fedora, Arch, etc.), yo
 
 ### 1. Install Nix
 
-First, you need to have the Nix package manager installed.
+First, you need the Nix package manager installed with flakes enabled.
 
-- **macOS Users:** Follow the [macOS Installation Guide](/docs/nix-install-macos)
-- **Linux Users:** Follow the [Ubuntu/Debian Installation Guide](/docs/nix-install-ubuntu) (also applies to most other Linux distros)
+- **macOS:** Use the [Determinate Systems installer](https://github.com/DeterminateSystems/nix-installer#installation) — it enables flakes by default and handles macOS quirks
+- **Linux:** Use the [official Nix installer](https://nixos.org/download/#nix-install-linux) or the Determinate Systems installer (recommended for flake support)
+
+If you already have Nix but flakes are not enabled, add this to `/etc/nix/nix.conf`:
+
+```
+experimental-features = nix-command flakes
+```
 
 ### 2. Install Keystone TUI
 
@@ -38,7 +46,7 @@ This will drop you into a shell with `helix`, `zellij`, `lazygit`, and other too
 
 #### Option B: Install with Home Manager (Recommended)
 
-For a permanent installation that manages your configuration files (dotfiles), we recommend using **Home Manager**.
+For a permanent installation that manages your configuration files (dotfiles), we recommend using [Home Manager](https://nix-community.github.io/home-manager/).
 
 1.  **Initialize a simplified flake:**
 

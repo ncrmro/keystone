@@ -9,6 +9,7 @@
 This guide walks you through generating custom Secure Boot keys, enrolling them in a test VM, and verifying successful enrollment. By the end, you'll have a VM booting with Secure Boot enabled using your own Platform Key (PK), Key Exchange Key (KEK), and signature database (db).
 
 **What you'll learn**:
+
 - How to generate custom Secure Boot keys using sbctl
 - How to enroll keys in UEFI firmware (Setup Mode → User Mode)
 - How to verify Secure Boot status with bootctl and EFI variables
@@ -27,6 +28,7 @@ Before you begin:
 - **Root access** (sudo) for key generation and enrollment
 
 **Verify prerequisites**:
+
 ```bash
 # Check libvirtd is running
 systemctl status libvirtd
@@ -55,6 +57,7 @@ The VM must boot in Setup Mode (no pre-enrolled keys) for custom key enrollment.
 ```
 
 **Verify Setup Mode**:
+
 ```bash
 # Connect via SSH (wait for installer to boot)
 ssh root@192.168.100.99
@@ -68,6 +71,7 @@ bootctl status
 ```
 
 **What this means**:
+
 - `disabled (setup)`: Firmware has Secure Boot capability but no keys enrolled
 - `Setup Mode: setup`: Platform Key (PK) is NOT enrolled, ready for custom key enrollment
 
@@ -78,6 +82,7 @@ bootctl status
 Generate your own PK, KEK, and db keys using sbctl.
 
 **Inside the VM**:
+
 ```bash
 # Generate keys (takes ~3-5 seconds)
 sbctl create-keys
@@ -89,6 +94,7 @@ sbctl create-keys
 ```
 
 **Verify keys were created**:
+
 ```bash
 # Check key files exist
 ls -la /var/lib/sbctl/keys/
@@ -105,6 +111,7 @@ ls -l /var/lib/sbctl/keys/db/db.key
 ```
 
 **What was created**:
+
 - **12 key files** (4 formats × 3 key types):
   - `.key` - Private key (RSA4096, root-only 600 permissions)
   - `.pem` - Public certificate (world-readable 644)
@@ -121,6 +128,7 @@ Enroll your custom keys to transition from Setup Mode to User Mode.
 **⚠️ IMPORTANT**: For VMs, use custom-only keys (no Microsoft certificates). For physical hardware, include `--microsoft` flag.
 
 **Inside the VM**:
+
 ```bash
 # Enroll custom keys only (safe for VMs)
 sbctl enroll-keys --yes-this-might-brick-my-machine
@@ -131,17 +139,20 @@ sbctl enroll-keys --yes-this-might-brick-my-machine
 ```
 
 **Why the scary flag name?**
+
 - On physical hardware, enrolling custom-only keys can brick the system if hardware option ROMs require Microsoft certificates
 - For VMs with emulated hardware, this is SAFE (no physical firmware to brick)
 - The flag forces you to acknowledge the risk
 
 **Alternative (physical hardware)**:
+
 ```bash
 # Include Microsoft OEM certificates (for GPUs, network cards, etc.)
 sbctl enroll-keys --microsoft
 ```
 
 **What happened**:
+
 - Firmware variables updated: `PK`, `KEK`, `db` now contain your keys
 - `SetupMode` variable changed from 1 → 0 (Setup Mode → User Mode)
 - `SecureBoot` variable changed from 0 → 1 (enforcing signatures)
@@ -153,6 +164,7 @@ sbctl enroll-keys --microsoft
 Confirm the enrollment succeeded and Secure Boot is now active.
 
 **Inside the VM**:
+
 ```bash
 # Check Secure Boot status
 bootctl status
@@ -164,6 +176,7 @@ bootctl status
 ```
 
 **Verify with sbctl**:
+
 ```bash
 # Alternative verification using sbctl
 sbctl status
@@ -176,6 +189,7 @@ sbctl status
 ```
 
 **Verify with EFI variables (advanced)**:
+
 ```bash
 # Check SetupMode variable directly
 od --address-radix=n --format=u1 \
@@ -195,6 +209,7 @@ od --address-radix=n --format=u1 \
 ```
 
 **Success indicators**:
+
 - ✅ `Secure Boot: enabled (user)` in bootctl
 - ✅ `Setup Mode: ✗ Disabled` in sbctl status
 - ✅ `Secure Boot: ✓ Enabled` in sbctl status
@@ -208,6 +223,7 @@ od --address-radix=n --format=u1 \
 Verify Secure Boot persists across reboots.
 
 **Exit SSH and reboot VM**:
+
 ```bash
 # Inside VM
 reboot
@@ -222,6 +238,7 @@ bootctl status
 ```
 
 **What this confirms**:
+
 - Keys persist in firmware NVRAM (non-volatile)
 - Secure Boot enforcement active at boot time
 - Firmware rejects unsigned code
@@ -233,6 +250,7 @@ bootctl status
 The bin/test-deployment script automates this entire workflow.
 
 **Run full automated test**:
+
 ```bash
 # Hard reset + rebuild ISO + full deployment test
 ./bin/test-deployment --rebuild-iso --hard-reset
@@ -251,6 +269,7 @@ The bin/test-deployment script automates this entire workflow.
 ```
 
 **Test output** (relevant section):
+
 ```
 [7/9] Verifying Secure Boot setup mode
 ℹ Verifying Secure Boot setup mode...
@@ -277,6 +296,7 @@ The bin/test-deployment script automates this entire workflow.
 ### Problem: "Firmware not in Setup Mode"
 
 **Symptoms**:
+
 ```
 Error: Firmware not in Setup Mode. SetupMode variable is 0 (already enrolled).
 ```
@@ -284,6 +304,7 @@ Error: Firmware not in Setup Mode. SetupMode variable is 0 (already enrolled).
 **Cause**: VM already has keys enrolled (previous test run).
 
 **Solution**: Reset VM to Setup Mode:
+
 ```bash
 # Shut down VM first
 virsh shutdown keystone-test-vm
@@ -303,6 +324,7 @@ ssh root@192.168.100.99 "bootctl status"
 ### Problem: Keys already exist
 
 **Symptoms**:
+
 ```
 Error: Keys already exist at /var/lib/sbctl/keys/. Use --force to overwrite.
 ```
@@ -310,6 +332,7 @@ Error: Keys already exist at /var/lib/sbctl/keys/. Use --force to overwrite.
 **Cause**: Previous key generation left files in place.
 
 **Solution**: Force regeneration or use existing keys:
+
 ```bash
 # Option 1: Regenerate (fresh keys)
 sbctl create-keys --force  # (fictional flag, adjust based on sbctl version)
@@ -326,6 +349,7 @@ sbctl enroll-keys --yes-this-might-brick-my-machine
 ### Problem: bootctl not available
 
 **Symptoms**:
+
 ```
 bash: bootctl: command not found
 ```
@@ -333,6 +357,7 @@ bash: bootctl: command not found
 **Cause**: Minimal installer environment may not include systemd-boot tools.
 
 **Solution**: Use direct EFI variable reading:
+
 ```bash
 # Check SetupMode manually
 cat /sys/firmware/efi/efivars/SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c | od -An -t u1
@@ -348,10 +373,12 @@ cat /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c | 
 ### Problem: Enrollment fails silently
 
 **Symptoms**:
+
 - `sbctl enroll-keys` reports success
 - But `bootctl status` still shows `disabled (setup)`
 
 **Diagnosis**:
+
 ```bash
 # Check if PK was actually enrolled
 ls -la /sys/firmware/efi/efivars/PK-*
@@ -361,11 +388,13 @@ stat /sys/firmware/efi/efivars/PK-8be4df61-93ca-11d2-aa0d-00e098032b8c
 ```
 
 **Possible causes**:
+
 1. Firmware incompatibility (rare with OVMF)
 2. Key format issue
 3. Insufficient permissions (not running as root)
 
 **Solution**: Try efitools as fallback (not recommended, complex):
+
 ```bash
 # Load keys via KeyTool.efi (requires UEFI shell access)
 # See efitools documentation
@@ -425,6 +454,7 @@ od -An -t u1 /sys/firmware/efi/efivars/SetupMode-* # Manual SetupMode check
 ## Architecture Overview
 
 **Workflow Diagram**:
+
 ```
 ┌─────────────────┐
 │  VM in Setup    │
@@ -452,6 +482,7 @@ od -An -t u1 /sys/firmware/efi/efivars/SetupMode-* # Manual SetupMode check
 ```
 
 **Security Model**:
+
 - **PK (Platform Key)**: Root of trust, owner's key
 - **KEK (Key Exchange Key)**: Can update db and dbx
 - **db (Signature Database)**: Trusted signers for boot code

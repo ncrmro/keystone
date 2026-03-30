@@ -38,8 +38,13 @@ ambiguous.
    - Choose a Conventional-Commit-style issue title: `type(scope): subject`
    - Use `gh issue create --repo ncrmro/keystone --title "..." --body-file <file>`
    - If a closely matching issue already exists, do NOT create a duplicate. Update the output file with the existing issue URL and explain why it matches.
-   - Save the final issue body to a temporary local markdown file under `.deepwork/tmp/` before creating the issue. Do NOT place this draft under `.deepwork/jobs/`, because the local file is only a staging artifact for `gh issue create`.
+   - Save the final issue body to a temporary local markdown file under `.deepwork/tmp/` before creating the issue, using a unique slug-based name so multiple issues in a session don't overwrite each other (e.g., `.deepwork/tmp/keystone-issue-agent-assets-fallback.md`). Do NOT place this draft under `.deepwork/jobs/`, because the local file is only a staging artifact for `gh issue create`.
    - After creation, append the created issue URL to the output file.
+
+5. **Archive to notes (if notes are enabled)**
+   - Check if `keystone.notes` is enabled: `nix eval ~/.keystone/repos/nixos-config#homeConfigurations.<user>.config.keystone.notes.enable --json 2>/dev/null`
+   - If enabled, create a brief note in `~/notes/` via `zk new notes/ --title "keystone issue: <title>" --no-input` and write the issue URL, one-paragraph summary, and the GitHub link. This makes the issue discoverable from notes search.
+   - If notes are not enabled or the command fails, skip silently.
 
 ## Output Format
 
@@ -58,9 +63,10 @@ Use a file path under `.deepwork/tmp/`, for example `.deepwork/tmp/keystone-issu
 - As a [role], I want [capability] so that [benefit].
 
 ## Architecture
-
 ```
+
 [ASCII diagram showing module relationships, data flow, or system topology]
+
 ```
 
 ## Affected Modules

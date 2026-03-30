@@ -9,12 +9,12 @@ This guide covers configuring Himalaya (email), Calendula (calendars), and Carda
 
 ## Provider Overview
 
-| Feature | Gmail | iCloud |
-|---------|-------|--------|
-| IMAP email | ✓ (App Password) | ✓ (App-Specific Password) |
-| SMTP email | ✓ (App Password) | ✓ (App-Specific Password) |
-| CalDAV calendars | ✗ (OAuth2 only) | ✓ (App-Specific Password) |
-| CardDAV contacts | ✗ (deprecated) | ✓ (App-Specific Password) |
+| Feature          | Gmail            | iCloud                    |
+| ---------------- | ---------------- | ------------------------- |
+| IMAP email       | ✓ (App Password) | ✓ (App-Specific Password) |
+| SMTP email       | ✓ (App Password) | ✓ (App-Specific Password) |
+| CalDAV calendars | ✗ (OAuth2 only)  | ✓ (App-Specific Password) |
+| CardDAV contacts | ✗ (deprecated)   | ✓ (App-Specific Password) |
 
 ## Prerequisites
 
@@ -95,19 +95,20 @@ keystone.terminal.mail = {
 
 Gmail uses non-standard folder names under `[Gmail]/`:
 
-| Himalaya alias | Gmail folder |
-|----------------|-------------|
-| `sent` | `[Gmail]/Sent Mail` |
-| `drafts` | `[Gmail]/Drafts` |
-| `trash` | `[Gmail]/Trash` |
-| (starred) | `[Gmail]/Starred` |
-| (all mail) | `[Gmail]/All Mail` |
+| Himalaya alias | Gmail folder        |
+| -------------- | ------------------- |
+| `sent`         | `[Gmail]/Sent Mail` |
+| `drafts`       | `[Gmail]/Drafts`    |
+| `trash`        | `[Gmail]/Trash`     |
+| (starred)      | `[Gmail]/Starred`   |
+| (all mail)     | `[Gmail]/All Mail`  |
 
 ### Calendars and Contacts (Gmail)
 
 Google Calendar's CalDAV endpoint requires OAuth2 — App Passwords do not grant calendar access. Google has also deprecated CardDAV for new applications.
 
 **Workarounds:**
+
 - **Calendars**: Export from calendar.google.com as `.ics` and import into Stalwart, or use a dedicated OAuth2 client
 - **Contacts**: Export from contacts.google.com as vCard (`.vcf`), or use Google People API
 
@@ -198,11 +199,11 @@ keystone.terminal.contacts = {
 
 ### iCloud Folder Names
 
-| Himalaya alias | iCloud folder |
-|----------------|--------------|
-| `sent` | `Sent Messages` |
-| `drafts` | `Drafts` |
-| `trash` | `Deleted Messages` |
+| Himalaya alias | iCloud folder      |
+| -------------- | ------------------ |
+| `sent`         | `Sent Messages`    |
+| `drafts`       | `Drafts`           |
+| `trash`        | `Deleted Messages` |
 
 ---
 

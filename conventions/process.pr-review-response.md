@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: PR Review Response (process.pr-review-response)
 
 This convention defines how an agent responds to reviewer feedback on PRs it has authored. It covers fetching review comments, addressing each one, pushing fixes, replying on the PR, and re-requesting review. It applies to both GitHub and Forgejo.
@@ -10,6 +11,7 @@ This convention defines how an agent responds to reviewer feedback on PRs it has
 1. Before acting on review feedback, agents MUST fetch the full review comments from the platform API. The task description is a summary and MAY not contain complete context. The fetch scripts intentionally omit bulky fields like `diff_hunk` to keep the ingest payload small — the executing agent MUST fetch these directly.
 
 **GitHub:**
+
 ```bash
 gh api repos/{owner}/{repo}/pulls/{number}/reviews --jq '[.[] | select(.state == "CHANGES_REQUESTED" or .state == "COMMENTED") | {id: .id, reviewer: .user.login, state: .state}]'
 
@@ -18,6 +20,7 @@ gh api repos/{owner}/{repo}/pulls/{number}/reviews/{review_id}/comments --jq '[.
 ```
 
 **Forgejo:**
+
 ```bash
 curl -sf -H "Authorization: token $FORGEJO_TOKEN" \
   "$FORGEJO_HOST/api/v1/repos/{owner}/{repo}/pulls/{number}/reviews" \
@@ -31,7 +34,7 @@ curl -sf -H "Authorization: token $FORGEJO_TOKEN" \
 
 ## Checking Out the Branch
 
-2. Agents MUST check out the PR branch before making changes. If the repo is already cloned locally, agents MUST use an external worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}` per `process.git-worktrees`:
+2. Agents MUST check out the PR branch before making changes. If the repo is already cloned locally, agents MUST use an external worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}` per `process.git-repos`:
 
 ```bash
 cd {repo-root}
@@ -54,12 +57,14 @@ cd "$HOME/.worktrees/{owner}/{repo}/{branch}"
 8. After addressing a comment, agents MUST reply to that review comment on the PR describing the fix applied or the reason the feedback was not applied.
 
 **GitHub:**
+
 ```bash
 gh api repos/{owner}/{repo}/pulls/{number}/comments/{comment_id}/replies \
   -f body="Fixed in <commit-sha>: added null check as suggested."
 ```
 
 **Forgejo:**
+
 ```bash
 curl -sf -X POST -H "Authorization: token $FORGEJO_TOKEN" \
   -H "Content-Type: application/json" \
@@ -75,12 +80,14 @@ curl -sf -X POST -H "Authorization: token $FORGEJO_TOKEN" \
 11. Agents MUST re-request review from the original reviewer(s).
 
 **GitHub:**
+
 ```bash
 git push origin {branch}
 gh pr edit {number} --repo {owner}/{repo} --add-reviewer {reviewer}
 ```
 
 **Forgejo:**
+
 ```bash
 git push origin {branch}
 # Re-request via API
@@ -95,6 +102,7 @@ curl -sf -X POST -H "Authorization: token $FORGEJO_TOKEN" \
 12. After addressing all review comments on a PR, agents MUST mark the corresponding notification as read to prevent duplicate task creation in the next task loop run.
 
 **GitHub:**
+
 ```bash
 # Find the notification thread ID
 THREAD_ID=$(gh api '/notifications?participating=true&all=true' \
@@ -103,6 +111,7 @@ gh api -X PATCH "/notifications/threads/$THREAD_ID"
 ```
 
 **Forgejo:**
+
 ```bash
 # Mark notification as read
 NOTIF_ID=$(curl -sf -H "Authorization: token $FORGEJO_TOKEN" \
@@ -126,7 +135,7 @@ curl -sf -X PATCH -H "Authorization: token $FORGEJO_TOKEN" \
 2. Ingest creates task: address-review-fix-login-42
    source_ref: https://github.com/ncrmro/catalyst/pull/42#reviews
 3. Agent checks out branch:
-   cd $HOME/code/ncrmro/catalyst
+   cd $HOME/repos/ncrmro/catalyst
    git worktree add "$HOME/.worktrees/ncrmro/catalyst/fix/login-bug" origin/fix/login-bug
 4. Agent fetches full review comments via gh api
 5. Agent reads src/api.ts, addresses both comments with fix commits

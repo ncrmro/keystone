@@ -49,6 +49,7 @@ Read the scope analysis from the previous step, group stories by system boundary
 7. **Open a draft PR**
 
    **GitHub**:
+
    ```bash
    gh pr create --draft \
      --title "docs(specs): functional requirement specs for {milestone}" \
@@ -56,6 +57,7 @@ Read the scope analysis from the previous step, group stories by system boundary
    ```
 
    **Forgejo**:
+
    ```bash
    fj pr create "WIP: docs(specs): functional requirement specs for {milestone}" \
      --head docs/specs-{milestone-slug} --base main \
@@ -78,15 +80,18 @@ Read the scope analysis from the previous step, group stories by system boundary
 A report documenting the created spec files and the draft PR.
 
 **Structure**:
+
 ```markdown
 # Specs PR Report: [Milestone Title]
 
 ## Platform
+
 - **Platform**: [github | forgejo]
 - **Repository**: [owner/repo]
 - **Branch**: docs/specs-[milestone-slug]
 
 ## Draft PR
+
 - **Number**: [PR number]
 - **Title**: [PR title]
 - **URL**: [PR URL]
@@ -94,23 +99,26 @@ A report documenting the created spec files and the draft PR.
 
 ## Spec Files Created
 
-| File | Boundary | Stories Covered |
-|------|----------|----------------|
-| `specs/001-api-layer.md` | API Layer | US-001, US-002, US-003 |
+| File                           | Boundary        | Stories Covered        |
+| ------------------------------ | --------------- | ---------------------- |
+| `specs/001-api-layer.md`       | API Layer       | US-001, US-002, US-003 |
 | `specs/002-database-schema.md` | Database Schema | US-001, US-002, US-004 |
-| `specs/003-auth-middleware.md` | Auth Middleware | US-003, US-005 |
+| `specs/003-auth-middleware.md` | Auth Middleware | US-003, US-005         |
 
 ## Spec Summary
 
 ### specs/001-api-layer.md
+
 - **Boundary**: API Layer
 - **Key requirements**: [1-2 sentence summary of MUST requirements]
 - **Data contracts**: [list of API endpoints or models defined]
 
 ### specs/002-database-schema.md
+
 ...
 
 ## Notes
+
 [Any issues encountered, cross-spec dependencies, or items needing attention]
 ```
 
@@ -118,37 +126,44 @@ A report documenting the created spec files and the draft PR.
 
 Each spec file at `specs/{NNN}-{slug}.md` should follow this structure:
 
-```markdown
+````markdown
 # Spec: [Boundary Name]
 
 ## Stories Covered
+
 - US-001: [title]
 - US-003: [title]
 
 ## Affected Modules
+
 - `src/routes/api.ts`
 - `src/lib/db.ts`
 
 ## Data Models
 
 ### [Model Name]
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| id | UUID | yes | Primary key |
-| name | string | yes | Max 255 chars |
+
+| Field | Type   | Required | Notes         |
+| ----- | ------ | -------- | ------------- |
+| id    | UUID   | yes      | Primary key   |
+| name  | string | yes      | Max 255 chars |
 
 ## API Contracts
 
 ### POST /api/recipes
+
 **Request**:
+
 ```json
 {
   "title": "string",
   "ingredients": ["string"]
 }
 ```
+````
 
 **Response** (201):
+
 ```json
 {
   "id": "uuid",
@@ -158,6 +173,7 @@ Each spec file at `specs/{NNN}-{slug}.md` should follow this structure:
 ```
 
 **Errors**:
+
 - 400: Missing required fields
 - 401: Not authenticated
 
@@ -190,6 +206,7 @@ Each spec file at `specs/{NNN}-{slug}.md` should follow this structure:
 │  [Save Recipe]  [Cancel]        │
 └─────────────────────────────────┘
 ```
+
 ```
 
 ## Quality Criteria
@@ -204,3 +221,4 @@ Each spec file at `specs/{NNN}-{slug}.md` should follow this structure:
 ## Context
 
 This step bridges analysis and implementation planning. Specs serve as the contract between product and engineering: they define what the system must do (behavioral requirements) without prescribing how (implementation details). The specs PR goes through review before implementation starts, ensuring alignment between Luce (product), Nicholas (human), and Drago (engineering). Subsequent steps reference these specs when creating the plan issue.
+```

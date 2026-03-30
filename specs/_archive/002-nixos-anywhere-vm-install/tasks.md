@@ -8,11 +8,13 @@
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
 ## Format: `[ID] [P?] [Story] Description`
+
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
 - Include exact file paths in descriptions
 
 ## Path Conventions
+
 - **NixOS project**: Configuration files at repository root and in module subdirectories
 - **Scripts**: `scripts/` directory for automation
 - **Examples**: `examples/` directory for reference configurations
@@ -49,6 +51,7 @@
 **Goal**: Enable developers to deploy a minimal Keystone server to a VM via nixos-anywhere and verify ZFS-based installation works via SSH
 
 **Independent Test**:
+
 1. Boot VM from Keystone ISO with SSH access
 2. Run `nixos-anywhere --flake .#test-server root@<vm-ip>`
 3. Wait for deployment to complete and system to reboot
@@ -56,6 +59,7 @@
 5. Verify ZFS pool is mounted and encrypted storage is accessible
 
 **Known Issues**:
+
 - ZFS modules cannot auto-load in current ISO kernel (see error in deployment logs)
 - Issue #156: ZFS pools may need explicit export before reboot (https://github.com/nix-community/nixos-anywhere/issues/156)
 
@@ -85,12 +89,14 @@
 **BLOCKER**: Research indicates `preUnmountHook` does not exist in disko - the hook in modules/disko-single-disk-root/default.nix:216 is being silently ignored, causing nixos-anywhere to hang during pool export because the credstore LUKS device remains open.
 
 **Investigation Tasks (Option 3 - Disko Native Solution)**:
+
 - [x] T022a [US1] Research disko unmount script generation in lib/types/zpool.nix to understand `_unmount` function behavior
 - [x] T022b [US1] Check disko source for any way to customize unmount scripts or inject LUKS cleanup commands
 - [x] T022c [US1] Test if disko properly handles LUKS devices on zvols during pool export without custom hooks
 - [x] T022d [US1] Document findings: Can disko handle credstore cleanup natively? (YES/NO decision point)
 
 **Investigation Results**:
+
 - **Disko DOES have proper LUKS cleanup**: lib/types/luks.nix contains `cryptsetup close` in `_unmount.dev`
 - **But nixos-anywhere DOESN'T use it**: nixos-anywhere.sh:nixosReboot() only runs `umount -Rv /mnt/ && swapoff -a && zpool export -a`
 - **Root cause**: nixos-anywhere bypasses disko's unmount scripts entirely, running raw commands instead
@@ -98,6 +104,7 @@
 - **Decision**: Proceed with Option 5 (deployment wrapper) to inject proper cleanup before pool export
 
 **Fallback Implementation Tasks (Option 5 - Deployment Wrapper Solution)**:
+
 - [x] T022e [US1] Remove invalid `preUnmountHook` line from modules/disko-single-disk-root/default.nix:216
 - [x] T022f [US1] Modify bin/test-deployment to use `--no-reboot` flag with nixos-anywhere
 - [x] T022g [US1] Add post-deployment cleanup in bin/test-deployment: SSH to target and run `cryptsetup luksClose /dev/mapper/credstore && zpool export -a`
@@ -106,6 +113,7 @@
 - [x] T022j [US1] Update tasks.md notes section (lines 337-350) with actual solution implemented
 
 **Option 4 Analysis (Modify nixos-anywhere)**:
+
 - **Finding**: Disko DOES have unmount scripts (`_cliUnmount`, `unmount`/`unmountNoDeps`)
 - **Problem**: nixos-anywhere doesn't call them - uses raw `umount` + `zpool export` instead
 - **Solution 4A**: Patch nixos-anywhere to call disko unmount scripts
@@ -125,6 +133,7 @@
 **Goal**: Provide automated verification script to validate server deployment configuration and ZFS storage
 
 **Independent Test**:
+
 1. Deploy a server using US1 workflow
 2. Run `./scripts/verify-deployment.sh test-server <vm-ip>`
 3. Verify all checks pass (SSH, hostname, firewall, ZFS, encryption)
@@ -155,6 +164,7 @@
 **Goal**: Enable developers to repeatedly deploy and test configuration changes with confidence in reproducibility
 
 **Independent Test**:
+
 1. Deploy server using US1 workflow
 2. Destroy the VM completely
 3. Redeploy using same configuration
@@ -236,6 +246,7 @@
 ### Within Each User Story
 
 **US1 - Basic Deployment**:
+
 1. Fix ZFS kernel issue FIRST (T007-T010) - BLOCKS everything
 2. Configuration tasks (T011-T014) can be done in sequence
 3. Initial deployment testing (T015)
@@ -245,6 +256,7 @@
 7. Each test validates a specific acceptance criterion
 
 **US2 - Verification**:
+
 1. Create script structure (T023)
 2. Implement individual checks (T024-T028) - these can be parallelized
 3. Remove unneeded checks (T029)
@@ -252,6 +264,7 @@
 5. Testing (T033-T035) must follow implementation
 
 **US3 - Reproducibility**:
+
 1. Create wrapper script (T036)
 2. Add features (T037-T042) in sequence
 3. Testing (T043-T047) validates the complete workflow
@@ -380,6 +393,7 @@ Run the verification script (US2) and deployment wrapper (US3) to validate all s
 ### Immediate: Test Credstore Cleanup Solution (T022i)
 
 **What was done:**
+
 - ✅ Completed comprehensive investigation of credstore cleanup issue (T022a-T022d)
 - ✅ Researched all possible solutions (Options 3, 4, 5)
 - ✅ Implemented Option 5: Deployment wrapper with manual cleanup (T022e-T022h, T022j)
@@ -393,11 +407,13 @@ Run the deployment test to verify the credstore cleanup solution works:
 ```
 
 **Expected outcome:**
+
 - Deployment completes without hanging during pool export
 - System reboots cleanly after cleanup
 - All verification checks pass
 
 **If test fails:**
+
 - Check for "Closing credstore LUKS device..." message in output
 - Check for "Exporting ZFS pool..." message in output
 - Investigate any error messages from cryptsetup or zpool commands
@@ -405,6 +421,7 @@ Run the deployment test to verify the credstore cleanup solution works:
 ### Short-term: Complete US1 Verification (T016-T022)
 
 Once T022i passes, complete the remaining User Story 1 verification tasks:
+
 - T016: Verify system reboots automatically
 - T017: Test SSH access to deployed server
 - T018: Verify SSH service running
@@ -421,6 +438,7 @@ Once T022i passes, complete the remaining User Story 1 verification tasks:
 ### Long-term: Upstream Contributions
 
 **Contribute to nix-community:**
+
 1. **Disko PR**: Add `system.build.unmountScript` output
    - Exposes existing unmount functionality
    - Makes it accessible for tools like nixos-anywhere
@@ -435,12 +453,15 @@ Once T022i passes, complete the remaining User Story 1 verification tasks:
 ### Completion Status
 
 **Phase 3 (US1)**: 24/26 tasks complete (92%)
+
 - Remaining: T022i (test), T016-T022 (verification)
 
 **Phase 7 (Polish)**: 6/10 tasks complete (60%)
+
 - Completed: T057, T058, T059, T062, T063, T065, T066
 - Remaining: T060, T061, T064 (documentation and optimization)
 
 **Total Progress**: 67/76 tasks complete (88%)
+
 - MVP scope: 30/32 complete (94%)
 - Full feature: 67/76 complete (88%)

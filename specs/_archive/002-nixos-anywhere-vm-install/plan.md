@@ -13,6 +13,7 @@ Add nixos-anywhere deployment capability to install a minimal Keystone server co
 
 **Language/Version**: Nix (unstable), NixOS 25.05
 **Primary Dependencies**:
+
 - nixos-anywhere (deployment tool)
 - disko (disk partitioning/formatting)
 - ZFS (filesystem with native encryption)
@@ -24,17 +25,20 @@ Add nixos-anywhere deployment capability to install a minimal Keystone server co
 **Target Platform**: x86_64-linux (VMs and bare metal servers)
 **Project Type**: NixOS infrastructure configuration (declarative modules)
 **Performance Goals**:
+
 - Complete deployment in under 10 minutes
 - System boot in under 2 minutes
 - SSH access available within 2 minutes of boot
 
 **Constraints**:
+
 - Must work in VM environments without hardware TPM2
 - Must handle graceful degradation from TPM2 to password-based unlock
 - Must use existing Keystone modules without modification
 - Must support deployment over SSH to installer ISO
 
 **Scale/Scope**:
+
 - Single server deployment configuration
 - Approximately 3-5 new files (flake configuration, example config, testing scripts)
 - Integration with existing 4 NixOS modules (server, disko, iso-installer)
@@ -42,7 +46,7 @@ Add nixos-anywhere deployment capability to install a minimal Keystone server co
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### I. Declarative Infrastructure ✅
 
@@ -168,7 +172,6 @@ No new modules are created - this feature purely composes existing modules into 
 
 ## Complexity Tracking
 
-*Fill ONLY if Constitution Check has violations that must be justified*
+_Fill ONLY if Constitution Check has violations that must be justified_
 
 **No violations**: All constitutional gates pass. This section is not applicable.
-

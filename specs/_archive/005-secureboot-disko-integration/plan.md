@@ -13,23 +13,24 @@ Integrate Secure Boot key generation and enrollment directly into the disko depl
 
 **Language/Version**: Nix (NixOS 25.05)
 **Primary Dependencies**:
-  - nixpkgs.sbctl (Secure Boot key management)
-  - lanzaboote (NixOS Secure Boot implementation) - NEEDS CLARIFICATION: flake input setup
-  - disko (declarative disk partitioning)
-**Storage**: /var/lib/sbctl/keys (Secure Boot keys on target system)
-**Testing**: bin/test-deployment (VM-based integration testing)
-**Target Platform**: UEFI x86_64 systems (VMs and physical hardware)
-**Project Type**: NixOS module (infrastructure configuration)
-**Performance Goals**: Key generation < 30 seconds during deployment
-**Constraints**:
-  - Must work in nixos-anywhere deployment context
-  - UEFI firmware must be in Setup Mode initially
-  - Keys must be generated before NixOS configuration build
-**Scale/Scope**: Single NixOS module affecting ~3 existing modules
+
+- nixpkgs.sbctl (Secure Boot key management)
+- lanzaboote (NixOS Secure Boot implementation) - NEEDS CLARIFICATION: flake input setup
+- disko (declarative disk partitioning)
+  **Storage**: /var/lib/sbctl/keys (Secure Boot keys on target system)
+  **Testing**: bin/test-deployment (VM-based integration testing)
+  **Target Platform**: UEFI x86_64 systems (VMs and physical hardware)
+  **Project Type**: NixOS module (infrastructure configuration)
+  **Performance Goals**: Key generation < 30 seconds during deployment
+  **Constraints**:
+- Must work in nixos-anywhere deployment context
+- UEFI firmware must be in Setup Mode initially
+- Keys must be generated before NixOS configuration build
+  **Scale/Scope**: Single NixOS module affecting ~3 existing modules
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Core Principles Alignment
 
@@ -86,5 +87,4 @@ bin/
 
 ## Complexity Tracking
 
-*No constitution violations - section not applicable*
-
+_No constitution violations - section not applicable_

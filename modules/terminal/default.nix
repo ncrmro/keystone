@@ -14,7 +14,7 @@ let
   cfg = config.keystone.terminal;
   notesPath = config.keystone.notes.path;
   keystoneHome = "${config.home.homeDirectory}/.keystone";
-  codeRoot = "${config.home.homeDirectory}/code";
+  codeRoot = "${config.home.homeDirectory}/repos";
   worktreeRoot = "${config.home.homeDirectory}/.worktrees";
   ensurePathsScript = pkgs.writeShellScriptBin "keystone-ensure-paths" ''
     set -euo pipefail
@@ -51,10 +51,12 @@ in
     ./secrets.nix
     ./ssh-auto-load.nix
     ./forgejo.nix
+    ./grafana.nix
     ./projects.nix
     ./cli-coding-agent-configs.nix
     ./conventions.nix
     ./ai-extensions.nix
+    ./generated-agent-assets.nix
     ./perception.nix
   ];
 

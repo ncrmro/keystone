@@ -35,28 +35,37 @@ Research the spike question using web search, codebase exploration, or both, and
 # Research: [Spike Title]
 
 ## Approach
+
 [Brief description of research methods used: web search, codebase, both]
 
 ## Findings
 
 ### [Finding/Theme 1]
+
 [Description of what was learned]
+
 - Source: [URL or file path]
 
 ### [Finding/Theme 2]
+
 [Description of what was learned]
+
 - Source: [URL or file path]
 
 ### [Finding/Theme 3]
+
 [Description of what was learned]
+
 - Source: [URL or file path]
 
 ## Key Takeaways
+
 - [Most important insight for answering the spike question]
 - [Second insight]
 - [Third insight]
 
 ## Open Questions
+
 - [Anything that remains unclear and might need prototyping]
 ```
 

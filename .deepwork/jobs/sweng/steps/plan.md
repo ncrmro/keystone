@@ -7,6 +7,7 @@ worktree per `process.feature-delivery`, write TASK.md with acceptance criteria,
 create a draft PR, and update TASKS.yaml.
 
 The workflow that invoked this step determines the task type:
+
 - `implement` → new feature (branch prefix: `feat/`)
 - `fix` → bug fix (branch prefix: `fix/`)
 - `refactor` → code restructuring (branch prefix: `refactor/`)
@@ -29,6 +30,7 @@ Ask structured questions to determine the task, repo, and agent:
 If any input is ambiguous, ask the user before proceeding.
 
 Determine the **task_type** from the invoking workflow:
+
 - `/sweng.implement` → `implement`
 - `/sweng.fix` → `fix`
 - `/sweng.refactor` → `refactor`
@@ -58,11 +60,13 @@ fi
 If the task comes from an issue:
 
 **GitHub:**
+
 ```bash
 gh issue view NUMBER --repo OWNER/REPO --json title,body,number
 ```
 
 **Forgejo:**
+
 ```bash
 fj issue view NUMBER --repo OWNER/REPO
 ```
@@ -72,6 +76,7 @@ Extract the title, description, and acceptance criteria from the issue body.
 #### Step 4: Read Repo Context
 
 Check the target repo for tech stack and conventions:
+
 ```bash
 cat .repos/OWNER/REPO/AGENTS.md 2>/dev/null || cat .repos/OWNER/REPO/CLAUDE.md 2>/dev/null
 ```
@@ -109,9 +114,9 @@ Write TASK.md to the worktree root:
 repo: owner/repo
 branch: feat/task-slug
 agent: claude
-platform: github           # or forgejo
-issue: 42                  # optional
-task_type: implement       # implement | fix | refactor
+platform: github # or forgejo
+issue: 42 # optional
+task_type: implement # implement | fix | refactor
 status: planning
 created: 2026-03-21
 ---
@@ -158,6 +163,7 @@ git push -u origin $BRANCH
 Create draft PR with the proper body format per `process.pull-request`:
 
 **GitHub:**
+
 ```bash
 gh pr create --draft \
   --title "$TYPE(scope): task title" \
@@ -185,6 +191,7 @@ EOF
 ```
 
 **Forgejo:**
+
 ```bash
 fj pr create "WIP: $TYPE(scope): task title" \
   --head $BRANCH --base $DEFAULT_BRANCH \
@@ -220,12 +227,14 @@ When starting work on an issue that belongs to a milestone with a project board:
 1. **Comment on the issue** to signal work has started:
 
 **GitHub:**
+
 ```bash
 gh issue comment $ISSUE_NUMBER --repo OWNER/REPO \
   --body "Starting work on branch \`$BRANCH\`. Draft PR: #$PR_NUMBER"
 ```
 
 **Forgejo:**
+
 ```bash
 fj issue comment $ISSUE_NUMBER --repo OWNER/REPO \
   --body "Starting work on branch \`$BRANCH\`. Draft PR: #$PR_NUMBER"
@@ -234,6 +243,7 @@ fj issue comment $ISSUE_NUMBER --repo OWNER/REPO \
 2. **Move the issue to "In Progress"** on the project board:
 
 **GitHub:**
+
 ```bash
 gh project field-list $PROJECT_NUM --owner OWNER --format json
 gh project item-edit --id $ITEM_ID --project-id $PROJECT_ID \
@@ -241,6 +251,7 @@ gh project item-edit --id $ITEM_ID --project-id $PROJECT_ID \
 ```
 
 **Forgejo:**
+
 ```bash
 forgejo-project item move --project $PROJECT_NUM --issue $ISSUE_NUMBER --column "In Progress"
 ```
@@ -250,9 +261,11 @@ forgejo-project item move --project $PROJECT_NUM --issue $ISSUE_NUMBER --column 
 #### Step 8: Update TASK.md Status
 
 Update TASK.md frontmatter:
+
 - `status: ready`
 
 Commit the status change:
+
 ```bash
 cd .repos/OWNER/REPO/.worktrees/$BRANCH
 git add TASK.md

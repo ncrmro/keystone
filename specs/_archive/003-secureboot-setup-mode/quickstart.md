@@ -19,6 +19,7 @@ users.users.<youruser>.extraGroups = [ "libvirtd" ];
 ```
 
 **Required packages** (provided by NixOS):
+
 - libvirt
 - QEMU with OVMF firmware
 - remote-viewer (for graphical console)
@@ -33,12 +34,14 @@ users.users.<youruser>.extraGroups = [ "libvirtd" ];
 ```
 
 **What happens**:
+
 - ✅ VM created with UEFI Secure Boot enabled
 - ✅ NVRAM initialized from empty OVMF_VARS template (no pre-enrolled keys)
 - ✅ Boots into Setup Mode automatically
 - ✅ Keystone installer ISO loaded (if available at vms/keystone-installer.iso)
 
 **Expected output**:
+
 ```
 ✓ Connected to libvirt
 Searching for OVMF firmware...
@@ -53,11 +56,13 @@ Searching for OVMF firmware...
 ### 2. Connect to VM
 
 **Option A: Serial Console** (recommended for automated testing):
+
 ```bash
 virsh console secureboot-test
 ```
 
 **Option B: Graphical Display** (recommended for interactive use):
+
 ```bash
 remote-viewer $(virsh domdisplay secureboot-test)
 ```
@@ -72,6 +77,7 @@ bootctl status
 ```
 
 **Expected output**:
+
 ```
 System:
      Firmware: UEFI 2.70 (EDK II 1.00)
@@ -80,6 +86,7 @@ System:
 ```
 
 **Interpretation**:
+
 - ✅ `Secure Boot: disabled (setup)` = Firmware has Secure Boot capability, currently in setup mode
 - ✅ `Setup Mode: setup` = No Platform Key enrolled, ready for key enrollment
 - ✅ This is the correct state for testing Keystone installer
@@ -87,6 +94,7 @@ System:
 ### 4. Alternative Verification (from host)
 
 **Check NVRAM file size**:
+
 ```bash
 stat -c%s vms/secureboot-test/OVMF_VARS.fd
 ```
@@ -94,11 +102,13 @@ stat -c%s vms/secureboot-test/OVMF_VARS.fd
 **Expected**: `540672` bytes (empty template, no pre-enrolled keys)
 
 **Inspect NVRAM with dumpxml** (optional):
+
 ```bash
 virsh dumpxml secureboot-test | grep -A 5 "<os"
 ```
 
 **Expected output**:
+
 ```xml
 <os>
   <type arch='x86_64' machine='q35'>hvm</type>
@@ -171,11 +181,13 @@ virsh console test-setup
 ### OVMF Firmware Not Found
 
 **Error**:
+
 ```
 ERROR: OVMF firmware not found!
 ```
 
 **Solution**:
+
 ```bash
 # Ensure libvirtd is enabled (provides OVMF firmware)
 # In configuration.nix:
@@ -192,6 +204,7 @@ sudo nixos-rebuild switch
 **Cause**: NVRAM file already has Platform Key enrolled
 
 **Solution**:
+
 ```bash
 # Reset to setup mode by deleting and recreating
 ./bin/virtual-machine --reset <vm-name>
@@ -201,11 +214,13 @@ sudo nixos-rebuild switch
 ### Cannot Connect with virsh console
 
 **Error**:
+
 ```
 error: failed to get domain 'secureboot-test'
 ```
 
 **Solution**:
+
 ```bash
 # Ensure you're in libvirtd group
 groups | grep libvirtd
@@ -224,11 +239,13 @@ sudo nixos-rebuild switch
 **Symptom**: `bootctl status` doesn't show Secure Boot information
 
 **Possible Causes**:
+
 1. VM didn't boot with UEFI (check machine type = q35)
 2. Kernel doesn't expose efivars (check /sys/firmware/efi/efivars exists)
 3. Running bootctl outside of UEFI environment
 
 **Solution**:
+
 ```bash
 # Verify UEFI boot
 ls /sys/firmware/efi
@@ -246,6 +263,7 @@ mount | grep efivars
 ### Inspect UEFI Variables Directly
 
 **From inside VM**:
+
 ```bash
 # Check SetupMode variable
 cat /sys/firmware/efi/efivars/SetupMode-* | od -An -t u1
@@ -296,12 +314,14 @@ bootctl status
 ## Expected Timeline
 
 **VM Creation**: 15-30 seconds
+
 - Firmware detection: ~2 seconds
 - NVRAM copy: <1 second
 - VM definition: ~5 seconds
 - VM start: ~10 seconds
 
 **First Boot**: 20-40 seconds
+
 - UEFI firmware init: ~5 seconds
 - Boot from ISO: ~15-30 seconds
 
@@ -330,16 +350,19 @@ After verifying setup mode:
 ## Reference
 
 **Full Documentation**:
+
 - [Feature Specification](./spec.md)
 - [Implementation Plan](./plan.md)
 - [Research Notes](./research.md)
 - [Data Model](./data-model.md)
 
 **Related Scripts**:
+
 - `bin/virtual-machine` - VM creation and management
 - `bin/build-iso` - Build Keystone installer ISO
 
 **UEFI/Secure Boot Resources**:
+
 - `bootctl(1)` man page
 - UEFI Specification 2.10
 - OVMF Documentation: https://github.com/tianocore/tianocore.github.io/wiki/OVMF

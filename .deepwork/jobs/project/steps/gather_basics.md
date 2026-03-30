@@ -24,7 +24,6 @@ Have a structured conversation with the user to gather everything needed to buil
 3. **Lean Canvas discovery (ask 3-5 of these)**
 
    Ask structured questions to fill in lean canvas fields. Prioritize based on what the user hasn't already covered. You don't need to ask all of these — pick the 3-5 most relevant:
-
    - **Problem**: "What are the top 1-3 problems this project solves?"
    - **Customer Segments**: "Who are the target users or beneficiaries?"
    - **Unique Value Proposition**: "What's the single clearest reason someone would choose this over alternatives?"
@@ -58,10 +57,12 @@ Have a structured conversation with the user to gather everything needed to buil
 A structured summary of everything gathered during the conversation.
 
 **Structure**:
+
 ```markdown
 # Project Intake Notes: [Project Name]
 
 ## Identity
+
 - **Name**: [project name]
 - **Slug**: [lowercase-hyphenated]
 - **Type**: [commercial / nonprofit / open-source / mission-focused]
@@ -70,37 +71,49 @@ A structured summary of everything gathered during the conversation.
 - **Description**: [longer description if provided]
 
 ## Infrastructure
+
 ### Domains
+
 - [domain1.com] — [purpose: marketing site, app, docs, etc.]
 
 ### Git Repositories
+
 - [url] — [platform] — [description]
 - [url] — [platform] — [needs to be created: yes/no]
 
 ## Lean Canvas
+
 ### Problem
+
 [Top 1-3 problems]
 
 ### Customer Segments
+
 [Target users/beneficiaries]
 
 ### Unique Value Proposition
+
 [Single clearest reason to choose this]
 
 ### Unfair Advantage
+
 [What can't be easily copied, or "none identified yet"]
 
 ### Key Metrics
+
 [How success is measured]
 
 ## Riskiest Assumptions
+
 1. [Assumption] — [Why it's risky]
 2. [Assumption] — [Why it's risky]
 
 ## User Stories Mentioned
+
 - [Any user stories or features the user brought up, or "None mentioned"]
 
 ## Notes
+
 [Any other relevant context from the conversation]
 ```
 

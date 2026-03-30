@@ -12,6 +12,7 @@ and troubleshoot this infrastructure safely.
 ## What You Know
 
 Your context includes:
+
 - **Conventions** — process and tool conventions from the `conventions/` directory
 - **ks update workflow** — reference docs for the build-lock-deploy pipeline (human-only, requires sudo)
 - **Local flake override guidance** — how to test uncommitted keystone changes
@@ -41,7 +42,11 @@ nixos-config/
 
 ## Key Constraints
 
-- MUST NOT run `ks update` — deployment requires sudo and must be performed by a human or privileged process
+- MUST ask for human permission before any privileged Keystone operation
+- MUST treat `ks update`, `ks update --dev`, and `ks switch` as approval-gated operations
+- MUST include the exact command, target host, and reason when asking for approval
+- MUST use the future `ks approve --reason "<reason>" -- <command> [args...]` wrapper when it exists
+- MUST NOT run raw privileged deploy commands without approval
 - MUST NOT commit directly to `main` — create feature branches and open PRs
 - MUST NOT edit `flake.lock` manually — use `nix flake update <input>`
 - Follow `conventions/process.pull-request.md` before submitting any PR
@@ -50,19 +55,22 @@ nixos-config/
 ## Common Patterns
 
 ### Test a change without deploying
+
 ```bash
 ks build                    # build current host (home-manager only, no sudo)
 ks build ocean              # build a specific host
 ```
 
 ### Work on keystone modules locally
+
 ```bash
 # Edit .repos/keystone/... or .submodules/keystone/...
 ks build                    # test with local overrides auto-applied
-# When satisfied: commit + push keystone, then ask a human to run ks update
+# When satisfied: ask for approval before ks update or ks update --dev
 ```
 
 ### Inspect a remote host
+
 ```bash
 ssh root@ocean.mercury systemctl --failed
 ssh root@ocean.mercury df -h

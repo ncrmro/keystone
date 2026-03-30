@@ -23,7 +23,7 @@ Enable bin/virtual-machine to create VMs that boot into Secure Boot setup mode (
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Core Principles Alignment
 
@@ -48,7 +48,7 @@ All core principles align. No violations to justify. This feature strengthens Se
 
 ## Post-Design Constitution Re-Check
 
-*Re-evaluated after Phase 1 design completion*
+_Re-evaluated after Phase 1 design completion_
 
 ### Design Artifacts Review
 
@@ -109,5 +109,4 @@ docs/
 
 ## Complexity Tracking
 
-*No violations - section not applicable.*
-
+_No violations - section not applicable._

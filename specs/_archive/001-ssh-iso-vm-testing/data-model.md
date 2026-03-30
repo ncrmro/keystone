@@ -15,6 +15,7 @@ This feature primarily deals with VM state management and configuration data. Th
 **Storage**: `vms/server.conf` (quickemu configuration file)
 
 **Attributes**:
+
 - `guest_os`: Operating system type (e.g., "linux")
 - `iso`: Path to ISO file relative to vms/ directory
 - `disk_img`: Path to disk image relative to vms/ directory
@@ -25,6 +26,7 @@ This feature primarily deals with VM state management and configuration data. Th
 - `ssh`: SSH port forwarding (e.g., "22220")
 
 **Relationships**:
+
 - References ISO file (1:1)
 - Creates VM runtime state (1:1)
 
@@ -34,6 +36,7 @@ This feature primarily deals with VM state management and configuration data. Th
 **Storage**: `vms/server/` directory
 
 **Attributes**:
+
 - `pid`: Process ID (from server.pid file)
 - `ports`: Port mappings (from server.ports file)
 - `disk`: QCOW2 disk image (server/disk.qcow2)
@@ -43,6 +46,7 @@ This feature primarily deals with VM state management and configuration data. Th
 - `serial_socket`: Serial console socket path
 
 **States**:
+
 - `not_created`: No VM artifacts exist
 - `stopped`: VM artifacts exist but no process running
 - `starting`: PID file exists, SSH not yet available
@@ -50,6 +54,7 @@ This feature primarily deals with VM state management and configuration data. Th
 - `stopping`: Shutdown signal sent, waiting for termination
 
 **Relationships**:
+
 - Created by VM configuration (1:1)
 - Associated with SSH connection info (1:1)
 
@@ -59,11 +64,13 @@ This feature primarily deals with VM state management and configuration data. Th
 **Storage**: Command-line arguments and temporary files
 
 **Attributes**:
+
 - `ssh_keys`: Array of SSH public keys
 - `output_path`: Location of generated ISO
 - `nixos_modules`: List of NixOS modules to include
 
 **Relationships**:
+
 - Produces ISO file (1:1)
 - Embedded in VM configuration reference (N:1)
 
@@ -73,6 +80,7 @@ This feature primarily deals with VM state management and configuration data. Th
 **Storage**: Derived from VM state and configuration
 
 **Attributes**:
+
 - `hostname`: Target hostname (always "localhost" for VMs)
 - `port`: SSH port (from VM config/state)
 - `username`: SSH user (always "root" for installer)
@@ -80,6 +88,7 @@ This feature primarily deals with VM state management and configuration data. Th
 - `command`: Complete SSH command string
 
 **Relationships**:
+
 - Derived from VM state (1:1)
 - References SSH keys used in ISO (N:M)
 
@@ -140,17 +149,20 @@ stateDiagram-v2
 ## Data Validation Rules
 
 ### VM Configuration
+
 - `iso` must reference existing file in `vms/` directory
 - `ssh` port must be valid (1024-65535) and not system reserved
 - `disk_size` must be valid QEMU size format (e.g., "20G", "500M")
 - `ram` must not exceed host available memory
 
 ### VM State
+
 - PID must reference running qemu-system process
 - Disk image must be valid QCOW2 format
 - Port mappings must match configuration
 
 ### SSH Keys
+
 - Must be valid OpenSSH public key format
 - Must start with ssh-rsa, ssh-ed25519, or ecdsa-sha2
 - Must not be empty or malformed
@@ -158,11 +170,13 @@ stateDiagram-v2
 ## Concurrency Considerations
 
 ### Single VM Instance
+
 - Only one VM instance supported at a time
 - Scripts use lock files to prevent concurrent operations
 - State checks are atomic (PID file read)
 
 ### Operation Serialization
+
 - Start/stop operations are mutually exclusive
 - Status checks can run in parallel with other operations
 - Clean operation requires exclusive access
@@ -170,16 +184,19 @@ stateDiagram-v2
 ## Error Conditions
 
 ### Missing Dependencies
+
 - quickemu not installed
 - QEMU/KVM not available
 - Required directories not writable
 
 ### State Conflicts
+
 - VM already running when start requested
 - VM not running when stop requested
 - Port already in use by another process
 
 ### Resource Issues
+
 - Insufficient disk space for VM
 - Insufficient memory for VM
 - ISO file missing or corrupted
@@ -187,17 +204,20 @@ stateDiagram-v2
 ## Data Persistence
 
 ### Persistent Data
+
 - VM disk image (survives stop/start)
 - UEFI variables (survives stop/start)
 - VM configuration file
 
 ### Ephemeral Data
+
 - Process ID (recreated each start)
 - Port mappings (recreated from config)
 - Console logs (can be cleared)
 - Socket files (recreated each start)
 
 ### Cleanup Scope
+
 - `vm-clean`: Removes all VM state files
 - `vm-clean --preserve-disk`: Keeps disk image only
 - Manual cleanup: Direct file deletion
@@ -205,11 +225,13 @@ stateDiagram-v2
 ## Security Model
 
 ### Access Control
+
 - VM files owned by user running scripts
 - SSH keys never written to VM state directory
 - Private keys never handled by scripts
 
 ### Network Isolation
+
 - SSH port only on localhost by default
 - No external network access without explicit config
 - VM network isolated from host by default
@@ -217,6 +239,7 @@ stateDiagram-v2
 ## Future Extensibility
 
 ### Potential Enhancements
+
 - Multiple VM support (server, client, etc.)
 - VM snapshots for quick reset
 - Cloud-init configuration injection
@@ -224,6 +247,7 @@ stateDiagram-v2
 - Shared folders between host and VM
 
 ### Data Model Extensions
+
 - VM template library
 - SSH key registry
 - Test scenario definitions

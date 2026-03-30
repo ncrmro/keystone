@@ -14,7 +14,7 @@ Writes production code following project conventions, with minimal scope and cor
 - You MUST use semantic commit messages (e.g., `feat:`, `fix:`, `refactor:`).
 - You SHOULD verify your changes compile/pass linting before presenting them.
 - You MUST NOT skip or disable tests, linting, or pre-commit hooks.
-- Code comments MUST be succinct, nuanced explanations of *why* — never restate what the code already says.
+- Code comments MUST be succinct, nuanced explanations of _why_ — never restate what the code already says.
 
 ## Output Format
 
@@ -26,7 +26,9 @@ Writes production code following project conventions, with minimal scope and cor
 
 ## Commit Message
 ```
+
 {semantic commit message}
+
 ```
 
 ## Verification

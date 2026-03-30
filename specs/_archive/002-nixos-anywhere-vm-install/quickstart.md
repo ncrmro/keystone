@@ -40,6 +40,7 @@ nix build .#iso
 ### 2. Boot VM from ISO
 
 Boot your VM using the built ISO. The VM should:
+
 - Boot to NixOS installer
 - Enable SSH server
 - Display IP address on login screen
@@ -123,6 +124,7 @@ nixos-anywhere --flake .#test-server root@192.168.122.50
 ```
 
 **What happens**:
+
 1. nixos-anywhere connects to the target via SSH
 2. Partitions and formats the disk (`/dev/vda`)
 3. Creates ZFS pool with encryption
@@ -132,6 +134,7 @@ nixos-anywhere --flake .#test-server root@192.168.122.50
 7. Reboots the VM
 
 **Expected output**:
+
 ```
 >>> Connecting to target...
 >>> Partitioning disk /dev/vda...
@@ -187,6 +190,7 @@ Run the automated verification script:
 ```
 
 Expected output:
+
 ```
 Verifying deployment: test-server at 192.168.122.50
 ✓ PASS: SSH connectivity
@@ -207,6 +211,7 @@ All checks passed! Deployment verified.
 **Cause**: SSH service not running on target, or wrong IP address
 
 **Solution**:
+
 1. Verify IP address displayed on VM console
 2. Test SSH manually: `ssh root@<ip>`
 3. Check VM network is bridged or NAT with port forwarding
@@ -216,6 +221,7 @@ All checks passed! Deployment verified.
 **Cause**: Wrong disk device name for your VM type
 
 **Solution**:
+
 - QEMU/KVM VMs: Use `/dev/vda`
 - VirtualBox VMs: Use `/dev/sda`
 - Check with: `lsblk` on the target system
@@ -225,6 +231,7 @@ All checks passed! Deployment verified.
 **Cause**: SSH key not added to configuration or wrong key format
 
 **Solution**:
+
 1. Verify SSH public key in `vms/test-server/configuration.nix`
 2. Ensure key is complete single line (no line breaks)
 3. Redeploy with corrected configuration
@@ -234,6 +241,7 @@ All checks passed! Deployment verified.
 **Cause**: Normal behavior in VMs without TPM2
 
 **Solution**:
+
 - This is expected - VMs don't have hardware TPM2 by default
 - Enter the password you set on first boot
 - For production deployments on bare metal, TPM2 enables automatic unlock
@@ -243,6 +251,7 @@ All checks passed! Deployment verified.
 **Cause**: Disk encryption configuration issue or VM boot settings
 
 **Solution**:
+
 1. Check VM boot order (UEFI, disk first)
 2. Verify ZFS pool imported: `zpool import -N rpool`
 3. Check credstore: `cryptsetup status credstore`
@@ -269,6 +278,7 @@ keystone.disko.device = "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W12
 ```
 
 List available devices on target:
+
 ```bash
 ls -l /dev/disk/by-id/
 ```
@@ -375,6 +385,7 @@ If you encounter issues:
 ## Summary
 
 You've successfully:
+
 - ✅ Created a deployment configuration
 - ✅ Added it to your flake
 - ✅ Deployed via nixos-anywhere
@@ -382,6 +393,7 @@ You've successfully:
 - ✅ Accessed the server via SSH
 
 Your Keystone server is now running with:
+
 - Full disk encryption (ZFS + LUKS)
 - Secure SSH-only access
 - mDNS network discovery

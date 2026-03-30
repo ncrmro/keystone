@@ -43,13 +43,16 @@ Take the user's goal and translate it into an actionable implementation plan. Th
 # Implementation Plan
 
 ## Goal
+
 [Restate the user's goal in precise terms]
 
 ## Branch
+
 - **Name**: `<branch-name>`
 - **Worktree**: `.claude/worktrees/<branch-name>`
 
 ## Scope
+
 - **Change type**: [OS-level | home-manager-only | both]
 - **Build strategy**: [full nix build | ks build (home-manager only)]
 - **Affected modules**: [list of module paths]
@@ -65,16 +68,19 @@ These criteria MUST be satisfied before the work is considered complete:
 ## Steps
 
 ### 1. [First change]
+
 - **File**: `path/to/file.nix`
 - **Change**: [What to do and why]
 
 ### 2. [Second change]
+
 - **File**: `path/to/other-file.nix`
 - **Change**: [What to do and why]
 
 [Continue for all changes...]
 
 ## Risks
+
 - [Anything that could go wrong or needs extra care]
 ```
 

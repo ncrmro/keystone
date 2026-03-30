@@ -9,7 +9,6 @@ Collect at least 8 diverse sources from the selected research platforms, extract
 ### Process
 
 1. **Read inputs**
-
    - Read `scope.md` for the research question, sub-questions, type, and search strategy
    - Read `platforms.md` for the platform execution plan and query approach
 
@@ -121,11 +120,11 @@ Collect at least 8 diverse sources from the selected research platforms, extract
 
 ## Coverage Matrix
 
-| Sub-Question | Sources Addressing It |
-|---|---|
+| Sub-Question           | Sources Addressing It        |
+| ---------------------- | ---------------------------- |
 | 1. [sub-question text] | Source 1, Source 3, Source 7 |
-| 2. [sub-question text] | Source 2, Source 4 |
-| ... | ... |
+| 2. [sub-question text] | Source 2, Source 4           |
+| ...                    | ...                          |
 
 ## Gaps
 

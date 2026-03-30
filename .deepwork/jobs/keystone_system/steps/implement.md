@@ -44,16 +44,19 @@ Read the plan from the previous step and execute each change in the worktree. Wo
 # Implementation Summary
 
 ## Branch
+
 - **Name**: `<branch-name>`
 - **Worktree**: `.claude/worktrees/<branch-name>`
 
 ## Changes Made
 
 ### Commit: `<short hash>` — `<commit message>`
+
 - **Files**: `path/to/file1.nix`, `path/to/file2.nix`
 - **What**: [Brief description of what this commit does]
 
 ### Commit: `<short hash>` — `<commit message>`
+
 - **Files**: `path/to/file3.nix`
 - **What**: [Brief description]
 
@@ -61,17 +64,19 @@ Read the plan from the previous step and execute each change in the worktree. Wo
 
 ## Plan Coverage
 
-| Plan Step | Status | Notes |
-|-----------|--------|-------|
-| 1. [step from plan] | Done | |
-| 2. [step from plan] | Done | Slightly different approach — [reason] |
-| 3. [step from plan] | Done | |
+| Plan Step           | Status | Notes                                  |
+| ------------------- | ------ | -------------------------------------- |
+| 1. [step from plan] | Done   |                                        |
+| 2. [step from plan] | Done   | Slightly different approach — [reason] |
+| 3. [step from plan] | Done   |                                        |
 
 ## Deviations from Plan
+
 - [Any changes not in the original plan, with justification]
 - [Or "None — implemented as planned"]
 
 ## Change Type Confirmation
+
 - **Scope**: [OS-level | home-manager-only | both]
 - **Build strategy**: [full nix build | ks build]
 ```

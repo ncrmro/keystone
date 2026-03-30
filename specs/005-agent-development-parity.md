@@ -1,9 +1,11 @@
 # Spec: Agent development parity
 
 ## Stories Covered
+
 - US-004: Use the same development-mode model for users and OS agents
 
 ## Affected Modules
+
 - `modules/terminal/default.nix`
 - `modules/os/users.nix`
 - `modules/os/agents/home-manager.nix`
@@ -15,22 +17,25 @@
 ## Data Models
 
 ### Principal parity contract
-| Principal | Home root | Managed repo root | Dev-mode source |
-|-----------|-----------|-------------------|-----------------|
-| Human user | `/home/{user}` | `~/.keystone/repos` | inherited from `keystone.development` |
-| OS agent | `/home/agent-{name}` | `~/.keystone/repos` under the agent home | inherited from `keystone.development` |
+
+| Principal  | Home root            | Managed repo root                        | Dev-mode source                       |
+| ---------- | -------------------- | ---------------------------------------- | ------------------------------------- |
+| Human user | `/home/{user}`       | `~/.keystone/repos`                      | inherited from `keystone.development` |
+| OS agent   | `/home/agent-{name}` | `~/.keystone/repos` under the agent home | inherited from `keystone.development` |
 
 ### Exception record
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| assetFamily | string | yes | Family that diverges from parity |
-| reason | string | yes | Tooling limitation or non-applicability |
-| scope | string | yes | Human-only, agent-only, or host-specific |
-| fallbackBehavior | string | yes | What happens instead |
+
+| Field            | Type   | Required | Notes                                    |
+| ---------------- | ------ | -------- | ---------------------------------------- |
+| assetFamily      | string | yes      | Family that diverges from parity         |
+| reason           | string | yes      | Tooling limitation or non-applicability  |
+| scope            | string | yes      | Human-only, agent-only, or host-specific |
+| fallbackBehavior | string | yes      | What happens instead                     |
 
 ## Interface definitions
 
 ### Shared inheritance contract
+
 - NixOS-level `keystone.development` and `keystone.repos` are the source of truth.
 - Home Manager modules for both human users and agents consume those values through the same bridge.
 - Asset-family modules decide relevance per principal, but MUST use the same resolution rules when relevant.
@@ -54,6 +59,7 @@
 - If a future asset family is relevant only on one class of principal, the docs MUST mark that scope clearly to avoid false parity expectations.
 
 ## Cross-spec dependencies
+
 - `specs/001-shared-dev-mode-path-resolution.md`
 - `specs/002-repo-backed-terminal-assets.md`
 - `specs/004-lock-and-deploy-safety.md`

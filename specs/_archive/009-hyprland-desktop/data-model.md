@@ -11,15 +11,18 @@ This feature involves configuration modules rather than traditional data entitie
 **Purpose**: System-level configuration for the Hyprland desktop environment.
 
 **Key Attributes**:
+
 - `enable`: Boolean option to activate the desktop module
 - `greetd`: Configuration for the login manager
 - `systemPackages`: List of system-level packages (hyprlock, hypridle, chromium)
 
 **Validation Rules**:
+
 - When enabled, greetd service must be configured
 - Required packages must be available in nixpkgs
 
 **Relationships**:
+
 - Depends on: Base NixOS system configuration
 - Integrates with: home-manager for user-level configuration
 
@@ -28,6 +31,7 @@ This feature involves configuration modules rather than traditional data entitie
 **Purpose**: User-level configuration for the Hyprland desktop environment.
 
 **Key Attributes**:
+
 - `enable`: Boolean option to activate the user desktop module
 - `monitors`: List of monitor configuration strings for Hyprland
 - `terminal`: Default terminal application (default: `uwsm app -- ghostty`)
@@ -38,6 +42,7 @@ This feature involves configuration modules rather than traditional data entitie
 - `capslockAsControl`: Remap Caps Lock to Control key (default: `true`)
 
 **Example Configuration**:
+
 ```nix
 {
   keystone.desktop.hyprland = {
@@ -50,6 +55,7 @@ This feature involves configuration modules rather than traditional data entitie
 ```
 
 **Sub-modules**:
+
 - `appearance.nix`: Visual styling and appearance settings
 - `autostart.nix`: Applications to start with the session
 - `bindings.nix`: Keyboard shortcuts (uses `modifierKey` option)
@@ -62,10 +68,12 @@ This feature involves configuration modules rather than traditional data entitie
 - `layout.nix`: Window layout settings
 
 **Validation Rules**:
+
 - When enabled, Hyprland must be installed at system level
 - Configuration files must be syntactically valid
 
 **Relationships**:
+
 - Depends on: NixOS desktop module being enabled
 - Integrates with: `terminal-dev-environment` module (passive integration via shared terminal)
 
@@ -81,6 +89,7 @@ This feature involves configuration modules rather than traditional data entitie
 ## State Transitions
 
 ### Session State
+
 - `boot` → `login_prompt` (greetd starts)
 - `login_prompt` → `authenticating` (user enters credentials)
 - `authenticating` → `session_starting` (uwsm launches)
@@ -92,11 +101,13 @@ This feature involves configuration modules rather than traditional data entitie
 ## Package Lists
 
 ### System-Level Packages (NixOS Module)
+
 - hyprlock
 - hypridle
 - chromium
 
 ### User-Level Packages (Home-Manager Module)
+
 - ghostty
 - hyprpaper
 - waybar

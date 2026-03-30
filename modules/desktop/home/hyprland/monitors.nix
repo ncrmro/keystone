@@ -24,17 +24,17 @@ in
 
     settings = mkOption {
       type = types.listOf types.str;
-      default = [
-        ", preferred, auto, 1"
-      ];
+      default = [ ];
       description = "List of static monitor configurations (Hyprland syntax).";
     };
   };
 
   config = mkIf hyprlandCfg.enable {
     wayland.windowManager.hyprland.settings = {
-      monitor =
-        cfg.settings ++ (optional cfg.autoMirror ", preferred, auto, 1, mirror, ${cfg.primaryDisplay}");
+      monitor = mkDefault (
+        (if cfg.settings == [ ] then [ ", preferred, auto, 1" ] else cfg.settings)
+        ++ (optional cfg.autoMirror ", preferred, auto, 1, mirror, ${cfg.primaryDisplay}")
+      );
     };
   };
 }

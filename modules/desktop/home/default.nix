@@ -27,6 +27,30 @@ in
         description = "Install the Ultimate Hacking Keyboard agent";
       };
     };
+
+    audio = {
+      defaults = {
+        sink = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Default output device name to apply at desktop session start.";
+        };
+
+        source = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Default input device name to apply at desktop session start.";
+        };
+      };
+    };
+
+    printer = {
+      default = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Default CUPS printer name to apply at desktop session start.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {

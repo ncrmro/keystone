@@ -188,8 +188,69 @@ let
     builtins.readFile ./keystone-launch-walker.sh
   );
 
+  # Detached process launcher for menu-triggered long-lived commands.
+  keystoneDetach = pkgs.writeShellScriptBin "keystone-detach" ''
+    set -euo pipefail
+
+    print_pid="false"
+
+    case "''${1:-}" in
+      --print-pid)
+        print_pid="true"
+        shift
+        ;;
+    esac
+
+    if [[ $# -eq 0 ]]; then
+      echo "Usage: keystone-detach [--print-pid] <command> [args...]" >&2
+      exit 1
+    fi
+
+    ${pkgs.util-linux}/bin/setsid "$@" </dev/null >/dev/null 2>&1 &
+    child_pid=$!
+
+    if [[ "$print_pid" == "true" ]]; then
+      printf "%s\n" "$child_pid"
+    fi
+  '';
+
   # Main menu script
   keystoneMenu = pkgs.writeShellScriptBin "keystone-menu" (builtins.readFile ./keystone-menu.sh);
+
+  # Main Mod+Escape backend for Elephant/Walker
+  keystoneMainMenu = pkgs.writeShellScriptBin "keystone-main-menu" (
+    builtins.readFile ./keystone-main-menu.sh
+  );
+
+  # Desktop setup launcher for Walker/Elephant
+  keystoneSetupMenu = pkgs.writeShellScriptBin "keystone-setup-menu" (
+    builtins.readFile ./keystone-setup-menu.sh
+  );
+
+  # Audio defaults controller for Elephant/Walker and terminal use
+  keystoneAudioMenu = pkgs.writeShellScriptBin "keystone-audio-menu" (
+    builtins.readFile ./keystone-audio-menu.sh
+  );
+
+  # CUPS printer default controller for Elephant/Walker and terminal use
+  keystonePrinterMenu = pkgs.writeShellScriptBin "keystone-printer-menu" (
+    builtins.readFile ./keystone-printer-menu.sh
+  );
+
+  # Hyprland monitor controller for Elephant/Walker
+  keystoneMonitorMenu = pkgs.writeShellScriptBin "keystone-monitor-menu" (
+    builtins.readFile ./keystone-monitor-menu.sh
+  );
+
+  # Hardware security and disk unlock controller
+  keystoneHardwareMenu = pkgs.writeShellScriptBin "keystone-hardware-menu" (
+    builtins.readFile ./keystone-hardware-menu.sh
+  );
+
+  # Multi-account mail and calendar controller
+  keystoneAccountsMenu = pkgs.writeShellScriptBin "keystone-accounts-menu" (
+    builtins.readFile ./keystone-accounts-menu.sh
+  );
 
   # Keybindings viewer script
   keystoneMenuKeybindings = pkgs.writeShellScriptBin "keystone-menu-keybindings" (
@@ -243,43 +304,167 @@ let
 
   linkedCommands = [
     (mkHomeScriptCommand {
-      inherit config;
+      inherit config pkgs;
       commandName = "keystone-launch-walker";
       relativePath = "modules/desktop/home/scripts/keystone-launch-walker.sh";
       package = keystoneLaunchWalker;
+      runtimeInputs = [ pkgs.walker ];
     })
     (mkHomeScriptCommand {
-      inherit config;
+      inherit config pkgs;
       commandName = "keystone-menu";
       relativePath = "modules/desktop/home/scripts/keystone-menu.sh";
       package = keystoneMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.gawk
+        pkgs.gnugrep
+        hyprlandPkg
+        pkgs.jq
+        pkgs.libnotify
+        pkgs.walker
+        pkgs.xdg-utils
+      ];
     })
     (mkHomeScriptCommand {
-      inherit config;
+      inherit config pkgs;
+      commandName = "keystone-main-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-main-menu.sh";
+      package = keystoneMainMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.gawk
+        pkgs.gnugrep
+        pkgs.jq
+        pkgs.libnotify
+        pkgs.systemd
+        pkgs.walker
+        pkgs.xdg-utils
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-setup-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-setup-menu.sh";
+      package = keystoneSetupMenu;
+      runtimeInputs = [
+        pkgs.libnotify
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-audio-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-audio-menu.sh";
+      package = keystoneAudioMenu;
+      runtimeInputs = [
+        pkgs.jq
+        pkgs.libnotify
+        pkgs.pulseaudio
+        pkgs.python3
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-printer-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-printer-menu.sh";
+      package = keystonePrinterMenu;
+      runtimeInputs = [
+        pkgs.cups
+        pkgs.jq
+        pkgs.libnotify
+        pkgs.python3
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-monitor-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-monitor-menu.sh";
+      package = keystoneMonitorMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.gawk
+        hyprlandPkg
+        pkgs.jq
+        pkgs.libnotify
+        pkgs.python3
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-hardware-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-hardware-menu.sh";
+      package = keystoneHardwareMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.gnugrep
+        pkgs.jq
+        pkgs.libnotify
+        pkgs.systemd
+        pkgs.util-linux
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-accounts-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-accounts-menu.sh";
+      package = keystoneAccountsMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.gnugrep
+        pkgs.jq
+        pkgs.less
+        pkgs.libnotify
+        pkgs.util-linux
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
       commandName = "keystone-menu-keybindings";
       relativePath = "modules/desktop/home/scripts/keystone-menu-keybindings.sh";
       package = keystoneMenuKeybindings;
     })
     (mkHomeScriptCommand {
-      inherit config;
+      inherit config pkgs;
       commandName = "keystone-context";
       relativePath = "modules/desktop/home/scripts/keystone-context.sh";
       package = keystoneContext;
+      runtimeInputs = [
+        hyprlandPkg
+        pkgs.jq
+        pkgs.util-linux
+      ];
     })
     (mkHomeScriptCommand {
-      inherit config;
+      inherit config pkgs;
       commandName = "keystone-context-switch";
       relativePath = "modules/desktop/home/scripts/keystone-context-switch.sh";
       package = keystoneContextSwitch;
+      runtimeInputs = [ pkgs.walker ];
     })
     (mkHomeScriptCommand {
-      inherit config;
+      inherit config pkgs;
       commandName = "keystone-project-menu";
       relativePath = "modules/desktop/home/scripts/keystone-project-menu.sh";
       package = keystoneProjectMenu;
+      runtimeInputs = [
+        hyprlandPkg
+        pkgs.jq
+        pkgs.util-linux
+        pkgs.walker
+      ];
     })
     (mkHomeScriptCommand {
-      inherit config;
+      inherit config pkgs;
       commandName = "keystone-notes-inbox";
       relativePath = "modules/desktop/home/scripts/keystone-notes-inbox.sh";
       package = keystoneNotesInbox;
@@ -297,12 +482,25 @@ in
             keystoneIdleToggle
             keystoneNightlightToggle
             keystoneBatteryMonitor
+            keystoneDetach
             keystoneProjectMenu
+            pkgs.jq
+            pkgs.pulseaudio
             # Dependencies that should be available
             pkgs.gpu-screen-recorder
             pkgs.libxkbcommon # for xkbcli in keybindings menu
             pkgs.hypridle
           ];
+
+          wayland.windowManager.hyprland.settings.exec-once =
+            mkIf (cfg.audio.defaults.sink != null || cfg.audio.defaults.source != null)
+              (mkAfter [
+                "env KEYSTONE_AUDIO_DEFAULT_SINK='${
+                  if cfg.audio.defaults.sink != null then cfg.audio.defaults.sink else ""
+                }' KEYSTONE_AUDIO_DEFAULT_SOURCE='${
+                  if cfg.audio.defaults.source != null then cfg.audio.defaults.source else ""
+                }' keystone-audio-menu apply-config-defaults"
+              ]);
 
           # Periodically check battery level and send a notification when low
           systemd.user.services.keystone-battery-monitor = {
@@ -328,6 +526,11 @@ in
             };
           };
         }
+        (mkIf (cfg.printer.default != null) {
+          wayland.windowManager.hyprland.settings.exec-once = mkAfter [
+            "env KEYSTONE_PRINTER_DEFAULT='${cfg.printer.default}' keystone-printer-menu apply-config-defaults"
+          ];
+        })
       ]
       ++ linkedCommands
     )

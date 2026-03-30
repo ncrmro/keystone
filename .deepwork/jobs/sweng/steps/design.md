@@ -20,6 +20,7 @@ or ambiguous:
 - **repo**: Target repository as `owner/repo`
 
 If the goal is vague, ask clarifying questions:
+
 - What problem does this solve?
 - Who is the audience for this design?
 - Are there specific constraints (performance, backwards compatibility, timeline)?
@@ -103,9 +104,10 @@ mkdir -p .deepwork/tmp/sweng
 [Detailed description of the recommended approach]
 
 ### Architecture Diagram
-
 ```
+
 [ASCII diagram showing components, data flow, or module interactions]
+
 ```
 
 ### Key Decisions

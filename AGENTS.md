@@ -6,15 +6,15 @@ configuration, desktop environments, terminal tooling, and server services.
 
 ## Module Navigation
 
-| Module | Editing Guide | User-facing Docs |
-|--------|--------------|-----------------|
-| `modules/os/` | [modules/os/AGENTS.md](modules/os/AGENTS.md) | [docs/os-agents.md](docs/os-agents.md) |
-| `modules/os/agents/` | [modules/os/agents/AGENTS.md](modules/os/agents/AGENTS.md) | [docs/agents.md](docs/agents.md) |
-| `modules/terminal/` | [modules/terminal/AGENTS.md](modules/terminal/AGENTS.md) | [docs/terminal.md](docs/terminal.md) |
-| `modules/desktop/` | [modules/desktop/AGENTS.md](modules/desktop/AGENTS.md) | — |
-| `modules/server/` | [modules/server/AGENTS.md](modules/server/AGENTS.md) | [docs/server.md](docs/server.md) |
-| `packages/keystone-tui/` | [packages/keystone-tui/AGENTS.md](packages/keystone-tui/AGENTS.md) | — |
-| `conventions/` | [conventions/AGENTS.md](conventions/AGENTS.md) | — |
+| Module                   | Editing Guide                                                      | User-facing Docs                       |
+| ------------------------ | ------------------------------------------------------------------ | -------------------------------------- |
+| `modules/os/`            | [modules/os/AGENTS.md](modules/os/AGENTS.md)                       | [docs/os-agents.md](docs/os-agents.md) |
+| `modules/os/agents/`     | [modules/os/agents/AGENTS.md](modules/os/agents/AGENTS.md)         | [docs/agents.md](docs/agents.md)       |
+| `modules/terminal/`      | [modules/terminal/AGENTS.md](modules/terminal/AGENTS.md)           | [docs/terminal.md](docs/terminal.md)   |
+| `modules/desktop/`       | [modules/desktop/AGENTS.md](modules/desktop/AGENTS.md)             | —                                      |
+| `modules/server/`        | [modules/server/AGENTS.md](modules/server/AGENTS.md)               | [docs/server.md](docs/server.md)       |
+| `packages/keystone-tui/` | [packages/keystone-tui/AGENTS.md](packages/keystone-tui/AGENTS.md) | —                                      |
+| `conventions/`           | [conventions/AGENTS.md](conventions/AGENTS.md)                     | —                                      |
 
 ## Module File Tree
 
@@ -56,16 +56,16 @@ modules/
 
 ### NixOS Modules (`keystone.nixosModules.*`)
 
-| Module | Description |
-|--------|-------------|
-| `operating-system` | Core OS — storage, Secure Boot, TPM, users, agents (includes disko + lanzaboote) |
-| `server` | Server services (includes domain) |
-| `desktop` | Hyprland desktop environment |
-| `binaryCacheClient` | Attic binary cache client |
-| `hardwareKey` | YubiKey/FIDO2 support |
-| `isoInstaller` | Bootable installer |
-| `domain`, `hosts`, `repos`, `services`, `keys` | Shared options modules |
-| `headscale-dns` | Consume server DNS records on headscale host |
+| Module                                         | Description                                                                      |
+| ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `operating-system`                             | Core OS — storage, Secure Boot, TPM, users, agents (includes disko + lanzaboote) |
+| `server`                                       | Server services (includes domain)                                                |
+| `desktop`                                      | Hyprland desktop environment                                                     |
+| `binaryCacheClient`                            | Attic binary cache client                                                        |
+| `hardwareKey`                                  | YubiKey/FIDO2 support                                                            |
+| `isoInstaller`                                 | Bootable installer                                                               |
+| `domain`, `hosts`, `repos`, `services`, `keys` | Shared options modules                                                           |
+| `headscale-dns`                                | Consume server DNS records on headscale host                                     |
 
 ### Home-Manager Modules (`keystone.homeModules.*`)
 
@@ -84,6 +84,20 @@ modules/
 `claude-code`, `gemini-cli`, `codex`, `opencode`, `deepwork`, `keystone-deepwork-jobs`,
 `keystone-conventions`, `chrome-devtools-mcp`, `grafana-mcp`, `google-chrome`, `ghostty`,
 `yazi`, `himalaya`, `calendula`, `cardamum`, `comodoro`, `cfait`, `agenix`, `slidev`
+
+#### llm-agents input strategy
+
+AI agent packages (`claude-code`, `gemini-cli`, `codex`, `opencode`) come from the
+`llm-agents` flake input. Keystone keeps this pin at nightly-latest. Consumer flakes
+choose one of two strategies:
+
+- **Contributor / nightly-latest**: `llm-agents.follows = "keystone/llm-agents"` —
+  relocking keystone automatically bumps agent versions.
+- **Stable consumer**: declare an independent `llm-agents` input and override with
+  `keystone.inputs.llm-agents.follows = "llm-agents"` — bump manually via
+  `nix flake update llm-agents`.
+
+See `modules/terminal/AGENTS.md` § "llm-agents input strategy" for full examples.
 
 ## Important Notes
 
@@ -108,15 +122,24 @@ The **keystone config repo** is `nixos-config` — the consumer flake that impor
 modules and declares per-host/per-user configuration. All keystone-managed repos live
 under `~/.keystone/repos/OWNER/REPO/`.
 
-> **CRITICAL: Verifying Builds**
-> Agents MUST verify their changes by running a full build against a real host, not just isolated tests.
-> Run `ks build` (which defaults to the current host) to ensure your changes integrate correctly.
+For notes workflows, keep the shared owner note repos cloned at:
+
+- `~/.keystone/repos/luce/notes`
+- `~/.keystone/repos/drago/notes`
+
+> **CRITICAL: Verifying Changes**
+> Agents MUST start with `nix flake check` for repo-native validation and CI parity.
+> Tests, CLI regressions, and evaluation checks SHOULD live under `checks` in `flake.nix`, not in ad hoc wrapper scripts.
+> Agents MUST run `ks build` when a change affects host integration, generated assets, or behavior that isolated flake checks cannot validate.
+> Agents MUST NOT treat `ks build` as a substitute for adding a deterministic flake check when one can be added.
 
 ```bash
-ks build              # Build full system for current host (verify changes here!)
+nix flake check       # First pass: repo-native checks and CI parity
+ks build              # Build home-manager profiles for current host when host integration matters
 ks build --lock       # Full system build + lock + push (requires sudo)
 ks update --dev       # Deploy home-manager profiles only
 ks update             # Full system: pull, lock, build, push, deploy (requires sudo)
 ks update --lock      # Pull, lock, build, push, deploy (human-only, requires sudo)
+ks switch             # Fast deploy current local state (no pull/lock/push)
 ks doctor             # Diagnose system health and validate host status
 ```

@@ -4,20 +4,20 @@
 **Created**: 2025-11-06  
 **Status**: Draft  
 **Input**: User description: "we now need to create a desktop nix modules, it contains two parts the nixos module and the home-manager module. The modules work together to setup a hyprland desktop environment. Noting that most of the terminal based work is handled in ./home-manager/modules/terminal-dev-environment/ . The desktop needs to ensure hyprlock, hypridle, chromium are installed. It should install ghostty, hyprpaper, waybar, mako. It should not be initially very configurable. # Essential Hyprland packages - cannot be excluded
-  hyprlandPackages = with pkgs; [
-    hyprshot
-    hyprpicker
-    hyprsunset
-    brightnessctl
-    pamixer
-    playerctl
-    gnome-themes-extra
-    pavucontrol
-    wl-clipboard
-    glib
-  ]; It should use uwsm app . Use greetd to launch the uwsm again follow these for examples https://github.com/ncrmro/omarchy-nix/blob/feat/submodule-omarchy-arch/modules/nixos/system.nix"
+hyprlandPackages = with pkgs; [
+hyprshot
+hyprpicker
+hyprsunset
+brightnessctl
+pamixer
+playerctl
+gnome-themes-extra
+pavucontrol
+wl-clipboard
+glib
+]; It should use uwsm app . Use greetd to launch the uwsm again follow these for examples https://github.com/ncrmro/omarchy-nix/blob/feat/submodule-omarchy-arch/modules/nixos/system.nix"
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Graphical Session Login (Priority: P1)
 
@@ -69,7 +69,7 @@ As a user, I want my session to automatically lock when idle and have basic powe
 - How does the system handle a missing `home-manager` configuration for a user? The session might fail to start or start with a broken default configuration.
 - What happens if a user's hardware does not support some of the power management features (e.g., `brightnessctl`)? The system should not fail to build; the control will simply not work.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -86,16 +86,19 @@ As a user, I want my session to automatically lock when idle and have basic powe
 #### AR-001: Module Structure and Organization
 
 **AR-001.1 - NixOS Module Structure**: The NixOS desktop components MUST be organized under `modules/client/desktop/` with the following structure:
+
 - `hyprland.nix` - Core Hyprland compositor system configuration
 - `greetd.nix` - Login manager (greetd) configuration
 - `audio.nix` - PipeWire audio system configuration
 - `packages.nix` - System-level desktop package declarations
 
 **AR-001.2 - NixOS Service Structure**: System services related to desktop functionality MUST be organized under `modules/client/services/` with:
+
 - `networking.nix` - NetworkManager configuration (client-specific networking needs)
 - `system.nix` - System-level desktop services
 
 **AR-001.3 - Home-Manager Module Structure**: The home-manager desktop components MUST be organized under `home-manager/modules/desktop/hyprland/` with the following structure:
+
 - `default.nix` - Main orchestration module with enable options
 - `hyprland-config.nix` - User-specific Hyprland configuration
 - `waybar.nix` - Status bar user configuration
@@ -109,6 +112,7 @@ As a user, I want my session to automatically lock when idle and have basic powe
 #### AR-002: Package Placement Criteria
 
 **AR-002.1 - System-Level Package Criteria**: Packages MUST be installed at the system level (NixOS) when they meet ANY of the following criteria:
+
 - Required for system boot or login (e.g., `greetd`)
 - Need root privileges or system services (e.g., `pipewire`, `NetworkManager`)
 - Provide system-wide services used by multiple users
@@ -116,12 +120,14 @@ As a user, I want my session to automatically lock when idle and have basic powe
 - Hardware-dependent system utilities (e.g., `brightnessctl` for hardware brightness control)
 
 **AR-002.2 - User-Level Package Criteria**: Packages MUST be installed at the user level (home-manager) when they meet ALL of the following criteria:
+
 - Do not require root privileges
 - Provide user-specific functionality or configuration
 - Can be configured differently per user
 - Are launched within a user session (not system services)
 
 **AR-002.3 - Specific Package Placement**: The following package placement MUST be implemented:
+
 - **System-Level (NixOS)**: `chromium` (system-wide browser), system services for `pipewire`, `greetd`, `hyprland` (compositor itself)
 - **User-Level (home-manager)**: `ghostty`, `waybar`, `mako`, `hyprpaper`, `hyprshot`, `hyprpicker`, `hyprsunset`, `pamixer`, `playerctl`, `pavucontrol`, `wl-clipboard`, `glib`
 - **Dual-Level**: `hyprlock` and `hypridle` MAY be present at system level for service availability but MUST have user-specific configuration in home-manager
@@ -131,21 +137,25 @@ As a user, I want my session to automatically lock when idle and have basic powe
 #### AR-003: Service Configuration Requirements
 
 **AR-003.1 - Networking Service Placement**: NetworkManager configuration MUST reside in `modules/client/services/networking.nix` (not in server modules) because:
+
 - Client devices need interactive network management (WiFi, VPN)
 - Desktop users require GUI network controls
 - Mobile/laptop clients have different networking patterns than servers
 
 **AR-003.2 - Bluetooth Service Configuration**: Bluetooth support MUST be configured in `modules/client/services/networking.nix` because:
+
 - Bluetooth is primarily used on client devices (peripherals, audio)
 - Requires user interaction for pairing and management
 - Not typically needed on headless servers
 
 **AR-003.3 - Audio Service Configuration**: PipeWire audio MUST be configured in `modules/client/desktop/audio.nix` as a system service because:
+
 - Provides system-wide audio server
 - Manages hardware audio devices requiring system privileges
 - Provides compatibility layers (ALSA, Pulse, Jack)
 
 **AR-003.4 - Login Manager Configuration**: The `greetd` login manager MUST be configured in `modules/client/desktop/greetd.nix` because:
+
 - Runs before user login as a system service
 - Manages session launching with `uwsm`
 - Requires root privileges for user authentication
@@ -155,12 +165,14 @@ As a user, I want my session to automatically lock when idle and have basic powe
 #### AR-004: Home-Manager Integration Requirements
 
 **AR-004.1 - Core Components**: The initial home-manager desktop module MUST include at minimum:
+
 - Hyprland user configuration (`hyprland-config.nix`)
 - Status bar (`waybar.nix`)
 - Terminal emulator package (`ghostty`)
 - Essential Hyprland utilities (as listed in FR-005)
 
 **AR-004.2 - Enable/Disable Options**: The home-manager module MUST provide:
+
 - Top-level `programs.desktop.hyprland.enable` option
 - Component-specific enable options under `programs.desktop.hyprland.components.*`
 - All component options MUST default to `true` except the top-level enable
@@ -182,6 +194,7 @@ As a user, I want my session to automatically lock when idle and have basic powe
 **AR-005.2 - Home-Manager Module Imports**: The main `home-manager/modules/desktop/hyprland/default.nix` MUST import all component modules.
 
 **AR-005.3 - Flake Exports**: The repository flake MUST export:
+
 - `nixosModules.client` - The complete client module including desktop
 - `homeManagerModules.desktop-hyprland` - The home-manager desktop module (as a distinct export)
 
@@ -194,6 +207,7 @@ As a user, I want my session to automatically lock when idle and have basic powe
 **AR-006.1 - Test Script Purpose**: A test script MUST verify the presence and basic functionality of the desktop environment after deployment.
 
 **AR-006.2 - Basic Presence Checks**: The test script MUST verify:
+
 1. Greetd service is running (`systemctl status greetd`)
 2. Hyprland is available in PATH
 3. PipeWire services are active
@@ -201,6 +215,7 @@ As a user, I want my session to automatically lock when idle and have basic powe
 5. NetworkManager is active
 
 **AR-006.3 - Home-Manager Verification**: The test script MUST:
+
 - Detect if home-manager is activated for the current user
 - If activated, verify home-manager packages are in user PATH
 - If not activated, report this state without failing
@@ -222,16 +237,19 @@ As a user, I want my session to automatically lock when idle and have basic powe
 #### AR-008: Edge Cases and Error Handling
 
 **AR-008.1 - Missing Home-Manager**: When home-manager is not installed or activated, the system MUST:
+
 - Still provide a functional Hyprland session
 - Fall back to system-provided packages only
 - Provide clear documentation about reduced functionality
 
 **AR-008.2 - Hardware Compatibility**: The modules MUST gracefully handle:
+
 - Systems without Bluetooth hardware (service fails gracefully)
 - Systems without brightness control hardware (`brightnessctl` present but non-functional)
 - Different display hardware configurations
 
 **AR-008.3 - Misconfiguration Errors**: The modules MUST:
+
 - Provide clear error messages when required dependencies are missing
 - Fail at build time (not runtime) for configuration errors
 - Use NixOS assertion mechanisms to validate configuration
@@ -241,12 +259,14 @@ As a user, I want my session to automatically lock when idle and have basic powe
 #### AR-009: Dependencies and Assumptions
 
 **AR-009.1 - External Dependencies**: The modules explicitly depend on:
+
 - NixOS 25.05 or later
 - home-manager (optional but recommended)
 - Hyprland from nixpkgs
 - PipeWire audio system
 
 **AR-009.2 - Network/Bluetooth Assumption**: The assumption that networking and Bluetooth configuration differs between client and server is validated by:
+
 - Servers typically use static, non-interactive networking
 - Clients require WiFi, VPN, and Bluetooth peripheral support
 - Desktop users need GUI network management tools
@@ -258,32 +278,36 @@ As a user, I want my session to automatically lock when idle and have basic powe
 #### AR-010: Documentation Requirements
 
 **AR-010.1 - CLAUDE.md Updates**: The `CLAUDE.md` file MUST be updated to reflect:
+
 - The new module structure under `modules/client/desktop/` and `home-manager/modules/desktop/hyprland/`
 - Integration points between NixOS and home-manager modules
 - Example configurations using both modules
 
 **AR-010.2 - Plan Updates**: The `plan.md` MUST document:
+
 - The rationale for the chosen structure
 - Component placement decisions
 - Integration mechanisms
 
 **AR-010.3 - Quickstart Updates**: A `quickstart.md` MUST be created documenting:
+
 - How to enable the desktop module
 - Required home-manager configuration
 - Basic customization options
 - Troubleshooting common issues
 
 **AR-010.4 - Inline Documentation**: Each module file MUST include:
+
 - Purpose and scope comments at the top
 - Option descriptions using NixOS module documentation
 - Examples of common configuration patterns
 
-### Key Entities *(include if feature involves data)*
+### Key Entities _(include if feature involves data)_
 
 - **NixOS Desktop Module**: Represents the system-wide configuration for the desktop environment.
 - **Home-Manager Desktop Module**: Represents the user-specific configuration and packages for the desktop environment.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 

@@ -13,6 +13,23 @@ SNAPSHOT_PATH="${SNAPSHOT_DIR}/projects-v1.json"
 SNAPSHOT_LOCK_DIR="${SNAPSHOT_DIR}/refresh.lock"
 SNAPSHOT_FRESHNESS_SECONDS="${KEYSTONE_PROJECT_MENU_CACHE_FRESHNESS_SECONDS:-5}"
 
+keystone_cmd() {
+  local command_name="$1"
+
+  if command -v "$command_name" >/dev/null 2>&1; then
+    command -v "$command_name"
+    return 0
+  fi
+
+  if [[ -x "$HOME/.local/bin/$command_name" ]]; then
+    printf "%s\n" "$HOME/.local/bin/$command_name"
+    return 0
+  fi
+
+  printf "Unable to locate %s\n" "$command_name" >&2
+  exit 1
+}
+
 shell_quote() {
   printf "'%s'" "${1//\'/\'\\\'\'}"
 }
@@ -54,6 +71,10 @@ refresh_snapshot_async() {
       pz export-menu-cache --write-state >/dev/null 2>&1 || true
     fi
   ) >/dev/null 2>&1 &
+}
+
+detach() {
+  "$(keystone_cmd keystone-detach)" "$@"
 }
 
 ensure_snapshot() {
@@ -120,9 +141,9 @@ focus_or_launch_project_session() {
   else
     # Delegate launch to pz (wrapped in ghostty for desktop)
     if [[ "$session_slug" == "main" || -z "$session_slug" ]]; then
-      ghostty -e pz "$project_slug" &
+      detach ghostty -e pz "$project_slug"
     else
-      ghostty -e pz "$project_slug" "$session_slug" &
+      detach ghostty -e pz "$project_slug" "$session_slug"
     fi
   fi
 }
@@ -157,7 +178,7 @@ cmd_open_session_menu() {
 
   session_slug=$(
     printf '\n' \
-      | keystone-launch-walker --dmenu --inputonly --placeholder "Session slug… (leave empty for main)" 2>/dev/null \
+      | "$(keystone_cmd keystone-launch-walker)" --dmenu --inputonly --placeholder "Session slug… (leave empty for main)" 2>/dev/null \
       | tr -d '\r'
   ) || true
 
@@ -177,7 +198,7 @@ cmd_open_notes_menu() {
 
   cmd_set_current_project "$project_slug"
   walker -q >/dev/null 2>&1 || true
-  setsid keystone-launch-walker -m "menus:keystone-project-notes" -p "Project notes" >/dev/null 2>&1 &
+  setsid "$(keystone_cmd keystone-launch-walker)" -m "menus:keystone-project-notes" -p "Project notes" >/dev/null 2>&1 &
 }
 
 cmd_projects_json() {
@@ -318,7 +339,7 @@ cmd_refresh_cache() {
 cmd_open_note() {
   local note_path="$1"
 
-  ghostty -e zk --notebook-dir "$HOME/notes" edit "$note_path" &
+  detach ghostty -e zk --notebook-dir "$HOME/notes" edit "$note_path"
 }
 
 cmd_dispatch() {

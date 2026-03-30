@@ -61,30 +61,35 @@ For each platform needing setup (from discovery_report.md), follow the platform-
 # Platform Setup Status: [Project Name]
 
 ## Summary
+
 - **Platforms set up**: [count]
 - **Platforms skipped**: [count]
 - **Platforms pending**: [count]
 - **Date**: [current date]
 
 ## X (Twitter)
+
 - **Status**: [completed / skipped / pending approval / failed]
 - **Credential Item**: [project-name]/twitter-api
 - **API Access Level**: [free / basic / pro]
 - **Notes**: [any issues or next steps]
 
 ## LinkedIn
+
 - **Status**: [completed / skipped / pending approval / failed]
 - **Credential Item**: [project-name]/linkedin-api
 - **API Products**: [list of enabled products]
 - **Notes**: [any issues or next steps]
 
 ## Instagram / Facebook
+
 - **Status**: [completed / skipped / pending approval / failed]
 - **Credential Item**: [project-name]/meta-api
 - **App Type**: [business / consumer]
 - **Notes**: [any issues or next steps]
 
 ## Bluesky
+
 - **Status**: [completed / skipped / pending approval / failed]
 - **Credential Item**: [project-name]/bluesky
 - **Handle**: [handle without password]
@@ -92,9 +97,11 @@ For each platform needing setup (from discovery_report.md), follow the platform-
 ```
 
 **Bad example — do NOT include actual secrets:**
+
 ```markdown
 ## X (Twitter)
-- **API Key**: sk-abc123...   ← NEVER DO THIS
+
+- **API Key**: sk-abc123... ← NEVER DO THIS
 ```
 
 ## Quality Criteria

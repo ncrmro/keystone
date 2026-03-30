@@ -13,52 +13,58 @@ Create a NixOS module that automatically provisions ZFS datasets for user home d
 
 **Language/Version**: Nix 2.18+ (NixOS 25.05)
 **Primary Dependencies**:
+
 - ZFS filesystem (already present via disko-single-disk-root)
 - systemd activation scripts
 - NixOS module system
-**Storage**: ZFS pool `rpool` with encrypted `rpool/crypt` dataset (from disko module)
-**Testing**: Integration tests in `bin/test-deployment` Python script
-**Target Platform**: Linux server/client with ZFS support (x86_64)
-**Project Type**: Single NixOS module
-**Performance Goals**:
+  **Storage**: ZFS pool `rpool` with encrypted `rpool/crypt` dataset (from disko module)
+  **Testing**: Integration tests in `bin/test-deployment` Python script
+  **Target Platform**: Linux server/client with ZFS support (x86_64)
+  **Project Type**: Single NixOS module
+  **Performance Goals**:
 - Dataset creation < 5 seconds per user during system activation
 - No impact on boot time (async activation where possible)
-**Constraints**:
+  **Constraints**:
 - Must not interfere with existing disko ZFS configuration
 - Must be idempotent (safe to re-apply)
 - Must validate ZFS pool exists before operations
-**Scale/Scope**:
+  **Scale/Scope**:
 - Support 1-50 users per system initially
 - Each user gets dedicated ZFS dataset with full delegation permissions
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Core Principles Alignment
 
 **I. Declarative Infrastructure** ✅
+
 - Module configuration will be fully declarative via NixOS options
 - User definitions and ZFS properties specified as code
 - Reproducible across different systems
 
 **II. Security by Default** ✅
+
 - ZFS delegation ensures users cannot access other users' datasets
 - Permissions scoped strictly to each user's dataset tree
 - Integrates with existing encrypted ZFS pool (rpool/crypt)
 
 **III. Modular Composability** ✅
+
 - Self-contained module at `modules/users/default.nix`
 - Clear option interface (`keystone.zfsUsers`)
 - Can be enabled/disabled independently
 - Composes with server and client modules
 
 **IV. Hardware Agnostic** ✅
+
 - Works on any system with ZFS support
 - No hardware-specific dependencies
 - Integrates with existing pool regardless of underlying storage
 
 **V. Cryptographic Sovereignty** ✅
+
 - Uses pool-level encryption from disko module
 - No additional key management required
 - Users maintain control over their data within their datasets
@@ -66,22 +72,26 @@ Create a NixOS module that automatically provisions ZFS datasets for user home d
 ### NixOS-Specific Standards
 
 **Module Development Standards** ✅
+
 - Will use `types.attrsOf` for user definitions
 - Includes `enable` option for the feature
 - Will add assertions for ZFS availability and pool existence
 - Options will be documented with descriptions and examples
 
 **Development Tooling** ✅
+
 - Testing via `bin/virtual-machine` for VM-based testing
 - Integration with `bin/test-deployment` for automated verification
 - Compatible with `nixos-anywhere` deployment workflow
 
 **Testing Requirements** ✅
+
 - Build-time validation via `nix build`
 - Runtime testing in VM via test-deployment script
 - Verification of ZFS delegation permissions
 
 **Documentation Standards** ✅
+
 - Will provide option documentation in module
 - Usage examples in spec.md and quickstart.md
 - Comments explaining ZFS delegation decisions
@@ -125,7 +135,7 @@ flake.nix                # Add zfs-users module export
 
 ## Complexity Tracking
 
-*No violations requiring justification.*
+_No violations requiring justification._
 
 ## Phase 0: Research & Planning
 
@@ -159,6 +169,7 @@ flake.nix                # Add zfs-users module export
 ### Research Agents
 
 Dispatching 5 parallel research agents:
+
 1. ZFS delegation permission matrix (create, destroy, send, receive, mount, snapshot)
 2. NixOS activation script patterns for filesystem operations
 3. Idempotent ZFS operations patterns
@@ -195,6 +206,7 @@ This is a system-level NixOS module, not an API service. The "contract" is the N
 ## Post-Phase 1 Constitution Re-check
 
 Will re-validate after design artifacts are complete:
+
 - Verify module options follow NixOS conventions
 - Confirm security isolation in delegation design
 - Validate test coverage is sufficient

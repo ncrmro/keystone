@@ -1,4 +1,3 @@
-
 ## Task Tracking
 
 ## TASKS.yaml
@@ -16,16 +15,16 @@ tasks:
   - name: "slug-style-task-name"
     description: "What the task involves"
     status: pending | completed
-    source: email | schedule       # where the task originated
-    source_ref: "email-23-..."     # reference to the source
-    workflow: "job/workflow"        # deepwork workflow used (if any)
-    project: "project-name"        # which project this relates to
-    profile: fast | medium | max   # semantic model profile override
+    source: email | schedule # where the task originated
+    source_ref: "email-23-..." # reference to the source
+    workflow: "job/workflow" # deepwork workflow used (if any)
+    project: "project-name" # which project this relates to
+    profile: fast | medium | max # semantic model profile override
     provider: claude | gemini | codex
     model: "provider-specific-model"
     fallback_model: "provider-specific-model"
     effort: low | medium | high | max
-    needs: ["other-task-name"]     # task dependencies (if any)
+    needs: ["other-task-name"] # task dependencies (if any)
 ```
 
 When these fields are omitted, the task loop MUST fall back to the stage-level

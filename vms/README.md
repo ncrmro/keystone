@@ -11,10 +11,12 @@ There are two types of VM testing workflows:
 **Use for**: Rapid iteration on desktop and terminal configurations
 
 **Configurations**:
+
 - `build-vm-terminal/` - Terminal development environment only
 - `build-vm-desktop/` - Full Hyprland desktop with terminal dev environment
 
 **Usage**:
+
 ```bash
 # Terminal dev environment - auto-SSH into VM
 ./bin/build-vm terminal
@@ -27,6 +29,7 @@ There are two types of VM testing workflows:
 ```
 
 **Characteristics**:
+
 - Uses `nixos-rebuild build-vm`
 - **Automatic connection** - Terminal auto-SSHs, Desktop opens console
 - Mounts host Nix store via 9P (read-only)
@@ -41,15 +44,18 @@ There are two types of VM testing workflows:
 **Use for**: Testing the complete security stack
 
 **Configurations**:
+
 - `test-server/` - Server configuration with ZFS encryption, secure boot, TPM
 - `test-hyprland/` - Hyprland desktop with ZFS encryption, secure boot, TPM
 
 **Usage**:
+
 ```bash
 ./bin/test-deployment
 ```
 
 **Characteristics**:
+
 - Uses `nixos-anywhere` for deployment
 - Full ZFS encryption with credstore pattern
 - Secure boot with custom key enrollment
@@ -65,6 +71,7 @@ There are two types of VM testing workflows:
 **Flake Output**: `.#build-vm-terminal`
 
 **Features**:
+
 - Minimal NixOS system
 - Terminal development environment (home-manager)
   - Helix editor
@@ -76,10 +83,12 @@ There are two types of VM testing workflows:
 - No encryption or secure boot
 
 **Credentials**:
+
 - User: `testuser` / Password: `testpass`
 - Root: `root` / Password: `root`
 
 **Build**:
+
 ```bash
 nixos-rebuild build-vm --flake .#build-vm-terminal
 ./result/bin/run-build-vm-terminal-vm
@@ -90,6 +99,7 @@ nixos-rebuild build-vm --flake .#build-vm-terminal
 **Flake Output**: `.#build-vm-desktop`
 
 **Features**:
+
 - Full Hyprland desktop environment
   - Hyprland Wayland compositor
   - Waybar status bar
@@ -102,16 +112,19 @@ nixos-rebuild build-vm --flake .#build-vm-terminal
 - No encryption or secure boot
 
 **Credentials**:
+
 - User: `testuser` / Password: `testpass`
 - Root: `root` / Password: `root`
 
 **Build**:
+
 ```bash
 nixos-rebuild build-vm --flake .#build-vm-desktop
 ./result/bin/run-build-vm-desktop-vm
 ```
 
 **VM Resources**:
+
 - Memory: 4GB
 - CPUs: 2 cores
 - 3D acceleration enabled
@@ -121,6 +134,7 @@ nixos-rebuild build-vm --flake .#build-vm-desktop
 **Flake Output**: `.#test-server`
 
 **Features**:
+
 - ZFS encryption with credstore pattern
 - Secure boot with lanzaboote
 - TPM2 enrollment and automatic unlock
@@ -128,6 +142,7 @@ nixos-rebuild build-vm --flake .#build-vm-desktop
 - Complete server security stack
 
 **Deployment**:
+
 ```bash
 ./bin/test-deployment
 ```
@@ -137,6 +152,7 @@ nixos-rebuild build-vm --flake .#build-vm-desktop
 **Flake Output**: `.#test-hyprland`
 
 **Features**:
+
 - Full Hyprland desktop environment
 - ZFS encryption with credstore pattern
 - Secure boot with lanzaboote
@@ -146,28 +162,30 @@ nixos-rebuild build-vm --flake .#build-vm-desktop
 - Complete client security stack
 
 **Deployment**:
+
 ```bash
 ./bin/test-deployment
 ```
 
 ## Workflow Comparison
 
-| Feature | build-vm | test-deployment |
-|---------|----------|-----------------|
-| Build Time | ~2-5 minutes | ~20-30 minutes |
-| Disk Encryption | No | Yes (ZFS + LUKS) |
-| Secure Boot | No | Yes |
-| TPM | No | Yes |
-| Initrd SSH | No | Yes |
-| Use Case | Config testing | Full stack testing |
-| VM Type | QEMU direct | Libvirt |
-| Nix Store | 9P mount | Copied |
-| Disk Image | qcow2 | qcow2 |
-| Best For | Desktop/terminal configs | Security features |
+| Feature         | build-vm                 | test-deployment    |
+| --------------- | ------------------------ | ------------------ |
+| Build Time      | ~2-5 minutes             | ~20-30 minutes     |
+| Disk Encryption | No                       | Yes (ZFS + LUKS)   |
+| Secure Boot     | No                       | Yes                |
+| TPM             | No                       | Yes                |
+| Initrd SSH      | No                       | Yes                |
+| Use Case        | Config testing           | Full stack testing |
+| VM Type         | QEMU direct              | Libvirt            |
+| Nix Store       | 9P mount                 | Copied             |
+| Disk Image      | qcow2                    | qcow2              |
+| Best For        | Desktop/terminal configs | Security features  |
 
 ## Common Tasks
 
 ### Quick Desktop Config Test
+
 ```bash
 # Edit desktop configuration
 vim modules/client/desktop/hyprland.nix
@@ -177,6 +195,7 @@ vim modules/client/desktop/hyprland.nix
 ```
 
 ### Quick Terminal Config Test
+
 ```bash
 # Edit home-manager config
 vim home-manager/modules/terminal-dev-environment/default.nix
@@ -186,6 +205,7 @@ vim home-manager/modules/terminal-dev-environment/default.nix
 ```
 
 ### Full Security Stack Test
+
 ```bash
 # Test complete deployment
 ./bin/test-deployment
@@ -195,6 +215,7 @@ vim home-manager/modules/terminal-dev-environment/default.nix
 ```
 
 ### Clean VM Artifacts
+
 ```bash
 # Clean build-vm artifacts
 ./bin/build-vm terminal --clean
@@ -218,24 +239,29 @@ rm -f build-vm-*.qcow2
 ### build-vm Issues
 
 **Problem**: "module not found" errors
+
 - Check flake.nix has the correct module imports
 - Ensure you're in the keystone directory
 
 **Problem**: VM won't start
+
 - Check if `result/bin/run-build-vm-*-vm` exists
 - Ensure KVM is available: `ls -la /dev/kvm`
 
 **Problem**: SSH connection times out (terminal VM)
+
 - Check if VM is running: `ps aux | grep qemu`
 - Check if port 2222 is in use: `lsof -i :2222`
 - Try manual connection: `ssh -p 2222 testuser@localhost`
 - Check VM console: `./result/bin/run-build-vm-terminal-vm`
 
 **Problem**: Display issues in desktop VM
+
 - Ensure you have X11 or Wayland display available
 - Check QEMU display options in configuration
 
 **Problem**: Terminal VM still running after disconnect
+
 - This is expected - VM runs in background
 - Reconnect: `ssh -p 2222 testuser@localhost`
 - Stop VM: `kill $(cat build-vm-terminal.pid)`
@@ -244,10 +270,12 @@ rm -f build-vm-*.qcow2
 ### test-deployment Issues
 
 **Problem**: VM creation fails
+
 - Check libvirt is running: `systemctl status libvirtd`
 - Ensure keystone-net network exists
 
 **Problem**: TPM enrollment fails
+
 - This is expected on first deployment
 - TPM enrollment happens in later test step
 

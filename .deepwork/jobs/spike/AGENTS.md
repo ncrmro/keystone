@@ -34,6 +34,7 @@ This folder and its subfolders are managed using the `deepwork_jobs` slash comma
 ### Output Directory Pattern
 
 Spikes use a top-level `spikes/` directory (git-tracked, excluded from zk indexing):
+
 - Code artifacts and research: `spikes/[spike_name]/`
 - zk report note (summary): `reports/` via `zk new`
 - zk ADR (architectural decision): `decisions/` via `zk new`
@@ -51,6 +52,7 @@ Some older spikes exist directly in `projects/[project]/spikes/` (pre-v1.1.0) or
 ### zk Notes Repo Integration
 
 When running spikes in a zk notes repo (`.zk/config.toml` present):
+
 - `spikes/` MUST be in `ignore = [...]` under `[note]` in `.zk/config.toml` — code artifacts should not be indexed
 - `spikes/` is **git-tracked**; do not add to `.gitignore`
 - Report notes: `zk new --title "Spike: [name]" --no-input --print-path reports/`; set `report_kind: spike`, `source_ref`, project tag

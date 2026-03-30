@@ -37,11 +37,11 @@ Unlock the vault and check that each credential referenced in the onboarding pla
 
 ## Credential Check
 
-| Entry | Found | Notes |
-|-------|-------|-------|
-| www.google.com | Yes | Username: [username] |
-| github.com | Yes | Username: [username] |
-| [fj keyfile entry] | Yes/No | [notes] |
+| Entry              | Found  | Notes                |
+| ------------------ | ------ | -------------------- |
+| www.google.com     | Yes    | Username: [username] |
+| github.com         | Yes    | Username: [username] |
+| [fj keyfile entry] | Yes/No | [notes]              |
 
 ## Missing Credentials
 

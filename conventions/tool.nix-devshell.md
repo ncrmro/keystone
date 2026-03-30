@@ -1,4 +1,3 @@
-
 ## Nix Dev Shell
 
 ## Agent Project Standards

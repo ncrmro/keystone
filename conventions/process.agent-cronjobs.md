@@ -8,13 +8,14 @@ Every OS agent provisioned via `keystone.os.agents.<name>` receives three system
 
 ## Timers
 
-| Timer | Unit Name | Default Schedule | Purpose |
-|-------|-----------|-----------------|---------|
-| Notes Sync | `agent-{name}-notes-sync` | `*:0/5` (every 5 min) | Git fetch/commit/push for the agent's notes repo |
-| Task Loop | `agent-{name}-task-loop` | `*:0/5` (every 5 min) | Autonomous work execution cycle |
-| Scheduler | `agent-{name}-scheduler` | `*-*-* 05:00:00` (daily 5 AM) | Reads `SCHEDULES.yaml`, creates due tasks |
+| Timer      | Unit Name                 | Default Schedule              | Purpose                                          |
+| ---------- | ------------------------- | ----------------------------- | ------------------------------------------------ |
+| Notes Sync | `agent-{name}-notes-sync` | `*:0/5` (every 5 min)         | Git fetch/commit/push for the agent's notes repo |
+| Task Loop  | `agent-{name}-task-loop`  | `*:0/5` (every 5 min)         | Autonomous work execution cycle                  |
+| Scheduler  | `agent-{name}-scheduler`  | `*-*-* 05:00:00` (daily 5 AM) | Reads `SCHEDULES.yaml`, creates due tasks        |
 
 All timers use:
+
 - `wantedBy = [ "default.target" ]` — auto-start with user session (lingering)
 - `ConditionUser = agent-{name}` — only runs as the correct agent user
 - `Persistent = true` — catches up if the system was offline during a scheduled run
@@ -51,8 +52,11 @@ Five-phase cycle:
 5. **Commit** — Push results back
 
 Key properties:
+
 - `TimeoutStartSec = "1h"` — long timeout for LLM-driven tasks
 - Uses `flock` for concurrency prevention (skips if already running)
+- Honors a pause marker at `~/.local/state/agent-task-loop/state/paused`
+- When paused, scheduled runs exit before pre-fetch and execution work
 - Structured logging with `[step=X]` and `[task=Y]` tags
 - State in `~/.local/state/agent-task-loop/state/`
 - Logs in `~/.local/state/agent-task-loop/logs/`
@@ -81,6 +85,12 @@ agentctl luce journalctl -u agent-luce-scheduler -n 20
 
 # Manually trigger
 agentctl luce start agent-luce-task-loop
+
+# Pause or resume the loop without disabling timers
+agentctl luce pause "waiting for human input"
+agentctl luce paused
+agentctl luce resume
+ks agents pause all "human focus block"
 ```
 
 For fleet-wide journal queries across all hosts, see `tool.journal-remote`.

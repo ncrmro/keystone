@@ -13,6 +13,49 @@ history.
 For a human user, the notebook usually lives at `~/notes`. For OS agents, it
 usually lives at `/home/agent-{name}/notes/`.
 
+## Why notes matter in Keystone
+
+Keystone uses the notes directory as shared operating context, not just a place
+to store personal writing.
+
+### Project discovery
+
+Active hub notes in `~/notes/index/` are the source of truth for project
+discovery.
+
+That project metadata is used by:
+
+- [`pz`](terminal/projects.md) to discover valid projects and launch
+  project-aware Zellij sessions,
+- Keystone Desktop to populate the Walker project menu, and
+- related project tooling that needs repo URLs, summaries, and current state.
+
+If the hub notes are stale, the `pz` project list and the Walker project menu
+are stale too. For the session and desktop workflow, see
+[Projects and pz](terminal/projects.md).
+
+### Long-term memory for agents
+
+Agents use their notes repo as long-term memory.
+
+That includes:
+
+- project hub notes,
+- report chains,
+- decision records,
+- promoted research output, and
+- other durable artifacts that should survive beyond the current task run.
+
+### Automatic sync
+
+Keystone automatically fetches and pushes the notes repo on a timer.
+
+- Human users typically rely on `keystone-notes-sync` for `~/notes`
+- OS agents use `agent-{name}-notes-sync` for `/home/agent-{name}/notes`
+
+This makes the notes repo usable as shared state between the human operator,
+desktop project navigation, `pz`, and agent workflows.
+
 ## What the notes system is for
 
 Use the notes system to:
@@ -25,6 +68,27 @@ Use the notes system to:
 
 The notes system is shared. Humans and agents should both write into the same
 structure and use the same linking and tagging model.
+
+## Executive assistant task loop
+
+The `executive_assistant/task_loop` workflow uses zk notes as its coordination
+state.
+
+For this workflow:
+
+- the human operator's notes repo is the canonical coordination ledger,
+- active work should be represented as zk notes rather than a separate YAML task
+  ledger,
+- milestone, issue, pull request, assignee, and source references should live
+  in frontmatter fields, and
+- GitHub refs should use `gh:<owner>/<repo>#<number>` while Forgejo refs should
+  use `fj:<owner>/<repo>#<number>`,
+- tags should remain within the existing namespaces such as `project/<slug>`,
+  `repo/<owner>/<repo>`, `status/<value>`, and `source/<value>`.
+
+The workflow also maintains a dated executive-assistant daily note that rolls
+unfinished work forward by linking existing task notes instead of copying task
+bodies into a new note each day.
 
 ## Notebook layout
 
@@ -145,9 +209,6 @@ URL instead of inventing a separate local-path convention.
 Use `zk edit` when the note already exists and you want to reopen it in your
 editor.
 
-<!-- TODO: Add a terminal screenshot showing `zk edit reports/<TAB>` path completion before the editor opens. -->
-<!-- TODO: Add a terminal screenshot showing `zk edit --interactive` with the fuzzy picker visible and a report selected. -->
-<!-- TODO: Add a short screenshot sequence showing the difference between editing a report note, a project hub note, and a durable idea note. -->
 
 ### Edit a report by path completion
 
@@ -250,6 +311,18 @@ Typical agent behavior:
 - mirror important decisions into the related issue or pull request,
 - link new reports back to the hub note.
 
+Agents are configured to put durable workflow output into notes automatically
+when that output should be kept. Common examples include:
+
+- spike output,
+- research summaries,
+- status reports,
+- review writeups, and
+- refreshed project hubs.
+
+That is what turns notes into long-term memory instead of just temporary task
+scratch space.
+
 ### Example: human report capture
 
 ```bash
@@ -275,6 +348,8 @@ and update a relevant system or operations hub if one exists.
 - OS agents use the same notebook model in their agent-space.
 - The AI command layer exposes the notes workflows across the supported coding
   agents, with tool-specific UX differences.
+- Notes sync is handled by `repo-sync`, which clones if absent and then
+  fetches, commits, rebases, and pushes changes automatically.
 
 ## Related docs
 

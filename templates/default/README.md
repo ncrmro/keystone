@@ -1,6 +1,15 @@
-# Keystone Infrastructure Configuration
+# keystone-config
 
-Your Keystone infrastructure project has been initialized!
+This repository was generated from the Keystone flake template.
+
+If you are creating a fresh config repo, the recommended command is:
+
+```bash
+nix flake new -t github:ncrmro/keystone keystone-config
+cd keystone-config
+```
+
+This repo is the source of truth for your Keystone machines, users, modules, and deployment settings.
 
 ## Quick Start
 
@@ -13,6 +22,7 @@ grep -n "TODO:" configuration.nix
 ```
 
 **Required changes:**
+
 - `networking.hostName` - Your machine's hostname
 - `networking.hostId` - Unique ID for ZFS (generate below)
 - `storage.devices` - Your disk ID (find below)
@@ -141,6 +151,7 @@ nixos-generate-config --show-hardware-config > hardware.nix
 ### "hostId is required for ZFS"
 
 Generate and set `networking.hostId` in `configuration.nix`:
+
 ```bash
 head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
 ```

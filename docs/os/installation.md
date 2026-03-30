@@ -1,21 +1,23 @@
 ---
-title: Keystone Installation Guide
+title: Keystone OS install
 description: Complete guide for installing NixOS using the Keystone installer ISO and nixos-anywhere
 ---
 
-# Keystone Installation Guide
+# Keystone OS install
 
 Complete guide for installing NixOS using the Keystone installer ISO and nixos-anywhere.
 
 ## Prerequisites
 
-- Keystone ISO generated and burned to USB (see [ISO Generation Guide](iso-generation.md))
-- Target machine capable of booting from USB
+- Keystone ISO generated and burned to USB (see [ISO Generation](iso-generation.md))
+- Target machine capable of booting from USB with UEFI firmware
+- Minimum hardware: 4 GB RAM, 32 GB disk
 - Network connectivity for the target machine
+- [nixos-anywhere](https://github.com/nix-community/nixos-anywhere) installed on your development machine
 
 ## Overview
 
-Keystone uses a two-phase installation approach:
+Keystone uses a two-phase installation approach with [disko](https://github.com/nix-community/disko) for declarative disk partitioning and [lanzaboote](https://github.com/nix-community/lanzaboote) for Secure Boot:
 
 1. **Boot Phase**: Boot target machine from USB installer
 2. **Installation Phase**: Use nixos-anywhere with disko to install the root system
@@ -54,6 +56,7 @@ The installation process:
 ### What Disko Handles
 
 Disko configures the root disk with:
+
 - Partitioning (UEFI boot, swap, root)
 - LUKS encryption (if configured)
 - ZFS root pool creation
@@ -193,7 +196,7 @@ lsblk -f
 After successful installation:
 
 1. **Configure users and access control**
-2. **Set up backup destinations**  
+2. **Set up backup destinations**
 3. **Configure VPN and networking**
 4. **Install application-specific services**
 5. **Enable automatic updates**

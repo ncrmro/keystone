@@ -42,10 +42,12 @@ Determine the input source and extract the raw scope content. The agent must han
 A markdown document with metadata header and the full original content.
 
 **Structure**:
+
 ```markdown
 # Raw Scope
 
 ## Source Metadata
+
 - **Platform**: [github | forgejo]
 - **Repository**: [owner/repo]
 - **Source Type**: [issue | freehand]
@@ -64,10 +66,12 @@ A markdown document with metadata header and the full original content.
 ```
 
 **Concrete example**:
+
 ```markdown
 # Raw Scope
 
 ## Source Metadata
+
 - **Platform**: github
 - **Repository**: ncrmro/homelab
 - **Source Type**: issue
@@ -79,12 +83,14 @@ A markdown document with metadata header and the full original content.
 ## Original Content
 
 We need monitoring for the homelab. Should include:
+
 - Prometheus for metrics collection
 - Grafana dashboards
 - Alerting to Slack when stuff breaks
 - Node exporter on all machines
 
 Nice to have:
+
 - Log aggregation with Loki
 - Uptime checks for public services
 

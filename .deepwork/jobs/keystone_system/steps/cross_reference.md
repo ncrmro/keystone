@@ -26,12 +26,12 @@ Read the convention draft from the previous step and systematically compare it a
    - Compare rule-by-rule against the new draft
    - Flag any of these overlap types:
 
-   | Overlap Type | Description | Example |
-   |---|---|---|
-   | **Duplicate** | Same rule exists in both, word-for-word or near-identical | Both say "scripts MUST use strict mode" |
-   | **Subsume** | New convention's rule is a superset of an existing rule | New has detailed ShellCheck rules; existing has a one-liner about linting |
-   | **Conflict** | Rules contradict each other | New says MUST; existing says SHOULD for same behavior |
-   | **Cross-ref opportunity** | Rules are related but complementary — should reference each other | New covers shell style; existing covers Nix `writeShellApplication` |
+   | Overlap Type              | Description                                                       | Example                                                                   |
+   | ------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
+   | **Duplicate**             | Same rule exists in both, word-for-word or near-identical         | Both say "scripts MUST use strict mode"                                   |
+   | **Subsume**               | New convention's rule is a superset of an existing rule           | New has detailed ShellCheck rules; existing has a one-liner about linting |
+   | **Conflict**              | Rules contradict each other                                       | New says MUST; existing says SHOULD for same behavior                     |
+   | **Cross-ref opportunity** | Rules are related but complementary — should reference each other | New covers shell style; existing covers Nix `writeShellApplication`       |
 
 4. **Build the deduplication plan**
 
@@ -53,21 +53,23 @@ Read the convention draft from the previous step and systematically compare it a
 Written to `.deepwork/tmp/cross_reference_report.md`.
 
 **Structure**:
+
 ```markdown
 # Cross-Reference Report
 
 ## New Convention
+
 - **File**: {prefix}.{topic}.md
 - **Display Name**: {Display Name}
 - **Rule Count**: {N}
 
 ## Conventions Scanned
 
-| File | Rules | Overlaps Found |
-|------|-------|----------------|
-| process.version-control.md | 12 | 2 |
-| tool.nix-devshell.md | 21 | 0 |
-| ... | ... | ... |
+| File                       | Rules | Overlaps Found |
+| -------------------------- | ----- | -------------- |
+| process.version-control.md | 12    | 2              |
+| tool.nix-devshell.md       | 21    | 0              |
+| ...                        | ...   | ...            |
 
 ## Overlaps
 
@@ -80,24 +82,30 @@ Written to `.deepwork/tmp/cross_reference_report.md`.
 - **Rationale**: {Why this resolution}
 
 ### Overlap 2: {Brief description}
+
 [repeat for each overlap]
 
 ## Proposed Changes
 
 ### Files to Modify
+
 - `conventions/{existing}.md` — Remove rules #{M}, #{N}; add cross-reference to {new}
 - `conventions/{other}.md` — Add cross-reference to {new} in section X
 
 ### Files to Create
+
 - `conventions/{prefix}.{topic}.md` — The new convention (from draft, minus removed overlaps)
 
 ### Files to Delete
+
 - (none, or list conventions that become empty after dedup)
 
 ### Archetypes Changes
+
 - (what needs to change in archetypes.yaml — to be confirmed with user in the next step)
 
 ## No Overlaps Found With
+
 [List conventions that were checked but had no overlaps — confirms thorough scan]
 ```
 

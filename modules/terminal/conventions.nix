@@ -1,7 +1,9 @@
 # Tool-native instruction file generation from keystone conventions.
 #
 # See conventions/tool.cli-coding-agents.md
+# See conventions/process.keystone-development-mode.md (dev-mode repos AGENTS.md)
 # Implements REQ-017 (Conventions and Grafana MCP)
+# Implements REQ-021 (Agent Context Budget)
 #
 # Reads archetypes.yaml from the keystone-conventions Nix store derivation and
 # writes conventions to each CLI coding tool's native instruction file path:
@@ -9,6 +11,9 @@
 #   - ~/.gemini/GEMINI.md   (Gemini CLI)
 #   - ~/.codex/AGENTS.md    (Codex)
 #   - OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file needed
+#
+# When keystone.development = true, also generates:
+#   - ~/.keystone/repos/AGENTS.md  using the keystone-developer archetype
 #
 # Content separation:
 #   - Keystone repo (conventions/): tool manuals, process docs, archetypes — shared
@@ -25,6 +30,8 @@ let
   cfg = config.keystone.terminal.conventions;
   terminalCfg = config.keystone.terminal;
   conventionsPath = pkgs.keystone.keystone-conventions;
+  aiCapabilities = config.keystone.terminal.aiExtensions.resolvedCapabilities or [ ];
+  aiCommandIds = config.keystone.terminal.aiExtensions.publishedCommands or [ ];
 
   # Read archetypes.yaml from the conventions derivation.
   # Guard: if the file doesn't exist, produce empty config (graceful degradation).
@@ -80,6 +87,24 @@ let
         Archetype: **${cfg.archetype}**
         ${archetypeConfig.description or ""}
       ''
+      ''
+        ## Keystone session
+
+        - Canonical instruction path: `~/.keystone/AGENTS.md`
+        - Development mode: ${if config.keystone.development then "enabled" else "disabled"}
+        - Available Keystone capabilities: ${
+          if aiCapabilities == [ ] then "_none_" else concatStringsSep ", " aiCapabilities
+        }
+        - Published Keystone commands: ${
+          if aiCommandIds == [ ] then "_none_" else concatStringsSep ", " aiCommandIds
+        }
+      ''
+      (optionalString (elem "notes" aiCapabilities) ''
+        ## Notes command guidance
+
+        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
+      '')
     ]
     ++ inlinedConventions
     ++ optional (referencedConventions != [ ]) ''
@@ -90,6 +115,70 @@ let
       ${concatStringsSep "\n" referencedConventions}
     ''
   );
+
+  # --- Repos AGENTS.md (keystone.development = true only) ---
+
+  isDev = config.keystone.development;
+  reposArchetype = archetypesYaml.archetypes."keystone-developer" or { };
+
+  reposInlinedConventions = map (
+    name:
+    let
+      filepath = "${conventionsPath}/${name}.md";
+    in
+    if builtins.pathExists filepath then
+      builtins.readFile filepath
+    else
+      "<!-- Convention ${name} not found -->"
+  ) (reposArchetype.inlined_conventions or [ ]);
+
+  # Convention links relative to ~/.keystone/repos/ — resolve to live checkout
+  reposReferencedConventions = map (name: "- [${name}](ncrmro/keystone/conventions/${name}.md)") (
+    reposArchetype.referenced_conventions or [ ]
+  );
+
+  # Repo inventory derived from keystone.repos (auto-populated from flake inputs)
+  reposList = concatStringsSep "\n\n" (
+    mapAttrsToList (
+      name: _: "### \`${name}\` → [\`${name}/AGENTS.md\`](${name}/AGENTS.md)"
+    ) config.keystone.repos
+  );
+
+  reposAgentsMdContent = concatStringsSep "\n\n---\n\n" (
+    [
+      ''
+        # Keystone repos
+
+        This directory (`~/.keystone/repos/`) is the agent-space root for the keystone
+        system. It contains the core repositories that define and operate this machine's
+        infrastructure. See `process.keystone-development` (inlined below) for the
+        development workflow, tooling, and how changes flow through the system.
+
+        ## Repositories
+
+        ${reposList}
+      ''
+      (optionalString (elem "notes" aiCapabilities) ''
+        ## Notes command guidance
+
+        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
+      '')
+    ]
+    ++ reposInlinedConventions
+    ++ optional (reposReferencedConventions != [ ]) ''
+      ## Reference Conventions
+
+      The following conventions are available for on-demand context:
+
+      ${concatStringsSep "\n" reposReferencedConventions}
+    ''
+  );
+
+  # Conventions inlined in both the global CLAUDE.md and the repos AGENTS.md
+  globalInlined = archetypeConfig.inlined_conventions or [ ];
+  reposInlined = reposArchetype.inlined_conventions or [ ];
+  overlappingConventions = filter (c: elem c globalInlined) reposInlined;
 in
 {
   options.keystone.terminal.conventions = {
@@ -124,27 +213,43 @@ in
     };
   };
 
-  config = mkIf (terminalCfg.enable && cfg.enable) {
-    # REQ-021: Warn when generated conventions exceed the context budget.
-    # The global CLAUDE.md should be minimal — only host basics and essential
-    # daily-use rules. Most conventions should be referenced, not inlined.
-    warnings =
-      let
-        contentSize = builtins.stringLength agentsMdContent;
-      in
-      optional (contentSize > cfg.maxGlobalBytes)
-        "keystone.terminal.conventions: generated CLAUDE.md is ${toString contentSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
-          toString (cfg.maxGlobalBytes / 4)
-        } tokens). Move conventions from inlined_conventions to referenced_conventions in archetypes.yaml.";
+  config =
+    mkIf (terminalCfg.enable && cfg.enable) {
+      # REQ-021: Warn when generated conventions exceed the context budget.
+      # The global CLAUDE.md should be minimal — only host basics and essential
+      # daily-use rules. Most conventions should be referenced, not inlined.
+      warnings =
+        let
+          globalSize = builtins.stringLength agentsMdContent;
+          reposSize = builtins.stringLength reposAgentsMdContent;
+        in
+        optional (globalSize > cfg.maxGlobalBytes)
+          "keystone.terminal.conventions: generated CLAUDE.md is ${toString globalSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
+            toString (cfg.maxGlobalBytes / 4)
+          } tokens). Move conventions from inlined_conventions to referenced_conventions in archetypes.yaml."
+        ++
+          optional (isDev && reposSize > cfg.maxGlobalBytes)
+            "keystone.terminal.conventions: generated repos AGENTS.md is ${toString reposSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
+              toString (cfg.maxGlobalBytes / 4)
+            } tokens). Move conventions from keystone-developer inlined_conventions to referenced_conventions in archetypes.yaml."
+        ++
+          optional (isDev && overlappingConventions != [ ])
+            "keystone.terminal.conventions: ${toString (length overlappingConventions)} convention(s) are inlined in both CLAUDE.md (${cfg.archetype}) and repos AGENTS.md (keystone-developer), consuming duplicate context tokens: ${concatStringsSep ", " overlappingConventions}. Consider moving them to referenced_conventions in the keystone-developer archetype.";
 
-    # Write conventions to each tool's native instruction file path.
-    # OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file.
-    home.file.".claude/CLAUDE.md".text = agentsMdContent;
-    home.file.".gemini/GEMINI.md".text = agentsMdContent;
-    home.file.".codex/AGENTS.md".text = agentsMdContent;
-
-    # Expose the full conventions directory for on-demand reading
-    # (referenced conventions link to Nix store paths in this directory)
-    home.file.".config/keystone/conventions".source = conventionsPath;
-  };
+      # Expose the full conventions directory for on-demand reading
+      # (referenced conventions link to Nix store paths in this directory)
+      home.file.".config/keystone/conventions".source = conventionsPath;
+    }
+    // mkIf (!isDev) {
+      # Generate the canonical Keystone instruction file and derive tool-native
+      # instruction files from the same content. In development mode these are
+      # refreshed from the live checkout by keystone-sync-agent-assets instead of
+      # being immutable Home Manager text outputs.
+      home.file.".keystone/AGENTS.md".text = agentsMdContent;
+      home.file.".claude/CLAUDE.md".text = agentsMdContent;
+      home.file.".gemini/GEMINI.md".text = agentsMdContent;
+      home.file.".codex/AGENTS.md".text = agentsMdContent;
+      home.file.".config/opencode/AGENTS.md".text = agentsMdContent;
+      home.file.".keystone/repos/AGENTS.md".text = reposAgentsMdContent;
+    };
 }

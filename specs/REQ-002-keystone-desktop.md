@@ -22,6 +22,7 @@ The system MUST provide a unified, hierarchical menu accessible via a global key
 - **dt-menu-001.7**: The menu MUST support direct navigation to specific sub-menus via command-line arguments.
 - **dt-menu-001.8**: The "Setup" sub-menu MUST provide a "Monitors" section for dynamic display configuration (see dt-monitor-001).
 - **dt-menu-001.9**: The menu MUST provide access to project and desktop context selection behavior defined in `dt-context-001`.
+- **dt-menu-001.10**: Walker or Elephant MUST remain presentation-layer launchers only. Any long-lived terminal, editor, browser, or GUI process started from the menu MUST be detached from the menu process tree before the target command begins running.
 
 ### Desktop contexts (dt-context-001)
 
@@ -44,6 +45,7 @@ Detailed project desktop menu requirements are defined in `REQ-026`.
 - **dt-context-001.13 (Delegation):** Desktop components MUST NOT implement domain logic for project discovery, session management, or metadata retrieval. They MUST delegate all such operations to the `pz` CLI or other terminal-first tools.
 - **dt-context-001.14 (Experience Parity):** The desktop project menus SHOULD provide a visual experience that mirrors the information hierarchy and action set of the `pz` CLI, ensuring a seamless transition for users moving between terminal and desktop contexts.
 - **dt-context-001.15 (Performance):** Desktop menus MUST utilize bulk data retrieval patterns (e.g., a single CLI call returning all required menu state) to ensure menu responsiveness and avoid N+1 performance bottlenecks.
+- **dt-context-001.16 (Launcher Independence):** Opening or attaching a project session from the desktop menu MUST NOT tie the spawned terminal window or editor lifecycle to Walker or Elephant service lifetime. Restarting the launcher services MUST NOT close or interrupt the started session.
 
 ### Project details page (dt-context-002)
 
@@ -60,10 +62,25 @@ The system SHOULD provide a project-specific details page reachable from the pro
 The system MUST provide an interactive menu for configuring displays at runtime, optimized for presentation scenarios.
 
 - **dt-monitor-001.1**: The monitor menu MUST list all currently connected displays.
-- **dt-monitor-001.2**: The menu MUST provide a global "Mirror All" toggle to clone the primary display to all others.
-- **dt-monitor-001.3**: The menu MUST allow selecting specific external monitors to mirror the primary display individually.
-- **dt-monitor-001.4**: The menu MUST provide resolution presets (e.g., 1080p) for compatibility with projectors.
-- **dt-monitor-001.5**: The system MUST support an `autoMirror` configuration option that, when enabled, automatically mirrors the primary display to any newly connected external display.
+- **dt-monitor-001.2**: The monitor menu MUST allow selecting any connected display before presenting monitor-specific actions.
+- **dt-monitor-001.3**: The menu MUST support live session changes for scale, resolution, orientation, enable or disable, mirroring, and relative placement.
+- **dt-monitor-001.4**: Resolution choices MUST come from the selected monitor's live advertised modes rather than a fixed global preset list.
+- **dt-monitor-001.5**: The menu MUST distinguish between temporary live session changes and saved host-default changes.
+- **dt-monitor-001.6**: Saving monitor defaults from the menu MUST update the current host's personal keystone config repository so later sessions derive monitor state from declarative configuration.
+- **dt-monitor-001.7**: The menu SHOULD expose the persisted `keystone.desktop.monitors` state in a form that remains reviewable and committable in the user's personal config repository.
+- **dt-monitor-001.8**: The system MUST support an `autoMirror` configuration option that, when enabled, automatically mirrors the primary display to any newly connected external display.
+
+### Audio management (dt-audio-001)
+
+The system MUST provide an interactive menu for inspecting and changing the
+default audio input and output devices.
+
+- **dt-audio-001.1**: The setup menu MUST provide an audio section reachable from the main Keystone menu.
+- **dt-audio-001.2**: The audio menu MUST list available output devices and clearly mark the current default output.
+- **dt-audio-001.3**: The audio menu MUST list available input devices and clearly mark the current default input.
+- **dt-audio-001.4**: Selecting an audio device from the menu MUST update the live default device immediately and show a confirmation notification.
+- **dt-audio-001.5**: Default audio device changes made from the menu MUST be persisted into the current host's personal keystone config repository so the desktop session derives those defaults from declarative configuration on later starts.
+- **dt-audio-001.6**: The menu backend for audio defaults SHOULD remain terminal-first so the same commands can be used directly in a shell or wrapped by Elephant or Walker.
 
 ### Keybindings Help (dt-help-001)
 

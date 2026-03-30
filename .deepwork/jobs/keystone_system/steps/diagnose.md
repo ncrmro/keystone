@@ -79,6 +79,7 @@ Verify the deployed system is healthy across all hosts. This step is the inner i
 # Validation Report
 
 ## Current Host
+
 - **Hostname**: [hostname]
 - **NixOS generation**: [version]
 - **Status**: [PASS | WARNINGS | FAIL]
@@ -88,38 +89,40 @@ Verify the deployed system is healthy across all hosts. This step is the inner i
 
 ## Plan Validation Criteria (if applicable)
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
+| Criterion             | Status    | Evidence                        |
+| --------------------- | --------- | ------------------------------- |
 | [criterion from plan] | PASS/FAIL | [command output or observation] |
 
 ## Agent Health
 
-| Agent | Host | Services | Tasks | Mail | Tailscale |
-|-------|------|----------|-------|------|-----------|
+| Agent        | Host   | Services         | Tasks       | Mail      | Tailscale        |
+| ------------ | ------ | ---------------- | ----------- | --------- | ---------------- |
 | [agent-name] | [host] | [running/failed] | [X pending] | [ok/down] | [online/offline] |
 
 ### Agent Tool Health
 
-| Agent | SSH Key Loaded | Commit Signing | himalaya | calendula | cfait |
-|-------|---------------|----------------|----------|-----------|-------|
-| [agent-name] | [ok / no keys] | [true/false] | [ok / error] | [ok / error] | [ok / error] |
+| Agent        | SSH Key Loaded | Commit Signing | himalaya     | calendula    | cfait        |
+| ------------ | -------------- | -------------- | ------------ | ------------ | ------------ |
+| [agent-name] | [ok / no keys] | [true/false]   | [ok / error] | [ok / error] | [ok / error] |
 
 ## Fleet Status
 
-| Host | Reachable | NixOS Generation | Status |
-|------|-----------|------------------|--------|
-| [host] | local | [version] | ← current |
-| [host] | yes | [version] | ok / drift |
-| [host] | no | — | unreachable |
+| Host   | Reachable | NixOS Generation | Status      |
+| ------ | --------- | ---------------- | ----------- |
+| [host] | local     | [version]        | ← current   |
+| [host] | yes       | [version]        | ok / drift  |
+| [host] | no        | —                | unreachable |
 
 ## Remote Host Issues (if any)
 
 ### [hostname]
+
 - **Failed units**: [list]
 - **ZFS replication**: [ok | failed — details]
 - **Details**: [findings]
 
 ## Overall Status
+
 - **System nominal**: [yes | no — details]
 - **All validation criteria met**: [yes | no — which failed]
 - **Action needed**: [none | prioritized list of follow-up actions]

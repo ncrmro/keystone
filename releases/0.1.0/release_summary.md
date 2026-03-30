@@ -38,6 +38,7 @@ gh release create v0.1.0 \
 #### Release Workflow (tag-triggered)
 
 Trigger on `v*` tag push. Should:
+
 1. Run `nix flake check` (already in `test.yml`, extend to tag events)
 2. Build ISO: `nix build .#iso`
 3. Create GitHub Release with release notes from `releases/[version]/release_notes.md`
@@ -49,7 +50,7 @@ Trigger on `v*` tag push. Should:
 name: Release
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 jobs:
   release:
@@ -93,12 +94,14 @@ changelog-check:
 #### Version Bump Automation
 
 Consider `release-please` for automated release management:
+
 - Reads conventional commits (`feat()`, `fix()`, etc.) landing on main
 - Automatically creates a "release PR" that bumps version and updates CHANGELOG.md
 - Merging the release PR triggers the tag-based release workflow above
 - Particularly valuable since Keystone already uses conventional commits
 
 ### Implementation Priority
+
 1. **Tag-triggered release workflow** — biggest time savings, creates consistent releases with ISO artifacts
 2. **Changelog validation PR check** — prevents changelog debt, easy to add to existing `test.yml`
 3. **Release-please automation** — full hands-off release cycle once the first two are in place

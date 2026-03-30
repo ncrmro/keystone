@@ -1,4 +1,5 @@
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
+
 # Convention: Refactor Discipline (process.refactor)
 
 This convention ensures that significant refactors are tracked, reviewed, and merged independently from feature work.
@@ -53,11 +54,13 @@ clean and reviewable.
 ## Expected end state
 
 ```
+
 src/routes/
-  index.ts      — re-exports all route registrations
-  users.ts      — /api/users handlers
-  products.ts   — /api/products handlers
-  health.ts     — /api/health handler
+index.ts — re-exports all route registrations
+users.ts — /api/users handlers
+products.ts — /api/products handlers
+health.ts — /api/health handler
+
 ```
 
 All existing tests pass unchanged.
@@ -71,10 +74,10 @@ gh issue comment 30 --repo ncrmro/catalyst \
   --body "Blocked on #31 (route restructure) — will resume after merge."
 
 # 3. Create refactor branch and implement (rules 7, 9)
-cd .repos/ncrmro/catalyst
+cd "$HOME/repos/ncrmro/catalyst"
 git fetch origin
 git branch refactor/split-routes origin/main
-git worktree add .worktrees/refactor/split-routes refactor/split-routes
+git worktree add "$HOME/.worktrees/ncrmro/catalyst/refactor/split-routes" refactor/split-routes
 
 # ... implement the refactor, verify tests still pass ...
 

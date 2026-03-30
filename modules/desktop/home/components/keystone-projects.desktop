@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Projects
+GenericName=Project context switcher
+Comment=Open the Keystone project selector
+Exec=keystone-context-switch
+Terminal=false
+Categories=Utility;Development;
+Icon=folder-development

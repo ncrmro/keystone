@@ -1,12 +1,14 @@
 Daily Status - 2026-03-19
 
 PRIORITIES
+
 - execute-cross-account-cloud-resources-phase-1: Pull PR #486 (ncrmro/catalyst) and execute
   phase 1 of spec/012-cross-account-cloud-resources [BLOCKED - needs AWS IAM credentials and
   CloudFormation onboarding stack from Nicholas; Docker rootless overlayfs also restricts
   LocalStack fallback]
 
 OPEN PRS
+
 - ncrmro/plant-caravan #47: feat(dashboard): wire dashboard to real API data [DRAFT]
   https://github.com/ncrmro/plant-caravan/pull/47
 - ncrmro/catalyst #490: fix(e2e): correct namespace assertion in deployment-environment spec
@@ -17,6 +19,7 @@ OPEN PRS
   https://github.com/ncrmro/keystone/pull/91
 
 RECENTLY COMPLETED
+
 - review-projctl-session-management-stories: Reviewed projctl Terminal Session Management user
   stories in issue #102; all 5 stories approved, specs merged (#107), plan in #108
 - review-keystone-tui-user-stories: Reviewed Keystone TUI user stories in issue #132; provided
@@ -26,6 +29,7 @@ RECENTLY COMPLETED
 - respond-to-login-github-blocker: Replied to Nicholas re: login-to-github task blocked on credentials
 
 BLOCKERS
+
 - crossplane-smoke-test-needs-aws-credentials: Phase 1 smoke test needs management IAM user
   credentials in Bitwarden, CloudFormation onboarding stack in target AWS account, and
   workflow_dispatch rights on ncrmro/catalyst - needs Nicholas to set up

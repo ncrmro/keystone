@@ -13,6 +13,7 @@
 6. Secrets MUST NOT be hardcoded — use `wrangler secret put <NAME>` to set them from the server.
 7. Wrangler secrets MUST be set from a machine with `wrangler` CLI access (typically the server or a developer workstation).
 8. For projects with GitHub Actions CI, secrets needed by the deploy workflow MUST also be configured as GitHub Actions secrets/variables:
+
    ```bash
    # GitHub Actions secrets (encrypted, for tokens/passwords)
    gh secret set SECRET_NAME --repo OWNER/REPO --env production
@@ -20,6 +21,7 @@
    # GitHub Actions variables (plain text, for URLs/config)
    gh variable set VAR_NAME --repo OWNER/REPO --env production --body "value"
    ```
+
 9. After configuring missing secrets, failed GitHub Actions workflows SHOULD be rerun:
    ```bash
    gh run rerun $RUN_ID --repo OWNER/REPO

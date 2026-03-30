@@ -117,6 +117,12 @@ integrating with the active desktop window state.
 - **pdm-open-001.6**: The desktop MUST support both current `pz` session names
   and legacy `obs-<project>` session names when detecting active sessions for
   focus-or-launch behavior.
+- **pdm-open-001.7**: Starting or attaching a project session from the desktop
+  menu MUST fully detach the spawned terminal or editor process from the
+  Walker or Elephant process tree before the user-facing window starts.
+- **pdm-open-001.8**: Restarting `walker.service` or `elephant.service` MUST
+  NOT close, interrupt, or invalidate a project window or zellij session that
+  was launched from the desktop menu.
 
 ### New named session flow (pdm-new-001)
 
@@ -177,6 +183,8 @@ The desktop project menu MUST stay responsive.
    `pz <project> <session-slug>`.
 7. The root menu uses a bulk `pz` export path rather than one per-project
    metadata call.
+8. Restarting `walker.service` after opening a project session does not close
+   the launched terminal window or its backing zellij session.
 
 ## Affected modules
 

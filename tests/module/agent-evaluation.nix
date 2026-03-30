@@ -79,6 +79,50 @@ let
           )
         else
           "{}";
+      resolvedCapabilitiesJson =
+        if result.config ? home-manager && result.config.home-manager.users ? testuser then
+          builtins.toJSON (
+            result.config.home-manager.users.testuser.keystone.terminal.aiExtensions.resolvedCapabilities or [ ]
+          )
+        else
+          "[]";
+      publishedCommandsJson =
+        if result.config ? home-manager && result.config.home-manager.users ? testuser then
+          builtins.toJSON (
+            result.config.home-manager.users.testuser.keystone.terminal.aiExtensions.publishedCommands or [ ]
+          )
+        else
+          "[]";
+      homeFilesJson =
+        if result.config ? home-manager && result.config.home-manager.users ? testuser then
+          builtins.toJSON (builtins.attrNames result.config.home-manager.users.testuser.home.file)
+        else
+          "[]";
+      canonicalAgentsTextJson =
+        if result.config ? home-manager && result.config.home-manager.users ? testuser then
+          lib.escapeShellArg (
+            builtins.toJSON (
+              result.config.home-manager.users.testuser.home.file.".keystone/AGENTS.md".text or ""
+            )
+          )
+        else
+          "''";
+      dragoCapabilitiesJson =
+        if result.config ? home-manager && result.config.home-manager.users ? "agent-drago" then
+          builtins.toJSON (
+            result.config.home-manager.users."agent-drago".keystone.terminal.aiExtensions.resolvedCapabilities
+              or [ ]
+          )
+        else
+          "[]";
+      luceCapabilitiesJson =
+        if result.config ? home-manager && result.config.home-manager.users ? "agent-luce" then
+          builtins.toJSON (
+            result.config.home-manager.users."agent-luce".keystone.terminal.aiExtensions.resolvedCapabilities
+              or [ ]
+          )
+        else
+          "[]";
     in
     pkgs.runCommand "eval-${name}" { } ''
       echo "Evaluating ${name}..."
@@ -112,6 +156,39 @@ let
           echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
           exit 1
         fi
+        if echo '${resolvedCapabilitiesJson}' | grep -q '"ks"' && echo '${resolvedCapabilitiesJson}' | grep -q '"notes"'; then
+          echo "  ✓ Found default ks and notes capabilities"
+        else
+          echo "  ✗ Missing default ks/notes capabilities"
+          echo "  Actual capabilities: ${resolvedCapabilitiesJson}"
+          exit 1
+        fi
+        if echo '${publishedCommandsJson}' | grep -q '"ks"' && ! echo '${publishedCommandsJson}' | grep -q '"ks.dev"'; then
+          echo "  ✓ Published only /ks in locked mode"
+        else
+          echo "  ✗ Unexpected locked-mode command surface"
+          echo "  Actual commands: ${publishedCommandsJson}"
+          exit 1
+        fi
+        if echo '${homeFilesJson}' | grep -q '".keystone/AGENTS.md"'; then
+          echo "  ✓ Found canonical ~/.keystone/AGENTS.md"
+        else
+          echo "  ✗ Missing canonical ~/.keystone/AGENTS.md"
+          echo "  Actual home files: ${homeFilesJson}"
+          exit 1
+        fi
+        if echo ${canonicalAgentsTextJson} | grep -q 'process.privileged-approval'; then
+          echo "  ✓ Found privileged approval guidance in ~/.keystone/AGENTS.md"
+        else
+          echo "  ✗ Missing privileged approval guidance in ~/.keystone/AGENTS.md"
+          exit 1
+        fi
+        if echo ${canonicalAgentsTextJson} | grep -q 'Route durable note capture' && echo ${canonicalAgentsTextJson} | grep -q '~/.config/keystone/conventions/process.notes.md'; then
+          echo "  ✓ Found notes routing and conventions guidance in ~/.keystone/AGENTS.md"
+        else
+          echo "  ✗ Missing notes routing or conventions guidance in ~/.keystone/AGENTS.md"
+          exit 1
+        fi
       fi
 
       # Verify DEEPWORK_ADDITIONAL_JOBS_FOLDERS for development-mode test
@@ -138,6 +215,45 @@ let
         else
           echo "  ✗ Missing development-mode DeepWork MCP env value"
           echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
+          exit 1
+        fi
+        if echo '${resolvedCapabilitiesJson}' | grep -q '"ks.dev"'; then
+          echo "  ✓ Found ks-dev capability in development mode"
+        else
+          echo "  ✗ Missing ks-dev capability in development mode"
+          echo "  Actual capabilities: ${resolvedCapabilitiesJson}"
+          exit 1
+        fi
+        if echo '${publishedCommandsJson}' | grep -q '"ks.dev"'; then
+          echo "  ✓ Published /ks.dev in development mode"
+        else
+          echo "  ✗ Missing /ks.dev in development mode"
+          echo "  Actual commands: ${publishedCommandsJson}"
+          exit 1
+        fi
+      fi
+
+      if [ "${name}" = "agent-capabilities" ]; then
+        if echo '${dragoCapabilitiesJson}' | grep -q '"engineer"' && ! echo '${dragoCapabilitiesJson}' | grep -q '"executive-assistant"'; then
+          echo "  ✓ Drago resolved engineer capability without executive-assistant"
+        else
+          echo "  ✗ Drago capability resolution is wrong"
+          echo "  Actual Drago capabilities: ${dragoCapabilitiesJson}"
+          exit 1
+        fi
+        if echo '${luceCapabilitiesJson}' | grep -q '"executive-assistant"' && ! echo '${luceCapabilitiesJson}' | grep -q '"engineer"'; then
+          echo "  ✓ Luce resolved executive-assistant capability without engineer"
+        else
+          echo "  ✗ Luce capability resolution is wrong"
+          echo "  Actual Luce capabilities: ${luceCapabilitiesJson}"
+          exit 1
+        fi
+        if echo '${dragoCapabilitiesJson}' | grep -q '"notes"' && echo '${luceCapabilitiesJson}' | grep -q '"notes"'; then
+          echo "  ✓ Both agents keep notes capability"
+        else
+          echo "  ✗ Missing notes capability on one or both agents"
+          echo "  Drago: ${dragoCapabilitiesJson}"
+          echo "  Luce: ${luceCapabilitiesJson}"
           exit 1
         fi
       fi
@@ -206,6 +322,47 @@ let
             initialPassword = "testpass";
             terminal.enable = true;
             email = "testuser@example.com";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    agent-capabilities = eval "agent-capabilities" [
+      {
+        keystone.development = true;
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+          agents.drago = {
+            fullName = "Drago";
+            email = "drago@example.com";
+            archetype = "engineer";
+            capabilities = [
+              "engineer"
+              "notes"
+            ];
+            notes.repo = "git@example.com:drago/notes.git";
+          };
+          agents.luce = {
+            fullName = "Luce";
+            email = "luce@example.com";
+            archetype = "product";
+            capabilities = [
+              "notes"
+              "executive-assistant"
+            ];
+            notes.repo = "git@example.com:luce/notes.git";
           };
         };
         fileSystems."/" = {
@@ -687,6 +844,36 @@ let
                 time = "10:00";
               }
             ];
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with perception layer enabled (REQ-023.34)
+    agent-perception = eval "agent-perception" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.vision = {
+            fullName = "Vision Agent";
+            notes.repo = "git@example.com:vision/notes.git";
+            perception = {
+              enable = true;
+              voice.model = "small";
+              processor = {
+                enable = true;
+                useOllama = true;
+                onCalendar = "*:0/15";
+              };
+            };
           };
         };
         fileSystems."/" = {

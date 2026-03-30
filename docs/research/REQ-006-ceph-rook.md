@@ -15,11 +15,11 @@ Deploy Rook operator with Ceph on ZFS datasets. Three storage classes: block (RB
 
 ## Storage Classes
 
-| Class | Use Case |
-|-------|----------|
-| `ceph-block` (RBD) | Databases, stateful apps |
-| `ceph-filesystem` (CephFS) | Shared storage (ReadWriteMany) |
-| `ceph-object` (RGW) | Backups, logs, container registry |
+| Class                      | Use Case                          |
+| -------------------------- | --------------------------------- |
+| `ceph-block` (RBD)         | Databases, stateful apps          |
+| `ceph-filesystem` (CephFS) | Shared storage (ReadWriteMany)    |
+| `ceph-object` (RGW)        | Backups, logs, container registry |
 
 ## Cloud Sync
 

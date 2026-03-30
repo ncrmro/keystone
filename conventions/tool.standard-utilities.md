@@ -4,7 +4,7 @@ Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `se
 
 ## JSON Processing (jq)
 
-1. `jq` MUST be used for parsing and filtering JSON output from APIs and CLI tools.
+1. `jq` MUST be used for parsing and filtering JSON output from APIs and CLI tools. See `tool.process-compose-agent` Rule 5 for its application in service orchestration.
 2. Complex `jq` filters SHOULD be broken into multiple pipes for readability.
 3. For scripts, use the `-r` (raw-output) flag when extracting string values to avoid unwanted quotes.
 4. `jq` filters MUST handle missing keys gracefully using the `?` operator or `//` default values.

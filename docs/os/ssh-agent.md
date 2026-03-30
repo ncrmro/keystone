@@ -1,18 +1,19 @@
 ---
-title: SSH Agent (Desktop)
-description: SSH key management via systemd user service for Hyprland sessions
+title: SSH Agent
+description: SSH key management via systemd user service for terminal and desktop sessions
 ---
 
-# SSH Agent (Desktop)
+# SSH Agent
 
-The desktop module runs `ssh-agent` as a systemd user service, providing SSH key management for Hyprland sessions.
+Keystone runs `ssh-agent` as a systemd user service, providing SSH key
+management for terminal and desktop sessions.
 
 ## How It Works
 
 Three pieces work together:
 
 1. **`services.ssh-agent`** (home-manager) - Starts a systemd user service running `ssh-agent -D -a $XDG_RUNTIME_DIR/ssh-agent`
-2. **Hyprland `env`** - Sets `SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent` so all child processes (terminals, editors, browsers) inherit it
+2. **Session environment** - Exposes `SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent` so terminal shells, editors, and desktop applications inherit it
 3. **`programs.ssh.addKeysToAgent = "yes"`** - On first SSH use, the key is automatically added to the agent after you enter the passphrase
 
 ## Passphrase-Protected Keys
@@ -40,7 +41,7 @@ If you use a hardware key exclusively, the ssh-agent service still runs but rema
 
 ## Verification
 
-After logging in to a Hyprland session:
+After logging in to your session:
 
 ```bash
 # Check the socket exists
@@ -69,13 +70,13 @@ systemctl --user status ssh-agent
 
 ### SSH_AUTH_SOCK is empty or wrong
 
-Check that Hyprland inherited the environment variable:
+Check that your session inherited the environment variable:
 
 ```bash
 # Should show the ssh-agent socket path
 hyprctl getoption env
 
-# If missing, the env line may not be in hyprland.conf
+# If missing in a desktop session, the env line may not be in hyprland.conf
 grep SSH_AUTH_SOCK ~/.config/hypr/hyprland.conf
 ```
 

@@ -22,6 +22,7 @@ Define the spike question or hypothesis, validate the project exists, derive a s
    - Confirm with the user if ambiguous
 
 3. **Create the output directory**
+
    ```bash
    mkdir -p spikes/[spike_name]
    ```
@@ -45,19 +46,24 @@ Define the spike question or hypothesis, validate the project exists, derive a s
 # Spike: [Short Title]
 
 ## Metadata
+
 - **Project**: [project_name]
 
 ## Question
+
 [The specific question or hypothesis to investigate]
 
 ## Context
+
 [Background, constraints, relevant code references, links]
 
 ## Success Criteria
+
 - [ ] [What constitutes a sufficient answer]
 - [ ] [What prototype would prove feasibility, if applicable]
 
 ## Out of Scope
+
 - [What we are NOT investigating in this spike]
 ```
 

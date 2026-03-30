@@ -27,9 +27,11 @@ Update the project file with key takeaways from the spike, and — when a zk not
    - Check for a `.zk/` directory at or above the working directory — skip this step if absent
 
    **4a. Report note** — spike summary in `reports/`
+
    ```bash
    zk new --title "Spike: [spike_name]" --no-input --print-path reports/
    ```
+
    Edit the created file to fill in:
    - `report_kind: spike`
    - `source_ref: spikes/[spike_name]/README.md`
@@ -37,9 +39,11 @@ Update the project file with key takeaways from the spike, and — when a zk not
    - Body: one-paragraph summary of the question, conclusion, and recommendation; link to `spikes/[spike_name]/README.md`
 
    **4b. Decision note (ADR)** — only if the spike concluded with a clear architectural decision
+
    ```bash
    zk new --title "[Decision Title]" --no-input --print-path decisions/
    ```
+
    Fill in the template sections:
    - **Context**: spike question and motivation
    - **Decision**: what was decided
@@ -61,8 +65,10 @@ Add a section like this (create the Spikes section if it doesn't exist):
 ## Spikes
 
 ### [spike_name] (YYYY-MM-DD)
+
 **Conclusion**: [One-sentence summary of the finding]
 **Link**: [spike_name]([project_folder]/spikes/[spike_name]/README.md)
+
 - [ ] [Next step 1]
 - [ ] [Next step 2]
 ```

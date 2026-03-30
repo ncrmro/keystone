@@ -66,10 +66,12 @@ Read both the convention draft and the cross-reference report, then make all the
 Written to `.deepwork/tmp/change_summary.md`.
 
 **Structure**:
+
 ```markdown
 # Convention Change Summary
 
 ## Convention Created
+
 - **File**: `conventions/{prefix}.{topic}.md`
 - **Display Name**: {Display Name}
 - **Final Rule Count**: {N}
@@ -77,6 +79,7 @@ Written to `.deepwork/tmp/change_summary.md`.
 ## Existing Conventions Modified
 
 ### `conventions/{existing}.md`
+
 - **Rules removed**: #{M}, #{N} (moved to new convention)
 - **Cross-reference added**: "See `{prefix.topic}` for {topic}."
 - **Rules renumbered**: Yes/No
@@ -84,17 +87,20 @@ Written to `.deepwork/tmp/change_summary.md`.
 [Repeat for each modified file]
 
 ## Existing Conventions Deleted
+
 - (none, or list with rationale)
 
 ## Archetypes Updated
 
 ### {archetype_name}
+
 - **Added to**: {inlined_conventions|referenced_conventions}
 - **Added to roles**: {role1, role2} (or "none")
 
 [Repeat for each archetype]
 
 ## Files Changed (for commit)
+
 - `conventions/{prefix}.{topic}.md` (created)
 - `conventions/{existing}.md` (modified)
 - `conventions/archetypes.yaml` (modified)

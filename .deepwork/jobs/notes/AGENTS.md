@@ -24,16 +24,19 @@
 ### notes.setup / notes.doctor
 
 #### Keystone Detection
+
 - This repo IS a keystone repo. Markers: TASKS.yaml, AGENTS.md
 - Operational files to exclude: TASKS.yaml, AGENTS.md, KEYSTONE_AGENTS_METRICS.md, TOOLS.md, WRITING_STYLE.md
 
 #### Source Format
+
 - Obsidian vault (`.obsidian/` directory present if not in worktree)
 - Uses Obsidian wikilinks `[[filename]]`
 - Journal uses nested date dirs: `journal/2025/08_August/`
 - Projects use nested structure: `projects/{name}/latinum/`, `projects/{name}/ideas/`
 
 #### Migration Considerations
+
 - `_archive/Clippings/` → `literature/` (web clippings are source summaries)
 - `journal/` → `notes/` with date-based IDs from directory path
 - `ideas/` → `inbox/` (fleeting captures)
@@ -45,12 +48,14 @@
 - `scratch.md` → `inbox/` (fleeting)
 
 #### Config Files to Exclude
+
 - flake.nix, flake.lock, pyproject.toml, uv.lock
 - bin/ directory (scripts)
 - age-yubikey-identity-959abae0.txt (encryption key)
 - README.md (repo docs, not a note)
 
 ## Last Updated
+
 - Date: 2026-03-21
 - From conversation about: Creating notes_setup workflow and learning from format detection requirements
 

@@ -95,6 +95,28 @@ let
           };
         };
 
+        capabilities = mkOption {
+          type = types.listOf (
+            types.enum [
+              "ks"
+              "ks-dev"
+              "notes"
+              "engineer"
+              "executive-assistant"
+            ]
+          );
+          default = [ ];
+          description = ''
+            Extra Keystone AI workflow capabilities for this user. These
+            capabilities are merged with default terminal capabilities and
+            determine what the generated `/ks` and `/ks.dev` commands may do.
+          '';
+          example = [
+            "notes"
+            "executive-assistant"
+          ];
+        };
+
         sshAutoLoad = {
           enable = mkOption {
             type = types.bool;

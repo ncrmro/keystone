@@ -17,11 +17,13 @@ Read the milestone issue from the platform, explore the project's codebase, and 
 2. **Fetch the milestone issue**
 
    **GitHub**:
+
    ```bash
    gh issue view {number} --repo {owner}/{repo} --json title,body,labels,milestone,assignees
    ```
 
    **Forgejo**:
+
    ```bash
    fj issue view {number} -r {owner}/{repo}
    ```
@@ -62,10 +64,12 @@ Read the milestone issue from the platform, explore the project's codebase, and 
 A structured document mapping user stories to codebase systems with boundary and gap analysis.
 
 **Structure**:
+
 ```markdown
 # Scope Analysis: [Milestone Title]
 
 ## Source
+
 - **Platform**: [github | forgejo]
 - **Repository**: [owner/repo]
 - **Milestone Issue**: #[number] — [issue title]
@@ -75,6 +79,7 @@ A structured document mapping user stories to codebase systems with boundary and
 ## Story-to-System Map
 
 ### US-001: [Story title]
+
 - **Type**: feat | chore | test | refactor
 - **Affected files/modules**:
   - `src/routes/search.ts` — new route handler
@@ -83,6 +88,7 @@ A structured document mapping user stories to codebase systems with boundary and
 - **Notes**: [any implementation notes]
 
 ### US-002: [Story title]
+
 ...
 
 ## System Boundaries
@@ -90,43 +96,47 @@ A structured document mapping user stories to codebase systems with boundary and
 Boundaries where multiple stories intersect or share infrastructure.
 
 ### [Boundary Name] (e.g., "API Layer", "Database Schema", "Auth Middleware")
+
 - **Stories involved**: US-001, US-003, US-005
 - **Shared concern**: [what they share — e.g., "All need new API routes with auth"]
 - **Key files**: [files at this boundary]
 - **Coordination notes**: [ordering or dependency implications]
 
 ### [Another Boundary]
+
 ...
 
 ## Implied Prerequisites
 
 Items not listed as user stories but required for implementation.
 
-| # | Prerequisite | Required By | Type | Notes |
-|---|-------------|-------------|------|-------|
-| 1 | [e.g., Database migration setup] | US-001, US-003 | chore | [details] |
-| 2 | [e.g., CI pipeline for new module] | All stories | chore | [details] |
+| #   | Prerequisite                       | Required By    | Type  | Notes     |
+| --- | ---------------------------------- | -------------- | ----- | --------- |
+| 1   | [e.g., Database migration setup]   | US-001, US-003 | chore | [details] |
+| 2   | [e.g., CI pipeline for new module] | All stories    | chore | [details] |
 
 ## Ambiguities and Clarification Needed
 
 Items requiring CPO clarification before implementation.
 
-| # | Story | Question | Impact |
-|---|-------|----------|--------|
-| 1 | US-004 | [What does "real-time" mean — websockets or polling?] | [Affects architecture choice] |
+| #   | Story  | Question                                              | Impact                        |
+| --- | ------ | ----------------------------------------------------- | ----------------------------- |
+| 1   | US-004 | [What does "real-time" mean — websockets or polling?] | [Affects architecture choice] |
 
 ## Stories Recommended for Splitting
 
-| Story | Reason | Suggested Split |
-|-------|--------|----------------|
+| Story  | Reason                                         | Suggested Split                        |
+| ------ | ---------------------------------------------- | -------------------------------------- |
 | US-007 | [Too large — covers both backend and frontend] | [Split into US-007a: API, US-007b: UI] |
 ```
 
 **Concrete example** (abbreviated):
+
 ```markdown
 # Scope Analysis: Recipe Sharing Platform
 
 ## Source
+
 - **Platform**: github
 - **Repository**: ncrmro/recipes
 - **Milestone Issue**: #15 — Recipe Sharing Platform: User Stories for Review
@@ -136,6 +146,7 @@ Items requiring CPO clarification before implementation.
 ## Story-to-System Map
 
 ### US-001: Add recipe creation form
+
 - **Type**: feat
 - **Affected files/modules**:
   - `src/app/recipes/new/page.tsx` — new page component
@@ -146,6 +157,7 @@ Items requiring CPO clarification before implementation.
 - **Notes**: Requires image upload support for recipe photos
 
 ### US-002: Add recipe search
+
 - **Type**: feat
 - **Affected files/modules**:
   - `src/app/recipes/page.tsx` — add search UI
@@ -157,12 +169,14 @@ Items requiring CPO clarification before implementation.
 ## System Boundaries
 
 ### API Layer
+
 - **Stories involved**: US-001, US-002, US-003
 - **Shared concern**: All need new API routes under `/api/recipes/`
 - **Key files**: `src/app/api/recipes/`
 - **Coordination notes**: Define shared response types before individual routes
 
 ### Database Schema
+
 - **Stories involved**: US-001, US-002, US-004
 - **Shared concern**: All require the `recipes` table and related models
 - **Key files**: `prisma/schema.prisma`, `src/lib/db/recipes.ts`
@@ -170,16 +184,16 @@ Items requiring CPO clarification before implementation.
 
 ## Implied Prerequisites
 
-| # | Prerequisite | Required By | Type | Notes |
-|---|-------------|-------------|------|-------|
-| 1 | Prisma schema + migration for recipes table | US-001, US-002, US-004 | chore | Must define schema before feature branches |
-| 2 | Image upload infrastructure (S3 or local) | US-001 | chore | Recipe photos need storage |
+| #   | Prerequisite                                | Required By            | Type  | Notes                                      |
+| --- | ------------------------------------------- | ---------------------- | ----- | ------------------------------------------ |
+| 1   | Prisma schema + migration for recipes table | US-001, US-002, US-004 | chore | Must define schema before feature branches |
+| 2   | Image upload infrastructure (S3 or local)   | US-001                 | chore | Recipe photos need storage                 |
 
 ## Ambiguities and Clarification Needed
 
-| # | Story | Question | Impact |
-|---|-------|----------|--------|
-| 1 | US-002 | Does "search" mean full-text search or simple filtering? | Determines if we need pg_trgm or Elasticsearch |
+| #   | Story  | Question                                                 | Impact                                         |
+| --- | ------ | -------------------------------------------------------- | ---------------------------------------------- |
+| 1   | US-002 | Does "search" mean full-text search or simple filtering? | Determines if we need pg_trgm or Elasticsearch |
 ```
 
 ## Quality Criteria

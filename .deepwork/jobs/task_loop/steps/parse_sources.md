@@ -79,6 +79,7 @@ Scheduled tasks (with `source: "schedule"`) are created by the `agent-scheduler`
 Updated task file with any new tasks appended.
 
 **Structure**:
+
 ```yaml
 tasks:
   - name: "existing-task"
@@ -103,6 +104,7 @@ tasks:
 Summary of what was ingested.
 
 **Structure**:
+
 ```markdown
 # Ingest Report
 
@@ -110,10 +112,10 @@ Summary of what was ingested.
 
 ## Sources Processed
 
-| Source | Items Found | New Tasks | Skipped (duplicate) | Skipped (not actionable) |
-|--------|-------------|-----------|---------------------|--------------------------|
-| email | [n] | [n] | [n] | [n] |
-| github-issues | [n] | [n] | [n] | [n] |
+| Source        | Items Found | New Tasks | Skipped (duplicate) | Skipped (not actionable) |
+| ------------- | ----------- | --------- | ------------------- | ------------------------ |
+| email         | [n]         | [n]       | [n]                 | [n]                      |
+| github-issues | [n]         | [n]       | [n]                 | [n]                      |
 
 ## New Tasks Created
 
@@ -129,6 +131,7 @@ Summary of what was ingested.
 ```
 
 **Concrete example**:
+
 ```markdown
 # Ingest Report
 
@@ -136,10 +139,10 @@ Summary of what was ingested.
 
 ## Sources Processed
 
-| Source | Items Found | New Tasks | Skipped (duplicate) | Skipped (not actionable) |
-|--------|-------------|-----------|---------------------|--------------------------|
-| email | 8 | 1 | 0 | 7 |
-| github-issues | 3 | 2 | 1 | 0 |
+| Source        | Items Found | New Tasks | Skipped (duplicate) | Skipped (not actionable) |
+| ------------- | ----------- | --------- | ------------------- | ------------------------ |
+| email         | 8           | 1         | 0                   | 7                        |
+| github-issues | 3           | 2         | 1                   | 0                        |
 
 ## New Tasks Created
 

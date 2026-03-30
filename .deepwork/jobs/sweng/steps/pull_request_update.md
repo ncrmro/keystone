@@ -23,6 +23,7 @@ git -C $WORKTREE diff main..HEAD --stat
 ```
 
 Get the PR number:
+
 ```bash
 # GitHub
 PR_NUM=$(gh pr list --repo OWNER/REPO --head $BRANCH --json number --jq '.[0].number')
@@ -64,11 +65,13 @@ Screenshots must be hosted so they render inline in the PR body. The method
 depends on whether the repo is public or private.
 
 **Detect repo visibility:**
+
 ```bash
 PRIVATE=$(gh api repos/OWNER/REPO --jq '.private')
 ```
 
 **Public repos** — use `raw.githubusercontent.com` URLs directly:
+
 ```bash
 SHA=$(git rev-parse --short HEAD)
 IMAGE_URL="https://raw.githubusercontent.com/OWNER/REPO/$SHA/path/to/screenshot.png"
@@ -138,6 +141,7 @@ EOF
 Each screenshot should reference the requirement(s) it provides evidence for.
 
 **Forgejo:**
+
 ```bash
 fj pr edit $PR_NUM --repo OWNER/REPO --body "..."
 ```
@@ -159,13 +163,16 @@ platform: github
 # PR Update: feat/task-slug
 
 ## Screenshots
+
 - 01-full-layout.png (REQ-007) — embedded in PR body Demo section
 - 02-file-viewer.png (REQ-001) — embedded in PR body Demo section
 
 ## Demo Section
+
 Updated with screenshot evidence and test results.
 
 ## Deploy Preview
+
 [URL if available, or "N/A — no deploy preview configured"]
 ```
 
