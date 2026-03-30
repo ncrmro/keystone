@@ -12,7 +12,19 @@ drives the rest of the portfolio review — every project in it will be reviewed
 
 ### Process
 
-1. **Determine the notes repo path**
+1. **Verify the notes repo branch**
+   - Run `git -C <notes_path> branch --show-current` to check the active branch
+   - If the branch is not `main`, warn the user and switch to `main`:
+     ```bash
+     git -C <notes_path> stash   # stash any uncommitted changes
+     git -C <notes_path> checkout main
+     git -C <notes_path> pull    # ensure it's up to date
+     ```
+   - If the branch cannot be switched (e.g. merge conflicts), stop and report the
+     blocker — do not proceed with stale or branch-scoped data
+   - Confirm the branch is `main` before continuing
+
+2. **Determine the notes repo path**
    - The `notes_path` input specifies where the notes repo lives
    - If `notes_path` was not provided, ask structured questions to determine it:
      offer common paths like `~/code/ncrmro/obsidian`, `~/notes`, or let the user

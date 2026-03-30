@@ -1,5 +1,5 @@
 name: executive_assistant
-version: "1.5.0"
+version: "1.5.1"
 summary: "Executive assistant workflows: event planning, calendar management, inbox cleanup, event discovery, presentation creation, and zk-backed task coordination"
 common_job_info_provided_to_all_steps_at_runtime: |
   Executive assistant workflows for the human operator. These workflows handle
