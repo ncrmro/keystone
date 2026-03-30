@@ -111,6 +111,7 @@ archetypes:
       - tool.himalaya
       - tool.nix-devshell
       - process.version-control-advanced
+      - process.git-worktrees
       - tool.github
       - tool.journal-remote
       - os.zfs-backup

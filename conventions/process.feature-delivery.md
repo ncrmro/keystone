@@ -61,7 +61,7 @@ End-to-end walkthrough for implementing issue #12 ("Add search endpoint") from m
 
 ```bash
 # 1. From the main checkout, create a branch and worktree (rules 9-10)
-cd "$HOME/code/acme/api"
+cd "$HOME/repos/acme/api"
 git fetch origin
 git branch feat/add-search-endpoint origin/main
 git worktree add "$HOME/.worktrees/acme/api/feat/add-search-endpoint" feat/add-search-endpoint
@@ -160,7 +160,7 @@ git commit -m "test(api): add search integration tests"
 # GitHub: gh pr merge <number> --squash --delete-branch
 
 # 10. Clean up worktree after merge
-cd "$HOME/code/acme/api"
+cd "$HOME/repos/acme/api"
 git worktree remove "$HOME/.worktrees/acme/api/feat/add-search-endpoint"
 
 # 11. Post demo artifacts on the issue (rule 32)
