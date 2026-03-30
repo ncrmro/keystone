@@ -96,6 +96,21 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
   3. `steps/write_press_release.md` Quality Criteria: Added criteria for internal context sections and user stories appearing outside the blockquote
 - **Reference**: `steps/gather_context.md` step 1, `steps/write_press_release.md` Output Format and Quality Criteria
 
+### 2026-03-30: Press release issue formatting — title, separators, identifiers, readable header
+
+- **Source**: User feedback after reviewing published press release issues #259 and #260
+- **Issues identified**:
+  1. Issue title was the press release headline — should be `Press Release: <Product Label>` (e.g., "Press Release: KS Project Agent")
+  2. The context header above the blockquote used internal jargon ("Builds on: OS agents, ~/notes Zettelkasten, pz sessions...") — must be human-readable, 1-3 sentences, no internal tool names
+  3. User stories had no unique identifiers — need `US-1`, `US-2`, etc. for traceability
+  4. The press release blockquote had no visual separation — needs `---` separators before and after
+- **Resolution**: Updated `steps/write_press_release.md`:
+  1. Step 12: issue title must be `Press Release: <Product Label>`
+  2. Output Format: issue body now has 5 parts — human-readable header → `---` → blockquote → `---` → user stories/context/FAQ
+  3. User story template uses `**US-N**:` prefix
+  4. Quality Criteria: added checks for title format, readable header, `---` separators, and story IDs
+- **Reference**: `steps/write_press_release.md` step 12, Output Format, and Quality Criteria
+
 ### 2026-03-30: Clarifying questions should use AskUserQuestion tool when available
 
 - **Source**: User feedback after the `gather_context` step asked questions as plain text
