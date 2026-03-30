@@ -1,5 +1,5 @@
 name: project
-version: "1.7.0"
+version: "1.7.1"
 summary: "Project onboarding, press releases, milestone planning, engineering handoff, success charter reviews, and health audits"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job covers the full project lifecycle from onboarding through engineering handoff:

@@ -96,6 +96,13 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
   3. `steps/write_press_release.md` Quality Criteria: Added criteria for internal context sections and user stories appearing outside the blockquote
 - **Reference**: `steps/gather_context.md` step 1, `steps/write_press_release.md` Output Format and Quality Criteria
 
+### 2026-03-30: Clarifying questions should use AskUserQuestion tool when available
+
+- **Source**: User feedback after the `gather_context` step asked questions as plain text
+- **Issue**: Structured question tools (like `AskUserQuestion` in Claude Code) give the user a faster, cleaner input experience than reading a wall of text. The step was asking six scoping questions as plain prose, missing the better UX path.
+- **Resolution**: Updated `steps/gather_context.md` step 1 — if `AskUserQuestion` is available, use it for the six scoping questions with option lists and free-text fallback. Plain-text batching is the fallback when the tool is unavailable.
+- **Reference**: `steps/gather_context.md` step 1
+
 ## Editing Guidelines
 
 1. **Use workflows** for structural changes (adding steps, modifying job.yml)
