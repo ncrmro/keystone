@@ -325,7 +325,7 @@ scripts, not only via the background processor.
 ### Security
 
 **REQ-023.41** All media processing (PDF parsing, OCR, voice transcription,
-image search) MUST run on local hardware. No data MUST be transmitted to
+image search) MUST run on local hardware. Data MUST NOT be transmitted to
 external services.
 
 **REQ-023.42** Immich API keys MUST be stored as agenix secrets and MUST NOT
@@ -349,8 +349,14 @@ DeepWork MCP server.
 
 **REQ-023.47** Routing MUST cover all workflows in the `executive_assistant`
 job: `plan_event`, `manage_calendar`, `clean_inbox`, `discover_events`,
-`task_loop`, `portfolio_review`, `slide_deck`, `summarize_audio`,
-`review_photos`, and `start_recording`.
+`task_loop`, `portfolio_review`, `portfolio_review_one`, `slide_deck`,
+`summarize_audio`, `review_photos`, and `start_recording`.
+
+> **Implementation note**: `summarize_audio`, `review_photos`, and
+> `start_recording` are Phase 2 additions — they do not yet exist in
+> `job.yml` and are tracked in plan issue #184 (Phase 5 tasks). The command
+> MUST handle routing to a workflow that does not yet exist by informing
+> the user it is not yet available.
 
 **REQ-023.48** When the request does not match a known workflow, the command
 MUST list available workflows and ask the user to clarify. It MUST NOT
