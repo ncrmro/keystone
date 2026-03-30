@@ -29,6 +29,15 @@ common_job_info_provided_to_all_steps_at_runtime: |
      confidence score. Serves as the backbone for prioritization and reality checks — keeps
      the human from losing the business thread while focused on engineering.
 
+  6. **Doctor** — Audit a project's public presence and release coverage:
+     - Checks the notes hub exists and contains website URL and social media accounts
+     - Checks every release/pre-release has a corresponding published MDX post on the website
+     - If the website repo has no blog/posts MDX infrastructure, files a GitHub/Forgejo issue
+       to add it (assignable to Copilot / agents for implementation)
+     - For each missing release post, files a separate issue on the website repo
+     Run `project/doctor` after each release cycle to keep the public website in sync with
+     the project's history.
+
   The complete project pipeline:
     1. project/press_release                 — working-backwards press release
     2. project/milestone                     — milestone + user stories (accepts press_release_issue_url)
@@ -624,3 +633,90 @@ steps:
           "Verdict Aligned": "Recommendations directly follow from the verdict in the success review."
           "Actionable Items": "Each recommendation specifies a concrete action (which workflow to run, which milestone to create/close, what to change in PROJECTS.yaml)."
           "Prioritized": "Recommendations are ordered by impact and urgency."
+
+  # ── wrap_up workflow steps ─────────────────────────────────────────────────
+
+  - id: scan_context
+    name: "Scan Context and Cluster Changes"
+    description: "Discover all uncommitted changes across repos, read shared session state, and cluster changes into logical commit groups"
+    instructions_file: steps/scan_context.md
+    inputs:
+      - name: repos
+        description: "Space-separated list of repo paths to scan (e.g. '~/.keystone/repos/ncrmro/keystone'). Leave blank to scan the current working directory."
+    outputs:
+      wrap_up_scan.json:
+        type: file
+        description: "Discovered change groups with file lists, suggested commit messages, branch state, and any groups claimed/processed by other sessions from shared state"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: wrap_up_scan.json
+        quality_criteria:
+          "Groups Identified": "Each logical group of related changes is listed as a separate entry with a file list and suggested commit message."
+          "Shared State Read": "The scan checked .deepwork/tmp/wrap_up_state.json and excluded files already processed or claimed by other sessions."
+          "Branch Context": "For each repo, the current branch, default branch, and whether it is ahead/behind remote are recorded."
+
+  - id: plan_commits
+    name: "Plan Commit Groups"
+    description: "Present the next unclaimed change group to the user, confirm the commit message and scope, and record the claim in shared state"
+    instructions_file: steps/plan_commits.md
+    inputs:
+      - file: wrap_up_scan.json
+        from_step: scan_context
+    outputs:
+      wrap_up_plan.json:
+        type: file
+        description: "The single change group approved for this commit: file list, final commit message, repo path, and session claim written to .deepwork/tmp/wrap_up_state.json"
+        required: true
+    dependencies:
+      - scan_context
+    reviews:
+      - run_each: wrap_up_plan.json
+        additional_review_guidance: "Read wrap_up_scan.json to verify only one group is planned and it does not overlap with groups already processed or claimed by other sessions."
+        quality_criteria:
+          "Single Group": "Exactly one commit group is described — no unrelated files are bundled together."
+          "Conventional Commit Message": "The commit message follows Conventional Commits format: type(scope): subject."
+          "Claim Recorded": "The plan notes that this group has been claimed in the shared state file before proceeding."
+
+  - id: commit_and_document
+    name: "Commit, Push, and Document"
+    description: "Stage and commit the approved group, push, create a ~/notes wrap-up report, post check-in comments on related issues/PRs, and mark the group as processed in shared state"
+    instructions_file: steps/commit_and_document.md
+    inputs:
+      - file: wrap_up_plan.json
+        from_step: plan_commits
+    outputs:
+      wrap_up_progress.json:
+        type: file
+        description: "Outcome: commit SHA, push status, notes report path, list of issues/PRs commented on, and updated shared state"
+        required: true
+    dependencies:
+      - plan_commits
+    reviews:
+      - run_each: wrap_up_progress.json
+        quality_criteria:
+          "Committed and Pushed": "The commit SHA is recorded and the push succeeded (or the reason for failure is explained)."
+          "Notes Report Created": "A docs/reports/ note was created in ~/notes with context, status, testing, next steps, and deferred sections."
+          "Issues Commented": "Every open issue or PR related to the committed changes received a structured check-in comment."
+          "Shared State Updated": "The group is marked as processed in .deepwork/tmp/wrap_up_state.json with the commit SHA."
+
+  - id: continue_or_finish
+    name: "Continue or Finish"
+    description: "Check remaining unprocessed groups in shared state; ask the user whether to process another group (go_to_step plan_commits) or finish and write a final summary"
+    instructions_file: steps/continue_or_finish.md
+    inputs:
+      - file: wrap_up_progress.json
+        from_step: commit_and_document
+    outputs:
+      wrap_up_summary.md:
+        type: file
+        description: "Final summary listing all commits made, notes reports created, and issues/PRs commented on during this wrap-up session"
+        required: true
+    dependencies:
+      - commit_and_document
+    reviews:
+      - run_each: wrap_up_summary.md
+        quality_criteria:
+          "All Work Listed": "Every commit made during this wrap-up session is listed with its SHA and message."
+          "Notes and Issues Referenced": "Every notes report and issue/PR comment produced during this session is referenced."
+          "Remaining Changes Noted": "If unprocessed change groups remain, they are listed so the user knows what is still pending."
