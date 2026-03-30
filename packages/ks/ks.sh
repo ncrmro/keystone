@@ -421,6 +421,15 @@ run_with_warning_filter() {
 }
 
 cmd_sync_agent_assets() {
+  if [[ $# -gt 0 ]]; then
+    case "$1" in
+      -h|--help)
+        print_sync_agent_assets_help
+        return 0
+        ;;
+    esac
+  fi
+
   if ! command -v keystone-sync-agent-assets >/dev/null 2>&1; then
     echo "Error: keystone-sync-agent-assets is not available in PATH." >&2
     echo "Refresh the home-manager profile before using this command." >&2
