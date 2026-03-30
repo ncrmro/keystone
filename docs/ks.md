@@ -92,6 +92,25 @@ ks switch workstation,ocean
 ks switch --boot ocean
 ```
 
+### `ks sync-agent-assets`
+
+```bash
+ks sync-agent-assets
+```
+
+Refresh generated Keystone agent assets for the current user from the current
+profile manifest.
+
+- Rewrites generated instruction files, curated command files, and managed
+  Codex skills from the live keystone checkout in development mode.
+- This is the supported no-sudo refresh path for development-mode agent assets.
+
+Example:
+
+```bash
+ks sync-agent-assets
+```
+
 ### `ks sync-host-keys`
 
 ```bash

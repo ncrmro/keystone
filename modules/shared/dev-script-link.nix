@@ -105,7 +105,7 @@ in
       commandWrapper = pkgs.writeShellScript "hm_${commandName}.sh" ''
         export PATH="${runtimePath}:$PATH"
         ${extraEnvSetup}
-        if [ -x "${liveScript}" ]; then
+        if [ -f "${liveScript}" ]; then
           exec ${pkgs.bash}/bin/bash "${liveScript}" "$@"
         fi
 
@@ -155,7 +155,7 @@ in
     pkgs.writeShellScriptBin commandName ''
       export PATH="${runtimePath}:$PATH"
       ${extraEnvSetup}
-      if [ -x "${liveScript}" ]; then
+      if [ -f "${liveScript}" ]; then
         exec ${pkgs.bash}/bin/bash "${liveScript}" "$@"
       fi
 

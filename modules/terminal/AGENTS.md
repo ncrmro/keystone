@@ -107,16 +107,16 @@ per-agent via `keystone.os.agents.<name>.archetype`.
 
 ## Development Mode vs Locked Mode (`development` + `repos` in `terminal/default.nix`)
 
-**Development mode** (`development = true` with repos registered): Generated files
-(`~/.claude/commands/`, `~/.claude/CLAUDE.md`, etc.) are out-of-store symlinks, and
-repo-backed shell entrypoints in the user path are linked from the checkout →
-edits take effect immediately without rebuild after activation.
+**Development mode** (`development = true` with repos registered): Repo-backed
+shell entrypoints in the user path are linked from the checkout, and generated
+agent assets are refreshed from the live checkout by `ks sync-agent-assets`
+(also run during activation).
 
 **Codex exception**: Codex 0.114.0 does not reliably discover skills when
 `SKILL.md` and `agents/openai.yaml` are symlinks. Keystone therefore materializes
-managed files under `~/.codex/skills/` as regular files during activation, even in
-development mode. Codex skill template changes still require `ks switch` or
-`ks update --dev` to refresh the copied files.
+managed files under `~/.codex/skills/` as regular files. Use
+`ks sync-agent-assets` to refresh them without a full rebuild; activation runs
+the same refresh path automatically.
 
 **Locked mode** (default): Files are immutable Nix store copies. Rebuild required.
 

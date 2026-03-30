@@ -76,10 +76,10 @@ tool loads conventions natively (without prompt injection).
 
 **Important nuance**: Codex 0.114.0 does not reliably discover skills when
 `SKILL.md` and `agents/openai.yaml` are symlinks. Keystone MUST materialize its
-managed skill payload files under `~/.codex/skills/` as regular files during
-activation, including in development mode. As a result, Codex skill changes
-require a profile activation step (`ks switch` or `ks update --dev`) rather than
-appearing instantly through out-of-store symlinks.
+managed skill payload files under `~/.codex/skills/` as regular files. In
+development mode, `ks sync-agent-assets` is the supported no-sudo refresh path
+for these copied skill files, and activation (`ks switch`, `ks update --dev`)
+MUST run the same refresh path.
 
 ### OpenCode
 

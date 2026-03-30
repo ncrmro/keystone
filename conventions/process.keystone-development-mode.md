@@ -44,23 +44,27 @@ enabled, modules derive local paths from the `keystone.repos` registry at
     checkouts when `keystone.terminal.development` is true and the
     corresponding repo is registered.
 11. When `keystone.development = true`, AI instruction files (`AGENTS.md`,
-    `CLAUDE.md`, `GEMINI.md`) MUST be regenerated from `archetypes.yaml` and
-    the `conventions/` directory during `ks switch` and `ks update --dev`.
-    These files are symlinked from the repository and regenerations SHOULD
-    appear as git diffs to reflect changes.
+    `CLAUDE.md`, `GEMINI.md`), curated AI command files, and managed Codex
+    skills MUST be refreshable from the live keystone checkout without a full
+    rebuild.
+12. `ks sync-agent-assets` is the supported no-sudo refresh path for these
+    generated development-mode assets. `ks switch` and `ks update --dev` MUST
+    also run the same refresh path during activation.
+13. Development-mode refreshes MUST write generated outputs into user-home tool
+    paths, not into repo checkouts under `keystone.repos`.
 
 ## Desktop Module
 
-12. Desktop and terminal user-facing shell scripts backed by checked-in `.sh`
+14. Desktop and terminal user-facing shell scripts backed by checked-in `.sh`
     files MUST be linked into the user's PATH from the local checkout when
     `keystone.development = true`. After activation, edits to the repo script
     MUST take effect without rebuild.
-13. Desktop theme and configuration files MAY use local checkouts for rapid
+15. Desktop theme and configuration files MAY use local checkouts for rapid
     iteration when `keystone.development = true`.
 
 ## Server Module
 
-14. (Future) Server modules MAY use local checkouts for service configs when
+16. (Future) Server modules MAY use local checkouts for service configs when
     `keystone.development = true`.
 
 For the Grafana-specific application of these development-mode rules, including
@@ -69,19 +73,19 @@ checked-in dashboard JSON and rapid apply flows, see
 
 ## Safety
 
-15. `keystone.development` MUST only affect path resolution — it MUST NOT
+17. `keystone.development` MUST only affect path resolution — it MUST NOT
     modify, commit, or push any repository (per REQ-018.8).
-16. Modules MUST NOT write to paths derived from `keystone.repos` entries.
+18. Modules MUST NOT write to paths derived from `keystone.repos` entries.
     Local checkouts are read-only from the module system's perspective.
 
 ## Agent Parity
 
-17. Agents MUST inherit development mode from the global
+19. Agents MUST inherit development mode from the global
     `keystone.development` setting via their home-manager config bridge (see
     `process.enable-by-default` rules 9-11).
 
 ## Diagnostics
 
-18. `ks doctor` MUST report development mode status: whether it is enabled,
+20. `ks doctor` MUST report development mode status: whether it is enabled,
     which repos are declared, and whether their local checkouts exist (per
     REQ-023).

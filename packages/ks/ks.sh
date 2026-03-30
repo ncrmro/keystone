@@ -9,6 +9,7 @@
 # Commands:
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
 #   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (unlocked current checkout with --dev, locked full system by default)
+#   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
 #   grafana dashboards apply|export <uid>              Apply or export keystone dashboard JSON via Grafana API
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
 #   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
@@ -85,6 +86,7 @@ Commands:
                                                     Build home-manager profiles, or full systems with --lock
   update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
                                                     Pull, lock, build, push, and deploy
+  sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
   switch [--boot] [HOSTS]                           Deploy current state without pull, lock, or push
   sync-host-keys                                    Populate hostPublicKey in hosts.nix from live hosts
   grafana dashboards apply
@@ -200,6 +202,25 @@ Behavior:
 
 Examples:
   ks sync-host-keys
+EOF
+}
+
+print_sync_agent_assets_help() {
+  cat <<'EOF'
+Usage: ks sync-agent-assets
+
+Refresh generated Keystone agent assets for the current user from the current
+profile manifest.
+
+Options:
+  -h, --help           Show this help
+
+Behavior:
+  Rewrites generated instruction files, curated command files, and managed
+  Codex skills from the live keystone checkout in development mode.
+
+Examples:
+  ks sync-agent-assets
 EOF
 }
 
@@ -324,6 +345,9 @@ show_help_topic() {
     switch)
       print_switch_help
       ;;
+    sync-agent-assets)
+      print_sync_agent_assets_help
+      ;;
     sync-host-keys)
       print_sync_host_keys_help
       ;;
@@ -363,6 +387,16 @@ run_with_warning_filter() {
       '
     )
   fi
+}
+
+cmd_sync_agent_assets() {
+  if ! command -v keystone-sync-agent-assets >/dev/null 2>&1; then
+    echo "Error: keystone-sync-agent-assets is not available in PATH." >&2
+    echo "Refresh the home-manager profile before using this command." >&2
+    return 1
+  fi
+
+  keystone-sync-agent-assets "$@"
 }
 
 # --- Discover repo root ---
@@ -2768,6 +2802,7 @@ case "$CMD" in
     ;;
   build)  cmd_build "$@" ;;
   grafana) cmd_grafana "$@" ;;
+  sync-agent-assets) cmd_sync_agent_assets "$@" ;;
   update) cmd_update "$@" ;;
   switch) cmd_switch "$@" ;;
   sync-host-keys) cmd_sync_host_keys "$@" ;;
@@ -2776,7 +2811,7 @@ case "$CMD" in
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: help, build, grafana, update, switch, sync-host-keys, print, agent, doctor" >&2
+    echo "Known commands: help, build, grafana, sync-agent-assets, update, switch, sync-host-keys, print, agent, doctor" >&2
     exit 1
     ;;
 esac
