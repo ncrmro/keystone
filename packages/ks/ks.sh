@@ -89,6 +89,7 @@ Commands:
   sync-host-keys                                    Populate hostPublicKey in hosts.nix from live hosts
   grafana dashboards apply
   grafana dashboards export <uid>                   Apply or export Grafana dashboards
+  print <file.md> [-o output.pdf] [--open]          Convert a markdown file to a print-ready PDF
   agent [--local [MODEL]] [args...]                 Launch an AI agent with Keystone context
   doctor [--local [MODEL]] [args...]                Launch a diagnostic AI agent with system state
 
@@ -242,6 +243,33 @@ Examples:
 EOF
 }
 
+print_print_help() {
+  cat <<'EOF'
+Usage: ks print <file.md> [-o output.pdf] [--open]
+
+Convert a markdown file to a print-ready PDF.
+
+Arguments:
+  <file.md>            Path to the markdown input file (required)
+
+Options:
+  -o, --output PATH    Output PDF path (default: same as input with .pdf extension)
+  --open               Open the PDF in the system viewer after generation
+  -h, --help           Show this help
+
+Engine selection (first available wins):
+  weasyprint           HTML-based renderer — clean, CSS-driven typography
+  wkhtmltopdf          WebKit-based renderer — fallback
+  pdflatex             LaTeX-based renderer — fallback
+  xelatex              LaTeX-based renderer — fallback
+
+Examples:
+  ks print ~/Downloads/garden-guide.md
+  ks print report.md -o ~/Desktop/report.pdf --open
+  ks print instructions.md -o /tmp/instructions.pdf
+EOF
+}
+
 print_grafana_help() {
   cat <<'EOF'
 Usage: ks grafana dashboards <apply|export> [uid]
@@ -304,6 +332,9 @@ show_help_topic() {
       ;;
     doctor)
       print_doctor_help
+      ;;
+    print)
+      print_print_help
       ;;
     grafana)
       if [[ "${2:-}" == "dashboards" ]]; then
@@ -2568,6 +2599,85 @@ cmd_agent() {
   launch_agent "$local_model" "$repo_root" "$current_host" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
 }
 
+cmd_print() {
+  local input_file=""
+  local output_file=""
+  local open_after=false
+
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -h|--help)
+        print_print_help
+        return 0
+        ;;
+      -o|--output)
+        shift
+        output_file="$1"
+        shift
+        ;;
+      --open)
+        open_after=true
+        shift
+        ;;
+      -*)
+        echo "Error: Unknown option '$1'" >&2
+        print_print_help >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "$input_file" ]]; then
+          input_file="$1"
+        else
+          echo "Error: Unexpected argument '$1'" >&2
+          print_print_help >&2
+          return 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$input_file" ]]; then
+    echo "Error: No input file specified." >&2
+    print_print_help >&2
+    return 1
+  fi
+
+  if [[ ! -f "$input_file" ]]; then
+    echo "Error: File not found: $input_file" >&2
+    return 1
+  fi
+
+  if [[ -z "$output_file" ]]; then
+    output_file="${input_file%.md}.pdf"
+    if [[ "$output_file" == "$input_file" ]]; then
+      output_file="${input_file}.pdf"
+    fi
+  fi
+
+  # Select PDF engine — prefer weasyprint, fall back to wkhtmltopdf then LaTeX
+  local engine=""
+  if command -v weasyprint &>/dev/null; then
+    engine="weasyprint"
+  elif command -v wkhtmltopdf &>/dev/null; then
+    engine="wkhtmltopdf"
+  elif command -v pdflatex &>/dev/null; then
+    engine="pdflatex"
+  elif command -v xelatex &>/dev/null; then
+    engine="xelatex"
+  else
+    echo "Error: No PDF engine found. Install weasyprint, wkhtmltopdf, or a LaTeX distribution." >&2
+    return 1
+  fi
+
+  pandoc "$input_file" --pdf-engine="$engine" -o "$output_file"
+  echo "✓  PDF written: $output_file"
+
+  if [[ "$open_after" == true ]]; then
+    xdg-open "$output_file" &
+  fi
+}
+
 cmd_doctor() {
   local local_model=""
   local passthrough_args=()
@@ -2661,11 +2771,12 @@ case "$CMD" in
   update) cmd_update "$@" ;;
   switch) cmd_switch "$@" ;;
   sync-host-keys) cmd_sync_host_keys "$@" ;;
+  print)  cmd_print "$@" ;;
   agent)  cmd_agent "$@" ;;
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: help, build, grafana, update, switch, sync-host-keys, agent, doctor" >&2
+    echo "Known commands: help, build, grafana, update, switch, sync-host-keys, print, agent, doctor" >&2
     exit 1
     ;;
 esac
