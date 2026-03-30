@@ -97,7 +97,9 @@ final: prev: {
     # Browsers from browser-previews
     google-chrome = browser-previews-flake.packages.${final.system}.google-chrome;
     # Desktop tools from flake inputs
-    ghostty = ghostty-flake.packages.${final.system}.default;
+    # ghostty only has .default for Linux systems
+    ghostty =
+      if final.stdenv.isLinux then ghostty-flake.packages.${final.system}.default else null;
     yazi = yazi-flake.packages.${final.system}.default;
     agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
     deepwork = deepwork-flake.packages.${final.system}.default;
@@ -117,6 +119,7 @@ final: prev: {
     slidev = final.callPackage slidev-src { };
   };
   # Top-level overrides so programs.ghostty/yazi use flake versions
-  ghostty = ghostty-flake.packages.${final.system}.default;
   yazi = yazi-flake.packages.${final.system}.default;
+} // prev.lib.optionalAttrs prev.stdenv.isLinux {
+  ghostty = ghostty-flake.packages.${final.system}.default;
 }

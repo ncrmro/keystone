@@ -185,12 +185,6 @@ in
         # https://direnv.net/
         direnv
 
-        # Ghostty terminfo - Required for SSH connections from Ghostty terminal
-        # Without this, remote systems don't recognize TERM="xterm-ghostty" and
-        # ncurses applications fail with "cannot initialize terminal type" errors.
-        # This enables proper terminal handling when SSHing into this machine from Ghostty.
-        ghostty.terminfo
-
         # Eza - Modern replacement for ls with colors and git integration
         # https://github.com/eza-community/eza
         eza
@@ -247,6 +241,13 @@ in
         # Nixfmt - Official Nix code formatter (RFC style)
         # https://github.com/NixOS/nixfmt
         nixfmt-rfc-style
+      ] ++ lib.optionals pkgs.stdenv.isLinux [
+        # Ghostty terminfo - Required for SSH connections from Ghostty terminal
+        # Without this, remote systems don't recognize TERM="xterm-ghostty" and
+        # ncurses applications fail with "cannot initialize terminal type" errors.
+        # This enables proper terminal handling when SSHing into this machine from Ghostty.
+        # (Only available on Linux - macOS users install Ghostty via native app)
+        ghostty.terminfo
       ];
     }
     (mkHomeRepoFiles {
