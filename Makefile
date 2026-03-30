@@ -35,16 +35,26 @@ check-lockfile: ## Verify flake.lock is up to date
 ## Tests are defined in ./tests/flake.nix (separate from main flake)
 
 test: ## Run all tests (checks + module + integration)
-	./bin/run-tests all
+	nix flake check
+	nix build ./tests#test-server-isolation --no-link
+	nix build ./tests#test-desktop-isolation --no-link
+	nix build ./tests#test-os-evaluation --no-link
+	nix build ./tests#test-iso-evaluation --no-link
+	nix build ./tests#test-installer --no-link
+	nix build ./tests#test-remote-unlock --no-link
 
 test-checks: ## Run flake checks only (fast validation)
-	./bin/run-tests checks
+	nix flake check
 
 test-module: ## Run module isolation tests
-	./bin/run-tests module
+	nix build ./tests#test-server-isolation --no-link
+	nix build ./tests#test-desktop-isolation --no-link
+	nix build ./tests#test-os-evaluation --no-link
+	nix build ./tests#test-iso-evaluation --no-link
 
 test-integration: ## Run integration tests
-	./bin/run-tests integration
+	nix build ./tests#test-installer --no-link
+	nix build ./tests#test-remote-unlock --no-link
 
 test-template: ## Validate flake template evaluates correctly
 	@echo "🧪 Testing flake template..."

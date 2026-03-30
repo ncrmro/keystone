@@ -57,8 +57,8 @@ let
         };
         networking.hostId = "deadbeef";
         fileSystems."/" = {
-          device = "rpool/root";
-          fsType = "zfs";
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
         };
       }
     ];
@@ -78,7 +78,6 @@ let
             zfs = {
               compression = "zstd";
               arcMax = "8G";
-              autoSnapshot = true;
               autoScrub = true;
             };
           };
@@ -101,15 +100,14 @@ let
             email = "admin@example.com";
             extraGroups = [ "wheel" ];
             initialPassword = "adminpass";
-            authorizedKeys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 test@localhost" ];
             terminal.enable = true;
             zfs.quota = "100G";
           };
         };
         networking.hostId = "deadbeef";
         fileSystems."/" = {
-          device = "rpool/root";
-          fsType = "zfs";
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
         };
       }
     ];
@@ -128,8 +126,8 @@ let
           };
         };
         fileSystems."/" = {
-          device = "/dev/vda2";
-          fsType = "ext4";
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
         };
       }
     ];
@@ -150,8 +148,8 @@ let
           };
         };
         fileSystems."/" = {
-          device = "/dev/vda2";
-          fsType = "ext4";
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
         };
       }
     ];
@@ -180,8 +178,8 @@ let
         networking.hostName = "journal-server";
         networking.hostId = "deadbeef";
         fileSystems."/" = {
-          device = "rpool/root";
-          fsType = "zfs";
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
         };
       }
     ];
@@ -211,8 +209,8 @@ let
         networking.hostName = "workstation";
         networking.hostId = "deadbeef";
         fileSystems."/" = {
-          device = "rpool/root";
-          fsType = "zfs";
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
         };
       }
     ];
@@ -241,8 +239,8 @@ let
         networking.hostName = "workstation";
         networking.hostId = "deadbeef";
         fileSystems."/" = {
-          device = "rpool/root";
-          fsType = "zfs";
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
         };
       }
     ];

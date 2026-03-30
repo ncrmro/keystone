@@ -223,7 +223,7 @@ log "Scheduler: $CREATED tasks from SCHEDULES.yaml"
 # Gracefully skips if calendula is not available.
 if command -v calendula &>/dev/null; then
   log "Reading CalDAV calendar events..."
-  CAL_EVENTS=$(calendula event list --output json 2>>"$LOG_FILE" || echo "[]")
+  CAL_EVENTS=$(calendula --json events list default 2>>"$LOG_FILE" || echo "[]")
 
   if [ "$CAL_EVENTS" != "[]" ] && [ -n "$CAL_EVENTS" ]; then
     CAL_COUNT=$(echo "$CAL_EVENTS" | jq 'length' 2>/dev/null || echo "0")

@@ -466,7 +466,7 @@ fi
 
 if command -v calendula &>/dev/null; then
   log "  Fetching source: calendar"
-  CALENDAR_OUTPUT=$(calendula event list --output json 2>>"$LOG_FILE" || echo "[]")
+  CALENDAR_OUTPUT=$(calendula --json events list default 2>>"$LOG_FILE" || echo "[]")
   if [[ -n "$CALENDAR_OUTPUT" && "$CALENDAR_OUTPUT" != "[]" ]]; then
     SOURCES_JSON=$(echo "$SOURCES_JSON" | jq --argjson data "$CALENDAR_OUTPUT" \
       '. + [{"source": "calendar", "data": $data}]')
@@ -486,8 +486,10 @@ if [[ "$SOURCE_COUNT" -gt 0 ]]; then
     if [[ -n "$SOURCE_NAME" && -n "$SOURCE_CMD" ]]; then
       log "  Fetching source: $SOURCE_NAME"
       SOURCE_OUTPUT=$(bash -c "$SOURCE_CMD" 2>>"$LOG_FILE" || echo "[]")
-      SOURCES_JSON=$(echo "$SOURCES_JSON" | jq --arg name "$SOURCE_NAME" --argjson data "$SOURCE_OUTPUT" \
-        '. + [{"source": $name, "data": $data}]')
+      if [[ -n "$SOURCE_OUTPUT" && "$SOURCE_OUTPUT" != "[]" ]]; then
+        SOURCES_JSON=$(echo "$SOURCES_JSON" | jq --arg name "$SOURCE_NAME" --argjson data "$SOURCE_OUTPUT" \
+          '. + [{"source": $name, "data": $data}]')
+      fi
     fi
   done < <(printf '%s\n' "$PROJECT_INDEX_JSON" | jq -c '.projects[].sources[]?')
 fi
@@ -499,32 +501,50 @@ emit_event "stage_finish" "Finished pre-fetching sources" \
 # -- Step 2: Ingest -----------------------------------------------------------
 CURRENT_STEP="ingest"
 INGEST_RAN=false
-emit_event "stage_start" "Ingesting sources" "stage_name" "ingest"
 if [[ "$(echo "$SOURCES_JSON" | jq '[.[].data | length] | add // 0')" -gt 0 ]]; then
-  INGEST_RUNTIME=$(resolve_stage_runtime "ingest")
-  set +o pipefail
-  run_provider_prompt "ingest" "$INGEST_RUNTIME" "/deepwork task_loop ingest
+  INGEST_HASH_FILE="$STATE_DIR/ingest-inputs.sha256"
+  CURRENT_HASH=$(
+    # Hash only the normalized pre-fetched source payload. TASKS.yaml is the
+    # output of ingest, so including it here makes the cache key self-invalidating.
+    printf '%s\n' "$SOURCES_JSON" | jq -cS . | sha256sum | head -c 64
+  )
+
+  PREVIOUS_HASH=""
+  if [[ -f "$INGEST_HASH_FILE" ]]; then
+    PREVIOUS_HASH=$(cat "$INGEST_HASH_FILE")
+  fi
+
+  if [[ -n "$CURRENT_HASH" && "$CURRENT_HASH" == "$PREVIOUS_HASH" ]]; then
+    log "Step 2: Inputs unchanged, skipping ingest"
+  else
+    log "Step 2: Ingesting sources..."
+    emit_event "stage_start" "Ingesting sources" "stage_name" "ingest"
+    INGEST_RUNTIME=$(resolve_stage_runtime "ingest")
+    set +o pipefail
+    run_provider_prompt "ingest" "$INGEST_RUNTIME" "/deepwork task_loop ingest
 
 Source data (pre-fetched):
 $(echo "$SOURCES_JSON" | jq '.')" 2>&1 | tee -a "$LOG_FILE" >&2
-  INGEST_EXIT=${PIPESTATUS[0]}
-  set -o pipefail
-  if [[ "$INGEST_EXIT" -ne 0 ]]; then
-    RUN_STATUS="degraded"
-    log "  WARNING: Ingest step failed, continuing..."
-  else
-    INGEST_RAN=true
-  fi
+    INGEST_EXIT=${PIPESTATUS[0]}
+    set -o pipefail
+    if [[ "$INGEST_EXIT" -ne 0 ]]; then
+      RUN_STATUS="degraded"
+      log "  WARNING: Ingest step failed, continuing..."
+    else
+      INGEST_RAN=true
+      echo -n "$CURRENT_HASH" > "$INGEST_HASH_FILE"
+    fi
 
-  if ! yq '.' TASKS.yaml >/dev/null 2>&1; then
-    log "  ERROR: TASKS.yaml corrupted during ingest. Reverting..."
-    git checkout TASKS.yaml || git restore TASKS.yaml || true
-    INGEST_RAN=false
+    if ! yq '.' TASKS.yaml >/dev/null 2>&1; then
+      log "  ERROR: TASKS.yaml corrupted during ingest. Reverting..."
+      git checkout TASKS.yaml || git restore TASKS.yaml || true
+      INGEST_RAN=false
+    fi
+    emit_event "stage_finish" "Finished ingest stage" "stage_name" "ingest" "status" "ok"
   fi
 else
   log "  No source data to ingest, skipping"
 fi
-emit_event "stage_finish" "Finished ingest stage" "stage_name" "ingest" "status" "$(if [[ "$INGEST_RAN" == "true" ]]; then printf 'ok'; else printf 'skipped'; fi)"
 
 # -- Step 3: Prioritize -------------------------------------------------------
 CURRENT_STEP="prioritize"
