@@ -1,5 +1,5 @@
 name: project
-version: "1.5.0"
+version: "1.5.1"
 summary: "Project onboarding, press releases, milestone planning, engineering handoff, and success charter reviews"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job covers the full project lifecycle from onboarding through engineering handoff:
@@ -71,6 +71,11 @@ common_job_info_provided_to_all_steps_at_runtime: |
     If the project stores press releases in-repo, publish the finalized `.mdx` to the
     project's designated directory, typically `posts/press_releases/`, as a separate
     explicit step.
+  - Before creating the issue, a permanent zk note MUST be created in `~/notes/notes/`
+    containing the full press release content. The note MUST include `project/<slug>`,
+    `source/agent`, and `source/deepwork` tags, plus `repo_ref` frontmatter. After the
+    issue is created, the note MUST be updated with `issue_ref: gh:<owner>/<repo>#<number>`
+    (or `fj:` for Forgejo). See `process.notes` and `tool.zk-notes` for the tagging standard.
   - After writing the press release, an issue MUST be created on the project's repo containing
     the full press release content. The full URL of this issue is a required output — downstream
     workflows (milestone/setup, etc.) link back to the press release via this URL.
@@ -134,6 +139,14 @@ workflows:
       - define_charter
       - reality_check
       - update_priorities
+
+  - name: wrap_up
+    summary: "Wind down engineering work — group uncommitted changes into logical commits, push, document in notes, and check in on open issues/PRs"
+    steps:
+      - scan_context
+      - plan_commits
+      - commit_and_document
+      - continue_or_finish
 
 steps:
   - id: gather_basics

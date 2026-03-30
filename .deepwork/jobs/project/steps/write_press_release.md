@@ -67,13 +67,32 @@ Read the context brief from the previous step and the conventions at `.agents/co
     - Write the issue URL to `.deepwork/tmp/press_release_issue_url.md`
     - These files are transient workflow artifacts for DeepWork output handoff
 
-11. **Publish the canonical copy**
+11. **Store in ~/notes (zk)**
+    - Create a permanent note in `~/notes` using the project slug:
+      ```bash
+      zk --notebook-dir ~/notes new notes/ --title "<Headline>" --no-input --print-path \
+        --extra project="<slug>"
+      ```
+    - Write the full press release content into the created note
+    - Set the following frontmatter fields:
+      - `type: note`
+      - `project: <slug>`
+      - `tags`: `project/<slug>`, `source/agent`, `source/deepwork`
+      - `repo_ref`: `gh:<owner>/<repo>` or `fj:<owner>/<repo>` (the project's primary repo)
+    - After the issue is created in step 12, update the note with:
+      - `issue_ref: gh:<owner>/<repo>#<number>` (or `fj:` for Forgejo)
+    - If a milestone exists or is created downstream, update the note with:
+      - `milestone_ref: gh:<owner>/<repo>#<milestone_number>`
+    - Link the note from the project's hub note in `~/notes/index/` if one exists
+
+12. **Publish the canonical copy**
     - After the press release file is written and passes the final check, create an issue on the project's repo that contains the full press release content
     - Use `gh issue create` (GitHub) or `fj issue create` (Forgejo) depending on where the project is hosted
     - The issue title should match the press release headline
     - The issue body should contain the full press release content
     - Label the issue with `press-release` (create the label if it doesn't exist)
     - Record the **full URL** of the created issue in `.deepwork/tmp/press_release_issue_url.md`
+    - Update the zk note's `issue_ref` frontmatter field with the created issue URL
     - If the project repo already stores press releases as tracked content, publish the finalized draft there as a separate explicit step after the issue is created
     - If the project does not store press releases in-repo, keep `.deepwork/tmp/press_release.mdx` as the transient local artifact and treat the issue as the canonical published record
 
@@ -87,6 +106,18 @@ The finished press release in MDX format. Write the local workflow artifact to
 If the project already stores press releases in-repo, publish the finalized draft
 to the project's designated directory, typically `posts/press_releases/`, as a
 separate explicit publication step.
+
+### zk note in ~/notes
+
+A permanent note in `~/notes/notes/` containing the full press release content.
+The note MUST include:
+- `type: note`
+- `project: <slug>`
+- `tags`: `project/<slug>`, `source/agent`, `source/deepwork`
+- `repo_ref`: normalized `gh:` or `fj:` repo reference
+- `issue_ref`: set after the issue is created (e.g., `gh:<owner>/<repo>#42`)
+
+Follow `process.notes` and `tool.zk-notes` for the authoritative tagging standard.
 
 ### press_release_issue_url.md
 
