@@ -12,17 +12,39 @@ drives the rest of the portfolio review — every project in it will be reviewed
 
 ### Process
 
-1. **Verify the notes repo branch**
-   - Run `git -C <notes_path> branch --show-current` to check the active branch
-   - If the branch is not `main`, warn the user and switch to `main`:
-     ```bash
-     git -C <notes_path> stash   # stash any uncommitted changes
-     git -C <notes_path> checkout main
-     git -C <notes_path> pull    # ensure it's up to date
-     ```
-   - If the branch cannot be switched (e.g. merge conflicts), stop and report the
-     blocker — do not proceed with stale or branch-scoped data
-   - Confirm the branch is `main` before continuing
+1. **Prepare the notes repo — always start from a clean main**
+
+   The portfolio review MUST run against the latest `main` branch in a dedicated
+   worktree so it doesn't interfere with any in-progress notes work.
+
+   ```bash
+   NOTES_PATH="${notes_path:-$HOME/notes}"
+   BRANCH="portfolio-review/$(date +%Y-%m)"
+   WORKTREE_PATH="${NOTES_PATH}/.worktrees/portfolio-review/$(date +%Y-%m)"
+   ```
+
+   a. **Switch the primary checkout to `main` and pull**:
+      ```bash
+      git -C "$NOTES_PATH" stash            # stash any uncommitted changes
+      git -C "$NOTES_PATH" checkout main
+      git -C "$NOTES_PATH" pull --ff-only   # fast-forward only — stop on divergence
+      ```
+      If `pull --ff-only` fails (diverged), stop and report the blocker. Do not
+      proceed with a stale repo.
+
+   b. **Create (or reuse) a worktree for this review**:
+      ```bash
+      if git -C "$NOTES_PATH" worktree list | grep -q "$WORKTREE_PATH"; then
+        # Worktree already exists — reuse it and pull latest main
+        git -C "$WORKTREE_PATH" pull --ff-only
+      else
+        mkdir -p "$(dirname "$WORKTREE_PATH")"
+        git -C "$NOTES_PATH" worktree add -b "$BRANCH" "$WORKTREE_PATH" main
+      fi
+      ```
+
+   c. **All subsequent work uses `$WORKTREE_PATH`**, not `$NOTES_PATH`.
+      Pass `$WORKTREE_PATH` forward as the working notes directory for this run.
 
 2. **Determine the notes repo path**
    - The `notes_path` input specifies where the notes repo lives

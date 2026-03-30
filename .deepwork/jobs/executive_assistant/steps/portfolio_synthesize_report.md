@@ -80,25 +80,25 @@ other source. Every number in the report must trace back to the input files.
    workflow to run if applicable (e.g., "Run `project/success` for catalyst to update
    the charter").
 
-8. **Write the report and open a PR in the notes repo**
+8. **Write the report and open a PR from the worktree branch**
 
-   The report is delivered as a pull request into the notes repo so the user can
-   review, refine, and discuss it before merging.
+   The report is delivered as a pull request from the `portfolio-review/YYYY-MM`
+   worktree branch set up in `discover_projects`. Use `$WORKTREE_PATH` (not the
+   primary `notes_path` checkout).
 
    ```bash
-   cd {notes_path}
-   git checkout -b portfolio-review/YYYY-MM
-   mkdir -p projects/portfolio/reviews/
+   WORKTREE_PATH="${NOTES_PATH}/.worktrees/portfolio-review/$(date +%Y-%m)"
+   mkdir -p "${WORKTREE_PATH}/projects/portfolio/reviews/"
    ```
 
-   Write the report to `projects/portfolio/reviews/YYYY-MM.md`.
+   Write the report to `projects/portfolio/reviews/YYYY-MM.md` inside the worktree.
 
    Then commit and push:
 
    ```bash
-   git add projects/portfolio/reviews/YYYY-MM.md
-   git commit -m "docs(portfolio): add YYYY-MM portfolio review"
-   git push -u origin portfolio-review/YYYY-MM
+   git -C "$WORKTREE_PATH" add projects/portfolio/reviews/YYYY-MM.md
+   git -C "$WORKTREE_PATH" commit -m "docs(portfolio): add YYYY-MM portfolio review"
+   git -C "$WORKTREE_PATH" push -u origin portfolio-review/YYYY-MM
    ```
 
    Open a PR using the appropriate platform CLI. Detect the platform from the
