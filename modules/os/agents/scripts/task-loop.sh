@@ -57,6 +57,7 @@ LOGS_DIR="$HOME/.local/state/agent-task-loop/logs"
 TASK_LOGS_DIR="$LOGS_DIR/tasks"
 STATE_DIR="$HOME/.local/state/agent-task-loop/state"
 LOCKFILE="$STATE_DIR/task-loop.lock"
+PAUSE_FILE="$STATE_DIR/paused"
 PROMETHEUS_TEXTFILE_DIR="${PROMETHEUS_TEXTFILE_DIR:-}"
 
 mkdir -p "$LOGS_DIR" "$TASK_LOGS_DIR" "$STATE_DIR"
@@ -411,6 +412,19 @@ if [[ ! -d "$NOTES_DIR" ]]; then
 fi
 cd "$NOTES_DIR"
 emit_event "run_start" "Starting agent task loop" "status" "started"
+
+if [[ -f "$PAUSE_FILE" ]]; then
+  RUN_STATUS="paused"
+  CURRENT_STEP="paused"
+  PAUSE_AT=$(sed -n 's/^paused_at=//p' "$PAUSE_FILE" | tail -n1)
+  PAUSE_BY=$(sed -n 's/^paused_by=//p' "$PAUSE_FILE" | tail -n1)
+  PAUSE_REASON=$(sed -n 's/^reason=//p' "$PAUSE_FILE" | tail -n1)
+  emit_event "run_paused" "Task loop is paused, skipping run" \
+    "paused_at" "${PAUSE_AT:-}" \
+    "paused_by" "${PAUSE_BY:-}" \
+    "reason" "${PAUSE_REASON:-}"
+  exit 0
+fi
 
 # -- Step 1: Pre-fetch sources -----------------------------------------------
 CURRENT_STEP="prefetch"

@@ -19,6 +19,7 @@ MAY, REQUIRED, OPTIONAL).
 |---------|-------------|
 | `ks build [--lock] [HOSTS]` | Build home-manager profiles (default) or full system (`--lock`) |
 | `ks update [--dev] [--boot] [--pull] [--lock] [HOSTS]` | Pull, lock, build, push, and deploy to hosts |
+| `ks agents <pause|resume|status> <agent|all> [reason]` | Control agent task-loop pause state |
 | `ks switch [--boot] [HOSTS]` | Fast deploy current state without pull/lock/push |
 | `ks sync-host-keys` | Populate `hostPublicKey` in `hosts.nix` from live hosts |
 | `ks agent [--local [MODEL]] [args...]` | Launch AI agent with keystone OS context |
@@ -51,8 +52,9 @@ to eliminate symlinks, because Nix `path:` flake URIs break on symlinks.
 `ks <command> --help`, and `ks <command> -h`.
 
 **REQ-019.2c** `ks` MUST provide help text for every public command:
-`build`, `update`, `switch`, `sync-host-keys`, `grafana`, `agent`, and
-`doctor`, plus the nested `grafana dashboards` command surface.
+`build`, `update`, `agents`, `switch`, `sync-host-keys`, `grafana`,
+`agent`, and `doctor`, plus the nested `grafana dashboards` command
+surface.
 
 **REQ-019.2d** Help output MUST include a usage line, a concise purpose
 statement, documented flags and positional arguments, and at least one
@@ -188,6 +190,22 @@ to use Ollama instead of Claude Code (REQ-014.12-13).
 **REQ-019.26** `ks sync-host-keys` MUST SSH to each host in `hosts.nix`
 that has an `sshTarget`, read `/etc/ssh/ssh_host_ed25519_key.pub`, and
 update the `hostPublicKey` field in `hosts.nix`.
+
+### Agent task-loop controls
+
+**REQ-019.27** `ks` MUST provide an `agents` command group with the
+subcommands `pause`, `resume`, and `status` for agent task-loop control.
+
+**REQ-019.28** `ks agents pause <agent|all> [reason]` MUST create the
+task-loop pause marker for one agent or all configured agents without
+stopping or disabling the timer units.
+
+**REQ-019.29** `ks agents resume <agent|all>` MUST remove the task-loop
+pause marker for one agent or all configured agents.
+
+**REQ-019.30** `ks agents status <agent|all>` MUST report whether the
+target agent task loop is paused. It SHOULD include the pause timestamp,
+pause actor, and pause reason when present.
 
 ## Edge Cases
 
