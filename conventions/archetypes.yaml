@@ -42,6 +42,7 @@ archetypes:
       - process.prose
       - tool.standard-utilities
       - process.vcs-context-continuity
+      - process.wrap-up
     referenced_conventions:
       - os.requirements
       - tool.nix-devshell
@@ -72,6 +73,7 @@ archetypes:
       - process.project-navigation
       - tool.standard-utilities
       - process.keystone-development
+      - process.wrap-up
     referenced_conventions:
       - process.keystone-development-mode
       - tool.nix-devshell
@@ -92,6 +94,7 @@ archetypes:
       - tool.standard-utilities
       - process.vcs-context-continuity
       - process.project-navigation
+      - process.wrap-up
     referenced_conventions:
       - os.requirements
       - process.agent-cronjobs
@@ -207,6 +210,7 @@ archetypes:
       - tool.standard-utilities
       - process.vcs-context-continuity
       - process.project-navigation
+      - process.wrap-up
     referenced_conventions:
       - process.task-tracking
       - process.project-board

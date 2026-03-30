@@ -59,7 +59,7 @@ let
     "- Notes workflows (repair, inbox, init, setup): direct the user to `/ks.notes` instead of starting a notes workflow directly."
   ]
   ++ optionals (elem "project" resolvedCapabilities) [
-    "- Project workflows (onboard, press release, success): direct the user to `/ks.projects` instead of starting a project workflow directly."
+    "- Project workflows (onboard, press release, milestone, engineering handoff, success): direct the user to `/ks.projects` instead of starting a project workflow directly."
   ]
   ++ optionals (elem "executive-assistant" resolvedCapabilities) [
     "- Calendar triage and scheduling: start `executive_assistant/manage_calendar`."
@@ -136,19 +136,53 @@ let
 
   ksProjectsCommandBody = ''
     Route project-related requests to the appropriate project DeepWork workflow.
+    Be proactive — suggest the next pipeline step without waiting for the user to ask.
 
     ## Available workflows
 
     - **project/onboard** — onboard a new project: create hub note, scaffold structure, link repos
-    - **project/press_release** — draft a press release or announcement for a project
+    - **project/press_release** — draft a working-backwards press release or announcement for a project
+    - **project/milestone** — create milestone and user stories from a press release or scope notes
+    - **project/milestone_engineering_handoff** — internal FAQ, document review, optional spikes, specs, and plan issue; hands off to `engineer/implement`
     - **project/success** — run a project success review or retrospective
 
     ## Routing rules
 
     - Mentions of onboarding, starting, or registering a new project → `project/onboard`
     - Mentions of press release, announcement, or launch copy → `project/press_release`
+    - Mentions of milestone, user stories, or scope planning → `project/milestone`
+      (ask for `press_release_issue_url` if a press release was recently created)
+    - Mentions of engineering handoff, internal FAQ, specs, plan issue, or implementation planning → `project/milestone_engineering_handoff`
     - Mentions of success, retro, retrospective, or wrapping up → `project/success`
     - If unclear, ask the user which workflow to run before starting
+
+    ## Proactive pipeline suggestions
+
+    Do not wait for the user to ask — proactively suggest the next step:
+
+    - After `project/press_release` completes: immediately suggest `project/milestone`
+      with the press release issue URL as input.
+    - After `project/milestone` completes: immediately suggest `project/milestone_engineering_handoff`
+      with the milestone issue number.
+    - After `project/milestone_engineering_handoff` completes: suggest `engineer/implement`
+      for each task in the plan checklist, and suggest `ks.notes` / `notes/process_inbox`
+      to capture design decisions and scope into personal notes.
+    - After `project/success` completes: suggest `ks.notes` to record the verdict and
+      recommendations in personal notes and update shared owner notes.
+
+    ## Notes integration
+
+    After every major project event, prompt the user to capture learnings:
+    - Use `/ks.notes` (routes to `notes/process_inbox`) to promote decisions, risks, and
+      insights from this session into the personal Zettelkasten.
+    - After milestones are set up or engineering handoffs complete, update the shared
+      owner notes (`luce/notes`, `drago/notes`) to reflect current project state.
+
+    ## Engineering integration
+
+    - `project/milestone_engineering_handoff` produces the plan issue but does NOT implement.
+    - All implementation MUST flow through `engineer/implement`, not ad-hoc coding.
+    - Always name `engineer/implement` explicitly when suggesting implementation next steps.
 
     ## How to start a workflow
 
@@ -157,39 +191,43 @@ let
     3. Follow the step instructions returned by the MCP server.
   '';
 
+  ksDescription =
+    "Keystone assistant — may start keystone_system/issue or keystone_system/doctor"
+    + optionalString (elem "executive-assistant" resolvedCapabilities) ", or executive_assistant workflows";
+
   publishedCommands = [
     {
       id = "ks";
-      description = "Help the user get the most out of Keystone and route capability-aware workflows";
+      description = ksDescription;
       argumentHint = "<request>";
-      displayName = "Keystone assistant";
+      displayName = "KS Agent";
       body = ksCommandBody;
     }
   ]
   ++ optionals (elem "notes" resolvedCapabilities) [
     {
       id = "ks.notes";
-      description = "Route note-taking requests to the notes DeepWork job workflows";
+      description = "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup";
       argumentHint = "<request>";
-      displayName = "Keystone notes";
+      displayName = "KS Notes";
       body = ksNotesCommandBody;
     }
   ]
   ++ optionals (elem "project" resolvedCapabilities) [
     {
       id = "ks.projects";
-      description = "Route project management requests to the project DeepWork job workflows";
+      description = "Project workflows — may start project/onboard, project/press_release, project/milestone, project/milestone_engineering_handoff, or project/success";
       argumentHint = "<request>";
-      displayName = "Keystone projects";
+      displayName = "KS Projects";
       body = ksProjectsCommandBody;
     }
   ]
   ++ optionals (elem "ks-dev" resolvedCapabilities) [
     {
       id = "ks.dev";
-      description = "Route Keystone development work through the standard DeepWork engineer lifecycle";
+      description = "Keystone development — may start keystone_system/develop, keystone_system/issue, keystone_system/convention, or keystone_system/doctor";
       argumentHint = "<goal>";
-      displayName = "Keystone development";
+      displayName = "KS Development";
       body = ksDevCommandBody;
     }
   ];
@@ -327,6 +365,13 @@ let
     - No context: `/deepwork` alone means ask the user to choose from available workflows.
   '';
 
+  wrapUpSkillMetadata = {
+    name = "wrap-up";
+    description = "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human";
+  };
+
+  wrapUpSkillBody = builtins.readFile ./agent-assets/wrap-up-skill.template.md;
+
   codexManagedFiles = [
     {
       relativePath = ".codex/skills/deepwork/SKILL.md";
@@ -344,6 +389,20 @@ let
             - type: "mcp"
               value: "deepwork"
               description: "DeepWork MCP server"
+      '';
+    }
+    {
+      relativePath = ".codex/skills/wrap-up/SKILL.md";
+      source = pkgs.writeText "codex-skill-wrap-up-SKILL.md" (
+        mkSkillMd wrapUpSkillMetadata wrapUpSkillBody
+      );
+    }
+    {
+      relativePath = ".codex/skills/wrap-up/agents/openai.yaml";
+      source = pkgs.writeText "codex-skill-wrap-up-openai.yaml" ''
+        interface:
+          display_name: "Wrap-up"
+          short_description: "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human"
       '';
     }
   ]
@@ -407,6 +466,7 @@ let
 
   activeCodexSkillNames = [
     "deepwork"
+    "wrap-up"
   ]
   ++ map (command: codexSkillName command.id) publishedCommands;
 
@@ -456,7 +516,7 @@ in
     keystone.terminal.aiExtensions.resolvedCapabilities = resolvedCapabilities;
     keystone.terminal.aiExtensions.publishedCommands = publishedCommandIds;
 
-    home.file =
+    home.file = mkIf (!isDev) (
       let
         commandFilesByTool =
           foldl'
@@ -530,54 +590,85 @@ in
               ".gemini"
               ".config/opencode"
             ];
+
+        wrapUpSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              let
+                skillDir = "${toolDir}/skills/wrap-up";
+              in
+              if toolDir == ".gemini" then
+                acc
+                // {
+                  "${toolDir}/commands/wrap-up.toml".text = ''
+                    description = ${builtins.toJSON wrapUpSkillMetadata.description}
+                    prompt = ${builtins.toJSON wrapUpSkillBody}
+                  '';
+                }
+              else
+                acc
+                // {
+                  "${skillDir}/SKILL.md".text = mkSkillMd wrapUpSkillMetadata wrapUpSkillBody;
+                }
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
       in
-      commandFilesByTool // deepworkSkillsByTool;
+      commandFilesByTool // deepworkSkillsByTool // wrapUpSkillsByTool
+    );
 
-    home.activation.codexSkillsPreflight = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
-      cleanup_codex_skill_state() {
-        relativePath="$1"
-        targetPath="$HOME/$relativePath"
-        rm -f "$targetPath.backup"
-      }
+    home.activation = mkIf (!isDev) {
+      codexSkillsPreflight = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+        cleanup_codex_skill_state() {
+          relativePath="$1"
+          targetPath="$HOME/$relativePath"
+          rm -f "$targetPath.backup"
+        }
 
-      cleanup_stale_codex_skill() {
-        skillName="$1"
-        rm -rf "$HOME/.codex/skills/$skillName"
-      }
+        cleanup_stale_codex_skill() {
+          skillName="$1"
+          rm -rf "$HOME/.codex/skills/$skillName"
+        }
 
-      ${concatMapStringsSep "\n" (skillName: ''
-        cleanup_stale_codex_skill ${escapeShellArg skillName}
-      '') staleCodexSkillNames}
+        ${concatMapStringsSep "\n" (skillName: ''
+          cleanup_stale_codex_skill ${escapeShellArg skillName}
+        '') staleCodexSkillNames}
 
-      ${concatMapStringsSep "\n" (file: ''
-        cleanup_codex_skill_state ${escapeShellArg file.relativePath}
-      '') codexManagedFiles}
-    '';
+        ${concatMapStringsSep "\n" (file: ''
+          cleanup_codex_skill_state ${escapeShellArg file.relativePath}
+        '') codexManagedFiles}
+      '';
 
-    home.activation.codexSkills = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      write_codex_skill_file() {
-        relativePath="$1"
-        sourcePath="$2"
-        targetPath="$HOME/$relativePath"
-        targetDir="$(dirname "$targetPath")"
+      codexSkills = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        write_codex_skill_file() {
+          relativePath="$1"
+          sourcePath="$2"
+          targetPath="$HOME/$relativePath"
+          targetDir="$(dirname "$targetPath")"
 
-        mkdir -p "$targetDir"
+          mkdir -p "$targetDir"
 
-        if [ -L "$targetPath" ]; then
-          rm -f "$targetPath"
-        fi
+          if [ -L "$targetPath" ]; then
+            rm -f "$targetPath"
+          fi
 
-        tmpPath="$(mktemp "$targetPath.tmp.XXXXXX")"
-        cp "$sourcePath" "$tmpPath"
-        chmod 644 "$tmpPath"
-        mv "$tmpPath" "$targetPath"
-      }
+          tmpPath="$(mktemp "$targetPath.tmp.XXXXXX")"
+          cp "$sourcePath" "$tmpPath"
+          chmod 644 "$tmpPath"
+          mv "$tmpPath" "$targetPath"
+        }
 
-      ${concatMapStringsSep "\n" (file: ''
-        write_codex_skill_file \
-          ${escapeShellArg file.relativePath} \
-          ${escapeShellArg (toString file.source)}
-      '') codexManagedFiles}
-    '';
+        ${concatMapStringsSep "\n" (file: ''
+          write_codex_skill_file \
+            ${escapeShellArg file.relativePath} \
+            ${escapeShellArg (toString file.source)}
+        '') codexManagedFiles}
+      '';
+    };
   };
 }
