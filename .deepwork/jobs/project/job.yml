@@ -1,6 +1,6 @@
 name: project
-version: "1.5.1"
-summary: "Project onboarding, press releases, milestone planning, engineering handoff, and success charter reviews"
+version: "1.6.0"
+summary: "Project onboarding, press releases, milestone planning, engineering handoff, success charter reviews, and health audits"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job covers the full project lifecycle from onboarding through engineering handoff:
 
@@ -148,6 +148,13 @@ workflows:
       - define_charter
       - reality_check
       - update_priorities
+
+  - name: doctor
+    summary: "Audit a project's health: hub note completeness, repo conventions, and release post coverage on the website"
+    steps:
+      - load_hub
+      - audit_health
+      - file_gaps
 
   - name: wrap_up
     summary: "Wind down engineering work — group uncommitted changes into logical commits, push, document in notes, and check in on open issues/PRs"
@@ -633,6 +640,78 @@ steps:
           "Verdict Aligned": "Recommendations directly follow from the verdict in the success review."
           "Actionable Items": "Each recommendation specifies a concrete action (which workflow to run, which milestone to create/close, what to change in PROJECTS.yaml)."
           "Prioritized": "Recommendations are ordered by impact and urgency."
+
+  # ── doctor workflow steps ──────────────────────────────────────────────────
+
+  - id: load_hub
+    name: "Load Project Hub"
+    description: "Find the project's index hub note via zk tags, extract repos, website URL, and social media accounts"
+    instructions_file: steps/load_hub.md
+    inputs:
+      - name: project_name
+        description: "Project name or tag (e.g. 'keystone', 'ks-systems') — used to find the hub note via zk list --tag index --tag <name>"
+    outputs:
+      hub_report.md:
+        type: file
+        description: "Structured hub summary: note path, hub fields present/missing (website_url, social_media, repos), list of repos with their platform and URL, and website repo if identified"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: hub_report.md
+        quality_criteria:
+          "Hub Note Found": "The report identifies the hub note path in ~/notes/index/."
+          "Fields Audited": "The report records which of these are present or missing: website URL, social media handles, linked repos (repo_ref tags or repos: frontmatter)."
+          "Repos Listed": "Every repo referenced in the hub (via tags, frontmatter, or body links) is listed with its platform (github/forgejo) and URL."
+          "Website Repo Identified": "If any repo appears to be a website/web frontend, it is flagged as the website repo."
+
+  - id: audit_health
+    name: "Audit Repo and Release Health"
+    description: "Run repo/doctor for each repo via parallel sub-agents, then check release post coverage against the website"
+    instructions_file: steps/audit_health.md
+    inputs:
+      - file: hub_report.md
+        from_step: load_hub
+    outputs:
+      health_report.md:
+        type: file
+        description: "Consolidated findings: repo/doctor results per repo, releases found vs posts published, and missing release posts list"
+        required: true
+    dependencies:
+      - load_hub
+    reviews:
+      - run_each: health_report.md
+        additional_review_guidance: "Read hub_report.md to verify all repos from the hub were checked."
+        quality_criteria:
+          "All Repos Checked": "Every repo from hub_report.md has a repo/doctor result or a clear explanation of why it was skipped."
+          "Releases Enumerated": "All releases or tags in each source repo are listed with version, date, and title."
+          "Post Coverage Mapped": "Each release is mapped to either a published MDX post (with path) or marked as missing."
+          "Blog Infrastructure Status": "For each website repo, it is recorded whether a blog/posts MDX infrastructure exists (e.g. src/content/posts/)."
+
+  - id: file_gaps
+    name: "File Issues for Gaps"
+    description: "For each gap found, file a GitHub/Forgejo issue: missing blog infrastructure, missing release posts, missing hub fields"
+    instructions_file: steps/file_gaps.md
+    inputs:
+      - file: hub_report.md
+        from_step: load_hub
+      - file: health_report.md
+        from_step: audit_health
+    outputs:
+      gap_report.md:
+        type: file
+        description: "Summary of all gaps found and all issues filed, with URLs"
+        required: true
+    dependencies:
+      - load_hub
+      - audit_health
+    reviews:
+      - run_each: gap_report.md
+        additional_review_guidance: "Read health_report.md to verify every gap identified has either an issue filed or an explicit reason it was skipped."
+        quality_criteria:
+          "All Gaps Addressed": "Every gap from health_report.md and hub_report.md is listed with either an issue URL or a skip reason."
+          "Blog Infrastructure Issue": "If a website repo lacks blog/MDX infrastructure, exactly one issue was filed on that repo with a clear description and 'copilot' or 'agent' label."
+          "Per-Release Issues": "One issue was filed per missing release post — not a single bulk issue — so each can be assigned and tracked independently."
+          "Hub Note Updated": "If hub fields were missing, the hub note was updated with what could be filled in automatically (e.g. repo_ref tags from discovered repos)."
 
   # ── wrap_up workflow steps ─────────────────────────────────────────────────
 
