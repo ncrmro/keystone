@@ -166,6 +166,8 @@ in
           # nginx terminates TLS, so the client must not require a separate mTLS keypair.
           ServerCertificateFile = "-";
           ServerKeyFile = "-";
+          # Use the system CA bundle to verify nginx's public certificate chain.
+          TrustedCertificateFile = "/etc/ssl/certs/ca-bundle.crt";
         };
       };
     })
