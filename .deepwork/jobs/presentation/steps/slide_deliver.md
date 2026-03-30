@@ -127,6 +127,6 @@ Slidev is pre-installed on this Keystone host (`pkgs.keystone.slidev`). The bina
 `/etc/profiles/per-user/ncrmro/bin/slidev`. The serve command opens a local dev server
 with hot-reload — useful for final review before a presentation.
 
-If the deck was generated from `executive_assistant.presentation` workflow output, consider
+If the deck was generated from `presentation` workflow output, consider
 committing the `slides.md` into the relevant project notes repo alongside the source
 outline so the two artifacts stay linked.
