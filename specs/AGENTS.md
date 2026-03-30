@@ -5,36 +5,40 @@ artifacts.
 
 ## Layout
 
-The folder currently contains a mix of legacy layouts:
+All active specs are flat Markdown files at the top of `specs/`. There are
+no subdirectories for active specs.
 
-- top-level Markdown specs such as `REQ-002-keystone-desktop.md`,
-- numbered Markdown specs such as `001-shared-dev-mode-path-resolution.md`,
-- newer requirement directories that contain a `requirements.md` file, and
-- archived feature-planning folders under `_archive/`.
+- `REQ-NNN-slug.md` — canonical requirement specs (e.g., `REQ-023-executive-assistant-perception-layer.md`)
+- `NNN-slug.md` — legacy numbered specs predating the REQ prefix; treat as read-only
+- `_archive/` — retired multi-file feature planning folders; historical only
+
+## File naming
+
+All new specs MUST be flat files at `specs/REQ-NNN-slug.md`. Do NOT create
+subdirectories with `requirements.md` inside them. The next available number
+is `REQ-029`.
 
 ## Editing rules
 
-Use these rules when adding or updating specs:
-
-1. Treat files named `REQ-*` and numbered top-level Markdown files in `specs/`
-   as the canonical current specs.
-2. Treat `_archive/` as historical material only. Do not add new active specs
-   there.
-3. For new active specs, prefer a single top-level Markdown file in `specs/`
-   rather than creating a new directory with `requirements.md`.
-4. When updating a legacy spec that already lives in a directory, preserve the
-   existing structure unless the change explicitly includes a cleanup migration.
-5. Cross-reference related specs by requirement ID in the document body when
+1. All active specs are flat `REQ-NNN-slug.md` files — never a directory with
+   `requirements.md` inside it.
+2. To create a new spec: add `specs/REQ-NNN-slug.md` using the next available
+   number. Check existing files first to confirm the number is free.
+3. `_archive/` is historical only. Do not add new active specs there.
+4. Cross-reference related specs by requirement ID in the document body when
    behavior spans multiple domains.
 
 ## Numbering
 
-1. New `REQ-*` specs MUST use the next available requirement number rather than
-   overloading an older spec number with unrelated scope.
-2. A new focused requirement should get its own `REQ-*` file even when it is
-   split out from an older broader spec.
-3. Revisions to an existing spec should keep the same `REQ-*` number when the
-   scope is still fundamentally the same.
+1. New `REQ-*` specs MUST use the next available requirement number. Current
+   highest is `REQ-028` — next new spec is `REQ-029`.
+2. A new focused requirement should get its own `REQ-*` file even when split
+   out from a broader spec.
+3. Revisions to an existing spec keep the same `REQ-*` number when scope is
+   still fundamentally the same.
+4. Note: `REQ-021` and `REQ-024` each have two files with different slugs —
+   a known numbering collision from legacy migration. Do not reuse those numbers
+   for new unrelated specs.
 
 ## Verification
 
