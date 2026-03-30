@@ -2637,6 +2637,7 @@ cmd_print() {
   local input_file=""
   local output_file=""
   local open_after=false
+  local no_print=false
 
   while [[ $# -gt 0 ]]; do
     case $1 in
@@ -2651,6 +2652,10 @@ cmd_print() {
         ;;
       --open)
         open_after=true
+        shift
+        ;;
+      --no-print)
+        no_print=true
         shift
         ;;
       -*)
@@ -2709,6 +2714,16 @@ cmd_print() {
 
   if [[ "$open_after" == true ]]; then
     xdg-open "$output_file" &
+  fi
+
+  # Auto-send to default CUPS printer unless --no-print was specified
+  if [[ "$no_print" == false ]] && command -v lpstat &>/dev/null; then
+    local default_printer=""
+    default_printer=$(lpstat -d 2>/dev/null | awk '/system default destination:/ {print $NF}')
+    if [[ -n "$default_printer" ]]; then
+      lp "$output_file" >/dev/null
+      echo "✓  Sent to printer: $default_printer"
+    fi
   fi
 }
 
