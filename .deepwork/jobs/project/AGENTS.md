@@ -82,17 +82,19 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 - **Resolution**: Updated `steps/write_press_release.md` and `job.yml` so the issue body must render the press release inside a Markdown blockquote (`>` on each release line). Added review criteria to reject plain pasted issue bodies.
 - **Reference**: `steps/write_press_release.md` publish step and quality criteria, `job.yml` press_release issue review
 
-### 2026-03-30: The `>` blockquote in a press release issue must be audience-facing narrative — no internal labels
+### 2026-03-30: Press release issue structure — blockquote, internal context, user stories
 
 - **Source**: User feedback after reviewing the published press release for Keystone Project Agent (#260)
-- **Issue**: The press release body used `**Current state**` / `**Why this**` / `**How**` / `**What**` as visible labels inside the `>` blockquote. These are internal draft scaffolding for the agent's organizing process — they are not meant to appear in the published, audience-facing copy. The `>` blockquote is what readers and stakeholders see; it must be clean narrative prose.
-- **Resolution**: Updated `steps/write_press_release.md` to clarify:
-  1. The `current state → why → how → what` structure is an internal draft device only — labels must NOT appear in the published press release
-  2. The `>` blockquote is a single, self-contained section of the issue body — it contains only audience-facing prose (headline, narrative paragraphs, ASCII mockup if applicable, CTA)
-  3. Other issue content (FAQ, technical notes) goes outside the `>` blockquote, after the `---` separator
-  4. Updated the Output Format template to show narrative paragraphs instead of labeled sections inside the blockquote
-  5. Updated the Quality Criteria to require the blockquote be free of internal labels
-- **Reference**: `steps/write_press_release.md` step 5, step 12, Output Format, and Quality Criteria
+- **Issues identified**:
+  1. The `**Current state**` / `**Why this**` / `**How**` / `**What**` labels appeared inside the `>` blockquote. These are internal draft scaffolding — they belong **outside** the blockquote in the issue body, below the `---` separator, where the development team can read them.
+  2. The `>` blockquote (the audience-facing section) must be clean narrative prose — headline, paragraphs, ASCII mockup, CTA — with no internal labels visible.
+  3. The `gather_context` step did not proactively ask clarifying questions. The workflow should always ask scoping questions (who is the customer, what is the one problem, what is in/out of scope, what is the CTA) before researching or drafting. A vaguely scoped idea produces a vague press release.
+  4. The press release issue was missing user stories. The issue body (outside the blockquote) must include 3-5 user stories derived from the press release scope.
+- **Resolution**:
+  1. `steps/gather_context.md`: Added step 1 requiring the agent to always ask 6 scoping questions and wait for answers before proceeding
+  2. `steps/write_press_release.md` Output Format: Updated issue body template to show four parts: `>` blockquote → internal context (current state/why/how/what) → user stories → FAQ
+  3. `steps/write_press_release.md` Quality Criteria: Added criteria for internal context sections and user stories appearing outside the blockquote
+- **Reference**: `steps/gather_context.md` step 1, `steps/write_press_release.md` Output Format and Quality Criteria
 
 ## Editing Guidelines
 

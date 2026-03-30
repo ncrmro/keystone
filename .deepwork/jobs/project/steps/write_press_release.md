@@ -132,24 +132,28 @@ URL of the issue created for the press release (e.g.,
 `https://github.com/owner/repo/issues/42`). This URL is required for traceability —
 downstream workflows like `milestone/setup` link back to the press release via this URL.
 
-The issue body has two parts:
+The issue body has four parts, in order:
 
-1. **The `>` blockquote** — the audience-facing press release. This is a self-contained section that readers and stakeholders see. It must be clean narrative prose: no `**Current state**` / `**Why this**` / `**How**` / `**What**` labels, no internal structure visible. Just headline, paragraphs, ASCII mockup (if applicable), and call to action.
+1. **`>` blockquote** — the audience-facing press release. Clean narrative prose readable by anyone. No internal labels. Just headline, paragraphs, ASCII mockup (if applicable), and CTA.
 
-2. **The rest of the issue body** (outside the blockquote) — supplementary content such as FAQ, technical notes, or internal context. This appears below the `---` separator.
+2. **Internal context** (outside the blockquote, after `---`) — the current state / why / how / what breakdown for the development team and future agents. These labels MUST appear here, not inside the blockquote.
+
+3. **User stories** — a short list of user stories derived from the press release scope.
+
+4. **FAQ** — anticipated questions and concise answers.
 
 **Issue body structure**:
 
 ```
 > ## [Headline: Customer Benefit in Plain Language]
 >
-> [Opening paragraph]
+> [Opening paragraph — who the customer is, what they can now do]
 >
-> [Problem paragraph — what the customer struggles with]
+> [Problem paragraph — what the customer struggles with today]
 >
 > [Solution paragraph — how this solves it, customer outcomes]
 >
-> [Benefit/feature paragraph — what they can now do]
+> [Feature/benefit paragraph — what they can now do at high level]
 >
 > ```
 > [ASCII art mockup if applicable]
@@ -159,14 +163,29 @@ The issue body has two parts:
 
 ---
 
+**Current state**: [What the customer struggles with today]
+
+**Why this**: [Why it matters now — motivation for building it]
+
+**How**: [How the product solves the problem — customer outcomes]
+
+**What**: [Key features and scope — what must be built]
+
+### User Stories
+
+- As a [persona], I want to [goal] so that [benefit]
+- As a [persona], I want to [goal] so that [benefit]
+- As a [persona], I want to [goal] so that [benefit]
+
 ### FAQ
+
 - **Q: [Anticipated question]**
   A: [Answer]
 ```
 
 **Do NOT include inside the `>` blockquote:**
 
-- The `**Current state**` / `**Why this**` / `**How**` / `**What**` labels — these are internal draft scaffolding only
+- The `**Current state**` / `**Why this**` / `**How**` / `**What**` labels — these go outside the blockquote
 - City dateline (e.g., "San Francisco, CA —") — omit unless user explicitly requests
 - Fictional customer quotes — no fabricated testimonials
 
@@ -187,6 +206,8 @@ The issue body has two parts:
 - No city dateline (unless user explicitly requested one)
 - Local `.deepwork/tmp/` artifact filenames are unique to the run topic and do not reuse generic shared basenames
 - The `>` blockquote in the published issue is audience-facing narrative prose — no `**Current state**` / `**Why this**` / `**How**` / `**What**` labels visible to readers
+- The issue body (outside the blockquote) includes the `**Current state**` / `**Why this**` / `**How**` / `**What**` context sections for the development team
+- The issue body includes a user stories section with 3-5 stories derived from the press release scope
 
 ## Next Steps
 
