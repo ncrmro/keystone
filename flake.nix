@@ -342,6 +342,9 @@
             inherit pkgs lib nixpkgs;
             self = self;
           };
+          agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
+            inherit pkgs lib;
+          };
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)

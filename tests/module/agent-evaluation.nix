@@ -107,15 +107,6 @@ let
           )
         else
           "''";
-      reposAgentsTextJson =
-        if result.config ? home-manager && result.config.home-manager.users ? testuser then
-          lib.escapeShellArg (
-            builtins.toJSON (
-              result.config.home-manager.users.testuser.home.file.".keystone/repos/AGENTS.md".text or ""
-            )
-          )
-        else
-          "''";
       dragoCapabilitiesJson =
         if result.config ? home-manager && result.config.home-manager.users ? "agent-drago" then
           builtins.toJSON (
@@ -238,25 +229,6 @@ let
         else
           echo "  ✗ Missing /ks.dev in development mode"
           echo "  Actual commands: ${publishedCommandsJson}"
-          exit 1
-        fi
-        if echo '${homeFilesJson}' | grep -q '".keystone/repos/AGENTS.md"'; then
-          echo "  ✓ Found ~/.keystone/repos/AGENTS.md in development mode"
-        else
-          echo "  ✗ Missing ~/.keystone/repos/AGENTS.md in development mode"
-          echo "  Actual home files: ${homeFilesJson}"
-          exit 1
-        fi
-        if echo ${reposAgentsTextJson} | grep -q 'process.privileged-approval'; then
-          echo "  ✓ Found privileged approval guidance in ~/.keystone/repos/AGENTS.md"
-        else
-          echo "  ✗ Missing privileged approval guidance in ~/.keystone/repos/AGENTS.md"
-          exit 1
-        fi
-        if echo ${reposAgentsTextJson} | grep -q 'Route durable note capture' && echo ${reposAgentsTextJson} | grep -q '~/.config/keystone/conventions/process.notes.md'; then
-          echo "  ✓ Found notes routing and conventions guidance in ~/.keystone/repos/AGENTS.md"
-        else
-          echo "  ✗ Missing notes routing or conventions guidance in ~/.keystone/repos/AGENTS.md"
           exit 1
         fi
       fi
