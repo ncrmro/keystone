@@ -250,6 +250,13 @@ in
         ghostty.terminfo
       ];
     }
+    # Enable flakes for Darwin (standalone home-manager)
+    # On NixOS this is handled by keystone.os.nix.flakes
+    (mkIf pkgs.stdenv.isDarwin {
+      home.file.".config/nix/nix.conf".text = ''
+        experimental-features = nix-command flakes
+      '';
+    })
     (mkHomeRepoFiles {
       inherit config;
       files = [
