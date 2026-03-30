@@ -2,10 +2,12 @@
 # Defines the schema for keystone.os.agents.<name>.
 #
 # Implements REQ-007 (OS Agents)
-# See specs/REQ-017-conventions-grafana-mcp/requirements.md (REQ-017.9: Grafana MCP options)
-# See specs/REQ-018-repo-management/requirements.md (agent notes path default)
+# See specs/REQ-017-conventions-grafana-mcp.md (REQ-017.9: Grafana MCP options)
+# See specs/REQ-018-repo-management.md (REQ-018.14: agent notes path default)
 # See specs/REQ-023-executive-assistant-perception-layer.md (REQ-023.34: perception options)
+# See specs/REQ-024-agentic-calendar.md (REQ-024.22: calendar.teamEvents)
 # See conventions/os.requirements.md
+# See conventions/process.keystone-principal-parity.md
 {
   lib,
   config,

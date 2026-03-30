@@ -51,7 +51,7 @@ gather_system_state()
 ## Affected Modules
 
 - `packages/ks/ks.sh` — Add `gather_repo_health` function, integrate into `gather_system_state`
-- `specs/REQ-023-doctor-devmode-repos/requirements.md` — This spec
+- `specs/REQ-028-doctor-devmode-repos.md` — This spec
 
 ## Requirements
 
@@ -171,7 +171,7 @@ cfait       WARN     Connection refused (is Stalwart running?)
 ### Relationship to Existing Checks
 
 **REQ-028.15** The existing dev mode detection in `build_agent_prompt`
-(lines 1183-1208) SHOULD be updated to use `gather_repo_health` output
+SHOULD be updated to use `gather_repo_health` output
 instead of duplicating the keystone-only check.
 
 **REQ-028.16** This spec extends REQ-018.9 ("ks doctor MUST report dev
