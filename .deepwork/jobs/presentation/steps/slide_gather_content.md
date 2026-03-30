@@ -17,7 +17,7 @@ content into a numbered slide plan with titles, key points, and speaker notes.
    Inspect the `presentation_source` input:
 
    - **File path** — read the file (e.g., `presentation_outline.md` from the
-     `executive_assistant.presentation` workflow). Extract sections as slides.
+     `presentation` workflow). Extract sections as slides.
    - **Topic/goal string** — treat it as the presentation brief. Research the topic using
      available tools (web search, notes repos, project files) to build the content.
    - **`ask`** — prompt the operator for the presentation topic, goal, and key points
@@ -113,7 +113,7 @@ This is the planning step for the slide_deck workflow. The output is consumed by
 here to produce a complete, well-structured plan — it is much cheaper to fix the outline
 than to rewrite rendered slides.
 
-If the `executive_assistant.presentation` workflow has already run, its output file
+If the `presentation` workflow has already run, its output file
 (typically `presentation_outline.md` or `presentation_script.md`) should be passed as
 `presentation_source`. The workflow is designed so this step can ingest that output
 without additional research.
