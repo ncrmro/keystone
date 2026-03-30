@@ -880,6 +880,36 @@ let
         };
       }
     ];
+
+    # Agent with perception layer enabled (REQ-023.34)
+    agent-perception = eval "agent-perception" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.vision = {
+            fullName = "Vision Agent";
+            notes.repo = "git@example.com:vision/notes.git";
+            perception = {
+              enable = true;
+              voice.model = "small";
+              processor = {
+                enable = true;
+                useOllama = true;
+                onCalendar = "*:0/15";
+              };
+            };
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-agent-evaluation"
