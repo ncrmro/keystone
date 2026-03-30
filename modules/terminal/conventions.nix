@@ -99,6 +99,12 @@ let
           if aiCommandIds == [ ] then "_none_" else concatStringsSep ", " aiCommandIds
         }
       ''
+      (optionalString (elem "notes" aiCapabilities) ''
+        ## Notes command guidance
+
+        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
+      '')
     ]
     ++ inlinedConventions
     ++ optional (referencedConventions != [ ]) ''
@@ -152,6 +158,12 @@ let
 
         ${reposList}
       ''
+      (optionalString (elem "notes" aiCapabilities) ''
+        ## Notes command guidance
+
+        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
+      '')
     ]
     ++ reposInlinedConventions
     ++ optional (reposReferencedConventions != [ ]) ''

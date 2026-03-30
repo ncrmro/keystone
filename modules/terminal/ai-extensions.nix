@@ -115,6 +115,14 @@ let
   ksNotesCommandBody = ''
     Route note-related requests to the appropriate notes DeepWork workflow.
 
+    ## Canonical note conventions
+
+    - Use `ks.notes` when the task is primarily about durable note capture, note cleanup, inbox promotion, notebook repair, or notebook setup.
+    - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read:
+      - `~/.config/keystone/conventions/process.notes.md`
+      - `~/.config/keystone/conventions/tool.zk-notes.md`
+    - If the user wants a fast durable brain dump before deeper organization, capture the note first, then continue with the appropriate notes workflow.
+
     ## Available workflows
 
     - **notes/process_inbox** — review and promote fleeting notes from inbox/ to permanent notes
