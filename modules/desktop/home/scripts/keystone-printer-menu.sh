@@ -67,12 +67,47 @@ list_printers_raw() {
   lpstat -p 2>/dev/null | awk '/^printer / {print $2}'
 }
 
-list_discoverable_raw() {
-  # Output: one dnssd URI per line. Timeout after 5s to avoid blocking Walker.
+DISCOVERY_CACHE_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/keystone/printer-discovery.uris"
+DISCOVERY_LOCK_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/keystone/printer-discovery.lock"
+DISCOVERY_CACHE_TTL=300 # seconds before cache is considered stale
+
+refresh_discoverable_background() {
+  # Spawn a background job to refresh the discovery cache. Exits immediately.
   if ! cups_available; then
     return 0
   fi
-  timeout 5 lpinfo --include-schemes=dnssd -v 2>/dev/null | awk '{print $2}' || true
+  local cache_dir
+  cache_dir="$(dirname "$DISCOVERY_CACHE_FILE")"
+  mkdir -p "$cache_dir"
+  # Skip if a refresh is already running
+  [[ -f "$DISCOVERY_LOCK_FILE" ]] && return 0
+  (
+    touch "$DISCOVERY_LOCK_FILE"
+    timeout 15 lpinfo --include-schemes=dnssd -v 2>/dev/null \
+      | awk '{print $2}' \
+      > "$DISCOVERY_CACHE_FILE.tmp" \
+      && mv "$DISCOVERY_CACHE_FILE.tmp" "$DISCOVERY_CACHE_FILE"
+    rm -f "$DISCOVERY_LOCK_FILE"
+  ) </dev/null >/dev/null 2>&1 &
+  disown
+}
+
+list_discoverable_raw() {
+  # Return cached URIs immediately; kick off a background refresh if stale.
+  if ! cups_available; then
+    return 0
+  fi
+  local now
+  now=$(date +%s)
+  local cache_mtime=0
+  if [[ -f "$DISCOVERY_CACHE_FILE" ]]; then
+    cache_mtime=$(stat -c %Y "$DISCOVERY_CACHE_FILE" 2>/dev/null || echo 0)
+  fi
+  local age=$(( now - cache_mtime ))
+  if [[ $age -gt $DISCOVERY_CACHE_TTL ]] || [[ ! -f "$DISCOVERY_CACHE_FILE" ]]; then
+    refresh_discoverable_background
+  fi
+  [[ -f "$DISCOVERY_CACHE_FILE" ]] && cat "$DISCOVERY_CACHE_FILE" || true
 }
 
 uri_display_name() {
@@ -359,6 +394,10 @@ case "${1:-}" in
     shift
     apply_config_defaults "$@"
     ;;
+  refresh-discoverable)
+    shift
+    refresh_discoverable_background
+    ;;
   save-defaults)
     shift
     save_printer_defaults "$@"
@@ -368,7 +407,7 @@ case "${1:-}" in
     dispatch "$@"
     ;;
   *)
-    echo "Usage: keystone-printer-menu {open-menu|printers-json|set-default|add-and-default|preview-printer|preview-discoverable|summary|apply-config-defaults|save-defaults|dispatch} ..." >&2
+    echo "Usage: keystone-printer-menu {open-menu|printers-json|set-default|add-and-default|preview-printer|preview-discoverable|summary|apply-config-defaults|refresh-discoverable|save-defaults|dispatch} ..." >&2
     exit 1
     ;;
 esac
