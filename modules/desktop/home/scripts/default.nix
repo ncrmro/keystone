@@ -232,6 +232,11 @@ let
     builtins.readFile ./keystone-audio-menu.sh
   );
 
+  # CUPS printer default controller for Elephant/Walker and terminal use
+  keystonePrinterMenu = pkgs.writeShellScriptBin "keystone-printer-menu" (
+    builtins.readFile ./keystone-printer-menu.sh
+  );
+
   # Hyprland monitor controller for Elephant/Walker
   keystoneMonitorMenu = pkgs.writeShellScriptBin "keystone-monitor-menu" (
     builtins.readFile ./keystone-monitor-menu.sh
@@ -364,6 +369,19 @@ let
     })
     (mkHomeScriptCommand {
       inherit config pkgs;
+      commandName = "keystone-printer-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-printer-menu.sh";
+      package = keystonePrinterMenu;
+      runtimeInputs = [
+        pkgs.cups
+        pkgs.jq
+        pkgs.libnotify
+        pkgs.python3
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
       commandName = "keystone-monitor-menu";
       relativePath = "modules/desktop/home/scripts/keystone-monitor-menu.sh";
       package = keystoneMonitorMenu;
@@ -483,6 +501,12 @@ in
                   if cfg.audio.defaults.source != null then cfg.audio.defaults.source else ""
                 }' keystone-audio-menu apply-config-defaults"
               ]);
+
+          wayland.windowManager.hyprland.settings.exec-once = mkIf (cfg.printer.default != null) (mkAfter [
+            "env KEYSTONE_PRINTER_DEFAULT='${
+              if cfg.printer.default != null then cfg.printer.default else ""
+            }' keystone-printer-menu apply-config-defaults"
+          ]);
 
           # Periodically check battery level and send a notification when low
           systemd.user.services.keystone-battery-monitor = {
