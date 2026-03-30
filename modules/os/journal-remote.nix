@@ -41,7 +41,7 @@ let
   derivedServerUrl =
     if effectiveServerHost != null then
       if domain != null then
-        "https://journal.${domain}"
+        "https://journal.${domain}:443"
       else
         "http://${effectiveServerHost}:${toString cfg.server.port}"
     else
@@ -161,6 +161,11 @@ in
         enable = true;
         settings.Upload = {
           URL = effectiveServerUrl;
+        }
+        // optionalAttrs useNginxProxy {
+          # nginx terminates TLS, so the client must not require a separate mTLS keypair.
+          ServerCertificateFile = "-";
+          ServerKeyFile = "-";
         };
       };
     })
