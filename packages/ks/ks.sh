@@ -9,6 +9,7 @@
 # Commands:
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
 #   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (unlocked current checkout with --dev, locked full system by default)
+#   agents <pause|resume|status> <agent|all> [reason]  Pause or inspect agent task loops
 #   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
 #   grafana dashboards apply|export <uid>              Apply or export keystone dashboard JSON via Grafana API
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
@@ -86,6 +87,8 @@ Commands:
                                                     Build home-manager profiles, or full systems with --lock
   update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
                                                     Pull, lock, build, push, and deploy
+  agents <pause|resume|status> <agent|all> [reason]
+                                                    Control agent task-loop pause state
   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
   switch [--boot] [HOSTS]                           Deploy current state without pull, lock, or push
   sync-host-keys                                    Populate hostPublicKey in hosts.nix from live hosts
@@ -109,6 +112,7 @@ Examples:
   ks build
   ks build --lock workstation,ocean
   ks update --dev
+  ks agents pause all "waiting for human input"
   ks help grafana dashboards
 
 Use "ks help <command>" for command-specific help.
@@ -264,6 +268,29 @@ Examples:
 EOF
 }
 
+print_agents_help() {
+  cat <<'EOF'
+Usage: ks agents <pause|resume|status> <agent|all> [reason]
+
+Control autonomous agent task loops without stopping the underlying timers.
+
+Subcommands:
+  pause               Create the paused marker so scheduled task-loop runs no-op
+  resume              Remove the paused marker and allow task-loop runs again
+  status              Show whether the target agent task loop is paused
+
+Arguments:
+  <agent|all>         One configured agent name, or "all" for every configured agent
+  [reason]            Optional pause reason stored with the marker
+
+Examples:
+  ks agents pause drago "waiting for review feedback"
+  ks agents pause all "human focus block"
+  ks agents status luce
+  ks agents resume all
+EOF
+}
+
 print_print_help() {
   cat <<'EOF'
 Usage: ks print <file.md> [-o output.pdf] [--open]
@@ -349,6 +376,9 @@ show_help_topic() {
     sync-agent-assets)
       print_sync_agent_assets_help
       ;;
+    agents)
+      print_agents_help
+      ;;
     sync-host-keys)
       print_sync_host_keys_help
       ;;
@@ -398,6 +428,90 @@ cmd_sync_agent_assets() {
   fi
 
   keystone-sync-agent-assets "$@"
+}
+
+known_agents_list() {
+  if ! command -v agentctl >/dev/null 2>&1; then
+    echo "Error: agentctl is not available in PATH." >&2
+    return 1
+  fi
+
+  local known_agents
+  known_agents=$(agentctl 2>&1 | sed -n 's/^Known agents: //p' | head -n1)
+  if [[ -z "$known_agents" ]]; then
+    echo "Error: could not discover configured agents from agentctl." >&2
+    return 1
+  fi
+
+  printf '%s\n' "$known_agents" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sed '/^$/d'
+}
+
+resolve_agent_targets() {
+  local target="$1"
+
+  if [[ "$target" == "all" ]]; then
+    known_agents_list
+    return
+  fi
+
+  if known_agents_list | grep -Fxq "$target"; then
+    printf '%s\n' "$target"
+    return
+  fi
+
+  echo "Error: unknown agent '$target'." >&2
+  echo "Run 'agentctl' to see configured agents." >&2
+  return 1
+}
+
+cmd_agents() {
+  if [[ $# -lt 2 ]]; then
+    print_agents_help >&2
+    return 1
+  fi
+
+  local action="$1"
+  local target="$2"
+  shift 2
+
+  case "$action" in
+    pause|resume|status) ;;
+    -h|--help)
+      print_agents_help
+      return 0
+      ;;
+    *)
+      echo "Error: unknown agents subcommand '$action'." >&2
+      print_agents_help >&2
+      return 1
+      ;;
+  esac
+
+  mapfile -t targets < <(resolve_agent_targets "$target") || return 1
+
+  local rc=0
+  local agent
+  for agent in "${targets[@]}"; do
+    case "$action" in
+      pause)
+        if ! agentctl "$agent" pause "$@"; then
+          rc=1
+        fi
+        ;;
+      resume)
+        if ! agentctl "$agent" resume; then
+          rc=1
+        fi
+        ;;
+      status)
+        if ! agentctl "$agent" paused; then
+          rc=1
+        fi
+        ;;
+    esac
+  done
+
+  return "$rc"
 }
 
 # --- Discover repo root ---
@@ -2816,6 +2930,7 @@ case "$CMD" in
   help)
     show_help_topic "$@"
     ;;
+  agents) cmd_agents "$@" ;;
   build)  cmd_build "$@" ;;
   grafana) cmd_grafana "$@" ;;
   sync-agent-assets) cmd_sync_agent_assets "$@" ;;
@@ -2827,7 +2942,7 @@ case "$CMD" in
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: help, build, grafana, sync-agent-assets, update, switch, sync-host-keys, print, agent, doctor" >&2
+    echo "Known commands: help, build, update, agents, sync-agent-assets, switch, sync-host-keys, grafana, print, agent, doctor" >&2
     exit 1
     ;;
 esac

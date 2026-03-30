@@ -1,0 +1,309 @@
+name: presentation
+version: "1.0.0"
+summary: "Presentation workflows: end-to-end deck creation and Slidev slide deck generation"
+common_job_info_provided_to_all_steps_at_runtime: |
+  Presentation workflows for the human operator. These workflows handle
+  requirements gathering, media discovery, Slidev deck creation, review, and
+  delivery to the notes repo.
+
+  Tools available:
+  - Web search: Use WebSearch and WebFetch for research tasks when the source
+    material is incomplete
+  - Immich: Use environment-provided credentials to search and download media
+  - File management: Standard file tools for deck scaffolding and artifact
+    delivery
+  - Notes repo: Use `~/notes` as the destination for final presentation assets
+  - Slidev: Use the preinstalled `slidev` CLI to verify decks
+
+  Conventions:
+  - Always act on behalf of the human operator (see TEAM.md for identity)
+  - Use plain, professional language in all written outputs
+  - Include actionable next steps in every deliverable
+  - Reference specific dates, times, and contacts where possible
+  - Keep slides brief; use speaker notes for the full narrative
+  - Preserve unresolved gaps as explicit `TODO` comments rather than silently
+    inventing missing media or facts
+  - Deliver final decks into `~/notes/presentations/<slug>/`
+
+  Output audience: The human operator (CEO). Keep outputs concise and
+  decision-ready.
+
+workflows:
+  - name: presentation
+    summary: "End-to-end presentation creation: requirements, Immich media search, outline, Slidev deck, speaker notes, and delivery to notes repo"
+    steps:
+      - presentation_gather_requirements
+      - presentation_search_media
+      - presentation_outline
+      - presentation_build_deck
+      - presentation_review_deck
+      - presentation_deliver
+
+  - name: slide_deck
+    summary: "Build and review a Slidev presentation deck from outline or presentation content"
+    steps:
+      - slide_gather_content
+      - slide_build_deck
+      - slide_review_deck
+      - slide_deliver
+
+steps:
+  # ── presentation workflow ────────────────────────────────────────────
+
+  - id: presentation_gather_requirements
+    name: "Gather Presentation Requirements"
+    description: "Interactively collect topic, audience, key messages, duration, tone, and media preferences. Ask the user whether to search Immich for photos, screenshots, or videos."
+    instructions_file: steps/presentation_gather_requirements.md
+    inputs:
+      - name: topic
+        description: "What is the presentation about? Provide a title or short description."
+      - name: audience
+        description: "Who is the audience? (e.g., investors, engineering team, conference attendees)"
+      - name: duration_minutes
+        description: "Target presentation duration in minutes (used to calibrate slide count)"
+    outputs:
+      presentation_requirements.md:
+        type: file
+        description: "Structured requirements: topic, audience, key messages, tone, duration, desired slide count, and confirmed media preferences (whether to search Immich and what to look for)"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: presentation_requirements.md
+        quality_criteria:
+          "Key Messages Captured": "At least 3 key messages or talking points are listed."
+          "Media Preferences Confirmed": "The document states whether Immich media search is desired and, if so, what types of media to find (photos, screenshots, by topic/location/date/people)."
+          "Slide Count Target": "A target slide count is calculated from the duration (roughly 1–2 minutes per slide)."
+
+  - id: presentation_search_media
+    name: "Search Media in Immich"
+    description: "Query the Immich API to find photos, videos, and OCR-indexed screenshots relevant to the presentation topic. Produce a media manifest with file paths and captions."
+    instructions_file: steps/presentation_search_media.md
+    inputs:
+      - file: presentation_requirements.md
+        from_step: presentation_gather_requirements
+    outputs:
+      presentation_media_manifest.md:
+        type: file
+        description: "List of selected media assets: Immich asset ID, local download path (under presentations/_dataroom/), suggested slide placement, and caption hint. Includes a 'no media' entry if the user opted out of media search."
+        required: true
+    dependencies:
+      - presentation_gather_requirements
+    reviews:
+      - run_each: presentation_media_manifest.md
+        additional_review_guidance: "Read presentation_requirements.md to verify the media matches the stated topic, audience, and any specified location/date/people filters."
+        quality_criteria:
+          "Relevant Assets": "Each asset is plausibly relevant to the presentation topic or key messages."
+          "Paths Valid": "Every listed asset has a local path under presentations/_dataroom/ or is marked as a TODO for manual download."
+          "Slide Placement Suggested": "Each asset has a suggested slide or section where it could appear."
+
+  - id: presentation_outline
+    name: "Create Presentation Outline"
+    description: "Build a slide-by-slide outline with titles, key points, speaker notes, and media placement. Insert TODO comments for any media slots not yet resolved."
+    instructions_file: steps/presentation_outline.md
+    inputs:
+      - file: presentation_requirements.md
+        from_step: presentation_gather_requirements
+      - file: presentation_media_manifest.md
+        from_step: presentation_search_media
+    outputs:
+      presentation_outline.md:
+        type: file
+        description: "Slide-by-slide outline: slide number, title, bullet points, speaker notes, and media reference (asset path or TODO placeholder). Follows a clear narrative arc."
+        required: true
+    dependencies:
+      - presentation_gather_requirements
+      - presentation_search_media
+    reviews:
+      - run_each: presentation_outline.md
+        additional_review_guidance: "Read presentation_requirements.md to verify the outline covers all key messages and matches the target audience and duration."
+        quality_criteria:
+          "Narrative Arc": "Slides follow a coherent story: opening hook, body sections, and closing call-to-action or summary."
+          "Speaker Notes Present": "Every slide has speaker notes explaining what to say."
+          "Media Assigned": "Each media asset from the manifest appears in at least one slide. Unresolved slots are marked with TODO comments."
+          "Slide Count Match": "The number of slides matches the target from presentation_requirements.md (within ±2)."
+
+  - id: presentation_build_deck
+    name: "Build Slidev Deck"
+    description: "Scaffold a Slidev markdown presentation from the outline. Embed media references, speaker notes, and TODO comments for items requiring manual review before delivery."
+    instructions_file: steps/presentation_build_deck.md
+    inputs:
+      - file: presentation_outline.md
+        from_step: presentation_outline
+      - file: presentation_media_manifest.md
+        from_step: presentation_search_media
+    outputs:
+      presentation_slides_path.txt:
+        type: file
+        description: "Path to the generated slides.md file (the Slidev entry point)"
+        required: true
+    dependencies:
+      - presentation_outline
+      - presentation_search_media
+    reviews:
+      - run_each: presentation_slides_path.txt
+        additional_review_guidance: "Read the slides.md at the path in presentation_slides_path.txt to verify structure and content."
+        quality_criteria:
+          "Valid Slidev Markdown": "The file uses correct Slidev frontmatter and --- slide separators with no syntax errors."
+          "All Slides Present": "Every slide from presentation_outline.md is represented in the deck."
+          "Layouts Used": "Slides use appropriate Slidev layouts (cover, center, two-cols, image-right, etc.) rather than blank defaults."
+          "Speaker Notes Included": "Each slide has a <!-- --> or notes: block with speaker guidance."
+          "TODO Comments Present": "Slides with unresolved media or content have <!-- TODO: ... --> comments so the human can review them before presenting."
+
+  - id: presentation_review_deck
+    name: "Review Presentation Deck"
+    description: "Run a structured review of the Slidev deck: narrative quality, slide flow, media placement, speaker note completeness, and presenter readiness. Apply fixes."
+    instructions_file: steps/presentation_review_deck.md
+    inputs:
+      - file: presentation_outline.md
+        from_step: presentation_outline
+      - file: presentation_slides_path.txt
+        from_step: presentation_build_deck
+    outputs:
+      presentation_review_report.md:
+        type: file
+        description: "Review findings: issues per slide, narrative verdict, and list of edits applied"
+        required: true
+      presentation_slides_revised_path.txt:
+        type: file
+        description: "Path to the revised slides.md after applying review fixes (may equal presentation_slides_path.txt if no changes were needed)"
+        required: true
+    dependencies:
+      - presentation_outline
+      - presentation_build_deck
+    reviews:
+      - run_each: presentation_review_report.md
+        additional_review_guidance: "Read the slides.md at the path in presentation_slides_revised_path.txt to verify that all identified issues have been fixed in the actual deck."
+        quality_criteria:
+          "Per-Slide Coverage": "The report addresses every slide by number, even if just 'no issues'."
+          "Actionable Findings": "Each issue includes the slide number, the problem, and the specific fix applied."
+          "Narrative Verdict": "The report includes an overall narrative verdict: does the deck tell a clear story?"
+          "Revision Applied": "All identified issues are fixed in the revised slides.md before this step completes."
+
+  - id: presentation_deliver
+    name: "Deliver Presentation to Notes Repo"
+    description: "Copy the final Slidev deck and media assets to ~/notes, track binary assets with git LFS, commit, and produce a delivery summary with serve/export commands."
+    instructions_file: steps/presentation_deliver.md
+    inputs:
+      - file: presentation_requirements.md
+        from_step: presentation_gather_requirements
+      - file: presentation_slides_revised_path.txt
+        from_step: presentation_review_deck
+    outputs:
+      presentation_delivery_summary.md:
+        type: file
+        description: "Delivery summary: notes repo path, git LFS tracked files, slide count, serve command, export command, and remaining TODO items for the human to resolve"
+        required: true
+    dependencies:
+      - presentation_gather_requirements
+      - presentation_review_deck
+    reviews:
+      - run_each: presentation_delivery_summary.md
+        quality_criteria:
+          "Notes Repo Path": "The summary shows the exact path in ~/notes where the deck was saved."
+          "Git LFS Confirmed": "Binary assets (images, videos) are listed as git LFS tracked files."
+          "Committed": "The summary confirms a git commit was made in the notes repo with a conventional-commit message."
+          "Serve Command Included": "The summary shows the exact command to preview the deck locally with Slidev."
+          "Open TODOs Listed": "Any unresolved TODO comments from the deck are enumerated so the human knows what to review."
+
+  # ── slide_deck workflow ──────────────────────────────────────────────
+
+  - id: slide_gather_content
+    name: "Gather Presentation Content"
+    description: "Collect and structure the presentation content — from a prior presentation workflow output, a notes file, or direct user input"
+    instructions_file: steps/slide_gather_content.md
+    inputs:
+      - name: presentation_source
+        description: "Source of presentation content: a file path (e.g., presentation_outline.md from the presentation workflow), a topic/goal string, or 'ask' to prompt for it interactively"
+      - name: audience
+        description: "Target audience for the presentation (e.g., 'investors', 'engineering team', 'conference attendees')"
+      - name: duration_minutes
+        description: "Target presentation duration in minutes (used to calibrate slide count)"
+      - name: output_dir
+        description: "Directory where the Slidev project will be created (default: ./slide-deck)"
+    outputs:
+      slide_content_plan.md:
+        type: file
+        description: "Structured slide-by-slide content plan: title, key points, speaker notes, and layout hints for each slide"
+        required: true
+    dependencies: []
+    reviews:
+      - run_each: slide_content_plan.md
+        quality_criteria:
+          "Slide Count Calibrated": "The number of slides is proportional to the target duration (roughly 1–2 minutes per slide)."
+          "Clear Narrative Arc": "Slides follow a coherent story: opening hook, body, and closing call-to-action or summary."
+          "Audience Appropriate": "Content depth and vocabulary match the stated audience."
+          "Speaker Notes Present": "Every slide has speaker notes summarizing what to say."
+
+  - id: slide_build_deck
+    name: "Build Slidev Deck"
+    description: "Scaffold the Slidev project and write the complete presentation in Slidev markdown format"
+    instructions_file: steps/slide_build_deck.md
+    inputs:
+      - file: slide_content_plan.md
+        from_step: slide_gather_content
+    outputs:
+      slides_md_path.txt:
+        type: file
+        description: "Path to the generated slides.md file (the Slidev entry point)"
+        required: true
+    dependencies:
+      - slide_gather_content
+    reviews:
+      - run_each: slides_md_path.txt
+        additional_review_guidance: "Read the slides.md at the path in slides_md_path.txt to verify structure and content."
+        quality_criteria:
+          "Valid Slidev Markdown": "The file uses correct Slidev frontmatter and --- slide separators with no syntax errors."
+          "All Slides Present": "Every slide from slide_content_plan.md is represented in the deck."
+          "Layouts Used": "Slides use appropriate Slidev layouts (cover, center, two-cols, etc.) rather than blank defaults throughout."
+          "Speaker Notes Included": "Each slide has a <!-- --> or notes: block with speaker guidance."
+
+  - id: slide_review_deck
+    name: "Review Deck"
+    description: "Run a structured review of the deck: content quality, slide flow, visual consistency, and presenter readiness"
+    instructions_file: steps/slide_review_deck.md
+    inputs:
+      - file: slide_content_plan.md
+        from_step: slide_gather_content
+      - file: slides_md_path.txt
+        from_step: slide_build_deck
+    outputs:
+      slide_review_report.md:
+        type: file
+        description: "Review findings: issues per slide, overall narrative assessment, and list of recommended edits"
+        required: true
+      slides_revised_path.txt:
+        type: file
+        description: "Path to the revised slides.md after applying review fixes (may equal slides_md_path.txt if no changes were needed)"
+        required: true
+    dependencies:
+      - slide_gather_content
+      - slide_build_deck
+    reviews:
+      - run_each: slide_review_report.md
+        quality_criteria:
+          "Per-Slide Coverage": "The report addresses every slide by number, even if just 'no issues'."
+          "Actionable Findings": "Each issue includes the slide number, the problem, and the specific fix applied."
+          "Narrative Verdict": "The report includes an overall narrative verdict: does the deck tell a clear story?"
+          "Revision Applied": "All identified issues are fixed in the revised slides.md before this step completes."
+
+  - id: slide_deliver
+    name: "Deliver Deck"
+    description: "Verify the deck builds cleanly with Slidev, produce export artifacts, and hand off to the operator"
+    instructions_file: steps/slide_deliver.md
+    inputs:
+      - file: slides_revised_path.txt
+        from_step: slide_review_deck
+    outputs:
+      slide_delivery_summary.md:
+        type: file
+        description: "Delivery summary: deck location, slide count, how to serve/export, and any remaining open items"
+        required: true
+    dependencies:
+      - slide_review_deck
+    reviews:
+      - run_each: slide_delivery_summary.md
+        quality_criteria:
+          "Build Verified": "The summary confirms `slidev build` (or `slidev export`) completed without errors."
+          "Serve Command Included": "The summary shows the exact command to preview the deck locally."
+          "Slide Count Confirmed": "The final slide count matches the planned count from slide_content_plan.md."
+          "Open Items Noted": "Any remaining TODOs (missing images, placeholder text, pending decisions) are listed."

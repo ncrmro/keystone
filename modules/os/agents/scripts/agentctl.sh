@@ -16,10 +16,15 @@ fi
 if [ $# -lt 2 ]; then
   echo "Usage: agentctl <agent-name> <command> [args...]" >&2
   echo "" >&2
+  echo "Known agents: $KNOWN_AGENTS" >&2
+  echo "" >&2
   echo "Commands:" >&2
   echo "  <systemctl-verb>  Run systemctl --user as the agent (status, start, stop, ...)" >&2
   echo "  logs              Run journalctl --user as the agent" >&2
   echo "  cron              List the agent's scheduled timers" >&2
+  echo "  pause [reason]    Pause task-loop runs for the agent" >&2
+  echo "  resume            Resume task-loop runs for the agent" >&2
+  echo "  paused            Show whether the agent task loop is paused" >&2
   echo "  exec              Run an arbitrary command as the agent" >&2
   echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
   echo "  email             Show the agent's inbox (recent envelopes)" >&2
@@ -43,6 +48,9 @@ if [ $# -lt 2 ]; then
   echo "  agentctl drago status agent-drago-task-loop" >&2
   echo "  agentctl drago logs -u agent-drago-task-loop -n 20" >&2
   echo "  agentctl drago cron" >&2
+  echo "  agentctl drago pause \"waiting for human input\"" >&2
+  echo "  agentctl drago resume" >&2
+  echo "  agentctl drago paused" >&2
   echo "  agentctl drago tasks" >&2
   echo "  agentctl drago email" >&2
   echo "  agentctl drago shell" >&2
@@ -151,7 +159,65 @@ if [[ -n "$LOCAL_MODEL" ]]; then
   fi
 fi
 
+TASK_LOOP_STATE_DIR_REL=".local/state/agent-task-loop/state"
+TASK_LOOP_PAUSE_FILE_REL="${TASK_LOOP_STATE_DIR_REL}/paused"
+
 case "$CMD" in
+  pause)
+    PAUSE_REASON="${*:-}"
+    PAUSE_ACTOR="${SUDO_USER:-${USER:-unknown}}"
+    exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -lc '
+      state_dir="$HOME/'"$TASK_LOOP_STATE_DIR_REL"'"
+      pause_file="$HOME/'"$TASK_LOOP_PAUSE_FILE_REL"'"
+      reason="$1"
+      actor="$2"
+
+      mkdir -p "$state_dir"
+      {
+        printf "paused_at=%s\n" "$(date -Iseconds)"
+        printf "paused_by=%s\n" "$actor"
+        if [[ -n "$reason" ]]; then
+          printf "reason=%s\n" "$reason"
+        fi
+      } > "$pause_file"
+      echo "Paused task loop for '"$AGENT_NAME"'"
+    ' -- "$PAUSE_REASON" "$PAUSE_ACTOR"
+    ;;
+  resume)
+    exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -lc '
+      pause_file="$HOME/'"$TASK_LOOP_PAUSE_FILE_REL"'"
+      if [[ -f "$pause_file" ]]; then
+        rm -f "$pause_file"
+        echo "Resumed task loop for '"$AGENT_NAME"'"
+      else
+        echo "Task loop for '"$AGENT_NAME"' is not paused"
+      fi
+    '
+    ;;
+  paused)
+    exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -lc '
+      pause_file="$HOME/'"$TASK_LOOP_PAUSE_FILE_REL"'"
+      if [[ ! -f "$pause_file" ]]; then
+        echo "Task loop for '"$AGENT_NAME"': active"
+        exit 0
+      fi
+
+      paused_at=$(sed -n "s/^paused_at=//p" "$pause_file" | tail -n1)
+      paused_by=$(sed -n "s/^paused_by=//p" "$pause_file" | tail -n1)
+      reason=$(sed -n "s/^reason=//p" "$pause_file" | tail -n1)
+
+      echo "Task loop for '"$AGENT_NAME"': paused"
+      if [[ -n "$paused_at" ]]; then
+        echo "paused_at: $paused_at"
+      fi
+      if [[ -n "$paused_by" ]]; then
+        echo "paused_by: $paused_by"
+      fi
+      if [[ -n "$reason" ]]; then
+        echo "reason: $reason"
+      fi
+    '
+    ;;
   tasks)
     TASKS_YAML=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec cat "$NOTES_DIR/TASKS.yaml" 2>/dev/null)
     if [ -z "$TASKS_YAML" ]; then

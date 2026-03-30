@@ -39,7 +39,7 @@ orchestration or sending anything to cloud services.
 │  │  summarize_audio ──► whisper.cpp ──► Ollama ──► zk note    │        │
 │  │  review_photos   ──► immich-search ──────────► terminal    │        │
 │  │  start_recording ──► OBS WebSocket ──────────► daily note  │        │
-│  │  task_loop, slide_deck, plan_event, … (existing)           │        │
+│  │  task_loop, plan_event, … (existing)                       │        │
 │  └─────────────────────────────────────────────────────────────┘        │
 └──────────────────────────────────────────────────────────────────────────┘
                                 │
@@ -349,8 +349,10 @@ DeepWork MCP server.
 
 **REQ-023.47** Routing MUST cover all workflows in the `executive_assistant`
 job: `plan_event`, `manage_calendar`, `clean_inbox`, `discover_events`,
-`task_loop`, `portfolio_review`, `portfolio_review_one`, `slide_deck`,
-`summarize_audio`, `review_photos`, and `start_recording`.
+`task_loop`, `portfolio_review`, `portfolio_review_one`, `summarize_audio`,
+`review_photos`, and `start_recording`. Presentation requests MUST route to the
+standalone `presentation` job instead, including its `presentation` and
+`slide_deck` workflows.
 
 > **Implementation note**: `summarize_audio`, `review_photos`, and
 > `start_recording` are Phase 2 additions — they do not yet exist in

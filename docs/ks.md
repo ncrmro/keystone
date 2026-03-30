@@ -74,6 +74,27 @@ ks update --boot ocean
 ks update --pull --dev
 ```
 
+### `ks agents`
+
+```bash
+ks agents <pause|resume|status> <agent|all> [reason]
+```
+
+Control task-loop pause state for one agent or the full agent fleet.
+
+- `pause`: Create the pause marker so scheduled task-loop runs exit before ingest and execution.
+- `resume`: Remove the pause marker and allow scheduled task-loop runs again.
+- `status`: Show whether the target agent task loop is paused.
+
+Examples:
+
+```bash
+ks agents pause drago "waiting for human review"
+ks agents pause all "human focus block"
+ks agents status luce
+ks agents resume all
+```
+
 ### `ks switch`
 
 ```bash

@@ -137,6 +137,6 @@ This review step is designed to catch what automated generation misses: narrativ
 overloaded slides, missing speaker notes, and audience-tone mismatches. The agent acts
 as both a content editor and a technical reviewer.
 
-If the deck is based on output from the `executive_assistant.presentation` workflow,
+If the deck is based on output from the `presentation` workflow,
 cross-reference the original presentation outline to ensure no key messages were lost
 during slide conversion.
