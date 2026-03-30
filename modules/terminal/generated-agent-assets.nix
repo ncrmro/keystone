@@ -52,8 +52,23 @@ in
 
     (mkIf isDev {
       home.activation.keystoneSyncAgentAssets = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        KEYSTONE_AGENT_ASSETS_MANIFEST="$HOME/${manifestRelPath}" \
-          ${pkgs.bash}/bin/bash ${syncScriptPath}
+        export PATH="${
+          lib.makeBinPath [
+            pkgs.bash
+            pkgs.coreutils
+            pkgs.findutils
+            pkgs.gnugrep
+            pkgs.jq
+            pkgs.yq-go
+          ]
+        }:$PATH"
+        if [ -f "${syncScriptPath}" ]; then
+          KEYSTONE_AGENT_ASSETS_MANIFEST="$HOME/${manifestRelPath}" \
+            ${pkgs.bash}/bin/bash "${syncScriptPath}"
+        else
+          KEYSTONE_AGENT_ASSETS_MANIFEST="$HOME/${manifestRelPath}" \
+            ${scriptPackage}/bin/keystone-sync-agent-assets
+        fi
       '';
     })
   ]);
