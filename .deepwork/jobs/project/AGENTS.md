@@ -68,6 +68,32 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 - **Resolution**: Added step 11 to `steps/write_press_release.md` — create a permanent note in `~/notes/notes/` before creating the issue. The note must include `project/<slug>`, `source/agent`, `source/deepwork` tags, and `repo_ref` frontmatter. After issue creation, the note must be updated with `issue_ref`. If a project hub exists in `~/notes/index/`, the note must be linked from it. Updated `job.yml` common_job_info to mandate the zk note step.
 - **Reference**: `steps/write_press_release.md` steps 11–12 and Output Format, `job.yml` common_job_info press release conventions, `process.notes`, `tool.zk-notes`
 
+### 2026-03-30: Press release tmp artifacts must use unique filenames
+
+- **Source**: User feedback after running `project/press_release` for Keystone Project Agent
+- **Issue**: The workflow correctly staged local artifacts under `.deepwork/tmp/`, but it still used generic basenames like `press_release.mdx` and `press_release_issue_url.md`. Re-running the workflow for another project or another press release can overwrite earlier artifacts and confuse traceability.
+- **Resolution**: Updated `steps/write_press_release.md` and `job.yml` to require unique `.deepwork/tmp/` filenames derived from the project slug or headline slug, such as `<slug>-press-release.mdx` and `<slug>-press-release-issue-url.md`. Added a review criterion to reject shared generic basenames.
+- **Reference**: `steps/write_press_release.md` final check, staging instructions, output format, and `job.yml` press_release review criteria
+
+### 2026-03-30: Press release issues should quote the release text
+
+- **Source**: User feedback after reviewing the published press release issue
+- **Issue**: The workflow created the issue with the press release as plain body text. The user wants the actual user-facing press release to appear as quoted published copy, so readers can clearly distinguish the release from any issue wrapper text.
+- **Resolution**: Updated `steps/write_press_release.md` and `job.yml` so the issue body must render the press release inside a Markdown blockquote (`>` on each release line). Added review criteria to reject plain pasted issue bodies.
+- **Reference**: `steps/write_press_release.md` publish step and quality criteria, `job.yml` press_release issue review
+
+### 2026-03-30: The `>` blockquote in a press release issue must be audience-facing narrative — no internal labels
+
+- **Source**: User feedback after reviewing the published press release for Keystone Project Agent (#260)
+- **Issue**: The press release body used `**Current state**` / `**Why this**` / `**How**` / `**What**` as visible labels inside the `>` blockquote. These are internal draft scaffolding for the agent's organizing process — they are not meant to appear in the published, audience-facing copy. The `>` blockquote is what readers and stakeholders see; it must be clean narrative prose.
+- **Resolution**: Updated `steps/write_press_release.md` to clarify:
+  1. The `current state → why → how → what` structure is an internal draft device only — labels must NOT appear in the published press release
+  2. The `>` blockquote is a single, self-contained section of the issue body — it contains only audience-facing prose (headline, narrative paragraphs, ASCII mockup if applicable, CTA)
+  3. Other issue content (FAQ, technical notes) goes outside the `>` blockquote, after the `---` separator
+  4. Updated the Output Format template to show narrative paragraphs instead of labeled sections inside the blockquote
+  5. Updated the Quality Criteria to require the blockquote be free of internal labels
+- **Reference**: `steps/write_press_release.md` step 5, step 12, Output Format, and Quality Criteria
+
 ## Editing Guidelines
 
 1. **Use workflows** for structural changes (adding steps, modifying job.yml)

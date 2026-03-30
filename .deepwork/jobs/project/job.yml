@@ -1,5 +1,5 @@
 name: project
-version: "1.6.1"
+version: "1.6.4"
 summary: "Project onboarding, press releases, milestone planning, engineering handoff, success charter reviews, and health audits"
 common_job_info_provided_to_all_steps_at_runtime: |
   This job covers the full project lifecycle from onboarding through engineering handoff:
@@ -77,17 +77,19 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Claims must not exceed what the planned feature set can deliver
   - Internal metrics and implementation details must not appear
   - The local workflow artifact for a press release is staged under `.deepwork/tmp/`.
-    If the project stores press releases in-repo, publish the finalized `.mdx` to the
-    project's designated directory, typically `posts/press_releases/`, as a separate
-    explicit step.
+    Use a unique basename derived from the project slug or headline slug so repeated
+    runs do not overwrite each other. If the project stores press releases in-repo,
+    publish the finalized `.mdx` to the project's designated directory, typically
+    `posts/press_releases/`, as a separate explicit step.
   - Before creating the issue, a permanent zk note MUST be created in `~/notes/notes/`
     containing the full press release content. The note MUST include `project/<slug>`,
     `source/agent`, and `source/deepwork` tags, plus `repo_ref` frontmatter. After the
     issue is created, the note MUST be updated with `issue_ref: gh:<owner>/<repo>#<number>`
     (or `fj:` for Forgejo). See `process.notes` and `tool.zk-notes` for the tagging standard.
   - After writing the press release, an issue MUST be created on the project's repo containing
-    the full press release content. The full URL of this issue is a required output — downstream
-    workflows (milestone/setup, etc.) link back to the press release via this URL.
+    the full press release content. The issue body MUST present the user-facing press release as
+    a Markdown blockquote, not plain pasted text. The full URL of this issue is a required output
+    — downstream workflows (milestone/setup, etc.) link back to the press release via this URL.
 
   Downstream workflows this profile feeds into:
   - `project/milestone` — creates milestone and user stories from press release scope
@@ -311,10 +313,12 @@ steps:
           "Scoping Clarity": "The press release clearly implies what must be built to deliver the promise."
           "ASCII Art Mockup": "For products with a UI, an ASCII art mockup shows the product in use with realistic data."
           "No Quotes or City": "No fictional customer quotes. No city dateline (unless user explicitly requested)."
+          "Unique Local Artifact Path": "The local `.deepwork/tmp/` artifact path uses a unique topic-derived basename rather than a shared generic filename."
       - run_each: press_release_issue_url.md
         quality_criteria:
           "Full URL Present": "The file contains a full URL (starting with https://) pointing to the issue that holds the press release."
           "Issue Accessible": "The URL points to an actual issue on GitHub or Forgejo, not a file path or placeholder."
+          "Quoted Press Release": "The published issue body presents the user-facing press release inside a Markdown blockquote."
 
   - id: gather_and_parse
     name: "Gather and Parse Input"
