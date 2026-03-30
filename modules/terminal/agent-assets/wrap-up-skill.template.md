@@ -1,6 +1,8 @@
 # Wrap-up
 
-Checkpoint the current session so another agent or human can resume without losing context.
+You have too many open threads. This skill helps you wind down engineering work cleanly —
+distilling in-flight context into durable artifacts so you can step away and resume later
+(or hand off to someone else) without losing anything.
 
 See `process.wrap-up` for the authoritative convention.
 

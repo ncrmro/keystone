@@ -1,15 +1,20 @@
 # Convention: Session wrap-up (process.wrap-up)
 
-Standards for checkpointing agent sessions so another agent or human can resume
-without loss of context. The canonical entrypoint is `/wrap-up`.
+A human-facing tool for winding down engineering work when there are too many open
+threads. Use `/wrap-up` to distill in-flight context into durable artifacts — notes,
+issue comments, and PR check-ins — so work can be set down cleanly and resumed later
+by another agent or human.
+
+This is not an agent operational convention. It is intentionally invoked by the human
+when switching out of engineering mode.
 
 ## When to wrap up
 
-1. Agents MUST run `/wrap-up` before ending any session that produced work, decisions,
-   or deferred items — unless the user explicitly says no wrap-up is needed.
-2. Agents SHOULD run `/wrap-up` before handing off to another agent or human reviewer.
-3. Agents SHOULD use `/wrap-up defer <reason>` when pausing mid-task rather than
-   abandoning context silently.
+1. Humans SHOULD run `/wrap-up` when they have too many open threads and need to step
+   back from engineering work.
+2. Humans SHOULD run `/wrap-up` before handing off work to another person or agent.
+3. Use `/wrap-up defer <reason>` to explicitly record why work is being set aside and
+   what condition should trigger picking it back up.
 
 ## What wrap-up produces
 
