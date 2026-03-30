@@ -56,6 +56,11 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 - **`~/notes/` is the primary zk notebook** — it has `journal/`, `notes/`, `inbox/`, and other directories. The zk config auto-names notes as `YYYYMMDDHHMM slug-title.md`. The note should contain a concise summary (not the full raw output files).
 - **The `.deepwork/jobs/` folder is scratch space** — it's fine for working files during execution but is not the final destination for personal system data.
 
+### v1.9.2 — Issue workflow output hygiene (2026-03-30)
+
+- **Use a unique slug-based filename per issue**: `.deepwork/tmp/keystone-issue-<slug>.md`, not a generic `keystone-issue.md`. Multiple issues filed in the same session will silently overwrite a shared name.
+- **Archive issues to notes if notes are enabled**: After `gh issue create`, check if `keystone.notes` is enabled and create a brief `zk` note in `~/notes/` with the issue URL and a one-paragraph summary. This mirrors how doctor reports are archived (see v1.8.0 learning). See `steps/write_issue.md` step 5 for the exact commands.
+
 ### v1.8.1 — Issue workflow correction (2026-03-24)
 
 - **`keystone_system/issue` creates GitHub issues, not standalone specs**: the authoritative output is a GitHub issue on `ncrmro/keystone` whose body contains the RFC 2119 requirements, architecture diagram, affected modules, and implementation checklist.
