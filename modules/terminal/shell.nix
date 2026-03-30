@@ -32,7 +32,7 @@ in
 
       # Zoxide - A smarter cd command that learns your navigation patterns
       # Tracks your most used directories and lets you jump to them with 'z <partial-name>'
-      # Example: 'z proj' jumps to ~/code/projects, 'zi' for interactive selection
+      # Example: 'z proj' jumps to ~/repos/projects, 'zi' for interactive selection
       # https://github.com/ajeetdsouza/zoxide
       programs.zoxide = {
         enable = true;
