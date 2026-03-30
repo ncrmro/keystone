@@ -38,6 +38,7 @@ archetypes:
     description: "NixOS host — Nix devshells, direnv, declarative config"
     inlined_conventions:
       - process.version-control
+      - process.git-repos
       - process.privileged-approval
       - process.prose
       - tool.standard-utilities
@@ -111,7 +112,7 @@ archetypes:
       - tool.himalaya
       - tool.nix-devshell
       - process.version-control-advanced
-      - process.git-worktrees
+      - process.git-repos
       - tool.github
       - tool.journal-remote
       - os.zfs-backup

@@ -19,7 +19,7 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 ## Branch and Early PR
 
 9. A branch MUST be created from the default branch using `process.version-control` naming conventions (semantic prefix + short description).
-10. All implementation work MUST be done in a git worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}` per `process.git-worktrees`. The main checkout at `{repo-root}/` MUST remain on the default branch.
+10. All implementation work MUST be done in a git worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}` per `process.git-repos`. The main checkout at `{repo-root}/` MUST remain on the default branch.
 11. On GitHub, if the active issue's milestone is known but not set on the issue, the authoring agent MUST repair it before or during PR creation with `gh issue edit <issue_number> --milestone "<milestone_name>"`.
 12. On GitHub, if the issue's milestone has a project board, the issue MUST be present on that board. If auto-add is not enabled or did not add it, the authoring agent MUST add it with `gh project item-add <project_number> --owner <owner_name> --url <issue_url>`. Board discovery, field lookup, and status transitions remain governed by `process.project-board`.
 13. A dummy commit MUST be created immediately after branching (e.g., empty commit or minimal scaffold) to enable opening a PR.

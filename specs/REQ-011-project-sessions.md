@@ -91,7 +91,7 @@ Open a project session rooted at a specific repo or repo worktree.
 4. When the selected repo is keystone-managed, `pz` MUST resolve the repo root to `~/.keystone/repos/{owner}/{repo}/`
 5. When the selected repo is not keystone-managed, `pz` MUST resolve the repo root to `$HOME/code/{owner}/{repo}/`
 6. When `--worktree <branch>` is provided, `pz` MUST resolve the worktree path as `$HOME/.worktrees/{owner}/{repo}/{branch}/`
-7. If the requested worktree does not exist, `pz` SHOULD create it according to `process.git-worktrees`
+7. If the requested worktree does not exist, `pz` SHOULD create it according to `process.git-repos`
 8. If a repo or worktree is selected, the session working directory MUST be the resolved repo root or worktree path rather than the notes root
 9. The command MUST export repo and worktree context environment variables for the session
 
@@ -161,7 +161,7 @@ Destroy a project session.
 7. Project slugs MUST be lowercase, hyphen-separated strings (REQ-010.2).
 8. The `notes_path` MUST be derived from `keystone.notes.path` (REQ-010.4).
 9. Repo-scoped sessions MUST resolve repo roots from hub note `repos:` URLs using REQ-010.12a and REQ-018.19 through REQ-018.19b.
-10. Worktree-scoped sessions MUST resolve paths using `$HOME/.worktrees/{owner}/{repo}/{branch}/` per `process.git-worktrees`.
+10. Worktree-scoped sessions MUST resolve paths using `$HOME/.worktrees/{owner}/{repo}/{branch}/` per `process.git-repos`.
 
 ### Environment Variables
 

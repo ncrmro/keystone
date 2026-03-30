@@ -34,7 +34,7 @@ curl -sf -H "Authorization: token $FORGEJO_TOKEN" \
 
 ## Checking Out the Branch
 
-2. Agents MUST check out the PR branch before making changes. If the repo is already cloned locally, agents MUST use an external worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}` per `process.git-worktrees`:
+2. Agents MUST check out the PR branch before making changes. If the repo is already cloned locally, agents MUST use an external worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}` per `process.git-repos`:
 
 ```bash
 cd {repo-root}

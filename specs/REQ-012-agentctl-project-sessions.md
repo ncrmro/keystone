@@ -54,7 +54,7 @@ in the worktree directory.
 AI tool MUST be the worktree path, not the main checkout.
 
 **REQ-012.7** Worktree creation MUST reuse the logic and conventions
-from `process.git-worktrees` (branch naming, external worktree root,
+from `process.git-repos` (branch naming, external worktree root,
 repo-root anchored creation flow).
 
 **REQ-012.7a** When project repo metadata comes from a hub note `repos:` list,

@@ -168,7 +168,7 @@ material in a shared zk notebook. It extends
 54. Humans and agents SHOULD resolve non-keystone project repos to
     `$HOME/repos/{owner}/{repo}` and keystone-managed repos to
     `~/.keystone/repos/{owner}/{repo}` after normalizing the declared remote URL.
-    See `process.git-worktrees` for the authoritative repo layout rules.
+    See `process.git-repos` for the authoritative repo layout rules.
 55. Notes repos MUST gitignore transient notebook database files and other local
     junk while keeping `.zk/config.toml`, `.zk/templates/`, and operational YAML
     state files tracked.

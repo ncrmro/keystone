@@ -1,4 +1,4 @@
-# Convention: Git worktrees (process.git-worktrees)
+# Convention: Git repos (process.git-repos)
 
 This convention standardizes where repositories are cloned depending on their
 relationship to the Keystone platform, and how git worktrees are created and

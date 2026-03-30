@@ -129,7 +129,7 @@ Remove a sub-agent container.
 
 1. The command MUST stop the container if running
 2. The command MUST remove the container
-3. The command SHOULD NOT remove worktrees (managed separately via `process.git-worktrees`)
+3. The command SHOULD NOT remove worktrees (managed separately via `process.git-repos`)
 
 ### `pz agent logs <role_slug>`
 

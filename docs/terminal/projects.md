@@ -260,4 +260,4 @@ and standard `git worktree` commands for branch worktrees.
 
 - [Notes](../notes.md)
 - [Terminal module](terminal.md)
-- [`process.git-worktrees`](../../conventions/process.git-worktrees.md)
+- [`process.git-repos`](../../conventions/process.git-repos.md)
