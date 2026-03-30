@@ -13,12 +13,13 @@ field completeness.
 Use `zk` to locate the hub note by its `index` type and project name tag:
 
 ```bash
-zk list --tag "index" --tag "<project_name>" ~/notes/ --format "{{absPath}}"
+NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+zk --notebook-dir "$NOTES_DIR" list index/ --tag "index" --tag "<project_name>" --format "{{absPath}}"
 ```
 
 If no result, try variations in this order:
-1. Search by `project:` frontmatter: `rg "^project: <project_name>" ~/notes/index/ -l`
-2. Search by `type: index` in frontmatter: `rg "type: index" ~/notes/index/ -l` then check each for a matching title or name
+1. Search by `project:` frontmatter: `rg "^project: <project_name>" "${NOTES_DIR:-$HOME/notes}/index/" -l`
+2. Search by `type: index` in frontmatter: `rg "type: index" "${NOTES_DIR:-$HOME/notes}/index/" -l` then check each for a matching title or name
 3. Try alternate tag spellings (e.g. `ks-systems` vs `ks.systems`)
 
 Note: Hub notes may be findable via `project:` frontmatter even when the project tag is missing from `tags:`. This is a common gap that `file_gaps` will correct by adding the tag.
@@ -58,7 +59,7 @@ Create `hub_report.md` with this structure:
 # Hub Report: <project_name>
 
 ## Hub Note
-- Path: ~/notes/index/<id> <slug>.md
+- Path: <notes-dir>/index/<id> <slug>.md
 - Status: found | missing
 
 ## Fields

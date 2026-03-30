@@ -33,7 +33,8 @@ For any repos that were discovered but not yet listed in the hub note, add them 
 
 Only commit if frontmatter was actually changed — skip if all repos were already listed:
 ```bash
-git -C ~/notes diff --quiet || git -C ~/notes add . && git -C ~/notes commit -m "chore(hub): add repo refs to <project> hub note"
+NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+git -C "$NOTES_DIR" diff --quiet || git -C "$NOTES_DIR" add . && git -C "$NOTES_DIR" commit -m "chore(hub): add repo refs to <project> hub note"
 ```
 
 ### 3. File: blog infrastructure issue (if missing)

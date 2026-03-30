@@ -71,10 +71,12 @@ Read the context brief from the previous step and the conventions at `.agents/co
     - Write the issue URL to `.deepwork/tmp/<slug>-press-release-issue-url.md`
     - These files are transient workflow artifacts for DeepWork output handoff
 
-11. **Store in ~/notes (zk)**
-    - Create a permanent note in `~/notes` using the project slug:
+11. **Store in the configured notes dir (zk)**
+    - Use `NOTES_DIR="${NOTES_DIR:-$HOME/notes}"`. On Keystone systems this resolves to the configured notebook root (`~/notes` for human users).
+    - Create a permanent note in `$NOTES_DIR` using the project slug:
       ```bash
-      zk --notebook-dir ~/notes new notes/ --title "<Headline>" --no-input --print-path \
+      NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+      zk --notebook-dir "$NOTES_DIR" new notes/ --title "<Headline>" --no-input --print-path \
         --extra project="<slug>"
       ```
     - Write the full press release content into the created note
@@ -87,7 +89,7 @@ Read the context brief from the previous step and the conventions at `.agents/co
       - `issue_ref: gh:<owner>/<repo>#<number>` (or `fj:` for Forgejo)
     - If a milestone exists or is created downstream, update the note with:
       - `milestone_ref: gh:<owner>/<repo>#<milestone_number>`
-    - Link the note from the project's hub note in `~/notes/index/` if one exists
+    - Link the note from the project's hub note in `$NOTES_DIR/index/` if one exists
 
 12. **Publish the canonical copy**
     - After the press release file is written and passes the final check, create an issue on the project's repo
@@ -112,9 +114,9 @@ If the project already stores press releases in-repo, publish the finalized draf
 to the project's designated directory, typically `posts/press_releases/`, as a
 separate explicit publication step.
 
-### zk note in ~/notes
+### zk note in the configured notes dir
 
-A permanent note in `~/notes/notes/` containing the full press release content.
+A permanent note in the configured notes dir `notes/` containing the full press release content.
 The note MUST include:
 - `type: note`
 - `project: <slug>`

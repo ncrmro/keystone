@@ -17,7 +17,8 @@ delivery summary.
 1. **Confirm the notes repo**:
 
    ```bash
-   git -C ~/notes status
+   NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+   git -C "$NOTES_DIR" status
    ```
 
    If not a git repo or the path doesn't exist, stop and alert the user.
@@ -25,29 +26,32 @@ delivery summary.
 2. **Configure git LFS** (idempotent — safe to re-run):
 
    ```bash
-   git -C ~/notes lfs install
-   git -C ~/notes lfs track \
+   NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+   git -C "$NOTES_DIR" lfs install
+   git -C "$NOTES_DIR" lfs track \
      "presentations/**/*.jpg" "presentations/**/*.jpeg" \
      "presentations/**/*.png" "presentations/**/*.gif" \
      "presentations/**/*.webp" "presentations/**/*.mp4" \
      "presentations/**/*.mov" "presentations/**/*.pdf"
-   git -C ~/notes add ~/notes/.gitattributes
+   git -C "$NOTES_DIR" add "$NOTES_DIR/.gitattributes"
    ```
 
 3. **Stage the presentation directory**:
 
    ```bash
-   git -C ~/notes add presentations/<slug>/
+   NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+   git -C "$NOTES_DIR" add presentations/<slug>/
    ```
 
-4. **Verify LFS objects** — run `git -C ~/notes lfs status` and confirm binary
+4. **Verify LFS objects** — run `git -C "$NOTES_DIR" lfs status` and confirm binary
    assets show up as LFS objects (not plain files). If not, re-run the `lfs track`
    commands and re-stage.
 
 5. **Commit** using a conventional commit message:
 
    ```bash
-   git -C ~/notes commit -m "docs(presentations): add <slug> presentation"
+   NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+   git -C "$NOTES_DIR" commit -m "docs(presentations): add <slug> presentation"
    ```
 
 6. **Write `presentation_delivery_summary.md`** — see Output Format below.
@@ -60,7 +64,7 @@ delivery summary.
 # Delivery summary: Keystone infrastructure overview
 
 ## Location
-`~/notes/presentations/keystone-infrastructure-overview/slides.md`
+`<notes-dir>/presentations/keystone-infrastructure-overview/slides.md`
 
 ## Git LFS assets
 | File | Tracked as LFS |
@@ -74,14 +78,14 @@ delivery summary.
 
 ## Preview
 ```bash
-cd ~/notes/presentations/keystone-infrastructure-overview
+cd <notes-dir>/presentations/keystone-infrastructure-overview
 slidev
 ```
 Open: http://localhost:3030
 
 ## Export to PDF
 ```bash
-cd ~/notes/presentations/keystone-infrastructure-overview
+cd <notes-dir>/presentations/keystone-infrastructure-overview
 slidev export --format pdf
 ```
 
@@ -92,7 +96,7 @@ slidev export --format pdf
 
 ## Quality Criteria
 
-- The summary shows the exact `~/notes/presentations/<slug>/` path where the deck
+- The summary shows the exact configured notes-dir `presentations/<slug>/` path where the deck
   was saved
 - All binary assets (images, videos) are confirmed as git LFS tracked objects
 - A git commit was made with a conventional-commit message, and the summary confirms

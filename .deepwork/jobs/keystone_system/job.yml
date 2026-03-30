@@ -256,7 +256,7 @@ steps:
           "Changes Verified": "The specific changes from the plan are confirmed working on the live system."
           "Agent Detail": "Each configured agent's task queue, recent jobs, and any blocking issues are reported — not just service running status."
           "Issues Tracked": "Every issue found is cross-referenced against GitHub (ncrmro/keystone and ncrmro/nixos-config) — existing issues are linked, new issues are flagged for creation."
-          "Archived to Notes": "A dated fleet health note has been written to ~/notes/ via zk new — personal deployment data must not remain only in the keystone open-source repo."
+          "Archived to Notes": "A dated fleet health note has been written to the configured notes dir via zk — personal deployment data must not remain only in the keystone open-source repo."
 
   - id: survey_fleet
     name: "Survey Fleet"

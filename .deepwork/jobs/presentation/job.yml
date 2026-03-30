@@ -12,7 +12,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Immich: Use environment-provided credentials to search and download media
   - File management: Standard file tools for deck scaffolding and artifact
     delivery
-  - Notes repo: Use `~/notes` as the destination for final presentation assets
+  - Notes repo: Use the configured notes dir (`$NOTES_DIR`, `~/notes` for Keystone human users) as the destination for final presentation assets
   - Slidev: Use the preinstalled `slidev` CLI to verify decks
 
   Conventions:
@@ -23,7 +23,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - Keep slides brief; use speaker notes for the full narrative
   - Preserve unresolved gaps as explicit `TODO` comments rather than silently
     inventing missing media or facts
-  - Deliver final decks into `~/notes/presentations/<slug>/`
+  - Deliver final decks into `$NOTES_DIR/presentations/<slug>/`
 
   Output audience: The human operator (CEO). Keep outputs concise and
   decision-ready.
@@ -181,7 +181,7 @@ steps:
 
   - id: presentation_deliver
     name: "Deliver Presentation to Notes Repo"
-    description: "Copy the final Slidev deck and media assets to ~/notes, track binary assets with git LFS, commit, and produce a delivery summary with serve/export commands."
+    description: "Copy the final Slidev deck and media assets to the configured notes dir, track binary assets with git LFS, commit, and produce a delivery summary with serve/export commands."
     instructions_file: steps/presentation_deliver.md
     inputs:
       - file: presentation_requirements.md
@@ -199,7 +199,7 @@ steps:
     reviews:
       - run_each: presentation_delivery_summary.md
         quality_criteria:
-          "Notes Repo Path": "The summary shows the exact path in ~/notes where the deck was saved."
+          "Notes Repo Path": "The summary shows the exact path in the configured notes dir where the deck was saved."
           "Git LFS Confirmed": "Binary assets (images, videos) are listed as git LFS tracked files."
           "Committed": "The summary confirms a git commit was made in the notes repo with a conventional-commit message."
           "Serve Command Included": "The summary shows the exact command to preview the deck locally with Slidev."

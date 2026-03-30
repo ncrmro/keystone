@@ -132,7 +132,7 @@ steps:
 
   - id: write_note
     name: "Write Note"
-    description: "Write a report note to ~/notes documenting the task outcome"
+    description: "Write a report note to the configured notes dir documenting the task outcome"
     instructions_file: steps/write_note.md
     inputs:
       - file: task_report.json

@@ -34,7 +34,7 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
   Immich media search, Slidev generation, review, and notes-repo delivery.
 - The `slide_deck` workflow is a narrower path for turning existing source
   material into a Slidev deck without running the full presentation workflow.
-- Final presentation assets live under `~/notes/presentations/<slug>/`.
+- Final presentation assets live under the configured notes dir `presentations/<slug>/` (`~/notes` for Keystone human users).
 - Missing media or unresolved content MUST stay explicit as `TODO` comments in
   the deck and delivery artifacts.
 

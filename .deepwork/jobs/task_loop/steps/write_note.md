@@ -2,23 +2,25 @@
 
 ## Objective
 
-Record the completed task as a report note in `~/notes` so the agent's work is
-permanently visible in the knowledge base and synced to the remote notes repo.
+Record the completed task as a report note in the configured notes dir (`$NOTES_DIR`,
+which resolves to `~/notes` for human users on Keystone systems) so the agent's work
+is permanently visible in the knowledge base and synced to the remote notes repo.
 
 ## Task
 
 ### 1. Check whether a notes repo is available
 
 ```bash
-if [ -d "$HOME/notes/.zk" ]; then
+NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+if [ -d "$NOTES_DIR/.zk" ]; then
   echo "notes repo found"
 else
   echo "no notes repo — skipping"
 fi
 ```
 
-If `~/notes/.zk` does not exist, write `note_status.md` with the single line
-`Skipped: ~/notes is not a zk notebook.` and stop — do not treat this as an error.
+If `$NOTES_DIR/.zk` does not exist, write `note_status.md` with the single line
+`Skipped: configured notes dir is not a zk notebook.` and stop — do not treat this as an error.
 
 ### 2. Read the task report
 
@@ -43,7 +45,8 @@ Also read the task's `project` field from TASKS.yaml (match by `task_name`).
 ### 4. Search for a prior report of the same task
 
 ```bash
-zk list --notebook-dir "$HOME/notes" docs/reports/ \
+NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+zk list --notebook-dir "$NOTES_DIR" docs/reports/ \
   --match "task-execution $task_name" --format json | head -5
 ```
 
@@ -52,7 +55,8 @@ If a prior note is found, record its `id` as `previous_report`.
 ### 5. Create the note
 
 ```bash
-note_path=$(zk new --notebook-dir "$HOME/notes" docs/reports/ \
+NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+note_path=$(zk new --notebook-dir "$NOTES_DIR" docs/reports/ \
   --title "Task: <task_name>" --no-input --print-path)
 ```
 
@@ -90,7 +94,8 @@ Omit empty artifact entries (e.g., if `pull_requests_created` is empty, write "n
 ### 6. Commit the note
 
 ```bash
-cd "$HOME/notes"
+NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+cd "$NOTES_DIR"
 git add docs/reports/
 git commit -m "chore(notes): task-execution report for <task_name>"
 ```
@@ -100,7 +105,8 @@ Do not push — the systemd `repo-sync` timer handles that automatically.
 ### 7. Rebuild the zk index
 
 ```bash
-zk index --notebook-dir "$HOME/notes"
+NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+zk index --notebook-dir "$NOTES_DIR"
 ```
 
 ## Output Format
@@ -110,7 +116,7 @@ Write `note_status.md`:
 ```markdown
 # Note Status
 
-- Path: ~/notes/docs/reports/<id> task-<slug>.md
+- Path: <notes-dir>/docs/reports/<id> task-<slug>.md
 - Note ID: <id>
 - Committed: yes
 - Skipped: no
@@ -121,5 +127,5 @@ Or if skipped:
 ```markdown
 # Note Status
 
-- Skipped: ~/notes is not a zk notebook.
+- Skipped: configured notes dir is not a zk notebook.
 ```

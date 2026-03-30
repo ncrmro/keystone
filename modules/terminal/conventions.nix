@@ -103,6 +103,7 @@ let
         ## Notes command guidance
 
         - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - On Keystone systems, use `NOTES_DIR` as the canonical notebook root. It resolves to `keystone.notes.path` (`~/notes` for human users, per-agent notes paths for OS agents).
         - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
       '')
     ]
@@ -139,9 +140,9 @@ let
 
   # Repo inventory derived from keystone.repos (auto-populated from flake inputs)
   reposList = concatStringsSep "\n\n" (
-    mapAttrsToList (
-      name: _: "### \`${name}\` → [\`${name}/AGENTS.md\`](${name}/AGENTS.md)"
-    ) config.keystone.repos
+    mapAttrsToList (name: _: "### \`${name}\` → [\`${name}/AGENTS.md\`](${name}/AGENTS.md)") (
+      filterAttrs (name: _: !(hasSuffix "/notes" name)) config.keystone.repos
+    )
   );
 
   reposAgentsMdContent = concatStringsSep "\n\n---\n\n" (
@@ -162,6 +163,7 @@ let
         ## Notes command guidance
 
         - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the `~/.keystone/repos/` inventory.
         - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
       '')
     ]

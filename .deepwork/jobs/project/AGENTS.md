@@ -61,11 +61,11 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 - **Resolution**: Updated `steps/write_press_release.md` and `job.yml` so the workflow now stages `press_release.mdx` and `press_release_issue_url.md` under `.deepwork/tmp/`. The instructions now distinguish transient local artifacts from canonical publication: the GitHub/Forgejo issue is always published, and `posts/press_releases/` is only used when the project explicitly stores press releases in-repo.
 - **Reference**: `steps/write_press_release.md` output format and publication steps, `job.yml` common_job_info
 
-### 2026-03-30: Press releases must be stored in ~/notes before creating the issue
+### 2026-03-30: Press releases must be stored in the configured notes dir before creating the issue
 
-- **Source**: User instruction — all project press releases must first be stored in `~/notes` following the zk tagging standard
+- **Source**: User instruction — all project press releases must first be stored in the configured notes dir (`$NOTES_DIR`, `~/notes` for Keystone human users) following the zk tagging standard
 - **Issue**: The workflow created an issue and a local `.deepwork/tmp/` artifact but did not create a durable zk note in the user's notes notebook. Press releases are meaningful project records that should be discoverable alongside other project notes.
-- **Resolution**: Added step 11 to `steps/write_press_release.md` — create a permanent note in `~/notes/notes/` before creating the issue. The note must include `project/<slug>`, `source/agent`, `source/deepwork` tags, and `repo_ref` frontmatter. After issue creation, the note must be updated with `issue_ref`. If a project hub exists in `~/notes/index/`, the note must be linked from it. Updated `job.yml` common_job_info to mandate the zk note step.
+- **Resolution**: Added step 11 to `steps/write_press_release.md` — create a permanent note in the configured notes dir before creating the issue. The note must include `project/<slug>`, `source/agent`, `source/deepwork` tags, and `repo_ref` frontmatter. After issue creation, the note must be updated with `issue_ref`. If a project hub exists in the configured notes dir `index/`, the note must be linked from it. Updated `job.yml` common_job_info to mandate the zk note step.
 - **Reference**: `steps/write_press_release.md` steps 11–12 and Output Format, `job.yml` common_job_info press release conventions, `process.notes`, `tool.zk-notes`
 
 ### 2026-03-30: Press release tmp artifacts must use unique filenames

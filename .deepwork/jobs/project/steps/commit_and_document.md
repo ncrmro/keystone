@@ -3,7 +3,7 @@
 ## Objective
 
 Stage and commit the approved file group, optionally push it, update the shared
-state to mark the group as processed, and write a brief handoff note in `~/notes`
+state to mark the group as processed, and write a brief handoff note in the configured notes dir
 (or update an existing open issue/PR with a check-in comment).
 
 ## Inputs
@@ -133,7 +133,7 @@ Write `.deepwork/tmp/wrap_up_progress.json`:
   "commit_message": "<message>",
   "pushed": true,
   "files": ["<relative path>", ...],
-  "notes_report_path": "<path to ~/notes report, or null>",
+  "notes_report_path": "<path to configured notes-dir report, or null>",
   "issues_commented": ["<URL>", ...]
 }
 ```

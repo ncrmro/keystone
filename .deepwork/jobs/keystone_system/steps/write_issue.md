@@ -43,7 +43,7 @@ ambiguous.
 
 5. **Archive to notes (if notes are enabled)**
    - Check if `keystone.notes` is enabled: `nix eval ~/.keystone/repos/nixos-config#homeConfigurations.<user>.config.keystone.notes.enable --json 2>/dev/null`
-   - If enabled, create a brief note in `~/notes/` via `zk new notes/ --title "keystone issue: <title>" --no-input` and write the issue URL, one-paragraph summary, and the GitHub link. This makes the issue discoverable from notes search.
+   - If enabled, use `NOTES_DIR="${NOTES_DIR:-$HOME/notes}"` and create a brief note there via `zk --notebook-dir "$NOTES_DIR" new notes/ --title "keystone issue: <title>" --no-input`. Write the issue URL, one-paragraph summary, and the GitHub link. On Keystone systems, `NOTES_DIR` resolves to the configured notebook root (`~/notes` for human users).
    - If notes are not enabled or the command fails, skip silently.
 
 ## Output Format

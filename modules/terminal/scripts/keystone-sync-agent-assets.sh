@@ -289,6 +289,19 @@ $archetype_description
 EOF
 } > "$global_agents_tmp"
 
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
+  cat <<'EOF' >> "$global_agents_tmp"
+
+---
+
+## Notes command guidance
+
+- Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+- On Keystone systems, use `NOTES_DIR` as the canonical notebook root. It resolves to `keystone.notes.path` (`~/notes` for human users, per-agent notes paths for OS agents).
+- When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
+EOF
+fi
+
 while IFS= read -r convention_name; do
   append_file_content "$global_agents_tmp" "$conventions_dir/${convention_name}.md"
 done < <(yq -r ".archetypes.\"$archetype\".inlined_conventions[]?" "$archetypes_file")
@@ -326,9 +339,23 @@ development workflow, tooling, and how changes flow through the system.
 
 EOF
   for repo_name in "${repos[@]}"; do
+    if [[ "$repo_name" == */notes ]]; then
+      continue
+    fi
     printf '### `%s` → [`%s/AGENTS.md`](%s/AGENTS.md)\n\n' "$repo_name" "$repo_name" "$repo_name"
   done
 } > "$repos_agents_tmp"
+
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
+  cat <<'EOF' >> "$repos_agents_tmp"
+
+## Notes command guidance
+
+- Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+- On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the `~/.keystone/repos/` inventory.
+- When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
+EOF
+fi
 
 while IFS= read -r convention_name; do
   append_file_content "$repos_agents_tmp" "$conventions_dir/${convention_name}.md"
@@ -411,13 +438,13 @@ dependencies:
 '
 
 wrapup_body="$(cat "$templates_dir/wrap-up-skill.template.md")"
-wrapup_skill_md="$(render_skill_md "wrap-up" "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body")"
+wrapup_skill_md="$(render_skill_md "wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body")"
 write_file "$HOME/.claude/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
 write_file "$HOME/.config/opencode/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
 
-write_gemini_command "wrap-up.toml" "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body"
+write_gemini_command "wrap-up.toml" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body"
 
-write_codex_skill "wrap-up" "Wrap-up" "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_skill_md"
+write_codex_skill "wrap-up" "Wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_skill_md"
 
 legacy_codex_skill_names=(
   agent-bootstrap agent-doctor agent-issue agent-onboard daily_status-send

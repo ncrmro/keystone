@@ -8,7 +8,7 @@ See `process.wrap-up` for the authoritative convention.
 
 ## What this skill does
 
-1. Creates a `docs/reports/` note in `~/notes` capturing context, status, testing, next steps, and deferred items.
+1. Creates a `docs/reports/` note in the configured notes dir (`$NOTES_DIR`, `~/notes` for human users on Keystone systems) capturing context, status, testing, next steps, and deferred items.
 2. Comments on every open issue or PR touched in the session with a structured handoff block.
 3. Creates a tracking issue (linked to a milestone) when none exists for in-flight work.
 
@@ -28,14 +28,16 @@ Before writing anything, collect:
 Search for a prior wrap-up report of the same scope first:
 
 ```bash
-zk --notebook-dir ~/notes list docs/reports/ \
+NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+zk --notebook-dir "$NOTES_DIR" list docs/reports/ \
   --tag "report/session-wrap-up" --sort created- --limit 1 --format json
 ```
 
 Then create the new report:
 
 ```bash
-zk --notebook-dir ~/notes new docs/reports/ \
+NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+zk --notebook-dir "$NOTES_DIR" new docs/reports/ \
   --title "Wrap-up: <short description> $(date +%Y-%m-%d)" \
   --no-input --print-path \
   --extra report_kind="session-wrap-up" \

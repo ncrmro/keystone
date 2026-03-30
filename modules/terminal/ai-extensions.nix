@@ -378,7 +378,7 @@ let
 
   wrapUpSkillMetadata = {
     name = "wrap-up";
-    description = "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human";
+    description = "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human";
   };
 
   wrapUpSkillBody = builtins.readFile ./agent-assets/wrap-up-skill.template.md;
@@ -413,7 +413,7 @@ let
       source = pkgs.writeText "codex-skill-wrap-up-openai.yaml" ''
         interface:
           display_name: "Wrap-up"
-          short_description: "Checkpoint the session: create a ~/notes report, comment on issues/PRs, and leave a handoff for the next agent or human"
+          short_description: "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human"
       '';
     }
   ]

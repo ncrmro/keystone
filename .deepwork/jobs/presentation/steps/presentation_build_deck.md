@@ -8,15 +8,16 @@ media, speaker notes, and TODO comments. Save the deck to the notes repo.
 ## Task
 
 Read `presentation_outline.md` and `presentation_media_manifest.md`, then generate a complete
-`slides.md` in Slidev format. Write the file to `~/notes/presentations/<slug>/`.
+`slides.md` in Slidev format. Write the file to the configured notes dir `presentations/<slug>/`
+using `NOTES_DIR="${NOTES_DIR:-$HOME/notes}"`.
 
 ### Process
 
 1. **Determine the output path**:
    - Derive `<slug>` from the topic in `presentation_requirements.md`: lowercase, kebab-case,
      max 40 chars (e.g., `keystone-infrastructure-overview`).
-   - If `~/notes/presentations/<slug>/` already exists, append `-2`.
-   - Create the directory: `mkdir -p ~/notes/presentations/<slug>`.
+   - If `$NOTES_DIR/presentations/<slug>/` already exists, append `-2`.
+   - Create the directory: `mkdir -p "$NOTES_DIR/presentations/<slug>"`.
 
 2. **Write the Slidev frontmatter header** at the top of `slides.md`:
 
@@ -72,15 +73,16 @@ Read `presentation_outline.md` and `presentation_media_manifest.md`, then genera
 4. **Copy media assets** to sit next to `slides.md`:
 
    ```bash
-   cp -r presentations/<slug>/_dataroom ~/notes/presentations/<slug>/_dataroom
+   NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+   cp -r presentations/<slug>/_dataroom "$NOTES_DIR/presentations/<slug>/_dataroom"
    ```
 
-   Skip if already in `~/notes/`.
+   Skip if already in the configured notes dir.
 
 5. **Write `presentation_slides_path.txt`** — the absolute path to the slides.md file:
 
    ```
-   /home/ncrmro/notes/presentations/keystone-infrastructure-overview/slides.md
+   <notes-dir>/presentations/keystone-infrastructure-overview/slides.md
    ```
 
 ## Output Format
@@ -91,7 +93,7 @@ A single line containing the absolute path to slides.md. No trailing newline.
 
 **Example**:
 ```
-/home/ncrmro/notes/presentations/keystone-infrastructure-overview/slides.md
+<notes-dir>/presentations/keystone-infrastructure-overview/slides.md
 ```
 
 ### slides.md (referenced by the path above)
@@ -167,5 +169,5 @@ layout: default
 
 This step converts the plan into code. Keep slides brief — one idea per slide,
 short bullets. The speaker notes carry the explanation, not the slide content.
-The resulting deck goes into `~/notes` and will be committed with git LFS in
-`presentation_deliver`.
+The resulting deck goes into the configured notes dir and will be committed with
+git LFS in `presentation_deliver`.

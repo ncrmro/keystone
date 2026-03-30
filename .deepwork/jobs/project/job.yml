@@ -81,7 +81,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
     runs do not overwrite each other. If the project stores press releases in-repo,
     publish the finalized `.mdx` to the project's designated directory, typically
     `posts/press_releases/`, as a separate explicit step.
-  - Before creating the issue, a permanent zk note MUST be created in `~/notes/notes/`
+  - Before creating the issue, a permanent zk note MUST be created in the configured notes dir (`$NOTES_DIR`, `~/notes` for Keystone human users)
     containing the full press release content. The note MUST include `project/<slug>`,
     `source/agent`, and `source/deepwork` tags, plus `repo_ref` frontmatter. After the
     issue is created, the note MUST be updated with `issue_ref: gh:<owner>/<repo>#<number>`
@@ -663,7 +663,7 @@ steps:
     reviews:
       - run_each: hub_report.md
         quality_criteria:
-          "Hub Note Found": "The report identifies the hub note path in ~/notes/index/."
+          "Hub Note Found": "The report identifies the hub note path in the configured notes dir index/."
           "Fields Audited": "The report records which of these are present or missing: website URL, social media handles, linked repos (repo_ref tags or repos: frontmatter)."
           "Repos Listed": "Every repo referenced in the hub (via tags, frontmatter, or body links) is listed with its platform (github/forgejo) and URL."
           "Website Repo Identified": "If any repo appears to be a website/web frontend, it is flagged as the website repo."
@@ -763,7 +763,7 @@ steps:
 
   - id: commit_and_document
     name: "Commit, Push, and Document"
-    description: "Stage and commit the approved group, push, create a ~/notes wrap-up report, post check-in comments on related issues/PRs, and mark the group as processed in shared state"
+    description: "Stage and commit the approved group, push, create a configured notes-dir wrap-up report, post check-in comments on related issues/PRs, and mark the group as processed in shared state"
     instructions_file: steps/commit_and_document.md
     inputs:
       - file: wrap_up_plan.json
@@ -779,7 +779,7 @@ steps:
       - run_each: wrap_up_progress.json
         quality_criteria:
           "Committed and Pushed": "The commit SHA is recorded and the push succeeded (or the reason for failure is explained)."
-          "Notes Report Created": "A docs/reports/ note was created in ~/notes with context, status, testing, next steps, and deferred sections."
+          "Notes Report Created": "A docs/reports/ note was created in the configured notes dir with context, status, testing, next steps, and deferred sections."
           "Issues Commented": "Every open issue or PR related to the committed changes received a structured check-in comment."
           "Shared State Updated": "The group is marked as processed in .deepwork/tmp/wrap_up_state.json with the commit SHA."
 
