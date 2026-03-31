@@ -28,19 +28,11 @@ let
     };
 
   # The primary Keystone user — first user key in keystone.os.users.
-  # This maps to the Headscale user that owns client devices.
+  # Used for tag ownership in generated ACL rules.
   primaryUser = head (attrNames config.keystone.os.users);
 
-  # Resolve a hostname to its Headscale ACL identity.
-  # Client devices are owned by the primary user; servers/agents
-  # are registered under tagged-devices with specific tags.
-  resolveACLIdentity =
-    hName:
-    let
-      hostEntry = findFirst (h: h.hostname == hName) null (attrValues hosts);
-      role = if hostEntry != null then hostEntry.role else "client";
-    in
-    if role == "client" then "${primaryUser}@" else hName;
+  # Immich ML port — upstream default, used for ACL and firewall rules
+  immichMLPort = 3003;
 
   # Generate ACL rules for immich server <-> worker communication.
   # Only generated on the server host (where generatedACLRules is consumed).
@@ -49,13 +41,12 @@ let
       serverHost = cfg.immich.host;
       workers = cfg.immich.workers;
       isCurrentHostServer = config.networking.hostName == serverHost;
-      workerIdentities = map resolveACLIdentity workers;
     in
     optionals (isCurrentHostServer && workers != [ ]) [
       {
         action = "accept";
         src = [ "tag:svc-immich" ];
-        dst = map (id: "${id}:3003") workerIdentities;
+        dst = [ "tag:svc-immich-ml:${toString immichMLPort}" ];
       }
     ];
 in
@@ -143,6 +134,7 @@ in
   config.keystone.services.generatedTagOwners =
     optionalAttrs (cfg.immich.host != null && cfg.immich.workers != [ ]) {
       "tag:svc-immich" = [ "${primaryUser}@" ];
+      "tag:svc-immich-ml" = [ "${primaryUser}@" ];
     };
 
   config.keystone.services.generatedACLRules = immichACLRules;
