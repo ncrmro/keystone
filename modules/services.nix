@@ -27,29 +27,39 @@ let
       message = "keystone.services.${name}.host = \"${host}\" does not match any hostname in keystone.hosts. Valid hostnames: ${concatStringsSep ", " hostNames}";
     };
 
-  # Resolve a hostname to its Headscale ACL identity
+  # The primary Keystone user — first user key in keystone.os.users.
+  # This maps to the Headscale user that owns client devices.
+  primaryUser = head (attrNames config.keystone.os.users);
+
+  # Resolve a hostname to its Headscale ACL identity.
+  # Client devices are owned by the primary user; servers/agents
+  # are registered under tagged-devices with specific tags.
   resolveACLIdentity =
     hName:
     let
       hostEntry = findFirst (h: h.hostname == hName) null (attrValues hosts);
+      role = if hostEntry != null then hostEntry.role else "client";
     in
-    if hostEntry != null && hostEntry.headscaleIdentity != null then
-      hostEntry.headscaleIdentity
-    else
-      hName;
+    if role == "client" then "${primaryUser}@" else hName;
 
-  # Generate ACL rules for immich server <-> worker communication
+  # Generate ACL rules for immich server <-> worker communication.
+  # Only generated on the server host (where generatedACLRules is consumed).
   immichACLRules =
     let
       serverHost = cfg.immich.host;
       workers = cfg.immich.workers;
-      serverIdentity = resolveACLIdentity serverHost;
+      isCurrentHostServer = config.networking.hostName == serverHost;
+      # Use the server's own tailscale tags for ACL src identity
+      serverIdentity =
+        if isCurrentHostServer && config.keystone.os.tailscale.tags != [ ] then
+          head config.keystone.os.tailscale.tags
+        else
+          resolveACLIdentity serverHost;
       workerIdentities = map resolveACLIdentity workers;
     in
-    optionals (serverHost != null && workers != [ ]) [
+    optionals (isCurrentHostServer && workers != [ ]) [
       {
         action = "accept";
-        comment = "immich: server -> ML workers (inference)";
         src = [ serverIdentity ];
         dst = map (id: "${id}:3003") workerIdentities;
       }
