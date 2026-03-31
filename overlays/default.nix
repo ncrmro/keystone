@@ -23,6 +23,7 @@ let
   agent-mail-src = ../packages/agent-mail;
   fetch-email-source-src = ../packages/fetch-email-source;
   fetch-forgejo-sources-src = ../packages/fetch-forgejo-sources;
+  forgejo-cli-ex-src = ../packages/forgejo-cli-ex;
   forgejo-project-src = ../packages/forgejo-project;
   fetch-github-sources-src = ../packages/fetch-github-sources;
   repo-sync-src = ../packages/repo-sync;
@@ -60,6 +61,7 @@ final: prev:
       himalaya = final.keystone.himalaya;
     };
     fetch-forgejo-sources = final.callPackage fetch-forgejo-sources-src { };
+    forgejo-cli-ex = final.callPackage forgejo-cli-ex-src { };
     forgejo-project = final.callPackage forgejo-project-src { };
     fetch-github-sources = final.callPackage fetch-github-sources-src { };
     repo-sync = final.callPackage repo-sync-src { };

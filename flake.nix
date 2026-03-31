@@ -406,6 +406,7 @@
             agent-mail
             fetch-email-source
             fetch-forgejo-sources
+            forgejo-cli-ex
             forgejo-project
             fetch-github-sources
             repo-sync
