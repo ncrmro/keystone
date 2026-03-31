@@ -650,13 +650,43 @@ cmd_docs() {
     return 0
   fi
 
+  printf '%s\n' "Filter docs with text" >&2
+  printf '%s\n' "Enter: open in glow" >&2
+  printf '%s\n' "Esc: cancel" >&2
+
+  local theme_dir waybar_css fzf_colors theme_bg theme_fg theme_accent
+  theme_dir="${XDG_CONFIG_HOME:-$HOME/.config}/keystone/current/theme"
+  waybar_css="$theme_dir/waybar.css"
+  theme_bg="#00120c"
+  theme_fg="#b6bfbc"
+  theme_accent="#b8a26c"
+
+  if [[ -f "$waybar_css" ]]; then
+    theme_bg="$(sed -n 's/^@define-color background \([^;]*\);/\1/p' "$waybar_css" | head -n1)"
+    theme_fg="$(sed -n 's/^@define-color foreground \([^;]*\);/\1/p' "$waybar_css" | head -n1)"
+    theme_accent="$(sed -n 's/^@define-color gold \([^;]*\);/\1/p' "$waybar_css" | head -n1)"
+    [[ -n "$theme_bg" ]] || theme_bg="#00120c"
+    [[ -n "$theme_fg" ]] || theme_fg="#b6bfbc"
+    [[ -n "$theme_accent" ]] || theme_accent="#b8a26c"
+  fi
+
+  fzf_colors="bg:${theme_bg},bg+:${theme_bg},fg:${theme_fg},fg+:${theme_fg},hl:${theme_accent},hl+:${theme_accent},border:${theme_accent},label:${theme_accent},prompt:${theme_accent},pointer:${theme_accent},info:${theme_fg},gutter:${theme_bg},separator:${theme_accent},scrollbar:${theme_accent}"
+
   target="$(
-    cd "$docs_root"
-    find . -type f -name '*.md' \
-      ! -path './.jekyll-cache/*' \
-      | sed 's|^\./||' \
+    find "$docs_root" -type f -name '*.md' \
+      ! -path "$docs_root/.jekyll-cache/*" \
+      | sed "s|^$docs_root/||" \
       | sort \
-      | fzf --prompt='Keystone docs > ' --height=80%
+      | fzf \
+          --style=full \
+          --layout=reverse \
+          --border=rounded \
+          --border-label=' Keystone docs ' \
+          --input-label=' Filter ' \
+          --list-label=' Files ' \
+          --info=inline-right \
+          --color="$fzf_colors" \
+          --prompt='Keystone docs > '
   )"
 
   [[ -n "$target" ]] || return 0
