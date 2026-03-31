@@ -13,6 +13,7 @@
 with lib;
 let
   cfg = config.keystone.terminal;
+  notesPath = config.keystone.notes.path;
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
   inherit (devScripts) mkHomeRepoFiles mkHomeScriptCommand;
   ksCommand = mkHomeScriptCommand {
@@ -25,6 +26,10 @@ in
 {
   config = mkIf cfg.enable (mkMerge [
     {
+      home.sessionVariables = {
+        ZK_NOTEBOOK_DIR = notesPath;
+      };
+
       # Starship - A minimal, blazing-fast, and infinitely customizable prompt for any shell
       # Shows git status, language versions, execution time, and more in your terminal prompt
       # https://starship.rs/
