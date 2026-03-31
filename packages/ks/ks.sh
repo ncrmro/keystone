@@ -408,6 +408,7 @@ Examples:
   ks print ~/Downloads/garden-guide.md
   ks print report.md -o ~/Desktop/report.pdf --open
   ks print report.md --preview
+  ks print tests/fixtures/portfolio-review-print-demo.md --preview
   ks print instructions.md -o /tmp/instructions.pdf
 EOF
 }
@@ -1503,8 +1504,7 @@ push_repo_for_lock() {
   upstream=$(git -C "$path" rev-parse --abbrev-ref --symbolic-full-name "@{upstream}" 2>/dev/null || echo "")
   if [[ -n "$upstream" ]]; then
     counts=$(git -C "$path" rev-list --left-right --count "${upstream}...HEAD")
-    behind=${counts%% *}
-    ahead=${counts##* }
+    read -r behind ahead <<<"$counts"
 
     if (( behind > 0 )); then
       echo "Rebasing $name onto $upstream..."
@@ -1516,8 +1516,7 @@ push_repo_for_lock() {
       fi
 
       counts=$(git -C "$path" rev-list --left-right --count "${upstream}...HEAD")
-      behind=${counts%% *}
-      ahead=${counts##* }
+      read -r behind ahead <<<"$counts"
       if (( behind > 0 )); then
         echo "Error: $name is still behind $upstream at $path after rebase" >&2
         exit 1
