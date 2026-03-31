@@ -59,12 +59,17 @@ enabled, modules derive local paths from the `keystone.repos` registry at
     files MUST be linked into the user's PATH from the local checkout when
     `keystone.development = true`. After activation, edits to the repo script
     MUST take effect without rebuild.
-15. Desktop theme and configuration files MAY use local checkouts for rapid
+15. When a linked repo-backed script depends on adjacent non-executable assets
+    such as CSS, templates, or static config files, the script MUST resolve
+    those assets from the live checkout at runtime. Build-time substituted
+    paths alone are insufficient because the linked dev-mode script bypasses
+    Nix substitution.
+16. Desktop theme and configuration files MAY use local checkouts for rapid
     iteration when `keystone.development = true`.
 
 ## Server Module
 
-16. (Future) Server modules MAY use local checkouts for service configs when
+17. (Future) Server modules MAY use local checkouts for service configs when
     `keystone.development = true`.
 
 For the Grafana-specific application of these development-mode rules, including
@@ -73,19 +78,19 @@ checked-in dashboard JSON and rapid apply flows, see
 
 ## Safety
 
-17. `keystone.development` MUST only affect path resolution — it MUST NOT
+18. `keystone.development` MUST only affect path resolution — it MUST NOT
     modify, commit, or push any repository (per REQ-018.8).
-18. Modules MUST NOT write to paths derived from `keystone.repos` entries.
+19. Modules MUST NOT write to paths derived from `keystone.repos` entries.
     Local checkouts are read-only from the module system's perspective.
 
 ## Agent Parity
 
-19. Agents MUST inherit development mode from the global
+20. Agents MUST inherit development mode from the global
     `keystone.development` setting via their home-manager config bridge (see
     `process.enable-by-default` rules 9-11).
 
 ## Diagnostics
 
-20. `ks doctor` MUST report development mode status: whether it is enabled,
+21. `ks doctor` MUST report development mode status: whether it is enabled,
     which repos are declared, and whether their local checkouts exist (per
     REQ-023).

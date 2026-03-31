@@ -53,8 +53,10 @@ archetypes:
       - tool.himalaya
       - tool.forgejo
       - tool.github
+      - process.issue-journal
       - tool.zk
       - process.notes
+      - process.project-board
       - process.presentation-slides
       - tool.zk-notes
       - process.enable-by-default
@@ -79,6 +81,8 @@ archetypes:
       - tool.forgejo
       - tool.github
       - code.shell-scripts
+      - process.issue-journal
+      - process.project-board
       - process.vcs-context-continuity
       - process.enable-by-default
       - os.requirements
@@ -105,6 +109,7 @@ archetypes:
       - process.pr-review-response
       - process.deepwork-job
       - process.feature-delivery
+      - process.issue-journal
       - process.project-board
       - process.refactor
       - code.shell-scripts
@@ -215,6 +220,7 @@ archetypes:
     referenced_conventions:
       - process.task-tracking
       - process.project-board
+      - process.issue-journal
       - os.requirements
       - process.agent-cronjobs
       - tool.bitwarden

@@ -150,6 +150,8 @@ when OpenCode-specific configuration is needed.
 4. MUST preserve YAML frontmatter for tools that natively consume Markdown metadata, including Claude Code commands and Codex skills
 5. MUST render Gemini commands as native TOML rather than Markdown-based skill files
 6. MUST keep command filenames and Codex skill ids stable unless a breaking rename is explicitly intended
+7. `ks.notes` SHOULD act as the durable-memory skill for decision capture, report capture, and zk-linked shared-surface refs
+8. Keystone workflow skills SHOULD remind agents to use `ks.notes` when work produces durable findings or decisions
 
 ### `modules/terminal/cli-coding-agent-configs.nix`
 
