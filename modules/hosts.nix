@@ -51,6 +51,12 @@ in
             default = null;
             description = "Stable Tailscale IPv4 address for this host when known.";
           };
+          headscaleIdentity = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            example = "ncrmro@";
+            description = "Headscale ACL identity for this host (e.g. 'ncrmro@' user or 'tag:ocean-ingress' tag).";
+          };
           buildOnRemote = mkOption {
             type = types.bool;
             default = true;

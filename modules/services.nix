@@ -27,28 +27,31 @@ let
       message = "keystone.services.${name}.host = \"${host}\" does not match any hostname in keystone.hosts. Valid hostnames: ${concatStringsSep ", " hostNames}";
     };
 
-  # Resolve a hostname to its Headscale MagicDNS name (sshTarget)
-  resolveHost =
+  # Resolve a hostname to its Headscale ACL identity
+  resolveACLIdentity =
     hName:
     let
       hostEntry = findFirst (h: h.hostname == hName) null (attrValues hosts);
     in
-    if hostEntry != null && hostEntry.sshTarget != null then hostEntry.sshTarget else hName;
+    if hostEntry != null && hostEntry.headscaleIdentity != null then
+      hostEntry.headscaleIdentity
+    else
+      hName;
 
   # Generate ACL rules for immich server <-> worker communication
   immichACLRules =
     let
       serverHost = cfg.immich.host;
       workers = cfg.immich.workers;
-      serverTarget = resolveHost serverHost;
-      workerTargets = map resolveHost workers;
+      serverIdentity = resolveACLIdentity serverHost;
+      workerIdentities = map resolveACLIdentity workers;
     in
     optionals (serverHost != null && workers != [ ]) [
       {
         action = "accept";
         comment = "immich: server -> ML workers (inference)";
-        src = [ serverTarget ];
-        dst = map (w: "${w}:3003") workerTargets;
+        src = [ serverIdentity ];
+        dst = map (id: "${id}:3003") workerIdentities;
       }
     ];
 in
