@@ -1,6 +1,6 @@
 # REQ-024: PR Review Response
 
-Keystone agents author PRs as part of the `sweng` workflow, but currently lack
+Keystone agents author PRs as part of engineering workflows, but currently lack
 a convention and ingest guidance for acting on reviewer feedback received on
 those PRs. The fetch scripts (`fetch-github-sources`, `fetch-forgejo-sources`)
 already discover review comments via the notifications API, and the task loop
@@ -55,7 +55,7 @@ intervention.
 │  │ source_ref: "{pr_url}#review-{review_id}"              │ │
 │  │ description: includes repo, branch, file paths,        │ │
 │  │              comment bodies, review state               │ │
-│  │ workflow: "sweng/respond_review" (if available)         │ │
+│  │ workflow: "review/respond" (if available)               │ │
 │  └────────────────────────────────────────────────────────┘ │
 └──────────┬──────────────────────────────────────────────────┘
            │ TASKS.yaml
@@ -158,4 +158,4 @@ intervention.
 - `conventions/process.copilot-agent.md` — rules 10-15 (responding to Copilot feedback)
 - `conventions/process.code-review-ownership.md` — reviewer assignment via CODEOWNERS
 - `conventions/process.feature-delivery.md` — rule 25 (addressing review feedback)
-- `.deepwork/jobs/sweng/steps/review.md` — the reviewer-side flow (Step 7: fix loop)
+- `conventions/process.pr-review-response.md` — the reviewer-side response flow
