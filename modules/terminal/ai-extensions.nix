@@ -53,6 +53,23 @@ let
   formatCapabilities =
     capabilities: if capabilities == [ ] then "_none_" else concatStringsSep ", " capabilities;
 
+  renderTemplate =
+    template:
+    replaceStrings
+      [
+        "__CAPABILITIES__"
+        "__DEVELOPMENT_MODE__"
+        "__PUBLISHED_COMMANDS__"
+        "__ALLOWED_ROUTES__"
+      ]
+      [
+        (formatCapabilities resolvedCapabilities)
+        (if isDev then "enabled" else "disabled")
+        (concatStringsSep ", " publishedCommandIds)
+        (concatStringsSep "\n" ksAllowedRoutes)
+      ]
+      (builtins.readFile template);
+
   ksAllowedRoutes = [
     "- Explicit `$ks doctor`: start `keystone_system/doctor`."
     "- Explicit `$ks issue`: start `keystone_system/issue`."
@@ -73,149 +90,10 @@ let
     "- Daily priority and owner-note coordination: start `executive_assistant/task_loop`."
   ];
 
-  ksCommandBody = ''
-    Help the user get the most out of Keystone.
-
-    When invoked as `$ks <route>`, this skill routes to the corresponding DeepWork
-    workflow and MUST NOT execute the similarly named `ks` CLI command.
-
-    ## Session context
-
-    - Capabilities: ${formatCapabilities resolvedCapabilities}
-    - Development mode: ${if isDev then "enabled" else "disabled"}
-    - Published commands: ${concatStringsSep ", " publishedCommandIds}
-
-    ## Operating rules
-
-    - Prefer a direct answer for usage questions about `ks`, keystone modules, repo layout, conventions, or how to configure the system.
-    - Use DeepWork MCP tools only when the request benefits from a workflow or should create durable artifacts.
-    - Do not start workflows outside the allowed routes below.
-    - Treat explicit `$ks ...` invocation as skill routing, not shell command execution.
-    - Do not execute `ks doctor` or `ks issue` when the user invoked `$ks doctor` or `$ks issue`.
-    - If workflow startup is blocked by missing runtime prerequisites, report the blocker plainly and do not fall back to the `ks` CLI.
-    - If the user asks to implement Keystone code changes and `/ks.dev` is available, direct the request through the development route instead of improvising a separate workflow.
-    - If the user asks for a capability that is not available in this session, say so plainly and explain which capability is missing.
-
-    ## Allowed routes
-
-    ${concatStringsSep "\n" ksAllowedRoutes}
-
-    ## Invocation rules
-
-    - `$ks` with no arguments: explain the available Keystone workflow routes and direct-help paths.
-    - `$ks doctor`: start the `keystone_system/doctor` workflow.
-    - `$ks issue`: start the `keystone_system/issue` workflow.
-    - Other `$ks ...` invocations: treat them as Keystone help or routing requests, not as permission to execute the `ks` shell command.
-  '';
-
-  ksDevCommandBody = ''
-    Handle Keystone development requests in development mode.
-
-    ## Session context
-
-    - Capabilities: ${formatCapabilities resolvedCapabilities}
-    - Development mode: enabled
-    - Primary workflow: `keystone_system/develop`
-
-    ## Routing rules
-
-    - Default to `keystone_system/develop` for feature work, bug fixes, refactors, and implementation requests in Keystone-managed repos.
-    - Use `keystone_system/issue` when the user clearly wants issue creation rather than implementation.
-    - Use `keystone_system/convention` when the request is specifically to create or update a Keystone convention.
-    - Use `keystone_system/doctor` when the request is diagnostic rather than implementation.
-    - Reuse the standard engineering lifecycle under `keystone_system/develop`; do not invent a second implementation workflow.
-    - If the request is only a simple explanation or repo navigation question, answer directly instead of forcing a workflow.
-  '';
-
-  ksNotesCommandBody = ''
-    Route note-related requests to the appropriate notes DeepWork workflow.
-
-    ## Canonical note conventions
-
-    - Use `ks.notes` when the task is primarily about durable note capture, note cleanup, inbox promotion, notebook repair, or notebook setup.
-    - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read:
-      - `~/.config/keystone/conventions/process.notes.md`
-      - `~/.config/keystone/conventions/tool.zk-notes.md`
-    - If the user wants a fast durable brain dump before deeper organization, capture the note first, then continue with the appropriate notes workflow.
-
-    ## Available workflows
-
-    - **notes/process_inbox** — review and promote fleeting notes from inbox/ to permanent notes
-    - **notes/doctor** — audit, repair, and normalize a zk notebook
-    - **notes/init** — bootstrap a new zk notes repo from scratch
-    - **notes/setup** — configure an existing zk notebook
-
-    ## Routing rules
-
-    - Mentions of processing, reviewing, or promoting inbox notes → `notes/process_inbox`
-    - Mentions of repair, health check, audit, or normalize → `notes/doctor`
-    - Mentions of new notebook, bootstrap, or initializing → `notes/init`
-    - Mentions of setup or configure → `notes/setup`
-    - If unclear, ask the user which workflow to run before starting
-
-    ## How to start a workflow
-
-    1. Call `get_workflows` to confirm available notes workflows.
-    2. Call `start_workflow` with `job_name: "notes"`, `workflow_name: <chosen>`, and `goal: "$ARGUMENTS"`.
-    3. Follow the step instructions returned by the MCP server.
-  '';
-
-  ksProjectsCommandBody = ''
-    Route project-related requests to the appropriate project DeepWork workflow.
-    Be proactive — suggest the next pipeline step without waiting for the user to ask.
-
-    ## Available workflows
-
-    - **project/onboard** — onboard a new project: create hub note, scaffold structure, link repos
-    - **project/press_release** — draft a working-backwards press release or announcement for a project
-    - **project/milestone** — create milestone and user stories from a press release or scope notes
-    - **project/milestone_engineering_handoff** — internal FAQ, document review, optional spikes, specs, and plan issue; hands off to `engineer/implement`
-    - **project/success** — run a project success review or retrospective
-
-    ## Routing rules
-
-    - Mentions of onboarding, starting, or registering a new project → `project/onboard`
-    - Mentions of press release, announcement, or launch copy → `project/press_release`
-    - Mentions of milestone, user stories, or scope planning → `project/milestone`
-      (ask for `press_release_issue_url` if a press release was recently created)
-    - Mentions of engineering handoff, internal FAQ, specs, plan issue, or implementation planning → `project/milestone_engineering_handoff`
-    - Mentions of success, retro, retrospective, or wrapping up → `project/success`
-    - If unclear, ask the user which workflow to run before starting
-
-    ## Proactive pipeline suggestions
-
-    Do not wait for the user to ask — proactively suggest the next step:
-
-    - After `project/press_release` completes: immediately suggest `project/milestone`
-      with the press release issue URL as input.
-    - After `project/milestone` completes: immediately suggest `project/milestone_engineering_handoff`
-      with the milestone issue number.
-    - After `project/milestone_engineering_handoff` completes: suggest `engineer/implement`
-      for each task in the plan checklist, and suggest `ks.notes` / `notes/process_inbox`
-      to capture design decisions and scope into personal notes.
-    - After `project/success` completes: suggest `ks.notes` to record the verdict and
-      recommendations in personal notes and update shared owner notes.
-
-    ## Notes integration
-
-    After every major project event, prompt the user to capture learnings:
-    - Use `/ks.notes` (routes to `notes/process_inbox`) to promote decisions, risks, and
-      insights from this session into the personal Zettelkasten.
-    - After milestones are set up or engineering handoffs complete, update the shared
-      owner notes (`luce/notes`, `drago/notes`) to reflect current project state.
-
-    ## Engineering integration
-
-    - `project/milestone_engineering_handoff` produces the plan issue but does NOT implement.
-    - All implementation MUST flow through `engineer/implement`, not ad-hoc coding.
-    - Always name `engineer/implement` explicitly when suggesting implementation next steps.
-
-    ## How to start a workflow
-
-    1. Call `get_workflows` to confirm available project workflows.
-    2. Call `start_workflow` with `job_name: "project"`, `workflow_name: <chosen>`, and `goal: "$ARGUMENTS"`.
-    3. Follow the step instructions returned by the MCP server.
-  '';
+  ksCommandBody = renderTemplate ./agent-assets/ks.template.md;
+  ksDevCommandBody = renderTemplate ./agent-assets/ks-dev.template.md;
+  ksNotesCommandBody = builtins.readFile ./agent-assets/ks-notes.template.md;
+  ksProjectsCommandBody = builtins.readFile ./agent-assets/ks-projects.template.md;
 
   ksDescription =
     "Keystone assistant — may start keystone_system/issue or keystone_system/doctor"

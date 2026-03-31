@@ -128,9 +128,19 @@ in
     systemd.services.immich-server.enable = mkIf (cfg.role == "worker") false;
     systemd.services.immich-microservices.enable = mkIf (cfg.role == "worker") false;
 
-    # Auto-register service tags for ACL generation
+    # Auto-register service tags for ACL generation.
+    # Only server/agent roles get tags — client roles stay user-owned in
+    # Headscale (adding tags would strip user identity and break admin ACLs).
     keystone.os.tailscale.tags =
-      if cfg.role == "server" then [ "tag:svc-immich" ] else [ "tag:svc-immich-ml" ];
+      if cfg.role == "server" then
+        [ "tag:svc-immich" ]
+      else if
+        isWorker
+        && (findFirst (h: h.hostname == hostName) null (attrValues config.keystone.hosts)).role != "client"
+      then
+        [ "tag:svc-immich-ml" ]
+      else
+        [ ];
 
     # GPU Acceleration configuration (groups)
     users.users.immich.extraGroups = mkIf (cfg.acceleration != null) [

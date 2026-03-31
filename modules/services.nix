@@ -34,6 +34,21 @@ let
   # Immich ML port — upstream default, used for ACL and firewall rules
   immichMLPort = 3003;
 
+  # Resolve a worker hostname to its ACL destination identity.
+  # Client-role hosts stay user-owned in Headscale (adding tags would strip
+  # their user identity and break admin access rules). Server/agent-role
+  # hosts use tag:svc-immich-ml since they are already tag-based.
+  resolveWorkerDst =
+    hName:
+    let
+      hostEntry = findFirst (h: h.hostname == hName) null (attrValues hosts);
+      role = if hostEntry != null then hostEntry.role else "client";
+    in
+    if role == "client" then
+      "${primaryUser}@:${toString immichMLPort}"
+    else
+      "tag:svc-immich-ml:${toString immichMLPort}";
+
   # Generate ACL rules for immich server <-> worker communication.
   # Only generated on the server host (where generatedACLRules is consumed).
   immichACLRules =
@@ -46,7 +61,7 @@ let
       {
         action = "accept";
         src = [ "tag:svc-immich" ];
-        dst = [ "tag:svc-immich-ml:${toString immichMLPort}" ];
+        dst = map resolveWorkerDst workers;
       }
     ];
 in
@@ -132,11 +147,18 @@ in
   };
 
   config.keystone.services.generatedTagOwners =
-    optionalAttrs (cfg.immich.host != null && cfg.immich.workers != [ ])
-      {
-        "tag:svc-immich" = [ "${primaryUser}@" ];
-        "tag:svc-immich-ml" = [ "${primaryUser}@" ];
-      };
+    let
+      hasWorkers = cfg.immich.host != null && cfg.immich.workers != [ ];
+      hasTaggedWorkers = any (
+        hName:
+        let
+          h = findFirst (h: h.hostname == hName) null (attrValues hosts);
+        in
+        h != null && h.role != "client"
+      ) cfg.immich.workers;
+    in
+    optionalAttrs hasWorkers { "tag:svc-immich" = [ "${primaryUser}@" ]; }
+    // optionalAttrs (hasWorkers && hasTaggedWorkers) { "tag:svc-immich-ml" = [ "${primaryUser}@" ]; };
 
   config.keystone.services.generatedACLRules = immichACLRules;
 

@@ -373,6 +373,14 @@
           agentctl-regression = import ./tests/module/agentctl-regression.nix {
             inherit pkgs;
           };
+          zellij-tab-prompt = import ./tests/module/zellij-tab-prompt.nix {
+            inherit
+              pkgs
+              lib
+              self
+              home-manager
+              ;
+          };
           agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
             inherit pkgs lib;
           };
