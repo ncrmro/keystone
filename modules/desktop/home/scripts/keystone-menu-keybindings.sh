@@ -131,6 +131,17 @@ parse_bindings() {
 }'
 }
 
+static_bindings() {
+  cat <<'EOF'
+Ctrl + ,                           → Terminal: Previous zellij tab
+Ctrl + .                           → Terminal: Next zellij tab
+Ctrl + <                           → Terminal: Move zellij tab left
+Ctrl + >                           → Terminal: Move zellij tab right
+Ctrl + T                           → Terminal: New zellij tab
+Ctrl + W                           → Terminal: Close zellij tab
+EOF
+}
+
 prioritize_entries() {
   awk '
   {
@@ -175,9 +186,12 @@ menu_height=$((monitor_height * 40 / 100))
 
 build_keymap_cache
 
-dynamic_bindings |
-  sort -u |
-  parse_keycodes |
-  parse_bindings |
+{
+  static_bindings
+  dynamic_bindings |
+    sort -u |
+    parse_keycodes |
+    parse_bindings
+} |
   prioritize_entries |
   walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"

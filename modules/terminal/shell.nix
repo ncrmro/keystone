@@ -60,21 +60,21 @@ in
           pane_frames = false;
           keybinds = {
             normal = {
-              # Previous tab: Ctrl+PgUp
-              "bind \"Ctrl PageUp\"" = {
+              # Previous tab: Ctrl+,
+              "bind \"Ctrl ,\"" = {
                 GoToPreviousTab = { };
               };
-              # Next tab: Ctrl+PgDn
-              "bind \"Ctrl PageDown\"" = {
+              # Next tab: Ctrl+.
+              "bind \"Ctrl .\"" = {
                 GoToNextTab = { };
               };
-              # Previous tab (alternative): Ctrl+Shift+Tab
-              "bind \"Ctrl Shift Tab\"" = {
-                GoToPreviousTab = { };
+              # Move tab left: Ctrl+<
+              "bind \"Ctrl <\"" = {
+                MoveTab = "Left";
               };
-              # Next tab (alternative): Ctrl+Tab
-              "bind \"Ctrl Tab\"" = {
-                GoToNextTab = { };
+              # Move tab right: Ctrl+>
+              "bind \"Ctrl >\"" = {
+                MoveTab = "Right";
               };
               # New tab: Ctrl+T
               # Enforce naming in-client to avoid the multi-client CLI rename-tab issue.
@@ -156,99 +156,102 @@ in
 
       home.sessionPath = [ "$HOME/.local/bin" ];
 
-      home.packages = with pkgs; [
-        # Bottom - Graphical process/system monitor
-        # https://github.com/ClementTsang/bottom
-        bottom
+      home.packages =
+        with pkgs;
+        [
+          # Bottom - Graphical process/system monitor
+          # https://github.com/ClementTsang/bottom
+          bottom
 
-        # Dust - A more intuitive version of du in rust
-        # https://github.com/bootandy/dust
-        dust
+          # Dust - A more intuitive version of du in rust
+          # https://github.com/bootandy/dust
+          dust
 
-        # Fd - A simple, fast and user-friendly alternative to 'find'
-        # https://github.com/sharkdp/fd
-        fd
+          # Fd - A simple, fast and user-friendly alternative to 'find'
+          # https://github.com/sharkdp/fd
+          fd
 
-        # Ncdu - NCurses Disk Usage
-        # https://dev.yorhel.nl/ncdu
-        ncdu
+          # Ncdu - NCurses Disk Usage
+          # https://dev.yorhel.nl/ncdu
+          ncdu
 
-        # Sd - Intuitive find & replace CLI (sed alternative)
-        # https://github.com/chmln/sd
-        sd
+          # Sd - Intuitive find & replace CLI (sed alternative)
+          # https://github.com/chmln/sd
+          sd
 
-        # Tealdeer - A fast tldr client in Rust (simplified man pages)
-        # https://github.com/dbrgn/tealdeer
-        tealdeer
+          # Tealdeer - A fast tldr client in Rust (simplified man pages)
+          # https://github.com/dbrgn/tealdeer
+          tealdeer
 
-        # Direnv - Unclutter your .profile
-        # https://direnv.net/
-        direnv
+          # Direnv - Unclutter your .profile
+          # https://direnv.net/
+          direnv
 
-        # Eza - Modern replacement for ls with colors and git integration
-        # https://github.com/eza-community/eza
-        eza
+          # Eza - Modern replacement for ls with colors and git integration
+          # https://github.com/eza-community/eza
+          eza
 
-        # Glow - Render markdown on the CLI with style
-        # https://github.com/charmbracelet/glow
-        glow
+          # Glow - Render markdown on the CLI with style
+          # https://github.com/charmbracelet/glow
+          glow
 
-        # WeasyPrint - HTML/CSS to PDF converter (used by ks print)
-        # https://weasyprint.org/
-        python3Packages.weasyprint
+          # WeasyPrint - HTML/CSS to PDF converter (used by ks print)
+          # https://weasyprint.org/
+          python3Packages.weasyprint
 
-        # GNU Make - Build automation tool
-        # https://www.gnu.org/software/make/
-        gnumake
+          # GNU Make - Build automation tool
+          # https://www.gnu.org/software/make/
+          gnumake
 
-        # Htop - Interactive process viewer
-        # https://htop.dev/
-        htop
+          # Htop - Interactive process viewer
+          # https://htop.dev/
+          htop
 
-        # GitHub CLI - GitHub's official command line tool
-        # https://cli.github.com/
-        gh
+          # GitHub CLI - GitHub's official command line tool
+          # https://cli.github.com/
+          gh
 
-        # Lazygit - Simple terminal UI for git commands
-        # https://github.com/jesseduffield/lazygit
-        lazygit
+          # Lazygit - Simple terminal UI for git commands
+          # https://github.com/jesseduffield/lazygit
+          lazygit
 
-        # Ripgrep - Fast search tool that recursively searches directories
-        # https://github.com/BurntSushi/ripgrep
-        ripgrep
+          # Ripgrep - Fast search tool that recursively searches directories
+          # https://github.com/BurntSushi/ripgrep
+          ripgrep
 
-        # Tree - Display directory structure as a tree
-        # https://mama.indstate.edu/users/ice/tree/
-        tree
+          # Tree - Display directory structure as a tree
+          # https://mama.indstate.edu/users/ice/tree/
+          tree
 
-        # Yazi - Blazing fast terminal file manager written in Rust
-        # https://github.com/sxyazi/yazi
-        yazi
+          # Yazi - Blazing fast terminal file manager written in Rust
+          # https://github.com/sxyazi/yazi
+          yazi
 
-        # Zesh - Zellij session manager with zoxide integration
-        # https://github.com/roberte777/zesh
-        # Provided via keystone overlay
-        pkgs.keystone.zesh
+          # Zesh - Zellij session manager with zoxide integration
+          # https://github.com/roberte777/zesh
+          # Provided via keystone overlay
+          pkgs.keystone.zesh
 
-        # Jq - Lightweight command-line JSON processor
-        # https://jqlang.github.io/jq/
-        jq
+          # Jq - Lightweight command-line JSON processor
+          # https://jqlang.github.io/jq/
+          jq
 
-        # Yq - Portable command-line YAML processor
-        # https://github.com/mikefarah/yq
-        yq-go
+          # Yq - Portable command-line YAML processor
+          # https://github.com/mikefarah/yq
+          yq-go
 
-        # Nixfmt - Official Nix code formatter (RFC style)
-        # https://github.com/NixOS/nixfmt
-        nixfmt-rfc-style
-      ] ++ lib.optionals pkgs.stdenv.isLinux [
-        # Ghostty terminfo - Required for SSH connections from Ghostty terminal
-        # Without this, remote systems don't recognize TERM="xterm-ghostty" and
-        # ncurses applications fail with "cannot initialize terminal type" errors.
-        # This enables proper terminal handling when SSHing into this machine from Ghostty.
-        # (Only available on Linux - macOS users install Ghostty via native app)
-        ghostty.terminfo
-      ];
+          # Nixfmt - Official Nix code formatter (RFC style)
+          # https://github.com/NixOS/nixfmt
+          nixfmt-rfc-style
+        ]
+        ++ lib.optionals pkgs.stdenv.isLinux [
+          # Ghostty terminfo - Required for SSH connections from Ghostty terminal
+          # Without this, remote systems don't recognize TERM="xterm-ghostty" and
+          # ncurses applications fail with "cannot initialize terminal type" errors.
+          # This enables proper terminal handling when SSHing into this machine from Ghostty.
+          # (Only available on Linux - macOS users install Ghostty via native app)
+          ghostty.terminfo
+        ];
     }
     # Enable flakes for Darwin (standalone home-manager)
     # On NixOS this is handled by keystone.os.nix.flakes
