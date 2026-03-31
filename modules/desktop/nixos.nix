@@ -4,6 +4,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   keystoneInputs,
   ...
@@ -11,6 +12,7 @@
 with lib;
 let
   cfg = config.keystone.desktop;
+  hasElephant = options ? services.elephant;
 in
 {
   # nix-flatpak is imported via flake.nix nixosModules.desktop (hoisted to avoid
@@ -89,9 +91,7 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    services.elephant.enable = mkDefault true;
-
+  config = mkIf cfg.enable ({
     # Flatpak support (declarative via nix-flatpak)
     services.flatpak.enable = mkDefault true;
 
@@ -250,5 +250,7 @@ in
       docker.serviceConfig.OOMScoreAdjust = 1000;
       podman.serviceConfig.OOMScoreAdjust = 1000;
     };
-  };
+  } // optionalAttrs hasElephant {
+    services.elephant.enable = mkDefault true;
+  });
 }

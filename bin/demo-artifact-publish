@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+#
+# demo-artifact-publish - Publish screenshot and demo artifacts to R2
+
+set -euo pipefail
+
+usage() {
+    cat <<EOF
+Usage: $0 <file-or-directory>
+
+Required environment:
+  KEYSTONE_DEMO_R2_BUCKET         R2 bucket name
+  KEYSTONE_DEMO_PUBLIC_BASE_URL   Public base URL for uploaded objects
+
+Optional environment:
+  KEYSTONE_DEMO_PREFIX            Object key prefix override
+  KEYSTONE_DEMO_WRANGLER_CONFIG   Wrangler config file to use
+EOF
+}
+
+if [[ $# -ne 1 || "$1" == "--help" || "$1" == "-h" ]]; then
+    usage
+    exit 0
+fi
+
+source_path="$1"
+if [[ ! -e "$source_path" ]]; then
+    echo "Path not found: $source_path" >&2
+    exit 1
+fi
+
+: "${KEYSTONE_DEMO_R2_BUCKET:?KEYSTONE_DEMO_R2_BUCKET must be set}"
+: "${KEYSTONE_DEMO_PUBLIC_BASE_URL:?KEYSTONE_DEMO_PUBLIC_BASE_URL must be set}"
+
+repo_root="$(cd "$(dirname "$0")/.." && pwd -P)"
+repo_name="$(basename "$repo_root")"
+git_rev="$(git -C "$repo_root" rev-parse HEAD)"
+git_branch="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)"
+git_branch="${git_branch//\//-}"
+timestamp="$(date +'%Y-%m-%d_%H-%M-%S')"
+
+prefix="${KEYSTONE_DEMO_PREFIX:-keystone/$repo_name/$git_branch/$timestamp}"
+public_base="${KEYSTONE_DEMO_PUBLIC_BASE_URL%/}"
+
+wrangler_args=()
+if [[ -n "${KEYSTONE_DEMO_WRANGLER_CONFIG:-}" ]]; then
+    wrangler_args+=(--config "$KEYSTONE_DEMO_WRANGLER_CONFIG")
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+manifest_items="$tmpdir/manifest.ndjson"
+markdown_path=""
+
+if [[ -d "$source_path" ]]; then
+    artifact_root="$(cd "$source_path" && pwd -P)"
+    manifest_path="$artifact_root/published.json"
+    markdown_path="$artifact_root/published.md"
+    mapfile -t files < <(find "$artifact_root" -type f ! -name 'published.json' ! -name 'published.md' | sort)
+else
+    source_abs="$(cd "$(dirname "$source_path")" && pwd -P)/$(basename "$source_path")"
+    artifact_root="$(dirname "$source_abs")"
+    manifest_path="$artifact_root/$(basename "$source_abs").published.json"
+    markdown_path="$artifact_root/$(basename "$source_abs").published.md"
+    files=("$source_abs")
+fi
+
+if [[ ${#files[@]} -eq 0 ]]; then
+    echo "No files to upload under $source_path" >&2
+    exit 1
+fi
+
+for file in "${files[@]}"; do
+    rel_path="${file#"$artifact_root"/}"
+    if [[ "$file" == "$artifact_root" ]]; then
+        rel_path="$(basename "$file")"
+    fi
+    object_key="$prefix/$rel_path"
+
+    wrangler "${wrangler_args[@]}" r2 object put "$KEYSTONE_DEMO_R2_BUCKET/$object_key" --file "$file" >/dev/null
+
+    url="$public_base/$object_key"
+    jq -n \
+        --arg file "$file" \
+        --arg rel_path "$rel_path" \
+        --arg object_key "$object_key" \
+        --arg url "$url" \
+        '{file: $file, rel_path: $rel_path, object_key: $object_key, url: $url}' >> "$manifest_items"
+done
+
+jq -s \
+    --arg source_path "$source_path" \
+    --arg prefix "$prefix" \
+    --arg git_rev "$git_rev" \
+    --arg created_at "$(date -Iseconds)" \
+    '{
+      source_path: $source_path,
+      prefix: $prefix,
+      git_rev: $git_rev,
+      created_at: $created_at,
+      files: .
+    }' "$manifest_items" > "$manifest_path"
+
+{
+    echo "# Demo artifacts"
+    echo
+    while IFS= read -r item; do
+        rel_path="$(jq -r '.rel_path' <<<"$item")"
+        url="$(jq -r '.url' <<<"$item")"
+        case "$rel_path" in
+            *.png|*.jpg|*.jpeg|*.webp|*.gif)
+                echo "## $rel_path"
+                echo
+                echo "![${rel_path}](${url})"
+                echo
+                ;;
+            *)
+                echo "- [$rel_path]($url)"
+                ;;
+        esac
+    done < "$manifest_items"
+} > "$markdown_path"
+
+printf '%s\n%s\n' "$manifest_path" "$markdown_path"

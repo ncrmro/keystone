@@ -42,6 +42,7 @@ The intended workflow is:
 ## Related docs
 
 - [Desktop Keybindings](desktop/keybindings.md)
+- [Desktop VM Development](desktop/vm-development.md)
 - [Walker](desktop/walker.md)
 - [Monitors](desktop/monitors.md)
 - [Fingerprint Unlock](desktop/fingerprint-unlock.md)

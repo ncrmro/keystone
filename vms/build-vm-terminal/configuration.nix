@@ -26,6 +26,7 @@
   # Simple boot configuration for VM
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+  nixpkgs.overlays = [ keystone.overlays.default ];
 
   # Root filesystem (required for NixOS)
   fileSystems."/" = {
@@ -114,7 +115,7 @@
 
     # Import home-manager modules
     sharedModules = [
-      ../../modules/keystone/terminal
+      keystone.homeModules.terminal
     ];
   };
 
@@ -125,10 +126,16 @@
     # Enable terminal dev environment
     keystone.terminal = {
       enable = true;
+      ai.enable = false;
+      sandbox.enable = false;
       git = {
         userName = "Terminal Test User";
         userEmail = "testuser@keystone-buildvm-terminal";
       };
+    };
+    keystone.notes = {
+      enable = true;
+      repo = "git@example.com:testuser/notes.git";
     };
   };
 }

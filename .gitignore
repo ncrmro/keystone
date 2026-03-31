@@ -38,8 +38,10 @@ vms/*/*.socket
 # build-vm artifacts (nixos-rebuild build-vm)
 .build-vm/
 build-vm-*.pid
+build-vm-*.log
 keystone-buildvm-*.qcow2
 build-vm-*.qcow2
+artifacts/
 
 # VM configuration (keep .example files tracked)
 vms/*.conf

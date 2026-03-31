@@ -21,8 +21,9 @@ There are two types of VM testing workflows:
 # Terminal dev environment - auto-SSH into VM
 ./bin/build-vm terminal
 
-# Hyprland desktop - open graphical console
-./bin/build-vm desktop
+# Hyprland desktop - run in background, then SSH in
+./bin/build-vm desktop --background
+./bin/build-vm desktop --ssh
 
 # Build only, don't connect
 ./bin/build-vm terminal --build-only
@@ -31,13 +32,14 @@ There are two types of VM testing workflows:
 **Characteristics**:
 
 - Uses `nixos-rebuild build-vm`
-- **Automatic connection** - Terminal auto-SSHs, Desktop opens console
+- **Automatic connection** - Terminal auto-SSHs, Desktop supports background mode plus SSH
 - Mounts host Nix store via 9P (read-only)
 - No encryption, secure boot, or TPM
 - Fast iteration (~minutes)
 - Persistent qcow2 disk images
 - Direct QEMU execution (no libvirt)
 - Terminal: SSH forwarded to `localhost:2222`
+- Desktop: SSH forwarded to `localhost:2223`
 
 ### 2. Full Stack Testing with `test-deployment` (For Complete Testing)
 
@@ -190,8 +192,15 @@ nixos-rebuild build-vm --flake .#build-vm-desktop
 # Edit desktop configuration
 vim modules/client/desktop/hyprland.nix
 
-# Rebuild and auto-connect to graphical console
-./bin/build-vm desktop
+# Rebuild and keep the VM running in the background
+./bin/build-vm desktop --background
+
+# Open a shell in the guest
+./bin/build-vm desktop --ssh
+
+# Capture evidence
+./bin/dev-vm-capture screenshot
+./bin/dev-vm-capture terminal
 ```
 
 ### Quick Terminal Config Test
@@ -282,6 +291,8 @@ rm -f build-vm-*.qcow2
 ## See Also
 
 - [../bin/build-vm](../bin/build-vm) - Fast VM testing script
+- [../bin/dev-vm-capture](../bin/dev-vm-capture) - Screenshot and terminal capture
+- [../bin/demo-artifact-publish](../bin/demo-artifact-publish) - R2 publishing helper
 - [../bin/test-deployment](../bin/test-deployment) - Full deployment test script
 - [../bin/virtual-machine](../bin/virtual-machine) - Libvirt VM management
 - [../CLAUDE.md](../CLAUDE.md) - Full project documentation

@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+#
+# dev-vm-capture - Collect screenshots and terminal evidence from build-vm guests
+
+set -euo pipefail
+
+usage() {
+    cat <<EOF
+Usage: $0 <screenshot|terminal|journal> [OPTIONS]
+
+Options:
+  --config <desktop|terminal>   VM configuration to target (default: desktop)
+  --output-dir <path>           Artifact directory (default: artifacts/demos/<timestamp>)
+  --command <cmd>               Remote fallback command for terminal/journal capture
+
+Examples:
+  $0 screenshot
+  $0 terminal --command "ls -la"
+  $0 journal --config desktop
+EOF
+}
+
+repo_root="$(cd "$(dirname "$0")/.." && pwd -P)"
+subcommand="${1:-}"
+
+if [[ -z "$subcommand" || "$subcommand" == "--help" || "$subcommand" == "-h" ]]; then
+    usage
+    exit 0
+fi
+
+shift
+
+config="desktop"
+output_dir=""
+remote_command=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --config)
+            config="${2:?missing value for --config}"
+            shift 2
+            ;;
+        --output-dir)
+            output_dir="${2:?missing value for --output-dir}"
+            shift 2
+            ;;
+        --command)
+            remote_command="${2:?missing value for --command}"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+case "$config" in
+    desktop) ssh_port=2223 ;;
+    terminal) ssh_port=2222 ;;
+    *)
+        echo "Invalid config: $config" >&2
+        exit 1
+        ;;
+esac
+
+if [[ -z "$output_dir" ]]; then
+    output_dir="$repo_root/artifacts/demos/$(date +'%Y-%m-%d_%H-%M-%S')"
+fi
+
+mkdir -p "$output_dir"
+
+ssh_opts=(
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o LogLevel=ERROR
+    -p "$ssh_port"
+)
+scp_opts=(
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o LogLevel=ERROR
+    -P "$ssh_port"
+)
+
+ssh_ready() {
+    ssh "${ssh_opts[@]}" testuser@localhost "echo ready" >/dev/null 2>&1
+}
+
+if ! ssh_ready; then
+    echo "VM is not reachable on localhost:$ssh_port. Start it with ./bin/build-vm $config --background" >&2
+    exit 1
+fi
+
+write_metadata() {
+    local kind="$1"
+    local primary_path="$2"
+    local secondary_path="${3:-}"
+    local metadata_path="$output_dir/metadata.json"
+    local git_rev
+    git_rev="$(git -C "$repo_root" rev-parse HEAD)"
+
+    jq -n \
+        --arg kind "$kind" \
+        --arg config "$config" \
+        --arg primary_path "$primary_path" \
+        --arg secondary_path "$secondary_path" \
+        --arg git_rev "$git_rev" \
+        --arg created_at "$(date -Iseconds)" \
+        --arg command "$remote_command" \
+        '{
+          kind: $kind,
+          config: $config,
+          git_rev: $git_rev,
+          created_at: $created_at,
+          command: ($command | select(length > 0)),
+          primary_path: $primary_path,
+          secondary_path: ($secondary_path | select(length > 0))
+        }' > "$metadata_path"
+}
+
+render_terminal_png() {
+    local txt_path="$1"
+    local png_path="$2"
+
+    freeze \
+        --output "$png_path" \
+        --theme catppuccin-mocha \
+        --language txt \
+        --window=false \
+        --padding "10" \
+        --margin "0" \
+        --font.size 14 < "$txt_path"
+}
+
+capture_terminal_text() {
+    local txt_path="$1"
+    local fallback_cmd="${2:-journalctl --user -b --no-pager -n 120}"
+
+    # shellcheck disable=SC2029
+    ssh "${ssh_opts[@]}" testuser@localhost "bash -s -- $(printf '%q' "$fallback_cmd")" <<'EOF' > "$txt_path"
+set -euo pipefail
+fallback_cmd="$1"
+
+if command -v tmux >/dev/null 2>&1 && tmux list-sessions >/dev/null 2>&1; then
+  tmux capture-pane -p -S -200
+else
+  bash -lc "$fallback_cmd"
+fi
+EOF
+}
+
+case "$subcommand" in
+    screenshot)
+        screenshot_path="$output_dir/desktop.png"
+        remote_path="/tmp/keystone-vm-screenshot-$(date +%s).png"
+
+        # shellcheck disable=SC2029
+        ssh "${ssh_opts[@]}" testuser@localhost "bash -s -- $(printf '%q' "$remote_path")" <<'EOF' >/dev/null
+set -euo pipefail
+keystone-vm-screenshot "$1"
+EOF
+        scp "${scp_opts[@]}" "testuser@localhost:$remote_path" "$screenshot_path" >/dev/null
+        # shellcheck disable=SC2029
+        ssh "${ssh_opts[@]}" testuser@localhost "bash -s -- $(printf '%q' "$remote_path")" <<'EOF' >/dev/null
+set -euo pipefail
+rm -f "$1"
+EOF
+
+        write_metadata "screenshot" "$screenshot_path"
+        printf '%s\n' "$screenshot_path"
+        ;;
+    terminal)
+        txt_path="$output_dir/terminal.txt"
+        png_path="$output_dir/terminal.png"
+        capture_terminal_text "$txt_path" "${remote_command:-journalctl --user -b --no-pager -n 120}"
+        render_terminal_png "$txt_path" "$png_path"
+        write_metadata "terminal" "$txt_path" "$png_path"
+        printf '%s\n%s\n' "$txt_path" "$png_path"
+        ;;
+    journal)
+        txt_path="$output_dir/journal.txt"
+        # shellcheck disable=SC2029
+        ssh "${ssh_opts[@]}" testuser@localhost "bash -s -- $(printf '%q' "${remote_command:-sudo -n journalctl -b --no-pager -n 200}")" <<'EOF' > "$txt_path"
+set -euo pipefail
+bash -lc "$1"
+EOF
+        write_metadata "journal" "$txt_path"
+        printf '%s\n' "$txt_path"
+        ;;
+    *)
+        echo "Unknown subcommand: $subcommand" >&2
+        usage >&2
+        exit 1
+        ;;
+esac

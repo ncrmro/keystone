@@ -5,6 +5,35 @@
   keystone,
   ...
 }:
+let
+  vmScreenshot = pkgs.writeShellScriptBin "keystone-vm-screenshot" ''
+    set -euo pipefail
+
+    output_path="''${1:-$HOME/Pictures/vm-screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png}"
+
+    if [[ -z "''${XDG_RUNTIME_DIR:-}" ]]; then
+      export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    fi
+
+    if [[ -z "''${WAYLAND_DISPLAY:-}" ]]; then
+      for socket in "$XDG_RUNTIME_DIR"/wayland-*; do
+        if [[ -S "$socket" ]]; then
+          export WAYLAND_DISPLAY="$(basename "$socket")"
+          break
+        fi
+      done
+    fi
+
+    if [[ -z "''${WAYLAND_DISPLAY:-}" ]]; then
+      echo "No Wayland socket found in $XDG_RUNTIME_DIR" >&2
+      exit 1
+    fi
+
+    mkdir -p "$(dirname "$output_path")"
+    ${pkgs.grim}/bin/grim "$output_path"
+    printf '%s\n' "$output_path"
+  '';
+in
 {
   # Minimal Keystone configuration for Hyprland desktop testing
   # Uses nixos-rebuild build-vm for fast iteration without encryption/secure boot
@@ -26,6 +55,7 @@
   # Simple boot configuration for VM
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+  nixpkgs.overlays = [ keystone.overlays.default ];
 
   # Root filesystem (required for NixOS)
   fileSystems."/" = {
@@ -62,6 +92,17 @@
   # Basic networking with DHCP
   networking.useDHCP = lib.mkDefault true;
 
+  # VM-specific configuration for build-vm
+  virtualisation.vmVariant = {
+    virtualisation.forwardPorts = [
+      {
+        from = "host";
+        host.port = 2223;
+        guest.port = 22;
+      }
+    ];
+  };
+
   # Enable serial console for VM
   boot.kernelParams = [
     "console=ttyS0,115200n8"
@@ -94,7 +135,11 @@
   security.sudo.wheelNeedsPassword = false;
 
   # System packages
-  environment.systemPackages = [
+  environment.systemPackages = with pkgs; [
+    tmux
+    util-linux
+    jq
+    vmScreenshot
   ];
 
   # Nix settings
@@ -109,9 +154,32 @@
     ];
   };
 
+  # Configure home-manager
+  home-manager = {
+    useGlobalPkgs = true;
+    useUserPackages = true;
+    sharedModules = [
+      keystone.homeModules.desktop
+    ];
+  };
+
   # Configure home-manager for test user
   home-manager.users.testuser = {
     home.stateVersion = "25.05";
+
+    keystone = {
+      desktop.enable = true;
+      notes = {
+        enable = true;
+        repo = "git@example.com:testuser/notes.git";
+      };
+      terminal.git = {
+        userName = "Hyprland Test User";
+        userEmail = "testuser@keystone-buildvm-desktop";
+      };
+      terminal.ai.enable = false;
+      terminal.sandbox.enable = false;
+    };
 
     # Git configuration
     programs.git = {
