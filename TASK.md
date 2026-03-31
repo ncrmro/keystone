@@ -53,9 +53,10 @@ validation through `nix flake check`.
   breaking job-structure change.
 - Updated the REQ-023 spec so `/ks.assistant` routing treats presentation as a
   separate job instead of an executive-assistant workflow.
-- The `sweng/refactor` workflow's assign step expects `agentctl ... --worktree`,
-  but the current `agentctl` interface no longer supports that flag. I
-  implemented directly in the prepared worktree and recorded the mismatch here.
+- The older engineering workflow assign step expected `agentctl ...
+  --worktree`, but the current `agentctl` interface no longer supports that
+  flag. I implemented directly in the prepared worktree and recorded the
+  mismatch here.
 
 ## Results
 
