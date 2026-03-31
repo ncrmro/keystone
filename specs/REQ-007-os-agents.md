@@ -145,6 +145,7 @@ Secrets:
 - The task loop MUST implement configurable stop conditions (max tasks per run, max wall time, error threshold)
 - The task loop MUST handle failures gracefully (log failure, mark task as failed, continue to next)
 - The system MUST expose operator controls to pause, resume, and inspect task-loop pause state without disabling the timer units
+- The system SHOULD expose machine-readable pause state and effective interactive defaults for desktop launch surfaces
 - The system MUST support a three-tier model strategy:
   - A fast model for ingest (default: haiku)
   - A fast model for prioritize (default: haiku)

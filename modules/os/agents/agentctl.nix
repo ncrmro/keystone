@@ -81,6 +81,7 @@ let
         GNUGREP="${pkgs.gnugrep}"
         GNUSED="${pkgs.gnused}"
         NIX="${pkgs.nix}"
+        PZ="${pkgs.keystone.pz}/bin/pz"
         ZELLIJ="${pkgs.zellij}/bin/zellij"
         PODMAN_AGENT="${pkgs.keystone.podman-agent}/bin/podman-agent"
         PROJECT_INDEX_HELPER="${projectIndexHelper}/bin/keystone-project-index"

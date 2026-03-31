@@ -13,7 +13,7 @@ MAY, REQUIRED, OPTIONAL).
 
 The system MUST provide a unified, hierarchical menu accessible via a global keyboard shortcut (`Mod + Escape`) and the power button.
 
-- **dt-menu-001.1**: The menu MUST allow navigation to sub-menus: Apps, Learn, Capture, Toggle, Style, Setup, Install, Remove, Update, System.
+- **dt-menu-001.1**: The menu MUST allow navigation to sub-menus: Apps, Contexts, Agents, Learn, Capture, Toggle, Style, Setup, Install, Remove, Update, System.
 - **dt-menu-001.2**: The "System" sub-menu MUST provide options for: Lock, Suspend, Restart, and Shutdown.
 - **dt-menu-001.3**: The "Style" sub-menu MUST allow switching themes.
 - **dt-menu-001.4**: The "Toggle" sub-menu MUST allow toggling system features like Nightlight, Idle Inhibition, and configuring Nightlight schedule and intensity.
@@ -46,6 +46,8 @@ Detailed project desktop menu requirements are defined in `REQ-026`.
 - **dt-context-001.14 (Experience Parity):** The desktop project menus SHOULD provide a visual experience that mirrors the information hierarchy and action set of the `pz` CLI, ensuring a seamless transition for users moving between terminal and desktop contexts.
 - **dt-context-001.15 (Performance):** Desktop menus MUST utilize bulk data retrieval patterns (e.g., a single CLI call returning all required menu state) to ensure menu responsiveness and avoid N+1 performance bottlenecks.
 - **dt-context-001.16 (Launcher Independence):** Opening or attaching a project session from the desktop menu MUST NOT tie the spawned terminal window or editor lifecycle to Walker or Elephant service lifetime. Restarting the launcher services MUST NOT close or interrupt the started session.
+- **dt-context-001.17 (Host awareness):** Desktop project menus MUST show the declared host inventory and MUST allow users to change the effective target host before launch.
+- **dt-context-001.18 (Remote transport):** When the effective target host is remote, the desktop MUST launch the project through a local terminal session that delegates to terminal-first remote project tooling.
 
 ### Project details page (dt-context-002)
 
@@ -197,6 +199,7 @@ The system MUST use W/E/R/C for tab operations across all tabbed interfaces.
 - **dt-bind-010.2**: `Super+K` MUST focus the window below.
 - **dt-bind-010.3**: `Super+I` MUST focus the window above.
 - **dt-bind-010.4**: `Super+L` MUST focus the window to the right.
+- **dt-bind-010.5**: Split-toggle MUST NOT conflict with Walker's `Alt+J` behavior when the physical Alt key is swapped to `Super`.
 
 ### Hyprland Window Management (dt-bind-011)
 

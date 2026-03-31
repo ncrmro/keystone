@@ -129,6 +129,14 @@ If omitted, a configurable default model SHOULD be used.
 **REQ-012.24** The `--local` flag MUST be compatible with `--project`,
 `--role`, `--worktree`, and `--nosandbox` flags.
 
+### Interactive defaults and machine-readable state
+
+**REQ-012.28** `agentctl` MUST expose machine-readable agent state for desktop launch surfaces.
+
+**REQ-012.29** Machine-readable agent state MUST include effective preferred host, pause state, and interactive provider or model defaults.
+
+**REQ-012.30** `agentctl` MUST support editing interactive preferred host, provider, model, and fallback model defaults without editing task-loop config.
+
 ### System Prompt Composition
 
 **REQ-012.25** System prompt composition (loading AGENTS.md, project

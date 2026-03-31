@@ -104,6 +104,16 @@ in
           sourcePath = ./keystone-project-session.lua;
         }
         {
+          targetPath = ".config/elephant/menus/keystone-agents.lua";
+          relativePath = "modules/desktop/home/components/keystone-agents.lua";
+          sourcePath = ./keystone-agents.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-agent-actions.lua";
+          relativePath = "modules/desktop/home/components/keystone-agent-actions.lua";
+          sourcePath = ./keystone-agent-actions.lua;
+        }
+        {
           targetPath = ".config/elephant/menus/keystone-setup.lua";
           relativePath = "modules/desktop/home/components/keystone-setup.lua";
           sourcePath = ./keystone-setup.lua;
@@ -258,6 +268,14 @@ in
             "menus:keystone-project-session" = {
               input = " Session slug";
               list = "Press Enter to create the session";
+            };
+            "menus:keystone-agents" = {
+              input = " Agents";
+              list = "No agents found";
+            };
+            "menus:keystone-agent-actions" = {
+              input = " Agent actions";
+              list = "No agent actions available";
             };
             "menus:keystone-monitors" = {
               input = " Monitors";

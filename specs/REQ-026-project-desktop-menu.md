@@ -95,6 +95,8 @@ menu.
 - **pdm-actions-001.7**: The action menu MAY include an explicit `Details`
   action for richer project context, but project session actions MUST remain
   accessible even when a separate details view is absent.
+- **pdm-actions-001.8**: The project action menu MUST expose the effective target host and allow changing it.
+- **pdm-actions-001.9**: The project action menu SHOULD expose interactive provider, model, and fallback model overrides used for project launches.
 
 ### Session launch behavior (pdm-open-001)
 
@@ -123,6 +125,7 @@ integrating with the active desktop window state.
 - **pdm-open-001.8**: Restarting `walker.service` or `elephant.service` MUST
   NOT close, interrupt, or invalidate a project window or zellij session that
   was launched from the desktop menu.
+- **pdm-open-001.9**: When the effective target host is remote, the desktop MUST launch the project through terminal-first remote transport rather than a desktop-only session registry.
 
 ### New named session flow (pdm-new-001)
 

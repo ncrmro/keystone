@@ -78,6 +78,13 @@ main_json() {
         Icon: "folder-development-symbolic"
       },
       {
+        Text: "Agents",
+        Subtext: "Agent state, pause, and interactive defaults",
+        Value: "agents",
+        Icon: "computer-symbolic",
+        SubMenu: "keystone-agents"
+      },
+      {
         Text: "Learn",
         Subtext: "Keybindings and desktop references",
         Value: "learn",
@@ -348,6 +355,10 @@ open_menu() {
       menu_id="menus:keystone-screenshot"
       prompt="Screenshot"
       ;;
+    agents)
+      menu_id="menus:keystone-agents"
+      prompt="Agents"
+      ;;
     toggle)
       menu_id="menus:keystone-toggle"
       prompt="Toggle"
@@ -385,7 +396,7 @@ dispatch() {
   IFS=$'\t' read -r action arg1 arg2 <<<"$payload"
 
   case "$action" in
-    learn | capture | screenshot | toggle | style | theme | setup | system)
+    learn | capture | screenshot | toggle | style | theme | setup | system | agents)
       ;;
     open-apps)
       detach walker

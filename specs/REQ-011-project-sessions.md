@@ -74,6 +74,17 @@ to ensure consistent session identification across tools.
 4. The session MUST start with the working directory set to `{notes_path}/projects/{project-slug}` when that legacy directory exists
 5. The command MUST export environment variables per REQ-010.9 before attaching
 
+### `pz <project-slug> [<session-slug>] --host <hostname>`
+
+Open the project session on a selected host.
+
+**Behavior**:
+
+1. The command MUST treat the selected host as the owner of the Zellij session lifecycle.
+2. If the selected host is the local host, behavior MUST match the local session contract exactly.
+3. If the selected host is remote, the command MUST delegate to terminal-first remote project tooling rather than creating a parallel desktop-only transport.
+4. Interactive remote opens SHOULD use Eternal Terminal.
+
 ### `pz <project-slug> [<session-slug>] --repo <owner/repo> [--worktree <branch>]`
 
 Open a project session rooted at a specific repo or repo worktree.
@@ -147,6 +158,7 @@ Destroy a project session.
 2. **pz-parity-002 (Consistency):** The `pz` CLI MUST ensure that the same set of project-aware metadata and session actions are available to both interactive terminal users and programmatic desktop consumers.
 3. **pz-parity-003 (Unified State):** There MUST be a single source of truth for project and session state, managed by `pz` and its dependencies (`zk`, `zellij`). Desktop components MUST NOT maintain independent or parallel state for these entities.
 4. **pz-parity-004 (Bulk Provisioning):** The `pz` CLI MUST provide high-performance, machine-readable export formats (e.g., `--json` or `--tsv`) to allow desktop consumers to retrieve all necessary menu state in a single call, preventing N+1 performance bottlenecks.
+5. **pz-parity-005 (Host Awareness):** The `pz` CLI MUST expose declared hosts, effective default target host, and effective project target host in machine-readable form for desktop consumers.
 
 ### Session Lifecycle
 

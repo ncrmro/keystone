@@ -1,8 +1,12 @@
 {
   curl,
+  eternal-terminal,
   jq,
   lib,
+  nix,
+  openssh,
   writeShellApplication,
+  yq-go,
   zk,
   zellij,
 }:
@@ -10,7 +14,11 @@ writeShellApplication {
   name = "pz";
   runtimeInputs = [
     curl
+    eternal-terminal
     jq
+    nix
+    openssh
+    yq-go
     zk
     zellij
   ];
