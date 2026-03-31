@@ -111,6 +111,8 @@ in
         database.host = "localhost";
         # Dummy secrets file path to satisfy assertion when database is disabled but host is set
         secretsFile = "${pkgs.writeText "immich-dummy-secrets" "DB_PASSWORD=unused"}";
+        # Bind ML server to all interfaces so it's reachable over Tailscale
+        machine-learning.environment.IMMICH_HOST = lib.mkForce "0.0.0.0";
       })
       # Acceleration
       (mkIf (cfg.acceleration == "rocm") {
@@ -131,7 +133,7 @@ in
       "render"
     ];
 
-    # Open port for worker access
-    networking.firewall.allowedTCPPorts = mkIf (cfg.role == "worker") [ 3003 ];
+    # Open ML port only on tailscale interface for worker access
+    networking.firewall.interfaces.tailscale0.allowedTCPPorts = mkIf (cfg.role == "worker") [ 3003 ];
   };
 }
