@@ -95,6 +95,26 @@ ks agents status luce
 ks agents resume all
 ```
 
+### `ks docs`
+
+```bash
+ks docs [topic|path]
+```
+
+Browse Keystone Markdown docs in the terminal with `glow` and `fzf`.
+
+- With no argument, `ks docs` opens an interactive picker over the `docs/` tree.
+- Topic shortcuts: `os`, `terminal`, `desktop`, `agents`, `projects`.
+- Relative docs paths such as `terminal/projects.md` also work.
+
+Examples:
+
+```bash
+ks docs
+ks docs desktop
+ks docs terminal/projects.md
+```
+
 ### `ks switch`
 
 ```bash

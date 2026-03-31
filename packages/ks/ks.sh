@@ -10,6 +10,7 @@
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
 #   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (unlocked current checkout with --dev, locked full system by default)
 #   agents <pause|resume|status> <agent|all> [reason]  Pause or inspect agent task loops
+#   docs   [topic|path]                                Browse keystone markdown docs with glow and fzf
 #   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
 #   grafana dashboards apply|export <uid>              Apply or export keystone dashboard JSON via Grafana API
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
@@ -91,6 +92,7 @@ Commands:
                                                     Pull, lock, build, push, and deploy
   agents <pause|resume|status> <agent|all> [reason]
                                                     Control agent task-loop pause state
+  docs [topic|path]                                 Browse Keystone docs with glow and fzf
   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
   switch [--boot] [HOSTS]                           Deploy current state without pull, lock, or push
   sync-host-keys                                    Populate hostPublicKey in hosts.nix from live hosts
@@ -114,6 +116,8 @@ Examples:
   ks build
   ks build --lock workstation,ocean
   ks update --dev
+  ks docs
+  ks docs desktop
   ks agents pause all "waiting for human input"
   ks help grafana dashboards
 
@@ -293,6 +297,36 @@ Examples:
 EOF
 }
 
+print_docs_help() {
+  cat <<'EOF'
+Usage: ks docs [topic|path]
+
+Browse Keystone Markdown docs in the terminal with glow and fzf.
+
+Arguments:
+  [topic|path]          Optional doc topic or relative docs path
+
+Topics:
+  os                    Open the Keystone OS entry page
+  terminal              Open the terminal module entry page
+  desktop               Open the desktop entry page
+  agents                Open the agents entry page
+  projects              Open the projects entry page
+
+Options:
+  -h, --help            Show this help
+
+Behavior:
+  With no argument, ks opens an fzf picker over the Keystone docs tree.
+  A relative docs path such as terminal/projects.md also works.
+
+Examples:
+  ks docs
+  ks docs os
+  ks docs terminal/projects.md
+EOF
+}
+
 print_print_help() {
   cat <<'EOF'
 Usage: ks print <file.md> [-o output.pdf] [--open]
@@ -380,6 +414,9 @@ show_help_topic() {
       ;;
     agents)
       print_agents_help
+      ;;
+    docs)
+      print_docs_help
       ;;
     sync-host-keys)
       print_sync_host_keys_help
@@ -514,6 +551,116 @@ cmd_agents() {
   done
 
   return "$rc"
+}
+
+resolve_keystone_docs_root() {
+  local current_repo=""
+  current_repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ -n "$current_repo" && -f "$current_repo/docs/ks.md" && -f "$current_repo/packages/ks/ks.sh" ]]; then
+    printf '%s\n' "$current_repo"
+    return 0
+  fi
+
+  local configured_repo="${HOME}/.keystone/repos/ncrmro/keystone"
+  if [[ -f "$configured_repo/docs/ks.md" && -f "$configured_repo/packages/ks/ks.sh" ]]; then
+    printf '%s\n' "$configured_repo"
+    return 0
+  fi
+
+  local repo_root=""
+  repo_root=$(find_repo 2>/dev/null || true)
+  if [[ -n "$repo_root" ]]; then
+    if [[ -f "$repo_root/.repos/keystone/docs/ks.md" && -f "$repo_root/.repos/keystone/packages/ks/ks.sh" ]]; then
+      printf '%s\n' "$repo_root/.repos/keystone"
+      return 0
+    fi
+
+    if [[ -f "$repo_root/keystone/docs/ks.md" && -f "$repo_root/keystone/packages/ks/ks.sh" ]]; then
+      printf '%s\n' "$repo_root/keystone"
+      return 0
+    fi
+  fi
+
+  echo "Error: could not find a local keystone checkout with a docs/ directory." >&2
+  echo "Expected one of:" >&2
+  echo "  - current repo root" >&2
+  echo "  - ~/.keystone/repos/ncrmro/keystone" >&2
+  echo "  - <nixos-config>/.repos/keystone" >&2
+  return 1
+}
+
+resolve_docs_target() {
+  local docs_root="$1"
+  local query="${2:-}"
+
+  case "$query" in
+    "" )
+      return 1
+      ;;
+    os)
+      printf '%s\n' "$docs_root/os/installation.md"
+      return 0
+      ;;
+    terminal)
+      printf '%s\n' "$docs_root/terminal/terminal.md"
+      return 0
+      ;;
+    desktop)
+      printf '%s\n' "$docs_root/desktop.md"
+      return 0
+      ;;
+    agents)
+      printf '%s\n' "$docs_root/agents/agents.md"
+      return 0
+      ;;
+    projects)
+      printf '%s\n' "$docs_root/terminal/projects.md"
+      return 0
+      ;;
+  esac
+
+  if [[ -f "$docs_root/$query" ]]; then
+    printf '%s\n' "$docs_root/$query"
+    return 0
+  fi
+
+  if [[ -f "$docs_root/$query.md" ]]; then
+    printf '%s\n' "$docs_root/$query.md"
+    return 0
+  fi
+
+  echo "Error: unknown docs topic or path '$query'." >&2
+  echo "Try: ks docs" >&2
+  return 1
+}
+
+cmd_docs() {
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    print_docs_help
+    return 0
+  fi
+
+  local repo_root docs_root target
+  repo_root=$(resolve_keystone_docs_root) || return 1
+  docs_root="$repo_root/docs"
+
+  if [[ $# -gt 0 ]]; then
+    target=$(resolve_docs_target "$docs_root" "$1") || return 1
+    glow "$target"
+    return 0
+  fi
+
+  target="$(
+    cd "$docs_root"
+    find . -type f -name '*.md' \
+      ! -path './.jekyll-cache/*' \
+      | sed 's|^\./||' \
+      | sort \
+      | fzf --prompt='Keystone docs > ' --height=80%
+  )"
+
+  [[ -n "$target" ]] || return 0
+  glow "$docs_root/$target"
 }
 
 # --- Discover repo root ---
@@ -3003,6 +3150,7 @@ case "$CMD" in
     ;;
   agents) cmd_agents "$@" ;;
   build)  cmd_build "$@" ;;
+  docs)   cmd_docs "$@" ;;
   grafana) cmd_grafana "$@" ;;
   sync-agent-assets) cmd_sync_agent_assets "$@" ;;
   update) cmd_update "$@" ;;
@@ -3013,7 +3161,7 @@ case "$CMD" in
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: help, build, update, agents, sync-agent-assets, switch, sync-host-keys, grafana, print, agent, doctor" >&2
+    echo "Known commands: help, build, update, agents, docs, sync-agent-assets, switch, sync-host-keys, grafana, print, agent, doctor" >&2
     exit 1
     ;;
 esac

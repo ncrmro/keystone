@@ -88,7 +88,7 @@ pkgs.runCommand "ks-help-check"
     assert_status help-root 0
     assert_contains help-root 'Use "ks help <command>" for command-specific help.'
 
-    for command in build update switch sync-host-keys agent doctor grafana; do
+    for command in build update switch sync-host-keys agent doctor grafana docs; do
       run_capture "help-$command" help "$command"
       assert_status "help-$command" 0
       assert_contains "help-$command" "Usage: ks $command"
@@ -106,6 +106,11 @@ pkgs.runCommand "ks-help-check"
     run_capture help-grafana-dashboards help grafana dashboards
     assert_status help-grafana-dashboards 0
     assert_contains help-grafana-dashboards "Usage: ks grafana dashboards <apply|export> [uid]"
+
+    run_capture docs-topic docs --help
+    assert_status docs-topic 0
+    assert_contains docs-topic "Topics:"
+    assert_contains docs-topic "ks docs terminal/projects.md"
 
     run_capture grafana-dashboards-long grafana dashboards --help
     assert_status grafana-dashboards-long 0

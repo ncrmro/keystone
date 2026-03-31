@@ -2,8 +2,10 @@
   lib,
   writeShellApplication,
   curl,
+  fzf,
   nix,
   git,
+  glow,
   jq,
   openssh,
   hostname,
@@ -15,8 +17,10 @@ writeShellApplication {
   name = "ks";
   runtimeInputs = [
     curl
+    fzf
     nix
     git
+    glow
     jq
     openssh
     hostname
