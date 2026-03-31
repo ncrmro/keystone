@@ -374,6 +374,7 @@
             ks
             pz
             cfait
+            zellij-tab-name
             chrome-devtools-mcp
             grafana-mcp
             deepwork-library-jobs
