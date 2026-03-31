@@ -16,6 +16,16 @@ let
   notesPath = config.keystone.notes.path;
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
   inherit (devScripts) mkHomeRepoFiles mkHomeScriptCommand;
+  zellijNewTabPrompt = pkgs.writeShellScriptBin "keystone-zellij-new-tab-prompt" ''
+    printf '\nName new tab: '
+    IFS= read -r tab_name
+
+    if [[ -z "$tab_name" ]]; then
+      exit 0
+    fi
+
+    exec ${pkgs.zellij}/bin/zellij action new-tab --name "$tab_name"
+  '';
   ksCommand = mkHomeScriptCommand {
     inherit config pkgs;
     commandName = "ks";
@@ -92,12 +102,15 @@ in
                 MoveTab = "Right";
               };
               # New tab: Ctrl+T
-              # Enforce naming in-client to avoid the multi-client CLI rename-tab issue.
+              # Open a visible floating prompt instead of the subtle RenameTab mode UI.
               "bind \"Ctrl t\"" = {
-                NewTab = { };
-                UndoRenameTab = { };
-                SwitchToMode = "RenameTab";
-                TabNameInput = 0;
+                Run = {
+                  _args = [
+                    "${zellijNewTabPrompt}/bin/keystone-zellij-new-tab-prompt"
+                  ];
+                  floating = true;
+                  close_on_exit = true;
+                };
               };
               # Close tab: Ctrl+W
               "bind \"Ctrl w\"" = {
@@ -147,7 +160,6 @@ in
           g = "git";
           lg = "lazygit";
           # Terminal utilities
-          ztab = "zellij action rename-tab";
           zs = "zesh connect"; # Zellij session manager with zoxide integration
           y = "yazi";
         };
@@ -176,6 +188,44 @@ in
           if command -v pz >/dev/null 2>&1; then
             eval "$(pz completion)"
           fi
+
+          _keystone_zellij_pipe_tab_name() {
+            [[ -n "''${ZELLIJ:-}" && -n "''${ZELLIJ_PANE_ID:-}" ]] || return 1
+
+            local title="$1"
+            local payload
+            payload="$(${pkgs.jq}/bin/jq -nc \
+              --arg pane_id "$ZELLIJ_PANE_ID" \
+              --arg name "$title" \
+              '{ pane_id: $pane_id, name: $name }')"
+
+            ${pkgs.zellij}/bin/zellij action pipe \
+              --plugin "file:${pkgs.keystone.zellij-tab-name}/share/zellij/plugins/zellij-tab-name.wasm" \
+              --name change-tab-name \
+              -- "$payload" >/dev/null 2>&1
+          }
+
+          ztab() {
+            if [[ $# -eq 0 ]]; then
+              print "usage: ztab <name>" >&2
+              return 1
+            fi
+
+            _keystone_zellij_pipe_tab_name "$*"
+          }
+
+          znewtab() {
+            local title="$*"
+
+            if [[ -n "$title" ]]; then
+              ${pkgs.zellij}/bin/zellij action new-tab --name "$title"
+            else
+              ${pkgs.zellij}/bin/zellij run \
+                --floating \
+                --close-on-exit \
+                -- "${zellijNewTabPrompt}/bin/keystone-zellij-new-tab-prompt"
+            fi
+          }
         '';
       };
 
@@ -215,6 +265,8 @@ in
           # Eza - Modern replacement for ls with colors and git integration
           # https://github.com/eza-community/eza
           eza
+
+          zellijNewTabPrompt
 
           # Glow - Render markdown on the CLI with style
           # https://github.com/charmbracelet/glow

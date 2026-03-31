@@ -403,6 +403,7 @@
             pz
             keystone-photos
             cfait
+            zellij-tab-name
             chrome-devtools-mcp
             grafana-mcp
             deepwork-library-jobs

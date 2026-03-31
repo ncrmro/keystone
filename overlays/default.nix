@@ -28,6 +28,7 @@ let
   repo-sync-src = ../packages/repo-sync;
   podman-agent-src = ../packages/podman-agent;
   cfait-src = ../packages/cfait;
+  zellij-tab-name-src = ../packages/zellij-tab-name;
   hyprpolkitagent-src = ../packages/hyprpolkitagent;
   ks-src = ../packages/ks;
   pz-src = ../packages/pz;
@@ -67,6 +68,7 @@ final: prev:
     ks = final.callPackage ks-src { keystonePhotos = final.keystone.keystone-photos; };
     pz = final.callPackage pz-src { };
     cfait = final.callPackage cfait-src { };
+    zellij-tab-name = final.callPackage zellij-tab-name-src { };
     hyprpolkitagent = final.callPackage hyprpolkitagent-src { };
     himalaya = himalaya-flake.packages.${final.system}.default;
     calendula = calendula-flake.packages.${final.system}.default;
