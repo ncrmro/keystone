@@ -39,13 +39,6 @@ in
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
-    # Packages will be added here as they are implemented in Phase 2:
-    # - pkgs.whisper-cpp (voice transcription)
-    # - pkgs.keystone.immich-search (photo/screenshot search)
-    # - docling package (PDF parsing)
-    # - pkgs.keystone.voice-recorder (PipeWire recording helper)
-    home.packages = [
-      # Placeholder — packages added in feat/perception-cli-tools
-    ];
+    home.packages = optional cfg.search.enable pkgs.keystone.keystone-photos;
   };
 }

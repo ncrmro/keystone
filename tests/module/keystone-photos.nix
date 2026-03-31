@@ -138,7 +138,7 @@ pkgs.runCommand "keystone-photos-check"
 
         run_capture help env PATH="$TMP_DIR:$PATH" bash "$SCRIPT" --help
         assert_status help 0
-        assert_contains help "keystone-photos — search Immich assets from the terminal"
+        assert_contains help "keystone-photos — search and sync Immich assets from the terminal"
         assert_contains help "Credential discovery:"
 
         run_capture missing-creds env PATH="$TMP_DIR:$PATH" bash "$SCRIPT" search --text acme

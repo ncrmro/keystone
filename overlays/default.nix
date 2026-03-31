@@ -31,6 +31,7 @@ let
   hyprpolkitagent-src = ../packages/hyprpolkitagent;
   ks-src = ../packages/ks;
   pz-src = ../packages/pz;
+  keystone-photos-src = ../packages/keystone-photos;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
@@ -62,7 +63,8 @@ final: prev:
     fetch-github-sources = final.callPackage fetch-github-sources-src { };
     repo-sync = final.callPackage repo-sync-src { };
     podman-agent = final.callPackage podman-agent-src { };
-    ks = final.callPackage ks-src { };
+    keystone-photos = final.callPackage keystone-photos-src { };
+    ks = final.callPackage ks-src { keystonePhotos = final.keystone.keystone-photos; };
     pz = final.callPackage pz-src { };
     cfait = final.callPackage cfait-src { };
     hyprpolkitagent = final.callPackage hyprpolkitagent-src { };
