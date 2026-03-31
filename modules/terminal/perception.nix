@@ -3,7 +3,7 @@
 # This module provides CLI tools for the perception layer:
 # - PDF parsing (docling) — added in Phase 2
 # - Voice transcription (whisper.cpp) — added in Phase 2
-# - Photo/screenshot search (immich-search) — added in Phase 2
+# - Keystone Photos (`ks photos`, backed by `keystone-photos`) — added in Phase 2
 # - Voice recording helper — added in Phase 2
 #
 # This is the configuration scaffolding. When `enable = true`, the option
