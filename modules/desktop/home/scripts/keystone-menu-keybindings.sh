@@ -133,8 +133,8 @@ parse_bindings() {
 
 static_bindings() {
   cat <<'EOF'
-Ctrl + ,                           → Terminal: Previous zellij tab
-Ctrl + .                           → Terminal: Next zellij tab
+Ctrl + , / Ctrl + PageUp          → Terminal: Previous zellij tab
+Ctrl + . / Ctrl + PageDown        → Terminal: Next zellij tab
 Ctrl + <                           → Terminal: Move zellij tab left
 Ctrl + >                           → Terminal: Move zellij tab right
 Ctrl + T                           → Terminal: New zellij tab

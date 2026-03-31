@@ -63,14 +63,24 @@ in
           theme = "current";
           startup_tips = false;
           pane_frames = false;
+          # Ctrl+punctuation bindings such as Ctrl+, need extended keyboard reporting.
+          support_kitty_keyboard_protocol = true;
           keybinds = {
             normal = {
               # Previous tab: Ctrl+,
               "bind \"Ctrl ,\"" = {
                 GoToPreviousTab = { };
               };
+              # Previous tab: Ctrl+PageUp
+              "bind \"Ctrl PageUp\"" = {
+                GoToPreviousTab = { };
+              };
               # Next tab: Ctrl+.
               "bind \"Ctrl .\"" = {
+                GoToNextTab = { };
+              };
+              # Next tab: Ctrl+PageDown
+              "bind \"Ctrl PageDown\"" = {
                 GoToNextTab = { };
               };
               # Move tab left: Ctrl+<

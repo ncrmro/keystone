@@ -14,10 +14,11 @@ project-aware desktop navigation into a keyboard-first environment.
 
 Start here if you are new to Keystone Desktop:
 
-1. Read [Desktop Keybindings](desktop/keybindings.md)
-2. Read [Walker](desktop/walker.md)
-3. Configure your displays with [Monitors](desktop/monitors.md)
-4. Set up biometric unlock with [Fingerprint Unlock](desktop/fingerprint-unlock.md) if your hardware supports it
+1. Read [Navigation](navigation.md)
+2. Read [Desktop Keybindings](desktop/keybindings.md)
+3. Read [Walker](desktop/walker.md)
+4. Configure your displays with [Monitors](desktop/monitors.md)
+5. Set up biometric unlock with [Fingerprint Unlock](desktop/fingerprint-unlock.md) if your hardware supports it
 
 ## What Keystone Desktop includes
 
@@ -42,6 +43,7 @@ The intended workflow is:
 ## Related docs
 
 - [Desktop Keybindings](desktop/keybindings.md)
+- [Navigation](navigation.md)
 - [Walker](desktop/walker.md)
 - [Monitors](desktop/monitors.md)
 - [Fingerprint Unlock](desktop/fingerprint-unlock.md)

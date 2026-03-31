@@ -28,7 +28,7 @@ let
       read_hyprlock_color() {
         local name="$1"
         if [[ -f "$hyprlock_file" ]]; then
-          sed -n "s/^\\$$name = \\(rgb([^)]*)\\).*/\\1/p" "$hyprlock_file" | head -1
+          sed -n "s/^\\\$${name} = \\(rgb([^)]*)\\).*/\\1/p" "$hyprlock_file" | head -1
         fi
       }
 

@@ -80,6 +80,16 @@ The module installs and configures the following language servers automatically:
 
 [Zellij](https://zellij.dev/) is configured with sensible keybindings and acts as the default terminal multiplexer.
 
+For the combined desktop and terminal movement reference, see [Navigation](../navigation.md).
+
+Common Keystone zellij keybindings:
+
+- `Ctrl+PageUp` / `Ctrl+PageDown`: Previous and next tab
+- `Ctrl+,` / `Ctrl+.`: Previous and next tab
+- `Ctrl+<` / `Ctrl+>`: Move the current tab left or right
+- `Ctrl+T`: Create a new tab and name it immediately
+- `Ctrl+W`: Close the current tab
+
 ## hwrekey — Secrets Rekeying
 
 The `hwrekey` command automates re-encrypting agenix secrets with your YubiKey and (optionally) handling the full submodule commit/push/flake-update workflow.

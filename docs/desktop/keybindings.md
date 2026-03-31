@@ -7,6 +7,8 @@ description: Core Keystone Desktop keybindings for launching apps, switching pro
 
 Keystone Desktop is designed around keyboard-first navigation.
 
+For combined desktop and terminal movement, session switching, and Zellij tab navigation, see [Navigation](../navigation.md).
+
 The launcher and desktop workflow center on a small set of bindings:
 
 ## Launchers and menus
@@ -49,6 +51,7 @@ Walker and Elephant together provide the backend for these desktop menus. See
 
 ## Related docs
 
+- [Navigation](../navigation.md)
 - [Walker](walker.md)
 - [Projects and pz](../terminal/projects.md)
 - [Notes](../notes.md)
