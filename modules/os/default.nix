@@ -132,6 +132,20 @@ let
             description = "Enable desktop environment (Hyprland, waybar, etc.)";
           };
 
+          screenshotSync = {
+            enable = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Enable screenshot syncing to Immich for this desktop user.";
+            };
+
+            syncOnCalendar = mkOption {
+              type = types.str;
+              default = "*:0/5";
+              description = "Systemd calendar expression for screenshot sync interval.";
+            };
+          };
+
           hyprland = {
             modifierKey = mkOption {
               type = types.enum [

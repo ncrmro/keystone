@@ -27,13 +27,15 @@ stdenv.mkDerivation {
     chmod +x $out/bin/*
 
     wrapProgram $out/bin/agent.coding-agent \
-      --prefix PATH : ${lib.makeBinPath [
-        git
-        gh
-        openssh
-        jq
-        forgejo-cli
-      ]}
+      --prefix PATH : ${
+        lib.makeBinPath [
+          git
+          gh
+          openssh
+          jq
+          forgejo-cli
+        ]
+      }
   '';
 
   meta = with lib; {

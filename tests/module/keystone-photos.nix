@@ -84,25 +84,37 @@ pkgs.runCommand "keystone-photos-check"
     #!${pkgs.bash}/bin/bash
     set -euo pipefail
 
-    args="$*"
-    request_file="''${TMP_DIR}/request.json"
-
-    if [[ "$args" == *"/api/people"* ]]; then
-      cat <<'JSON'
-    [
-      {"id":"person-1","name":"Nick Romero"},
-      {"id":"person-2","name":"Someone Else"}
-    ]
-    JSON
-      exit 0
-    fi
-
+    method="GET"
     body=""
+    url=""
+    data_file=""
+    headers_file="''${TMP_DIR}/curl-headers.log"
+
     while [[ $# -gt 0 ]]; do
       case "$1" in
+        -X)
+          method="$2"
+          shift 2
+          ;;
         -d)
           body="$2"
           shift 2
+          ;;
+        -H)
+          printf '%s\n' "$2" >>"$headers_file"
+          shift 2
+          ;;
+        -F)
+          printf '%s\n' "$2" >>"''${TMP_DIR}/curl-form.log"
+          if [[ "$2" == assetData=@* ]]; then
+            data_file="''${2#assetData=@}"
+            data_file="''${data_file%%;*}"
+          fi
+          shift 2
+          ;;
+        http://*|https://*)
+          url="$1"
+          shift
           ;;
         *)
           shift
@@ -110,9 +122,21 @@ pkgs.runCommand "keystone-photos-check"
       esac
     done
 
-    printf '%s' "$body" >"$request_file"
+    if [[ -n "$body" ]]; then
+      printf '%s' "$body" >"''${TMP_DIR}/request.json"
+    fi
 
-    cat <<'JSON'
+    case "''${method} ''${url}" in
+      "GET http://immich.local/api/people")
+        cat <<'JSON'
+    [
+      {"id":"person-1","name":"Nick Romero"},
+      {"id":"person-2","name":"Someone Else"}
+    ]
+    JSON
+        ;;
+      "POST http://immich.local/api/search/smart")
+        cat <<'JSON'
     {
       "assets": {
         "items": [
@@ -130,6 +154,57 @@ pkgs.runCommand "keystone-photos-check"
       }
     }
     JSON
+        ;;
+      "GET http://immich.local/api/albums")
+        if [[ -f "''${TMP_DIR}/album-created" ]]; then
+          cat <<'JSON'
+    [
+      {"id":"album-1","albumName":"Screenshots - testuser"}
+    ]
+    JSON
+        else
+          printf '[]\n'
+        fi
+        ;;
+      "POST http://immich.local/api/albums")
+        touch "''${TMP_DIR}/album-created"
+        printf '%s\n' "create-album" >>"''${TMP_DIR}/sync-events.log"
+        cat <<'JSON'
+    {"id":"album-1","albumName":"Screenshots - testuser"}
+    JSON
+        ;;
+      "POST http://immich.local/api/assets")
+        if [[ -n "$data_file" ]]; then
+          printf '%s\n' "upload $(basename "$data_file")" >>"''${TMP_DIR}/sync-events.log"
+        fi
+        cat <<'JSON'
+    {"id":"uploaded-asset-1","status":"created"}
+    JSON
+        ;;
+      "POST http://immich.local/api/albums/album-1/assets")
+        printf '%s\n' "album-add" >>"''${TMP_DIR}/sync-events.log"
+        printf '{}\n'
+        ;;
+      "POST http://immich.local/api/tags/upsert")
+        printf '%s\n' "tag-upsert" >>"''${TMP_DIR}/sync-events.log"
+        printf '%s' "$body" >"''${TMP_DIR}/tag-upsert-request.json"
+        cat <<'JSON'
+    [
+      {"id":"tag-source","value":"source:screenshot"},
+      {"id":"tag-host","value":"host:test-host"},
+      {"id":"tag-account","value":"account:testuser"}
+    ]
+    JSON
+        ;;
+      "POST http://immich.local/api/tags/tag-source/assets"|"POST http://immich.local/api/tags/tag-host/assets"|"POST http://immich.local/api/tags/tag-account/assets")
+        printf '%s\n' "tag-asset" >>"''${TMP_DIR}/sync-events.log"
+        printf '{}\n'
+        ;;
+      *)
+        echo "Unexpected curl invocation: ''${method} ''${url}" >&2
+        exit 1
+        ;;
+    esac
     EOF
           chmod +x "$TMP_DIR/curl"
         }
@@ -180,6 +255,62 @@ pkgs.runCommand "keystone-photos-check"
         assert_status table-search 0
         assert_contains table-search 'nick-romero-card.jpg'
         assert_contains table-search 'MATCH'
+
+        mkdir -p "$TMP_DIR/screenshots" "$TMP_DIR/state"
+        printf 'fake png\n' >"$TMP_DIR/screenshots/screenshot-1.png"
+
+        run_capture sync-first env \
+          PATH="$TMP_DIR:$PATH" \
+          IMMICH_URL="http://immich.local" \
+          IMMICH_API_KEY="secret" \
+          TMP_DIR="$TMP_DIR" \
+          bash "$SCRIPT" sync-screenshots \
+            --directory "$TMP_DIR/screenshots" \
+            --album-name "Screenshots - testuser" \
+            --host-name "test-host" \
+            --account-name "testuser" \
+            --state-file "$TMP_DIR/state/sync.tsv"
+        assert_status sync-first 0
+
+        if ! grep -Fq 'upload screenshot-1.png' "$TMP_DIR/sync-events.log"; then
+          echo "FAIL: sync-first did not upload the screenshot" >&2
+          cat "$TMP_DIR/sync-events.log" >&2 || true
+          exit 1
+        fi
+
+        if ! grep -Fq 'create-album' "$TMP_DIR/sync-events.log"; then
+          echo "FAIL: sync-first did not create the album" >&2
+          cat "$TMP_DIR/sync-events.log" >&2 || true
+          exit 1
+        fi
+
+        if ! grep -Fq 'account:testuser' "$TMP_DIR/tag-upsert-request.json"; then
+          echo "FAIL: sync-first did not request account tag upsert" >&2
+          cat "$TMP_DIR/tag-upsert-request.json" >&2 || true
+          exit 1
+        fi
+
+        sync_event_count_before="$(wc -l < "$TMP_DIR/sync-events.log")"
+
+        run_capture sync-second env \
+          PATH="$TMP_DIR:$PATH" \
+          IMMICH_URL="http://immich.local" \
+          IMMICH_API_KEY="secret" \
+          TMP_DIR="$TMP_DIR" \
+          bash "$SCRIPT" sync-screenshots \
+            --directory "$TMP_DIR/screenshots" \
+            --album-name "Screenshots - testuser" \
+            --host-name "test-host" \
+            --account-name "testuser" \
+            --state-file "$TMP_DIR/state/sync.tsv"
+        assert_status sync-second 0
+
+        sync_event_count_after="$(wc -l < "$TMP_DIR/sync-events.log")"
+        if [[ "$sync_event_count_before" != "$sync_event_count_after" ]]; then
+          echo "FAIL: sync-second should have skipped the already uploaded file" >&2
+          cat "$TMP_DIR/sync-events.log" >&2 || true
+          exit 1
+        fi
 
         touch "$out"
   ''

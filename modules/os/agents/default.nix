@@ -36,6 +36,7 @@
 #   - SSH secrets + ssh-agent service (agenix assertions for private key/passphrase)
 #   - Desktop environment (labwc, wayvnc)
 #   - Mail client config (himalaya, mail-password assertion)
+#   - Home Manager terminal environment
 #
 #   Created on SERVER hosts independently of `host` (mail.nix, git-server.nix):
 #   - Mail account provisioning (where Stalwart runs, filtered by mail.provision)

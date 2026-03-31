@@ -132,10 +132,11 @@ in
   };
 
   config.keystone.services.generatedTagOwners =
-    optionalAttrs (cfg.immich.host != null && cfg.immich.workers != [ ]) {
-      "tag:svc-immich" = [ "${primaryUser}@" ];
-      "tag:svc-immich-ml" = [ "${primaryUser}@" ];
-    };
+    optionalAttrs (cfg.immich.host != null && cfg.immich.workers != [ ])
+      {
+        "tag:svc-immich" = [ "${primaryUser}@" ];
+        "tag:svc-immich-ml" = [ "${primaryUser}@" ];
+      };
 
   config.keystone.services.generatedACLRules = immichACLRules;
 

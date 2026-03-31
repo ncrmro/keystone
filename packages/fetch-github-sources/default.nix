@@ -22,11 +22,13 @@ stdenv.mkDerivation {
     chmod +x $out/bin/*
 
     wrapProgram $out/bin/fetch-github-sources \
-      --prefix PATH : ${lib.makeBinPath [
-        gh
-        jq
-        coreutils
-      ]}
+      --prefix PATH : ${
+        lib.makeBinPath [
+          gh
+          jq
+          coreutils
+        ]
+      }
   '';
 
   meta = with lib; {

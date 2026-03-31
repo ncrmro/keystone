@@ -3,7 +3,8 @@
   config,
   lib,
   ...
-}: {
+}:
+{
   microvm = {
     hypervisor = "qemu";
 
@@ -48,7 +49,7 @@
 
   systemd.services.verify-tpm = {
     description = "Verify TPM presence and test enrollment on loopback";
-    wantedBy = ["multi-user.target"];
+    wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
       StandardOutput = "journal+console";

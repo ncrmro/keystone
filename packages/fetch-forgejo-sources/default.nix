@@ -22,11 +22,13 @@ stdenv.mkDerivation {
     chmod +x $out/bin/*
 
     wrapProgram $out/bin/fetch-forgejo-sources \
-      --prefix PATH : ${lib.makeBinPath [
-        curl
-        jq
-        coreutils
-      ]}
+      --prefix PATH : ${
+        lib.makeBinPath [
+          curl
+          jq
+          coreutils
+        ]
+      }
   '';
 
   meta = with lib; {

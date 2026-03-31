@@ -64,6 +64,11 @@ let
       timersJson = builtins.toJSON (builtins.attrNames result.config.systemd.timers);
       userServicesJson = builtins.toJSON (builtins.attrNames result.config.systemd.user.services);
       userTimersJson = builtins.toJSON (builtins.attrNames result.config.systemd.user.timers);
+      hmUsersJson =
+        if result.config ? home-manager then
+          builtins.toJSON (builtins.attrNames result.config.home-manager.users)
+        else
+          "[]";
 
       # Check for session variables in home-manager if terminal is enabled for testuser
       sessionVarsJson =
@@ -191,6 +196,24 @@ let
         fi
       fi
 
+      if [ "${name}" = "agent-home-manager-host-filtering" ]; then
+        echo "Verifying host-aware agent home-manager filtering..."
+        if echo '${hmUsersJson}' | grep -q '"agent-drago"'; then
+          echo "  ✓ Found local agent home-manager user"
+        else
+          echo "  ✗ Missing local agent home-manager user"
+          echo "  Actual home-manager users: ${hmUsersJson}"
+          exit 1
+        fi
+        if echo '${hmUsersJson}' | grep -q '"agent-luce"'; then
+          echo "  ✗ Remote agent home-manager user leaked onto this host"
+          echo "  Actual home-manager users: ${hmUsersJson}"
+          exit 1
+        else
+          echo "  ✓ Remote agent home-manager user excluded from this host"
+        fi
+      fi
+
       # Verify DEEPWORK_ADDITIONAL_JOBS_FOLDERS for development-mode test
       if [ "${name}" = "development-mode" ]; then
         echo "Verifying DEEPWORK_ADDITIONAL_JOBS_FOLDERS in development-mode..."
@@ -254,6 +277,40 @@ let
           echo "  ✗ Missing notes capability on one or both agents"
           echo "  Drago: ${dragoCapabilitiesJson}"
           echo "  Luce: ${luceCapabilitiesJson}"
+          exit 1
+        fi
+      fi
+
+      if [ "${name}" = "user-screenshot-sync" ]; then
+        if echo '${userServicesJson}' | grep -q '"keystone-testuser-screenshot-sync"'; then
+          echo "  ✓ Found desktop user screenshot sync service"
+        else
+          echo "  ✗ Missing desktop user screenshot sync service"
+          echo "  Actual user services: ${userServicesJson}"
+          exit 1
+        fi
+        if echo '${userTimersJson}' | grep -q '"keystone-testuser-screenshot-sync"'; then
+          echo "  ✓ Found desktop user screenshot sync timer"
+        else
+          echo "  ✗ Missing desktop user screenshot sync timer"
+          echo "  Actual user timers: ${userTimersJson}"
+          exit 1
+        fi
+      fi
+
+      if [ "${name}" = "agent-screenshot-sync" ]; then
+        if echo '${userServicesJson}' | grep -q '"agent-vision-screenshot-sync"'; then
+          echo "  ✓ Found agent screenshot sync service"
+        else
+          echo "  ✗ Missing agent screenshot sync service"
+          echo "  Actual user services: ${userServicesJson}"
+          exit 1
+        fi
+        if echo '${userTimersJson}' | grep -q '"agent-vision-screenshot-sync"'; then
+          echo "  ✓ Found agent screenshot sync timer"
+        else
+          echo "  ✗ Missing agent screenshot sync timer"
+          echo "  Actual user timers: ${userTimersJson}"
           exit 1
         fi
       fi
@@ -362,6 +419,34 @@ let
               "notes"
               "executive-assistant"
             ];
+            notes.repo = "git@example.com:luce/notes.git";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    agent-home-manager-host-filtering = eval "agent-home-manager-host-filtering" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.drago = {
+            fullName = "Drago";
+            email = "drago@example.com";
+            host = "test-host";
+            notes.repo = "git@example.com:drago/notes.git";
+          };
+          agents.luce = {
+            fullName = "Luce";
+            email = "luce@example.com";
+            host = "ocean";
             notes.repo = "git@example.com:luce/notes.git";
           };
         };
@@ -876,6 +961,74 @@ let
             };
           };
         };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    user-screenshot-sync = eval "user-screenshot-sync" [
+      {
+        keystone = {
+          domain = "example.com";
+          hosts.ocean = {
+            hostname = "ocean";
+            role = "server";
+            tailscaleIP = "100.64.0.10";
+          };
+          services.immich.host = "ocean";
+          os = {
+            enable = true;
+            storage = {
+              type = "ext4";
+              devices = [ "/dev/vda" ];
+            };
+            users.testuser = {
+              fullName = "Test User";
+              initialPassword = "testpass";
+              desktop = {
+                enable = true;
+                screenshotSync.enable = true;
+              };
+            };
+          };
+        };
+        age.secrets."testuser-immich-api-key".file = builtins.toFile "testuser-immich-api-key.age" "dummy";
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    agent-screenshot-sync = eval "agent-screenshot-sync" [
+      {
+        keystone = {
+          domain = "example.com";
+          hosts.ocean = {
+            hostname = "ocean";
+            role = "server";
+            tailscaleIP = "100.64.0.10";
+          };
+          services.immich.host = "ocean";
+          os = {
+            enable = true;
+            storage = {
+              type = "ext4";
+              devices = [ "/dev/vda" ];
+            };
+            agents.vision = {
+              fullName = "Vision Agent";
+              notes.repo = "git@example.com:vision/notes.git";
+              host = "test-host";
+              desktop.enable = true;
+              perception.enable = true;
+            };
+          };
+        };
+        age.secrets."agent-vision-immich-api-key".file =
+          builtins.toFile "agent-vision-immich-api-key.age" "dummy";
         fileSystems."/" = {
           device = lib.mkForce "/dev/vda2";
           fsType = lib.mkForce "ext4";

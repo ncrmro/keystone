@@ -135,7 +135,6 @@ if ! session_exists; then
     # For now, let's keep the manual creation but ensure it's consistent with pz's expectations
     # if it ever changes. pz currently expects projects in $VAULT_ROOT/projects/$SLUG
     local_project_path="${VAULT_ROOT}/projects/${SLUG}"
-    local_project_readme="${local_project_path}/README.md"
     
     # If not in projects/, it might be a note-only project (pz fallback)
     if [[ ! -d "$local_project_path" ]]; then

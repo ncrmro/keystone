@@ -27,5 +27,13 @@ in
       websockets = false;
       registerDNS = true;
     };
+
+    services.nginx.virtualHosts."journal.${config.keystone.domain}".locations."/".extraConfig = ''
+      # systemd-journal-upload sends a streaming request body; avoid buffering
+      # or downgrading the upstream request when proxying to journal-remote.
+      proxy_http_version 1.1;
+      proxy_request_buffering off;
+      proxy_buffering off;
+    '';
   };
 }

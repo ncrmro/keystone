@@ -98,7 +98,7 @@ require_monitor_json() {
 }
 
 normalize_mode() {
-  local mode="$1"
+  local mode="${1:-$(cat)}"
   printf "%s\n" "${mode%Hz}"
 }
 

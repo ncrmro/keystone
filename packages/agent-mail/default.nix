@@ -23,11 +23,13 @@ stdenv.mkDerivation {
     chmod +x $out/bin/*
 
     wrapProgram $out/bin/agent-mail \
-      --prefix PATH : ${lib.makeBinPath [
-        himalaya
-        jq
-        coreutils
-      ]} \
+      --prefix PATH : ${
+        lib.makeBinPath [
+          himalaya
+          jq
+          coreutils
+        ]
+      } \
       --set AGENT_MAIL_TEMPLATES "$out/share/agent-mail/templates"
   '';
 

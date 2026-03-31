@@ -21,6 +21,7 @@ let
   cfg = osCfg.users;
   keysCfg = config.keystone.keys;
   hostname = config.networking.hostName;
+  immichServiceCfg = config.keystone.services.immich;
 
   # Whether the keystone desktop NixOS module is imported (gates home-manager desktop config)
   hasDesktopModule = options.keystone ? desktop;
@@ -49,6 +50,31 @@ let
       hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
     in
     hostKey ++ hwKeys;
+
+  screenshotUsers = filterAttrs (
+    _: userCfg: userCfg.desktop.enable && userCfg.desktop.screenshotSync.enable
+  ) cfg;
+
+  immichServerUrl =
+    let
+      immichHostName = immichServiceCfg.host;
+      hostEntry = findFirst (h: h.hostname == immichHostName) null (attrValues config.keystone.hosts);
+      hostTarget =
+        if hostEntry == null then
+          immichHostName
+        else if hostEntry.tailscaleIP != null then
+          hostEntry.tailscaleIP
+        else if hostEntry.sshTarget != null then
+          hostEntry.sshTarget
+        else if hostEntry.fallbackIP != null then
+          hostEntry.fallbackIP
+        else
+          immichHostName;
+    in
+    if config.keystone.domain != null then
+      "https://photos.${config.keystone.domain}"
+    else
+      "http://${hostTarget}:2283";
 in
 {
   config = mkMerge [
@@ -86,6 +112,21 @@ in
           message = "All user UIDs must be unique";
         }
       ]
+      ++ concatLists (
+        mapAttrsToList (
+          username: userCfg:
+          optional userCfg.desktop.screenshotSync.enable {
+            assertion = userCfg.desktop.enable;
+            message = "User '${username}' enables desktop.screenshotSync but desktop.enable is false.";
+          }
+        ) cfg
+      )
+      ++ optionals (screenshotUsers != { }) [
+        {
+          assertion = immichServiceCfg.host != null;
+          message = "Desktop screenshot sync requires keystone.services.immich.host to be set.";
+        }
+      ]
       # Validate agenix secret exists when sshAutoLoad is enabled
       # (auto-declared below when secrets.repo is set, so this only fires
       # when secrets.repo is null and no manual declaration exists)
@@ -119,19 +160,51 @@ in
         ) cfg
       );
 
+      warnings = concatLists (
+        mapAttrsToList (
+          username: userCfg:
+          optional
+            (userCfg.desktop.screenshotSync.enable && !(config.age.secrets ? "${username}-immich-api-key"))
+            ''
+              Screenshot sync is enabled for user '${username}', but agenix secret "${username}-immich-api-key" is not declared yet.
+
+              To finish setup:
+              1. Add to agenix-secrets/secrets.nix:
+                 "secrets/${username}-immich-api-key.age".publicKeys = adminKeys ++ [ systems.${hostname} ];
+              2. Create the secret with the user's Immich API key:
+                 cd agenix-secrets && agenix -e secrets/${username}-immich-api-key.age
+              3. If keystone.secrets.repo is null, declare it in host config:
+                 age.secrets.${username}-immich-api-key = {
+                   file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-immich-api-key.age";
+                   owner = "${username}";
+                   mode = "0400";
+                 };
+
+              TODO: automate Immich API key provisioning and secret enrollment from Keystone tooling.
+            ''
+        ) screenshotUsers
+      );
+
       # Auto-declare age.secrets for sshAutoLoad when secrets.repo is set
       age.secrets = mkIf (config.keystone.secrets.repo != null) (
         listToAttrs (
           concatLists (
             mapAttrsToList (
               username: userCfg:
-              optional userCfg.sshAutoLoad.enable (
+              (optional userCfg.sshAutoLoad.enable (
                 nameValuePair "${hostname}-ssh-passphrase" {
                   file = "${config.keystone.secrets.repo}/secrets/${hostname}-ssh-passphrase.age";
                   owner = username;
                   mode = "0400";
                 }
-              )
+              ))
+              ++ (optional userCfg.desktop.screenshotSync.enable (
+                nameValuePair "${username}-immich-api-key" {
+                  file = "${config.keystone.secrets.repo}/secrets/${username}-immich-api-key.age";
+                  owner = username;
+                  mode = "0400";
+                }
+              ))
             ) cfg
           )
         )
@@ -182,6 +255,49 @@ in
           )}
         '';
       };
+
+      systemd.user.services = mkMerge (
+        mapAttrsToList (
+          username: userCfg:
+          mkIf userCfg.desktop.screenshotSync.enable {
+            "keystone-${username}-screenshot-sync" = {
+              description = "Sync screenshots to Immich for ${username}";
+              unitConfig.ConditionUser = username;
+              serviceConfig = {
+                Type = "oneshot";
+                SyslogIdentifier = "keystone-screenshot-sync";
+              };
+              script = ''
+                export HOME=/home/${username}
+                export XDG_STATE_HOME="''${XDG_STATE_HOME:-$HOME/.local/state}"
+                exec ${pkgs.keystone.keystone-photos}/bin/keystone-photos sync-screenshots \
+                  --url ${lib.escapeShellArg immichServerUrl} \
+                  --api-key-file /run/agenix/${username}-immich-api-key \
+                  --album-name ${lib.escapeShellArg "Screenshots - ${username}"} \
+                  --host-name ${lib.escapeShellArg hostname} \
+                  --account-name ${lib.escapeShellArg username} \
+                  --state-file "''${XDG_STATE_HOME}/keystone-photos/screenshot-sync.tsv"
+              '';
+            };
+          }
+        ) screenshotUsers
+      );
+
+      systemd.user.timers = mkMerge (
+        mapAttrsToList (
+          username: userCfg:
+          mkIf userCfg.desktop.screenshotSync.enable {
+            "keystone-${username}-screenshot-sync" = {
+              wantedBy = [ "default.target" ];
+              unitConfig.ConditionUser = username;
+              timerConfig = {
+                OnCalendar = userCfg.desktop.screenshotSync.syncOnCalendar;
+                Persistent = true;
+              };
+            };
+          }
+        ) screenshotUsers
+      );
     })
 
     # Configure home-manager for users with terminal/desktop enabled

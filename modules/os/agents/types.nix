@@ -166,8 +166,9 @@ in
             Hostname where this agent primarily runs. Controls two things:
 
             1. Feature filtering — desktop, mail-client, and SSH resources
-               (secrets, assertions, services) are only created on the host
-               whose networking.hostName matches this value.
+               (secrets, assertions, services), plus the agent's Home Manager
+               profile, are only created on the host whose networking.hostName
+               matches this value.
 
             2. All hosts still get the agent's OS user/group and home directory
                so the agent can SSH in everywhere.
