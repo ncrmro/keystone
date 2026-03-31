@@ -114,9 +114,10 @@ main_json() {
       },
       {
         Text: "Install",
-        Subtext: "Use Nix instead",
-        Value: "blocked\tInstall\tUse Nix to install software.",
-        Icon: "list-add-symbolic"
+        Subtext: "Search and install packages from the current system flake",
+        Value: "install",
+        Icon: "list-add-symbolic",
+        SubMenu: "keystone-install"
       },
       {
         Text: "Remove",
