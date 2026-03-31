@@ -116,6 +116,28 @@ ks docs desktop
 ks docs terminal/projects.md
 ```
 
+### `ks photos`
+
+```bash
+ks photos search [options]
+```
+
+Search Immich-backed photo, screenshot, and OCR results through Keystone Photos.
+
+- `Keystone Photos` is the canonical name for this feature.
+- The public CLI entrypoint is `ks photos`.
+- The implementation package and backend helper are `keystone-photos`.
+- `immich-search` is legacy spec wording and should not be used for new docs.
+
+Examples:
+
+```bash
+ks photos search --text "acme"
+ks photos search --text "nick romero" --kind business-card
+ks photos search --person "Nick Romero" --type photo
+ks photos search --text "ks build" --type screenshot --from 2026-01-01 --to 2026-03-31
+```
+
 ### `ks switch`
 
 ```bash
