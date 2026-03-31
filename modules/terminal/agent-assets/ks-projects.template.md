@@ -1,5 +1,9 @@
 Route project-related requests to the appropriate project DeepWork workflow.
 
+Use `ks.notes` proactively after major project events when durable decisions,
+risks, scope changes, or retrospective findings should be preserved in the
+notebook in addition to shared project tracking surfaces.
+
 ## Available workflows
 
 - **project/onboard** — onboard a new project: create hub note, scaffold structure, link repos
@@ -20,6 +24,11 @@ Route project-related requests to the appropriate project DeepWork workflow.
 - Mentions of health audit, hub note, repo conventions, or release post coverage → `project/doctor`
 - Mentions of wrap up, wind down, committing changes, or finishing a session → `project/wrap_up`
 - If unclear, ask the user which workflow to run before starting
+
+## Notes integration
+
+- After milestone setup, engineering handoff, or project success work, use `ks.notes` to record durable decisions, learnings, or risk changes.
+- Notes complement issues, milestones, and project boards; they do not replace the shared system of record.
 
 ## How to start a workflow
 

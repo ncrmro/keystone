@@ -58,7 +58,9 @@ This definition propagates to all four CLIs automatically.
 
 `ai-extensions.nix` generates the same Keystone workflow commands (`/ks`,
 `/ks.dev`, `/ks.notes`, `/ks.projects`) and skills (`deepwork`, `wrap-up`)
-for each CLI, adapted to the tool's native format.
+for each CLI, adapted to the tool's native format. `ks.notes` is the durable
+memory entrypoint: agents should use it proactively when work produces
+meaningful decisions, findings, or reusable operational context.
 
 ### Format mapping
 
@@ -94,6 +96,16 @@ The set of published commands depends on resolved capabilities:
 
 Capabilities merge from base defaults, archetype defaults (e.g., `engineer`),
 explicit `aiExtensions.capabilities`, and dev-mode gating.
+
+## Durable memory and shared surfaces
+
+- `ks.notes` owns durable notebook capture: decisions, reports, hub-linked notes,
+  and shared-surface refs stored in zk frontmatter.
+- Issues, pull requests, milestones, and project boards remain the public system
+  of record for status, review state, and collaborator-visible decisions.
+- Generated `AGENTS.md` guidance now tells agents to use `ks.notes`
+  proactively, while still following `process.issue-journal` and
+  `process.project-board` for shared-surface work.
 
 ## Development mode
 
