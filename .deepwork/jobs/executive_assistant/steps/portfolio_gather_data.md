@@ -139,7 +139,7 @@ Raw collected data for one project.
 - **Last commit**: 2026-03-19
 - **Recent commits**:
   - bfb55a5 Merge branch 'worktree-keystone-desktop-integration'
-  - 2f3a9d4 fix(deepwork): add PR Demo section update to sweng review step
+  - 2f3a9d4 fix(deepwork): add PR Demo section update to engineering review step
   - 5ce7401 fix(desktop): quote parameter expansions in prefix stripping
     [...]
 

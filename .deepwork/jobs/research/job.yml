@@ -11,7 +11,7 @@ common_job_info_provided_to_all_steps_at_runtime: |
   - **quick**: Local-only fast research (3+ sources via WebSearch/WebFetch) with concise summary
   - **ingest**: Import external research material (markdown, papers, URLs) into the user's notes
   - **reproduce**: Ingest material (via nested ingest workflow), analyze for reproducibility,
-    and create an engineering plan that can be handed off to sweng workflows or issue trackers
+    and create an engineering plan that can be handed off to implementation workflows or issue trackers
 
   ## Platform Support (deep workflow only)
 
@@ -350,7 +350,7 @@ steps:
 
   - id: plan
     name: "Create Reproduction Plan"
-    description: "Create a structured reproduction plan; output as markdown, issues, or sweng handoff based on context"
+    description: "Create a structured reproduction plan; output as markdown, issues, or implementation handoff based on context"
     instructions_file: steps/plan.md
     inputs:
       - file: reproducibility_analysis.md
@@ -372,4 +372,4 @@ steps:
         quality_criteria:
           "Actionable Tasks": "The plan contains specific, actionable tasks with clear acceptance criteria."
           "Dependencies Mapped": "Task dependencies and ordering are clearly specified."
-          "Handoff Ready": "The plan is structured for handoff to a sweng workflow or issue tracker (Forgejo/GitHub)."
+          "Handoff Ready": "The plan is structured for handoff to an implementation workflow or issue tracker (Forgejo/GitHub)."

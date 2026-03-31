@@ -23,7 +23,7 @@ Read the scope analysis and review decision from prior steps, group approved sto
 3. **Create a branch and worktree**
    - Derive a milestone slug from the milestone title (e.g., "Recipe Sharing Platform" → `recipe-sharing-platform`)
    - Create a branch: `git branch docs/specs-{milestone-slug} origin/main`
-   - Create a worktree: `git worktree add .worktrees/docs/specs-{milestone-slug} docs/specs-{milestone-slug}`
+   - Create a worktree: `git worktree add "$HOME/.worktrees/{owner}/{repo}/docs/specs-{milestone-slug}" docs/specs-{milestone-slug}`
    - Work in the worktree for all subsequent operations
 
 4. **Create spec files**

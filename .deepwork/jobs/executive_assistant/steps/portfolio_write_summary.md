@@ -57,7 +57,12 @@ be aggregated into the portfolio report.
      dependency for other work
    - Use milestone progress, due dates, and charter alignment to make the classification
 
-   Render as an ASCII box diagram (see Output Format below).
+   Render as four compact quadrant subsections, not an ASCII box diagram. Keep each
+   bullet short enough to print cleanly:
+   - `Q1 — Do first`
+   - `Q2 — Schedule`
+   - `Q3 — Delegate`
+   - `Q4 — Eliminate / Archive`
 
 6. **Recommend next actions**
 
@@ -95,22 +100,23 @@ Formatted status summary for one project.
 
 **Recently Completed**: Terminal Module (closed 2026-02-15)
 
-### Milestone Priority Matrix
-```
+### Milestone priority matrix
 
-                    URGENT                          NOT URGENT
-          ┌─────────────────────────┬─────────────────────────┐
-          │ DO FIRST                │ SCHEDULE                │
+#### Q1 — Do first
 
-IMPORTANT │ Desktop Integration │ v2.0 Release │
-│ 67%, due 2026-04-01 │ 17%, no due date │
-├─────────────────────────┼─────────────────────────┤
-│ DELEGATE │ ELIMINATE │
-NOT │ │ │
-IMPORTANT │ │ │
-└─────────────────────────┴─────────────────────────┘
+- Desktop Integration — 67%, due 2026-04-01
 
-```
+#### Q2 — Schedule
+
+- v2.0 Release — 17%, no due date
+
+#### Q3 — Delegate
+
+- None
+
+#### Q4 — Eliminate / Archive
+
+- None
 
 ### Key Issues & PRs
 
@@ -167,5 +173,6 @@ No open milestones.
 
 This step produces the per-project building block of the portfolio report. The format
 must be consistent across all projects so the synthesis step can aggregate them into
-a coherent portfolio view. Keep summaries tight — the portfolio report reader wants
+a coherent portfolio view. Prefer compact sections and short bullets so the output
+prints cleanly. Keep summaries tight — the portfolio report reader wants
 to scan, not read essays.
