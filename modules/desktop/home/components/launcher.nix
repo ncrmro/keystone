@@ -79,6 +79,11 @@ in
           sourcePath = ./keystone-system.lua;
         }
         {
+          targetPath = ".config/elephant/menus/keystone-install.lua";
+          relativePath = "modules/desktop/home/components/keystone-install.lua";
+          sourcePath = ./keystone-install.lua;
+        }
+        {
           targetPath = ".config/elephant/menus/keystone-projects.lua";
           relativePath = "modules/desktop/home/components/keystone-projects.lua";
           sourcePath = ./keystone-projects.lua;
@@ -233,6 +238,10 @@ in
             "menus:keystone-system" = {
               input = " System";
               list = "No system actions available";
+            };
+            "menus:keystone-install" = {
+              input = " Install";
+              list = "No install actions available";
             };
             "menus:keystone-projects" = {
               input = " Projects";

@@ -50,27 +50,27 @@ keystone_home_manager_host_file() {
   printf "%s\n" "$candidate"
 }
 
-keystone_write_desktop_state_section() {
-  local section_name="$1"
-  local target_file=""
+keystone_write_managed_section() {
+  local target_file="$1"
+  local top_label="$2"
+  local section_name="$3"
   local section_body=""
-
-  target_file=$(keystone_home_manager_host_file)
   section_body=$(cat)
 
-  KEYSTONE_SECTION_BODY="$section_body" python3 - "$target_file" "$section_name" <<'PYCODE'
+  KEYSTONE_SECTION_BODY="$section_body" python3 - "$target_file" "$top_label" "$section_name" <<'PYCODE'
 import pathlib
 import re
 import sys
 import os
 
 target = pathlib.Path(sys.argv[1])
-section_name = sys.argv[2]
+top_label = sys.argv[2]
+section_name = sys.argv[3]
 section_body = os.environ["KEYSTONE_SECTION_BODY"].rstrip("\n")
 
 doc = target.read_text()
-top_start = "  # BEGIN keystone-managed desktop state"
-top_end = "  # END keystone-managed desktop state"
+top_start = f"  # BEGIN keystone-managed {top_label}"
+top_end = f"  # END keystone-managed {top_label}"
 section_start = f"  # BEGIN keystone-managed {section_name}"
 section_end = f"  # END keystone-managed {section_name}"
 section_block = f"{section_start}\n{section_body}\n{section_end}\n"
@@ -103,4 +103,12 @@ else:
 
 target.write_text(doc)
 PYCODE
+}
+
+keystone_write_desktop_state_section() {
+  local section_name="$1"
+  local target_file=""
+
+  target_file=$(keystone_home_manager_host_file)
+  keystone_write_managed_section "$target_file" "desktop state" "$section_name"
 }

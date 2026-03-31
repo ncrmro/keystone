@@ -222,6 +222,11 @@ let
     builtins.readFile ./keystone-main-menu.sh
   );
 
+  # Package install flow for the main menu
+  keystonePackageMenu = pkgs.writeShellScriptBin "keystone-package-menu" (
+    builtins.readFile ./keystone-package-menu.sh
+  );
+
   # Desktop setup launcher for Walker/Elephant
   keystoneSetupMenu = pkgs.writeShellScriptBin "keystone-setup-menu" (
     builtins.readFile ./keystone-setup-menu.sh
@@ -342,6 +347,25 @@ let
         pkgs.systemd
         pkgs.walker
         pkgs.xdg-utils
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-package-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-package-menu.sh";
+      package = keystonePackageMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.gnused
+        pkgs.ghostty
+        pkgs.jq
+        pkgs.keystone.ks
+        pkgs.libnotify
+        pkgs.nix
+        pkgs.python3
+        pkgs.ripgrep
+        pkgs.walker
       ];
     })
     (mkHomeScriptCommand {
