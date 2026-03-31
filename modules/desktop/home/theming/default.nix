@@ -9,6 +9,92 @@ with lib;
 let
   cfg = config.keystone.desktop;
   themeCfg = config.keystone.desktop.theme;
+  writePolkitTheme = ''
+    write_polkit_theme() {
+      local theme_path="$1"
+      local output_path="$2"
+      local hyprlock_file="$theme_path/hyprlock.conf"
+      local waybar_file="$theme_path/waybar.css"
+      local is_light=false
+      local background=""
+      local surface=""
+      local border=""
+      local accent=""
+      local text=""
+      local muted_text=""
+      local placeholder=""
+      local error=""
+
+      read_hyprlock_color() {
+        local name="$1"
+        if [[ -f "$hyprlock_file" ]]; then
+          sed -n "s/^\\$$name = \\(rgb([^)]*)\\).*/\\1/p" "$hyprlock_file" | head -1
+        fi
+      }
+
+      read_waybar_color() {
+        local name="$1"
+        if [[ -f "$waybar_file" ]]; then
+          sed -n "s/^@define-color $name \\([^;]*\\);/\\1/p" "$waybar_file" | head -1
+        fi
+      }
+
+      if [[ -f "$theme_path/light.mode" ]]; then
+        is_light=true
+      fi
+
+      background="$(read_hyprlock_color color)"
+      [[ -n "$background" ]] || background="$(read_waybar_color background)"
+      [[ -n "$background" ]] || background="#111827"
+
+      surface="$(read_hyprlock_color inner_color)"
+      [[ -n "$surface" ]] || surface="$background"
+
+      border="$(read_hyprlock_color outer_color)"
+      [[ -n "$border" ]] || border="$(read_waybar_color gold)"
+      [[ -n "$border" ]] || border="#334155"
+
+      accent="$border"
+
+      text="$(read_waybar_color foreground)"
+      [[ -n "$text" ]] || text="$(read_hyprlock_color font_color)"
+      [[ -n "$text" ]] || text="#e5e7eb"
+
+      placeholder="$(read_hyprlock_color placeholder_color)"
+      [[ -n "$placeholder" ]] || placeholder="$text"
+
+      muted_text="$placeholder"
+
+      if [[ "$is_light" == true ]]; then
+        error="#b42318"
+      else
+        error="#fb7185"
+      fi
+
+      mkdir -p "$(dirname "$output_path")"
+      ${pkgs.jq}/bin/jq -n \
+        --arg background "$background" \
+        --arg surface "$surface" \
+        --arg border "$border" \
+        --arg accent "$accent" \
+        --arg text "$text" \
+        --arg mutedText "$muted_text" \
+        --arg placeholder "$placeholder" \
+        --arg error "$error" \
+        --argjson light "$is_light" \
+        '{
+          background: $background,
+          surface: $surface,
+          border: $border,
+          accent: $accent,
+          text: $text,
+          mutedText: $mutedText,
+          placeholder: $placeholder,
+          error: $error,
+          light: $light
+        }' > "$output_path"
+    }
+  '';
 
   # List of theme files to copy from omarchy (excluding ghostty.conf - we generate our own)
   themeFilesToCopy = [
@@ -221,6 +307,7 @@ let
   keystoneThemeSwitch = pkgs.writeShellScriptBin "keystone-theme-switch" ''
     THEMES_DIR="${config.xdg.configHome}/keystone/themes"
     CURRENT_LINK="${config.xdg.configHome}/keystone/current"
+    ${writePolkitTheme}
 
     if [[ $# -eq 0 ]]; then
       echo "Available themes:"
@@ -251,6 +338,9 @@ let
     # Update theme symlink
     ln -sfn "$THEME_PATH" "$CURRENT_LINK/theme"
 
+    # Update current polkit theme config
+    write_polkit_theme "$THEME_PATH" "$CURRENT_LINK/polkit.json"
+
     # Set background if available
     if [[ -d "$THEME_PATH/backgrounds" ]]; then
       # Use first background if not specifically set
@@ -270,6 +360,7 @@ let
     ${pkgs.procps}/bin/pkill -SIGUSR2 ghostty 2>/dev/null || true
     ${pkgs.systemd}/bin/systemctl --user restart mako.service 2>/dev/null || true
     ${pkgs.systemd}/bin/systemctl --user restart walker.service 2>/dev/null || true
+    ${pkgs.systemd}/bin/systemctl --user restart hyprpolkitagent.service 2>/dev/null || true
 
     # Set Chromium theme color
     if [[ -f "$THEME_PATH/chromium.theme" ]] && command -v chromium &>/dev/null; then
@@ -366,6 +457,7 @@ in
       KEYSTONE_DIR="${config.xdg.configHome}/keystone"
       CURRENT_DIR="$KEYSTONE_DIR/current"
       THEME_DIR="$KEYSTONE_DIR/themes/${themeCfg.name}"
+      ${writePolkitTheme}
 
       # Create directories
       mkdir -p "$CURRENT_DIR"
@@ -375,6 +467,9 @@ in
         ln -sfn "$THEME_DIR" "$CURRENT_DIR/theme"
         echo "Keystone: Set initial theme to ${themeCfg.name}"
       fi
+
+      write_polkit_theme "$CURRENT_DIR/theme" "$CURRENT_DIR/polkit.json"
+      echo "Keystone: Wrote polkit theme"
 
       # Create default background symlink if not exists and theme has backgrounds
       if [[ ! -L "$CURRENT_DIR/background" ]] && [[ -d "$THEME_DIR/backgrounds" ]]; then

@@ -28,6 +28,7 @@ let
   repo-sync-src = ../packages/repo-sync;
   podman-agent-src = ../packages/podman-agent;
   cfait-src = ../packages/cfait;
+  hyprpolkitagent-src = ../packages/hyprpolkitagent;
   ks-src = ../packages/ks;
   pz-src = ../packages/pz;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
@@ -47,7 +48,8 @@ let
   agenix-flake = agenix;
   deepwork-flake = deepwork;
 in
-final: prev: {
+final: prev:
+{
   keystone = {
     zesh = final.callPackage zesh-src { };
     agent-coding-agent = final.callPackage agent-coding-agent-src { };
@@ -63,6 +65,7 @@ final: prev: {
     ks = final.callPackage ks-src { };
     pz = final.callPackage pz-src { };
     cfait = final.callPackage cfait-src { };
+    hyprpolkitagent = final.callPackage hyprpolkitagent-src { };
     himalaya = himalaya-flake.packages.${final.system}.default;
     calendula = calendula-flake.packages.${final.system}.default;
     cardamum = cardamum-flake.packages.${final.system}.default;
@@ -114,12 +117,14 @@ final: prev: {
       inherit grafana-mcp-src;
     };
     slidev = final.callPackage slidev-src { };
-  } // final.lib.optionalAttrs final.stdenv.isLinux {
+  }
+  // final.lib.optionalAttrs final.stdenv.isLinux {
     # ghostty only has .default for Linux systems
     ghostty = ghostty-flake.packages.${final.system}.default;
   };
   # Top-level overrides so programs.ghostty/yazi use flake versions
   yazi = yazi-flake.packages.${final.system}.default;
-} // prev.lib.optionalAttrs prev.stdenv.isLinux {
+}
+// prev.lib.optionalAttrs prev.stdenv.isLinux {
   ghostty = ghostty-flake.packages.${final.system}.default;
 }

@@ -189,7 +189,7 @@ in
         xdg-user-dirs
 
         # Polkit agent
-        hyprpolkitagent
+        keystone.hyprpolkitagent
 
         # Cursor themes
         adwaita-icon-theme
