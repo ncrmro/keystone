@@ -4,13 +4,13 @@
 }
 
 html {
-  font-size: 9.25pt;
+  font-size: 9.6pt;
 }
 
 body {
   color: #111827;
   font-family: "Noto Sans", "Noto Sans Display", "Helvetica Neue", "Liberation Sans", Arial, sans-serif;
-  line-height: 1.28;
+  line-height: 1.32;
   font-weight: 400;
 }
 
@@ -26,29 +26,29 @@ h4 {
 }
 
 h1 {
-  font-size: 1.26rem;
-  line-height: 1.06;
-  margin: 0 0 0.36rem;
+  font-size: 1.34rem;
+  line-height: 1.08;
+  margin: 0 0 0.42rem;
 }
 
 h2 {
   border-bottom: 1px solid #cbd5e1;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   line-height: 1.12;
-  margin: 0.7rem 0 0.28rem;
+  margin: 0.75rem 0 0.32rem;
   padding-bottom: 0.1rem;
 }
 
 h3 {
-  font-size: 0.8rem;
+  font-size: 0.84rem;
   line-height: 1.1;
-  margin: 0.55rem 0 0.16rem;
+  margin: 0.58rem 0 0.18rem;
 }
 
 h4 {
-  font-size: 0.74rem;
+  font-size: 0.77rem;
   line-height: 1.1;
-  margin: 0.36rem 0 0.12rem;
+  margin: 0.38rem 0 0.14rem;
 }
 
 p,
@@ -71,7 +71,7 @@ li + li {
 
 table {
   border-collapse: collapse;
-  font-size: 0.76rem;
+  font-size: 0.79rem;
   table-layout: fixed;
   width: 100%;
 }
@@ -97,7 +97,7 @@ th {
 code,
 pre {
   font-family: "DejaVu Sans Mono", "Liberation Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
 }
 
 pre {

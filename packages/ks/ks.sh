@@ -3196,6 +3196,7 @@ cmd_print() {
   local output_file=""
   local open_after=false
   local no_print=false
+  local print_css_path="@KS_PRINT_CSS@"
 
   while [[ $# -gt 0 ]]; do
     case $1 in
@@ -3257,6 +3258,19 @@ cmd_print() {
     fi
   fi
 
+  if [[ "$print_css_path" == "@KS_PRINT_CSS@" ]]; then
+    # Dev mode links this script from the live checkout, so build-time placeholder
+    # substitution does not run. Resolve the adjacent stylesheet from disk instead.
+    local script_dir=""
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    print_css_path="${script_dir}/print.css"
+  fi
+
+  if [[ ! -f "$print_css_path" ]]; then
+    echo "Error: Print stylesheet not found: $print_css_path" >&2
+    return 1
+  fi
+
   # Select PDF engine — prefer weasyprint, fall back to wkhtmltopdf then LaTeX
   local engine=""
   if command -v weasyprint &>/dev/null; then
@@ -3276,7 +3290,7 @@ cmd_print() {
     "$input_file"
     --standalone
     --pdf-engine="$engine"
-    --css="@KS_PRINT_CSS@"
+    --css="$print_css_path"
     -V colorlinks=false
     -o "$output_file"
   )
