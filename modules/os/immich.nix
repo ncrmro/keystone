@@ -91,6 +91,7 @@ in
       # Common config
       {
         enable = true;
+        machine-learning.environment.MPLCONFIGDIR = "/var/cache/immich/matplotlib";
       }
       # Server-specific
       (mkIf (cfg.role == "server") {
