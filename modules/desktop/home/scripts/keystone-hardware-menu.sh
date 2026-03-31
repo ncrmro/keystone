@@ -263,10 +263,10 @@ preview() {
 Enroll hardware key for disk unlock
 
 This action opens a detached terminal and runs:
-  sudo keystone-enroll-fido2 --auto
+  ks approve --reason "Enroll a hardware key for disk unlock." -- keystone-enroll-fido2 --auto
 
-The flow will prompt for your sudo password, any current LUKS password, and any
-FIDO2 PIN or touch confirmation required by the key.
+The flow will show a desktop approval popup when available, then continue in the
+terminal for any LUKS password, FIDO2 PIN, or touch confirmation prompts.
 EOF
       ;;
     *)
@@ -279,7 +279,9 @@ launch_enroll_terminal() {
   local enroll_cmd ghostty_cmd shell_cmd
   enroll_cmd="$(keystone_cmd keystone-enroll-fido2)"
   ghostty_cmd="$(keystone_cmd ghostty)"
-  printf -v shell_cmd 'printf "Starting hardware-key disk unlock enrollment...\\n\\n"; exec sudo %q --auto' "$enroll_cmd"
+  printf -v shell_cmd 'printf "Starting hardware-key disk unlock enrollment...\\n\\n"; exec ks approve --reason %q -- %q --auto' \
+    "Enroll a hardware key for disk unlock." \
+    "$enroll_cmd"
   detach "$ghostty_cmd" -e bash -lc "$shell_cmd"
 }
 

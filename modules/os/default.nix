@@ -200,6 +200,7 @@ in
     ./secure-boot.nix
     ./tpm.nix
     ./hardware-key.nix
+    ./privileged-approval.nix
     ./uhk.nix
     ./remote-unlock.nix
     ./users.nix
@@ -527,6 +528,8 @@ in
   };
 
   config = mkIf cfg.enable {
+    keystone.security.privilegedApproval.enable = mkDefault true;
+
     # Assertions for configuration validation
     assertions = [
       # Storage assertions (only when storage is enabled)

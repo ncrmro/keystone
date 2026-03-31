@@ -277,6 +277,11 @@ let
     builtins.readFile ./keystone-project-menu.sh
   );
 
+  # Agent control surface for the main menu
+  keystoneAgentMenu = pkgs.writeShellScriptBin "keystone-agent-menu" (
+    builtins.readFile ./keystone-agent-menu.sh
+  );
+
   # Inbox capture launcher — opens zk edit -i in a dedicated floating Ghostty window
   keystoneNotesInbox = pkgs.writeShellScriptBin "keystone-notes-inbox" (
     builtins.readFile ./keystone-notes-inbox.sh
@@ -429,6 +434,7 @@ let
         pkgs.findutils
         pkgs.gnugrep
         pkgs.jq
+        pkgs.keystone.ks
         pkgs.libnotify
         pkgs.systemd
         pkgs.util-linux
@@ -484,6 +490,18 @@ let
         hyprlandPkg
         pkgs.jq
         pkgs.util-linux
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-agent-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-agent-menu.sh";
+      package = keystoneAgentMenu;
+      runtimeInputs = [
+        pkgs.keystone.pz
+        pkgs.keystone.ks
+        pkgs.jq
         pkgs.walker
       ];
     })

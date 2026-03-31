@@ -7,10 +7,12 @@
 # Usage: ks <command> [options]
 #
 # Commands:
+#   approve --reason "<reason>" -- <command> [args...]  Run one allowlisted privileged command
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
 #   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (unlocked current checkout with --dev, locked full system by default)
 #   agents <pause|resume|status> <agent|all> [reason]  Pause or inspect agent task loops
 #   docs   [topic|path]                                Browse keystone markdown docs with glow and fzf
+#   photos search [options]                            Search Immich photos and screenshots
 #   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
 #   grafana dashboards apply|export <uid>              Apply or export keystone dashboard JSON via Grafana API
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
@@ -86,6 +88,7 @@ Build, deploy, and inspect Keystone-managed hosts.
 
 Commands:
   help [command]                                    Show general or command-specific help
+  approve --reason "<reason>" -- <command> [args...] Run one allowlisted privileged command
   build [--lock] [--user USERS] [--all-users] [HOSTS]
                                                     Build home-manager profiles, or full systems with --lock
   update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
@@ -93,6 +96,7 @@ Commands:
   agents <pause|resume|status> <agent|all> [reason]
                                                     Control agent task-loop pause state
   docs [topic|path]                                 Browse Keystone docs with glow and fzf
+  photos search [options]                           Search Immich photos and screenshots
   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
   switch [--boot] [HOSTS]                           Deploy current state without pull, lock, or push
   sync-host-keys                                    Populate hostPublicKey in hosts.nix from live hosts
@@ -118,10 +122,32 @@ Examples:
   ks update --dev
   ks docs
   ks docs desktop
+  ks photos search --text "acme"
   ks agents pause all "waiting for human input"
   ks help grafana dashboards
 
 Use "ks help <command>" for command-specific help.
+EOF
+}
+
+print_approve_help() {
+  cat <<'EOF'
+Usage: ks approve --reason "<reason>" -- <command> [args...]
+
+Request approval for one allowlisted privileged command.
+
+Options:
+  --reason TEXT         Human-readable reason shown before execution
+  -h, --help            Show this help
+
+Behavior:
+  Uses desktop polkit approval when a graphical session is available.
+  Falls back to a terminal sudo prompt when no graphical approval UI is available.
+  Rejects commands that are not in the Keystone approval allowlist.
+
+Examples:
+  ks approve --reason "Enroll a hardware key for disk unlock." -- keystone-enroll-fido2 --auto
+  ks approve --reason "Deploy the current local state." -- ks switch
 EOF
 }
 
@@ -317,7 +343,8 @@ Options:
   -h, --help            Show this help
 
 Behavior:
-  With no argument, ks opens an fzf picker over the Keystone docs tree.
+  With no argument, ks opens an fzf picker over Markdown files under docs/ only.
+  Type to filter, press Enter to open, and press Esc to cancel.
   A relative docs path such as terminal/projects.md also works.
 
 Examples:
@@ -327,11 +354,39 @@ Examples:
 EOF
 }
 
+print_photos_help() {
+  cat <<'EOF'
+Usage: ks photos search [options]
+
+Search Immich assets through Keystone's photo CLI.
+
+Subcommands:
+  search               Run an OCR / smart search against Immich
+
+Options:
+  --text QUERY         OCR / smart-search query text
+  --person NAME        Restrict results to an Immich person name
+  --type TYPE          Asset type: photo, screenshot, image, or video
+  --kind KIND          Search preset; supported: business-card
+  --from YYYY-MM-DD    Inclusive takenAfter date
+  --to YYYY-MM-DD      Inclusive takenBefore date
+  --limit N            Max results to request (default: 20)
+  --json               Emit structured JSON
+  -h, --help           Show this help
+
+Examples:
+  ks photos search --text "acme"
+  ks photos search --text "nick romero" --kind business-card
+  ks photos search --person "Nick Romero" --type photo
+  ks photos search --text "ks build" --type screenshot --from 2026-01-01 --to 2026-03-31
+EOF
+}
+
 print_print_help() {
   cat <<'EOF'
-Usage: ks print <file.md> [-o output.pdf] [--open]
+Usage: ks print <file.md> [-o output.pdf] [--open] [--preview]
 
-Convert a markdown file to a print-ready PDF.
+Convert a markdown file to a print-ready PDF using Keystone's compact print stylesheet.
 
 Arguments:
   <file.md>            Path to the markdown input file (required)
@@ -340,6 +395,7 @@ Options:
   -o, --output PATH    Output PDF path (default: same as input with .pdf extension)
   --open               Open the PDF in the system viewer after generation
   --no-print           Generate the PDF only; do not send to the default printer
+  --preview            Generate the PDF, open it, and skip auto-printing
   -h, --help           Show this help
 
 Engine selection (first available wins):
@@ -351,6 +407,7 @@ Engine selection (first available wins):
 Examples:
   ks print ~/Downloads/garden-guide.md
   ks print report.md -o ~/Desktop/report.pdf --open
+  ks print report.md --preview
   ks print instructions.md -o /tmp/instructions.pdf
 EOF
 }
@@ -400,6 +457,9 @@ show_help_topic() {
     ""|ks)
       print_main_help
       ;;
+    approve)
+      print_approve_help
+      ;;
     build)
       print_build_help
       ;;
@@ -417,6 +477,9 @@ show_help_topic() {
       ;;
     docs)
       print_docs_help
+      ;;
+    photos)
+      print_photos_help
       ;;
     sync-host-keys)
       print_sync_host_keys_help
@@ -443,6 +506,105 @@ show_help_topic() {
       return 1
       ;;
   esac
+}
+
+is_root_user() {
+  [[ ${EUID:-$(id -u)} -eq 0 ]]
+}
+
+has_graphical_session() {
+  [[ -n "${WAYLAND_DISPLAY:-}" || -n "${DISPLAY:-}" ]]
+}
+
+resolve_approval_helper() {
+  if command -v keystone-approve-exec >/dev/null 2>&1; then
+    command -v keystone-approve-exec
+    return 0
+  fi
+
+  if [[ -x /run/current-system/sw/bin/keystone-approve-exec ]]; then
+    printf '%s\n' /run/current-system/sw/bin/keystone-approve-exec
+    return 0
+  fi
+
+  echo "Error: keystone-approve-exec is not available in PATH." >&2
+  echo "Enable keystone.security.privilegedApproval on this host first." >&2
+  return 1
+}
+
+run_root_command() {
+  if is_root_user; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+cmd_approve() {
+  local reason=""
+  local requested_argv=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        print_approve_help
+        return 0
+        ;;
+      --reason)
+        [[ $# -lt 2 ]] && { echo "Error: --reason requires a value" >&2; return 1; }
+        reason="$2"
+        shift 2
+        ;;
+      --)
+        shift
+        requested_argv=("$@")
+        break
+        ;;
+      *)
+        echo "Error: Unknown option '$1'" >&2
+        print_approve_help >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ -z "$reason" ]]; then
+    echo "Error: --reason is required." >&2
+    print_approve_help >&2
+    return 1
+  fi
+
+  if [[ ${#requested_argv[@]} -eq 0 ]]; then
+    echo "Error: Missing command after --." >&2
+    print_approve_help >&2
+    return 1
+  fi
+
+  local approval_helper
+  approval_helper=$(resolve_approval_helper) || return 1
+
+  local matched_entry
+  if ! matched_entry=$("$approval_helper" --validate --reason "$reason" -- "${requested_argv[@]}"); then
+    return 1
+  fi
+
+  local display_name policy_reason
+  display_name=$(echo "$matched_entry" | jq -r '.displayName')
+  policy_reason=$(echo "$matched_entry" | jq -r '.reason')
+
+  echo "Approval request: $display_name"
+  echo "Requested reason: $reason"
+  echo "Policy reason: $policy_reason"
+
+  if is_root_user || [[ -n "${KS_APPROVE_EXECUTING:-}" ]]; then
+    exec "$approval_helper" --reason "$reason" -- "${requested_argv[@]}"
+  fi
+
+  if has_graphical_session && command -v pkexec >/dev/null 2>&1; then
+    exec pkexec "$approval_helper" --reason "$reason" -- "${requested_argv[@]}"
+  fi
+
+  exec sudo "$approval_helper" --reason "$reason" -- "${requested_argv[@]}"
 }
 
 run_with_warning_filter() {
@@ -691,6 +853,26 @@ cmd_docs() {
 
   [[ -n "$target" ]] || return 0
   glow "$docs_root/$target"
+}
+
+cmd_photos() {
+  if [[ $# -eq 0 ]]; then
+    print_photos_help
+    return 0
+  fi
+
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    print_photos_help
+    return 0
+  fi
+
+  if ! command -v keystone-photos >/dev/null 2>&1; then
+    echo "Error: keystone-photos is not available in PATH." >&2
+    echo "Refresh the home-manager profile before using this command." >&2
+    return 1
+  fi
+
+  keystone-photos "$@"
 }
 
 # --- Discover repo root ---
@@ -1365,8 +1547,13 @@ record_local_system_flake() {
   local repo_root="$1"
   [[ -z "$repo_root" ]] && return 0
 
-  sudo install -d -m 0755 /etc/keystone
-  printf '%s\n' "$repo_root" | sudo tee /etc/keystone/system-flake >/dev/null
+  if is_root_user; then
+    install -d -m 0755 /etc/keystone
+    printf '%s\n' "$repo_root" > /etc/keystone/system-flake
+  else
+    sudo install -d -m 0755 /etc/keystone
+    printf '%s\n' "$repo_root" | sudo tee /etc/keystone/system-flake >/dev/null
+  fi
 }
 
 # --- Build and deploy current unlocked state ---
@@ -1389,8 +1576,12 @@ deploy_unlocked_current_state() {
   done
 
   if [[ "$needs_sudo" == true ]]; then
-    echo "Caching sudo credentials..."
-    sudo -v
+    if is_root_user; then
+      echo "Running unlocked deployment as root..."
+    else
+      echo "Caching sudo credentials..."
+      sudo -v
+    fi
   fi
 
   local override_args=()
@@ -1438,13 +1629,13 @@ deploy_unlocked_current_state() {
       if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
         echo "OS core unchanged. Activating fast home-manager switch locally..."
         deploy_home_manager_only "$repo_root" "$host"
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
+        run_root_command nix-env -p /nix/var/nix/profiles/system --set "$path"
         echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
       else
         echo "Deploying $host locally ($mode)..."
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
-        sudo "$path/bin/switch-to-configuration" "$mode"
+        run_root_command nix-env -p /nix/var/nix/profiles/system --set "$path"
+        run_root_command touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        run_root_command "$path/bin/switch-to-configuration" "$mode"
       fi
       record_local_system_flake "$repo_root"
     else
@@ -1805,12 +1996,16 @@ cmd_update() {
 
   SUDO_KEEPALIVE_PID=""
   if [[ "$needs_sudo" == true ]]; then
-    echo "Caching sudo credentials (needed for local deploy)..."
-    sudo -v
-    # Keepalive: refresh every 60 s so a long pull/lock/build doesn't expire the ticket.
-    ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done ) &
-    SUDO_KEEPALIVE_PID=$!
-    trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; trap - EXIT' EXIT
+    if is_root_user; then
+      echo "Running update as root..."
+    else
+      echo "Caching sudo credentials (needed for local deploy)..."
+      sudo -v
+      # Keepalive: refresh every 60 s so a long pull/lock/build doesn't expire the ticket.
+      ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done ) &
+      SUDO_KEEPALIVE_PID=$!
+      trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; trap - EXIT' EXIT
+    fi
   fi
 
   # ── UPFRONT PHASE ───────────────────────────────────────────────────────────
@@ -1924,14 +2119,14 @@ cmd_update() {
       if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
         echo "OS core unchanged. Activating fast home-manager switch locally..."
         deploy_home_manager_only "$repo_root" "$host"
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
-        sudo "$path/bin/switch-to-configuration" boot
+        run_root_command nix-env -p /nix/var/nix/profiles/system --set "$path"
+        run_root_command touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        run_root_command "$path/bin/switch-to-configuration" boot
       else
         echo "Deploying $host locally ($mode)..."
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
-        sudo "$path/bin/switch-to-configuration" "$mode"
+        run_root_command nix-env -p /nix/var/nix/profiles/system --set "$path"
+        run_root_command touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        run_root_command "$path/bin/switch-to-configuration" "$mode"
       fi
       record_local_system_flake "$repo_root"
     else
@@ -3017,6 +3212,11 @@ cmd_print() {
         open_after=true
         shift
         ;;
+      --preview)
+        open_after=true
+        no_print=true
+        shift
+        ;;
       --no-print)
         no_print=true
         shift
@@ -3072,7 +3272,16 @@ cmd_print() {
     return 1
   fi
 
-  pandoc "$input_file" --pdf-engine="$engine" -o "$output_file"
+  local pandoc_args=(
+    "$input_file"
+    --standalone
+    --pdf-engine="$engine"
+    --css="@KS_PRINT_CSS@"
+    -V colorlinks=false
+    -o "$output_file"
+  )
+
+  pandoc "${pandoc_args[@]}"
   echo "✓  PDF written: $output_file"
 
   if [[ "$open_after" == true ]]; then
@@ -3178,9 +3387,11 @@ case "$CMD" in
   help)
     show_help_topic "$@"
     ;;
+  approve) cmd_approve "$@" ;;
   agents) cmd_agents "$@" ;;
   build)  cmd_build "$@" ;;
   docs)   cmd_docs "$@" ;;
+  photos) cmd_photos "$@" ;;
   grafana) cmd_grafana "$@" ;;
   sync-agent-assets) cmd_sync_agent_assets "$@" ;;
   update) cmd_update "$@" ;;
@@ -3191,7 +3402,7 @@ case "$CMD" in
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: help, build, update, agents, docs, sync-agent-assets, switch, sync-host-keys, grafana, print, agent, doctor" >&2
+    echo "Known commands: help, approve, build, update, agents, docs, photos, sync-agent-assets, switch, sync-host-keys, grafana, print, agent, doctor" >&2
     exit 1
     ;;
 esac

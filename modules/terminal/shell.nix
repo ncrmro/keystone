@@ -267,7 +267,7 @@ in
 
           # Nixfmt - Official Nix code formatter (RFC style)
           # https://github.com/NixOS/nixfmt
-          nixfmt-rfc-style
+          nixfmt
         ]
         ++ lib.optionals pkgs.stdenv.isLinux [
           # Ghostty terminfo - Required for SSH connections from Ghostty terminal

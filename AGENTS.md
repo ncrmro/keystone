@@ -129,7 +129,8 @@ For notes workflows, keep the shared owner note repos cloned at:
 
 > **CRITICAL: Verifying Changes**
 > Agents MUST start with `nix flake check` for repo-native validation and CI parity.
-> Tests, CLI regressions, and evaluation checks SHOULD live under `checks` in `flake.nix`, not in ad hoc wrapper scripts.
+> Tests, CLI regressions, script lint and format checks, and launcher/backend regression checks SHOULD live under `checks` in `flake.nix`, not in ad hoc wrapper scripts.
+> `nix flake check` SHOULD cover repo-wide `shellcheck`, repo-wide `nixfmt --check`, and deterministic command-contract tests for critical terminal and desktop backends such as `pz`, `ks`, `agentctl`, and Walker/Elephant menu adapters.
 > Agents MUST run `ks build` when a change affects host integration, generated assets, or behavior that isolated flake checks cannot validate.
 > Agents MUST NOT treat `ks build` as a substitute for adding a deterministic flake check when one can be added.
 

@@ -346,11 +346,32 @@
           ks-help = import ./tests/module/ks-help.nix {
             inherit pkgs;
           };
+          nixfmt-check = import ./tests/module/nixfmt-check.nix {
+            inherit pkgs;
+          };
+          shellcheck = import ./tests/module/shellcheck.nix {
+            inherit pkgs;
+          };
           keystone-photos = import ./tests/module/keystone-photos.nix {
+            inherit pkgs lib;
+          };
+          pz-regression = import ./tests/module/pz-regression.nix {
             inherit pkgs lib;
           };
           pz-project-menu = import ./tests/module/pz-project-menu.nix {
             inherit pkgs lib;
+          };
+          pz-host-launcher-state = import ./tests/module/pz-host-launcher-state.nix {
+            inherit pkgs lib;
+          };
+          hyprland-bindings-agent-conflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
+            inherit pkgs;
+          };
+          ks-approve = import ./tests/module/ks-approve.nix {
+            inherit pkgs;
+          };
+          agentctl-regression = import ./tests/module/agentctl-regression.nix {
+            inherit pkgs;
           };
           agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
             inherit pkgs lib;

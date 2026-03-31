@@ -88,7 +88,7 @@ pkgs.runCommand "ks-help-check"
     assert_status help-root 0
     assert_contains help-root 'Use "ks help <command>" for command-specific help.'
 
-    for command in build update switch sync-host-keys agent doctor grafana docs; do
+    for command in approve build update switch sync-host-keys agent doctor grafana docs photos; do
       run_capture "help-$command" help "$command"
       assert_status "help-$command" 0
       assert_contains "help-$command" "Usage: ks $command"
