@@ -41,26 +41,319 @@ VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
 PZ_MENU_CACHE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/keystone/project-menu"
 PZ_MENU_CACHE_PATH="${PZ_MENU_CACHE_DIR}/projects-v1.json"
 PZ_ICON_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/keystone/project-icons"
+PZ_LAUNCHER_STATE_DIR="${VAULT_ROOT}/.keystone"
+PZ_LAUNCHER_STATE_PATH="${PZ_LAUNCHER_STATE_DIR}/launcher-state.yaml"
+PZ_REMOTE_USER="${PZ_REMOTE_USER:-${USER:-}}"
+if [[ -z "$PZ_REMOTE_USER" ]]; then
+  PZ_REMOTE_USER="$(id -un 2>/dev/null || true)"
+fi
+PZ_CURRENT_HOST="$(hostname)"
+PZ_DISABLE_REMOTE="${PZ_DISABLE_REMOTE:-0}"
 
 usage() {
   cat <<'EOF'
 pz — Projctl Zellij session manager
 
 Usage:
-  pz <project> [<session>] [--layout <name>]  Create or attach to a Zellij session
+  pz <project> [<session>] [--layout <name>] [--host <hostname>]  Create or attach to a Zellij session
   pz list [--project <slug>]      List active project sessions
   pz info <project-slug>          Show project mission, milestones, and sessions
   pz export-menu-cache [--write-state]  Export snapshot JSON for desktop menus
+  pz hosts-json                   Show declared hosts as JSON
+  pz get-default-host             Show this machine's default target host
+  pz set-default-host <host>      Set this machine's default target host
+  pz project-launch-json <slug>   Show effective host and project launch defaults
+  pz project-set-host <slug> <host>  Set a project-specific target host
+  pz project-set-models <slug> <provider> <model> [fallback]  Set project launch defaults
+  pz project-clear-prefs <slug>   Clear project-specific launch defaults
   pz agent <agent> <cmd> [args]   Run agentctl within the project context
   pz --help                       Show this help message
 
 Options:
   -h, --help           Show this help message
   --layout <name>      Use a named zellij layout on session creation (dev, ops, write)
+  --host <hostname>    Use the selected host instead of the local machine
 
 Environment:
   VAULT_ROOT      Root zk notebook directory (default: ~/notes)
 EOF
+}
+
+ensure_launcher_state() {
+  mkdir -p "$PZ_LAUNCHER_STATE_DIR"
+  if [[ -f "$PZ_LAUNCHER_STATE_PATH" ]]; then
+    return 0
+  fi
+
+  cat > "$PZ_LAUNCHER_STATE_PATH" <<'EOF'
+version: 1
+project_hosts:
+  by_origin_host: {}
+interactive_defaults:
+  agents: {}
+  projects: {}
+EOF
+}
+
+launcher_state_json() {
+  ensure_launcher_state
+  yq -o=json eval '.' "$PZ_LAUNCHER_STATE_PATH"
+}
+
+find_hosts_repo() {
+  if [[ -n "${NIXOS_CONFIG_DIR:-}" ]] && [[ -f "$NIXOS_CONFIG_DIR/hosts.nix" ]]; then
+    readlink -f "$NIXOS_CONFIG_DIR"
+    return 0
+  fi
+
+  local git_root=""
+  git_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ -n "$git_root" && -f "$git_root/hosts.nix" ]]; then
+    readlink -f "$git_root"
+    return 0
+  fi
+
+  if [[ -d "$HOME/.keystone/repos" ]]; then
+    local match=""
+    match=$(find "$HOME/.keystone/repos" -maxdepth 3 -name hosts.nix -print -quit)
+    if [[ -n "$match" ]]; then
+      readlink -f "$(dirname "$match")"
+      return 0
+    fi
+  fi
+
+  if [[ -f "$HOME/nixos-config/hosts.nix" ]]; then
+    readlink -f "$HOME/nixos-config"
+    return 0
+  fi
+
+  echo "error: cannot find nixos-config repo (no hosts.nix found)" >&2
+  return 1
+}
+
+hosts_inventory_json() {
+  local repo_root
+  repo_root=$(find_hosts_repo)
+  nix eval -f "$repo_root/hosts.nix" --json \
+    --apply '
+      hosts:
+        builtins.map
+          (name: {
+            configName = name;
+            hostname = (builtins.getAttr name hosts).hostname or "";
+            sshTarget = (builtins.getAttr name hosts).sshTarget or null;
+            fallbackIP = (builtins.getAttr name hosts).fallbackIP or null;
+          })
+          (builtins.attrNames hosts)
+    '
+}
+
+validate_host_name() {
+  local host="$1"
+  hosts_inventory_json | jq -e --arg host "$host" 'any(.[]; .hostname == $host)' >/dev/null
+}
+
+host_ssh_target() {
+  local host="$1"
+  hosts_inventory_json | jq -r --arg host "$host" '
+    first(.[] | select(.hostname == $host) | (.sshTarget // .hostname // ""))
+  '
+}
+
+default_target_host() {
+  local stored=""
+  stored=$(launcher_state_json | jq -r --arg origin "$PZ_CURRENT_HOST" '
+    .project_hosts.by_origin_host[$origin] // ""
+  ')
+
+  if [[ -n "$stored" ]]; then
+    printf '%s\n' "$stored"
+  else
+    printf '%s\n' "$PZ_CURRENT_HOST"
+  fi
+}
+
+set_default_target_host() {
+  local host="$1"
+  validate_host_name "$host" || {
+    echo "error: unknown host '$host'" >&2
+    return 1
+  }
+
+  ensure_launcher_state
+  yq -i eval ".project_hosts.by_origin_host.\"${PZ_CURRENT_HOST}\" = \"${host}\"" "$PZ_LAUNCHER_STATE_PATH"
+}
+
+project_pref_json() {
+  local project_slug="$1"
+  launcher_state_json | jq -c --arg project_slug "$project_slug" '
+    .interactive_defaults.projects[$project_slug] // {}
+  '
+}
+
+project_effective_launch_json() {
+  local project_slug="$1"
+  local prefs_json effective_host
+  prefs_json=$(project_pref_json "$project_slug")
+  effective_host=$(printf '%s\n' "$prefs_json" | jq -r --arg default_host "$(default_target_host)" '
+    .host // $default_host
+  ')
+
+  jq -cn \
+    --arg project "$project_slug" \
+    --arg current_host "$PZ_CURRENT_HOST" \
+    --arg effective_host "$effective_host" \
+    --argjson prefs "$prefs_json" '
+      {
+        project: $project,
+        currentHost: $current_host,
+        effectiveHost: $effective_host,
+        provider: ($prefs.provider // ""),
+        model: ($prefs.model // ""),
+        fallbackModel: ($prefs.fallback_model // "")
+      }
+    '
+}
+
+set_project_host() {
+  local project_slug="$1"
+  local host="$2"
+  validate_host_name "$host" || {
+    echo "error: unknown host '$host'" >&2
+    return 1
+  }
+
+  ensure_launcher_state
+  yq -i eval ".interactive_defaults.projects.\"${project_slug}\".host = \"${host}\"" "$PZ_LAUNCHER_STATE_PATH"
+}
+
+set_project_models() {
+  local project_slug="$1"
+  local provider="$2"
+  local model="$3"
+  local fallback_model="${4:-}"
+
+  ensure_launcher_state
+  yq -i eval ".interactive_defaults.projects.\"${project_slug}\".provider = \"${provider}\"" "$PZ_LAUNCHER_STATE_PATH"
+  yq -i eval ".interactive_defaults.projects.\"${project_slug}\".model = \"${model}\"" "$PZ_LAUNCHER_STATE_PATH"
+  if [[ -n "$fallback_model" ]]; then
+    yq -i eval ".interactive_defaults.projects.\"${project_slug}\".fallback_model = \"${fallback_model}\"" "$PZ_LAUNCHER_STATE_PATH"
+  else
+    yq -i eval 'del(.interactive_defaults.projects."'"${project_slug}"'".fallback_model)' "$PZ_LAUNCHER_STATE_PATH"
+  fi
+}
+
+clear_project_prefs() {
+  local project_slug="$1"
+  ensure_launcher_state
+  yq -i eval 'del(.interactive_defaults.projects."'"${project_slug}"'")' "$PZ_LAUNCHER_STATE_PATH"
+}
+
+agent_pref_json() {
+  local agent_name="$1"
+  launcher_state_json | jq -c --arg agent_name "$agent_name" '
+    .interactive_defaults.agents[$agent_name] // {}
+  '
+}
+
+set_agent_pref() {
+  local agent_name="$1"
+  local host="$2"
+  local provider="${3:-}"
+  local model="${4:-}"
+  local fallback_model="${5:-}"
+
+  validate_host_name "$host" || {
+    echo "error: unknown host '$host'" >&2
+    return 1
+  }
+
+  ensure_launcher_state
+  yq -i eval ".interactive_defaults.agents.\"${agent_name}\".host = \"${host}\"" "$PZ_LAUNCHER_STATE_PATH"
+  if [[ -n "$provider" ]]; then
+    yq -i eval ".interactive_defaults.agents.\"${agent_name}\".provider = \"${provider}\"" "$PZ_LAUNCHER_STATE_PATH"
+  fi
+  if [[ -n "$model" ]]; then
+    yq -i eval ".interactive_defaults.agents.\"${agent_name}\".model = \"${model}\"" "$PZ_LAUNCHER_STATE_PATH"
+  fi
+  if [[ -n "$fallback_model" ]]; then
+    yq -i eval ".interactive_defaults.agents.\"${agent_name}\".fallback_model = \"${fallback_model}\"" "$PZ_LAUNCHER_STATE_PATH"
+  fi
+}
+
+clear_agent_pref() {
+  local agent_name="$1"
+  ensure_launcher_state
+  yq -i eval 'del(.interactive_defaults.agents."'"${agent_name}"'")' "$PZ_LAUNCHER_STATE_PATH"
+}
+
+run_capture_on_host() {
+  local host="$1"
+  shift
+
+  if [[ "$host" == "$PZ_CURRENT_HOST" ]]; then
+    "$@"
+    return 0
+  fi
+
+  local target=""
+  target=$(host_ssh_target "$host")
+  if [[ -z "$target" ]]; then
+    echo "error: host '$host' has no remote target" >&2
+    return 1
+  fi
+
+  ssh -o BatchMode=yes "$target" "$@"
+}
+
+run_pz_capture_on_host() {
+  local host="$1"
+  shift
+
+  if [[ "$host" == "$PZ_CURRENT_HOST" ]]; then
+    "$0" "$@"
+    return 0
+  fi
+
+  local target=""
+  target=$(host_ssh_target "$host")
+  if [[ -z "$target" ]]; then
+    echo "error: host '$host' has no remote target" >&2
+    return 1
+  fi
+
+  ssh -o BatchMode=yes "$target" "PZ_DISABLE_REMOTE=1 VAULT_ROOT=$(printf '%q' "$VAULT_ROOT") pz $(
+    printf '%q ' "$@"
+  )"
+}
+
+open_project_on_host() {
+  local host="$1"
+  local slug="$2"
+  local session_slug="${3:-main}"
+  local layout="${4:-}"
+
+  if [[ "$host" == "$PZ_CURRENT_HOST" ]]; then
+    cmd_session "$slug" "$session_slug" "$layout"
+    return 0
+  fi
+
+  local target=""
+  target=$(host_ssh_target "$host")
+  if [[ -z "$target" ]]; then
+    echo "error: host '$host' has no remote target" >&2
+    return 1
+  fi
+
+  local args=()
+  if [[ "$session_slug" != "main" ]]; then
+    args+=("$session_slug")
+  fi
+  if [[ -n "$layout" ]]; then
+    args+=(--layout "$layout")
+  fi
+
+  exec et "${PZ_REMOTE_USER}@${target}" -- pz "$slug" "${args[@]}"
 }
 
 valid_slug() {
@@ -511,8 +804,19 @@ cmd_info() {
 }
 
 cmd_sessions() {
-  local project_slug="$1"
+  local target_host="${1:-$PZ_CURRENT_HOST}"
+  local project_slug="${2:-}"
   local line
+
+  if [[ -z "$project_slug" ]]; then
+    echo "error: sessions requires <host> <project-slug>" >&2
+    exit 1
+  fi
+
+  if [[ "$target_host" != "$PZ_CURRENT_HOST" && "$PZ_DISABLE_REMOTE" != "1" ]]; then
+    run_pz_capture_on_host "$target_host" sessions "$PZ_CURRENT_HOST" "$project_slug"
+    return 0
+  fi
 
   while IFS= read -r line; do
     [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
@@ -535,9 +839,20 @@ cmd_sessions() {
 }
 
 cmd_summary() {
-  local project_slug="$1"
+  local target_host="${1:-$PZ_CURRENT_HOST}"
+  local project_slug="${2:-}"
   local count=0
   local line
+
+  if [[ -z "$project_slug" ]]; then
+    echo "error: summary requires <host> <project-slug>" >&2
+    exit 1
+  fi
+
+  if [[ "$target_host" != "$PZ_CURRENT_HOST" && "$PZ_DISABLE_REMOTE" != "1" ]]; then
+    run_pz_capture_on_host "$target_host" summary "$PZ_CURRENT_HOST" "$project_slug"
+    return 0
+  fi
 
   while IFS= read -r line; do
     [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
@@ -778,12 +1093,19 @@ cmd_export_menu_cache() {
     jq -n \
       --arg generated_at "$generated_at" \
       --arg cache_path "$PZ_MENU_CACHE_PATH" \
+      --arg current_host "$PZ_CURRENT_HOST" \
+      --arg default_target_host "$(default_target_host)" \
+      --argjson launcher_state "$(launcher_state_json)" \
+      --argjson hosts "$(hosts_inventory_json)" \
       --argjson projects "$(printf "%s" "$project_json_lines" | jq -s '.')" \
       --argjson sessions "$(printf "%s" "$session_json_lines" | jq -s '.')" '
         {
           schema_version: 1,
           generated_at: $generated_at,
           cache_path: $cache_path,
+          current_host: $current_host,
+          default_target_host: $default_target_host,
+          hosts: $hosts,
           projects: (
             $projects
             | sort_by(.last_active, .slug)
@@ -795,7 +1117,9 @@ cmd_export_menu_cache() {
                     | unique_by(.session_slug)
                     | sort_by(.session_slug)
                   ) as $project_sessions
+                | ($launcher_state.interactive_defaults.projects[$project.slug].host // $default_target_host) as $effective_host
                 | $project + {
+                    effective_host: $effective_host,
                     sessions: (
                       $project_sessions
                       | map({
@@ -869,9 +1193,18 @@ match_registered_project_slug() {
 cmd_list() {
   set +e
   local project_filter=""
+  local target_host="$PZ_CURRENT_HOST"
   local project_output
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --host)
+        if [[ $# -lt 2 ]]; then
+          echo "error: --host requires a hostname argument" >&2
+          exit 1
+        fi
+        target_host="$2"
+        shift 2
+        ;;
       --project)
         if [[ $# -lt 2 ]]; then
           echo "error: --project requires a slug argument" >&2
@@ -886,6 +1219,16 @@ cmd_list() {
         ;;
     esac
   done
+
+  if [[ "$target_host" != "$PZ_CURRENT_HOST" && "$PZ_DISABLE_REMOTE" != "1" ]]; then
+    local remote_args=(list --host "$PZ_CURRENT_HOST")
+    if [[ -n "$project_filter" ]]; then
+      remote_args+=(--project "$project_filter")
+    fi
+    run_pz_capture_on_host "$target_host" "${remote_args[@]}"
+    set -e
+    return 0
+  fi
 
   if ! project_output=$(discover_projects); then
     set -e
@@ -988,6 +1331,7 @@ cmd_session() {
   local slug="$1"
   local session_slug="${2:-main}"
   local layout="${3:-}"
+  local target_host="${4:-$PZ_CURRENT_HOST}"
   local project_path="${VAULT_ROOT}/projects/${slug}"
   local project_readme="${project_path}/README.md"
   local project_cwd="${VAULT_ROOT}"
@@ -1023,6 +1367,11 @@ cmd_session() {
 
   if ! hub_path=$(project_hub_path "$slug"); then
     exit 1
+  fi
+
+  if [[ "$target_host" != "$PZ_CURRENT_HOST" ]]; then
+    open_project_on_host "$target_host" "$slug" "$session_slug" "$layout"
+    return 0
   fi
 
   if [[ -d "$project_path" ]]; then
@@ -1087,6 +1436,87 @@ cmd_agent() {
   exec agentctl "$agent_name" "$agent_cmd" --project "$PROJECT_NAME" "$@"
 }
 
+cmd_hosts_json() {
+  hosts_inventory_json
+}
+
+cmd_get_default_host() {
+  default_target_host
+}
+
+cmd_set_default_host() {
+  if [[ $# -ne 1 ]]; then
+    echo "error: set-default-host requires <host>" >&2
+    exit 1
+  fi
+  set_default_target_host "$1"
+}
+
+cmd_project_launch_json() {
+  if [[ $# -ne 1 ]]; then
+    echo "error: project-launch-json requires <project-slug>" >&2
+    exit 1
+  fi
+
+  local launch_json
+  launch_json=$(project_effective_launch_json "$1")
+  jq -cn --argjson launch "$launch_json" --argjson hosts "$(hosts_inventory_json)" '
+    $launch + { hosts: $hosts }
+  '
+}
+
+cmd_project_set_host() {
+  if [[ $# -ne 2 ]]; then
+    echo "error: project-set-host requires <project-slug> <host>" >&2
+    exit 1
+  fi
+  set_project_host "$1" "$2"
+}
+
+cmd_project_set_models() {
+  if [[ $# -lt 3 || $# -gt 4 ]]; then
+    echo "error: project-set-models requires <project-slug> <provider> <model> [fallback]" >&2
+    exit 1
+  fi
+  set_project_models "$1" "$2" "$3" "${4:-}"
+}
+
+cmd_project_clear_prefs() {
+  if [[ $# -ne 1 ]]; then
+    echo "error: project-clear-prefs requires <project-slug>" >&2
+    exit 1
+  fi
+  clear_project_prefs "$1"
+}
+
+cmd_launcher_state_json() {
+  launcher_state_json
+}
+
+cmd_agent_pref_json() {
+  if [[ $# -ne 1 ]]; then
+    echo "error: agent-pref-json requires <agent>" >&2
+    exit 1
+  fi
+  agent_pref_json "$1"
+}
+
+cmd_agent_set_pref() {
+  if [[ $# -lt 2 || $# -gt 5 ]]; then
+    echo "error: agent-set-pref requires <agent> <host> [provider] [model] [fallback]" >&2
+    exit 1
+  fi
+  set_agent_pref "$1" "$2" "${3:-}" "${4:-}" "${5:-}"
+}
+
+cmd_agent_clear_pref() {
+  if [[ $# -ne 1 ]]; then
+    echo "error: agent-clear-pref requires <agent>" >&2
+    exit 1
+  fi
+  clear_agent_pref "$1"
+}
+
 # --- Completion Logic ---
 
 # Generate completions for pz
@@ -1125,46 +1555,80 @@ __pz_complete() {
 # The actual 'completion' command to be sourced or eval'd
 cmd_completion() {
   cat <<'EOF'
-_pz_completion() {
-  local cur prev words cword
-  if type _get_comp_words_by_ref &>/dev/null; then
-    _get_comp_words_by_ref -n : cur prev words cword
-  else
-    # Fallback if bash-completion is not fully available
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-    words=("${COMP_WORDS[@]}")
-    cword="$COMP_CWORD"
-  fi
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+  _pz_completion() {
+    local -a projects subcommands sessions
+    local project
 
-  local projects
-  # Attempt to use pz to discover slugs, fallback to calling the script directly if needed
-  if command -v pz >/dev/null 2>&1; then
-    projects=$(pz discover-slugs 2>/dev/null)
-  else
-    return 0
-  fi
+    projects=("${(@f)$(pz discover-slugs 2>/dev/null)}")
+    subcommands=(list agent info completion)
 
-  if [[ $cword -eq 1 ]]; then
-    local opts="list agent --help completion"
-    mapfile -t COMPREPLY < <(compgen -W "${opts} ${projects}" -- "$cur")
-    return 0
-  fi
-
-  if [[ $cword -eq 2 ]]; then
-    local project="${words[1]}"
-    if [[ "$project" == "list" || "$project" == "agent" || "$project" == "completion" ]]; then
-       return 0
-    fi
-    if printf "%s\n" "${projects}" | grep -Fxq "$project"; then
-      local sessions
-      sessions=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | command grep -E "^${project}(-|$)" | sed "s/^${project}-//; s/^${project}$/main/" || true)
-      mapfile -t COMPREPLY < <(compgen -W "${sessions} new" -- "$cur")
+    if (( CURRENT == 2 )); then
+      compadd -- "${subcommands[@]}" "${projects[@]}"
       return 0
     fi
-  fi
-}
-complete -F _pz_completion pz
+
+    project="${words[2]}"
+    case "$project" in
+      list|agent|info|completion)
+        return 0
+        ;;
+    esac
+
+    if (( ${projects[(Ie)$project]} )); then
+      sessions=("${(@f)$(
+        zellij list-sessions --no-formatting 2>/dev/null \
+          | awk '{print $1}' \
+          | command grep -E "^${project}(-|$)" \
+          | sed "s/^${project}-//; s/^${project}$/main/" || true
+      )}")
+      compadd -- "${sessions[@]}" new
+    fi
+  }
+
+  compdef _pz_completion pz
+else
+  _pz_completion() {
+    local cur prev words cword
+    if type _get_comp_words_by_ref &>/dev/null; then
+      _get_comp_words_by_ref -n : cur prev words cword
+    else
+      # Fallback if bash-completion is not fully available
+      cur="${COMP_WORDS[COMP_CWORD]}"
+      prev="${COMP_WORDS[COMP_CWORD-1]}"
+      words=("${COMP_WORDS[@]}")
+      cword="$COMP_CWORD"
+    fi
+
+    local projects
+    if command -v pz >/dev/null 2>&1; then
+      projects=$(pz discover-slugs 2>/dev/null)
+    else
+      return 0
+    fi
+
+    if [[ $cword -eq 1 ]]; then
+      local opts="list agent info --help completion"
+      mapfile -t COMPREPLY < <(compgen -W "${opts} ${projects}" -- "$cur")
+      return 0
+    fi
+
+    if [[ $cword -eq 2 ]]; then
+      local project="${words[1]}"
+      if [[ "$project" == "list" || "$project" == "agent" || "$project" == "info" || "$project" == "completion" ]]; then
+         return 0
+      fi
+      if printf "%s\n" "${projects}" | grep -Fxq "$project"; then
+        local sessions
+        sessions=$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}' | command grep -E "^${project}(-|$)" | sed "s/^${project}-//; s/^${project}$/main/" || true)
+        mapfile -t COMPREPLY < <(compgen -W "${sessions} new" -- "$cur")
+        return 0
+      fi
+    fi
+  }
+
+  complete -F _pz_completion pz
+fi
 EOF
 }
 
@@ -1179,8 +1643,9 @@ if [[ $# -eq 0 ]]; then
   exit 0
 fi
 
-# Extract --layout flag from anywhere in args
+# Extract global flags from anywhere in args
 LAYOUT=""
+TARGET_HOST=""
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -1190,6 +1655,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       LAYOUT="$2"
+      shift 2
+      ;;
+    --host)
+      if [[ $# -lt 2 ]]; then
+        echo "error: --host requires a hostname argument" >&2
+        exit 1
+      fi
+      TARGET_HOST="$2"
       shift 2
       ;;
     *)
@@ -1234,6 +1707,50 @@ case "$1" in
     shift
     cmd_export_menu_cache "$@"
     ;;
+  hosts-json)
+    shift
+    cmd_hosts_json "$@"
+    ;;
+  get-default-host)
+    shift
+    cmd_get_default_host "$@"
+    ;;
+  set-default-host)
+    shift
+    cmd_set_default_host "$@"
+    ;;
+  project-launch-json)
+    shift
+    cmd_project_launch_json "$@"
+    ;;
+  project-set-host)
+    shift
+    cmd_project_set_host "$@"
+    ;;
+  project-set-models)
+    shift
+    cmd_project_set_models "$@"
+    ;;
+  project-clear-prefs)
+    shift
+    cmd_project_clear_prefs "$@"
+    ;;
+  launcher-state-json)
+    shift
+    cmd_launcher_state_json "$@"
+    ;;
+  agent-pref-json)
+    shift
+    cmd_agent_pref_json "$@"
+    ;;
+  agent-set-pref)
+    shift
+    cmd_agent_set_pref "$@"
+    ;;
+  agent-clear-pref)
+    shift
+    cmd_agent_clear_pref "$@"
+    ;;
   export-menu-data)
     shift
     cmd_export_menu_data "$@"
@@ -1267,6 +1784,9 @@ case "$1" in
       usage >&2
       exit 1
     fi
-    cmd_session "$project_slug" "$session_slug" "$LAYOUT"
+    if [[ -z "$TARGET_HOST" ]]; then
+      TARGET_HOST=$(default_target_host)
+    fi
+    cmd_session "$project_slug" "$session_slug" "$LAYOUT" "$TARGET_HOST"
     ;;
 esac

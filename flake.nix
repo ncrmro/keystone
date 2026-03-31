@@ -346,6 +346,9 @@
           ks-help = import ./tests/module/ks-help.nix {
             inherit pkgs;
           };
+          keystone-photos = import ./tests/module/keystone-photos.nix {
+            inherit pkgs lib;
+          };
           pz-project-menu = import ./tests/module/pz-project-menu.nix {
             inherit pkgs lib;
           };
@@ -377,6 +380,7 @@
             podman-agent
             ks
             pz
+            keystone-photos
             cfait
             chrome-devtools-mcp
             grafana-mcp
