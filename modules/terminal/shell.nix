@@ -147,6 +147,16 @@ in
           theme = "robbyrussell";
         };
         initExtra = ''
+          if [[ -z "''${KEYSTONE_SYSTEM_FLAKE:-}" ]] && command -v keystone-current-system-flake >/dev/null 2>&1; then
+            _keystone_system_flake="$(keystone-current-system-flake 2>/dev/null || true)"
+            if [[ -n "$_keystone_system_flake" ]]; then
+              export KEYSTONE_SYSTEM_FLAKE="$_keystone_system_flake"
+              export KEYSTONE_CONFIG_REPO="$_keystone_system_flake"
+              export NIXOS_CONFIG_DIR="$_keystone_system_flake"
+            fi
+            unset _keystone_system_flake
+          fi
+
           # Register pz completion
           if command -v pz >/dev/null 2>&1; then
             eval "$(pz completion)"

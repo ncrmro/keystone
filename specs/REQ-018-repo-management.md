@@ -148,8 +148,8 @@ each managed repo: path, branch, dirty state, commits ahead/behind remote.
 **REQ-018.10** Lock mode (`ks build --lock`, `ks update` default) MUST,
 for each repo with a non-null `flakeInput`:
 
-1. Verify the local checkout is clean and fully pushed
-2. Push if needed (with fork fallback per REQ-016.9)
+1. Verify the local checkout is clean and on a branch before attempting lock-mode sync
+2. Rebase onto upstream automatically when possible, then push if needed (with fork fallback per REQ-016.9)
 3. Run `nix flake update <flakeInput>` to lock the input
 
 **REQ-018.11** Lock mode MUST commit `flake.lock` changes and push

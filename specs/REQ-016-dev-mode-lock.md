@@ -51,8 +51,8 @@ deploy via `nixos-rebuild switch`, exactly as today.
 
 **REQ-016.7** `ks build --lock` MUST be a new code path that performs:
 
-1. Find local keystone repo, verify it is clean and fully pushed
-2. Push keystone (with fork fallback per REQ-016.9)
+1. Find local keystone repo and verify it is clean and on a branch
+2. Rebase keystone onto upstream when possible, then push keystone (with fork fallback per REQ-016.9)
 3. Lock flake inputs (`nix flake update keystone agenix-secrets`)
 4. Commit `flake.lock` if changed
 5. Build the full NixOS system toplevel for all targets

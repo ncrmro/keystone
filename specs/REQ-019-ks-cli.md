@@ -88,8 +88,8 @@ directly for deployment to prevent redundant Nix evaluations.
 **REQ-019.8** Lock mode (`ks build --lock`, `ks update` default) MUST:
 
 1. Pull nixos-config, keystone, and agenix-secrets before building
-2. Verify keystone and agenix-secrets are clean and fully pushed
-3. Push keystone (with fork fallback per REQ-016.9)
+2. Verify managed lock repos are clean and on a branch before lock-mode sync
+3. Rebase managed lock repos onto upstream when Git can do so without conflicts, then push any remaining ahead commits, using keystone fork fallback per REQ-016.9 when needed
 4. Update `flake.lock` via `nix flake update` BEFORE building (not after)
 5. Build all target hosts
 6. Commit and push `flake.lock` only AFTER a successful build

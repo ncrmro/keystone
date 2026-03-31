@@ -16,6 +16,53 @@ let
   keystoneHome = "${config.home.homeDirectory}/.keystone";
   codeRoot = "${config.home.homeDirectory}/repos";
   worktreeRoot = "${config.home.homeDirectory}/.worktrees";
+  resolveSystemFlakeScript = pkgs.writeShellScriptBin "keystone-current-system-flake" ''
+    set -euo pipefail
+
+    if [[ -n "''${KEYSTONE_SYSTEM_FLAKE:-}" ]]; then
+      printf '%s\n' "$KEYSTONE_SYSTEM_FLAKE"
+      exit 0
+    fi
+
+    if [[ -s /etc/keystone/system-flake ]]; then
+      cat /etc/keystone/system-flake
+      exit 0
+    fi
+
+    if [[ -n "''${NIXOS_CONFIG_DIR:-}" && -f "$NIXOS_CONFIG_DIR/hosts.nix" ]]; then
+      readlink -f "$NIXOS_CONFIG_DIR"
+      exit 0
+    fi
+
+    dir=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$dir" && -f "$dir/hosts.nix" ]]; then
+      readlink -f "$dir"
+      exit 0
+    fi
+
+    if [[ -d "$HOME/.worktrees" ]]; then
+      match=$(find "$HOME/.worktrees" -maxdepth 5 -name hosts.nix -print -quit 2>/dev/null || true)
+      if [[ -n "$match" ]]; then
+        readlink -f "$(dirname "$match")"
+        exit 0
+      fi
+    fi
+
+    if [[ -d "$HOME/.keystone/repos" ]]; then
+      match=$(find "$HOME/.keystone/repos" -maxdepth 3 -name hosts.nix -print -quit 2>/dev/null || true)
+      if [[ -n "$match" ]]; then
+        readlink -f "$(dirname "$match")"
+        exit 0
+      fi
+    fi
+
+    if [[ -f "$HOME/nixos-config/hosts.nix" ]]; then
+      readlink -f "$HOME/nixos-config"
+      exit 0
+    fi
+
+    exit 1
+  '';
   ensurePathsScript = pkgs.writeShellScriptBin "keystone-ensure-paths" ''
     set -euo pipefail
 
@@ -187,6 +234,7 @@ in
       ]
       ++ [
         ensurePathsScript
+        resolveSystemFlakeScript
       ];
 
     home.activation.keystoneEnsurePaths = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

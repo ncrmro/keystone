@@ -870,7 +870,7 @@ impl InstallScreen {
 
 /// Copy the generated config to the installed system for the first-boot flow.
 ///
-/// Creates `~/.keystone/repos/nixos-config/` on the target and copies
+/// Creates the installed system flake directory on the target and copies
 /// flake.nix, configuration.nix, hardware.nix with a `.first-boot-pending`
 /// marker so the TUI knows to run the first-boot wizard on next login.
 async fn copy_config_to_target(
@@ -903,6 +903,17 @@ async fn copy_config_to_target(
     tokio::fs::write(repo_dir.join(".first-boot-pending"), "")
         .await
         .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
+
+    let keystone_etc_dir = PathBuf::from("/mnt/etc/keystone");
+    tokio::fs::create_dir_all(&keystone_etc_dir)
+        .await
+        .map_err(|e| format!("Failed to create /etc/keystone: {}", e))?;
+    tokio::fs::write(
+        keystone_etc_dir.join("system-flake"),
+        format!("{}\n", repo_dir.display()),
+    )
+    .await
+    .map_err(|e| format!("Failed to write system flake path: {}", e))?;
 
     // Fix ownership — look up uid/gid from the installed system's passwd
     let passwd_path = PathBuf::from("/mnt/etc/passwd");

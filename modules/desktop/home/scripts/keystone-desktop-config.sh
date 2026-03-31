@@ -4,8 +4,18 @@
 set -euo pipefail
 
 keystone_config_repo_root() {
+  if [[ -n "${KEYSTONE_SYSTEM_FLAKE:-}" ]]; then
+    printf "%s\n" "$KEYSTONE_SYSTEM_FLAKE"
+    return 0
+  fi
+
   if [[ -n "${KEYSTONE_CONFIG_REPO:-}" ]]; then
     printf "%s\n" "$KEYSTONE_CONFIG_REPO"
+    return 0
+  fi
+
+  if [[ -s /etc/keystone/system-flake ]]; then
+    cat /etc/keystone/system-flake
     return 0
   fi
 

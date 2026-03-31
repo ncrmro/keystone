@@ -41,7 +41,9 @@
 #   MUST pull nixos-config, keystone, and agenix-secrets before building (lock mode).
 #   MUST update flake.lock (nix flake update) before building, not after.
 #   MUST commit and push flake.lock only after a successful build.
-#   MUST verify keystone and agenix-secrets are clean and fully pushed before locking.
+#   MUST verify managed lock repos are clean and on a branch before locking.
+#   MUST automatically rebase managed lock repos when upstream has moved and there are no conflicts.
+#   MUST push managed lock repos that are ahead of their upstream before locking.
 #
 # Build
 #   MUST always use local .repos/keystone and .repos/agenix-secrets as --override-input
@@ -1106,8 +1108,8 @@ bootstrap_managed_repos() {
   done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
 }
 
-# --- Verify repo is clean and pushed ---
-verify_repo_clean() {
+# --- Verify repo is lock-ready for automated sync ---
+verify_repo_lock_ready() {
   local path="$1" name="$2"
   if [[ ! -d "$path" ]]; then
     return 0
@@ -1120,13 +1122,74 @@ verify_repo_clean() {
     echo "Error: $name has untracked files at $path" >&2
     exit 1
   fi
-  local local_ref remote_ref
-  local_ref=$(git -C "$path" rev-parse HEAD)
-  remote_ref=$(git -C "$path" rev-parse "@{upstream}" 2>/dev/null || echo "")
-  if [[ -n "$remote_ref" && "$local_ref" != "$remote_ref" ]]; then
-    echo "Error: $name has unpushed commits at $path" >&2
+  local branch
+  branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
+  if [[ -z "$branch" ]]; then
+    echo "Error: $name is in detached HEAD state at $path" >&2
     exit 1
   fi
+}
+
+push_repo_for_lock() {
+  local path="$1" name="$2"
+  [[ ! -d "$path" ]] && return 0
+
+  local branch upstream counts behind ahead
+  branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
+  if [[ -z "$branch" ]]; then
+    echo "Error: $name is in detached HEAD state at $path" >&2
+    exit 1
+  fi
+
+  upstream=$(git -C "$path" rev-parse --abbrev-ref --symbolic-full-name "@{upstream}" 2>/dev/null || echo "")
+  if [[ -n "$upstream" ]]; then
+    counts=$(git -C "$path" rev-list --left-right --count "${upstream}...HEAD")
+    behind=${counts%% *}
+    ahead=${counts##* }
+
+    if (( behind > 0 )); then
+      echo "Rebasing $name onto $upstream..."
+      if ! run_with_warning_filter git -C "$path" pull --rebase; then
+        echo "" >&2
+        echo "ERROR: Failed to rebase $name onto $upstream." >&2
+        echo "Resolve conflicts in $path, then rerun the command." >&2
+        exit 1
+      fi
+
+      counts=$(git -C "$path" rev-list --left-right --count "${upstream}...HEAD")
+      behind=${counts%% *}
+      ahead=${counts##* }
+      if (( behind > 0 )); then
+        echo "Error: $name is still behind $upstream at $path after rebase" >&2
+        exit 1
+      fi
+    fi
+
+    if (( ahead == 0 )); then
+      return 0
+    fi
+  fi
+
+  if [[ "$name" == "ncrmro/keystone" ]]; then
+    push_keystone_with_fork_fallback "$path"
+    return 0
+  fi
+
+  if [[ -n "$upstream" ]]; then
+    echo "Pushing $name..."
+    run_with_warning_filter git -C "$path" push
+  else
+    echo "Pushing $name (setting upstream)..."
+    run_with_warning_filter git -C "$path" push -u origin "$branch"
+  fi
+}
+
+record_local_system_flake() {
+  local repo_root="$1"
+  [[ -z "$repo_root" ]] && return 0
+
+  sudo install -d -m 0755 /etc/keystone
+  printf '%s\n' "$repo_root" | sudo tee /etc/keystone/system-flake >/dev/null
 }
 
 # --- Build and deploy current unlocked state ---
@@ -1206,6 +1269,7 @@ deploy_unlocked_current_state() {
         sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
         sudo "$path/bin/switch-to-configuration" "$mode"
       fi
+      record_local_system_flake "$repo_root"
     else
       if [[ -z "$ssh_target" ]]; then
         echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2
@@ -1396,18 +1460,21 @@ cmd_build() {
 
   if [[ "$lock" == true ]]; then
     # ── LOCK MODE (REQ-016.7): full system build with lock workflow ──
-    # Step 1: Verify repos are clean
+    # Step 1: Verify repos are lock-ready
     while IFS= read -r key; do
       [[ -z "$key" ]] && continue
       local path
       path=$(find_local_repo "$repo_root" "$key")
-      [[ -n "$path" ]] && verify_repo_clean "$path" "$key"
+      [[ -n "$path" ]] && verify_repo_lock_ready "$path" "$key"
     done <<< "$(get_repos_registry "$repo_root" | jq -r 'to_entries[].key')"
 
-    # Step 2: Push keystone with fork fallback (REQ-016.9)
-    local ks_path
-    ks_path=$(find_local_repo "$repo_root" "ncrmro/keystone")
-    [[ -n "$ks_path" ]] && push_keystone_with_fork_fallback "$ks_path"
+    # Step 2: Push managed flake repos that are ahead of their upstream.
+    while IFS= read -r key; do
+      [[ -z "$key" ]] && continue
+      local path
+      path=$(find_local_repo "$repo_root" "$key")
+      [[ -n "$path" ]] && push_repo_for_lock "$path" "$key"
+    done <<< "$(get_repos_registry "$repo_root" | jq -r 'to_entries[] | select(.value.flakeInput != null) | .key')"
 
     # Step 3: Lock flake inputs
     echo "Locking flake inputs..."
@@ -1435,7 +1502,7 @@ cmd_build() {
 
     # Step 6: Push nixos-config
     echo "Pushing nixos-config..."
-    git -C "$repo_root" push
+    push_repo_for_lock "$repo_root" "nixos-config"
     echo "Lock + build complete for: ${target_hosts[*]}"
   else
     # ── DEFAULT MODE (REQ-016.1): home-manager only build ──
@@ -1577,18 +1644,21 @@ cmd_update() {
   # Step 2: Pull all repos in registry
   bootstrap_managed_repos "$repo_root" "$registry"
 
-  # Step 3: Verify repos are clean and fully pushed before locking
+  # Step 3: Verify repos are lock-ready before locking
   while IFS= read -r key; do
     [[ -z "$key" ]] && continue
     local path
     path=$(find_local_repo "$repo_root" "$key")
-    [[ -n "$path" ]] && verify_repo_clean "$path" "$key"
+    [[ -n "$path" ]] && verify_repo_lock_ready "$path" "$key"
   done <<< "$(echo "$registry" | jq -r 'to_entries[].key')"
 
-  # Step 3.5: Push keystone with fork fallback (REQ-016.8-9)
-  local ks_path
-  ks_path=$(find_local_repo "$repo_root" "ncrmro/keystone")
-  [[ -n "$ks_path" ]] && push_keystone_with_fork_fallback "$ks_path"
+  # Step 3.5: Push managed flake repos that are ahead of their upstream.
+  while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    local path
+    path=$(find_local_repo "$repo_root" "$key")
+    [[ -n "$path" ]] && push_repo_for_lock "$path" "$key"
+  done <<< "$(echo "$registry" | jq -r 'to_entries[] | select(.value.flakeInput != null) | .key')"
 
   # Step 4: Update flake.lock BEFORE building so the build validates what will be committed
   echo "Locking flake inputs..."
@@ -1686,6 +1756,7 @@ cmd_update() {
         sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
         sudo "$path/bin/switch-to-configuration" "$mode"
       fi
+      record_local_system_flake "$repo_root"
     else
       if [[ -z "$ssh_target" ]]; then
         echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2; exit 1
