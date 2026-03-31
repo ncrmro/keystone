@@ -49,18 +49,12 @@ let
       serverHost = cfg.immich.host;
       workers = cfg.immich.workers;
       isCurrentHostServer = config.networking.hostName == serverHost;
-      # Use the server's own tailscale tags for ACL src identity
-      serverIdentity =
-        if isCurrentHostServer && config.keystone.os.tailscale.tags != [ ] then
-          head config.keystone.os.tailscale.tags
-        else
-          resolveACLIdentity serverHost;
       workerIdentities = map resolveACLIdentity workers;
     in
     optionals (isCurrentHostServer && workers != [ ]) [
       {
         action = "accept";
-        src = [ serverIdentity ];
+        src = [ "tag:svc-immich" ];
         dst = map (id: "${id}:3003") workerIdentities;
       }
     ];
@@ -112,6 +106,15 @@ in
       description = "List of hostnames acting as GPU/ML workers.";
     };
 
+    generatedTagOwners = mkOption {
+      type = types.attrsOf (types.listOf types.str);
+      default = { };
+      description = ''
+        Auto-generated Headscale tag owners from service topology.
+        Consume on the headscale host via keystone.headscale.tagOwners.
+      '';
+    };
+
     generatedACLRules = mkOption {
       type = types.listOf (
         types.submodule {
@@ -136,6 +139,11 @@ in
       '';
     };
   };
+
+  config.keystone.services.generatedTagOwners =
+    optionalAttrs (cfg.immich.host != null && cfg.immich.workers != [ ]) {
+      "tag:svc-immich" = [ "${primaryUser}@" ];
+    };
 
   config.keystone.services.generatedACLRules = immichACLRules;
 

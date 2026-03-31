@@ -41,7 +41,7 @@ let
   };
 
   mergedPolicy = {
-    inherit (cfg) tagOwners;
+    tagOwners = cfg.tagOwners // cfg.generatedTagOwners;
     acls = map cleanRule (cfg.staticACLs ++ cfg.aclRules);
   };
 in
@@ -57,6 +57,12 @@ in
       type = lib.types.listOf aclRuleType;
       default = [ ];
       description = "Static ACL rules (base policy).";
+    };
+
+    generatedTagOwners = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+      default = { };
+      description = "Auto-generated tag owners from keystone.services.";
     };
 
     aclRules = lib.mkOption {

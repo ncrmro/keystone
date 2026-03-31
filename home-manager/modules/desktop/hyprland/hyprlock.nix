@@ -3,9 +3,11 @@
   lib,
   pkgs,
   ...
-}: let
+}:
+let
   cfg = config.programs.desktop.hyprland;
-in {
+in
+{
   config = lib.mkIf (cfg.enable && cfg.components.hyprlock) {
     programs.hyprlock = {
       enable = true;

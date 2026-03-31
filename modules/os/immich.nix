@@ -128,6 +128,9 @@ in
     systemd.services.immich-server.enable = mkIf (cfg.role == "worker") false;
     systemd.services.immich-microservices.enable = mkIf (cfg.role == "worker") false;
 
+    # Auto-register service tag for ACL generation
+    keystone.os.tailscale.tags = mkIf (cfg.role == "server") [ "tag:svc-immich" ];
+
     # GPU Acceleration configuration (groups)
     users.users.immich.extraGroups = mkIf (cfg.acceleration != null) [
       "video"

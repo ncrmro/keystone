@@ -3,9 +3,11 @@
   lib,
   pkgs,
   ...
-}: let
+}:
+let
   cfg = config.programs.desktop.hyprland;
-in {
+in
+{
   config = lib.mkIf (cfg.enable && cfg.components.waybar) {
     programs.waybar = {
       enable = true;
@@ -17,9 +19,19 @@ in {
           height = 30;
           spacing = 4;
 
-          modules-left = ["hyprland/workspaces" "hyprland/window"];
-          modules-center = ["clock"];
-          modules-right = ["pulseaudio" "network" "cpu" "memory" "battery" "tray"];
+          modules-left = [
+            "hyprland/workspaces"
+            "hyprland/window"
+          ];
+          modules-center = [ "clock" ];
+          modules-right = [
+            "pulseaudio"
+            "network"
+            "cpu"
+            "memory"
+            "battery"
+            "tray"
+          ];
 
           "hyprland/workspaces" = {
             disable-scroll = false;
@@ -91,7 +103,11 @@ in {
             format-bluetooth-muted = "BT MUTE";
             format-muted = "MUTE";
             format-icons = {
-              default = ["" "" ""];
+              default = [
+                ""
+                ""
+                ""
+              ];
             };
             on-click = "pavucontrol";
           };
