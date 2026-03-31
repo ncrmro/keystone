@@ -1,8 +1,9 @@
-# REQ-003: Build Validation
+# REQ-003: Build and end-to-end validation
 
-This document defines the automated test contract that proves the template
-config generation produces buildable NixOS configurations. Tests run as part
-of `nix flake check`.
+This document defines the automated validation contract for Keystone TUI.
+It covers generated configuration evaluation, generated configuration builds,
+installer ISO generation, installer-mode end-to-end validation, and
+post-install first-boot validation.
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
@@ -22,7 +23,7 @@ module importing `keystone.nixosModules.operating-system`.
 structure that the TUI will generate, ensuring the test validates the same
 output contract.
 
-### Test Coverage
+### Template evaluation coverage
 
 **REQ-003.4** The test MUST include at least 4 distinct configuration
 variants covering: single-disk ZFS, multi-disk ZFS mirror, single-disk
@@ -44,13 +45,97 @@ minimum `users`, `groups`, and `services` keys.
 **REQ-003.8** The test output SHOULD be examinable via
 `nix build .#template-evaluation && cat result/<config-name>.json`.
 
-### Integration
+### Generated config and ISO validation
 
-**REQ-003.9** The test MUST be included in `nix flake check` so CI
-automatically validates template configs on every commit.
+**REQ-003.9** The test suite MUST validate that representative generated
+server, laptop, and workstation configurations evaluate successfully
+against the local Keystone modules.
 
-**REQ-003.10** The test MUST also be available as a check in the separate
-test flake at `tests/flake.nix`.
+**REQ-003.10** The test suite SHOULD build representative generated
+server, laptop, and workstation configurations to catch missing packages
+and broken derivations.
 
-**REQ-003.11** The test SHOULD have a corresponding `make test-template-eval`
-target for developer convenience.
+**REQ-003.11** The test suite MUST validate that the base Keystone
+installer ISO is buildable from the local repository.
+
+**REQ-003.12** The test suite MUST validate that a pre-baked installer ISO
+containing generated TUI output evaluates successfully.
+
+**REQ-003.13** The test suite SHOULD build a pre-baked installer ISO
+containing generated TUI output into a real ISO artifact.
+
+### Installer-mode end-to-end validation
+
+**REQ-003.14** The automated validation contract MUST include a VM-based
+end-to-end test that simulates installer mode by providing
+`/etc/keystone/install-config/` to the TUI environment.
+
+**REQ-003.15** The installer-mode test MUST verify that mode detection
+selects the install flow when `/etc/keystone/install-config/` is present.
+
+**REQ-003.16** The installer-mode test MUST verify that the install flow
+copies `flake.nix`, `configuration.nix`, and `hardware.nix` into
+`~/.keystone/repos/nixos-config/` for the installed user.
+
+**REQ-003.17** The installer-mode test MUST verify that the install flow
+creates `~/.keystone/repos/nixos-config/.first-boot-pending`.
+
+**REQ-003.18** The installer-mode test MUST verify that the copied repo
+content is owned by the installed user.
+
+### Post-install first-boot validation
+
+**REQ-003.19** The automated validation contract MUST include a post-install
+test that verifies first-boot mode is selected when
+`~/.keystone/repos/nixos-config/.first-boot-pending` exists.
+
+**REQ-003.20** The first-boot validation MUST verify that the TUI can
+generate a hardware reconciliation plan before writing any files.
+
+**REQ-003.21** The first-boot validation SHOULD cover both a no-change case
+and a changes-detected case.
+
+### Real ISO boot validation
+
+**REQ-003.22** The automated validation contract SHOULD include a slower
+full-VM test that boots a generated pre-baked installer ISO.
+
+**REQ-003.23** The real ISO boot test SHOULD verify boot into installer
+mode, successful installation, reboot into the installed system, and
+activation of first-boot mode.
+
+**REQ-003.24** The real ISO boot test MUST NOT be required in default
+per-PR CI.
+
+**REQ-003.25** The real ISO boot test SHOULD be exposed as an on-demand
+validation path for release-style verification.
+
+### Integration and execution surfaces
+
+**REQ-003.26** The fast validation layer MUST be includable in
+`nix flake check` so CI can automatically validate template configs and
+other non-boot-heavy checks on every commit.
+
+**REQ-003.27** The test suite MUST provide a clear developer entrypoint for
+template evaluation, generated-config validation, and ISO generation
+validation.
+
+**REQ-003.28** Slow VM-based installer-mode and real ISO boot tests SHOULD
+be available through explicit, separate commands so developers can run them
+on demand without invoking them accidentally.
+
+## Current status
+
+The current implementation in this worktree provides strong local test
+coverage for TUI logic, but it does not yet satisfy the full VM-backed
+end-to-end contract above.
+
+- Current crate unit tests: `155`
+- Current config-generation integration tests: `4`
+- Current multi-screen flow tests: `6`
+- Current render snapshot tests: `10`
+- Current ignored Nix-backed integration tests: `9`
+- Current visible VM-based installer-mode end-to-end tests in this worktree: `0`
+
+These counts are informative only and MUST NOT be treated as the long-term
+validation contract.

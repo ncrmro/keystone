@@ -26,11 +26,13 @@ Establishes the output contract before writing TUI code:
 
 - **REQ-001**: What files the TUI must produce
 - **REQ-002**: What inputs drive generation (the data model)
-- **REQ-003**: Automated tests proving generated configs build
+- **REQ-003**: Automated validation for generated configs, ISO builds, and
+  installer/first-boot end-to-end testing
 
-Deliverable: `tests/module/template-evaluation.nix` — a Nix test that
-evaluates 4+ generated configurations via `nixosSystem`, proving the
-template output contract works end-to-end.
+Deliverable: a layered validation contract that covers template evaluation,
+generated config builds, base and pre-baked ISO generation, fast VM-backed
+installer and first-boot validation, and slower on-demand real ISO boot
+validation.
 
 ### Phase 2: Interactive TUI + Publishing
 
@@ -77,3 +79,16 @@ using ZFS for the workstation and ext4 for the VPS.
 
 See [requirements/REQUIREMENTS.md](requirements/REQUIREMENTS.md) for the
 full requirements index.
+
+## Current validation status
+
+The current worktree already has strong local TUI test coverage:
+
+- `155` crate unit tests
+- `4` config-generation integration tests
+- `6` multi-screen flow tests
+- `10` render snapshot tests
+- `9` ignored Nix-backed integration tests for generated config and ISO validation
+
+The remaining documented gap is VM-backed end-to-end validation for
+installer mode, reboot, and first-boot reconciliation.
