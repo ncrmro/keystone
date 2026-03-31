@@ -22,6 +22,8 @@ pkgs.runCommand "test-pz-project-menu"
     export REPO_ROOT="${../..}"
     export HOME="$PWD/home"
     export XDG_STATE_HOME="$PWD/state"
+    export XDG_RUNTIME_DIR="$PWD/runtime"
+    export NIXOS_CONFIG_DIR="$PWD/nixos-config"
     export PATH="$PWD/bin:${
       lib.makeBinPath [
         pkgs.bash
@@ -37,7 +39,16 @@ pkgs.runCommand "test-pz-project-menu"
     }"
     export VAULT_ROOT="$HOME/notes"
 
-    mkdir -p "$HOME" "$XDG_STATE_HOME" "$VAULT_ROOT" "$PWD/bin"
+    mkdir -p "$HOME" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR" "$VAULT_ROOT" "$PWD/bin" "$NIXOS_CONFIG_DIR"
+
+    cat > "$NIXOS_CONFIG_DIR/hosts.nix" <<'EOF'
+    {
+      devbox = {
+        hostname = "devbox";
+        sshTarget = "devbox";
+      };
+    }
+    EOF
 
     cat > "$PWD/bin/pz" <<'EOF'
     #!${pkgs.bash}/bin/bash
@@ -175,6 +186,18 @@ pkgs.runCommand "test-pz-project-menu"
       and .[0].Subtext == "1 session active"
       and .[1].Text == "agents"
       and .[1].Subtext == "1 session active"
+    ' >/dev/null
+
+    keystone-project-menu set-current-project keystone
+    current_project="$(keystone-project-menu get-current-project)"
+    [[ "$current_project" == "keystone" ]]
+
+    details_json="$(keystone-project-menu project-details-json keystone)"
+    printf '%s\n' "$details_json" | jq -e '
+      map(.Text) as $texts
+      | ($texts | index("Open main session")) != null
+      and ($texts | index("New session")) != null
+      and ($texts | index("Notes")) != null
     ' >/dev/null
 
     touch "$out"
