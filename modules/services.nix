@@ -18,13 +18,39 @@
 with lib;
 let
   cfg = config.keystone.services;
-  hostNames = mapAttrsToList (_: h: h.hostname) config.keystone.hosts;
+  hosts = config.keystone.hosts;
+  hostNames = mapAttrsToList (_: h: h.hostname) hosts;
   validateHost =
     name: host:
-    optional (host != null && config.keystone.hosts != { } && !elem host hostNames) {
+    optional (host != null && hosts != { } && !elem host hostNames) {
       assertion = false;
       message = "keystone.services.${name}.host = \"${host}\" does not match any hostname in keystone.hosts. Valid hostnames: ${concatStringsSep ", " hostNames}";
     };
+
+  # Resolve a hostname to its Headscale MagicDNS name (sshTarget)
+  resolveHost =
+    hName:
+    let
+      hostEntry = findFirst (h: h.hostname == hName) null (attrValues hosts);
+    in
+    if hostEntry != null && hostEntry.sshTarget != null then hostEntry.sshTarget else hName;
+
+  # Generate ACL rules for immich server <-> worker communication
+  immichACLRules =
+    let
+      serverHost = cfg.immich.host;
+      workers = cfg.immich.workers;
+      serverTarget = resolveHost serverHost;
+      workerTargets = map resolveHost workers;
+    in
+    optionals (serverHost != null && workers != [ ]) [
+      {
+        action = "accept";
+        comment = "immich: server -> ML workers (inference)";
+        src = [ serverTarget ];
+        dst = map (w: "${w}:3003") workerTargets;
+      }
+    ];
 in
 {
   options.keystone.services = {
@@ -72,7 +98,33 @@ in
       default = [ ];
       description = "List of hostnames acting as GPU/ML workers.";
     };
+
+    generatedACLRules = mkOption {
+      type = types.listOf (
+        types.submodule {
+          options = {
+            action = mkOption {
+              type = types.str;
+              default = "accept";
+            };
+            comment = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+            };
+            src = mkOption { type = types.listOf types.str; };
+            dst = mkOption { type = types.listOf types.str; };
+          };
+        }
+      );
+      default = [ ];
+      description = ''
+        Auto-generated Headscale ACL rules from service topology.
+        Consume on the headscale host via keystone.headscale.aclRules.
+      '';
+    };
   };
+
+  config.keystone.services.generatedACLRules = immichACLRules;
 
   config.assertions =
     (validateHost "mail" cfg.mail.host)

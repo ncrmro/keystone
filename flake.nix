@@ -289,6 +289,7 @@
 
         # Headscale DNS import — consume server DNS records on headscale host
         headscale-dns = ./modules/server/headscale/dns-import.nix;
+        headscale-acl = ./modules/server/headscale/acl-import.nix;
       };
 
       # Export home-manager modules (homeModules is the standard flake output name)
@@ -344,6 +345,9 @@
           };
           ks-help = import ./tests/module/ks-help.nix {
             inherit pkgs;
+          };
+          pz-project-menu = import ./tests/module/pz-project-menu.nix {
+            inherit pkgs lib;
           };
           agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
             inherit pkgs lib;
