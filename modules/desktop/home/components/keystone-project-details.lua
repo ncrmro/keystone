@@ -3,7 +3,6 @@ NamePretty = "Project details"
 Description = "Project sessions and actions"
 Icon = "folder-development"
 HideFromProviderlist = true
-Parent = "keystone-projects"
 History = false
 FixedOrder = true
 
@@ -31,12 +30,6 @@ end
 Action = command_path("keystone-project-menu") .. " dispatch '%VALUE%'"
 
 local function current_project()
-    local slug = lastMenuValue("keystone-projects") or ""
-    if slug ~= "" then
-        os.execute(command_path("keystone-project-menu") .. " set-current-project " .. "'" .. slug:gsub("'", "'\\''") .. "' >/dev/null 2>&1")
-        return slug
-    end
-
     local handle = io.popen(command_path("keystone-project-menu") .. " get-current-project")
     if not handle then
         return ""

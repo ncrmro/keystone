@@ -29,7 +29,7 @@ local function command_path(name)
     return name
 end
 
-Action = command_path("keystone-project-menu") .. " set-current-project '%VALUE%'"
+Action = command_path("keystone-project-menu") .. " dispatch '%VALUE%'"
 
 function GetEntries()
     local handle = io.popen(command_path("keystone-project-menu") .. " projects-json 2>/dev/null")

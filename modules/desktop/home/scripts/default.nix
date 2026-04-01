@@ -488,7 +488,16 @@ let
       package = keystoneProjectMenu;
       runtimeInputs = [
         hyprlandPkg
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.gawk
+        pkgs.gnugrep
+        pkgs.gnused
         pkgs.jq
+        pkgs.keystone.pz
+        pkgs.yq-go
+        pkgs.zk
+        pkgs.zellij
         pkgs.util-linux
         pkgs.walker
       ];
