@@ -8,8 +8,8 @@ material in a shared zk notebook. It extends
 ## Notebook structure
 
 1. zk notebooks that follow the Keystone notes model MUST include these groups: `inbox/`,
-   `literature/`, `notes/`, `decisions/`, `docs/reports/`,
-   `docs/presentations/`, `index/`, and `archive/`.
+   `literature/`, `notes/`, `decisions/`, `reports/`,
+   `presentations/`, `index/`, and `archive/`.
 2. The existing flat notebook model MUST be preserved within those canonical
    groups. Note organization MUST be expressed through frontmatter, links, and
    tags, not per-project folders.
@@ -53,7 +53,7 @@ material in a shared zk notebook. It extends
 
 15. Recurring operational output, research summaries, diagnostics, and other
     time-stamped run artifacts MUST be stored as `report` notes in
-    `docs/reports/`.
+    `reports/`.
 16. Report notes MUST include these frontmatter fields: `id`, `title`, `type`,
     `created`, `author`, `tags`, `report_kind`, and `source_ref`. `project` MAY
     be omitted for operational reports that are not initiative-scoped.
@@ -100,7 +100,7 @@ material in a shared zk notebook. It extends
 ## Presentation decks
 
 31. Slidev decks and other Markdown-native presentation artifacts MUST be
-    stored as `presentation` notes in `docs/presentations/`.
+    stored as `presentation` notes in `presentations/`.
 32. Presentation notes MUST include these frontmatter fields: `id`, `title`,
     `type`, `created`, `author`, `tags`, and `presentation_kind`. `project` MAY
     be omitted for non-initiative decks.
@@ -171,12 +171,31 @@ material in a shared zk notebook. It extends
     presentation note.
 55. DeepWork workflows that produce documentation for later use MUST write their
     durable output into the notebook rather than leaving it only in scratch files.
-56. Inbox processing workflows SHOULD attach promoted notes to a hub when the
+56. DeepWork workflow outputs MUST be routed to the appropriate notebook directory
+    by output kind:
+
+    | Output kind                   | Note type    | Directory      |
+    | ----------------------------- | ------------ | -------------- |
+    | Final report or analysis      | `report`     | `reports/`     |
+    | Research source material      | `literature` | `literature/`  |
+    | Decision made during workflow | `decision`   | `decisions/`   |
+    | Durable finding or insight    | `permanent`  | `notes/`       |
+
+57. Supporting materials that back a report (raw data, per-entity research,
+    intermediate analysis) MUST be created as literature notes in `literature/`
+    and linked from the report via wikilinks. Agents MUST NOT create `_dataroom/`
+    subdirectories or ad hoc folders inside the notebook.
+58. Workflow-produced notes MUST include `source/deepwork` and
+    `source/deepwork/<workflow_name>` in their tags (e.g.,
+    `source/deepwork/competitive_content_analysis`).
+59. Workflow-produced notes MUST include the project slug tag when the workflow
+    is scoped to a specific project.
+60. Inbox processing workflows SHOULD attach promoted notes to a hub when the
     note contains a recognized `project/<slug>` tag or another clear hub relationship.
-57. Humans and agents SHOULD resolve non-keystone project repos to
+61. Humans and agents SHOULD resolve non-keystone project repos to
     `$HOME/repos/{owner}/{repo}` and keystone-managed repos to
     `~/.keystone/repos/{owner}/{repo}` after normalizing the declared remote URL.
-58. Notes repos MUST gitignore transient notebook database files and other local
+62. Notes repos MUST gitignore transient notebook database files and other local
     junk while keeping `.zk/config.toml`, `.zk/templates/`, and operational YAML
     state files tracked.
 

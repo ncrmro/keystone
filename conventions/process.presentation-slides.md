@@ -9,7 +9,7 @@ decision records, and supporting technical notes.
 
 ## Storage and identity
 
-1. Slidev decks MUST be stored in `docs/presentations/`.
+1. Slidev decks MUST be stored in `presentations/`.
 2. Slidev decks MUST set `type: presentation` in YAML frontmatter.
 3. Slidev decks MUST keep the notebook's timestamp-based filename and note ID
    scheme managed by `zk new`.
@@ -29,8 +29,8 @@ decision records, and supporting technical notes.
 
 ## Authoring workflow
 
-10. Humans SHOULD create decks with `zk new docs/presentations/ --title "Title"`.
-11. Agents MUST create decks non-interactively with `zk new docs/presentations/ --no-input --print-path`.
+10. Humans SHOULD create decks with `zk new presentations/ --title "Title"`.
+11. Agents MUST create decks non-interactively with `zk new presentations/ --no-input --print-path`.
 12. New decks MUST start with valid Slidev YAML frontmatter followed by `---`
     slide separators.
 13. Deck templates SHOULD include a title slide, an agenda or thesis slide, and
@@ -52,7 +52,7 @@ decision records, and supporting technical notes.
 
 ## Lifecycle
 
-19. Active decks MUST remain in `docs/presentations/`.
+19. Active decks MUST remain in `presentations/`.
 20. Decks that are no longer active SHOULD move to `archive/` and replace
     `status/active` with `status/archived`.
 21. Archived decks MAY retain `presentation/<kind>`, `project/<slug>`, and

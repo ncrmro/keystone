@@ -20,7 +20,7 @@ when switching out of engineering mode.
 
 Every wrap-up MUST produce at minimum:
 
-- A `docs/reports/` note in `~/notes` capturing context, status, testing, next steps,
+- A `reports/` note in `~/notes` capturing context, status, testing, next steps,
   and deferred items.
 - A structured handoff comment on every open issue or PR that was touched during the session.
 
@@ -29,10 +29,10 @@ to an appropriate milestone before commenting.
 
 ## Report note requirements
 
-4. The report MUST be created non-interactively in `docs/reports/` using `zk`:
+4. The report MUST be created non-interactively in `reports/` using `zk`:
 
    ```bash
-   zk --notebook-dir ~/notes new docs/reports/ \
+   zk --notebook-dir ~/notes new reports/ \
      --title "Wrap-up: <short description> $(date +%Y-%m-%d)" \
      --no-input --print-path \
      --extra report_kind="session-wrap-up" \
@@ -42,7 +42,7 @@ to an appropriate milestone before commenting.
 5. Before creating a new report, agents MUST search for a prior wrap-up of the same scope:
 
    ```bash
-   zk --notebook-dir ~/notes list docs/reports/ \
+   zk --notebook-dir ~/notes list reports/ \
      --tag "report/session-wrap-up" --sort created- --limit 1 --format json
    ```
 
