@@ -284,14 +284,16 @@ print_doctor_help() {
   cat <<'EOF'
 Usage: ks doctor [--local [MODEL]] [args...]
 
-Launch a diagnostic AI agent with fleet and local system state.
+Generate the scripted fleet doctor report, then optionally launch the default agent.
 
 Options:
-  --local [MODEL]      Use the local Ollama-backed model, or the configured default model
+  --local [MODEL]      If you choose to launch the agent, use the local Ollama-backed model
   -h, --help           Show this help
 
 Behavior:
-  Any remaining args are passed through to the underlying claude invocation.
+  Prints the fleet report to stdout.
+  In an interactive terminal, ks then asks whether to launch the default agent.
+  Any remaining args are passed through to the agent if you choose to launch it.
 
 Examples:
   ks doctor
@@ -3337,8 +3339,6 @@ cmd_doctor() {
   local repo_root
   repo_root=$(find_repo)
   local hosts_nix="$repo_root/hosts.nix"
-  local ks_repo
-  ks_repo=$(find_keystone_repo "$repo_root")
 
   local current_hostname current_host=""
   current_hostname=$(hostname)
@@ -3346,44 +3346,25 @@ cmd_doctor() {
     --apply "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"$current_hostname\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m" \
     2>/dev/null) || current_host=""
 
-  # Build shared context (REQ-014.10 — same agent as ks agent)
-  local base_prompt
-  base_prompt=$(build_agent_prompt "$repo_root" "$hosts_nix" "$ks_repo" "$current_host")
-
-  # Gather current system state including fleet + agent health (REQ-014.11)
   local system_state
   system_state=$(gather_system_state "$repo_root" "$hosts_nix" "$current_host")
+  printf '%s\n' "$system_state"
 
-  # Diagnostic-focused prefix (REQ-014.10)
-  local doctor_prefix
-  doctor_prefix="You are a diagnostic agent for a keystone NixOS infrastructure system.
-Your primary goal is to check host health, agent health, and suggest actionable fixes.
+  if [[ ! -t 0 || ! -t 1 ]]; then
+    return 0
+  fi
 
-Focus areas:
-- Failed or degraded systemd units (check with: systemctl --failed)
-- Disk pressure (check with: df -h)
-- Stale flake locks (run ks update to refresh)
-- Unreachable hosts (check sshTarget connectivity via ssh)
-- NixOS generation drift between hosts (compare fleet status table)
-- Agent service health (task-loop, notes-sync, ssh-agent timers/services)
-- Agent task queue (blocked tasks need human intervention, stale pending tasks may indicate stalls)
-- Agent SSH key health (verify with: agentctl <name> exec ssh-add -l)
-- Agent mail connectivity (verify with: agentctl <name> exec himalaya account list)
-
-Always suggest concrete remediation commands. Prefer ks/agentctl commands over raw nix/systemctl."
-
-  local prompt
-  prompt="$doctor_prefix
-
----
-
-$system_state
-
----
-
-$base_prompt"
-
-  launch_agent "$local_model" "$repo_root" "$current_host" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
+  printf '\nLaunch the default agent to review this doctor report? [y/N] '
+  local launch_reply=""
+  IFS= read -r launch_reply || true
+  case "$launch_reply" in
+    y|Y|yes|YES)
+      cmd_agent ${local_model:+"--local"} ${local_model:+"$local_model"} "${passthrough_args[@]}"
+      ;;
+    *)
+      return 0
+      ;;
+  esac
 }
 
 # --- Main dispatch ---
