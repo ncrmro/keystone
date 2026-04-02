@@ -51,6 +51,13 @@ pkgs.runCommand "test-keystone-secrets-menu"
     chmod +x "$PWD/bin/keystone-secrets-menu"
     ln -s "$PWD/bin/keystone-secrets-menu" "$HOME/.local/bin/keystone-secrets-menu"
 
+    cat > "$PWD/bin/keystone-setup-menu" <<'EOF'
+    #!${pkgs.bash}/bin/bash
+    exec ${pkgs.bash}/bin/bash "$REPO_ROOT/modules/desktop/home/scripts/keystone-setup-menu.sh" "$@"
+    EOF
+    chmod +x "$PWD/bin/keystone-setup-menu"
+    ln -s "$PWD/bin/keystone-setup-menu" "$HOME/.local/bin/keystone-setup-menu"
+
     cat > "$PWD/bin/keystone-detach" <<'EOF'
     #!${pkgs.bash}/bin/bash
     printf '%s\n' "$*" > "$XDG_RUNTIME_DIR/detach-command.txt"
@@ -63,6 +70,14 @@ pkgs.runCommand "test-keystone-secrets-menu"
     exit 0
     EOF
     chmod +x "$PWD/bin/ghostty"
+
+    for command_name in keystone-audio-menu keystone-monitor-menu keystone-hardware-menu keystone-accounts-menu keystone-printer-menu; do
+      cat > "$PWD/bin/$command_name" <<EOF
+    #!${pkgs.bash}/bin/bash
+    exit 0
+    EOF
+      chmod +x "$PWD/bin/$command_name"
+    done
 
     cat > "$PWD/bin/keystone-current-system-flake" <<'EOF'
     #!${pkgs.bash}/bin/bash
@@ -164,6 +179,18 @@ pkgs.runCommand "test-keystone-secrets-menu"
 
     preview_secret="$(keystone-secrets-menu preview-secret secrets/ncrmro-github-token.age)"
     printf '%s\n' "$preview_secret" | grep -F 'YubiKey: identity file present, YubiKey detected: 36854515' >/dev/null
+
+    mv "$NIXOS_CONFIG_DIR/agenix-secrets" "$PWD/hidden-agenix-secrets"
+    cat > "$PWD/bin/keystone-current-system-flake" <<'EOF'
+    #!${pkgs.bash}/bin/bash
+    exit 0
+    EOF
+    chmod +x "$PWD/bin/keystone-current-system-flake"
+    setup_entries_json="$(keystone-setup-menu entries-json)"
+    printf '%s\n' "$setup_entries_json" | jq -e '
+      any(.[]; .Text == "Secrets") | not
+    ' >/dev/null
+    mv "$PWD/hidden-agenix-secrets" "$NIXOS_CONFIG_DIR/agenix-secrets"
 
     keystone-secrets-menu dispatch $'view-value\tsecrets/ncrmro-github-token.age'
     grep -E 'agenix(\\ |-d|-i|.*-d.*-i)' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null

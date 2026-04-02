@@ -3,9 +3,6 @@
 
 set -euo pipefail
 
-STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}/keystone-secrets-menu"
-mkdir -p "$STATE_DIR"
-
 notify() {
   notify-send "$@"
 }
@@ -29,10 +26,6 @@ keystone_cmd() {
 
 detach() {
   "$(keystone_cmd keystone-detach)" "$@"
-}
-
-shell_quote() {
-  printf "'%s'" "${1//\'/\'\\\'\'}"
 }
 
 identity_file_path() {
@@ -165,28 +158,32 @@ launch_terminal_command() {
   detach "$(keystone_cmd ghostty)" --title "$title" -e bash -lc "$shell_cmd"
 }
 
-config_usernames() {
+declare -a CONFIG_USERNAMES=()
+declare -a CONFIG_HOSTNAMES=()
+CONFIG_CLASSIFIERS_READY=0
+
+load_config_classifiers() {
+  [[ "$CONFIG_CLASSIFIERS_READY" -eq 0 ]] || return 0
+
   local config_repo=""
   config_repo="$(current_config_repo || true)"
-  if [[ -z "$config_repo" || ! -d "$config_repo/home-manager" ]]; then
-    return 0
+  if [[ -n "$config_repo" && -d "$config_repo/home-manager" ]]; then
+    mapfile -t CONFIG_USERNAMES < <(
+      find "$config_repo/home-manager" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
+        | rg -v '^(common|keys)$' \
+        | sort -u
+    )
   fi
 
-  find "$config_repo/home-manager" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
-    | rg -v '^(common|keys)$' \
-    | sort -u
-}
-
-config_hostnames() {
-  local config_repo=""
-  config_repo="$(current_config_repo || true)"
-  if [[ -z "$config_repo" || ! -d "$config_repo/hosts" ]]; then
-    return 0
+  if [[ -n "$config_repo" && -d "$config_repo/hosts" ]]; then
+    mapfile -t CONFIG_HOSTNAMES < <(
+      find "$config_repo/hosts" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
+        | rg -v '^common$' \
+        | sort -u
+    )
   fi
 
-  find "$config_repo/hosts" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
-    | rg -v '^common$' \
-    | sort -u
+  CONFIG_CLASSIFIERS_READY=1
 }
 
 classify_secret() {
@@ -196,26 +193,28 @@ classify_secret() {
   local username=""
   local hostname=""
 
+  load_config_classifiers
+
   if [[ "$name" == custom-* ]]; then
     printf "custom\n"
     return 0
   fi
 
-  while IFS= read -r username; do
+  for username in "${CONFIG_USERNAMES[@]}"; do
     [[ -n "$username" ]] || continue
     if [[ "$name" == "${username}-"* ]]; then
       printf "user-home\n"
       return 0
     fi
-  done < <(config_usernames)
+  done
 
-  while IFS= read -r hostname; do
+  for hostname in "${CONFIG_HOSTNAMES[@]}"; do
     [[ -n "$hostname" ]] || continue
     if [[ "$name" == "${hostname}-"* ]]; then
       printf "os-level\n"
       return 0
     fi
-  done < <(config_hostnames)
+  done
 
   printf "service\n"
 }
@@ -596,13 +595,13 @@ edit_recipients_and_rekey() {
   identity_file="$(identity_file_path || true)"
 
   printf -v shell_cmd '%s' "cd $(printf '%q' "$repo")
-before_hash=\$(sha256sum secrets.nix | awk '{print \$1}')
+before_hash=\$(sha256sum secrets.nix | cut -d' ' -f1)
 if command -v hx >/dev/null 2>&1; then
   hx +${line_no:-1} secrets.nix
 else
   \${EDITOR:-vi} secrets.nix
 fi
-after_hash=\$(sha256sum secrets.nix | awk '{print \$1}')
+after_hash=\$(sha256sum secrets.nix | cut -d' ' -f1)
 if [[ \"\$before_hash\" != \"\$after_hash\" ]]; then
   if command -v hwrekey >/dev/null 2>&1; then
     hwrekey -m $(printf '%q' "$message")

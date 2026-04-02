@@ -26,6 +26,7 @@ keystone_cmd() {
 
 entries_json() {
   local audio_menu monitor_menu hardware_menu accounts_menu printer_menu setup_menu secrets_menu
+  local current_flake="" show_secrets=false
   audio_menu=$(keystone_cmd keystone-audio-menu)
   monitor_menu=$(keystone_cmd keystone-monitor-menu)
   hardware_menu=$(keystone_cmd keystone-hardware-menu)
@@ -33,6 +34,13 @@ entries_json() {
   printer_menu=$(keystone_cmd keystone-printer-menu)
   setup_menu=$(keystone_cmd keystone-setup-menu)
   secrets_menu=$(keystone_cmd keystone-secrets-menu)
+
+  current_flake="$(keystone-current-system-flake 2>/dev/null || true)"
+  if [[ -d "$HOME/.keystone/repos/ncrmro/agenix-secrets" ]]; then
+    show_secrets=true
+  elif [[ -n "$current_flake" && -d "$current_flake/agenix-secrets" ]]; then
+    show_secrets=true
+  fi
 
   jq -n '
     [
@@ -109,7 +117,7 @@ entries_json() {
     --arg printer_menu "$printer_menu" \
     --arg setup_menu "$setup_menu" \
     --arg secrets_menu "$secrets_menu" \
-    --argjson show_secrets "$([[ -d "$HOME/.keystone/repos/ncrmro/agenix-secrets" || -d "$(keystone-current-system-flake 2>/dev/null || true)/agenix-secrets" ]] && echo true || echo false)"
+    --argjson show_secrets "$show_secrets"
 }
 
 preview_blocked() {
