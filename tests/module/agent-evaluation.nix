@@ -158,15 +158,15 @@ let
           echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
           exit 1
         fi
-        if echo '${resolvedCapabilitiesJson}' | grep -q '"ks-system"' && echo '${resolvedCapabilitiesJson}' | grep -q '"notes"'; then
-          echo "  ✓ Found default ks-system and notes capabilities"
+        if echo '${resolvedCapabilitiesJson}' | grep -q '"ks"' && echo '${resolvedCapabilitiesJson}' | grep -q '"notes"'; then
+          echo "  ✓ Found default ks and notes capabilities"
         else
-          echo "  ✗ Missing default ks-system/notes capabilities"
+          echo "  ✗ Missing default ks/notes capabilities"
           echo "  Actual capabilities: ${resolvedCapabilitiesJson}"
           exit 1
         fi
-        if echo '${publishedCommandsJson}' | grep -q '"ks.system"' && ! echo '${publishedCommandsJson}' | grep -q '"ks.dev"'; then
-          echo "  ✓ Published only /ks.system in locked mode"
+        if echo '${publishedCommandsJson}' | grep -q '"ks"' && ! echo '${publishedCommandsJson}' | grep -q '"ks.dev"'; then
+          echo "  ✓ Published only /ks in locked mode"
         else
           echo "  ✗ Unexpected locked-mode command surface"
           echo "  Actual commands: ${publishedCommandsJson}"
