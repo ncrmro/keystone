@@ -361,6 +361,7 @@ let
     "research-quick"
     "task-ingest"
     "task-run"
+    "ks"
   ];
 
   activeCodexSkillNames = [
