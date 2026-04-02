@@ -336,7 +336,12 @@
             self = self;
           };
           template-evaluation = import ./tests/module/template-evaluation.nix {
-            inherit pkgs lib nixpkgs;
+            inherit
+              pkgs
+              lib
+              nixpkgs
+              home-manager
+              ;
             self = self;
           };
           server-evaluation = import ./tests/module/server-evaluation.nix {
