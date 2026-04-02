@@ -47,21 +47,14 @@ in
 
   config = mkIf (cfg.enable && cfg.ai.enable) {
     home.packages = [
-      # Claude Code - AI-powered CLI assistant from Anthropic
-      # https://claude.com/claude-code
-      pkgs.keystone.claude-code
-
-      # Gemini CLI - Google's AI assistant
-      pkgs.keystone.gemini-cli
-
-      # Codex - OpenAI's lightweight coding agent
-      pkgs.keystone.codex
-
-      # OpenCode - Open-source AI coding agent
-      pkgs.keystone.opencode
-
       # DeepWork - workflow orchestration MCP server
       pkgs.keystone.deepwork
+    ]
+    ++ [
+      pkgs.keystone.claude-code
+      pkgs.keystone.gemini-cli
+      pkgs.keystone.codex
+      pkgs.keystone.opencode
     ]
     ++ optionals ollamaCfg.enable [
       # Ollama CLI for model management (ollama pull, list, run)
