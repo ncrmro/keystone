@@ -243,10 +243,10 @@ ks agent --local qwen2.5-coder:14b --continue
 ks doctor [--local [MODEL]] [args...]
 ```
 
-Launch a diagnostic AI agent with fleet and local system state.
+Print the scripted fleet doctor report, then optionally launch the default agent.
 
-- `--local [MODEL]`: Use the local Ollama-backed model, or the configured default model.
-- Remaining args are passed through to the underlying `claude` invocation.
+- `--local [MODEL]`: If you choose to launch the agent, use the local Ollama-backed model, or the configured default model.
+- Remaining args are passed through to the agent if you choose to launch it.
 
 Examples:
 
