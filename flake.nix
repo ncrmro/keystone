@@ -367,6 +367,9 @@
           pz-host-launcher-state = import ./tests/module/pz-host-launcher-state.nix {
             inherit pkgs lib;
           };
+          keystone-secrets-menu = import ./tests/module/keystone-secrets-menu.nix {
+            inherit pkgs lib;
+          };
           hyprland-bindings-agent-conflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
             inherit pkgs;
           };

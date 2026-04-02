@@ -100,6 +100,11 @@ managed `agenix-secrets` repo from Walker.
 - **dt-secrets-001.8**: Automatic rekeying initiated from the menu SHOULD prefer the existing hardware-key workflow when supported by the current machine and user configuration, and SHOULD fall back to non-hardware-key agenix rekeying when hardware-backed rekey is not available.
 - **dt-secrets-001.9**: Secret value inspection, key updates, and rekey actions MUST fail closed with a clear error message when the required identity, hardware key, repo checkout, or decrypt permission is unavailable.
 - **dt-secrets-001.10**: Secret-management actions that modify the `agenix-secrets` repo MUST operate on the managed checkout under `~/.keystone/repos/{owner}/{repo}/` so the resulting changes remain reviewable and committable through the normal repo workflow.
+- **dt-secrets-001.11**: The secret-management surface MUST expose at least four first-class secret categories: os-level secrets, service secrets, user-home secrets, and custom secrets.
+- **dt-secrets-001.12**: The secret-management surface MUST make the intended scope of a secret visible before edit actions run, including whether the secret is os-level, service-owned, user-home-scoped, or custom.
+- **dt-secrets-001.13**: For user-home secrets, the secret-management surface MUST help users derive or validate the full host recipient set from the hosts where that Home Manager user is installed, rather than treating the current host as the only recipient by default.
+- **dt-secrets-001.14**: The desktop flow SHOULD make the shared naming convention for user-home secrets discoverable, so users can create reusable secrets such as per-user GitHub, Forgejo, or API tokens without inventing ad hoc names.
+- **dt-secrets-001.15**: Keystone MAY provide the same secret-management contract through a terminal-first `ks secrets` interface, but Walker and any terminal entrypoint MUST follow the same secret categories, naming conventions, and recipient-derivation rules.
 
 ### Keybindings Help (dt-help-001)
 
