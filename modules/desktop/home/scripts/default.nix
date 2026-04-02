@@ -379,7 +379,9 @@ let
       relativePath = "modules/desktop/home/scripts/keystone-setup-menu.sh";
       package = keystoneSetupMenu;
       runtimeInputs = [
+        pkgs.jq
         pkgs.libnotify
+        pkgs.openssh
         pkgs.walker
       ];
     })
