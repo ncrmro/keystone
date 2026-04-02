@@ -43,10 +43,11 @@
 24. Service secrets SHOULD use stable service-oriented names and recipient sets derived from the machines or services that actually need the secret at runtime.
 25. User-home secrets MUST be modeled around the Home Manager principal that consumes them, not around a single machine, when that user profile is intentionally deployed on multiple hosts.
 26. A user-home secret MUST include every system key for hosts where that Home Manager user is installed; otherwise the profile is not portable across that user's declared deployment surface.
-27. User-home secrets SHOULD follow a shared naming convention rooted in the username so the ownership is obvious from the secret name, for example `${username}-github-token`, `${username}-forgejo-token`, or `${username}-immich-api-key`.
-28. Secret-backed environment variables in Home Manager MUST NOT be set with `home.sessionVariables` when the value would be embedded in the Nix store. Non-secret values MAY use `home.sessionVariables`, but secret values MUST be read from runtime files such as `/run/agenix/<name>` in a shell init hook or another runtime-only execution path.
-29. When a tool needs both a public endpoint and a secret credential, the public endpoint SHOULD be set declaratively with `home.sessionVariables`, while the secret credential SHOULD be exported from the agenix runtime file at shell startup.
-30. Secret-management surfaces such as Walker menus or future `ks secrets` commands SHOULD expose os-level secrets, service secrets, user-home secrets, and custom secrets as first-class categories so users can discover the intended scope before editing recipients or values.
+27. The corresponding `age.secrets.<name>` runtime declaration MUST exist on every host where that Home Manager user is installed when the user-home profile expects `/run/agenix/<name>` to exist there.
+28. User-home secrets SHOULD follow a shared naming convention rooted in the username so the ownership is obvious from the secret name, for example `${username}-github-token`, `${username}-forgejo-token`, or `${username}-immich-api-key`.
+29. Secret-backed environment variables in Home Manager MUST NOT be set with `home.sessionVariables` when the value would be embedded in the Nix store. Non-secret values MAY use `home.sessionVariables`, but secret values MUST be read from runtime files such as `/run/agenix/<name>` in a shell init hook or another runtime-only execution path.
+30. When a tool needs both a public endpoint and a secret credential, the public endpoint SHOULD be set declaratively with `home.sessionVariables`, while the secret credential SHOULD be exported from the agenix runtime file at shell startup.
+31. Secret-management surfaces such as Walker menus or future `ks secrets` commands SHOULD expose os-level secrets, service secrets, user-home secrets, and custom secrets as first-class categories so users can discover the intended scope before editing recipients or values.
 
 ### Golden Example
 
@@ -87,6 +88,13 @@ When a user-level Home Manager profile needs reusable credentials across multipl
   systems.ncrmro-laptop
   systems.ncrmro-workstation
 ];
+
+# every host that installs home-manager.users.ncrmro and expects the runtime file
+age.secrets.ncrmro-github-token = {
+  file = "${inputs.agenix-secrets}/secrets/ncrmro-github-token.age";
+  owner = "ncrmro";
+  mode = "0400";
+};
 
 # home-manager/ncrmro/base.nix
 home.sessionVariables = {
