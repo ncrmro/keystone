@@ -252,11 +252,11 @@
         "uv2nix": "uv2nix"
       },
       "locked": {
-        "lastModified": 1774402467,
-        "narHash": "sha256-x2GRsVHitMAVbjtJzaWYDbelZC6UiJjATeu/nt0y2PY=",
+        "lastModified": 1774975369,
+        "narHash": "sha256-WMYdpx9e8iFdNhm7q+EQWW4qqhjYb5FlNtWRYQ6PW8U=",
         "owner": "Unsupervisedcom",
         "repo": "deepwork",
-        "rev": "83028395f010b85c8e513da77ab493cb62bd6ff5",
+        "rev": "dbf070fa239f59fd8b23589b7c61f28d620be540",
         "type": "github"
       },
       "original": {

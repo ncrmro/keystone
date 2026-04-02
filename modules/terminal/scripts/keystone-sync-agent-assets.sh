@@ -417,6 +417,10 @@ for command_file in "${managed_opencode_commands[@]}"; do
   rm -f "$HOME/.config/opencode/commands/$command_file"
 done
 
+# Clean up old /ks skill directories (renamed to ks-system)
+rm -rf "$HOME/.claude/skills/ks"
+rm -rf "$HOME/.config/opencode/skills/ks"
+
 for command_id in "${published_commands[@]}"; do
   description="$(command_description "$command_id")"
   argument_hint="$(command_argument_hint "$command_id")"
@@ -479,6 +483,7 @@ legacy_codex_skill_names=(
   notes-doctor notes-process_inbox notes-project notes-report portfolio-review
   project-onboard project-press_release project-success repo-doctor repo-setup
   research-deep research-quick task-ingest task-run
+  ks
 )
 
 for skill_name in "${legacy_codex_skill_names[@]}"; do
@@ -501,4 +506,23 @@ dependencies:
       value: "deepwork"
       description: "DeepWork MCP server"
 '
+
+  # Supporting convention files for Codex multi-file skills
+  if [[ "$command_id" == "ks.ea" ]]; then
+    ea_conventions=(
+      "roles/executive-assistant.md:executive-assistant.md"
+      "tool.calendula.md:tool.calendula.md"
+      "tool.himalaya.md:tool.himalaya.md"
+      "tool.stalwart.md:tool.stalwart.md"
+    )
+    for entry in "${ea_conventions[@]}"; do
+      src_rel="${entry%%:*}"
+      dest_name="${entry##*:}"
+      src_file="$conventions_dir/$src_rel"
+      if [[ -f "$src_file" ]]; then
+        content="$(cat "$src_file")"
+        write_file "$HOME/.codex/skills/${skill_name}/${dest_name}" "$content"
+      fi
+    done
+  fi
 done

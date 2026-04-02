@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+export PATH="/etc/profiles/per-user/${USER:-$(id -un 2>/dev/null || echo ncrmro)}/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:$HOME/.local/bin:${PATH:-}"
+
 STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}/keystone-project-menu"
 CURRENT_PROJECT_FILE="${STATE_DIR}/current-project"
 SNAPSHOT_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/keystone/project-menu"
@@ -32,6 +34,23 @@ keystone_cmd() {
 
 shell_quote() {
   printf "'%s'" "${1//\'/\'\\\'\'}"
+}
+
+normalize_project_slug() {
+  local raw_value="${1:-}"
+  local action=""
+  local project_slug=""
+  local remainder=""
+
+  if [[ "$raw_value" == *$'\t'* ]]; then
+    IFS=$'\t' read -r action project_slug remainder <<< "$raw_value"
+    if [[ -n "$project_slug" ]]; then
+      printf "%s\n" "$project_slug"
+      return 0
+    fi
+  fi
+
+  printf "%s\n" "$raw_value"
 }
 
 match_project_slug() {
@@ -168,7 +187,8 @@ cmd_open() {
 }
 
 cmd_set_current_project() {
-  local project_slug="$1"
+  local project_slug
+  project_slug=$(normalize_project_slug "${1:-}")
 
   mkdir -p "$STATE_DIR"
   printf "%s\n" "$project_slug" > "$CURRENT_PROJECT_FILE"
@@ -214,6 +234,14 @@ cmd_open_notes_menu() {
   setsid "$(keystone_cmd keystone-launch-walker)" -m "menus:keystone-project-notes" -p "Project notes" >/dev/null 2>&1 &
 }
 
+cmd_open_details_menu() {
+  local project_slug="$1"
+
+  cmd_set_current_project "$project_slug"
+  walker -q >/dev/null 2>&1 || true
+  setsid "$(keystone_cmd keystone-launch-walker)" -m "menus:keystone-project-details" -p "Project actions" >/dev/null 2>&1 &
+}
+
 cmd_projects_json() {
   read_snapshot | jq '
     [
@@ -221,9 +249,8 @@ cmd_projects_json() {
       | {
           Text: .slug,
           Subtext: (.summary // "not running"),
-          Value: .slug,
+          Value: ("open-details\t" + .slug),
           Icon: (.icon // ""),
-          SubMenu: "keystone-project-details",
           Preview: ("keystone-project-menu project-preview " + (.slug | @sh)),
           PreviewType: "command"
         }
@@ -491,6 +518,9 @@ cmd_dispatch() {
   case "$action" in
     open)
       cmd_open "$project_slug" "${session_slug:-main}" "${target_host:-$(project_effective_host "$project_slug")}"
+      ;;
+    open-details)
+      cmd_open_details_menu "$project_slug"
       ;;
     new-session-menu)
       cmd_open_session_menu "$project_slug" "${session_slug:-$(project_effective_host "$project_slug")}"

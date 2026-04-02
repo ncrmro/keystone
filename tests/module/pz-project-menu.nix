@@ -2,6 +2,13 @@
   pkgs,
   lib,
 }:
+let
+  lua = pkgs.lua5_4.withPackages (
+    ps: with ps; [
+      dkjson
+    ]
+  );
+in
 pkgs.runCommand "test-pz-project-menu"
   {
     nativeBuildInputs = with pkgs; [
@@ -12,6 +19,7 @@ pkgs.runCommand "test-pz-project-menu"
       gnugrep
       gnused
       jq
+      lua
       yq-go
       zsh
     ];
@@ -33,13 +41,14 @@ pkgs.runCommand "test-pz-project-menu"
         pkgs.gnugrep
         pkgs.gnused
         pkgs.jq
+        lua
         pkgs.yq-go
         pkgs.zsh
       ]
     }"
     export VAULT_ROOT="$HOME/notes"
 
-    mkdir -p "$HOME" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR" "$VAULT_ROOT" "$PWD/bin" "$NIXOS_CONFIG_DIR"
+    mkdir -p "$HOME" "$HOME/.local/bin" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR" "$VAULT_ROOT" "$PWD/bin" "$NIXOS_CONFIG_DIR"
 
     cat > "$NIXOS_CONFIG_DIR/hosts.nix" <<'EOF'
     {
@@ -61,6 +70,7 @@ pkgs.runCommand "test-pz-project-menu"
     exec ${pkgs.bash}/bin/bash "$REPO_ROOT/modules/desktop/home/scripts/keystone-project-menu.sh" "$@"
     EOF
     chmod +x "$PWD/bin/keystone-project-menu"
+    ln -s "$PWD/bin/keystone-project-menu" "$HOME/.local/bin/keystone-project-menu"
 
     cat > "$PWD/bin/zk" <<'EOF'
     #!${pkgs.bash}/bin/bash
@@ -199,6 +209,33 @@ pkgs.runCommand "test-pz-project-menu"
       and ($texts | index("New session")) != null
       and ($texts | index("Notes")) != null
     ' >/dev/null
+
+    cat > "$PWD/check-project-details.lua" <<'EOF'
+    local json = require("dkjson")
+
+    function jsonDecode(value)
+      return json.decode(value)
+    end
+
+    function lastMenuValue(name)
+      return ""
+    end
+
+    dofile(os.getenv("REPO_ROOT") .. "/modules/desktop/home/components/keystone-project-details.lua")
+
+    local entries = GetEntries()
+    local current = io.popen("keystone-project-menu get-current-project"):read("*l") or ""
+    assert(type(entries) == "table", "details entries must decode to a table")
+    assert(#entries >= 3, "details menu should expose action rows; got " .. tostring(#entries) .. " current=" .. tostring(current))
+    assert(entries[1].Text == "Open main session", "first details row should open the main session")
+    assert(entries[2].Text == "New session", "second details row should create a named session")
+    assert(entries[3].Text == "Notes", "third details row should open project notes")
+    EOF
+
+    keystone-project-menu set-current-project $'open-details\tkeystone'
+    lua "$PWD/check-project-details.lua"
+    normalized_project="$(keystone-project-menu get-current-project)"
+    [[ "$normalized_project" == "keystone" ]]
 
     touch "$out"
   ''

@@ -346,6 +346,9 @@
           ks-help = import ./tests/module/ks-help.nix {
             inherit pkgs;
           };
+          ks-lock-sync = import ./tests/module/ks-lock-sync.nix {
+            inherit pkgs;
+          };
           nixfmt-check = import ./tests/module/nixfmt-check.nix {
             inherit pkgs;
           };
@@ -403,6 +406,7 @@
             agent-mail
             fetch-email-source
             fetch-forgejo-sources
+            forgejo-cli-ex
             forgejo-project
             fetch-github-sources
             repo-sync
