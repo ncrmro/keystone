@@ -19,12 +19,21 @@
 }:
 let
   keystone-tui = pkgs.callPackage ../packages/keystone-tui { };
+  installerCfg = config.keystone.installer;
 in
 {
-  options.keystone.installer.sshKeys = lib.mkOption {
-    type = lib.types.listOf lib.types.str;
-    default = [ ];
-    description = "SSH public keys for root access on the installer ISO";
+  options.keystone.installer = {
+    sshKeys = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "SSH public keys for root access on the installer ISO";
+    };
+
+    tui.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether to install and auto-start the Keystone installer TUI on the ISO.";
+    };
   };
 
   config = {
@@ -45,7 +54,7 @@ in
 
     # Configure root user with SSH keys
     users.users.root = {
-      openssh.authorizedKeys.keys = config.keystone.installer.sshKeys;
+      openssh.authorizedKeys.keys = installerCfg.sshKeys;
     };
 
     # Enable networking via NetworkManager (for TUI installer network detection)
@@ -56,43 +65,44 @@ in
     };
 
     # Include TUI installer and tools for installation
-    environment.systemPackages = with pkgs; [
-      keystone-tui
-      git
-      curl
-      wget
-      htop
-      lsof
-      rsync
-      jq
-      # Tools needed for installation
-      parted
-      cryptsetup
-      util-linux
-      dosfstools
-      e2fsprogs
-      nix
-      nixos-install-tools
-      disko
-      shadow
-      iproute2
-      networkmanager
-      tpm2-tools
-      # ZFS utilities — use the same package boot.supportedFilesystems selects
-      config.boot.zfs.package
-      # Secure Boot key management
-      sbctl
-    ];
+    environment.systemPackages =
+      (lib.optionals installerCfg.tui.enable [ keystone-tui ])
+      ++ (with pkgs; [
+        git
+        curl
+        wget
+        htop
+        lsof
+        rsync
+        jq
+        # Tools needed for installation and recovery
+        parted
+        cryptsetup
+        util-linux
+        dosfstools
+        e2fsprogs
+        nix
+        nixos-install-tools
+        disko
+        shadow
+        iproute2
+        networkmanager
+        tpm2-tools
+        # ZFS utilities — use the same package boot.supportedFilesystems selects
+        config.boot.zfs.package
+        # Secure Boot key management
+        sbctl
+      ]);
 
     # NetworkManager for network detection (required by TUI installer)
     networking.networkmanager.enable = true;
 
-    # Disable getty on tty1 so TUI installer can use it
-    systemd.services."getty@tty1".enable = false;
-    systemd.services."autovt@tty1".enable = false;
+    # Disable getty on tty1 so the TUI installer can take over the console.
+    systemd.services."getty@tty1".enable = lib.mkIf installerCfg.tui.enable false;
+    systemd.services."autovt@tty1".enable = lib.mkIf installerCfg.tui.enable false;
 
     # Keystone TUI installer service - auto-starts on boot
-    systemd.services.keystone-installer = {
+    systemd.services.keystone-installer = lib.mkIf installerCfg.tui.enable {
       description = "Keystone Installer TUI";
       after = [
         "network.target"
@@ -144,9 +154,9 @@ in
     # console=tty1 keeps the display signal active (prevents "no signal" flash
     # between GRUB and the TUI); quiet + loglevel=0 ensure nothing is printed.
     # Serial still receives all boot logs for remote debugging.
-    boot.consoleLogLevel = 0;
-    boot.initrd.verbose = false;
-    boot.kernelParams = [
+    boot.consoleLogLevel = lib.mkIf installerCfg.tui.enable 0;
+    boot.initrd.verbose = lib.mkIf installerCfg.tui.enable false;
+    boot.kernelParams = lib.mkIf installerCfg.tui.enable [
       "console=ttyS0,115200"
       "console=tty1"
       "quiet"
