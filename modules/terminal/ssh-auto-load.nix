@@ -75,11 +75,45 @@ in
       askpassScript = pkgs.writeShellScript "ssh-askpass" ''
         ${pkgs.coreutils}/bin/cat ${cfg.passphrasePath}
       '';
+
+      # Shared SSH key health check — classifies: unlocked / locked / agent-unreachable
+      sshHealthScript = pkgs.writeShellScriptBin "keystone-ssh-health" (
+        builtins.readFile ./scripts/keystone-ssh-health.sh
+      );
+
+      # SSH key unlock command — adds software key to ssh-agent via SSH_ASKPASS
+      sshUnlockScript = pkgs.writeShellScriptBin "keystone-ssh-unlock" (
+        builtins.readFile ./scripts/keystone-ssh-unlock.sh
+      );
     in
     {
       # Ensure ssh-agent and ssh client are configured
       services.ssh-agent.enable = true;
       programs.ssh.enable = true;
+
+      # Make health and unlock commands available
+      home.packages = [
+        sshHealthScript
+        sshUnlockScript
+      ];
+
+      # Terminal warning for locked/unreachable SSH key state (ISSUE-REQ-10..12)
+      # Runs once per shell session; uses a runtime marker to avoid noisy repetition.
+      programs.zsh.loginExtra = ''
+        if [[ -z "''${_KEYSTONE_SSH_WARNED:-}" ]]; then
+          _keystone_ssh_state="$(keystone-ssh-health --quiet 2>/dev/null; printf "%s" $?)"
+          case "$_keystone_ssh_state" in
+            1)
+              printf '\e[33m⚠  SSH key not loaded.\e[0m Run: keystone-ssh-unlock %s\n' ${lib.escapeShellArg cfg.keyFile}
+              ;;
+            2)
+              printf '\e[31m✗  SSH agent unreachable.\e[0m Run: systemctl --user start ssh-agent\n'
+              ;;
+          esac
+          export _KEYSTONE_SSH_WARNED=1
+          unset _keystone_ssh_state
+        fi
+      '';
 
       systemd.user.services.ssh-auto-load = {
         Unit = {
