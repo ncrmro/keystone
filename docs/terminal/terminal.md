@@ -157,6 +157,16 @@ The `archetype` option controls which convention set is inlined vs referenced. T
 
 `maxGlobalBytes` sets the budget for the generated file. A build warning is emitted when the content exceeds this limit.
 
+## CLI Coding Agents
+
+Keystone manages multiple AI coding assistants (Claude Code, Gemini CLI, OpenCode, Codex) with unified configuration and context.
+
+- **Unified Context**: All CLIs share the same Keystone conventions, prompts, and skills.
+- **OS Agent Integration**: Keystone is moving toward tool-native agent definitions for OS-agent identities and archetype specialists, not a universal Keystone-defined `--agent <name>` wrapper contract.
+- **MCP Servers**: Curated toolsets (like DeepWork and Playwright) are automatically configured for each tool.
+
+For the current architecture and native-launch direction, see [CLI coding agents](cli-coding-agents.md) and [Spec: Native CLI agent launch surfaces](../../specs/006-native-cli-agent-launch-surfaces.md).
+
 ## DeepWork
 
 The DeepWork module integrates workflow-driven development with quality gates into the terminal environment.
