@@ -24,6 +24,16 @@
 with lib;
 let
   cfg = config.keystone.terminal.grafana;
+
+  # Wrapper script that sources the runtime GRAFANA_API_KEY secret so that
+  # MCP server processes spawned by Codex (or any CLI) always have the
+  # credential available, regardless of whether the parent shell sourced it.
+  grafanaMcpWrapper = pkgs.writeShellScript "grafana-mcp-wrapper" ''
+    if [ -f /run/agenix/grafana-api-token ]; then
+      export GRAFANA_API_KEY="$(${pkgs.coreutils}/bin/tr -d '\n' < /run/agenix/grafana-api-token)"
+    fi
+    exec ${pkgs.keystone.grafana-mcp}/bin/mcp-grafana "$@"
+  '';
 in
 {
   options.keystone.terminal.grafana = {
@@ -44,19 +54,26 @@ in
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.mcp.enable) {
+    assertions = [
+      {
+        assertion = cfg.mcp.url != "";
+        message = "keystone.terminal.grafana.mcp.url must be set when keystone.terminal.grafana.mcp.enable is true";
+      }
+    ];
+
     keystone.terminal.cliCodingAgents.mcpServers.grafana = {
-      command = "${pkgs.keystone.grafana-mcp}/bin/mcp-grafana";
+      command = "${grafanaMcpWrapper}";
       args = [ ];
       env = {
         GRAFANA_URL = cfg.mcp.url;
       };
     };
 
-    # Export GRAFANA_API_KEY from agenix secret at shell login.
-    # Cannot use home.sessionVariables — the secret is a runtime file, not a Nix store path.
-    programs.zsh.initExtra = ''
+    # Export GRAFANA_API_KEY from agenix secret for interactive shell sessions.
+    # MCP server processes use the wrapper script above instead.
+    programs.zsh.envExtra = ''
       if [ -f /run/agenix/grafana-api-token ]; then
-        export GRAFANA_API_KEY="$(tr -d '\n' < /run/agenix/grafana-api-token)"
+        export GRAFANA_API_KEY="$(${pkgs.coreutils}/bin/tr -d '\n' < /run/agenix/grafana-api-token)"
       fi
     '';
   };
