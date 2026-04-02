@@ -13,7 +13,7 @@ let
   inherit (agentsLib) osCfg cfg topDomain;
   inherit (agentsLib) globalAgentVncPort agentSvcHelper;
   devScripts = import ../../shared/dev-script-link.nix { inherit lib; };
-  inherit (devScripts) resolveRepoCheckout mkSystemScriptPackage;
+  inherit (devScripts) mkHomeScriptCommand mkSystemScriptPackage;
   projectIndexHelper = pkgs.writeShellScriptBin "keystone-project-index" (
     builtins.readFile ./scripts/project-index.sh
   );
@@ -81,6 +81,7 @@ let
         GNUGREP="${pkgs.gnugrep}"
         GNUSED="${pkgs.gnused}"
         NIX="${pkgs.nix}"
+        PZ="${pkgs.keystone.pz}/bin/pz"
         ZELLIJ="${pkgs.zellij}/bin/zellij"
         PODMAN_AGENT="${pkgs.keystone.podman-agent}/bin/podman-agent"
         PROJECT_INDEX_HELPER="${projectIndexHelper}/bin/keystone-project-index"
@@ -127,20 +128,19 @@ let
           esac
         }
   '';
+  agentctlPackage = mkSystemScriptPackage {
+    inherit config pkgs;
+    commandName = "agentctl";
+    relativePath = "modules/os/agents/scripts/agentctl.sh";
+    nixStorePath = ./scripts/agentctl.sh;
+    extraEnvSetup = ''export AGENTCTL_ENV_FILE="${agentctlEnv}"'';
+  };
 in
 {
   config = mkIf (osCfg.enable && cfg != { }) (
     {
       environment.systemPackages =
         let
-          agentctl = mkSystemScriptPackage {
-            inherit config pkgs;
-            commandName = "agentctl";
-            relativePath = "modules/os/agents/scripts/agentctl.sh";
-            nixStorePath = ./scripts/agentctl.sh;
-            extraEnvSetup = ''export AGENTCTL_ENV_FILE="${agentctlEnv}"'';
-          };
-
           # Per-agent wrapper scripts: `drago claude` = `agentctl drago claude`
           agentAliases = mapAttrsToList (
             name: _:
@@ -149,22 +149,31 @@ in
             ''
           ) cfg;
         in
-        [ agentctl ] ++ agentAliases;
+        [ agentctlPackage ] ++ agentAliases;
 
     }
     // optionalAttrs (options ? home-manager) {
       home-manager.sharedModules = [
         (
-          { config, lib, ... }:
-          let
-            repoCheckout = resolveRepoCheckout config "keystone";
-          in
           {
-            config = lib.mkIf (repoCheckout != null && config.keystone.terminal.enable) {
-              home.file.".local/bin/agentctl".source =
-                config.lib.file.mkOutOfStoreSymlink "${repoCheckout}/modules/os/agents/scripts/agentctl.sh";
-              home.file.".config/keystone/agentctl.env".source = agentctlEnv;
-            };
+            config,
+            lib,
+            pkgs,
+            ...
+          }:
+          {
+            config = lib.mkIf config.keystone.terminal.enable (
+              (mkHomeScriptCommand {
+                inherit config pkgs;
+                commandName = "agentctl";
+                relativePath = "modules/os/agents/scripts/agentctl.sh";
+                package = agentctlPackage;
+                extraEnvSetup = ''export AGENTCTL_ENV_FILE="${agentctlEnv}"'';
+              })
+              // {
+                home.file.".config/keystone/agentctl.env".source = agentctlEnv;
+              }
+            );
           }
         )
       ];

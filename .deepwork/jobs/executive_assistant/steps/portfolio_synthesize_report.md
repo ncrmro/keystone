@@ -58,7 +58,12 @@ other source. Every number in the report must trace back to the input files.
    - Projects with no milestones and no activity typically fall in Q4 (eliminate/archive)
    - Projects with high activity and near-complete milestones are Q1 (do first)
 
-   Render as an ASCII box diagram showing all projects in their quadrants.
+   Render as four compact quadrant subsections, not an ASCII box diagram. Keep each
+   project entry short so the report remains printable:
+   - `Q1 — Do first`
+   - `Q2 — Schedule`
+   - `Q3 — Delegate`
+   - `Q4 — Eliminate / Archive`
 
 6. **Identify cross-project concerns**
 
@@ -80,25 +85,27 @@ other source. Every number in the report must trace back to the input files.
    workflow to run if applicable (e.g., "Run `project/success` for catalyst to update
    the charter").
 
-8. **Write the report and open a PR in the notes repo**
+8. **Write the report and open a PR from the worktree branch**
 
-   The report is delivered as a pull request into the notes repo so the user can
-   review, refine, and discuss it before merging.
+   The report is delivered as a pull request from the `portfolio-review/YYYY-MM`
+   worktree branch set up in `discover_projects`. Use `$WORKTREE_PATH` (not the
+   primary `notes_path` checkout).
 
    ```bash
-   cd {notes_path}
-   git checkout -b portfolio-review/YYYY-MM
-   mkdir -p projects/portfolio/reviews/
+   NOTES_OWNER_REPO=$(git -C "$NOTES_PATH" remote get-url origin \
+     | sed 's|.*[:/]\([^/]*/[^/]*\)\.git|\1|')
+   WORKTREE_PATH="${WORKTREE_DIR:-$HOME/.worktrees}/${NOTES_OWNER_REPO}/portfolio-review/$(date +%Y-%m)"
+   mkdir -p "${WORKTREE_PATH}/projects/portfolio/reviews/"
    ```
 
-   Write the report to `projects/portfolio/reviews/YYYY-MM.md`.
+   Write the report to `projects/portfolio/reviews/YYYY-MM.md` inside the worktree.
 
    Then commit and push:
 
    ```bash
-   git add projects/portfolio/reviews/YYYY-MM.md
-   git commit -m "docs(portfolio): add YYYY-MM portfolio review"
-   git push -u origin portfolio-review/YYYY-MM
+   git -C "$WORKTREE_PATH" add projects/portfolio/reviews/YYYY-MM.md
+   git -C "$WORKTREE_PATH" commit -m "docs(portfolio): add YYYY-MM portfolio review"
+   git -C "$WORKTREE_PATH" push -u origin portfolio-review/YYYY-MM
    ```
 
    Open a PR using the appropriate platform CLI. Detect the platform from the
@@ -203,23 +210,31 @@ the biggest risk, and the recommended focus area.]
 
 [...]
 
-## Portfolio Priority Matrix
-```
+## Portfolio priority matrix
 
-                      URGENT                             NOT URGENT
-            ┌────────────────────────────┬────────────────────────────┐
-            │ Q1: DO FIRST               │ Q2: SCHEDULE               │
+### Q1 — Do first
 
-IMPORTANT │ keystone (TUI 95%) │ catalyst (Cloud Platform) │
-│ nixos-config (infra maint) │ obsidian (zk migration) │
-├────────────────────────────┼────────────────────────────┤
-│ Q3: DELEGATE │ Q4: ELIMINATE / ARCHIVE │
-NOT │ plant-caravan (0% milestone)│ meze, eonmun, tetrastack │
-IMPORTANT │ │ ks.systems, latinum-space │
-│ │ ncrmro-website, ks-hw │
-└────────────────────────────┴────────────────────────────┘
+- keystone — Desktop integration, 67%, high activity
+- nixos-config — Infra maintenance, medium activity
 
-```
+### Q2 — Schedule
+
+- catalyst — Cloud platform, medium activity
+- obsidian — ZK migration, active but not urgent
+
+### Q3 — Delegate
+
+- plant-caravan — Open milestone, low importance today
+
+### Q4 — Eliminate / Archive
+
+- meze — No milestones, stagnant
+- eonmun — No milestones, stagnant
+- tetrastack — No active work
+- ks.systems — No active work
+- latinum-space — No active work
+- ncrmro-website — No active work
+- ks-hw — No active work
 
 **Reading the matrix**: Q1 projects need your time NOW. Q2 projects are strategic
 but not time-pressured — schedule dedicated blocks. Q3 items have urgency signals
@@ -259,5 +274,6 @@ should be explicitly archived to reduce cognitive overhead.
 
 This is the capstone step of the portfolio review. The user reads this report to decide
 where to allocate their time and energy. It should be scannable (tables, not paragraphs)
-and opinionated (clear recommendations, not just data dumps). The report replaces the
+and opinionated (clear recommendations, not just data dumps). Prefer compact sections
+and short bullets over wide diagrams so the document prints cleanly. The report replaces the
 old per-project `status.md` files with a single portfolio-level view.

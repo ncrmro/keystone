@@ -4,7 +4,7 @@
 
 1. A notes repository MUST be initialized as a zk notebook before use: `zk init`.
 2. The `.zk/` directory and its contents (config.toml, templates) MUST be committed to git.
-3. Directory structure MUST follow the keystone standard: `inbox/`, `literature/`, `notes/`, `decisions/`, `docs/reports/`, `docs/presentations/`, `index/`, and `archive/`.
+3. Directory structure MUST follow the keystone standard: `inbox/`, `literature/`, `notes/`, `decisions/`, `reports/`, `presentations/`, `index/`, and `archive/`.
 4. See `process.knowledge-management` for the note type taxonomy and methodology.
 5. See `process.notes` and `tool.zk-notes` for hub notes, report chains, and archive workflows.
 6. Automation SHOULD prefer `zk --notebook-dir <path> ...` over `cd <path> && zk ...` so notebook selection is explicit and independent of shell cwd.
@@ -12,7 +12,7 @@
 ## Creating Notes
 
 7. Notes MUST be created via `zk new <group>/ --title "Title"`.
-8. Groups map to directories: `inbox` (fleeting), `literature`, `notes` (permanent), `decisions`, `docs/reports` (report), `docs/presentations` (presentation), `index`, and `archive`.
+8. Groups map to directories: `inbox` (fleeting), `literature`, `notes` (permanent), `decisions`, `reports` (report), `presentations` (presentation), `index`, and `archive`.
 9. In non-interactive contexts (agents, scripts), `--no-input` MUST be used to prevent `$EDITOR` from opening.
 10. `--print-path` SHOULD be used when the caller needs the created file path.
 
@@ -28,11 +28,11 @@ zk --notebook-dir ~/notes new literature/ --title "NixOS module system" --no-inp
   --extra source="NixOS Manual" --extra source_url="https://nixos.org/manual"
 
 # Recurring report
-zk --notebook-dir ~/notes new docs/reports/ --title "Keystone fleet health $(date +%Y-%m-%d)" --no-input \
+zk --notebook-dir ~/notes new reports/ --title "Keystone fleet health $(date +%Y-%m-%d)" --no-input \
   --print-path --extra report_kind="keystone-system"
 
 # Presentation deck
-zk --notebook-dir ~/notes new docs/presentations/ --title "Keystone architecture briefing" --no-input \
+zk --notebook-dir ~/notes new presentations/ --title "Keystone architecture briefing" --no-input \
   --print-path --extra presentation_kind="architecture-briefing"
 ```
 
@@ -52,11 +52,11 @@ zk --notebook-dir ~/notes list --format json --tag decision
 zk --notebook-dir ~/notes list inbox/ --format json
 
 # Latest report in a chain
-zk --notebook-dir ~/notes list docs/reports/ --tag "report/keystone-system" --tag "repo/ncrmro/nixos-config" \
+zk --notebook-dir ~/notes list reports/ --tag "report/keystone-system" --tag "repo/ncrmro/nixos-config" \
   --tag "source/deepwork/ks-doctor" --sort created- --limit 1 --format json
 
 # Latest presentation deck of a given kind
-zk --notebook-dir ~/notes list docs/presentations/ --tag "presentation/architecture-briefing" \
+zk --notebook-dir ~/notes list presentations/ --tag "presentation/architecture-briefing" \
   --tag "project/keystone" --sort created- --limit 1 --format json
 
 # Find notes linked from a specific note

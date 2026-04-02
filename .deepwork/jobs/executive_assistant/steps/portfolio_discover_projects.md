@@ -12,7 +12,47 @@ drives the rest of the portfolio review — every project in it will be reviewed
 
 ### Process
 
-1. **Determine the notes repo path**
+1. **Prepare the notes repo — always start from a clean main**
+
+   The portfolio review MUST run against the latest `main` branch in a dedicated
+   worktree so it doesn't interfere with any in-progress notes work.
+
+   Per `process.git-repos`, worktrees MUST live at `$WORKTREE_DIR/{owner}/{repo}/{branch}/`
+   — never inside the repo itself.
+
+   ```bash
+   NOTES_PATH="${NOTES_DIR:-$HOME/notes}"
+   BRANCH="portfolio-review/$(date +%Y-%m)"
+   # Resolve owner/repo from the notes remote, defaulting to ncrmro/notes
+   NOTES_OWNER_REPO=$(git -C "$NOTES_PATH" remote get-url origin \
+     | sed 's|.*[:/]\([^/]*/[^/]*\)\.git|\1|')
+   WORKTREE_PATH="${WORKTREE_DIR:-$HOME/.worktrees}/${NOTES_OWNER_REPO}/${BRANCH}"
+   ```
+
+   a. **Switch the primary checkout to `main` and pull**:
+      ```bash
+      git -C "$NOTES_PATH" stash            # stash any uncommitted changes
+      git -C "$NOTES_PATH" checkout main
+      git -C "$NOTES_PATH" pull --ff-only   # fast-forward only — stop on divergence
+      ```
+      If `pull --ff-only` fails (diverged), stop and report the blocker. Do not
+      proceed with a stale repo.
+
+   b. **Create (or reuse) a worktree for this review**:
+      ```bash
+      if git -C "$NOTES_PATH" worktree list | grep -q "$WORKTREE_PATH"; then
+        # Worktree already exists — reuse it
+        echo "Reusing existing worktree at $WORKTREE_PATH"
+      else
+        mkdir -p "$(dirname "$WORKTREE_PATH")"
+        git -C "$NOTES_PATH" worktree add -b "$BRANCH" "$WORKTREE_PATH" main
+      fi
+      ```
+
+   c. **All subsequent work uses `$WORKTREE_PATH`**, not `$NOTES_PATH`.
+      Pass `$WORKTREE_PATH` forward as the working notes directory for this run.
+
+2. **Determine the notes repo path**
    - The `notes_path` input specifies where the notes repo lives
    - If `notes_path` was not provided, ask structured questions to determine it:
      offer common paths like `~/code/ncrmro/obsidian`, `~/notes`, or let the user

@@ -130,7 +130,7 @@ context → lean canvas → KPIs → market analysis → press release
 1. **Product agent** produces a press release via `press_release/write` workflow
 2. **Product agent** converts it to a milestone + issues via `product_engineering_handoff/handoff` workflow
 3. **Engineering agent** picks up issues as task sources during ingest
-4. **Engineering agent** creates branches, PRs, and delivers code via `sweng/sweng` workflow
+4. **Engineering agent** creates branches, PRs, and delivers code via dedicated engineering workflows
 
 Both agents share the same composable prompt architecture from the `.agents/` submodule (see [Shared Agents Library](#shared-agents-library)).
 
@@ -551,7 +551,6 @@ Available workflows that can be auto-assigned by the prioritize decision tree:
 
 | Workflow              | Trigger                                               | Status                                     |
 | --------------------- | ----------------------------------------------------- | ------------------------------------------ |
-| `sweng/sweng`         | Code-related issues/PRs, repos with code keywords     | Planned (will be migrated to DeepWork job) |
 | `cadeng/cadeng`       | CAD keywords, hardware project                        | Planned (will be migrated to DeepWork job) |
 | `press_release/write` | "press release" or "working backwards" in description | Exists                                     |
 
@@ -852,7 +851,6 @@ These workflows are referenced in the prioritize decision tree but do not yet ha
 
 | Workflow        | Purpose                                                                 | Status                                                         |
 | --------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `sweng/sweng`   | Software engineering task execution (GitHub/Forgejo issues, code tasks) | Referenced in decision tree — will be migrated to DeepWork job |
 | `cadeng/cadeng` | CAD/hardware engineering (OpenSCAD, FreeCAD, 3D printing)               | Referenced in decision tree — will be migrated to DeepWork job |
 
 ## Coding Subagent Usage
@@ -994,7 +992,7 @@ Agent scripts emit structured events using `logfmt`. Key fields available for qu
 | `status`           | Outcome status       | `success`, `error`, `blocked`, `degraded` |
 | `duration_seconds` | Execution time       | `42`                                      |
 | `token_total`      | Total AI tokens used | `1250`                                    |
-| `workflow`         | DeepWork workflow    | `sweng/sweng`                             |
+| `workflow`         | DeepWork workflow    | `project/implement`                       |
 | `parsed_urls`      | URLs found in logs   | `["https://github.com/..."]`              |
 
 ### Prometheus Metrics
@@ -1051,5 +1049,4 @@ The `task-loop.sh` and `scheduler.sh` scripts write metrics to the standard node
 | Incident log (FR-014)              | Shared incident database, auto-escalation                        |
 | Cronjob Nix scaffold (FR-016)      | `.cronjobs/` convention documented but not auto-generated        |
 | Agent-space flake (FR-017)         | `flake.nix` convention documented but not auto-generated         |
-| sweng DeepWork job                 | Referenced in decision tree, not yet a job definition            |
 | cadeng DeepWork job                | Referenced in decision tree, not yet a job definition            |

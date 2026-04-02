@@ -67,7 +67,23 @@ Run post-migration health checks to confirm the notebook is valid and no data wa
    - If the repo uses root `spikes/`, confirm canonical spike notes live at `spikes/<slug>/README.md`
    - Confirm spike support docs such as `scope.md`, `research.md`, and `prototype/README.md` are either intentionally ignored by `.zk/config.toml` or explicitly treated as support artifacts
 
-10. **Missing project tag check**:
+10. **VCS ref field compliance check**: Verify all notes use canonical ref field names and formats:
+
+   ```bash
+   # Any remaining raw GitHub/Forgejo URLs in frontmatter
+   rg -n "^(repo_ref|issue_ref|milestone_ref|pr_ref):\s+https://" <notes_path> -g '*.md'
+
+   # Any remaining non-standard field names
+   rg -n "^(issue|pr|milestone|repo|github_issue|github_pr|forgejo_issue|issue_url|pr_url):" <notes_path> -g '*.md'
+
+   # Canonical fields missing the required prefix
+   rg -n "^(repo_ref|issue_ref|milestone_ref|pr_ref):\s+(?!gh:|fj:)" <notes_path> -g '*.md' -P
+   ```
+
+   - PASS: zero raw URLs and zero non-standard field names remain
+   - FAIL: any raw URL or non-standard field name found in frontmatter
+
+11. **Missing project tag check**:
 
 - Run `scripts/find_missing_project_tags.py .` from the repo root, or reproduce its logic with `rg`
 - Report likely missing project tags in `notes/`, `literature/`, `reports/`, `index/`, and canonical spike README files
@@ -116,6 +132,12 @@ Write `.deepwork/tmp/doctor_report.md`:
 - Project hubs in `index/`: OK / FAIL
 - Canonical spike README notes: OK / FAIL
 - Spike support docs: intentionally ignored / explicit artifacts / failed
+
+## VCS ref field compliance
+
+- Raw URLs remaining in ref fields: N (PASS if 0)
+- Non-standard field names remaining: N (PASS if 0)
+- Malformed `gh:`/`fj:` refs: N (PASS if 0)
 
 ## Missing project tags
 

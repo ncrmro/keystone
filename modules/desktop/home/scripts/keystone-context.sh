@@ -11,6 +11,31 @@ set -euo pipefail
 SESSION_PREFIX="obs"
 VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
 
+keystone_cmd() {
+  local command_name="$1"
+
+  if command -v "$command_name" >/dev/null 2>&1; then
+    command -v "$command_name"
+    return 0
+  fi
+
+  if [[ -x "$HOME/.local/bin/$command_name" ]]; then
+    printf "%s\n" "$HOME/.local/bin/$command_name"
+    return 0
+  fi
+
+  printf "Unable to locate %s\n" "$command_name" >&2
+  exit 1
+}
+
+detach() {
+  "$(keystone_cmd keystone-detach)" "$@"
+}
+
+detach_with_pid() {
+  "$(keystone_cmd keystone-detach)" --print-pid "$@"
+}
+
 usage() {
   cat <<'EOF'
 keystone-context — Launch or attach to a desktop context
@@ -110,7 +135,6 @@ if ! session_exists; then
     # For now, let's keep the manual creation but ensure it's consistent with pz's expectations
     # if it ever changes. pz currently expects projects in $VAULT_ROOT/projects/$SLUG
     local_project_path="${VAULT_ROOT}/projects/${SLUG}"
-    local_project_readme="${local_project_path}/README.md"
     
     # If not in projects/, it might be a note-only project (pz fallback)
     if [[ ! -d "$local_project_path" ]]; then
@@ -121,11 +145,11 @@ if ! session_exists; then
       export PROJECT_NAME="${SLUG}"
       export PROJECT_PATH="${local_project_path}"
       export VAULT_ROOT="${VAULT_ROOT}"
-      zellij --session "${SESSION_NAME}" --layout "$LAYOUT" options --default-cwd "${local_project_path}" &
+      detach zellij --session "${SESSION_NAME}" --layout "$LAYOUT" options --default-cwd "${local_project_path}"
     )
   else
     # Ad-hoc slug — create session directly
-    zellij --session "${SESSION_NAME}" --layout "$LAYOUT" &
+    detach zellij --session "${SESSION_NAME}" --layout "$LAYOUT"
   fi
 
   # Wait briefly for the session to register
@@ -159,8 +183,7 @@ if [[ -n "$EXISTING_CLIENT" ]]; then
   fi
 else
   # Launch new ghostty window attached to the zellij session
-  ghostty --title="${SLUG}" -e zellij attach "${SESSION_NAME}" &
-  GHOSTTY_PID=$!
+  GHOSTTY_PID=$(detach_with_pid ghostty --title="${SLUG}" -e zellij attach "${SESSION_NAME}")
 
   # Wait for the window to appear in Hyprland
   for _ in $(seq 1 30); do

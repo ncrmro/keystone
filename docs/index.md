@@ -63,6 +63,7 @@ Start here:
 
 - [Install the terminal environment](terminal/tui-install.md)
 - [Terminal module overview](terminal/terminal.md)
+- [Navigation guide](navigation.md)
 
 ## Core concept: `keystone-config`
 
@@ -106,6 +107,7 @@ Use the template, keep the default single-machine structure, and work through:
 1. [ISO Generation](os/iso-generation.md)
 2. [Keystone OS install](os/installation.md)
 3. [Terminal module overview](terminal/terminal.md)
+4. [Navigation guide](navigation.md)
 
 ### If you are iterating or contributing
 

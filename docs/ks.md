@@ -58,7 +58,7 @@ ks update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-use
 Pull, verify, build, and deploy Keystone hosts.
 
 - `--debug`: Show warnings from `git` and `nix` commands.
-- `--dev`: Build and activate home-manager profiles only.
+- `--dev`: Build and deploy the current unlocked checkout without pull, lock, or push.
 - `--boot`: Register the new generation for next boot without switching now.
 - `--pull`: Pull managed repos only, then stop.
 - `--lock`: Force lock mode explicitly. This is the default unless `--dev` is set.
@@ -72,6 +72,70 @@ ks update
 ks update --dev workstation
 ks update --boot ocean
 ks update --pull --dev
+```
+
+### `ks agents`
+
+```bash
+ks agents <pause|resume|status> <agent|all> [reason]
+```
+
+Control task-loop pause state for one agent or the full agent fleet.
+
+- `pause`: Create the pause marker so scheduled task-loop runs exit before ingest and execution.
+- `resume`: Remove the pause marker and allow scheduled task-loop runs again.
+- `status`: Show whether the target agent task loop is paused.
+
+Examples:
+
+```bash
+ks agents pause drago "waiting for human review"
+ks agents pause all "human focus block"
+ks agents status luce
+ks agents resume all
+```
+
+### `ks docs`
+
+```bash
+ks docs [topic|path]
+```
+
+Browse Keystone Markdown docs in the terminal with `glow` and `fzf`.
+
+- With no argument, `ks docs` opens an interactive picker over Markdown files in `docs/` only.
+- In the picker, type to filter, press Enter to open, and press Esc to cancel.
+- Topic shortcuts: `os`, `terminal`, `desktop`, `agents`, `projects`.
+- Relative docs paths such as `terminal/projects.md` also work.
+
+Examples:
+
+```bash
+ks docs
+ks docs desktop
+ks docs terminal/projects.md
+```
+
+### `ks photos`
+
+```bash
+ks photos search [options]
+```
+
+Search Immich-backed photo, screenshot, and OCR results through Keystone Photos.
+
+- `Keystone Photos` is the canonical name for this feature.
+- The public CLI entrypoint is `ks photos`.
+- The implementation package and backend helper are `keystone-photos`.
+- `immich-search` is legacy spec wording and should not be used for new docs.
+
+Examples:
+
+```bash
+ks photos search --text "acme"
+ks photos search --text "nick romero" --kind business-card
+ks photos search --person "Nick Romero" --type photo
+ks photos search --text "ks build" --type screenshot --from 2026-01-01 --to 2026-03-31
 ```
 
 ### `ks switch`
@@ -90,6 +154,25 @@ Examples:
 ks switch
 ks switch workstation,ocean
 ks switch --boot ocean
+```
+
+### `ks sync-agent-assets`
+
+```bash
+ks sync-agent-assets
+```
+
+Refresh generated Keystone agent assets for the current user from the current
+profile manifest.
+
+- Rewrites generated instruction files, curated command files, and managed
+  Codex skills from the live keystone checkout in development mode.
+- This is the supported no-sudo refresh path for development-mode agent assets.
+
+Example:
+
+```bash
+ks sync-agent-assets
 ```
 
 ### `ks sync-host-keys`
@@ -117,10 +200,11 @@ ks grafana dashboards <apply|export> [uid]
 
 Manage checked-in Keystone Grafana dashboards through the Grafana API.
 
-- `apply`: Push every checked-in dashboard JSON file to Grafana.
+- `apply`: Push every checked-in dashboard JSON file to Grafana, and delete stale keystone-managed dashboards that are no longer in the repo.
 - `export <uid>`: Pull one dashboard by UID into its checked-in JSON file.
 - `GRAFANA_URL`: Override the Grafana base URL.
 - `GRAFANA_API_KEY`: Override the Grafana API key.
+- In development mode, `ks update --dev`, `ks update`, and `ks switch` automatically sync keystone dashboards after deployment.
 
 Examples:
 
@@ -136,6 +220,11 @@ ks agent [--local [MODEL]] [args...]
 ```
 
 Launch an AI coding agent with Keystone conventions and host context.
+
+`ks agent` launches `claude` by default. Its static base prompt comes from the
+generated `~/.keystone/AGENTS.md`, then `ks` appends live host and fleet context.
+The generated command surface inside the session is curated to `/ks`, optional
+`/ks.dev` in development mode, and `/deepwork`.
 
 - `--local [MODEL]`: Use the local Ollama-backed model, or the configured default model.
 - Remaining args are passed through to the underlying `claude` invocation.
@@ -154,10 +243,10 @@ ks agent --local qwen2.5-coder:14b --continue
 ks doctor [--local [MODEL]] [args...]
 ```
 
-Launch a diagnostic AI agent with fleet and local system state.
+Print the scripted fleet doctor report, then optionally launch the default agent.
 
-- `--local [MODEL]`: Use the local Ollama-backed model, or the configured default model.
-- Remaining args are passed through to the underlying `claude` invocation.
+- `--local [MODEL]`: If you choose to launch the agent, use the local Ollama-backed model, or the configured default model.
+- Remaining args are passed through to the agent if you choose to launch it.
 
 Examples:
 

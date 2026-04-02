@@ -29,15 +29,14 @@ fi
 
 echo "provision-runner-token: using admin user '$ADMIN_USER'"
 
-TEMP_TOKEN_NAME="provision-runner-temp"
-ADMIN_TOKEN=$($FORGEJO_CMD user generate-access-token \
+TEMP_TOKEN_NAME="provision-runner-temp-$(date +%s)-$$"
+if ! ADMIN_TOKEN=$($FORGEJO_CMD user generate-access-token \
   --username "$ADMIN_USER" \
   --token-name "$TEMP_TOKEN_NAME" \
   --scopes "all" \
-  --raw 2>/dev/null)
-
-if [ -z "$ADMIN_TOKEN" ]; then
+  --raw 2>&1); then
   echo "provision-runner-token: ERROR — could not generate admin API token"
+  printf '%s\n' "$ADMIN_TOKEN" >&2
   exit 1
 fi
 
@@ -50,9 +49,14 @@ cleanup_token() {
 }
 trap cleanup_token EXIT
 
-RUNNER_TOKEN=$(curl -svf -H "$AUTH" \
-  -X GET "$API/admin/runners/registration-token" \
-  | jq -r '.token')
+if ! RUNNER_TOKEN_RESPONSE=$(curl -sf -H "$AUTH" \
+  -X GET "$API/admin/runners/registration-token" 2>&1); then
+  echo "provision-runner-token: ERROR — could not fetch runner registration token"
+  printf '%s\n' "$RUNNER_TOKEN_RESPONSE" >&2
+  exit 1
+fi
+
+RUNNER_TOKEN=$(printf '%s\n' "$RUNNER_TOKEN_RESPONSE" | jq -r '.token')
 if [ -z "$RUNNER_TOKEN" ] || [ "$RUNNER_TOKEN" = "null" ]; then
   echo "provision-runner-token: ERROR — could not fetch runner registration token"
   exit 1

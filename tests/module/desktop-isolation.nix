@@ -15,73 +15,75 @@
 pkgs.testers.nixosTest {
   name = "desktop-isolation";
 
-  nodes.machine = {
-    config,
-    pkgs,
-    ...
-  }: {
-    # Hyprland compositor
-    programs.hyprland = {
-      enable = true;
-      withUWSM = true;
-    };
+  nodes.machine =
+    {
+      config,
+      pkgs,
+      ...
+    }:
+    {
+      # Hyprland compositor
+      programs.hyprland = {
+        enable = true;
+        withUWSM = true;
+      };
 
-    # Login manager
-    services.greetd = {
-      enable = true;
-      settings.default_session = {
-        command = "uwsm start -S -F Hyprland";
-        user = "testuser";
+      # Login manager
+      services.greetd = {
+        enable = true;
+        settings.default_session = {
+          command = "uwsm start -S -F Hyprland";
+          user = "testuser";
+        };
+      };
+
+      # Audio stack
+      security.rtkit.enable = true;
+      services.pipewire = {
+        enable = true;
+        alsa.enable = true;
+        pulse.enable = true;
+      };
+
+      # Bluetooth (common desktop requirement)
+      hardware.bluetooth.enable = true;
+
+      # NetworkManager for desktop networking
+      networking.networkmanager.enable = true;
+
+      # Test user
+      users.users.testuser = {
+        isNormalUser = true;
+        initialPassword = "testpass";
+        extraGroups = [
+          "wheel"
+          "networkmanager"
+          "video"
+          "audio"
+        ];
+      };
+
+      # Basic fonts
+      fonts.packages = with pkgs; [
+        noto-fonts
+      ];
+
+      # XDG portals
+      xdg.portal = {
+        enable = true;
+        extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+      };
+
+      # Polkit for privilege escalation
+      security.polkit.enable = true;
+
+      # VM settings with graphics
+      virtualisation = {
+        memorySize = 4096;
+        cores = 2;
+        graphics = true;
       };
     };
-
-    # Audio stack
-    security.rtkit.enable = true;
-    services.pipewire = {
-      enable = true;
-      alsa.enable = true;
-      pulse.enable = true;
-    };
-
-    # Bluetooth (common desktop requirement)
-    hardware.bluetooth.enable = true;
-
-    # NetworkManager for desktop networking
-    networking.networkmanager.enable = true;
-
-    # Test user
-    users.users.testuser = {
-      isNormalUser = true;
-      initialPassword = "testpass";
-      extraGroups = [
-        "wheel"
-        "networkmanager"
-        "video"
-        "audio"
-      ];
-    };
-
-    # Basic fonts
-    fonts.packages = with pkgs; [
-      noto-fonts
-    ];
-
-    # XDG portals
-    xdg.portal = {
-      enable = true;
-      extraPortals = [pkgs.xdg-desktop-portal-gtk];
-    };
-
-    # Polkit for privilege escalation
-    security.polkit.enable = true;
-
-    # VM settings with graphics
-    virtualisation = {
-      memorySize = 4096;
-      cores = 2;
-      graphics = true;
-    };
-  };
 
   testScript = ''
     print("Starting desktop isolation test...")

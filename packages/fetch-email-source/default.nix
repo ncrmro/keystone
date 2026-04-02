@@ -21,10 +21,12 @@ stdenv.mkDerivation {
     chmod +x $out/bin/*
 
     wrapProgram $out/bin/fetch-email-source \
-      --prefix PATH : ${lib.makeBinPath [
-        himalaya
-        jq
-      ]}
+      --prefix PATH : ${
+        lib.makeBinPath [
+          himalaya
+          jq
+        ]
+      }
   '';
 
   meta = with lib; {

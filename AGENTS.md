@@ -122,12 +122,21 @@ The **keystone config repo** is `nixos-config` — the consumer flake that impor
 modules and declares per-host/per-user configuration. All keystone-managed repos live
 under `~/.keystone/repos/OWNER/REPO/`.
 
-> **CRITICAL: Verifying Builds**
-> Agents MUST verify their changes by running a full build against a real host, not just isolated tests.
-> Run `ks build` (which defaults to the current host) to ensure your changes integrate correctly.
+For notes workflows, keep the shared owner note repos cloned at:
+
+- `~/.keystone/repos/luce/notes`
+- `~/.keystone/repos/drago/notes`
+
+> **CRITICAL: Verifying Changes**
+> Agents MUST start with `nix flake check` for repo-native validation and CI parity.
+> Tests, CLI regressions, script lint and format checks, and launcher/backend regression checks SHOULD live under `checks` in `flake.nix`, not in ad hoc wrapper scripts.
+> `nix flake check` SHOULD cover repo-wide `shellcheck`, repo-wide `nixfmt --check`, and deterministic command-contract tests for critical terminal and desktop backends such as `pz`, `ks`, `agentctl`, and Walker/Elephant menu adapters.
+> Agents MUST run `ks build` when a change affects host integration, generated assets, or behavior that isolated flake checks cannot validate.
+> Agents MUST NOT treat `ks build` as a substitute for adding a deterministic flake check when one can be added.
 
 ```bash
-ks build              # Build home-manager profiles for current host (verify changes here!)
+nix flake check       # First pass: repo-native checks and CI parity
+ks build              # Build home-manager profiles for current host when host integration matters
 ks build --lock       # Full system build + lock + push (requires sudo)
 ks update --dev       # Deploy home-manager profiles only
 ks update             # Full system: pull, lock, build, push, deploy (requires sudo)

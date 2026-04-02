@@ -1,72 +1,8 @@
 # Keystone Terminal Mail (Himalaya)
 #
 # This module provides himalaya email client configuration.
-# When enabled with a host configured, it generates a full config.toml.
-#
-# ## Stalwart (self-hosted) Example
-#
-# ```nix
-# keystone.terminal.mail = {
-#   enable = true;
-#   accountName = "personal";
-#   email = "me@example.com";
-#   displayName = "My Name";
-#   login = "me";  # Stalwart account name, not email
-#   host = "mail.example.com";
-#   passwordCommand = "cat /run/agenix/mail-password";
-# };
-# ```
-#
-# ## Gmail Example
-#
-# Requires an App Password (Google Account > Security > 2-Step Verification > App passwords).
-# Store it in rbw: `rbw add gmail-app-password`
-#
-# ```nix
-# keystone.terminal.mail = {
-#   enable = true;
-#   accountName = "gmail";
-#   email = "user@gmail.com";
-#   displayName = "User Name";
-#   login = "user@gmail.com";  # Gmail uses full email as login
-#   host = "imap.gmail.com";
-#   passwordCommand = "rbw get gmail-app-password";
-#   smtp = { host = "smtp.gmail.com"; port = 465; encryption = "tls"; };
-#   folders = {
-#     sent = "[Gmail]/Sent Mail";
-#     drafts = "[Gmail]/Drafts";
-#     trash = "[Gmail]/Trash";
-#   };
-# };
-# ```
-#
-# ## iCloud Example
-#
-# Requires an App-Specific Password (appleid.apple.com > Security > App-Specific Passwords).
-# Store it in rbw: `rbw add icloud-app-password`
-#
-# ```nix
-# keystone.terminal.mail = {
-#   enable = true;
-#   accountName = "icloud";
-#   email = "user@icloud.com";
-#   displayName = "User Name";
-#   login = "user@icloud.com";
-#   host = "imap.mail.me.com";
-#   passwordCommand = "rbw get icloud-app-password";
-#   smtp = { host = "smtp.mail.me.com"; port = 587; encryption = "start-tls"; };
-#   folders = {
-#     sent = "Sent Messages";
-#     drafts = "Drafts";
-#     trash = "Deleted Messages";
-#   };
-# };
-# ```
-#
-# ## Authentication Note
-#
-# For Stalwart, the login username is the account **name** (e.g. "ncrmro"),
-# NOT the email address. For Gmail and iCloud, use the full email address.
+# It supports both the legacy single-account options and the newer declarative
+# multi-account model used by the desktop account menus.
 {
   config,
   lib,
@@ -76,6 +12,213 @@
 with lib;
 let
   cfg = config.keystone.terminal.mail;
+
+  accountType = types.submodule {
+    options = {
+      email = mkOption {
+        type = types.str;
+        default = "";
+        description = "Email address";
+      };
+
+      displayName = mkOption {
+        type = types.str;
+        default = "";
+        description = "Display name for sent emails";
+      };
+
+      login = mkOption {
+        type = types.str;
+        default = "";
+        description = "IMAP or SMTP login name";
+      };
+
+      passwordCommand = mkOption {
+        type = types.str;
+        default = "";
+        description = "Command to retrieve the password";
+      };
+
+      host = mkOption {
+        type = types.str;
+        default = "";
+        description = "Mail server hostname";
+      };
+
+      imap.port = mkOption {
+        type = types.int;
+        default = 993;
+        description = "IMAP port";
+      };
+
+      smtp = {
+        host = mkOption {
+          type = types.str;
+          default = "";
+          description = "SMTP hostname (defaults to IMAP host when empty)";
+        };
+
+        port = mkOption {
+          type = types.int;
+          default = 465;
+          description = "SMTP port";
+        };
+
+        encryption = mkOption {
+          type = types.enum [
+            "tls"
+            "start-tls"
+            "none"
+          ];
+          default = "tls";
+          description = "SMTP encryption type";
+        };
+      };
+
+      folders = {
+        sent = mkOption {
+          type = types.str;
+          default = "Sent Items";
+          description = "Sent folder name";
+        };
+
+        drafts = mkOption {
+          type = types.str;
+          default = "Drafts";
+          description = "Drafts folder name";
+        };
+
+        trash = mkOption {
+          type = types.str;
+          default = "Deleted Items";
+          description = "Trash folder name";
+        };
+      };
+    };
+  };
+
+  legacyAccountConfigured =
+    cfg.accountName != ""
+    || cfg.email != ""
+    || cfg.displayName != ""
+    || cfg.login != ""
+    || cfg.passwordCommand != ""
+    || cfg.host != "";
+
+  legacyAccountName = if cfg.accountName != "" then cfg.accountName else "default";
+
+  legacyAccount = {
+    inherit (cfg)
+      email
+      displayName
+      login
+      passwordCommand
+      host
+      ;
+    imap = {
+      inherit (cfg.imap) port;
+    };
+    smtp = {
+      inherit (cfg.smtp) host port encryption;
+    };
+    folders = {
+      inherit (cfg.folders) sent drafts trash;
+    };
+  };
+
+  declaredAccounts =
+    cfg.accounts
+    // optionalAttrs (legacyAccountConfigured && !(builtins.hasAttr legacyAccountName cfg.accounts)) {
+      "${legacyAccountName}" = legacyAccount;
+    };
+
+  activeAccounts = filterAttrs (_: account: account.host != "") declaredAccounts;
+
+  sortedAccountNames = sort builtins.lessThan (attrNames activeAccounts);
+
+  defaultAccountName =
+    if cfg.defaultAccount != null && builtins.hasAttr cfg.defaultAccount activeAccounts then
+      cfg.defaultAccount
+    else if builtins.hasAttr legacyAccountName activeAccounts then
+      legacyAccountName
+    else if sortedAccountNames != [ ] then
+      head sortedAccountNames
+    else
+      null;
+
+  providerForAccount =
+    account:
+    let
+      host = toLower account.host;
+    in
+    if hasInfix "gmail.com" host then
+      "gmail"
+    else if hasInfix "icloud.com" host || hasInfix "me.com" host then
+      "icloud"
+    else if hasInfix "ncrmro.com" host then
+      "stalwart"
+    else
+      "custom";
+
+  metadataJson = builtins.toJSON (
+    map (
+      name:
+      let
+        account = activeAccounts.${name};
+      in
+      {
+        inherit name;
+        inherit (account)
+          email
+          displayName
+          host
+          login
+          ;
+        provider = providerForAccount account;
+        default = name == defaultAccountName;
+        services = {
+          mail = true;
+          calendar = false;
+        };
+      }
+    ) sortedAccountNames
+  );
+
+  himalayaConfig = concatStringsSep "\n\n" (
+    map (
+      name:
+      let
+        account = activeAccounts.${name};
+        smtpHost = if account.smtp.host != "" then account.smtp.host else account.host;
+      in
+      ''
+        [accounts.${name}]
+        email = "${account.email}"
+        display-name = "${account.displayName}"
+        default = ${if name == defaultAccountName then "true" else "false"}
+
+        backend.type = "imap"
+        backend.host = "${account.host}"
+        backend.port = ${toString account.imap.port}
+        backend.encryption.type = "tls"
+        backend.login = "${account.login}"
+        backend.auth.type = "password"
+        backend.auth.command = "${account.passwordCommand}"
+
+        message.send.backend.type = "smtp"
+        message.send.backend.host = "${smtpHost}"
+        message.send.backend.port = ${toString account.smtp.port}
+        message.send.backend.encryption.type = "${account.smtp.encryption}"
+        message.send.backend.login = "${account.login}"
+        message.send.backend.auth.type = "password"
+        message.send.backend.auth.command = "${account.passwordCommand}"
+
+        folder.aliases.sent = "${account.folders.sent}"
+        folder.aliases.drafts = "${account.folders.drafts}"
+        folder.aliases.trash = "${account.folders.trash}"
+      ''
+    ) sortedAccountNames
+  );
 in
 {
   options.keystone.terminal.mail = {
@@ -85,61 +228,71 @@ in
       description = "Enable mail CLI tools (himalaya)";
     };
 
+    accounts = mkOption {
+      type = types.attrsOf accountType;
+      default = { };
+      description = "Declarative mail accounts keyed by account name.";
+    };
+
+    defaultAccount = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "Default mail account name when multiple accounts are configured.";
+    };
+
     accountName = mkOption {
       type = types.str;
       default = "";
-      description = "Account name in Himalaya config";
+      description = "Legacy single-account name. Mapped into accounts for compatibility.";
     };
 
     email = mkOption {
       type = types.str;
       default = "";
-      description = "Email address";
+      description = "Legacy single-account email address";
     };
 
     displayName = mkOption {
       type = types.str;
       default = "";
-      description = "Display name for sent emails";
+      description = "Legacy single-account display name";
     };
 
     login = mkOption {
       type = types.str;
       default = "";
-      description = "Stalwart account login name (not email address)";
+      description = "Legacy single-account login";
     };
 
     passwordCommand = mkOption {
       type = types.str;
       default = "";
-      description = "Command to retrieve the password";
+      description = "Legacy single-account password retrieval command";
     };
 
     host = mkOption {
       type = types.str;
       default = "";
-      description = "Mail server hostname";
+      description = "Legacy single-account IMAP hostname";
     };
 
-    imap = {
-      port = mkOption {
-        type = types.int;
-        default = 993;
-        description = "IMAP port";
-      };
+    imap.port = mkOption {
+      type = types.int;
+      default = 993;
+      description = "Legacy single-account IMAP port";
     };
 
     smtp = {
       host = mkOption {
         type = types.str;
         default = "";
-        description = "SMTP hostname (defaults to imap host when empty)";
+        description = "Legacy single-account SMTP hostname";
       };
 
       port = mkOption {
         type = types.int;
         default = 465;
-        description = "SMTP port (465 for TLS, 587 for STARTTLS)";
+        description = "Legacy single-account SMTP port";
       };
 
       encryption = mkOption {
@@ -149,7 +302,7 @@ in
           "none"
         ];
         default = "tls";
-        description = "SMTP encryption type: tls (port 465), start-tls (port 587), or none";
+        description = "Legacy single-account SMTP encryption";
       };
     };
 
@@ -157,59 +310,39 @@ in
       sent = mkOption {
         type = types.str;
         default = "Sent Items";
-        description = "Sent folder name (Stalwart default: 'Sent Items')";
+        description = "Legacy single-account sent folder";
       };
 
       drafts = mkOption {
         type = types.str;
         default = "Drafts";
-        description = "Drafts folder name";
+        description = "Legacy single-account drafts folder";
       };
 
       trash = mkOption {
         type = types.str;
         default = "Deleted Items";
-        description = "Trash folder name (Stalwart default: 'Deleted Items')";
+        description = "Legacy single-account trash folder";
       };
     };
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
+    assertions = optional (cfg.defaultAccount != null) {
+      assertion = builtins.hasAttr cfg.defaultAccount activeAccounts;
+      message = "keystone.terminal.mail.defaultAccount must reference a configured active mail account";
+    };
+
     home.packages = [
-      # Himalaya - CLI to manage emails
-      # https://github.com/pimalaya/himalaya
-      # Provided via keystone overlay
       pkgs.keystone.himalaya
     ];
 
-    # Generate config.toml only when host is configured
-    xdg.configFile."himalaya/config.toml" = mkIf (cfg.host != "") {
-      text = ''
-        [accounts.${cfg.accountName}]
-        email = "${cfg.email}"
-        display-name = "${cfg.displayName}"
-        default = true
+    xdg.configFile."himalaya/config.toml" = mkIf (activeAccounts != { }) {
+      text = himalayaConfig;
+    };
 
-        backend.type = "imap"
-        backend.host = "${cfg.host}"
-        backend.port = ${toString cfg.imap.port}
-        backend.encryption.type = "tls"
-        backend.login = "${cfg.login}"
-        backend.auth.type = "password"
-        backend.auth.command = "${cfg.passwordCommand}"
-
-        message.send.backend.type = "smtp"
-        message.send.backend.host = "${if cfg.smtp.host != "" then cfg.smtp.host else cfg.host}"
-        message.send.backend.port = ${toString cfg.smtp.port}
-        message.send.backend.encryption.type = "${cfg.smtp.encryption}"
-        message.send.backend.login = "${cfg.login}"
-        message.send.backend.auth.type = "password"
-        message.send.backend.auth.command = "${cfg.passwordCommand}"
-
-        folder.aliases.sent = "${cfg.folders.sent}"
-        folder.aliases.drafts = "${cfg.folders.drafts}"
-        folder.aliases.trash = "${cfg.folders.trash}"
-      '';
+    xdg.configFile."keystone/mail-accounts.json" = mkIf (activeAccounts != { }) {
+      text = metadataJson;
     };
   };
 }

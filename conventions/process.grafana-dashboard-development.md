@@ -34,17 +34,19 @@ that apply to all repo-backed assets in development mode.
    to provision non-keystone dashboards. It supports both simple directory paths
    and complex provider attribute sets (e.g., for dashboards sourced via `linkFarm`
    or `fetchurl`).
-8. When `keystone.development = true`, dashboard provisioning paths SHOULD
-   resolve to the local checkout derived from `keystone.repos`, following the
-   same path-resolution model as `process.keystone-development-mode`.
-9. Dashboard development flows MUST preserve the locked-build behavior from
+8. When `keystone.development = true`, keystone-managed dashboards MUST use the
+   CLI/API sync path rather than Grafana file provisioning.
+9. In development mode, the built-in keystone dashboard set MUST NOT be added
+   to `services.grafana.provision.dashboards`. Non-keystone dashboard providers
+   MAY remain provisioned through host-specific config.
+10. Dashboard development flows MUST preserve the locked-build behavior from
    `process.keystone-development-mode` when `keystone.development = false`;
    development mode MUST only change path resolution and iteration speed.
-10. The repo MUST provide a documented dashboard iteration path, such as a
+11. The repo MUST provide a documented dashboard iteration path, such as a
     helper command, development-mode provisioning path, or API-driven import
     flow, that lets a developer edit repo JSON and apply the changed dashboard
     to Grafana without rebuilding unrelated services.
-11. If a rapid-apply helper imports dashboards through the Grafana API or
+12. If a rapid-apply helper imports dashboards through the Grafana API or
     Grafana MCP, it MUST still write back to the checked-in JSON source and
     MUST NOT create a second, unmanaged source of truth.
 

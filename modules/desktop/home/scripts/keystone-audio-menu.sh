@@ -11,6 +11,23 @@ notify() {
   notify-send "$@"
 }
 
+keystone_cmd() {
+  local command_name="$1"
+
+  if command -v "$command_name" >/dev/null 2>&1; then
+    command -v "$command_name"
+    return 0
+  fi
+
+  if [[ -x "$HOME/.local/bin/$command_name" ]]; then
+    printf "%s\n" "$HOME/.local/bin/$command_name"
+    return 0
+  fi
+
+  printf "Unable to locate %s\n" "$command_name" >&2
+  exit 1
+}
+
 shell_quote() {
   printf "'%s'" "${1//\'/\'\\\'\'}"
 }
@@ -20,6 +37,36 @@ require_audio_cli() {
     printf "pactl is required but not available in PATH\n" >&2
     exit 1
   }
+}
+
+audio_cli_available() {
+  command -v pactl >/dev/null 2>&1
+}
+
+audio_unavailable_reason() {
+  if ! audio_cli_available; then
+    printf "pactl is not available in PATH.\n"
+    return 0
+  fi
+
+  printf "Audio defaults are unavailable.\n"
+}
+
+blocked_entry_json() {
+  local title="$1"
+  local reason="$2"
+
+  jq -n --arg title "$title" --arg reason "$reason" '
+    [
+      {
+        Text: $title,
+        Subtext: $reason,
+        Value: "blocked",
+        Preview: ("printf " + (($title + "\n\n" + $reason + "\n") | @sh)),
+        PreviewType: "command"
+      }
+    ]
+  '
 }
 
 device_type_label() {
@@ -118,7 +165,16 @@ current_default_description() {
 }
 
 categories_json() {
+  local audio_menu
+  audio_menu=$(keystone_cmd keystone-audio-menu)
+
+  if ! audio_cli_available; then
+    blocked_entry_json "Audio unavailable" "$(audio_unavailable_reason)"
+    return 0
+  fi
+
   jq -n \
+    --arg audio_menu "$audio_menu" \
     --arg default_output "$(current_default_description output)" \
     --arg default_input "$(current_default_description input)" '
       [
@@ -127,16 +183,18 @@ categories_json() {
           Subtext: $default_output,
           Value: "output",
           SubMenu: "keystone-audio-devices",
-          Preview: ("keystone-audio-menu preview-kind " + ("output" | @sh)),
-          PreviewType: "command"
+          Preview: ($audio_menu + " preview-kind " + ("output" | @sh)),
+          PreviewType: "command",
+          Async: ($audio_menu + " volume-display output")
         },
         {
           Text: "Input defaults",
           Subtext: $default_input,
           Value: "input",
           SubMenu: "keystone-audio-devices",
-          Preview: ("keystone-audio-menu preview-kind " + ("input" | @sh)),
-          PreviewType: "command"
+          Preview: ($audio_menu + " preview-kind " + ("input" | @sh)),
+          PreviewType: "command",
+          Async: ($audio_menu + " volume-display input")
         }
       ]
     '
@@ -145,12 +203,28 @@ categories_json() {
 devices_json() {
   local kind="$1"
   local current_default=""
+  local audio_menu
+  audio_menu=$(keystone_cmd keystone-audio-menu)
+
+  if ! audio_cli_available; then
+    blocked_entry_json "$(device_type_label "$kind" | tr -d '\n') unavailable" "$(audio_unavailable_reason)"
+    return 0
+  fi
 
   current_default=$(default_device_name "$kind")
 
-  jq -n --arg kind "$kind" --arg current "$current_default" --argjson data "$(devices_json_raw "$kind")" '
+  jq -n --arg audio_menu "$audio_menu" --arg kind "$kind" --arg current "$current_default" --argjson data "$(devices_json_raw "$kind")" '
     $data
-    | sort_by([(.name != $current), (.description // .properties."device.description" // .name)])
+    | if length == 0 then
+        [
+          {
+            Text: (($kind | ascii_upcase) + " devices unavailable"),
+            Subtext: "No compatible devices were detected",
+            Value: "blocked"
+          }
+        ]
+      else
+        sort_by([(.name != $current), (.description // .properties."device.description" // .name)])
     | map({
         Text: (
           (if .name == $current then "  " else "󰓃  " end)
@@ -164,9 +238,11 @@ devices_json() {
           | join(" · ")
         ),
         Value: ("set-default\t" + $kind + "\t" + .name),
-        Preview: ("keystone-audio-menu preview-device " + ($kind | @sh) + " " + (.name | @sh)),
-        PreviewType: "command"
+        Preview: ($audio_menu + " preview-device " + ($kind | @sh) + " " + (.name | @sh)),
+        PreviewType: "command",
+        Async: ($audio_menu + " device-volume-display " + ($kind | @sh) + " " + (.name | @sh))
       })
+      end
   '
 }
 
@@ -232,11 +308,16 @@ save_audio_defaults() {
 
 open_menu() {
   walker -q >/dev/null 2>&1 || true
-  setsid keystone-launch-walker -m menus:keystone-audio -p "Audio" >/dev/null 2>&1 &
+  setsid "$(keystone_cmd keystone-launch-walker)" -m menus:keystone-audio -p "Audio" >/dev/null 2>&1 &
 }
 
 preview_kind() {
   local kind="$1"
+
+  if ! audio_cli_available; then
+    printf "%s\n" "$(audio_unavailable_reason)"
+    return 0
+  fi
 
   printf "%s defaults\n\nCurrent default: %s\n\nSelect a device to set it as the new default and save it into the current host config.\n" \
     "$(device_type_label "$kind" | tr -d '\n')" \
@@ -247,6 +328,12 @@ preview_device() {
   local kind="$1"
   local name="$2"
   local current_default=""
+
+  if ! audio_cli_available; then
+    printf "%s\n" "$(audio_unavailable_reason)"
+    return 0
+  fi
+
   current_default=$(default_device_name "$kind")
 
   printf "%s device\n\nName: %s\nDescription: %s\n\nCurrent default: %s\n\nSelecting this entry updates the live default and saves it into nixos-config.\n" \
@@ -256,13 +343,86 @@ preview_device() {
     "$(if [[ "$name" == "$current_default" ]]; then printf "yes"; else printf "no"; fi)"
 }
 
+volume_display() {
+  local kind="$1"
+
+  if ! audio_cli_available; then
+    printf "Unavailable\n"
+    return 0
+  fi
+
+  local name
+  name=$(default_device_name "$kind")
+  if [[ -z "$name" ]]; then
+    printf "No device\n"
+    return 0
+  fi
+
+  local list_type
+  case "$kind" in
+    output) list_type="sinks" ;;
+    input) list_type="sources" ;;
+    *)
+      printf "Unknown kind: %s\n" "$kind" >&2
+      exit 1
+      ;;
+  esac
+
+  pactl -f json list "$list_type" \
+    | jq -r --arg name "$name" '
+        map(select(.name == $name)) | first
+        | if .mute then
+            "Muted (" + (.volume | to_entries | first | .value.value_percent) + ")"
+          else
+            (.volume | to_entries | first | .value.value_percent)
+          end
+      '
+}
+
+device_volume_display() {
+  local kind="$1"
+  local name="$2"
+
+  if ! audio_cli_available; then
+    printf "Unavailable\n"
+    return 0
+  fi
+
+  local list_type
+  case "$kind" in
+    output) list_type="sinks" ;;
+    input) list_type="sources" ;;
+    *)
+      printf "Unknown kind: %s\n" "$kind" >&2
+      exit 1
+      ;;
+  esac
+
+  pactl -f json list "$list_type" \
+    | jq -r --arg name "$name" '
+        map(select(.name == $name)) | first
+        | if .mute then
+            "Muted (" + (.volume | to_entries | first | .value.value_percent) + ")"
+          else
+            (.volume | to_entries | first | .value.value_percent)
+          end
+      '
+}
+
 summary() {
+  if ! audio_cli_available; then
+    printf "Audio unavailable\n%s" "$(audio_unavailable_reason)"
+    return 0
+  fi
+
   printf "Output: %s\n" "$(current_default_description output)"
   printf "Input: %s\n" "$(current_default_description input)"
 }
 
 apply_config_defaults() {
-  require_audio_cli
+  if ! audio_cli_available; then
+    return 0
+  fi
 
   if [[ -n "${KEYSTONE_AUDIO_DEFAULT_SINK:-}" ]]; then
     pactl set-default-sink "$KEYSTONE_AUDIO_DEFAULT_SINK"
@@ -282,6 +442,9 @@ dispatch() {
   case "$action" in
     set-default)
       set_default_device "$kind" "$name"
+      ;;
+    blocked)
+      notify "Audio unavailable" "$(audio_unavailable_reason)"
       ;;
     *)
       printf "Unknown dispatch action: %s\n" "$action" >&2
@@ -319,6 +482,14 @@ case "${1:-}" in
     shift
     preview_device "$@"
     ;;
+  volume-display)
+    shift
+    volume_display "$@"
+    ;;
+  device-volume-display)
+    shift
+    device_volume_display "$@"
+    ;;
   summary)
     shift
     summary "$@"
@@ -336,7 +507,7 @@ case "${1:-}" in
     dispatch "$@"
     ;;
   *)
-    echo "Usage: keystone-audio-menu {open-menu|categories-json|devices-json|list|set-default|preview-kind|preview-device|summary|apply-config-defaults|save-defaults|dispatch} ..." >&2
+    echo "Usage: keystone-audio-menu {open-menu|categories-json|devices-json|list|set-default|preview-kind|preview-device|volume-display|device-volume-display|summary|apply-config-defaults|save-defaults|dispatch} ..." >&2
     exit 1
     ;;
 esac

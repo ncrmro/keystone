@@ -71,10 +71,11 @@ Verify that the deployed changes are working correctly across all hosts. This st
    - If remote hosts need attention: document what needs to happen
 
 8. **Archive report to zk notes** (see `tool.zk-notes` and `process.notes`)
-   - Fleet health reports contain personal deployment data — archive to `~/notes/`, NOT left in the open-source repo
+   - Fleet health reports contain personal deployment data — archive to the configured notes dir (`$NOTES_DIR`, `~/notes` for Keystone human users), NOT leave them in the open-source repo
    - **Find prior report** (required — used for `previous_report` chain):
      ```bash
-     zk list reports/ \
+     NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+     zk --notebook-dir "$NOTES_DIR" list reports/ \
        --tag "report/keystone-system" \
        --tag "repo/ncrmro/nixos-config" \
        --tag "source/deepwork/ks-doctor" \
@@ -82,7 +83,8 @@ Verify that the deployed changes are working correctly across all hosts. This st
      ```
    - **Create the report note**:
      ```bash
-     zk new reports/ --title "keystone fleet health $(date +%Y-%m-%d)" \
+     NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+     zk --notebook-dir "$NOTES_DIR" new reports/ --title "keystone fleet health $(date +%Y-%m-%d)" \
        --no-input --print-path \
        --extra report_kind="keystone-system" \
        --extra source_ref="ks.doctor" \
@@ -96,7 +98,8 @@ Verify that the deployed changes are working correctly across all hosts. This st
      - Action items
    - **Link from a relevant hub if one exists**:
      ```bash
-     zk list index/ --tag "status/active" --format json
+     NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+     zk --notebook-dir "$NOTES_DIR" list index/ --tag "status/active" --format json
      ```
      If there is a system or operations hub for this notebook, append a link to the new report in its report ledger section. Do not require a `project/keystone` hub.
 
@@ -168,7 +171,7 @@ Verify that the deployed changes are working correctly across all hosts. This st
 - The specific validation criteria from the plan are confirmed working on the live system
 - Each agent's task queue, recent jobs, and any blocking issues are reported
 - Every issue found is cross-referenced against the issue tracker — existing issues are linked, genuinely new issues are flagged for creation
-- A dated fleet health note has been written to `~/notes/` via `zk new` — the report must not remain only in the keystone repo's `.deepwork/` folder
+- A dated fleet health note has been written to the configured notes dir via `zk` — the report must not remain only in the keystone repo's `.deepwork/` folder
 
 ## Context
 

@@ -10,9 +10,20 @@ Take the user-provided project name and feature brief, then build a structured c
 
 ### Process
 
-1. **Review the inputs**
-   - Read the project name and feature brief provided by the user
-   - If the brief is vague or missing key details, ask structured questions to clarify
+1. **Ask clarifying questions — always**
+   Before doing any research or drafting, ask the user these scoping questions. Do not skip this step even if the brief seems complete — the answers prevent scope creep and ensure the press release makes a promise the team can keep.
+
+   **If the `AskUserQuestion` tool is available, use it** — structured question UI is faster and clearer for the user than a wall of text. Ask the six questions as separate structured questions in a single `AskUserQuestion` call, with short option lists where applicable (e.g. multiple-choice for customer segment) and free-text "Other" fallback.
+
+   If `AskUserQuestion` is not available, batch all six as plain text in one message:
+   - **Who is the primary customer?** — Be specific: not "developers" but "backend engineers building multi-tenant SaaS apps"
+   - **What is the one problem this solves?** — What does the customer struggle with today that this fixes?
+   - **What is in scope?** — What will actually be built or shipped as part of this?
+   - **What is explicitly out of scope?** — What might the customer expect but won't be delivered?
+   - **What is the single most important customer benefit?** — The headline should be this.
+   - **How does the customer get started?** — A URL, a command, a signup flow
+
+   Wait for answers before proceeding to the next steps.
 
 2. **Identify the customer**
    - Who is the primary customer segment?

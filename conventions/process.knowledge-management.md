@@ -14,8 +14,8 @@ This convention defines a Zettelkasten-based knowledge management system for key
 | literature   | `literature/`         | Summaries of external sources written in your own words                    |
 | permanent    | `notes/`              | Distilled, atomic ideas — one idea per note                                |
 | decision     | `decisions/`          | Architectural Decision Records (ADRs) with context, decision, consequences |
-| report       | `docs/reports/`       | Time-stamped operational, research, or workflow reports                    |
-| presentation | `docs/presentations/` | Slidev decks and other Markdown-native presentation artifacts              |
+| report       | `reports/`       | Time-stamped operational, research, or workflow reports                    |
+| presentation | `presentations/` | Slidev decks and other Markdown-native presentation artifacts              |
 | index        | `index/`              | Maps of Content — curated entry points linking to related permanent notes  |
 | archive      | `archive/`            | Archived project notes retained in the zk graph                            |
 

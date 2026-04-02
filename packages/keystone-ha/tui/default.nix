@@ -16,14 +16,14 @@ rustPlatform.buildRustPackage {
   # Build only the tui crate from the workspace
   buildAndTestSubdir = "tui";
 
-  nativeBuildInputs = [pkg-config];
-  buildInputs = [openssl];
+  nativeBuildInputs = [ pkg-config ];
+  buildInputs = [ openssl ];
 
   meta = with lib; {
     description = "TUI client for Keystone cross-realm resource management";
     homepage = "https://github.com/ncrmro/keystone";
     license = licenses.mit;
-    maintainers = [];
+    maintainers = [ ];
     mainProgram = "keystone-ha-tui";
   };
 }

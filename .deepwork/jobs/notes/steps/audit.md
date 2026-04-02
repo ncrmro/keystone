@@ -73,7 +73,35 @@ on format-specific concerns.
    - If `spikes/` is present, distinguish canonical spike README notes from support docs and from truly stray spike content
    - If a large legacy tree remains, do not stop at the canonical groups — call it out clearly in the audit
 
-10. **Project tag gap audit**: Look for files that likely need project tags:
+10. **VCS ref field audit**: Detect non-normalized repository, issue, milestone, and PR references in frontmatter:
+
+   Canonical field names: `repo_ref`, `issue_ref`, `milestone_ref`, `pr_ref`.
+   Canonical formats:
+   - Repo-only: `gh:<owner>/<repo>` or `fj:<owner>/<repo>`
+   - With number: `gh:<owner>/<repo>#<number>` or `fj:<owner>/<repo>#<number>`
+
+   Search for notes that need normalization:
+
+   ```bash
+   # Raw GitHub/Forgejo URLs in frontmatter
+   rg -n "https://github\.com|https://git\.ncrmro\.com" <notes_path> -g '*.md' | head -20
+
+   # Bare issue/PR/milestone numbers (e.g., `issue: 225`)
+   rg -n "^(issue|pr|milestone|repo):\s+[0-9]" <notes_path> -g '*.md' | head -20
+
+   # Non-standard field names that should be canonical refs
+   rg -n "^(github_issue|github_pr|github_repo|forgejo_issue|pr_number|issue_number|issue_url|pr_url):" <notes_path> -g '*.md' | head -20
+
+   # Existing canonical fields with wrong format (should match gh:/fj: prefix)
+   rg -n "^(repo_ref|issue_ref|milestone_ref|pr_ref):\s+(?!gh:|fj:)" <notes_path> -g '*.md' -P | head -20
+   ```
+
+   Record:
+   - Count of files with non-normalized refs
+   - What non-standard field names exist
+   - What raw URL patterns are present
+
+11. **Project tag gap audit**: Look for files that likely need project tags:
 
 - Derive project names and aliases from project hub notes in `index/` (title, slug tag, and `subprojects:` if present)
 - Search across `notes/`, `literature/`, `reports/`, `index/`, and canonical spike `README.md` files for project-name mentions using `rg`
@@ -82,7 +110,7 @@ on format-specific concerns.
 
 ## Output Format
 
-Write `.deepwork/tmp/audit_report.md` with sections:
+Write `.deepwork/tmp/audit_report.md` with sections (add `## VCS Ref Field Audit` between `## Naming Conventions` and `## Canonical hub and spike conventions`):
 
 ```markdown
 # Audit Report
@@ -115,6 +143,14 @@ Write `.deepwork/tmp/audit_report.md` with sections:
 ## Naming Conventions
 
 (observed patterns)
+
+## VCS Ref Field Audit
+
+- Files with raw GitHub/Forgejo URLs in frontmatter: N
+- Files with bare issue/PR/milestone numbers: N
+- Non-standard field names found: (list, e.g., `issue:`, `github_issue:`)
+- Canonical fields with wrong format: N
+- Files already using correct `gh:`/`fj:` prefixed canonical fields: N
 
 ## Canonical hub and spike conventions
 

@@ -80,6 +80,16 @@ The module installs and configures the following language servers automatically:
 
 [Zellij](https://zellij.dev/) is configured with sensible keybindings and acts as the default terminal multiplexer.
 
+For the combined desktop and terminal movement reference, see [Navigation](../navigation.md).
+
+Common Keystone zellij keybindings:
+
+- `Ctrl+PageUp` / `Ctrl+PageDown`: Previous and next tab
+- `Ctrl+,` / `Ctrl+.`: Previous and next tab
+- `Ctrl+<` / `Ctrl+>`: Move the current tab left or right
+- `Ctrl+T`: Create a new tab and name it immediately
+- `Ctrl+W`: Close the current tab
+
 ## hwrekey — Secrets Rekeying
 
 The `hwrekey` command automates re-encrypting agenix secrets with your YubiKey and (optionally) handling the full submodule commit/push/flake-update workflow.
@@ -166,11 +176,8 @@ agent-generated notes and reports. The user-facing guide is [Notes](../notes.md)
 
 For terminal users, the most relevant parts are:
 
-- `zk` for manual note creation and search,
-- `/notes.project` for hub notes,
-- `/notes.report` for report capture,
-- `/notes.doctor` for notebook repair and normalization, and
-- `/notes.process_inbox` for inbox review.
+- `zk` for manual note creation and search, and
+- `/ks.notes` to route notes workflows (hub notes, report capture, inbox review, notebook repair).
 
 Use the notes guide for the workflow and the conventions for the authoritative
 schema and policy details.

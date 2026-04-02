@@ -37,7 +37,14 @@ This folder and its subfolders are managed using `deepwork_jobs` workflows.
 - `executive_assistant/task_loop` is the primary entrypoint for new work that
   needs cross-project coordination.
 - Use the other workflows when the task is narrowly about event planning,
-  inbox cleanup, calendar edits, or event discovery.
+  inbox cleanup, calendar edits, event discovery, or portfolio review.
+- Presentation work now lives in the standalone `presentation` job. Do not add
+  `presentation` or `slide_deck` workflows back into this job.
+
+## Last Updated
+
+- 2026-03-30: Split presentation workflows into `.deepwork/jobs/presentation/`
+  so executive assistant remains focused on operator coordination tasks.
 
 ### Notes model
 

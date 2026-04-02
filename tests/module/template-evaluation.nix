@@ -17,7 +17,10 @@
 }:
 let
   nixosSystem =
-    if nixpkgs != null then nixpkgs.lib.nixosSystem else import "${pkgs.path}/nixos/lib/eval-config.nix";
+    if nixpkgs != null then
+      nixpkgs.lib.nixosSystem
+    else
+      import "${pkgs.path}/nixos/lib/eval-config.nix";
 
   # Helper: build a NixOS config the same way the TUI will generate it.
   # Accepts the REQ-002 data model and produces a NixOS module list.
@@ -61,7 +64,8 @@ let
               devices = storageDevices;
               mode = storageMode;
               swap.size = swapSize;
-            } // lib.optionalAttrs (storageType == "ext4" && hibernateEnable) { hibernate.enable = true; };
+            }
+            // lib.optionalAttrs (storageType == "ext4" && hibernateEnable) { hibernate.enable = true; };
             secureBoot.enable = secureBootEnable;
             tpm.enable = tpmEnable;
             ssh.enable = sshEnable;
@@ -74,8 +78,7 @@ let
 
           # Required filesystem stubs for evaluation
           fileSystems."/" = {
-            device =
-              if storageType == "zfs" then lib.mkForce "rpool/root" else lib.mkForce "/dev/vda2";
+            device = if storageType == "zfs" then lib.mkForce "rpool/root" else lib.mkForce "/dev/vda2";
             fsType = lib.mkForce (if storageType == "zfs" then "zfs" else "ext4");
           };
 
@@ -84,7 +87,9 @@ let
             "@wheel"
           ];
         }
-      ] ++ lib.optionals desktopEnable [ self.nixosModules.desktop ] ++ extraModules;
+      ]
+      ++ lib.optionals desktopEnable [ self.nixosModules.desktop ]
+      ++ extraModules;
     in
     baseModules;
 
@@ -142,7 +147,9 @@ let
       secureBootEnable = true;
       tpmEnable = true;
       remoteUnlockEnable = true;
-      remoteUnlockAuthorizedKeys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeTestKey001 admin@workstation" ];
+      remoteUnlockAuthorizedKeys = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeTestKey001 admin@workstation"
+      ];
       users.admin = {
         fullName = "Admin User";
         email = "admin@example.com";

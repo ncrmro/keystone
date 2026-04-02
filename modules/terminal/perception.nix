@@ -3,7 +3,7 @@
 # This module provides CLI tools for the perception layer:
 # - PDF parsing (docling) — added in Phase 2
 # - Voice transcription (whisper.cpp) — added in Phase 2
-# - Photo/screenshot search (immich-search) — added in Phase 2
+# - Keystone Photos (`ks photos`, backed by `keystone-photos`) — added in Phase 2
 # - Voice recording helper — added in Phase 2
 #
 # This is the configuration scaffolding. When `enable = true`, the option
@@ -39,13 +39,6 @@ in
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
-    # Packages will be added here as they are implemented in Phase 2:
-    # - pkgs.whisper-cpp (voice transcription)
-    # - pkgs.keystone.immich-search (photo/screenshot search)
-    # - docling package (PDF parsing)
-    # - pkgs.keystone.voice-recorder (PipeWire recording helper)
-    home.packages = [
-      # Placeholder — packages added in feat/perception-cli-tools
-    ];
+    home.packages = optional cfg.search.enable pkgs.keystone.keystone-photos;
   };
 }

@@ -67,6 +67,9 @@ in
     {
       home.packages = [
         pkgs.forgejo-cli
+        # fj-ex extends forgejo-cli with Actions-focused operations such as
+        # queued jobs, recent runs, and job log streaming.
+        pkgs.keystone.forgejo-cli-ex
         # tea provides repo/issue/PR operations that forgejo-cli lacks (e.g. tea pr create,
         # tea issue list). forgejo-cli focuses on admin/auth; tea covers the daily workflow.
         pkgs.tea

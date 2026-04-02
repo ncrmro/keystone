@@ -90,23 +90,38 @@ in
   mkHomeScriptCommand =
     {
       config,
+      pkgs,
       commandName,
       relativePath,
       package,
+      runtimeInputs ? [ ],
+      extraEnvSetup ? "",
       repoFlakeInput ? "keystone",
     }:
     let
       repoCheckout = resolveRepoCheckout config repoFlakeInput;
+      liveScript = "${repoCheckout}/${relativePath}";
+      runtimePath = lib.makeBinPath runtimeInputs;
+      commandWrapper = pkgs.writeShellScript "hm_${commandName}.sh" ''
+        export PATH="${runtimePath}:$PATH"
+        ${extraEnvSetup}
+        if [ -f "${liveScript}" ]; then
+          exec ${pkgs.bash}/bin/bash "${liveScript}" "$@"
+        fi
+
+        exec "${package}/bin/${commandName}" "$@"
+      '';
     in
     lib.mkMerge [
       (lib.mkIf (repoCheckout == null) {
         home.packages = [ package ];
       })
-      (lib.mkIf (repoCheckout != null) (mkHomeRepoFile {
-        inherit config relativePath repoFlakeInput;
-        targetPath = ".local/bin/${commandName}";
-        sourcePath = "${package}/bin/${commandName}";
-      }))
+      (lib.mkIf (repoCheckout != null) {
+        home.file.".local/bin/${commandName}" = {
+          source = commandWrapper;
+          executable = true;
+        };
+      })
     ];
 
   # NixOS system-level counterpart to mkHomeScriptCommand.
@@ -128,15 +143,22 @@ in
       commandName,
       relativePath,
       nixStorePath,
+      runtimeInputs ? [ ],
       extraEnvSetup ? "",
       repoFlakeInput ? "keystone",
     }:
     let
       liveCheckout = resolveNixOSRepoCheckout config repoFlakeInput;
-      scriptPath = if liveCheckout != null then "${liveCheckout}/${relativePath}" else "${nixStorePath}";
+      liveScript = if liveCheckout != null then "${liveCheckout}/${relativePath}" else "";
+      runtimePath = lib.makeBinPath runtimeInputs;
     in
     pkgs.writeShellScriptBin commandName ''
+      export PATH="${runtimePath}:$PATH"
       ${extraEnvSetup}
-      exec ${pkgs.bash}/bin/bash ${scriptPath} "$@"
+      if [ -f "${liveScript}" ]; then
+        exec ${pkgs.bash}/bin/bash "${liveScript}" "$@"
+      fi
+
+      exec ${pkgs.bash}/bin/bash "${nixStorePath}" "$@"
     '';
 }

@@ -3,9 +3,11 @@
   lib,
   pkgs,
   ...
-}: let
+}:
+let
   cfg = config.programs.desktop.hyprland;
-in {
+in
+{
   config = lib.mkIf cfg.enable {
     # Basic Hyprland configuration via home-manager
     # Most configuration is handled by the NixOS module

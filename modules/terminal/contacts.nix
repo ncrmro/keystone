@@ -44,6 +44,49 @@ with lib;
 let
   cfg = config.keystone.terminal.contacts;
   mailCfg = config.keystone.terminal.mail;
+
+  mailLegacyConfigured =
+    mailCfg.accountName != ""
+    || mailCfg.email != ""
+    || mailCfg.displayName != ""
+    || mailCfg.login != ""
+    || mailCfg.passwordCommand != ""
+    || mailCfg.host != "";
+
+  mailLegacyName = if mailCfg.accountName != "" then mailCfg.accountName else "default";
+
+  mailLegacyAccount = {
+    inherit (mailCfg)
+      email
+      displayName
+      login
+      passwordCommand
+      host
+      ;
+  };
+
+  declaredMailAccounts =
+    mailCfg.accounts
+    // optionalAttrs (mailLegacyConfigured && !(builtins.hasAttr mailLegacyName mailCfg.accounts)) {
+      "${mailLegacyName}" = mailLegacyAccount;
+    };
+
+  sortedMailAccountNames = sort builtins.lessThan (attrNames declaredMailAccounts);
+
+  defaultMailAccountName =
+    if
+      mailCfg.defaultAccount != null && builtins.hasAttr mailCfg.defaultAccount declaredMailAccounts
+    then
+      mailCfg.defaultAccount
+    else if builtins.hasAttr mailLegacyName declaredMailAccounts then
+      mailLegacyName
+    else if sortedMailAccountNames != [ ] then
+      head sortedMailAccountNames
+    else
+      null;
+
+  defaultMailAccount =
+    if defaultMailAccountName != null then declaredMailAccounts.${defaultMailAccountName} else null;
 in
 {
   options.keystone.terminal.contacts = {
@@ -55,25 +98,25 @@ in
 
     accountName = mkOption {
       type = types.str;
-      default = mailCfg.accountName;
+      default = if defaultMailAccountName != null then defaultMailAccountName else "";
       description = "Account name in Cardamum config";
     };
 
     host = mkOption {
       type = types.str;
-      default = mailCfg.host;
+      default = if defaultMailAccount != null then defaultMailAccount.host else "";
       description = "CardDAV server hostname (defaults to mail host)";
     };
 
     login = mkOption {
       type = types.str;
-      default = mailCfg.login;
+      default = if defaultMailAccount != null then defaultMailAccount.login else "";
       description = "CardDAV username (defaults to mail login)";
     };
 
     passwordCommand = mkOption {
       type = types.str;
-      default = mailCfg.passwordCommand;
+      default = if defaultMailAccount != null then defaultMailAccount.passwordCommand else "";
       description = "Command to retrieve the password (defaults to mail passwordCommand)";
     };
 

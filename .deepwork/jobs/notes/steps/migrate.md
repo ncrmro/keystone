@@ -44,7 +44,23 @@ Execute the migration plan: add frontmatter, assign IDs, move files to correct d
    - Obsidian embeds: `![[filename]]` -> `![[id]]`
    - Update links in OTHER files that reference this file's old path
 
-   e. **Apply project ownership tags where the evidence is strong**:
+   e. **Normalize VCS ref fields** (from the migration plan's ref normalization list):
+   - Rename non-standard fields to canonical names (`issue_ref`, `pr_ref`, `milestone_ref`, `repo_ref`)
+   - Convert raw GitHub/Forgejo URLs to `gh:<owner>/<repo>#<N>` / `fj:<owner>/<repo>#<N>` format
+   - Convert bare issue/PR numbers to include the repo prefix, deriving the repo from `repo_ref` in the same frontmatter or from the project hub note
+   - Preserve all other frontmatter fields — this is a rename+reformat only, no content deletion
+   - Example transformation:
+     ```yaml
+     # Before
+     issue: 225
+     repo: https://github.com/ncrmro/keystone
+
+     # After
+     repo_ref: gh:ncrmro/keystone
+     issue_ref: gh:ncrmro/keystone#225
+     ```
+
+   f. **Apply project ownership tags where the evidence is strong**:
    - Derive project names and aliases from project hub notes in `index/`
    - Search with `rg` or `scripts/find_missing_project_tags.py` to find migrated files that mention a project but still lack that project tag
    - Add the missing project tag when the file has a clear project owner
@@ -106,6 +122,13 @@ Write `.deepwork/tmp/migration_log.md`:
 - HTML tags stripped: N
 - Inline tags extracted: N
 - Obsidian callouts preserved: N
+
+## VCS Ref Field Normalization
+
+- Files with ref fields normalized: N
+- Field renames applied: (e.g., `issue:` → `issue_ref:`, N files)
+- URL-to-prefix conversions: (e.g., `https://github.com/...` → `gh:...`, N files)
+- Bare-number expansions: N files
 
 ## Project Tag Updates
 

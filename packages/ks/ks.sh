@@ -7,8 +7,13 @@
 # Usage: ks <command> [options]
 #
 # Commands:
+#   approve --reason "<reason>" -- <command> [args...]  Run one allowlisted privileged command
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
-#   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (home-manager only with --dev, full system default)
+#   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (unlocked current checkout with --dev, locked full system by default)
+#   agents <pause|resume|status> <agent|all> [reason]  Pause or inspect agent task loops
+#   docs   [topic|path]                                Browse keystone markdown docs with glow and fzf
+#   photos search [options]                            Search Immich photos and screenshots
+#   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
 #   grafana dashboards apply|export <uid>              Apply or export keystone dashboard JSON via Grafana API
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
 #   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
@@ -39,7 +44,9 @@
 #   MUST pull nixos-config, keystone, and agenix-secrets before building (lock mode).
 #   MUST update flake.lock (nix flake update) before building, not after.
 #   MUST commit and push flake.lock only after a successful build.
-#   MUST verify keystone and agenix-secrets are clean and fully pushed before locking.
+#   MUST verify managed lock repos are clean and on a branch before locking.
+#   MUST automatically rebase managed lock repos when upstream has moved and there are no conflicts.
+#   MUST push managed lock repos that are ahead of their upstream before locking.
 #
 # Build
 #   MUST always use local .repos/keystone and .repos/agenix-secrets as --override-input
@@ -66,6 +73,13 @@ KS_HM_USERS_FILTER=""
 KS_HM_ALL_USERS=false
 HM_ACTIVATION_RECORDS=()
 
+ks_bool_true() {
+  case "${1:-}" in
+    true|1|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 print_main_help() {
   cat <<'EOF'
 Usage: ks <command> [options]
@@ -74,14 +88,21 @@ Build, deploy, and inspect Keystone-managed hosts.
 
 Commands:
   help [command]                                    Show general or command-specific help
+  approve --reason "<reason>" -- <command> [args...] Run one allowlisted privileged command
   build [--lock] [--user USERS] [--all-users] [HOSTS]
                                                     Build home-manager profiles, or full systems with --lock
   update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
                                                     Pull, lock, build, push, and deploy
+  agents <pause|resume|status> <agent|all> [reason]
+                                                    Control agent task-loop pause state
+  docs [topic|path]                                 Browse Keystone docs with glow and fzf
+  photos search [options]                           Search Immich photos and screenshots
+  sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
   switch [--boot] [HOSTS]                           Deploy current state without pull, lock, or push
   sync-host-keys                                    Populate hostPublicKey in hosts.nix from live hosts
   grafana dashboards apply
   grafana dashboards export <uid>                   Apply or export Grafana dashboards
+  print <file.md> [-o output.pdf] [--open]          Convert a markdown file to a print-ready PDF
   agent [--local [MODEL]] [args...]                 Launch an AI agent with Keystone context
   doctor [--local [MODEL]] [args...]                Launch a diagnostic AI agent with system state
 
@@ -99,9 +120,34 @@ Examples:
   ks build
   ks build --lock workstation,ocean
   ks update --dev
+  ks docs
+  ks docs desktop
+  ks photos search --text "acme"
+  ks agents pause all "waiting for human input"
   ks help grafana dashboards
 
 Use "ks help <command>" for command-specific help.
+EOF
+}
+
+print_approve_help() {
+  cat <<'EOF'
+Usage: ks approve --reason "<reason>" -- <command> [args...]
+
+Request approval for one allowlisted privileged command.
+
+Options:
+  --reason TEXT         Human-readable reason shown before execution
+  -h, --help            Show this help
+
+Behavior:
+  Uses desktop polkit approval when a graphical session is available.
+  Falls back to a terminal sudo prompt when no graphical approval UI is available.
+  Rejects commands that are not in the Keystone approval allowlist.
+
+Examples:
+  ks approve --reason "Enroll a hardware key for disk unlock." -- keystone-enroll-fido2 --auto
+  ks approve --reason "Deploy the current local state." -- ks switch
 EOF
 }
 
@@ -137,7 +183,7 @@ Pull, verify, build, and deploy Keystone hosts.
 
 Options:
   --debug              Show warnings from git and nix commands
-  --dev                Build and activate home-manager profiles only
+  --dev                Build and deploy the current unlocked checkout without pull, lock, or push
   --boot               Register the new generation for next boot without switching now
   --pull               Pull managed repos only; skip build and deploy
   --lock               Force lock mode explicitly; this is the default unless --dev is set
@@ -195,6 +241,25 @@ Examples:
 EOF
 }
 
+print_sync_agent_assets_help() {
+  cat <<'EOF'
+Usage: ks sync-agent-assets
+
+Refresh generated Keystone agent assets for the current user from the current
+profile manifest.
+
+Options:
+  -h, --help           Show this help
+
+Behavior:
+  Rewrites generated instruction files, curated command files, and managed
+  Codex skills from the live keystone checkout in development mode.
+
+Examples:
+  ks sync-agent-assets
+EOF
+}
+
 print_agent_help() {
   cat <<'EOF'
 Usage: ks agent [--local [MODEL]] [args...]
@@ -219,19 +284,134 @@ print_doctor_help() {
   cat <<'EOF'
 Usage: ks doctor [--local [MODEL]] [args...]
 
-Launch a diagnostic AI agent with fleet and local system state.
+Generate the scripted fleet doctor report, then optionally launch the default agent.
 
 Options:
-  --local [MODEL]      Use the local Ollama-backed model, or the configured default model
+  --local [MODEL]      If you choose to launch the agent, use the local Ollama-backed model
   -h, --help           Show this help
 
 Behavior:
-  Any remaining args are passed through to the underlying claude invocation.
+  Prints the fleet report to stdout.
+  In an interactive terminal, ks then asks whether to launch the default agent.
+  Any remaining args are passed through to the agent if you choose to launch it.
 
 Examples:
   ks doctor
   ks doctor --local
   ks doctor --local mistral --continue
+EOF
+}
+
+print_agents_help() {
+  cat <<'EOF'
+Usage: ks agents <pause|resume|status> <agent|all> [reason]
+
+Control autonomous agent task loops without stopping the underlying timers.
+
+Subcommands:
+  pause               Create the paused marker so scheduled task-loop runs no-op
+  resume              Remove the paused marker and allow task-loop runs again
+  status              Show whether the target agent task loop is paused
+
+Arguments:
+  <agent|all>         One configured agent name, or "all" for every configured agent
+  [reason]            Optional pause reason stored with the marker
+
+Examples:
+  ks agents pause drago "waiting for review feedback"
+  ks agents pause all "human focus block"
+  ks agents status luce
+  ks agents resume all
+EOF
+}
+
+print_docs_help() {
+  cat <<'EOF'
+Usage: ks docs [topic|path]
+
+Browse Keystone Markdown docs in the terminal with glow and fzf.
+
+Arguments:
+  [topic|path]          Optional doc topic or relative docs path
+
+Topics:
+  os                    Open the Keystone OS entry page
+  terminal              Open the terminal module entry page
+  desktop               Open the desktop entry page
+  agents                Open the agents entry page
+  projects              Open the projects entry page
+
+Options:
+  -h, --help            Show this help
+
+Behavior:
+  With no argument, ks opens an fzf picker over Markdown files under docs/ only.
+  Type to filter, press Enter to open, and press Esc to cancel.
+  A relative docs path such as terminal/projects.md also works.
+
+Examples:
+  ks docs
+  ks docs os
+  ks docs terminal/projects.md
+EOF
+}
+
+print_photos_help() {
+  cat <<'EOF'
+Usage: ks photos search [options]
+
+Search Immich assets through Keystone's photo CLI.
+
+Subcommands:
+  search               Run an OCR / smart search against Immich
+
+Options:
+  --text QUERY         OCR / smart-search query text
+  --person NAME        Restrict results to an Immich person name
+  --type TYPE          Asset type: photo, screenshot, image, or video
+  --kind KIND          Search preset; supported: business-card
+  --from YYYY-MM-DD    Inclusive takenAfter date
+  --to YYYY-MM-DD      Inclusive takenBefore date
+  --limit N            Max results to request (default: 20)
+  --json               Emit structured JSON
+  -h, --help           Show this help
+
+Examples:
+  ks photos search --text "acme"
+  ks photos search --text "nick romero" --kind business-card
+  ks photos search --person "Nick Romero" --type photo
+  ks photos search --text "ks build" --type screenshot --from 2026-01-01 --to 2026-03-31
+EOF
+}
+
+print_print_help() {
+  cat <<'EOF'
+Usage: ks print <file.md> [-o output.pdf] [--open] [--preview]
+
+Convert a markdown file to a print-ready PDF using Keystone's compact print stylesheet.
+
+Arguments:
+  <file.md>            Path to the markdown input file (required)
+
+Options:
+  -o, --output PATH    Output PDF path (default: same as input with .pdf extension)
+  --open               Open the PDF in the system viewer after generation
+  --no-print           Generate the PDF only; do not send to the default printer
+  --preview            Generate the PDF, open it, and skip auto-printing
+  -h, --help           Show this help
+
+Engine selection (first available wins):
+  weasyprint           HTML-based renderer — clean, CSS-driven typography
+  wkhtmltopdf          WebKit-based renderer — fallback
+  pdflatex             LaTeX-based renderer — fallback
+  xelatex              LaTeX-based renderer — fallback
+
+Examples:
+  ks print ~/Downloads/garden-guide.md
+  ks print report.md -o ~/Desktop/report.pdf --open
+  ks print report.md --preview
+  ks print tests/fixtures/portfolio-review-print-demo.md --preview
+  ks print instructions.md -o /tmp/instructions.pdf
 EOF
 }
 
@@ -280,6 +460,9 @@ show_help_topic() {
     ""|ks)
       print_main_help
       ;;
+    approve)
+      print_approve_help
+      ;;
     build)
       print_build_help
       ;;
@@ -289,6 +472,18 @@ show_help_topic() {
     switch)
       print_switch_help
       ;;
+    sync-agent-assets)
+      print_sync_agent_assets_help
+      ;;
+    agents)
+      print_agents_help
+      ;;
+    docs)
+      print_docs_help
+      ;;
+    photos)
+      print_photos_help
+      ;;
     sync-host-keys)
       print_sync_host_keys_help
       ;;
@@ -297,6 +492,9 @@ show_help_topic() {
       ;;
     doctor)
       print_doctor_help
+      ;;
+    print)
+      print_print_help
       ;;
     grafana)
       if [[ "${2:-}" == "dashboards" ]]; then
@@ -313,6 +511,105 @@ show_help_topic() {
   esac
 }
 
+is_root_user() {
+  [[ ${EUID:-$(id -u)} -eq 0 ]]
+}
+
+has_graphical_session() {
+  [[ -n "${WAYLAND_DISPLAY:-}" || -n "${DISPLAY:-}" ]]
+}
+
+resolve_approval_helper() {
+  if command -v keystone-approve-exec >/dev/null 2>&1; then
+    command -v keystone-approve-exec
+    return 0
+  fi
+
+  if [[ -x /run/current-system/sw/bin/keystone-approve-exec ]]; then
+    printf '%s\n' /run/current-system/sw/bin/keystone-approve-exec
+    return 0
+  fi
+
+  echo "Error: keystone-approve-exec is not available in PATH." >&2
+  echo "Enable keystone.security.privilegedApproval on this host first." >&2
+  return 1
+}
+
+run_root_command() {
+  if is_root_user; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+cmd_approve() {
+  local reason=""
+  local requested_argv=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        print_approve_help
+        return 0
+        ;;
+      --reason)
+        [[ $# -lt 2 ]] && { echo "Error: --reason requires a value" >&2; return 1; }
+        reason="$2"
+        shift 2
+        ;;
+      --)
+        shift
+        requested_argv=("$@")
+        break
+        ;;
+      *)
+        echo "Error: Unknown option '$1'" >&2
+        print_approve_help >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ -z "$reason" ]]; then
+    echo "Error: --reason is required." >&2
+    print_approve_help >&2
+    return 1
+  fi
+
+  if [[ ${#requested_argv[@]} -eq 0 ]]; then
+    echo "Error: Missing command after --." >&2
+    print_approve_help >&2
+    return 1
+  fi
+
+  local approval_helper
+  approval_helper=$(resolve_approval_helper) || return 1
+
+  local matched_entry
+  if ! matched_entry=$("$approval_helper" --validate --reason "$reason" -- "${requested_argv[@]}"); then
+    return 1
+  fi
+
+  local display_name policy_reason
+  display_name=$(echo "$matched_entry" | jq -r '.displayName')
+  policy_reason=$(echo "$matched_entry" | jq -r '.reason')
+
+  echo "Approval request: $display_name"
+  echo "Requested reason: $reason"
+  echo "Policy reason: $policy_reason"
+
+  if is_root_user || [[ -n "${KS_APPROVE_EXECUTING:-}" ]]; then
+    exec "$approval_helper" --reason "$reason" -- "${requested_argv[@]}"
+  fi
+
+  if has_graphical_session && command -v pkexec >/dev/null 2>&1; then
+    exec pkexec "$approval_helper" --reason "$reason" -- "${requested_argv[@]}"
+  fi
+
+  exec sudo "$approval_helper" --reason "$reason" -- "${requested_argv[@]}"
+}
+
 run_with_warning_filter() {
   if [[ "${KS_DEBUG}" == true ]]; then
     "$@"
@@ -325,6 +622,260 @@ run_with_warning_filter() {
       '
     )
   fi
+}
+
+cmd_sync_agent_assets() {
+  if ! command -v keystone-sync-agent-assets >/dev/null 2>&1; then
+    echo "Error: keystone-sync-agent-assets is not available in PATH." >&2
+    echo "Refresh the home-manager profile before using this command." >&2
+    return 1
+  fi
+
+  keystone-sync-agent-assets "$@"
+}
+
+known_agents_list() {
+  if ! command -v agentctl >/dev/null 2>&1; then
+    echo "Error: agentctl is not available in PATH." >&2
+    return 1
+  fi
+
+  local known_agents
+  known_agents=$(agentctl 2>&1 | sed -n 's/^Known agents: //p' | head -n1)
+  if [[ -z "$known_agents" ]]; then
+    echo "Error: could not discover configured agents from agentctl." >&2
+    return 1
+  fi
+
+  printf '%s\n' "$known_agents" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sed '/^$/d'
+}
+
+resolve_agent_targets() {
+  local target="$1"
+
+  if [[ "$target" == "all" ]]; then
+    known_agents_list
+    return
+  fi
+
+  if known_agents_list | grep -Fxq "$target"; then
+    printf '%s\n' "$target"
+    return
+  fi
+
+  echo "Error: unknown agent '$target'." >&2
+  echo "Run 'agentctl' to see configured agents." >&2
+  return 1
+}
+
+cmd_agents() {
+  if [[ $# -lt 2 ]]; then
+    print_agents_help >&2
+    return 1
+  fi
+
+  local action="$1"
+  local target="$2"
+  shift 2
+
+  case "$action" in
+    pause|resume|status) ;;
+    -h|--help)
+      print_agents_help
+      return 0
+      ;;
+    *)
+      echo "Error: unknown agents subcommand '$action'." >&2
+      print_agents_help >&2
+      return 1
+      ;;
+  esac
+
+  mapfile -t targets < <(resolve_agent_targets "$target") || return 1
+
+  local rc=0
+  local agent
+  for agent in "${targets[@]}"; do
+    case "$action" in
+      pause)
+        if ! agentctl "$agent" pause "$@"; then
+          rc=1
+        fi
+        ;;
+      resume)
+        if ! agentctl "$agent" resume; then
+          rc=1
+        fi
+        ;;
+      status)
+        if ! agentctl "$agent" paused; then
+          rc=1
+        fi
+        ;;
+    esac
+  done
+
+  return "$rc"
+}
+
+resolve_keystone_docs_root() {
+  local current_repo=""
+  current_repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ -n "$current_repo" && -f "$current_repo/docs/ks.md" && -f "$current_repo/packages/ks/ks.sh" ]]; then
+    printf '%s\n' "$current_repo"
+    return 0
+  fi
+
+  local configured_repo="${HOME}/.keystone/repos/ncrmro/keystone"
+  if [[ -f "$configured_repo/docs/ks.md" && -f "$configured_repo/packages/ks/ks.sh" ]]; then
+    printf '%s\n' "$configured_repo"
+    return 0
+  fi
+
+  local repo_root=""
+  repo_root=$(find_repo 2>/dev/null || true)
+  if [[ -n "$repo_root" ]]; then
+    if [[ -f "$repo_root/.repos/keystone/docs/ks.md" && -f "$repo_root/.repos/keystone/packages/ks/ks.sh" ]]; then
+      printf '%s\n' "$repo_root/.repos/keystone"
+      return 0
+    fi
+
+    if [[ -f "$repo_root/keystone/docs/ks.md" && -f "$repo_root/keystone/packages/ks/ks.sh" ]]; then
+      printf '%s\n' "$repo_root/keystone"
+      return 0
+    fi
+  fi
+
+  echo "Error: could not find a local keystone checkout with a docs/ directory." >&2
+  echo "Expected one of:" >&2
+  echo "  - current repo root" >&2
+  echo "  - ~/.keystone/repos/ncrmro/keystone" >&2
+  echo "  - <nixos-config>/.repos/keystone" >&2
+  return 1
+}
+
+resolve_docs_target() {
+  local docs_root="$1"
+  local query="${2:-}"
+
+  case "$query" in
+    "" )
+      return 1
+      ;;
+    os)
+      printf '%s\n' "$docs_root/os/installation.md"
+      return 0
+      ;;
+    terminal)
+      printf '%s\n' "$docs_root/terminal/terminal.md"
+      return 0
+      ;;
+    desktop)
+      printf '%s\n' "$docs_root/desktop.md"
+      return 0
+      ;;
+    agents)
+      printf '%s\n' "$docs_root/agents/agents.md"
+      return 0
+      ;;
+    projects)
+      printf '%s\n' "$docs_root/terminal/projects.md"
+      return 0
+      ;;
+  esac
+
+  if [[ -f "$docs_root/$query" ]]; then
+    printf '%s\n' "$docs_root/$query"
+    return 0
+  fi
+
+  if [[ -f "$docs_root/$query.md" ]]; then
+    printf '%s\n' "$docs_root/$query.md"
+    return 0
+  fi
+
+  echo "Error: unknown docs topic or path '$query'." >&2
+  echo "Try: ks docs" >&2
+  return 1
+}
+
+cmd_docs() {
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    print_docs_help
+    return 0
+  fi
+
+  local repo_root docs_root target
+  repo_root=$(resolve_keystone_docs_root) || return 1
+  docs_root="$repo_root/docs"
+
+  if [[ $# -gt 0 ]]; then
+    target=$(resolve_docs_target "$docs_root" "$1") || return 1
+    glow "$target"
+    return 0
+  fi
+
+  printf '%s\n' "Filter docs with text" >&2
+  printf '%s\n' "Enter: open in glow" >&2
+  printf '%s\n' "Esc: cancel" >&2
+
+  local theme_dir waybar_css fzf_colors theme_bg theme_fg theme_accent
+  theme_dir="${XDG_CONFIG_HOME:-$HOME/.config}/keystone/current/theme"
+  waybar_css="$theme_dir/waybar.css"
+  theme_bg="#00120c"
+  theme_fg="#b6bfbc"
+  theme_accent="#b8a26c"
+
+  if [[ -f "$waybar_css" ]]; then
+    theme_bg="$(sed -n 's/^@define-color background \([^;]*\);/\1/p' "$waybar_css" | head -n1)"
+    theme_fg="$(sed -n 's/^@define-color foreground \([^;]*\);/\1/p' "$waybar_css" | head -n1)"
+    theme_accent="$(sed -n 's/^@define-color gold \([^;]*\);/\1/p' "$waybar_css" | head -n1)"
+    [[ -n "$theme_bg" ]] || theme_bg="#00120c"
+    [[ -n "$theme_fg" ]] || theme_fg="#b6bfbc"
+    [[ -n "$theme_accent" ]] || theme_accent="#b8a26c"
+  fi
+
+  fzf_colors="bg:${theme_bg},bg+:${theme_bg},fg:${theme_fg},fg+:${theme_fg},hl:${theme_accent},hl+:${theme_accent},border:${theme_accent},label:${theme_accent},prompt:${theme_accent},pointer:${theme_accent},info:${theme_fg},gutter:${theme_bg},separator:${theme_accent},scrollbar:${theme_accent}"
+
+  target="$(
+    find "$docs_root" -type f -name '*.md' \
+      ! -path "$docs_root/.jekyll-cache/*" \
+      | sed "s|^$docs_root/||" \
+      | sort \
+      | fzf \
+          --style=full \
+          --layout=reverse \
+          --border=rounded \
+          --border-label=' Keystone docs ' \
+          --input-label=' Filter ' \
+          --list-label=' Files ' \
+          --info=inline-right \
+          --color="$fzf_colors" \
+          --prompt='Keystone docs > '
+  )"
+
+  [[ -n "$target" ]] || return 0
+  glow "$docs_root/$target"
+}
+
+cmd_photos() {
+  if [[ $# -eq 0 ]]; then
+    print_photos_help
+    return 0
+  fi
+
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    print_photos_help
+    return 0
+  fi
+
+  if ! command -v keystone-photos >/dev/null 2>&1; then
+    echo "Error: keystone-photos is not available in PATH." >&2
+    echo "Refresh the home-manager profile before using this command." >&2
+    return 1
+  fi
+
+  keystone-photos "$@"
 }
 
 # --- Discover repo root ---
@@ -919,8 +1470,8 @@ bootstrap_managed_repos() {
   done <<< "$(echo "$registry" | jq -r 'to_entries[] | "\(.key)|\(.value.url)"')"
 }
 
-# --- Verify repo is clean and pushed ---
-verify_repo_clean() {
+# --- Verify repo is lock-ready for automated sync ---
+verify_repo_lock_ready() {
   local path="$1" name="$2"
   if [[ ! -d "$path" ]]; then
     return 0
@@ -933,13 +1484,214 @@ verify_repo_clean() {
     echo "Error: $name has untracked files at $path" >&2
     exit 1
   fi
-  local local_ref remote_ref
-  local_ref=$(git -C "$path" rev-parse HEAD)
-  remote_ref=$(git -C "$path" rev-parse "@{upstream}" 2>/dev/null || echo "")
-  if [[ -n "$remote_ref" && "$local_ref" != "$remote_ref" ]]; then
-    echo "Error: $name has unpushed commits at $path" >&2
+  local branch
+  branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
+  if [[ -z "$branch" ]]; then
+    echo "Error: $name is in detached HEAD state at $path" >&2
     exit 1
   fi
+}
+
+push_repo_for_lock() {
+  local path="$1" name="$2"
+  [[ ! -d "$path" ]] && return 0
+
+  local branch upstream counts behind ahead
+  branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
+  if [[ -z "$branch" ]]; then
+    echo "Error: $name is in detached HEAD state at $path" >&2
+    exit 1
+  fi
+
+  upstream=$(git -C "$path" rev-parse --abbrev-ref --symbolic-full-name "@{upstream}" 2>/dev/null || echo "")
+  if [[ -n "$upstream" ]]; then
+    counts=$(git -C "$path" rev-list --left-right --count "${upstream}...HEAD")
+    read -r behind ahead <<<"$counts"
+
+    if (( behind > 0 )); then
+      echo "Rebasing $name onto $upstream..."
+      if ! run_with_warning_filter git -C "$path" pull --rebase; then
+        echo "" >&2
+        echo "ERROR: Failed to rebase $name onto $upstream." >&2
+        echo "Resolve conflicts in $path, then rerun the command." >&2
+        exit 1
+      fi
+
+      counts=$(git -C "$path" rev-list --left-right --count "${upstream}...HEAD")
+      read -r behind ahead <<<"$counts"
+      if (( behind > 0 )); then
+        echo "Error: $name is still behind $upstream at $path after rebase" >&2
+        exit 1
+      fi
+    fi
+
+    if (( ahead == 0 )); then
+      return 0
+    fi
+  fi
+
+  if [[ "$name" == "ncrmro/keystone" ]]; then
+    push_keystone_with_fork_fallback "$path"
+    return 0
+  fi
+
+  if [[ -n "$upstream" ]]; then
+    echo "Pushing $name..."
+    run_with_warning_filter git -C "$path" push
+  else
+    echo "Pushing $name (setting upstream)..."
+    run_with_warning_filter git -C "$path" push -u origin "$branch"
+  fi
+}
+
+record_local_system_flake() {
+  local repo_root="$1"
+  [[ -z "$repo_root" ]] && return 0
+
+  if is_root_user; then
+    install -d -m 0755 /etc/keystone
+    printf '%s\n' "$repo_root" > /etc/keystone/system-flake
+  else
+    sudo install -d -m 0755 /etc/keystone
+    printf '%s\n' "$repo_root" | sudo tee /etc/keystone/system-flake >/dev/null
+  fi
+}
+
+# --- Build and deploy current unlocked state ---
+deploy_unlocked_current_state() {
+  local repo_root="$1"
+  local mode="$2"
+  shift 2
+  local target_hosts=("$@")
+  local hosts_nix="$repo_root/hosts.nix"
+
+  local needs_sudo=false current_hostname
+  current_hostname=$(hostname)
+  for h in "${target_hosts[@]}"; do
+    local h_hostname
+    h_hostname=$(nix eval -f "$hosts_nix" "$h.hostname" --raw)
+    if [[ "$h_hostname" == "$current_hostname" ]]; then
+      needs_sudo=true
+      break
+    fi
+  done
+
+  if [[ "$needs_sudo" == true ]]; then
+    if is_root_user; then
+      echo "Running unlocked deployment as root..."
+    else
+      echo "Caching sudo credentials..."
+      sudo -v
+    fi
+  fi
+
+  local override_args=()
+  read -ra override_args <<< "$(local_override_args "$repo_root")"
+
+  local build_targets=()
+  for h in "${target_hosts[@]}"; do
+    build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
+  done
+
+  echo "Building current unlocked state: ${target_hosts[*]}..."
+  local build_paths=()
+  if ! mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}"); then
+    echo "Error: build failed for current unlocked state." >&2
+    return 1
+  fi
+
+  if [[ ${#build_paths[@]} -ne ${#target_hosts[@]} ]]; then
+    echo "Error: nix build returned ${#build_paths[@]} path(s) for ${#target_hosts[@]} target host(s)." >&2
+    return 1
+  fi
+
+  for i in "${!target_hosts[@]}"; do
+    local host="${target_hosts[$i]}"
+    local path="${build_paths[$i]}"
+    local host_json ssh_target fallback_ip host_hostname
+    host_json=$(nix eval -f "$hosts_nix" "$host" --json)
+    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+    fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
+    host_hostname=$(echo "$host_json" | jq -r '.hostname')
+
+    if [[ "$host_hostname" == "$current_hostname" ]]; then
+      local old_sw new_sw old_kernel new_kernel old_initrd new_initrd etc_changed=false
+      old_sw=$(readlink -f /run/current-system/sw 2>/dev/null || echo "old")
+      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
+      old_kernel=$(readlink -f /run/current-system/kernel 2>/dev/null || echo "old")
+      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
+      old_initrd=$(readlink -f /run/current-system/initrd 2>/dev/null || echo "old")
+      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
+
+      if ! diff -r -q --exclude="per-user" "$(readlink -f /run/current-system/etc)" "$(readlink -f "$path/etc")" >/dev/null 2>&1; then
+        etc_changed=true
+      fi
+
+      if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
+        echo "OS core unchanged. Activating fast home-manager switch locally..."
+        deploy_home_manager_only "$repo_root" "$host"
+        run_root_command nix-env -p /nix/var/nix/profiles/system --set "$path"
+        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
+      else
+        echo "Deploying $host locally ($mode)..."
+        run_root_command nix-env -p /nix/var/nix/profiles/system --set "$path"
+        run_root_command touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        run_root_command "$path/bin/switch-to-configuration" "$mode"
+      fi
+      record_local_system_flake "$repo_root"
+    else
+      if [[ -z "$ssh_target" ]]; then
+        echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2
+        exit 1
+      fi
+      local resolved="$ssh_target"
+      if [[ -n "$fallback_ip" ]]; then
+        if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+          resolved="$fallback_ip"
+        fi
+      fi
+
+      echo "Deploying $host to root@$resolved ($mode)..."
+      nix copy --to "ssh://root@$resolved" "$path"
+
+      local new_sw new_kernel new_initrd check_cmd remote_status
+      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
+      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
+      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
+
+      check_cmd="
+        old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
+        old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
+        old_initrd=\$(readlink -f /run/current-system/initrd 2>/dev/null || echo 'old')
+        if [[ \"\$old_sw\" == \"$new_sw\" && \"\$old_kernel\" == \"$new_kernel\" && \"\$old_initrd\" == \"$new_initrd\" ]]; then
+          if ! diff -r -q --exclude='per-user' \"\$(readlink -f /run/current-system/etc)\" \"\$(readlink -f $path/etc)\" >/dev/null 2>&1; then
+            echo 'OS'
+          else
+            echo 'HM'
+          fi
+        else
+          echo 'OS'
+        fi
+      "
+      # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
+      remote_status=$(ssh "root@$resolved" "$check_cmd")
+
+      if [[ "$remote_status" == "HM" ]]; then
+        echo "OS core unchanged. Activating fast home-manager switch remotely..."
+        deploy_home_manager_only "$repo_root" "$host"
+        # shellcheck disable=SC2029  # $path intentionally expanded client-side; remote only receives the resolved store path string
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path"
+        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
+      else
+        # shellcheck disable=SC2029  # $path and $mode intentionally expanded client-side; remote receives the resolved store path and mode strings
+        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
+      fi
+    fi
+
+    [[ "$mode" == "boot" ]] && echo "Reboot required to apply changes for $host."
+    echo "Update complete for $host"
+  done
+  maybe_sync_grafana_dashboards "$repo_root"
 }
 
 # --- Commands ---
@@ -1077,18 +1829,21 @@ cmd_build() {
 
   if [[ "$lock" == true ]]; then
     # ── LOCK MODE (REQ-016.7): full system build with lock workflow ──
-    # Step 1: Verify repos are clean
+    # Step 1: Verify repos are lock-ready
     while IFS= read -r key; do
       [[ -z "$key" ]] && continue
       local path
       path=$(find_local_repo "$repo_root" "$key")
-      [[ -n "$path" ]] && verify_repo_clean "$path" "$key"
+      [[ -n "$path" ]] && verify_repo_lock_ready "$path" "$key"
     done <<< "$(get_repos_registry "$repo_root" | jq -r 'to_entries[].key')"
 
-    # Step 2: Push keystone with fork fallback (REQ-016.9)
-    local ks_path
-    ks_path=$(find_local_repo "$repo_root" "ncrmro/keystone")
-    [[ -n "$ks_path" ]] && push_keystone_with_fork_fallback "$ks_path"
+    # Step 2: Push managed flake repos that are ahead of their upstream.
+    while IFS= read -r key; do
+      [[ -z "$key" ]] && continue
+      local path
+      path=$(find_local_repo "$repo_root" "$key")
+      [[ -n "$path" ]] && push_repo_for_lock "$path" "$key"
+    done <<< "$(get_repos_registry "$repo_root" | jq -r 'to_entries[] | select(.value.flakeInput != null) | .key')"
 
     # Step 3: Lock flake inputs
     echo "Locking flake inputs..."
@@ -1116,7 +1871,7 @@ cmd_build() {
 
     # Step 6: Push nixos-config
     echo "Pushing nixos-config..."
-    git -C "$repo_root" push
+    push_repo_for_lock "$repo_root" "nixos-config"
     echo "Lock + build complete for: ${target_hosts[*]}"
   else
     # ── DEFAULT MODE (REQ-016.1): home-manager only build ──
@@ -1157,120 +1912,7 @@ cmd_switch() {
     done
   fi
 
-  # Cache sudo if local host is targeted
-  local needs_sudo=false current_hostname
-  current_hostname=$(hostname)
-  for h in "${target_hosts[@]}"; do
-    local h_hostname
-    h_hostname=$(nix eval -f "$hosts_nix" "$h.hostname" --raw)
-    if [[ "$h_hostname" == "$current_hostname" ]]; then
-      needs_sudo=true; break
-    fi
-  done
-
-  if [[ "$needs_sudo" == true ]]; then
-    echo "Caching sudo credentials..."
-    sudo -v
-  fi
-
-  local override_args=()
-  read -ra override_args <<< "$(local_override_args "$repo_root")"
-
-  # Step 1: Build ALL in parallel for efficiency
-  local build_targets=()
-  for h in "${target_hosts[@]}"; do
-    build_targets+=("$repo_root#nixosConfigurations.$h.config.system.build.toplevel")
-  done
-
-  echo "Building: ${target_hosts[*]}..."
-  local build_paths=()
-  mapfile -t build_paths < <(nix build --no-link --print-out-paths "${build_targets[@]}" "${override_args[@]}")
-
-  # Step 2: Deploy sequentially using the built store paths
-  for i in "${!target_hosts[@]}"; do
-    local host="${target_hosts[$i]}"
-    local path="${build_paths[$i]}"
-    local host_json ssh_target fallback_ip host_hostname
-    host_json=$(nix eval -f "$hosts_nix" "$host" --json)
-    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
-    fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
-    host_hostname=$(echo "$host_json" | jq -r '.hostname')
-
-    if [[ "$host_hostname" == "$current_hostname" ]]; then
-      local old_sw new_sw old_kernel new_kernel old_initrd new_initrd etc_changed=false
-      old_sw=$(readlink -f /run/current-system/sw 2>/dev/null || echo "old")
-      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
-      old_kernel=$(readlink -f /run/current-system/kernel 2>/dev/null || echo "old")
-      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
-      old_initrd=$(readlink -f /run/current-system/initrd 2>/dev/null || echo "old")
-      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
-
-      if ! diff -r -q --exclude="per-user" "$(readlink -f /run/current-system/etc)" "$(readlink -f "$path/etc")" >/dev/null 2>&1; then
-        etc_changed=true
-      fi
-
-      if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
-        echo "OS core unchanged. Activating fast home-manager switch locally..."
-        deploy_home_manager_only "$repo_root" "$host"
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
-      else
-        echo "Deploying $host locally ($mode)..."
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
-        sudo "$path/bin/switch-to-configuration" "$mode"
-      fi
-    else
-      if [[ -z "$ssh_target" ]]; then
-        echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2; exit 1
-      fi
-      local resolved="$ssh_target"
-      if [[ -n "$fallback_ip" ]]; then
-        if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
-          resolved="$fallback_ip"
-        fi
-      fi
-      
-      echo "Deploying $host to root@$resolved ($mode)..."
-      nix copy --to "ssh://root@$resolved" "$path"
-      
-      # Check remote OS state
-      local new_sw new_kernel new_initrd check_cmd remote_status
-      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
-      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
-      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
-      
-      check_cmd="
-        old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
-        old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
-        old_initrd=\$(readlink -f /run/current-system/initrd 2>/dev/null || echo 'old')
-        if [[ \"\$old_sw\" == \"$new_sw\" && \"\$old_kernel\" == \"$new_kernel\" && \"\$old_initrd\" == \"$new_initrd\" ]]; then
-          if ! diff -r -q --exclude='per-user' \"\$(readlink -f /run/current-system/etc)\" \"\$(readlink -f $path/etc)\" >/dev/null 2>&1; then
-            echo 'OS'
-          else
-            echo 'HM'
-          fi
-        else
-          echo 'OS'
-        fi
-      "
-      # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
-      remote_status=$(ssh "root@$resolved" "$check_cmd")
-
-      if [[ "$remote_status" == "HM" ]]; then
-        echo "OS core unchanged. Activating fast home-manager switch remotely..."
-        deploy_home_manager_only "$repo_root" "$host"
-        # shellcheck disable=SC2029  # $path intentionally expanded client-side; remote only receives the resolved store path string
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path"
-        echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
-      else
-        # shellcheck disable=SC2029  # $path and $mode intentionally expanded client-side; remote receives the resolved store path and mode strings
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
-      fi
-    fi
-    echo "Update complete for $host"
-  done
-  cmd_grafana "dashboards" "apply"
+  deploy_unlocked_current_state "$repo_root" "$mode" "${target_hosts[@]}"
 }
 
 # --- Update command ---
@@ -1329,13 +1971,10 @@ cmd_update() {
     return
   fi
 
-  # ── DEV MODE: home-manager only (REQ-016.2) ──────────────────────────────────
+  # ── DEV MODE: deploy current unlocked checkout without lock/push ─────────────
   if [[ "$lock" != true ]]; then
-    bootstrap_managed_repos "$repo_root" "$registry"
-    build_home_manager_only "$repo_root" "${target_hosts[@]}"
-    deploy_home_manager_only "$repo_root" "${target_hosts[@]}"
-    echo "Dev mode update complete (home-manager only) for: ${target_hosts[*]}"
-    cmd_grafana "dashboards" "apply"
+    deploy_unlocked_current_state "$repo_root" "$mode" "${target_hosts[@]}"
+    echo "Dev mode update complete (current unlocked checkout) for: ${target_hosts[*]}"
     return
   fi
 
@@ -1358,12 +1997,16 @@ cmd_update() {
 
   SUDO_KEEPALIVE_PID=""
   if [[ "$needs_sudo" == true ]]; then
-    echo "Caching sudo credentials (needed for local deploy)..."
-    sudo -v
-    # Keepalive: refresh every 60 s so a long pull/lock/build doesn't expire the ticket.
-    ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done ) &
-    SUDO_KEEPALIVE_PID=$!
-    trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; trap - EXIT' EXIT
+    if is_root_user; then
+      echo "Running update as root..."
+    else
+      echo "Caching sudo credentials (needed for local deploy)..."
+      sudo -v
+      # Keepalive: refresh every 60 s so a long pull/lock/build doesn't expire the ticket.
+      ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done ) &
+      SUDO_KEEPALIVE_PID=$!
+      trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; trap - EXIT' EXIT
+    fi
   fi
 
   # ── UPFRONT PHASE ───────────────────────────────────────────────────────────
@@ -1374,18 +2017,21 @@ cmd_update() {
   # Step 2: Pull all repos in registry
   bootstrap_managed_repos "$repo_root" "$registry"
 
-  # Step 3: Verify repos are clean and fully pushed before locking
+  # Step 3: Verify repos are lock-ready before locking
   while IFS= read -r key; do
     [[ -z "$key" ]] && continue
     local path
     path=$(find_local_repo "$repo_root" "$key")
-    [[ -n "$path" ]] && verify_repo_clean "$path" "$key"
+    [[ -n "$path" ]] && verify_repo_lock_ready "$path" "$key"
   done <<< "$(echo "$registry" | jq -r 'to_entries[].key')"
 
-  # Step 3.5: Push keystone with fork fallback (REQ-016.8-9)
-  local ks_path
-  ks_path=$(find_local_repo "$repo_root" "ncrmro/keystone")
-  [[ -n "$ks_path" ]] && push_keystone_with_fork_fallback "$ks_path"
+  # Step 3.5: Push managed flake repos that are ahead of their upstream.
+  while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    local path
+    path=$(find_local_repo "$repo_root" "$key")
+    [[ -n "$path" ]] && push_repo_for_lock "$path" "$key"
+  done <<< "$(echo "$registry" | jq -r 'to_entries[] | select(.value.flakeInput != null) | .key')"
 
   # Step 4: Update flake.lock BEFORE building so the build validates what will be committed
   echo "Locking flake inputs..."
@@ -1474,15 +2120,16 @@ cmd_update() {
       if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
         echo "OS core unchanged. Activating fast home-manager switch locally..."
         deploy_home_manager_only "$repo_root" "$host"
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
-        sudo "$path/bin/switch-to-configuration" boot
+        run_root_command nix-env -p /nix/var/nix/profiles/system --set "$path"
+        run_root_command touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        run_root_command "$path/bin/switch-to-configuration" boot
       else
         echo "Deploying $host locally ($mode)..."
-        sudo nix-env -p /nix/var/nix/profiles/system --set "$path"
-        sudo touch /var/run/nixos-rebuild-safe-to-update-bootloader
-        sudo "$path/bin/switch-to-configuration" "$mode"
+        run_root_command nix-env -p /nix/var/nix/profiles/system --set "$path"
+        run_root_command touch /var/run/nixos-rebuild-safe-to-update-bootloader
+        run_root_command "$path/bin/switch-to-configuration" "$mode"
       fi
+      record_local_system_flake "$repo_root"
     else
       if [[ -z "$ssh_target" ]]; then
         echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2; exit 1
@@ -1534,7 +2181,7 @@ cmd_update() {
     [[ "$mode" == "boot" ]] && echo "Reboot required to apply changes for $host."
     echo "Update complete for $host"
   done
-  cmd_grafana "dashboards" "apply"
+  maybe_sync_grafana_dashboards "$repo_root"
 }
 
 # --- Find keystone repo (where conventions/ lives) ---
@@ -1585,6 +2232,68 @@ grafana_dashboards_dir() {
 
   echo "Error: could not locate keystone Grafana dashboards directory." >&2
   exit 1
+}
+
+grafana_managed_tag() {
+  printf '%s\n' "keystone-managed"
+}
+
+grafana_api_request() {
+  local method="$1"
+  local url="$2"
+  local api_key="$3"
+  local data="${4:-}"
+  local body_file
+  local http_code
+
+  body_file=$(mktemp)
+  if [[ -n "$data" ]]; then
+    http_code=$(curl -sS -o "$body_file" -w '%{http_code}' \
+      -H "Authorization: Bearer ${api_key}" \
+      -H 'Content-Type: application/json' \
+      -X "$method" \
+      --data "$data" \
+      "$url")
+  else
+    http_code=$(curl -sS -o "$body_file" -w '%{http_code}' \
+      -H "Authorization: Bearer ${api_key}" \
+      -X "$method" \
+      "$url")
+  fi
+
+  if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+    echo "Grafana API request failed: ${method} ${url} (HTTP ${http_code})" >&2
+    if [[ -s "$body_file" ]]; then
+      cat "$body_file" >&2
+      echo >&2
+    fi
+    rm -f "$body_file"
+    return 1
+  fi
+
+  cat "$body_file"
+  rm -f "$body_file"
+}
+
+keystone_development_enabled() {
+  local repo_root="$1"
+  local current_host
+  current_host=$(resolve_host "$repo_root/hosts.nix" "")
+
+  local value
+  value=$(nix eval "$repo_root#nixosConfigurations.${current_host}.config.keystone.development" --json 2>/dev/null || echo "false")
+  ks_bool_true "$(echo "$value" | jq -r '.')"
+}
+
+maybe_sync_grafana_dashboards() {
+  local repo_root="$1"
+
+  if ! keystone_development_enabled "$repo_root"; then
+    return 0
+  fi
+
+  echo "Syncing keystone Grafana dashboards via API..."
+  cmd_grafana "dashboards" "apply"
 }
 
 resolve_grafana_url() {
@@ -1707,12 +2416,21 @@ cmd_grafana_dashboards() {
   
   grafana_url=$(resolve_grafana_url "$repo_root" 2>/dev/null || true)
   if [[ -z "$grafana_url" ]]; then
+    if keystone_development_enabled "$repo_root"; then
+      echo "Error: could not resolve Grafana URL for dashboard sync in development mode. Set GRAFANA_URL." >&2
+      return 1
+    fi
     echo "Warning: skipping dashboard sync (could not resolve Grafana URL). Set GRAFANA_URL." >&2
     return 0
   fi
 
   grafana_api_key=$(resolve_grafana_api_key "$repo_root" 2>/dev/null || true)
   if [[ -z "$grafana_api_key" ]]; then
+    if keystone_development_enabled "$repo_root"; then
+      echo "Error: Keystone Grafana API token is required for dashboard sync in development mode." >&2
+      echo "Define 'secrets/grafana-api-token.age' for this host and rebuild." >&2
+      return 1
+    fi
     echo "Warning: Keystone Grafana API token is not configured on this host." >&2
     echo "To enable dashboard synchronization and Grafana MCP, you must:" >&2
     echo "  1. Define 'secrets/grafana-api-token.age' in your nixos-config/secrets.nix" >&2
@@ -1725,7 +2443,9 @@ cmd_grafana_dashboards() {
 
   case "$action" in
     apply)
-      local file uid payload
+      local file uid payload managed_tag
+      local -a desired_uids remote_managed_uids
+      managed_tag=$(grafana_managed_tag)
       shopt -s nullglob
       for file in "$dashboards_dir"/*.json; do
         uid=$(jq -r '.uid // empty' "$file")
@@ -1733,14 +2453,37 @@ cmd_grafana_dashboards() {
           echo "Skipping $file (missing uid)" >&2
           continue
         fi
-        payload=$(jq -cn --slurpfile dashboard "$file" '{dashboard: $dashboard[0], overwrite: true}')
-        curl -fsS \
-          -H "Authorization: Bearer ${grafana_api_key}" \
-          -H 'Content-Type: application/json' \
-          -X POST \
-          --data "$payload" \
-          "${grafana_url}/api/dashboards/db" >/dev/null
+        desired_uids+=("$uid")
+        payload=$(jq -cn --slurpfile dashboard "$file" --arg managed_tag "$managed_tag" '
+          {
+            dashboard: (
+              $dashboard[0]
+              | .tags = (((.tags // []) + [$managed_tag]) | unique)
+            ),
+            overwrite: true
+          }
+        ')
+        grafana_api_request POST \
+          "${grafana_url}/api/dashboards/db" \
+          "${grafana_api_key}" \
+          "$payload" >/dev/null
         echo "Applied ${uid}"
+      done
+
+      mapfile -t remote_managed_uids < <(
+        grafana_api_request GET \
+          "${grafana_url}/api/search?type=dash-db&tag=${managed_tag}" \
+          "${grafana_api_key}" |
+          jq -r '.[].uid // empty'
+      )
+
+      for uid in "${remote_managed_uids[@]}"; do
+        if [[ ! " ${desired_uids[*]} " =~ [[:space:]]${uid}[[:space:]] ]]; then
+          grafana_api_request DELETE \
+            "${grafana_url}/api/dashboards/uid/${uid}" \
+            "${grafana_api_key}" >/dev/null
+          echo "Deleted stale ${uid}"
+        fi
       done
       ;;
     export)
@@ -1764,9 +2507,9 @@ cmd_grafana_dashboards() {
         exit 1
       fi
 
-      response=$(curl -fsS \
-        -H "Authorization: Bearer ${grafana_api_key}" \
-        "${grafana_url}/api/dashboards/uid/${uid}")
+      response=$(grafana_api_request GET \
+        "${grafana_url}/api/dashboards/uid/${uid}" \
+        "${grafana_api_key}")
       body=$(printf '%s\n' "$response" | jq '.dashboard | del(.id, .version)')
       printf '%s\n' "$body" > "$target_file"
       echo "Exported ${uid} -> ${target_file}"
@@ -1906,7 +2649,7 @@ the local repo immediately, skipping pull, lock, and push phases.
 | Flag | Effect |
 |------|--------|
 | `--debug` | Show warning lines from underlying `git`/`nix` commands |
-| `--dev` | Home-manager only: clone or pull managed repos, then build + activate user/agent profiles |
+| `--dev` | Build and deploy the current unlocked checkout, skipping pull, lock, and push |
 | `--boot` | Use `boot` instead of `switch` mode (reboot required to apply) |
 | `--pull` | Pull repos only — no build or deploy |
 | `--lock` | Force locking (default when `--dev` is not set), full system rebuild |
@@ -2235,14 +2978,21 @@ build_agent_prompt() {
 
   local prompt=""
 
-  # 1. Conventions from keystone repo (REQ-014.8, REQ-014.14, REQ-014.16)
-  if [[ -n "$ks_repo" ]]; then
+  # 1. Static conventions. Prefer the generated canonical per-user context at
+  # ~/.keystone/AGENTS.md. Fall back to repo conventions for pre-activation or
+  # ad-hoc checkout usage.
+  local canonical_prompt="$HOME/.keystone/AGENTS.md"
+  if [[ -f "$canonical_prompt" ]]; then
+    prompt="$(cat "$canonical_prompt")"
+  elif [[ -n "$ks_repo" ]]; then
     local conventions
     conventions=$(load_conventions "$ks_repo")
     if [[ -n "$conventions" ]]; then
       prompt="$conventions"
     fi
+  fi
 
+  if [[ -n "$ks_repo" ]]; then
     # Load ks-agent archetype (provides identity and constraints for ks agent sessions)
     local archetype_file="$ks_repo/modules/os/agents/archetypes/ks-agent.md"
     if [[ -f "$archetype_file" ]]; then
@@ -2342,7 +3092,8 @@ $user_table"
 
 ### Dev Mode Conventions
 
-- \`ks build\` / \`ks update --dev\`: Rebuilds **home-manager profiles only** (users + agents). \`ks update --dev\` also clones or pulls managed repos first so local overrides like DeepWork library jobs appear automatically. Fast iteration, no sudo required.
+- \`ks build\`: Rebuilds **home-manager profiles only** (users + agents).
+- \`ks update --dev\` / \`ks switch\`: Deploy the **current unlocked checkout** to the selected hosts, skipping pull, lock, and push.
 - \`ks build --lock\` / \`ks update\` (default): **Full NixOS system rebuild**. Pushes keystone (forks if not a collaborator), locks flake inputs, builds, pushes nixos-config, deploys.
 - Changes to keystone are NOT locked into flake.lock until \`--lock\` is used.
 - When ready to lock: commit + push keystone, then run \`ks update\` (or \`ks build --lock\`)."
@@ -2441,6 +3192,128 @@ cmd_agent() {
   launch_agent "$local_model" "$repo_root" "$current_host" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
 }
 
+cmd_print() {
+  local input_file=""
+  local output_file=""
+  local open_after=false
+  local no_print=false
+  local print_css_path="@KS_PRINT_CSS@"
+
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -h|--help)
+        print_print_help
+        return 0
+        ;;
+      -o|--output)
+        shift
+        output_file="$1"
+        shift
+        ;;
+      --open)
+        open_after=true
+        shift
+        ;;
+      --preview)
+        open_after=true
+        no_print=true
+        shift
+        ;;
+      --no-print)
+        no_print=true
+        shift
+        ;;
+      -*)
+        echo "Error: Unknown option '$1'" >&2
+        print_print_help >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "$input_file" ]]; then
+          input_file="$1"
+        else
+          echo "Error: Unexpected argument '$1'" >&2
+          print_print_help >&2
+          return 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$input_file" ]]; then
+    echo "Error: No input file specified." >&2
+    print_print_help >&2
+    return 1
+  fi
+
+  if [[ ! -f "$input_file" ]]; then
+    echo "Error: File not found: $input_file" >&2
+    return 1
+  fi
+
+  if [[ -z "$output_file" ]]; then
+    output_file="${input_file%.md}.pdf"
+    if [[ "$output_file" == "$input_file" ]]; then
+      output_file="${input_file}.pdf"
+    fi
+  fi
+
+  if [[ "$print_css_path" == "@KS_PRINT_CSS@" ]]; then
+    # Dev mode links this script from the live checkout, so build-time placeholder
+    # substitution does not run. Resolve the adjacent stylesheet from disk instead.
+    local script_dir=""
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    print_css_path="${script_dir}/print.css"
+  fi
+
+  if [[ ! -f "$print_css_path" ]]; then
+    echo "Error: Print stylesheet not found: $print_css_path" >&2
+    return 1
+  fi
+
+  # Select PDF engine — prefer weasyprint, fall back to wkhtmltopdf then LaTeX
+  local engine=""
+  if command -v weasyprint &>/dev/null; then
+    engine="weasyprint"
+  elif command -v wkhtmltopdf &>/dev/null; then
+    engine="wkhtmltopdf"
+  elif command -v pdflatex &>/dev/null; then
+    engine="pdflatex"
+  elif command -v xelatex &>/dev/null; then
+    engine="xelatex"
+  else
+    echo "Error: No PDF engine found. Install weasyprint, wkhtmltopdf, or a LaTeX distribution." >&2
+    return 1
+  fi
+
+  local pandoc_args=(
+    "$input_file"
+    --standalone
+    --pdf-engine="$engine"
+    --css="$print_css_path"
+    -V colorlinks=false
+    -o "$output_file"
+  )
+
+  pandoc "${pandoc_args[@]}"
+  echo "✓  PDF written: $output_file"
+
+  if [[ "$open_after" == true ]]; then
+    xdg-open "$output_file" &
+  fi
+
+  # Auto-send to default CUPS printer unless --no-print was specified
+  if [[ "$no_print" == false ]] && command -v lpstat &>/dev/null; then
+    local default_printer=""
+    default_printer=$(lpstat -d 2>/dev/null | awk '/system default destination:/ {print $NF}')
+    if [[ -n "$default_printer" ]]; then
+      lp "$output_file" >/dev/null
+      echo "✓  Sent to printer: $default_printer"
+    fi
+  fi
+}
+
 cmd_doctor() {
   local local_model=""
   local passthrough_args=()
@@ -2466,8 +3339,6 @@ cmd_doctor() {
   local repo_root
   repo_root=$(find_repo)
   local hosts_nix="$repo_root/hosts.nix"
-  local ks_repo
-  ks_repo=$(find_keystone_repo "$repo_root")
 
   local current_hostname current_host=""
   current_hostname=$(hostname)
@@ -2475,44 +3346,25 @@ cmd_doctor() {
     --apply "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"$current_hostname\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m" \
     2>/dev/null) || current_host=""
 
-  # Build shared context (REQ-014.10 — same agent as ks agent)
-  local base_prompt
-  base_prompt=$(build_agent_prompt "$repo_root" "$hosts_nix" "$ks_repo" "$current_host")
-
-  # Gather current system state including fleet + agent health (REQ-014.11)
   local system_state
   system_state=$(gather_system_state "$repo_root" "$hosts_nix" "$current_host")
+  printf '%s\n' "$system_state"
 
-  # Diagnostic-focused prefix (REQ-014.10)
-  local doctor_prefix
-  doctor_prefix="You are a diagnostic agent for a keystone NixOS infrastructure system.
-Your primary goal is to check host health, agent health, and suggest actionable fixes.
+  if [[ ! -t 0 || ! -t 1 ]]; then
+    return 0
+  fi
 
-Focus areas:
-- Failed or degraded systemd units (check with: systemctl --failed)
-- Disk pressure (check with: df -h)
-- Stale flake locks (run ks update to refresh)
-- Unreachable hosts (check sshTarget connectivity via ssh)
-- NixOS generation drift between hosts (compare fleet status table)
-- Agent service health (task-loop, notes-sync, ssh-agent timers/services)
-- Agent task queue (blocked tasks need human intervention, stale pending tasks may indicate stalls)
-- Agent SSH key health (verify with: agentctl <name> exec ssh-add -l)
-- Agent mail connectivity (verify with: agentctl <name> exec himalaya account list)
-
-Always suggest concrete remediation commands. Prefer ks/agentctl commands over raw nix/systemctl."
-
-  local prompt
-  prompt="$doctor_prefix
-
----
-
-$system_state
-
----
-
-$base_prompt"
-
-  launch_agent "$local_model" "$repo_root" "$current_host" "$prompt" "${passthrough_args[@]+"${passthrough_args[@]}"}"
+  printf '\nLaunch the default agent to review this doctor report? [y/N] '
+  local launch_reply=""
+  IFS= read -r launch_reply || true
+  case "$launch_reply" in
+    y|Y|yes|YES)
+      cmd_agent ${local_model:+"--local"} ${local_model:+"$local_model"} "${passthrough_args[@]}"
+      ;;
+    *)
+      return 0
+      ;;
+  esac
 }
 
 # --- Main dispatch ---
@@ -2529,16 +3381,22 @@ case "$CMD" in
   help)
     show_help_topic "$@"
     ;;
+  approve) cmd_approve "$@" ;;
+  agents) cmd_agents "$@" ;;
   build)  cmd_build "$@" ;;
+  docs)   cmd_docs "$@" ;;
+  photos) cmd_photos "$@" ;;
   grafana) cmd_grafana "$@" ;;
+  sync-agent-assets) cmd_sync_agent_assets "$@" ;;
   update) cmd_update "$@" ;;
   switch) cmd_switch "$@" ;;
   sync-host-keys) cmd_sync_host_keys "$@" ;;
+  print)  cmd_print "$@" ;;
   agent)  cmd_agent "$@" ;;
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: help, build, grafana, update, switch, sync-host-keys, agent, doctor" >&2
+    echo "Known commands: help, approve, build, update, agents, docs, photos, sync-agent-assets, switch, sync-host-keys, grafana, print, agent, doctor" >&2
     exit 1
     ;;
 esac

@@ -20,7 +20,12 @@ stdenv.mkDerivation {
     cp $src/podman-agent.sh $out/bin/podman-agent
     chmod +x $out/bin/podman-agent
     wrapProgram $out/bin/podman-agent \
-      --prefix PATH : ${lib.makeBinPath [ coreutils curl ]}
+      --prefix PATH : ${
+        lib.makeBinPath [
+          coreutils
+          curl
+        ]
+      }
   '';
 
   meta = {

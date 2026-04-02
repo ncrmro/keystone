@@ -289,6 +289,7 @@
 
         # Headscale DNS import — consume server DNS records on headscale host
         headscale-dns = ./modules/server/headscale/dns-import.nix;
+        headscale-acl = ./modules/server/headscale/acl-import.nix;
       };
 
       # Export home-manager modules (homeModules is the standard flake output name)
@@ -342,6 +343,50 @@
             inherit pkgs lib nixpkgs;
             self = self;
           };
+          ks-help = import ./tests/module/ks-help.nix {
+            inherit pkgs;
+          };
+          ks-lock-sync = import ./tests/module/ks-lock-sync.nix {
+            inherit pkgs;
+          };
+          nixfmt-check = import ./tests/module/nixfmt-check.nix {
+            inherit pkgs;
+          };
+          shellcheck = import ./tests/module/shellcheck.nix {
+            inherit pkgs;
+          };
+          keystone-photos = import ./tests/module/keystone-photos.nix {
+            inherit pkgs lib;
+          };
+          pz-regression = import ./tests/module/pz-regression.nix {
+            inherit pkgs lib;
+          };
+          pz-project-menu = import ./tests/module/pz-project-menu.nix {
+            inherit pkgs lib;
+          };
+          pz-host-launcher-state = import ./tests/module/pz-host-launcher-state.nix {
+            inherit pkgs lib;
+          };
+          hyprland-bindings-agent-conflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
+            inherit pkgs;
+          };
+          ks-approve = import ./tests/module/ks-approve.nix {
+            inherit pkgs;
+          };
+          agentctl-regression = import ./tests/module/agentctl-regression.nix {
+            inherit pkgs;
+          };
+          zellij-tab-prompt = import ./tests/module/zellij-tab-prompt.nix {
+            inherit
+              pkgs
+              lib
+              self
+              home-manager
+              ;
+          };
+          agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
+            inherit pkgs lib;
+          };
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)
@@ -361,13 +406,16 @@
             agent-mail
             fetch-email-source
             fetch-forgejo-sources
+            forgejo-cli-ex
             forgejo-project
             fetch-github-sources
             repo-sync
             podman-agent
             ks
             pz
+            keystone-photos
             cfait
+            zellij-tab-name
             chrome-devtools-mcp
             grafana-mcp
             deepwork-library-jobs
@@ -433,9 +481,11 @@
               echo "  ./bin/build-iso        - Build installer ISO"
               echo "  ./bin/build-vm         - Fast VM testing (terminal/desktop)"
               echo "  ./bin/virtual-machine  - Full stack VM with libvirt"
-              echo "  nix flake check        - Validate flake"
+              echo "  ci                     - Run nix flake check"
               echo ""
               echo "Rust packages:  packages/keystone-ha/, packages/keystone-tui/"
+
+              alias ci='nix flake check'
             '';
 
             # Rust environment variables

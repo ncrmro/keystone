@@ -16,7 +16,7 @@
       "id": 1,
       "title": "Hosts Reporting",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
       "targets": [
         {
           "refId": "A",
@@ -26,96 +26,10 @@
       ]
     },
     {
-      "id": 2,
-      "title": "Active Agents",
-      "type": "stat",
-      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 0 },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "count(sum by(agent) (count_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" [$__range])))"
-        }
-      ]
-    },
-    {
-      "id": 8,
-      "title": "Avg Task Latency",
-      "type": "stat",
-      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 0 },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "avg(avg_over_time({agent!=\"\"} | logfmt | event=\"task_finish\" | unwrap duration_seconds [$__range]))"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        }
-      }
-    },
-    {
-      "id": 3,
-      "title": "Total Zpools",
-      "type": "stat",
-      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "count(node_zfs_zpool_state == 0)"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null }
-            ]
-          }
-        }
-      }
-    },
-    {
-      "id": 4,
-      "title": "Failing Backups",
-      "type": "stat",
-      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "count(zfs_backup_last_exit_code != 0)"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
-            ]
-          }
-        },
-        "links": [
-          {
-            "title": "Open backups overview",
-            "url": "/d/keystone-backups-overview/keystone-backups-overview"
-          }
-        ]
-      }
-    },
-    {
       "id": 9,
       "title": "Alert Count",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 0 },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
       "targets": [
         {
           "refId": "A",
@@ -137,10 +51,18 @@
       }
     },
     {
+      "id": 10,
+      "title": "Infrastructure",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
       "id": 5,
       "title": "Infrastructure Health",
       "type": "table",
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 7 },
       "targets": [
         {
           "refId": "A",
@@ -173,7 +95,7 @@
       "id": 6,
       "title": "Zpool Health & Usage",
       "type": "table",
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 17 },
       "targets": [
         {
           "refId": "A",
@@ -240,15 +162,93 @@
       }
     },
     {
-      "id": 7,
-      "title": "Recent Agent Failures",
-      "type": "logs",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "id": 11,
+      "title": "Backups",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 4,
+      "title": "Failing Backups",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "count(node_systemd_unit_state{name=~\"syncoid.*\\\\.service\",state=\"failed\"} == 1)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "links": [
+          {
+            "title": "Open backups overview",
+            "url": "/d/keystone-backups-overview/keystone-backups-overview"
+          }
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "title": "Agents",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "title": "Active Agents",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 35 },
       "targets": [
         {
           "refId": "A",
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{agent!=\"\"} | logfmt | status=~\"error|failed|blocked\""
+          "expr": "count(count by(agent) (count_over_time({agent!=\"\"} | logfmt | event=\"run_finish\" [$__range])))"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Avg Run Duration",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 35 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "avg(avg_over_time({agent!=\"\"} | logfmt | event=\"run_finish\" | unwrap duration_seconds [$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Recent Agent Failures",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 41 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{agent!=\"\"} | logfmt | event=~\"run_finish|stage_finish\" | status=~\"error|failed|blocked\""
         }
       ]
     }

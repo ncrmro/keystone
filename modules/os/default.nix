@@ -95,6 +95,28 @@ let
           };
         };
 
+        capabilities = mkOption {
+          type = types.listOf (
+            types.enum [
+              "ks"
+              "ks-dev"
+              "notes"
+              "engineer"
+              "executive-assistant"
+            ]
+          );
+          default = [ ];
+          description = ''
+            Extra Keystone AI workflow capabilities for this user. These
+            capabilities are merged with default terminal capabilities and
+            determine what the generated `/ks` and `/ks.dev` commands may do.
+          '';
+          example = [
+            "notes"
+            "executive-assistant"
+          ];
+        };
+
         sshAutoLoad = {
           enable = mkOption {
             type = types.bool;
@@ -108,6 +130,20 @@ let
             type = types.bool;
             default = false;
             description = "Enable desktop environment (Hyprland, waybar, etc.)";
+          };
+
+          screenshotSync = {
+            enable = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Enable screenshot syncing to Immich for this desktop user.";
+            };
+
+            syncOnCalendar = mkOption {
+              type = types.str;
+              default = "*:0/5";
+              description = "Systemd calendar expression for screenshot sync interval.";
+            };
           };
 
           hyprland = {
@@ -178,6 +214,7 @@ in
     ./secure-boot.nix
     ./tpm.nix
     ./hardware-key.nix
+    ./privileged-approval.nix
     ./uhk.nix
     ./remote-unlock.nix
     ./users.nix
@@ -505,6 +542,8 @@ in
   };
 
   config = mkIf cfg.enable {
+    keystone.security.privilegedApproval.enable = mkDefault true;
+
     # Assertions for configuration validation
     assertions = [
       # Storage assertions (only when storage is enabled)

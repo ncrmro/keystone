@@ -109,13 +109,91 @@ calendula calendars list
 calendula items list <calendar-id>
 ```
 
+### Create or edit an event
+
+Calendula `v0.1.0` edits raw iCalendar data through your `$EDITOR`. In practice,
+that means event creation and updates are done by writing a `VEVENT` with the
+fields you want to set.
+
+Minimum useful fields:
+
+- `SUMMARY` for the event title
+- `DTSTART` for the start date and time
+- `DTEND` for the end date and time, or a reasonable assumed duration
+- `LOCATION` for the venue or address
+- `DESCRIPTION` for contact details, notes, room info, or agenda
+
+Common examples:
+
+```ics
+BEGIN:VEVENT
+UID:intuitive-machines-presentation@example.com
+DTSTAMP:20260331T120000Z
+DTSTART;TZID=America/Chicago:20260417T090000
+DTEND;TZID=America/Chicago:20260417T100000
+SUMMARY:Intuitive Machines Company Presentation
+LOCATION:13467 Columbia Shuttle Street\, Houston\, TX 77059
+DESCRIPTION:Contact\nIntuitive Machines\n13467 Columbia Shuttle Street\, Houston\, TX 77059\n281.520.3703
+END:VEVENT
+```
+
+Add alerts with `VALARM` blocks:
+
+```ics
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Intuitive Machines Company Presentation
+TRIGGER:-P1D
+END:VALARM
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Intuitive Machines Company Presentation
+TRIGGER:-PT2H
+END:VALARM
+```
+
+The example above sets reminders for one day before and two hours before the
+event start time.
+
+### Create an event
+
+```bash
+calendula items create <calendar-id>
+```
+
+This opens a new iCalendar draft in your `$EDITOR`.
+
 ### Update an Event
 
 ```bash
-calendula item update <calendar-id> <item-id>
+calendula items update <calendar-id> <item-id>
 ```
 
 This opens the iCalendar (`.ics`) data in your `$EDITOR`.
+
+### Practical event workflow
+
+```bash
+# 1. Find the calendar
+calendula calendars list
+
+# 2. Create a new event in that calendar
+calendula items create default
+
+# 3. List items to find the event ID later
+calendula items list default
+
+# 4. Update the event to change the title, date, time, location, or alerts
+calendula items update default <item-id>
+```
+
+When editing the iCalendar body:
+
+- Change `SUMMARY` to rename the event
+- Change `DTSTART` and `DTEND` to move the date or time
+- Set `LOCATION` to the venue or street address
+- Put phone numbers, contact names, and notes in `DESCRIPTION`
+- Add `VALARM` blocks for reminders
 
 ## Contacts (Cardamum)
 

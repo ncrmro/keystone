@@ -13,13 +13,280 @@ fi
 # shellcheck source=/dev/null
 . "$AGENTCTL_ENV_FILE"
 
+LAUNCHER_STATE_NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+
+launcher_state_json() {
+  "$PZ" launcher-state-json 2>/dev/null || printf '%s\n' '{"interactive_defaults":{"agents":{},"projects":{}}}'
+}
+
+effective_pref_json() {
+  local agent_name="$1"
+  local project_slug="${2:-}"
+  local configured_host="${3:-}"
+
+  launcher_state_json | jq -c \
+    --arg agent_name "$agent_name" \
+    --arg project_slug "$project_slug" \
+    --arg configured_host "$configured_host" '
+      (.interactive_defaults.agents[$agent_name] // {}) as $agent
+      | (if $project_slug == "" then {} else (.interactive_defaults.projects[$project_slug] // {}) end) as $project
+      | {
+          host: ($project.host // $agent.host // $configured_host // ""),
+          provider: ($project.provider // $agent.provider // ""),
+          model: ($project.model // $agent.model // ""),
+          fallback_model: ($project.fallback_model // $agent.fallback_model // "")
+        }
+    '
+}
+
+agent_pause_state_json() {
+  local agent_name="$1"
+  local output=""
+  output=$(agentctl "$agent_name" paused 2>/dev/null || true)
+
+  if printf '%s\n' "$output" | grep -q ': paused'; then
+    jq -cn \
+      --arg state "paused" \
+      --arg paused_at "$(printf '%s\n' "$output" | sed -n 's/^paused_at: //p' | tail -n1)" \
+      --arg paused_by "$(printf '%s\n' "$output" | sed -n 's/^paused_by: //p' | tail -n1)" \
+      --arg reason "$(printf '%s\n' "$output" | sed -n 's/^reason: //p' | tail -n1)" \
+      '{ state: $state, pausedAt: $paused_at, pausedBy: $paused_by, reason: $reason }'
+  else
+    jq -cn '{ state: "active", pausedAt: "", pausedBy: "", reason: "" }'
+  fi
+}
+
+agent_pref_json() {
+  local agent_name="$1"
+  local project_slug="${2:-}"
+  local configured_host="${3:-}"
+  local pref_json
+
+  pref_json=$(effective_pref_json "$agent_name" "$project_slug" "$configured_host" 2>/dev/null || printf '{}')
+
+  printf '%s\n' "$pref_json"
+}
+
+agent_pref_set() {
+  local agent_name="$1"
+  local host="$2"
+  local provider="$3"
+  local model="$4"
+  local fallback_model="${5:-}"
+  local project_slug="${6:-}"
+
+  if [[ -n "$project_slug" ]]; then
+    local current_json effective_provider effective_model effective_fallback
+    current_json=$("$PZ" project-launch-json "$project_slug")
+    effective_provider=$(printf '%s\n' "$current_json" | jq -r '.provider // ""')
+    effective_model=$(printf '%s\n' "$current_json" | jq -r '.model // ""')
+    effective_fallback=$(printf '%s\n' "$current_json" | jq -r '.fallbackModel // ""')
+
+    if [[ -n "$provider" ]]; then
+      effective_provider="$provider"
+    fi
+    if [[ -n "$model" ]]; then
+      effective_model="$model"
+    fi
+    if [[ -n "$fallback_model" ]]; then
+      effective_fallback="$fallback_model"
+    fi
+
+    "$PZ" project-set-host "$project_slug" "$host" >/dev/null
+    if [[ -n "$effective_provider" || -n "$effective_model" || -n "$effective_fallback" ]]; then
+      "$PZ" project-set-models \
+        "$project_slug" \
+        "${effective_provider:-claude}" \
+        "$effective_model" \
+        "${effective_fallback:-}" >/dev/null
+    fi
+    return 0
+  fi
+
+  "$PZ" agent-set-pref "$agent_name" "$host" "$provider" "$model" "${fallback_model:-}"
+}
+
+agent_pref_clear() {
+  local agent_name="$1"
+  local project_slug="${2:-}"
+
+  if [[ -n "$project_slug" ]]; then
+    "$PZ" project-clear-prefs "$project_slug"
+    return 0
+  fi
+
+  "$PZ" agent-clear-pref "$agent_name"
+}
+
+agent_show_json() {
+  local agent_name="$1"
+  local project_slug="${2:-}"
+
+  if ! set_agent_helper "$agent_name"; then
+    exit 1
+  fi
+  set_agent_notes_dir "$agent_name"
+  VNC_PORT=""
+  set_agent_vnc_port "$agent_name"
+  AGENT_HOST=""
+  set_agent_host "$agent_name"
+
+  local pref_json pause_json preferred_host
+  pref_json=$(agent_pref_json "$agent_name" "$project_slug" "$AGENT_HOST")
+  pause_json=$(agent_pause_state_json "$agent_name")
+  preferred_host=$(printf '%s\n' "$pref_json" | jq -r --arg configured_host "$AGENT_HOST" '
+    .host // $configured_host // ""
+  ')
+
+  jq -cn \
+    --arg agent "$agent_name" \
+    --arg configured_host "${AGENT_HOST}" \
+    --arg preferred_host "${preferred_host}" \
+    --arg project "${project_slug}" \
+    --arg vnc_port "${VNC_PORT}" \
+    --argjson prefs "$pref_json" \
+    --argjson pause "$pause_json" '
+      {
+        agent: $agent,
+        configuredHost: $configured_host,
+        preferredHost: $preferred_host,
+        project: $project,
+        provider: ($prefs.provider // ""),
+        model: ($prefs.model // ""),
+        fallbackModel: ($prefs.fallback_model // ""),
+        vncPort: (if $vnc_port == "" then null else ($vnc_port | tonumber) end),
+        pause: $pause
+      }
+    '
+}
+
+if [[ $# -ge 1 ]]; then
+  case "$1" in
+    list)
+      shift
+      if [[ "${1:-}" != "--json" ]]; then
+        echo "Usage: agentctl list --json" >&2
+        exit 1
+      fi
+
+      shift
+      json_lines=""
+      for agent_name in ${KNOWN_AGENTS//,/ }; do
+        agent_name=$(printf '%s' "$agent_name" | xargs)
+        [[ -z "$agent_name" ]] && continue
+        json_lines+="$(agent_show_json "$agent_name")"$'\n'
+      done
+      printf '%s' "$json_lines" | jq -s '.'
+      exit 0
+      ;;
+    show)
+      shift
+      if [[ $# -lt 1 ]]; then
+        echo "Usage: agentctl show <agent> [--project <slug>] --json" >&2
+        exit 1
+      fi
+
+      show_agent="$1"
+      shift
+      show_project=""
+      show_json=false
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --project) show_project="$2"; shift 2 ;;
+          --json) show_json=true; shift ;;
+          *) echo "error: unknown show option '$1'" >&2; exit 1 ;;
+        esac
+      done
+
+      if [[ "$show_json" != true ]]; then
+        echo "Usage: agentctl show <agent> [--project <slug>] --json" >&2
+        exit 1
+      fi
+
+      agent_show_json "$show_agent" "$show_project"
+      exit 0
+      ;;
+    prefs)
+      shift
+      subcmd="${1:-}"
+      shift || true
+      case "$subcmd" in
+        get)
+          agent_name="${1:-}"
+          shift || true
+          show_project=""
+          while [[ $# -gt 0 ]]; do
+            case "$1" in
+              --project) show_project="$2"; shift 2 ;;
+              *) echo "error: unknown prefs get option '$1'" >&2; exit 1 ;;
+            esac
+          done
+          [[ -n "$agent_name" ]] || { echo "Usage: agentctl prefs get <agent> [--project <slug>]" >&2; exit 1; }
+          configured_host=""
+          if set_agent_helper "$agent_name"; then
+            set_agent_host "$agent_name"
+            configured_host="$AGENT_HOST"
+          fi
+          agent_pref_json "$agent_name" "$show_project" "$configured_host"
+          exit 0
+          ;;
+        set)
+          agent_name="${1:-}"
+          shift || true
+          host=""
+          provider=""
+          model=""
+          fallback_model=""
+          project_slug=""
+          while [[ $# -gt 0 ]]; do
+            case "$1" in
+              --host) host="$2"; shift 2 ;;
+              --provider) provider="$2"; shift 2 ;;
+              --model) model="$2"; shift 2 ;;
+              --fallback-model) fallback_model="$2"; shift 2 ;;
+              --project) project_slug="$2"; shift 2 ;;
+              *) echo "error: unknown prefs set option '$1'" >&2; exit 1 ;;
+            esac
+          done
+          [[ -n "$agent_name" && -n "$host" ]] || { echo "Usage: agentctl prefs set <agent> --host <host> [--project <slug>] [--provider <provider>] [--model <model>] [--fallback-model <model>]" >&2; exit 1; }
+          agent_pref_set "$agent_name" "$host" "$provider" "$model" "$fallback_model" "$project_slug"
+          exit 0
+          ;;
+        clear)
+          agent_name="${1:-}"
+          shift || true
+          project_slug=""
+          while [[ $# -gt 0 ]]; do
+            case "$1" in
+              --project) project_slug="$2"; shift 2 ;;
+              *) echo "error: unknown prefs clear option '$1'" >&2; exit 1 ;;
+            esac
+          done
+          [[ -n "$agent_name" ]] || { echo "Usage: agentctl prefs clear <agent> [--project <slug>]" >&2; exit 1; }
+          agent_pref_clear "$agent_name" "$project_slug"
+          exit 0
+          ;;
+        *)
+          echo "Usage: agentctl prefs {get|set|clear} ..." >&2
+          exit 1
+          ;;
+      esac
+      ;;
+  esac
+fi
+
 if [ $# -lt 2 ]; then
   echo "Usage: agentctl <agent-name> <command> [args...]" >&2
+  echo "" >&2
+  echo "Known agents: $KNOWN_AGENTS" >&2
   echo "" >&2
   echo "Commands:" >&2
   echo "  <systemctl-verb>  Run systemctl --user as the agent (status, start, stop, ...)" >&2
   echo "  logs              Run journalctl --user as the agent" >&2
   echo "  cron              List the agent's scheduled timers" >&2
+  echo "  pause [reason]    Pause task-loop runs for the agent" >&2
+  echo "  resume            Resume task-loop runs for the agent" >&2
+  echo "  paused            Show whether the agent task loop is paused" >&2
   echo "  exec              Run an arbitrary command as the agent" >&2
   echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
   echo "  email             Show the agent's inbox (recent envelopes)" >&2
@@ -43,6 +310,9 @@ if [ $# -lt 2 ]; then
   echo "  agentctl drago status agent-drago-task-loop" >&2
   echo "  agentctl drago logs -u agent-drago-task-loop -n 20" >&2
   echo "  agentctl drago cron" >&2
+  echo "  agentctl drago pause \"waiting for human input\"" >&2
+  echo "  agentctl drago resume" >&2
+  echo "  agentctl drago paused" >&2
   echo "  agentctl drago tasks" >&2
   echo "  agentctl drago email" >&2
   echo "  agentctl drago shell" >&2
@@ -90,12 +360,28 @@ set_agent_ollama "$AGENT_NAME"
 
 THIS_HOST="$(cat /etc/hostname)"
 
+REQUESTED_PROJECT=""
+if [[ $# -ge 2 ]]; then
+  for ((i = 2; i <= $#; i++)); do
+    if [[ "${!i}" == "--project" || "${!i}" == "-p" ]]; then
+      next_index=$((i + 1))
+      REQUESTED_PROJECT="${!next_index:-}"
+      break
+    fi
+  done
+fi
+
+EFFECTIVE_PREFS=$(effective_pref_json "$AGENT_NAME" "$REQUESTED_PROJECT" "$AGENT_HOST")
+EFFECTIVE_AGENT_HOST=$(printf '%s\n' "$EFFECTIVE_PREFS" | jq -r --arg configured_host "$AGENT_HOST" '
+  .host // $configured_host // ""
+')
+
 # Remote dispatch: forward non-local commands via SSH over Tailscale.
 # VNC is excluded — it runs locally and connects to the remote host directly.
 # Provision is excluded — it modifies the local agenix-secrets repo.
-if [ -n "$AGENT_HOST" ] && [ "$AGENT_HOST" != "$THIS_HOST" ]; then
+if [ -n "$EFFECTIVE_AGENT_HOST" ] && [ "$EFFECTIVE_AGENT_HOST" != "$THIS_HOST" ]; then
   if [ "$1" != "vnc" ] && [ "$1" != "provision" ]; then
-    exec "$OPENSSH"/bin/ssh -t "$AGENT_HOST" agentctl "$AGENT_NAME" "$@"
+    exec "$OPENSSH"/bin/ssh -t "$EFFECTIVE_AGENT_HOST" agentctl "$AGENT_NAME" "$@"
   fi
 fi
 
@@ -151,7 +437,65 @@ if [[ -n "$LOCAL_MODEL" ]]; then
   fi
 fi
 
+TASK_LOOP_STATE_DIR_REL=".local/state/agent-task-loop/state"
+TASK_LOOP_PAUSE_FILE_REL="${TASK_LOOP_STATE_DIR_REL}/paused"
+
 case "$CMD" in
+  pause)
+    PAUSE_REASON="${*:-}"
+    PAUSE_ACTOR="${SUDO_USER:-${USER:-unknown}}"
+    exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -lc '
+      state_dir="$HOME/'"$TASK_LOOP_STATE_DIR_REL"'"
+      pause_file="$HOME/'"$TASK_LOOP_PAUSE_FILE_REL"'"
+      reason="$1"
+      actor="$2"
+
+      mkdir -p "$state_dir"
+      {
+        printf "paused_at=%s\n" "$(date -Iseconds)"
+        printf "paused_by=%s\n" "$actor"
+        if [[ -n "$reason" ]]; then
+          printf "reason=%s\n" "$reason"
+        fi
+      } > "$pause_file"
+      echo "Paused task loop for '"$AGENT_NAME"'"
+    ' -- "$PAUSE_REASON" "$PAUSE_ACTOR"
+    ;;
+  resume)
+    exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -lc '
+      pause_file="$HOME/'"$TASK_LOOP_PAUSE_FILE_REL"'"
+      if [[ -f "$pause_file" ]]; then
+        rm -f "$pause_file"
+        echo "Resumed task loop for '"$AGENT_NAME"'"
+      else
+        echo "Task loop for '"$AGENT_NAME"' is not paused"
+      fi
+    '
+    ;;
+  paused)
+    exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -lc '
+      pause_file="$HOME/'"$TASK_LOOP_PAUSE_FILE_REL"'"
+      if [[ ! -f "$pause_file" ]]; then
+        echo "Task loop for '"$AGENT_NAME"': active"
+        exit 0
+      fi
+
+      paused_at=$(sed -n "s/^paused_at=//p" "$pause_file" | tail -n1)
+      paused_by=$(sed -n "s/^paused_by=//p" "$pause_file" | tail -n1)
+      reason=$(sed -n "s/^reason=//p" "$pause_file" | tail -n1)
+
+      echo "Task loop for '"$AGENT_NAME"': paused"
+      if [[ -n "$paused_at" ]]; then
+        echo "paused_at: $paused_at"
+      fi
+      if [[ -n "$paused_by" ]]; then
+        echo "paused_by: $paused_by"
+      fi
+      if [[ -n "$reason" ]]; then
+        echo "reason: $reason"
+      fi
+    '
+    ;;
   tasks)
     TASKS_YAML=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec cat "$NOTES_DIR/TASKS.yaml" 2>/dev/null)
     if [ -z "$TASKS_YAML" ]; then
@@ -247,6 +591,9 @@ case "$CMD" in
     # Determine working directory and project context (from zellij re-entry)
     WORK_DIR="$NOTES_DIR"
     PROJECT_CONTEXT=""
+    EFFECTIVE_PROVIDER=$(printf '%s\n' "$EFFECTIVE_PREFS" | jq -r '.provider // ""')
+    EFFECTIVE_MODEL=$(printf '%s\n' "$EFFECTIVE_PREFS" | jq -r '.model // ""')
+    EFFECTIVE_FALLBACK_MODEL=$(printf '%s\n' "$EFFECTIVE_PREFS" | jq -r '.fallback_model // ""')
     if [ -n "${_AGENTCTL_PROJECT_PATH:-}" ]; then
       WORK_DIR="$_AGENTCTL_PROJECT_PATH"
       PROJECT_CONTEXT="
@@ -288,6 +635,18 @@ case "$CMD" in
           fi
           ;;
       esac
+
+      if { [ -z "$EFFECTIVE_PROVIDER" ] || [ "$EFFECTIVE_PROVIDER" = "'"$CMD"'" ]; } && [ -n "$EFFECTIVE_MODEL" ]; then
+        case "'"$CMD"'" in
+          claude) TOOL_FLAGS="$TOOL_FLAGS --model $EFFECTIVE_MODEL" ;;
+          gemini) TOOL_FLAGS="$TOOL_FLAGS --model $EFFECTIVE_MODEL" ;;
+          codex) TOOL_FLAGS="$TOOL_FLAGS --model $EFFECTIVE_MODEL" ;;
+        esac
+      fi
+
+      if [ "'"$CMD"'" = "claude" ] && { [ -z "$EFFECTIVE_PROVIDER" ] || [ "$EFFECTIVE_PROVIDER" = "claude" ]; } && [ -n "$EFFECTIVE_FALLBACK_MODEL" ]; then
+        export AGENTCTL_INTERACTIVE_FALLBACK_MODEL="$EFFECTIVE_FALLBACK_MODEL"
+      fi
 
       LOCAL_MODEL="'"$LOCAL_MODEL"'"
       OLLAMA_ENABLED="'"$OLLAMA_ENABLED"'"

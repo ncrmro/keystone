@@ -88,17 +88,13 @@ implementation_sync:
 
       ## 2. Specs (specs/)
 
-      For each spec (REQ-XXX):
-      1. Read the requirements.md file
-      2. Identify which source files implement those requirements (listed in
-         "Affected Modules" section)
-      3. Compare the spec's requirements against the actual implementation
-      4. Flag any mismatches:
-         - Requirements that describe behavior the code doesn't implement
-         - Code behavior not covered by any requirement
-         - Outdated file paths, option names, or CLI flags in the spec
-
-      Check the "Affected Modules" section lists all relevant files.
+      Specs are flat files at `specs/REQ-NNN-slug.md` (no subdirectories).
+      The `specs_review` rule handles deep spec-vs-implementation review.
+      Here, only check structural hygiene:
+      - Flag any `specs/REQ-*/` subdirectory that contains a `requirements.md`
+        (violates flat-file convention — should be migrated to `specs/REQ-NNN-slug.md`)
+      - Flag any spec file whose "Affected Modules" section references a path
+        that no longer exists in the repository
 
       ## 3. Tests (tests/)
 
@@ -237,6 +233,97 @@ rust_code_review:
       - **Comment accuracy**: Are all comments, doc comments (///), and inline
         documentation still accurate after the changes? Flag any comments that
         describe behavior that no longer matches the code.
+
+# =====================================================================
+# Specs Review
+# When any spec file changes, use ripgrep to find all implementation
+# files referenced by that spec's REQ numbers, then review them
+# holistically against the spec's requirements. Also enforces the
+# flat-file convention: no specs/REQ-*/requirements.md subdirs.
+# =====================================================================
+specs_review:
+  description: "When a spec changes, find related implementation files via ripgrep and review them against the spec's requirements. Enforces the flat-file convention."
+  match:
+    include:
+      - "specs/REQ-*.md"
+      - "specs/[0-9][0-9][0-9]-*.md"
+      - "specs/AGENTS.md"
+  review:
+    strategy: individual
+    instructions: |
+      A spec file changed. Perform a holistic review of the spec against its
+      implementation and enforce structural conventions.
+
+      ## 1. Flat-file convention check
+
+      Run:
+        find specs/ -mindepth 2 -name "requirements.md"
+
+      If any results are returned, flag each as a violation:
+        "VIOLATION: specs/REQ-NNN-slug/requirements.md must be migrated to
+        specs/REQ-NNN-slug.md (flat file). See specs/AGENTS.md."
+
+      ## 2. Find related implementation files
+
+      Read the changed spec file. Extract:
+      - The REQ number (e.g., `REQ-023`) from the filename or title
+      - All file paths listed in the "Affected Modules" section
+      - All `REQ-NNN.X` requirement IDs in the document body
+
+      Then run ripgrep to discover every file that references this spec:
+        rg "REQ-023" --type nix --type sh -l
+        rg "REQ-023" .deepwork/jobs/ conventions/ -l
+        rg "specs/REQ-023" -l
+
+      Combine the "Affected Modules" list with the ripgrep results into a
+      unified set of related files.
+
+      ## 3. Holistic review
+
+      For each file in the related set:
+
+      a. **Path exists** — confirm the file still exists. If a path in
+         "Affected Modules" is missing, flag as "stale reference."
+
+      b. **Requirements satisfied** — for each `REQ-NNN.X` requirement in
+         the spec, check whether the implementation file satisfies it:
+         - MUST/SHALL requirements: verify the behavior is present
+         - MUST NOT requirements: verify the prohibited behavior is absent
+         - Flag any requirement with no corresponding implementation as
+           "unimplemented: REQ-NNN.X — <requirement text>"
+
+      c. **Implementation matches claims** — check whether the code does
+         anything the spec explicitly prohibits (e.g., REQ-023.43 says the
+         processor MUST NOT modify source files — verify the script has no
+         write/delete calls on input paths).
+
+      d. **Option names and paths** — if the spec references specific Nix
+         option paths (e.g., `keystone.os.agents.<name>.perception.enable`),
+         grep the implementation to confirm the option exists at that path.
+
+      ## 4. Spec quality checks
+
+      - **No subdirectory references**: the spec MUST NOT instruct readers
+        to look at `requirements.md` inside a subdir — all specs are flat files.
+      - **REQ numbers unique**: the spec's own REQ-NNN.X numbers must not
+        duplicate numbers in adjacent spec files. Run:
+          rg "REQ-NNN\." specs/ | grep -v "^specs/REQ-NNN-"
+        to check for cross-spec number leakage.
+      - **Press release / plan links**: if the spec has a "Press release:"
+        or "Plan:" link, fetch the issue to confirm it still exists and
+        references this spec.
+
+      ## 5. Report
+
+      Produce a structured report:
+        - PASS / FAIL for flat-file convention
+        - List of related files found (Affected Modules + ripgrep hits)
+        - Per-requirement status: satisfied / unimplemented / untestable
+        - Stale path references (if any)
+        - Option-path mismatches (if any)
+        - Overall verdict: SPEC IN SYNC or SPEC DRIFT DETECTED
+    additional_context:
+      unchanged_matching_files: true
 
 # =====================================================================
 # Suggest New Reviews (DeepWork native)

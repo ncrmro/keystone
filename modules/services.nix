@@ -18,13 +18,52 @@
 with lib;
 let
   cfg = config.keystone.services;
-  hostNames = mapAttrsToList (_: h: h.hostname) config.keystone.hosts;
+  hosts = config.keystone.hosts;
+  hostNames = mapAttrsToList (_: h: h.hostname) hosts;
   validateHost =
     name: host:
-    optional (host != null && config.keystone.hosts != { } && !elem host hostNames) {
+    optional (host != null && hosts != { } && !elem host hostNames) {
       assertion = false;
       message = "keystone.services.${name}.host = \"${host}\" does not match any hostname in keystone.hosts. Valid hostnames: ${concatStringsSep ", " hostNames}";
     };
+
+  # The primary Keystone user — first user key in keystone.os.users.
+  # Used for tag ownership in generated ACL rules.
+  primaryUser = head (attrNames config.keystone.os.users);
+
+  # Immich ML port — upstream default, used for ACL and firewall rules
+  immichMLPort = 3003;
+
+  # Resolve a worker hostname to its ACL destination identity.
+  # Client-role hosts stay user-owned in Headscale (adding tags would strip
+  # their user identity and break admin access rules). Server/agent-role
+  # hosts use tag:svc-immich-ml since they are already tag-based.
+  resolveWorkerDst =
+    hName:
+    let
+      hostEntry = findFirst (h: h.hostname == hName) null (attrValues hosts);
+      role = if hostEntry != null then hostEntry.role else "client";
+    in
+    if role == "client" then
+      "${primaryUser}@:${toString immichMLPort}"
+    else
+      "tag:svc-immich-ml:${toString immichMLPort}";
+
+  # Generate ACL rules for immich server <-> worker communication.
+  # Only generated on the server host (where generatedACLRules is consumed).
+  immichACLRules =
+    let
+      serverHost = cfg.immich.host;
+      workers = cfg.immich.workers;
+      isCurrentHostServer = config.networking.hostName == serverHost;
+    in
+    optionals (isCurrentHostServer && workers != [ ]) [
+      {
+        action = "accept";
+        src = [ "tag:svc-immich" ];
+        dst = map resolveWorkerDst workers;
+      }
+    ];
 in
 {
   options.keystone.services = {
@@ -72,7 +111,56 @@ in
       default = [ ];
       description = "List of hostnames acting as GPU/ML workers.";
     };
+
+    generatedTagOwners = mkOption {
+      type = types.attrsOf (types.listOf types.str);
+      default = { };
+      description = ''
+        Auto-generated Headscale tag owners from service topology.
+        Consume on the headscale host via keystone.headscale.tagOwners.
+      '';
+    };
+
+    generatedACLRules = mkOption {
+      type = types.listOf (
+        types.submodule {
+          options = {
+            action = mkOption {
+              type = types.str;
+              default = "accept";
+            };
+            comment = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+            };
+            src = mkOption { type = types.listOf types.str; };
+            dst = mkOption { type = types.listOf types.str; };
+          };
+        }
+      );
+      default = [ ];
+      description = ''
+        Auto-generated Headscale ACL rules from service topology.
+        Consume on the headscale host via keystone.headscale.aclRules.
+      '';
+    };
   };
+
+  config.keystone.services.generatedTagOwners =
+    let
+      hasWorkers = cfg.immich.host != null && cfg.immich.workers != [ ];
+      hasTaggedWorkers = any (
+        hName:
+        let
+          h = findFirst (h: h.hostname == hName) null (attrValues hosts);
+        in
+        h != null && h.role != "client"
+      ) cfg.immich.workers;
+    in
+    optionalAttrs hasWorkers { "tag:svc-immich" = [ "${primaryUser}@" ]; }
+    // optionalAttrs (hasWorkers && hasTaggedWorkers) { "tag:svc-immich-ml" = [ "${primaryUser}@" ]; };
+
+  config.keystone.services.generatedACLRules = immichACLRules;
 
   config.assertions =
     (validateHost "mail" cfg.mail.host)

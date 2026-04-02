@@ -3,8 +3,9 @@
 # This file serves as the canonical contract definition for a Keystone
 # server deployment configuration. It uses NixOS module system types to
 # enforce the contract at evaluation time.
-{lib, ...}:
-with lib; {
+{ lib, ... }:
+with lib;
+{
   # This is a contract specification, not a runnable module
   # It documents the required structure for deployment configurations
 
@@ -12,7 +13,10 @@ with lib; {
     # System architecture - REQUIRED
     # Must match target hardware platform
     system = mkOption {
-      type = types.enum ["x86_64-linux" "aarch64-linux"];
+      type = types.enum [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
       example = "x86_64-linux";
       description = ''
         Target system architecture. Must be compatible with both the
@@ -146,7 +150,10 @@ with lib; {
       message = "Deployment contract violation: at least one SSH authorized key required";
     }
     {
-      assertion = elem config.deployment.contract.system ["x86_64-linux" "aarch64-linux"];
+      assertion = elem config.deployment.contract.system [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
       message = "Deployment contract violation: system must be x86_64-linux or aarch64-linux";
     }
   ];

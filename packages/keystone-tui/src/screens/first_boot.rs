@@ -1,7 +1,7 @@
 //! First-boot screen — post-install setup wizard.
 //!
 //! After a fresh Keystone install, on first boot the TUI detects a
-//! `.first-boot-pending` marker in `~/.keystone/repos/nixos-config/` and
+//! `.first-boot-pending` marker in the installed system flake directory and
 //! walks the user through:
 //!
 //! 1. Generating real hardware.nix
@@ -34,10 +34,26 @@ pub struct FirstBootConfig {
 }
 
 impl FirstBootConfig {
+    fn installed_config_dir() -> Option<PathBuf> {
+        std::env::var_os("KEYSTONE_SYSTEM_FLAKE")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::fs::read_to_string("/etc/keystone/system-flake")
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from)
+            })
+            .or_else(|| {
+                let home = home::home_dir()?;
+                Some(home.join(".keystone").join("repos").join("nixos-config"))
+            })
+    }
+
     /// Detect first-boot mode by looking for the marker file.
     pub fn detect() -> Option<Self> {
-        let home = home::home_dir()?;
-        let config_dir = home.join(".keystone").join("repos").join("nixos-config");
+        let config_dir = Self::installed_config_dir()?;
         let marker = config_dir.join(".first-boot-pending");
 
         if !marker.exists() {
@@ -811,7 +827,7 @@ mod tests {
 
     fn test_first_boot_config() -> FirstBootConfig {
         FirstBootConfig {
-            config_dir: PathBuf::from("/home/testuser/.keystone/repos/nixos-config"),
+            config_dir: PathBuf::from("/home/testuser/.worktrees/ncrmro/nixos-config/main"),
             hostname: "test-machine".to_string(),
             username: "testuser".to_string(),
             github_username: Some("octocat".to_string()),
@@ -836,7 +852,7 @@ mod tests {
     #[test]
     fn test_remote_input_empty_without_github() {
         let config = FirstBootConfig {
-            config_dir: PathBuf::from("/home/testuser/.keystone/repos/nixos-config"),
+            config_dir: PathBuf::from("/home/testuser/.worktrees/ncrmro/nixos-config/main"),
             hostname: "test-machine".to_string(),
             username: "testuser".to_string(),
             github_username: None,

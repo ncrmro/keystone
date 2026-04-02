@@ -91,6 +91,7 @@ in
       # Common config
       {
         enable = true;
+        machine-learning.environment.MPLCONFIGDIR = "/var/cache/immich/matplotlib";
       }
       # Server-specific
       (mkIf (cfg.role == "server") {
@@ -111,6 +112,8 @@ in
         database.host = "localhost";
         # Dummy secrets file path to satisfy assertion when database is disabled but host is set
         secretsFile = "${pkgs.writeText "immich-dummy-secrets" "DB_PASSWORD=unused"}";
+        # Bind ML server to all interfaces so it's reachable over Tailscale
+        machine-learning.environment.IMMICH_HOST = lib.mkForce "0.0.0.0";
       })
       # Acceleration
       (mkIf (cfg.acceleration == "rocm") {
@@ -125,13 +128,27 @@ in
     systemd.services.immich-server.enable = mkIf (cfg.role == "worker") false;
     systemd.services.immich-microservices.enable = mkIf (cfg.role == "worker") false;
 
+    # Auto-register service tags for ACL generation.
+    # Only server/agent roles get tags — client roles stay user-owned in
+    # Headscale (adding tags would strip user identity and break admin ACLs).
+    keystone.os.tailscale.tags =
+      if cfg.role == "server" then
+        [ "tag:svc-immich" ]
+      else if
+        isWorker
+        && (findFirst (h: h.hostname == hostName) null (attrValues config.keystone.hosts)).role != "client"
+      then
+        [ "tag:svc-immich-ml" ]
+      else
+        [ ];
+
     # GPU Acceleration configuration (groups)
     users.users.immich.extraGroups = mkIf (cfg.acceleration != null) [
       "video"
       "render"
     ];
 
-    # Open port for worker access
-    networking.firewall.allowedTCPPorts = mkIf (cfg.role == "worker") [ 3003 ];
+    # Open ML port only on tailscale interface for worker access
+    networking.firewall.interfaces.tailscale0.allowedTCPPorts = mkIf (cfg.role == "worker") [ 3003 ];
   };
 }

@@ -54,19 +54,10 @@ llm-agents = {
 keystone.inputs.llm-agents.follows = "llm-agents";
 ```
 
-`modules/terminal/ai-commands/*.md` are shared metadata-aware templates for AI
-tool command and skill generation. Each file MUST use YAML frontmatter with at
-least a `description` field.
-
-Keystone maps those templates into each tool's native format:
-
-- Claude Code commands keep YAML frontmatter in `~/.claude/commands/*.md`
-- Gemini commands are rendered as `~/.gemini/commands/*.toml`
-- Codex skills are rendered as `~/.codex/skills/*/SKILL.md` with YAML frontmatter
-- OpenCode commands receive the Markdown body only
-
-Generators consume parsed metadata and body separately, so do not rely on the
-first line of the body as implicit metadata.
+The user-facing AI surface is curated. Keystone publishes `/ks`, optional
+`/ks.dev` in development mode, and `/deepwork` instead of exposing every
+workflow as a top-level command. Capability-aware routing happens in
+`modules/terminal/ai-extensions.nix`.
 
 ## Mail (`mail.nix`)
 
@@ -105,9 +96,10 @@ store doesn't need to be rebuilt on each invocation.
 
 ## Conventions (`conventions.nix`)
 
-Generates `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md` from
-`conventions/archetypes.yaml`. The archetype is set per-agent via
-`keystone.os.agents.<name>.archetype`.
+Generates canonical `~/.keystone/AGENTS.md`, then derives
+`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`, and
+`~/.config/opencode/AGENTS.md` from the same content. The archetype is set
+per-agent via `keystone.os.agents.<name>.archetype`.
 
 **Budget warning**: emits a Nix warning if the generated file exceeds `maxGlobalBytes`
 (default 16KB). If triggered, move conventions from `inlined_conventions` to
@@ -115,16 +107,16 @@ Generates `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md` fro
 
 ## Development Mode vs Locked Mode (`development` + `repos` in `terminal/default.nix`)
 
-**Development mode** (`development = true` with repos registered): Generated files
-(`~/.claude/commands/`, `~/.claude/CLAUDE.md`, etc.) are out-of-store symlinks, and
-repo-backed shell entrypoints in the user path are linked from the checkout →
-edits take effect immediately without rebuild after activation.
+**Development mode** (`development = true` with repos registered): Repo-backed
+shell entrypoints in the user path are linked from the checkout, and generated
+agent assets are refreshed from the live checkout by `ks sync-agent-assets`
+(also run during activation).
 
 **Codex exception**: Codex 0.114.0 does not reliably discover skills when
 `SKILL.md` and `agents/openai.yaml` are symlinks. Keystone therefore materializes
-managed files under `~/.codex/skills/` as regular files during activation, even in
-development mode. Codex skill template changes still require `ks switch` or
-`ks update --dev` to refresh the copied files.
+managed files under `~/.codex/skills/` as regular files. Use
+`ks sync-agent-assets` to refresh them without a full rebuild; activation runs
+the same refresh path automatically.
 
 **Locked mode** (default): Files are immutable Nix store copies. Rebuild required.
 

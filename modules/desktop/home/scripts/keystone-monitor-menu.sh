@@ -14,12 +14,68 @@ notify() {
   notify-send "$@"
 }
 
+keystone_cmd() {
+  local command_name="$1"
+
+  if command -v "$command_name" >/dev/null 2>&1; then
+    command -v "$command_name"
+    return 0
+  fi
+
+  if [[ -x "$HOME/.local/bin/$command_name" ]]; then
+    printf "%s\n" "$HOME/.local/bin/$command_name"
+    return 0
+  fi
+
+  printf "Unable to locate %s\n" "$command_name" >&2
+  exit 1
+}
+
 shell_quote() {
   printf "'%s'" "${1//\'/\'\\\'\'}"
 }
 
-monitors_json() {
+hyprctl_available() {
+  command -v hyprctl >/dev/null 2>&1
+}
+
+monitor_unavailable_reason() {
+  if ! hyprctl_available; then
+    printf "hyprctl is not available in PATH.\n"
+    return 0
+  fi
+
+  printf "Monitor controls are unavailable.\n"
+}
+
+blocked_entry_json() {
+  local title="$1"
+  local reason="$2"
+
+  jq -n --arg title "$title" --arg reason "$reason" '
+    [
+      {
+        Text: $title,
+        Subtext: $reason,
+        Value: "blocked",
+        Preview: ("printf " + (($title + "\n\n" + $reason + "\n") | @sh)),
+        PreviewType: "command"
+      }
+    ]
+  '
+}
+
+monitors_json_raw() {
   hyprctl -j monitors all 2>/dev/null || printf '[]\n'
+}
+
+monitors_json() {
+  if ! hyprctl_available; then
+    printf '[]\n'
+    return 0
+  fi
+
+  monitors_json_raw
 }
 
 monitor_json() {
@@ -42,7 +98,7 @@ require_monitor_json() {
 }
 
 normalize_mode() {
-  local mode="$1"
+  local mode="${1:-$(cat)}"
   printf "%s\n" "${mode%Hz}"
 }
 
@@ -396,66 +452,87 @@ save_monitor_defaults() {
 
 open_menu() {
   walker -q >/dev/null 2>&1 || true
-  setsid keystone-launch-walker -m menus:keystone-monitors -p "Monitors" >/dev/null 2>&1 &
+  setsid "$(keystone_cmd keystone-launch-walker)" -m menus:keystone-monitors -p "Monitors" >/dev/null 2>&1 &
 }
 
 cmd_monitors_json() {
-  monitors_json | jq '
-    sort_by([((.focused // false) | not), (.disabled // false), .name])
-    | map({
-        Text: (
-          (if .focused then "󰍹  " else "󰍺  " end)
-          + .name
-        ),
-        Subtext: (
-          [
-            (.description // (.make + " " + .model)),
-            (
-              if (.disabled // false) then
-                "disabled"
-              else
-                "\(.width)x\(.height) @ \(.refreshRate | tonumber | . * 100 | round / 100)Hz"
-              end
-            ),
-            ("scale " + ((.scale // 1) | tostring)),
-            ("orientation " + (.transform | tostring)),
-            (
-              if (.mirrorOf // "none") != "none" then
-                "mirrors " + .mirrorOf
-              else
-                "at " + ((.x // 0) | tostring) + "x" + ((.y // 0) | tostring)
-              end
-            )
-          ]
-          | join(" · ")
-        ),
-        Value: .name,
-        Icon: (if (.disabled // false) then "video-display-off-symbolic" else "video-display-symbolic" end),
-        SubMenu: "keystone-monitor-actions",
-        Preview: ("keystone-monitor-menu preview-monitor " + (.name | @sh)),
-        PreviewType: "command"
-      })
+  local monitor_menu
+  monitor_menu=$(keystone_cmd keystone-monitor-menu)
+
+  if ! hyprctl_available; then
+    blocked_entry_json "Monitors unavailable" "$(monitor_unavailable_reason)"
+    return 0
+  fi
+
+  jq -n --arg monitor_menu "$monitor_menu" --argjson data "$(monitors_json_raw)" '
+    if ($data | length) == 0 then
+      [
+        {
+          Text: "No monitors detected",
+          Subtext: "Hyprland reported no displays",
+          Value: "blocked"
+        }
+      ]
+    else
+      $data
+      | sort_by([((.focused // false) | not), (.disabled // false), .name])
+      | map({
+          Text: (
+            (if .focused then "󰍹  " else "󰍺  " end)
+            + .name
+          ),
+          Subtext: (
+            [
+              (.description // (.make + " " + .model)),
+              (
+                if (.disabled // false) then
+                  "disabled"
+                else
+                  "\(.width)x\(.height) @ \(.refreshRate | tonumber | . * 100 | round / 100)Hz"
+                end
+              ),
+              ("scale " + ((.scale // 1) | tostring)),
+              ("orientation " + (.transform | tostring)),
+              (
+                if (.mirrorOf // "none") != "none" then
+                  "mirrors " + .mirrorOf
+                else
+                  "at " + ((.x // 0) | tostring) + "x" + ((.y // 0) | tostring)
+                end
+              )
+            ]
+            | join(" · ")
+          ),
+          Value: .name,
+          Icon: (if (.disabled // false) then "video-display-off-symbolic" else "video-display-symbolic" end),
+          SubMenu: "keystone-monitor-actions",
+          Preview: ($monitor_menu + " preview-monitor " + (.name | @sh)),
+          PreviewType: "command"
+        })
+    end
   '
 }
 
 cmd_monitor_actions_json() {
   local monitor_name="$1"
+  local monitor_menu
+  monitor_menu=$(keystone_cmd keystone-monitor-menu)
 
   if is_disabled "$monitor_name"; then
-    jq -n --arg monitor "$monitor_name" '
+    jq -n --arg monitor_menu "$monitor_menu" --arg monitor "$monitor_name" '
       [
         {
           Text: "Temporary: Enable monitor",
           Subtext: "Restore the display with its preferred mode",
           Value: ("enable\t" + $monitor),
-          Preview: ("keystone-monitor-menu preview-action " + ($monitor | @sh) + " " + ("enable" | @sh)),
+          Preview: ($monitor_menu + " preview-action " + ($monitor | @sh) + " " + ("enable" | @sh)),
           PreviewType: "command"
         },
         {
           Text: "Save current layout",
           Subtext: "Write the current monitor state into nixos-config",
           Value: ("save-layout\t" + $monitor),
-          Preview: ("keystone-monitor-menu preview-action " + ($monitor | @sh) + " " + ("save-layout" | @sh)),
+          Preview: ($monitor_menu + " preview-action " + ($monitor | @sh) + " " + ("save-layout" | @sh)),
           PreviewType: "command"
         }
       ]
@@ -463,14 +540,14 @@ cmd_monitor_actions_json() {
     return 0
   fi
 
-  jq -n --arg monitor "$monitor_name" '
+  jq -n --arg monitor_menu "$monitor_menu" --arg monitor "$monitor_name" '
     [
       {
         Text: "Temporary: Scale",
         Subtext: "Apply a live scale change for this display",
         Value: "scale",
         SubMenu: "keystone-monitor-values",
-        Preview: ("keystone-monitor-menu preview-action " + ($monitor | @sh) + " " + ("scale" | @sh)),
+        Preview: ($monitor_menu + " preview-action " + ($monitor | @sh) + " " + ("scale" | @sh)),
         PreviewType: "command"
       },
       {
@@ -478,7 +555,7 @@ cmd_monitor_actions_json() {
         Subtext: "Choose from the monitor advertised modes",
         Value: "resolution",
         SubMenu: "keystone-monitor-values",
-        Preview: ("keystone-monitor-menu preview-action " + ($monitor | @sh) + " " + ("resolution" | @sh)),
+        Preview: ($monitor_menu + " preview-action " + ($monitor | @sh) + " " + ("resolution" | @sh)),
         PreviewType: "command"
       },
       {
@@ -486,7 +563,7 @@ cmd_monitor_actions_json() {
         Subtext: "Rotate this display live",
         Value: "orientation",
         SubMenu: "keystone-monitor-values",
-        Preview: ("keystone-monitor-menu preview-action " + ($monitor | @sh) + " " + ("orientation" | @sh)),
+        Preview: ($monitor_menu + " preview-action " + ($monitor | @sh) + " " + ("orientation" | @sh)),
         PreviewType: "command"
       },
       {
@@ -494,21 +571,21 @@ cmd_monitor_actions_json() {
         Subtext: "Mirror or place the display relative to another monitor",
         Value: "layout",
         SubMenu: "keystone-monitor-values",
-        Preview: ("keystone-monitor-menu preview-action " + ($monitor | @sh) + " " + ("layout" | @sh)),
+        Preview: ($monitor_menu + " preview-action " + ($monitor | @sh) + " " + ("layout" | @sh)),
         PreviewType: "command"
       },
       {
         Text: "Temporary: Disable monitor",
         Subtext: "Turn off the display for the current session",
         Value: ("disable\t" + $monitor),
-        Preview: ("keystone-monitor-menu preview-action " + ($monitor | @sh) + " " + ("disable" | @sh)),
+        Preview: ($monitor_menu + " preview-action " + ($monitor | @sh) + " " + ("disable" | @sh)),
         PreviewType: "command"
       },
       {
         Text: "Save current layout",
         Subtext: "Write the current monitor state into nixos-config",
         Value: ("save-layout\t" + $monitor),
-        Preview: ("keystone-monitor-menu preview-action " + ($monitor | @sh) + " " + ("save-layout" | @sh)),
+        Preview: ($monitor_menu + " preview-action " + ($monitor | @sh) + " " + ("save-layout" | @sh)),
         PreviewType: "command"
       }
     ]
@@ -649,6 +726,16 @@ cmd_preview_monitor() {
     ' <<<"$monitor"
 }
 
+cmd_preview_setup() {
+  if ! hyprctl_available; then
+    printf "Monitors unavailable\n\n%s" "$(monitor_unavailable_reason)"
+    return 0
+  fi
+
+  printf "Connected monitors: %s\n\nSelect a monitor to change scale, resolution, orientation, or layout.\nSaving writes the current layout into nixos-config.\n" \
+    "$(monitors_json_raw | jq 'length')"
+}
+
 cmd_preview_action() {
   local monitor_name="$1"
   local action="$2"
@@ -715,6 +802,9 @@ cmd_dispatch() {
     save-layout)
       save_monitor_defaults
       ;;
+    blocked)
+      notify "Monitors unavailable" "$(monitor_unavailable_reason)"
+      ;;
     *)
       printf "Unknown dispatch action: %s\n" "$action" >&2
       exit 1
@@ -743,6 +833,10 @@ case "${1:-}" in
     shift
     cmd_preview_monitor "$@"
     ;;
+  preview-setup)
+    shift
+    cmd_preview_setup "$@"
+    ;;
   preview-action)
     shift
     cmd_preview_action "$@"
@@ -760,7 +854,7 @@ case "${1:-}" in
     save_monitor_defaults "$@"
     ;;
   *)
-    echo "Usage: keystone-monitor-menu {open-menu|monitors-json|monitor-actions-json|monitor-values-json|preview-monitor|preview-action|dispatch|config-snippet|save-current} ..." >&2
+    echo "Usage: keystone-monitor-menu {open-menu|monitors-json|monitor-actions-json|monitor-values-json|preview-monitor|preview-setup|preview-action|dispatch|config-snippet|save-current} ..." >&2
     exit 1
     ;;
 esac

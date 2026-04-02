@@ -3,10 +3,12 @@
   lib,
   pkgs,
   ...
-}: let
+}:
+let
   cfg = config.programs.desktop.hyprland;
-in {
-  meta.maintainers = [];
+in
+{
+  meta.maintainers = [ ];
 
   imports = [
     ./hyprland-config.nix
@@ -21,16 +23,26 @@ in {
     enable = lib.mkEnableOption "Hyprland desktop environment with home-manager configuration";
 
     components = {
-      waybar = lib.mkEnableOption "Waybar status bar" // {default = true;};
-      mako = lib.mkEnableOption "Mako notification daemon" // {default = true;};
-      hyprpaper = lib.mkEnableOption "Hyprpaper wallpaper manager" // {default = true;};
-      hyprlock = lib.mkEnableOption "Hyprlock screen locker" // {default = true;};
-      hypridle = lib.mkEnableOption "Hypridle idle daemon" // {default = true;};
+      waybar = lib.mkEnableOption "Waybar status bar" // {
+        default = true;
+      };
+      mako = lib.mkEnableOption "Mako notification daemon" // {
+        default = true;
+      };
+      hyprpaper = lib.mkEnableOption "Hyprpaper wallpaper manager" // {
+        default = true;
+      };
+      hyprlock = lib.mkEnableOption "Hyprlock screen locker" // {
+        default = true;
+      };
+      hypridle = lib.mkEnableOption "Hypridle idle daemon" // {
+        default = true;
+      };
     };
 
     extraPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
-      default = [];
+      default = [ ];
       example = lib.literalExpression "[ pkgs.wev pkgs.wtype ]";
       description = "Additional packages to include in the desktop environment";
     };
@@ -38,7 +50,8 @@ in {
 
   config = lib.mkIf cfg.enable {
     # Essential Hyprland packages that cannot be excluded
-    home.packages = with pkgs;
+    home.packages =
+      with pkgs;
       [
         # Terminal emulator
         ghostty

@@ -29,4 +29,5 @@ As maintainer imsnif stated:
 echo '{"pane_id": "'"$ZELLIJ_PANE_ID"'", "name": "my-tab"}' | zellij pipe --name change-tab-name
 ```
 
-**Pending fix**: [PR #4594](https://github.com/zellij-org/zellij/pull/4594) adds an explicit `tab_index` parameter to `rename-tab`.
+Keystone now uses this plugin-backed approach for `ztab` and default tab naming. Raw
+`zellij action rename-tab ...` still has the multi-client limitation.

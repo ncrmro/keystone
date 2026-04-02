@@ -74,10 +74,10 @@ gh issue comment 30 --repo ncrmro/catalyst \
   --body "Blocked on #31 (route restructure) — will resume after merge."
 
 # 3. Create refactor branch and implement (rules 7, 9)
-cd .repos/ncrmro/catalyst
+cd "$HOME/repos/ncrmro/catalyst"
 git fetch origin
 git branch refactor/split-routes origin/main
-git worktree add .worktrees/refactor/split-routes refactor/split-routes
+git worktree add "$HOME/.worktrees/ncrmro/catalyst/refactor/split-routes" refactor/split-routes
 
 # ... implement the refactor, verify tests still pass ...
 

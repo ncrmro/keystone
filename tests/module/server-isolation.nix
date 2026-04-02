@@ -14,60 +14,62 @@
 pkgs.testers.nixosTest {
   name = "server-isolation";
 
-  nodes.machine = {
-    config,
-    pkgs,
-    ...
-  }: {
-    # Minimal server configuration without full OS module
-    # This tests the server role in isolation
+  nodes.machine =
+    {
+      config,
+      pkgs,
+      ...
+    }:
+    {
+      # Minimal server configuration without full OS module
+      # This tests the server role in isolation
 
-    # SSH server (core server requirement)
-    services.openssh = {
-      enable = true;
-      settings = {
-        PermitRootLogin = "prohibit-password";
-        PasswordAuthentication = false;
-      };
-    };
-
-    # mDNS for service discovery
-    services.avahi = {
-      enable = true;
-      nssmdns4 = true;
-      publish = {
+      # SSH server (core server requirement)
+      services.openssh = {
         enable = true;
-        addresses = true;
-        domain = true;
+        settings = {
+          PermitRootLogin = "prohibit-password";
+          PasswordAuthentication = false;
+        };
+      };
+
+      # mDNS for service discovery
+      services.avahi = {
+        enable = true;
+        nssmdns4 = true;
+        publish = {
+          enable = true;
+          addresses = true;
+          domain = true;
+        };
+      };
+
+      # DNS resolution
+      services.resolved.enable = true;
+
+      # Test user
+      users.users.testuser = {
+        isNormalUser = true;
+        initialPassword = "testpass";
+        extraGroups = [ "wheel" ];
+        openssh.authorizedKeys.keys = [
+          # Test key for SSH verification
+          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 test@localhost"
+        ];
+      };
+
+      # Nix settings
+      nix.settings.experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
+
+      # VM settings
+      virtualisation = {
+        memorySize = 2048;
+        cores = 2;
       };
     };
-
-    # DNS resolution
-    services.resolved.enable = true;
-
-    # Test user
-    users.users.testuser = {
-      isNormalUser = true;
-      initialPassword = "testpass";
-      extraGroups = ["wheel"];
-      openssh.authorizedKeys.keys = [
-        # Test key for SSH verification
-        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 test@localhost"
-      ];
-    };
-
-    # Nix settings
-    nix.settings.experimental-features = [
-      "nix-command"
-      "flakes"
-    ];
-
-    # VM settings
-    virtualisation = {
-      memorySize = 2048;
-      cores = 2;
-    };
-  };
 
   testScript = ''
     print("Starting server isolation test...")

@@ -13,7 +13,7 @@ MAY, REQUIRED, OPTIONAL).
 
 The system MUST provide a unified, hierarchical menu accessible via a global keyboard shortcut (`Mod + Escape`) and the power button.
 
-- **dt-menu-001.1**: The menu MUST allow navigation to sub-menus: Apps, Learn, Capture, Toggle, Style, Setup, Install, Remove, Update, System.
+- **dt-menu-001.1**: The menu MUST allow navigation to sub-menus: Apps, Contexts, Agents, Learn, Capture, Toggle, Style, Setup, Install, Remove, Update, System.
 - **dt-menu-001.2**: The "System" sub-menu MUST provide options for: Lock, Suspend, Restart, and Shutdown.
 - **dt-menu-001.3**: The "Style" sub-menu MUST allow switching themes.
 - **dt-menu-001.4**: The "Toggle" sub-menu MUST allow toggling system features like Nightlight, Idle Inhibition, and configuring Nightlight schedule and intensity.
@@ -22,6 +22,8 @@ The system MUST provide a unified, hierarchical menu accessible via a global key
 - **dt-menu-001.7**: The menu MUST support direct navigation to specific sub-menus via command-line arguments.
 - **dt-menu-001.8**: The "Setup" sub-menu MUST provide a "Monitors" section for dynamic display configuration (see dt-monitor-001).
 - **dt-menu-001.9**: The menu MUST provide access to project and desktop context selection behavior defined in `dt-context-001`.
+- **dt-menu-001.10**: Walker or Elephant MUST remain presentation-layer launchers only. Any long-lived terminal, editor, browser, or GUI process started from the menu MUST be detached from the menu process tree before the target command begins running.
+- **dt-menu-001.11**: When an `agenix-secrets` managed repo is present, the Walker-backed Keystone menu MUST expose a secrets-management entry point for it.
 
 ### Desktop contexts (dt-context-001)
 
@@ -44,6 +46,9 @@ Detailed project desktop menu requirements are defined in `REQ-026`.
 - **dt-context-001.13 (Delegation):** Desktop components MUST NOT implement domain logic for project discovery, session management, or metadata retrieval. They MUST delegate all such operations to the `pz` CLI or other terminal-first tools.
 - **dt-context-001.14 (Experience Parity):** The desktop project menus SHOULD provide a visual experience that mirrors the information hierarchy and action set of the `pz` CLI, ensuring a seamless transition for users moving between terminal and desktop contexts.
 - **dt-context-001.15 (Performance):** Desktop menus MUST utilize bulk data retrieval patterns (e.g., a single CLI call returning all required menu state) to ensure menu responsiveness and avoid N+1 performance bottlenecks.
+- **dt-context-001.16 (Launcher Independence):** Opening or attaching a project session from the desktop menu MUST NOT tie the spawned terminal window or editor lifecycle to Walker or Elephant service lifetime. Restarting the launcher services MUST NOT close or interrupt the started session.
+- **dt-context-001.17 (Host awareness):** Desktop project menus MUST show the declared host inventory and MUST allow users to change the effective target host before launch.
+- **dt-context-001.18 (Remote transport):** When the effective target host is remote, the desktop MUST launch the project through a local terminal session that delegates to terminal-first remote project tooling.
 
 ### Project details page (dt-context-002)
 
@@ -79,6 +84,22 @@ default audio input and output devices.
 - **dt-audio-001.4**: Selecting an audio device from the menu MUST update the live default device immediately and show a confirmation notification.
 - **dt-audio-001.5**: Default audio device changes made from the menu MUST be persisted into the current host's personal keystone config repository so the desktop session derives those defaults from declarative configuration on later starts.
 - **dt-audio-001.6**: The menu backend for audio defaults SHOULD remain terminal-first so the same commands can be used directly in a shell or wrapped by Elephant or Walker.
+
+### Agenix secrets management (dt-secrets-001)
+
+The system MUST provide a desktop menu flow for inspecting and maintaining the
+managed `agenix-secrets` repo from Walker.
+
+- **dt-secrets-001.1**: The Walker menu MUST list available `agenix` secret entries from the managed `agenix-secrets` checkout in a form that remains searchable by secret name.
+- **dt-secrets-001.2**: Secret listing and metadata lookup MUST remain terminal-first. The desktop menu MUST delegate discovery, inspection, key updates, and rekey operations to CLI tooling rather than reimplementing agenix logic in the launcher layer.
+- **dt-secrets-001.3**: Selecting a secret entry MUST open a secret actions view before any sensitive operation is attempted.
+- **dt-secrets-001.4**: The secret actions view MUST expose a `View value` action only when the current user can decrypt the secret. If the user does not have access, the menu MUST clearly show that the value cannot be viewed and MUST NOT attempt decryption.
+- **dt-secrets-001.5**: When `View value` succeeds, the menu MUST display the decrypted value in a deliberate inspection flow that does not require dropping into a separate manual shell session.
+- **dt-secrets-001.6**: The secret actions view MUST provide a way to update the secret's recipient keys.
+- **dt-secrets-001.7**: Updating recipient keys from the menu MUST trigger rekeying automatically so the encrypted secret set remains consistent after the change.
+- **dt-secrets-001.8**: Automatic rekeying initiated from the menu SHOULD prefer the existing hardware-key workflow when supported by the current machine and user configuration, and SHOULD fall back to non-hardware-key agenix rekeying when hardware-backed rekey is not available.
+- **dt-secrets-001.9**: Secret value inspection, key updates, and rekey actions MUST fail closed with a clear error message when the required identity, hardware key, repo checkout, or decrypt permission is unavailable.
+- **dt-secrets-001.10**: Secret-management actions that modify the `agenix-secrets` repo MUST operate on the managed checkout under `~/.keystone/repos/{owner}/{repo}/` so the resulting changes remain reviewable and committable through the normal repo workflow.
 
 ### Keybindings Help (dt-help-001)
 
@@ -195,6 +216,7 @@ The system MUST use W/E/R/C for tab operations across all tabbed interfaces.
 - **dt-bind-010.2**: `Super+K` MUST focus the window below.
 - **dt-bind-010.3**: `Super+I` MUST focus the window above.
 - **dt-bind-010.4**: `Super+L` MUST focus the window to the right.
+- **dt-bind-010.5**: Split-toggle MUST NOT conflict with Walker's `Alt+J` behavior when the physical Alt key is swapped to `Super`.
 
 ### Hyprland Window Management (dt-bind-011)
 

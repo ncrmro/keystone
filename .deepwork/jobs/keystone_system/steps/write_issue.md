@@ -38,8 +38,13 @@ ambiguous.
    - Choose a Conventional-Commit-style issue title: `type(scope): subject`
    - Use `gh issue create --repo ncrmro/keystone --title "..." --body-file <file>`
    - If a closely matching issue already exists, do NOT create a duplicate. Update the output file with the existing issue URL and explain why it matches.
-   - Save the final issue body to a temporary local markdown file under `.deepwork/tmp/` before creating the issue. Do NOT place this draft under `.deepwork/jobs/`, because the local file is only a staging artifact for `gh issue create`.
+   - Save the final issue body to a temporary local markdown file under `.deepwork/tmp/` before creating the issue, using a unique slug-based name so multiple issues in a session don't overwrite each other (e.g., `.deepwork/tmp/keystone-issue-agent-assets-fallback.md`). Do NOT place this draft under `.deepwork/jobs/`, because the local file is only a staging artifact for `gh issue create`.
    - After creation, append the created issue URL to the output file.
+
+5. **Archive to notes (if notes are enabled)**
+   - Check if `keystone.notes` is enabled: `nix eval ~/.keystone/repos/nixos-config#homeConfigurations.<user>.config.keystone.notes.enable --json 2>/dev/null`
+   - If enabled, use `NOTES_DIR="${NOTES_DIR:-$HOME/notes}"` and create a brief note there via `zk --notebook-dir "$NOTES_DIR" new notes/ --title "keystone issue: <title>" --no-input`. Write the issue URL, one-paragraph summary, and the GitHub link. On Keystone systems, `NOTES_DIR` resolves to the configured notebook root (`~/notes` for human users).
+   - If notes are not enabled or the command fails, skip silently.
 
 ## Output Format
 

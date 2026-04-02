@@ -22,51 +22,58 @@ pkgs.testers.nixosTest {
 
   nodes = {
     # Server representing a machine that would need remote unlock
-    server = {
-      config,
-      pkgs,
-      lib,
-      ...
-    }: {
-      # Basic system configuration
-      networking.hostId = "deadbeef";
-      system.stateVersion = "25.05";
+    server =
+      {
+        config,
+        pkgs,
+        lib,
+        ...
+      }:
+      {
+        # Basic system configuration
+        networking.hostId = "deadbeef";
+        system.stateVersion = "25.05";
 
-      # Network configuration for remote access
-      # (In production, initrd SSH would use similar network setup)
-      boot.kernelParams = ["ip=dhcp"];
-      boot.initrd.availableKernelModules = ["virtio_net"];
+        # Network configuration for remote access
+        # (In production, initrd SSH would use similar network setup)
+        boot.kernelParams = [ "ip=dhcp" ];
+        boot.initrd.availableKernelModules = [ "virtio_net" ];
 
-      # Regular SSH for post-boot access
-      services.openssh = {
-        enable = true;
-        settings = {
-          PermitRootLogin = "yes";
-          PasswordAuthentication = true;
+        # Regular SSH for post-boot access
+        services.openssh = {
+          enable = true;
+          settings = {
+            PermitRootLogin = "yes";
+            PasswordAuthentication = true;
+          };
+        };
+
+        # Set root password for testing (force to override defaults)
+        users.users.root = {
+          hashedPasswordFile = lib.mkForce null;
+          password = lib.mkForce "root";
+        };
+
+        # VM settings
+        virtualisation = {
+          memorySize = 2048;
+          cores = 2;
         };
       };
 
-      # Set root password for testing (force to override defaults)
-      users.users.root = {
-        hashedPasswordFile = lib.mkForce null;
-        password = lib.mkForce "root";
-      };
-
-      # VM settings
-      virtualisation = {
-        memorySize = 2048;
-        cores = 2;
-      };
-    };
-
     # Client to test SSH connectivity (simulates unlock client)
-    client = {pkgs, ...}: {
-      environment.systemPackages = [pkgs.openssh pkgs.sshpass];
-      virtualisation = {
-        memorySize = 1024;
-        cores = 1;
+    client =
+      { pkgs, ... }:
+      {
+        environment.systemPackages = [
+          pkgs.openssh
+          pkgs.sshpass
+        ];
+        virtualisation = {
+          memorySize = 1024;
+          cores = 1;
+        };
       };
-    };
   };
 
   testScript = ''

@@ -13,10 +13,21 @@
 with lib;
 let
   cfg = config.keystone.terminal;
+  notesPath = config.keystone.notes.path;
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
   inherit (devScripts) mkHomeRepoFiles mkHomeScriptCommand;
+  zellijNewTabPrompt = pkgs.writeShellScriptBin "keystone-zellij-new-tab-prompt" ''
+    printf '\nName new tab: '
+    IFS= read -r tab_name
+
+    if [[ -z "$tab_name" ]]; then
+      exit 0
+    fi
+
+    exec ${pkgs.zellij}/bin/zellij action new-tab --name "$tab_name"
+  '';
   ksCommand = mkHomeScriptCommand {
-    inherit config;
+    inherit config pkgs;
     commandName = "ks";
     relativePath = "packages/ks/ks.sh";
     package = pkgs.keystone.ks;
@@ -25,6 +36,10 @@ in
 {
   config = mkIf cfg.enable (mkMerge [
     {
+      home.sessionVariables = {
+        ZK_NOTEBOOK_DIR = notesPath;
+      };
+
       # Starship - A minimal, blazing-fast, and infinitely customizable prompt for any shell
       # Shows git status, language versions, execution time, and more in your terminal prompt
       # https://starship.rs/
@@ -32,7 +47,7 @@ in
 
       # Zoxide - A smarter cd command that learns your navigation patterns
       # Tracks your most used directories and lets you jump to them with 'z <partial-name>'
-      # Example: 'z proj' jumps to ~/code/projects, 'zi' for interactive selection
+      # Example: 'z proj' jumps to ~/repos/projects, 'zi' for interactive selection
       # https://github.com/ajeetdsouza/zoxide
       programs.zoxide = {
         enable = true;
@@ -58,31 +73,44 @@ in
           theme = "current";
           startup_tips = false;
           pane_frames = false;
+          # Ctrl+punctuation bindings such as Ctrl+, need extended keyboard reporting.
+          support_kitty_keyboard_protocol = true;
           keybinds = {
             normal = {
-              # Previous tab: Ctrl+PgUp
+              # Previous tab: Ctrl+,
+              "bind \"Ctrl ,\"" = {
+                GoToPreviousTab = { };
+              };
+              # Previous tab: Ctrl+PageUp
               "bind \"Ctrl PageUp\"" = {
                 GoToPreviousTab = { };
               };
-              # Next tab: Ctrl+PgDn
+              # Next tab: Ctrl+.
+              "bind \"Ctrl .\"" = {
+                GoToNextTab = { };
+              };
+              # Next tab: Ctrl+PageDown
               "bind \"Ctrl PageDown\"" = {
                 GoToNextTab = { };
               };
-              # Previous tab (alternative): Ctrl+Shift+Tab
-              "bind \"Ctrl Shift Tab\"" = {
-                GoToPreviousTab = { };
+              # Move tab left: Ctrl+<
+              "bind \"Ctrl <\"" = {
+                MoveTab = "Left";
               };
-              # Next tab (alternative): Ctrl+Tab
-              "bind \"Ctrl Tab\"" = {
-                GoToNextTab = { };
+              # Move tab right: Ctrl+>
+              "bind \"Ctrl >\"" = {
+                MoveTab = "Right";
               };
               # New tab: Ctrl+T
-              # Enforce naming in-client to avoid the multi-client CLI rename-tab issue.
+              # Open a visible floating prompt instead of the subtle RenameTab mode UI.
               "bind \"Ctrl t\"" = {
-                NewTab = { };
-                UndoRenameTab = { };
-                SwitchToMode = "RenameTab";
-                TabNameInput = 0;
+                Run = {
+                  _args = [
+                    "${zellijNewTabPrompt}/bin/keystone-zellij-new-tab-prompt"
+                  ];
+                  floating = true;
+                  close_on_exit = true;
+                };
               };
               # Close tab: Ctrl+W
               "bind \"Ctrl w\"" = {
@@ -132,7 +160,6 @@ in
           g = "git";
           lg = "lazygit";
           # Terminal utilities
-          ztab = "zellij action rename-tab";
           zs = "zesh connect"; # Zellij session manager with zoxide integration
           y = "yazi";
         };
@@ -147,104 +174,169 @@ in
           theme = "robbyrussell";
         };
         initExtra = ''
+          if [[ -z "''${KEYSTONE_SYSTEM_FLAKE:-}" ]] && command -v keystone-current-system-flake >/dev/null 2>&1; then
+            _keystone_system_flake="$(keystone-current-system-flake 2>/dev/null || true)"
+            if [[ -n "$_keystone_system_flake" ]]; then
+              export KEYSTONE_SYSTEM_FLAKE="$_keystone_system_flake"
+              export KEYSTONE_CONFIG_REPO="$_keystone_system_flake"
+              export NIXOS_CONFIG_DIR="$_keystone_system_flake"
+            fi
+            unset _keystone_system_flake
+          fi
+
           # Register pz completion
           if command -v pz >/dev/null 2>&1; then
             eval "$(pz completion)"
           fi
+
+          _keystone_zellij_pipe_tab_name() {
+            [[ -n "''${ZELLIJ:-}" && -n "''${ZELLIJ_PANE_ID:-}" ]] || return 1
+
+            local title="$1"
+            local payload
+            payload="$(${pkgs.jq}/bin/jq -nc \
+              --arg pane_id "$ZELLIJ_PANE_ID" \
+              --arg name "$title" \
+              '{ pane_id: $pane_id, name: $name }')"
+
+            ${pkgs.zellij}/bin/zellij action pipe \
+              --plugin "file:${pkgs.keystone.zellij-tab-name}/share/zellij/plugins/zellij-tab-name.wasm" \
+              --name change-tab-name \
+              -- "$payload" >/dev/null 2>&1
+          }
+
+          ztab() {
+            if [[ $# -eq 0 ]]; then
+              print "usage: ztab <name>" >&2
+              return 1
+            fi
+
+            _keystone_zellij_pipe_tab_name "$*"
+          }
+
+          znewtab() {
+            local title="$*"
+
+            if [[ -n "$title" ]]; then
+              ${pkgs.zellij}/bin/zellij action new-tab --name "$title"
+            else
+              ${pkgs.zellij}/bin/zellij run \
+                --floating \
+                --close-on-exit \
+                -- "${zellijNewTabPrompt}/bin/keystone-zellij-new-tab-prompt"
+            fi
+          }
         '';
       };
 
       home.sessionPath = [ "$HOME/.local/bin" ];
 
-      home.packages = with pkgs; [
-        # Bottom - Graphical process/system monitor
-        # https://github.com/ClementTsang/bottom
-        bottom
+      home.packages =
+        with pkgs;
+        [
+          # Bottom - Graphical process/system monitor
+          # https://github.com/ClementTsang/bottom
+          bottom
 
-        # Dust - A more intuitive version of du in rust
-        # https://github.com/bootandy/dust
-        dust
+          # Dust - A more intuitive version of du in rust
+          # https://github.com/bootandy/dust
+          dust
 
-        # Fd - A simple, fast and user-friendly alternative to 'find'
-        # https://github.com/sharkdp/fd
-        fd
+          # Fd - A simple, fast and user-friendly alternative to 'find'
+          # https://github.com/sharkdp/fd
+          fd
 
-        # Ncdu - NCurses Disk Usage
-        # https://dev.yorhel.nl/ncdu
-        ncdu
+          # Ncdu - NCurses Disk Usage
+          # https://dev.yorhel.nl/ncdu
+          ncdu
 
-        # Sd - Intuitive find & replace CLI (sed alternative)
-        # https://github.com/chmln/sd
-        sd
+          # Sd - Intuitive find & replace CLI (sed alternative)
+          # https://github.com/chmln/sd
+          sd
 
-        # Tealdeer - A fast tldr client in Rust (simplified man pages)
-        # https://github.com/dbrgn/tealdeer
-        tealdeer
+          # Tealdeer - A fast tldr client in Rust (simplified man pages)
+          # https://github.com/dbrgn/tealdeer
+          tealdeer
 
-        # Direnv - Unclutter your .profile
-        # https://direnv.net/
-        direnv
+          # Direnv - Unclutter your .profile
+          # https://direnv.net/
+          direnv
 
-        # Ghostty terminfo - Required for SSH connections from Ghostty terminal
-        # Without this, remote systems don't recognize TERM="xterm-ghostty" and
-        # ncurses applications fail with "cannot initialize terminal type" errors.
-        # This enables proper terminal handling when SSHing into this machine from Ghostty.
-        ghostty.terminfo
+          # Eza - Modern replacement for ls with colors and git integration
+          # https://github.com/eza-community/eza
+          eza
 
-        # Eza - Modern replacement for ls with colors and git integration
-        # https://github.com/eza-community/eza
-        eza
+          zellijNewTabPrompt
 
-        # Glow - Render markdown on the CLI with style
-        # https://github.com/charmbracelet/glow
-        glow
+          # Glow - Render markdown on the CLI with style
+          # https://github.com/charmbracelet/glow
+          glow
 
-        # GNU Make - Build automation tool
-        # https://www.gnu.org/software/make/
-        gnumake
+          # WeasyPrint - HTML/CSS to PDF converter (used by ks print)
+          # https://weasyprint.org/
+          python3Packages.weasyprint
 
-        # Htop - Interactive process viewer
-        # https://htop.dev/
-        htop
+          # GNU Make - Build automation tool
+          # https://www.gnu.org/software/make/
+          gnumake
 
-        # GitHub CLI - GitHub's official command line tool
-        # https://cli.github.com/
-        gh
+          # Htop - Interactive process viewer
+          # https://htop.dev/
+          htop
 
-        # Lazygit - Simple terminal UI for git commands
-        # https://github.com/jesseduffield/lazygit
-        lazygit
+          # GitHub CLI - GitHub's official command line tool
+          # https://cli.github.com/
+          gh
 
-        # Ripgrep - Fast search tool that recursively searches directories
-        # https://github.com/BurntSushi/ripgrep
-        ripgrep
+          # Lazygit - Simple terminal UI for git commands
+          # https://github.com/jesseduffield/lazygit
+          lazygit
 
-        # Tree - Display directory structure as a tree
-        # https://mama.indstate.edu/users/ice/tree/
-        tree
+          # Ripgrep - Fast search tool that recursively searches directories
+          # https://github.com/BurntSushi/ripgrep
+          ripgrep
 
-        # Yazi - Blazing fast terminal file manager written in Rust
-        # https://github.com/sxyazi/yazi
-        yazi
+          # Tree - Display directory structure as a tree
+          # https://mama.indstate.edu/users/ice/tree/
+          tree
 
-        # Zesh - Zellij session manager with zoxide integration
-        # https://github.com/roberte777/zesh
-        # Provided via keystone overlay
-        pkgs.keystone.zesh
+          # Yazi - Blazing fast terminal file manager written in Rust
+          # https://github.com/sxyazi/yazi
+          yazi
 
-        # Jq - Lightweight command-line JSON processor
-        # https://jqlang.github.io/jq/
-        jq
+          # Zesh - Zellij session manager with zoxide integration
+          # https://github.com/roberte777/zesh
+          # Provided via keystone overlay
+          pkgs.keystone.zesh
 
-        # Yq - Portable command-line YAML processor
-        # https://github.com/mikefarah/yq
-        yq-go
+          # Jq - Lightweight command-line JSON processor
+          # https://jqlang.github.io/jq/
+          jq
 
-        # Nixfmt - Official Nix code formatter (RFC style)
-        # https://github.com/NixOS/nixfmt
-        nixfmt-rfc-style
-      ];
+          # Yq - Portable command-line YAML processor
+          # https://github.com/mikefarah/yq
+          yq-go
+
+          # Nixfmt - Official Nix code formatter (RFC style)
+          # https://github.com/NixOS/nixfmt
+          nixfmt
+        ]
+        ++ lib.optionals pkgs.stdenv.isLinux [
+          # Ghostty terminfo - Required for SSH connections from Ghostty terminal
+          # Without this, remote systems don't recognize TERM="xterm-ghostty" and
+          # ncurses applications fail with "cannot initialize terminal type" errors.
+          # This enables proper terminal handling when SSHing into this machine from Ghostty.
+          # (Only available on Linux - macOS users install Ghostty via native app)
+          ghostty.terminfo
+        ];
     }
+    # Enable flakes for Darwin (standalone home-manager)
+    # On NixOS this is handled by keystone.os.nix.flakes
+    (mkIf pkgs.stdenv.isDarwin {
+      home.file.".config/nix/nix.conf".text = ''
+        experimental-features = nix-command flakes
+      '';
+    })
     (mkHomeRepoFiles {
       inherit config;
       files = [

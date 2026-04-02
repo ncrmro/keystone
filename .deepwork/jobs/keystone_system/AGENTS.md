@@ -52,9 +52,14 @@ See `.claude/commands/ks.develop.md`, `.claude/commands/ks.convention.md`, `.cla
 
 ### v1.8.0 — Archive doctor reports to zk notes (2026-03-24)
 
-- **Doctor reports belong in `~/notes/`, not in the keystone open-source repo**: fleet_survey.md and validation_report.md contain personal deployment data (host names, IPs, generations, service failures) specific to the user's keystone deployment — not the open-source project. After completing the validate step, archive a summary to `~/notes/` using `zk new --notebook ~/notes --title "keystone fleet health YYYY-MM-DD" --no-input`.
-- **`~/notes/` is the primary zk notebook** — it has `journal/`, `notes/`, `inbox/`, and other directories. The zk config auto-names notes as `YYYYMMDDHHMM slug-title.md`. The note should contain a concise summary (not the full raw output files).
+- **Doctor reports belong in the configured notes dir, not in the keystone open-source repo**: fleet_survey.md and validation_report.md contain personal deployment data (host names, IPs, generations, service failures) specific to the user's keystone deployment — not the open-source project. After completing the validate step, archive a summary to `NOTES_DIR` (`~/notes` for Keystone human users) using `zk --notebook-dir "$NOTES_DIR" new ...`.
+- **The configured notes dir is the primary zk notebook** — on Keystone systems, `NOTES_DIR` resolves to `keystone.notes.path` (`~/notes` for human users). It has `journal/`, `notes/`, `inbox/`, and other directories. The zk config auto-names notes as `YYYYMMDDHHMM slug-title.md`. The note should contain a concise summary (not the full raw output files).
 - **The `.deepwork/jobs/` folder is scratch space** — it's fine for working files during execution but is not the final destination for personal system data.
+
+### v1.9.2 — Issue workflow output hygiene (2026-03-30)
+
+- **Use a unique slug-based filename per issue**: `.deepwork/tmp/keystone-issue-<slug>.md`, not a generic `keystone-issue.md`. Multiple issues filed in the same session will silently overwrite a shared name.
+- **Archive issues to notes if notes are enabled**: After `gh issue create`, check if `keystone.notes` is enabled and create a brief `zk` note in `NOTES_DIR` with the issue URL and a one-paragraph summary. This mirrors how doctor reports are archived (see v1.8.0 learning). See `steps/write_issue.md` step 5 for the exact commands.
 
 ### v1.8.1 — Issue workflow correction (2026-03-24)
 

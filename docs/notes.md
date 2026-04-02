@@ -69,6 +69,27 @@ Use the notes system to:
 The notes system is shared. Humans and agents should both write into the same
 structure and use the same linking and tagging model.
 
+## Executive assistant task loop
+
+The `executive_assistant/task_loop` workflow uses zk notes as its coordination
+state.
+
+For this workflow:
+
+- the human operator's notes repo is the canonical coordination ledger,
+- active work should be represented as zk notes rather than a separate YAML task
+  ledger,
+- milestone, issue, pull request, assignee, and source references should live
+  in frontmatter fields, and
+- GitHub refs should use `gh:<owner>/<repo>#<number>` while Forgejo refs should
+  use `fj:<owner>/<repo>#<number>`,
+- tags should remain within the existing namespaces such as `project/<slug>`,
+  `repo/<owner>/<repo>`, `status/<value>`, and `source/<value>`.
+
+The workflow also maintains a dated executive-assistant daily note that rolls
+unfinished work forward by linking existing task notes instead of copying task
+bodies into a new note each day.
+
 ## Notebook layout
 
 The current notes model uses these groups:

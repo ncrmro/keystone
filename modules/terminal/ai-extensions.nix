@@ -1,21 +1,12 @@
-# AI CLI slash commands and skills generalized for all supported tools.
+# AI CLI commands and skills for the curated Keystone workflow surface.
 #
-# Generates slash commands for tools that support them and registers DeepWork
-# skills across Claude Code, Gemini CLI, OpenCode, and Codex.
+# Generates only the user-facing Keystone entrypoints:
+# - /ks      for Keystone guidance, issue filing, notes, and capability-aware routing
+# - /ks.dev  for development-mode Keystone implementation flows
+# - /deepwork remains available as the low-level escape hatch
 #
-# Each tool has its own directory structure and configuration requirements:
-# - Claude: ~/.claude/commands/*.md with YAML frontmatter, ~/.claude/skills/deepwork/SKILL.md
-# - Gemini: ~/.gemini/commands/*.toml
-# - OpenCode: ~/.config/opencode/commands/*.md, ~/.config/opencode/skills/deepwork/SKILL.md
-# - Codex: ~/.codex/skills/*.md-based skills
-#
-# TODO: As other AI coding CLIs gain support for custom workflow commands or
-# skill plugins, add their respective configuration directories to the
-# generation logic below.
-#
-# Development mode (REQ-018): When keystone.development is true and
-# a keystone repo is registered, templates are out-of-store symlinks to the
-# checkout — editable in place.
+# See conventions/tool.cli-coding-agents.md
+# See specs/002-repo-backed-terminal-assets.md
 {
   config,
   lib,
@@ -27,104 +18,125 @@ let
   terminalCfg = config.keystone.terminal;
   cfg = terminalCfg.aiExtensions;
   isDev = config.keystone.development;
+  archetype = terminalCfg.conventions.archetype;
 
-  # DeepWork Workflow slash commands (templates in ./ai-commands/)
-  commandFiles = [
-    "agent.bootstrap.md"
-    "agent.doctor.md"
-    "agent.issue.md"
-    "agent.onboard.md"
-    "daily_status.send.md"
-    "deepwork.review.md"
-    "engineer.md"
-    "ks.convention.md"
-    "ks.develop.md"
-    "ks.doctor.md"
-    "ks.issue.md"
-    "ks.update.md"
-    "marketing.social_media_setup.md"
-    "milestone.eng_handoff.md"
-    "milestone.setup.md"
-    "notes.process_inbox.md"
-    "notes.doctor.md"
-    "notes.project.md"
-    "notes.report.md"
-    "portfolio.review.md"
-    "project.onboard.md"
-    "project.press_release.md"
-    "project.success.md"
-    "repo.doctor.md"
-    "repo.setup.md"
-    "research.deep.md"
-    "research.quick.md"
-    "sweng.audit.md"
-    "sweng.design.md"
-    "sweng.fix.md"
-    "sweng.implement.md"
-    "sweng.refactor.md"
-    "task.ingest.md"
-    "task.run.md"
+  capabilityType = types.enum [
+    "ks"
+    "ks-dev"
+    "notes"
+    "project"
+    "engineer"
+    "executive-assistant"
   ];
 
-  stripMatchingQuotes =
-    value:
-    if hasPrefix "\"" value && hasSuffix "\"" value then
-      removeSuffix "\"" (removePrefix "\"" value)
-    else if hasPrefix "'" value && hasSuffix "'" value then
-      removeSuffix "'" (removePrefix "'" value)
-    else
-      value;
+  baseCapabilities = [
+    "ks"
+    "notes"
+    "project"
+  ];
 
-  parseFrontmatterLine =
-    line:
-    let
-      match = builtins.match "([A-Za-z0-9_-]+):[[:space:]]*(.*)" line;
-    in
-    if match == null then
-      null
-    else
-      {
-        name = elemAt match 0;
-        value = stripMatchingQuotes (elemAt match 1);
-      };
+  explicitCapabilities = filter (capability: capability != "ks-dev" || isDev) cfg.capabilities;
 
-  findFrontmatterEnd =
-    lines: idx:
-    if idx >= length lines then
-      null
-    else if elemAt lines idx == "---" then
-      idx
-    else
-      findFrontmatterEnd lines (idx + 1);
+  archetypeCapabilities = if archetype == "engineer" then [ "engineer" ] else [ ];
 
-  parseCommandTemplate =
-    name:
-    let
-      content = builtins.readFile (./ai-commands + "/${name}");
-      lines = splitString "\n" content;
-      hasFrontmatter = length lines > 0 && head lines == "---";
-      frontmatterEnd = if hasFrontmatter then findFrontmatterEnd lines 1 else null;
-      frontmatterLines =
-        if hasFrontmatter && frontmatterEnd != null then sublist 1 (frontmatterEnd - 1) lines else [ ];
-      bodyLines =
-        if hasFrontmatter && frontmatterEnd != null then
-          sublist (frontmatterEnd + 1) (length lines - frontmatterEnd - 1) lines
-        else
-          lines;
-      frontmatterEntries = filter (entry: entry != null) (map parseFrontmatterLine frontmatterLines);
-      frontmatter = listToAttrs frontmatterEntries;
-      body = concatStringsSep "\n" bodyLines;
-    in
+  resolvedCapabilities = unique (
+    baseCapabilities ++ archetypeCapabilities ++ explicitCapabilities ++ optionals isDev [ "ks-dev" ]
+  );
+
+  publishedCommandIds = [
+    "ks"
+  ]
+  ++ optionals (elem "notes" resolvedCapabilities) [ "ks.notes" ]
+  ++ optionals (elem "project" resolvedCapabilities) [ "ks.projects" ]
+  ++ optionals (elem "ks-dev" resolvedCapabilities) [ "ks.dev" ];
+
+  formatCapabilities =
+    capabilities: if capabilities == [ ] then "_none_" else concatStringsSep ", " capabilities;
+
+  renderTemplate =
+    template:
+    replaceStrings
+      [
+        "__CAPABILITIES__"
+        "__DEVELOPMENT_MODE__"
+        "__PUBLISHED_COMMANDS__"
+        "__ALLOWED_ROUTES__"
+      ]
+      [
+        (formatCapabilities resolvedCapabilities)
+        (if isDev then "enabled" else "disabled")
+        (concatStringsSep ", " publishedCommandIds)
+        (concatStringsSep "\n" ksAllowedRoutes)
+      ]
+      (builtins.readFile template);
+
+  ksAllowedRoutes = [
+    "- Explicit `$ks doctor`: start `keystone_system/doctor`."
+    "- Explicit `$ks issue`: start `keystone_system/issue`."
+    "- Keystone usage help, module discovery, configuration guidance, and workflow recommendations: answer directly when no workflow is needed."
+    "- Feature requests, bug reports, paper cuts, and missing Keystone capabilities: start `keystone_system/issue`."
+    "- Keystone health checks and troubleshooting: start `keystone_system/doctor` when the user wants diagnosis rather than documentation."
+  ]
+  ++ optionals (elem "notes" resolvedCapabilities) [
+    "- Notes workflows (repair, inbox, init, setup): direct the user to `/ks.notes` instead of starting a notes workflow directly."
+  ]
+  ++ optionals (elem "project" resolvedCapabilities) [
+    "- Project workflows (onboard, press release, milestone, engineering handoff, success): direct the user to `/ks.projects` instead of starting a project workflow directly."
+  ]
+  ++ optionals (elem "executive-assistant" resolvedCapabilities) [
+    "- Calendar triage and scheduling: start `executive_assistant/manage_calendar`."
+    "- Inbox cleanup and reply drafting: start `executive_assistant/clean_inbox`."
+    "- Event planning and recommendations: start `executive_assistant/plan_event` or `executive_assistant/discover_events`."
+    "- Daily priority and owner-note coordination: start `executive_assistant/task_loop`."
+  ];
+
+  ksCommandBody = renderTemplate ./agent-assets/ks.template.md;
+  ksDevCommandBody = renderTemplate ./agent-assets/ks-dev.template.md;
+  ksNotesCommandBody = builtins.readFile ./agent-assets/ks-notes.template.md;
+  ksProjectsCommandBody = builtins.readFile ./agent-assets/ks-projects.template.md;
+
+  ksDescription =
+    "Keystone assistant — may start keystone_system/issue or keystone_system/doctor"
+    + optionalString (elem "executive-assistant" resolvedCapabilities) ", or executive_assistant workflows";
+
+  publishedCommands = [
     {
-      inherit body;
-      frontmatter = frontmatter // {
-        inherit (frontmatter) description;
-      };
-      description =
-        frontmatter.description or (throw "ai-command ${name} is missing required frontmatter.description");
-      argumentHint = frontmatter.argument-hint or null;
-      displayName = frontmatter.display-name or frontmatter.description or null;
-    };
+      id = "ks";
+      description = ksDescription;
+      argumentHint = "<request>";
+      displayName = "KS Agent";
+      body = ksCommandBody;
+    }
+  ]
+  ++ optionals (elem "notes" resolvedCapabilities) [
+    {
+      id = "ks.notes";
+      description = "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup";
+      argumentHint = "<request>";
+      displayName = "KS Notes";
+      body = ksNotesCommandBody;
+    }
+  ]
+  ++ optionals (elem "project" resolvedCapabilities) [
+    {
+      id = "ks.projects";
+      description = "Project workflows — may start project/onboard, project/press_release, project/milestone, project/milestone_engineering_handoff, or project/success";
+      argumentHint = "<request>";
+      displayName = "KS Projects";
+      body = ksProjectsCommandBody;
+    }
+  ]
+  ++ optionals (elem "ks-dev" resolvedCapabilities) [
+    {
+      id = "ks.dev";
+      description = "Keystone development — may start keystone_system/develop, keystone_system/issue, keystone_system/convention, or keystone_system/doctor";
+      argumentHint = "<goal>";
+      displayName = "KS Development";
+      body = ksDevCommandBody;
+    }
+  ];
+
+  commandBaseName = command: command.id;
 
   renderYamlScalar =
     value:
@@ -143,13 +155,6 @@ let
         "description"
         "argument-hint"
         "display-name"
-        "disable-model-invocation"
-        "user-invocable"
-        "allowed-tools"
-        "model"
-        "effort"
-        "context"
-        "agent"
       ];
       orderedKeys = filter (key: builtins.hasAttr key frontmatter) preferredOrder;
       extraKeys = filter (key: !(elem key preferredOrder)) (attrNames frontmatter);
@@ -163,62 +168,38 @@ let
     '';
 
   renderClaudeCommand =
-    name:
+    command:
     let
-      template = parseCommandTemplate name;
+      frontmatter = {
+        name = command.id;
+        description = command.description;
+        "argument-hint" = command.argumentHint;
+        "display-name" = command.displayName;
+      };
     in
     ''
-      ${renderFrontmatter template.frontmatter}
+      ${renderFrontmatter frontmatter}
 
-      ${template.body}
+      ${command.body}
     '';
 
-  # Helper to generate Gemini-compatible TOML from a Markdown template.
-  # Gemini commands require .toml files with `prompt` and optionally `description`.
-  #
-  # CRITICAL: builtins.readFile requires a path type (e.g. ./path) or a path
-  # relative to the flake root to work in pure evaluation mode. Absolute
-  # path strings (like devPath) are forbidden.
-  mkGeminiToml = name: {
-    text =
-      let
-        template = parseCommandTemplate name;
-        # Replace $ARGUMENTS with Gemini's native {{args}}
-        prompt = replaceStrings [ "$ARGUMENTS" ] [ "{{args}}" ] template.body;
-      in
-      ''
-        description = ${builtins.toJSON template.description}
-        prompt = ${builtins.toJSON prompt}
-      '';
+  mkGeminiToml = command: {
+    text = ''
+      description = ${builtins.toJSON command.description}
+      prompt = ${builtins.toJSON command.body}
+    '';
   };
 
-  mkGeminiDeepworkToml = {
-    text =
-      let
-        prompt = replaceStrings [ "$ARGUMENTS" ] [ "{{args}}" ] deepworkSkillBody;
-      in
-      ''
-        description = ${builtins.toJSON skillMetadata.description}
-        prompt = ${builtins.toJSON prompt}
-      '';
-  };
-
-  commandBaseName = name: lib.removeSuffix ".md" name;
-
-  commandDescription = name: (parseCommandTemplate name).description;
-  commandDisplayName = name: (parseCommandTemplate name).displayName;
-
-  codexSkillName = name: replaceStrings [ "." ] [ "-" ] (commandBaseName name);
+  codexSkillName = name: replaceStrings [ "." ] [ "-" ] name;
 
   codexSkillBody =
-    name:
+    command:
     let
-      template = parseCommandTemplate name;
-      skillName = codexSkillName name;
+      skillName = codexSkillName command.id;
       skillToken = "$" + skillName;
     in
     ''
-      ${template.body}
+      ${command.body}
 
       ## Codex skill invocation
 
@@ -227,18 +208,27 @@ let
       provide extra text, continue without additional arguments.
     '';
 
-  mkCodexSkillMd =
-    name:
-    mkSkillMd {
-      name = codexSkillName name;
-      description = commandDescription name;
-    } (codexSkillBody name);
+  mkSkillMd = meta: body: ''
+    ---
+    name: ${meta.name}
+    description: "${meta.description}"
+    ---
 
-  mkCodexSkillOpenAiYaml = name: {
+    ${body}
+  '';
+
+  mkCodexSkillMd =
+    command:
+    mkSkillMd {
+      name = codexSkillName command.id;
+      description = command.description;
+    } (codexSkillBody command);
+
+  mkCodexSkillOpenAiYaml = command: {
     text = ''
       interface:
-        display_name: ${builtins.toJSON (commandDisplayName name)}
-        short_description: ${builtins.toJSON (commandDescription name)}
+        display_name: ${builtins.toJSON command.displayName}
+        short_description: ${builtins.toJSON command.description}
 
       dependencies:
         tools:
@@ -248,56 +238,43 @@ let
     '';
   };
 
-  # Shared metadata for skills
   skillMetadata = {
     name = "deepwork";
     description = "Start or continue DeepWork workflows using MCP tools";
   };
 
-  # Shared Markdown body for the DeepWork skill (no frontmatter)
   deepworkSkillBody = ''
-    # DeepWork Workflow Manager
+    # DeepWork workflow manager
 
     Execute multi-step workflows with quality gate checkpoints.
 
     ## Terminology
 
-    A **job** is a collection of related **workflows**. For example, a "code_review" job
-    might contain workflows like "review_pr" and "review_diff". Users may use the terms
-    "job" and "workflow" somewhat interchangeably when describing the work they want done —
-    use context and the available workflows from `get_workflows` to determine the best match.
+    A **job** is a collection of related **workflows**. Users may use the terms
+    "job" and "workflow" interchangeably. Use `get_workflows` to discover the
+    currently available jobs and workflows before deciding.
 
-    > **IMPORTANT**: Use the DeepWork MCP server tools. All workflow operations
-    > are performed through MCP tool calls and following the instructions they return,
-    > not by reading instructions from files.
+    ## How to use
 
-    ## How to Use
+    1. Call `get_workflows` to discover available workflows.
+    2. Call `start_workflow` with the chosen `goal`, `job_name`, and `workflow_name`.
+    3. Follow the step instructions returned by the MCP server.
+    4. Call `finished_step` with the outputs when a step is complete.
+    5. Handle the response: `needs_work`, `next_step`, or `workflow_complete`.
 
-    1. Call `get_workflows` to discover available workflows
-    2. Call `start_workflow` with goal, job_name, and workflow_name
-    3. Follow the step instructions returned
-    4. Call `finished_step` with your outputs when done
-    5. Handle the response: `needs_work`, `next_step`, or `workflow_complete`
+    ## Intent parsing
 
-    ## Intent Parsing
-
-    When the user invokes `/deepwork`, parse their intent:
-    1. **ALWAYS**: Call `get_workflows` to discover available workflows
-    2. Based on the available flows and what the user said in their request, proceed:
-        - **Explicit workflow**: `/deepwork <a workflow name>` → start the `<a workflow name>` workflow
-        - **General request**: `/deepwork <a request>` → infer best match from available workflows
-        - **No context**: `/deepwork` alone → ask user to choose from available workflows
+    - Explicit workflow: `/deepwork <workflow>` means start that workflow.
+    - General request: `/deepwork <goal>` means infer the best workflow from `get_workflows`.
+    - No context: `/deepwork` alone means ask the user to choose from available workflows.
   '';
 
-  # Generate standard SKILL.md with YAML frontmatter
-  mkSkillMd = meta: body: ''
-    ---
-    name: ${meta.name}
-    description: "${meta.description}"
-    ---
+  wrapUpSkillMetadata = {
+    name = "wrap-up";
+    description = "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human";
+  };
 
-    ${body}
-  '';
+  wrapUpSkillBody = builtins.readFile ./agent-assets/wrap-up-skill.template.md;
 
   codexManagedFiles = [
     {
@@ -318,37 +295,116 @@ let
               description: "DeepWork MCP server"
       '';
     }
+    {
+      relativePath = ".codex/skills/wrap-up/SKILL.md";
+      source = pkgs.writeText "codex-skill-wrap-up-SKILL.md" (
+        mkSkillMd wrapUpSkillMetadata wrapUpSkillBody
+      );
+    }
+    {
+      relativePath = ".codex/skills/wrap-up/agents/openai.yaml";
+      source = pkgs.writeText "codex-skill-wrap-up-openai.yaml" ''
+        interface:
+          display_name: "Wrap-up"
+          short_description: "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human"
+      '';
+    }
   ]
   ++ flatten (
     map (
-      name:
+      command:
       let
-        skillName = codexSkillName name;
+        skillName = codexSkillName command.id;
         skillDir = ".codex/skills/${skillName}";
       in
       [
         {
           relativePath = "${skillDir}/SKILL.md";
-          source = pkgs.writeText "codex-skill-${skillName}-SKILL.md" (mkCodexSkillMd name);
+          source = pkgs.writeText "codex-skill-${skillName}-SKILL.md" (mkCodexSkillMd command);
         }
         {
           relativePath = "${skillDir}/agents/openai.yaml";
-          source = pkgs.writeText "codex-skill-${skillName}-openai.yaml" (mkCodexSkillOpenAiYaml name).text;
+          source = pkgs.writeText "codex-skill-${skillName}-openai.yaml" (mkCodexSkillOpenAiYaml command)
+          .text;
         }
       ]
-    ) commandFiles
+    ) publishedCommands
   );
+
+  legacyCodexSkillNames = [
+    "agent-bootstrap"
+    "agent-doctor"
+    "agent-issue"
+    "agent-onboard"
+    "daily_status-send"
+    "deepwork-review"
+    "engineer"
+    "ks-convention"
+    "ks-develop"
+    "ks-doctor"
+    "ks-issue"
+    "ks-update"
+    "marketing-social_media_setup"
+    "milestone-eng_handoff"
+    "milestone-setup"
+    "notes-doctor"
+    "notes-process_inbox"
+    "notes-project"
+    "notes-report"
+    "portfolio-review"
+    "project-onboard"
+    "project-press_release"
+    "project-success"
+    "repo-doctor"
+    "repo-setup"
+    "research-deep"
+    "research-quick"
+    "task-ingest"
+    "task-run"
+    "ks"
+  ];
+
+  activeCodexSkillNames = [
+    "deepwork"
+    "wrap-up"
+  ]
+  ++ map (command: codexSkillName command.id) publishedCommands;
+
+  staleCodexSkillNames = filter (name: !(elem name activeCodexSkillNames)) legacyCodexSkillNames;
 in
 {
   options.keystone.terminal.aiExtensions = {
     enable = mkOption {
       type = types.bool;
       default = true;
-      description = "Generate slash commands and register skills for DeepWork workflows.";
+      description = "Generate curated Keystone commands and skills for supported AI CLIs.";
+    };
+
+    capabilities = mkOption {
+      type = types.listOf capabilityType;
+      default = [ ];
+      description = ''
+        Extra Keystone AI workflow capabilities for this profile. The final
+        capability set is merged with terminal defaults, archetype defaults,
+        and dev-mode gating.
+      '';
+    };
+
+    resolvedCapabilities = mkOption {
+      type = types.listOf capabilityType;
+      default = [ ];
+      internal = true;
+      description = "Resolved capability set used to generate `/ks` and `/ks.dev`.";
+    };
+
+    publishedCommands = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      internal = true;
+      description = "Curated Keystone command ids published for this profile.";
     };
   };
 
-  # Backward compatibility for the old option name
   imports = [
     (mkAliasOptionModule
       [ "keystone" "terminal" "claudeCodeCommands" "enable" ]
@@ -357,42 +413,47 @@ in
   ];
 
   config = mkIf (terminalCfg.enable && terminalCfg.ai.enable && cfg.enable) {
-    # TODO(REQ-018.7a): These files remain generated because Claude, Gemini,
-    # OpenCode, and Codex each require transformed payloads rather than direct
-    # repo-backed source files.
-    home.file =
+    keystone.terminal.aiExtensions.resolvedCapabilities = resolvedCapabilities;
+    keystone.terminal.aiExtensions.publishedCommands = publishedCommandIds;
+
+    home.file = mkIf (!isDev) (
       let
         commandFilesByTool =
           foldl'
             (
               acc: toolDir:
-              if (toolDir == ".codex") then
+              if toolDir == ".codex" then
                 acc
               else
                 acc
                 // (listToAttrs (
-                  map (name: {
-                    name =
-                      if (toolDir == ".gemini") then
-                        let
-                          relPath = replaceStrings [ "." ] [ "/" ] (commandBaseName name);
-                        in
-                        "${toolDir}/commands/${relPath}.toml"
-                      else
-                        "${toolDir}/commands/${name}";
-
-                    value =
-                      if (toolDir == ".gemini") then
-                        mkGeminiToml name
-                      else if (toolDir == ".claude") then
-                        {
-                          text = renderClaudeCommand name;
-                        }
-                      else
-                        {
-                          text = (parseCommandTemplate name).body;
-                        };
-                  }) commandFiles
+                  map (
+                    command:
+                    let
+                      name =
+                        if toolDir == ".gemini" then
+                          let
+                            relPath = replaceStrings [ "." ] [ "/" ] (commandBaseName command);
+                          in
+                          "${toolDir}/commands/${relPath}.toml"
+                        else
+                          "${toolDir}/commands/${command.id}.md";
+                    in
+                    {
+                      inherit name;
+                      value =
+                        if toolDir == ".gemini" then
+                          mkGeminiToml command
+                        else if toolDir == ".claude" then
+                          {
+                            text = renderClaudeCommand command;
+                          }
+                        else
+                          {
+                            text = command.body;
+                          };
+                    }
+                  ) publishedCommands
                 ))
             )
             { }
@@ -410,7 +471,13 @@ in
                 skillDir = "${toolDir}/skills/deepwork";
               in
               if toolDir == ".gemini" then
-                acc // { "${toolDir}/commands/deepwork.toml" = mkGeminiDeepworkToml; }
+                acc
+                // {
+                  "${toolDir}/commands/deepwork.toml".text = ''
+                    description = ${builtins.toJSON skillMetadata.description}
+                    prompt = ${builtins.toJSON deepworkSkillBody}
+                  '';
+                }
               else
                 acc
                 // {
@@ -423,51 +490,121 @@ in
               ".gemini"
               ".config/opencode"
             ];
+
+        wrapUpSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              let
+                skillDir = "${toolDir}/skills/wrap-up";
+              in
+              if toolDir == ".gemini" then
+                acc
+                // {
+                  "${toolDir}/commands/wrap-up.toml".text = ''
+                    description = ${builtins.toJSON wrapUpSkillMetadata.description}
+                    prompt = ${builtins.toJSON wrapUpSkillBody}
+                  '';
+                }
+              else
+                acc
+                // {
+                  "${skillDir}/SKILL.md".text = mkSkillMd wrapUpSkillMetadata wrapUpSkillBody;
+                }
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
+        ksSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              acc
+              // (listToAttrs (
+                map (
+                  command:
+                  let
+                    skillName = codexSkillName command.id;
+                    skillDir = "${toolDir}/skills/${skillName}";
+                  in
+                  if toolDir == ".gemini" then
+                    {
+                      name = "${toolDir}/commands/${replaceStrings [ "." ] [ "/" ] command.id}.toml";
+                      value = mkGeminiToml command;
+                    }
+                  else
+                    {
+                      name = "${skillDir}/SKILL.md";
+                      value = {
+                        text = mkSkillMd {
+                          name = skillName;
+                          description = command.description;
+                        } command.body;
+                      };
+                    }
+                ) publishedCommands
+              ))
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
       in
-      commandFilesByTool // deepworkSkillsByTool;
+      commandFilesByTool // deepworkSkillsByTool // wrapUpSkillsByTool // ksSkillsByTool
+    );
 
-    # Codex 0.114.0 skips skills whose payload files are symlinks.
-    # Manage Keystone-owned Codex skill payloads as regular files directly in
-    # activation so Home Manager does not repeatedly back them up on each run.
-    home.activation.codexSkillsPreflight = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
-      cleanup_codex_skill_state() {
-        relativePath="$1"
-        targetPath="$HOME/$relativePath"
+    home.activation = mkIf (!isDev) {
+      codexSkillsPreflight = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
+        cleanup_codex_skill_state() {
+          relativePath="$1"
+          targetPath="$HOME/$relativePath"
+          rm -f "$targetPath.backup"
+        }
 
-        # Recover from previous failed activations that left Home Manager backup
-        # files behind for these managed Codex skill payloads before link checks.
-        rm -f "$targetPath.backup"
-      }
+        cleanup_stale_codex_skill() {
+          skillName="$1"
+          rm -rf "$HOME/.codex/skills/$skillName"
+        }
 
-      ${concatMapStringsSep "\n" (file: ''
-        cleanup_codex_skill_state ${escapeShellArg file.relativePath}
-      '') codexManagedFiles}
-    '';
+        ${concatMapStringsSep "\n" (skillName: ''
+          cleanup_stale_codex_skill ${escapeShellArg skillName}
+        '') staleCodexSkillNames}
 
-    home.activation.codexSkills = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      write_codex_skill_file() {
-        relativePath="$1"
-        sourcePath="$2"
-        targetPath="$HOME/$relativePath"
-        targetDir="$(dirname "$targetPath")"
+        ${concatMapStringsSep "\n" (file: ''
+          cleanup_codex_skill_state ${escapeShellArg file.relativePath}
+        '') codexManagedFiles}
+      '';
 
-        mkdir -p "$targetDir"
+      codexSkills = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        write_codex_skill_file() {
+          relativePath="$1"
+          sourcePath="$2"
+          targetPath="$HOME/$relativePath"
+          targetDir="$(dirname "$targetPath")"
 
-        if [ -L "$targetPath" ]; then
-          rm -f "$targetPath"
-        fi
+          mkdir -p "$targetDir"
 
-        tmpPath="$(mktemp "$targetPath.tmp.XXXXXX")"
-        cp "$sourcePath" "$tmpPath"
-        chmod 644 "$tmpPath"
-        mv "$tmpPath" "$targetPath"
-      }
+          if [ -L "$targetPath" ]; then
+            rm -f "$targetPath"
+          fi
 
-      ${concatMapStringsSep "\n" (file: ''
-        write_codex_skill_file \
-          ${escapeShellArg file.relativePath} \
-          ${escapeShellArg (toString file.source)}
-      '') codexManagedFiles}
-    '';
+          tmpPath="$(mktemp "$targetPath.tmp.XXXXXX")"
+          cp "$sourcePath" "$tmpPath"
+          chmod 644 "$tmpPath"
+          mv "$tmpPath" "$targetPath"
+        }
+
+        ${concatMapStringsSep "\n" (file: ''
+          write_codex_skill_file \
+            ${escapeShellArg file.relativePath} \
+            ${escapeShellArg (toString file.source)}
+        '') codexManagedFiles}
+      '';
+    };
   };
 }

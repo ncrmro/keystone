@@ -20,14 +20,16 @@
 
 ## CLI Tools
 
-Two CLIs are available for Forgejo interaction:
+Three CLIs are available for Forgejo interaction:
 
 - **`fj`** (forgejo-cli) — primary CLI for scripted/non-interactive operations (issues, PRs, releases, wiki)
-- **`tea`** (Gitea tea) — used only for `tea api` raw API calls to cover entities `fj` lacks (milestones, labels, webhooks, PR reviews)
+- **`fj-ex`** (forgejo-cli-ex) — primary CLI for Forgejo Actions operations (runs, job logs, reruns, cancellations, queued jobs, runner tokens)
+- **`tea`** (Gitea tea) — used only for `tea api` raw API calls to cover entities `fj`/`fj-ex` lack (milestones, labels, webhooks, PR reviews, raw API inspection)
 
 10. Agents MUST use `fj` as the primary CLI for issues, PRs, releases, and wiki.
-11. Agents MUST use `tea api` for milestones, labels, webhooks, and any entity `fj` does not support.
-12. Agents MUST NOT use `tea` interactive/TUI commands — only `tea api` is non-interactive and agent-safe.
+11. Agents MUST use `fj-ex` as the primary CLI for Forgejo Actions workflows, including recent runs, queued jobs, job logs, reruns, cancellations, and runner token inspection.
+12. Agents MUST use `tea api` for milestones, labels, webhooks, and any entity `fj` or `fj-ex` does not support.
+13. Agents MUST NOT use `tea` interactive/TUI commands — only `tea api` is non-interactive and agent-safe.
 
 ### Common Flags
 
@@ -49,17 +51,46 @@ All examples below omit the `-H` host flag for brevity. Prepend it to every `fj`
 
 ## Authentication
 
-13. keystone.os provisions `fj` and `tea` authentication automatically. Agents SHOULD NOT manually configure auth under normal circumstances.
-14. Verify `fj` auth: `fj whoami`.
-15. Verify `tea` auth: `tea api --login forgejo /user`.
-16. If `tea` returns "token is required": create a token via the Forgejo API using basic auth with the vault password, then update the tea login config.
+14. keystone.os provisions `fj` and `tea` authentication automatically. Agents SHOULD NOT manually configure auth under normal circumstances.
+15. Verify `fj` auth: `fj whoami`.
+16. Verify `tea` auth: `tea api --login forgejo /user`.
+17. `fj-ex` MAY require an interactive web login for UI-backed Actions operations. When needed, authenticate with `fj-ex auth login --host <forgejo-host>`.
+18. If `tea` returns "token is required": create a token via the Forgejo API using basic auth with the vault password, then update the tea login config.
+
+## Actions (`fj-ex`)
+
+19. Agents MUST use `fj-ex` first when they need queued jobs, recent runs, job logs, reruns, cancellations, or runner registration tokens on Forgejo.
+20. Agents SHOULD preview destructive Actions operations with `--dry-run` when the subcommand supports it.
+21. Agents MAY use `fj-ex actions logs job --latest --job-index <n>` to stream a single job's logs directly to stdout, but SHOULD redirect to a file before broad searching if the log is long.
+
+```bash
+# Interactive login for Actions/UI endpoints
+fj-ex auth login --host forge.example.com
+
+# Mint a NuGet API key
+fj-ex token mint nuget --host forge.example.com --owner my-org
+
+# List recent runs
+fj-ex actions runs --repo owner/name --latest
+
+# Stream one job's logs
+fj-ex actions logs job --repo owner/name --latest --job-index 0
+
+# Cancel / rerun
+fj-ex actions cancel --repo owner/name --run-index 50 --dry-run
+fj-ex actions rerun --repo owner/name --latest --failed-only
+
+# Runner registration token + queued jobs
+fj-ex actions runners token --repo owner/name
+fj-ex actions runners jobs --repo owner/name --waiting
+```
 
 ## Pull Request Workflow
 
-17. PRs MUST be squash-merged.
-18. PRs MUST have the repo owner assigned as reviewer. The reviewer is the `{owner}` from the repo slug `{owner}/{repo}`.
-19. Draft PRs on Forgejo use a `WIP: ` title prefix (not a `--draft` flag).
-20. PRs SHOULD reference the issue they resolve (e.g., `Closes #123`).
+22. PRs MUST be squash-merged.
+23. PRs MUST have the repo owner assigned as reviewer. The reviewer is the `{owner}` from the repo slug `{owner}/{repo}`.
+24. Draft PRs on Forgejo use a `WIP: ` title prefix (not a `--draft` flag).
+25. PRs SHOULD reference the issue they resolve (e.g., `Closes #123`).
 
 ### Happy Path
 
@@ -100,7 +131,7 @@ All examples below omit the `-H` host flag for brevity. Prepend it to every `fj`
 
 ## Issues (fj)
 
-21. Issues SHOULD have descriptive titles and labels.
+26. Issues SHOULD have descriptive titles and labels.
 
 ```bash
 issue search [QUERY]                          # default: open
@@ -175,7 +206,7 @@ curl -s -X POST \
 
 ### Raw API Fallback
 
-22. For any entity not covered above, agents SHOULD use `tea api` or `curl` with the [Forgejo API docs](https://git.ncrmro.com/api/swagger).
+27. For any entity not covered above, agents SHOULD use `tea api` or `curl` with the [Forgejo API docs](https://git.ncrmro.com/api/swagger).
 
 ## Known Limitations
 
@@ -185,11 +216,11 @@ curl -s -X POST \
 
 ## Project Boards
 
-23. Forgejo has no project board REST API (as of 14.x). Agents MUST use the `forgejo-project` CLI (provided by keystone) for all board operations.
-24. See `process.project-board` for full board lifecycle and Forgejo-specific guidance.
-25. Agents MUST set `FORGEJO_HOST`, `FORGEJO_USER`, and `FORGEJO_PASSWORD_CMD` environment variables.
-26. The script auto-authenticates on first use and re-authenticates on session expiry.
-27. `FORGEJO_PASSWORD_CMD` MUST delegate to a credential manager (`rbw`, `pass`, etc.) — passwords MUST NOT be stored in plaintext.
+28. Forgejo has no project board REST API (as of 14.x). Agents MUST use the `forgejo-project` CLI (provided by keystone) for all board operations.
+29. See `process.project-board` for full board lifecycle and Forgejo-specific guidance.
+30. Agents MUST set `FORGEJO_HOST`, `FORGEJO_USER`, and `FORGEJO_PASSWORD_CMD` environment variables.
+31. The script auto-authenticates on first use and re-authenticates on session expiry.
+32. `FORGEJO_PASSWORD_CMD` MUST delegate to a credential manager (`rbw`, `pass`, etc.) — passwords MUST NOT be stored in plaintext.
 
 ```bash
 # Auth — login once, session cookie cached at ~/.local/state/forgejo-project/cookies.txt

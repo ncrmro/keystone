@@ -55,6 +55,8 @@ Key properties:
 
 - `TimeoutStartSec = "1h"` — long timeout for LLM-driven tasks
 - Uses `flock` for concurrency prevention (skips if already running)
+- Honors a pause marker at `~/.local/state/agent-task-loop/state/paused`
+- When paused, scheduled runs exit before pre-fetch and execution work
 - Structured logging with `[step=X]` and `[task=Y]` tags
 - State in `~/.local/state/agent-task-loop/state/`
 - Logs in `~/.local/state/agent-task-loop/logs/`
@@ -83,6 +85,12 @@ agentctl luce journalctl -u agent-luce-scheduler -n 20
 
 # Manually trigger
 agentctl luce start agent-luce-task-loop
+
+# Pause or resume the loop without disabling timers
+agentctl luce pause "waiting for human input"
+agentctl luce paused
+agentctl luce resume
+ks agents pause all "human focus block"
 ```
 
 For fleet-wide journal queries across all hosts, see `tool.journal-remote`.

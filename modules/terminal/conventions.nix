@@ -30,6 +30,8 @@ let
   cfg = config.keystone.terminal.conventions;
   terminalCfg = config.keystone.terminal;
   conventionsPath = pkgs.keystone.keystone-conventions;
+  aiCapabilities = config.keystone.terminal.aiExtensions.resolvedCapabilities or [ ];
+  aiCommandIds = config.keystone.terminal.aiExtensions.publishedCommands or [ ];
 
   # Read archetypes.yaml from the conventions derivation.
   # Guard: if the file doesn't exist, produce empty config (graceful degradation).
@@ -85,6 +87,35 @@ let
         Archetype: **${cfg.archetype}**
         ${archetypeConfig.description or ""}
       ''
+      ''
+        ## Keystone session
+
+        - Canonical instruction path: `~/.keystone/AGENTS.md`
+        - Development mode: ${if config.keystone.development then "enabled" else "disabled"}
+        - Available Keystone capabilities: ${
+          if aiCapabilities == [ ] then "_none_" else concatStringsSep ", " aiCapabilities
+        }
+        - Published Keystone commands: ${
+          if aiCommandIds == [ ] then "_none_" else concatStringsSep ", " aiCommandIds
+        }
+      ''
+      (optionalString (elem "notes" aiCapabilities) ''
+        ## Notes command guidance
+
+        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
+        - On Keystone systems, use `NOTES_DIR` as the canonical notebook root. It resolves to `keystone.notes.path` (`~/notes` for human users, per-agent notes paths for OS agents).
+        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
+        - When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
+      '')
+      ''
+        ## Shared-surface tracking
+
+        - For issue-backed work, follow `process.issue-journal` and post `Work Started` and `Work Update` comments on the source issue.
+        - For milestone and board-backed work, follow `process.project-board` so issue and PR state stays visible on the shared board.
+        - Treat issues, pull requests, milestones, and boards as the canonical public record for status, review state, and decisions that affect collaborators.
+        - Use notes to preserve durable rationale and memory, not to replace shared-surface tracking.
+      ''
     ]
     ++ inlinedConventions
     ++ optional (referencedConventions != [ ]) ''
@@ -119,9 +150,9 @@ let
 
   # Repo inventory derived from keystone.repos (auto-populated from flake inputs)
   reposList = concatStringsSep "\n\n" (
-    mapAttrsToList (
-      name: _: "### \`${name}\` → [\`${name}/AGENTS.md\`](${name}/AGENTS.md)"
-    ) config.keystone.repos
+    mapAttrsToList (name: _: "### \`${name}\` → [\`${name}/AGENTS.md\`](${name}/AGENTS.md)") (
+      filterAttrs (name: _: !(hasSuffix "/notes" name)) config.keystone.repos
+    )
   );
 
   reposAgentsMdContent = concatStringsSep "\n\n---\n\n" (
@@ -137,6 +168,23 @@ let
         ## Repositories
 
         ${reposList}
+      ''
+      (optionalString (elem "notes" aiCapabilities) ''
+        ## Notes command guidance
+
+        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
+        - Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
+        - On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the `~/.keystone/repos/` inventory.
+        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
+        - When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
+      '')
+      ''
+        ## Shared-surface tracking
+
+        - For issue-backed work, follow `process.issue-journal` and post `Work Started` and `Work Update` comments on the source issue.
+        - For milestone and board-backed work, follow `process.project-board` so issue and PR state stays visible on the shared board.
+        - Treat issues, pull requests, milestones, and boards as the canonical public record for status, review state, and decisions that affect collaborators.
+        - Use notes to preserve durable rationale and memory, not to replace shared-surface tracking.
       ''
     ]
     ++ reposInlinedConventions
@@ -187,44 +235,43 @@ in
     };
   };
 
-  config = mkIf (terminalCfg.enable && cfg.enable) {
-    # REQ-021: Warn when generated conventions exceed the context budget.
-    # The global CLAUDE.md should be minimal — only host basics and essential
-    # daily-use rules. Most conventions should be referenced, not inlined.
-    warnings =
-      let
-        globalSize = builtins.stringLength agentsMdContent;
-        reposSize = builtins.stringLength reposAgentsMdContent;
-      in
-      optional (globalSize > cfg.maxGlobalBytes)
-        "keystone.terminal.conventions: generated CLAUDE.md is ${toString globalSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
-          toString (cfg.maxGlobalBytes / 4)
-        } tokens). Move conventions from inlined_conventions to referenced_conventions in archetypes.yaml."
-      ++
-        optional (isDev && reposSize > cfg.maxGlobalBytes)
-          "keystone.terminal.conventions: generated repos AGENTS.md is ${toString reposSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
+  config =
+    mkIf (terminalCfg.enable && cfg.enable) {
+      # REQ-021: Warn when generated conventions exceed the context budget.
+      # The global CLAUDE.md should be minimal — only host basics and essential
+      # daily-use rules. Most conventions should be referenced, not inlined.
+      warnings =
+        let
+          globalSize = builtins.stringLength agentsMdContent;
+          reposSize = builtins.stringLength reposAgentsMdContent;
+        in
+        optional (globalSize > cfg.maxGlobalBytes)
+          "keystone.terminal.conventions: generated CLAUDE.md is ${toString globalSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
             toString (cfg.maxGlobalBytes / 4)
-          } tokens). Move conventions from keystone-developer inlined_conventions to referenced_conventions in archetypes.yaml."
-      ++
-        optional (isDev && overlappingConventions != [ ])
-          "keystone.terminal.conventions: ${toString (length overlappingConventions)} convention(s) are inlined in both CLAUDE.md (${cfg.archetype}) and repos AGENTS.md (keystone-developer), consuming duplicate context tokens: ${concatStringsSep ", " overlappingConventions}. Consider moving them to referenced_conventions in the keystone-developer archetype.";
+          } tokens). Move conventions from inlined_conventions to referenced_conventions in archetypes.yaml."
+        ++
+          optional (isDev && reposSize > cfg.maxGlobalBytes)
+            "keystone.terminal.conventions: generated repos AGENTS.md is ${toString reposSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
+              toString (cfg.maxGlobalBytes / 4)
+            } tokens). Move conventions from keystone-developer inlined_conventions to referenced_conventions in archetypes.yaml."
+        ++
+          optional (isDev && overlappingConventions != [ ])
+            "keystone.terminal.conventions: ${toString (length overlappingConventions)} convention(s) are inlined in both CLAUDE.md (${cfg.archetype}) and repos AGENTS.md (keystone-developer), consuming duplicate context tokens: ${concatStringsSep ", " overlappingConventions}. Consider moving them to referenced_conventions in the keystone-developer archetype.";
 
-    # Write conventions to each tool's native instruction file path.
-    # OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file.
-    home.file.".claude/CLAUDE.md".text = agentsMdContent;
-    home.file.".gemini/GEMINI.md".text = agentsMdContent;
-    home.file.".codex/AGENTS.md".text = agentsMdContent;
-
-    # Expose the full conventions directory for on-demand reading
-    # (referenced conventions link to Nix store paths in this directory)
-    home.file.".config/keystone/conventions".source = conventionsPath;
-
-    # Generate ~/.keystone/repos/AGENTS.md when in development mode.
-    # Uses the keystone-developer archetype with the repo inventory derived
-    # from keystone.repos. Convention links are relative to the repos root
-    # so they resolve to the live ncrmro/keystone checkout.
-    home.file.".keystone/repos/AGENTS.md" = mkIf isDev {
-      text = reposAgentsMdContent;
+      # Expose the full conventions directory for on-demand reading
+      # (referenced conventions link to Nix store paths in this directory)
+      home.file.".config/keystone/conventions".source = conventionsPath;
+    }
+    // mkIf (!isDev) {
+      # Generate the canonical Keystone instruction file and derive tool-native
+      # instruction files from the same content. In development mode these are
+      # refreshed from the live checkout by keystone-sync-agent-assets instead of
+      # being immutable Home Manager text outputs.
+      home.file.".keystone/AGENTS.md".text = agentsMdContent;
+      home.file.".claude/CLAUDE.md".text = agentsMdContent;
+      home.file.".gemini/GEMINI.md".text = agentsMdContent;
+      home.file.".codex/AGENTS.md".text = agentsMdContent;
+      home.file.".config/opencode/AGENTS.md".text = agentsMdContent;
+      home.file.".keystone/repos/AGENTS.md".text = reposAgentsMdContent;
     };
-  };
 }
