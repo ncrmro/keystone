@@ -24,6 +24,9 @@ The system MUST provide a unified, hierarchical menu accessible via a global key
 - **dt-menu-001.9**: The menu MUST provide access to project and desktop context selection behavior defined in `dt-context-001`.
 - **dt-menu-001.10**: Walker or Elephant MUST remain presentation-layer launchers only. Any long-lived terminal, editor, browser, or GUI process started from the menu MUST be detached from the menu process tree before the target command begins running.
 - **dt-menu-001.11**: When an `agenix-secrets` managed repo is present, the Walker-backed Keystone menu MUST expose a secrets-management entry point for it.
+- **dt-menu-001.12**: Core Walker and Elephant menu integration MUST be verifiable through `nix flake check`.
+- **dt-menu-001.13**: When Keystone has a canonical standard desktop example config, launcher integration checks SHOULD evaluate against that config rather than relying only on synthetic fixtures.
+- **dt-menu-001.14**: Focused deterministic menu-controller checks SHOULD complement the standard desktop integration check so launcher wiring failures and backend contract failures remain independently diagnosable.
 
 ### Desktop contexts (dt-context-001)
 

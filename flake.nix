@@ -370,6 +370,15 @@
           keystone-secrets-menu = import ./tests/module/keystone-secrets-menu.nix {
             inherit pkgs lib;
           };
+          walker-standard-desktop = import ./tests/module/walker-standard-desktop.nix {
+            inherit
+              pkgs
+              lib
+              self
+              nixpkgs
+              home-manager
+              ;
+          };
           hyprland-bindings-agent-conflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
             inherit pkgs;
           };
