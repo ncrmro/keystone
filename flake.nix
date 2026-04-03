@@ -93,6 +93,11 @@
       url = "github:grafana/mcp-grafana";
       flake = false;
     };
+
+    lfs-s3-src = {
+      url = "github:nicolas-graves/lfs-s3/0.2.1";
+      flake = false;
+    };
   };
 
   outputs =
@@ -120,6 +125,7 @@
       kinda-nvim-hx,
       deepwork,
       grafana-mcp-src,
+      lfs-s3-src,
       ...
     }:
     let
@@ -203,6 +209,7 @@
           agenix
           deepwork
           grafana-mcp-src
+          lfs-s3-src
           ;
       };
 
@@ -435,6 +442,7 @@
             zellij-tab-name
             chrome-devtools-mcp
             grafana-mcp
+            lfs-s3
             deepwork-library-jobs
             keystone-deepwork-jobs
             keystone-conventions
