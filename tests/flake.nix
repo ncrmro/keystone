@@ -71,7 +71,6 @@
         test-hyprland = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           modules = [
-            home-manager.nixosModules.home-manager
             keystone.nixosModules.operating-system
             keystone.nixosModules.desktop
             ../vms/test-hyprland/configuration.nix

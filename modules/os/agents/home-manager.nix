@@ -51,7 +51,6 @@ in
               { pkgs, osConfig, ... }:
               {
                 imports = [
-                  ../../terminal/default.nix
                   ../../notes/default.nix
                 ];
 

@@ -257,7 +257,6 @@
             useUserPackages = true;
             sharedModules = [
               self.homeModules.terminal
-              self.homeModules.desktop
             ];
           };
         };
@@ -269,6 +268,9 @@
             ./modules/desktop/nixos.nix
           ];
           _module.args.keystoneInputs = keystoneInputs;
+          home-manager.sharedModules = [
+            self.homeModules.desktop
+          ];
         };
 
         # Server module - VPN, monitoring, mail, binary cache (optional services)
@@ -389,6 +391,9 @@
             inherit pkgs lib;
           };
           keystone-secrets-menu = import ./tests/module/keystone-secrets-menu.nix {
+            inherit pkgs lib;
+          };
+          keystone-update-menu = import ./tests/module/keystone-update-menu.nix {
             inherit pkgs lib;
           };
           hyprland-bindings-agent-conflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {

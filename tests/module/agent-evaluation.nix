@@ -35,7 +35,6 @@ let
             nixpkgs.overlays = [ self.overlays.default ];
           }
           agenix.nixosModules.default
-          home-manager.nixosModules.home-manager
           self.nixosModules.operating-system
           {
             # Minimal required config for evaluation
@@ -43,10 +42,8 @@ let
             boot.loader.systemd-boot.enable = true;
             networking.hostName = "test-host";
 
-            # Import keystone home-manager modules globally for all users
-            # so the bridge in users.nix has options to target.
+            # Override shared Home Manager defaults added by operating-system.
             home-manager.sharedModules = [
-              self.homeModules.terminal
               {
                 # Disable sandbox during evaluation tests to avoid external
                 # dependency issues (like electron_40 being missing in nixpkgs)

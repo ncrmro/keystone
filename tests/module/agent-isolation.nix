@@ -32,7 +32,6 @@ pkgs.testers.nixosTest {
     }:
     {
       imports = [
-        home-manager.nixosModules.home-manager
         self.nixosModules.operating-system
       ];
 
