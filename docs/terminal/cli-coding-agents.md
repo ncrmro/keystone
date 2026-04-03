@@ -130,3 +130,45 @@ The DeepWork MCP server binary (`pkgs.keystone.deepwork`) is installed by
 In locked mode both resolve to Nix store copies (`pkgs.keystone.deepwork-library-jobs`
 and `pkgs.keystone.keystone-deepwork-jobs`). In dev mode both resolve to local
 checkouts.
+
+## Grafana MCP integration
+
+When `keystone.terminal.grafana.mcp.enable = true`, the Grafana MCP server is
+registered across all four CLIs automatically. The URL must be set:
+
+```nix
+keystone.terminal.grafana.mcp = {
+  enable = true;
+  url = "https://grafana.example.com";
+};
+```
+
+The Grafana MCP server uses a wrapper script that sources the
+`GRAFANA_API_KEY` runtime secret from `/run/agenix/grafana-api-token`
+before launching `mcp-grafana`. This ensures the credential is available to
+the MCP process regardless of how the CLI tool spawns it.
+
+### Verifying Grafana MCP after deployment
+
+1. **Check generated config** — after `ks build` or `ks switch`, inspect the
+   live Codex configuration:
+
+   ```bash
+   grep -A3 'mcp_servers.grafana' ~/.codex/config.toml
+   ```
+
+   Expected output includes `command = "..."` and
+   `env = { GRAFANA_URL = "https://..." }`.
+
+2. **Run the flake check** — the `codex-mcp-config` check validates Grafana
+   and DeepWork registration at evaluation time:
+
+   ```bash
+   nix build .#checks.x86_64-linux.codex-mcp-config
+   ```
+
+3. **Test in a Codex session** — start Codex and query the Grafana MCP:
+
+   ```
+   list_mcp_resources(server="grafana")
+   ```

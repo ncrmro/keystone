@@ -290,12 +290,20 @@ in
             return "{ " + items + " }"
           return format_scalar(value)
 
+      def is_leaf_dict(d):
+          """A dict whose values are all non-dict scalars — render inline."""
+          return all(
+              not isinstance(v, dict)
+              and not (isinstance(v, list) and v and all(isinstance(i, dict) for i in v))
+              for v in d.values()
+          )
+
       def write_table(lines, path, table):
           scalars = []
           child_tables = []
           array_tables = []
           for key, value in table.items():
-              if isinstance(value, dict):
+              if isinstance(value, dict) and not is_leaf_dict(value):
                   child_tables.append((key, value))
               elif isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
                   array_tables.append((key, value))

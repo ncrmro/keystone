@@ -411,6 +411,14 @@
           agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
             inherit pkgs lib;
           };
+          codex-mcp-config = import ./tests/module/codex-mcp-config.nix {
+            inherit
+              pkgs
+              lib
+              self
+              home-manager
+              ;
+          };
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)
