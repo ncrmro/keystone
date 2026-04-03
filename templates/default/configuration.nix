@@ -35,11 +35,11 @@
     # ──────────────────────────────────────────────────────────────────────────
     #
     # Keystone supports two filesystem types:
+    #   - ext4: Simpler encrypted laptop layout with built-in Disko partitioning
     #   - zfs: Full features (snapshots, compression, checksums, native encryption)
-    #   - ext4: Simple/legacy (LUKS encryption only, no advanced features)
     #
     storage = {
-      type = "zfs"; # "zfs" (recommended) or "ext4"
+      type = "ext4"; # Laptop default. Set to "zfs" to opt into ZFS features.
 
       # Disk device(s) - ALWAYS use /dev/disk/by-id/ paths for stability
       # Find your disk IDs with: ls -la /dev/disk/by-id/
@@ -50,7 +50,7 @@
         # "/dev/disk/by-id/YOUR-SECOND-DISK-ID"
       ];
 
-      # Multi-disk mode (only for ZFS with 2+ disks)
+      # Multi-disk mode (ZFS only - ext4 always uses single-disk mode)
       # Options: "single", "mirror", "stripe", "raidz1", "raidz2", "raidz3"
       #   - single: One disk (default)
       #   - mirror: RAID1 - all disks mirror each other (2+ disks)
@@ -65,7 +65,7 @@
       swap.size = "16G"; # Swap partition (set to "0" to disable)
       # credstore.size = "100M";  # LUKS credstore for ZFS keys (ZFS only)
 
-      # ZFS-specific options
+      # ZFS-specific options (ignored when type = "ext4")
       zfs = {
         compression = "zstd"; # "zstd" (best), "lz4" (fastest), "off"
         atime = "off"; # Access time updates (off = better performance)
@@ -137,11 +137,10 @@
         fullName = "System Administrator"; # TODO: Change to your name
         email = "admin@example.com"; # TODO: Change to your email
 
-        # Groups - add "wheel" for sudo access
+        # Groups - add "wheel" for sudo access.
+        # Desktop users automatically receive desktop access groups from Keystone.
         extraGroups = [
           "wheel" # Required for sudo
-          # "networkmanager"  # For desktop/laptop
-          # "video" "audio"   # For desktop/laptop
         ];
 
         # Authentication - choose ONE method:
@@ -168,6 +167,7 @@
         };
 
         # Desktop environment (for use with keystone.nixosModules.desktop)
+        # Enabling this also activates the top-level desktop defaults.
         desktop = {
           enable = false; # Set to true when using desktop module
           hyprland = {
@@ -194,7 +194,7 @@
       # alice = {
       #   fullName = "Alice Developer";
       #   email = "alice@example.com";
-      #   extraGroups = [ "wheel" "networkmanager" "video" "audio" ];
+      #   extraGroups = [ "wheel" ];
       #   hashedPassword = "$6$...";  # mkpasswd -m sha-512
       #   authorizedKeys = [
       #     "ssh-ed25519 AAAAC3... alice@laptop"
