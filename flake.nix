@@ -227,6 +227,7 @@
         # consumers are in the desktop tree or inside the installer's nested eval.
         operating-system = {
           imports = [
+            home-manager.nixosModules.home-manager
             disko.nixosModules.disko
             lanzaboote.nixosModules.lanzaboote
             agenix.nixosModules.default
@@ -243,6 +244,14 @@
           keystone._repoInputs = {
             keystone = self;
             inherit deepwork;
+          };
+          home-manager = {
+            useGlobalPkgs = true;
+            useUserPackages = true;
+            sharedModules = [
+              self.homeModules.terminal
+              self.homeModules.desktop
+            ];
           };
         };
 
