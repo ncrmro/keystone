@@ -130,7 +130,7 @@ extract_urls_json() {
     return
   fi
 
-  grep -Eo 'https?://[^ )"'"'"']+' "$file" 2>/dev/null | sort -u | jq -R . | jq -s .
+  grep -Eo 'https?://[^ )"'"'"']+' "$file" 2>/dev/null | sort -u | jq -R . | jq -s . || printf '[]\n'
 }
 
 extract_issue_urls_json() {
@@ -231,7 +231,8 @@ stage_builtin_profile() {
 
 resolve_stage_runtime() {
   local stage_name="$1"
-  local task_json="${2:-{}}"
+  local task_json
+  task_json="${2:-"{}"}"
   local built_in_profile stage_json
 
   built_in_profile=$(stage_builtin_profile "$stage_name")
