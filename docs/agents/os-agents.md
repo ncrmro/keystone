@@ -7,6 +7,10 @@ description: Non-interactive NixOS user accounts for autonomous LLM-driven opera
 
 OS agents are non-interactive NixOS user accounts designed for autonomous LLM-driven operation. Each agent gets an isolated home directory, SSH keys, mail, browser, and optional workspace cloning.
 
+For how these OS-agent identities are exposed inside Claude Code, Gemini CLI,
+Codex, and OpenCode as native custom agents, see
+[Native CLI agents](native-cli-agents.md).
+
 ## Quick Start
 
 ```nix

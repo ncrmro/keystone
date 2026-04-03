@@ -167,6 +167,9 @@ Keystone manages multiple AI coding assistants (Claude Code, Gemini CLI, OpenCod
 
 For the current architecture and native-launch direction, see [CLI coding agents](cli-coding-agents.md) and [Spec: Native CLI agent launch surfaces](../../specs/006-native-cli-agent-launch-surfaces.md).
 
+For the dedicated agent-identity documentation, including per-tool native agent
+files and launch semantics, see [Native CLI agents](../agents/native-cli-agents.md).
+
 ## DeepWork
 
 The DeepWork module integrates workflow-driven development with quality gates into the terminal environment.

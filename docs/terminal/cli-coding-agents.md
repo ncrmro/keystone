@@ -10,6 +10,10 @@ OpenCode — through a shared Nix module stack. Each CLI receives identical
 DeepWork integration, MCP server definitions, and Keystone workflow commands,
 adapted to the tool's native configuration format.
 
+For the agent-identity layer specifically, including OS-agent vs archetype
+generation and per-tool launch behavior, see
+[Native CLI agents](../agents/native-cli-agents.md).
+
 ## Architecture
 
 Three terminal modules collaborate:

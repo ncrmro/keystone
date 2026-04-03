@@ -9,6 +9,10 @@ OS agents are non-interactive NixOS user accounts designed for autonomous LLM-dr
 
 This page documents the **human-side tooling** for interacting with agents.
 
+For how Keystone projects OS-agent identities and archetype specialists into
+Claude Code, Gemini CLI, Codex, and OpenCode, see
+[Native CLI agents](native-cli-agents.md).
+
 ## agentctl
 
 `agentctl` is the unified CLI for managing agent services and mail from the host. It runs systemctl/journalctl commands as the agent user via a hardened sudo helper.
