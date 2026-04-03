@@ -40,6 +40,7 @@ let
   keystone-deepwork-jobs-src = ../packages/keystone-deepwork-jobs;
   keystone-conventions-src = ../packages/keystone-conventions;
   slidev-src = ../packages/slidev;
+  immich-analyze-src = ../packages/immich-analyze;
   himalaya-flake = himalaya;
   calendula-flake = calendula;
   cardamum-flake = cardamum;
@@ -123,6 +124,7 @@ final: prev:
       inherit grafana-mcp-src;
     };
     slidev = final.callPackage slidev-src { };
+    immich-analyze = final.callPackage immich-analyze-src { };
   }
   // final.lib.optionalAttrs final.stdenv.isLinux {
     # ghostty only has .default for Linux systems
