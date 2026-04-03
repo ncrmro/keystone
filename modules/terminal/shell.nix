@@ -173,7 +173,7 @@ in
           ];
           theme = "robbyrussell";
         };
-        initExtra = ''
+        initContent = ''
           if [[ -z "''${KEYSTONE_SYSTEM_FLAKE:-}" ]] && command -v keystone-current-system-flake >/dev/null 2>&1; then
             _keystone_system_flake="$(keystone-current-system-flake 2>/dev/null || true)"
             if [[ -n "$_keystone_system_flake" ]]; then

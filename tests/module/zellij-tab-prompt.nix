@@ -30,10 +30,7 @@ let
   };
 
   zellijConfig = hmConfig.config.xdg.configFile."zellij/config.kdl".text or "";
-  zshInit =
-    (hmConfig.config.programs.zsh.initContent or "")
-    + "\n"
-    + (hmConfig.config.programs.zsh.initExtra or "");
+  zshInit = hmConfig.config.programs.zsh.initContent or "";
 in
 pkgs.runCommand "zellij-tab-prompt-check" { } ''
     zellij_config_file="$TMPDIR/zellij-config.kdl"

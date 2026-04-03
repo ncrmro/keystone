@@ -54,6 +54,9 @@ let
   deepwork-flake = deepwork;
 in
 final: prev:
+let
+  system = final.stdenv.hostPlatform.system;
+in
 {
   keystone = {
     zesh = final.callPackage zesh-src { };
@@ -74,13 +77,13 @@ final: prev:
     cfait = final.callPackage cfait-src { };
     zellij-tab-name = final.callPackage zellij-tab-name-src { };
     hyprpolkitagent = final.callPackage hyprpolkitagent-src { };
-    himalaya = himalaya-flake.packages.${final.system}.default;
-    calendula = calendula-flake.packages.${final.system}.default;
-    cardamum = cardamum-flake.packages.${final.system}.default;
+    himalaya = himalaya-flake.packages.${system}.default;
+    calendula = calendula-flake.packages.${system}.default;
+    cardamum = cardamum-flake.packages.${system}.default;
     # Comodoro upstream flake is missing dbus from buildInputs/nativeBuildInputs.
     # The postInstall phase runs the binary (to generate completions) before
     # fixup patches RPATH, so we also set LD_LIBRARY_PATH during install.
-    comodoro = comodoro-flake.packages.${final.system}.default.overrideAttrs (
+    comodoro = comodoro-flake.packages.${system}.default.overrideAttrs (
       old:
       let
         libPath = final.lib.makeLibraryPath [ final.dbus ];
@@ -101,16 +104,16 @@ final: prev:
       }
     );
     # AI coding agents from llm-agents.nix
-    claude-code = llm-agents-flake.packages.${final.system}.claude-code;
-    gemini-cli = llm-agents-flake.packages.${final.system}.gemini-cli;
-    codex = llm-agents-flake.packages.${final.system}.codex;
-    opencode = llm-agents-flake.packages.${final.system}.opencode;
+    claude-code = llm-agents-flake.packages.${system}.claude-code;
+    gemini-cli = llm-agents-flake.packages.${system}.gemini-cli;
+    codex = llm-agents-flake.packages.${system}.codex;
+    opencode = llm-agents-flake.packages.${system}.opencode;
     # Browsers from browser-previews
-    google-chrome = browser-previews-flake.packages.${final.system}.google-chrome;
+    google-chrome = browser-previews-flake.packages.${system}.google-chrome;
     # Desktop tools from flake inputs
-    yazi = yazi-flake.packages.${final.system}.default;
-    agenix = agenix-flake.packages.${final.stdenv.hostPlatform.system}.default;
-    deepwork = deepwork-flake.packages.${final.system}.default;
+    yazi = yazi-flake.packages.${system}.default;
+    agenix = agenix-flake.packages.${system}.default;
+    deepwork = deepwork-flake.packages.${system}.default;
     deepwork-library-jobs = final.callPackage deepwork-library-jobs-src {
       deepwork-src = deepwork-flake;
     };
@@ -131,11 +134,11 @@ final: prev:
   }
   // final.lib.optionalAttrs final.stdenv.isLinux {
     # ghostty only has .default for Linux systems
-    ghostty = ghostty-flake.packages.${final.system}.default;
+    ghostty = ghostty-flake.packages.${system}.default;
   };
   # Top-level overrides so programs.ghostty/yazi use flake versions
-  yazi = yazi-flake.packages.${final.system}.default;
+  yazi = yazi-flake.packages.${system}.default;
 }
 // prev.lib.optionalAttrs prev.stdenv.isLinux {
-  ghostty = ghostty-flake.packages.${final.system}.default;
+  ghostty = ghostty-flake.packages.${prev.stdenv.hostPlatform.system}.default;
 }

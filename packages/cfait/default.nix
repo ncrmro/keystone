@@ -17,8 +17,8 @@ rustPlatform.buildRustPackage rec {
   cargoHash = "sha256-34sp31ZmlNn0q9vR7sDRm8eHHiRuOzfYJVX3nB2IqMs=";
 
   # Only build the TUI binary (default feature), skip GUI and mobile
-  buildNoDefaultFeatures = true;
-  buildFeatures = [ "tui" ];
+  cargoBuildNoDefaultFeatures = true;
+  cargoBuildFeatures = [ "tui" ];
 
   # Tests require system TLS certificates unavailable in the Nix sandbox
   doCheck = false;

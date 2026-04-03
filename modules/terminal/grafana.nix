@@ -54,7 +54,7 @@ in
 
     # Export GRAFANA_API_KEY from agenix secret at shell login.
     # Cannot use home.sessionVariables — the secret is a runtime file, not a Nix store path.
-    programs.zsh.initExtra = ''
+    programs.zsh.initContent = ''
       if [ -f /run/agenix/grafana-api-token ]; then
         export GRAFANA_API_KEY="$(tr -d '\n' < /run/agenix/grafana-api-token)"
       fi

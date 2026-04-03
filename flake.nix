@@ -164,26 +164,37 @@
           boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
         }
       ];
+
+      templateLib = import ./lib/templates.nix {
+        inherit
+          self
+          nixpkgs
+          home-manager
+          ;
+        lib = nixpkgs.lib;
+      };
     in
     {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
 
-      # Build an installer ISO with the given SSH keys baked in.
-      # Consumer flakes call this instead of duplicating the module wiring.
-      lib.mkInstallerIso =
-        {
-          nixpkgs,
-          sshKeys ? [ ],
-          system ? "x86_64-linux",
-        }:
-        (nixpkgs.lib.nixosSystem {
-          inherit system;
-          modules = installerModules system ++ [
-            {
-              keystone.installer.sshKeys = sshKeys;
-            }
-          ];
-        }).config.system.build.isoImage;
+      lib = templateLib // {
+        # Build an installer ISO with the given SSH keys baked in.
+        # Consumer flakes call this instead of duplicating the module wiring.
+        mkInstallerIso =
+          {
+            nixpkgs,
+            sshKeys ? [ ],
+            system ? "x86_64-linux",
+          }:
+          (nixpkgs.lib.nixosSystem {
+            inherit system;
+            modules = installerModules system ++ [
+              {
+                keystone.installer.sshKeys = sshKeys;
+              }
+            ];
+          }).config.system.build.isoImage;
+      };
 
       # ISO configuration without SSH keys (use lib.mkInstallerIso for keys)
       # Note: Test/dev configurations are in ./tests/flake.nix
@@ -499,7 +510,7 @@
               gettext
               bash
               shellcheck
-              deepwork.packages.${pkgs.system}.default
+              deepwork.packages.${pkgs.stdenv.hostPlatform.system}.default
               gh # GitHub CLI
               python3
             ];
