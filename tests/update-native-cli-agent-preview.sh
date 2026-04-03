@@ -22,10 +22,10 @@ cat > "$manifest_path" <<EOF
   "publishedCommands": ["ks", "ks.notes", "ks.projects"],
   "repos": ["ncrmro/keystone"],
   "agents": {
-    "captain-tofu": {
+    "alan": {
       "host": "keystone",
       "archetype": "engineer",
-      "notesPath": "/home/agent-captain-tofu/notes",
+      "notesPath": "/home/agent-alan/notes",
       "mcpServers": {
         "deepwork": {
           "command": "/nix/store/example-deepwork/bin/deepwork",
