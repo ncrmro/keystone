@@ -111,8 +111,7 @@ one fake interface.
 
 Upstream docs:
 
-- <https://code.claude.com/docs/llms.txt>
-- <https://docs.anthropic.com/en/docs/claude-code>
+- <https://code.claude.com/docs/en/sub-agents>
 
 ### Gemini CLI
 
@@ -123,7 +122,7 @@ Upstream docs:
 
 Upstream docs:
 
-- Gemini CLI subagents documentation as referenced by the project docs bundle
+- <https://geminicli.com/docs/core/subagents/>
 
 ### Codex
 
@@ -134,8 +133,7 @@ Upstream docs:
 
 Upstream docs:
 
-- <https://developers.openai.com/codex/concepts/subagents>
-- Codex custom-agent docs referenced in the project docs bundle
+- <https://developers.openai.com/codex/subagents>
 
 ### OpenCode
 
@@ -145,7 +143,7 @@ Upstream docs:
 
 Upstream docs:
 
-- OpenCode agents documentation referenced in the project docs bundle
+- <https://opencode.ai/docs/agents/>
 
 ## What Keystone does not normalize
 
