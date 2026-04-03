@@ -43,6 +43,7 @@ The intended workflow is:
 ## Related docs
 
 - [Desktop Keybindings](desktop/keybindings.md)
+- [Screenshots](desktop/screenshots.md)
 - [Navigation](navigation.md)
 - [Walker](desktop/walker.md)
 - [Monitors](desktop/monitors.md)
