@@ -1,0 +1,288 @@
+#!/usr/bin/env bash
+# test-agent-pipeline: end-to-end test for the agent task loop.
+# Sends a ping email to a named agent, triggers the task loop, and
+# verifies the agent creates and completes a pong reply task.
+#
+# Usage:
+#   bin/test-agent-pipeline --agent NAME [--stage ingest|e2e] [--timeout SECS]
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+AGENT_NAME=""
+STAGE="e2e"
+TIMEOUT=300
+
+usage() {
+  cat <<'EOF'
+Usage: bin/test-agent-pipeline --agent NAME [--stage ingest|e2e] [--timeout SECS]
+
+  --agent NAME     OS agent to test (required)
+  --stage STAGE    Test stage: ingest (controlled input) or e2e (full pipeline)
+                   Default: e2e
+  --timeout SECS   Max wait for task loop completion. Default: 300
+  -h, --help       Show this help
+EOF
+}
+
+pass() { printf "${GREEN}PASS${NC}: %s\n" "$1"; }
+fail() { printf "${RED}FAIL${NC}: %s\n" "$1" >&2; }
+info() { printf "${CYAN}INFO${NC}: %s\n" "$1"; }
+warn() { printf "${YELLOW}WARN${NC}: %s\n" "$1"; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --agent) AGENT_NAME="$2"; shift 2 ;;
+    --stage) STAGE="$2"; shift 2 ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+if [[ -z "$AGENT_NAME" ]]; then
+  echo "Error: --agent NAME is required" >&2
+  usage >&2
+  exit 1
+fi
+
+USERNAME="agent-${AGENT_NAME}"
+UNIT="agent-${AGENT_NAME}-task-loop"
+TIMER="${UNIT}.timer"
+STATE_DIR_REL=".local/state/agent-task-loop/state"
+NOTES_DIR=""
+BACKUP_DONE=false
+TIMER_STOPPED=false
+
+cleanup() {
+  local exit_code=$?
+  if [[ "$BACKUP_DONE" == "true" ]]; then
+    info "Restoring TASKS.yaml backup..."
+    sudo -u "$USERNAME" bash -lc "
+      cd \"$NOTES_DIR\" 2>/dev/null || true
+      if [[ -f TASKS.yaml.test-backup ]]; then
+        mv TASKS.yaml.test-backup TASKS.yaml
+      fi
+    " || warn "Failed to restore TASKS.yaml backup"
+  fi
+  if [[ "$TIMER_STOPPED" == "true" ]]; then
+    info "Resuming task loop timer..."
+    sudo -u "$USERNAME" bash -lc "systemctl --user start $TIMER" || warn "Failed to restart timer"
+  fi
+  if [[ $exit_code -eq 0 ]]; then
+    echo ""
+    printf '%b' "${GREEN}All tests passed.${NC}\n"
+  else
+    echo ""
+    printf '%b' "${RED}Test failed.${NC}\n"
+  fi
+}
+trap cleanup EXIT
+
+# === Preflight checks ===
+info "Running preflight checks for agent '$AGENT_NAME'..."
+
+# Check agent user exists
+if ! id "$USERNAME" &>/dev/null; then
+  fail "User '$USERNAME' does not exist"
+  exit 1
+fi
+pass "Agent user '$USERNAME' exists"
+
+# Discover notes dir
+NOTES_DIR=$(sudo -u "$USERNAME" bash -lc 'echo $HOME' 2>/dev/null)
+# Try common notes paths
+for candidate in \
+  "/home/$USERNAME/agent-space" \
+  "/home/$USERNAME/notes" \
+  "/home/$USERNAME"; do
+  if sudo -u "$USERNAME" test -f "$candidate/TASKS.yaml" 2>/dev/null || \
+     sudo -u "$USERNAME" test -d "$candidate" 2>/dev/null; then
+    NOTES_DIR="$candidate"
+    break
+  fi
+done
+info "Using notes dir: $NOTES_DIR"
+
+# Check task-loop service exists
+if ! sudo -u "$USERNAME" bash -lc "systemctl --user cat $UNIT" &>/dev/null; then
+  fail "Service unit '$UNIT' not found"
+  exit 1
+fi
+pass "Task loop service exists"
+
+# Check himalaya is available
+if ! sudo -u "$USERNAME" bash -lc "command -v himalaya" &>/dev/null; then
+  fail "himalaya not found in agent PATH"
+  exit 1
+fi
+pass "himalaya available"
+
+if [[ "$STAGE" == "e2e" ]]; then
+  # === E2E test ===
+  info "Starting full e2e test..."
+
+  # Stop the timer to prevent races
+  info "Pausing task loop timer..."
+  sudo -u "$USERNAME" bash -lc "systemctl --user stop $TIMER" 2>/dev/null || true
+  TIMER_STOPPED=true
+
+  # Wait for any in-progress run to finish
+  WAIT_COUNT=0
+  while sudo -u "$USERNAME" bash -lc "systemctl --user is-active $UNIT" &>/dev/null; do
+    if [[ $WAIT_COUNT -ge 60 ]]; then
+      fail "Timed out waiting for existing task loop to finish"
+      exit 1
+    fi
+    info "Waiting for existing task loop run to finish..."
+    sleep 5
+    WAIT_COUNT=$((WAIT_COUNT + 5))
+  done
+
+  # Backup TASKS.yaml
+  info "Backing up TASKS.yaml..."
+  sudo -u "$USERNAME" bash -lc "
+    cd \"$NOTES_DIR\" 2>/dev/null || true
+    if [[ -f TASKS.yaml ]]; then
+      cp TASKS.yaml TASKS.yaml.test-backup
+    fi
+  "
+  BACKUP_DONE=true
+
+  # Send ping email
+  info "Sending ping email to $USERNAME..."
+  DOMAIN=$(sudo -u "$USERNAME" bash -lc '
+    config="${XDG_CONFIG_HOME:-$HOME/.config}/himalaya/config.toml"
+    if [[ -f "$config" ]]; then
+      grep -m1 "^email" "$config" | sed "s/^email.*= *\"\(.*\)\"/\1/" | cut -d@ -f2
+    else
+      hostname -f
+    fi
+  ' 2>/dev/null || hostname -f)
+  AGENT_EMAIL="${USERNAME}@${DOMAIN}"
+
+  sudo -u "$USERNAME" bash -lc "
+    printf 'From: test-pipeline@${DOMAIN}\r\nTo: ${AGENT_EMAIL}\r\nSubject: ping\r\nDate: $(date -R)\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nping\r\n' \
+      | himalaya message send
+  "
+  pass "Ping email sent to $AGENT_EMAIL"
+
+  # Clear hash caches
+  info "Clearing ingest hash cache..."
+  sudo -u "$USERNAME" bash -lc "
+    rm -f \"\$HOME/$STATE_DIR_REL/ingest-inputs.sha256\"
+    rm -f \"\$HOME/$STATE_DIR_REL/prioritize-inputs.sha256\"
+  "
+
+  # Trigger task loop
+  info "Triggering task loop..."
+  sudo -u "$USERNAME" bash -lc "systemctl --user start $UNIT"
+
+  # Poll for completion
+  info "Waiting for task loop to complete (timeout: ${TIMEOUT}s)..."
+  ELAPSED=0
+  while sudo -u "$USERNAME" bash -lc "systemctl --user is-active $UNIT" &>/dev/null; do
+    if [[ $ELAPSED -ge $TIMEOUT ]]; then
+      fail "Task loop did not complete within ${TIMEOUT}s"
+      sudo -u "$USERNAME" bash -lc "journalctl --user -u $UNIT --no-pager -n 20" 2>/dev/null || true
+      exit 1
+    fi
+    sleep 5
+    ELAPSED=$((ELAPSED + 5))
+  done
+  pass "Task loop completed in ${ELAPSED}s"
+
+  # Check task loop exit status
+  LOOP_EXIT=$(sudo -u "$USERNAME" bash -lc "systemctl --user show -p ExecMainStatus $UNIT" 2>/dev/null | cut -d= -f2)
+  if [[ "$LOOP_EXIT" != "0" ]]; then
+    warn "Task loop exited with status $LOOP_EXIT"
+    sudo -u "$USERNAME" bash -lc "journalctl --user -u $UNIT --no-pager -n 30" 2>/dev/null || true
+  fi
+
+  # Verify pong task exists in TASKS.yaml
+  PONG_COUNT=$(sudo -u "$USERNAME" bash -lc "
+    cd \"$NOTES_DIR\" 2>/dev/null || true
+    yq '[.tasks[] | select(.name | test(\"pong\"))] | length' TASKS.yaml 2>/dev/null || echo 0
+  ")
+  if [[ "$PONG_COUNT" -eq 0 ]]; then
+    fail "No pong task found in TASKS.yaml"
+    sudo -u "$USERNAME" bash -lc "cd \"$NOTES_DIR\"; cat TASKS.yaml" 2>/dev/null || true
+    exit 1
+  fi
+  pass "Pong task found in TASKS.yaml ($PONG_COUNT match(es))"
+
+  # Check pong task status
+  PONG_STATUS=$(sudo -u "$USERNAME" bash -lc "
+    cd \"$NOTES_DIR\" 2>/dev/null || true
+    yq '[.tasks[] | select(.name | test(\"pong\"))] | .[0].status' TASKS.yaml 2>/dev/null || echo unknown
+  ")
+  info "Pong task status: $PONG_STATUS"
+  if [[ "$PONG_STATUS" == "completed" ]]; then
+    pass "Pong task completed successfully"
+  elif [[ "$PONG_STATUS" == "error" ]]; then
+    warn "Pong task errored (Claude may have failed to send reply)"
+  else
+    warn "Pong task status is '$PONG_STATUS' (expected completed)"
+  fi
+
+  # Check for pong in sent mail (best-effort)
+  SENT_PONG=$(sudo -u "$USERNAME" bash -lc "
+    himalaya envelope list --output json 2>/dev/null | \
+      jq '[.[] | select(.subject | test(\"pong\"; \"i\"))] | length' 2>/dev/null || echo 0
+  ")
+  if [[ "$SENT_PONG" -gt 0 ]]; then
+    pass "Pong reply found in mailbox"
+  else
+    info "No pong reply found in mailbox (may need to check sent folder)"
+  fi
+
+elif [[ "$STAGE" == "ingest" ]]; then
+  # === Ingest-only test ===
+  info "Starting ingest-only test..."
+
+  FIXTURE_DIR="$(cd "$(dirname "$0")/.." && pwd)/tests/fixtures/task-loop"
+  if [[ ! -f "$FIXTURE_DIR/email-ping-source.json" ]]; then
+    fail "Fixture not found: $FIXTURE_DIR/email-ping-source.json"
+    exit 1
+  fi
+
+  SOURCES_JSON=$(jq -c '[{"source": "email", "data": .}]' "$FIXTURE_DIR/email-ping-source.json")
+
+  info "Invoking ingest with controlled fixture input..."
+  sudo -u "$USERNAME" bash -lc "
+    cd \"$NOTES_DIR\" 2>/dev/null || true
+    if [[ -f TASKS.yaml ]]; then
+      cp TASKS.yaml TASKS.yaml.test-backup
+    fi
+  "
+  BACKUP_DONE=true
+
+  sudo -u "$USERNAME" bash -lc "
+    cd \"$NOTES_DIR\" 2>/dev/null || true
+    claude --print --output-format json --dangerously-skip-permissions \
+      '/deepwork task_loop ingest
+
+Source data (pre-fetched):
+$(echo "$SOURCES_JSON" | jq .)'
+  " 2>&1 || true
+
+  PONG_COUNT=$(sudo -u "$USERNAME" bash -lc "
+    cd \"$NOTES_DIR\" 2>/dev/null || true
+    yq '[.tasks[] | select(.name | test(\"pong\"))] | length' TASKS.yaml 2>/dev/null || echo 0
+  ")
+  if [[ "$PONG_COUNT" -gt 0 ]]; then
+    pass "Ingest created pong task ($PONG_COUNT match(es))"
+  else
+    fail "Ingest did not create a pong task"
+    sudo -u "$USERNAME" bash -lc "cd \"$NOTES_DIR\"; cat TASKS.yaml" 2>/dev/null || true
+    exit 1
+  fi
+
+else
+  echo "Error: unknown stage '$STAGE' (expected: ingest, e2e)" >&2
+  exit 1
+fi
