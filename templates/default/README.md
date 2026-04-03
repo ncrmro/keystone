@@ -48,12 +48,25 @@ ls -la /dev/disk/by-id/
 
 Look for entries like `nvme-Samsung_SSD_980_PRO_2TB_...` or `ata-WDC_WD10EZEX_...`
 
-### 4. Choose Your Configuration
+### 4. Choose your storage and desktop configuration
 
-In `flake.nix`, the `operating-system` module is already imported. For desktops:
+The template defaults laptops to ext4:
 
-- Uncomment `keystone.nixosModules.desktop` for Hyprland desktop environment
-- Set `desktop.enable = true` in your user configuration
+- `storage.type = "ext4"` gives you Keystone's built-in encrypted single-disk laptop layout
+- `storage.type = "zfs"` opts into Keystone's ZFS layout and features
+
+Keystone's storage module already manages the Disko layout for both backends. You do not need a separate `disko.nix` in the template.
+
+For desktops:
+
+- Uncomment `keystone.nixosModules.desktop` in `flake.nix`
+- Set `desktop.enable = true` for the user who should get the desktop session
+
+Keystone will then automatically:
+
+- enable the top-level desktop defaults
+- pick that user as the default desktop login user
+- add the required desktop access groups to the NixOS user
 
 ### 5. Deploy
 
@@ -155,6 +168,10 @@ Generate and set `networking.hostId` in `configuration.nix`:
 ```bash
 head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
 ```
+
+### "Can I use ZFS instead of ext4?"
+
+Yes. Set `keystone.os.storage.type = "zfs"` in `configuration.nix`. Keystone will switch to its built-in ZFS Disko layout automatically.
 
 ### "Disk not found during boot"
 

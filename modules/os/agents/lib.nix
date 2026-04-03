@@ -97,10 +97,13 @@ let
     '';
 
   # All defined agents get OS users, home directories, services, etc.
-  # Feature-specific agent sets (desktop, mail, SSH) are filtered to only
-  # agents whose `host` matches this machine, so assertions and services
-  # for secrets/keys/configs don't fire on unrelated hosts.
-  localAgents = filterAttrs (_: agentCfg: agentCfg.host == config.networking.hostName) cfg;
+  # Feature-specific agent sets (desktop, mail, SSH) are filtered to agents
+  # whose `host` matches this machine. A null host means "use the current
+  # host/default placement," which keeps the legacy single-host behavior and
+  # allows tests and simple configs to omit an explicit host.
+  localAgents = filterAttrs (
+    _: agentCfg: agentCfg.host == null || agentCfg.host == config.networking.hostName
+  ) cfg;
 
   desktopAgents = filterAttrs (_: agentCfg: agentCfg.desktop.enable) localAgents;
   hasDesktopAgents = desktopAgents != { };

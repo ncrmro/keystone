@@ -133,6 +133,7 @@ For notes workflows, keep the shared owner note repos cloned at:
 > `nix flake check` SHOULD cover repo-wide `shellcheck`, repo-wide `nixfmt --check`, and deterministic command-contract tests for critical terminal and desktop backends such as `pz`, `ks`, `agentctl`, and Walker/Elephant menu adapters.
 > Agents MUST run `ks build` when a change affects host integration, generated assets, or behavior that isolated flake checks cannot validate.
 > Agents MUST NOT treat `ks build` as a substitute for adding a deterministic flake check when one can be added.
+> For agenix user-home secrets, agents MUST ensure both sides of the contract are updated together: the encrypted secret recipients must include every host where that Home Manager user is installed, and the corresponding `age.secrets.<name>` declaration must exist on each of those hosts when the profile expects `/run/agenix/<name>` at runtime.
 
 ```bash
 nix flake check       # First pass: repo-native checks and CI parity

@@ -198,7 +198,12 @@
         };
 
         test-template-evaluation = import ./module/template-evaluation.nix {
-          inherit pkgs lib;
+          inherit
+            pkgs
+            lib
+            home-manager
+            nixpkgs
+            ;
           self = keystone;
         };
 

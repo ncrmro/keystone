@@ -36,6 +36,12 @@ in
       default = false;
       description = "Enable perception CLI tools (PDF parsing, voice transcription, photo search).";
     };
+
+    search.enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Install the Keystone Photos search CLI in the user's environment.";
+    };
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {

@@ -257,6 +257,11 @@ let
     builtins.readFile ./keystone-accounts-menu.sh
   );
 
+  # Agenix secret categories, inspection, and rekey controller
+  keystoneSecretsMenu = pkgs.writeShellScriptBin "keystone-secrets-menu" (
+    builtins.readFile ./keystone-secrets-menu.sh
+  );
+
   # Keybindings viewer script
   keystoneMenuKeybindings = pkgs.writeShellScriptBin "keystone-menu-keybindings" (
     builtins.readFile ./keystone-menu-keybindings.sh
@@ -455,6 +460,27 @@ let
         pkgs.libnotify
         pkgs.util-linux
         pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-secrets-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-secrets-menu.sh";
+      package = keystoneSecretsMenu;
+      runtimeInputs = [
+        pkgs.keystone.agenix
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.ghostty
+        pkgs.gnugrep
+        pkgs.gnused
+        pkgs.jq
+        pkgs.less
+        pkgs.libnotify
+        pkgs.ripgrep
+        pkgs.util-linux
+        pkgs.walker
+        pkgs.yubikey-manager
       ];
     })
     (mkHomeScriptCommand {

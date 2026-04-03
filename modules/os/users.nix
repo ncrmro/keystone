@@ -25,6 +25,14 @@ let
 
   # Whether the keystone desktop NixOS module is imported (gates home-manager desktop config)
   hasDesktopModule = options.keystone ? desktop;
+  desktopUsers = filterAttrs (_: userCfg: userCfg.desktop.enable) cfg;
+  desktopUsernames = attrNames desktopUsers;
+  inferredDesktopUser = if desktopUsernames == [ ] then null else head desktopUsernames;
+  desktopAccessGroups = [
+    "networkmanager"
+    "video"
+    "audio"
+  ];
 
   # Check if ZFS is being used
   # TODO: Re-evaluate ZFS home folder management. Current implementation can interfere with legacy setups.
@@ -160,30 +168,36 @@ in
         ) cfg
       );
 
-      warnings = concatLists (
-        mapAttrsToList (
-          username: userCfg:
-          optional
-            (userCfg.desktop.screenshotSync.enable && !(config.age.secrets ? "${username}-immich-api-key"))
-            ''
-              Screenshot sync is enabled for user '${username}', but agenix secret "${username}-immich-api-key" is not declared yet.
+      warnings =
+        concatLists (
+          mapAttrsToList (
+            username: userCfg:
+            optional
+              (userCfg.desktop.screenshotSync.enable && !(config.age.secrets ? "${username}-immich-api-key"))
+              ''
+                Screenshot sync is enabled for user '${username}', but agenix secret "${username}-immich-api-key" is not declared yet.
 
-              To finish setup:
-              1. Add to agenix-secrets/secrets.nix:
-                 "secrets/${username}-immich-api-key.age".publicKeys = adminKeys ++ [ systems.${hostname} ];
-              2. Create the secret with the user's Immich API key:
-                 cd agenix-secrets && agenix -e secrets/${username}-immich-api-key.age
-              3. If keystone.secrets.repo is null, declare it in host config:
-                 age.secrets.${username}-immich-api-key = {
-                   file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-immich-api-key.age";
-                   owner = "${username}";
-                   mode = "0400";
-                 };
+                To finish setup:
+                1. Add to agenix-secrets/secrets.nix:
+                   "secrets/${username}-immich-api-key.age".publicKeys = adminKeys ++ [ systems.${hostname} ];
+                2. Create the secret with the user's Immich API key:
+                   cd agenix-secrets && agenix -e secrets/${username}-immich-api-key.age
+                3. If keystone.secrets.repo is null, declare it in host config:
+                   age.secrets.${username}-immich-api-key = {
+                     file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-immich-api-key.age";
+                     owner = "${username}";
+                     mode = "0400";
+                   };
 
-              TODO: automate Immich API key provisioning and secret enrollment from Keystone tooling.
-            ''
-        ) screenshotUsers
-      );
+                TODO: automate Immich API key provisioning and secret enrollment from Keystone tooling.
+              ''
+          ) screenshotUsers
+        )
+        ++ optional (hasDesktopModule && length desktopUsernames > 1) ''
+          Multiple users have keystone.os.users.<name>.desktop.enable = true. Keystone defaulted keystone.desktop.user to "${inferredDesktopUser}".
+
+          Set keystone.desktop.user explicitly if a different desktop login user should own the session.
+        '';
 
       # Auto-declare age.secrets for sshAutoLoad when secrets.repo is set
       age.secrets = mkIf (config.keystone.secrets.repo != null) (
@@ -220,7 +234,11 @@ in
         description = userCfg.fullName;
         home = "/home/${username}";
         createHome = !useZfs; # Let ZFS dataset provide home when using ZFS
-        extraGroups = unique (userCfg.extraGroups ++ (optionals useZfs [ "zfs" ]));
+        extraGroups = unique (
+          userCfg.extraGroups
+          ++ optionals (hasDesktopModule && userCfg.desktop.enable) desktopAccessGroups
+          ++ (optionals useZfs [ "zfs" ])
+        );
         initialPassword = userCfg.initialPassword;
         hashedPassword = userCfg.hashedPassword;
         # Read all keys from keystone.keys registry
@@ -360,6 +378,14 @@ in
               }
             ) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) cfg);
           };
+    })
+
+    # Bridge per-user desktop intent into the top-level desktop module when it is imported.
+    (optionalAttrs hasDesktopModule {
+      keystone.desktop = mkIf (osCfg.enable && desktopUsernames != [ ]) {
+        enable = mkDefault true;
+        user = mkDefault inferredDesktopUser;
+      };
     })
   ];
 }

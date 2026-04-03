@@ -58,12 +58,16 @@ other source. Every number in the report must trace back to the input files.
    - Projects with no milestones and no activity typically fall in Q4 (eliminate/archive)
    - Projects with high activity and near-complete milestones are Q1 (do first)
 
-   Render as four compact quadrant subsections, not an ASCII box diagram. Keep each
-   project entry short so the report remains printable:
-   - `Q1 — Do first`
-   - `Q2 — Schedule`
-   - `Q3 — Delegate`
-   - `Q4 — Eliminate / Archive`
+   Render the matrix as one HTML 2x2 chart embedded directly in the markdown. Use
+   bullet lists inside the quadrants so the output stays scannable in both markdown
+   and print. The chart MUST use this exact structure so `ks print` can style it:
+   - one `<table class="eisenhower-matrix">`
+   - one `<colgroup>` with `axis-col` then two `quadrant-col` columns
+   - a header row for `Urgent` / `Not urgent`
+   - a left column for compact axis labels such as `Imp.` / `Not imp.`
+   - one `<td class="quadrant quadrant-qN">` per quadrant
+   - one `<div class="quadrant-heading">` per quadrant
+   - one `<ul>` with project bullets per quadrant
 
 6. **Identify cross-project concerns**
 
@@ -167,15 +171,23 @@ The final portfolio review report.
 ```markdown
 # Portfolio Review — [Month YYYY]
 
-**Date**: [YYYY-MM-DD]
-**Active Projects**: [N]
-**Open Milestones**: [N]
-**Overall Health**: [🟢/🟡/🔴] [summary sentence]
+| Date | Active projects |
+| --- | --- |
+| [YYYY-MM-DD] | [N] |
+
+| Open milestones | Overall health |
+| --- | --- |
+| [N] | [🟢/🟡/🔴] [summary sentence] |
 
 ## Portfolio Summary
 
 [2-3 sentence executive summary of where things stand. Highlight the biggest win,
 the biggest risk, and the recommended focus area.]
+
+<div class="note-box">
+  <div class="note-box-title">Summary notes</div>
+  <div class="note-lines"></div>
+</div>
 
 ## Project Status
 
@@ -212,29 +224,65 @@ the biggest risk, and the recommended focus area.]
 
 ## Portfolio priority matrix
 
-### Q1 — Do first
+<table class="eisenhower-matrix">
+  <colgroup>
+    <col class="axis-col" />
+    <col class="quadrant-col" />
+    <col class="quadrant-col" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th></th>
+      <th>Urgent</th>
+      <th>Not urgent</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Imp.</th>
+      <td class="quadrant quadrant-q1">
+        <div class="quadrant-heading">Q1 - Do first</div>
+        <ul>
+          <li>keystone - Desktop integration, 67%, high activity</li>
+          <li>nixos-config - Infra maintenance, medium activity</li>
+        </ul>
+      </td>
+      <td class="quadrant quadrant-q2">
+        <div class="quadrant-heading">Q2 - Schedule</div>
+        <ul>
+          <li>catalyst - Cloud platform, medium activity</li>
+          <li>obsidian - ZK migration, active but not urgent</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <th>Not imp.</th>
+      <td class="quadrant quadrant-q3">
+        <div class="quadrant-heading">Q3 - Delegate</div>
+        <ul>
+          <li>plant-caravan - Open milestone, low importance today</li>
+        </ul>
+      </td>
+      <td class="quadrant quadrant-q4">
+        <div class="quadrant-heading">Q4 - Eliminate / Archive</div>
+        <ul>
+          <li>meze - No milestones, stagnant</li>
+          <li>eonmun - No milestones, stagnant</li>
+          <li>tetrastack - No active work</li>
+          <li>ks.systems - No active work</li>
+          <li>latinum-space - No active work</li>
+          <li>ncrmro-website - No active work</li>
+          <li>ks-hw - No active work</li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
 
-- keystone — Desktop integration, 67%, high activity
-- nixos-config — Infra maintenance, medium activity
-
-### Q2 — Schedule
-
-- catalyst — Cloud platform, medium activity
-- obsidian — ZK migration, active but not urgent
-
-### Q3 — Delegate
-
-- plant-caravan — Open milestone, low importance today
-
-### Q4 — Eliminate / Archive
-
-- meze — No milestones, stagnant
-- eonmun — No milestones, stagnant
-- tetrastack — No active work
-- ks.systems — No active work
-- latinum-space — No active work
-- ncrmro-website — No active work
-- ks-hw — No active work
+<div class="note-box">
+  <div class="note-box-title">Matrix notes</div>
+  <div class="note-lines note-lines-tall"></div>
+</div>
 
 **Reading the matrix**: Q1 projects need your time NOW. Q2 projects are strategic
 but not time-pressured — schedule dedicated blocks. Q3 items have urgency signals
@@ -258,6 +306,11 @@ should be explicitly archived to reduce cognitive overhead.
    against. Run `milestone/setup` to formalize scope.
 4. **Pause eonmun** — No activity, no milestones. Explicitly mark as paused in
    PROJECTS.yaml to reduce cognitive load.
+
+<div class="note-box">
+  <div class="note-box-title">Decision notes</div>
+  <div class="note-lines note-lines-tall"></div>
+</div>
 ```
 
 ## Quality Criteria
@@ -274,6 +327,6 @@ should be explicitly archived to reduce cognitive overhead.
 
 This is the capstone step of the portfolio review. The user reads this report to decide
 where to allocate their time and energy. It should be scannable (tables, not paragraphs)
-and opinionated (clear recommendations, not just data dumps). Prefer compact sections
-and short bullets over wide diagrams so the document prints cleanly. The report replaces the
+and opinionated (clear recommendations, not just data dumps). Keep the matrix HTML
+shape consistent so the document prints as a real four-quadrant chart. The report replaces the
 old per-project `status.md` files with a single portfolio-level view.
