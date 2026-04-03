@@ -12,14 +12,40 @@ Usage: keystone-sync-agent-assets
 
 Refresh generated Keystone agent assets for the current user from the current
 profile manifest. This is the development-mode refresh path for instruction
-files, curated commands, Codex skills, and native CLI agent definitions.
+files, curated commands, Codex skills, native CLI agent definitions, and
+preview fixtures.
+
+Options:
+  --output-root <dir>            Write generated assets under <dir> instead of $HOME
+  --conventions-link-base <dir>  Override markdown link targets for referenced conventions
+  -h, --help                     Show this help
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
+output_root="${KEYSTONE_AGENT_ASSETS_OUTPUT_ROOT:-$HOME}"
+conventions_link_base_override="${KEYSTONE_AGENT_ASSETS_CONVENTIONS_LINK_BASE:-}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-root)
+      output_root="$2"
+      shift 2
+      ;;
+    --conventions-link-base)
+      conventions_link_base_override="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
 if [[ ! -f "$manifest_path" ]]; then
   echo "Error: agent asset manifest not found at $manifest_path" >&2
@@ -54,6 +80,10 @@ write_file() {
   printf '%s' "$content" > "$tmp"
   chmod 644 "$tmp"
   mv "$tmp" "$target"
+}
+
+target_path() {
+  printf '%s/%s' "$output_root" "$1"
 }
 
 append_file_content() {
@@ -133,7 +163,7 @@ write_gemini_command() {
   local description="$2"
   local body="$3"
 
-  write_file "$HOME/.gemini/commands/$rel_path" \
+  write_file "$(target_path ".gemini/commands/$rel_path")" \
     "description = $(yaml_quote "$description")"$'\n'"prompt = $(yaml_quote "$body")"$'\n'
 }
 
@@ -148,8 +178,8 @@ write_codex_skill() {
   local skill_md="$4"
   local extra_yaml="${5:-}"
 
-  write_file "$HOME/.codex/skills/$skill_name/SKILL.md" "$skill_md"
-  write_file "$HOME/.codex/skills/$skill_name/agents/openai.yaml" "interface:
+  write_file "$(target_path ".codex/skills/$skill_name/SKILL.md")" "$skill_md"
+  write_file "$(target_path ".codex/skills/$skill_name/agents/openai.yaml")" "interface:
   display_name: $(yaml_quote "$display_name")
   short_description: $(yaml_quote "$description")
 ${extra_yaml}"
@@ -279,7 +309,7 @@ EOF
     {
       printf '\n---\n\n## Reference Conventions\n\nThe following conventions are available for on-demand context:\n\n'
       for ref_convention in "${ref_conventions[@]}"; do
-        printf -- '- [%s](%s/%s.md)\n' "$ref_convention" "$conventions_dir" "$ref_convention"
+        printf -- '- [%s](%s/%s.md)\n' "$ref_convention" "$conventions_link_base" "$ref_convention"
       done
     } >> "$prompt_tmp"
   fi
@@ -293,7 +323,11 @@ write_native_agent_definitions() {
   local agent_archetype_desc context_block prompt description
   local archetype_name archetype_desc archetype_id
 
-  mkdir -p "$HOME/.claude/agents" "$HOME/.gemini/agents" "$HOME/.codex/agents" "$HOME/.config/opencode/agents"
+  mkdir -p \
+    "$(target_path ".claude/agents")" \
+    "$(target_path ".gemini/agents")" \
+    "$(target_path ".codex/agents")" \
+    "$(target_path ".config/opencode/agents")"
 
   while IFS= read -r agent_name; do
     [[ -z "$agent_name" ]] && continue
@@ -315,10 +349,10 @@ EOF
 )"
     prompt="$(render_agent_prompt "Keystone OS Agent: $agent_name" "$agent_archetype" "$agent_archetype_desc" "$context_block")"
 
-    write_file "$HOME/.claude/agents/${agent_name}.md" "$(render_agent_markdown "$agent_name" "$description" "$prompt")"
-    write_file "$HOME/.gemini/agents/${agent_name}.md" "$(render_agent_markdown "$agent_name" "$description" "$prompt")"
-    write_file "$HOME/.config/opencode/agents/${agent_name}.md" "$(render_opencode_agent_markdown "$description" "$prompt")"
-    write_file "$HOME/.codex/agents/${agent_name}.toml" "$(render_codex_agent_toml "$agent_name" "$description" "$prompt")"
+    write_file "$(target_path ".claude/agents/${agent_name}.md")" "$(render_agent_markdown "$agent_name" "$description" "$prompt")"
+    write_file "$(target_path ".gemini/agents/${agent_name}.md")" "$(render_agent_markdown "$agent_name" "$description" "$prompt")"
+    write_file "$(target_path ".config/opencode/agents/${agent_name}.md")" "$(render_opencode_agent_markdown "$description" "$prompt")"
+    write_file "$(target_path ".codex/agents/${agent_name}.toml")" "$(render_codex_agent_toml "$agent_name" "$description" "$prompt")"
   done < <(json_get_lines '.agents | keys' 2>/dev/null || true)
 
   while IFS= read -r archetype_name; do
@@ -339,10 +373,10 @@ EOF
 )"
     prompt="$(render_agent_prompt "Keystone Archetype Agent: $archetype_name" "$archetype_name" "$archetype_desc" "$context_block")"
 
-    write_file "$HOME/.claude/agents/${archetype_id}.md" "$(render_agent_markdown "$archetype_id" "$description" "$prompt")"
-    write_file "$HOME/.gemini/agents/${archetype_id}.md" "$(render_agent_markdown "$archetype_id" "$description" "$prompt")"
-    write_file "$HOME/.config/opencode/agents/${archetype_id}.md" "$(render_opencode_agent_markdown "$description" "$prompt")"
-    write_file "$HOME/.codex/agents/${archetype_id}.toml" "$(render_codex_agent_toml "$archetype_id" "$description" "$prompt")"
+    write_file "$(target_path ".claude/agents/${archetype_id}.md")" "$(render_agent_markdown "$archetype_id" "$description" "$prompt")"
+    write_file "$(target_path ".gemini/agents/${archetype_id}.md")" "$(render_agent_markdown "$archetype_id" "$description" "$prompt")"
+    write_file "$(target_path ".config/opencode/agents/${archetype_id}.md")" "$(render_opencode_agent_markdown "$description" "$prompt")"
+    write_file "$(target_path ".codex/agents/${archetype_id}.toml")" "$(render_codex_agent_toml "$archetype_id" "$description" "$prompt")"
   done < <(yq -r '.archetypes | keys | .[]' "$archetypes_file")
 }
 
@@ -412,6 +446,11 @@ else
 
   conventions_dir="$fallback_conventions_dir"
   templates_dir="$fallback_templates_dir"
+fi
+
+conventions_link_base="$conventions_dir"
+if [[ -n "$conventions_link_base_override" ]]; then
+  conventions_link_base="$conventions_link_base_override"
 fi
 
 archetypes_file="$conventions_dir/archetypes.yaml"
@@ -497,7 +536,7 @@ if [[ ${#referenced_global_conventions[@]} -gt 0 ]]; then
   {
     printf '\n---\n\n## Reference Conventions\n\nThe following conventions are available for on-demand context:\n\n'
     for convention_name in "${referenced_global_conventions[@]}"; do
-      printf -- '- [%s](%s/%s.md)\n' "$convention_name" "$conventions_dir" "$convention_name"
+      printf -- '- [%s](%s/%s.md)\n' "$convention_name" "$conventions_link_base" "$convention_name"
     done
   } >> "$global_agents_tmp"
 fi
@@ -505,11 +544,11 @@ fi
 global_agents_content="$(cat "$global_agents_tmp")"
 rm -f "$global_agents_tmp"
 
-write_file "$HOME/.keystone/AGENTS.md" "$global_agents_content"
-write_file "$HOME/.claude/CLAUDE.md" "$global_agents_content"
-write_file "$HOME/.gemini/GEMINI.md" "$global_agents_content"
-write_file "$HOME/.codex/AGENTS.md" "$global_agents_content"
-write_file "$HOME/.config/opencode/AGENTS.md" "$global_agents_content"
+write_file "$(target_path ".keystone/AGENTS.md")" "$global_agents_content"
+write_file "$(target_path ".claude/CLAUDE.md")" "$global_agents_content"
+write_file "$(target_path ".gemini/GEMINI.md")" "$global_agents_content"
+write_file "$(target_path ".codex/AGENTS.md")" "$global_agents_content"
+write_file "$(target_path ".config/opencode/AGENTS.md")" "$global_agents_content"
 
 repos_agents_tmp="$(mktemp)"
 {
@@ -573,24 +612,24 @@ fi
 repos_agents_content="$(cat "$repos_agents_tmp")"
 rm -f "$repos_agents_tmp"
 
-write_file "$HOME/.keystone/repos/AGENTS.md" "$repos_agents_content"
+write_file "$(target_path ".keystone/repos/AGENTS.md")" "$repos_agents_content"
 
 managed_claude_commands=(ks.md ks.system.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md)
 for command_file in "${managed_claude_commands[@]}"; do
-  rm -f "$HOME/.claude/commands/$command_file"
+  rm -f "$(target_path ".claude/commands/$command_file")"
 done
 
 managed_gemini_commands=(ks.toml ks.system.toml ks.notes.toml ks.projects.toml ks.dev.toml ks.ea.toml deepwork.toml wrap-up.toml)
 for command_file in "${managed_gemini_commands[@]}"; do
-  rm -f "$HOME/.gemini/commands/$command_file"
+  rm -f "$(target_path ".gemini/commands/$command_file")"
 done
 
 managed_opencode_commands=(ks.md ks.system.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md)
 for command_file in "${managed_opencode_commands[@]}"; do
-  rm -f "$HOME/.config/opencode/commands/$command_file"
+  rm -f "$(target_path ".config/opencode/commands/$command_file")"
 done
 
-rm -rf "$HOME/.claude/skills/ks" "$HOME/.config/opencode/skills/ks"
+rm -rf "$(target_path ".claude/skills/ks")" "$(target_path ".config/opencode/skills/ks")"
 
 for command_id in "${published_commands[@]}"; do
   description="$(command_description "$command_id")"
@@ -601,16 +640,16 @@ for command_id in "${published_commands[@]}"; do
   skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
 
   claude_content="$(render_frontmatter "$command_id" "$description" "$argument_hint" "$display_name")"$'\n\n'"$command_body"$'\n'
-  write_file "$HOME/.claude/commands/${command_id}.md" "$claude_content"
+  write_file "$(target_path ".claude/commands/${command_id}.md")" "$claude_content"
 
   gemini_rel="$(gemini_command_rel_path "$command_id")"
   write_gemini_command "$gemini_rel" "$description" "$command_body"
 
-  write_file "$HOME/.config/opencode/commands/${command_id}.md" "$command_body"$'\n'
+  write_file "$(target_path ".config/opencode/commands/${command_id}.md")" "$command_body"$'\n'
 
   ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"
-  write_file "$HOME/.claude/skills/${skill_name}/SKILL.md" "$ks_skill_md"
-  write_file "$HOME/.config/opencode/skills/${skill_name}/SKILL.md" "$ks_skill_md"
+  write_file "$(target_path ".claude/skills/${skill_name}/SKILL.md")" "$ks_skill_md"
+  write_file "$(target_path ".config/opencode/skills/${skill_name}/SKILL.md")" "$ks_skill_md"
 
   if [[ "$command_id" == "ks.ea" ]]; then
     ea_conventions=(
@@ -625,8 +664,8 @@ for command_id in "${published_commands[@]}"; do
       src_file="$conventions_dir/$src_rel"
       if [[ -f "$src_file" ]]; then
         content="$(cat "$src_file")"
-        write_file "$HOME/.claude/skills/${skill_name}/${dest_name}" "$content"
-        write_file "$HOME/.config/opencode/skills/${skill_name}/${dest_name}" "$content"
+        write_file "$(target_path ".claude/skills/${skill_name}/${dest_name}")" "$content"
+        write_file "$(target_path ".config/opencode/skills/${skill_name}/${dest_name}")" "$content"
       fi
     done
   fi
@@ -634,8 +673,8 @@ done
 
 deepwork_body="$(cat "$templates_dir/deepwork-skill.template.md")"
 deepwork_skill_md="$(render_skill_md "deepwork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_body")"
-write_file "$HOME/.claude/skills/deepwork/SKILL.md" "$deepwork_skill_md"
-write_file "$HOME/.config/opencode/skills/deepwork/SKILL.md" "$deepwork_skill_md"
+write_file "$(target_path ".claude/skills/deepwork/SKILL.md")" "$deepwork_skill_md"
+write_file "$(target_path ".config/opencode/skills/deepwork/SKILL.md")" "$deepwork_skill_md"
 write_gemini_command "deepwork.toml" "Start or continue DeepWork workflows using MCP tools" "$deepwork_body"
 write_codex_skill "deepwork" "DeepWork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_skill_md" '
 dependencies:
@@ -647,8 +686,8 @@ dependencies:
 
 wrapup_body="$(cat "$templates_dir/wrap-up-skill.template.md")"
 wrapup_skill_md="$(render_skill_md "wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body")"
-write_file "$HOME/.claude/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
-write_file "$HOME/.config/opencode/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
+write_file "$(target_path ".claude/skills/wrap-up/SKILL.md")" "$wrapup_skill_md"
+write_file "$(target_path ".config/opencode/skills/wrap-up/SKILL.md")" "$wrapup_skill_md"
 write_gemini_command "wrap-up.toml" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body"
 write_codex_skill "wrap-up" "Wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_skill_md"
 
@@ -661,7 +700,7 @@ legacy_codex_skill_names=(
   research-deep research-quick task-ingest task-run ks
 )
 for skill_name in "${legacy_codex_skill_names[@]}"; do
-  rm -rf "$HOME/.codex/skills/$skill_name"
+  rm -rf "$(target_path ".codex/skills/$skill_name")"
 done
 
 for command_id in "${published_commands[@]}"; do
@@ -694,7 +733,7 @@ dependencies:
       src_file="$conventions_dir/$src_rel"
       if [[ -f "$src_file" ]]; then
         content="$(cat "$src_file")"
-        write_file "$HOME/.codex/skills/${skill_name}/${dest_name}" "$content"
+        write_file "$(target_path ".codex/skills/${skill_name}/${dest_name}")" "$content"
       fi
     done
   fi

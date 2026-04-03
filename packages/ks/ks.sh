@@ -243,12 +243,15 @@ EOF
 
 print_sync_agent_assets_help() {
   cat <<'EOF'
-Usage: ks sync-agent-assets
+Usage: ks sync-agent-assets [--output-root DIR] [--conventions-link-base DIR]
 
 Refresh generated Keystone agent assets for the current user from the current
 profile manifest.
 
 Options:
+  --output-root DIR    Write generated assets under DIR instead of \$HOME
+  --conventions-link-base DIR
+                       Override markdown link targets for referenced conventions
   -h, --help           Show this help
 
 Behavior:
@@ -257,6 +260,7 @@ Behavior:
 
 Examples:
   ks sync-agent-assets
+  ks sync-agent-assets --output-root tests/fixtures/native-cli-agents-preview
 EOF
 }
 

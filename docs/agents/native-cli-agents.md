@@ -180,6 +180,15 @@ For native CLI agents, that means:
 - generated assets can be reviewed in Git before they are committed, and
 - the same manifest drives both locked-mode and dev-mode generation.
 
+For PR-visible previews, render the generated assets into a repo directory:
+
+```bash
+ks sync-agent-assets --output-root tests/fixtures/native-cli-agents-preview
+```
+
+That preview mode uses the same generator, but writes into a reviewable
+directory instead of the live CLI home paths.
+
 ## Collision handling
 
 If a concrete OS-agent name and an archetype name would collide in a target CLI:
