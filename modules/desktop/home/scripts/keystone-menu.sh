@@ -35,6 +35,9 @@ case "${1:-main}" in
   capture | Capture)
     exec "$(keystone_cmd keystone-main-menu)" open-menu capture
     ;;
+  photos | Photos)
+    exec "$(keystone_cmd keystone-photos-menu)" prompt-query
+    ;;
   screenshot | Screenshot)
     exec "$(keystone_cmd keystone-main-menu)" open-menu screenshot
     ;;

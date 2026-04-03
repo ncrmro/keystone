@@ -23,7 +23,7 @@ in
         "$mod, Return, exec, ghostty"
         "$mod, Space, exec, walker"
         "$mod, B, exec, chromium"
-        "$mod, E, exec, nautilus"
+        "$mod, E, exec, $fileManager"
 
         # Menu system
         "$mod, Escape, exec, keystone-menu"

@@ -178,6 +178,8 @@ in
         # File management
         nautilus
         file-roller
+        sushi
+        loupe
 
         # System utilities
         pavucontrol

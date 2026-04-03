@@ -78,6 +78,12 @@ main_json() {
         Icon: "folder-development-symbolic"
       },
       {
+        Text: "Photos",
+        Subtext: "Search Keystone Photos and preview results",
+        Value: "open-photos-search",
+        Icon: "image-x-generic-symbolic"
+      },
+      {
         Text: "Agents",
         Subtext: "Agent state, pause, and interactive defaults",
         Value: "agents",
@@ -403,6 +409,9 @@ dispatch() {
       ;;
     open-contexts)
       detach "$(keystone_cmd keystone-context-switch)"
+      ;;
+    open-photos-search)
+      detach "$(keystone_cmd keystone-photos-menu)" prompt-query
       ;;
     open-keybindings)
       detach "$(keystone_cmd keystone-menu-keybindings)"

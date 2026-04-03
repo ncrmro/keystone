@@ -227,6 +227,11 @@ let
     builtins.readFile ./keystone-package-menu.sh
   );
 
+  # Keystone OS release status and update flow for Walker
+  keystoneUpdateMenu = pkgs.writeShellScriptBin "keystone-update-menu" (
+    builtins.readFile ./keystone-update-menu.sh
+  );
+
   # Desktop setup launcher for Walker/Elephant
   keystoneSetupMenu = pkgs.writeShellScriptBin "keystone-setup-menu" (
     builtins.readFile ./keystone-setup-menu.sh
@@ -280,6 +285,11 @@ let
   # Internal helper for Walker/Elephant project menus
   keystoneProjectMenu = pkgs.writeShellScriptBin "keystone-project-menu" (
     builtins.readFile ./keystone-project-menu.sh
+  );
+
+  # Photo search and preview adapter for Walker/Elephant
+  keystonePhotosMenu = pkgs.writeShellScriptBin "keystone-photos-menu" (
+    builtins.readFile ./keystone-photos-menu.sh
   );
 
   # Agent control surface for the main menu
@@ -376,6 +386,27 @@ let
         pkgs.python3
         pkgs.ripgrep
         pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-update-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-update-menu.sh";
+      package = keystoneUpdateMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.curl
+        pkgs.findutils
+        pkgs.git
+        pkgs.gh
+        pkgs.ghostty
+        pkgs.jq
+        pkgs.keystone.ks
+        pkgs.libnotify
+        pkgs.nix
+        pkgs.systemd
+        pkgs.walker
+        pkgs.xdg-utils
       ];
     })
     (mkHomeScriptCommand {
@@ -530,6 +561,19 @@ let
     })
     (mkHomeScriptCommand {
       inherit config pkgs;
+      commandName = "keystone-photos-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-photos-menu.sh";
+      package = keystonePhotosMenu;
+      runtimeInputs = [
+        pkgs.jq
+        pkgs.keystone.keystone-photos
+        pkgs.keystone.ks
+        pkgs.libnotify
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
       commandName = "keystone-agent-menu";
       relativePath = "modules/desktop/home/scripts/keystone-agent-menu.sh";
       package = keystoneAgentMenu;
@@ -561,6 +605,8 @@ in
             keystoneBatteryMonitor
             keystoneDetach
             keystoneProjectMenu
+            keystoneUpdateMenu
+            keystonePhotosMenu
             pkgs.jq
             pkgs.pulseaudio
             # Dependencies that should be available

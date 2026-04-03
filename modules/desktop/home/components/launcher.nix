@@ -84,6 +84,11 @@ in
           sourcePath = ./keystone-install.lua;
         }
         {
+          targetPath = ".config/elephant/menus/keystone-update.lua";
+          relativePath = "modules/desktop/home/components/keystone-update.lua";
+          sourcePath = ./keystone-update.lua;
+        }
+        {
           targetPath = ".config/elephant/menus/keystone-projects.lua";
           relativePath = "modules/desktop/home/components/keystone-projects.lua";
           sourcePath = ./keystone-projects.lua;
@@ -102,6 +107,11 @@ in
           targetPath = ".config/elephant/menus/keystone-project-session.lua";
           relativePath = "modules/desktop/home/components/keystone-project-session.lua";
           sourcePath = ./keystone-project-session.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-photos.lua";
+          relativePath = "modules/desktop/home/components/keystone-photos.lua";
+          sourcePath = ./keystone-photos.lua;
         }
         {
           targetPath = ".config/elephant/menus/keystone-agents.lua";
@@ -268,6 +278,10 @@ in
               input = " Install";
               list = "No install actions available";
             };
+            "menus:keystone-update" = {
+              input = " Update";
+              list = "No update actions available";
+            };
             "menus:keystone-projects" = {
               input = " Projects";
               list = "No projects found";
@@ -283,6 +297,10 @@ in
             "menus:keystone-project-session" = {
               input = " Session slug";
               list = "Press Enter to create the session";
+            };
+            "menus:keystone-photos" = {
+              input = " Photos";
+              list = "Search for a query to load photo results";
             };
             "menus:keystone-agents" = {
               input = " Agents";
