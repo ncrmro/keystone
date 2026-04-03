@@ -227,6 +227,7 @@
         # consumers are in the desktop tree or inside the installer's nested eval.
         operating-system = {
           imports = [
+            home-manager.nixosModules.home-manager
             disko.nixosModules.disko
             lanzaboote.nixosModules.lanzaboote
             agenix.nixosModules.default
@@ -243,6 +244,14 @@
           keystone._repoInputs = {
             keystone = self;
             inherit deepwork;
+          };
+          home-manager = {
+            useGlobalPkgs = true;
+            useUserPackages = true;
+            sharedModules = [
+              self.homeModules.terminal
+              self.homeModules.desktop
+            ];
           };
         };
 
@@ -336,7 +345,12 @@
             self = self;
           };
           template-evaluation = import ./tests/module/template-evaluation.nix {
-            inherit pkgs lib nixpkgs;
+            inherit
+              pkgs
+              lib
+              nixpkgs
+              home-manager
+              ;
             self = self;
           };
           server-evaluation = import ./tests/module/server-evaluation.nix {
@@ -365,6 +379,9 @@
             inherit pkgs lib;
           };
           pz-host-launcher-state = import ./tests/module/pz-host-launcher-state.nix {
+            inherit pkgs lib;
+          };
+          keystone-secrets-menu = import ./tests/module/keystone-secrets-menu.nix {
             inherit pkgs lib;
           };
           hyprland-bindings-agent-conflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
