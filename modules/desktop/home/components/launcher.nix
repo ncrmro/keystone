@@ -159,6 +159,21 @@ in
           sourcePath = ./keystone-accounts.lua;
         }
         {
+          targetPath = ".config/elephant/menus/keystone-secrets.lua";
+          relativePath = "modules/desktop/home/components/keystone-secrets.lua";
+          sourcePath = ./keystone-secrets.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-secret-list.lua";
+          relativePath = "modules/desktop/home/components/keystone-secret-list.lua";
+          sourcePath = ./keystone-secret-list.lua;
+        }
+        {
+          targetPath = ".config/elephant/menus/keystone-secret-actions.lua";
+          relativePath = "modules/desktop/home/components/keystone-secret-actions.lua";
+          sourcePath = ./keystone-secret-actions.lua;
+        }
+        {
           targetPath = ".config/elephant/menus/keystone-account-sections.lua";
           relativePath = "modules/desktop/home/components/keystone-account-sections.lua";
           sourcePath = ./keystone-account-sections.lua;
@@ -312,6 +327,18 @@ in
             "menus:keystone-accounts" = {
               input = " Accounts";
               list = "No accounts found";
+            };
+            "menus:keystone-secrets" = {
+              input = " Secrets";
+              list = "No secret categories found";
+            };
+            "menus:keystone-secret-list" = {
+              input = " Secret";
+              list = "No secrets found";
+            };
+            "menus:keystone-secret-actions" = {
+              input = " Secret actions";
+              list = "No secret actions available";
             };
             "menus:keystone-account-sections" = {
               input = " Account actions";

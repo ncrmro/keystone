@@ -57,12 +57,16 @@ be aggregated into the portfolio report.
      dependency for other work
    - Use milestone progress, due dates, and charter alignment to make the classification
 
-   Render as four compact quadrant subsections, not an ASCII box diagram. Keep each
-   bullet short enough to print cleanly:
-   - `Q1 — Do first`
-   - `Q2 — Schedule`
-   - `Q3 — Delegate`
-   - `Q4 — Eliminate / Archive`
+   Render the matrix as one HTML 2x2 chart embedded directly in the markdown. Use
+   bullet lists inside the quadrants, not plain paragraphs or comma-separated text.
+   The chart MUST use this exact structure so print CSS can style it consistently:
+   - one `<table class="eisenhower-matrix eisenhower-matrix-compact">`
+   - one `<colgroup>` with `axis-col` then two `quadrant-col` columns
+   - a header row for `Urgent` / `Not urgent`
+   - a left column for compact axis labels such as `Imp.` / `Not imp.`
+   - one `<td class="quadrant quadrant-qN">` per quadrant
+   - one `<div class="quadrant-heading">` per quadrant
+   - one `<ul>` with milestone bullets per quadrant
 
 6. **Recommend next actions**
 
@@ -102,21 +106,57 @@ Formatted status summary for one project.
 
 ### Milestone priority matrix
 
-#### Q1 — Do first
+<table class="eisenhower-matrix eisenhower-matrix-compact">
+  <colgroup>
+    <col class="axis-col" />
+    <col class="quadrant-col" />
+    <col class="quadrant-col" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th></th>
+      <th>Urgent</th>
+      <th>Not urgent</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Imp.</th>
+      <td class="quadrant quadrant-q1">
+        <div class="quadrant-heading">Q1 - Do first</div>
+        <ul>
+          <li>Desktop Integration - 67%, due 2026-04-01</li>
+        </ul>
+      </td>
+      <td class="quadrant quadrant-q2">
+        <div class="quadrant-heading">Q2 - Schedule</div>
+        <ul>
+          <li>v2.0 Release - 17%, no due date</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <th>Not imp.</th>
+      <td class="quadrant quadrant-q3">
+        <div class="quadrant-heading">Q3 - Delegate</div>
+        <ul>
+          <li>None</li>
+        </ul>
+      </td>
+      <td class="quadrant quadrant-q4">
+        <div class="quadrant-heading">Q4 - Eliminate / Archive</div>
+        <ul>
+          <li>None</li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
 
-- Desktop Integration — 67%, due 2026-04-01
-
-#### Q2 — Schedule
-
-- v2.0 Release — 17%, no due date
-
-#### Q3 — Delegate
-
-- None
-
-#### Q4 — Eliminate / Archive
-
-- None
+<div class="note-box">
+  <div class="note-box-title">Project notes</div>
+  <div class="note-lines"></div>
+</div>
 
 ### Key Issues & PRs
 
@@ -173,6 +213,7 @@ No open milestones.
 
 This step produces the per-project building block of the portfolio report. The format
 must be consistent across all projects so the synthesis step can aggregate them into
-a coherent portfolio view. Prefer compact sections and short bullets so the output
-prints cleanly. Keep summaries tight — the portfolio report reader wants
+a coherent portfolio view. Keep summaries tight and keep the HTML chart structure
+consistent so `ks print` can render the matrix as an actual four-quadrant layout.
+The portfolio report reader wants
 to scan, not read essays.
