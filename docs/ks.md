@@ -120,6 +120,7 @@ ks docs terminal/projects.md
 
 ```bash
 ks photos search [options]
+ks photos people [options]
 ```
 
 Search Immich-backed photo, screenshot, and OCR results through Keystone Photos.
@@ -133,8 +134,11 @@ Examples:
 
 ```bash
 ks photos search --text "acme"
+ks photos search --album "Screenshots - alice" --tag "receipt" --city "Austin"
 ks photos search --text "nick romero" --kind business-card
 ks photos search --person "Nick Romero" --type photo
+ks photos search --filename "IMG_" --camera-make "Apple" --camera-model "iPhone 15 Pro"
+ks photos people --json
 ks photos search --text "ks build" --type screenshot --from 2026-01-01 --to 2026-03-31
 ```
 

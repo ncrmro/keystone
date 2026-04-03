@@ -37,7 +37,7 @@ orchestration or sending anything to cloud services.
 │  │  executive_assistant DeepWork Job                           │        │
 │  │                                                             │        │
 │  │  summarize_audio ──► whisper.cpp ──► Ollama ──► zk note    │        │
-│  │  review_photos   ──► immich-search ──────────► terminal    │        │
+│  │  review_photos   ──► keystone-photos ────────► terminal    │        │
 │  │  start_recording ──► OBS WebSocket ──────────► daily note  │        │
 │  │  task_loop, plan_event, … (existing)                       │        │
 │  └─────────────────────────────────────────────────────────────┘        │
@@ -103,7 +103,7 @@ orchestration or sending anything to cloud services.
 - `modules/os/agents/default.nix` — import perception.nix
 - `modules/terminal/perception.nix` — `enable` option scaffolded ✓; CLI packages added in Phase 2
 - `modules/terminal/default.nix` — import perception.nix
-- `packages/immich-search/` — **new**: CLI wrapper for Immich search API
+- `packages/keystone-photos/` — CLI wrapper for Immich search, people, and preview flows ✓
 - `packages/perception-processor/` — **new**: activity summary builder
 - `flake.nix` — add Docling, whisper.cpp packages; expose new packages
 
@@ -183,76 +183,90 @@ name and host name for filtering.
 
 ### Photo and Screenshot Search
 
-**REQ-023.19** The terminal module MUST provide an `immich-search` CLI tool
-that queries the Immich API for assets matching a search query.
+**REQ-023.19** The terminal module MUST provide a `keystone-photos` CLI tool,
+published to users as `ks photos`, that queries the Immich API for assets and
+people.
 
-**REQ-023.20** The `immich-search` tool MUST support search by:
+**REQ-023.20** `keystone-photos search` MUST support structured search by:
 
-- Face/person name (using Immich's face recognition index)
-- Text content (using Immich's OCR/CLIP index)
+- Face/person name, including multiple people filters
+- Album name, including multiple album filters
+- Tag value, including multiple tag filters
 - Date range
-- Asset type (photo, screenshot, video)
+- Asset type (image/photo, screenshot, video)
+- Country, state, and city
+- Camera make, camera model, and lens model
+- File name and description metadata
 
-**REQ-023.21** The tool MUST output results as structured JSON containing
-asset ID, filename, date, thumbnail URL, and matched metadata.
+**REQ-023.21** `keystone-photos search` MUST support text search across
+Immich's smart-search surface, including generic context text and OCR-focused
+queries.
 
-**REQ-023.22** The tool MUST authenticate via the Immich API key from the
+**REQ-023.22** The tool MUST output results as structured JSON containing, at
+minimum, asset ID, filename, date, type, original path, thumbnail URL, and
+matched metadata.
+
+**REQ-023.23** The tool MUST provide a `people` listing command so operators
+can inspect discoverable Immich person names before issuing person-filtered
+searches.
+
+**REQ-023.24** The tool MUST authenticate via the Immich API key from the
 agent's agenix secret.
 
-**REQ-023.23** Immich's ML features (face recognition, CLIP, OCR) MUST be
+**REQ-023.25** Immich's ML features (face recognition, CLIP, OCR) MUST be
 enabled on the server. The `immich.nix` service module SHOULD emit a warning
 if `perception` is enabled on any agent but Immich ML is not configured.
 
 ### Contact Linking
 
-**REQ-023.24** The perception processor MUST be able to query Immich for
+**REQ-023.26** The perception processor MUST be able to query Immich for
 recognized face clusters and match them against CardDAV contacts via the
 `cardamum` CLI.
 
-**REQ-023.25** Matching SHOULD use the contact's display name and any
+**REQ-023.27** Matching SHOULD use the contact's display name and any
 photo-tagged name from Immich. Exact matching MUST be tried first; fuzzy
 matching MAY be used as a fallback.
 
-**REQ-023.26** When a face cluster matches a contact, the perception
+**REQ-023.28** When a face cluster matches a contact, the perception
 processor SHOULD update the Immich person name to match the contact's
 canonical display name.
 
-**REQ-023.27** The contact linking step MUST NOT create or modify CardDAV
+**REQ-023.29** The contact linking step MUST NOT create or modify CardDAV
 contacts automatically. It MUST only read contacts for matching and update
 Immich person labels.
 
 ### Activity Reconstruction and Notes Sync
 
-**REQ-023.28** Each agent with `perception.enable = true` MUST run a
+**REQ-023.30** Each agent with `perception.enable = true` MUST run a
 `perception-processor` systemd user service on a configurable timer,
 defaulting to `*:0/30` (every 30 minutes).
 
-**REQ-023.29** The perception processor MUST scan for new inputs since the
+**REQ-023.31** The perception processor MUST scan for new inputs since the
 last run:
 
 - PDF markdown outputs and their bounding box metadata
 - Voice transcripts
 - Immich search results (recent screenshots, tagged photos)
 
-**REQ-023.30** The processor MUST produce a structured activity summary in
+**REQ-023.32** The processor MUST produce a structured activity summary in
 markdown format, suitable for inclusion in the agent's notes directory.
 
-**REQ-023.31** The activity summary MUST include citations. For PDF-sourced
+**REQ-023.33** The activity summary MUST include citations. For PDF-sourced
 data, citations MUST reference the source file, page number, and line or
 bounding box region. For voice transcripts, citations MUST reference the
 audio file and timestamp.
 
-**REQ-023.32** The activity summary MUST be written to the agent's notes
+**REQ-023.34** The activity summary MUST be written to the agent's notes
 directory (e.g., `notes/perception/YYYY-MM-DD.md`) and synced via the
 existing `repo-sync` service.
 
-**REQ-023.33** The processor MAY use the local Ollama instance (if
+**REQ-023.35** The processor MAY use the local Ollama instance (if
 `keystone.os.services.ollama.enable = true`) to generate natural-language
 summaries from structured extraction outputs.
 
 ### Configuration
 
-**REQ-023.34** The agent submodule MUST expose options at
+**REQ-023.36** The agent submodule MUST expose options at
 `keystone.os.agents.<name>.perception`.
 
 ```nix
@@ -295,59 +309,59 @@ keystone.os.agents.drago = {
 };
 ```
 
-**REQ-023.35** When `perception.enable` is true, the sub-options (`pdf`,
+**REQ-023.37** When `perception.enable` is true, the sub-options (`pdf`,
 `voice`, `screenshots`, `search`, `contacts`, `processor`) MUST default to
 enabled. Individual sub-options MAY be disabled to exclude specific
 capabilities.
 
-**REQ-023.36** The terminal module MUST expose a
+**REQ-023.38** The terminal module MUST expose a
 `keystone.terminal.perception.enable` option that installs the CLI tools
-(docling, whisper.cpp, immich-search) into the user's environment.
+(docling, whisper.cpp, keystone-photos) into the user's environment.
 
 ### Integration
 
-**REQ-023.37** The screenshot-sync service MUST coexist with the existing
+**REQ-023.39** The screenshot-sync service MUST coexist with the existing
 screenshot tool (`keystone-screenshot`). Screenshots are produced by the
 existing tool; the sync service only handles upload.
 
-**REQ-023.38** The perception-processor MUST coexist with the existing
+**REQ-023.40** The perception-processor MUST coexist with the existing
 `agent-{name}-task-loop` service. They are complementary — the task loop
 executes tasks, the perception processor ingests media.
 
-**REQ-023.39** The perception module MUST integrate with the existing
+**REQ-023.41** The perception module MUST integrate with the existing
 `repo-sync` notes service for syncing activity summaries to the notes
 repository.
 
-**REQ-023.40** The PDF and voice processing tools MUST be available as
+**REQ-023.42** The PDF and voice processing tools MUST be available as
 standalone CLI commands so that agents can invoke them from task loop
 scripts, not only via the background processor.
 
 ### Security
 
-**REQ-023.41** All media processing (PDF parsing, OCR, voice transcription,
+**REQ-023.43** All media processing (PDF parsing, OCR, voice transcription,
 image search) MUST run on local hardware. Data MUST NOT be transmitted to
 external services.
 
-**REQ-023.42** Immich API keys MUST be stored as agenix secrets and MUST NOT
+**REQ-023.44** Immich API keys MUST be stored as agenix secrets and MUST NOT
 appear in Nix store paths or configuration files.
 
-**REQ-023.43** The perception processor MUST NOT modify or delete source
+**REQ-023.45** The perception processor MUST NOT modify or delete source
 files (PDFs, audio recordings, screenshots). It operates read-only on
 inputs and write-only to output directories.
 
-**REQ-023.44** The contact linking step MUST NOT create, modify, or delete
+**REQ-023.46** The contact linking step MUST NOT create, modify, or delete
 CardDAV contacts. It MUST only read contacts for matching purposes.
 
 ### Executive Assistant: `/ks.assistant` Command
 
-**REQ-023.45** A `/ks.assistant` slash command MUST be provided in the
+**REQ-023.47** A `/ks.assistant` slash command MUST be provided in the
 Keystone Claude Code terminal module.
 
-**REQ-023.46** The command MUST accept a natural-language request and route
+**REQ-023.48** The command MUST accept a natural-language request and route
 it to the appropriate `executive_assistant` DeepWork workflow via the
 DeepWork MCP server.
 
-**REQ-023.47** Routing MUST cover all workflows in the `executive_assistant`
+**REQ-023.49** Routing MUST cover all workflows in the `executive_assistant`
 job: `plan_event`, `manage_calendar`, `clean_inbox`, `discover_events`,
 `task_loop`, `portfolio_review`, `portfolio_review_one`, `summarize_audio`,
 `review_photos`, and `start_recording`. Presentation requests MUST route to the
@@ -360,56 +374,56 @@ standalone `presentation` job instead, including its `presentation` and
 > MUST handle routing to a workflow that does not yet exist by informing
 > the user it is not yet available.
 
-**REQ-023.48** When the request does not match a known workflow, the command
+**REQ-023.50** When the request does not match a known workflow, the command
 MUST list available workflows and ask the user to clarify. It MUST NOT
 silently fail or produce an empty response.
 
-**REQ-023.49** The command MUST be enabled via a dedicated Nix option
+**REQ-023.51** The command MUST be enabled via a dedicated Nix option
 (`keystone.terminal.assistantCommand.enable`). It MUST default to disabled.
 
 ### Executive Assistant: Audio Summarization
 
-**REQ-023.50** The `executive_assistant` job MUST provide a `summarize_audio`
+**REQ-023.52** The `executive_assistant` job MUST provide a `summarize_audio`
 workflow with steps: `locate_recording`, `transcribe`, `summarize`,
 `write_note`.
 
-**REQ-023.51** The workflow MUST invoke `whisper.cpp` (REQ-023.7) for
+**REQ-023.53** The workflow MUST invoke `whisper.cpp` (REQ-023.7) for
 transcription. It MUST NOT send audio to an external service.
 
-**REQ-023.52** The workflow MUST summarize the transcript using the local
+**REQ-023.54** The workflow MUST summarize the transcript using the local
 Ollama instance when available, falling back to structured extraction only.
 
-**REQ-023.53** The workflow MUST write a zk note to the operator's notes
+**REQ-023.55** The workflow MUST write a zk note to the operator's notes
 notebook with `source_ref` frontmatter linking to the source audio file.
 
 ### Executive Assistant: Photo Review
 
-**REQ-023.54** The `executive_assistant` job MUST provide a `review_photos`
+**REQ-023.56** The `executive_assistant` job MUST provide a `review_photos`
 workflow with steps: `parse_query`, `search_immich`, `present_results`.
 
-**REQ-023.55** The workflow MUST invoke `immich-search` (REQ-023.19) to
+**REQ-023.57** The workflow MUST invoke `keystone-photos` (REQ-023.19) to
 query Immich. It MUST support natural-language date ranges and person names
 as query inputs.
 
-**REQ-023.56** Results MUST be presented as a formatted list in the terminal
+**REQ-023.58** Results MUST be presented as a formatted list in the terminal
 with filenames, dates, and asset identifiers. The workflow MAY optionally
 write a zk note with the curation result.
 
 ### Executive Assistant: Recording Session
 
-**REQ-023.57** The `executive_assistant` job MUST provide a `start_recording`
+**REQ-023.59** The `executive_assistant` job MUST provide a `start_recording`
 workflow with steps: `check_obs`, `start_session`, `log_note`.
 
-**REQ-023.58** The workflow MUST connect to OBS via its WebSocket API to
+**REQ-023.60** The workflow MUST connect to OBS via its WebSocket API to
 start a recording on the active scene.
 
-**REQ-023.59** OBS WebSocket credentials (host, port, password) MUST be
+**REQ-023.61** OBS WebSocket credentials (host, port, password) MUST be
 read from agenix-managed secrets. They MUST NOT be hardcoded.
 
-**REQ-023.60** The workflow MUST write the session name and start timestamp
+**REQ-023.62** The workflow MUST write the session name and start timestamp
 to the operator's active daily zk note.
 
-**REQ-023.61** When OBS is not running or the WebSocket connection fails, the
+**REQ-023.63** When OBS is not running or the WebSocket connection fails, the
 workflow MUST emit a clear error message and exit without crashing.
 
 ## Edge Cases

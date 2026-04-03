@@ -12,7 +12,7 @@
 #   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (unlocked current checkout with --dev, locked full system by default)
 #   agents <pause|resume|status> <agent|all> [reason]  Pause or inspect agent task loops
 #   docs   [topic|path]                                Browse keystone markdown docs with glow and fzf
-#   photos search [options]                            Search Immich photos and screenshots
+#   photos search [options]                            Search Keystone Photos assets
 #   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
 #   grafana dashboards apply|export <uid>              Apply or export keystone dashboard JSON via Grafana API
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
@@ -96,7 +96,7 @@ Commands:
   agents <pause|resume|status> <agent|all> [reason]
                                                     Control agent task-loop pause state
   docs [topic|path]                                 Browse Keystone docs with glow and fzf
-  photos search [options]                           Search Immich photos and screenshots
+  photos search [options]                           Search Keystone Photos assets
   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
   switch [--boot] [HOSTS]                           Deploy current state without pull, lock, or push
   sync-host-keys                                    Populate hostPublicKey in hosts.nix from live hosts
@@ -363,23 +363,42 @@ Usage: ks photos search [options]
 Search Immich assets through Keystone's photo CLI.
 
 Subcommands:
-  search               Run an OCR / smart search against Immich
+  search               Run a metadata and smart search against Immich
+  people               List known Immich people
 
 Options:
-  --text QUERY         OCR / smart-search query text
-  --person NAME        Restrict results to an Immich person name
+  --text QUERY         Generic smart-search query text
+  --context QUERY      Additional contextual search text
+  --ocr QUERY          OCR-focused search text
+  --person NAME        Restrict results to an Immich person name (repeatable)
+  --album NAME         Restrict results to an Immich album name (repeatable)
+  --tag NAME           Restrict results to an Immich tag value (repeatable)
+  --country NAME       Restrict results to a country
+  --state NAME         Restrict results to a state or province
+  --city NAME          Restrict results to a city
+  --camera-make NAME   Restrict results to a camera make
+  --camera-model NAME  Restrict results to a camera model
+  --lens-model NAME    Restrict results to a lens model
+  --filename TEXT      Restrict results to filenames containing TEXT
+  --description TEXT   Restrict results to descriptions containing TEXT
   --type TYPE          Asset type: photo, screenshot, image, or video
   --kind KIND          Search preset; supported: business-card
   --from YYYY-MM-DD    Inclusive takenAfter date
   --to YYYY-MM-DD      Inclusive takenBefore date
+  --start-date YYYY-MM-DD
+                        Alias for --from
+  --end-date YYYY-MM-DD
+                        Alias for --to
   --limit N            Max results to request (default: 20)
   --json               Emit structured JSON
   -h, --help           Show this help
 
 Examples:
   ks photos search --text "acme"
+  ks photos search --album "Screenshots - alice" --tag "receipt" --city "Austin"
   ks photos search --text "nick romero" --kind business-card
   ks photos search --person "Nick Romero" --type photo
+  ks photos people --json
   ks photos search --text "ks build" --type screenshot --from 2026-01-01 --to 2026-03-31
 EOF
 }
@@ -648,6 +667,22 @@ known_agents_list() {
   fi
 
   printf '%s\n' "$known_agents" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sed '/^$/d'
+}
+
+failed_units_list() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 0
+  fi
+
+  systemctl --failed --plain --no-legend --no-pager 2>/dev/null \
+    | sed -E 's/^[[:space:]]*●?[[:space:]]+//; s/[[:space:]].*$//' \
+    | sed '/^$/d' || true
+}
+
+doctor_progress() {
+  if [[ -t 2 ]]; then
+    printf 'ks doctor: %s\n' "$1" >&2
+  fi
 }
 
 resolve_agent_targets() {
@@ -1123,15 +1158,37 @@ resolve_local_model() {
 list_ollama_models() {
   local ollama_host="$1"
 
-  if ! command -v ollama >/dev/null 2>&1; then
-    echo "_ollama CLI not installed_"
+  if [[ -z "$ollama_host" ]]; then
+    echo "_API endpoint not configured_"
+    return
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "_curl not installed_"
+    return
+  fi
+
+  local response_file
+  response_file=$(mktemp "${TMPDIR:-/tmp}/ollama-tags.XXXXXX.json")
+
+  local http_code="000"
+  http_code=$(curl -sS -o "$response_file" -w '%{http_code}' \
+    --connect-timeout 2 \
+    --max-time 5 \
+    "${ollama_host%/}/api/tags" 2>/dev/null || echo "000")
+
+  if [[ "$http_code" != "200" ]]; then
+    rm -f "$response_file"
+    echo "_API unreachable_"
     return
   fi
 
   local models
-  models=$(OLLAMA_HOST="$ollama_host" ollama list 2>/dev/null | awk 'NR > 1 { print $1 }' || true)
+  models=$(jq -r '.models[]?.name // empty' "$response_file" 2>/dev/null || true)
+  rm -f "$response_file"
+
   if [[ -z "$models" ]]; then
-    echo "_No local models found_"
+    echo "_No models found_"
     return
   fi
 
@@ -2760,10 +2817,9 @@ gather_agent_health() {
     return 0
   fi
 
-  # Get known agents from agentctl help output
-  local known_agents
-  known_agents=$(agentctl 2>&1 | grep "Known agents:" | sed 's/.*Known agents: //' || true)
-  if [[ -z "$known_agents" ]]; then
+  local agents
+  agents=$(known_agents_list 2>/dev/null || true)
+  if [[ -z "$agents" ]]; then
     echo "### Agent status"
     echo "_No agents configured_"
     return 0
@@ -2773,7 +2829,9 @@ gather_agent_health() {
   echo "| Agent | Task Loop | Notes Sync | SSH Agent | Status |"
   echo "|-------|-----------|------------|-----------|--------|"
 
-  for agent in $known_agents; do
+  local agent
+  while IFS= read -r agent; do
+    [[ -n "$agent" ]] || continue
     local task_loop notes_sync ssh_agent overall
 
     # Check key services via agentctl (handles remote dispatch automatically)
@@ -2791,7 +2849,7 @@ gather_agent_health() {
     fi
 
     echo "| $agent | $task_loop | $notes_sync | $ssh_agent | $overall |"
-  done
+  done <<< "$agents"
 }
 
 # --- Agent task queue: count tasks by status ---
@@ -2801,15 +2859,17 @@ gather_agent_tasks() {
     return 0
   fi
 
-  local known_agents
-  known_agents=$(agentctl 2>&1 | grep "Known agents:" | sed 's/.*Known agents: //' || true)
-  [[ -z "$known_agents" ]] && return 0
+  local agents
+  agents=$(known_agents_list 2>/dev/null || true)
+  [[ -z "$agents" ]] && return 0
 
   echo "### Agent tasks"
   echo "| Agent | Pending | In Progress | Blocked | Completed |"
   echo "|-------|---------|-------------|---------|-----------|"
 
-  for agent in $known_agents; do
+  local agent
+  while IFS= read -r agent; do
+    [[ -n "$agent" ]] || continue
     local tasks_yaml pending in_progress blocked completed
     tasks_yaml=$(agentctl "$agent" exec cat "/home/agent-${agent}/notes/TASKS.yaml" 2>/dev/null || true)
 
@@ -2824,7 +2884,7 @@ gather_agent_tasks() {
     completed=$(echo "$tasks_yaml" | grep -c 'status: completed' 2>/dev/null || echo "0")
 
     echo "| $agent | $pending | $in_progress | $blocked | $completed |"
-  done
+  done <<< "$agents"
 }
 
 # --- Gather current system state (for ks doctor) ---
@@ -2833,6 +2893,7 @@ gather_system_state() {
   local hosts_nix="$2"
   local current_host="${3:-}"
 
+  doctor_progress "collecting local system state"
   echo "## System State"
   echo ""
 
@@ -2847,9 +2908,7 @@ gather_system_state() {
   # Systemd failed units
   echo "### Failed systemd units"
   local failed=""
-  if command -v systemctl >/dev/null 2>&1; then
-    failed=$(systemctl --failed --no-legend 2>/dev/null | awk '{print $1}' || true)
-  fi
+  failed=$(failed_units_list)
   if [[ -z "$failed" ]]; then
     echo "_None_"
   else
@@ -2882,20 +2941,24 @@ gather_system_state() {
   echo ""
 
   # Ollama diagnostics
+  doctor_progress "checking Ollama diagnostics"
   gather_ollama_diagnostics "$repo_root" "$current_host"
   echo ""
 
   # Fleet health (host reachability + generation comparison)
   if [[ -n "$hosts_nix" && -f "$hosts_nix" ]]; then
+    doctor_progress "checking fleet health"
     gather_fleet_health "$hosts_nix" "$gen"
     echo ""
   fi
 
   # Agent health (service status)
+  doctor_progress "checking agent health"
   gather_agent_health "$hosts_nix"
   echo ""
 
   # Agent task queue
+  doctor_progress "checking agent tasks"
   gather_agent_tasks
 }
 
@@ -2906,66 +2969,27 @@ gather_ollama_diagnostics() {
   echo "### Ollama diagnostics"
 
   if [[ -z "$current_host" ]]; then
-    echo "_Current host is not defined in hosts.nix; skipping config evaluation_"
+    echo "- API endpoint: _unavailable_"
+    echo "- Available models:"
+    echo "  - _current host is not defined in hosts.nix_"
     return
   fi
 
   local user
   user=$(resolve_current_hm_user "$repo_root" "$current_host")
   if [[ -z "$user" ]]; then
-    echo "_No home-manager user found for current host_"
+    echo "- API endpoint: _unavailable_"
+    echo "- Available models:"
+    echo "  - _no home-manager user found for current host_"
     return
   fi
 
-  local enabled host default_model
-  enabled=$(resolve_ollama_enabled "$repo_root" "$current_host" "$user")
+  local host
   host=$(resolve_ollama_host "$repo_root" "$current_host" "$user")
-  default_model=$(resolve_ollama_default_model "$repo_root" "$current_host" "$user")
-
-  echo "- Home-manager user: $user"
-  echo "- Ollama enabled: $enabled"
-  echo "- Ollama host: ${host:-_not configured_}"
-  echo "- Default model: ${default_model:-_not configured_}"
-  echo "- ollama CLI: $(command -v ollama >/dev/null 2>&1 && echo "installed" || echo "missing")"
-  echo "- claude CLI: $(command -v claude >/dev/null 2>&1 && echo "installed" || echo "missing")"
-
-  if command -v ollama >/dev/null 2>&1 && [[ -n "$host" ]]; then
-    if OLLAMA_HOST="$host" ollama list >/dev/null 2>&1; then
-      echo "- Ollama API: reachable"
-    else
-      echo "- Ollama API: unreachable"
-    fi
-  else
-    echo "- Ollama API: unchecked"
-  fi
+  echo "- API endpoint: ${host:-_not configured_}"
 
   echo "- Available models:"
   list_ollama_models "$host"
-
-  local agent_users_json
-  local override_args=()
-  read -ra override_args <<< "$(local_override_args "$repo_root")"
-  agent_users_json=$(timeout 60 nix eval \
-    "$repo_root#nixosConfigurations.${current_host}.config.home-manager.users" \
-    --apply 'builtins.attrNames' --json \
-    "${override_args[@]}" 2>/dev/null || echo "[]")
-  local agent_users
-  agent_users=$(echo "$agent_users_json" | jq -r '.[] | select(startswith("agent-"))')
-
-  if [[ -z "$agent_users" ]]; then
-    echo "- Agent local config: _no agent home-manager users found_"
-    return
-  fi
-
-  echo "- Agent local config:"
-  while IFS= read -r agent_user; do
-    [[ -z "$agent_user" ]] && continue
-    local agent_enabled agent_host agent_model
-    agent_enabled=$(resolve_ollama_enabled "$repo_root" "$current_host" "$agent_user")
-    agent_host=$(resolve_ollama_host "$repo_root" "$current_host" "$agent_user")
-    agent_model=$(resolve_ollama_default_model "$repo_root" "$current_host" "$agent_user")
-    echo "  - ${agent_user}: enabled=${agent_enabled}, host=${agent_host:-none}, defaultModel=${agent_model:-none}"
-  done <<< "$agent_users"
 }
 
 # --- Build shared agent system prompt (REQ-014.2-8) ---
@@ -3341,14 +3365,23 @@ cmd_doctor() {
   local hosts_nix="$repo_root/hosts.nix"
 
   local current_hostname current_host=""
+  doctor_progress "resolving current host"
   current_hostname=$(hostname)
   current_host=$(nix eval -f "$hosts_nix" --raw \
     --apply "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"$current_hostname\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m" \
     2>/dev/null) || current_host=""
 
-  local system_state
-  system_state=$(gather_system_state "$repo_root" "$hosts_nix" "$current_host")
-  printf '%s\n' "$system_state"
+  local report_file=""
+  if [[ -t 1 ]] && command -v glow >/dev/null 2>&1; then
+    report_file=$(mktemp "${TMPDIR:-/tmp}/ks-doctor.XXXXXX.md")
+    doctor_progress "building report"
+    gather_system_state "$repo_root" "$hosts_nix" "$current_host" > "$report_file"
+    doctor_progress "rendering report"
+    glow "$report_file"
+    rm -f "$report_file"
+  else
+    gather_system_state "$repo_root" "$hosts_nix" "$current_host"
+  fi
 
   if [[ ! -t 0 || ! -t 1 ]]; then
     return 0
