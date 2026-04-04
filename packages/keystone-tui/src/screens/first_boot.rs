@@ -1,13 +1,13 @@
-//! First-boot screen — post-install setup wizard.
+//! First-boot screen — post-install hardware reconciliation wizard.
 //!
 //! After a fresh Keystone install, on first boot the TUI detects a
 //! `.first-boot-pending` marker in the installed system flake directory and
 //! walks the user through:
 //!
-//! 1. Generating real hardware.nix
-//! 2. Initializing a git repo with the config
-//! 3. Showing the SSH public key for GitHub
-//! 4. Setting up a git remote and pushing
+//! 1. Detecting real hardware facts from the installed machine
+//! 2. Building an in-memory reconciliation plan for `hardware.nix`
+//! 3. Showing a summary and diff preview before any files are written
+//! 4. Applying the reviewed patch, then continuing with the existing git flow
 
 use std::path::PathBuf;
 
@@ -60,13 +60,11 @@ impl FirstBootConfig {
             return None;
         }
 
-        // Read hostname from the config
         let hostname = std::fs::read_to_string("/etc/hostname")
             .ok()
             .map(|s| s.trim().to_string())
             .unwrap_or_else(|| "keystone".to_string());
 
-        // Read username from embedded metadata or current user
         let username = std::fs::read_to_string("/etc/keystone/install-config/username")
             .ok()
             .map(|s| s.trim().to_string())
@@ -88,31 +86,35 @@ impl FirstBootConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HardwarePatchPlan {
+    pub current_hardware_nix: String,
+    pub proposed_hardware_nix: String,
+    pub detected_disk_ids: Vec<String>,
+    pub detected_kernel_modules: Vec<String>,
+    pub diff_preview: Vec<String>,
+    pub has_changes: bool,
+}
+
 /// Phases of the first-boot wizard.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FirstBootPhase {
-    /// Welcome message.
     Welcome,
-    /// Generating hardware.nix via nixos-generate-config.
-    GeneratingHardware,
-    /// git init + add + commit.
+    DetectingHardware,
+    ReviewPatch,
     GitSetup,
-    /// Display SSH public key + GitHub instructions.
     ShowSshKey,
-    /// Text input for git remote URL.
     RemoteInput,
-    /// Pushing to remote.
     Pushing,
-    /// Setup complete.
     Done,
-    /// An error occurred.
     Failed(String),
 }
 
 /// Messages from first-boot async operations.
 pub enum FirstBootMessage {
     Output(String),
-    HardwareGenerated,
+    PatchPlanReady(HardwarePatchPlan),
+    NoChangesRequired(String),
     GitReady,
     SshKey(String),
     PushResult(Result<(), String>),
@@ -127,6 +129,9 @@ pub struct FirstBootScreen {
     remote_input: TextInput,
     rx: Option<mpsc::UnboundedReceiver<FirstBootMessage>>,
     push_skipped: bool,
+    hardware_plan: Option<HardwarePatchPlan>,
+    done_message: String,
+    marker_removed: bool,
 }
 
 impl FirstBootScreen {
@@ -151,6 +156,9 @@ impl FirstBootScreen {
             remote_input,
             rx: None,
             push_skipped: false,
+            hardware_plan: None,
+            done_message: "Setup complete.".to_string(),
+            marker_removed: false,
         }
     }
 
@@ -162,24 +170,40 @@ impl FirstBootScreen {
         self.ssh_public_key.as_deref()
     }
 
-    /// Start the first-boot process (Welcome → GeneratingHardware).
+    pub fn hardware_plan(&self) -> Option<&HardwarePatchPlan> {
+        self.hardware_plan.as_ref()
+    }
+
+    /// Start the first-boot process (Welcome → DetectingHardware).
     pub fn start(&mut self) {
         if self.phase != FirstBootPhase::Welcome {
             return;
         }
-        self.phase = FirstBootPhase::GeneratingHardware;
-        self.spawn_hardware_generation();
+        self.phase = FirstBootPhase::DetectingHardware;
+        self.spawn_hardware_detection();
     }
 
-    fn spawn_hardware_generation(&mut self) {
+    fn spawn_hardware_detection(&mut self) {
         let (tx, rx) = mpsc::unbounded_channel();
         self.rx = Some(rx);
         let config_dir = self.config.config_dir.clone();
 
         tokio::spawn(async move {
             let _ = tx.send(FirstBootMessage::Output(
-                "Generating hardware configuration...".to_string(),
+                "Detecting hardware with nixos-generate-config...".to_string(),
             ));
+
+            let current_hardware =
+                match tokio::fs::read_to_string(config_dir.join("hardware.nix")).await {
+                    Ok(content) => content,
+                    Err(e) => {
+                        let _ = tx.send(FirstBootMessage::Failed(format!(
+                            "Failed to read current hardware.nix: {}",
+                            e
+                        )));
+                        return;
+                    }
+                };
 
             let output = Command::new("nixos-generate-config")
                 .args(["--show-hardware-config"])
@@ -188,19 +212,25 @@ impl FirstBootScreen {
 
             match output {
                 Ok(out) if out.status.success() => {
-                    let hw_config = String::from_utf8_lossy(&out.stdout).to_string();
-                    let hw_path = config_dir.join("hardware.nix");
-                    if let Err(e) = tokio::fs::write(&hw_path, &hw_config).await {
-                        let _ = tx.send(FirstBootMessage::Failed(format!(
-                            "Failed to write hardware.nix: {}",
-                            e
-                        )));
-                        return;
+                    let proposed_hardware = String::from_utf8_lossy(&out.stdout).to_string();
+
+                    match build_hardware_patch_plan(&current_hardware, &proposed_hardware) {
+                        Ok(plan) if !plan.has_changes => {
+                            let _ = tx.send(FirstBootMessage::NoChangesRequired(
+                                "No hardware reconciliation changes are required.".to_string(),
+                            ));
+                        }
+                        Ok(plan) => {
+                            let _ = tx.send(FirstBootMessage::Output(
+                                "Hardware facts collected. Review the proposed patch before applying it."
+                                    .to_string(),
+                            ));
+                            let _ = tx.send(FirstBootMessage::PatchPlanReady(plan));
+                        }
+                        Err(err) => {
+                            let _ = tx.send(FirstBootMessage::Failed(err));
+                        }
                     }
-                    let _ = tx.send(FirstBootMessage::Output(
-                        "hardware.nix generated successfully.".to_string(),
-                    ));
-                    let _ = tx.send(FirstBootMessage::HardwareGenerated);
                 }
                 Ok(out) => {
                     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -219,6 +249,41 @@ impl FirstBootScreen {
         });
     }
 
+    pub fn apply_patch(&mut self) {
+        if self.phase != FirstBootPhase::ReviewPatch {
+            return;
+        }
+
+        let Some(plan) = self.hardware_plan.as_ref() else {
+            self.phase = FirstBootPhase::Failed(
+                "Cannot apply patch because no hardware reconciliation plan exists.".to_string(),
+            );
+            return;
+        };
+
+        if !plan.has_changes {
+            self.complete(
+                true,
+                "No hardware reconciliation changes were required. The marker was cleared.",
+            );
+            return;
+        }
+
+        let hardware_path = self.config.config_dir.join("hardware.nix");
+        if let Err(e) = std::fs::write(&hardware_path, &plan.proposed_hardware_nix) {
+            self.phase =
+                FirstBootPhase::Failed(format!("Failed to write reconciled hardware.nix: {}", e));
+            return;
+        }
+
+        self.output_lines.push(format!(
+            "Applied reconciled hardware.nix at {}",
+            hardware_path.display()
+        ));
+        self.phase = FirstBootPhase::GitSetup;
+        self.spawn_git_setup();
+    }
+
     fn spawn_git_setup(&mut self) {
         let (tx, rx) = mpsc::unbounded_channel();
         self.rx = Some(rx);
@@ -229,7 +294,6 @@ impl FirstBootScreen {
                 "Initializing git repository...".to_string(),
             ));
 
-            // git init with explicit branch name to match subsequent push
             let init = Command::new("git")
                 .args(["init", "-b", "main"])
                 .current_dir(&config_dir)
@@ -241,18 +305,15 @@ impl FirstBootScreen {
                 return;
             }
 
-            // Remove .first-boot-pending from tracking (don't commit it)
             let _ = Command::new("git")
                 .args(["rm", "--cached", "-f", ".first-boot-pending"])
                 .current_dir(&config_dir)
                 .output()
                 .await;
 
-            // Add .gitignore to exclude the marker
             let gitignore_path = config_dir.join(".gitignore");
             let _ = tokio::fs::write(&gitignore_path, ".first-boot-pending\n").await;
 
-            // git add .
             let add = Command::new("git")
                 .args(["add", "."])
                 .current_dir(&config_dir)
@@ -264,7 +325,6 @@ impl FirstBootScreen {
                 return;
             }
 
-            // git commit
             let commit = Command::new("git")
                 .args(["commit", "-m", "feat: initial Keystone configuration"])
                 .current_dir(&config_dir)
@@ -363,7 +423,6 @@ impl FirstBootScreen {
                 remote_url
             )));
 
-            // Check if remote already exists
             let remote_check = Command::new("git")
                 .args(["remote", "get-url", "origin"])
                 .current_dir(&config_dir)
@@ -423,20 +482,32 @@ impl FirstBootScreen {
         });
     }
 
-    /// Skip the current step (SSH key display or push).
+    /// Skip the current step.
     pub fn skip(&mut self) {
         match self.phase {
+            FirstBootPhase::ReviewPatch => {
+                self.complete(
+                    false,
+                    "Skipped hardware reconciliation. The first-boot marker was preserved so you can retry later.",
+                );
+            }
             FirstBootPhase::ShowSshKey => {
                 self.phase = FirstBootPhase::RemoteInput;
                 self.remote_input.set_focused(true);
             }
             FirstBootPhase::RemoteInput => {
                 self.push_skipped = true;
-                self.finish();
+                self.complete(
+                    true,
+                    "Applied hardware reconciliation. Git push was skipped.",
+                );
             }
             FirstBootPhase::Pushing => {
                 self.push_skipped = true;
-                self.finish();
+                self.complete(
+                    true,
+                    "Applied hardware reconciliation. Git push was skipped.",
+                );
             }
             _ => {}
         }
@@ -458,7 +529,10 @@ impl FirstBootScreen {
         let url = self.remote_input.value().to_string();
         if url.is_empty() {
             self.push_skipped = true;
-            self.finish();
+            self.complete(
+                true,
+                "Applied hardware reconciliation. Git push was skipped.",
+            );
             return;
         }
         self.phase = FirstBootPhase::Pushing;
@@ -473,28 +547,28 @@ impl FirstBootScreen {
         }
     }
 
-    /// Handle text input for the remote URL field.
     pub fn handle_text_input(&mut self, key: crossterm::event::KeyEvent) {
         if self.phase == FirstBootPhase::RemoteInput {
             self.remote_input.handle_key(key);
         }
     }
 
-    fn finish(&mut self) {
-        // Remove the first-boot marker
-        let marker = self.config.config_dir.join(".first-boot-pending");
-        let _ = std::fs::remove_file(&marker);
+    fn complete(&mut self, remove_marker: bool, message: &str) {
+        self.done_message = message.to_string();
+        self.marker_removed = remove_marker;
+        if remove_marker {
+            let marker = self.config.config_dir.join(".first-boot-pending");
+            let _ = std::fs::remove_file(&marker);
+        }
         self.phase = FirstBootPhase::Done;
     }
 
-    /// Poll for async messages.
     pub fn poll(&mut self) {
         let rx = match self.rx.as_mut() {
             Some(rx) => rx,
             None => return,
         };
 
-        // Collect messages to avoid borrow conflicts when spawning follow-up tasks
         let mut messages = Vec::new();
         while let Ok(msg) = rx.try_recv() {
             messages.push(msg);
@@ -505,9 +579,12 @@ impl FirstBootScreen {
                 FirstBootMessage::Output(line) => {
                     self.output_lines.push(line);
                 }
-                FirstBootMessage::HardwareGenerated => {
-                    self.phase = FirstBootPhase::GitSetup;
-                    self.spawn_git_setup();
+                FirstBootMessage::PatchPlanReady(plan) => {
+                    self.hardware_plan = Some(plan);
+                    self.phase = FirstBootPhase::ReviewPatch;
+                }
+                FirstBootMessage::NoChangesRequired(message) => {
+                    self.complete(true, &message);
                 }
                 FirstBootMessage::GitReady => {
                     self.phase = FirstBootPhase::ShowSshKey;
@@ -518,7 +595,10 @@ impl FirstBootScreen {
                 }
                 FirstBootMessage::PushResult(Ok(())) => {
                     self.output_lines.push("Push successful!".to_string());
-                    self.finish();
+                    self.complete(
+                        true,
+                        "Applied hardware reconciliation and pushed the repository successfully.",
+                    );
                 }
                 FirstBootMessage::PushResult(Err(e)) => {
                     self.output_lines.push(format!("Push failed: {}", e));
@@ -534,9 +614,10 @@ impl FirstBootScreen {
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         match &self.phase {
             FirstBootPhase::Welcome => self.render_welcome(frame, area),
-            FirstBootPhase::GeneratingHardware | FirstBootPhase::GitSetup => {
+            FirstBootPhase::DetectingHardware | FirstBootPhase::GitSetup => {
                 self.render_progress(frame, area)
             }
+            FirstBootPhase::ReviewPatch => self.render_review_patch(frame, area),
             FirstBootPhase::ShowSshKey => self.render_ssh_key(frame, area),
             FirstBootPhase::RemoteInput => self.render_remote_input(frame, area),
             FirstBootPhase::Pushing => self.render_progress(frame, area),
@@ -556,7 +637,7 @@ impl FirstBootScreen {
             .split(area);
 
         let title = Paragraph::new(Text::styled(
-            "Welcome to Keystone!",
+            "First boot: hardware reconciliation",
             Style::default().bold().fg(Color::Green),
         ))
         .alignment(Alignment::Center)
@@ -567,9 +648,10 @@ impl FirstBootScreen {
             format!(
                 "\n  Your system '{}' has been installed.\n\n  \
                  This wizard will:\n  \
-                 1. Generate hardware.nix for this machine\n  \
-                 2. Initialize a git repository\n  \
-                 3. Help you push your config to GitHub\n",
+                 1. Detect real hardware facts from this machine\n  \
+                 2. Build a reviewable patch for hardware.nix\n  \
+                 3. Apply the patch only after confirmation\n  \
+                 4. Continue into the existing git and push flow\n",
                 self.config.hostname
             ),
             Style::default(),
@@ -582,7 +664,7 @@ impl FirstBootScreen {
         frame.render_widget(message, chunks[1]);
 
         let help = Paragraph::new(Text::styled(
-            "Enter: begin setup • q: skip setup",
+            "Enter: detect hardware • q: exit",
             Style::default().fg(Color::DarkGray),
         ))
         .alignment(Alignment::Center);
@@ -600,7 +682,7 @@ impl FirstBootScreen {
             .split(area);
 
         let phase_label = match &self.phase {
-            FirstBootPhase::GeneratingHardware => "Generating hardware configuration...",
+            FirstBootPhase::DetectingHardware => "Detecting hardware and building patch plan...",
             FirstBootPhase::GitSetup => "Setting up git repository...",
             FirstBootPhase::Pushing => "Pushing to remote...",
             _ => "Working...",
@@ -632,6 +714,106 @@ impl FirstBootScreen {
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
+    }
+
+    fn render_review_patch(&self, frame: &mut Frame, area: Rect) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(8),
+                Constraint::Min(8),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let title = Paragraph::new(Text::styled(
+            "Review hardware reconciliation",
+            Style::default().bold().fg(Color::Green),
+        ))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(title, chunks[0]);
+
+        let summary_lines = if let Some(plan) = &self.hardware_plan {
+            let mut lines = vec![
+                Line::from(format!("  Host: {}", self.config.hostname)),
+                Line::from(""),
+                Line::from("  Detected disk identifiers:"),
+            ];
+
+            if plan.detected_disk_ids.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    "  - none detected",
+                    Style::default().fg(Color::Red),
+                )));
+            } else {
+                for disk in &plan.detected_disk_ids {
+                    lines.push(Line::from(format!("  - {}", disk)));
+                }
+            }
+
+            lines.push(Line::from(""));
+            lines.push(Line::from("  Detected kernel modules:"));
+            if plan.detected_kernel_modules.is_empty() {
+                lines.push(Line::from("  - none detected"));
+            } else {
+                lines.push(Line::from(format!(
+                    "  - {}",
+                    plan.detected_kernel_modules.join(", ")
+                )));
+            }
+            lines
+        } else {
+            vec![Line::from("  No hardware reconciliation plan available.")]
+        };
+
+        let summary = Paragraph::new(summary_lines)
+            .block(
+                Block::default()
+                    .title("Summary")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Green)),
+            )
+            .wrap(Wrap { trim: false });
+        frame.render_widget(summary, chunks[1]);
+
+        let diff_lines: Vec<Line> = self
+            .hardware_plan
+            .as_ref()
+            .map(|plan| {
+                plan.diff_preview
+                    .iter()
+                    .map(|line| {
+                        let style = if line.starts_with('+') {
+                            Style::default().fg(Color::Green)
+                        } else if line.starts_with('-') {
+                            Style::default().fg(Color::Red)
+                        } else {
+                            Style::default()
+                        };
+                        Line::from(Span::styled(format!("  {}", line), style))
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(|| vec![Line::from("  No diff preview available.")]);
+
+        let diff = Paragraph::new(diff_lines)
+            .block(
+                Block::default()
+                    .title("Diff preview")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            )
+            .wrap(Wrap { trim: false });
+        frame.render_widget(diff, chunks[2]);
+
+        let help = Paragraph::new(Text::styled(
+            "Enter: apply patch • s: skip for now • q: exit",
+            Style::default().fg(Color::DarkGray),
+        ))
+        .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[3]);
     }
 
     fn render_ssh_key(&self, frame: &mut Frame, area: Rect) {
@@ -731,32 +913,25 @@ impl FirstBootScreen {
             .split(area);
 
         let title = Paragraph::new(Text::styled(
-            "Setup Complete!",
+            "First-boot flow complete",
             Style::default().bold().fg(Color::Green),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
 
-        let push_status = if self.push_skipped {
-            "  Push: skipped (you can push manually later)"
+        let marker_status = if self.marker_removed {
+            "  First-boot marker: cleared"
         } else {
-            "  Push: successful"
+            "  First-boot marker: preserved"
         };
 
         let message = Paragraph::new(Text::from(vec![
             Line::from(""),
-            Line::from(format!("  Config: {}", self.config.config_dir.display())),
-            Line::from(push_status),
+            Line::from(format!("  {}", self.done_message)),
+            Line::from(marker_status),
             Line::from(""),
-            Line::from("  To rebuild your system:"),
-            Line::from(Span::styled(
-                format!(
-                    "    sudo nixos-rebuild switch --flake {}",
-                    self.config.config_dir.display()
-                ),
-                Style::default().fg(Color::Yellow),
-            )),
+            Line::from(format!("  Config: {}", self.config.config_dir.display())),
             Line::from(""),
         ]))
         .block(
@@ -785,7 +960,7 @@ impl FirstBootScreen {
             .split(area);
 
         let title = Paragraph::new(Text::styled(
-            "Setup Failed",
+            "First-boot flow failed",
             Style::default().bold().fg(Color::Red),
         ))
         .alignment(Alignment::Center)
@@ -821,6 +996,149 @@ impl FirstBootScreen {
     }
 }
 
+fn build_hardware_patch_plan(
+    current_hardware_nix: &str,
+    proposed_hardware_nix: &str,
+) -> Result<HardwarePatchPlan, String> {
+    let detected_disk_ids = extract_stable_disk_identifiers(proposed_hardware_nix);
+    if detected_disk_ids.is_empty() {
+        return Err(
+            "No confident stable disk mapping was detected in the generated hardware config. The flow will not guess."
+                .to_string(),
+        );
+    }
+
+    let detected_kernel_modules = extract_kernel_modules(proposed_hardware_nix);
+    let has_changes = current_hardware_nix.trim() != proposed_hardware_nix.trim();
+    let diff_preview = build_diff_preview(current_hardware_nix, proposed_hardware_nix);
+
+    Ok(HardwarePatchPlan {
+        current_hardware_nix: current_hardware_nix.to_string(),
+        proposed_hardware_nix: proposed_hardware_nix.to_string(),
+        detected_disk_ids,
+        detected_kernel_modules,
+        diff_preview,
+        has_changes,
+    })
+}
+
+fn extract_stable_disk_identifiers(config: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+
+    for line in config.lines() {
+        for value in extract_quoted_strings(line) {
+            if value.contains("/dev/disk/by-")
+                || value.contains("UUID=")
+                || value.contains("PARTUUID=")
+            {
+                push_unique(&mut ids, value);
+            }
+        }
+    }
+
+    ids
+}
+
+fn extract_kernel_modules(config: &str) -> Vec<String> {
+    let mut modules = Vec::new();
+    let mut in_modules_list = false;
+
+    for line in config.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("boot.initrd.availableKernelModules")
+            || trimmed.contains("boot.kernelModules")
+        {
+            in_modules_list = true;
+        }
+
+        if in_modules_list {
+            for value in extract_quoted_strings(trimmed) {
+                push_unique(&mut modules, value);
+            }
+            if trimmed.contains(']') {
+                in_modules_list = false;
+            }
+        }
+    }
+
+    modules
+}
+
+fn extract_quoted_strings(line: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut in_string = false;
+    let mut escape = false;
+
+    for ch in line.chars() {
+        if !in_string {
+            if ch == '"' {
+                in_string = true;
+                current.clear();
+            }
+            continue;
+        }
+
+        if escape {
+            current.push(ch);
+            escape = false;
+            continue;
+        }
+
+        match ch {
+            '\\' => escape = true,
+            '"' => {
+                in_string = false;
+                values.push(current.clone());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    values
+}
+
+fn push_unique(values: &mut Vec<String>, candidate: String) {
+    if !values.iter().any(|existing| existing == &candidate) {
+        values.push(candidate);
+    }
+}
+
+fn build_diff_preview(current: &str, proposed: &str) -> Vec<String> {
+    let current_lines: Vec<&str> = current.lines().collect();
+    let proposed_lines: Vec<&str> = proposed.lines().collect();
+    let mut preview = Vec::new();
+    let max_len = current_lines.len().max(proposed_lines.len());
+
+    for idx in 0..max_len {
+        let current_line = current_lines.get(idx);
+        let proposed_line = proposed_lines.get(idx);
+
+        if current_line == proposed_line {
+            continue;
+        }
+
+        if let Some(line) = current_line {
+            preview.push(format!("- {}", line));
+        }
+        if let Some(line) = proposed_line {
+            preview.push(format!("+ {}", line));
+        }
+
+        if preview.len() >= 40 {
+            preview.push("... diff truncated ...".to_string());
+            break;
+        }
+    }
+
+    if preview.is_empty() {
+        preview.push("No changes.".to_string());
+    }
+
+    preview
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -832,6 +1150,17 @@ mod tests {
             username: "testuser".to_string(),
             github_username: Some("octocat".to_string()),
         }
+    }
+
+    fn sample_generated_hardware() -> &'static str {
+        r#"{
+  fileSystems."/" = {
+    device = "/dev/disk/by-id/nvme-Samsung_990_PRO";
+  };
+
+  boot.initrd.availableKernelModules = [ "nvme" "xhci_pci" "thunderbolt" ];
+}
+"#
     }
 
     #[test]
@@ -862,6 +1191,55 @@ mod tests {
     }
 
     #[test]
+    fn test_build_patch_plan_detects_changes_and_summary() {
+        let current = "{\n  # placeholder\n}\n";
+        let plan = build_hardware_patch_plan(current, sample_generated_hardware()).unwrap();
+
+        assert!(plan.has_changes);
+        assert_eq!(
+            plan.detected_disk_ids,
+            vec!["/dev/disk/by-id/nvme-Samsung_990_PRO".to_string()]
+        );
+        assert_eq!(
+            plan.detected_kernel_modules,
+            vec![
+                "nvme".to_string(),
+                "xhci_pci".to_string(),
+                "thunderbolt".to_string()
+            ]
+        );
+        assert!(plan.diff_preview.iter().any(|line| line.starts_with('+')));
+    }
+
+    #[test]
+    fn test_build_patch_plan_no_changes() {
+        let plan =
+            build_hardware_patch_plan(sample_generated_hardware(), sample_generated_hardware())
+                .unwrap();
+        assert!(!plan.has_changes);
+        assert_eq!(plan.diff_preview, vec!["No changes.".to_string()]);
+    }
+
+    #[test]
+    fn test_build_patch_plan_requires_confident_disk_mapping() {
+        let generated = r#"{
+  boot.initrd.availableKernelModules = [ "nvme" ];
+}
+"#;
+        let err = build_hardware_patch_plan("{ }", generated).unwrap_err();
+        assert!(err.contains("No confident stable disk mapping"));
+    }
+
+    #[test]
+    fn test_skip_from_review_preserves_marker() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::ReviewPatch;
+        screen.skip();
+        assert_eq!(*screen.phase(), FirstBootPhase::Done);
+        assert!(!screen.marker_removed);
+    }
+
+    #[test]
     fn test_skip_from_ssh_key() {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.phase = FirstBootPhase::ShowSshKey;
@@ -876,6 +1254,24 @@ mod tests {
         screen.skip();
         assert_eq!(*screen.phase(), FirstBootPhase::Done);
         assert!(screen.push_skipped);
+        assert!(screen.marker_removed);
+    }
+
+    #[test]
+    fn test_poll_patch_plan_ready() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::DetectingHardware;
+
+        tx.send(FirstBootMessage::PatchPlanReady(
+            build_hardware_patch_plan("{ }", sample_generated_hardware()).unwrap(),
+        ))
+        .unwrap();
+
+        screen.poll();
+        assert_eq!(*screen.phase(), FirstBootPhase::ReviewPatch);
+        assert!(screen.hardware_plan().is_some());
     }
 
     #[test]
@@ -907,6 +1303,7 @@ mod tests {
         screen.poll();
         assert_eq!(*screen.phase(), FirstBootPhase::Done);
         assert!(!screen.push_skipped);
+        assert!(screen.marker_removed);
     }
 
     #[test]
