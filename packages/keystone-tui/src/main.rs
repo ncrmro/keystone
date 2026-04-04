@@ -18,6 +18,7 @@ use crossterm::{
 use ratatui::prelude::*;
 
 mod app;
+pub mod cmd;
 mod config;
 mod disk;
 mod github;
@@ -39,20 +40,34 @@ use screens::install::InstallerConfig;
 #[derive(Parser)]
 #[command(name = "keystone-tui", version, about)]
 struct Cli {
-    /// Generate config from JSON on stdin instead of launching the TUI.
-    ///
-    /// Expects a JSON object with fields: hostname, machine_type ("server"|"workstation"|"laptop"),
-    /// storage_type ("zfs"|"ext4"), username, password, and optionally: disk_device, github_username,
-    /// time_zone, state_version.
+    /// Generate config from JSON on stdin (legacy alias for `template --json`).
     #[arg(long)]
     json: bool,
 
-    /// Render a single screen to stdout as ANSI and exit. No alternate screen, no raw mode.
-    /// Useful for capturing screenshots with vhs or piping to ansi-to-image tools.
-    ///
-    /// Available screens: welcome, create-config, hosts, install
+    /// Render a single screen to stdout as ANSI and exit.
     #[arg(long, value_name = "SCREEN")]
     screenshot: Option<String>,
+
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(clap::Subcommand)]
+enum Command {
+    /// Generate a new Keystone config from a template.
+    Template {
+        /// GitHub username — fetches display name and SSH keys.
+        #[arg(long)]
+        github_username: Option<String>,
+
+        /// Output directory (defaults to hostname).
+        #[arg(long, short)]
+        output: Option<String>,
+
+        /// JSON mode: read params from stdin, write result to stdout.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Set up the terminal for TUI rendering.
@@ -81,6 +96,18 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Re
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Route subcommands
+    if let Some(command) = cli.command {
+        return match command {
+            Command::Template {
+                github_username,
+                output,
+                json,
+            } => run_template_command(github_username, output, json).await,
+        };
+    }
+
+    // Legacy --json flag (compat alias for `template --json`)
     if cli.json {
         return run_json_mode().await;
     }
@@ -256,6 +283,64 @@ async fn run_json_mode() -> Result<()> {
 
     println!("{}", repo.path.display());
     Ok(())
+}
+
+/// Run the `template` subcommand.
+async fn run_template_command(
+    github_username: Option<String>,
+    output: Option<String>,
+    json: bool,
+) -> Result<()> {
+    let params = if json {
+        // JSON mode: read params from stdin
+        let input = io::read_to_string(io::stdin())?;
+        let mut params: cmd::TemplateParams = serde_json::from_str(&input)?;
+        if github_username.is_some() {
+            params.github_username = github_username;
+        }
+        if output.is_some() {
+            params.output = output;
+        }
+        params
+    } else {
+        // Interactive CLI mode
+        let mut params = cmd::TemplateParams::from_interactive(github_username.as_deref())?;
+        if let Some(ref gh) = github_username {
+            params.github_username = Some(gh.clone());
+        }
+        if output.is_some() {
+            params.output = output;
+        }
+        params
+    };
+
+    match cmd::run_template(params).await {
+        Ok(result) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&cmd::JsonOutput::ok(&result))?
+                );
+            } else {
+                println!("Config generated (v{}):", result.config_version);
+                for file in &result.files {
+                    println!("  {}/{}", result.output_dir.display(), file);
+                }
+            }
+            Ok(())
+        }
+        Err(e) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&cmd::JsonError::new(e.to_string()))?
+                );
+                Ok(())
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 /// Main application loop. Generic over backend so tests can use TestBackend.

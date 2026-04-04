@@ -97,7 +97,8 @@ pub fn generate_flake_nix(config: &GenerateConfig) -> String {
     let owner_email = config.owner_email.as_deref().unwrap_or(&default_email);
 
     format!(
-        r#"{{
+        r#"# keystone-config-version: 1.0.0
+{{
   description = "{owner_name_esc} Keystone System Configuration";
 
   inputs = {{

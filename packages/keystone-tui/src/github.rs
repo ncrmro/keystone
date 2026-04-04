@@ -30,6 +30,29 @@ pub async fn fetch_ssh_keys(username: &str) -> Result<Vec<String>> {
     Ok(keys)
 }
 
+/// Fetch display name for a GitHub user.
+///
+/// Falls back to the username if the API call fails or the name is not set.
+pub async fn fetch_user_name(username: &str) -> String {
+    let url = format!("https://api.github.com/users/{}", username);
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .header("User-Agent", "keystone-tui")
+        .send()
+        .await;
+
+    if let Ok(resp) = resp {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(name) = json["name"].as_str() {
+                if !name.is_empty() {
+                    return name.to_string();
+                }
+            }
+        }
+    }
+    username.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

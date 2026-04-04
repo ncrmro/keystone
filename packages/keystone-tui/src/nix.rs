@@ -40,11 +40,33 @@ pub struct HostMetadata {
     pub build_on_remote: bool,
 }
 
+/// Config format version detected from the flake structure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum ConfigVersion {
+    /// Legacy hand-wired `nixpkgs.lib.nixosSystem` format.
+    #[serde(rename = "0.0.0")]
+    V0,
+    /// `keystone.lib.mkSystemFlake` inventory format.
+    #[serde(rename = "1.0.0")]
+    V1,
+}
+
+impl std::fmt::Display for ConfigVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigVersion::V0 => write!(f, "0.0.0"),
+            ConfigVersion::V1 => write!(f, "1.0.0"),
+        }
+    }
+}
+
 /// Parsed information about a Keystone flake.
 #[derive(Debug, Clone)]
 pub struct FlakeInfo {
     /// List of NixOS host configurations defined in the flake.
     pub hosts: Vec<HostInfo>,
+    /// Detected config format version.
+    pub version: ConfigVersion,
 }
 
 /// Parse a flake.nix file and extract configuration information.
@@ -62,9 +84,10 @@ pub async fn parse_flake(repo_path: &Path) -> Result<FlakeInfo> {
     }
 
     let syntax = root.syntax();
+    let version = detect_config_version(&syntax);
     let hosts = extract_nixos_configurations(&syntax);
 
-    Ok(FlakeInfo { hosts })
+    Ok(FlakeInfo { hosts, version })
 }
 
 /// Evaluate keystone.hosts metadata from the flake via `nix eval`.
@@ -638,6 +661,32 @@ fn parse_input_entry(attr_node: &SyntaxNode) -> Option<FlakeInputInfo> {
 pub fn extract_nixos_configurations_from_str(content: &str) -> Vec<HostInfo> {
     let root = Root::parse(content);
     extract_nixos_configurations(&root.syntax())
+}
+
+/// Detect config version from flake content.
+///
+/// Looks for the `# keystone-config-version: X.Y.Z` marker comment.
+/// If absent, the config is version `0.0.0` (legacy format).
+fn detect_config_version(root: &SyntaxNode) -> ConfigVersion {
+    let text = root.text().to_string();
+    detect_config_version_from_str(&text)
+}
+
+/// Detect config version from a flake string.
+///
+/// Scans for `# keystone-config-version: X.Y.Z`. If present and the
+/// version is `1.0.0`, returns `V1`. Otherwise returns `V0`.
+pub fn detect_config_version_from_str(content: &str) -> ConfigVersion {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("# keystone-config-version:") {
+            let ver = rest.trim();
+            if ver.starts_with("1.") {
+                return ConfigVersion::V1;
+            }
+        }
+    }
+    ConfigVersion::V0
 }
 
 #[cfg(test)]
