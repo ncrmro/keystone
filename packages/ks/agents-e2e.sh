@@ -1,10 +1,38 @@
-#!/usr/bin/env bash
-# agents-e2e.sh — End-to-end OS agent product lifecycle test (REQ-031)
+# shellcheck shell=bash
+# agents-e2e.sh -- End-to-end OS agent product lifecycle test (REQ-031)
 #
 # Sourced by ks.sh at build time. Provides cmd_agents_e2e() and all
 # supporting functions for the E2E harness.
 #
 # See specs/REQ-031-e2e-os-agent-product-test.md for requirements.
+
+# ---------------------------------------------------------------------------
+# Shared helpers (DRY)
+# ---------------------------------------------------------------------------
+
+e2e_fork_name() {
+  echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2
+}
+
+e2e_engineer_repo() {
+  echo "${E2E_ENGINEER_AGENT}/$(e2e_fork_name)"
+}
+
+e2e_engineer_home() {
+  getent passwd "agent-${E2E_ENGINEER_AGENT}" 2>/dev/null | cut -d: -f6
+}
+
+e2e_find_in_agent_paths() {
+  local engineer_home="$1"
+  shift
+  local find_args=("$@")
+  for search_root in "${engineer_home}/../.worktrees" "${engineer_home}/repos"; do
+    if find "$search_root" "${find_args[@]}" 2>/dev/null | head -1 | grep -q .; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 # ---------------------------------------------------------------------------
 # Help
@@ -43,11 +71,18 @@ EOF
 # Report helpers (REQ-031.1–031.5, NFR-004)
 # ---------------------------------------------------------------------------
 
+e2e_report_cleanup() {
+  if [[ -n "${E2E_REPORT_FILE:-}" && -f "$E2E_REPORT_FILE" ]]; then
+    rm -f "$E2E_REPORT_FILE"
+  fi
+}
+
 e2e_report_init() {
   E2E_REPORT_FILE=$(mktemp "${TMPDIR:-/tmp}/ks-e2e-report.XXXXXX.yml")
   E2E_REPORT_RC=0
+  trap e2e_report_cleanup EXIT
   cat > "$E2E_REPORT_FILE" <<YAML
-# ks agents e2e report — $(date -u +%Y-%m-%dT%H:%M:%SZ)
+# ks agents e2e report -- $(date -u +%Y-%m-%dT%H:%M:%SZ)
 harness:
   product_agent: "${E2E_PRODUCT_AGENT}"
   engineer_agent: "${E2E_ENGINEER_AGENT}"
@@ -97,10 +132,8 @@ e2e_yaml_quote() {
   local val="$1"
   if [[ -z "$val" ]]; then
     printf '""'
-  elif printf '%s' "$val" | grep -qE '[:#\[\]{}&*!|>'"'"'"%@`]|^[- ]'; then
-    printf '"%s"' "$(printf '%s' "$val" | sed 's/"/\\"/g')"
   else
-    printf '"%s"' "$val"
+    printf '"%s"' "$(printf '%s' "$val" | sed 's/"/\\"/g')"
   fi
 }
 
@@ -231,31 +264,25 @@ e2e_forgejo_comment_issue() {
 e2e_cleanup_environment() {
   e2e_emit info "cleaning environment"
 
-  # Delete prior fork (idempotent — ignores 404)
-  local product_home engineer_home
-  product_home=$(eval echo "~agent-${E2E_PRODUCT_AGENT}")
-  engineer_home=$(eval echo "~agent-${E2E_ENGINEER_AGENT}")
-
-  local repo_name
-  repo_name=$(basename "$E2E_TEMPLATE_REPO")
+  local repo_name owner
+  repo_name=$(e2e_fork_name)
+  owner=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f1)
 
   # Remove agent worktrees and clones
-  for agent_home in "$product_home" "$engineer_home"; do
-    if [[ -d "$agent_home" ]]; then
-      local owner
-      owner=$(basename "$(dirname "$E2E_TEMPLATE_REPO")")
-      # Remove worktrees referencing the repo
-      local wt_base="${agent_home}/../.worktrees/${owner}/${repo_name}"
-      if [[ -d "$wt_base" ]]; then
-        e2e_emit info "removing worktrees" agent "$(basename "$agent_home")" path "$wt_base"
-        rm -rf "$wt_base"
-      fi
-      # Remove cloned repo
-      local clone_path="${agent_home}/repos/${owner}/${repo_name}"
-      if [[ -d "$clone_path" ]]; then
-        e2e_emit info "removing clone" agent "$(basename "$agent_home")" path "$clone_path"
-        rm -rf "$clone_path"
-      fi
+  for agent in "$E2E_PRODUCT_AGENT" "$E2E_ENGINEER_AGENT"; do
+    local agent_home
+    agent_home=$(getent passwd "agent-${agent}" 2>/dev/null | cut -d: -f6) || continue
+    if [[ ! -d "$agent_home" ]]; then continue; fi
+
+    local wt_base="${agent_home}/../.worktrees/${owner}/${repo_name}"
+    if [[ -d "$wt_base" ]]; then
+      e2e_emit info "removing worktrees" agent "$agent" path "$wt_base"
+      rm -rf "$wt_base"
+    fi
+    local clone_path="${agent_home}/repos/${owner}/${repo_name}"
+    if [[ -d "$clone_path" ]]; then
+      e2e_emit info "removing clone" agent "$agent" path "$clone_path"
+      rm -rf "$clone_path"
     fi
   done
 
@@ -265,18 +292,15 @@ e2e_cleanup_environment() {
 e2e_setup_environment() {
   e2e_emit info "setting up environment"
 
-  # Delete any prior fork on Forgejo
-  local fork_owner fork_name
-  fork_owner=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f1)
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
+  local fork_name
+  fork_name=$(e2e_fork_name)
 
-  # Each agent org gets their own fork
+  # Delete any prior forks on Forgejo (idempotent)
   for agent in "$E2E_PRODUCT_AGENT" "$E2E_ENGINEER_AGENT"; do
-    local agent_repo="${agent}/${fork_name}"
-    e2e_forgejo_delete_repo "$agent_repo"
+    e2e_forgejo_delete_repo "${agent}/${fork_name}"
   done
 
-  # Fork template for engineering agent (the agent that does the implementation)
+  # Fork template for engineering agent
   local fork_result
   fork_result=$(e2e_forgejo_fork_repo "$E2E_TEMPLATE_REPO" "$E2E_ENGINEER_AGENT" 2>&1) || {
     e2e_report_check "environment_setup" "fail" "Failed to fork template: $fork_result"
@@ -306,9 +330,8 @@ e2e_check_product_email() {
 
 e2e_check_product_press_release() {
   e2e_emit info "checking for press release issue"
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
-  local repo="${E2E_ENGINEER_AGENT}/${fork_name}"
+  local repo
+  repo=$(e2e_engineer_repo)
 
   local issues
   issues=$(e2e_forgejo_list_issues "$repo" "open" 2>/dev/null) || {
@@ -328,9 +351,8 @@ e2e_check_product_press_release() {
 
 e2e_check_product_milestone() {
   e2e_emit info "checking for milestone"
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
-  local repo="${E2E_ENGINEER_AGENT}/${fork_name}"
+  local repo
+  repo=$(e2e_engineer_repo)
 
   local milestones
   milestones=$(e2e_forgejo_list_milestones "$repo" 2>/dev/null) || {
@@ -354,9 +376,8 @@ e2e_check_product_milestone() {
 
 e2e_check_engineering_issue() {
   e2e_emit info "checking for engineering issue on milestone"
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
-  local repo="${E2E_ENGINEER_AGENT}/${fork_name}"
+  local repo
+  repo=$(e2e_engineer_repo)
 
   local issues
   issues=$(e2e_forgejo_list_issues "$repo" "all" 2>/dev/null) || {
@@ -376,9 +397,8 @@ e2e_check_engineering_issue() {
 
 e2e_check_trunk_branch() {
   e2e_emit info "checking for trunk branch"
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
-  local repo="${E2E_ENGINEER_AGENT}/${fork_name}"
+  local repo
+  repo=$(e2e_engineer_repo)
 
   local branches
   branches=$(e2e_forgejo_list_branches "$repo" 2>/dev/null) || {
@@ -400,13 +420,16 @@ e2e_check_trunk_branch() {
 
 e2e_check_worktree() {
   e2e_emit info "checking for engineer worktree"
-  local engineer_home
-  engineer_home=$(eval echo "~agent-${E2E_ENGINEER_AGENT}")
-  local fork_owner fork_name
-  fork_owner=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f1)
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
+  local eng_home fork_name
+  eng_home=$(e2e_engineer_home)
+  fork_name=$(e2e_fork_name)
 
-  local wt_base="${engineer_home}/../.worktrees/${E2E_ENGINEER_AGENT}/${fork_name}"
+  if [[ -z "$eng_home" ]]; then
+    e2e_report_check "worktree" "skip" "Could not resolve engineer home directory"
+    return 0
+  fi
+
+  local wt_base="${eng_home}/../.worktrees/${E2E_ENGINEER_AGENT}/${fork_name}"
   if [[ -d "$wt_base" ]] && ls "$wt_base"/*/ >/dev/null 2>&1; then
     e2e_report_check "worktree" "pass" "Worktree exists at $wt_base"
   else
@@ -416,21 +439,15 @@ e2e_check_worktree() {
 
 e2e_check_spec_file() {
   e2e_emit info "checking for specs/REQ-*palindrome* file"
-  local engineer_home
-  engineer_home=$(eval echo "~agent-${E2E_ENGINEER_AGENT}")
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
+  local eng_home
+  eng_home=$(e2e_engineer_home)
 
-  # Check in worktrees and clones
-  local found=false
-  for search_root in "${engineer_home}/../.worktrees" "${engineer_home}/repos"; do
-    if find "$search_root" -path "*/specs/REQ-*palindrome*" -name "*.md" 2>/dev/null | head -1 | grep -q .; then
-      found=true
-      break
-    fi
-  done
+  if [[ -z "$eng_home" ]]; then
+    e2e_report_check "spec_file" "skip" "Could not resolve engineer home directory"
+    return 0
+  fi
 
-  if [[ "$found" == true ]]; then
+  if e2e_find_in_agent_paths "$eng_home" -path "*/specs/REQ-*palindrome*" -name "*.md"; then
     e2e_report_check "spec_file" "pass" "Found palindrome spec file"
   else
     e2e_report_check "spec_file" "skip" "No palindrome spec file found yet"
@@ -445,20 +462,15 @@ e2e_check_palindrome_backend() {
 
 e2e_check_playwright_tests() {
   e2e_emit info "checking for Playwright tests in packages/e2e/"
-  local engineer_home
-  engineer_home=$(eval echo "~agent-${E2E_ENGINEER_AGENT}")
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
+  local eng_home
+  eng_home=$(e2e_engineer_home)
 
-  local found=false
-  for search_root in "${engineer_home}/../.worktrees" "${engineer_home}/repos"; do
-    if find "$search_root" -path "*/packages/e2e/*.spec.*" -o -path "*/packages/e2e/*.test.*" 2>/dev/null | head -1 | grep -q .; then
-      found=true
-      break
-    fi
-  done
+  if [[ -z "$eng_home" ]]; then
+    e2e_report_check "playwright_tests" "skip" "Could not resolve engineer home directory"
+    return 0
+  fi
 
-  if [[ "$found" == true ]]; then
+  if e2e_find_in_agent_paths "$eng_home" \( -path "*/packages/e2e/*.spec.*" -o -path "*/packages/e2e/*.test.*" \); then
     e2e_report_check "playwright_tests" "pass" "Found Playwright test files"
   else
     e2e_report_check "playwright_tests" "skip" "No Playwright tests found yet"
@@ -467,8 +479,13 @@ e2e_check_playwright_tests() {
 
 e2e_check_screenshots() {
   e2e_emit info "checking screenshot naming convention"
-  local engineer_home
-  engineer_home=$(eval echo "~agent-${E2E_ENGINEER_AGENT}")
+  local eng_home
+  eng_home=$(e2e_engineer_home)
+
+  if [[ -z "$eng_home" ]]; then
+    e2e_report_check "screenshots" "skip" "Could not resolve engineer home directory"
+    return 0
+  fi
 
   local found=false
   local bad_names=false
@@ -476,11 +493,10 @@ e2e_check_screenshots() {
     found=true
     local basename_png
     basename_png=$(basename "$png")
-    # Expected: {test-name}.{step-index}.{step-name}.png
     if ! echo "$basename_png" | grep -qE '^[a-z0-9_-]+\.[0-9]+\.[a-z0-9_-]+\.png$'; then
       bad_names=true
     fi
-  done < <(find "${engineer_home}/../.worktrees" "${engineer_home}/repos" -name "*.png" -path "*/packages/e2e/*" 2>/dev/null)
+  done < <(find "${eng_home}/../.worktrees" "${eng_home}/repos" -name "*.png" -path "*/packages/e2e/*" 2>/dev/null)
 
   if [[ "$found" == true && "$bad_names" == false ]]; then
     e2e_report_check "screenshots" "pass" "Screenshots follow naming convention"
@@ -493,13 +509,17 @@ e2e_check_screenshots() {
 
 e2e_check_lfs_tracking() {
   e2e_emit info "checking git LFS tracking for PNG files"
-  local engineer_home
-  engineer_home=$(eval echo "~agent-${E2E_ENGINEER_AGENT}")
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
+  local eng_home fork_name
+  eng_home=$(e2e_engineer_home)
+  fork_name=$(e2e_fork_name)
+
+  if [[ -z "$eng_home" ]]; then
+    e2e_report_check "lfs_tracking" "skip" "Could not resolve engineer home directory"
+    return 0
+  fi
 
   local found_gitattributes=false
-  for search_root in "${engineer_home}/../.worktrees" "${engineer_home}/repos"; do
+  for search_root in "${eng_home}/../.worktrees" "${eng_home}/repos"; do
     if find "$search_root" -name ".gitattributes" -path "*${fork_name}*" 2>/dev/null | while IFS= read -r ga; do
       if grep -q '\.png.*filter=lfs' "$ga" 2>/dev/null; then
         return 0
@@ -519,9 +539,8 @@ e2e_check_lfs_tracking() {
 
 e2e_check_release_pr() {
   e2e_emit info "checking for release PR"
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
-  local repo="${E2E_ENGINEER_AGENT}/${fork_name}"
+  local repo
+  repo=$(e2e_engineer_repo)
 
   local prs
   prs=$(e2e_forgejo_list_prs "$repo" "all" 2>/dev/null) || {
@@ -541,9 +560,8 @@ e2e_check_release_pr() {
 
 e2e_check_issue_closed() {
   e2e_emit info "checking engineering issue is closed"
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
-  local repo="${E2E_ENGINEER_AGENT}/${fork_name}"
+  local repo
+  repo=$(e2e_engineer_repo)
 
   local closed
   closed=$(e2e_forgejo_list_issues "$repo" "closed" 2>/dev/null) || {
@@ -567,9 +585,8 @@ e2e_check_issue_closed() {
 
 e2e_check_milestone_closed() {
   e2e_emit info "checking milestone is closed"
-  local fork_name
-  fork_name=$(echo "$E2E_TEMPLATE_REPO" | cut -d/ -f2)
-  local repo="${E2E_ENGINEER_AGENT}/${fork_name}"
+  local repo
+  repo=$(e2e_engineer_repo)
 
   local milestones
   milestones=$(e2e_forgejo_api GET "/repos/$repo/milestones?state=closed&limit=50" 2>/dev/null) || {
@@ -645,8 +662,9 @@ e2e_dry_run() {
 # ---------------------------------------------------------------------------
 
 e2e_print_report() {
-  if command -v pandoc >/dev/null 2>&1; then
-    pandoc -f markdown -t plain "$E2E_REPORT_FILE"
+  if command -v glow >/dev/null 2>&1; then
+    # Wrap YAML in a markdown code block for readable terminal output
+    { echo '```yaml'; cat "$E2E_REPORT_FILE"; echo '```'; } | glow -
   else
     cat "$E2E_REPORT_FILE"
   fi
@@ -672,7 +690,7 @@ cmd_agents_e2e() {
 
   # Parse arguments
   while [[ $# -gt 0 ]]; do
-    case $1 in
+    case "$1" in
       --product)      E2E_PRODUCT_AGENT="$2"; shift 2 ;;
       --engineer)     E2E_ENGINEER_AGENT="$2"; shift 2 ;;
       --platform)     E2E_PLATFORM="$2"; shift 2 ;;
@@ -707,7 +725,7 @@ cmd_agents_e2e() {
 
   # Dry-run: validate only, do not execute workflow
   if [[ "$dry_run" == true ]]; then
-    e2e_emit info "dry-run mode — validating configuration only"
+    e2e_emit info "dry-run mode -- validating configuration only"
     e2e_dry_run
     E2E_REPORT_RC=$?
     e2e_report_finalize

@@ -93,8 +93,8 @@ Commands:
                                                     Build home-manager profiles, or full systems with --lock
   update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
                                                     Pull, lock, build, push, and deploy
-  agents <pause|resume|status> <agent|all> [reason]
-                                                    Control agent task-loop pause state
+  agents <pause|resume|status|e2e> <agent|all> [options]
+                                                    Control agent task-loop pause state or run E2E test
   docs [topic|path]                                 Browse Keystone docs with glow and fzf
   photos search [options]                           Search Keystone Photos assets
   sync-agent-assets                                 Refresh generated agent assets from the live profile manifest
@@ -282,21 +282,24 @@ EOF
 
 print_doctor_help() {
   cat <<'EOF'
-Usage: ks doctor [--local [MODEL]] [args...]
+Usage: ks doctor [--full] [--local [MODEL]] [args...]
 
 Generate the scripted fleet doctor report, then optionally launch the default agent.
 
 Options:
+  --full               Also run the E2E agent lifecycle test (ks agents e2e) after the report
   --local [MODEL]      If you choose to launch the agent, use the local Ollama-backed model
   -h, --help           Show this help
 
 Behavior:
   Prints the fleet report to stdout.
+  With --full, additionally runs the E2E agent product lifecycle test (REQ-031).
   In an interactive terminal, ks then asks whether to launch the default agent.
   Any remaining args are passed through to the agent if you choose to launch it.
 
 Examples:
   ks doctor
+  ks doctor --full
   ks doctor --local
   ks doctor --local mistral --continue
 EOF
