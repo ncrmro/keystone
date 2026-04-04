@@ -100,6 +100,15 @@ impl App {
             preferred_hostname.as_deref(),
         );
 
+        // Show warning for legacy config format
+        if flake_info.version == nix::ConfigVersion::V0 {
+            screen.set_warning(
+                "This config uses legacy format (v0.0.0). \
+                 Regenerate with `keystone-tui template` to upgrade to v1.0.0."
+                    .to_string(),
+            );
+        }
+
         // Start background polling for metrics and tailscale
         let rx = system::spawn_dashboard_poller();
         screen.set_channel(rx);

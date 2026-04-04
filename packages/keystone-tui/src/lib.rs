@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod app;
+pub mod cmd;
 pub mod config;
 pub mod disk;
 pub mod github;

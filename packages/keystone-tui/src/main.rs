@@ -8,8 +8,8 @@
 
 use std::io;
 
-<<<<<<< HEAD
 use anyhow::{anyhow, Result};
+use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event},
     execute,
@@ -18,6 +18,7 @@ use crossterm::{
 use ratatui::prelude::*;
 
 mod app;
+pub mod cmd;
 mod config;
 mod disk;
 mod github;
@@ -41,46 +42,42 @@ enum LaunchMode {
     InstallOnly,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Keystone TUI — NixOS infrastructure configuration and management.
+#[derive(Parser)]
+#[command(name = "keystone-tui", version, about)]
 struct Cli {
-    launch_mode: LaunchMode,
+    /// Require installer mode using /etc/keystone/install-repo or /etc/keystone/install-config.
+    #[arg(long)]
+    install: bool,
+
+    /// Generate config from JSON on stdin (legacy alias for `template --json`).
+    #[arg(long)]
     json: bool,
 
-    /// Render a single screen to stdout as ANSI and exit. No alternate screen, no raw mode.
-    /// Useful for capturing screenshots with vhs or piping to ansi-to-image tools.
-    ///
-    /// Available screens: welcome, create-config, hosts, install
+    /// Render a single screen to stdout as ANSI and exit.
     #[arg(long, value_name = "SCREEN")]
     screenshot: Option<String>,
+
+    #[command(subcommand)]
+    command: Option<Command>,
 }
 
-fn print_help() {
-    println!(
-        "Usage: keystone-tui [--install] [--json] [-h|--help]\n\n  --install  Require installer mode using /etc/keystone/install-repo or /etc/keystone/install-config\n  --json     Generate config from JSON on stdin instead of launching the TUI\n  -h, --help Show this help"
-    );
-}
+#[derive(clap::Subcommand)]
+enum Command {
+    /// Generate a new Keystone config from a template.
+    Template {
+        /// GitHub username — fetches display name and SSH keys.
+        #[arg(long)]
+        github_username: Option<String>,
 
-fn parse_cli() -> Result<Cli> {
-    let mut cli = Cli {
-        launch_mode: LaunchMode::Auto,
-        json: false,
-    };
+        /// Output directory (defaults to hostname).
+        #[arg(long, short)]
+        output: Option<String>,
 
-    for arg in std::env::args().skip(1) {
-        match arg.as_str() {
-            "--install" => cli.launch_mode = LaunchMode::InstallOnly,
-            "--json" => cli.json = true,
-            "-h" | "--help" => {
-                print_help();
-                std::process::exit(0);
-            }
-            other => {
-                return Err(anyhow!("Unknown argument: {}", other));
-            }
-        }
-    }
-
-    Ok(cli)
+        /// JSON mode: read params from stdin, write result to stdout.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Set up the terminal for TUI rendering.
@@ -107,11 +104,28 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Re
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = parse_cli()?;
+    let cli = Cli::parse();
+
+    // Route subcommands
+    if let Some(command) = cli.command {
+        return match command {
+            Command::Template {
+                github_username,
+                output,
+                json,
+            } => run_template_command(github_username, output, json).await,
+        };
+    }
+
+    // Legacy --json flag (compat alias for `template --json`)
     if cli.json {
         return run_json_mode().await;
     }
-    let launch_mode = cli.launch_mode;
+    let launch_mode = if cli.install {
+        LaunchMode::InstallOnly
+    } else {
+        LaunchMode::Auto
+    };
 
     if let Some(ref screen_name) = cli.screenshot {
         return run_screenshot_mode(screen_name).await;
@@ -296,6 +310,64 @@ async fn run_json_mode() -> Result<()> {
 
     println!("{}", repo.path.display());
     Ok(())
+}
+
+/// Run the `template` subcommand.
+async fn run_template_command(
+    github_username: Option<String>,
+    output: Option<String>,
+    json: bool,
+) -> Result<()> {
+    let params = if json {
+        // JSON mode: read params from stdin
+        let input = io::read_to_string(io::stdin())?;
+        let mut params: cmd::TemplateParams = serde_json::from_str(&input)?;
+        if github_username.is_some() {
+            params.github_username = github_username;
+        }
+        if output.is_some() {
+            params.output = output;
+        }
+        params
+    } else {
+        // Interactive CLI mode
+        let mut params = cmd::TemplateParams::from_interactive(github_username.as_deref())?;
+        if let Some(ref gh) = github_username {
+            params.github_username = Some(gh.clone());
+        }
+        if output.is_some() {
+            params.output = output;
+        }
+        params
+    };
+
+    match cmd::run_template(params).await {
+        Ok(result) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&cmd::JsonOutput::ok(&result))?
+                );
+            } else {
+                println!("Config generated (v{}):", result.config_version);
+                for file in &result.files {
+                    println!("  {}/{}", result.output_dir.display(), file);
+                }
+            }
+            Ok(())
+        }
+        Err(e) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&cmd::JsonError::new(e.to_string()))?
+                );
+                Ok(())
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 /// Main application loop. Generic over backend so tests can use TestBackend.

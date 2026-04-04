@@ -24,6 +24,8 @@ pub struct HostsScreen {
     tailscale_available: bool,
     /// Accumulated CPU history across metric updates.
     cpu_history: CpuHistory,
+    /// Optional warning banner (e.g., legacy config version).
+    warning: Option<String>,
 }
 
 impl HostsScreen {
@@ -78,7 +80,13 @@ impl HostsScreen {
             rx: None,
             tailscale_available: false,
             cpu_history: CpuHistory::new(60),
+            warning: None,
         }
+    }
+
+    /// Set a warning banner displayed at the top of the screen.
+    pub fn set_warning(&mut self, msg: String) {
+        self.warning = Some(msg);
     }
 
     /// Attach a channel for receiving dashboard messages.
@@ -215,18 +223,30 @@ impl HostsScreen {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let warning_height = if self.warning.is_some() { 2 } else { 0 };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // Title bar
-                Constraint::Min(5),    // Main content
-                Constraint::Length(1), // Help bar
+                Constraint::Length(3),              // Title bar
+                Constraint::Length(warning_height), // Warning banner (0 if none)
+                Constraint::Min(5),                 // Main content
+                Constraint::Length(1),              // Help bar
             ])
             .split(area);
 
         self.render_title(frame, chunks[0]);
-        self.render_main(frame, chunks[1]);
-        self.render_help(frame, chunks[2]);
+        if let Some(ref msg) = self.warning {
+            let warning = Paragraph::new(Line::from(vec![
+                Span::styled(
+                    " Warning: ",
+                    Style::default().fg(Color::Black).bg(Color::Yellow),
+                ),
+                Span::styled(format!(" {}", msg), Style::default().fg(Color::Yellow)),
+            ]));
+            frame.render_widget(warning, chunks[1]);
+        }
+        self.render_main(frame, chunks[2]);
+        self.render_help(frame, chunks[3]);
     }
 
     fn render_title(&self, frame: &mut Frame, area: Rect) {
