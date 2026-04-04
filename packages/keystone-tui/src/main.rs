@@ -128,7 +128,7 @@ async fn run_screenshot_mode(screen_name: &str) -> Result<()> {
     use crossterm::terminal::size;
     use ratatui::backend::CrosstermBackend;
 
-    let (cols, rows) = size().unwrap_or((120, 40));
+    let _ = size().unwrap_or((120, 40));
 
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
@@ -141,14 +141,13 @@ async fn run_screenshot_mode(screen_name: &str) -> Result<()> {
     // Build the screen to render
     match screen_name {
         "welcome" => {
-            let mut screen = screens::welcome::WelcomeScreen::new();
+            let screen = screens::welcome::WelcomeScreen::new();
             terminal.draw(|frame| {
                 screen.render(frame, frame.area());
             })?;
         }
         "create-config" => {
-            let mut screen =
-                screens::create_config::CreateConfigScreen::new("my-config".to_string());
+            let screen = screens::create_config::CreateConfigScreen::new("my-config".to_string());
             terminal.draw(|frame| {
                 screen.render(frame, frame.area());
             })?;

@@ -39,6 +39,7 @@ pub enum AppAction {
     DeployConfirm,
     DeployBack,
     FirstBootStart,
+    FirstBootApplyPatch,
     FirstBootSkip,
     FirstBootContinue,
     FirstBootSubmitRemote,
@@ -420,10 +421,16 @@ pub fn handle_first_boot_input(
             KeyCode::Char('q') => Some(AppAction::Quit),
             _ => None,
         },
-        FirstBootPhase::GeneratingHardware | FirstBootPhase::GitSetup | FirstBootPhase::Pushing => {
+        FirstBootPhase::DetectingHardware | FirstBootPhase::GitSetup | FirstBootPhase::Pushing => {
             // No user input during async phases
             None
         }
+        FirstBootPhase::ReviewPatch => match key.code {
+            KeyCode::Enter => Some(AppAction::FirstBootApplyPatch),
+            KeyCode::Char('s') => Some(AppAction::FirstBootSkip),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
         FirstBootPhase::ShowSshKey => match key.code {
             KeyCode::Enter => Some(AppAction::FirstBootContinue),
             KeyCode::Char('s') => Some(AppAction::FirstBootSkip),
@@ -582,6 +589,11 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         AppAction::FirstBootStart => {
             if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
                 fb.start();
+            }
+        }
+        AppAction::FirstBootApplyPatch => {
+            if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
+                fb.apply_patch();
             }
         }
         AppAction::FirstBootSkip => {

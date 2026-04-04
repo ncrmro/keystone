@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::{AppConfig, KeystoneRepo};
 use crate::nix;
@@ -52,17 +52,25 @@ impl App {
             }
         }
 
+        let current_system_flake = current_system_flake_path();
+        let (active_repo_index, config_changed) =
+            reconcile_current_system_repo(&mut config, current_system_flake.as_deref());
+
+        if config_changed {
+            let _ = config.save().await;
+        }
+
         let (current_screen, active_repo_index) = if config.repos.is_empty() {
             (AppScreen::Welcome(WelcomeScreen::new()), None)
         } else {
-            // Use the first repo as default
-            let repo = &config.repos[0];
-            match Self::load_hosts_screen(repo).await {
-                Ok(screen) => (AppScreen::Hosts(screen), Some(0)),
+            let repo_index = active_repo_index.unwrap_or(0);
+            let repo = &config.repos[repo_index];
+            match Self::load_hosts_screen(repo, current_system_flake.as_deref()).await {
+                Ok(screen) => (AppScreen::Hosts(screen), Some(repo_index)),
                 Err(_e) => {
                     // Failed to parse flake, show hosts screen with empty hosts
                     let screen = HostsScreen::new(repo.name.clone(), Vec::new());
-                    (AppScreen::Hosts(screen), Some(0))
+                    (AppScreen::Hosts(screen), Some(repo_index))
                 }
             }
         };
@@ -76,12 +84,21 @@ impl App {
     }
 
     /// Load the hosts screen for a given repo with live dashboard polling.
-    pub async fn load_hosts_screen(repo: &KeystoneRepo) -> anyhow::Result<HostsScreen> {
+    pub async fn load_hosts_screen(
+        repo: &KeystoneRepo,
+        current_system_flake: Option<&Path>,
+    ) -> anyhow::Result<HostsScreen> {
         let flake_info = nix::parse_flake(&repo.path).await?;
 
         // Build initial host statuses with local hostname detection
         let statuses = system::match_hosts_to_peers(&flake_info.hosts, None);
-        let mut screen = HostsScreen::new_with_statuses(repo.name.clone(), statuses);
+        let preferred_hostname = matches_current_system_repo(&repo.path, current_system_flake)
+            .then(system::detect_local_hostname);
+        let mut screen = HostsScreen::new_with_statuses_and_preferred_host(
+            repo.name.clone(),
+            statuses,
+            preferred_hostname.as_deref(),
+        );
 
         // Start background polling for metrics and tailscale
         let rx = system::spawn_dashboard_poller();
@@ -93,7 +110,7 @@ impl App {
     /// Transition to the hosts screen for a repo.
     pub async fn go_to_hosts(&mut self, repo_index: usize) {
         if let Some(repo) = self.config.repos.get(repo_index) {
-            match Self::load_hosts_screen(repo).await {
+            match Self::load_hosts_screen(repo, current_system_flake_path().as_deref()).await {
                 Ok(screen) => {
                     self.current_screen = AppScreen::Hosts(screen);
                     self.active_repo_index = Some(repo_index);
@@ -165,5 +182,138 @@ impl App {
         if let Err(e) = self.config.save().await {
             eprintln!("Failed to save config: {:?}", e);
         }
+    }
+}
+
+fn current_system_flake_path() -> Option<PathBuf> {
+    std::env::var_os("KEYSTONE_SYSTEM_FLAKE")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .and_then(|path| normalize_flake_repo_path(&path))
+}
+
+fn normalize_flake_repo_path(path: &Path) -> Option<PathBuf> {
+    let flake_path = path.join("flake.nix");
+    if !flake_path.is_file() {
+        return None;
+    }
+
+    std::fs::canonicalize(path)
+        .ok()
+        .or_else(|| Some(path.to_path_buf()))
+}
+
+fn matches_current_system_repo(repo_path: &Path, current_system_flake: Option<&Path>) -> bool {
+    let Some(current_system_flake) = current_system_flake else {
+        return false;
+    };
+
+    normalize_flake_repo_path(repo_path)
+        .map(|normalized| normalized == current_system_flake)
+        .unwrap_or(false)
+}
+
+fn repo_name_from_path(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "keystone".to_string())
+}
+
+fn reconcile_current_system_repo(
+    config: &mut AppConfig,
+    current_system_flake: Option<&Path>,
+) -> (Option<usize>, bool) {
+    let Some(current_system_flake) = current_system_flake else {
+        return (None, false);
+    };
+
+    if let Some(index) = config
+        .repos
+        .iter()
+        .position(|repo| matches_current_system_repo(&repo.path, Some(current_system_flake)))
+    {
+        return (Some(index), false);
+    }
+
+    let repo_name = repo_name_from_path(current_system_flake);
+    if let Some(index) = config.repos.iter().position(|repo| repo.name == repo_name) {
+        config.repos[index].path = current_system_flake.to_path_buf();
+        return (Some(index), true);
+    }
+
+    config.repos.push(KeystoneRepo {
+        name: repo_name,
+        path: current_system_flake.to_path_buf(),
+    });
+    (Some(config.repos.len() - 1), true)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use tempfile::tempdir;
+
+    use super::{
+        matches_current_system_repo, normalize_flake_repo_path, reconcile_current_system_repo,
+    };
+    use crate::config::{AppConfig, KeystoneRepo};
+
+    #[test]
+    fn normalize_flake_repo_path_requires_flake() {
+        let dir = tempdir().unwrap();
+        assert!(normalize_flake_repo_path(dir.path()).is_none());
+    }
+
+    #[test]
+    fn reconcile_current_system_repo_updates_stale_path() {
+        let dir = tempdir().unwrap();
+        let detected = dir.path().join("nixos-config");
+        std::fs::create_dir(&detected).unwrap();
+        std::fs::write(detected.join("flake.nix"), "{ }").unwrap();
+
+        let normalized = normalize_flake_repo_path(&detected).unwrap();
+        let mut config = AppConfig {
+            repos: vec![KeystoneRepo {
+                name: "nixos-config".to_string(),
+                path: PathBuf::from("/old/path/nixos-config"),
+            }],
+        };
+
+        let (index, changed) = reconcile_current_system_repo(&mut config, Some(&normalized));
+        let index = index.unwrap();
+        assert_eq!(index, 0);
+        assert!(changed);
+        assert_eq!(config.repos[0].path, normalized);
+    }
+
+    #[test]
+    fn reconcile_current_system_repo_adds_missing_repo() {
+        let dir = tempdir().unwrap();
+        let detected = dir.path().join("nixos-config");
+        std::fs::create_dir(&detected).unwrap();
+        std::fs::write(detected.join("flake.nix"), "{ }").unwrap();
+
+        let normalized = normalize_flake_repo_path(&detected).unwrap();
+        let mut config = AppConfig::default();
+
+        let (index, changed) = reconcile_current_system_repo(&mut config, Some(&normalized));
+        let index = index.unwrap();
+        assert_eq!(index, 0);
+        assert!(changed);
+        assert_eq!(config.repos[0].name, "nixos-config");
+        assert_eq!(config.repos[0].path, normalized);
+    }
+
+    #[test]
+    fn matches_current_system_repo_compares_normalized_paths() {
+        let dir = tempdir().unwrap();
+        let detected = dir.path().join("nixos-config");
+        std::fs::create_dir(&detected).unwrap();
+        std::fs::write(detected.join("flake.nix"), "{ }").unwrap();
+
+        let normalized = normalize_flake_repo_path(&detected).unwrap();
+        assert!(matches_current_system_repo(&detected, Some(&normalized)));
     }
 }

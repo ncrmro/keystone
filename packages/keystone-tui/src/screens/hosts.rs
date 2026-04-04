@@ -28,6 +28,14 @@ pub struct HostsScreen {
 
 impl HostsScreen {
     pub fn new(repo_name: String, hosts: Vec<HostInfo>) -> Self {
+        Self::new_with_preferred_host(repo_name, hosts, None)
+    }
+
+    pub fn new_with_preferred_host(
+        repo_name: String,
+        hosts: Vec<HostInfo>,
+        preferred_hostname: Option<&str>,
+    ) -> Self {
         let statuses: Vec<HostStatus> = hosts
             .into_iter()
             .map(|h| HostStatus {
@@ -38,26 +46,29 @@ impl HostsScreen {
             })
             .collect();
 
-        let mut list_state = ListState::default();
-        if !statuses.is_empty() {
-            list_state.select(Some(0));
-        }
-
-        Self {
-            repo_name,
-            statuses,
-            list_state,
-            rx: None,
-            tailscale_available: false,
-            cpu_history: CpuHistory::new(60),
-        }
+        Self::new_with_statuses_and_preferred_host(repo_name, statuses, preferred_hostname)
     }
 
     /// Create a dashboard from pre-built HostStatus entries.
     pub fn new_with_statuses(repo_name: String, statuses: Vec<HostStatus>) -> Self {
+        Self::new_with_statuses_and_preferred_host(repo_name, statuses, None)
+    }
+
+    pub fn new_with_statuses_and_preferred_host(
+        repo_name: String,
+        statuses: Vec<HostStatus>,
+        preferred_hostname: Option<&str>,
+    ) -> Self {
         let mut list_state = ListState::default();
         if !statuses.is_empty() {
-            list_state.select(Some(0));
+            let selected = preferred_hostname
+                .and_then(|hostname| {
+                    statuses
+                        .iter()
+                        .position(|s| s.host_info.name.eq_ignore_ascii_case(hostname))
+                })
+                .unwrap_or(0);
+            list_state.select(Some(selected));
         }
 
         Self {
@@ -751,6 +762,51 @@ mod tests {
         }];
         let screen = HostsScreen::new("repo".to_string(), hosts);
         assert_eq!(screen.selected_host().unwrap().name, "laptop");
+    }
+
+    #[test]
+    fn test_preferred_host_selection() {
+        let hosts = vec![
+            HostInfo {
+                name: "server".to_string(),
+                system: None,
+                keystone_modules: vec![],
+                config_files: vec![],
+                metadata: None,
+            },
+            HostInfo {
+                name: "laptop".to_string(),
+                system: None,
+                keystone_modules: vec![],
+                config_files: vec![],
+                metadata: None,
+            },
+        ];
+        let screen =
+            HostsScreen::new_with_preferred_host("repo".to_string(), hosts, Some("laptop"));
+        assert_eq!(screen.selected_host().unwrap().name, "laptop");
+    }
+
+    #[test]
+    fn test_missing_preferred_host_falls_back_to_first() {
+        let hosts = vec![
+            HostInfo {
+                name: "server".to_string(),
+                system: None,
+                keystone_modules: vec![],
+                config_files: vec![],
+                metadata: None,
+            },
+            HostInfo {
+                name: "laptop".to_string(),
+                system: None,
+                keystone_modules: vec![],
+                config_files: vec![],
+                metadata: None,
+            },
+        ];
+        let screen = HostsScreen::new_with_preferred_host("repo".to_string(), hosts, Some("rpi"));
+        assert_eq!(screen.selected_host().unwrap().name, "server");
     }
 
     #[test]
