@@ -258,7 +258,59 @@ e2e_forgejo_comment_issue() {
 }
 
 # ---------------------------------------------------------------------------
-# Environment lifecycle (REQ-031.11–031.14, NFR-002)
+# Agent quiescence (REQ-031.7a--031.7d)
+# ---------------------------------------------------------------------------
+
+e2e_pause_agents() {
+  for agent in "$E2E_PRODUCT_AGENT" "$E2E_ENGINEER_AGENT"; do
+    # Check if already paused
+    if agentctl "$agent" paused 2>/dev/null; then
+      e2e_emit info "agent already paused" agent "$agent"
+      continue
+    fi
+
+    # Check for active tasks before pausing
+    local task_output
+    task_output=$(agentctl "$agent" tasks 2>/dev/null || true)
+    if echo "$task_output" | grep -qi "in.progress\|running\|active"; then
+      e2e_emit warn "agent has active tasks" agent "$agent"
+      if [[ -t 0 && -t 1 ]]; then
+        printf 'Agent %s has active tasks. Kill and proceed? [y/N] ' "$agent" >&2
+        local reply=""
+        IFS= read -r reply || true
+        case "$reply" in
+          y|Y|yes|YES)
+            e2e_emit info "operator approved kill" agent "$agent"
+            ;;
+          *)
+            e2e_report_check "agent_quiescence" "fail" "Operator declined to kill active tasks on $agent"
+            return 1
+            ;;
+        esac
+      else
+        e2e_report_check "agent_quiescence" "fail" "Agent $agent has active tasks (non-interactive, cannot prompt)"
+        return 1
+      fi
+    fi
+
+    agentctl "$agent" pause "e2e test in progress" || {
+      e2e_report_check "agent_quiescence" "fail" "Failed to pause agent $agent"
+      return 1
+    }
+    e2e_emit info "paused agent" agent "$agent"
+  done
+  e2e_report_check "agent_quiescence" "pass" "Both agents paused"
+}
+
+e2e_resume_agents() {
+  for agent in "$E2E_PRODUCT_AGENT" "$E2E_ENGINEER_AGENT"; do
+    agentctl "$agent" resume 2>/dev/null || true
+    e2e_emit info "resumed agent" agent "$agent"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Environment lifecycle (REQ-031.11--031.14, NFR-002)
 # ---------------------------------------------------------------------------
 
 e2e_cleanup_environment() {
@@ -629,6 +681,15 @@ e2e_dry_run() {
     rc=1
   fi
 
+  # Check agent pause state (dry-run only reports, does not pause)
+  for agent in "$E2E_PRODUCT_AGENT" "$E2E_ENGINEER_AGENT"; do
+    if agentctl "$agent" paused 2>/dev/null; then
+      e2e_report_check "dryrun_${agent}_paused" "pass" "Agent '$agent' is paused"
+    else
+      e2e_report_check "dryrun_${agent}_paused" "pass" "Agent '$agent' is running (will be paused during full run)"
+    fi
+  done
+
   # Check Forgejo connectivity
   if [[ "$E2E_PLATFORM" == "forgejo" ]]; then
     if [[ -z "$E2E_FORGEJO_TOKEN" ]]; then
@@ -740,12 +801,22 @@ cmd_agents_e2e() {
 
   # --- Full E2E run ---
 
+  # Phase: Agent quiescence -- pause agents before any work
+  e2e_pause_agents || {
+    e2e_report_finalize
+    cat "$E2E_REPORT_FILE"
+    rm -f "$E2E_REPORT_FILE"
+    return 1
+  }
+
+  # Ensure agents resume on any exit path
+  trap 'e2e_resume_agents; e2e_report_cleanup' EXIT
+
   # Phase: Environment lifecycle
   e2e_cleanup_environment
   e2e_setup_environment || {
     e2e_report_finalize
     cat "$E2E_REPORT_FILE"
-    rm -f "$E2E_REPORT_FILE"
     return 1
   }
 
@@ -769,7 +840,9 @@ cmd_agents_e2e() {
   # Phase: Product verification
   e2e_check_milestone_closed
 
-  # Finalize
+  # Resume agents and finalize
+  e2e_resume_agents
+  trap e2e_report_cleanup EXIT
   e2e_report_finalize
   if [[ "$print_report" == true ]]; then
     e2e_print_report

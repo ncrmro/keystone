@@ -57,6 +57,23 @@ engineering agent name, platform (forgejo), and model provider.
 configuration and environment prerequisites without executing the
 workflow.
 
+### FR-001a: Agent Quiescence
+
+**REQ-031.7a** Before executing any workflow steps, the harness MUST
+pause both agents' task loops (equivalent to `ks agents pause <agent>
+"e2e test in progress"`) to prevent autonomous work from interfering
+with the test.
+
+**REQ-031.7b** If an agent has an active task at pause time, the harness
+MUST prompt the operator to kill it and MUST NOT proceed until the
+operator acknowledges or skips.
+
+**REQ-031.7c** The harness MUST resume both agents' task loops when the
+E2E run completes, whether it succeeds or fails.
+
+**REQ-031.7d** In `--dry-run` mode, the harness MUST check agent pause
+state but MUST NOT pause or resume agents.
+
 ### FR-002: Environment Lifecycle
 
 **REQ-031.8** A bun server template repository MUST exist at
