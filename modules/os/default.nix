@@ -359,6 +359,20 @@ in
           default = true;
           description = "Enable weekly ZFS integrity scrub";
         };
+
+        kernel = mkOption {
+          type = types.either (types.enum [
+            "default"
+            "latest"
+          ]) types.raw;
+          default = "latest";
+          description = ''
+            Kernel package selection for ZFS hosts:
+            - "default": NixOS default kernel (linuxPackages)
+            - "latest": Latest stable kernel (linuxPackages_latest)
+            - Or a kernel packages set (e.g., pkgs.linuxPackages_6_12)
+          '';
+        };
       };
     };
 
