@@ -304,14 +304,15 @@ EOF
 
 print_agents_help() {
   cat <<'EOF'
-Usage: ks agents <pause|resume|status> <agent|all> [reason]
+Usage: ks agents <subcommand> <agent|all> [options]
 
-Control autonomous agent task loops without stopping the underlying timers.
+Control autonomous agent task loops and run agent integration tests.
 
 Subcommands:
   pause               Create the paused marker so scheduled task-loop runs no-op
   resume              Remove the paused marker and allow task-loop runs again
   status              Show whether the target agent task loop is paused
+  e2e                 Run the end-to-end agent product lifecycle test (REQ-031)
 
 Arguments:
   <agent|all>         One configured agent name, or "all" for every configured agent
@@ -322,6 +323,7 @@ Examples:
   ks agents pause all "human focus block"
   ks agents status luce
   ks agents resume all
+  ks agents e2e --product luce --engineer drago
 EOF
 }
 
@@ -707,6 +709,14 @@ doctor_progress() {
   fi
 }
 
+# Source the E2E agent test harness (REQ-031).
+# @KS_AGENTS_E2E@ is replaced at Nix build time with the store path.
+_ks_agents_e2e_path="@KS_AGENTS_E2E@"
+if [[ -f "$_ks_agents_e2e_path" ]]; then
+  # shellcheck source=agents-e2e.sh
+  source "$_ks_agents_e2e_path"
+fi
+
 resolve_agent_targets() {
   local target="$1"
 
@@ -726,21 +736,31 @@ resolve_agent_targets() {
 }
 
 cmd_agents() {
-  if [[ $# -lt 2 ]]; then
+  if [[ $# -lt 1 ]]; then
     print_agents_help >&2
     return 1
   fi
 
   local action="$1"
-  local target="$2"
-  shift 2
+  shift
+
+  # Subcommands that handle their own argument parsing
+  case "$action" in
+    e2e) cmd_agents_e2e "$@"; return $? ;;
+    -h|--help) print_agents_help; return 0 ;;
+  esac
+
+  # Subcommands that require a target agent
+  if [[ $# -lt 1 ]]; then
+    print_agents_help >&2
+    return 1
+  fi
+
+  local target="$1"
+  shift
 
   case "$action" in
     pause|resume|status) ;;
-    -h|--help)
-      print_agents_help
-      return 0
-      ;;
     *)
       echo "Error: unknown agents subcommand '$action'." >&2
       print_agents_help >&2
@@ -3369,6 +3389,7 @@ cmd_print() {
 
 cmd_doctor() {
   local local_model=""
+  local full_mode=false
   local passthrough_args=()
 
   while [[ $# -gt 0 ]]; do
@@ -3376,6 +3397,10 @@ cmd_doctor() {
       -h|--help)
         print_doctor_help
         return 0
+        ;;
+      --full)
+        full_mode=true
+        shift
         ;;
       --local)
         shift
@@ -3410,6 +3435,12 @@ cmd_doctor() {
     rm -f "$report_file"
   else
     gather_system_state "$repo_root" "$hosts_nix" "$current_host"
+  fi
+
+  # --full: run E2E agent lifecycle test after the standard report
+  if [[ "$full_mode" == true ]]; then
+    doctor_progress "running E2E agent lifecycle test"
+    cmd_agents_e2e "${passthrough_args[@]}" || true
   fi
 
   if [[ ! -t 0 || ! -t 1 ]]; then
