@@ -12,6 +12,7 @@
 # Usage:
 #   keystone.os = {
 #     enable = true;
+#     admin.fullName = "System Administrator";
 #     storage.devices = [ "/dev/disk/by-id/..." ];
 #     users.alice = { fullName = "Alice"; email = "alice@example.com"; };
 #   };
@@ -31,6 +32,13 @@ let
     attrValues config.keystone.hosts
   );
   isBaremetal = currentHost != null && currentHost.baremetal;
+
+  fullNameFor =
+    name:
+    if name == "admin" && cfg.admin != null then
+      cfg.admin.fullName
+    else
+      config.keystone.os.users.${name}.fullName;
 
   # User submodule type definition
   userSubmodule = types.submodule (
@@ -55,9 +63,7 @@ let
             let
               domain = config.keystone.domain;
               # "Alice Smith" → "alice.smith"
-              localPart = builtins.replaceStrings [ " " ] [ "." ] (
-                lib.toLower config.keystone.os.users.${name}.fullName
-              );
+              localPart = builtins.replaceStrings [ " " ] [ "." ] (lib.toLower (fullNameFor name));
             in
             if domain != null then "${localPart}@${domain}" else null;
           defaultText = literalExpression ''"''${toLower fullName}@''${keystone.domain}"'';
@@ -519,6 +525,24 @@ in
     };
 
     # User configuration
+    admin = mkOption {
+      type = types.nullOr (userSubmodule);
+      default = null;
+      description = ''
+        Canonical default administrator for this Keystone multi-host system.
+        Keystone synthesizes the normal `admin` account from this definition and
+        grants administrator privileges automatically.
+      '';
+      example = literalExpression ''
+        {
+          fullName = "System Administrator";
+          email = "admin@example.com";
+          initialPassword = "changeme";
+          terminal.enable = true;
+        }
+      '';
+    };
+
     users = mkOption {
       type = types.attrsOf userSubmodule;
       default = { };
@@ -531,7 +555,7 @@ in
           alice = {
             fullName = "Alice Smith";
             email = "alice@example.com";
-            extraGroups = [ "wheel" "networkmanager" ];
+            extraGroups = [ "networkmanager" ];
             terminal.enable = true;
             desktop.enable = true;
             zfs.quota = "100G";
