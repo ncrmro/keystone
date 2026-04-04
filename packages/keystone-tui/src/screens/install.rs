@@ -91,23 +91,83 @@ impl InstallerConfig {
         })
     }
 
-    /// Copy config files to a writable tmpdir for disk injection.
+    /// Recursively copy config files to a writable tmpdir for disk injection.
     fn copy_to_writable(src: &Path, dst: &Path) -> std::io::Result<()> {
         if dst.exists() {
             std::fs::remove_dir_all(dst)?;
         }
+        Self::copy_dir_recursive(src, dst)
+    }
+
+    /// Recursively copy a directory tree.
+    fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(dst)?;
         for entry in std::fs::read_dir(src)? {
             let entry = entry?;
-            let dest_file = dst.join(entry.file_name());
-            std::fs::copy(entry.path(), dest_file)?;
+            let src_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+            if src_path.is_dir() {
+                Self::copy_dir_recursive(&src_path, &dst_path)?;
+            } else {
+                std::fs::copy(&src_path, &dst_path)?;
+            }
         }
         Ok(())
     }
 
-    /// Extract storage type and disk device from configuration.nix via rnix AST.
+    /// Find the per-host hardware.nix or configuration.nix path.
+    ///
+    /// With the mkSystemFlake layout, files live at `hosts/<hostname>/hardware.nix`.
+    /// Falls back to flat layout for backward compatibility.
+    fn find_host_file(config_dir: &Path, hostname: &str, filename: &str) -> Option<PathBuf> {
+        // Try hosts/<hostname>/<filename> first (mkSystemFlake layout)
+        let host_path = config_dir.join("hosts").join(hostname).join(filename);
+        if host_path.exists() {
+            return Some(host_path);
+        }
+        // Fall back to flat layout
+        let flat_path = config_dir.join(filename);
+        if flat_path.exists() {
+            return Some(flat_path);
+        }
+        None
+    }
+
+    /// Extract storage type and disk device from hardware.nix or configuration.nix
+    /// via rnix AST. Tries the mkSystemFlake hosts/ layout first.
     fn parse_configuration_nix(config_dir: &Path) -> Option<(Option<String>, Option<String>)> {
-        let content = std::fs::read_to_string(config_dir.join("configuration.nix")).ok()?;
+        // Read hostname to find host-specific files
+        let hostname = std::fs::read_to_string(config_dir.join("hostname"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+
+        // With mkSystemFlake, storage config lives in hardware.nix.
+        // Try hardware.nix first, then configuration.nix for backward compat.
+        let files_to_try: Vec<PathBuf> = if hostname.is_empty() {
+            vec![
+                config_dir.join("hardware.nix"),
+                config_dir.join("configuration.nix"),
+            ]
+        } else {
+            vec![
+                config_dir
+                    .join("hosts")
+                    .join(&hostname)
+                    .join("hardware.nix"),
+                config_dir
+                    .join("hosts")
+                    .join(&hostname)
+                    .join("configuration.nix"),
+                config_dir.join("hardware.nix"),
+                config_dir.join("configuration.nix"),
+            ]
+        };
+
+        let content = files_to_try
+            .iter()
+            .find_map(|p| std::fs::read_to_string(p).ok())?;
+
         let root = rnix::Root::parse(&content);
         let syntax = root.syntax();
 
@@ -183,13 +243,47 @@ impl InstallerConfig {
         None
     }
 
-    /// Replace the disk placeholder in the writable configuration.nix.
+    /// Replace the disk placeholder in hardware.nix (or configuration.nix for legacy layout).
     fn inject_disk_device(config_dir: &Path, device: &str) -> std::io::Result<()> {
-        let config_path = config_dir.join("configuration.nix");
-        let content = std::fs::read_to_string(&config_path)?;
-        let updated = content.replace("__KEYSTONE_DISK__", device);
-        std::fs::write(&config_path, updated)?;
-        Ok(())
+        // With mkSystemFlake layout, disk device is in hardware.nix.
+        // Try all candidate files and replace the placeholder wherever found.
+        let hostname = std::fs::read_to_string(config_dir.join("hostname"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if !hostname.is_empty() {
+            candidates.push(
+                config_dir
+                    .join("hosts")
+                    .join(&hostname)
+                    .join("hardware.nix"),
+            );
+            candidates.push(
+                config_dir
+                    .join("hosts")
+                    .join(&hostname)
+                    .join("configuration.nix"),
+            );
+        }
+        candidates.push(config_dir.join("hardware.nix"));
+        candidates.push(config_dir.join("configuration.nix"));
+
+        for path in &candidates {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                if content.contains("__KEYSTONE_DISK__") {
+                    let updated = content.replace("__KEYSTONE_DISK__", device);
+                    std::fs::write(path, updated)?;
+                    return Ok(());
+                }
+            }
+        }
+
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No file containing __KEYSTONE_DISK__ placeholder found",
+        ))
     }
 }
 
@@ -921,11 +1015,46 @@ impl InstallScreen {
     }
 }
 
+/// Recursively copy a directory tree using async I/O.
+async fn copy_dir_recursive_async(src: &Path, dst: &Path) -> Result<(), String> {
+    let mut entries = tokio::fs::read_dir(src)
+        .await
+        .map_err(|e| format!("Failed to read dir {}: {}", src.display(), e))?;
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| format!("Failed to read entry: {}", e))?
+    {
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            tokio::fs::create_dir_all(&dst_path)
+                .await
+                .map_err(|e| format!("Failed to create dir {}: {}", dst_path.display(), e))?;
+            Box::pin(copy_dir_recursive_async(&src_path, &dst_path)).await?;
+        } else {
+            // Skip non-nix files that are not the marker files (hostname, username, etc.)
+            tokio::fs::copy(&src_path, &dst_path).await.map_err(|e| {
+                format!(
+                    "Failed to copy {} -> {}: {}",
+                    src_path.display(),
+                    dst_path.display(),
+                    e
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Copy the generated config to the installed system for the first-boot flow.
 ///
 /// Creates the installed system flake directory on the target and copies
-/// flake.nix, configuration.nix, hardware.nix with a `.first-boot-pending`
-/// marker so the TUI knows to run the first-boot wizard on next login.
+/// the config tree with a `.first-boot-pending` marker so the TUI knows
+/// to run the first-boot wizard on next login.
 async fn copy_config_to_target(
     config_dir: &Path,
     username: &str,
@@ -941,16 +1070,10 @@ async fn copy_config_to_target(
         .await
         .map_err(|e| format!("Failed to create config dir: {}", e))?;
 
-    // Copy config files
-    for filename in &["flake.nix", "configuration.nix", "hardware.nix"] {
-        let src = config_dir.join(filename);
-        let dst = repo_dir.join(filename);
-        if src.exists() {
-            tokio::fs::copy(&src, &dst)
-                .await
-                .map_err(|e| format!("Failed to copy {}: {}", filename, e))?;
-        }
-    }
+    // Copy entire config directory tree (handles both flat and hosts/ layouts)
+    copy_dir_recursive_async(config_dir, &repo_dir)
+        .await
+        .map_err(|e| format!("Failed to copy config files: {}", e))?;
 
     // Write first-boot marker
     tokio::fs::write(repo_dir.join(".first-boot-pending"), "")

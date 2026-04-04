@@ -118,14 +118,15 @@ fn test_keystone_iso_builds() {
 fn test_prebaked_iso_evaluates() {
     let config = make_config("prebaked-laptop", MachineType::Laptop, StorageType::Ext4);
     let local_root = repo_root();
+    let hostname = &config.hostname;
 
     // Generate the target machine's config files
     let target_flake = keystone_tui::template::generate_flake_nix(&config).replace(
-        "url = \"github:ncrmro/keystone\"",
-        &format!("url = \"path:{}\"", local_root.display()),
+        "keystone.url = \"github:ncrmro/keystone\"",
+        &format!("keystone.url = \"path:{}\"", local_root.display()),
     );
     let target_config = keystone_tui::template::generate_configuration_nix(&config);
-    let target_hardware = keystone_tui::template::generate_hardware_nix();
+    let target_hardware = keystone_tui::template::generate_hardware_nix(&config);
 
     // Generate the ISO flake that wraps the config
     let iso_flake = keystone_tui::template::generate_iso_flake_nix(&config).replace(
@@ -139,14 +140,15 @@ fn test_prebaked_iso_evaluates() {
     std::fs::write(dir.path().join("flake.nix"), &iso_flake)
         .expect("failed to write ISO flake.nix");
 
-    // Write the target config in the expected subdirectory
+    // Write the target config in the expected subdirectory with hosts/ layout
     let target_dir = dir.path().join("target-config");
-    std::fs::create_dir_all(&target_dir).expect("failed to create target-config/");
+    let target_host_dir = target_dir.join("hosts").join(hostname);
+    std::fs::create_dir_all(&target_host_dir).expect("failed to create target-config/hosts/");
     std::fs::write(target_dir.join("flake.nix"), &target_flake)
         .expect("failed to write target flake.nix");
-    std::fs::write(target_dir.join("configuration.nix"), &target_config)
+    std::fs::write(target_host_dir.join("configuration.nix"), &target_config)
         .expect("failed to write target configuration.nix");
-    std::fs::write(target_dir.join("hardware.nix"), &target_hardware)
+    std::fs::write(target_host_dir.join("hardware.nix"), &target_hardware)
         .expect("failed to write target hardware.nix");
 
     // Evaluate the ISO configuration to prove it type-checks
@@ -182,14 +184,15 @@ fn test_prebaked_iso_evaluates() {
 fn test_prebaked_iso_builds() {
     let config = make_config("prebaked-laptop", MachineType::Laptop, StorageType::Ext4);
     let local_root = repo_root();
+    let hostname = &config.hostname;
 
     // Generate the target machine's config files
     let target_flake = keystone_tui::template::generate_flake_nix(&config).replace(
-        "url = \"github:ncrmro/keystone\"",
-        &format!("url = \"path:{}\"", local_root.display()),
+        "keystone.url = \"github:ncrmro/keystone\"",
+        &format!("keystone.url = \"path:{}\"", local_root.display()),
     );
     let target_config = keystone_tui::template::generate_configuration_nix(&config);
-    let target_hardware = keystone_tui::template::generate_hardware_nix();
+    let target_hardware = keystone_tui::template::generate_hardware_nix(&config);
 
     // Generate the ISO flake that wraps the config
     let iso_flake = keystone_tui::template::generate_iso_flake_nix(&config).replace(
@@ -203,14 +206,15 @@ fn test_prebaked_iso_builds() {
     std::fs::write(dir.path().join("flake.nix"), &iso_flake)
         .expect("failed to write ISO flake.nix");
 
-    // Write the target config in the expected subdirectory
+    // Write the target config in the expected subdirectory with hosts/ layout
     let target_dir = dir.path().join("target-config");
-    std::fs::create_dir_all(&target_dir).expect("failed to create target-config/");
+    let target_host_dir = target_dir.join("hosts").join(hostname);
+    std::fs::create_dir_all(&target_host_dir).expect("failed to create target-config/hosts/");
     std::fs::write(target_dir.join("flake.nix"), &target_flake)
         .expect("failed to write target flake.nix");
-    std::fs::write(target_dir.join("configuration.nix"), &target_config)
+    std::fs::write(target_host_dir.join("configuration.nix"), &target_config)
         .expect("failed to write target configuration.nix");
-    std::fs::write(target_dir.join("hardware.nix"), &target_hardware)
+    std::fs::write(target_host_dir.join("hardware.nix"), &target_hardware)
         .expect("failed to write target hardware.nix");
 
     // Build the ISO image with a stable output link in the repo root (gitignored via result-*)
@@ -304,11 +308,13 @@ fn make_config(
                 vec![]
             },
         },
+        owner_name: None,
+        owner_email: None,
     }
 }
 
 /// Generate Nix files from a config and write them to a temp dir.
-/// Returns the tempdir handle (must be kept alive) and the hostname.
+/// Uses the hosts/<hostname>/ layout matching mkSystemFlake convention.
 fn write_generated_config(
     hostname: &str,
     machine_type: MachineType,
@@ -318,22 +324,24 @@ fn write_generated_config(
 
     let flake_nix = keystone_tui::template::generate_flake_nix(&config);
     let configuration_nix = keystone_tui::template::generate_configuration_nix(&config);
-    let hardware_nix = keystone_tui::template::generate_hardware_nix();
+    let hardware_nix = keystone_tui::template::generate_hardware_nix(&config);
 
     // Point at the local repo so we test uncommitted module changes instead
     // of whatever is on GitHub.
     let local_root = repo_root();
     let flake_nix = flake_nix.replace(
-        "url = \"github:ncrmro/keystone\"",
-        &format!("url = \"path:{}\"", local_root.display()),
+        "keystone.url = \"github:ncrmro/keystone\"",
+        &format!("keystone.url = \"path:{}\"", local_root.display()),
     );
 
     let dir = tempfile::tempdir().expect("failed to create temp dir");
+    let host_dir = dir.path().join("hosts").join(hostname);
+    std::fs::create_dir_all(&host_dir).expect("failed to create hosts/<hostname> directory");
 
     std::fs::write(dir.path().join("flake.nix"), &flake_nix).expect("failed to write flake.nix");
-    std::fs::write(dir.path().join("configuration.nix"), &configuration_nix)
+    std::fs::write(host_dir.join("configuration.nix"), &configuration_nix)
         .expect("failed to write configuration.nix");
-    std::fs::write(dir.path().join("hardware.nix"), &hardware_nix)
+    std::fs::write(host_dir.join("hardware.nix"), &hardware_nix)
         .expect("failed to write hardware.nix");
 
     dir

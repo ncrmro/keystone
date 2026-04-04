@@ -191,7 +191,7 @@ pub async fn create_new_repo_from_config(
     ))?;
 
     let config = template::GenerateConfig {
-        hostname,
+        hostname: hostname.clone(),
         machine_type,
         storage_type,
         disk_device,
@@ -207,20 +207,27 @@ pub async fn create_new_repo_from_config(
             enable: machine_type == template::MachineType::Server,
             authorized_keys,
         },
+        owner_name: None,
+        owner_email: None,
     };
 
-    // Write generated Nix files
+    // Write generated Nix files using hosts/<hostname>/ layout
     let flake_nix = template::generate_flake_nix(&config);
     let configuration_nix = template::generate_configuration_nix(&config);
-    let hardware_nix = template::generate_hardware_nix();
+    let hardware_nix = template::generate_hardware_nix(&config);
+
+    let host_dir = target_path.join("hosts").join(&hostname);
+    fs::create_dir_all(&host_dir)
+        .await
+        .context("Failed to create hosts/<hostname> directory")?;
 
     fs::write(target_path.join("flake.nix"), flake_nix)
         .await
         .context("Failed to write flake.nix")?;
-    fs::write(target_path.join("configuration.nix"), configuration_nix)
+    fs::write(host_dir.join("configuration.nix"), configuration_nix)
         .await
         .context("Failed to write configuration.nix")?;
-    fs::write(target_path.join("hardware.nix"), hardware_nix)
+    fs::write(host_dir.join("hardware.nix"), hardware_nix)
         .await
         .context("Failed to write hardware.nix")?;
 
