@@ -28,6 +28,9 @@ let
         extraGroups = unique ([ "wheel" ] ++ effectiveAdminCfg.extraGroups);
       };
     };
+  # Admin can be either an explicit keystone.os.admin or any user with wheel group
+  hasAdmin =
+    effectiveAdminCfg != null || any (u: elem "wheel" u.extraGroups) (attrValues effectiveUsers);
   keysCfg = config.keystone.keys;
   hostname = config.networking.hostName;
   immichServiceCfg = config.keystone.services.immich;
@@ -112,8 +115,8 @@ in
       # Assertions
       assertions = [
         {
-          assertion = effectiveAdminCfg != null;
-          message = "Keystone OS requires keystone.os.admin to define the canonical administrator.";
+          assertion = hasAdmin;
+          message = "Keystone OS requires an administrator — set keystone.os.admin or add a user with 'wheel' in extraGroups.";
         }
         {
           assertion = !(osCfg.admin != null && legacyAdminCfg != null);
