@@ -21,7 +21,7 @@ pkgs.runCommand "native-cli-agent-preview-check"
     KEYSTONE_REPO_ROOT="${../..}" \
       ${pkgs.bash}/bin/bash ${../update-native-cli-agent-preview.sh} "$actual"
 
-    diff -ru ${../fixtures/native-cli-agents-preview} "$actual"
+    diff -ru ${../fixtures/agents} "$actual"
 
     touch "$out"
   ''

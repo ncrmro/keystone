@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root="${KEYSTONE_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-output_root="${1:-$repo_root/tests/fixtures/native-cli-agents-preview}"
+output_root="${1:-$repo_root/tests/fixtures/agents}"
 manifest_path="$(mktemp)"
 
 cleanup() {
@@ -44,20 +44,3 @@ KEYSTONE_AGENT_ASSETS_MANIFEST="$manifest_path" \
   bash "$repo_root/modules/terminal/scripts/keystone-sync-agent-assets.sh" \
   --output-root "$output_root" \
   --conventions-link-base "/repo/conventions"
-
-rm -f \
-  "$output_root/.keystone/AGENTS.md" \
-  "$output_root/.keystone/repos/AGENTS.md" \
-  "$output_root/.claude/CLAUDE.md" \
-  "$output_root/.gemini/GEMINI.md" \
-  "$output_root/.codex/AGENTS.md" \
-  "$output_root/.config/opencode/AGENTS.md"
-
-rm -rf \
-  "$output_root/.claude/commands" \
-  "$output_root/.claude/skills" \
-  "$output_root/.gemini/commands" \
-  "$output_root/.codex/skills" \
-  "$output_root/.config/opencode/commands" \
-  "$output_root/.config/opencode/skills" \
-  "$output_root/.keystone"

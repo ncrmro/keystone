@@ -260,7 +260,7 @@ Behavior:
 
 Examples:
   ks sync-agent-assets
-  ks sync-agent-assets --output-root tests/fixtures/native-cli-agents-preview
+  ks sync-agent-assets --output-root tests/fixtures/agents
 EOF
 }
 

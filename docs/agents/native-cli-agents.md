@@ -183,11 +183,12 @@ For native CLI agents, that means:
 For PR-visible previews, render the generated assets into a repo directory:
 
 ```bash
-ks sync-agent-assets --output-root tests/fixtures/native-cli-agents-preview
+ks sync-agent-assets --output-root tests/fixtures/agents
 ```
 
 That preview mode uses the same generator, but writes into a reviewable
-directory instead of the live CLI home paths.
+directory instead of the live CLI home paths. The fixture tree can include
+native agents, commands, skills, and generated instruction files for each CLI.
 
 ## Collision handling
 
