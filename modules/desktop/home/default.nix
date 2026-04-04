@@ -14,7 +14,10 @@ in
     ./hyprland
     ./scripts
     ./theming
-    ../../terminal
+    # Terminal is provided by nixosModules.operating-system via
+    # home-manager.sharedModules since 2a9c266. Do not re-import here
+    # to avoid duplicate option declarations when both OS and desktop
+    # modules are active.
   ];
 
   options.keystone.desktop = {
