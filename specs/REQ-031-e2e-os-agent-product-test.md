@@ -1,4 +1,4 @@
-# REQ-31: E2E OS Agent Product Test
+# REQ-031: E2E OS Agent Product Test
 
 Pluggable test harness that validates the full Keystone product-to-engineering
 agent lifecycle by orchestrating a palindrome feature request through email
@@ -32,169 +32,171 @@ palindrome milestone complete. later on we can tac on other workflows like busin
 
 ### FR-001: Test Harness Framework
 
-**REQ-31.1** The test harness MUST execute asynchronously, producing a
+**REQ-031.1** The test harness MUST execute asynchronously, producing a
 progressively-generated structured report as each check completes.
 
-**REQ-31.2** The report MUST be YAML format, written incrementally to a
+**REQ-031.2** The report MUST be YAML format, written incrementally to a
 well-known output path.
 
-**REQ-31.3** The harness MUST support a `--print` flag that renders the
+**REQ-031.3** The harness MUST support a `--print` flag that renders the
 final report to stdout via pandoc when all checks complete.
 
-**REQ-31.4** The harness MUST implement a pluggable check architecture
+**REQ-031.4** The harness MUST implement a pluggable check architecture
 where each check is an independent module that receives a shared context
 and appends results to the report.
 
-**REQ-31.5** Each check result MUST include: `name`, `status`
-(pass | fail | skip | running), `started_at`, `completed_at`, and an
-optional `details` string.
+**REQ-031.5** Each check result MUST include: `name`, `status`
+(pass | fail | skip | running), `started_at`, and an optional `details`
+string. `completed_at` MUST be present for terminal statuses (pass, fail,
+skip) and MUST be null or omitted while the status is `running`.
 
-**REQ-31.6** The harness MUST accept parameters for: product agent name,
+**REQ-031.6** The harness MUST accept parameters for: product agent name,
 engineering agent name, platform (forgejo), and model provider.
 
-**REQ-31.7** The harness MUST support a `--dry-run` flag that validates
+**REQ-031.7** The harness MUST support a `--dry-run` flag that validates
 configuration and environment prerequisites without executing the
 workflow.
 
 ### FR-002: Environment Lifecycle
 
-**REQ-31.8** A bun server template repository MUST exist at
+**REQ-031.8** A bun server template repository MUST exist at
 `ks-testing/agent-e2e-bun-template` on Forgejo with the structure
 `packages/web/` and `packages/e2e/`, each containing its own `AGENTS.md`.
 
-**REQ-31.9** The `packages/web/` template MUST contain a minimal bun HTTP
+**REQ-031.9** The `packages/web/` template MUST contain a minimal bun HTTP
 server with an HTML form for string input and no palindrome logic
 pre-implemented. The agent is free to implement the backend in any
 language.
 
-**REQ-31.10** The `packages/e2e/` template MUST contain a Playwright
+**REQ-031.10** The `packages/e2e/` template MUST contain a Playwright
 project scaffold configured to capture screenshots, with no test cases
 pre-written.
 
-**REQ-31.11** At the start of each test run, the harness MUST delete any
+**REQ-031.11** At the start of each test run, the harness MUST delete any
 prior fork of the template repo on the target platform, then create a
 fresh fork from `ks-testing/agent-e2e-bun-template`.
 
-**REQ-31.12** At the start of each test run, the harness MUST remove the
+**REQ-031.12** At the start of each test run, the harness MUST remove the
 bun server repo from each agent's disk (worktrees and clones).
 
-**REQ-31.13** At the start of each test run, the harness MUST reset the
+**REQ-031.13** At the start of each test run, the harness MUST reset the
 project hub note and any tagged notes bearing an e2e-specific suffix to
 prevent collateral cleanup of unrelated notes.
 
-**REQ-31.14** The template repo MUST configure git LFS for `*.png` files
+**REQ-031.14** The template repo MUST configure git LFS for `*.png` files
 in a `.gitattributes` at the repo root.
 
 ### FR-003: Product Agent — Requirement Intake
 
-**REQ-31.15** The harness MUST send a palindrome feature requirement to
+**REQ-031.15** The harness MUST send a palindrome feature requirement to
 the product agent via email using `agent-mail` or equivalent.
 
-**REQ-31.16** The product agent MUST create a press release issue on the
+**REQ-031.16** The product agent MUST create a press release issue on the
 target platform following the `process.press-release` convention.
 
-**REQ-31.17** The product agent MUST create a milestone on the target
+**REQ-031.17** The product agent MUST create a milestone on the target
 platform and associate the press release issue with it.
 
-**REQ-31.18** The product agent MUST assign the engineering agent to the
+**REQ-031.18** The product agent MUST assign the engineering agent to the
 press release issue or create a linked engineering-intake issue assigned
 to the engineering agent.
 
 ### FR-004: Engineering Agent — Specification
 
-**REQ-31.19** The engineering agent MUST create an engineering issue on the
+**REQ-031.19** The engineering agent MUST create an engineering issue on the
 milestone with acceptance criteria derived from the press release.
 
-**REQ-31.20** The engineering agent MUST create a trunk branch for the
+**REQ-031.20** The engineering agent MUST create a trunk branch for the
 milestone in the bun server repo.
 
-**REQ-31.21** The engineering agent MUST create a worktree for the trunk
+**REQ-031.21** The engineering agent MUST create a worktree for the trunk
 branch at the conventional path
 `$HOME/.worktrees/{owner}/{repo}/{branch}/`.
 
-**REQ-31.22** The engineering agent MUST define functional requirements in
+**REQ-031.22** The engineering agent MUST define functional requirements in
 `specs/REQ-001-palindrome.md` (or equivalent REQ-prefixed file) within the
 bun server repo using RFC 2119 key words.
 
 ### FR-005: Engineering Agent — Implementation
 
-**REQ-31.23** The engineering agent MUST implement a palindrome solver as a
+**REQ-031.23** The engineering agent MUST implement a palindrome solver as a
 backend service in the bun server repo. The agent MAY choose any language
 or framework for the backend implementation.
 
-**REQ-31.24** The palindrome solver MUST be accessible via the HTML form in
+**REQ-031.24** The palindrome solver MUST be accessible via the HTML form in
 `packages/web/` — the form submits a string, and the page displays whether
 it is a palindrome.
 
-**REQ-31.25** The backend response MUST validate against a JSON schema
-defined in the spec (e.g., `{"input": "string", "is_palindrome": bool}`).
+**REQ-031.25** The backend response MUST validate against a JSON schema
+defined in the spec (e.g.,
+`{"type":"object","properties":{"input":{"type":"string"},"is_palindrome":{"type":"boolean"}},"required":["input","is_palindrome"]}`).
 
-**REQ-31.26** The language and framework chosen by the agent MUST be
+**REQ-031.26** The language and framework chosen by the agent MUST be
 recorded in the test report for model-matrix analysis.
 
 ### FR-006: Engineering Agent — Testing
 
-**REQ-31.27** The engineering agent MUST write Playwright end-to-end tests
+**REQ-031.27** The engineering agent MUST write Playwright end-to-end tests
 in `packages/e2e/` that exercise the palindrome happy path via the HTML
 form.
 
-**REQ-31.28** Playwright tests MUST capture screenshots at key steps
+**REQ-031.28** Playwright tests MUST capture screenshots at key steps
 following the naming convention `{test-name}.{step-index}.{step-name}.png`.
 
-**REQ-31.29** Screenshots MUST be committed via git LFS to the bun server
+**REQ-031.29** Screenshots MUST be committed via git LFS to the bun server
 repo.
 
 ### FR-007: Engineering Agent — Release
 
-**REQ-31.30** The engineering agent MUST merge the feature into the trunk
+**REQ-031.30** The engineering agent MUST merge the feature into the trunk
 branch.
 
-**REQ-31.31** The engineering agent MUST create a release PR with the
+**REQ-031.31** The engineering agent MUST create a release PR with the
 changes cherry-picked from the trunk branch.
 
-**REQ-31.32** The engineering agent MUST comment on the milestone
+**REQ-031.32** The engineering agent MUST comment on the milestone
 referencing the merged feature PR.
 
-**REQ-31.33** The engineering agent MUST close or complete the engineering
+**REQ-031.33** The engineering agent MUST close or complete the engineering
 issue upon successful merge.
 
 ### FR-008: Product Agent — Verification
 
-**REQ-31.34** The product agent MUST verify that git LFS screenshots in the
+**REQ-031.34** The product agent MUST verify that git LFS screenshots in the
 release PR match the live environment.
 
-**REQ-31.35** The product agent MUST mark the milestone as complete after
+**REQ-031.35** The product agent MUST mark the milestone as complete after
 verification passes.
 
 ### FR-009: Validation Checks
 
-**REQ-31.36** The harness MUST assert that a `specs/REQ-*palindrome*` file
+**REQ-031.36** The harness MUST assert that a `specs/REQ-*palindrome*` file
 exists in the bun server repo with RFC 2119 key words.
 
-**REQ-31.37** The harness MUST assert that the engineering agent's worktree
+**REQ-031.37** The harness MUST assert that the engineering agent's worktree
 exists at the conventional path.
 
-**REQ-31.38** The harness MUST assert that the milestone and all associated
+**REQ-031.38** The harness MUST assert that the milestone and all associated
 issues reached their expected terminal states (closed or completed).
 
-**REQ-31.39** The harness MUST assert that screenshots in the repo follow
+**REQ-031.39** The harness MUST assert that screenshots in the repo follow
 the `{test-name}.{step-index}.{step-name}.png` naming convention.
 
-**REQ-31.40** The harness MUST assert that the palindrome solver returns
+**REQ-031.40** The harness MUST assert that the palindrome solver returns
 valid JSON for known palindrome and non-palindrome inputs.
 
-**REQ-31.41** The harness MUST assert that the release PR exists and
+**REQ-031.41** The harness MUST assert that the release PR exists and
 references the milestone.
 
 ### FR-010: Platform Abstraction
 
-**REQ-31.42** The harness MUST define a platform interface for repo, issue,
+**REQ-031.42** The harness MUST define a platform interface for repo, issue,
 milestone, and PR operations.
 
-**REQ-31.43** The harness MUST implement the platform interface for Forgejo
+**REQ-031.43** The harness MUST implement the platform interface for Forgejo
 using the Forgejo API or CLI.
 
-**REQ-31.44** The platform interface SHOULD be extensible to GitHub in a
+**REQ-031.44** The platform interface SHOULD be extensible to GitHub in a
 future iteration.
 
 ## Non-Functional Requirements
