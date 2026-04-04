@@ -1,13 +1,12 @@
-//! Tests for Nix configuration generation with authorized_keys.
+//! Tests for Nix configuration generation with mkSystemFlake template.
 
 use keystone_tui::template::{
     GenerateConfig, MachineType, RemoteUnlockConfig, StorageType, UserConfig,
 };
 
-#[test]
-fn test_authorized_keys_appear_in_generated_nix() {
-    let config = GenerateConfig {
-        hostname: "test-server".to_string(),
+fn test_config() -> GenerateConfig {
+    GenerateConfig {
+        hostname: "test-host".to_string(),
         machine_type: MachineType::Server,
         storage_type: StorageType::Zfs,
         disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
@@ -17,124 +16,82 @@ fn test_authorized_keys_appear_in_generated_nix() {
         user: UserConfig {
             username: "admin".to_string(),
             password: "changeme".to_string(),
-            authorized_keys: vec![
-                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA admin@laptop".to_string(),
-                "ssh-rsa AAAAB3NzaC1yc2EAAAA admin@workstation".to_string(),
-            ],
-        },
-        remote_unlock: RemoteUnlockConfig {
-            enable: true,
-            authorized_keys: vec!["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA admin@laptop".to_string()],
-        },
-    };
-
-    let nix = keystone_tui::template::generate_configuration_nix(&config);
-
-    // User authorized keys appear
-    assert!(
-        nix.contains("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA admin@laptop"),
-        "User authorized_keys should contain the ed25519 key"
-    );
-    assert!(
-        nix.contains("ssh-rsa AAAAB3NzaC1yc2EAAAA admin@workstation"),
-        "User authorized_keys should contain the rsa key"
-    );
-
-    // authorizedKeys should be a proper Nix list (not empty)
-    assert!(
-        nix.contains("authorizedKeys = ["),
-        "authorizedKeys should be a non-empty list"
-    );
-
-    // Remote unlock keys appear
-    assert!(
-        nix.matches("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA admin@laptop")
-            .count()
-            >= 2,
-        "Key should appear in both user and remote unlock sections"
-    );
-}
-
-#[test]
-fn test_empty_authorized_keys_generates_empty_list() {
-    let config = GenerateConfig {
-        hostname: "empty-keys".to_string(),
-        machine_type: MachineType::Laptop,
-        storage_type: StorageType::Ext4,
-        disk_device: Some("/dev/sda".to_string()),
-        github_username: None,
-        time_zone: "UTC".to_string(),
-        state_version: "25.05".to_string(),
-        user: UserConfig {
-            username: "user".to_string(),
-            password: "pass".to_string(),
             authorized_keys: vec![],
         },
         remote_unlock: RemoteUnlockConfig {
             enable: false,
             authorized_keys: vec![],
         },
-    };
+        owner_name: None,
+        owner_email: None,
+    }
+}
 
-    let nix = keystone_tui::template::generate_configuration_nix(&config);
+#[test]
+fn test_flake_uses_mksystemflake() {
+    let config = test_config();
+    let flake = keystone_tui::template::generate_flake_nix(&config);
+
     assert!(
-        nix.contains("authorizedKeys = []"),
-        "Empty keys should produce authorizedKeys = []"
+        flake.contains("keystone.lib.mkSystemFlake"),
+        "flake should call mkSystemFlake"
+    );
+    assert!(
+        flake.contains(r#"kind = "server""#),
+        "server config should have kind = server"
+    );
+    assert!(
+        flake.contains(r#""test-host" ="#),
+        "flake should contain hostname as host key"
     );
 }
 
 #[test]
-fn test_flake_nix_contains_hostname() {
+fn test_flake_contains_owner() {
     let config = GenerateConfig {
-        hostname: "my-server".to_string(),
-        machine_type: MachineType::Server,
-        storage_type: StorageType::Zfs,
-        disk_device: Some("/dev/sda".to_string()),
-        github_username: None,
-        time_zone: "UTC".to_string(),
-        state_version: "25.05".to_string(),
-        user: UserConfig {
-            username: "admin".to_string(),
-            password: "pass".to_string(),
-            authorized_keys: vec![],
-        },
-        remote_unlock: RemoteUnlockConfig {
-            enable: true,
-            authorized_keys: vec![],
-        },
+        owner_name: Some("Noah".to_string()),
+        owner_email: Some("noah@example.com".to_string()),
+        ..test_config()
     };
 
     let flake = keystone_tui::template::generate_flake_nix(&config);
-    assert!(flake.contains("\"my-server\" = nixpkgs.lib.nixosSystem"));
-    assert!(flake.contains("keystone.nixosModules.operating-system"));
+    assert!(flake.contains(r#"name = "Noah""#));
+    assert!(flake.contains(r#"email = "noah@example.com""#));
+    assert!(flake.contains(r#"username = "admin""#));
 }
 
 #[test]
-fn test_laptop_gets_ext4_and_desktop() {
+fn test_hardware_nix_contains_storage_config() {
+    let config = test_config();
+    let hardware = keystone_tui::template::generate_hardware_nix(&config);
+
+    assert!(
+        hardware.contains("/dev/disk/by-id/nvme-test"),
+        "hardware.nix should contain disk device"
+    );
+    assert!(
+        hardware.contains("networking.hostId"),
+        "hardware.nix should contain hostId"
+    );
+    assert!(
+        hardware.contains("inherit system"),
+        "hardware.nix should export system"
+    );
+}
+
+#[test]
+fn test_laptop_kind_in_flake() {
     let config = GenerateConfig {
         hostname: "my-laptop".to_string(),
         machine_type: MachineType::Laptop,
         storage_type: StorageType::Ext4,
         disk_device: Some("/dev/nvme0n1".to_string()),
-        github_username: None,
-        time_zone: "UTC".to_string(),
-        state_version: "25.05".to_string(),
-        user: UserConfig {
-            username: "user".to_string(),
-            password: "pass".to_string(),
-            authorized_keys: vec!["ssh-ed25519 AAAA key".to_string()],
-        },
-        remote_unlock: RemoteUnlockConfig {
-            enable: false,
-            authorized_keys: vec![],
-        },
+        ..test_config()
     };
 
-    let configuration = keystone_tui::template::generate_configuration_nix(&config);
-    assert!(configuration.contains(r#"type = "ext4""#));
-    assert!(configuration.contains("desktop"));
-
     let flake = keystone_tui::template::generate_flake_nix(&config);
-    // Desktop module should be enabled (not commented out)
-    assert!(flake.contains("          keystone.nixosModules.desktop\n"));
+    assert!(
+        flake.contains(r#"kind = "laptop""#),
+        "laptop config should have kind = laptop"
+    );
 }

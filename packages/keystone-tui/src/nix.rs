@@ -114,10 +114,17 @@ pub async fn eval_host_metadata(repo_path: &Path, hosts: &mut [HostInfo]) {
 
 /// Extract nixosConfigurations attribute names and details from the flake AST.
 ///
-/// Handles two forms:
+/// Handles three forms:
 /// 1. `nixosConfigurations = { host1 = ...; host2 = ...; };` (nested attrset)
 /// 2. `nixosConfigurations.host1 = ...;` (dotted attrpath, e.g. ISO flakes)
+/// 3. `keystone.lib.mkSystemFlake { hosts = { ... }; }` (inventory-based)
 fn extract_nixos_configurations(root: &SyntaxNode) -> Vec<HostInfo> {
+    // Try Form 3 first: mkSystemFlake inventory
+    let mksf_hosts = extract_mksystemflake_hosts(root);
+    if !mksf_hosts.is_empty() {
+        return mksf_hosts;
+    }
+
     let mut hosts = Vec::new();
 
     for node in root.descendants() {
@@ -215,6 +222,129 @@ fn extract_nixos_configurations(root: &SyntaxNode) -> Vec<HostInfo> {
     }
 
     hosts
+}
+
+/// Extract hosts from a `keystone.lib.mkSystemFlake { hosts = { ... }; }` call.
+///
+/// Walks the AST looking for function applications where the function is
+/// `keystone.lib.mkSystemFlake`. Extracts each entry in the `hosts` attrset,
+/// mapping `kind` to architecture and conventional file paths.
+fn extract_mksystemflake_hosts(root: &SyntaxNode) -> Vec<HostInfo> {
+    let mut hosts = Vec::new();
+
+    for node in root.descendants() {
+        // Look for NODE_APPLY (function application)
+        if node.kind() != SyntaxKind::NODE_APPLY {
+            continue;
+        }
+
+        // Check if the function being applied is keystone.lib.mkSystemFlake
+        let text = node.text().to_string();
+        if !text.contains("mkSystemFlake") {
+            continue;
+        }
+
+        // Find the argument attrset and look for `hosts = { ... }`
+        for child in node.descendants() {
+            if child.kind() != SyntaxKind::NODE_ATTRPATH_VALUE {
+                continue;
+            }
+            if let Some(ap) = child
+                .children()
+                .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
+            {
+                let path_text: String = ap
+                    .children()
+                    .filter(|n| n.kind() == SyntaxKind::NODE_IDENT)
+                    .map(|n| n.text().to_string())
+                    .collect::<Vec<_>>()
+                    .join(".");
+
+                if path_text == "hosts" {
+                    if let Some(hosts_attrset) = child
+                        .children()
+                        .find(|n| n.kind() == SyntaxKind::NODE_ATTR_SET)
+                    {
+                        for host_attr in hosts_attrset.children() {
+                            if host_attr.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                                if let Some(info) = parse_mksystemflake_host_entry(&host_attr) {
+                                    hosts.push(info);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !hosts.is_empty() {
+            break;
+        }
+    }
+
+    hosts
+}
+
+/// Parse a single host entry from a mkSystemFlake `hosts` attrset.
+///
+/// Example: `my-laptop = { kind = "laptop"; };`
+fn parse_mksystemflake_host_entry(attr_node: &SyntaxNode) -> Option<HostInfo> {
+    let key_path = attr_node
+        .children()
+        .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)?;
+    let name = key_path.children().find_map(|n| match n.kind() {
+        SyntaxKind::NODE_IDENT => Some(n.text().to_string()),
+        SyntaxKind::NODE_STRING => {
+            let text = n.text().to_string();
+            Some(text.trim_matches('"').to_string())
+        }
+        _ => None,
+    })?;
+
+    // Extract `kind` from the host attrset
+    let mut kind = None;
+    if let Some(attrset) = attr_node
+        .children()
+        .find(|n| n.kind() == SyntaxKind::NODE_ATTR_SET)
+    {
+        for child in attrset.children() {
+            if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                let child_path: String = child
+                    .descendants()
+                    .filter(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
+                    .flat_map(|n| {
+                        n.children()
+                            .filter(|c| c.kind() == SyntaxKind::NODE_IDENT)
+                            .map(|c| c.text().to_string())
+                    })
+                    .collect::<Vec<_>>()
+                    .join(".");
+
+                if child_path == "kind" {
+                    kind = extract_string_value(&child);
+                }
+            }
+        }
+    }
+
+    // Derive defaults from kind
+    let system = match kind.as_deref() {
+        Some("macbook") => Some("aarch64-darwin".to_string()),
+        _ => Some("x86_64-linux".to_string()),
+    };
+
+    let config_files = vec![
+        format!("./hosts/{}/configuration.nix", name),
+        format!("./hosts/{}/hardware.nix", name),
+    ];
+
+    Some(HostInfo {
+        name,
+        system,
+        keystone_modules: Vec::new(),
+        config_files,
+        metadata: None,
+    })
 }
 
 /// Parse a single host entry from the nixosConfigurations attrset.
@@ -749,25 +879,16 @@ mod tests {
                 enable: false,
                 authorized_keys: vec![],
             },
+            owner_name: None,
+            owner_email: None,
         };
 
         let flake = generate_flake_nix(&config);
 
-        // Verify inputs via AST
+        // Verify inputs via AST — mkSystemFlake format uses single keystone input
         let inputs = extract_flake_inputs(&flake);
-        let input_names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
-        assert!(
-            input_names.contains(&"disko"),
-            "generated flake must have disko input"
-        );
-        assert!(
-            input_names.contains(&"keystone"),
-            "generated flake must have keystone input"
-        );
-        assert!(
-            input_names.contains(&"home-manager"),
-            "generated flake must have home-manager input"
-        );
+        assert_eq!(inputs.len(), 1, "should have exactly one input (keystone)");
+        assert_eq!(inputs[0].name, "keystone");
 
         // Verify the flake parses without errors
         let root = Root::parse(&flake);
@@ -778,11 +899,69 @@ mod tests {
             errors
         );
 
-        // Verify host via AST
+        // Verify host via AST (mkSystemFlake Form 3)
         let hosts = extract_nixos_configurations_from_str(&flake);
         assert_eq!(hosts.len(), 1);
         assert_eq!(hosts[0].name, "ast-test");
         assert_eq!(hosts[0].system.as_deref(), Some("x86_64-linux"));
+    }
+
+    #[test]
+    fn test_extract_mksystemflake_hosts() {
+        let content = r#"
+{
+  inputs.keystone.url = "github:ncrmro/keystone";
+  outputs = { keystone, ... }:
+    keystone.lib.mkSystemFlake {
+      owner = { name = "Test"; username = "test"; email = "test@example.com"; };
+      hostsRoot = ./hosts;
+      hosts = {
+        my-laptop = { kind = "laptop"; };
+        "my-server" = { kind = "server"; };
+        macbook = { kind = "macbook"; };
+      };
+    };
+}
+"#;
+        let root = Root::parse(content);
+        let hosts = extract_nixos_configurations(&root.syntax());
+        assert_eq!(hosts.len(), 3, "should extract 3 hosts");
+
+        let laptop = hosts.iter().find(|h| h.name == "my-laptop").unwrap();
+        assert_eq!(laptop.system.as_deref(), Some("x86_64-linux"));
+        assert!(laptop
+            .config_files
+            .contains(&"./hosts/my-laptop/configuration.nix".to_string()));
+
+        let server = hosts.iter().find(|h| h.name == "my-server").unwrap();
+        assert_eq!(server.system.as_deref(), Some("x86_64-linux"));
+
+        let macbook = hosts.iter().find(|h| h.name == "macbook").unwrap();
+        assert_eq!(macbook.system.as_deref(), Some("aarch64-darwin"));
+    }
+
+    #[test]
+    fn test_old_format_still_parses() {
+        // Backward compat: old hand-wired nixosConfigurations must still work
+        let content = r#"
+{
+  outputs = { nixpkgs, keystone, disko, home-manager, ... }: {
+    nixosConfigurations = {
+      "my-host" = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          keystone.nixosModules.operating-system
+          ./configuration.nix
+        ];
+      };
+    };
+  };
+}
+"#;
+        let hosts = extract_nixos_configurations_from_str(content);
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].name, "my-host");
         assert!(hosts[0]
             .keystone_modules
             .contains(&"operating-system".to_string()));

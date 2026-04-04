@@ -19,6 +19,15 @@ impl MachineType {
             MachineType::Laptop => "Laptop (desktop + ext4 + hibernate)",
         }
     }
+
+    /// The Keystone host kind string used in mkSystemFlake `hosts` inventory.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            MachineType::Server => "server",
+            MachineType::Workstation => "workstation",
+            MachineType::Laptop => "laptop",
+        }
+    }
 }
 
 /// Storage backend type.
@@ -68,210 +77,107 @@ pub struct GenerateConfig {
     pub state_version: String,
     pub user: UserConfig,
     pub remote_unlock: RemoteUnlockConfig,
+    /// Owner's display name (for mkSystemFlake owner.name). Defaults to username.
+    pub owner_name: Option<String>,
+    /// Owner's email (for mkSystemFlake owner.email). Defaults to username@localhost.
+    pub owner_email: Option<String>,
 }
 
 /// Generate a flake.nix file from configuration.
+///
+/// Produces a flake calling `keystone.lib.mkSystemFlake` with a single
+/// `keystone` input. The host inventory, owner identity, and defaults
+/// are all expressed declaratively in the mkSystemFlake call.
 pub fn generate_flake_nix(config: &GenerateConfig) -> String {
-    let desktop_module = match config.machine_type {
-        MachineType::Server => "          # keystone.nixosModules.desktop  # Uncomment for desktop",
-        _ => "          keystone.nixosModules.desktop",
-    };
-
-    // The desktop home module already imports terminal, so only include
-    // terminal separately for server configs (no desktop).
-    let shared_modules = match config.machine_type {
-        MachineType::Server => concat!(
-            "              sharedModules = [\n",
-            "                keystone.homeModules.terminal\n",
-            "              ];",
-        ),
-        // Desktop home module already imports terminal internally;
-        // including both would cause a duplicate option declaration.
-        _ => concat!(
-            "              sharedModules = [\n",
-            "                keystone.homeModules.desktop\n",
-            "              ];",
-        ),
-    };
+    let owner_name = config
+        .owner_name
+        .as_deref()
+        .unwrap_or(&config.user.username);
+    let default_email = format!("{}@localhost", config.user.username);
+    let owner_email = config.owner_email.as_deref().unwrap_or(&default_email);
 
     format!(
         r#"{{
-  description = "Keystone Infrastructure — {hostname_esc}";
+  description = "{owner_name_esc} Keystone System Configuration";
 
   inputs = {{
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    keystone = {{
-      url = "github:ncrmro/keystone";
-      inputs.nixpkgs.follows = "nixpkgs";
-    }};
-    disko = {{
-      url = "github:nix-community/disko";
-      inputs.nixpkgs.follows = "nixpkgs";
-    }};
-    home-manager = {{
-      url = "github:nix-community/home-manager";
-      inputs.nixpkgs.follows = "nixpkgs";
-    }};
+    keystone.url = "github:ncrmro/keystone";
   }};
 
-  outputs = {{
-    self,
-    nixpkgs,
-    keystone,
-    disko,
-    home-manager,
-    ...
-  }}: {{
-    nixosConfigurations = {{
-      "{hostname_esc}" = nixpkgs.lib.nixosSystem {{
-        system = "x86_64-linux";
-        modules = [
-          disko.nixosModules.disko
-          home-manager.nixosModules.home-manager
-          keystone.nixosModules.operating-system
-{desktop_module}
-          {{
-            nixpkgs.overlays = [ keystone.overlays.default ];
-            home-manager = {{
-              useGlobalPkgs = true;
-              useUserPackages = true;
-{shared_modules}
-            }};
-          }}
-          ./configuration.nix
-          ./hardware.nix
-        ];
+  outputs =
+    {{ keystone, ... }}:
+    keystone.lib.mkSystemFlake {{
+      owner = {{
+        name = "{owner_name_esc}";
+        username = "{username_esc}";
+        email = "{owner_email_esc}";
       }};
+      defaults = {{
+        timeZone = "{time_zone_esc}";
+      }};
+      hostsRoot = ./hosts;
+      hosts = {{
+        "{hostname_esc}" = {{
+          kind = "{kind}";
+        }};
+      }};
+    }}
+    // {{
+      devShells.x86_64-linux.default =
+        keystone.inputs.nixpkgs.legacyPackages.x86_64-linux.mkShell {{
+          packages = with keystone.inputs.nixpkgs.legacyPackages.x86_64-linux; [
+            nixfmt
+            nil
+          ];
+        }};
     }};
-
-    devShells.x86_64-linux.default = nixpkgs.legacyPackages.x86_64-linux.mkShell {{
-      packages = with nixpkgs.legacyPackages.x86_64-linux; [
-        nixfmt-rfc-style
-        nil
-      ];
-    }};
-  }};
 }}
 "#,
+        owner_name_esc = escape_nix_string(owner_name),
+        username_esc = escape_nix_string(&config.user.username),
+        owner_email_esc = escape_nix_string(owner_email),
+        time_zone_esc = escape_nix_string(&config.time_zone),
         hostname_esc = escape_nix_string(&config.hostname),
-        desktop_module = desktop_module,
-        shared_modules = shared_modules,
+        kind = config.machine_type.kind(),
     )
 }
 
-/// Generate a configuration.nix file from configuration.
-pub fn generate_configuration_nix(config: &GenerateConfig) -> String {
-    let host_id = generate_host_id();
-
-    let authorized_keys_nix = format_nix_string_list(&config.user.authorized_keys, 10);
-    let remote_unlock_keys_nix = format_nix_string_list(&config.remote_unlock.authorized_keys, 8);
-
-    let desktop_enable = match config.machine_type {
-        MachineType::Server => "false",
-        _ => "true",
-    };
-
-    let remote_unlock_enable = if config.remote_unlock.enable {
-        "true"
-    } else {
-        "false"
-    };
-
-    let extra_groups = match config.machine_type {
-        MachineType::Server => r#"[ "wheel" ]"#,
-        _ => r#"[ "wheel" "networkmanager" "video" "audio" ]"#,
-    };
-
-    // Use placeholder when no disk device is specified — replaced at install time
-    let raw_disk = config.disk_device.as_deref().unwrap_or("__KEYSTONE_DISK__");
-    let hostname = escape_nix_string(&config.hostname);
-    let username = escape_nix_string(&config.user.username);
-    let password = escape_nix_string(&config.user.password);
-    let disk_device = escape_nix_string(raw_disk);
-
-    format!(
-        r#"{{
-  config,
+/// Generate a per-host configuration.nix file.
+///
+/// With mkSystemFlake, the admin user, desktop defaults, storage defaults,
+/// hostname, and timezone are all derived from the flake-level `owner`,
+/// host `kind`, and `defaults` blocks. The per-host configuration.nix
+/// only contains host-specific overrides.
+pub fn generate_configuration_nix(_config: &GenerateConfig) -> String {
+    r#"{
   pkgs,
-  lib,
   ...
-}}: {{
-  networking.hostName = "{hostname}";
-  networking.hostId = "{host_id}";
-  system.stateVersion = "{state_version}";
+}:
+{
+  # Host-specific overrides.
+  #
+  # The core machine shape (admin user, desktop, storage, timezone) is
+  # derived by mkSystemFlake from the flake-level owner, host kind, and
+  # defaults blocks. Add only host-only settings here.
 
-  keystone.os = {{
-    enable = true;
+  environment.systemPackages = with pkgs; [
+    git
+    helix
+  ];
 
-    storage = {{
-      type = "{storage_type}";
-      devices = [
-        "{disk_device}"
-      ];
-      mode = "single";
-      swap.size = "16G";
-    }};
-
-    secureBoot.enable = true;
-    tpm = {{
-      enable = true;
-      pcrs = [ 1 7 ];
-    }};
-    ssh.enable = true;
-
-    remoteUnlock = {{
-      enable = {remote_unlock_enable};
-      port = 22;
-      dhcp = true;
-      networkModule = "virtio_net";
-      authorizedKeys = {remote_unlock_keys_nix};
-    }};
-
-    users = {{
-      "{username}" = {{
-        fullName = "{username}";
-        email = "{username}@localhost";
-        extraGroups = {extra_groups};
-        initialPassword = "{password}";
-        authorizedKeys = {authorized_keys_nix};
-        terminal.enable = true;
-        desktop = {{
-          enable = {desktop_enable};
-          hyprland = {{
-            modifierKey = "SUPER";
-            capslockAsControl = true;
-          }};
-        }};
-      }};
-    }};
-  }};
-
-  time.timeZone = "{time_zone}";
-  nix.settings.trusted-users = [ "root" "@wheel" ];
-  environment.systemPackages = with pkgs; [ sbctl ];
-}}
-"#,
-        hostname = hostname,
-        host_id = host_id,
-        state_version = escape_nix_string(&config.state_version),
-        storage_type = config.storage_type.nix_value(),
-        disk_device = disk_device,
-        username = username,
-        password = password,
-        authorized_keys_nix = authorized_keys_nix,
-        remote_unlock_enable = remote_unlock_enable,
-        remote_unlock_keys_nix = remote_unlock_keys_nix,
-        extra_groups = extra_groups,
-        desktop_enable = desktop_enable,
-        time_zone = escape_nix_string(&config.time_zone),
-    )
+  # Examples:
+  # services.printing.enable = true;
+  # networking.firewall.allowedTCPPorts = [ 22 80 443 ];
+}
+"#
+    .to_string()
 }
 
 /// Generate a flake.nix for a pre-baked installer ISO.
 ///
-/// The ISO embeds the user's generated config files (flake.nix, configuration.nix,
-/// hardware.nix) at `/etc/keystone/install-config/` so the TUI installer on the
-/// target machine can run disko + nixos-install without needing the config repo.
+/// The ISO embeds the user's generated config files (flake.nix and
+/// hosts/<hostname>/{configuration,hardware}.nix) at `/etc/keystone/install-config/`
+/// so the TUI installer on the target machine can run disko + nixos-install.
 pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
     let ssh_keys_nix = format_nix_string_list(&config.user.authorized_keys, 12);
     let hostname_esc = escape_nix_string(&config.hostname);
@@ -317,8 +223,8 @@ pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
           # The TUI installer reads these from /etc/keystone/install-config/
           # to run disko + nixos-install on the target machine.
           environment.etc."keystone/install-config/flake.nix".source = ./target-config/flake.nix;
-          environment.etc."keystone/install-config/configuration.nix".source = ./target-config/configuration.nix;
-          environment.etc."keystone/install-config/hardware.nix".source = ./target-config/hardware.nix;
+          environment.etc."keystone/install-config/hosts/{hostname_esc}/configuration.nix".source = ./target-config/hosts/{hostname_esc}/configuration.nix;
+          environment.etc."keystone/install-config/hosts/{hostname_esc}/hardware.nix".source = ./target-config/hosts/{hostname_esc}/hardware.nix;
           environment.etc."keystone/install-config/hostname".text = "{hostname_esc}";
           environment.etc."keystone/install-config/username".text = "{username_esc}";
           environment.etc."keystone/install-config/github_username".text = "{github_username_esc}";
@@ -338,23 +244,71 @@ pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
     )
 }
 
-/// Generate a minimal hardware.nix placeholder.
-pub fn generate_hardware_nix() -> String {
-    r#"{
-  config,
-  lib,
-  modulesPath,
-  ...
-}: {
-  imports = [
-    (modulesPath + "/installer/scan/not-detected.nix")
-  ];
+/// Generate a hardware.nix in the mkSystemFlake `{ system; module; }` format.
+///
+/// The hardware.nix exports `system` (architecture) and a `module` attribute
+/// containing hardware-specific NixOS configuration: hostId, storage devices,
+/// boot modules, and firmware settings.
+pub fn generate_hardware_nix(config: &GenerateConfig) -> String {
+    let host_id = generate_host_id();
+    let raw_disk = config.disk_device.as_deref().unwrap_or("__KEYSTONE_DISK__");
+    let disk_device = escape_nix_string(raw_disk);
 
-  # Hardware configuration will be populated by nixos-generate-config
-  # after installation, or by nixos-anywhere during deployment.
-}
-"#
-    .to_string()
+    format!(
+        r#"let
+  system = "x86_64-linux";
+in
+{{
+  inherit system;
+
+  module =
+    {{
+      config,
+      lib,
+      pkgs,
+      modulesPath,
+      ...
+    }}:
+    {{
+      imports = [
+        (modulesPath + "/profiles/qemu-guest.nix")
+      ];
+
+      networking.hostId = "{host_id}";
+
+      keystone.os.storage.devices = [
+        "{disk_device}"
+      ];
+      keystone.os.storage.mode = "single";
+
+      boot.initrd.availableKernelModules = [
+        "ahci"
+        "nvme"
+        "sd_mod"
+        "sr_mod"
+        "usb_storage"
+        "xhci_pci"
+        "ehci_pci"
+        "usbhid"
+        "virtio_pci"
+        "virtio_blk"
+        "virtio_scsi"
+        "virtio_net"
+      ];
+
+      boot.kernelModules = [
+        "kvm-intel"
+      ];
+
+      hardware.cpu.intel.updateMicrocode =
+        lib.mkDefault config.hardware.enableRedistributableFirmware;
+      hardware.enableRedistributableFirmware = true;
+    }};
+}}
+"#,
+        host_id = host_id,
+        disk_device = disk_device,
+    )
 }
 
 /// Generate a random 8-character hex host ID.
@@ -404,6 +358,29 @@ fn format_nix_string_list(items: &[String], indent: usize) -> String {
 mod tests {
     use super::*;
 
+    fn test_config() -> GenerateConfig {
+        GenerateConfig {
+            hostname: "test-host".to_string(),
+            machine_type: MachineType::Server,
+            storage_type: StorageType::Zfs,
+            disk_device: Some("/dev/disk/by-id/test-disk".to_string()),
+            github_username: None,
+            time_zone: "UTC".to_string(),
+            state_version: "25.05".to_string(),
+            user: UserConfig {
+                username: "admin".to_string(),
+                password: "changeme".to_string(),
+                authorized_keys: vec![],
+            },
+            remote_unlock: RemoteUnlockConfig {
+                enable: false,
+                authorized_keys: vec![],
+            },
+            owner_name: None,
+            owner_email: None,
+        }
+    }
+
     #[test]
     fn test_escape_nix_string() {
         assert_eq!(escape_nix_string(r#"hello"world"#), r#"hello\"world"#);
@@ -432,201 +409,143 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_configuration_with_authorized_keys() {
-        let config = GenerateConfig {
-            hostname: "test-host".to_string(),
-            machine_type: MachineType::Server,
-            storage_type: StorageType::Zfs,
-            disk_device: Some("/dev/disk/by-id/test-disk".to_string()),
-            github_username: None,
-            time_zone: "UTC".to_string(),
-            state_version: "25.05".to_string(),
-            user: UserConfig {
-                username: "admin".to_string(),
-                password: "changeme".to_string(),
-                authorized_keys: vec!["ssh-ed25519 AAAAC3testkey admin@laptop".to_string()],
-            },
-            remote_unlock: RemoteUnlockConfig {
-                enable: true,
-                authorized_keys: vec!["ssh-ed25519 AAAAC3testkey admin@laptop".to_string()],
-            },
-        };
+    fn test_generate_flake_uses_mksystemflake() {
+        let config = test_config();
+        let flake = generate_flake_nix(&config);
 
+        // Must parse cleanly
+        let root = rnix::Root::parse(&flake);
+        assert!(
+            root.errors().is_empty(),
+            "flake.nix has parse errors: {:?}",
+            root.errors()
+        );
+
+        // Single keystone input
+        let inputs = crate::nix::extract_flake_inputs(&flake);
+        assert_eq!(inputs.len(), 1, "should have exactly one input (keystone)");
+        assert_eq!(inputs[0].name, "keystone");
+        assert_eq!(inputs[0].url.as_deref(), Some("github:ncrmro/keystone"),);
+
+        // Must contain mkSystemFlake call
+        assert!(
+            flake.contains("keystone.lib.mkSystemFlake"),
+            "should call mkSystemFlake"
+        );
+
+        // Must contain host kind
+        assert!(
+            flake.contains(r#"kind = "server""#),
+            "server config should have kind = server"
+        );
+    }
+
+    #[test]
+    fn test_generate_flake_host_kinds() {
+        for (machine_type, expected_kind) in [
+            (MachineType::Server, "server"),
+            (MachineType::Workstation, "workstation"),
+            (MachineType::Laptop, "laptop"),
+        ] {
+            let config = GenerateConfig {
+                machine_type,
+                ..test_config()
+            };
+            let flake = generate_flake_nix(&config);
+            assert!(
+                flake.contains(&format!(r#"kind = "{}""#, expected_kind)),
+                "MachineType::{:?} should produce kind = {:?}",
+                machine_type,
+                expected_kind,
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_flake_owner_fields() {
+        let config = GenerateConfig {
+            owner_name: Some("Noah".to_string()),
+            owner_email: Some("noah@example.com".to_string()),
+            ..test_config()
+        };
+        let flake = generate_flake_nix(&config);
+        assert!(flake.contains(r#"name = "Noah""#));
+        assert!(flake.contains(r#"email = "noah@example.com""#));
+        assert!(flake.contains(r#"username = "admin""#));
+    }
+
+    #[test]
+    fn test_generate_flake_owner_defaults() {
+        let config = test_config();
+        let flake = generate_flake_nix(&config);
+        // Without owner_name, falls back to username
+        assert!(flake.contains(r#"name = "admin""#));
+        assert!(flake.contains(r#"email = "admin@localhost""#));
+    }
+
+    #[test]
+    fn test_generate_flake_timezone() {
+        let config = GenerateConfig {
+            time_zone: "America/New_York".to_string(),
+            ..test_config()
+        };
+        let flake = generate_flake_nix(&config);
+        assert!(flake.contains(r#"timeZone = "America/New_York""#));
+    }
+
+    #[test]
+    fn test_generate_flake_parses_with_nix_parser() {
+        let config = test_config();
+        let flake = generate_flake_nix(&config);
+
+        // Round-trip: generate and parse back
+        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
+        assert_eq!(hosts.len(), 1, "should find one host");
+        assert_eq!(hosts[0].name, "test-host");
+    }
+
+    #[test]
+    fn test_generate_configuration_nix_parses() {
+        let config = test_config();
         let nix = generate_configuration_nix(&config);
 
-        // Verify it parses cleanly
         let root = rnix::Root::parse(&nix);
         assert!(
             root.errors().is_empty(),
             "configuration.nix has parse errors: {:?}",
             root.errors()
         );
-
-        // Verify key values are present via string (configuration.nix is a function body,
-        // not a flake, so we check specific attribute values)
-        assert!(nix.contains("test-host"), "should contain hostname");
-        assert!(
-            nix.contains(r#"type = "zfs""#),
-            "should contain storage type"
-        );
-        assert!(
-            nix.contains("ssh-ed25519 AAAAC3testkey admin@laptop"),
-            "should contain SSH key"
-        );
     }
 
     #[test]
-    fn test_generate_configuration_without_keys() {
-        let config = GenerateConfig {
-            hostname: "my-laptop".to_string(),
-            machine_type: MachineType::Laptop,
-            storage_type: StorageType::Ext4,
-            disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
-            github_username: None,
-            time_zone: "UTC".to_string(),
-            state_version: "25.05".to_string(),
-            user: UserConfig {
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                authorized_keys: vec![],
-            },
-            remote_unlock: RemoteUnlockConfig {
-                enable: false,
-                authorized_keys: vec![],
-            },
-        };
+    fn test_generate_hardware_nix_with_disk() {
+        let config = test_config();
+        let nix = generate_hardware_nix(&config);
 
-        let nix = generate_configuration_nix(&config);
-        assert!(nix.contains("my-laptop"));
-        assert!(nix.contains(r#"type = "ext4""#));
-        assert!(nix.contains("authorizedKeys = []"));
+        let root = rnix::Root::parse(&nix);
+        assert!(
+            root.errors().is_empty(),
+            "hardware.nix has parse errors: {:?}",
+            root.errors()
+        );
+
+        assert!(nix.contains("inherit system"), "should export system");
+        assert!(nix.contains("module ="), "should export module");
+        assert!(
+            nix.contains("/dev/disk/by-id/test-disk"),
+            "should contain disk device"
+        );
+        assert!(nix.contains("networking.hostId"), "should contain hostId");
     }
 
     #[test]
-    fn test_generate_flake_has_disko_input() {
+    fn test_generate_hardware_nix_no_disk() {
         let config = GenerateConfig {
-            hostname: "test".to_string(),
-            machine_type: MachineType::Server,
-            storage_type: StorageType::Zfs,
             disk_device: None,
-            github_username: None,
-            time_zone: "UTC".to_string(),
-            state_version: "25.05".to_string(),
-            user: UserConfig {
-                username: "admin".to_string(),
-                password: "pass".to_string(),
-                authorized_keys: vec![],
-            },
-            remote_unlock: RemoteUnlockConfig {
-                enable: false,
-                authorized_keys: vec![],
-            },
+            ..test_config()
         };
-
-        let flake = generate_flake_nix(&config);
-
-        // Use rnix AST to structurally verify disko is present as an input
-        let inputs = crate::nix::extract_flake_inputs(&flake);
-        let disko = inputs.iter().find(|i| i.name == "disko");
-        assert!(disko.is_some(), "disko must be a flake input");
-        assert_eq!(
-            disko.unwrap().url.as_deref(),
-            Some("github:nix-community/disko"),
-        );
-
-        // disko.nixosModules.disko must appear in the modules list
-        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
-        assert!(!hosts.is_empty());
-    }
-
-    #[test]
-    fn test_generate_configuration_uses_state_version_and_timezone() {
-        let config = GenerateConfig {
-            hostname: "tz-host".to_string(),
-            machine_type: MachineType::Server,
-            storage_type: StorageType::Zfs,
-            disk_device: None,
-            github_username: None,
-            time_zone: "America/New_York".to_string(),
-            state_version: "25.11".to_string(),
-            user: UserConfig {
-                username: "admin".to_string(),
-                password: "pass".to_string(),
-                authorized_keys: vec![],
-            },
-            remote_unlock: RemoteUnlockConfig {
-                enable: false,
-                authorized_keys: vec![],
-            },
-        };
-
-        let nix = generate_configuration_nix(&config);
-        assert!(nix.contains(r#"time.timeZone = "America/New_York""#));
-        assert!(nix.contains(r#"system.stateVersion = "25.11""#));
-    }
-
-    #[test]
-    fn test_generate_flake_server() {
-        let config = GenerateConfig {
-            hostname: "server1".to_string(),
-            machine_type: MachineType::Server,
-            storage_type: StorageType::Zfs,
-            disk_device: Some("test".to_string()),
-            github_username: None,
-            time_zone: "UTC".to_string(),
-            state_version: "25.05".to_string(),
-            user: UserConfig {
-                username: "admin".to_string(),
-                password: "pass".to_string(),
-                authorized_keys: vec![],
-            },
-            remote_unlock: RemoteUnlockConfig {
-                enable: true,
-                authorized_keys: vec![],
-            },
-        };
-
-        let flake = generate_flake_nix(&config);
-        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
-        assert_eq!(hosts.len(), 1);
-        assert_eq!(hosts[0].name, "server1");
-        // Server should NOT have desktop module
-        assert!(
-            !hosts[0].keystone_modules.contains(&"desktop".to_string()),
-            "server config should not include desktop module"
-        );
-    }
-
-    #[test]
-    fn test_generate_flake_workstation() {
-        let config = GenerateConfig {
-            hostname: "workstation".to_string(),
-            machine_type: MachineType::Workstation,
-            storage_type: StorageType::Zfs,
-            disk_device: Some("test".to_string()),
-            github_username: None,
-            time_zone: "UTC".to_string(),
-            state_version: "25.05".to_string(),
-            user: UserConfig {
-                username: "dev".to_string(),
-                password: "pass".to_string(),
-                authorized_keys: vec![],
-            },
-            remote_unlock: RemoteUnlockConfig {
-                enable: false,
-                authorized_keys: vec![],
-            },
-        };
-
-        let flake = generate_flake_nix(&config);
-        let hosts = crate::nix::extract_nixos_configurations_from_str(&flake);
-        assert_eq!(hosts.len(), 1);
-        assert_eq!(hosts[0].name, "workstation");
-        // Workstation SHOULD have desktop module
-        assert!(
-            hosts[0].keystone_modules.contains(&"desktop".to_string()),
-            "workstation config should include desktop module"
-        );
+        let nix = generate_hardware_nix(&config);
+        assert!(nix.contains("__KEYSTONE_DISK__"));
     }
 
     #[test]
@@ -637,54 +556,17 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_configuration_no_disk() {
-        let config = GenerateConfig {
-            hostname: "deferred-host".to_string(),
-            machine_type: MachineType::Laptop,
-            storage_type: StorageType::Ext4,
-            disk_device: None,
-            github_username: None,
-            time_zone: "UTC".to_string(),
-            state_version: "25.05".to_string(),
-            user: UserConfig {
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                authorized_keys: vec![],
-            },
-            remote_unlock: RemoteUnlockConfig {
-                enable: false,
-                authorized_keys: vec![],
-            },
-        };
-
-        let nix = generate_configuration_nix(&config);
-        assert!(nix.contains("__KEYSTONE_DISK__"));
-    }
-
-    #[test]
-    fn test_generate_iso_flake_contains_hostname() {
+    fn test_generate_iso_flake() {
         let config = GenerateConfig {
             hostname: "my-laptop".to_string(),
             machine_type: MachineType::Laptop,
-            storage_type: StorageType::Ext4,
-            disk_device: Some("/dev/disk/by-id/nvme-test".to_string()),
             github_username: Some("octocat".to_string()),
-            time_zone: "America/Chicago".to_string(),
-            state_version: "25.05".to_string(),
-            user: UserConfig {
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                authorized_keys: vec![],
-            },
-            remote_unlock: RemoteUnlockConfig {
-                enable: false,
-                authorized_keys: vec![],
-            },
+            ..test_config()
         };
 
         let iso_flake = generate_iso_flake_nix(&config);
 
-        // Verify the ISO flake parses cleanly and has expected structure
+        // Must parse cleanly
         let root = rnix::Root::parse(&iso_flake);
         assert!(
             root.errors().is_empty(),
@@ -695,14 +577,8 @@ mod tests {
         // Verify inputs via AST
         let inputs = crate::nix::extract_flake_inputs(&iso_flake);
         let input_names: Vec<&str> = inputs.iter().map(|i| i.name.as_str()).collect();
-        assert!(
-            input_names.contains(&"keystone"),
-            "ISO flake must have keystone input"
-        );
-        assert!(
-            input_names.contains(&"nixpkgs"),
-            "ISO flake must have nixpkgs input"
-        );
+        assert!(input_names.contains(&"keystone"));
+        assert!(input_names.contains(&"nixpkgs"));
 
         // Verify the keystoneIso host exists
         let hosts = crate::nix::extract_nixos_configurations_from_str(&iso_flake);
@@ -716,5 +592,22 @@ mod tests {
                 .contains(&"isoInstaller".to_string()),
             "ISO config must include isoInstaller module"
         );
+
+        // Verify hosts/ directory layout in embedded paths
+        assert!(
+            iso_flake.contains("hosts/my-laptop/configuration.nix"),
+            "ISO should embed hosts/<hostname>/configuration.nix"
+        );
+        assert!(
+            iso_flake.contains("hosts/my-laptop/hardware.nix"),
+            "ISO should embed hosts/<hostname>/hardware.nix"
+        );
+    }
+
+    #[test]
+    fn test_machine_type_kind() {
+        assert_eq!(MachineType::Server.kind(), "server");
+        assert_eq!(MachineType::Workstation.kind(), "workstation");
+        assert_eq!(MachineType::Laptop.kind(), "laptop");
     }
 }

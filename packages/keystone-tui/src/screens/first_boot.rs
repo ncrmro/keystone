@@ -193,17 +193,36 @@ impl FirstBootScreen {
                 "Detecting hardware with nixos-generate-config...".to_string(),
             ));
 
-            let current_hardware =
-                match tokio::fs::read_to_string(config_dir.join("hardware.nix")).await {
-                    Ok(content) => content,
-                    Err(e) => {
-                        let _ = tx.send(FirstBootMessage::Failed(format!(
-                            "Failed to read current hardware.nix: {}",
-                            e
-                        )));
-                        return;
-                    }
-                };
+            // Try hosts/<hostname>/hardware.nix first (mkSystemFlake layout),
+            // fall back to flat hardware.nix for backward compat.
+            let hostname = std::fs::read_to_string("/etc/hostname")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
+            let hardware_path = if !hostname.is_empty() {
+                let host_path = config_dir
+                    .join("hosts")
+                    .join(&hostname)
+                    .join("hardware.nix");
+                if host_path.exists() {
+                    host_path
+                } else {
+                    config_dir.join("hardware.nix")
+                }
+            } else {
+                config_dir.join("hardware.nix")
+            };
+
+            let current_hardware = match tokio::fs::read_to_string(&hardware_path).await {
+                Ok(content) => content,
+                Err(e) => {
+                    let _ = tx.send(FirstBootMessage::Failed(format!(
+                        "Failed to read current hardware.nix: {}",
+                        e
+                    )));
+                    return;
+                }
+            };
 
             let output = Command::new("nixos-generate-config")
                 .args(["--show-hardware-config"])
@@ -269,7 +288,26 @@ impl FirstBootScreen {
             return;
         }
 
-        let hardware_path = self.config.config_dir.join("hardware.nix");
+        // Write to hosts/<hostname>/hardware.nix if it exists, else flat path
+        let hostname = std::fs::read_to_string("/etc/hostname")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        let hardware_path = if !hostname.is_empty() {
+            let host_path = self
+                .config
+                .config_dir
+                .join("hosts")
+                .join(&hostname)
+                .join("hardware.nix");
+            if host_path.exists() || self.config.config_dir.join("hosts").exists() {
+                host_path
+            } else {
+                self.config.config_dir.join("hardware.nix")
+            }
+        } else {
+            self.config.config_dir.join("hardware.nix")
+        };
         if let Err(e) = std::fs::write(&hardware_path, &plan.proposed_hardware_nix) {
             self.phase =
                 FirstBootPhase::Failed(format!("Failed to write reconciled hardware.nix: {}", e));
