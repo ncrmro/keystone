@@ -3,7 +3,7 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::Style,
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -29,6 +29,7 @@ impl HostDetailScreen {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -41,7 +42,7 @@ impl HostDetailScreen {
         // Title
         let title = Paragraph::new(Text::styled(
             format!("Host: {}", self.host.name),
-            Style::default().bold().yellow(),
+            t.title_style(),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
@@ -54,8 +55,8 @@ impl HostDetailScreen {
         // System
         let system_value = self.host.system.as_deref().unwrap_or("unknown");
         lines.push(Line::from(vec![
-            Span::styled("  System:     ", Style::default().fg(Color::DarkGray)),
-            Span::styled(system_value, Style::default().fg(Color::White)),
+            Span::styled("  System:     ", t.inactive_style()),
+            Span::styled(system_value, Style::default()),
         ]));
 
         lines.push(Line::from(""));
@@ -63,8 +64,8 @@ impl HostDetailScreen {
         // Keystone modules
         if self.host.keystone_modules.is_empty() {
             lines.push(Line::from(vec![
-                Span::styled("  Modules:    ", Style::default().fg(Color::DarkGray)),
-                Span::styled("(none)", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Modules:    ", t.inactive_style()),
+                Span::styled("(none)", t.inactive_style()),
             ]));
         } else {
             for (i, module) in self.host.keystone_modules.iter().enumerate() {
@@ -74,8 +75,8 @@ impl HostDetailScreen {
                     "              "
                 };
                 lines.push(Line::from(vec![
-                    Span::styled(label, Style::default().fg(Color::DarkGray)),
-                    Span::styled(module.as_str(), Style::default().fg(Color::Green)),
+                    Span::styled(label, t.inactive_style()),
+                    Span::styled(module.as_str(), Style::default().fg(t.active)),
                 ]));
             }
         }
@@ -85,23 +86,20 @@ impl HostDetailScreen {
             lines.push(Line::from(""));
             if !meta.role.is_empty() {
                 lines.push(Line::from(vec![
-                    Span::styled("  Role:       ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(meta.role.as_str(), Style::default().fg(Color::Magenta)),
+                    Span::styled("  Role:       ", t.inactive_style()),
+                    Span::styled(meta.role.as_str(), Style::default().fg(t.metadata)),
                 ]));
             }
             if !meta.ssh_target.is_empty() {
                 lines.push(Line::from(vec![
-                    Span::styled("  SSH:        ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(meta.ssh_target.as_str(), Style::default().fg(Color::White)),
+                    Span::styled("  SSH:        ", t.inactive_style()),
+                    Span::styled(meta.ssh_target.as_str(), Style::default()),
                 ]));
             }
             if !meta.fallback_ip.is_empty() {
                 lines.push(Line::from(vec![
-                    Span::styled("  Fallback IP:", Style::default().fg(Color::DarkGray)),
-                    Span::styled(
-                        format!(" {}", meta.fallback_ip),
-                        Style::default().fg(Color::White),
-                    ),
+                    Span::styled("  Fallback IP:", t.inactive_style()),
+                    Span::styled(format!(" {}", meta.fallback_ip), Style::default()),
                 ]));
             }
             let mut flags = Vec::new();
@@ -116,8 +114,8 @@ impl HostDetailScreen {
             }
             if !flags.is_empty() {
                 lines.push(Line::from(vec![
-                    Span::styled("  Flags:      ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(flags.join(", "), Style::default().fg(Color::Yellow)),
+                    Span::styled("  Flags:      ", t.inactive_style()),
+                    Span::styled(flags.join(", "), Style::default().fg(t.accent)),
                 ]));
             }
         }
@@ -127,8 +125,8 @@ impl HostDetailScreen {
         // Config files
         if self.host.config_files.is_empty() {
             lines.push(Line::from(vec![
-                Span::styled("  Config:     ", Style::default().fg(Color::DarkGray)),
-                Span::styled("(none)", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Config:     ", t.inactive_style()),
+                Span::styled("(none)", t.inactive_style()),
             ]));
         } else {
             for (i, path) in self.host.config_files.iter().enumerate() {
@@ -138,8 +136,8 @@ impl HostDetailScreen {
                     "              "
                 };
                 lines.push(Line::from(vec![
-                    Span::styled(label, Style::default().fg(Color::DarkGray)),
-                    Span::styled(path.as_str(), Style::default().fg(Color::Cyan)),
+                    Span::styled(label, t.inactive_style()),
+                    Span::styled(path.as_str(), Style::default().fg(t.path)),
                 ]));
             }
         }
@@ -150,7 +148,7 @@ impl HostDetailScreen {
         // Help text
         let help = Paragraph::new(Text::styled(
             "b: build • Esc: back • q: quit",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);

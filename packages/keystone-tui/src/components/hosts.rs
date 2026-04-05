@@ -3,11 +3,13 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::Style,
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
+
+use crate::theme;
 
 use tokio::sync::mpsc;
 
@@ -253,10 +255,11 @@ impl HostsScreen {
     }
 
     fn render_content(&mut self, frame: &mut Frame, area: Rect) {
+        let t = theme::default();
         if self.statuses.is_empty() {
             let empty_msg = Paragraph::new(Text::styled(
                 "No hosts found\n\nPress 'a' to add",
-                Style::default().fg(Color::DarkGray),
+                t.inactive_style(),
             ))
             .alignment(Alignment::Center);
             frame.render_widget(empty_msg, area);
@@ -273,6 +276,7 @@ impl HostsScreen {
     }
 
     fn render_host_list(&mut self, frame: &mut Frame, area: Rect) {
+        let t = theme::default();
         let list_width = area.width.saturating_sub(2) as usize; // account for borders
 
         let items: Vec<ListItem> = self
@@ -295,8 +299,8 @@ impl HostsScreen {
                     .unwrap_or_default();
 
                 let (indicator, indicator_style) = match &status.tailscale {
-                    Some(peer) if peer.online => (" ●", Style::default().fg(Color::Green)),
-                    Some(_) => (" ○", Style::default().fg(Color::Red)),
+                    Some(peer) if peer.online => (" ●", Style::default().fg(t.active)),
+                    Some(_) => (" ○", Style::default().fg(t.error)),
                     None => ("", Style::default()),
                 };
 
@@ -307,7 +311,7 @@ impl HostsScreen {
 
                 let line1 = Line::from(vec![
                     Span::styled(format!(" {}", name), Style::default()),
-                    Span::styled(role_badge, Style::default().fg(Color::Magenta)),
+                    Span::styled(role_badge, Style::default().fg(t.metadata)),
                     Span::raw(padding),
                     Span::styled(indicator.to_string(), indicator_style),
                 ]);
@@ -346,7 +350,7 @@ impl HostsScreen {
                 if let Some(sub) = subtitle {
                     let line2 = Line::from(vec![Span::styled(
                         format!("   {}", sub),
-                        Style::default().fg(Color::DarkGray),
+                        t.inactive_style(),
                     )]);
                     ListItem::new(vec![line1, line2])
                 } else {
@@ -359,13 +363,9 @@ impl HostsScreen {
             .block(
                 Block::default()
                     .borders(Borders::RIGHT)
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(t.inactive_style()),
             )
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            );
+            .highlight_style(t.active_style());
 
         frame.render_stateful_widget(list, area, &mut self.list_state);
     }
@@ -434,13 +434,14 @@ impl Component for HostsScreen {
 
 /// Build the info lines for the selected host's detail sidebar.
 fn build_host_info_lines(status: &HostStatus) -> Vec<Line<'_>> {
+    let t = theme::default();
     let host = &status.host_info;
     let mut lines: Vec<Line> = Vec::new();
 
     // Architecture
     let system = host.system.as_deref().unwrap_or("unknown");
     lines.push(Line::from(vec![
-        Span::styled("  Arch   ", Style::default().fg(Color::DarkGray)),
+        Span::styled("  Arch   ", t.inactive_style()),
         Span::styled(system, Style::default()),
     ]));
     lines.push(Line::from(""));
@@ -457,8 +458,8 @@ fn build_host_info_lines(status: &HostStatus) -> Vec<Line<'_>> {
     for (i, path) in host.config_files.iter().enumerate() {
         let label = if i == 0 { "  Config " } else { "         " };
         lines.push(Line::from(vec![
-            Span::styled(label, Style::default().fg(Color::DarkGray)),
-            Span::styled(path.as_str(), Style::default().fg(Color::Cyan)),
+            Span::styled(label, t.inactive_style()),
+            Span::styled(path.as_str(), Style::default().fg(t.path)),
         ]));
     }
 
@@ -466,17 +467,17 @@ fn build_host_info_lines(status: &HostStatus) -> Vec<Line<'_>> {
     if let Some(peer) = &status.tailscale {
         lines.push(Line::from(""));
         let (text, color) = if peer.online {
-            ("online", Color::Green)
+            ("online", t.active)
         } else {
-            ("offline", Color::Red)
+            ("offline", t.error)
         };
         lines.push(Line::from(vec![
-            Span::styled("  Status ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Status ", t.inactive_style()),
             Span::styled(text, Style::default().fg(color)),
         ]));
         if let Some(ip) = peer.tailscale_ips.first() {
             lines.push(Line::from(vec![
-                Span::styled("  TS IP  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  TS IP  ", t.inactive_style()),
                 Span::styled(ip.as_str(), Style::default()),
             ]));
         }
@@ -486,40 +487,42 @@ fn build_host_info_lines(status: &HostStatus) -> Vec<Line<'_>> {
 }
 
 fn build_modules_lines<'a>(host: &'a HostInfo, lines: &mut Vec<Line<'a>>) {
+    let t = theme::default();
     if host.keystone_modules.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("  Modules", Style::default().fg(Color::DarkGray)),
-            Span::styled("  (none)", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Modules", t.inactive_style()),
+            Span::styled("  (none)", t.inactive_style()),
         ]));
     } else {
         for (i, module) in host.keystone_modules.iter().enumerate() {
             let label = if i == 0 { "  Modules" } else { "         " };
             lines.push(Line::from(vec![
-                Span::styled(label, Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("  {}", module), Style::default().fg(Color::Green)),
+                Span::styled(label, t.inactive_style()),
+                Span::styled(format!("  {}", module), Style::default().fg(t.active)),
             ]));
         }
     }
 }
 
 fn build_metadata_lines<'a>(host: &'a HostInfo, lines: &mut Vec<Line<'a>>) {
+    let t = theme::default();
     let Some(meta) = &host.metadata else { return };
 
     if !meta.role.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("  Role   ", Style::default().fg(Color::DarkGray)),
-            Span::styled(meta.role.as_str(), Style::default().fg(Color::Magenta)),
+            Span::styled("  Role   ", t.inactive_style()),
+            Span::styled(meta.role.as_str(), Style::default().fg(t.metadata)),
         ]));
     }
     if !meta.ssh_target.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("  SSH    ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  SSH    ", t.inactive_style()),
             Span::styled(meta.ssh_target.as_str(), Style::default()),
         ]));
     }
     if !meta.fallback_ip.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("  IP     ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  IP     ", t.inactive_style()),
             Span::styled(meta.fallback_ip.as_str(), Style::default()),
         ]));
     }
@@ -536,8 +539,8 @@ fn build_metadata_lines<'a>(host: &'a HostInfo, lines: &mut Vec<Line<'a>>) {
     }
     if !flags.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("  Flags  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(flags.join(", "), Style::default().fg(Color::Yellow)),
+            Span::styled("  Flags  ", t.inactive_style()),
+            Span::styled(flags.join(", "), Style::default().fg(t.accent)),
         ]));
     }
 }

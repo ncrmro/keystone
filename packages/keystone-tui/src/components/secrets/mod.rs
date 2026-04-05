@@ -5,7 +5,6 @@ use crate::component::Component;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Rect},
-    style::{Color, Style, Stylize},
     text::Text,
     widgets::Paragraph,
     Frame,
@@ -49,9 +48,11 @@ impl Component for SecretsScreen {
             None,
         );
 
+        let t = crate::theme::default();
         let text = Paragraph::new(Text::styled(
             "Secrets management — coming soon",
-            Style::default().bold().fg(Color::DarkGray),
+            t.inactive_style()
+                .add_modifier(ratatui::style::Modifier::BOLD),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(text, shell.content);

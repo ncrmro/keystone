@@ -2,7 +2,6 @@
 
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem},
     Frame,
@@ -24,16 +23,15 @@ pub const NAV_ITEMS: &[SidebarItem] = &[
 
 /// Render the navigation sidebar. `active_index` highlights the current section.
 pub fn render(frame: &mut Frame, area: Rect, active_index: usize) {
+    let t = crate::theme::default();
     let items: Vec<ListItem> = NAV_ITEMS
         .iter()
         .enumerate()
         .map(|(i, item)| {
             let style = if i == active_index {
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD)
+                t.active_style()
             } else {
-                Style::default().fg(Color::DarkGray)
+                t.inactive_style()
             };
             ListItem::new(Line::from(Span::styled(format!(" {}", item.label), style)))
         })
@@ -42,7 +40,7 @@ pub fn render(frame: &mut Frame, area: Rect, active_index: usize) {
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::RIGHT)
-            .border_style(Style::default().fg(Color::DarkGray)),
+            .border_style(t.inactive_style()),
     );
     frame.render_widget(list, area);
 }

@@ -4,7 +4,7 @@ use crate::widgets::TextInput;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::Style,
     text::{Line, Text},
     widgets::{Block, Borders, Clear, Paragraph},
     Frame,
@@ -207,6 +207,7 @@ impl WelcomeScreen {
     }
 
     fn render_select_action(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -219,18 +220,13 @@ impl WelcomeScreen {
             .split(area);
 
         // Title
-        let title = Paragraph::new(Text::styled(
-            "Welcome to Keystone TUI!",
-            Style::default().bold().yellow(),
-        ))
-        .alignment(Alignment::Center);
+        let title = Paragraph::new(Text::styled("Welcome to Keystone TUI!", t.title_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(title, chunks[0]);
 
         // Import option
         let import_style = if self.selected_option == WelcomeOption::ImportExisting {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
+            t.active_style()
         } else {
             Style::default()
         };
@@ -246,9 +242,7 @@ impl WelcomeScreen {
 
         // Create option
         let create_style = if self.selected_option == WelcomeOption::CreateNew {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
+            t.active_style()
         } else {
             Style::default()
         };
@@ -265,13 +259,14 @@ impl WelcomeScreen {
         // Help text
         let help = Paragraph::new(Text::styled(
             "↑/↓ or j/k to navigate • Enter to select • q to quit",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[3]);
     }
 
     fn render_input_git_url(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -283,11 +278,8 @@ impl WelcomeScreen {
             .split(area);
 
         // Title
-        let title = Paragraph::new(Text::styled(
-            "Import Existing Repository",
-            Style::default().bold().yellow(),
-        ))
-        .alignment(Alignment::Center);
+        let title = Paragraph::new(Text::styled("Import Existing Repository", t.title_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(title, chunks[0]);
 
         // Input area (centered)
@@ -297,13 +289,14 @@ impl WelcomeScreen {
         // Help text
         let help = Paragraph::new(Text::styled(
             "Enter to confirm • Esc to cancel",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_input_repo_name(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -315,11 +308,8 @@ impl WelcomeScreen {
             .split(area);
 
         // Title
-        let title = Paragraph::new(Text::styled(
-            "Create New Repository",
-            Style::default().bold().yellow(),
-        ))
-        .alignment(Alignment::Center);
+        let title = Paragraph::new(Text::styled("Create New Repository", t.title_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(title, chunks[0]);
 
         // Input area (centered)
@@ -330,13 +320,14 @@ impl WelcomeScreen {
         // Help text
         let help = Paragraph::new(Text::styled(
             "Enter to confirm • Esc to cancel",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_loading(&self, frame: &mut Frame, area: Rect, message: &str) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -346,12 +337,13 @@ impl WelcomeScreen {
             ])
             .split(area);
 
-        let loading = Paragraph::new(Text::styled(message, Style::default().fg(Color::Yellow)))
-            .alignment(Alignment::Center);
+        let loading =
+            Paragraph::new(Text::styled(message, t.warning_style())).alignment(Alignment::Center);
         frame.render_widget(loading, chunks[1]);
     }
 
     fn render_success(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let popup_area = centered_rect(60, 20, area);
         frame.render_widget(Clear, popup_area);
 
@@ -361,39 +353,41 @@ impl WelcomeScreen {
             .unwrap_or("Operation completed successfully!");
         let lines: Vec<Line> = vec![
             Line::from("").style(Style::default()),
-            Line::from("✓ Success!").style(Style::default().fg(Color::Green).bold()),
+            Line::from("✓ Success!").style(t.active_style()),
             Line::from("").style(Style::default()),
             Line::from(message).style(Style::default()),
             Line::from("").style(Style::default()),
-            Line::from("Press Enter to continue").style(Style::default().fg(Color::DarkGray)),
+            Line::from("Press Enter to continue").style(t.inactive_style()),
         ];
 
         let paragraph = Paragraph::new(lines).alignment(Alignment::Center).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green)),
+                .border_style(Style::default().fg(t.active)),
         );
         frame.render_widget(paragraph, popup_area);
     }
 
     fn render_error(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let popup_area = centered_rect(60, 20, area);
         frame.render_widget(Clear, popup_area);
 
         let message = self.error_message.as_deref().unwrap_or("An error occurred");
         let lines: Vec<Line> = vec![
             Line::from("").style(Style::default()),
-            Line::from("✗ Error").style(Style::default().fg(Color::Red).bold()),
+            Line::from("✗ Error")
+                .style(t.error_style().add_modifier(ratatui::style::Modifier::BOLD)),
             Line::from("").style(Style::default()),
             Line::from(message).style(Style::default()),
             Line::from("").style(Style::default()),
-            Line::from("Press Enter or Esc to dismiss").style(Style::default().fg(Color::DarkGray)),
+            Line::from("Press Enter or Esc to dismiss").style(t.inactive_style()),
         ];
 
         let paragraph = Paragraph::new(lines).alignment(Alignment::Center).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Red)),
+                .border_style(Style::default().fg(t.error)),
         );
         frame.render_widget(paragraph, popup_area);
     }

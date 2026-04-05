@@ -3,7 +3,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
@@ -105,6 +105,7 @@ impl TextInput {
 
     /// Render the text input widget.
     pub fn render(&self, frame: &mut Frame, area: Rect, title: &str) {
+        let t = crate::theme::default();
         let display_text = if self.value.is_empty() && !self.focused {
             self.placeholder.clone()
         } else {
@@ -112,15 +113,15 @@ impl TextInput {
         };
 
         let style = if self.focused {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(t.accent)
         } else if self.value.is_empty() {
-            Style::default().fg(Color::DarkGray)
+            t.inactive_style()
         } else {
             Style::default()
         };
 
         let border_style = if self.focused {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(t.accent)
         } else {
             Style::default()
         };

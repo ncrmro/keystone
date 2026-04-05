@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
@@ -552,18 +552,20 @@ impl IsoScreen {
     // -- rendering --
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         match &self.phase {
             IsoPhase::SelectTarget => self.render_select_target(frame, area),
-            IsoPhase::Building => self.render_output(frame, area, "Building ISO...", Color::Yellow),
-            IsoPhase::Writing => self.render_output(frame, area, "Writing ISO...", Color::Yellow),
-            IsoPhase::Done => self.render_output(frame, area, "ISO Complete", Color::Green),
+            IsoPhase::Building => self.render_output(frame, area, "Building ISO...", t.accent),
+            IsoPhase::Writing => self.render_output(frame, area, "Writing ISO...", t.accent),
+            IsoPhase::Done => self.render_output(frame, area, "ISO Complete", t.active),
             IsoPhase::Failed(msg) => {
-                self.render_output(frame, area, &format!("Failed: {msg}"), Color::Red)
+                self.render_output(frame, area, &format!("Failed: {msg}"), t.error)
             }
         }
     }
 
     fn render_output(&self, frame: &mut Frame, area: Rect, title: &str, title_color: Color) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -574,10 +576,14 @@ impl IsoScreen {
             .split(area);
 
         // Title
-        let title_widget =
-            Paragraph::new(Text::styled(title, Style::default().bold().fg(title_color)))
-                .alignment(Alignment::Center)
-                .block(Block::default().borders(Borders::BOTTOM));
+        let title_widget = Paragraph::new(Text::styled(
+            title,
+            Style::default()
+                .fg(title_color)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title_widget, chunks[0]);
 
         // Output area
@@ -601,7 +607,7 @@ impl IsoScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(t.inactive_style()),
             )
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
@@ -612,15 +618,13 @@ impl IsoScreen {
             IsoPhase::Done | IsoPhase::Failed(_) => "Esc: back • q: quit",
             _ => "Esc: cancel",
         };
-        let help = Paragraph::new(Text::styled(
-            help_text,
-            Style::default().fg(Color::DarkGray),
-        ))
-        .alignment(Alignment::Center);
+        let help = Paragraph::new(Text::styled(help_text, t.inactive_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_select_target(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -633,7 +637,7 @@ impl IsoScreen {
         // Title
         let title = Paragraph::new(Text::styled(
             "Build ISO — Select Destination",
-            Style::default().bold().fg(Color::Cyan),
+            Style::default().fg(t.path).add_modifier(Modifier::BOLD),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
@@ -646,9 +650,7 @@ impl IsoScreen {
             .enumerate()
             .map(|(i, target)| {
                 let style = if i == self.selected_target {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -660,10 +662,7 @@ impl IsoScreen {
                 };
 
                 let warning = if target.is_usb {
-                    Span::styled(
-                        " (ALL DATA WILL BE ERASED)",
-                        Style::default().fg(Color::Red),
-                    )
+                    Span::styled(" (ALL DATA WILL BE ERASED)", Style::default().fg(t.error))
                 } else {
                     Span::raw("")
                 };
@@ -679,7 +678,7 @@ impl IsoScreen {
             Block::default()
                 .title(" Destination ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(t.inactive_style()),
         );
         frame.render_widget(list, chunks[1]);
 
@@ -689,11 +688,8 @@ impl IsoScreen {
         } else {
             "↑/↓: navigate • Enter: build & write • Esc: cancel"
         };
-        let help = Paragraph::new(Text::styled(
-            help_text,
-            Style::default().fg(Color::DarkGray),
-        ))
-        .alignment(Alignment::Center);
+        let help = Paragraph::new(Text::styled(help_text, t.inactive_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 }

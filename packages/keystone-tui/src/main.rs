@@ -33,6 +33,7 @@ mod repo;
 mod ssh_keys;
 mod system;
 mod template;
+mod theme;
 mod tui;
 mod widgets;
 

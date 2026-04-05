@@ -23,5 +23,6 @@ pub mod repo;
 pub mod ssh_keys;
 pub mod system;
 pub mod template;
+pub mod theme;
 pub mod tui;
 pub mod widgets;
