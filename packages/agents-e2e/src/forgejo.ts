@@ -6,7 +6,11 @@ export class ForgejoPlatform {
     private token: string,
   ) {}
 
-  private async api<T>(method: string, endpoint: string, body?: unknown): Promise<T> {
+  private async api<T>(
+    method: string,
+    endpoint: string,
+    body?: unknown,
+  ): Promise<T> {
     const url = `${this.baseUrl}/api/v1${endpoint}`;
     const resp = await fetch(url, {
       method,
@@ -17,7 +21,9 @@ export class ForgejoPlatform {
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!resp.ok) {
-      throw new Error(`Forgejo API ${method} ${endpoint}: ${resp.status} ${resp.statusText}`);
+      throw new Error(
+        `Forgejo API ${method} ${endpoint}: ${resp.status} ${resp.statusText}`,
+      );
     }
     if (resp.status === 204) return undefined as T;
     return resp.json() as Promise<T>;
@@ -54,18 +60,25 @@ export class ForgejoPlatform {
     return this.api("POST", `/repos/${repo}/milestones`, { title });
   }
 
-  async listIssues(repo: string, state = "open", milestone?: string): Promise<Issue[]> {
+  async listIssues(
+    repo: string,
+    state = "open",
+    milestone?: string,
+  ): Promise<Issue[]> {
     let qs = `state=${state}&limit=50`;
     if (milestone) qs += `&milestone=${milestone}`;
     return this.api("GET", `/repos/${repo}/issues?${qs}`);
   }
 
-  async createIssue(repo: string, opts: {
-    title: string;
-    body?: string;
-    milestone?: number;
-    assignees?: string[];
-  }): Promise<Issue> {
+  async createIssue(
+    repo: string,
+    opts: {
+      title: string;
+      body?: string;
+      milestone?: number;
+      assignees?: string[];
+    },
+  ): Promise<Issue> {
     return this.api("POST", `/repos/${repo}/issues`, opts);
   }
 
@@ -83,8 +96,14 @@ export class ForgejoPlatform {
     return this.api("GET", `/repos/${repo}/branches?limit=50`);
   }
 
-  async commentIssue(repo: string, issueNumber: number, body: string): Promise<void> {
-    await this.api("POST", `/repos/${repo}/issues/${issueNumber}/comments`, { body });
+  async commentIssue(
+    repo: string,
+    issueNumber: number,
+    body: string,
+  ): Promise<void> {
+    await this.api("POST", `/repos/${repo}/issues/${issueNumber}/comments`, {
+      body,
+    });
   }
 }
 

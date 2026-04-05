@@ -83,32 +83,46 @@ export class Report {
       lines.push(`  - name: "${c.name}"`);
       lines.push(`    status: "${c.status}"`);
       lines.push(`    started_at: "${c.started_at}"`);
-      lines.push(`    completed_at: ${c.completed_at ? `"${c.completed_at}"` : "null"}`);
+      lines.push(
+        `    completed_at: ${c.completed_at ? `"${c.completed_at}"` : "null"}`,
+      );
       lines.push(`    details: "${c.details.replace(/"/g, '\\"')}"`);
     }
 
-    return lines.join("\n") + "\n";
+    return `${lines.join("\n")}\n`;
   }
 
   print(formatted: boolean) {
-    const yaml = this.toYaml();
     if (formatted) {
-      // Color-coded terminal output
-      for (const c of this.data.checks) {
-        const icon = c.status === "pass" ? "\x1b[32m+\x1b[0m"
-          : c.status === "fail" ? "\x1b[31mx\x1b[0m"
-          : c.status === "skip" ? "\x1b[33m-\x1b[0m"
-          : "\x1b[36m~\x1b[0m";
-        const detail = c.details ? ` (${c.details})` : "";
-        console.log(`  ${icon} ${c.name}${detail}`);
-      }
-      console.log();
-      const passed = this.data.checks.filter(c => c.status === "pass").length;
-      const failed = this.data.checks.filter(c => c.status === "fail").length;
-      const skipped = this.data.checks.filter(c => c.status === "skip").length;
-      console.log(`  ${passed} passed, ${failed} failed, ${skipped} skipped`);
+      this.printFormatted();
     } else {
-      process.stdout.write(yaml);
+      process.stdout.write(this.toYaml());
     }
+  }
+
+  private printFormatted() {
+    const icons: Record<CheckStatus, string> = {
+      pass: "\x1b[32m+\x1b[0m",
+      fail: "\x1b[31mx\x1b[0m",
+      skip: "\x1b[33m-\x1b[0m",
+      running: "\x1b[36m~\x1b[0m",
+    };
+
+    for (const c of this.data.checks) {
+      const detail = c.details ? ` (${c.details})` : "";
+      console.log(`  ${icons[c.status]} ${c.name}${detail}`);
+    }
+
+    console.log();
+    const counts = this.data.checks.reduce(
+      (acc, c) => {
+        acc[c.status] = (acc[c.status] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
+    console.log(
+      `  ${counts.pass ?? 0} passed, ${counts.fail ?? 0} failed, ${counts.skip ?? 0} skipped`,
+    );
   }
 }

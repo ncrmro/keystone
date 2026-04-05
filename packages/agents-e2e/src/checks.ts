@@ -1,13 +1,13 @@
 // E2E check functions -- each check appends to the report
 // See specs/REQ-031-e2e-os-agent-product-test.md
 
-import { Report } from "./report";
+import { execSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { basename, join } from "node:path";
+import type { AgentCtl } from "./agentctl";
+import type { ForgejoPlatform } from "./forgejo";
 import { emit } from "./log";
-import { ForgejoPlatform } from "./forgejo";
-import { AgentCtl } from "./agentctl";
-import { existsSync, readdirSync } from "fs";
-import { join, basename } from "path";
-import { execSync } from "child_process";
+import type { Report } from "./report";
 
 interface Config {
   productAgent: string;
@@ -36,11 +36,11 @@ function forkName(config: Config): string {
   return config.templateRepo.split("/")[1];
 }
 
-function findInAgentPaths(home: string, test: (path: string) => boolean): boolean {
-  const searchRoots = [
-    join(home, "..", ".worktrees"),
-    join(home, "repos"),
-  ];
+function findInAgentPaths(
+  home: string,
+  test: (path: string) => boolean,
+): boolean {
+  const searchRoots = [join(home, "..", ".worktrees"), join(home, "repos")];
   for (const root of searchRoots) {
     if (!existsSync(root)) continue;
     if (walkDir(root, test)) return true;
@@ -48,7 +48,11 @@ function findInAgentPaths(home: string, test: (path: string) => boolean): boolea
   return false;
 }
 
-function walkDir(dir: string, test: (path: string) => boolean, depth = 6): boolean {
+function walkDir(
+  dir: string,
+  test: (path: string) => boolean,
+  depth = 6,
+): boolean {
   if (depth <= 0) return false;
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -68,7 +72,11 @@ function walkDir(dir: string, test: (path: string) => boolean, depth = 6): boole
 // Agent quiescence (REQ-031.7a-d)
 // ---------------------------------------------------------------------------
 
-export async function pauseAgents(config: Config, report: Report, agentctl: AgentCtl) {
+export async function pauseAgents(
+  config: Config,
+  report: Report,
+  agentctl: AgentCtl,
+) {
   for (const agent of [config.productAgent, config.engineerAgent]) {
     if (await agentctl.isPaused(agent)) {
       emit("info", "agent already paused", { agent });
@@ -78,20 +86,34 @@ export async function pauseAgents(config: Config, report: Report, agentctl: Agen
     if (await agentctl.hasTasks(agent)) {
       emit("warn", "agent has active tasks", { agent });
       if (process.stdin.isTTY) {
-        process.stderr.write(`Agent ${agent} has active tasks. Kill and proceed? [y/N] `);
+        process.stderr.write(
+          `Agent ${agent} has active tasks. Kill and proceed? [y/N] `,
+        );
         const reply = await readLine();
         if (!/^y(es)?$/i.test(reply)) {
-          report.check("agent_quiescence", "fail", `Operator declined to kill active tasks on ${agent}`);
+          report.check(
+            "agent_quiescence",
+            "fail",
+            `Operator declined to kill active tasks on ${agent}`,
+          );
           throw new Error("Agent quiescence failed");
         }
       } else {
-        report.check("agent_quiescence", "fail", `Agent ${agent} has active tasks (non-interactive)`);
+        report.check(
+          "agent_quiescence",
+          "fail",
+          `Agent ${agent} has active tasks (non-interactive)`,
+        );
         throw new Error("Agent quiescence failed");
       }
     }
 
     if (!(await agentctl.pause(agent, "e2e test in progress"))) {
-      report.check("agent_quiescence", "fail", `Failed to pause agent ${agent}`);
+      report.check(
+        "agent_quiescence",
+        "fail",
+        `Failed to pause agent ${agent}`,
+      );
       throw new Error("Agent quiescence failed");
     }
     emit("info", "paused agent", { agent });
@@ -124,30 +146,52 @@ export async function dryRun(
     ["engineer", config.engineerAgent],
   ] as const) {
     if (await agentctl.exists(agent)) {
-      report.check(`dryrun_${label}_agent`, "pass", `Agent '${agent}' is configured`);
+      report.check(
+        `dryrun_${label}_agent`,
+        "pass",
+        `Agent '${agent}' is configured`,
+      );
       const paused = await agentctl.isPaused(agent);
       report.check(
         `dryrun_${agent}_paused`,
         "pass",
-        paused ? `Agent '${agent}' is paused` : `Agent '${agent}' is running (will be paused during full run)`,
+        paused
+          ? `Agent '${agent}' is paused`
+          : `Agent '${agent}' is running (will be paused during full run)`,
       );
     } else {
-      report.check(`dryrun_${label}_agent`, "fail", `Agent '${agent}' not found in agentctl`);
+      report.check(
+        `dryrun_${label}_agent`,
+        "fail",
+        `Agent '${agent}' not found in agentctl`,
+      );
     }
   }
 
   // Check Forgejo connectivity
   if (config.platform === "forgejo") {
     if (!config.forgejoToken) {
-      report.check("dryrun_forgejo_token", "fail", "FORGEJO_TOKEN not set and --forgejo-token not provided");
+      report.check(
+        "dryrun_forgejo_token",
+        "fail",
+        "FORGEJO_TOKEN not set and --forgejo-token not provided",
+      );
     } else {
       report.check("dryrun_forgejo_token", "pass", "Forgejo token present");
     }
 
     if (await forgejo.repoExists(config.templateRepo)) {
-      report.check("dryrun_template_repo", "pass", `Template repo '${config.templateRepo}' exists`);
+      report.check(
+        "dryrun_template_repo",
+        "pass",
+        `Template repo '${config.templateRepo}' exists`,
+      );
     } else {
-      report.check("dryrun_template_repo", "fail", `Template repo '${config.templateRepo}' not found at ${config.forgejoUrl}`);
+      report.check(
+        "dryrun_template_repo",
+        "fail",
+        `Template repo '${config.templateRepo}' not found at ${config.forgejoUrl}`,
+      );
     }
   }
 
@@ -172,7 +216,9 @@ export async function cleanupEnvironment(config: Config, report: Report) {
   for (const agent of [config.productAgent, config.engineerAgent]) {
     const home = (() => {
       try {
-        return execSync(`getent passwd agent-${agent}`, { encoding: "utf-8" }).trim().split(":")[5];
+        return execSync(`getent passwd agent-${agent}`, { encoding: "utf-8" })
+          .trim()
+          .split(":")[5];
       } catch {
         return null;
       }
@@ -191,7 +237,11 @@ export async function cleanupEnvironment(config: Config, report: Report) {
     }
   }
 
-  report.check("environment_cleanup", "pass", "Cleaned agent disks and worktrees");
+  report.check(
+    "environment_cleanup",
+    "pass",
+    "Cleaned agent disks and worktrees",
+  );
 }
 
 export async function setupEnvironment(
@@ -210,9 +260,17 @@ export async function setupEnvironment(
   // Fork template for engineering agent
   try {
     await forgejo.forkRepo(config.templateRepo, config.engineerAgent);
-    report.check("environment_setup", "pass", `Forked template to ${config.engineerAgent}/${name}`);
+    report.check(
+      "environment_setup",
+      "pass",
+      `Forked template to ${config.engineerAgent}/${name}`,
+    );
   } catch (err) {
-    report.check("environment_setup", "fail", `Failed to fork template: ${err}`);
+    report.check(
+      "environment_setup",
+      "fail",
+      `Failed to fork template: ${err}`,
+    );
     throw err;
   }
 }
@@ -222,13 +280,19 @@ export async function setupEnvironment(
 // ---------------------------------------------------------------------------
 
 export async function productEmail(config: Config, report: Report) {
-  emit("info", "sending palindrome requirement to product agent", { agent: config.productAgent });
+  emit("info", "sending palindrome requirement to product agent", {
+    agent: config.productAgent,
+  });
   // TODO: wire agent-mail dispatch
-  report.check("product_email_dispatch", "skip", "agent-mail dispatch not yet wired");
+  report.check(
+    "product_email_dispatch",
+    "skip",
+    "agent-mail dispatch not yet wired",
+  );
 }
 
 export async function productPressRelease(
-  config: Config,
+  _config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
@@ -237,15 +301,18 @@ export async function productPressRelease(
   try {
     const issues = await forgejo.listIssues(repo, "open");
     const found = issues.some((i) => /press release|palindrome/i.test(i.title));
-    report.check("product_press_release", found ? "pass" : "skip",
-      found ? "Found press release issue" : "No press release issue found yet");
+    report.check(
+      "product_press_release",
+      found ? "pass" : "skip",
+      found ? "Found press release issue" : "No press release issue found yet",
+    );
   } catch {
     report.check("product_press_release", "skip", "Could not list issues");
   }
 }
 
 export async function productMilestone(
-  config: Config,
+  _config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
@@ -254,8 +321,13 @@ export async function productMilestone(
   try {
     const milestones = await forgejo.listMilestones(repo);
     const found = milestones.some((m) => /palindrome/i.test(m.title));
-    report.check("product_milestone", found ? "pass" : "skip",
-      found ? "Found palindrome milestone" : "No palindrome milestone found yet");
+    report.check(
+      "product_milestone",
+      found ? "pass" : "skip",
+      found
+        ? "Found palindrome milestone"
+        : "No palindrome milestone found yet",
+    );
   } catch {
     report.check("product_milestone", "skip", "Could not list milestones");
   }
@@ -266,7 +338,7 @@ export async function productMilestone(
 // ---------------------------------------------------------------------------
 
 export async function engineeringIssue(
-  config: Config,
+  _config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
@@ -274,16 +346,21 @@ export async function engineeringIssue(
   emit("info", "checking for engineering issue on milestone");
   try {
     const issues = await forgejo.listIssues(repo, "all");
-    const found = issues.some((i) => /engineer|implement|palindrome/i.test(i.title));
-    report.check("engineering_issue", found ? "pass" : "skip",
-      found ? "Found engineering issue" : "No engineering issue found yet");
+    const found = issues.some((i) =>
+      /engineer|implement|palindrome/i.test(i.title),
+    );
+    report.check(
+      "engineering_issue",
+      found ? "pass" : "skip",
+      found ? "Found engineering issue" : "No engineering issue found yet",
+    );
   } catch {
     report.check("engineering_issue", "skip", "Could not list issues");
   }
 }
 
 export async function trunkBranch(
-  config: Config,
+  _config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
@@ -291,9 +368,15 @@ export async function trunkBranch(
   emit("info", "checking for trunk branch");
   try {
     const branches = await forgejo.listBranches(repo);
-    const nonDefault = branches.filter((b) => b.name !== "main" && b.name !== "master");
+    const nonDefault = branches.filter(
+      (b) => b.name !== "main" && b.name !== "master",
+    );
     if (nonDefault.length > 0) {
-      report.check("trunk_branch", "pass", `Found branch: ${nonDefault[0].name}`);
+      report.check(
+        "trunk_branch",
+        "pass",
+        `Found branch: ${nonDefault[0].name}`,
+      );
     } else {
       report.check("trunk_branch", "skip", "No trunk branch found yet");
     }
@@ -306,7 +389,11 @@ export async function worktree(config: Config, report: Report) {
   emit("info", "checking for engineer worktree");
   const home = engineerHome(config);
   if (!home) {
-    report.check("worktree", "skip", "Could not resolve engineer home directory");
+    report.check(
+      "worktree",
+      "skip",
+      "Could not resolve engineer home directory",
+    );
     return;
   }
 
@@ -319,7 +406,9 @@ export async function worktree(config: Config, report: Report) {
         report.check("worktree", "pass", `Worktree exists at ${wtBase}`);
         return;
       }
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
   report.check("worktree", "skip", `No worktree found at ${wtBase}`);
 }
@@ -328,40 +417,64 @@ export async function specFile(config: Config, report: Report) {
   emit("info", "checking for specs/REQ-*palindrome* file");
   const home = engineerHome(config);
   if (!home) {
-    report.check("spec_file", "skip", "Could not resolve engineer home directory");
+    report.check(
+      "spec_file",
+      "skip",
+      "Could not resolve engineer home directory",
+    );
     return;
   }
 
   const found = findInAgentPaths(home, (p) =>
-    /specs\/REQ-.*palindrome.*\.md$/i.test(p));
-  report.check("spec_file", found ? "pass" : "skip",
-    found ? "Found palindrome spec file" : "No palindrome spec file found yet");
+    /specs\/REQ-.*palindrome.*\.md$/i.test(p),
+  );
+  report.check(
+    "spec_file",
+    found ? "pass" : "skip",
+    found ? "Found palindrome spec file" : "No palindrome spec file found yet",
+  );
 }
 
 export async function palindromeBackend(_config: Config, report: Report) {
   emit("info", "checking palindrome backend responds correctly");
-  report.check("palindrome_backend", "skip", "Backend validation not yet implemented");
+  report.check(
+    "palindrome_backend",
+    "skip",
+    "Backend validation not yet implemented",
+  );
 }
 
 export async function playwrightTests(config: Config, report: Report) {
   emit("info", "checking for Playwright tests in packages/e2e/");
   const home = engineerHome(config);
   if (!home) {
-    report.check("playwright_tests", "skip", "Could not resolve engineer home directory");
+    report.check(
+      "playwright_tests",
+      "skip",
+      "Could not resolve engineer home directory",
+    );
     return;
   }
 
   const found = findInAgentPaths(home, (p) =>
-    /packages\/e2e\/.*\.(spec|test)\./i.test(p));
-  report.check("playwright_tests", found ? "pass" : "skip",
-    found ? "Found Playwright test files" : "No Playwright tests found yet");
+    /packages\/e2e\/.*\.(spec|test)\./i.test(p),
+  );
+  report.check(
+    "playwright_tests",
+    found ? "pass" : "skip",
+    found ? "Found Playwright test files" : "No Playwright tests found yet",
+  );
 }
 
 export async function screenshots(config: Config, report: Report) {
   emit("info", "checking screenshot naming convention");
   const home = engineerHome(config);
   if (!home) {
-    report.check("screenshots", "skip", "Could not resolve engineer home directory");
+    report.check(
+      "screenshots",
+      "skip",
+      "Could not resolve engineer home directory",
+    );
     return;
   }
 
@@ -381,7 +494,11 @@ export async function screenshots(config: Config, report: Report) {
   if (found && !badNames) {
     report.check("screenshots", "pass", "Screenshots follow naming convention");
   } else if (found && badNames) {
-    report.check("screenshots", "fail", "Some screenshots do not follow {test-name}.{step-index}.{step-name}.png");
+    report.check(
+      "screenshots",
+      "fail",
+      "Some screenshots do not follow {test-name}.{step-index}.{step-name}.png",
+    );
   } else {
     report.check("screenshots", "skip", "No screenshots found yet");
   }
@@ -391,7 +508,11 @@ export async function lfsTracking(config: Config, report: Report) {
   emit("info", "checking git LFS tracking for PNG files");
   const home = engineerHome(config);
   if (!home) {
-    report.check("lfs_tracking", "skip", "Could not resolve engineer home directory");
+    report.check(
+      "lfs_tracking",
+      "skip",
+      "Could not resolve engineer home directory",
+    );
     return;
   }
 
@@ -399,7 +520,7 @@ export async function lfsTracking(config: Config, report: Report) {
   const found = findInAgentPaths(home, (p) => {
     if (p.endsWith(".gitattributes") && p.includes(name)) {
       try {
-        const content = require("fs").readFileSync(p, "utf-8");
+        const content = require("node:fs").readFileSync(p, "utf-8");
         return /\.png.*filter=lfs/.test(content);
       } catch {
         return false;
@@ -408,12 +529,17 @@ export async function lfsTracking(config: Config, report: Report) {
     return false;
   });
 
-  report.check("lfs_tracking", found ? "pass" : "skip",
-    found ? ".gitattributes tracks *.png via LFS" : "No LFS tracking found for PNG files");
+  report.check(
+    "lfs_tracking",
+    found ? "pass" : "skip",
+    found
+      ? ".gitattributes tracks *.png via LFS"
+      : "No LFS tracking found for PNG files",
+  );
 }
 
 export async function releasePr(
-  config: Config,
+  _config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
@@ -421,15 +547,18 @@ export async function releasePr(
   emit("info", "checking for release PR");
   try {
     const prs = await forgejo.listPrs(repo, "all");
-    report.check("release_pr", prs.length > 0 ? "pass" : "skip",
-      prs.length > 0 ? "Found release PR" : "No release PR found yet");
+    report.check(
+      "release_pr",
+      prs.length > 0 ? "pass" : "skip",
+      prs.length > 0 ? "Found release PR" : "No release PR found yet",
+    );
   } catch {
     report.check("release_pr", "skip", "Could not list PRs");
   }
 }
 
 export async function issueClosed(
-  config: Config,
+  _config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
@@ -437,8 +566,13 @@ export async function issueClosed(
   emit("info", "checking engineering issue is closed");
   try {
     const closed = await forgejo.listIssues(repo, "closed");
-    report.check("issue_closed", closed.length > 0 ? "pass" : "skip",
-      closed.length > 0 ? `Found ${closed.length} closed issue(s)` : "No closed issues found yet");
+    report.check(
+      "issue_closed",
+      closed.length > 0 ? "pass" : "skip",
+      closed.length > 0
+        ? `Found ${closed.length} closed issue(s)`
+        : "No closed issues found yet",
+    );
   } catch {
     report.check("issue_closed", "skip", "Could not list closed issues");
   }
@@ -449,7 +583,7 @@ export async function issueClosed(
 // ---------------------------------------------------------------------------
 
 export async function milestoneClosed(
-  config: Config,
+  _config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
@@ -457,8 +591,13 @@ export async function milestoneClosed(
   emit("info", "checking milestone is closed");
   try {
     const milestones = await forgejo.listMilestones(repo, "closed");
-    report.check("milestone_closed", milestones.length > 0 ? "pass" : "skip",
-      milestones.length > 0 ? "Palindrome milestone closed" : "No closed milestones found");
+    report.check(
+      "milestone_closed",
+      milestones.length > 0 ? "pass" : "skip",
+      milestones.length > 0
+        ? "Palindrome milestone closed"
+        : "No closed milestones found",
+    );
   } catch {
     report.check("milestone_closed", "skip", "Could not list milestones");
   }

@@ -2,12 +2,12 @@
 // agents-e2e -- End-to-end OS agent product lifecycle test (REQ-031)
 // See specs/REQ-031-e2e-os-agent-product-test.md
 
-import { parseArgs } from "util";
-import { Report } from "./report";
-import { emit } from "./log";
-import { ForgejoPlatform } from "./forgejo";
+import { parseArgs } from "node:util";
 import { AgentCtl } from "./agentctl";
 import * as checks from "./checks";
+import { ForgejoPlatform } from "./forgejo";
+import { emit } from "./log";
+import { Report } from "./report";
 
 interface Config {
   productAgent: string;
@@ -29,9 +29,15 @@ function parseConfig(): Config | null {
       engineer: { type: "string" },
       platform: { type: "string", default: "forgejo" },
       provider: { type: "string", default: "claude" },
-      "forgejo-url": { type: "string", default: Bun.env.FORGEJO_URL ?? "https://git.ncrmro.com" },
+      "forgejo-url": {
+        type: "string",
+        default: Bun.env.FORGEJO_URL ?? "https://git.ncrmro.com",
+      },
       "forgejo-token": { type: "string", default: Bun.env.FORGEJO_TOKEN ?? "" },
-      "template-repo": { type: "string", default: "ks-testing/agent-e2e-bun-template" },
+      "template-repo": {
+        type: "string",
+        default: "ks-testing/agent-e2e-bun-template",
+      },
       "dry-run": { type: "boolean", default: false },
       print: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
@@ -53,13 +59,14 @@ function parseConfig(): Config | null {
   return {
     productAgent: values.product,
     engineerAgent: values.engineer,
-    platform: values.platform!,
-    provider: values.provider!,
-    forgejoUrl: values["forgejo-url"]!,
-    forgejoToken: values["forgejo-token"]!,
-    templateRepo: values["template-repo"]!,
-    dryRun: values["dry-run"]!,
-    print: values.print!,
+    platform: values.platform ?? "forgejo",
+    provider: values.provider ?? "claude",
+    forgejoUrl: values["forgejo-url"] ?? "https://git.ncrmro.com",
+    forgejoToken: values["forgejo-token"] ?? "",
+    templateRepo:
+      values["template-repo"] ?? "ks-testing/agent-e2e-bun-template",
+    dryRun: values["dry-run"] ?? false,
+    print: values.print ?? false,
   };
 }
 
