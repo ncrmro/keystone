@@ -276,24 +276,30 @@ impl HostsScreen {
     }
 
     fn render_main(&mut self, frame: &mut Frame, area: Rect) {
+        // Three-column layout: sidebar | host list | host info
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(14),     // Sidebar
+                Constraint::Percentage(35), // Host list
+                Constraint::Min(20),        // Host info
+            ])
+            .split(area);
+
+        crate::widgets::sidebar::render(frame, columns[0], 0); // 0 = Hosts active
+
         if self.statuses.is_empty() {
             let empty_msg = Paragraph::new(Text::styled(
-                "No hosts found in flake.nix\n\nPress 'a' to add a new host",
+                "No hosts found\n\nPress 'a' to add",
                 Style::default().fg(Color::DarkGray),
             ))
             .alignment(Alignment::Center);
-            frame.render_widget(empty_msg, area);
+            frame.render_widget(empty_msg, columns[1]);
             return;
         }
 
-        // Split: left 40% host list, right 60% metrics panel
-        let panels = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(area);
-
-        self.render_host_list(frame, panels[0]);
-        self.render_host_info_panel(frame, panels[1]);
+        self.render_host_list(frame, columns[1]);
+        self.render_host_info_panel(frame, columns[2]);
     }
 
     fn render_host_list(&mut self, frame: &mut Frame, area: Rect) {
@@ -407,9 +413,9 @@ impl HostsScreen {
 
     fn render_help(&self, frame: &mut Frame, area: Rect) {
         let help_text = if self.statuses.is_empty() {
-            "a: add host • q: quit"
+            "1-4: sections • a: add host • q: quit"
         } else {
-            "↑/↓: navigate • Enter: details • b: build • i: ISO • r: refresh • q: quit"
+            "1-4: sections • ↑/↓: navigate • Enter: details • i: ISO • r: refresh • q: quit"
         };
         let help = Paragraph::new(Text::styled(
             help_text,
@@ -449,6 +455,10 @@ impl Component for HostsScreen {
                     })
                 }),
                 KeyCode::Char('r') => Some(Action::RefreshDashboard),
+                // Sidebar navigation
+                KeyCode::Char('2') => Some(Action::NavigateTo(Screen::Services)),
+                KeyCode::Char('3') => Some(Action::NavigateTo(Screen::Secrets)),
+                KeyCode::Char('4') => Some(Action::NavigateTo(Screen::Security)),
                 _ => None,
             });
         }

@@ -5,20 +5,20 @@ expression: output
                        Hosts Dashboard - my-infra  2 hosts                      
                                                                                 
 ────────────────────────────────────────────────────────────────────────────────
- laptop                        │  Arch   x86_64-linux                           
-   localhost                   │                                                
- server                        │  Modules  (none)                               
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-    ↑/↓: navigate • Enter: details • b: build • i: ISO • r: refresh • q: quit
+ Hosts       │ laptop                    │  Arch   x86_64-linux                 
+  Services   │   localhost               │                                      
+  Secrets    │ server                    │  Modules  (none)                     
+  Security   │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+ 1-4: sections • ↑/↓: navigate • Enter: details • i: ISO • r: refresh • q: quit

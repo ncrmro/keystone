@@ -5,15 +5,15 @@ expression: output
              Hosts Dashboard - my-infra  2 hosts            
                                                             
 ────────────────────────────────────────────────────────────
- laptop                │  Arch   x86_64-linux               
- server                │                                    
-                       │  Modules  operating-system         
-                       │                                    
-                       │                                    
-                       │                                    
-                       │                                    
-                       │                                    
-                       │                                    
-                       │                                    
-                       │                                    
-↑/↓: navigate • Enter: details • b: build • i: ISO • r: refr
+ Hosts       │ laptop             │  Arch   x86_64-linux    
+  Services   │ server             │                         
+  Secrets    │                    │  Modules  operating-syst
+  Security   │                    │                         
+             │                    │                         
+             │                    │                         
+             │                    │                         
+             │                    │                         
+             │                    │                         
+             │                    │                         
+             │                    │                         
+1-4: sections • ↑/↓: navigate • Enter: details • i: ISO • r:
