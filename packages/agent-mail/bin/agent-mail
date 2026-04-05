@@ -21,7 +21,7 @@ Options:
 Examples:
   agent-mail project.new --to drago@ncrmro.com
   agent-mail task --to luce@ncrmro.com --subject "Fix CI pipeline"
-  agent-mail feature.requirement --to luce@ncrmro.com --send
+  agent-mail task --to luce@ncrmro.com --subject "Deploy v2" --send
   agent-mail --list
 EOF
 }

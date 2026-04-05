@@ -2,7 +2,15 @@
 // See specs/REQ-031-e2e-os-agent-product-test.md
 
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { AgentCtl } from "./agentctl";
 import type { ForgejoPlatform } from "./forgejo";
@@ -303,21 +311,85 @@ export async function setupEnvironment(
 // Product agent workflow (REQ-031.15-031.18)
 // ---------------------------------------------------------------------------
 
+const PALINDROME_REQUIREMENT_TEMPLATE = `# Feature Requirement: Palindrome Checker
+
+## Title
+
+Palindrome Checker
+
+## Repo
+
+ks-testing/agent-e2e-bun-template
+
+## Description
+
+Add a palindrome checker to the bun web server. The user submits a string via
+an HTML form; the server responds with whether the string is a palindrome.
+
+## Problem
+
+The bun server template has an HTML form with no backend logic. We need a
+palindrome solver to validate that the agent pipeline can implement a feature
+end-to-end: from product requirement to specification, implementation, tested
+release, and product verification.
+
+## Acceptance Criteria
+
+- The palindrome checker MUST be implemented as a backend service
+- The backend response MUST return JSON with \`input\` (string) and
+  \`is_palindrome\` (boolean) fields
+- The HTML form in \`packages/web/\` MUST submit a string and display whether
+  it is a palindrome
+- The engineering agent MUST write Playwright end-to-end tests in
+  \`packages/e2e/\` that exercise the palindrome happy path
+- Playwright tests MUST capture screenshots at key steps following the naming
+  convention \`{test-name}.{step-index}.{step-name}.png\`
+- Screenshots MUST be committed via git LFS
+
+## Priority
+
+high
+
+## Process
+
+Please follow the standard product process:
+
+1. Create a press release issue on the Forgejo repo describing the Palindrome
+   Checker feature
+2. Create a milestone titled "Palindrome Checker v1" and associate the press
+   release issue with it
+3. Assign the engineering agent to the press release issue (or create a linked
+   engineering-intake issue assigned to the engineering agent) to begin
+   implementation
+`;
+
 export async function productEmail(config: Config, report: Report) {
   const toAddr = `${config.productAgent}@${config.domain}`;
   emit("info", "sending palindrome requirement to product agent", {
     agent: config.productAgent,
     to: toAddr,
   });
+  const tmpTemplatesDir = mkdtempSync(join(tmpdir(), "agents-e2e-templates-"));
   try {
-    execFileSync("agent-mail", [
-      "feature.requirement",
-      "--to",
-      toAddr,
-      "--subject",
-      "Palindrome Checker",
-      "--send",
-    ], { stdio: "pipe" });
+    writeFileSync(
+      join(tmpTemplatesDir, "feature.requirement.md"),
+      PALINDROME_REQUIREMENT_TEMPLATE,
+    );
+    execFileSync(
+      "agent-mail",
+      [
+        "feature.requirement",
+        "--to",
+        toAddr,
+        "--subject",
+        "Palindrome Checker",
+        "--send",
+      ],
+      {
+        stdio: "pipe",
+        env: { ...process.env, AGENT_MAIL_TEMPLATES: tmpTemplatesDir },
+      },
+    );
     report.check(
       "product_email_dispatch",
       "pass",
@@ -330,6 +402,8 @@ export async function productEmail(config: Config, report: Report) {
       `Failed to send email: ${err}`,
     );
     throw err;
+  } finally {
+    rmSync(tmpTemplatesDir, { recursive: true, force: true });
   }
 }
 
