@@ -288,6 +288,43 @@ async fn run_template_command(
     }
 }
 
+/// Handle a global Action from a Component.
+///
+/// TODO: once all screens implement Component, this replaces handle_action entirely.
+async fn handle_component_action(app: &mut App, action: crate::action::Action) {
+    use crate::action::Action;
+    match action {
+        Action::Quit => app.should_quit = true,
+        Action::NavigateTo(screen) => app.navigate_to(screen).await,
+        Action::GoBack | Action::RefreshDashboard => {
+            app.go_to_hosts(app.active_repo_index.unwrap_or(0)).await;
+        }
+        Action::Reboot => {
+            let _ = std::process::Command::new("systemctl")
+                .arg("reboot")
+                .spawn();
+        }
+        Action::Tick | Action::Render => {}
+    }
+}
+
+/// Handle pending async operations from Component screens.
+async fn handle_pending_async(app: &mut App) {
+    if let AppScreen::Welcome(ref mut welcome) = app.current_screen {
+        if let Some((name, git_url)) = welcome.take_pending_import() {
+            match crate::repo::import_repo(name.clone(), git_url).await {
+                Ok(repo) => {
+                    app.config.repos.push(repo);
+                    welcome.set_success(format!("Imported repository: {}", name));
+                }
+                Err(e) => {
+                    welcome.set_error(format!("Failed to import: {}", e));
+                }
+            }
+        }
+    }
+}
+
 /// Main application loop. Generic over backend so tests can use TestBackend.
 async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {
     loop {
@@ -302,55 +339,54 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
             _ => {}
         }
 
+        // Draw: try Component trait first, fall back to legacy render
         terminal.draw(|frame| {
             let area = frame.area();
-            match &mut app.current_screen {
-                AppScreen::Welcome(welcome_screen) => {
-                    welcome_screen.render(frame, area);
-                }
-                AppScreen::CreateConfig(create_config_screen) => {
-                    create_config_screen.render(frame, area);
-                }
-                AppScreen::Hosts(hosts_screen) => {
-                    hosts_screen.render(frame, area);
-                }
-                AppScreen::HostDetail(detail_screen) => {
-                    detail_screen.render(frame, area);
-                }
-                AppScreen::Build(build_screen) => {
-                    build_screen.render(frame, area);
-                }
-                AppScreen::Iso(iso_screen) => {
-                    iso_screen.render(frame, area);
-                }
-                AppScreen::Deploy(deploy_screen) => {
-                    deploy_screen.render(frame, area);
-                }
-                AppScreen::Install(install_screen) => {
-                    install_screen.render(frame, area);
-                }
-                AppScreen::FirstBoot(first_boot_screen) => {
-                    first_boot_screen.render(frame, area);
+            if let Some(component) = app.current_screen.as_component_mut() {
+                let _ = component.draw(frame, area);
+            } else {
+                // Legacy render for screens not yet migrated
+                // TODO: remove once all screens implement Component
+                match &mut app.current_screen {
+                    AppScreen::CreateConfig(s) => s.render(frame, area),
+                    AppScreen::Hosts(s) => s.render(frame, area),
+                    AppScreen::HostDetail(s) => s.render(frame, area),
+                    AppScreen::Build(s) => s.render(frame, area),
+                    AppScreen::Iso(s) => s.render(frame, area),
+                    AppScreen::Deploy(s) => s.render(frame, area),
+                    AppScreen::Install(s) => s.render(frame, area),
+                    AppScreen::FirstBoot(s) => s.render(frame, area),
+                    AppScreen::Welcome(s) => s.render(frame, area),
                 }
             }
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
-            match event::read()? {
-                Event::Key(key) => {
-                    if let Some(action) = dispatch_key(app, key) {
-                        match action {
-                            AppAction::Quit => {
-                                app.should_quit = true;
-                            }
-                            other => {
-                                handle_action(app, other).await;
-                            }
-                        }
+            let terminal_event = event::read()?;
+
+            // Try Component trait event handling first
+            let component_action = app
+                .current_screen
+                .as_component_mut()
+                .and_then(|c| c.handle_events(&terminal_event).ok().flatten());
+
+            if let Some(action) = component_action {
+                handle_component_action(app, action).await;
+            } else if let Event::Key(key) = terminal_event {
+                // Legacy dispatch for screens not yet migrated to Component
+                // TODO: remove once all screens implement Component
+                if let Some(action) = dispatch_key(app, key) {
+                    match action {
+                        AppAction::Quit => app.should_quit = true,
+                        other => handle_action(app, other).await,
                     }
                 }
-                Event::Resize(_width, _height) => {}
-                Event::Mouse(_mouse_event) => {}
+            }
+
+            handle_pending_async(app).await;
+
+            match terminal_event {
+                Event::Resize(_, _) | Event::Mouse(_) => {}
                 _ => {}
             }
         }
