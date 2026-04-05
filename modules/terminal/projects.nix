@@ -52,13 +52,8 @@ in
 
   config = mkIf cfg.enable (mkMerge [
     {
-      # REQ-010.5: keystone.notes.enable MUST be true when projects.enable is true
-      assertions = [
-        {
-          assertion = config.keystone.notes.enable;
-          message = "keystone.notes.enable must be true when keystone.projects.enable is true (REQ-010.5)";
-        }
-      ];
+      # REQ-010.5: projects depends on notes — auto-enable it
+      keystone.notes.enable = mkDefault true;
     }
     pzCommand
   ]);
