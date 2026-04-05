@@ -301,36 +301,13 @@ impl HostsScreen {
     }
 
     fn render_host_list(&mut self, frame: &mut Frame, area: Rect) {
+        let list_width = area.width.saturating_sub(2) as usize; // account for borders
+
         let items: Vec<ListItem> = self
             .statuses
             .iter()
             .map(|status| {
-                let system_suffix = status
-                    .host_info
-                    .system
-                    .as_deref()
-                    .map(|s| format!(" ({})", s))
-                    .unwrap_or_default();
-
-                let (indicator, indicator_style) = match &status.tailscale {
-                    Some(peer) if peer.online => ("●", Style::default().fg(Color::Green)),
-                    Some(_) => ("○", Style::default().fg(Color::Red)),
-                    None => ("", Style::default()),
-                };
-
-                let ip_text = status
-                    .tailscale
-                    .as_ref()
-                    .and_then(|p| p.tailscale_ips.first())
-                    .map(|ip| format!("  {}", ip))
-                    .unwrap_or_default();
-
-                let last_seen = match &status.tailscale {
-                    Some(p) if !p.online && !p.last_seen.is_empty() => {
-                        format!("  {}", format_last_seen(&p.last_seen))
-                    }
-                    _ => String::new(),
-                };
+                let name = &status.host_info.name;
 
                 let role_badge = status
                     .host_info
@@ -345,18 +322,55 @@ impl HostsScreen {
                     })
                     .unwrap_or_default();
 
-                let line = Line::from(vec![
-                    Span::styled(format!(" {} ", indicator), indicator_style),
-                    Span::styled(
-                        format!("{}{}", status.host_info.name, system_suffix),
-                        Style::default(),
-                    ),
+                let (indicator, indicator_style) = match &status.tailscale {
+                    Some(peer) if peer.online => (" ●", Style::default().fg(Color::Green)),
+                    Some(_) => (" ○", Style::default().fg(Color::Red)),
+                    None => ("", Style::default()),
+                };
+
+                // First line: hostname + role (left), status dot (right)
+                let left_len = name.len() + role_badge.len();
+                let right_len = indicator.len();
+                let padding = " ".repeat(list_width.saturating_sub(left_len + right_len + 2));
+
+                let line1 = Line::from(vec![
+                    Span::styled(format!(" {}", name), Style::default()),
                     Span::styled(role_badge, Style::default().fg(Color::Magenta)),
-                    Span::styled(ip_text, Style::default().fg(Color::DarkGray)),
-                    Span::styled(last_seen, Style::default().fg(Color::DarkGray)),
+                    Span::raw(padding),
+                    Span::styled(indicator.to_string(), indicator_style),
                 ]);
 
-                ListItem::new(line)
+                // Second line: IP or last-seen (subtle, indented)
+                let subtitle = status
+                    .tailscale
+                    .as_ref()
+                    .and_then(|p| {
+                        if p.online {
+                            p.tailscale_ips.first().map(|ip| ip.to_string())
+                        } else if !p.last_seen.is_empty() {
+                            Some(format_last_seen(&p.last_seen))
+                        } else {
+                            None
+                        }
+                    })
+                    .or_else(|| {
+                        status
+                            .host_info
+                            .metadata
+                            .as_ref()
+                            .filter(|m| !m.ssh_target.is_empty())
+                            .map(|m| m.ssh_target.clone())
+                    });
+
+                if let Some(sub) = subtitle {
+                    let line2 = Line::from(vec![Span::styled(
+                        format!("   {}", sub),
+                        Style::default().fg(Color::DarkGray),
+                    )]);
+                    ListItem::new(vec![line1, line2])
+                } else {
+                    ListItem::new(vec![line1])
+                }
             })
             .collect();
 
@@ -370,8 +384,7 @@ impl HostsScreen {
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("> ");
+            );
 
         frame.render_stateful_widget(list, area, &mut self.list_state);
     }
