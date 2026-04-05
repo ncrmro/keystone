@@ -190,6 +190,21 @@ impl App {
             Screen::FirstBoot => {
                 // FirstBoot is only entered via marker detection, not navigation
             }
+            Screen::Secrets => {
+                // TODO: implement full secrets screen
+            }
+            Screen::Security => {
+                // TODO: implement security enrollment screen
+            }
+            Screen::Services => {
+                // TODO: implement services placement screen
+            }
+            Screen::Update => {
+                // TODO: implement update screen
+            }
+            Screen::Doctor => {
+                // TODO: implement doctor screen
+            }
         }
     }
 

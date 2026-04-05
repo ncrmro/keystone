@@ -18,14 +18,11 @@ pub enum Screen {
     Deploy { host_name: String },
     Install,
     FirstBoot,
-    // Future:
-    // Secrets,
-    // SecureBoot,
-    // Tpm,
-    // Yubikey,
-    // Services,
-    // Update,
-    // Doctor,
+    Secrets,
+    Security,
+    Services,
+    Update,
+    Doctor,
 }
 
 /// App-level actions that cross component boundaries.
