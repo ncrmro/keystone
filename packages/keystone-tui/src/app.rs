@@ -27,6 +27,18 @@ pub enum AppScreen {
     FirstBoot(FirstBootScreen),
 }
 
+impl AppScreen {
+    /// Get a mutable reference to the Component trait if this screen implements it.
+    /// Returns None for screens still using the legacy dispatch pattern.
+    pub fn as_component_mut(&mut self) -> Option<&mut dyn crate::component::Component> {
+        match self {
+            AppScreen::Welcome(s) => Some(s),
+            // Add more screens here as they are migrated to Component trait
+            _ => None,
+        }
+    }
+}
+
 /// Application state for the Keystone TUI.
 pub struct App {
     pub should_quit: bool,
@@ -127,6 +139,51 @@ impl App {
                 Err(e) => {
                     eprintln!("Failed to load hosts: {:?}", e);
                 }
+            }
+        }
+    }
+
+    /// Navigate to a screen by Action::NavigateTo.
+    ///
+    /// TODO: once all screens implement Component, this should be the sole
+    /// navigation mechanism, replacing the per-action match in handle_action.
+    pub async fn navigate_to(&mut self, screen: crate::action::Screen) {
+        use crate::action::Screen;
+        match screen {
+            Screen::Welcome => {
+                self.current_screen = AppScreen::Welcome(WelcomeScreen::new());
+            }
+            Screen::Template { repo_name } => {
+                self.current_screen = AppScreen::CreateConfig(CreateConfigScreen::new(repo_name));
+            }
+            Screen::Hosts => {
+                self.go_to_hosts(self.active_repo_index.unwrap_or(0)).await;
+            }
+            Screen::HostDetail(host) => {
+                self.current_screen = AppScreen::HostDetail(HostDetailScreen::new(*host));
+            }
+            Screen::Build { host_name } => {
+                if let Some(repo_path) = self.active_repo_path() {
+                    self.current_screen = AppScreen::Build(BuildScreen::new(host_name, repo_path));
+                }
+            }
+            Screen::Iso { host_name } => {
+                if let Some(repo_path) = self.active_repo_path() {
+                    self.current_screen =
+                        AppScreen::Iso(IsoScreen::new_for_host(repo_path, host_name));
+                }
+            }
+            Screen::Deploy { host_name } => {
+                if let Some(repo_path) = self.active_repo_path() {
+                    self.current_screen =
+                        AppScreen::Deploy(DeployScreen::new(repo_path, host_name));
+                }
+            }
+            Screen::Install => {
+                // Install is only entered via ISO detection, not navigation
+            }
+            Screen::FirstBoot => {
+                // FirstBoot is only entered via marker detection, not navigation
             }
         }
     }
