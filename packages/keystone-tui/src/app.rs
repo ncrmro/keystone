@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 
 use crate::components::build::BuildScreen;
-use crate::components::create_config::CreateConfigScreen;
 use crate::components::deploy::DeployScreen;
 use crate::components::first_boot::FirstBootScreen;
 use crate::components::host_detail::HostDetailScreen;
 use crate::components::hosts::HostsScreen;
 use crate::components::install::InstallScreen;
 use crate::components::iso::IsoScreen;
+use crate::components::template::CreateConfigScreen;
 use crate::components::welcome::WelcomeScreen;
 use crate::config::{AppConfig, KeystoneRepo};
 use crate::nix;

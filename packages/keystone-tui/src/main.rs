@@ -118,8 +118,7 @@ async fn run_screenshot_mode(screen_name: &str) -> Result<()> {
             })?;
         }
         "create-config" => {
-            let screen =
-                components::create_config::CreateConfigScreen::new("my-config".to_string());
+            let screen = components::template::CreateConfigScreen::new("my-config".to_string());
             terminal.draw(|frame| {
                 screen.render(frame, frame.area());
             })?;

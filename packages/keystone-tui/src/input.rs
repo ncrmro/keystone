@@ -13,7 +13,7 @@ use crate::nix::HostInfo;
 #[derive(Debug)]
 pub enum AppAction {
     WelcomeAction(components::welcome::WelcomeAction),
-    CreateConfigAction(components::create_config::CreateConfigAction),
+    CreateConfigAction(components::template::CreateConfigAction),
     GoToCreateConfig { repo_name: String },
     GoToHostDetail(HostInfo),
     GoToHosts,
@@ -126,7 +126,7 @@ pub fn handle_welcome_input(
 
 /// Handle input for the create-config form screen.
 pub fn handle_create_config_input(
-    create_config: &mut components::create_config::CreateConfigScreen,
+    create_config: &mut components::template::CreateConfigScreen,
     key: KeyEvent,
 ) -> Option<AppAction> {
     let field = create_config.current_form_field();
@@ -470,9 +470,8 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
             handle_create_config_action(app, ca).await;
         }
         AppAction::GoToCreateConfig { repo_name } => {
-            app.current_screen = AppScreen::CreateConfig(
-                components::create_config::CreateConfigScreen::new(repo_name),
-            );
+            app.current_screen =
+                AppScreen::CreateConfig(components::template::CreateConfigScreen::new(repo_name));
         }
         AppAction::GoToHostDetail(host) => {
             app.current_screen =
@@ -654,7 +653,7 @@ async fn handle_welcome_action(app: &mut App, action: components::welcome::Welco
         WelcomeAction::CreateRepo { name } => {
             // Transition to the CreateConfig form instead of directly creating
             app.current_screen =
-                AppScreen::CreateConfig(components::create_config::CreateConfigScreen::new(name));
+                AppScreen::CreateConfig(components::template::CreateConfigScreen::new(name));
         }
         WelcomeAction::Complete => {
             // User completed the welcome flow - transition to hosts screen
@@ -668,9 +667,9 @@ async fn handle_welcome_action(app: &mut App, action: components::welcome::Welco
 /// Handle actions from the create-config screen.
 async fn handle_create_config_action(
     app: &mut App,
-    action: components::create_config::CreateConfigAction,
+    action: components::template::CreateConfigAction,
 ) {
-    use components::create_config::CreateConfigAction;
+    use components::template::CreateConfigAction;
 
     match action {
         CreateConfigAction::Complete {
