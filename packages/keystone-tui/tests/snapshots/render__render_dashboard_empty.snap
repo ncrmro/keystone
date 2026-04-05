@@ -9,6 +9,7 @@ expression: output
   Services   │                                                                  
   Secrets    │      Press 'a' to add                                            
   Security   │                                                                  
+  Installer  │                                                                  
              │                                                                  
              │                                                                  
              │                                                                  
@@ -20,5 +21,4 @@ expression: output
              │                                                                  
              │                                                                  
              │                                                                  
-             │                                                                  
-                      1-4: sections • a: add host • q: quit
+                      1-5: sections • a: add host • q: quit

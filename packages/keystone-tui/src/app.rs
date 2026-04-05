@@ -6,6 +6,7 @@ use crate::components::first_boot::FirstBootScreen;
 use crate::components::host_detail::HostDetailScreen;
 use crate::components::hosts::HostsScreen;
 use crate::components::install::InstallScreen;
+use crate::components::installer::InstallerScreen;
 use crate::components::iso::IsoScreen;
 use crate::components::secrets::SecretsScreen;
 use crate::components::security::SecurityScreen;
@@ -27,6 +28,7 @@ pub enum AppScreen {
     Iso(IsoScreen),
     Deploy(DeployScreen),
     Install(InstallScreen),
+    Installer(InstallerScreen),
     FirstBoot(FirstBootScreen),
     Secrets(SecretsScreen),
     Security(SecurityScreen),
@@ -45,6 +47,7 @@ impl AppScreen {
             AppScreen::Iso(s) => Some(s),
             AppScreen::Deploy(s) => Some(s),
             AppScreen::Install(s) => Some(s),
+            AppScreen::Installer(s) => Some(s),
             AppScreen::Secrets(s) => Some(s),
             AppScreen::Security(s) => Some(s),
             AppScreen::Services(s) => Some(s),
@@ -198,6 +201,9 @@ impl App {
             }
             Screen::FirstBoot => {
                 // FirstBoot is only entered via marker detection, not navigation
+            }
+            Screen::Installer => {
+                self.current_screen = AppScreen::Installer(InstallerScreen::new());
             }
             Screen::Secrets => {
                 self.current_screen = AppScreen::Secrets(SecretsScreen::new());

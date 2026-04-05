@@ -9,7 +9,7 @@ expression: output
   Services   │   100.64.0.1              │                                      
   Secrets    │ server               ●    │  Modules  operating-system           
   Security   │   100.64.0.2              │                                      
-             │ rpi                  ○    │                                      
+  Installer  │ rpi                  ○    │                                      
              │   2026-03-12T08:00        │                                      
              │                           │  Status online                       
              │                           │  TS IP  100.64.0.1                   
@@ -21,4 +21,4 @@ expression: output
              │                           │                                      
              │                           │                                      
              │                           │                                      
- 1-4: sections • ↑/↓: navigate • Enter: details • i: ISO • r: refresh • q: quit
+      1-5: sections • ↑/↓: navigate • Enter: details • r: refresh • q: quit

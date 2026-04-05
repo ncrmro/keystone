@@ -31,6 +31,7 @@ impl Component for SecretsScreen {
                 KeyCode::Char('1') => Some(Action::NavigateTo(Screen::Hosts)),
                 KeyCode::Char('2') => Some(Action::NavigateTo(Screen::Services)),
                 KeyCode::Char('4') => Some(Action::NavigateTo(Screen::Security)),
+                KeyCode::Char('5') => Some(Action::NavigateTo(Screen::Installer)),
                 _ => None,
             });
         }

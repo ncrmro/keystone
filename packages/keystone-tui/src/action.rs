@@ -18,6 +18,7 @@ pub enum Screen {
     Deploy { host_name: String },
     Install,
     FirstBoot,
+    Installer,
     Secrets,
     Security,
     Services,

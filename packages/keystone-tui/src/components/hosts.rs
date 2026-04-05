@@ -413,9 +413,9 @@ impl HostsScreen {
 
     fn render_help(&self, frame: &mut Frame, area: Rect) {
         let help_text = if self.statuses.is_empty() {
-            "1-4: sections • a: add host • q: quit"
+            "1-5: sections • a: add host • q: quit"
         } else {
-            "1-4: sections • ↑/↓: navigate • Enter: details • i: ISO • r: refresh • q: quit"
+            "1-5: sections • ↑/↓: navigate • Enter: details • r: refresh • q: quit"
         };
         let help = Paragraph::new(Text::styled(
             help_text,
@@ -459,6 +459,7 @@ impl Component for HostsScreen {
                 KeyCode::Char('2') => Some(Action::NavigateTo(Screen::Services)),
                 KeyCode::Char('3') => Some(Action::NavigateTo(Screen::Secrets)),
                 KeyCode::Char('4') => Some(Action::NavigateTo(Screen::Security)),
+                KeyCode::Char('5') => Some(Action::NavigateTo(Screen::Installer)),
                 _ => None,
             });
         }

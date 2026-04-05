@@ -32,6 +32,10 @@ pub const NAV_ITEMS: &[SidebarItem] = &[
         label: "Security",
         icon: "",
     },
+    SidebarItem {
+        label: "Installer",
+        icon: "",
+    },
 ];
 
 /// Render the navigation sidebar. `active_index` highlights the current section.
