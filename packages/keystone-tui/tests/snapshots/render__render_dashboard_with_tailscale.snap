@@ -1,25 +1,24 @@
 ---
 source: tests/render.rs
-assertion_line: 256
 expression: output
 ---
                        Hosts Dashboard - my-infra  3 hosts                      
                                                                                 
 ────────────────────────────────────────────────────────────────────────────────
- laptop                   ●    │██████████████████████                          
-   100.64.0.1                  │██████████████████CPU   45.2%                   
- server                   ●    │████████████████████████                        
-   100.64.0.2                  │████████████████MEM  8.0G/16.0G                 
- rpi                      ○    │██████                                          
-   2026-03-12T08:00            │██████           SWAP 512M/4.0G                 
-                               │                                                
-                               │  /        [█████████░░░]   78%                 
-                               │  /nix     [███████░░░░░]   64%                 
-                               │                                                
+ laptop                   ●    │  Arch   x86_64-linux                           
+   100.64.0.1                  │                                                
+ server                   ●    │  Modules  operating-system                     
+   100.64.0.2                  │                                                
+ rpi                      ○    │                                                
+   2026-03-12T08:00            │                                                
+                               │  Status online                                 
+                               │  TS IP  100.64.0.1                             
                                │                                                
                                │                                                
                                │                                                
                                │                                                
-                               │  CPU 52°C  GPU 48°C                            
+                               │                                                
+                               │                                                
+                               │                                                
                                │                                                
     ↑/↓: navigate • Enter: details • b: build • i: ISO • r: refresh • q: quit
