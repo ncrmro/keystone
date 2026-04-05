@@ -167,16 +167,9 @@ impl Component for InstallerScreen {
         let shell =
             crate::widgets::shell::render_shell(frame, area, "Installer", "", 4, help, None);
 
-        // Split content for phases that need two columns
         let content = shell.content;
         match &self.phase {
-            Phase::Configure => {
-                let panels = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Min(20)])
-                    .split(content);
-                self.render_configure(frame, panels[0], panels[1]);
-            }
+            Phase::Configure => self.render_configure(frame, content, content),
             Phase::Building | Phase::Writing => self.render_building(frame, content),
             Phase::SelectTarget => {
                 let panels = Layout::default()
@@ -194,50 +187,75 @@ impl Component for InstallerScreen {
 }
 
 impl InstallerScreen {
-    fn render_configure(&self, frame: &mut Frame, main: Rect, info: Rect) {
+    fn render_configure(&self, frame: &mut Frame, area: Rect, _unused: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // Title
+                Constraint::Length(8), // Description
                 Constraint::Length(1), // Spacer
-                Constraint::Length(3), // Profile select
+                Constraint::Length(4), // Profile select
                 Constraint::Length(1), // Spacer
                 Constraint::Length(5), // Options
                 Constraint::Min(0),    // Spacer
-                Constraint::Length(2), // Help
             ])
-            .split(main);
+            .split(area);
 
-        let title = Paragraph::new(Text::styled(
-            "Build Installer ISO",
-            Style::default().bold().yellow(),
-        ))
-        .alignment(Alignment::Center);
-        frame.render_widget(title, chunks[0]);
+        // Description text at top
+        let desc = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                " The installer builds a bootable ISO with your NixOS config baked in.",
+                Style::default(),
+            )),
+            Line::from(Span::styled(
+                " The ISO includes your SSH keys, NetworkManager for WiFi + wired,",
+                Style::default(),
+            )),
+            Line::from(Span::styled(
+                " the Keystone TUI installer, disko, and ZFS/SecureBoot/TPM tools.",
+                Style::default(),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                " Boot from USB → TUI runs disko → nixos-install → reboot → first-boot setup.",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ]);
+        frame.render_widget(desc, chunks[0]);
 
-        // Profile selection
-        let profiles = [InstallProfile::Desktop, InstallProfile::Server];
-        let items: Vec<ListItem> = profiles
-            .iter()
-            .map(|p| {
-                let style = if *p == self.profile {
-                    Style::default()
-                        .fg(Color::Green)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(Color::DarkGray)
-                };
-                ListItem::new(Line::from(Span::styled(format!("  {}", p.label()), style)))
-            })
-            .collect();
+        // Profile selection — render both options, highlight active
+        let desktop_style = if self.profile == InstallProfile::Desktop {
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        let server_style = if self.profile == InstallProfile::Server {
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
 
-        let list = List::new(items).block(
+        let profile_widget = Paragraph::new(vec![
+            Line::from(Span::styled(
+                format!("  {}", InstallProfile::Desktop.label()),
+                desktop_style,
+            )),
+            Line::from(Span::styled(
+                format!("  {}", InstallProfile::Server.label()),
+                server_style,
+            )),
+        ])
+        .block(
             Block::default()
-                .title(" Install Profile ")
+                .title(" Install Profile (Tab to switch) ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::DarkGray)),
         );
-        frame.render_widget(list, chunks[2]);
+        frame.render_widget(profile_widget, chunks[2]);
 
         // Options summary
         let options = Paragraph::new(vec![
@@ -261,71 +279,6 @@ impl InstallerScreen {
                 .border_style(Style::default().fg(Color::DarkGray)),
         );
         frame.render_widget(options, chunks[4]);
-
-        let help = Paragraph::new(Text::styled(
-            "Tab: toggle profile • Enter: build ISO • 1-4: sections • q: quit",
-            Style::default().fg(Color::DarkGray),
-        ))
-        .alignment(Alignment::Center);
-        frame.render_widget(help, chunks[6]);
-
-        // Right panel: what gets baked in
-        let info_lines = vec![
-            Line::from(Span::styled(
-                " What the ISO includes:",
-                Style::default().bold(),
-            )),
-            Line::from(""),
-            Line::from(Span::styled(
-                "  Your SSH public keys",
-                Style::default().fg(Color::Green),
-            )),
-            Line::from(Span::styled(
-                "  Your NixOS config (flake + hosts/)",
-                Style::default().fg(Color::Green),
-            )),
-            Line::from(Span::styled(
-                "  NetworkManager (WiFi + wired)",
-                Style::default().fg(Color::Green),
-            )),
-            Line::from(Span::styled(
-                "  Keystone TUI installer",
-                Style::default().fg(Color::Green),
-            )),
-            Line::from(Span::styled(
-                "  disko + nixos-install tooling",
-                Style::default().fg(Color::Green),
-            )),
-            Line::from(Span::styled(
-                "  ZFS, Secure Boot, TPM tools",
-                Style::default().fg(Color::Green),
-            )),
-            Line::from(""),
-            Line::from(Span::styled(" Install flow:", Style::default().bold())),
-            Line::from(""),
-            Line::from(Span::styled(
-                "  1. Boot from USB",
-                Style::default().fg(Color::DarkGray),
-            )),
-            Line::from(Span::styled(
-                "  2. TUI auto-starts, runs disko",
-                Style::default().fg(Color::DarkGray),
-            )),
-            Line::from(Span::styled(
-                "  3. nixos-install with your config",
-                Style::default().fg(Color::DarkGray),
-            )),
-            Line::from(Span::styled(
-                "  4. Reboot into installed system",
-                Style::default().fg(Color::DarkGray),
-            )),
-            Line::from(Span::styled(
-                "  5. First-boot hardware reconciliation",
-                Style::default().fg(Color::DarkGray),
-            )),
-        ];
-        let info_panel = Paragraph::new(info_lines);
-        frame.render_widget(info_panel, info);
     }
 
     fn render_building(&self, frame: &mut Frame, area: Rect) {
