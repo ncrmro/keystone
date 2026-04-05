@@ -1,6 +1,6 @@
 //! Create Configuration screen — multi-field form for generating a new Keystone config.
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
@@ -9,6 +9,8 @@ use ratatui::{
     Frame,
 };
 
+use crate::action::Action;
+use crate::component::Component;
 use crate::template::{MachineType, StorageType};
 use crate::widgets::TextInput;
 
@@ -367,6 +369,80 @@ fn centered_rect(percent_x: u16, area: Rect) -> Rect {
         ])
         .split(area);
     layout[1]
+}
+
+impl Component for CreateConfigScreen {
+    fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        if let Event::Key(key) = event {
+            if key.kind != KeyEventKind::Press {
+                return Ok(None);
+            }
+            return Ok(self.handle_key_event(key));
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
+        self.render(frame, area);
+        Ok(())
+    }
+}
+
+impl CreateConfigScreen {
+    /// Handle a key event, returning an optional global Action for navigation.
+    fn handle_key_event(&mut self, key: &KeyEvent) -> Option<Action> {
+        let field = self.current_form_field();
+
+        if field.is_text_input() {
+            match key.code {
+                KeyCode::Tab => {
+                    self.next_field();
+                    None
+                }
+                KeyCode::BackTab => {
+                    self.prev_field();
+                    None
+                }
+                KeyCode::Enter => {
+                    // Submit returns a CreateConfigAction; async handling
+                    // stays in the legacy path until fully migrated.
+                    let _action = self.submit();
+                    None
+                }
+                KeyCode::Esc => Some(Action::Quit),
+                _ => {
+                    self.handle_text_input(*key);
+                    None
+                }
+            }
+        } else {
+            // Selection field (MachineType, StorageType)
+            match key.code {
+                KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => {
+                    self.next_field();
+                    None
+                }
+                KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => {
+                    self.prev_field();
+                    None
+                }
+                KeyCode::Left | KeyCode::Char('h') => {
+                    self.cycle_selection_prev();
+                    None
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    self.cycle_selection_next();
+                    None
+                }
+                KeyCode::Enter => {
+                    let _action = self.submit();
+                    None
+                }
+                KeyCode::Esc => Some(Action::Quit),
+                _ => None,
+            }
+        }
+    }
 }
 
 #[cfg(test)]

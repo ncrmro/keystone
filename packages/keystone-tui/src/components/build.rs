@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::process::Stdio;
 
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -15,6 +16,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
+
+use crate::action::Action;
+use crate::component::Component;
 
 /// Messages sent from the build subprocess to the UI.
 pub enum BuildMessage {
@@ -293,6 +297,48 @@ impl BuildScreen {
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
+    }
+}
+
+impl Component for BuildScreen {
+    fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        if let Event::Key(key) = event {
+            if key.kind != KeyEventKind::Press {
+                return Ok(None);
+            }
+            return Ok(match key.code {
+                KeyCode::Char('q') => {
+                    if self.is_finished() {
+                        Some(Action::Quit)
+                    } else {
+                        None
+                    }
+                }
+                KeyCode::Esc => {
+                    if self.is_finished() {
+                        Some(Action::GoBack)
+                    } else {
+                        self.cancel();
+                        None
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.scroll_up();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.scroll_down();
+                    None
+                }
+                _ => None,
+            });
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
+        self.render(frame, area);
+        Ok(())
     }
 }
 

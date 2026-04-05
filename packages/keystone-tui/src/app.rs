@@ -28,13 +28,18 @@ pub enum AppScreen {
 }
 
 impl AppScreen {
-    /// Get a mutable reference to the Component trait if this screen implements it.
-    /// Returns None for screens still using the legacy dispatch pattern.
+    /// Get a mutable reference to the Component trait object for this screen.
     pub fn as_component_mut(&mut self) -> Option<&mut dyn crate::component::Component> {
         match self {
             AppScreen::Welcome(s) => Some(s),
-            // Add more screens here as they are migrated to Component trait
-            _ => None,
+            AppScreen::CreateConfig(s) => Some(s),
+            AppScreen::Hosts(s) => Some(s),
+            AppScreen::HostDetail(s) => Some(s),
+            AppScreen::Build(s) => Some(s),
+            AppScreen::Iso(s) => Some(s),
+            AppScreen::Deploy(s) => Some(s),
+            AppScreen::Install(s) => Some(s),
+            AppScreen::FirstBoot(s) => Some(s),
         }
     }
 }

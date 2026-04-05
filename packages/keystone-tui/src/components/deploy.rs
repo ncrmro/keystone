@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 use std::process::Stdio;
 
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -21,6 +22,8 @@ use ratatui::{
     Frame,
 };
 
+use crate::action::Action;
+use crate::component::Component;
 use crate::widgets::TextInput;
 
 /// A discovered or manually entered deployment target.
@@ -620,6 +623,96 @@ impl DeployScreen {
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
+    }
+}
+
+impl Component for DeployScreen {
+    fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        if let Event::Key(key) = event {
+            if key.kind != KeyEventKind::Press {
+                return Ok(None);
+            }
+            return Ok(self.handle_key_event(key.code, key));
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
+        self.render(frame, area);
+        Ok(())
+    }
+}
+
+impl DeployScreen {
+    /// Handle a key press, returning an optional global Action.
+    fn handle_key_event(
+        &mut self,
+        code: KeyCode,
+        key: &crossterm::event::KeyEvent,
+    ) -> Option<Action> {
+        match self.phase() {
+            DeployPhase::Discovery => match code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.target_up();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.target_down();
+                    None
+                }
+                KeyCode::Enter => {
+                    self.select_target();
+                    None
+                }
+                KeyCode::Char('m') => {
+                    self.enter_manual_input();
+                    None
+                }
+                KeyCode::Esc | KeyCode::Char('q') => Some(Action::GoBack),
+                _ => None,
+            },
+            DeployPhase::ManualInput => match code {
+                KeyCode::Enter => {
+                    self.submit_manual();
+                    None
+                }
+                KeyCode::Esc => {
+                    self.go_back();
+                    None
+                }
+                _ => {
+                    self.handle_text_input(*key);
+                    None
+                }
+            },
+            DeployPhase::Confirm => match code {
+                KeyCode::Enter => {
+                    self.confirm_deploy();
+                    None
+                }
+                KeyCode::Esc => {
+                    self.go_back();
+                    None
+                }
+                _ => None,
+            },
+            DeployPhase::Deploying => match code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.scroll_up();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.scroll_down();
+                    None
+                }
+                _ => None,
+            },
+            DeployPhase::Done | DeployPhase::Failed(_) => match code {
+                KeyCode::Esc => Some(Action::GoBack),
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+        }
     }
 }
 
