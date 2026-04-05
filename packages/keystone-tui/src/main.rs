@@ -30,18 +30,18 @@ mod github;
 mod input;
 mod nix;
 mod repo;
-mod screens;
+mod components;
 mod ssh_keys;
 mod system;
 mod template;
 mod tui;
-mod ui;
+mod widgets;
 
 use app::{App, AppScreen};
 use cli::{Cli, Command};
 use input::{dispatch_key, handle_action, AppAction};
-use screens::first_boot::FirstBootConfig;
-use screens::install::InstallerConfig;
+use components::first_boot::FirstBootConfig;
+use components::install::InstallerConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LaunchMode {
@@ -134,13 +134,13 @@ async fn run_screenshot_mode(screen_name: &str) -> Result<()> {
     // Build the screen to render
     match screen_name {
         "welcome" => {
-            let screen = screens::welcome::WelcomeScreen::new();
+            let screen = components::welcome::WelcomeScreen::new();
             terminal.draw(|frame| {
                 screen.render(frame, frame.area());
             })?;
         }
         "create-config" => {
-            let screen = screens::create_config::CreateConfigScreen::new("my-config".to_string());
+            let screen = components::create_config::CreateConfigScreen::new("my-config".to_string());
             terminal.draw(|frame| {
                 screen.render(frame, frame.area());
             })?;
@@ -153,7 +153,7 @@ async fn run_screenshot_mode(screen_name: &str) -> Result<()> {
                     let hosts: Vec<crate::nix::HostInfo> =
                         hosts_screen.hosts().into_iter().cloned().collect();
                     let mut screen =
-                        screens::hosts::HostsScreen::new("keystone".to_string(), hosts);
+                        components::hosts::HostsScreen::new("keystone".to_string(), hosts);
                     terminal.draw(|frame| {
                         screen.render(frame, frame.area());
                     })?;
@@ -161,7 +161,7 @@ async fn run_screenshot_mode(screen_name: &str) -> Result<()> {
                 _ => {
                     // No repos found, show empty hosts
                     let mut screen =
-                        screens::hosts::HostsScreen::new("keystone".to_string(), Vec::new());
+                        components::hosts::HostsScreen::new("keystone".to_string(), Vec::new());
                     terminal.draw(|frame| {
                         screen.render(frame, frame.area());
                     })?;

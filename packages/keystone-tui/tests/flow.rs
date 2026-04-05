@@ -8,7 +8,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifi
 use keystone_tui::app::{App, AppScreen};
 use keystone_tui::input::{dispatch_key, handle_action, AppAction};
 use keystone_tui::nix::HostInfo;
-use keystone_tui::screens::hosts::HostsScreen;
+use keystone_tui::components::hosts::HostsScreen;
 
 /// Helper to create a key press event.
 fn key(code: KeyCode) -> KeyEvent {
@@ -67,7 +67,7 @@ fn test_hosts_to_detail_and_back() {
             assert_eq!(host.name, "laptop");
             // Manually transition (in real app, handle_action does this)
             app.current_screen = AppScreen::HostDetail(
-                keystone_tui::screens::host_detail::HostDetailScreen::new(host),
+                keystone_tui::components::host_detail::HostDetailScreen::new(host),
             );
         }
         other => panic!("Expected GoToHostDetail, got {:?}", other),
@@ -132,7 +132,7 @@ fn test_quit_from_any_screen() {
     // Quit from HostDetail
     let mut app = App::new_for_test();
     app.current_screen = AppScreen::HostDetail(
-        keystone_tui::screens::host_detail::HostDetailScreen::new(HostInfo {
+        keystone_tui::components::host_detail::HostDetailScreen::new(HostInfo {
             name: "host".to_string(),
             system: None,
             keystone_modules: vec![],

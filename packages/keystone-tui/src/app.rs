@@ -3,15 +3,15 @@ use std::path::{Path, PathBuf};
 use crate::config::{AppConfig, KeystoneRepo};
 use crate::nix;
 use crate::repo;
-use crate::screens::build::BuildScreen;
-use crate::screens::create_config::CreateConfigScreen;
-use crate::screens::deploy::DeployScreen;
-use crate::screens::first_boot::FirstBootScreen;
-use crate::screens::host_detail::HostDetailScreen;
-use crate::screens::hosts::HostsScreen;
-use crate::screens::install::InstallScreen;
-use crate::screens::iso::IsoScreen;
-use crate::screens::welcome::WelcomeScreen;
+use crate::components::build::BuildScreen;
+use crate::components::create_config::CreateConfigScreen;
+use crate::components::deploy::DeployScreen;
+use crate::components::first_boot::FirstBootScreen;
+use crate::components::host_detail::HostDetailScreen;
+use crate::components::hosts::HostsScreen;
+use crate::components::install::InstallScreen;
+use crate::components::iso::IsoScreen;
+use crate::components::welcome::WelcomeScreen;
 use crate::system;
 
 /// Represents the different screens/views in the TUI.
@@ -160,7 +160,7 @@ impl App {
 
     /// Create an App in installer mode — starts on the InstallScreen with
     /// pre-baked config from an ISO. Skips repo discovery and Welcome flow.
-    pub fn new_for_installer(installer_config: crate::screens::install::InstallerConfig) -> Self {
+    pub fn new_for_installer(installer_config: crate::components::install::InstallerConfig) -> Self {
         Self {
             should_quit: false,
             config: AppConfig::default(),
@@ -172,7 +172,7 @@ impl App {
     /// Create an App in first-boot mode — starts on the FirstBootScreen.
     /// Runs after a fresh install when `.first-boot-pending` marker exists.
     pub fn new_for_first_boot(
-        first_boot_config: crate::screens::first_boot::FirstBootConfig,
+        first_boot_config: crate::components::first_boot::FirstBootConfig,
     ) -> Self {
         Self {
             should_quit: false,

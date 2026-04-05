@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use crate::template::{MachineType, StorageType};
-use crate::ui::TextInput;
+use crate::widgets::TextInput;
 
 /// Which form field is currently active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
