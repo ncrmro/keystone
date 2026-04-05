@@ -7,6 +7,9 @@ use crate::components::host_detail::HostDetailScreen;
 use crate::components::hosts::HostsScreen;
 use crate::components::install::InstallScreen;
 use crate::components::iso::IsoScreen;
+use crate::components::secrets::SecretsScreen;
+use crate::components::security::SecurityScreen;
+use crate::components::services::ServicesScreen;
 use crate::components::template::CreateConfigScreen;
 use crate::components::welcome::WelcomeScreen;
 use crate::config::{AppConfig, KeystoneRepo};
@@ -25,6 +28,9 @@ pub enum AppScreen {
     Deploy(DeployScreen),
     Install(InstallScreen),
     FirstBoot(FirstBootScreen),
+    Secrets(SecretsScreen),
+    Security(SecurityScreen),
+    Services(ServicesScreen),
 }
 
 impl AppScreen {
@@ -39,6 +45,9 @@ impl AppScreen {
             AppScreen::Iso(s) => Some(s),
             AppScreen::Deploy(s) => Some(s),
             AppScreen::Install(s) => Some(s),
+            AppScreen::Secrets(s) => Some(s),
+            AppScreen::Security(s) => Some(s),
+            AppScreen::Services(s) => Some(s),
             AppScreen::FirstBoot(s) => Some(s),
         }
     }
@@ -191,13 +200,13 @@ impl App {
                 // FirstBoot is only entered via marker detection, not navigation
             }
             Screen::Secrets => {
-                // TODO: implement full secrets screen
+                self.current_screen = AppScreen::Secrets(SecretsScreen::new());
             }
             Screen::Security => {
-                // TODO: implement security enrollment screen
+                self.current_screen = AppScreen::Security(SecurityScreen::new());
             }
             Screen::Services => {
-                // TODO: implement services placement screen
+                self.current_screen = AppScreen::Services(ServicesScreen::new());
             }
             Screen::Update => {
                 // TODO: implement update screen

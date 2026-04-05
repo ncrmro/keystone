@@ -364,19 +364,9 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
             if let Some(component) = app.current_screen.as_component_mut() {
                 let _ = component.draw(frame, area);
             } else {
-                // Legacy render for screens not yet migrated
-                // TODO: remove once all screens implement Component
-                match &mut app.current_screen {
-                    AppScreen::CreateConfig(s) => s.render(frame, area),
-                    AppScreen::Hosts(s) => s.render(frame, area),
-                    AppScreen::HostDetail(s) => s.render(frame, area),
-                    AppScreen::Build(s) => s.render(frame, area),
-                    AppScreen::Iso(s) => s.render(frame, area),
-                    AppScreen::Deploy(s) => s.render(frame, area),
-                    AppScreen::Install(s) => s.render(frame, area),
-                    AppScreen::FirstBoot(s) => s.render(frame, area),
-                    AppScreen::Welcome(s) => s.render(frame, area),
-                }
+                // Unreachable — all screens implement Component.
+                // Kept for exhaustiveness until we replace AppScreen with Box<dyn Component>.
+                unreachable!("all screens implement Component")
             }
         })?;
 

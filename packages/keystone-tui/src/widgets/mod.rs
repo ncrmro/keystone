@@ -5,6 +5,7 @@
 
 mod input;
 mod menu;
+pub mod sidebar;
 
 pub use input::TextInput;
 #[allow(unused_imports)]

@@ -5,20 +5,20 @@ expression: output
                        Hosts Dashboard - my-infra  3 hosts                      
                                                                                 
 ────────────────────────────────────────────────────────────────────────────────
- laptop                   ●    │  Arch   x86_64-linux                           
-   100.64.0.1                  │                                                
- server                   ●    │  Modules  operating-system                     
-   100.64.0.2                  │                                                
- rpi                      ○    │                                                
-   2026-03-12T08:00            │                                                
-                               │  Status online                                 
-                               │  TS IP  100.64.0.1                             
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-                               │                                                
-    ↑/↓: navigate • Enter: details • b: build • i: ISO • r: refresh • q: quit
+ Hosts       │ laptop               ●    │  Arch   x86_64-linux                 
+  Services   │   100.64.0.1              │                                      
+  Secrets    │ server               ●    │  Modules  operating-system           
+  Security   │   100.64.0.2              │                                      
+             │ rpi                  ○    │                                      
+             │   2026-03-12T08:00        │                                      
+             │                           │  Status online                       
+             │                           │  TS IP  100.64.0.1                   
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+             │                           │                                      
+ 1-4: sections • ↑/↓: navigate • Enter: details • i: ISO • r: refresh • q: quit
