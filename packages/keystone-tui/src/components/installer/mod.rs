@@ -157,26 +157,36 @@ impl Component for InstallerScreen {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
-        // Three-column layout matching other sidebar screens
-        let columns = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(14),     // Sidebar
-                Constraint::Percentage(50), // Main content
-                Constraint::Min(20),        // Status / output
-            ])
-            .split(area);
+        let help = match self.phase {
+            Phase::Configure => "1-5: sections • Tab: toggle profile • Enter: build • q: quit",
+            Phase::Building | Phase::Writing => "building...",
+            Phase::SelectTarget => "↑/↓: select • Enter: write ISO • r: refresh • Esc: back",
+            Phase::Done | Phase::Failed(_) => "Esc: back • q: quit",
+        };
 
-        // Sidebar — Installer is index 4 (after Security)
-        crate::widgets::sidebar::render(frame, columns[0], 4);
+        let shell =
+            crate::widgets::shell::render_shell(frame, area, "Installer", "", 4, help, None);
 
+        // Split content for phases that need two columns
+        let content = shell.content;
         match &self.phase {
-            Phase::Configure => self.render_configure(frame, columns[1], columns[2]),
-            Phase::Building => self.render_building(frame, columns[1]),
-            Phase::SelectTarget => self.render_select_target(frame, columns[1], columns[2]),
-            Phase::Writing => self.render_building(frame, columns[1]), // reuse build UI
-            Phase::Done => self.render_done(frame, columns[1]),
-            Phase::Failed(msg) => self.render_failed(frame, columns[1], msg.clone()),
+            Phase::Configure => {
+                let panels = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Min(20)])
+                    .split(content);
+                self.render_configure(frame, panels[0], panels[1]);
+            }
+            Phase::Building | Phase::Writing => self.render_building(frame, content),
+            Phase::SelectTarget => {
+                let panels = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Min(20)])
+                    .split(content);
+                self.render_select_target(frame, panels[0], panels[1]);
+            }
+            Phase::Done => self.render_done(frame, content),
+            Phase::Failed(msg) => self.render_failed(frame, content, msg.clone()),
         }
 
         Ok(())

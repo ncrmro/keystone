@@ -2,14 +2,14 @@
 source: tests/render.rs
 expression: output
 ---
-               Hosts Dashboard - empty-repo                 
-                                                            
+                        empty-repo                          
 ────────────────────────────────────────────────────────────
- Hosts       │   No hosts found                             
-  Services   │                                              
-  Secrets    │  Press 'a' to add                            
-  Security   │                                              
-  Installer  │                                              
+ Hosts       │                No hosts found                
+ Services    │                                              
+ Secrets     │               Press 'a' to add               
+ Security    │                                              
+ Installer   │                                              
+             │                                              
              │                                              
              │                                              
              │                                              

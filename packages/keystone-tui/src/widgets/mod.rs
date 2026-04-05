@@ -5,6 +5,7 @@
 
 mod input;
 mod menu;
+pub mod shell;
 pub mod sidebar;
 
 pub use input::TextInput;

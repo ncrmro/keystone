@@ -2,23 +2,23 @@
 source: tests/render.rs
 expression: output
 ---
-                       Hosts Dashboard - my-infra  2 hosts                      
-                                                                                
+                                my-infra  2 hosts                               
 ────────────────────────────────────────────────────────────────────────────────
- Hosts       │ laptop                    │  Arch   x86_64-linux                 
-  Services   │   localhost               │                                      
-  Secrets    │ server                    │  Modules  (none)                     
-  Security   │                           │                                      
-  Installer  │                           │                                      
-             │                           │                                      
-             │                           │                                      
-             │                           │                                      
-             │                           │                                      
-             │                           │                                      
-             │                           │                                      
-             │                           │                                      
-             │                           │                                      
-             │                           │                                      
-             │                           │                                      
-             │                           │                                      
+ Hosts       │ laptop                      │  Arch   x86_64-linux               
+ Services    │   localhost                 │                                    
+ Secrets     │ server                      │  Modules  (none)                   
+ Security    │                             │                                    
+ Installer   │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
+             │                             │                                    
       1-5: sections • ↑/↓: navigate • Enter: details • r: refresh • q: quit

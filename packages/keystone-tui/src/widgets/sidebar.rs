@@ -11,31 +11,15 @@ use ratatui::{
 /// A sidebar navigation entry.
 pub struct SidebarItem {
     pub label: &'static str,
-    pub icon: &'static str,
 }
 
 /// The standard navigation sections.
 pub const NAV_ITEMS: &[SidebarItem] = &[
-    SidebarItem {
-        label: "Hosts",
-        icon: "",
-    },
-    SidebarItem {
-        label: "Services",
-        icon: "",
-    },
-    SidebarItem {
-        label: "Secrets",
-        icon: "",
-    },
-    SidebarItem {
-        label: "Security",
-        icon: "",
-    },
-    SidebarItem {
-        label: "Installer",
-        icon: "",
-    },
+    SidebarItem { label: "Hosts" },
+    SidebarItem { label: "Services" },
+    SidebarItem { label: "Secrets" },
+    SidebarItem { label: "Security" },
+    SidebarItem { label: "Installer" },
 ];
 
 /// Render the navigation sidebar. `active_index` highlights the current section.
@@ -51,11 +35,7 @@ pub fn render(frame: &mut Frame, area: Rect, active_index: usize) {
             } else {
                 Style::default().fg(Color::DarkGray)
             };
-            let prefix = if i == active_index { " " } else { "  " };
-            ListItem::new(Line::from(Span::styled(
-                format!("{}{}", prefix, item.label),
-                style,
-            )))
+            ListItem::new(Line::from(Span::styled(format!(" {}", item.label), style)))
         })
         .collect();
 

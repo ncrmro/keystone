@@ -2,14 +2,14 @@
 source: tests/render.rs
 expression: output
 ---
-             Hosts Dashboard - my-infra  2 hosts            
-                                                            
+                      my-infra  2 hosts                     
 ────────────────────────────────────────────────────────────
  Hosts       │ laptop             │  Arch   x86_64-linux    
-  Services   │ server             │                         
-  Secrets    │                    │  Modules  operating-syst
-  Security   │                    │                         
-  Installer  │                    │                         
+ Services    │ server             │                         
+ Secrets     │                    │  Modules  operating-syst
+ Security    │                    │                         
+ Installer   │                    │                         
+             │                    │                         
              │                    │                         
              │                    │                         
              │                    │                         
