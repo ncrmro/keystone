@@ -5,7 +5,7 @@ TEMPLATES_DIR="${AGENT_MAIL_TEMPLATES:-}"
 
 usage() {
   cat <<'EOF'
-Usage: agent-mail <template> --to ADDRESS [--subject TITLE] [--dry-run] [--send]
+Usage: agent-mail <template> --to ADDRESS [--subject TITLE] [--dry-run]
        agent-mail --list
 
 Send structured email templates to OS agents via himalaya.
@@ -14,14 +14,12 @@ Options:
   --to ADDRESS    Recipient email address (required)
   --subject TITLE Override the title portion of the subject line
   --dry-run       Print the email to stdout instead of sending
-  --send          Send without opening editor or asking for confirmation
   --list          List available templates
   -h, --help      Show this help
 
 Examples:
   agent-mail project.new --to drago@ncrmro.com
   agent-mail task --to luce@ncrmro.com --subject "Fix CI pipeline"
-  agent-mail task --to luce@ncrmro.com --subject "Deploy v2" --send
   agent-mail --list
 EOF
 }
@@ -71,7 +69,6 @@ TEMPLATE=""
 TO=""
 SUBJECT=""
 DRY_RUN=false
-SEND=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -89,10 +86,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dry-run)
       DRY_RUN=true
-      shift
-      ;;
-    --send)
-      SEND=true
       shift
       ;;
     -h|--help)
@@ -170,18 +163,16 @@ if [[ "$DRY_RUN" == true ]]; then
   exit 0
 fi
 
-if [[ "$SEND" == false ]]; then
-  # Open in editor
-  EDITOR="${EDITOR:-vi}"
-  "$EDITOR" "$TMPFILE"
+# Open in editor
+EDITOR="${EDITOR:-vi}"
+"$EDITOR" "$TMPFILE"
 
-  # Confirm send
-  echo ""
-  read -rp "Send to $TO? [y/N] " confirm
-  if [[ "$confirm" != [yY] ]]; then
-    echo "Aborted."
-    exit 0
-  fi
+# Confirm send
+echo ""
+read -rp "Send to $TO? [y/N] " confirm
+if [[ "$confirm" != [yY] ]]; then
+  echo "Aborted."
+  exit 0
 fi
 
 # Send via himalaya

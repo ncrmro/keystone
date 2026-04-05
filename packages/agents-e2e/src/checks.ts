@@ -2,15 +2,7 @@
 // See specs/REQ-031-e2e-os-agent-product-test.md
 
 import { execFileSync, execSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { AgentCtl } from "./agentctl";
 import type { ForgejoPlatform } from "./forgejo";
@@ -227,12 +219,12 @@ export async function dryRun(
     }
   }
 
-  // Check agent-mail available
+  // Check himalaya available
   try {
-    execSync("which agent-mail", { stdio: "pipe" });
-    report.check("dryrun_agent_mail", "pass", "agent-mail is available");
+    execSync("which himalaya", { stdio: "pipe" });
+    report.check("dryrun_himalaya", "pass", "himalaya is available");
   } catch {
-    report.check("dryrun_agent_mail", "fail", "agent-mail not found in PATH");
+    report.check("dryrun_himalaya", "fail", "himalaya not found in PATH");
   }
 }
 
@@ -369,27 +361,19 @@ export async function productEmail(config: Config, report: Report) {
     agent: config.productAgent,
     to: toAddr,
   });
-  const tmpTemplatesDir = mkdtempSync(join(tmpdir(), "agents-e2e-templates-"));
   try {
-    writeFileSync(
-      join(tmpTemplatesDir, "feature.requirement.md"),
+    const fromAddr = detectSender();
+    const eml = [
+      `From: ${fromAddr}`,
+      `To: ${toAddr}`,
+      `Subject: [feature.requirement] Palindrome Checker`,
+      `Date: ${new Date().toUTCString()}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: text/plain; charset=utf-8`,
+      ``,
       PALINDROME_REQUIREMENT_TEMPLATE,
-    );
-    execFileSync(
-      "agent-mail",
-      [
-        "feature.requirement",
-        "--to",
-        toAddr,
-        "--subject",
-        "Palindrome Checker",
-        "--send",
-      ],
-      {
-        stdio: "pipe",
-        env: { ...process.env, AGENT_MAIL_TEMPLATES: tmpTemplatesDir },
-      },
-    );
+    ].join("\r\n");
+    execSync("himalaya message send", { input: eml, stdio: ["pipe", "pipe", "pipe"] });
     report.check(
       "product_email_dispatch",
       "pass",
@@ -402,8 +386,6 @@ export async function productEmail(config: Config, report: Report) {
       `Failed to send email: ${err}`,
     );
     throw err;
-  } finally {
-    rmSync(tmpTemplatesDir, { recursive: true, force: true });
   }
 }
 
@@ -799,6 +781,26 @@ export async function milestoneClosed(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function detectSender(): string {
+  // Try himalaya config (most reliable)
+  const configPath = join(
+    process.env.XDG_CONFIG_HOME ?? join(process.env.HOME ?? "", ".config"),
+    "himalaya",
+    "config.toml",
+  );
+  if (existsSync(configPath)) {
+    const content = readFileSync(configPath, "utf-8");
+    const match = content.match(/^email\s*=\s*"(.+)"/m);
+    if (match) return match[1];
+  }
+  // Fall back to git config
+  try {
+    return execSync("git config user.email", { encoding: "utf-8" }).trim();
+  } catch {
+    throw new Error("Could not detect sender email (no himalaya config or git config)");
+  }
+}
 
 function discoverServerPort(
   agentHome: string,
