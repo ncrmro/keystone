@@ -1,4 +1,12 @@
-//! Create Configuration screen — multi-field form for generating a new Keystone config.
+//! Template component — generate new Keystone configs.
+//!
+//! This is a complex component with colocated CLI/JSON shared logic:
+//! - `types.rs`: TemplateParams, TemplateResult (Serialize/Deserialize)
+//! - `run.rs`: execute(params) -> Result (shared by JSON, CLI, and TUI)
+//! - `mod.rs`: TUI form component (this file)
+
+pub mod run;
+pub mod types;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
