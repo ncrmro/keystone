@@ -7,13 +7,13 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 
 use crate::app::{App, AppScreen};
 use crate::nix::HostInfo;
-use crate::screens;
+use crate::components;
 
 /// Actions that require mutating app-level state (screen transitions).
 #[derive(Debug)]
 pub enum AppAction {
-    WelcomeAction(screens::welcome::WelcomeAction),
-    CreateConfigAction(screens::create_config::CreateConfigAction),
+    WelcomeAction(components::welcome::WelcomeAction),
+    CreateConfigAction(components::create_config::CreateConfigAction),
     GoToCreateConfig { repo_name: String },
     GoToHostDetail(HostInfo),
     GoToHosts,
@@ -73,10 +73,10 @@ pub fn dispatch_key(app: &mut App, key: KeyEvent) -> Option<AppAction> {
 
 /// Handle input for the welcome screen.
 pub fn handle_welcome_input(
-    welcome: &mut screens::welcome::WelcomeScreen,
+    welcome: &mut components::welcome::WelcomeScreen,
     key: KeyEvent,
 ) -> Option<AppAction> {
-    use screens::welcome::WelcomeState;
+    use components::welcome::WelcomeState;
 
     let in_input_state = matches!(
         welcome.state(),
@@ -126,7 +126,7 @@ pub fn handle_welcome_input(
 
 /// Handle input for the create-config form screen.
 pub fn handle_create_config_input(
-    create_config: &mut screens::create_config::CreateConfigScreen,
+    create_config: &mut components::create_config::CreateConfigScreen,
     key: KeyEvent,
 ) -> Option<AppAction> {
     let field = create_config.current_form_field();
@@ -178,7 +178,7 @@ pub fn handle_create_config_input(
 
 /// Handle input for the hosts screen.
 pub fn handle_hosts_input(
-    hosts: &mut screens::hosts::HostsScreen,
+    hosts: &mut components::hosts::HostsScreen,
     key: KeyEvent,
 ) -> Option<AppAction> {
     match key.code {
@@ -208,7 +208,7 @@ pub fn handle_hosts_input(
 
 /// Handle input for the host detail screen.
 pub fn handle_host_detail_input(
-    _detail: &mut screens::host_detail::HostDetailScreen,
+    _detail: &mut components::host_detail::HostDetailScreen,
     key: KeyEvent,
 ) -> Option<AppAction> {
     match key.code {
@@ -224,7 +224,7 @@ pub fn handle_host_detail_input(
 
 /// Handle input for the build screen.
 pub fn handle_build_input(
-    build: &mut screens::build::BuildScreen,
+    build: &mut components::build::BuildScreen,
     key: KeyEvent,
 ) -> Option<AppAction> {
     match key.code {
@@ -256,8 +256,8 @@ pub fn handle_build_input(
 }
 
 /// Handle input for the ISO screen.
-pub fn handle_iso_input(iso: &mut screens::iso::IsoScreen, key: KeyEvent) -> Option<AppAction> {
-    use screens::iso::IsoPhase;
+pub fn handle_iso_input(iso: &mut components::iso::IsoScreen, key: KeyEvent) -> Option<AppAction> {
+    use components::iso::IsoPhase;
 
     match iso.phase() {
         IsoPhase::Building => match key.code {
@@ -300,10 +300,10 @@ pub fn handle_iso_input(iso: &mut screens::iso::IsoScreen, key: KeyEvent) -> Opt
 
 /// Handle input for the deploy screen.
 pub fn handle_deploy_input(
-    deploy: &mut screens::deploy::DeployScreen,
+    deploy: &mut components::deploy::DeployScreen,
     key: KeyEvent,
 ) -> Option<AppAction> {
-    use screens::deploy::DeployPhase;
+    use components::deploy::DeployPhase;
 
     match deploy.phase() {
         DeployPhase::Discovery => match key.code {
@@ -348,10 +348,10 @@ pub fn handle_deploy_input(
 
 /// Handle input for the install screen.
 pub fn handle_install_input(
-    install: &mut screens::install::InstallScreen,
+    install: &mut components::install::InstallScreen,
     key: KeyEvent,
 ) -> Option<AppAction> {
-    use screens::install::InstallPhase;
+    use components::install::InstallPhase;
 
     match install.phase() {
         InstallPhase::Summary => match key.code {
@@ -410,10 +410,10 @@ pub fn handle_install_input(
 
 /// Handle input for the first-boot screen.
 pub fn handle_first_boot_input(
-    first_boot: &mut screens::first_boot::FirstBootScreen,
+    first_boot: &mut components::first_boot::FirstBootScreen,
     key: KeyEvent,
 ) -> Option<AppAction> {
-    use screens::first_boot::FirstBootPhase;
+    use components::first_boot::FirstBootPhase;
 
     match first_boot.phase() {
         FirstBootPhase::Welcome => match key.code {
@@ -471,11 +471,11 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         }
         AppAction::GoToCreateConfig { repo_name } => {
             app.current_screen =
-                AppScreen::CreateConfig(screens::create_config::CreateConfigScreen::new(repo_name));
+                AppScreen::CreateConfig(components::create_config::CreateConfigScreen::new(repo_name));
         }
         AppAction::GoToHostDetail(host) => {
             app.current_screen =
-                AppScreen::HostDetail(screens::host_detail::HostDetailScreen::new(host));
+                AppScreen::HostDetail(components::host_detail::HostDetailScreen::new(host));
         }
         AppAction::GoToHosts => {
             // Re-load the hosts screen from the active repo
@@ -484,13 +484,13 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         AppAction::StartBuild(host_name) => {
             if let Some(repo_path) = app.active_repo_path() {
                 app.current_screen =
-                    AppScreen::Build(screens::build::BuildScreen::new(host_name, repo_path));
+                    AppScreen::Build(components::build::BuildScreen::new(host_name, repo_path));
             }
         }
         AppAction::BuildIso { host_name } => {
             if let Some(repo_path) = app.active_repo_path() {
                 app.current_screen =
-                    AppScreen::Iso(screens::iso::IsoScreen::new_for_host(repo_path, host_name));
+                    AppScreen::Iso(components::iso::IsoScreen::new_for_host(repo_path, host_name));
             }
         }
         AppAction::IsoTargetUp => {
@@ -550,7 +550,7 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         AppAction::StartDeploy { host_name } => {
             if let Some(repo_path) = app.active_repo_path() {
                 app.current_screen =
-                    AppScreen::Deploy(screens::deploy::DeployScreen::new(repo_path, host_name));
+                    AppScreen::Deploy(components::deploy::DeployScreen::new(repo_path, host_name));
             }
         }
         AppAction::DeployTargetUp => {
@@ -631,8 +631,8 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
 }
 
 /// Handle actions from the welcome screen.
-async fn handle_welcome_action(app: &mut App, action: screens::welcome::WelcomeAction) {
-    use screens::welcome::WelcomeAction;
+async fn handle_welcome_action(app: &mut App, action: components::welcome::WelcomeAction) {
+    use components::welcome::WelcomeAction;
 
     match action {
         WelcomeAction::ImportRepo { name, git_url } => {
@@ -652,7 +652,7 @@ async fn handle_welcome_action(app: &mut App, action: screens::welcome::WelcomeA
         WelcomeAction::CreateRepo { name } => {
             // Transition to the CreateConfig form instead of directly creating
             app.current_screen =
-                AppScreen::CreateConfig(screens::create_config::CreateConfigScreen::new(name));
+                AppScreen::CreateConfig(components::create_config::CreateConfigScreen::new(name));
         }
         WelcomeAction::Complete => {
             // User completed the welcome flow - transition to hosts screen
@@ -666,9 +666,9 @@ async fn handle_welcome_action(app: &mut App, action: screens::welcome::WelcomeA
 /// Handle actions from the create-config screen.
 async fn handle_create_config_action(
     app: &mut App,
-    action: screens::create_config::CreateConfigAction,
+    action: components::create_config::CreateConfigAction,
 ) {
-    use screens::create_config::CreateConfigAction;
+    use components::create_config::CreateConfigAction;
 
     match action {
         CreateConfigAction::Complete {
@@ -721,7 +721,7 @@ async fn handle_create_config_action(
                 }
                 Err(e) => {
                     // Go back to welcome screen with error
-                    let mut welcome = screens::welcome::WelcomeScreen::new();
+                    let mut welcome = components::welcome::WelcomeScreen::new();
                     welcome.set_error(format!("Failed to create configuration: {}", e));
                     app.current_screen = AppScreen::Welcome(welcome);
                 }
@@ -787,7 +787,7 @@ mod tests {
             metadata: None,
         }];
         let mut app = App::new_for_test();
-        app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
+        app.current_screen = AppScreen::Hosts(components::hosts::HostsScreen::new(
             "test-repo".to_string(),
             hosts,
         ));
@@ -806,7 +806,7 @@ mod tests {
             metadata: None,
         }];
         let mut app = App::new_for_test();
-        app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
+        app.current_screen = AppScreen::Hosts(components::hosts::HostsScreen::new(
             "test-repo".to_string(),
             hosts,
         ));
@@ -826,7 +826,7 @@ mod tests {
         };
         let mut app = App::new_for_test();
         app.current_screen =
-            AppScreen::HostDetail(screens::host_detail::HostDetailScreen::new(host));
+            AppScreen::HostDetail(components::host_detail::HostDetailScreen::new(host));
 
         let action = dispatch_key(&mut app, key(KeyCode::Char('b')));
         match action {
@@ -846,7 +846,7 @@ mod tests {
         };
         let mut app = App::new_for_test();
         app.current_screen =
-            AppScreen::HostDetail(screens::host_detail::HostDetailScreen::new(host));
+            AppScreen::HostDetail(components::host_detail::HostDetailScreen::new(host));
 
         let action = dispatch_key(&mut app, key(KeyCode::Esc));
         assert!(matches!(action, Some(AppAction::GoToHosts)));
@@ -862,7 +862,7 @@ mod tests {
             metadata: None,
         }];
         let mut app = App::new_for_test();
-        app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
+        app.current_screen = AppScreen::Hosts(components::hosts::HostsScreen::new(
             "test-repo".to_string(),
             hosts,
         ));
@@ -881,7 +881,7 @@ mod tests {
             metadata: None,
         }];
         let mut app = App::new_for_test();
-        app.current_screen = AppScreen::Hosts(screens::hosts::HostsScreen::new(
+        app.current_screen = AppScreen::Hosts(components::hosts::HostsScreen::new(
             "test-repo".to_string(),
             hosts,
         ));
@@ -901,7 +901,7 @@ mod tests {
         };
         let mut app = App::new_for_test();
         app.current_screen =
-            AppScreen::HostDetail(screens::host_detail::HostDetailScreen::new(host));
+            AppScreen::HostDetail(components::host_detail::HostDetailScreen::new(host));
 
         let action = dispatch_key(&mut app, key(KeyCode::Char('q')));
         assert!(matches!(action, Some(AppAction::Quit)));

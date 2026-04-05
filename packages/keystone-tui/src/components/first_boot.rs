@@ -22,7 +22,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::ui::TextInput;
+use crate::widgets::TextInput;
 
 /// Configuration for the first-boot flow.
 #[derive(Debug, Clone)]

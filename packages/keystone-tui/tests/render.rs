@@ -6,10 +6,10 @@
 use ratatui::{backend::TestBackend, Terminal};
 
 use keystone_tui::nix::HostInfo;
-use keystone_tui::screens::build::{BuildMessage, BuildResult, BuildScreen};
-use keystone_tui::screens::host_detail::HostDetailScreen;
-use keystone_tui::screens::hosts::HostsScreen;
-use keystone_tui::screens::welcome::WelcomeScreen;
+use keystone_tui::components::build::{BuildMessage, BuildResult, BuildScreen};
+use keystone_tui::components::host_detail::HostDetailScreen;
+use keystone_tui::components::hosts::HostsScreen;
+use keystone_tui::components::welcome::WelcomeScreen;
 use keystone_tui::system::{
     CpuHistory, DiskInfo, HostStatus, SystemMetrics, TailscalePeer, TempReading,
 };

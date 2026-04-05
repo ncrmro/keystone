@@ -21,7 +21,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::ui::TextInput;
+use crate::widgets::TextInput;
 
 /// A discovered or manually entered deployment target.
 #[derive(Debug, Clone)]

@@ -1,4 +1,4 @@
-use crate::ui::TextInput;
+use crate::widgets::TextInput;
 use crossterm::event::KeyEvent;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
