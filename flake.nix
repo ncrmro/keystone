@@ -411,6 +411,9 @@
           keystone-update-menu = import ./tests/module/keystone-update-menu.nix {
             inherit pkgs lib;
           };
+          keystone-fingerprint-menu = import ./tests/module/keystone-fingerprint-menu.nix {
+            inherit pkgs lib;
+          };
           hyprland-bindings-agent-conflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
             inherit pkgs;
           };

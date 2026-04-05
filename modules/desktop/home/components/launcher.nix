@@ -134,6 +134,11 @@ in
           sourcePath = ./keystone-hardware.lua;
         }
         {
+          targetPath = ".config/elephant/menus/keystone-fingerprint.lua";
+          relativePath = "modules/desktop/home/components/keystone-fingerprint.lua";
+          sourcePath = ./keystone-fingerprint.lua;
+        }
+        {
           targetPath = ".config/elephant/menus/keystone-monitors.lua";
           relativePath = "modules/desktop/home/components/keystone-monitors.lua";
           sourcePath = ./keystone-monitors.lua;
@@ -321,6 +326,10 @@ in
             "menus:keystone-hardware" = {
               input = " Hardware";
               list = "No hardware actions available";
+            };
+            "menus:keystone-fingerprint" = {
+              input = " Fingerprint";
+              list = "No fingerprint actions available";
             };
             "menus:keystone-monitor-actions" = {
               input = " Monitor actions";

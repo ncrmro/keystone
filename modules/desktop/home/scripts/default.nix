@@ -257,6 +257,11 @@ let
     builtins.readFile ./keystone-hardware-menu.sh
   );
 
+  # Fingerprint enrollment and management controller
+  keystoneFingerprintMenu = pkgs.writeShellScriptBin "keystone-fingerprint-menu" (
+    builtins.readFile ./keystone-fingerprint-menu.sh
+  );
+
   # Multi-account mail and calendar controller
   keystoneAccountsMenu = pkgs.writeShellScriptBin "keystone-accounts-menu" (
     builtins.readFile ./keystone-accounts-menu.sh
@@ -473,6 +478,20 @@ let
         pkgs.keystone.ks
         pkgs.libnotify
         pkgs.systemd
+        pkgs.util-linux
+        pkgs.walker
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-fingerprint-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-fingerprint-menu.sh";
+      package = keystoneFingerprintMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.gnugrep
+        pkgs.jq
+        pkgs.libnotify
         pkgs.util-linux
         pkgs.walker
       ];
