@@ -19,7 +19,7 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
@@ -89,7 +89,7 @@ impl InstallerScreen {
     pub fn new() -> Self {
         Self {
             phase: Phase::Configure,
-            profile: InstallProfile::Desktop,
+            profile: InstallProfile::Server,
             usb_targets: Vec::new(),
             selected_target: 0,
             output_lines: Vec::new(),
@@ -188,6 +188,7 @@ impl Component for InstallerScreen {
 
 impl InstallerScreen {
     fn render_configure(&self, frame: &mut Frame, area: Rect, _unused: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -218,25 +219,21 @@ impl InstallerScreen {
             Line::from(""),
             Line::from(Span::styled(
                 " Boot from USB → TUI runs disko → nixos-install → reboot → first-boot setup.",
-                Style::default().fg(Color::DarkGray),
+                t.inactive_style(),
             )),
         ]);
         frame.render_widget(desc, chunks[0]);
 
         // Profile selection — render both options, highlight active
         let desktop_style = if self.profile == InstallProfile::Desktop {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
+            t.active_style()
         } else {
-            Style::default().fg(Color::DarkGray)
+            t.inactive_style()
         };
         let server_style = if self.profile == InstallProfile::Server {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
+            t.active_style()
         } else {
-            Style::default().fg(Color::DarkGray)
+            t.inactive_style()
         };
 
         let profile_widget = Paragraph::new(vec![
@@ -253,35 +250,36 @@ impl InstallerScreen {
             Block::default()
                 .title(" Install Profile (Tab to switch) ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(t.inactive_style()),
         );
         frame.render_widget(profile_widget, chunks[2]);
 
         // Options summary
         let options = Paragraph::new(vec![
             Line::from(vec![
-                Span::styled("  SSH keys   ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  SSH keys   ", t.inactive_style()),
                 Span::styled("from ~/.ssh/ + GitHub", Style::default()),
             ]),
             Line::from(vec![
-                Span::styled("  Network    ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Network    ", t.inactive_style()),
                 Span::styled("NetworkManager (wired + WiFi)", Style::default()),
             ]),
             Line::from(vec![
-                Span::styled("  Airgapped  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("not yet supported", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Airgapped  ", t.inactive_style()),
+                Span::styled("not yet supported", t.inactive_style()),
             ]),
         ])
         .block(
             Block::default()
                 .title(" Options ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(t.inactive_style()),
         );
         frame.render_widget(options, chunks[4]);
     }
 
     fn render_building(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -291,11 +289,8 @@ impl InstallerScreen {
             ])
             .split(area);
 
-        let title = Paragraph::new(Text::styled(
-            "Building ISO...",
-            Style::default().bold().yellow(),
-        ))
-        .alignment(Alignment::Center);
+        let title = Paragraph::new(Text::styled("Building ISO...", t.title_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(title, chunks[0]);
 
         let output: Vec<Line> = self
@@ -310,6 +305,7 @@ impl InstallerScreen {
     }
 
     fn render_select_target(&self, frame: &mut Frame, main: Rect, info: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -319,17 +315,14 @@ impl InstallerScreen {
             ])
             .split(main);
 
-        let title = Paragraph::new(Text::styled(
-            "Select USB Target",
-            Style::default().bold().yellow(),
-        ))
-        .alignment(Alignment::Center);
+        let title = Paragraph::new(Text::styled("Select USB Target", t.title_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(title, chunks[0]);
 
         if self.usb_targets.is_empty() {
             let msg = Paragraph::new(Text::styled(
                 "No removable USB devices detected.\n\nInsert a USB drive and press 'r' to refresh.",
-                Style::default().fg(Color::DarkGray),
+                t.inactive_style(),
             ))
             .alignment(Alignment::Center);
             frame.render_widget(msg, chunks[1]);
@@ -338,19 +331,17 @@ impl InstallerScreen {
                 .usb_targets
                 .iter()
                 .enumerate()
-                .map(|(i, t)| {
+                .map(|(i, target)| {
                     let style = if i == self.selected_target {
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD)
+                        t.active_style()
                     } else {
                         Style::default()
                     };
                     ListItem::new(vec![
-                        Line::from(Span::styled(format!(" {}", t.model), style)),
+                        Line::from(Span::styled(format!(" {}", target.model), style)),
                         Line::from(Span::styled(
-                            format!("   {} — {}", t.path, t.size),
-                            Style::default().fg(Color::DarkGray),
+                            format!("   {} — {}", target.path, target.size),
+                            t.inactive_style(),
                         )),
                     ])
                 })
@@ -366,7 +357,7 @@ impl InstallerScreen {
 
         let help = Paragraph::new(Text::styled(
             "↑/↓: select • Enter: write ISO • r: refresh • Esc: back",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
@@ -375,36 +366,35 @@ impl InstallerScreen {
         let warning = Paragraph::new(vec![
             Line::from(Span::styled(
                 " WARNING",
-                Style::default().fg(Color::Red).bold(),
+                t.error_style().add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(Span::styled(
                 " Writing the ISO will ERASE all data",
-                Style::default().fg(Color::Red),
+                t.error_style(),
             )),
             Line::from(Span::styled(
                 " on the selected USB device.",
-                Style::default().fg(Color::Red),
+                t.error_style(),
             )),
         ]);
         frame.render_widget(warning, info);
     }
 
     fn render_done(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let msg = Paragraph::new(Text::styled(
             "ISO written successfully!\n\nRemove the USB drive and boot the target machine from it.",
-            Style::default().fg(Color::Green),
+            Style::default().fg(t.active),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(msg, area);
     }
 
     fn render_failed(&self, frame: &mut Frame, area: Rect, msg: String) {
-        let text = Paragraph::new(Text::styled(
-            format!("Failed: {}", msg),
-            Style::default().fg(Color::Red),
-        ))
-        .alignment(Alignment::Center);
+        let t = crate::theme::default();
+        let text = Paragraph::new(Text::styled(format!("Failed: {}", msg), t.error_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(text, area);
     }
 }

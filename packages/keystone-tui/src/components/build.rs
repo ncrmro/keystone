@@ -11,7 +11,6 @@ use tokio_util::sync::CancellationToken;
 
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
     text::{Line, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
@@ -228,6 +227,7 @@ impl BuildScreen {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -246,9 +246,9 @@ impl BuildScreen {
             Some(BuildResult::Error(_)) => " (error)",
         };
         let title_style = match &self.result {
-            None => Style::default().bold().yellow(),
-            Some(BuildResult::Success) => Style::default().bold().green(),
-            _ => Style::default().bold().red(),
+            None => t.title_style(),
+            Some(BuildResult::Success) => t.active_style(),
+            _ => t.error_style().add_modifier(ratatui::style::Modifier::BOLD),
         };
         let title = Paragraph::new(Text::styled(
             format!("Building: {}{}", self.host_name, status_indicator),
@@ -279,7 +279,7 @@ impl BuildScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(t.inactive_style()),
             )
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
@@ -291,11 +291,8 @@ impl BuildScreen {
         } else {
             "↑/↓: scroll • Esc: cancel"
         };
-        let help = Paragraph::new(Text::styled(
-            help_text,
-            Style::default().fg(Color::DarkGray),
-        ))
-        .alignment(Alignment::Center);
+        let help = Paragraph::new(Text::styled(help_text, t.inactive_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 }

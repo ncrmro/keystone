@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
@@ -374,23 +374,21 @@ impl DeployScreen {
     // -- rendering --
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         match &self.phase {
             DeployPhase::Discovery => self.render_discovery(frame, area),
             DeployPhase::ManualInput => self.render_manual_input(frame, area),
             DeployPhase::Confirm => self.render_confirm(frame, area),
-            DeployPhase::Deploying => {
-                self.render_output(frame, area, "Deploying...", Color::Yellow)
-            }
-            DeployPhase::Done => {
-                self.render_output(frame, area, "Deployment Complete", Color::Green)
-            }
+            DeployPhase::Deploying => self.render_output(frame, area, "Deploying...", t.accent),
+            DeployPhase::Done => self.render_output(frame, area, "Deployment Complete", t.active),
             DeployPhase::Failed(msg) => {
-                self.render_output(frame, area, &format!("Failed: {msg}"), Color::Red)
+                self.render_output(frame, area, &format!("Failed: {msg}"), t.error)
             }
         }
     }
 
     fn render_discovery(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -403,7 +401,7 @@ impl DeployScreen {
         let title_text = format!("Deploy '{}' — Select Target", self.host_name);
         let title = Paragraph::new(Text::styled(
             title_text,
-            Style::default().bold().fg(Color::Cyan),
+            Style::default().fg(t.path).add_modifier(Modifier::BOLD),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
@@ -412,7 +410,7 @@ impl DeployScreen {
         if self.scanning {
             let scanning = Paragraph::new(Text::styled(
                 "  Scanning for Keystone ISO instances via mDNS...",
-                Style::default().fg(Color::Yellow),
+                t.warning_style(),
             ))
             .block(Block::default().borders(Borders::ALL));
             frame.render_widget(scanning, chunks[1]);
@@ -423,13 +421,13 @@ impl DeployScreen {
                 Line::from(""),
                 Line::from(Span::styled(
                     "  Press 'm' to enter an IP address manually.",
-                    Style::default().fg(Color::Yellow),
+                    t.warning_style(),
                 )),
             ]))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(t.inactive_style()),
             );
             frame.render_widget(empty, chunks[1]);
         } else {
@@ -439,9 +437,7 @@ impl DeployScreen {
                 .enumerate()
                 .map(|(i, target)| {
                     let style = if i == self.selected_target {
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD)
+                        Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
                     };
@@ -451,7 +447,7 @@ impl DeployScreen {
                         "  "
                     };
                     let badge = if target.is_mdns {
-                        Span::styled(" (mDNS)", Style::default().fg(Color::Green))
+                        Span::styled(" (mDNS)", Style::default().fg(t.active))
                     } else {
                         Span::raw("")
                     };
@@ -466,20 +462,21 @@ impl DeployScreen {
                 Block::default()
                     .title(" Targets ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(t.inactive_style()),
             );
             frame.render_widget(list, chunks[1]);
         }
 
         let help = Paragraph::new(Text::styled(
             "↑/↓: navigate • Enter: select • m: manual IP • Esc: back",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_manual_input(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -492,7 +489,7 @@ impl DeployScreen {
 
         let title = Paragraph::new(Text::styled(
             "Enter Target Address",
-            Style::default().bold().fg(Color::Cyan),
+            Style::default().fg(t.path).add_modifier(Modifier::BOLD),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
@@ -509,13 +506,14 @@ impl DeployScreen {
 
         let help = Paragraph::new(Text::styled(
             "Enter: deploy • Esc: back",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[3]);
     }
 
     fn render_confirm(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -525,53 +523,57 @@ impl DeployScreen {
             ])
             .split(area);
 
-        let title = Paragraph::new(Text::styled(
-            "Confirm Deployment",
-            Style::default().bold().fg(Color::Yellow),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let title = Paragraph::new(Text::styled("Confirm Deployment", t.title_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
 
-        let target = self
+        let target_str = self
             .chosen_target
             .as_ref()
-            .map(|t| t.ssh_target.as_str())
+            .map(|ct| ct.ssh_target.as_str())
             .unwrap_or("unknown");
 
         let message = Paragraph::new(Text::from(vec![
             Line::from(""),
             Line::from(vec![
-                Span::styled("  Host:   ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&self.host_name, Style::default().fg(Color::White).bold()),
+                Span::styled("  Host:   ", t.inactive_style()),
+                Span::styled(
+                    &self.host_name,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(vec![
-                Span::styled("  Target: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(target, Style::default().fg(Color::Yellow).bold()),
+                Span::styled("  Target: ", t.inactive_style()),
+                Span::styled(
+                    target_str,
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(""),
             Line::from(Span::styled(
                 "  This will ERASE the target disk and install NixOS.",
-                Style::default().fg(Color::Red).bold(),
+                Style::default().fg(t.error).add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
         ]))
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow)),
+                .border_style(Style::default().fg(t.accent)),
         );
         frame.render_widget(message, chunks[1]);
 
         let help = Paragraph::new(Text::styled(
             "Enter: deploy • Esc: cancel",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_output(&self, frame: &mut Frame, area: Rect, title: &str, title_color: Color) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -581,10 +583,14 @@ impl DeployScreen {
             ])
             .split(area);
 
-        let title_widget =
-            Paragraph::new(Text::styled(title, Style::default().bold().fg(title_color)))
-                .alignment(Alignment::Center)
-                .block(Block::default().borders(Borders::BOTTOM));
+        let title_widget = Paragraph::new(Text::styled(
+            title,
+            Style::default()
+                .fg(title_color)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title_widget, chunks[0]);
 
         let output_height = chunks[1].height.saturating_sub(2) as usize;
@@ -607,7 +613,7 @@ impl DeployScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(t.inactive_style()),
             )
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
@@ -617,11 +623,8 @@ impl DeployScreen {
             DeployPhase::Done | DeployPhase::Failed(_) => "Esc: back • q: quit",
             _ => "↑/↓: scroll",
         };
-        let help = Paragraph::new(Text::styled(
-            help_text,
-            Style::default().fg(Color::DarkGray),
-        ))
-        .alignment(Alignment::Center);
+        let help = Paragraph::new(Text::styled(help_text, t.inactive_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 }

@@ -5,7 +5,6 @@
 
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -29,6 +28,7 @@ pub fn render_shell(
     help_text: &str,
     warning: Option<&str>,
 ) -> ShellAreas {
+    let t = crate::theme::default();
     let warning_height: u16 = if warning.is_some() { 1 } else { 0 };
 
     let rows = Layout::default()
@@ -43,9 +43,9 @@ pub fn render_shell(
 
     // Header
     let header_line = Line::from(vec![
-        Span::styled(title, Style::default().bold().yellow()),
+        Span::styled(title, t.title_style()),
         Span::raw("  "),
-        Span::styled(subtitle, Style::default().fg(Color::DarkGray)),
+        Span::styled(subtitle, t.inactive_style()),
     ]);
     let header = Paragraph::new(header_line)
         .alignment(Alignment::Center)
@@ -55,11 +55,8 @@ pub fn render_shell(
     // Warning banner
     if let Some(msg) = warning {
         let warning_widget = Paragraph::new(Line::from(vec![
-            Span::styled(
-                " Warning: ",
-                Style::default().fg(Color::Black).bg(Color::Yellow),
-            ),
-            Span::styled(format!(" {}", msg), Style::default().fg(Color::Yellow)),
+            Span::styled(" Warning: ", t.warning_label_style()),
+            Span::styled(format!(" {}", msg), t.warning_style()),
         ]));
         frame.render_widget(warning_widget, rows[1]);
     }
@@ -73,11 +70,8 @@ pub fn render_shell(
     super::sidebar::render(frame, columns[0], active_sidebar);
 
     // Help bar
-    let help = Paragraph::new(Line::from(Span::styled(
-        help_text,
-        Style::default().fg(Color::DarkGray),
-    )))
-    .alignment(Alignment::Center);
+    let help = Paragraph::new(Line::from(Span::styled(help_text, t.inactive_style())))
+        .alignment(Alignment::Center);
     frame.render_widget(help, rows[3]);
 
     ShellAreas {

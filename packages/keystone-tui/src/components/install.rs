@@ -28,7 +28,7 @@ use crate::component::Component;
 use crate::disk::DiskEntry;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
@@ -1121,6 +1121,7 @@ impl InstallScreen {
     }
 
     fn render_summary(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1131,12 +1132,9 @@ impl InstallScreen {
             .split(area);
 
         // Title
-        let title = Paragraph::new(Text::styled(
-            "Keystone Installer",
-            Style::default().bold().fg(Color::Green),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let title = Paragraph::new(Text::styled("Keystone Installer", t.active_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
 
         // Config summary
@@ -1157,27 +1155,33 @@ impl InstallScreen {
 
         let items = vec![
             ListItem::new(Line::from(vec![
-                Span::styled("  Host:      ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&self.config.flake_host, Style::default().bold()),
+                Span::styled("  Host:      ", t.inactive_style()),
+                Span::styled(
+                    &self.config.flake_host,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
             ])),
             ListItem::new(Line::from(vec![
-                Span::styled("  Hostname:  ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&self.config.hostname, Style::default().bold()),
+                Span::styled("  Hostname:  ", t.inactive_style()),
+                Span::styled(
+                    &self.config.hostname,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
             ])),
             ListItem::new(Line::from(vec![
-                Span::styled("  Storage:   ", Style::default().fg(Color::DarkGray)),
-                Span::styled(storage, Style::default().bold()),
+                Span::styled("  Storage:   ", t.inactive_style()),
+                Span::styled(storage, Style::default().add_modifier(Modifier::BOLD)),
             ])),
             ListItem::new(Line::from(vec![
-                Span::styled("  Disk:      ", Style::default().fg(Color::DarkGray)),
-                Span::styled(disk, Style::default().bold()),
+                Span::styled("  Disk:      ", t.inactive_style()),
+                Span::styled(disk, Style::default().add_modifier(Modifier::BOLD)),
             ])),
             ListItem::new(Line::from("")),
             ListItem::new(Line::from(vec![
-                Span::styled(source_label, Style::default().fg(Color::DarkGray)),
+                Span::styled(source_label, t.inactive_style()),
                 Span::styled(
                     self.config.config_dir.display().to_string(),
-                    Style::default().fg(Color::DarkGray),
+                    t.inactive_style(),
                 ),
             ])),
         ];
@@ -1186,20 +1190,21 @@ impl InstallScreen {
             Block::default()
                 .title(" Configuration Summary ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green)),
+                .border_style(Style::default().fg(t.active)),
         );
         frame.render_widget(summary, chunks[1]);
 
         // Help
         let help = Paragraph::new(Text::styled(
             "Enter: proceed to install • Esc: back • q: quit",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_disk_selection(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1209,34 +1214,28 @@ impl InstallScreen {
             ])
             .split(area);
 
-        let title = Paragraph::new(Text::styled(
-            "Select Installation Disk",
-            Style::default().bold().fg(Color::Yellow),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let title = Paragraph::new(Text::styled("Select Installation Disk", t.title_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
 
         if self.discovering_disks {
-            let loading = Paragraph::new(Text::styled(
-                "\n  Discovering disks...",
-                Style::default().fg(Color::DarkGray),
-            ))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Yellow)),
-            );
+            let loading =
+                Paragraph::new(Text::styled("\n  Discovering disks...", t.inactive_style())).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(t.accent)),
+                );
             frame.render_widget(loading, chunks[1]);
         } else if self.available_disks.is_empty() {
             let no_disks = Paragraph::new(Text::styled(
                 "\n  No disks found. Ensure drives are connected and detected by the kernel.",
-                Style::default().fg(Color::Red),
+                t.error_style(),
             ))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Red)),
+                    .border_style(Style::default().fg(t.error)),
             );
             frame.render_widget(no_disks, chunks[1]);
         } else {
@@ -1251,9 +1250,7 @@ impl InstallScreen {
                         "  "
                     };
                     let style = if i == self.selected_disk_index {
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD)
+                        Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
                     };
@@ -1262,7 +1259,7 @@ impl InstallScreen {
                         Span::styled(&disk.model, style),
                         Span::styled(
                             format!("  {}  [{}]", disk.size, disk.transport),
-                            Style::default().fg(Color::DarkGray),
+                            t.inactive_style(),
                         ),
                     ]))
                 })
@@ -1272,20 +1269,21 @@ impl InstallScreen {
                 Block::default()
                     .title(" Available Disks ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Yellow)),
+                    .border_style(Style::default().fg(t.accent)),
             );
             frame.render_widget(disk_list, chunks[1]);
         }
 
         let help = Paragraph::new(Text::styled(
-            "↑/↓: navigate • Enter: select disk • Esc: back",
-            Style::default().fg(Color::DarkGray),
+            "↑/���: navigate • Enter: select disk • Esc: back",
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_confirm(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1295,15 +1293,9 @@ impl InstallScreen {
             ])
             .split(area);
 
-        let title = Paragraph::new(Text::styled(
-            "Confirm Installation",
-            Style::default()
-                .bold()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let title = Paragraph::new(Text::styled("Confirm Installation", t.title_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
 
         let disk = self
@@ -1317,24 +1309,25 @@ impl InstallScreen {
         );
         let warning = Paragraph::new(Text::styled(
             warning_text,
-            Style::default().fg(Color::Red).bold(),
+            t.error_style().add_modifier(Modifier::BOLD),
         ))
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Red)),
+                .border_style(Style::default().fg(t.error)),
         );
         frame.render_widget(warning, chunks[1]);
 
         let help = Paragraph::new(Text::styled(
             "Enter: confirm and install • Esc: go back",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_installing(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1346,7 +1339,7 @@ impl InstallScreen {
 
         let title = Paragraph::new(Text::styled(
             format!("Installing: {} (in progress...)", self.config.hostname),
-            Style::default().bold().yellow(),
+            t.title_style(),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
@@ -1373,7 +1366,7 @@ impl InstallScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(t.inactive_style()),
             )
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
@@ -1381,13 +1374,14 @@ impl InstallScreen {
 
         let help = Paragraph::new(Text::styled(
             "↑/↓: scroll • Esc: cancel",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_done(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1397,12 +1391,9 @@ impl InstallScreen {
             ])
             .split(area);
 
-        let title = Paragraph::new(Text::styled(
-            "Installation Complete",
-            Style::default().bold().fg(Color::Green),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let title = Paragraph::new(Text::styled("Installation Complete", t.active_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
 
         let message = Paragraph::new(Text::styled(
@@ -1413,24 +1404,25 @@ impl InstallScreen {
                  sudo sbctl enroll-keys --microsoft",
                 self.config.hostname,
             ),
-            Style::default().fg(Color::Green),
+            Style::default().fg(t.active),
         ))
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green)),
+                .border_style(Style::default().fg(t.active)),
         );
         frame.render_widget(message, chunks[1]);
 
         let help = Paragraph::new(Text::styled(
             "r: reboot • q: quit to shell",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_failed(&self, frame: &mut Frame, area: Rect, error: &str) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1442,7 +1434,7 @@ impl InstallScreen {
 
         let title = Paragraph::new(Text::styled(
             "Installation Failed",
-            Style::default().bold().fg(Color::Red),
+            t.error_style().add_modifier(Modifier::BOLD),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
@@ -1470,7 +1462,7 @@ impl InstallScreen {
                 Block::default()
                     .title(format!(" Error: {} ", error))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Red)),
+                    .border_style(Style::default().fg(t.error)),
             )
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
@@ -1478,7 +1470,7 @@ impl InstallScreen {
 
         let help = Paragraph::new(Text::styled(
             "↑/↓: scroll • q: quit to shell",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);

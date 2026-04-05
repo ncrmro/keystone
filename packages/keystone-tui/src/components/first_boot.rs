@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
@@ -696,6 +696,7 @@ impl FirstBootScreen {
     }
 
     fn render_welcome(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -707,7 +708,7 @@ impl FirstBootScreen {
 
         let title = Paragraph::new(Text::styled(
             "First boot: hardware reconciliation",
-            Style::default().bold().fg(Color::Green),
+            t.active_style(),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
@@ -730,19 +731,20 @@ impl FirstBootScreen {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green)),
+                .border_style(Style::default().fg(t.active)),
         );
         frame.render_widget(message, chunks[1]);
 
         let help = Paragraph::new(Text::styled(
             "Enter: detect hardware • q: exit",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_progress(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -759,7 +761,7 @@ impl FirstBootScreen {
             _ => "Working...",
         };
 
-        let title = Paragraph::new(Text::styled(phase_label, Style::default().bold().yellow()))
+        let title = Paragraph::new(Text::styled(phase_label, t.title_style()))
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
@@ -774,20 +776,18 @@ impl FirstBootScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(t.inactive_style()),
             )
             .wrap(Wrap { trim: false });
         frame.render_widget(output, chunks[1]);
 
-        let help = Paragraph::new(Text::styled(
-            "Please wait...",
-            Style::default().fg(Color::DarkGray),
-        ))
-        .alignment(Alignment::Center);
+        let help = Paragraph::new(Text::styled("Please wait...", t.inactive_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_review_patch(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -800,7 +800,7 @@ impl FirstBootScreen {
 
         let title = Paragraph::new(Text::styled(
             "Review hardware reconciliation",
-            Style::default().bold().fg(Color::Green),
+            t.active_style(),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
@@ -816,7 +816,7 @@ impl FirstBootScreen {
             if plan.detected_disk_ids.is_empty() {
                 lines.push(Line::from(Span::styled(
                     "  - none detected",
-                    Style::default().fg(Color::Red),
+                    t.error_style(),
                 )));
             } else {
                 for disk in &plan.detected_disk_ids {
@@ -844,7 +844,7 @@ impl FirstBootScreen {
                 Block::default()
                     .title("Summary")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Green)),
+                    .border_style(Style::default().fg(t.active)),
             )
             .wrap(Wrap { trim: false });
         frame.render_widget(summary, chunks[1]);
@@ -857,9 +857,9 @@ impl FirstBootScreen {
                     .iter()
                     .map(|line| {
                         let style = if line.starts_with('+') {
-                            Style::default().fg(Color::Green)
+                            Style::default().fg(t.active)
                         } else if line.starts_with('-') {
-                            Style::default().fg(Color::Red)
+                            Style::default().fg(t.error)
                         } else {
                             Style::default()
                         };
@@ -874,20 +874,21 @@ impl FirstBootScreen {
                 Block::default()
                     .title("Diff preview")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Yellow)),
+                    .border_style(Style::default().fg(t.accent)),
             )
             .wrap(Wrap { trim: false });
         frame.render_widget(diff, chunks[2]);
 
         let help = Paragraph::new(Text::styled(
             "Enter: apply patch • s: skip for now • q: exit",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[3]);
     }
 
     fn render_ssh_key(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -897,12 +898,9 @@ impl FirstBootScreen {
             ])
             .split(area);
 
-        let title = Paragraph::new(Text::styled(
-            "SSH Public Key",
-            Style::default().bold().fg(Color::Green),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let title = Paragraph::new(Text::styled("SSH Public Key", t.active_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
 
         let key_display = self.ssh_public_key.as_deref().unwrap_or("Loading...");
@@ -912,31 +910,27 @@ impl FirstBootScreen {
             Line::from("  Add this SSH key to GitHub:"),
             Line::from("  https://github.com/settings/keys"),
             Line::from(""),
-            Line::from(Span::styled(
-                format!("  {}", key_display),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )),
+            Line::from(Span::styled(format!("  {}", key_display), t.title_style())),
             Line::from(""),
         ]))
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green)),
+                .border_style(Style::default().fg(t.active)),
         )
         .wrap(Wrap { trim: false });
         frame.render_widget(message, chunks[1]);
 
         let help = Paragraph::new(Text::styled(
             "Enter: continue to remote setup • s: skip push",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_remote_input(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -947,12 +941,9 @@ impl FirstBootScreen {
             ])
             .split(area);
 
-        let title = Paragraph::new(Text::styled(
-            "Git Remote",
-            Style::default().bold().fg(Color::Green),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let title = Paragraph::new(Text::styled("Git Remote", t.active_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
 
         let instructions = Paragraph::new(Text::from(vec![
@@ -967,7 +958,7 @@ impl FirstBootScreen {
 
         let help = Paragraph::new(Text::styled(
             "Enter: push • s: skip push",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[3]);
@@ -975,6 +966,7 @@ impl FirstBootScreen {
 
     /// Generic enrollment step placeholder for SB, TPM, SSH, secrets.
     fn render_enrollment_step(&self, frame: &mut Frame, area: Rect, title: &str, tool: &str) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -984,12 +976,9 @@ impl FirstBootScreen {
             ])
             .split(area);
 
-        let heading = Paragraph::new(Text::styled(
-            format!("Setup: {}", title),
-            Style::default().bold().fg(Color::Yellow),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let heading = Paragraph::new(Text::styled(format!("Setup: {}", title), t.title_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(heading, chunks[0]);
 
         let body = Paragraph::new(Text::styled(
@@ -1006,13 +995,14 @@ impl FirstBootScreen {
 
         let help = Paragraph::new(Text::styled(
             "Enter: proceed • s: skip • q: quit",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_reboot_prompt(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1022,12 +1012,9 @@ impl FirstBootScreen {
             ])
             .split(area);
 
-        let heading = Paragraph::new(Text::styled(
-            "Reboot required",
-            Style::default().bold().fg(Color::Yellow),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let heading = Paragraph::new(Text::styled("Reboot required", t.title_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(heading, chunks[0]);
 
         let body = Paragraph::new(Text::styled(
@@ -1041,13 +1028,14 @@ impl FirstBootScreen {
 
         let help = Paragraph::new(Text::styled(
             "r: reboot now • s: skip (continue without reboot) • q: quit",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_done(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1057,12 +1045,9 @@ impl FirstBootScreen {
             ])
             .split(area);
 
-        let title = Paragraph::new(Text::styled(
-            "First-boot flow complete",
-            Style::default().bold().fg(Color::Green),
-        ))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::BOTTOM));
+        let title = Paragraph::new(Text::styled("First-boot flow complete", t.active_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
         frame.render_widget(title, chunks[0]);
 
         let marker_status = if self.marker_removed {
@@ -1082,19 +1067,17 @@ impl FirstBootScreen {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green)),
+                .border_style(Style::default().fg(t.active)),
         );
         frame.render_widget(message, chunks[1]);
 
-        let help = Paragraph::new(Text::styled(
-            "q: exit",
-            Style::default().fg(Color::DarkGray),
-        ))
-        .alignment(Alignment::Center);
+        let help = Paragraph::new(Text::styled("q: exit", t.inactive_style()))
+            .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
     }
 
     fn render_failed(&self, frame: &mut Frame, area: Rect, error: &str) {
+        let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1106,7 +1089,7 @@ impl FirstBootScreen {
 
         let title = Paragraph::new(Text::styled(
             "First-boot flow failed",
-            Style::default().bold().fg(Color::Red),
+            t.error_style().add_modifier(Modifier::BOLD),
         ))
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::BOTTOM));
@@ -1120,21 +1103,21 @@ impl FirstBootScreen {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             format!("  Error: {}", error),
-            Style::default().fg(Color::Red).bold(),
+            t.error_style().add_modifier(Modifier::BOLD),
         )));
 
         let output = Paragraph::new(lines)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Red)),
+                    .border_style(Style::default().fg(t.error)),
             )
             .wrap(Wrap { trim: false });
         frame.render_widget(output, chunks[1]);
 
         let help = Paragraph::new(Text::styled(
             "r: retry push • s: skip • q: exit",
-            Style::default().fg(Color::DarkGray),
+            t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
