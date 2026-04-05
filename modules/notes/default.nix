@@ -280,7 +280,8 @@ in
 
     repo = lib.mkOption {
       type = lib.types.str;
-      description = "Git repository URL for the notes repo.";
+      default = "";
+      description = "Git repository URL for the notes repo. Empty disables sync.";
       example = "git@github.com:user/notes.git";
     };
 
@@ -316,7 +317,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.user.services.keystone-notes-sync = lib.mkIf cfg.sync.enable {
+    systemd.user.services.keystone-notes-sync = lib.mkIf (cfg.sync.enable && cfg.repo != "") {
       Unit = {
         Description = "Sync notes repo via repo-sync";
       };
@@ -337,7 +338,7 @@ in
       };
     };
 
-    systemd.user.timers.keystone-notes-sync = lib.mkIf cfg.sync.enable {
+    systemd.user.timers.keystone-notes-sync = lib.mkIf (cfg.sync.enable && cfg.repo != "") {
       Unit = {
         Description = "Timer for notes repo sync";
       };

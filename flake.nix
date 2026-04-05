@@ -268,6 +268,7 @@
             useUserPackages = true;
             sharedModules = [
               self.homeModules.terminal
+              self.homeModules.notes
             ];
           };
         };
@@ -337,7 +338,10 @@
             keystoneInputs.walker.homeManagerModules.default
             ./modules/desktop/home/default.nix
           ];
-          _module.args.keystoneInputs = keystoneInputs;
+          # keystoneInputs is provided by homeModules.terminal (loaded as a
+          # sharedModule by nixosModules.operating-system). Do not redeclare
+          # _module.args here to avoid "defined multiple times" when both
+          # terminal and desktop are active.
         };
         notes = ./modules/notes/default.nix;
       };

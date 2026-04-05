@@ -66,6 +66,33 @@ in
       # Ensure ZFS support is enabled
       boot.supportedFilesystems = [ "zfs" ];
 
+      # Kernel selection — latest by default for hardware support
+      boot.kernelPackages =
+        if cfg.zfs.kernel == "latest" then
+          pkgs.linuxPackages_latest
+        else if cfg.zfs.kernel == "default" then
+          pkgs.linuxPackages
+        else
+          cfg.zfs.kernel;
+
+      # Build-time ZFS compatibility assertion
+      assertions = [
+        {
+          assertion =
+            let
+              zfsAttr = config.boot.zfs.package.kernelModuleAttribute;
+              zfsModule = config.boot.kernelPackages.${zfsAttr};
+            in
+            !(zfsModule.meta.broken or false);
+          message = ''
+            Kernel ${config.boot.kernelPackages.kernel.version} is incompatible with
+            ZFS (${config.boot.zfs.package.version}).
+            Pin a compatible kernel via keystone.os.storage.zfs.kernel, e.g.:
+              keystone.os.storage.zfs.kernel = pkgs.linuxPackages_6_12;
+          '';
+        }
+      ];
+
       # Boot loader configuration
       boot.loader.systemd-boot.enable = true;
       boot.loader.efi.canTouchEfiVariables = true;

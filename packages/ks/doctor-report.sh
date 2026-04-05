@@ -165,6 +165,50 @@ list_ollama_models() {
   done <<< "$models"
 }
 
+known_agents_list() {
+  if ! command -v agentctl >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local known_agents
+  known_agents=$(agentctl 2>&1 | sed -n 's/^Known agents: //p' | head -n1)
+  [[ -n "$known_agents" ]] || return 1
+
+  printf '%s\n' "$known_agents" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sed '/^$/d'
+}
+
+safe_systemctl_state() {
+  local agent="$1"
+  local unit="$2"
+  local state
+
+  state=$(agentctl "$agent" is-active "$unit" 2>/dev/null | head -n1 | tr -d '\r')
+  if [[ -n "$state" ]]; then
+    printf '%s\n' "$state"
+  else
+    printf '%s\n' "unknown"
+  fi
+}
+
+count_status_matches() {
+  local yaml="$1"
+  local status="$2"
+  local count
+
+  count=$(printf '%s\n' "$yaml" | grep -c "status: ${status}" 2>/dev/null || true)
+  printf '%s\n' "${count:-0}"
+}
+
+failed_units_list() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 0
+  fi
+
+  systemctl --failed --plain --no-legend --no-pager 2>/dev/null \
+    | sed -E 's/^[[:space:]]*●?[[:space:]]+//; s/[[:space:]].*$//' \
+    | sed '/^$/d' || true
+}
+
 repo_status_summary() {
   local path="$1"
 
@@ -520,9 +564,9 @@ gather_agent_health() {
     return 0
   fi
 
-  local known_agents
-  known_agents=$(agentctl 2>&1 | sed -n 's/^Known agents: //p' | head -n1)
-  if [[ -z "$known_agents" ]]; then
+  local agents
+  agents=$(known_agents_list 2>/dev/null || true)
+  if [[ -z "$agents" ]]; then
     echo "### Agent status"
     echo "_No agents configured_"
     return 0
@@ -533,11 +577,12 @@ gather_agent_health() {
   echo "|-------|-----------|------------|-----------|--------|"
 
   local agent
-  for agent in $known_agents; do
+  while IFS= read -r agent; do
+    [[ -n "$agent" ]] || continue
     local task_loop notes_sync ssh_agent overall
-    task_loop=$(agentctl "$agent" is-active "agent-${agent}-task-loop.timer" 2>/dev/null || echo "unknown")
-    notes_sync=$(agentctl "$agent" is-active "agent-${agent}-notes-sync.timer" 2>/dev/null || echo "unknown")
-    ssh_agent=$(agentctl "$agent" is-active "agent-${agent}-ssh-agent.service" 2>/dev/null || echo "unknown")
+    task_loop=$(safe_systemctl_state "$agent" "agent-${agent}-task-loop.timer")
+    notes_sync=$(safe_systemctl_state "$agent" "agent-${agent}-notes-sync.timer")
+    ssh_agent=$(safe_systemctl_state "$agent" "agent-${agent}-ssh-agent.service")
 
     if [[ "$task_loop" == "active" && "$notes_sync" == "active" && "$ssh_agent" == "active" ]]; then
       overall="ok"
@@ -548,7 +593,7 @@ gather_agent_health() {
     fi
 
     echo "| $agent | $task_loop | $notes_sync | $ssh_agent | $overall |"
-  done
+  done <<< "$agents"
 }
 
 gather_agent_tasks() {
@@ -556,16 +601,17 @@ gather_agent_tasks() {
     return 0
   fi
 
-  local known_agents
-  known_agents=$(agentctl 2>&1 | sed -n 's/^Known agents: //p' | head -n1)
-  [[ -z "$known_agents" ]] && return 0
+  local agents
+  agents=$(known_agents_list 2>/dev/null || true)
+  [[ -z "$agents" ]] && return 0
 
   echo "### Agent tasks"
   echo "| Agent | Pending | In Progress | Blocked | Completed |"
   echo "|-------|---------|-------------|---------|-----------|"
 
   local agent
-  for agent in $known_agents; do
+  while IFS= read -r agent; do
+    [[ -n "$agent" ]] || continue
     local tasks_yaml pending in_progress blocked completed
     tasks_yaml=$(agentctl "$agent" exec cat "/home/agent-${agent}/notes/TASKS.yaml" 2>/dev/null || true)
 
@@ -574,12 +620,12 @@ gather_agent_tasks() {
       continue
     fi
 
-    pending=$(echo "$tasks_yaml" | grep -c 'status: pending' 2>/dev/null || echo "0")
-    in_progress=$(echo "$tasks_yaml" | grep -c 'status: in_progress' 2>/dev/null || echo "0")
-    blocked=$(echo "$tasks_yaml" | grep -c 'status: blocked' 2>/dev/null || echo "0")
-    completed=$(echo "$tasks_yaml" | grep -c 'status: completed' 2>/dev/null || echo "0")
+    pending=$(count_status_matches "$tasks_yaml" "pending")
+    in_progress=$(count_status_matches "$tasks_yaml" "in_progress")
+    blocked=$(count_status_matches "$tasks_yaml" "blocked")
+    completed=$(count_status_matches "$tasks_yaml" "completed")
     echo "| $agent | $pending | $in_progress | $blocked | $completed |"
-  done
+  done <<< "$agents"
 }
 
 gather_agent_doctor_reports() {
@@ -587,18 +633,19 @@ gather_agent_doctor_reports() {
     return 0
   fi
 
-  local known_agents
-  known_agents=$(agentctl 2>&1 | sed -n 's/^Known agents: //p' | head -n1)
-  [[ -z "$known_agents" ]] && return 0
+  local agents
+  agents=$(known_agents_list 2>/dev/null || true)
+  [[ -z "$agents" ]] && return 0
 
   echo "## Agent preflight reports"
   echo ""
   local agent
-  for agent in $known_agents; do
+  while IFS= read -r agent; do
+    [[ -n "$agent" ]] || continue
     echo "### ${agent}"
     agentctl "$agent" doctor-report 2>/dev/null || echo "_failed to collect report_"
     echo ""
-  done
+  done <<< "$agents"
 }
 
 gather_ollama_diagnostics() {
@@ -703,9 +750,7 @@ generate_doctor_report() {
 
   echo "### Failed systemd units"
   local failed=""
-  if command -v systemctl >/dev/null 2>&1; then
-    failed=$(systemctl --failed --no-legend 2>/dev/null | awk '{print $1}' || true)
-  fi
+  failed=$(failed_units_list)
   if [[ -z "$failed" ]]; then
     echo "_None_"
   else

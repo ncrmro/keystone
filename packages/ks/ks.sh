@@ -669,6 +669,28 @@ known_agents_list() {
   printf '%s\n' "$known_agents" | tr ',' '\n' | sed 's/^ *//; s/ *$//' | sed '/^$/d'
 }
 
+safe_systemctl_state() {
+  local agent="$1"
+  local unit="$2"
+  local state
+
+  state=$(agentctl "$agent" is-active "$unit" 2>/dev/null | head -n1 | tr -d '\r')
+  if [[ -n "$state" ]]; then
+    printf '%s\n' "$state"
+  else
+    printf '%s\n' "unknown"
+  fi
+}
+
+count_status_matches() {
+  local yaml="$1"
+  local status="$2"
+  local count
+
+  count=$(printf '%s\n' "$yaml" | grep -c "status: ${status}" 2>/dev/null || true)
+  printf '%s\n' "${count:-0}"
+}
+
 failed_units_list() {
   if ! command -v systemctl >/dev/null 2>&1; then
     return 0
@@ -1159,12 +1181,12 @@ list_ollama_models() {
   local ollama_host="$1"
 
   if [[ -z "$ollama_host" ]]; then
-    echo "_API endpoint not configured_"
+    echo "  - _API endpoint not configured_"
     return
   fi
 
   if ! command -v curl >/dev/null 2>&1; then
-    echo "_curl not installed_"
+    echo "  - _curl not installed_"
     return
   fi
 
@@ -1179,7 +1201,7 @@ list_ollama_models() {
 
   if [[ "$http_code" != "200" ]]; then
     rm -f "$response_file"
-    echo "_API unreachable_"
+    echo "  - _API unreachable_"
     return
   fi
 
@@ -1188,12 +1210,12 @@ list_ollama_models() {
   rm -f "$response_file"
 
   if [[ -z "$models" ]]; then
-    echo "_No models found_"
+    echo "  - _No models found_"
     return
   fi
 
   while IFS= read -r model; do
-    [[ -n "$model" ]] && echo "- $model"
+    [[ -n "$model" ]] && echo "  - $model"
   done <<< "$models"
 }
 
@@ -2835,9 +2857,9 @@ gather_agent_health() {
     local task_loop notes_sync ssh_agent overall
 
     # Check key services via agentctl (handles remote dispatch automatically)
-    task_loop=$(agentctl "$agent" is-active "agent-${agent}-task-loop.timer" 2>/dev/null || echo "unknown")
-    notes_sync=$(agentctl "$agent" is-active "agent-${agent}-notes-sync.timer" 2>/dev/null || echo "unknown")
-    ssh_agent=$(agentctl "$agent" is-active "agent-${agent}-ssh-agent.service" 2>/dev/null || echo "unknown")
+    task_loop=$(safe_systemctl_state "$agent" "agent-${agent}-task-loop.timer")
+    notes_sync=$(safe_systemctl_state "$agent" "agent-${agent}-notes-sync.timer")
+    ssh_agent=$(safe_systemctl_state "$agent" "agent-${agent}-ssh-agent.service")
 
     # Determine overall status
     if [[ "$task_loop" == "active" && "$notes_sync" == "active" && "$ssh_agent" == "active" ]]; then
@@ -2878,10 +2900,10 @@ gather_agent_tasks() {
       continue
     fi
 
-    pending=$(echo "$tasks_yaml" | grep -c 'status: pending' 2>/dev/null || echo "0")
-    in_progress=$(echo "$tasks_yaml" | grep -c 'status: in_progress' 2>/dev/null || echo "0")
-    blocked=$(echo "$tasks_yaml" | grep -c 'status: blocked' 2>/dev/null || echo "0")
-    completed=$(echo "$tasks_yaml" | grep -c 'status: completed' 2>/dev/null || echo "0")
+    pending=$(count_status_matches "$tasks_yaml" "pending")
+    in_progress=$(count_status_matches "$tasks_yaml" "in_progress")
+    blocked=$(count_status_matches "$tasks_yaml" "blocked")
+    completed=$(count_status_matches "$tasks_yaml" "completed")
 
     echo "| $agent | $pending | $in_progress | $blocked | $completed |"
   done <<< "$agents"
@@ -2965,8 +2987,16 @@ gather_system_state() {
 gather_ollama_diagnostics() {
   local repo_root="$1"
   local current_host="$2"
+  local host="${OLLAMA_HOST:-}"
 
   echo "### Ollama diagnostics"
+
+  if [[ -n "$host" ]]; then
+    echo "- API endpoint: $host"
+    echo "- Available models:"
+    list_ollama_models "$host"
+    return
+  fi
 
   if [[ -z "$current_host" ]]; then
     echo "- API endpoint: _unavailable_"
@@ -2984,7 +3014,6 @@ gather_ollama_diagnostics() {
     return
   fi
 
-  local host
   host=$(resolve_ollama_host "$repo_root" "$current_host" "$user")
   echo "- API endpoint: ${host:-_not configured_}"
 

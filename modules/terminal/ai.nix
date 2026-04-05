@@ -68,6 +68,10 @@ in
       pkgs.ollama
     ];
 
+    home.sessionVariables = mkIf ollamaCfg.enable {
+      OLLAMA_HOST = ollamaCfg.host;
+    };
+
     programs.zsh.initContent = mkIf ollamaCfg.enable (
       let
         modelFlag = if ollamaCfg.defaultModel != null then " --model ${ollamaCfg.defaultModel}" else "";
