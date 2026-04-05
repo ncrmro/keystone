@@ -34,8 +34,19 @@ fprintd_status_json() {
     return 0
   fi
 
-  local output enrolled_fingers
-  output=$(fprintd-list "$USER" 2>/dev/null || true)
+  local user output enrolled_fingers
+  user="${USER:-$(id -un)}"
+  if ! output=$(fprintd-list "$user" 2>&1); then
+    jq -n --arg output "$output" '
+      {
+        available: false,
+        enrolled_fingers: [],
+        summary: "fprintd-list failed",
+        detail: $output
+      }
+    '
+    return 0
+  fi
   enrolled_fingers=$(printf '%s\n' "$output" | grep -oP '^\s+-\s+\K\S+' || true)
 
   local fingers_json
@@ -191,9 +202,12 @@ dispatch() {
       detach "$ghostty_cmd" -e bash -lc 'printf "Starting fingerprint verification...\n\n"; exec fprintd-verify'
       ;;
     delete)
-      local ghostty_cmd
+      local ghostty_cmd username delete_cmd
       ghostty_cmd="$(keystone_cmd ghostty)"
-      detach "$ghostty_cmd" -e bash -lc "printf 'Deleting enrolled fingerprints for $USER...\n\n'; exec fprintd-delete $USER"
+      username="$(id -un)"
+      printf -v delete_cmd 'printf "%s\n\n" %q; exec fprintd-delete -- %q' \
+        "Deleting enrolled fingerprints for ${username}..." "$username"
+      detach "$ghostty_cmd" -e bash -lc "$delete_cmd"
       ;;
     blocked)
       notify "$title" "$message"

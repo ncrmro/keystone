@@ -111,6 +111,20 @@ pkgs.runCommand "test-keystone-fingerprint-menu"
     grep -F 'ghostty' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
     grep -F 'fprintd-enroll' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
 
+    # ── Test 4b: dispatch verify ──
+    keystone-fingerprint-menu dispatch verify
+    grep -F 'ghostty' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+    grep -F 'fprintd-verify' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+
+    # ── Test 4c: dispatch delete ──
+    keystone-fingerprint-menu dispatch delete
+    grep -F 'ghostty' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+    grep -F 'fprintd-delete' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+
+    # ── Test 4d: dispatch blocked sends notification ──
+    keystone-fingerprint-menu dispatch $'blocked\tFingerprint\tService unavailable'
+    grep -F 'Service unavailable' "$XDG_RUNTIME_DIR/notify-send.txt" >/dev/null
+
     # ── Test 5: preview outputs ──
     preview_enroll="$(keystone-fingerprint-menu preview enroll)"
     printf '%s\n' "$preview_enroll" | grep -F 'fprintd-enroll' >/dev/null
