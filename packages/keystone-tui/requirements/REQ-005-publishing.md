@@ -1,12 +1,14 @@
 # REQ-005: Publishing
 
 This document defines requirements for committing and publishing the
-generated configuration. Phase 2 — stub for future implementation.
+generated configuration.
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
 
 ## Requirements
+
+### Initial Publishing (dev machine)
 
 **REQ-005.1** The TUI MUST initialize a git repository in the output
 directory and create an initial commit with the generated files.
@@ -23,3 +25,16 @@ plaintext password (`initialPassword`) and recommend switching to
 
 **REQ-005.5** The TUI MUST NOT commit files that contain secrets (e.g.,
 private keys, tokens). Age-encrypted secrets MAY be committed.
+
+### Post-Install Commit (target machine, ISO install)
+
+**REQ-005.6** After generating hardware config during ISO install, the TUI
+MUST commit the changes to the local git repository on the installed
+system.
+
+**REQ-005.7** The TUI MUST NOT attempt to push during ISO install. The
+ISO does not contain private SSH keys and push would fail.
+
+**REQ-005.8** After the user configures SSH keys on the installed system
+(first-boot Stage 6), the TUI MUST prompt the user to push the pending
+hardware config commit to the remote repository.
