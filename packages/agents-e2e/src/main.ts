@@ -74,7 +74,8 @@ function parseConfig(): Config | null {
   const forgejoUrl = values["forgejo-url"] ?? "https://git.ncrmro.com";
   const rawDomain = values.domain || "";
   const domain = rawDomain || extractAgentDomain(forgejoUrl);
-  const timeoutMinutes = Number.parseInt(values.timeout ?? "30", 10) || 30;
+  const timeoutMinutes = Number.parseInt(values.timeout ?? "30", 10);
+  const resolvedTimeoutMinutes = Number.isNaN(timeoutMinutes) ? 30 : timeoutMinutes;
 
   return {
     productAgent: values.product,
@@ -86,7 +87,7 @@ function parseConfig(): Config | null {
     templateRepo:
       values["template-repo"] ?? "ks-testing/agent-e2e-bun-template",
     domain,
-    timeoutMs: timeoutMinutes * 60 * 1000,
+    timeoutMs: resolvedTimeoutMinutes * 60 * 1000,
     dryRun: values["dry-run"] ?? false,
     print: values.print ?? false,
   };

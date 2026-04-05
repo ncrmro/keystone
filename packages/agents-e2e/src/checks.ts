@@ -1,7 +1,7 @@
 // E2E check functions -- each check appends to the report
 // See specs/REQ-031-e2e-os-agent-product-test.md
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { AgentCtl } from "./agentctl";
@@ -310,10 +310,14 @@ export async function productEmail(config: Config, report: Report) {
     to: toAddr,
   });
   try {
-    execSync(
-      `agent-mail feature.requirement --to ${JSON.stringify(toAddr)} --subject ${JSON.stringify("Palindrome Checker")} --send`,
-      { stdio: "pipe" },
-    );
+    execFileSync("agent-mail", [
+      "feature.requirement",
+      "--to",
+      toAddr,
+      "--subject",
+      "Palindrome Checker",
+      "--send",
+    ], { stdio: "pipe" });
     report.check(
       "product_email_dispatch",
       "pass",
@@ -737,7 +741,7 @@ function discoverServerPort(
     if (existsSync(portFile)) {
       const raw = readFileSync(portFile, "utf-8").trim();
       const port = Number.parseInt(raw, 10);
-      if (!Number.isNaN(port) && port > 0 && port < 65536) return port;
+      if (!Number.isNaN(port) && port > 0 && port <= 65535) return port;
     }
   }
   return null;
@@ -759,6 +763,7 @@ async function fetchPalindromeResult(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input }),
+        // 5 s per path attempt; up to 4 paths tried before failing
         signal: AbortSignal.timeout(5000),
       });
       if (resp.ok) return resp.json();
