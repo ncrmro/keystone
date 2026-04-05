@@ -1,13 +1,13 @@
 ---
 source: tests/render.rs
-assertion_line: 79
+assertion_line: 78
 expression: output
 ---
              Hosts Dashboard - my-infra  2 hosts            
                                                             
 ────────────────────────────────────────────────────────────
->   laptop (x86_64-linu│Remote metrics via Prometheus — comi
-    server (x86_64-linu│                                    
+ laptop                │Remote metrics via Prometheus — comi
+ server                │                                    
                        │                                    
                        │                                    
                        │                                    
