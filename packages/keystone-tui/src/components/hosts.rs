@@ -336,7 +336,7 @@ impl HostsScreen {
                     Span::styled(indicator.to_string(), indicator_style),
                 ]);
 
-                // Second line: IP or last-seen (subtle, indented)
+                // Second line: IP, ssh_target, or last-seen (subtle, indented)
                 let subtitle = status
                     .tailscale
                     .as_ref()
@@ -350,12 +350,21 @@ impl HostsScreen {
                         }
                     })
                     .or_else(|| {
-                        status
-                            .host_info
-                            .metadata
-                            .as_ref()
-                            .filter(|m| !m.ssh_target.is_empty())
-                            .map(|m| m.ssh_target.clone())
+                        let meta = status.host_info.metadata.as_ref()?;
+                        if !meta.ssh_target.is_empty() {
+                            Some(meta.ssh_target.clone())
+                        } else if !meta.fallback_ip.is_empty() {
+                            Some(meta.fallback_ip.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .or_else(|| {
+                        if status.is_local {
+                            Some("localhost".to_string())
+                        } else {
+                            None
+                        }
                     });
 
                 if let Some(sub) = subtitle {

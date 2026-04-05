@@ -6,8 +6,8 @@ expression: output
                                                                                 
 ────────────────────────────────────────────────────────────────────────────────
  laptop                        │  Arch   x86_64-linux                           
- server                        │                                                
-                               │  Modules  (none)                               
+   localhost                   │                                                
+ server                        │  Modules  (none)                               
                                │                                                
                                │                                                
                                │                                                
