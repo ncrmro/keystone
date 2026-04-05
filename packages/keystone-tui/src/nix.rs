@@ -138,6 +138,8 @@ pub async fn eval_host_metadata(repo_path: &Path, hosts: &mut [HostInfo]) {
 /// Extract nixosConfigurations attribute names and details from the flake AST.
 ///
 /// Handles three forms:
+// TODO: remove allow once Form 2 parsing is extracted to a helper
+#[allow(clippy::cognitive_complexity)]
 /// 1. `nixosConfigurations = { host1 = ...; host2 = ...; };` (nested attrset)
 /// 2. `nixosConfigurations.host1 = ...;` (dotted attrpath, e.g. ISO flakes)
 /// 3. `keystone.lib.mkSystemFlake { hosts = { ... }; }` (inventory-based)
