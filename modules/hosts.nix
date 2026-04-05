@@ -25,86 +25,97 @@
 { config, lib, ... }:
 with lib;
 let
+  hsDomain = config.keystone.headscaleDomain;
   hostsWithKeys = filterAttrs (_: h: h.hostPublicKey != null) config.keystone.hosts;
 in
 {
+  options.keystone.headscaleDomain = mkOption {
+    type = types.nullOr types.str;
+    default = null;
+    description = "Headscale MagicDNS base domain. When set, sshTarget defaults to hostname.domain for all hosts.";
+    example = "mercury";
+  };
+
   options.keystone.hosts = mkOption {
     type = types.attrsOf (
-      types.submodule {
-        options = {
-          hostname = mkOption {
-            type = types.str;
-            description = "The networking.hostName of this host (may differ from flake config name).";
-          };
-          sshTarget = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "SSH target for remote deploys (Tailscale hostname or IP). null = local-only host.";
-          };
-          fallbackIP = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "LAN IP fallback when sshTarget is unreachable via Tailscale.";
-          };
-          tailscaleIP = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "Stable Tailscale IPv4 address for this host when known.";
-          };
-          buildOnRemote = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Whether to pass --build-host for remote deploys (build on remote machine).";
-          };
-          role = mkOption {
-            type = types.enum [
-              "client"
-              "server"
-              "agent"
-            ];
-            description = "Tailscale network role for this host (mandatory).";
-          };
-          baremetal = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Whether this host runs on physical hardware. False for VPS/cloud instances and VMs. Gates hardware-specific packages like lm_sensors.";
-          };
-          hostPublicKey = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "SSH host public key (/etc/ssh/ssh_host_ed25519_key.pub).";
-          };
-          journalRemote = mkOption {
-            type = types.bool;
-            default = false;
-            description = "Whether this host is the centralized journal-remote server. Exactly one host should set this to true.";
-          };
-          zfs = mkOption {
-            type = types.nullOr (
-              types.submodule {
-                options = {
-                  backups = mkOption {
-                    type = types.attrsOf (
-                      types.submodule {
-                        options = {
-                          targets = mkOption {
-                            type = types.listOf types.str;
-                            description = "Backup targets as 'host:pool' strings (e.g. 'maia:lake')";
+      types.submodule (
+        { config, ... }:
+        {
+          options = {
+            hostname = mkOption {
+              type = types.str;
+              description = "The networking.hostName of this host (may differ from flake config name).";
+            };
+            sshTarget = mkOption {
+              type = types.nullOr types.str;
+              default = if hsDomain != null then "${config.hostname}.${hsDomain}" else null;
+              description = "SSH target for remote deploys. Auto-derived from hostname + headscaleDomain. Set to null for local-only hosts, or an IP for hosts without Tailscale.";
+            };
+            fallbackIP = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "LAN IP fallback when sshTarget is unreachable via Tailscale.";
+            };
+            tailscaleIP = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Stable Tailscale IPv4 address for this host when known.";
+            };
+            buildOnRemote = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Whether to pass --build-host for remote deploys (build on remote machine).";
+            };
+            role = mkOption {
+              type = types.enum [
+                "client"
+                "server"
+                "agent"
+              ];
+              description = "Tailscale network role for this host (mandatory).";
+            };
+            baremetal = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Whether this host runs on physical hardware. False for VPS/cloud instances and VMs. Gates hardware-specific packages like lm_sensors.";
+            };
+            hostPublicKey = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "SSH host public key (/etc/ssh/ssh_host_ed25519_key.pub).";
+            };
+            journalRemote = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Whether this host is the centralized journal-remote server. Exactly one host should set this to true.";
+            };
+            zfs = mkOption {
+              type = types.nullOr (
+                types.submodule {
+                  options = {
+                    backups = mkOption {
+                      type = types.attrsOf (
+                        types.submodule {
+                          options = {
+                            targets = mkOption {
+                              type = types.listOf types.str;
+                              description = "Backup targets as 'host:pool' strings (e.g. 'maia:lake')";
+                            };
                           };
-                        };
-                      }
-                    );
-                    default = { };
-                    description = "Per-pool backup target declarations. Key is source pool name.";
+                        }
+                      );
+                      default = { };
+                      description = "Per-pool backup target declarations. Key is source pool name.";
+                    };
                   };
-                };
-              }
-            );
-            default = null;
-            description = "ZFS backup topology for this host.";
+                }
+              );
+              default = null;
+              description = "ZFS backup topology for this host.";
+            };
           };
-        };
-      }
+        }
+      )
     );
     default = { };
     description = ''
