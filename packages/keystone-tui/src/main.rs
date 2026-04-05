@@ -5,20 +5,25 @@
 //! configuration, building, and git operations.
 
 #![allow(dead_code)]
+#![warn(clippy::correctness)]
+#![warn(clippy::suspicious)]
+#![warn(clippy::complexity)]
+#![warn(clippy::perf)]
+#![warn(clippy::style)]
+#![warn(clippy::cognitive_complexity)]
 
 use std::io;
 
 use anyhow::Result;
 use clap::Parser;
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
+use crossterm::event::{self, Event};
 use ratatui::prelude::*;
 
+mod action;
 mod app;
+mod cli;
 pub mod cmd;
+mod component;
 mod config;
 mod disk;
 mod github;
@@ -29,68 +34,14 @@ mod screens;
 mod ssh_keys;
 mod system;
 mod template;
+mod tui;
 mod ui;
 
 use app::{App, AppScreen};
+use cli::{Cli, Command};
 use input::{dispatch_key, handle_action, AppAction};
 use screens::first_boot::FirstBootConfig;
 use screens::install::InstallerConfig;
-
-/// Keystone TUI — NixOS infrastructure configuration and management.
-#[derive(Parser)]
-#[command(name = "keystone-tui", version, about)]
-struct Cli {
-    /// Generate config from JSON on stdin (legacy alias for `template --json`).
-    #[arg(long)]
-    json: bool,
-
-    /// Render a single screen to stdout as ANSI and exit.
-    #[arg(long, value_name = "SCREEN")]
-    screenshot: Option<String>,
-
-    #[command(subcommand)]
-    command: Option<Command>,
-}
-
-#[derive(clap::Subcommand)]
-enum Command {
-    /// Generate a new Keystone config from a template.
-    Template {
-        /// GitHub username — fetches display name and SSH keys.
-        #[arg(long)]
-        github_username: Option<String>,
-
-        /// Output directory (defaults to hostname).
-        #[arg(long, short)]
-        output: Option<String>,
-
-        /// JSON mode: read params from stdin, write result to stdout.
-        #[arg(long)]
-        json: bool,
-    },
-}
-
-/// Set up the terminal for TUI rendering.
-fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let terminal = Terminal::new(backend)?;
-    Ok(terminal)
-}
-
-/// Restore the terminal to its original state.
-fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-    Ok(())
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -116,15 +67,8 @@ async fn main() -> Result<()> {
         return run_screenshot_mode(screen_name).await;
     }
 
-    // Set up panic hook to restore terminal on panic
-    let original_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |panic_info| {
-        let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
-        original_hook(panic_info);
-    }));
-
-    let mut terminal = setup_terminal()?;
+    tui::install_panic_hook();
+    let mut terminal = tui::setup()?;
 
     // Priority detection:
     // 1. Installer mode: pre-baked ISO with config at /etc/keystone/install-config/
@@ -140,7 +84,7 @@ async fn main() -> Result<()> {
 
     let result = run_app(&mut terminal, &mut app).await;
 
-    restore_terminal(&mut terminal)?;
+    tui::restore(&mut terminal)?;
 
     app.save_config().await;
 

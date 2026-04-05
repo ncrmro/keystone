@@ -459,6 +459,8 @@ pub fn handle_first_boot_input(
 }
 
 /// Handle actions that require mutating app state.
+// TODO: remove allow once migrated to Component trait dispatch
+#[allow(clippy::cognitive_complexity)]
 pub async fn handle_action(app: &mut App, action: AppAction) {
     match action {
         AppAction::WelcomeAction(wa) => {
