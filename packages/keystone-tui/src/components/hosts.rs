@@ -1,11 +1,11 @@
-//! Hosts dashboard screen — split-panel view with live system monitoring.
+//! Hosts dashboard screen — split-panel host list with detail sidebar.
 
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph, Sparkline},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
 
@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use crate::action::{Action, Screen};
 use crate::component::Component;
 use crate::nix::HostInfo;
-use crate::system::{CpuHistory, DashboardMessage, HostStatus, SystemMetrics, TailscaleStatus};
+use crate::system::{DashboardMessage, HostStatus, SystemMetrics, TailscaleStatus};
 
 /// Screen for the hosts dashboard with live system metrics.
 pub struct HostsScreen {
@@ -25,8 +25,6 @@ pub struct HostsScreen {
     rx: Option<mpsc::UnboundedReceiver<DashboardMessage>>,
     /// Latest tailscale status for online counting.
     tailscale_available: bool,
-    /// Accumulated CPU history across metric updates.
-    cpu_history: CpuHistory,
     /// Optional warning banner (e.g., legacy config version).
     warning: Option<String>,
 }
@@ -82,7 +80,6 @@ impl HostsScreen {
             list_state,
             rx: None,
             tailscale_available: false,
-            cpu_history: CpuHistory::new(60),
             warning: None,
         }
     }
@@ -190,7 +187,6 @@ impl HostsScreen {
                     self.apply_tailscale_update(&ts);
                 }
                 DashboardMessage::MetricsUpdate(metrics) => {
-                    self.cpu_history.push(metrics.cpu_usage);
                     self.apply_metrics_update(metrics);
                 }
                 DashboardMessage::TailscaleUnavailable => {
@@ -297,7 +293,7 @@ impl HostsScreen {
             .split(area);
 
         self.render_host_list(frame, panels[0]);
-        self.render_metrics_panel(frame, panels[1]);
+        self.render_host_info_panel(frame, panels[1]);
     }
 
     fn render_host_list(&mut self, frame: &mut Frame, area: Rect) {
@@ -389,159 +385,15 @@ impl HostsScreen {
         frame.render_stateful_widget(list, area, &mut self.list_state);
     }
 
-    fn render_metrics_panel(&self, frame: &mut Frame, area: Rect) {
+    fn render_host_info_panel(&self, frame: &mut Frame, area: Rect) {
         let selected = match self.selected_status() {
             Some(s) => s,
             None => return,
         };
 
-        match &selected.metrics {
-            Some(metrics) => self.render_live_metrics(frame, area, metrics),
-            None => {
-                // Remote host or no metrics yet
-                let msg = if selected.is_local {
-                    "Collecting metrics..."
-                } else {
-                    "Remote metrics via Prometheus — coming soon"
-                };
-                let placeholder =
-                    Paragraph::new(Text::styled(msg, Style::default().fg(Color::DarkGray)))
-                        .alignment(Alignment::Center)
-                        .block(Block::default().borders(Borders::NONE));
-                frame.render_widget(placeholder, area);
-            }
-        }
-    }
-
-    fn render_live_metrics(&self, frame: &mut Frame, area: Rect, metrics: &SystemMetrics) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(2), // CPU gauge
-                Constraint::Length(2), // MEM gauge
-                Constraint::Length(2), // SWAP gauge
-                Constraint::Length(1), // spacer
-                Constraint::Min(3),    // Disks
-                Constraint::Length(3), // CPU sparkline
-                Constraint::Length(2), // Temps
-            ])
-            .split(area);
-
-        // CPU gauge
-        let cpu_pct = metrics.cpu_usage / 100.0;
-        let cpu_gauge = Gauge::default()
-            .block(Block::default())
-            .gauge_style(Style::default().fg(Color::Cyan))
-            .label(format!("CPU  {:5.1}%", metrics.cpu_usage))
-            .ratio(cpu_pct.clamp(0.0, 1.0));
-        frame.render_widget(cpu_gauge, chunks[0]);
-
-        // Memory gauge
-        let mem_pct = if metrics.memory_total > 0 {
-            metrics.memory_used as f64 / metrics.memory_total as f64
-        } else {
-            0.0
-        };
-        let mem_label = format!(
-            "MEM  {}/{}",
-            format_bytes(metrics.memory_used),
-            format_bytes(metrics.memory_total)
-        );
-        let mem_gauge = Gauge::default()
-            .block(Block::default())
-            .gauge_style(Style::default().fg(Color::Green))
-            .label(mem_label)
-            .ratio(mem_pct.clamp(0.0, 1.0));
-        frame.render_widget(mem_gauge, chunks[1]);
-
-        // Swap gauge
-        let swap_pct = if metrics.swap_total > 0 {
-            metrics.swap_used as f64 / metrics.swap_total as f64
-        } else {
-            0.0
-        };
-        let swap_label = format!(
-            "SWAP {}/{}",
-            format_bytes(metrics.swap_used),
-            format_bytes(metrics.swap_total)
-        );
-        let swap_gauge = Gauge::default()
-            .block(Block::default())
-            .gauge_style(Style::default().fg(Color::Yellow))
-            .label(swap_label)
-            .ratio(swap_pct.clamp(0.0, 1.0));
-        frame.render_widget(swap_gauge, chunks[2]);
-
-        // Disks
-        let disk_lines: Vec<Line> = metrics
-            .disks
-            .iter()
-            .take(4) // limit to 4 disks
-            .map(|d| {
-                let pct = d.usage_percent();
-                let bar_width = 12;
-                let filled = ((pct / 100.0) * bar_width as f64) as usize;
-                let empty = bar_width - filled;
-                Line::from(vec![
-                    Span::styled(
-                        format!("  {:8} ", truncate_str(&d.mount_point, 8)),
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                    Span::styled(
-                        format!("[{}{}]", "█".repeat(filled), "░".repeat(empty)),
-                        Style::default().fg(if pct > 90.0 { Color::Red } else { Color::Blue }),
-                    ),
-                    Span::raw(format!(" {:4.0}%", pct)),
-                ])
-            })
-            .collect();
-
-        if !disk_lines.is_empty() {
-            let disk_text = Paragraph::new(disk_lines);
-            frame.render_widget(disk_text, chunks[4]);
-        }
-
-        // CPU sparkline
-        let spark_data: Vec<u64> = self
-            .cpu_history
-            .samples()
-            .iter()
-            .map(|v| *v as u64)
-            .collect();
-        if !spark_data.is_empty() {
-            let sparkline = Sparkline::default()
-                .block(Block::default().title("CPU "))
-                .data(&spark_data)
-                .max(100)
-                .style(Style::default().fg(Color::Cyan));
-            frame.render_widget(sparkline, chunks[5]);
-        }
-
-        // Temperatures
-        if !metrics.temperatures.is_empty() {
-            let temp_spans: Vec<Span> = metrics
-                .temperatures
-                .iter()
-                .take(4)
-                .map(|t| {
-                    let color = if t.is_critical() {
-                        Color::Red
-                    } else if t.current > 70.0 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    };
-                    Span::styled(
-                        format!("  {} {:.0}°C", truncate_str(&t.label, 6), t.current),
-                        Style::default().fg(color),
-                    )
-                })
-                .collect();
-
-            let temp_line = Line::from(temp_spans);
-            let temps_p = Paragraph::new(temp_line);
-            frame.render_widget(temps_p, chunks[6]);
-        }
+        let lines = build_host_info_lines(selected);
+        let panel = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
+        frame.render_widget(panel, area);
     }
 
     fn render_help(&self, frame: &mut Frame, area: Rect) {
@@ -604,27 +456,117 @@ impl Component for HostsScreen {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn format_bytes(bytes: u64) -> String {
-    const GB: u64 = 1_073_741_824;
-    const MB: u64 = 1_048_576;
-    if bytes >= GB {
-        format!("{:.1}G", bytes as f64 / GB as f64)
+/// Build the info lines for the selected host's detail sidebar.
+fn build_host_info_lines(status: &HostStatus) -> Vec<Line<'_>> {
+    let host = &status.host_info;
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Architecture
+    let system = host.system.as_deref().unwrap_or("unknown");
+    lines.push(Line::from(vec![
+        Span::styled("  Arch   ", Style::default().fg(Color::DarkGray)),
+        Span::styled(system, Style::default()),
+    ]));
+    lines.push(Line::from(""));
+
+    // Keystone modules
+    build_modules_lines(host, &mut lines);
+    lines.push(Line::from(""));
+
+    // Metadata from keystone.hosts
+    build_metadata_lines(host, &mut lines);
+    lines.push(Line::from(""));
+
+    // Config files
+    for (i, path) in host.config_files.iter().enumerate() {
+        let label = if i == 0 { "  Config " } else { "         " };
+        lines.push(Line::from(vec![
+            Span::styled(label, Style::default().fg(Color::DarkGray)),
+            Span::styled(path.as_str(), Style::default().fg(Color::Cyan)),
+        ]));
+    }
+
+    // Tailscale status
+    if let Some(peer) = &status.tailscale {
+        lines.push(Line::from(""));
+        let (text, color) = if peer.online {
+            ("online", Color::Green)
+        } else {
+            ("offline", Color::Red)
+        };
+        lines.push(Line::from(vec![
+            Span::styled("  Status ", Style::default().fg(Color::DarkGray)),
+            Span::styled(text, Style::default().fg(color)),
+        ]));
+        if let Some(ip) = peer.tailscale_ips.first() {
+            lines.push(Line::from(vec![
+                Span::styled("  TS IP  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(ip.as_str(), Style::default()),
+            ]));
+        }
+    }
+
+    lines
+}
+
+fn build_modules_lines<'a>(host: &'a HostInfo, lines: &mut Vec<Line<'a>>) {
+    if host.keystone_modules.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("  Modules", Style::default().fg(Color::DarkGray)),
+            Span::styled("  (none)", Style::default().fg(Color::DarkGray)),
+        ]));
     } else {
-        format!("{:.0}M", bytes as f64 / MB as f64)
+        for (i, module) in host.keystone_modules.iter().enumerate() {
+            let label = if i == 0 { "  Modules" } else { "         " };
+            lines.push(Line::from(vec![
+                Span::styled(label, Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("  {}", module), Style::default().fg(Color::Green)),
+            ]));
+        }
     }
 }
 
-fn truncate_str(s: &str, max: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count <= max {
-        s.to_string()
-    } else {
-        format!("{}…", s.chars().take(max - 1).collect::<String>())
+fn build_metadata_lines<'a>(host: &'a HostInfo, lines: &mut Vec<Line<'a>>) {
+    let Some(meta) = &host.metadata else { return };
+
+    if !meta.role.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("  Role   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(meta.role.as_str(), Style::default().fg(Color::Magenta)),
+        ]));
+    }
+    if !meta.ssh_target.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("  SSH    ", Style::default().fg(Color::DarkGray)),
+            Span::styled(meta.ssh_target.as_str(), Style::default()),
+        ]));
+    }
+    if !meta.fallback_ip.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("  IP     ", Style::default().fg(Color::DarkGray)),
+            Span::styled(meta.fallback_ip.as_str(), Style::default()),
+        ]));
+    }
+
+    let mut flags = Vec::new();
+    if meta.baremetal {
+        flags.push("baremetal");
+    }
+    if meta.zfs {
+        flags.push("zfs");
+    }
+    if meta.build_on_remote {
+        flags.push("remote-build");
+    }
+    if !flags.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("  Flags  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(flags.join(", "), Style::default().fg(Color::Yellow)),
+        ]));
     }
 }
 
 fn format_last_seen(ts: &str) -> String {
-    // Simple: just show the timestamp. A real implementation would compute "2h ago" etc.
     if ts.len() > 16 {
         ts[..16].to_string()
     } else {
@@ -639,7 +581,7 @@ fn format_last_seen(ts: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::system::{DiskInfo, TailscalePeer, TempReading};
+    use crate::system::TailscalePeer;
     use std::collections::HashMap;
 
     fn sample_statuses() -> Vec<HostStatus> {
@@ -701,45 +643,6 @@ mod tests {
         ]
     }
 
-    fn sample_metrics() -> SystemMetrics {
-        SystemMetrics {
-            cpu_usage: 45.2,
-            cpu_history: CpuHistory::new(60),
-            memory_used: 8_589_934_592,   // 8 GB
-            memory_total: 17_179_869_184, // 16 GB
-            swap_used: 536_870_912,       // 0.5 GB
-            swap_total: 4_294_967_296,    // 4 GB
-            disks: vec![
-                DiskInfo {
-                    name: "nvme0n1p2".to_string(),
-                    mount_point: "/".to_string(),
-                    total_bytes: 500_000_000_000,
-                    available_bytes: 110_000_000_000,
-                    filesystem: "ext4".to_string(),
-                },
-                DiskInfo {
-                    name: "nvme0n1p3".to_string(),
-                    mount_point: "/nix".to_string(),
-                    total_bytes: 500_000_000_000,
-                    available_bytes: 180_000_000_000,
-                    filesystem: "ext4".to_string(),
-                },
-            ],
-            temperatures: vec![
-                TempReading {
-                    label: "CPU".to_string(),
-                    current: 52.0,
-                    critical: Some(100.0),
-                },
-                TempReading {
-                    label: "GPU".to_string(),
-                    current: 48.0,
-                    critical: Some(95.0),
-                },
-            ],
-        }
-    }
-
     // -- T14: constructor with statuses --
     #[test]
     fn test_dashboard_new_with_statuses() {
@@ -756,24 +659,6 @@ mod tests {
         let mut screen = HostsScreen::new_with_statuses("my-infra".to_string(), statuses);
         screen.next(); // move to server
         assert_eq!(screen.selected_status().unwrap().host_info.name, "server");
-    }
-
-    // -- T16: poll metrics via channel --
-    #[test]
-    fn test_dashboard_poll_metrics() {
-        let (tx, rx) = mpsc::unbounded_channel();
-        let mut statuses = sample_statuses();
-        statuses[0].is_local = true; // laptop is local
-        let mut screen = HostsScreen::new_with_channel("test".to_string(), statuses, rx);
-
-        let metrics = sample_metrics();
-        tx.send(DashboardMessage::MetricsUpdate(metrics)).unwrap();
-        screen.poll();
-
-        // Local host (laptop) should have metrics
-        assert!(screen.statuses()[0].metrics.is_some());
-        let m = screen.statuses()[0].metrics.as_ref().unwrap();
-        assert!((m.cpu_usage - 45.2).abs() < 0.1);
     }
 
     // -- T17: poll tailscale via channel --
@@ -948,38 +833,5 @@ mod tests {
         screen.next();
         screen.previous();
         assert!(screen.selected_host().is_none());
-    }
-
-    #[test]
-    fn test_truncate_str_ascii_no_truncation() {
-        assert_eq!(truncate_str("hello", 10), "hello");
-        assert_eq!(truncate_str("hello", 5), "hello");
-    }
-
-    #[test]
-    fn test_truncate_str_ascii_truncated() {
-        let result = truncate_str("hello world", 6);
-        assert_eq!(result, "hello…");
-    }
-
-    #[test]
-    fn test_truncate_str_multibyte_no_truncation() {
-        // "日本語" = 3 chars, each 3 bytes
-        assert_eq!(truncate_str("日本語", 10), "日本語");
-        assert_eq!(truncate_str("日本語", 3), "日本語");
-    }
-
-    #[test]
-    fn test_truncate_str_multibyte_truncated() {
-        // "日本語テスト" = 6 chars; truncate at max=4 → take 3 chars + ellipsis
-        let result = truncate_str("日本語テスト", 4);
-        assert_eq!(result, "日本語…");
-    }
-
-    #[test]
-    fn test_truncate_str_emoji_truncated() {
-        // Each emoji is >1 byte but 1 char
-        let result = truncate_str("😀😁😂😃😄", 3);
-        assert_eq!(result, "😀😁…");
     }
 }
