@@ -100,15 +100,27 @@ pub struct HardwarePatchPlan {
 }
 
 /// Phases of the first-boot wizard.
+///
+/// Onboarding flow (REQ-008):
+/// Stage 5: Hardware → commit locally → Secure Boot → TPM → reboot
+/// Stage 6: SSH keys → push pending commit → secrets
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FirstBootPhase {
+    // Stage 5: First boot after install
     Welcome,
     DetectingHardware,
     ReviewPatch,
-    GitSetup,
-    ShowSshKey,
-    RemoteInput,
-    Pushing,
+    GitSetup, // local commit only — no push yet (ISO has no SSH keys)
+    // Security enrollment (Stage 5 continued)
+    SecureBootEnroll, // TODO: wire to security::secure_boot
+    TpmEnroll,        // TODO: wire to security::tpm
+    RebootPrompt,     // reboot for SB+TPM to take effect
+    // Stage 6: After security reboot
+    SshKeySetup,  // TODO: detect/generate/import SSH keys
+    ShowSshKey,   // display public key for user to add to GitHub
+    RemoteInput,  // enter git remote URL
+    Pushing,      // push the pending hardware commit
+    SecretsSetup, // TODO: agenix secrets initialization
     Done,
     Failed(String),
 }
@@ -628,8 +640,9 @@ impl FirstBootScreen {
                     self.complete(true, &message);
                 }
                 FirstBootMessage::GitReady => {
-                    self.phase = FirstBootPhase::ShowSshKey;
-                    self.spawn_ssh_key_check();
+                    // Local commit done. Next: security enrollment (Stage 5).
+                    // Push is deferred to Stage 6 after SSH keys are configured.
+                    self.phase = FirstBootPhase::SecureBootEnroll;
                 }
                 FirstBootMessage::SshKey(key) => {
                     self.ssh_public_key = Some(key);
@@ -659,9 +672,24 @@ impl FirstBootScreen {
                 self.render_progress(frame, area)
             }
             FirstBootPhase::ReviewPatch => self.render_review_patch(frame, area),
+            // Security enrollment (Stage 5)
+            FirstBootPhase::SecureBootEnroll => {
+                self.render_enrollment_step(frame, area, "Secure Boot", "sbctl enroll-keys")
+            }
+            FirstBootPhase::TpmEnroll => {
+                self.render_enrollment_step(frame, area, "TPM2", "systemd-cryptenroll")
+            }
+            FirstBootPhase::RebootPrompt => self.render_reboot_prompt(frame, area),
+            // SSH + push (Stage 6)
+            FirstBootPhase::SshKeySetup => {
+                self.render_enrollment_step(frame, area, "SSH Keys", "ssh-keygen / GitHub import")
+            }
             FirstBootPhase::ShowSshKey => self.render_ssh_key(frame, area),
             FirstBootPhase::RemoteInput => self.render_remote_input(frame, area),
             FirstBootPhase::Pushing => self.render_progress(frame, area),
+            FirstBootPhase::SecretsSetup => {
+                self.render_enrollment_step(frame, area, "Secrets", "agenix init")
+            }
             FirstBootPhase::Done => self.render_done(frame, area),
             FirstBootPhase::Failed(err) => self.render_failed(frame, area, err),
         }
@@ -689,10 +717,12 @@ impl FirstBootScreen {
             format!(
                 "\n  Your system '{}' has been installed.\n\n  \
                  This wizard will:\n  \
-                 1. Detect real hardware facts from this machine\n  \
-                 2. Build a reviewable patch for hardware.nix\n  \
-                 3. Apply the patch only after confirmation\n  \
-                 4. Continue into the existing git and push flow\n",
+                 1. Detect real hardware and update hardware.nix\n  \
+                 2. Commit changes locally (push later)\n  \
+                 3. Enroll Secure Boot keys\n  \
+                 4. Enroll TPM2 for automatic disk unlock\n  \
+                 5. Set up SSH keys and push to remote\n  \
+                 6. Initialize secrets for services\n",
                 self.config.hostname
             ),
             Style::default(),
@@ -941,6 +971,80 @@ impl FirstBootScreen {
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[3]);
+    }
+
+    /// Generic enrollment step placeholder for SB, TPM, SSH, secrets.
+    fn render_enrollment_step(&self, frame: &mut Frame, area: Rect, title: &str, tool: &str) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let heading = Paragraph::new(Text::styled(
+            format!("Setup: {}", title),
+            Style::default().bold().fg(Color::Yellow),
+        ))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(heading, chunks[0]);
+
+        let body = Paragraph::new(Text::styled(
+            format!(
+                "\n  TODO: {} enrollment\n\n  \
+                 Tool: {}\n\n  \
+                 Press Enter to continue or 's' to skip.",
+                title, tool,
+            ),
+            Style::default(),
+        ))
+        .block(Block::default().borders(Borders::ALL));
+        frame.render_widget(body, chunks[1]);
+
+        let help = Paragraph::new(Text::styled(
+            "Enter: proceed • s: skip • q: quit",
+            Style::default().fg(Color::DarkGray),
+        ))
+        .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
+    }
+
+    fn render_reboot_prompt(&self, frame: &mut Frame, area: Rect) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let heading = Paragraph::new(Text::styled(
+            "Reboot required",
+            Style::default().bold().fg(Color::Yellow),
+        ))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(heading, chunks[0]);
+
+        let body = Paragraph::new(Text::styled(
+            "\n  Secure Boot and TPM enrollment require a reboot to take effect.\n\n  \
+             After rebooting, the TUI will continue with SSH key setup\n  \
+             and push the pending hardware config commit.",
+            Style::default(),
+        ))
+        .block(Block::default().borders(Borders::ALL));
+        frame.render_widget(body, chunks[1]);
+
+        let help = Paragraph::new(Text::styled(
+            "r: reboot now • s: skip (continue without reboot) • q: quit",
+            Style::default().fg(Color::DarkGray),
+        ))
+        .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
     }
 
     fn render_done(&self, frame: &mut Frame, area: Rect) {
@@ -1219,6 +1323,67 @@ impl FirstBootScreen {
                 // No user input during async phases
                 None
             }
+            // Security enrollment (Stage 5)
+            FirstBootPhase::SecureBootEnroll => match code {
+                // TODO: wire to security::secure_boot::enroll_keys()
+                KeyCode::Enter => {
+                    self.phase = FirstBootPhase::TpmEnroll;
+                    None
+                }
+                KeyCode::Char('s') => {
+                    self.phase = FirstBootPhase::TpmEnroll;
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            FirstBootPhase::TpmEnroll => match code {
+                // TODO: wire to security::tpm::enroll()
+                KeyCode::Enter => {
+                    self.phase = FirstBootPhase::RebootPrompt;
+                    None
+                }
+                KeyCode::Char('s') => {
+                    self.phase = FirstBootPhase::RebootPrompt;
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            FirstBootPhase::RebootPrompt => match code {
+                KeyCode::Char('r') => Some(Action::Reboot),
+                KeyCode::Char('s') => {
+                    // Skip reboot, continue to SSH key setup
+                    self.phase = FirstBootPhase::SshKeySetup;
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            // Stage 6: SSH keys + push
+            FirstBootPhase::SshKeySetup => match code {
+                // TODO: wire to security::yubikey::detect_devices()
+                // TODO: offer ssh-keygen, GitHub import, YubiKey enrollment
+                KeyCode::Enter => {
+                    self.continue_to_remote();
+                    None
+                }
+                KeyCode::Char('s') => {
+                    self.skip();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            FirstBootPhase::SecretsSetup => match code {
+                // TODO: wire to agenix secrets init
+                KeyCode::Enter | KeyCode::Char('s') => {
+                    self.complete(true, "Onboarding complete!");
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
             FirstBootPhase::ReviewPatch => match code {
                 KeyCode::Enter => {
                     self.apply_patch();
