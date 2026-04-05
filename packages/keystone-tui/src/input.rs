@@ -6,8 +6,8 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 
 use crate::app::{App, AppScreen};
-use crate::nix::HostInfo;
 use crate::components;
+use crate::nix::HostInfo;
 
 /// Actions that require mutating app-level state (screen transitions).
 #[derive(Debug)]
@@ -481,8 +481,9 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
             handle_create_config_action(app, ca).await;
         }
         AppAction::GoToCreateConfig { repo_name } => {
-            app.current_screen =
-                AppScreen::CreateConfig(components::create_config::CreateConfigScreen::new(repo_name));
+            app.current_screen = AppScreen::CreateConfig(
+                components::create_config::CreateConfigScreen::new(repo_name),
+            );
         }
         AppAction::GoToHostDetail(host) => {
             app.current_screen =
@@ -500,8 +501,9 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         }
         AppAction::BuildIso { host_name } => {
             if let Some(repo_path) = app.active_repo_path() {
-                app.current_screen =
-                    AppScreen::Iso(components::iso::IsoScreen::new_for_host(repo_path, host_name));
+                app.current_screen = AppScreen::Iso(components::iso::IsoScreen::new_for_host(
+                    repo_path, host_name,
+                ));
             }
         }
         AppAction::IsoTargetUp => {

@@ -1,8 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use crate::config::{AppConfig, KeystoneRepo};
-use crate::nix;
-use crate::repo;
 use crate::components::build::BuildScreen;
 use crate::components::create_config::CreateConfigScreen;
 use crate::components::deploy::DeployScreen;
@@ -12,6 +9,9 @@ use crate::components::hosts::HostsScreen;
 use crate::components::install::InstallScreen;
 use crate::components::iso::IsoScreen;
 use crate::components::welcome::WelcomeScreen;
+use crate::config::{AppConfig, KeystoneRepo};
+use crate::nix;
+use crate::repo;
 use crate::system;
 
 /// Represents the different screens/views in the TUI.
@@ -160,7 +160,9 @@ impl App {
 
     /// Create an App in installer mode — starts on the InstallScreen with
     /// pre-baked config from an ISO. Skips repo discovery and Welcome flow.
-    pub fn new_for_installer(installer_config: crate::components::install::InstallerConfig) -> Self {
+    pub fn new_for_installer(
+        installer_config: crate::components::install::InstallerConfig,
+    ) -> Self {
         Self {
             should_quit: false,
             config: AppConfig::default(),
