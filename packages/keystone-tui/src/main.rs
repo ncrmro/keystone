@@ -16,7 +16,7 @@ use std::io;
 
 use anyhow::Result;
 use clap::Parser;
-use crossterm::event::{self, Event};
+use crossterm::event;
 use ratatui::prelude::*;
 
 mod action;
@@ -28,7 +28,6 @@ mod components;
 mod config;
 mod disk;
 mod github;
-mod input;
 mod nix;
 mod repo;
 mod ssh_keys;
@@ -41,7 +40,6 @@ use app::{App, AppScreen};
 use cli::{Cli, Command};
 use components::first_boot::FirstBootConfig;
 use components::install::InstallerConfig;
-use input::{dispatch_key, handle_action, AppAction};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -363,31 +361,14 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
         if event::poll(std::time::Duration::from_millis(100))? {
             let terminal_event = event::read()?;
 
-            // Try Component trait event handling first
-            let component_action = app
-                .current_screen
-                .as_component_mut()
-                .and_then(|c| c.handle_events(&terminal_event).ok().flatten());
-
-            if let Some(action) = component_action {
-                handle_component_action(app, action).await;
-            } else if let Event::Key(key) = terminal_event {
-                // Legacy dispatch for screens not yet migrated to Component
-                // TODO: remove once all screens implement Component
-                if let Some(action) = dispatch_key(app, key) {
-                    match action {
-                        AppAction::Quit => app.should_quit = true,
-                        other => handle_action(app, other).await,
-                    }
+            // All screens implement Component — dispatch via trait
+            if let Some(component) = app.current_screen.as_component_mut() {
+                if let Ok(Some(action)) = component.handle_events(&terminal_event) {
+                    handle_component_action(app, action).await;
                 }
             }
 
             handle_pending_async(app).await;
-
-            match terminal_event {
-                Event::Resize(_, _) | Event::Mouse(_) => {}
-                _ => {}
-            }
         }
 
         if app.should_quit {

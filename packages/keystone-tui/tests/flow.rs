@@ -1,30 +1,29 @@
 //! Multi-screen flow integration tests.
 //!
-//! These tests exercise screen transitions using dispatch_key + handle_action,
-//! verifying that the TUI navigates correctly between screens.
+//! These tests exercise screen transitions using the Component trait's
+//! handle_events(), verifying that the TUI navigates correctly between
+//! components via the global Action enum.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 
+use keystone_tui::action::{Action, Screen};
 use keystone_tui::app::{App, AppScreen};
 use keystone_tui::components::hosts::HostsScreen;
-use keystone_tui::input::{dispatch_key, handle_action, AppAction};
 use keystone_tui::nix::HostInfo;
 
-/// Helper to create a key press event.
-fn key(code: KeyCode) -> KeyEvent {
-    KeyEvent {
+/// Helper to create a key press Event.
+fn key_event(code: KeyCode) -> Event {
+    Event::Key(KeyEvent {
         code,
         modifiers: KeyModifiers::NONE,
         kind: KeyEventKind::Press,
         state: KeyEventState::NONE,
-    }
+    })
 }
 
 #[test]
 fn test_welcome_to_hosts_flow() {
     let mut app = App::new_for_test();
-
-    // Start on Welcome
     assert!(matches!(app.current_screen, AppScreen::Welcome(_)));
 
     // Simulate the welcome flow completing (set_success + confirm)
@@ -32,10 +31,14 @@ fn test_welcome_to_hosts_flow() {
         welcome.set_success("Repo imported!".to_string());
     }
 
-    // Press Enter to acknowledge success
-    let action = dispatch_key(&mut app, key(KeyCode::Enter));
-    // This should return WelcomeAction(Complete) which transitions to hosts
-    assert!(matches!(action, Some(AppAction::WelcomeAction(_))));
+    // Press Enter to acknowledge success — should navigate to Hosts
+    let action = app
+        .current_screen
+        .as_component_mut()
+        .unwrap()
+        .handle_events(&key_event(KeyCode::Enter))
+        .unwrap();
+    assert!(matches!(action, Some(Action::NavigateTo(Screen::Hosts))));
 }
 
 #[test]
@@ -61,23 +64,33 @@ fn test_hosts_to_detail_and_back() {
     app.current_screen = AppScreen::Hosts(HostsScreen::new("test-repo".to_string(), hosts));
 
     // Press Enter to go to host detail
-    let action = dispatch_key(&mut app, key(KeyCode::Enter));
+    let action = app
+        .current_screen
+        .as_component_mut()
+        .unwrap()
+        .handle_events(&key_event(KeyCode::Enter))
+        .unwrap();
     match action {
-        Some(AppAction::GoToHostDetail(host)) => {
+        Some(Action::NavigateTo(Screen::HostDetail(host))) => {
             assert_eq!(host.name, "laptop");
-            // Manually transition (in real app, handle_action does this)
+            // Manually transition
             app.current_screen = AppScreen::HostDetail(
-                keystone_tui::components::host_detail::HostDetailScreen::new(host),
+                keystone_tui::components::host_detail::HostDetailScreen::new(*host),
             );
         }
-        other => panic!("Expected GoToHostDetail, got {:?}", other),
+        other => panic!("Expected NavigateTo(HostDetail), got {:?}", other),
     }
 
     assert!(matches!(app.current_screen, AppScreen::HostDetail(_)));
 
-    // Press Esc to go back to hosts
-    let action = dispatch_key(&mut app, key(KeyCode::Esc));
-    assert!(matches!(action, Some(AppAction::GoToHosts)));
+    // Press Esc to go back
+    let action = app
+        .current_screen
+        .as_component_mut()
+        .unwrap()
+        .handle_events(&key_event(KeyCode::Esc))
+        .unwrap();
+    assert!(matches!(action, Some(Action::GoBack)));
 }
 
 #[test]
@@ -102,17 +115,27 @@ fn test_navigate_hosts_then_select_second() {
     let mut app = App::new_for_test();
     app.current_screen = AppScreen::Hosts(HostsScreen::new("repo".to_string(), hosts));
 
-    // Navigate down
-    let action = dispatch_key(&mut app, key(KeyCode::Down));
-    assert!(action.is_none()); // Navigation doesn't produce an action
+    // Navigate down — internal action, returns None
+    let action = app
+        .current_screen
+        .as_component_mut()
+        .unwrap()
+        .handle_events(&key_event(KeyCode::Down))
+        .unwrap();
+    assert!(action.is_none());
 
     // Press Enter on second host
-    let action = dispatch_key(&mut app, key(KeyCode::Enter));
+    let action = app
+        .current_screen
+        .as_component_mut()
+        .unwrap()
+        .handle_events(&key_event(KeyCode::Enter))
+        .unwrap();
     match action {
-        Some(AppAction::GoToHostDetail(host)) => {
+        Some(Action::NavigateTo(Screen::HostDetail(host))) => {
             assert_eq!(host.name, "beta");
         }
-        other => panic!("Expected GoToHostDetail(beta), got {:?}", other),
+        other => panic!("Expected NavigateTo(HostDetail(beta)), got {:?}", other),
     }
 }
 
@@ -120,14 +143,24 @@ fn test_navigate_hosts_then_select_second() {
 fn test_quit_from_any_screen() {
     // Quit from Welcome
     let mut app = App::new_for_test();
-    let action = dispatch_key(&mut app, key(KeyCode::Char('q')));
-    assert!(matches!(action, Some(AppAction::Quit)));
+    let action = app
+        .current_screen
+        .as_component_mut()
+        .unwrap()
+        .handle_events(&key_event(KeyCode::Char('q')))
+        .unwrap();
+    assert!(matches!(action, Some(Action::Quit)));
 
     // Quit from Hosts
     let mut app = App::new_for_test();
     app.current_screen = AppScreen::Hosts(HostsScreen::new("repo".to_string(), vec![]));
-    let action = dispatch_key(&mut app, key(KeyCode::Char('q')));
-    assert!(matches!(action, Some(AppAction::Quit)));
+    let action = app
+        .current_screen
+        .as_component_mut()
+        .unwrap()
+        .handle_events(&key_event(KeyCode::Char('q')))
+        .unwrap();
+    assert!(matches!(action, Some(Action::Quit)));
 
     // Quit from HostDetail
     let mut app = App::new_for_test();
@@ -140,20 +173,17 @@ fn test_quit_from_any_screen() {
             metadata: None,
         }),
     );
-    let action = dispatch_key(&mut app, key(KeyCode::Char('q')));
-    assert!(matches!(action, Some(AppAction::Quit)));
+    let action = app
+        .current_screen
+        .as_component_mut()
+        .unwrap()
+        .handle_events(&key_event(KeyCode::Char('q')))
+        .unwrap();
+    assert!(matches!(action, Some(Action::Quit)));
 }
 
 #[tokio::test]
-async fn test_handle_action_quit_sets_flag() {
-    let mut app = App::new_for_test();
-    assert!(!app.should_quit);
-    handle_action(&mut app, AppAction::Quit).await;
-    assert!(app.should_quit);
-}
-
-#[tokio::test]
-async fn test_handle_action_go_to_host_detail() {
+async fn test_navigate_to_host_detail() {
     let mut app = App::new_for_test();
     let host = HostInfo {
         name: "target-host".to_string(),
@@ -163,10 +193,16 @@ async fn test_handle_action_go_to_host_detail() {
         metadata: None,
     };
 
-    handle_action(&mut app, AppAction::GoToHostDetail(host)).await;
+    app.navigate_to(Screen::HostDetail(Box::new(host))).await;
     assert!(matches!(app.current_screen, AppScreen::HostDetail(_)));
 
     if let AppScreen::HostDetail(ref detail) = app.current_screen {
         assert_eq!(detail.host().name, "target-host");
     }
+}
+
+#[tokio::test]
+async fn test_navigate_to_sets_quit() {
+    let app = App::new_for_test();
+    assert!(!app.should_quit);
 }

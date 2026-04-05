@@ -138,8 +138,6 @@ pub async fn eval_host_metadata(repo_path: &Path, hosts: &mut [HostInfo]) {
 /// Extract nixosConfigurations attribute names and details from the flake AST.
 ///
 /// Handles three forms:
-// TODO: remove allow once Form 2 parsing is extracted to a helper
-#[allow(clippy::cognitive_complexity)]
 /// 1. `nixosConfigurations = { host1 = ...; host2 = ...; };` (nested attrset)
 /// 2. `nixosConfigurations.host1 = ...;` (dotted attrpath, e.g. ISO flakes)
 /// 3. `keystone.lib.mkSystemFlake { hosts = { ... }; }` (inventory-based)
@@ -153,95 +151,47 @@ fn extract_nixos_configurations(root: &SyntaxNode) -> Vec<HostInfo> {
     let mut hosts = Vec::new();
 
     for node in root.descendants() {
-        if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-            if let Some(attrpath) = node
+        if node.kind() != SyntaxKind::NODE_ATTRPATH_VALUE {
+            continue;
+        }
+        let Some(attrpath) = node
+            .children()
+            .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
+        else {
+            continue;
+        };
+
+        let idents: Vec<String> = attrpath
+            .children()
+            .filter_map(|n| match n.kind() {
+                SyntaxKind::NODE_IDENT => Some(n.text().to_string()),
+                SyntaxKind::NODE_STRING => Some(n.text().to_string().trim_matches('"').to_string()),
+                _ => None,
+            })
+            .collect();
+
+        let path_text = idents.join(".");
+
+        // Form 1: nixosConfigurations = { host = ...; }
+        if path_text == "nixosConfigurations" {
+            if let Some(value) = node
                 .children()
-                .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
+                .find(|n| n.kind() == SyntaxKind::NODE_ATTR_SET)
             {
-                let idents: Vec<String> = attrpath
-                    .children()
-                    .filter_map(|n| match n.kind() {
-                        SyntaxKind::NODE_IDENT => Some(n.text().to_string()),
-                        SyntaxKind::NODE_STRING => {
-                            Some(n.text().to_string().trim_matches('"').to_string())
-                        }
-                        _ => None,
-                    })
-                    .collect();
-
-                let path_text = idents.join(".");
-
-                // Form 1: nixosConfigurations = { host = ...; }
-                if path_text == "nixosConfigurations" {
-                    if let Some(value) = node
-                        .children()
-                        .find(|n| n.kind() == SyntaxKind::NODE_ATTR_SET)
-                    {
-                        for attr in value.children() {
-                            if attr.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-                                if let Some(host_info) = parse_host_entry(&attr) {
-                                    hosts.push(host_info);
-                                }
-                            }
+                for attr in value.children() {
+                    if attr.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
+                        if let Some(host_info) = parse_host_entry(&attr) {
+                            hosts.push(host_info);
                         }
                     }
                 }
+            }
+        }
 
-                // Form 2: nixosConfigurations.hostName = nixpkgs.lib.nixosSystem { ... }
-                if idents.len() == 2 && idents[0] == "nixosConfigurations" {
-                    let host_name = &idents[1];
-                    let mut system = None;
-                    let mut keystone_modules = Vec::new();
-                    let mut config_files = Vec::new();
-
-                    for descendant in node.descendants() {
-                        if descendant.kind() == SyntaxKind::NODE_ATTR_SET {
-                            for child in descendant.children() {
-                                if child.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-                                    if let Some(ap) = child
-                                        .children()
-                                        .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
-                                    {
-                                        let attr_name: String = ap
-                                            .children()
-                                            .filter(|n| n.kind() == SyntaxKind::NODE_IDENT)
-                                            .map(|n| n.text().to_string())
-                                            .collect::<Vec<_>>()
-                                            .join(".");
-
-                                        match attr_name.as_str() {
-                                            "system" => {
-                                                system = extract_string_value(&child);
-                                            }
-                                            "modules" => {
-                                                if let Some(list_node) = child
-                                                    .descendants()
-                                                    .find(|n| n.kind() == SyntaxKind::NODE_LIST)
-                                                {
-                                                    parse_modules_list(
-                                                        &list_node,
-                                                        &mut keystone_modules,
-                                                        &mut config_files,
-                                                    );
-                                                }
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                            }
-                            break;
-                        }
-                    }
-
-                    hosts.push(HostInfo {
-                        name: host_name.clone(),
-                        system,
-                        keystone_modules,
-                        config_files,
-                        metadata: None,
-                    });
-                }
+        // Form 2: nixosConfigurations.hostName = nixpkgs.lib.nixosSystem { ... }
+        if idents.len() == 2 && idents[0] == "nixosConfigurations" {
+            if let Some(host) = parse_dotted_host_entry(&idents[1], &node) {
+                hosts.push(host);
             }
         }
     }
@@ -441,6 +391,60 @@ fn parse_host_entry(attr_node: &SyntaxNode) -> Option<HostInfo> {
 
     Some(HostInfo {
         name,
+        system,
+        keystone_modules,
+        config_files,
+        metadata: None,
+    })
+}
+
+/// Parse Form 2: `nixosConfigurations.hostName = nixpkgs.lib.nixosSystem { ... }`.
+///
+/// Extracts system and modules from the function application argument attrset.
+fn parse_dotted_host_entry(host_name: &str, node: &SyntaxNode) -> Option<HostInfo> {
+    let mut system = None;
+    let mut keystone_modules = Vec::new();
+    let mut config_files = Vec::new();
+
+    for descendant in node.descendants() {
+        if descendant.kind() != SyntaxKind::NODE_ATTR_SET {
+            continue;
+        }
+        for child in descendant.children() {
+            if child.kind() != SyntaxKind::NODE_ATTRPATH_VALUE {
+                continue;
+            }
+            let Some(ap) = child
+                .children()
+                .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
+            else {
+                continue;
+            };
+            let attr_name: String = ap
+                .children()
+                .filter(|n| n.kind() == SyntaxKind::NODE_IDENT)
+                .map(|n| n.text().to_string())
+                .collect::<Vec<_>>()
+                .join(".");
+
+            match attr_name.as_str() {
+                "system" => system = extract_string_value(&child),
+                "modules" => {
+                    if let Some(list_node) = child
+                        .descendants()
+                        .find(|n| n.kind() == SyntaxKind::NODE_LIST)
+                    {
+                        parse_modules_list(&list_node, &mut keystone_modules, &mut config_files);
+                    }
+                }
+                _ => {}
+            }
+        }
+        break;
+    }
+
+    Some(HostInfo {
+        name: host_name.to_string(),
         system,
         keystone_modules,
         config_files,
