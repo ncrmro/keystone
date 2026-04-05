@@ -35,6 +35,7 @@ impl Component for SecurityScreen {
                 KeyCode::Char('1') => Some(Action::NavigateTo(Screen::Hosts)),
                 KeyCode::Char('2') => Some(Action::NavigateTo(Screen::Services)),
                 KeyCode::Char('3') => Some(Action::NavigateTo(Screen::Secrets)),
+                KeyCode::Char('5') => Some(Action::NavigateTo(Screen::Installer)),
                 _ => None,
             });
         }

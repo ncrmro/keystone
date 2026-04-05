@@ -5,6 +5,7 @@ pub mod first_boot;
 pub mod host_detail;
 pub mod hosts;
 pub mod install;
+pub mod installer;
 pub mod iso;
 pub mod secrets;
 pub mod security;

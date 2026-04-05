@@ -9,11 +9,11 @@ expression: output
   Services   │ server             │                         
   Secrets    │                    │  Modules  operating-syst
   Security   │                    │                         
+  Installer  │                    │                         
              │                    │                         
              │                    │                         
              │                    │                         
              │                    │                         
              │                    │                         
              │                    │                         
-             │                    │                         
-1-4: sections • ↑/↓: navigate • Enter: details • i: ISO • r:
+1-5: sections • ↑/↓: navigate • Enter: details • r: refresh

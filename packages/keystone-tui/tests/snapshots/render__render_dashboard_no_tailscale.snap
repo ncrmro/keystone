@@ -9,6 +9,7 @@ expression: output
   Services   │   localhost               │                                      
   Secrets    │ server                    │  Modules  (none)                     
   Security   │                           │                                      
+  Installer  │                           │                                      
              │                           │                                      
              │                           │                                      
              │                           │                                      
@@ -20,5 +21,4 @@ expression: output
              │                           │                                      
              │                           │                                      
              │                           │                                      
-             │                           │                                      
- 1-4: sections • ↑/↓: navigate • Enter: details • i: ISO • r: refresh • q: quit
+      1-5: sections • ↑/↓: navigate • Enter: details • r: refresh • q: quit
