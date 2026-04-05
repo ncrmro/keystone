@@ -32,6 +32,7 @@ let
   cfait-src = ../packages/cfait;
   zellij-tab-name-src = ../packages/zellij-tab-name;
   hyprpolkitagent-src = ../packages/hyprpolkitagent;
+  agents-e2e-src = ../packages/agents-e2e;
   ks-src = ../packages/ks;
   pz-src = ../packages/pz;
   keystone-photos-src = ../packages/keystone-photos;
@@ -72,7 +73,11 @@ in
     repo-sync = final.callPackage repo-sync-src { };
     podman-agent = final.callPackage podman-agent-src { };
     keystone-photos = final.callPackage keystone-photos-src { };
-    ks = final.callPackage ks-src { keystonePhotos = final.keystone.keystone-photos; };
+    agents-e2e = final.callPackage agents-e2e-src { };
+    ks = final.callPackage ks-src {
+      keystonePhotos = final.keystone.keystone-photos;
+      agents-e2e = final.keystone.agents-e2e;
+    };
     pz = final.callPackage pz-src { };
     cfait = final.callPackage cfait-src { };
     zellij-tab-name = final.callPackage zellij-tab-name-src { };
