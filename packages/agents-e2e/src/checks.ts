@@ -2,7 +2,7 @@
 // See specs/REQ-031-e2e-os-agent-product-test.md
 
 import { execSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { AgentCtl } from "./agentctl";
 import type { ForgejoPlatform } from "./forgejo";
@@ -17,6 +17,8 @@ interface Config {
   forgejoUrl: string;
   forgejoToken: string;
   templateRepo: string;
+  domain: string;
+  timeoutMs: number;
   dryRun: boolean;
   print: boolean;
 }
@@ -64,6 +66,28 @@ function walkDir(
     }
   } catch {
     // Permission denied or missing dir
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Polling helper
+// ---------------------------------------------------------------------------
+
+const POLL_INTERVAL_MS = 30_000;
+
+async function pollUntil(
+  fn: () => Promise<boolean>,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await fn()) return true;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(POLL_INTERVAL_MS, remaining)),
+    );
   }
   return false;
 }
@@ -280,57 +304,73 @@ export async function setupEnvironment(
 // ---------------------------------------------------------------------------
 
 export async function productEmail(config: Config, report: Report) {
+  const toAddr = `${config.productAgent}@${config.domain}`;
   emit("info", "sending palindrome requirement to product agent", {
     agent: config.productAgent,
+    to: toAddr,
   });
-  // TODO: wire agent-mail dispatch
-  report.check(
-    "product_email_dispatch",
-    "skip",
-    "agent-mail dispatch not yet wired",
-  );
+  try {
+    execSync(
+      `agent-mail feature.requirement --to ${JSON.stringify(toAddr)} --subject ${JSON.stringify("Palindrome Checker")} --send`,
+      { stdio: "pipe" },
+    );
+    report.check(
+      "product_email_dispatch",
+      "pass",
+      `Palindrome requirement sent to ${toAddr}`,
+    );
+  } catch (err) {
+    report.check(
+      "product_email_dispatch",
+      "fail",
+      `Failed to send email: ${err}`,
+    );
+    throw err;
+  }
 }
 
 export async function productPressRelease(
-  _config: Config,
+  config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
 ) {
-  emit("info", "checking for press release issue");
-  try {
-    const issues = await forgejo.listIssues(repo, "open");
-    const found = issues.some((i) => /press release|palindrome/i.test(i.title));
-    report.check(
-      "product_press_release",
-      found ? "pass" : "skip",
-      found ? "Found press release issue" : "No press release issue found yet",
-    );
-  } catch {
-    report.check("product_press_release", "skip", "Could not list issues");
-  }
+  emit("info", "waiting for press release issue");
+  const found = await pollUntil(async () => {
+    try {
+      const issues = await forgejo.listIssues(repo, "open");
+      return issues.some((i) => /press release|palindrome/i.test(i.title));
+    } catch {
+      return false;
+    }
+  }, config.timeoutMs);
+  report.check(
+    "product_press_release",
+    found ? "pass" : "skip",
+    found ? "Found press release issue" : "No press release issue found yet",
+  );
 }
 
 export async function productMilestone(
-  _config: Config,
+  config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
 ) {
-  emit("info", "checking for milestone");
-  try {
-    const milestones = await forgejo.listMilestones(repo);
-    const found = milestones.some((m) => /palindrome/i.test(m.title));
-    report.check(
-      "product_milestone",
-      found ? "pass" : "skip",
-      found
-        ? "Found palindrome milestone"
-        : "No palindrome milestone found yet",
-    );
-  } catch {
-    report.check("product_milestone", "skip", "Could not list milestones");
-  }
+  emit("info", "waiting for palindrome milestone");
+  const found = await pollUntil(async () => {
+    try {
+      const milestones = await forgejo.listMilestones(repo);
+      return milestones.some((m) => /palindrome/i.test(m.title));
+    } catch {
+      return false;
+    }
+  }, config.timeoutMs);
+  report.check(
+    "product_milestone",
+    found ? "pass" : "skip",
+    found ? "Found palindrome milestone" : "No palindrome milestone found yet",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -338,25 +378,27 @@ export async function productMilestone(
 // ---------------------------------------------------------------------------
 
 export async function engineeringIssue(
-  _config: Config,
+  config: Config,
   report: Report,
   forgejo: ForgejoPlatform,
   repo: string,
 ) {
-  emit("info", "checking for engineering issue on milestone");
-  try {
-    const issues = await forgejo.listIssues(repo, "all");
-    const found = issues.some((i) =>
-      /engineer|implement|palindrome/i.test(i.title),
-    );
-    report.check(
-      "engineering_issue",
-      found ? "pass" : "skip",
-      found ? "Found engineering issue" : "No engineering issue found yet",
-    );
-  } catch {
-    report.check("engineering_issue", "skip", "Could not list issues");
-  }
+  emit("info", "waiting for engineering issue on milestone");
+  const found = await pollUntil(async () => {
+    try {
+      const issues = await forgejo.listIssues(repo, "all");
+      return issues.some((i) =>
+        /engineer|implement|palindrome/i.test(i.title),
+      );
+    } catch {
+      return false;
+    }
+  }, config.timeoutMs);
+  report.check(
+    "engineering_issue",
+    found ? "pass" : "skip",
+    found ? "Found engineering issue" : "No engineering issue found yet",
+  );
 }
 
 export async function trunkBranch(
@@ -435,12 +477,85 @@ export async function specFile(config: Config, report: Report) {
   );
 }
 
-export async function palindromeBackend(_config: Config, report: Report) {
+export async function palindromeBackend(config: Config, report: Report) {
   emit("info", "checking palindrome backend responds correctly");
+  const home = engineerHome(config);
+  if (!home) {
+    report.check(
+      "palindrome_backend",
+      "skip",
+      "Could not resolve engineer home directory",
+    );
+    return;
+  }
+
+  const port = discoverServerPort(home, config) ?? 3000;
+  const baseUrl = `http://localhost:${port}`;
+
+  const cases: Array<{ input: string; expected: boolean }> = [
+    { input: "racecar", expected: true },
+    { input: "hello", expected: false },
+  ];
+
+  for (const { input, expected } of cases) {
+    let result: unknown;
+    try {
+      result = await fetchPalindromeResult(baseUrl, input);
+    } catch (err) {
+      report.check(
+        "palindrome_backend",
+        "skip",
+        `Could not reach server at ${baseUrl}: ${err}`,
+      );
+      return;
+    }
+
+    const validated = validatePalindromeResponse(result);
+    if (!validated) {
+      report.check(
+        "palindrome_backend",
+        "fail",
+        `Response for "${input}" does not match JSON schema: ${JSON.stringify(result)}`,
+      );
+      return;
+    }
+
+    if (validated.is_palindrome !== expected) {
+      report.check(
+        "palindrome_backend",
+        "fail",
+        `Expected is_palindrome=${expected} for "${input}", got ${validated.is_palindrome}`,
+      );
+      return;
+    }
+  }
+
   report.check(
     "palindrome_backend",
-    "skip",
-    "Backend validation not yet implemented",
+    "pass",
+    `Palindrome backend at port ${port} returns correct JSON`,
+  );
+}
+
+export async function modelMatrix(config: Config, report: Report) {
+  emit("info", "recording model-matrix: detecting agent language/framework");
+  const home = engineerHome(config);
+  if (!home) {
+    report.check(
+      "model_matrix",
+      "skip",
+      "Could not resolve engineer home directory",
+    );
+    return;
+  }
+
+  const lang = detectBackendLanguage(home, config);
+  report.check(
+    "model_matrix",
+    lang ? "pass" : "skip",
+    lang
+      ? `lang=${lang} provider=${config.provider}`
+      : `Could not detect backend language provider=${config.provider}`,
   );
 }
 
@@ -520,7 +635,7 @@ export async function lfsTracking(config: Config, report: Report) {
   const found = findInAgentPaths(home, (p) => {
     if (p.endsWith(".gitattributes") && p.includes(name)) {
       try {
-        const content = require("node:fs").readFileSync(p, "utf-8");
+        const content = readFileSync(p, "utf-8");
         return /\.png.*filter=lfs/.test(content);
       } catch {
         return false;
@@ -606,6 +721,103 @@ export async function milestoneClosed(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function discoverServerPort(
+  agentHome: string,
+  config: Config,
+): number | null {
+  const name = forkName(config);
+  const owner = config.templateRepo.split("/")[0];
+  const roots = [
+    join(agentHome, "..", ".worktrees", owner, name),
+    join(agentHome, "repos", owner, name),
+  ];
+  for (const root of roots) {
+    const portFile = join(root, "packages", "web", ".port");
+    if (existsSync(portFile)) {
+      const raw = readFileSync(portFile, "utf-8").trim();
+      const port = Number.parseInt(raw, 10);
+      if (!Number.isNaN(port) && port > 0 && port < 65536) return port;
+    }
+  }
+  return null;
+}
+
+interface PalindromeResponse {
+  input: string;
+  is_palindrome: boolean;
+}
+
+async function fetchPalindromeResult(
+  baseUrl: string,
+  input: string,
+): Promise<unknown> {
+  const paths = ["/palindrome", "/api/palindrome", "/check", "/api/check"];
+  for (const path of paths) {
+    try {
+      const resp = await fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (resp.ok) return resp.json();
+    } catch {
+      // try next path
+    }
+  }
+  throw new Error(`No palindrome endpoint responded at ${baseUrl}`);
+}
+
+function validatePalindromeResponse(
+  data: unknown,
+): PalindromeResponse | null {
+  if (
+    data !== null &&
+    typeof data === "object" &&
+    "input" in data &&
+    "is_palindrome" in data &&
+    typeof (data as Record<string, unknown>).input === "string" &&
+    typeof (data as Record<string, unknown>).is_palindrome === "boolean"
+  ) {
+    return data as PalindromeResponse;
+  }
+  return null;
+}
+
+function detectBackendLanguage(agentHome: string, config: Config): string | null {
+  const name = forkName(config);
+  const owner = config.templateRepo.split("/")[0];
+  const roots = [
+    join(agentHome, "..", ".worktrees", owner, name),
+    join(agentHome, "repos", owner, name),
+  ];
+
+  const indicators: Array<{ pattern: RegExp; lang: string }> = [
+    { pattern: /Cargo\.toml$/, lang: "rust" },
+    { pattern: /go\.mod$/, lang: "go" },
+    { pattern: /requirements\.txt$|setup\.py$|pyproject\.toml$/, lang: "python" },
+    { pattern: /Gemfile$/, lang: "ruby" },
+    { pattern: /pom\.xml$|build\.gradle$/, lang: "java" },
+    { pattern: /packages\/web\/.*\.go$/, lang: "go" },
+    { pattern: /packages\/web\/.*\.rs$/, lang: "rust" },
+    { pattern: /packages\/web\/.*\.py$/, lang: "python" },
+    { pattern: /packages\/web\/.*\.rb$/, lang: "ruby" },
+    { pattern: /packages\/web\/.*\.java$/, lang: "java" },
+  ];
+
+  for (const root of roots) {
+    if (!existsSync(root)) continue;
+    for (const { pattern, lang } of indicators) {
+      if (walkDir(root, (p) => pattern.test(p))) return lang;
+    }
+    // Default: TypeScript/Bun (template language)
+    if (existsSync(join(root, "bun.lock")) || existsSync(join(root, "bun.lockb"))) {
+      return "typescript";
+    }
+  }
+  return null;
+}
 
 function readLine(): Promise<string> {
   return new Promise((resolve) => {
