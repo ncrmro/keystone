@@ -50,14 +50,9 @@ in
             nameValuePair username (
               { pkgs, osConfig, ... }:
               {
-                imports = [
-                  ../../notes/default.nix
-                ];
-
-                # Provide empty keystoneInputs — editor.nix uses it for optional
-                # unstable helix and kinda-nvim theme, both degrade gracefully to
-                # stable defaults when the attrs are absent.
-                _module.args.keystoneInputs = { };
+                # notes and terminal are provided as sharedModules by
+                # nixosModules.operating-system. keystoneInputs is set by
+                # homeModules.terminal — do not redeclare either here.
 
                 # NOTE: Do NOT wrap in mkIf — see users.nix for explanation.
                 keystone.terminal = {
