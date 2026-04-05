@@ -11,6 +11,7 @@
 
 use std::path::PathBuf;
 
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
@@ -22,6 +23,8 @@ use ratatui::{
     Frame,
 };
 
+use crate::action::Action;
+use crate::component::Component;
 use crate::widgets::TextInput;
 
 /// Configuration for the first-boot flow.
@@ -1175,6 +1178,103 @@ fn build_diff_preview(current: &str, proposed: &str) -> Vec<String> {
     }
 
     preview
+}
+
+impl Component for FirstBootScreen {
+    fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        if let Event::Key(key) = event {
+            if key.kind != KeyEventKind::Press {
+                return Ok(None);
+            }
+            return Ok(self.handle_key_event(key.code, key));
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
+        self.render(frame, area);
+        Ok(())
+    }
+}
+
+impl FirstBootScreen {
+    /// Handle a key press, returning an optional global Action.
+    fn handle_key_event(
+        &mut self,
+        code: KeyCode,
+        key: &crossterm::event::KeyEvent,
+    ) -> Option<Action> {
+        match self.phase() {
+            FirstBootPhase::Welcome => match code {
+                KeyCode::Enter => {
+                    self.start();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            FirstBootPhase::DetectingHardware
+            | FirstBootPhase::GitSetup
+            | FirstBootPhase::Pushing => {
+                // No user input during async phases
+                None
+            }
+            FirstBootPhase::ReviewPatch => match code {
+                KeyCode::Enter => {
+                    self.apply_patch();
+                    None
+                }
+                KeyCode::Char('s') => {
+                    self.skip();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            FirstBootPhase::ShowSshKey => match code {
+                KeyCode::Enter => {
+                    self.continue_to_remote();
+                    None
+                }
+                KeyCode::Char('s') => {
+                    self.skip();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            FirstBootPhase::RemoteInput => match code {
+                KeyCode::Enter => {
+                    self.submit_remote();
+                    None
+                }
+                KeyCode::Esc => {
+                    self.skip();
+                    None
+                }
+                _ => {
+                    self.handle_text_input(*key);
+                    None
+                }
+            },
+            FirstBootPhase::Done => match code {
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            FirstBootPhase::Failed(_) => match code {
+                KeyCode::Char('r') => {
+                    self.retry_push();
+                    None
+                }
+                KeyCode::Char('s') => {
+                    self.skip();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+        }
+    }
 }
 
 #[cfg(test)]

@@ -16,12 +16,15 @@ use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
 
 use anyhow::{Context, Result as AnyhowResult};
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::action::Action;
+use crate::component::Component;
 use crate::disk::DiskEntry;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -1678,6 +1681,103 @@ async fn run_command(
             let _ = stderr_task.await;
             let _ = stdout_task.await;
             Err("Cancelled".to_string())
+        }
+    }
+}
+
+impl Component for InstallScreen {
+    fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        if let Event::Key(key) = event {
+            if key.kind != KeyEventKind::Press {
+                return Ok(None);
+            }
+            return Ok(self.handle_key_event(key.code));
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
+        self.render(frame, area);
+        Ok(())
+    }
+}
+
+impl InstallScreen {
+    /// Handle a key press, returning an optional global Action.
+    fn handle_key_event(&mut self, code: KeyCode) -> Option<Action> {
+        match self.phase() {
+            InstallPhase::Summary => match code {
+                KeyCode::Enter => {
+                    self.proceed_to_confirm();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            InstallPhase::DiskSelection => match code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.disk_up();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.disk_down();
+                    None
+                }
+                KeyCode::Enter => {
+                    self.select_disk();
+                    None
+                }
+                KeyCode::Esc => {
+                    self.go_back();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            InstallPhase::Confirm => match code {
+                KeyCode::Enter => {
+                    self.start_install();
+                    None
+                }
+                KeyCode::Esc => {
+                    self.go_back();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            InstallPhase::Installing => match code {
+                KeyCode::Esc => {
+                    self.cancel();
+                    None
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.scroll_up();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.scroll_down();
+                    None
+                }
+                _ => None,
+            },
+            InstallPhase::Done => match code {
+                KeyCode::Char('r') => Some(Action::Reboot),
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+            InstallPhase::Failed(_) => match code {
+                KeyCode::Char('q') => Some(Action::Quit),
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.scroll_up();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.scroll_down();
+                    None
+                }
+                _ => None,
+            },
         }
     }
 }

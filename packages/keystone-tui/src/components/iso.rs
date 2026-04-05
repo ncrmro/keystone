@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 use std::process::Stdio;
 
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -20,6 +21,9 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
 };
+
+use crate::action::Action;
+use crate::component::Component;
 
 /// A removable block device or the ~/Downloads save option.
 #[derive(Debug, Clone)]
@@ -708,6 +712,75 @@ pub(crate) fn parse_rm(value: &serde_json::Value) -> bool {
             .as_str()
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false)
+}
+
+impl Component for IsoScreen {
+    fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        if let Event::Key(key) = event {
+            if key.kind != KeyEventKind::Press {
+                return Ok(None);
+            }
+            return Ok(self.handle_key_event(key.code));
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
+        self.render(frame, area);
+        Ok(())
+    }
+}
+
+impl IsoScreen {
+    /// Handle a key press, returning an optional global Action.
+    fn handle_key_event(&mut self, code: KeyCode) -> Option<Action> {
+        match self.phase() {
+            IsoPhase::Building => match code {
+                KeyCode::Esc | KeyCode::Char('q') => Some(Action::GoBack),
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.scroll_up();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.scroll_down();
+                    None
+                }
+                _ => None,
+            },
+            IsoPhase::SelectTarget => match code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.target_up();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.target_down();
+                    None
+                }
+                KeyCode::Enter => {
+                    self.select_target();
+                    None
+                }
+                KeyCode::Esc | KeyCode::Char('q') => Some(Action::GoBack),
+                _ => None,
+            },
+            IsoPhase::Writing => match code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.scroll_up();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.scroll_down();
+                    None
+                }
+                _ => None,
+            },
+            IsoPhase::Done | IsoPhase::Failed(_) => match code {
+                KeyCode::Esc => Some(Action::GoBack),
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
+        }
+    }
 }
 
 #[cfg(test)]

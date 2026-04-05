@@ -1,5 +1,6 @@
 //! Host detail screen - displays configuration summary for a single host.
 
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
@@ -8,6 +9,8 @@ use ratatui::{
     Frame,
 };
 
+use crate::action::{Action, Screen};
+use crate::component::Component;
 use crate::nix::HostInfo;
 
 /// Screen displaying details about a single NixOS host configuration.
@@ -151,6 +154,31 @@ impl HostDetailScreen {
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[2]);
+    }
+}
+
+impl Component for HostDetailScreen {
+    fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        if let Event::Key(key) = event {
+            if key.kind != KeyEventKind::Press {
+                return Ok(None);
+            }
+            return Ok(match key.code {
+                KeyCode::Char('q') => Some(Action::Quit),
+                KeyCode::Esc => Some(Action::GoBack),
+                KeyCode::Char('b') => {
+                    let host_name = self.host.name.clone();
+                    Some(Action::NavigateTo(Screen::Build { host_name }))
+                }
+                _ => None,
+            });
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
+        self.render(frame, area);
+        Ok(())
     }
 }
 

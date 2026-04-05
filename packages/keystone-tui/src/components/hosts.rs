@@ -1,5 +1,6 @@
 //! Hosts dashboard screen — split-panel view with live system monitoring.
 
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
@@ -10,6 +11,8 @@ use ratatui::{
 
 use tokio::sync::mpsc;
 
+use crate::action::{Action, Screen};
+use crate::component::Component;
 use crate::nix::HostInfo;
 use crate::system::{CpuHistory, DashboardMessage, HostStatus, SystemMetrics, TailscaleStatus};
 
@@ -540,6 +543,47 @@ impl HostsScreen {
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, area);
+    }
+}
+
+impl Component for HostsScreen {
+    fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        if let Event::Key(key) = event {
+            if key.kind != KeyEventKind::Press {
+                return Ok(None);
+            }
+            return Ok(match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => Some(Action::Quit),
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.previous();
+                    None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.next();
+                    None
+                }
+                KeyCode::Enter => self
+                    .selected_host()
+                    .map(|host| Action::NavigateTo(Screen::HostDetail(Box::new(host.clone())))),
+                KeyCode::Char('i') => {
+                    let host_name = self.selected_host().map(|h| h.name.clone());
+                    Some(Action::NavigateTo(Screen::Iso { host_name }))
+                }
+                KeyCode::Char('d') => self.selected_host().map(|h| {
+                    Action::NavigateTo(Screen::Deploy {
+                        host_name: h.name.clone(),
+                    })
+                }),
+                KeyCode::Char('r') => Some(Action::RefreshDashboard),
+                _ => None,
+            });
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
+        self.render(frame, area);
+        Ok(())
     }
 }
 
