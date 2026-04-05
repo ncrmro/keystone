@@ -2,14 +2,14 @@
 source: tests/render.rs
 expression: output
 ---
-                          Hosts Dashboard - my-infra                            
-                                                                                
+                                   my-infra                                     
 ────────────────────────────────────────────────────────────────────────────────
- Hosts       │       No hosts found                                             
-  Services   │                                                                  
-  Secrets    │      Press 'a' to add                                            
-  Security   │                                                                  
-  Installer  │                                                                  
+ Hosts       │                          No hosts found                          
+ Services    │                                                                  
+ Secrets     │                         Press 'a' to add                         
+ Security    │                                                                  
+ Installer   │                                                                  
+             │                                                                  
              │                                                                  
              │                                                                  
              │                                                                  

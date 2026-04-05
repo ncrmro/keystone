@@ -4,7 +4,7 @@ use crate::action::{Action, Screen};
 use crate::component::Component;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Rect},
     style::{Color, Style, Stylize},
     text::Text,
     widgets::Paragraph,
@@ -39,19 +39,22 @@ impl Component for ServicesScreen {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
-        let columns = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(14), Constraint::Min(20)])
-            .split(area);
-
-        crate::widgets::sidebar::render(frame, columns[0], 1);
+        let shell = crate::widgets::shell::render_shell(
+            frame,
+            area,
+            "Services",
+            "",
+            1,
+            "1-5: sections • q: quit",
+            None,
+        );
 
         let text = Paragraph::new(Text::styled(
             "Service placement — coming soon",
             Style::default().bold().fg(Color::DarkGray),
         ))
         .alignment(Alignment::Center);
-        frame.render_widget(text, columns[1]);
+        frame.render_widget(text, shell.content);
         Ok(())
     }
 }

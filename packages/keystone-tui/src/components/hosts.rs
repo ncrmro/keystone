@@ -3,7 +3,7 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
@@ -222,84 +222,54 @@ impl HostsScreen {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let warning_height = if self.warning.is_some() { 2 } else { 0 };
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),              // Title bar
-                Constraint::Length(warning_height), // Warning banner (0 if none)
-                Constraint::Min(5),                 // Main content
-                Constraint::Length(1),              // Help bar
-            ])
-            .split(area);
-
-        self.render_title(frame, chunks[0]);
-        if let Some(ref msg) = self.warning {
-            let warning = Paragraph::new(Line::from(vec![
-                Span::styled(
-                    " Warning: ",
-                    Style::default().fg(Color::Black).bg(Color::Yellow),
-                ),
-                Span::styled(format!(" {}", msg), Style::default().fg(Color::Yellow)),
-            ]));
-            frame.render_widget(warning, chunks[1]);
-        }
-        self.render_main(frame, chunks[2]);
-        self.render_help(frame, chunks[3]);
-    }
-
-    fn render_title(&self, frame: &mut Frame, area: Rect) {
         let online = self.online_count();
         let total = self.statuses.len();
 
         let subtitle = if self.tailscale_available {
-            format!("{}/{} hosts online via Tailscale", online, total)
+            format!("{}/{} online", online, total)
         } else if total > 0 {
             format!("{} hosts", total)
         } else {
             String::new()
         };
 
-        let title_line = Line::from(vec![
-            Span::styled(
-                format!("Hosts Dashboard - {}", self.repo_name),
-                Style::default().bold().yellow(),
-            ),
-            Span::raw("  "),
-            Span::styled(subtitle, Style::default().fg(Color::DarkGray)),
-        ]);
+        let help_text = if self.statuses.is_empty() {
+            "1-5: sections • a: add host • q: quit"
+        } else {
+            "1-5: sections • ↑/↓: navigate • Enter: details • r: refresh • q: quit"
+        };
 
-        let title = Paragraph::new(title_line)
-            .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::BOTTOM));
-        frame.render_widget(title, area);
+        let shell = crate::widgets::shell::render_shell(
+            frame,
+            area,
+            &self.repo_name,
+            &subtitle,
+            0, // Hosts = sidebar index 0
+            help_text,
+            self.warning.as_deref(),
+        );
+
+        self.render_content(frame, shell.content);
     }
 
-    fn render_main(&mut self, frame: &mut Frame, area: Rect) {
-        // Three-column layout: sidebar | host list | host info
-        let columns = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(14),     // Sidebar
-                Constraint::Percentage(35), // Host list
-                Constraint::Min(20),        // Host info
-            ])
-            .split(area);
-
-        crate::widgets::sidebar::render(frame, columns[0], 0); // 0 = Hosts active
-
+    fn render_content(&mut self, frame: &mut Frame, area: Rect) {
         if self.statuses.is_empty() {
             let empty_msg = Paragraph::new(Text::styled(
                 "No hosts found\n\nPress 'a' to add",
                 Style::default().fg(Color::DarkGray),
             ))
             .alignment(Alignment::Center);
-            frame.render_widget(empty_msg, columns[1]);
+            frame.render_widget(empty_msg, area);
             return;
         }
 
-        self.render_host_list(frame, columns[1]);
-        self.render_host_info_panel(frame, columns[2]);
+        let panels = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(45), Constraint::Min(20)])
+            .split(area);
+
+        self.render_host_list(frame, panels[0]);
+        self.render_host_info_panel(frame, panels[1]);
     }
 
     fn render_host_list(&mut self, frame: &mut Frame, area: Rect) {
@@ -409,20 +379,6 @@ impl HostsScreen {
         let lines = build_host_info_lines(selected);
         let panel = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
         frame.render_widget(panel, area);
-    }
-
-    fn render_help(&self, frame: &mut Frame, area: Rect) {
-        let help_text = if self.statuses.is_empty() {
-            "1-5: sections • a: add host • q: quit"
-        } else {
-            "1-5: sections • ↑/↓: navigate • Enter: details • r: refresh • q: quit"
-        };
-        let help = Paragraph::new(Text::styled(
-            help_text,
-            Style::default().fg(Color::DarkGray),
-        ))
-        .alignment(Alignment::Center);
-        frame.render_widget(help, area);
     }
 }
 
