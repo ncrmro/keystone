@@ -35,8 +35,8 @@ pub fn render_shell(
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2),              // Header
-            Constraint::Length(warning_height), // Warning (0 if none)
             Constraint::Min(5),                 // Sidebar + content
+            Constraint::Length(warning_height), // Warning (0 if none)
             Constraint::Length(1),              // Help bar
         ])
         .split(area);
@@ -52,25 +52,25 @@ pub fn render_shell(
         .block(Block::default().borders(Borders::BOTTOM));
     frame.render_widget(header, rows[0]);
 
-    // Warning banner
+    // Sidebar + content columns
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(14), Constraint::Min(20)])
+        .split(rows[1]);
+
+    super::sidebar::render(frame, columns[0], active_sidebar);
+
+    // Warning banner (above help bar, below content)
     if let Some(msg) = warning {
         let warning_widget = Paragraph::new(Line::from(vec![
             Span::styled(" Warning: ", t.warning_label_style()),
             Span::styled(format!(" {}", msg), t.warning_style()),
         ]));
-        frame.render_widget(warning_widget, rows[1]);
+        frame.render_widget(warning_widget, rows[2]);
     }
 
-    // Sidebar + content columns
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(14), Constraint::Min(20)])
-        .split(rows[2]);
-
-    super::sidebar::render(frame, columns[0], active_sidebar);
-
-    // Help bar
-    let help = Paragraph::new(Line::from(Span::styled(help_text, t.inactive_style())))
+    // Help bar (yellow/accent)
+    let help = Paragraph::new(Line::from(Span::styled(help_text, t.warning_style())))
         .alignment(Alignment::Center);
     frame.render_widget(help, rows[3]);
 
