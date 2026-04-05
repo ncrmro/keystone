@@ -77,6 +77,10 @@ pub struct InstallerScreen {
     usb_targets: Vec<UsbTarget>,
     selected_target: usize,
     output_lines: Vec<String>,
+    /// Channel for receiving async USB scan results.
+    usb_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<UsbTarget>>>,
+    /// Whether a USB scan is currently running.
+    scanning: bool,
 }
 
 impl Default for InstallerScreen {
@@ -87,13 +91,17 @@ impl Default for InstallerScreen {
 
 impl InstallerScreen {
     pub fn new() -> Self {
-        Self {
+        let mut screen = Self {
             phase: Phase::Configure,
             profile: InstallProfile::Server,
             usb_targets: Vec::new(),
             selected_target: 0,
             output_lines: Vec::new(),
-        }
+            usb_rx: None,
+            scanning: false,
+        };
+        screen.spawn_usb_scan();
+        screen
     }
 
     fn toggle_profile(&mut self) {
@@ -102,10 +110,43 @@ impl InstallerScreen {
             InstallProfile::Server => InstallProfile::Desktop,
         };
     }
+
+    fn spawn_usb_scan(&mut self) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        self.usb_rx = Some(rx);
+        self.scanning = true;
+        tokio::spawn(async move {
+            let targets = match crate::disk::discover_disks().await {
+                Ok(disks) => disks
+                    .into_iter()
+                    .filter(|d| d.transport == "usb")
+                    .map(|d| UsbTarget {
+                        path: d.by_id_path,
+                        model: d.model,
+                        size: d.size,
+                    })
+                    .collect(),
+                Err(_) => Vec::new(),
+            };
+            let _ = tx.send(targets);
+        });
+    }
+
+    fn poll_usb(&mut self) {
+        if let Some(ref mut rx) = self.usb_rx {
+            if let Ok(targets) = rx.try_recv() {
+                self.usb_targets = targets;
+                self.selected_target = 0;
+                self.scanning = false;
+            }
+        }
+    }
 }
 
 impl Component for InstallerScreen {
     fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        self.poll_usb();
+
         if let Event::Key(key) = event {
             if key.kind != KeyEventKind::Press {
                 return Ok(None);
@@ -113,8 +154,12 @@ impl Component for InstallerScreen {
             return Ok(match self.phase {
                 Phase::Configure => match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => Some(Action::Quit),
-                    KeyCode::Tab | KeyCode::Up | KeyCode::Down => {
+                    KeyCode::Tab => {
                         self.toggle_profile();
+                        None
+                    }
+                    KeyCode::Char('r') => {
+                        self.spawn_usb_scan();
                         None
                     }
                     // Sidebar navigation
@@ -158,7 +203,9 @@ impl Component for InstallerScreen {
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
         let help = match self.phase {
-            Phase::Configure => "1-5: sections • Tab: toggle profile • Enter: build • q: quit",
+            Phase::Configure => {
+                "1-5: sections • Tab: profile • r: rescan USB • Enter: build • q: quit"
+            }
             Phase::Building | Phase::Writing => "building...",
             Phase::SelectTarget => "↑/↓: select • Enter: write ISO • r: refresh • Esc: back",
             Phase::Done | Phase::Failed(_) => "Esc: back • q: quit",
@@ -189,34 +236,33 @@ impl Component for InstallerScreen {
 impl InstallerScreen {
     fn render_configure(&self, frame: &mut Frame, area: Rect, _unused: Rect) {
         let t = crate::theme::default();
+
+        let usb_height = if self.usb_targets.is_empty() {
+            3
+        } else {
+            (self.usb_targets.len() as u16 * 2 + 2).min(10)
+        };
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(8), // Description
-                Constraint::Length(1), // Spacer
-                Constraint::Length(4), // Profile select
-                Constraint::Length(1), // Spacer
-                Constraint::Length(5), // Options
-                Constraint::Min(0),    // Spacer
+                Constraint::Length(5),          // Description
+                Constraint::Length(1),          // Spacer
+                Constraint::Length(4),          // Profile select
+                Constraint::Length(1),          // Spacer
+                Constraint::Length(5),          // Options
+                Constraint::Length(1),          // Spacer
+                Constraint::Length(usb_height), // USB targets
+                Constraint::Min(0),             // Spacer
             ])
             .split(area);
 
         // Description text at top
         let desc = Paragraph::new(vec![
-            Line::from(""),
             Line::from(Span::styled(
-                " The installer builds a bootable ISO with your NixOS config baked in.",
+                " Build a bootable ISO with your NixOS config, SSH keys, and installer.",
                 Style::default(),
             )),
-            Line::from(Span::styled(
-                " The ISO includes your SSH keys, NetworkManager for WiFi + wired,",
-                Style::default(),
-            )),
-            Line::from(Span::styled(
-                " the Keystone TUI installer, disko, and ZFS/SecureBoot/TPM tools.",
-                Style::default(),
-            )),
-            Line::from(""),
             Line::from(Span::styled(
                 " Boot from USB → TUI runs disko → nixos-install → reboot → first-boot setup.",
                 t.inactive_style(),
@@ -224,7 +270,7 @@ impl InstallerScreen {
         ]);
         frame.render_widget(desc, chunks[0]);
 
-        // Profile selection — render both options, highlight active
+        // Profile selection
         let desktop_style = if self.profile == InstallProfile::Desktop {
             t.active_style()
         } else {
@@ -276,6 +322,55 @@ impl InstallerScreen {
                 .border_style(t.inactive_style()),
         );
         frame.render_widget(options, chunks[4]);
+
+        // USB targets
+        let usb_widget = if self.scanning {
+            Paragraph::new(Line::from(Span::styled(
+                "  Scanning for USB devices...",
+                t.inactive_style(),
+            )))
+            .block(
+                Block::default()
+                    .title(" USB Devices ")
+                    .borders(Borders::ALL)
+                    .border_style(t.inactive_style()),
+            )
+        } else if self.usb_targets.is_empty() {
+            Paragraph::new(Line::from(Span::styled(
+                "  No USB devices detected (r to rescan)",
+                t.inactive_style(),
+            )))
+            .block(
+                Block::default()
+                    .title(" USB Devices ")
+                    .borders(Borders::ALL)
+                    .border_style(t.inactive_style()),
+            )
+        } else {
+            let lines: Vec<Line> = self
+                .usb_targets
+                .iter()
+                .flat_map(|usb| {
+                    vec![
+                        Line::from(Span::styled(
+                            format!("  {} ({})", usb.model, usb.size),
+                            Style::default(),
+                        )),
+                        Line::from(Span::styled(
+                            format!("    {}", usb.path),
+                            t.inactive_style(),
+                        )),
+                    ]
+                })
+                .collect();
+            Paragraph::new(lines).block(
+                Block::default()
+                    .title(format!(" USB Devices ({}) ", self.usb_targets.len()))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(t.active)),
+            )
+        };
+        frame.render_widget(usb_widget, chunks[6]);
     }
 
     fn render_building(&self, frame: &mut Frame, area: Rect) {
