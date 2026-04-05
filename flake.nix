@@ -449,6 +449,7 @@
           iso = self.lib.mkInstallerIso { inherit nixpkgs; };
           inherit (pkgs.keystone)
             zesh
+            agents-e2e
             agent-coding-agent
             agent-mail
             fetch-email-source

@@ -712,13 +712,18 @@ doctor_progress() {
   fi
 }
 
-# Source the E2E agent test harness (REQ-031).
-# @KS_AGENTS_E2E@ is replaced at Nix build time with the store path.
-_ks_agents_e2e_path="@KS_AGENTS_E2E@"
-if [[ -f "$_ks_agents_e2e_path" ]]; then
-  # shellcheck source=agents-e2e.sh
-  source "$_ks_agents_e2e_path"
-fi
+# E2E agent test harness (REQ-031) -- delegates to the agents-e2e TypeScript package.
+# @KS_AGENTS_E2E@ is replaced at Nix build time with the store path of the binary.
+_ks_agents_e2e_bin="@KS_AGENTS_E2E@"
+cmd_agents_e2e() {
+  if [[ -x "$_ks_agents_e2e_bin" ]]; then
+    "$_ks_agents_e2e_bin" "$@"
+  else
+    echo "Error: agents-e2e binary not found at $_ks_agents_e2e_bin" >&2
+    echo "Run from the agents-e2e package devshell: bun run src/main.ts" >&2
+    return 1
+  fi
+}
 
 resolve_agent_targets() {
   local target="$1"
