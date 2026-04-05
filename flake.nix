@@ -268,6 +268,7 @@
             useUserPackages = true;
             sharedModules = [
               self.homeModules.terminal
+              self.homeModules.notes
             ];
           };
         };
