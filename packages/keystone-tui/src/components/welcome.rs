@@ -1,5 +1,7 @@
+use crate::action::{Action, Screen};
+use crate::component::Component;
 use crate::widgets::TextInput;
-use crossterm::event::KeyEvent;
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
@@ -16,6 +18,8 @@ pub struct WelcomeScreen {
     repo_name_input: TextInput,
     error_message: Option<String>,
     success_message: Option<String>,
+    /// Pending async import (name, git_url) — picked up by the app event loop.
+    pending_import: Option<(String, String)>,
 }
 
 /// State machine for the welcome screen flow.
@@ -68,6 +72,7 @@ impl WelcomeScreen {
             repo_name_input: TextInput::new().with_placeholder("my-infrastructure"),
             error_message: None,
             success_message: None,
+            pending_import: None,
         }
     }
 
@@ -391,6 +396,72 @@ impl WelcomeScreen {
                 .border_style(Style::default().fg(Color::Red)),
         );
         frame.render_widget(paragraph, popup_area);
+    }
+}
+
+impl Component for WelcomeScreen {
+    fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
+        if let Event::Key(key) = event {
+            if key.kind != KeyEventKind::Press {
+                return Ok(None);
+            }
+            return Ok(self.handle_key_event(key));
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
+        self.render(frame, area);
+        Ok(())
+    }
+}
+
+impl WelcomeScreen {
+    /// Handle a key event, returning an optional global Action for navigation.
+    fn handle_key_event(&mut self, key: &KeyEvent) -> Option<Action> {
+        match key.code {
+            KeyCode::Char('q') if self.state == WelcomeState::SelectAction => Some(Action::Quit),
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.previous();
+                None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.next();
+                None
+            }
+            KeyCode::Enter => self.handle_confirm(),
+            KeyCode::Esc => {
+                self.cancel();
+                None
+            }
+            _ => {
+                // Forward to text input if in an input state
+                self.handle_text_input(*key);
+                None
+            }
+        }
+    }
+
+    /// Handle Enter press, converting WelcomeAction to global Action.
+    fn handle_confirm(&mut self) -> Option<Action> {
+        match self.confirm() {
+            WelcomeAction::ImportRepo { name, git_url } => {
+                // Async operation — caller must handle this via the legacy path for now.
+                // Store the intent so the app can pick it up.
+                self.pending_import = Some((name, git_url));
+                None
+            }
+            WelcomeAction::CreateRepo { name } => {
+                Some(Action::NavigateTo(Screen::Template { repo_name: name }))
+            }
+            WelcomeAction::Complete => Some(Action::NavigateTo(Screen::Hosts)),
+            WelcomeAction::None => None,
+        }
+    }
+
+    /// Check and take any pending async import action.
+    pub fn take_pending_import(&mut self) -> Option<(String, String)> {
+        self.pending_import.take()
     }
 }
 

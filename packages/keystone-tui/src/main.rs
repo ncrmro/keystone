@@ -24,13 +24,13 @@ mod app;
 mod cli;
 pub mod cmd;
 mod component;
+mod components;
 mod config;
 mod disk;
 mod github;
 mod input;
 mod nix;
 mod repo;
-mod components;
 mod ssh_keys;
 mod system;
 mod template;
@@ -39,9 +39,9 @@ mod widgets;
 
 use app::{App, AppScreen};
 use cli::{Cli, Command};
-use input::{dispatch_key, handle_action, AppAction};
 use components::first_boot::FirstBootConfig;
 use components::install::InstallerConfig;
+use input::{dispatch_key, handle_action, AppAction};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -118,7 +118,8 @@ async fn run_screenshot_mode(screen_name: &str) -> Result<()> {
             })?;
         }
         "create-config" => {
-            let screen = components::create_config::CreateConfigScreen::new("my-config".to_string());
+            let screen =
+                components::create_config::CreateConfigScreen::new("my-config".to_string());
             terminal.draw(|frame| {
                 screen.render(frame, frame.area());
             })?;

@@ -6,9 +6,9 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 
 use keystone_tui::app::{App, AppScreen};
+use keystone_tui::components::hosts::HostsScreen;
 use keystone_tui::input::{dispatch_key, handle_action, AppAction};
 use keystone_tui::nix::HostInfo;
-use keystone_tui::components::hosts::HostsScreen;
 
 /// Helper to create a key press event.
 fn key(code: KeyCode) -> KeyEvent {
