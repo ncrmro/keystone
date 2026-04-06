@@ -28,10 +28,12 @@ conventions_link_base_override="${KEYSTONE_AGENT_ASSETS_CONVENTIONS_LINK_BASE:-}
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-root)
+      [[ $# -ge 2 ]] || { echo "Error: --output-root requires an argument" >&2; exit 1; }
       output_root="$2"
       shift 2
       ;;
     --conventions-link-base)
+      [[ $# -ge 2 ]] || { echo "Error: --conventions-link-base requires an argument" >&2; exit 1; }
       conventions_link_base_override="$2"
       shift 2
       ;;
@@ -266,12 +268,11 @@ render_codex_agent_toml() {
   local name="$1"
   local description="$2"
   local body="$3"
+  # Escape """ sequences in body to prevent premature TOML string termination
+  local escaped_body="${body//\"\"\"/\\\"\\\"\\\"}"
 
-  cat <<EOF
-name = $(yaml_quote "$name")
-description = $(yaml_quote "$description")
-developer_instructions = $(yaml_quote "$body")
-EOF
+  printf 'name = %s\ndescription = %s\ndeveloper_instructions = """\n%s\n"""\n' \
+    "$(yaml_quote "$name")" "$(yaml_quote "$description")" "$escaped_body"
 }
 
 render_agent_prompt() {
@@ -614,6 +615,8 @@ rm -f "$repos_agents_tmp"
 
 write_file "$(target_path ".keystone/repos/AGENTS.md")" "$repos_agents_content"
 
+# Includes all possible command files (e.g., ks.ea) so stale assets are cleaned
+# even when a capability is not active. rm -f is harmless for non-existent files.
 managed_claude_commands=(ks.md ks.system.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md)
 for command_file in "${managed_claude_commands[@]}"; do
   rm -f "$(target_path ".claude/commands/$command_file")"
