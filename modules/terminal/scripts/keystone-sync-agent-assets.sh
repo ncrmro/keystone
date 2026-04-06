@@ -475,43 +475,32 @@ rm -f "$repos_agents_tmp"
 
 write_file "$HOME/.keystone/repos/AGENTS.md" "$repos_agents_content"
 
-managed_claude_commands=(ks.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engineer.md ks.product.md ks.pm.md)
-for command_file in "${managed_claude_commands[@]}"; do
+# Clean up legacy command files (skills are the canonical format now)
+for command_file in ks.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engineer.md ks.product.md ks.pm.md; do
   rm -f "$HOME/.claude/commands/$command_file"
+  rm -f "$HOME/.config/opencode/commands/$command_file"
 done
+rm -rf "$HOME/.claude/skills/ks"
+rm -rf "$HOME/.config/opencode/skills/ks"
 
+# Gemini uses single-file commands (no multi-file skill support)
 managed_gemini_commands=(ks.toml notes.toml projects.toml dev.toml deepwork.toml ks.ea.toml ks.engineer.toml ks.product.toml ks.pm.toml)
 for command_file in "${managed_gemini_commands[@]}"; do
   rm -f "$HOME/.gemini/commands/$command_file"
 done
 
-managed_opencode_commands=(ks.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engineer.md ks.product.md ks.pm.md)
-for command_file in "${managed_opencode_commands[@]}"; do
-  rm -f "$HOME/.config/opencode/commands/$command_file"
-done
-
-# Clean up old /ks skill directories (renamed to ks-system)
-rm -rf "$HOME/.claude/skills/ks"
-rm -rf "$HOME/.config/opencode/skills/ks"
-
 for command_id in "${published_commands[@]}"; do
   description="$(command_description "$command_id")"
-  argument_hint="$(command_argument_hint "$command_id")"
   display_name="$(command_display_name "$command_id")"
   template_name="$(command_template_name "$command_id")"
   command_body="$(render_template "$templates_dir/$template_name")"
   skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
 
-  # Command files (user-invocable slash commands)
-  claude_content="$(render_frontmatter "$command_id" "$description" "$argument_hint" "$display_name")"$'\n\n'"$command_body"$'\n'
-  write_file "$HOME/.claude/commands/${command_id}.md" "$claude_content"
-
+  # Gemini: single-file command (only CLI without multi-file skills)
   gemini_rel="$(gemini_command_rel_path "$command_id")"
   write_gemini_command "$gemini_rel" "$description" "$command_body"
 
-  write_file "$HOME/.config/opencode/commands/${command_id}.md" "$command_body"$'\n'
-
-  # Skill files (agent-callable, available to all LLM agents)
+  # Claude, OpenCode: skills only (skills register as slash commands)
   ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"
   write_file "$HOME/.claude/skills/${skill_name}/SKILL.md" "$ks_skill_md"
   write_file "$HOME/.config/opencode/skills/${skill_name}/SKILL.md" "$ks_skill_md"
