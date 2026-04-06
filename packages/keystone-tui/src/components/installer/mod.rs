@@ -346,7 +346,17 @@ async fn run_nix_build(
     ));
 }
 
-/// Write ISO to USB via `sudo dd`.
+/// Check if running as root.
+fn is_root() -> bool {
+    std::env::var("USER").map(|u| u == "root").unwrap_or(false)
+        || std::path::Path::new("/run/keystone-installer").exists()
+}
+
+/// Write ISO to USB via dd.
+///
+/// Uses pkexec (polkit) for privilege escalation on desktop — shows a
+/// graphical auth dialog instead of blocking the TUI with a sudo prompt.
+/// Falls back to plain dd if already running as root (ISO installer).
 async fn run_dd_write(
     tx: mpsc::UnboundedSender<InstallerMessage>,
     iso_path: PathBuf,
@@ -361,19 +371,41 @@ async fn run_dd_write(
         "This may take several minutes.".to_string(),
     ));
 
-    let child = tokio::process::Command::new("sudo")
-        .args([
-            "dd",
-            &format!("if={}", iso_path.display()),
-            &format!("of={}", target.path),
-            "bs=4M",
-            "status=progress",
-            "conv=fsync",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn();
+    let running_as_root = is_root();
+
+    let child = if running_as_root {
+        // Already root (ISO installer) — dd directly
+        tokio::process::Command::new("dd")
+            .args([
+                &format!("if={}", iso_path.display()),
+                &format!("of={}", target.path),
+                "bs=4M",
+                "status=progress",
+                "conv=fsync",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+    } else {
+        // Desktop — use pkexec for polkit-based privilege escalation
+        let _ = tx.send(InstallerMessage::WriteOutput(
+            "Requesting authorization via polkit...".to_string(),
+        ));
+        tokio::process::Command::new("pkexec")
+            .args([
+                "dd",
+                &format!("if={}", iso_path.display()),
+                &format!("of={}", target.path),
+                "bs=4M",
+                "status=progress",
+                "conv=fsync",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+    };
 
     let mut child = match child {
         Ok(c) => c,
