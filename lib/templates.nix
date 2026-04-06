@@ -258,6 +258,52 @@ let
     else
       spec;
 
+  # Build an installer ISO with the admin's terminal environment (helix, zsh,
+  # starship), SSH keys for remote access, and the TUI installer.
+  # self.homeModules.terminal already embeds keystoneInputs via _module.args,
+  # so we don't need the full keystoneInputs attrset here.
+  mkInstallerIsoForFlake =
+    {
+      system ? "x86_64-linux",
+      sshKeys ? [ ],
+      adminName ? "System Administrator",
+      adminEmail ? "admin@example.com",
+    }:
+    (nixpkgs.lib.nixosSystem {
+      inherit system;
+      modules = [
+        "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+        self.nixosModules.isoInstaller
+        home-manager.nixosModules.home-manager
+        {
+          # Force kernel 6.12 — must override minimal CD default
+          boot.kernelPackages = lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
+
+          keystone.installer.sshKeys = sshKeys;
+          nixpkgs.overlays = [ self.overlays.default ];
+
+          # Terminal environment for root user (helix, zsh, starship)
+          home-manager.useGlobalPkgs = true;
+          home-manager.useUserPackages = true;
+          home-manager.backupFileExtension = "backup";
+          home-manager.users.root = {
+            imports = [ self.homeModules.terminal ];
+            home.stateVersion = "25.05";
+            keystone.terminal = {
+              enable = true;
+              ai.enable = false;
+              sandbox.enable = false;
+              git = {
+                userName = adminName;
+                userEmail = adminEmail;
+              };
+            };
+            keystone.projects.enable = false;
+          };
+        }
+      ];
+    }).config.system.build.isoImage;
+
 in
 rec {
   mkHost = mkLinuxHost;
