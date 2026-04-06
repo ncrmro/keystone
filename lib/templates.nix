@@ -376,7 +376,7 @@ rec {
 
   mkSystemFlake =
     {
-      owner,
+      admin,
       defaults ? { },
       shared ? { },
       hostsRoot ? null,
@@ -410,16 +410,19 @@ rec {
         };
       };
 
-      sharedAdmin =
-        shared.admin or {
-          fullName = owner.name;
-          email = owner.email or "admin@example.com";
-          initialPassword = "changeme";
-        };
+      # admin is the single source of truth — strip template-only fields
+      # (username, sshKeys) to produce a valid userSubmodule config
+      adminUsername = admin.username or "admin";
+      adminSshKeys = admin.sshKeys or [ ];
+      sharedAdmin = builtins.removeAttrs admin [
+        "username"
+        "sshKeys"
+      ];
       sharedUsers = shared.users or { };
       sharedSystemModules = shared.systemModules or [ ];
       sharedUserModules = shared.userModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
+      defaultLinuxSystem = defaults.system or "x86_64-linux";
 
       hostFilePath =
         name: file:
@@ -503,7 +506,7 @@ rec {
             ])
             // {
               system = if hostCfg ? system then hostCfg.system else kindDefaults.system;
-              username = if hostCfg ? username then hostCfg.username else owner.username or "admin";
+              username = if hostCfg ? username then hostCfg.username else adminUsername;
               fullName = if hostCfg ? fullName then hostCfg.fullName else sharedAdmin.fullName;
               email = if hostCfg ? email then hostCfg.email else sharedAdmin.email;
               timeZone = if hostCfg ? timeZone then hostCfg.timeZone else sharedTimeZone;
@@ -518,5 +521,13 @@ rec {
     {
       nixosConfigurations = lib.mapAttrs mkLinuxInventoryHost linuxHosts;
       homeConfigurations = lib.mapAttrs mkDarwinInventoryHost darwinHosts;
+    }
+    // lib.optionalAttrs (linuxHosts != { }) {
+      packages.${defaultLinuxSystem}.iso = mkInstallerIsoForFlake {
+        system = defaultLinuxSystem;
+        sshKeys = adminSshKeys;
+        adminName = sharedAdmin.fullName;
+        adminEmail = sharedAdmin.email;
+      };
     };
 }

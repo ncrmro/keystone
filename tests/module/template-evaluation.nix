@@ -162,10 +162,11 @@ let
 
     inventory-server-no-hardware = evalNixos "inventory-server-no-hardware" (
       (self.lib.mkSystemFlake {
-        owner = {
-          name = "Fleet Owner";
+        admin = {
           username = "admin";
+          fullName = "Fleet Owner";
           email = "fleet@example.com";
+          initialPassword = "changeme";
         };
         defaults.timeZone = "UTC";
         keystoneServices = {
