@@ -20,8 +20,3 @@ Each skill loads domain-specific conventions and DeepWork workflows on demand.
 - Use Conventional Commits: `type(scope): subject`.
 - Valid types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `ci`, `perf`, `build`.
 - Each commit SHOULD represent one logical change.
-
-# Notes
-
-- Route note capture and notebook repair through `/ks.notes`.
-- Use `NOTES_DIR` as the canonical notebook root.

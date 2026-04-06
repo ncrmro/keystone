@@ -357,16 +357,6 @@ cat <<'EOF' >> "$global_agents_tmp"
 - Each commit SHOULD represent one logical change.
 EOF
 
-if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
-  cat <<'EOF' >> "$global_agents_tmp"
-
-# Notes
-
-- Route note capture and notebook repair through `/ks.notes`.
-- Use `NOTES_DIR` as the canonical notebook root.
-EOF
-fi
-
 while IFS= read -r convention_name; do
   append_file_content "$global_agents_tmp" "$conventions_dir/${convention_name}.md"
 done < <(yq -r ".archetypes.\"$archetype\".inlined_conventions[]?" "$archetypes_file")
