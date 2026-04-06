@@ -431,15 +431,15 @@ CURRENT_STEP="prefetch"
 emit_event "stage_start" "Pre-fetching sources" "stage_name" "prefetch"
 SOURCES_JSON="[]"
 
-if command -v himalaya &>/dev/null; then
+if command -v fetch-email-source &>/dev/null; then
   log "  Fetching source: email"
-  EMAIL_OUTPUT=$(himalaya envelope list --page-size 20 --output json 2>>"$LOG_FILE" || echo "[]")
+  EMAIL_OUTPUT=$(fetch-email-source 2>>"$LOG_FILE" || echo "[]")
   if [[ -n "$EMAIL_OUTPUT" && "$EMAIL_OUTPUT" != "[]" ]]; then
     SOURCES_JSON=$(echo "$SOURCES_JSON" | jq --argjson data "$EMAIL_OUTPUT" \
       '. + [{"source": "email", "data": $data}]')
   fi
 else
-  log "  Skipping email source: himalaya not found"
+  log "  Skipping email source: fetch-email-source not found"
 fi
 
 if [[ -n "$GITHUB_USERNAME" ]] && command -v fetch-github-sources &>/dev/null; then
