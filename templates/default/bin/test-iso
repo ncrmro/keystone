@@ -68,11 +68,10 @@ SSH_KEY_INPUTS=()
 BUILD=true
 BOOT=true
 
-# Admin identity — overridden from flake outputs when BUILD=true, or when
-# --no-build is used we read them upfront so the SSH hint is accurate.
-ADMIN_USERNAME="admin"
-ADMIN_NAME="Test Admin"
-ADMIN_EMAIL="test@local"
+# Admin identity — read from flake outputs (mkSystemFlake exposes these).
+ADMIN_USERNAME=""
+ADMIN_NAME=""
+ADMIN_EMAIL=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -110,12 +109,14 @@ done
 
 # ── read admin identity from flake ───────────────────────────────────────────
 
-local_username="$(nix eval --raw "${PROJECT_DIR}#adminUsername" 2>/dev/null || true)"
-local_name="$(nix eval --raw "${PROJECT_DIR}#adminName" 2>/dev/null || true)"
-local_email="$(nix eval --raw "${PROJECT_DIR}#adminEmail" 2>/dev/null || true)"
-[[ -n "$local_username" ]] && ADMIN_USERNAME="$local_username"
-[[ -n "$local_name" ]]     && ADMIN_NAME="$local_name"
-[[ -n "$local_email" ]]    && ADMIN_EMAIL="$local_email"
+ADMIN_USERNAME="$(nix eval --raw "${PROJECT_DIR}#adminUsername" 2>/dev/null)"
+ADMIN_NAME="$(nix eval --raw "${PROJECT_DIR}#adminName" 2>/dev/null)"
+ADMIN_EMAIL="$(nix eval --raw "${PROJECT_DIR}#adminEmail" 2>/dev/null)"
+
+if [[ -z "$ADMIN_USERNAME" ]]; then
+    log_error "Could not read adminUsername from flake. Ensure the flake uses mkSystemFlake and has admin.username set."
+    exit 1
+fi
 
 # ── collect SSH keys ──────────────────────────────────────────────────────────
 
