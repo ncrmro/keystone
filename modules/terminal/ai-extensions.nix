@@ -33,7 +33,6 @@ let
 
   baseCapabilities = [
     "ks"
-    "notes"
     "project"
   ];
 

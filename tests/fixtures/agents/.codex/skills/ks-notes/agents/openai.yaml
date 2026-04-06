@@ -1,9 +1,0 @@
-interface:
-  display_name: "KS Notes"
-  short_description: "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup"
-
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"
