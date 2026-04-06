@@ -81,7 +81,7 @@ The flake automatically produces an installer ISO with your terminal environment
 nix build .#packages.x86_64-linux.iso -o installer-iso
 ```
 
-The ISO boots a live environment with SSH access (if `owner.sshKeys` is set), the Keystone TUI installer, and your terminal config (helix, zsh, starship).
+The ISO boots a live environment with SSH access (if `admin.sshKeys` is set), the Keystone TUI installer, and your terminal config (helix, zsh, starship).
 
 Validate in a VM before flashing:
 
