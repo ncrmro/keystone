@@ -52,7 +52,7 @@ data used to generate CLI-native assets, including:
 
 The generation step is implemented in:
 
-- [`modules/terminal/scripts/keystone-sync-agent-assets.sh`](/home/ncrmro/.worktrees/ncrmro/keystone/pr-281/modules/terminal/scripts/keystone-sync-agent-assets.sh)
+- [`modules/terminal/scripts/keystone-sync-agent-assets.sh`](../../modules/terminal/scripts/keystone-sync-agent-assets.sh)
 
 ## What Keystone generates
 
