@@ -568,6 +568,11 @@ rec {
     {
       nixosConfigurations = lib.mapAttrs mkLinuxInventoryHost linuxHosts;
       homeConfigurations = lib.mapAttrs mkDarwinInventoryHost darwinHosts;
+      # Expose admin identity so tooling (e.g. bin/test-iso) can read it without
+      # parsing flake.nix directly.
+      inherit adminUsername;
+      adminEmail = sharedAdmin.email;
+      adminName = sharedAdmin.fullName;
     }
     // lib.optionalAttrs (linuxHosts != { }) {
       packages.${defaultLinuxSystem}.iso = mkInstallerIsoForFlake {
