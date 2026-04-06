@@ -13,7 +13,7 @@ pkgs.runCommand "test-projects-schema"
   ''
     set -euo pipefail
 
-    schema="${../../schemas/projects.schema.json}"
+    schema="${../../packages/pz/projects.schema.json}"
 
     # --- Valid projects file ---
     cat > valid.yaml <<'EOF'
