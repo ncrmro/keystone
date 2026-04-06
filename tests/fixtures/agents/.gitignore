@@ -1,0 +1,5 @@
+# Convention files are colocated at runtime from conventions/ sources.
+# The SKILL.md references are sufficient to show what changed.
+**/process.*.md
+**/tool.*.md
+**/code.*.md
