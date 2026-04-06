@@ -24,16 +24,16 @@ grep -RIn "TODO:" flake.nix hosts/
 
 Fill in:
 
-- `owner.name` in `flake.nix`
-- `owner.username` in `flake.nix` if your primary username is not `admin`
-- `owner.email` in `flake.nix`
+- `admin.username` in `flake.nix`
+- `admin.fullName` in `flake.nix`
+- `admin.email` in `flake.nix`
 - `defaults.timeZone` in `flake.nix`
 - hostnames in `flake.nix` if `laptop`, `server-ocean`, or `macbook` should be renamed
 - `system`, `networking.hostId`, and `keystone.os.storage.devices` in Linux `hardware.nix` files
 
 ## File layout
 
-- `flake.nix`: shared owner/defaults, shared module hooks, global `keystoneServices`, and the `hosts` inventory
+- `flake.nix`: admin config, shared defaults, module hooks, global `keystoneServices`, and the `hosts` inventory
 - `hosts/laptop/`: laptop-specific Linux files
 - `hosts/server-ocean/`: server-specific Linux files
 - `hosts/macbook/`: optional macOS Home Manager overrides
