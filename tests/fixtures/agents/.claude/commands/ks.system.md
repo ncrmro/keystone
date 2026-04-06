@@ -12,9 +12,9 @@ workflow and MUST NOT execute the similarly named `ks` CLI command.
 
 ## Session context
 
-- Capabilities: ks, notes, project
+- Capabilities: ks, notes, project, engineer, product, project-manager
 - Development mode: disabled
-- Published commands: ks.system, ks.notes, ks.projects
+- Published commands: ks.system, ks.notes, ks.projects, ks.engineer, ks.product, ks.pm
 
 ## Operating rules
 
@@ -37,6 +37,9 @@ workflow and MUST NOT execute the similarly named `ks` CLI command.
 - Keystone health checks and troubleshooting: start `keystone_system/doctor` when the user wants diagnosis rather than documentation.
 - Notes workflows (repair, inbox, init, setup): direct the user to `/ks.notes` instead of starting a notes workflow directly.
 - Project workflows (onboard, press release, milestone, engineering handoff, success): direct the user to `/ks.projects` instead of starting a project workflow directly.
+- Engineering workflows (implementation, code review, architecture, CI): direct the user to `/ks.engineer` instead of starting engineer workflows directly.
+- Product workflows (press releases, milestones, stakeholder communication): direct the user to `/ks.product` instead of starting project workflows directly.
+- Project management workflows (task decomposition, tracking, boards): direct the user to `/ks.pm` instead of managing tasks directly.
 
 ## Invocation rules
 

@@ -18,8 +18,8 @@ cat > "$manifest_path" <<EOF
   "fallbackConventionsDir": "$repo_root/conventions",
   "fallbackTemplatesDir": "$repo_root/modules/terminal/agent-assets",
   "archetype": "keystone-system-host",
-  "resolvedCapabilities": ["ks", "notes", "project"],
-  "publishedCommands": ["ks", "ks.notes", "ks.projects"],
+  "resolvedCapabilities": ["ks", "notes", "project", "engineer", "product", "project-manager"],
+  "publishedCommands": ["ks", "ks.notes", "ks.projects", "ks.engineer", "ks.product", "ks.pm"],
   "repos": ["ncrmro/keystone"],
   "agents": {
     "architect": {
