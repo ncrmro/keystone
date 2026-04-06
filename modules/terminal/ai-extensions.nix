@@ -427,13 +427,20 @@ let
 in
 {
   options.keystone.terminal.aiExtensions = {
-    enable = mkOption {
+    experimental = mkOption {
       type = types.bool;
       default = false;
       description = ''
-        Generate curated Keystone commands and skills for supported AI CLIs.
-        Experimental — opt in explicitly until the skill composition surface stabilises.
+        Opt in to experimental AI extensions. When true, enables the curated
+        Keystone skill composition surface (commands, skills, colocated conventions).
+        Set to false until the skill composition API stabilises.
       '';
+    };
+
+    enable = mkOption {
+      type = types.bool;
+      default = cfg.experimental;
+      description = "Generate curated Keystone commands and skills for supported AI CLIs.";
     };
 
     capabilities = mkOption {
