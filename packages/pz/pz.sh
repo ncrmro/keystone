@@ -709,7 +709,7 @@ cmd_export_menu_data() {
     exit 1
   fi
 
-  while IFS=$'\t' read -r s la; do
+  while IFS=$'\t' read -r s _la; do
     [[ -z "$s" ]] && continue
     slugs+=("$s")
     project_sessions_count["$s"]=0
