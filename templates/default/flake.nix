@@ -31,10 +31,11 @@
       ...
     }:
     keystone.lib.mkSystemFlake {
-      owner = {
-        name = "Your Name"; # TODO: Change to your name
-        username = "admin"; # TODO: Change to your primary username if needed
+      admin = {
+        username = "admin"; # TODO: Change to your login username
+        fullName = "Your Name"; # TODO: Change to your full name
         email = "admin@example.com"; # TODO: Change to your email
+        initialPassword = "changeme";
         # sshKeys = []; # TODO: Add SSH public keys for installer ISO remote access
       };
       defaults = {
