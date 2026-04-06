@@ -19,6 +19,7 @@ interface Config {
   templateRepo: string;
   domain: string;
   timeoutMs: number;
+  smoke: boolean;
   dryRun: boolean;
   print: boolean;
 }
@@ -53,6 +54,7 @@ function parseConfig(): Config | null {
       },
       domain: { type: "string", default: Bun.env.AGENT_DOMAIN ?? "" },
       timeout: { type: "string", default: "30" },
+      smoke: { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
       print: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
@@ -65,8 +67,14 @@ function parseConfig(): Config | null {
     return null;
   }
 
-  if (!values.product || !values.engineer) {
-    console.error("Error: --product and --engineer are required.");
+  const isSmoke = values.smoke ?? false;
+  if (!values.product) {
+    console.error("Error: --product is required.");
+    printHelp();
+    process.exit(1);
+  }
+  if (!isSmoke && !values.engineer) {
+    console.error("Error: --engineer is required (unless --smoke).");
     printHelp();
     process.exit(1);
   }
@@ -79,7 +87,7 @@ function parseConfig(): Config | null {
 
   return {
     productAgent: values.product,
-    engineerAgent: values.engineer,
+    engineerAgent: values.engineer ?? "",
     platform: values.platform ?? "forgejo",
     provider: values.provider ?? "claude",
     forgejoUrl,
@@ -88,6 +96,7 @@ function parseConfig(): Config | null {
       values["template-repo"] ?? "ks-testing/agent-e2e-bun-template",
     domain,
     timeoutMs: resolvedTimeoutMinutes * 60 * 1000,
+    smoke: values.smoke ?? false,
     dryRun: values["dry-run"] ?? false,
     print: values.print ?? false,
   };
@@ -112,6 +121,7 @@ Options:
   --template-repo REPO  Template repo owner/name (default: ks-testing/agent-e2e-bun-template)
   --domain DOMAIN       Agent email domain (default: $AGENT_DOMAIN or derived from --forgejo-url)
   --timeout MINUTES     Polling timeout in minutes (default: 30)
+  --smoke               Send ping email and wait for pong reply (pipeline smoke test)
   --dry-run             Validate configuration without executing the workflow
   --print               Render final report with formatting when complete
   --help                Show this help`);
@@ -135,6 +145,14 @@ async function main() {
   if (config.dryRun) {
     emit("info", "dry-run mode -- validating configuration only");
     await checks.dryRun(config, report, forgejo, agentctl);
+    report.finalize();
+    report.print(config.print);
+    process.exit(report.failed ? 1 : 0);
+  }
+
+  if (config.smoke) {
+    emit("info", "smoke mode -- ping-pong email pipeline test");
+    await checks.pingPong(config, report);
     report.finalize();
     report.print(config.print);
     process.exit(report.failed ? 1 : 0);

@@ -19,6 +19,7 @@ interface Config {
   templateRepo: string;
   domain: string;
   timeoutMs: number;
+  smoke: boolean;
   dryRun: boolean;
   print: boolean;
 }
@@ -297,6 +298,63 @@ export async function setupEnvironment(
     );
     throw err;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Ping-pong smoke test
+// ---------------------------------------------------------------------------
+
+export async function pingPong(config: Config, report: Report) {
+  const toAddr = `${config.productAgent}@${config.domain}`;
+  const tag = `e2e-${Date.now()}`;
+  const subject = `[ping] ${tag}`;
+  emit("info", "sending ping email", { to: toAddr, tag });
+  try {
+    const fromAddr = detectSender();
+    const eml = [
+      `From: ${fromAddr}`,
+      `To: ${toAddr}`,
+      `Subject: ${subject}`,
+      `Date: ${new Date().toUTCString()}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: text/plain; charset=utf-8`,
+      ``,
+      `ping`,
+    ].join("\r\n");
+    execSync("himalaya message send", {
+      input: eml,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    report.check("ping_send", "pass", `Ping sent to ${toAddr} (${tag})`);
+  } catch (err) {
+    report.check("ping_send", "fail", `Failed to send ping: ${err}`);
+    throw err;
+  }
+
+  emit("info", "waiting for pong reply", { tag });
+  const found = await pollUntil(async () => {
+    try {
+      const raw = execSync(
+        'himalaya envelope list -o json "not flag seen"',
+        { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+      );
+      const envelopes: Array<{ subject: string }> = JSON.parse(raw);
+      return envelopes.some(
+        (e) =>
+          /pong/i.test(e.subject) &&
+          e.subject.includes(tag),
+      );
+    } catch {
+      return false;
+    }
+  }, config.timeoutMs);
+  report.check(
+    "ping_pong",
+    found ? "pass" : "fail",
+    found
+      ? `Received pong reply for ${tag}`
+      : `No pong reply within ${Math.round(config.timeoutMs / 60_000)} min`,
+  );
 }
 
 // ---------------------------------------------------------------------------
