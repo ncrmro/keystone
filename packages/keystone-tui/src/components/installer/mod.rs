@@ -16,12 +16,18 @@
 //! - WiFi setup screen during install
 //! - Airgapped mode (pre-fetch all derivations)
 
+use std::path::PathBuf;
+use std::process::Stdio;
+
 use crossterm::event::{Event, KeyCode, KeyEventKind};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc;
+
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 
@@ -72,6 +78,14 @@ enum ConfigFocus {
     UsbDevices,
 }
 
+/// Messages from async build/write operations.
+enum InstallerMessage {
+    BuildOutput(String),
+    BuildFinished(bool),
+    WriteOutput(String),
+    WriteFinished(bool),
+}
+
 pub struct InstallerScreen {
     phase: Phase,
     profile: InstallProfile,
@@ -79,8 +93,14 @@ pub struct InstallerScreen {
     usb_targets: Vec<UsbTarget>,
     selected_target: usize,
     output_lines: Vec<String>,
-    usb_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<UsbTarget>>>,
+    usb_rx: Option<mpsc::UnboundedReceiver<Vec<UsbTarget>>>,
     scanning: bool,
+    /// Repo path for nix build.
+    repo_path: Option<PathBuf>,
+    /// Path to built ISO file.
+    iso_path: Option<PathBuf>,
+    /// Channel for build/write messages.
+    build_rx: Option<mpsc::UnboundedReceiver<InstallerMessage>>,
 }
 
 impl Default for InstallerScreen {
@@ -100,9 +120,18 @@ impl InstallerScreen {
             output_lines: Vec::new(),
             usb_rx: None,
             scanning: false,
+            repo_path: None,
+            iso_path: None,
+            build_rx: None,
         };
         screen.spawn_usb_scan();
         screen
+    }
+
+    /// Set the repo path (called by App::navigate_to).
+    pub fn with_repo_path(mut self, path: PathBuf) -> Self {
+        self.repo_path = Some(path);
+        self
     }
 
     fn toggle_profile(&mut self) {
@@ -113,7 +142,7 @@ impl InstallerScreen {
     }
 
     fn spawn_usb_scan(&mut self) {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::unbounded_channel();
         self.usb_rx = Some(rx);
         self.scanning = true;
         tokio::spawn(async move {
@@ -142,11 +171,239 @@ impl InstallerScreen {
             }
         }
     }
+
+    fn poll_build(&mut self) {
+        let msgs: Vec<InstallerMessage> = if let Some(ref mut rx) = self.build_rx {
+            let mut v = Vec::new();
+            while let Ok(m) = rx.try_recv() {
+                v.push(m);
+            }
+            v
+        } else {
+            return;
+        };
+
+        for msg in msgs {
+            match msg {
+                InstallerMessage::BuildOutput(line) => self.output_lines.push(line),
+                InstallerMessage::BuildFinished(success) => {
+                    if success {
+                        self.iso_path = self.find_iso();
+                        if self.iso_path.is_some() && !self.usb_targets.is_empty() {
+                            self.start_write();
+                        } else if let Some(ref path) = self.iso_path {
+                            self.output_lines
+                                .push(format!("ISO ready: {}", path.display()));
+                            self.phase = Phase::Done;
+                        } else {
+                            self.phase = Phase::Failed("Build OK but no .iso found".to_string());
+                        }
+                    } else {
+                        self.phase = Phase::Failed("nix build failed".to_string());
+                    }
+                }
+                InstallerMessage::WriteOutput(line) => self.output_lines.push(line),
+                InstallerMessage::WriteFinished(success) => {
+                    if success {
+                        self.phase = Phase::Done;
+                    } else {
+                        self.phase = Phase::Failed("dd write failed".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    fn start_build(&mut self) {
+        let Some(repo_path) = self.repo_path.clone() else {
+            self.phase = Phase::Failed("No repo path configured".to_string());
+            return;
+        };
+
+        self.phase = Phase::Building;
+        self.output_lines.clear();
+
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.build_rx = Some(rx);
+
+        let host_name = None; // TODO: select from hosts list
+        tokio::spawn(async move {
+            run_nix_build(tx, repo_path, host_name).await;
+        });
+    }
+
+    fn start_write(&mut self) {
+        let Some(iso_path) = self.iso_path.clone() else {
+            return;
+        };
+        let usb = if self.usb_targets.is_empty() {
+            return;
+        } else {
+            self.usb_targets[self.selected_target].clone()
+        };
+
+        self.phase = Phase::Writing;
+        self.output_lines.clear();
+
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.build_rx = Some(rx);
+
+        tokio::spawn(async move {
+            run_dd_write(tx, iso_path, usb).await;
+        });
+    }
+
+    fn find_iso(&self) -> Option<PathBuf> {
+        let repo = self.repo_path.as_ref()?;
+        let result = repo.join("result");
+        if !result.exists() {
+            return None;
+        }
+        // result/iso/*.iso
+        let iso_dir = result.join("iso");
+        if iso_dir.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&iso_dir) {
+                for entry in entries.flatten() {
+                    if entry.path().extension().is_some_and(|e| e == "iso") {
+                        return Some(entry.path());
+                    }
+                }
+            }
+        }
+        // result/*.iso
+        if let Ok(entries) = std::fs::read_dir(&result) {
+            for entry in entries.flatten() {
+                if entry.path().extension().is_some_and(|e| e == "iso") {
+                    return Some(entry.path());
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Run `nix build` for the ISO.
+async fn run_nix_build(
+    tx: mpsc::UnboundedSender<InstallerMessage>,
+    repo_path: PathBuf,
+    host_name: Option<String>,
+) {
+    let build_ref = match &host_name {
+        Some(host) => format!(
+            ".#nixosConfigurations.{}.config.keystone.os.installer.isoImage",
+            host
+        ),
+        None => ".#iso".to_string(),
+    };
+
+    let _ = tx.send(InstallerMessage::BuildOutput(format!(
+        "$ nix build {}",
+        build_ref
+    )));
+
+    let child = tokio::process::Command::new("nix")
+        .args(["build", &build_ref])
+        .current_dir(&repo_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn();
+
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = tx.send(InstallerMessage::BuildOutput(format!(
+                "Failed to start: {}",
+                e
+            )));
+            let _ = tx.send(InstallerMessage::BuildFinished(false));
+            return;
+        }
+    };
+
+    // Stream stderr (nix build output goes there)
+    if let Some(stderr) = child.stderr.take() {
+        let tx2 = tx.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if tx2.send(InstallerMessage::BuildOutput(line)).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+
+    let status = child.wait().await;
+    let _ = tx.send(InstallerMessage::BuildFinished(
+        status.is_ok_and(|s| s.success()),
+    ));
+}
+
+/// Write ISO to USB via `sudo dd`.
+async fn run_dd_write(
+    tx: mpsc::UnboundedSender<InstallerMessage>,
+    iso_path: PathBuf,
+    target: UsbTarget,
+) {
+    let _ = tx.send(InstallerMessage::WriteOutput(format!(
+        "Writing {} to {}...",
+        iso_path.display(),
+        target.path
+    )));
+    let _ = tx.send(InstallerMessage::WriteOutput(
+        "This may take several minutes.".to_string(),
+    ));
+
+    let child = tokio::process::Command::new("sudo")
+        .args([
+            "dd",
+            &format!("if={}", iso_path.display()),
+            &format!("of={}", target.path),
+            "bs=4M",
+            "status=progress",
+            "conv=fsync",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn();
+
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = tx.send(InstallerMessage::WriteOutput(format!(
+                "Failed to start dd: {}",
+                e
+            )));
+            let _ = tx.send(InstallerMessage::WriteFinished(false));
+            return;
+        }
+    };
+
+    // dd progress goes to stderr
+    if let Some(stderr) = child.stderr.take() {
+        let tx2 = tx.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if tx2.send(InstallerMessage::WriteOutput(line)).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+
+    let status = child.wait().await;
+    let _ = tx.send(InstallerMessage::WriteFinished(
+        status.is_ok_and(|s| s.success()),
+    ));
 }
 
 impl Component for InstallerScreen {
     fn handle_events(&mut self, event: &Event) -> anyhow::Result<Option<Action>> {
         self.poll_usb();
+        self.poll_build();
 
         if let Event::Key(key) = event {
             if key.kind != KeyEventKind::Press {
@@ -186,6 +443,10 @@ impl Component for InstallerScreen {
                         }
                         None
                     }
+                    KeyCode::Enter => {
+                        self.start_build();
+                        None
+                    }
                     KeyCode::Char('r') => {
                         self.spawn_usb_scan();
                         None
@@ -195,10 +456,9 @@ impl Component for InstallerScreen {
                     KeyCode::Char('2') => Some(Action::NavigateTo(Screen::Services)),
                     KeyCode::Char('3') => Some(Action::NavigateTo(Screen::Secrets)),
                     KeyCode::Char('4') => Some(Action::NavigateTo(Screen::Security)),
-                    // TODO: Enter to start build
                     _ => None,
                 },
-                Phase::Building => match key.code {
+                Phase::Building | Phase::Writing => match key.code {
                     KeyCode::Char('q') => Some(Action::Quit),
                     _ => None,
                 },
@@ -218,7 +478,6 @@ impl Component for InstallerScreen {
                     }
                     _ => None,
                 },
-                Phase::Writing => None,
                 Phase::Done | Phase::Failed(_) => match key.code {
                     KeyCode::Char('q') => Some(Action::Quit),
                     KeyCode::Esc => Some(Action::GoBack),
@@ -428,25 +687,27 @@ impl InstallerScreen {
         let t = crate::theme::default();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(5),
-                Constraint::Length(1),
-            ])
+            .constraints([Constraint::Length(1), Constraint::Min(5)])
             .split(area);
 
-        let title = Paragraph::new(Text::styled("Building ISO...", t.title_style()))
-            .alignment(Alignment::Center);
+        let label = match self.phase {
+            Phase::Writing => "Writing ISO to USB...",
+            _ => "Building ISO...",
+        };
+        let title =
+            Paragraph::new(Text::styled(label, t.title_style())).alignment(Alignment::Center);
         frame.render_widget(title, chunks[0]);
 
-        let output: Vec<Line> = self
-            .output_lines
+        // Show last N lines of output (auto-scroll to bottom)
+        let visible_height = chunks[1].height.saturating_sub(2) as usize;
+        let skip = self.output_lines.len().saturating_sub(visible_height);
+        let output: Vec<Line> = self.output_lines[skip..]
             .iter()
             .map(|l| Line::from(l.as_str()))
             .collect();
         let log = Paragraph::new(output)
             .block(Block::default().borders(Borders::ALL))
-            .wrap(ratatui::widgets::Wrap { trim: false });
+            .wrap(Wrap { trim: false });
         frame.render_widget(log, chunks[1]);
     }
 
