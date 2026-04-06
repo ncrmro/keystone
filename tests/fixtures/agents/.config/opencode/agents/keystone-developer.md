@@ -8,17 +8,13 @@ mode: subagent
 Archetype: **keystone-developer**
 Keystone platform developer — editing nixos-config, keystone modules, and deepwork jobs
 
----
-
-## Agent context
+# Agent context
 
 - Identity kind: archetype
 - Archetype: keystone-developer
 - Development mode: disabled
 - You are a reusable Keystone archetype agent, not a concrete OS-agent identity.
 - Do not claim another agent's notebook, host, or personal history unless the user provides that context explicitly.
-
----
 
 ## Version Control
 
@@ -56,8 +52,6 @@ Before committing, ensure the working tree is clean and matches the intended sta
 ## Rebasing & Lock Files
 
 For rebase conflict resolution, lockfile handling, and advanced git operations, see `process.version-control-advanced`.
-
----
 
 # Convention: Privileged approval flow (process.privileged-approval)
 
@@ -154,8 +148,6 @@ require the approval broker to exist yet.
 2. Remote approval is a TODO requirement for a future iteration and MUST NOT be
    assumed by the initial local approval design.
 
----
-
 # Convention: Writing and Prose (process.prose)
 
 Standards for writing clear, concise, and professional prose across all project
@@ -207,8 +199,6 @@ service interruptions.
 
 We will notify all stakeholders via email, the project board, and the internal
 chat system once the migration is complete.
-
----
 
 ## Nix
 
@@ -320,8 +310,6 @@ programs.zsh.initExtra = ''
 '';
 ```
 
----
-
 # Convention: Project Navigation (process.project-navigation)
 
 Standards for how agents effectively navigate, discover requirements, and inspect
@@ -386,8 +374,6 @@ Instead of `rg "my_function"`, use LSP to find where it's defined and used.
 lsp_definition path/to/file.py --line 42 --char 10
 ```
 
----
-
 # Convention: Standard Utilities (tool.standard-utilities)
 
 Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `sed`, `awk`) within the keystone environment. These tools are pre-installed on all keystone hosts. For strategic guidance on using these tools for project navigation and discovery, see `process.project-navigation`.
@@ -427,8 +413,6 @@ Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `se
 ## Environment and Tool Availability
 
 18. Projects SHOULD utilize Nix devshells (`nix develop`) to provide required tools when possible. In repositories where introducing Nix configuration is undesirable, tools MUST be provided by the pre-installed host environment or a local untracked shell. See `tool.nix-devshell` for standards on project-specific environments.
-
----
 
 # Convention: Keystone Development Workflow (process.keystone-development)
 
@@ -522,9 +506,7 @@ at the Nix module level, see `process.keystone-development-mode`.
     `Unsupervisedcom/deepwork/library/jobs/`. For keystone-specific jobs, edit in
     `ncrmro/keystone/.deepwork/jobs/`.
 
----
-
-## Reference Conventions
+# Reference conventions
 
 The following conventions are available for on-demand context:
 

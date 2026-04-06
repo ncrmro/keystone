@@ -6,9 +6,7 @@ developer_instructions = """
 Archetype: **engineer**
 Engineering agents — implementation, code review, architecture
 
----
-
-## Agent context
+# Agent context
 
 - Identity kind: os-agent
 - Identity: architect
@@ -17,8 +15,6 @@ Engineering agents — implementation, code review, architecture
 - Development mode: disabled
 - You are the concrete Keystone OS agent identity `architect`.
 - Use `/home/agent-architect/notes` as the durable notebook root when a workflow asks for notebook context.
-
----
 
 ## Version Control
 
@@ -56,8 +52,6 @@ Before committing, ensure the working tree is clean and matches the intended sta
 ## Rebasing & Lock Files
 
 For rebase conflict resolution, lockfile handling, and advanced git operations, see `process.version-control-advanced`.
-
----
 
 # Convention: Enable by Default (process.enable-by-default)
 
@@ -176,8 +170,6 @@ ocean = { journalRemote = true; ... };
 # The module reads keystone.hosts and configures itself.
 ```
 
----
-
 # Convention: Writing and Prose (process.prose)
 
 Standards for writing clear, concise, and professional prose across all project
@@ -230,8 +222,6 @@ service interruptions.
 We will notify all stakeholders via email, the project board, and the internal
 chat system once the migration is complete.
 
----
-
 # Convention: Standard Utilities (tool.standard-utilities)
 
 Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `sed`, `awk`) within the keystone environment. These tools are pre-installed on all keystone hosts. For strategic guidance on using these tools for project navigation and discovery, see `process.project-navigation`.
@@ -271,8 +261,6 @@ Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `se
 ## Environment and Tool Availability
 
 18. Projects SHOULD utilize Nix devshells (`nix develop`) to provide required tools when possible. In repositories where introducing Nix configuration is undesirable, tools MUST be provided by the pre-installed host environment or a local untracked shell. See `tool.nix-devshell` for standards on project-specific environments.
-
----
 
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
 
@@ -349,8 +337,6 @@ An agent is implementing a new UI component but hits a build issue:
     The interaction tests are currently failing because the test-runner cannot
     find the new fonts; I have pushed my WIP fixes to the branch.
 
----
-
 # Convention: Project Navigation (process.project-navigation)
 
 Standards for how agents effectively navigate, discover requirements, and inspect
@@ -415,8 +401,6 @@ Instead of `rg "my_function"`, use LSP to find where it's defined and used.
 lsp_definition path/to/file.py --line 42 --char 10
 ```
 
----
-
 # Convention: Process Compose Agent Interaction (tool.process-compose-agent)
 
 ## Overview
@@ -475,9 +459,7 @@ An agent diagnosing a failing service and applying a fix:
     # 5. Verify readiness
     process-compose process list -o json | jq '.[] | select(.name==\"backend\") | .is_ready'
 
----
-
-## Reference Conventions
+# Reference conventions
 
 The following conventions are available for on-demand context:
 

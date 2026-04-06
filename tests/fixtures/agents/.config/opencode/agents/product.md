@@ -8,17 +8,13 @@ mode: subagent
 Archetype: **product**
 Product agents — planning, stakeholder communication, task management
 
----
-
-## Agent context
+# Agent context
 
 - Identity kind: archetype
 - Archetype: product
 - Development mode: disabled
 - You are a reusable Keystone archetype agent, not a concrete OS-agent identity.
 - Do not claim another agent's notebook, host, or personal history unless the user provides that context explicitly.
-
----
 
 ## Product-Engineering Handoff
 
@@ -105,8 +101,6 @@ user stories issue MUST exist before engineering planning starts.
 33. The press release is published (committed to the project's blog directory) when the milestone is closed.
 34. The milestone closing does NOT require updating the press release content — the press release stands as written at handoff time.
 
----
-
 # Convention: Press Release (process.press-release)
 
 Standards for drafting "Working Backwards" style press releases to define
@@ -132,8 +126,6 @@ clarity and style rules.
 9. The press release MUST include a call to action (how the customer gets started).
 10. An FAQ section MAY be appended for anticipated objections or clarifications.
 11. Internal metrics or implementation details MUST NOT appear in the press release.
-
----
 
 # Convention: Writing and Prose (process.prose)
 
@@ -187,8 +179,6 @@ service interruptions.
 We will notify all stakeholders via email, the project board, and the internal
 chat system once the migration is complete.
 
----
-
 # Convention: Standard Utilities (tool.standard-utilities)
 
 Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `sed`, `awk`) within the keystone environment. These tools are pre-installed on all keystone hosts. For strategic guidance on using these tools for project navigation and discovery, see `process.project-navigation`.
@@ -228,8 +218,6 @@ Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `se
 ## Environment and Tool Availability
 
 18. Projects SHOULD utilize Nix devshells (`nix develop`) to provide required tools when possible. In repositories where introducing Nix configuration is undesirable, tools MUST be provided by the pre-installed host environment or a local untracked shell. See `tool.nix-devshell` for standards on project-specific environments.
-
----
 
 <!-- RFC 2119: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY -->
 
@@ -306,8 +294,6 @@ An agent is implementing a new UI component but hits a build issue:
     The interaction tests are currently failing because the test-runner cannot
     find the new fonts; I have pushed my WIP fixes to the branch.
 
----
-
 # Convention: Project Navigation (process.project-navigation)
 
 Standards for how agents effectively navigate, discover requirements, and inspect
@@ -372,9 +358,7 @@ Instead of `rg "my_function"`, use LSP to find where it's defined and used.
 lsp_definition path/to/file.py --line 42 --char 10
 ```
 
----
-
-## Reference Conventions
+# Reference conventions
 
 The following conventions are available for on-demand context:
 

@@ -1,17 +1,11 @@
-# Keystone Conventions
-
----
-
-## Keystone session
+# Keystone session
 
 - Canonical instruction path: `~/.keystone/AGENTS.md`
 - Development mode: disabled
 - Available Keystone capabilities: ks, notes, project, engineer, product, project-manager
 - Published Keystone commands: ks.system, ks.notes, ks.projects, ks.engineer, ks.product, ks.pm
 
----
-
-## Notes command guidance
+# Notes command guidance
 
 - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
 - Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
@@ -19,16 +13,12 @@
 - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
 - When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
 
----
-
-## Shared-surface tracking
+# Shared-surface tracking
 
 - For issue-backed work, follow `process.issue-journal` and post `Work Started` and `Work Update` comments on the source issue.
 - For milestone and board-backed work, follow `process.project-board` so issue and PR state stays visible on the shared board.
 - Treat issues, pull requests, milestones, and boards as the canonical public record for status, review state, and decisions that affect collaborators.
 - Use notes to preserve durable rationale and memory, not to replace shared-surface tracking.
-
----
 
 ## Version Control
 
@@ -66,8 +56,6 @@ Before committing, ensure the working tree is clean and matches the intended sta
 ## Rebasing & Lock Files
 
 For rebase conflict resolution, lockfile handling, and advanced git operations, see `process.version-control-advanced`.
-
----
 
 # Convention: Privileged approval flow (process.privileged-approval)
 
@@ -164,8 +152,6 @@ require the approval broker to exist yet.
 2. Remote approval is a TODO requirement for a future iteration and MUST NOT be
    assumed by the initial local approval design.
 
----
-
 # Convention: Writing and Prose (process.prose)
 
 Standards for writing clear, concise, and professional prose across all project
@@ -218,8 +204,6 @@ service interruptions.
 We will notify all stakeholders via email, the project board, and the internal
 chat system once the migration is complete.
 
----
-
 # Convention: Standard Utilities (tool.standard-utilities)
 
 Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `sed`, `awk`) within the keystone environment. These tools are pre-installed on all keystone hosts. For strategic guidance on using these tools for project navigation and discovery, see `process.project-navigation`.
@@ -260,9 +244,7 @@ Standards for using common Unix and development utilities (`jq`, `yq`, `rg`, `se
 
 18. Projects SHOULD utilize Nix devshells (`nix develop`) to provide required tools when possible. In repositories where introducing Nix configuration is undesirable, tools MUST be provided by the pre-installed host environment or a local untracked shell. See `tool.nix-devshell` for standards on project-specific environments.
 
----
-
-## Reference Conventions
+# Reference conventions
 
 The following conventions are available for on-demand context:
 

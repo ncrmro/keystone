@@ -103,6 +103,10 @@ Keystone defines skills in the `skills:` section of `conventions/archetypes.yaml
 34. Skills MUST be gated on resolved capabilities so they only generate when their capability is active.
 35. The `skills:` data model MUST be extensible — users SHOULD be able to add extra conventions to any skill via Nix options.
 36. Skill names MUST be namespaced under `ks.` for consistency with existing commands (e.g., `ks.engineer`, `ks.product`, `ks.pm`).
+37. Generated instruction files MUST NOT use horizontal rules (`---`) as section separators — headings are sufficient.
+38. Top-level sections in generated instruction files (CLAUDE.md, AGENTS.md) MUST use `#` headings, not `##`.
+39. The system host instruction file MUST NOT include an archetype identity header — the session's archetype is internal metadata, not user-facing content.
+40. The session's own archetype MUST NOT be generated as a separate native agent definition — it is already the instruction file content.
 
 ### Cross-CLI support matrix
 

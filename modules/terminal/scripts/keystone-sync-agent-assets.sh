@@ -92,7 +92,7 @@ append_file_content() {
   local output_file="$1"
   local source_file="$2"
 
-  printf '\n---\n\n' >> "$output_file"
+  printf '\n' >> "$output_file"
   cat "$source_file" >> "$output_file"
 }
 
@@ -335,9 +335,7 @@ render_agent_prompt() {
 Archetype: **$archetype_name**
 $archetype_description
 
----
-
-## Agent context
+# Agent context
 
 $context_block
 EOF
@@ -351,7 +349,7 @@ EOF
   mapfile -t ref_conventions < <(yq -r ".archetypes.\"$archetype_name\".referenced_conventions[]?" "$archetypes_file")
   if [[ ${#ref_conventions[@]} -gt 0 ]]; then
     {
-      printf '\n---\n\n## Reference Conventions\n\nThe following conventions are available for on-demand context:\n\n'
+      printf '\n# Reference conventions\n\nThe following conventions are available for on-demand context:\n\n'
       for ref_convention in "${ref_conventions[@]}"; do
         printf -- '- [%s](%s/%s.md)\n' "$ref_convention" "$conventions_link_base" "$ref_convention"
       done
@@ -542,11 +540,7 @@ archetype_description="$(yq -r ".archetypes.\"$archetype\".description // \"\"" 
 global_agents_tmp="$(mktemp)"
 {
   cat <<EOF
-# Keystone Conventions
-
----
-
-## Keystone session
+# Keystone session
 
 - Canonical instruction path: \`~/.keystone/AGENTS.md\`
 - Development mode: $development_mode_display
@@ -558,9 +552,7 @@ EOF
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
   cat <<'EOF' >> "$global_agents_tmp"
 
----
-
-## Notes command guidance
+# Notes command guidance
 
 - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
 - Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
@@ -572,9 +564,7 @@ fi
 
 cat <<'EOF' >> "$global_agents_tmp"
 
----
-
-## Shared-surface tracking
+# Shared-surface tracking
 
 - For issue-backed work, follow `process.issue-journal` and post `Work Started` and `Work Update` comments on the source issue.
 - For milestone and board-backed work, follow `process.project-board` so issue and PR state stays visible on the shared board.
@@ -590,7 +580,7 @@ done < <(yq -r ".archetypes.\"$archetype\".inlined_conventions[]?" "$archetypes_
 mapfile -t referenced_global_conventions < <(yq -r ".archetypes.\"$archetype\".referenced_conventions[]?" "$archetypes_file")
 if [[ ${#referenced_global_conventions[@]} -gt 0 ]]; then
   {
-    printf '\n---\n\n## Reference Conventions\n\nThe following conventions are available for on-demand context:\n\n'
+    printf '\n# Reference conventions\n\nThe following conventions are available for on-demand context:\n\n'
     for convention_name in "${referenced_global_conventions[@]}"; do
       printf -- '- [%s](%s/%s.md)\n' "$convention_name" "$conventions_link_base" "$convention_name"
     done
@@ -658,7 +648,7 @@ done < <(yq -r '.archetypes."keystone-developer".inlined_conventions[]?' "$arche
 mapfile -t referenced_repo_conventions < <(yq -r '.archetypes."keystone-developer".referenced_conventions[]?' "$archetypes_file")
 if [[ ${#referenced_repo_conventions[@]} -gt 0 ]]; then
   {
-    printf '\n---\n\n## Reference Conventions\n\nThe following conventions are available for on-demand context:\n\n'
+    printf '\n# Reference conventions\n\nThe following conventions are available for on-demand context:\n\n'
     for convention_name in "${referenced_repo_conventions[@]}"; do
       printf -- '- [%s](ncrmro/keystone/conventions/%s.md)\n' "$convention_name" "$convention_name"
     done
