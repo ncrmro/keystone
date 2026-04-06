@@ -69,6 +69,21 @@ let
     template-default-laptop = evalNixos "template-default-laptop" templateOutputs.nixosConfigurations.laptop;
     template-default-server-ocean = evalNixos "template-default-server-ocean" templateOutputs.nixosConfigurations.server-ocean;
 
+    template-default-iso =
+      let
+        isoImage = templateOutputs.packages.x86_64-linux.iso;
+      in
+      pkgs.runCommand "eval-template-iso" { } ''
+        mkdir -p $out
+        cat > $out/template-default-iso.json <<'ENDJSON'
+        {
+          "name": "template-default-iso",
+          "kind": "iso",
+          "isoName": "${isoImage.name}"
+        }
+        ENDJSON
+      '';
+
     laptop-ext4 = evalNixos "laptop-ext4" (
       self.lib.mkLaptop {
         hostname = "laptop";
