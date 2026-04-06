@@ -191,6 +191,8 @@ in
     isoImage.volumeID = lib.mkDefault "KEYSTONE";
     isoImage.efiSplashImage = ../assets/installer-splash.png;
     isoImage.splashImage = ../assets/installer-splash.png;
+    # Disable the default NixOS GRUB theme so the keystone splash image shows
+    isoImage.grubTheme = null;
 
     # Include the keystone modules in the ISO for reference
     environment.etc."keystone-modules".source = ../modules;
