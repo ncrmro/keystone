@@ -1,5 +1,4 @@
-# Convention files are colocated at runtime from conventions/ sources.
+# Convention and role files are colocated at runtime from conventions/ sources.
 # The SKILL.md references are sufficient to show what changed.
-**/process.*.md
-**/tool.*.md
-**/code.*.md
+# SKILL.md starts with uppercase so is not matched by the pattern below.
+**/skills/*/[a-z]*.md
