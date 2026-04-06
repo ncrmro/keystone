@@ -57,29 +57,29 @@ pub struct UsbTarget {
 /// The installer screen's internal phase.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Phase {
-    /// Select install profile and review options.
     Configure,
-    /// ISO is building.
     Building,
-    /// ISO built — select USB target or save to ~/Downloads.
     SelectTarget,
-    /// Writing ISO to USB.
     Writing,
-    /// Done.
     Done,
-    /// Error.
     Failed(String),
+}
+
+/// Which section has focus on the Configure screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfigFocus {
+    Profile,
+    UsbDevices,
 }
 
 pub struct InstallerScreen {
     phase: Phase,
     profile: InstallProfile,
+    focus: ConfigFocus,
     usb_targets: Vec<UsbTarget>,
     selected_target: usize,
     output_lines: Vec<String>,
-    /// Channel for receiving async USB scan results.
     usb_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<UsbTarget>>>,
-    /// Whether a USB scan is currently running.
     scanning: bool,
 }
 
@@ -94,6 +94,7 @@ impl InstallerScreen {
         let mut screen = Self {
             phase: Phase::Configure,
             profile: InstallProfile::Server,
+            focus: ConfigFocus::Profile,
             usb_targets: Vec::new(),
             selected_target: 0,
             output_lines: Vec::new(),
@@ -154,8 +155,35 @@ impl Component for InstallerScreen {
             return Ok(match self.phase {
                 Phase::Configure => match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => Some(Action::Quit),
-                    KeyCode::Tab => {
-                        self.toggle_profile();
+                    KeyCode::Tab | KeyCode::BackTab => {
+                        self.focus = match self.focus {
+                            ConfigFocus::Profile => ConfigFocus::UsbDevices,
+                            ConfigFocus::UsbDevices => ConfigFocus::Profile,
+                        };
+                        None
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        match self.focus {
+                            ConfigFocus::Profile => self.toggle_profile(),
+                            ConfigFocus::UsbDevices => {
+                                if self.selected_target > 0 {
+                                    self.selected_target -= 1;
+                                }
+                            }
+                        }
+                        None
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        match self.focus {
+                            ConfigFocus::Profile => self.toggle_profile(),
+                            ConfigFocus::UsbDevices => {
+                                if !self.usb_targets.is_empty()
+                                    && self.selected_target + 1 < self.usb_targets.len()
+                                {
+                                    self.selected_target += 1;
+                                }
+                            }
+                        }
                         None
                     }
                     KeyCode::Char('r') => {
@@ -204,7 +232,7 @@ impl Component for InstallerScreen {
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> anyhow::Result<()> {
         let help = match self.phase {
             Phase::Configure => {
-                "1-5: sections • Tab: profile • r: rescan USB • Enter: build • q: quit"
+                "Tab: switch section • ↑/↓: select • r: rescan USB • Enter: build • q: quit"
             }
             Phase::Building | Phase::Writing => "building...",
             Phase::SelectTarget => "↑/↓: select • Enter: write ISO • r: refresh • Esc: back",
@@ -282,6 +310,11 @@ impl InstallerScreen {
             t.inactive_style()
         };
 
+        let profile_border = if self.focus == ConfigFocus::Profile {
+            Style::default().fg(t.accent)
+        } else {
+            t.inactive_style()
+        };
         let profile_widget = Paragraph::new(vec![
             Line::from(Span::styled(
                 format!("  {}", InstallProfile::Desktop.label()),
@@ -294,9 +327,9 @@ impl InstallerScreen {
         ])
         .block(
             Block::default()
-                .title(" Install Profile (Tab to switch) ")
+                .title(" Install Profile (↑/↓ to switch) ")
                 .borders(Borders::ALL)
-                .border_style(t.inactive_style()),
+                .border_style(profile_border),
         );
         frame.render_widget(profile_widget, chunks[2]);
 
@@ -324,6 +357,13 @@ impl InstallerScreen {
         frame.render_widget(options, chunks[4]);
 
         // USB targets
+        let usb_focused = self.focus == ConfigFocus::UsbDevices;
+        let usb_border = if usb_focused {
+            Style::default().fg(t.accent)
+        } else {
+            t.inactive_style()
+        };
+
         let usb_widget = if self.scanning {
             Paragraph::new(Line::from(Span::styled(
                 "  Scanning for USB devices...",
@@ -333,7 +373,7 @@ impl InstallerScreen {
                 Block::default()
                     .title(" USB Devices ")
                     .borders(Borders::ALL)
-                    .border_style(t.inactive_style()),
+                    .border_style(usb_border),
             )
         } else if self.usb_targets.is_empty() {
             Paragraph::new(Line::from(Span::styled(
@@ -344,17 +384,24 @@ impl InstallerScreen {
                 Block::default()
                     .title(" USB Devices ")
                     .borders(Borders::ALL)
-                    .border_style(t.inactive_style()),
+                    .border_style(usb_border),
             )
         } else {
             let lines: Vec<Line> = self
                 .usb_targets
                 .iter()
-                .flat_map(|usb| {
+                .enumerate()
+                .flat_map(|(i, usb)| {
+                    let selected = usb_focused && i == self.selected_target;
+                    let name_style = if selected {
+                        t.active_style()
+                    } else {
+                        Style::default()
+                    };
                     vec![
                         Line::from(Span::styled(
                             format!("  {} ({})", usb.model, usb.size),
-                            Style::default(),
+                            name_style,
                         )),
                         Line::from(Span::styled(
                             format!("    {}", usb.path),
@@ -367,7 +414,11 @@ impl InstallerScreen {
                 Block::default()
                     .title(format!(" USB Devices ({}) ", self.usb_targets.len()))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(t.active)),
+                    .border_style(if usb_focused {
+                        Style::default().fg(t.accent)
+                    } else {
+                        Style::default().fg(t.active)
+                    }),
             )
         };
         frame.render_widget(usb_widget, chunks[6]);
