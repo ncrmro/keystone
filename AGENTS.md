@@ -20,7 +20,8 @@ configuration, desktop environments, terminal tooling, and server services.
 
 ```
 modules/
-├── domain.nix, hosts.nix, keys.nix, shared/repos.nix, secrets.nix, services.nix
+├── domain.nix, hosts.nix, keys.nix, secrets.nix, services.nix
+├── shared/experimental.nix, shared/repos.nix, shared/dev-script-link.nix
 ├── iso-installer.nix, installer.nix, binary-cache-client.nix
 ├── notes/
 ├── os/
@@ -29,7 +30,9 @@ modules/
 │   ├── hardware-key.nix, hypervisor.nix, containers.nix
 │   ├── eternal-terminal.nix, airplay.nix, tailscale.nix
 │   ├── ollama.nix, immich.nix, iphone-tether.nix
+│   ├── alloy.nix, mail.nix, observability.nix
 │   ├── notifications.nix, journal-remote.nix
+│   ├── privileged-approval.nix, uhk.nix
 │   ├── git-server/, agents/, scripts/
 │   └── agents/ → see modules/os/agents/AGENTS.md
 ├── terminal/
@@ -38,15 +41,18 @@ modules/
 │   ├── ssh-auto-load.nix, sandbox.nix, secrets.nix
 │   ├── conventions.nix, deepwork.nix, devtools.nix
 │   ├── calendar.nix, contacts.nix, timer.nix, tasks.nix
-│   ├── forgejo.nix, projects.nix, cli-coding-agent-configs.nix
-│   ├── claude-code-commands.nix, claude-code-commands/, claude-code/
-│   └── layouts/
+│   ├── forgejo.nix, grafana.nix, projects.nix
+│   ├── cli-coding-agent-configs.nix, ai-extensions.nix
+│   ├── generated-agent-assets.nix, perception.nix
+│   ├── claude-code/, ai-commands/, agent-assets/
+│   └── layouts/, scripts/
 ├── desktop/
 │   ├── nixos.nix
 │   └── home/ (components/, hyprland/, scripts/, theming/)
 └── server/
     ├── default.nix, lib.nix, acme.nix, nginx.nix, dns.nix
-    ├── headscale/, services/
+    ├── headscale.nix, mail.nix, monitoring.nix, vpn.nix
+    ├── headscale/, observability/, services/
     └── services/ (attic, grafana, prometheus, loki, immich,
                    vaultwarden, forgejo, headscale, miniflux,
                    mail, adguard, seaweedfs, journal-remote)
@@ -64,6 +70,7 @@ modules/
 | `binaryCacheClient`                            | Attic binary cache client                                                        |
 | `hardwareKey`                                  | YubiKey/FIDO2 support                                                            |
 | `isoInstaller`                                 | Bootable installer                                                               |
+| `experimental`                                 | Experimental feature flag (`keystone.experimental`)                              |
 | `domain`, `hosts`, `repos`, `services`, `keys` | Shared options modules                                                           |
 | `headscale-dns`                                | Consume server DNS records on headscale host                                     |
 
@@ -76,8 +83,10 @@ modules/
 ### Native (`packages/`)
 
 `zesh`, `agent-mail`, `agent-coding-agent`, `fetch-email-source`, `fetch-forgejo-sources`,
-`fetch-github-sources`, `repo-sync`, `podman-agent`, `keystone-tui`, `keystone-installer-ui`,
-`keystone-ha`, `ks`, `pz`, `forgejo-project`, `chrome-devtools-mcp`, `slidev`
+`fetch-github-sources`, `repo-sync`, `podman-agent`, `keystone-tui`, `keystone-ha`,
+`ks`, `pz`, `forgejo-project`, `forgejo-cli-ex`, `chrome-devtools-mcp`, `grafana-mcp`,
+`lfs-s3`, `slidev`, `cfait`, `zellij-tab-name`, `hyprpolkitagent`, `agents-e2e`,
+`keystone-photos`, `keystone-conventions`, `keystone-deepwork-jobs`, `deepwork-library-jobs`
 
 ### Overlay (`pkgs.keystone.*`)
 
@@ -108,6 +117,7 @@ See `modules/terminal/AGENTS.md` § "llm-agents input strategy" for full example
 - Secure Boot requires manual key enrollment during installation
 - All ZFS datasets use native encryption with automatic key management
 - `keystone.repos` auto-populates from flake inputs; `keystone.development` enables local checkout paths
+- `keystone.experimental` (default `false`) gates experimental features. When `true`, experimental modules auto-enable. Defined in `modules/shared/experimental.nix` — a zero-dependency module imported everywhere. See `docs/experimental.md` for the full list and module author guide.
 - **AI Instruction Regeneration**: AI instruction files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are automatically regenerated from `archetypes.yaml` and the `conventions/` directory during `ks build`, `ks switch`, and `ks update --dev`. In development mode (`keystone.development = true`), these files are symlinked from the repository, and `ks switch` regenerates them as committable git diffs to reflect changes.
 - **DeepWork Standard Job Sync**: In `~/.keystone/repos/ncrmro/keystone`, shared DeepWork jobs are discovered through `DEEPWORK_ADDITIONAL_JOBS_FOLDERS`. In development mode, Keystone sets that env var to two job roots:
   `~/.keystone/repos/Unsupervisedcom/deepwork/library/jobs` for shared DeepWork library jobs, and
