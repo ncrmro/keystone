@@ -203,7 +203,11 @@ impl App {
                 // FirstBoot is only entered via marker detection, not navigation
             }
             Screen::Installer => {
-                self.current_screen = AppScreen::Installer(InstallerScreen::new());
+                let mut screen = InstallerScreen::new();
+                if let Some(path) = self.active_repo_path() {
+                    screen = screen.with_repo_path(path);
+                }
+                self.current_screen = AppScreen::Installer(screen);
             }
             Screen::Secrets => {
                 self.current_screen = AppScreen::Secrets(SecretsScreen::new());
