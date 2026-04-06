@@ -401,6 +401,9 @@ EOF
 
   while IFS= read -r archetype_name; do
     [[ -z "$archetype_name" ]] && continue
+    # Skip the session's own archetype — it is already the CLAUDE.md/AGENTS.md content,
+    # not a separate agent identity.
+    [[ "$archetype_name" == "$archetype" ]] && continue
     archetype_desc="$(yq -r ".archetypes.\"$archetype_name\".description // \"\"" "$archetypes_file")"
     archetype_id="$archetype_name"
     if jq -e --arg name "$archetype_name" '.agents[$name]?' "$manifest_path" >/dev/null; then
