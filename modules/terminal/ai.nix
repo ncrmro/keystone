@@ -47,10 +47,7 @@ in
 
   config = mkIf (cfg.enable && cfg.ai.enable) {
     home.packages = [
-      # DeepWork - workflow orchestration MCP server
       pkgs.keystone.deepwork
-    ]
-    ++ [
       pkgs.keystone.claude-code
       pkgs.keystone.gemini-cli
       pkgs.keystone.codex
