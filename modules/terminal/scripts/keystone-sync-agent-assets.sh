@@ -194,38 +194,81 @@ command_display_name() {
     ks.projects) printf '%s' "KS Projects" ;;
     ks.dev) printf '%s' "KS Development" ;;
     ks.ea) printf '%s' "KS Executive Assistant" ;;
+    ks.engineer) printf '%s' "KS Engineer" ;;
+    ks.product) printf '%s' "KS Product" ;;
+    ks.pm) printf '%s' "KS Project Manager" ;;
     *) return 1 ;;
   esac
 }
 
 command_argument_hint() {
   case "$1" in
-    ks | ks.system | ks.notes | ks.projects | ks.ea) printf '%s' "<request>" ;;
-    ks.dev) printf '%s' "<goal>" ;;
+    ks | ks.system | ks.notes | ks.projects | ks.ea | ks.product | ks.pm) printf '%s' "<request>" ;;
+    ks.dev | ks.engineer) printf '%s' "<goal>" ;;
     *) return 1 ;;
   esac
 }
 
 command_template_name() {
+  local skill_key
+  skill_key="$(command_skill_key "$1")"
+  if [[ -n "$skill_key" ]]; then
+    yq -r ".skills.\"$skill_key\".template" "$archetypes_file"
+    return
+  fi
   case "$1" in
     ks | ks.system) printf '%s' "ks.template.md" ;;
     ks.notes) printf '%s' "ks-notes.template.md" ;;
     ks.projects) printf '%s' "ks-projects.template.md" ;;
     ks.dev) printf '%s' "ks-dev.template.md" ;;
-    ks.ea) printf '%s' "ks-executive-assistant.template.md" ;;
     *) return 1 ;;
   esac
 }
 
 command_description() {
+  local skill_key
+  skill_key="$(command_skill_key "$1")"
+  if [[ -n "$skill_key" ]]; then
+    yq -r ".skills.\"$skill_key\".description" "$archetypes_file"
+    return
+  fi
   case "$1" in
     ks | ks.system) printf '%s' "Keystone system — may start keystone_system/issue or keystone_system/doctor" ;;
     ks.notes) printf '%s' "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup" ;;
     ks.projects) printf '%s' "Project workflows — may start project/onboard, project/press_release, project/milestone, project/milestone_engineering_handoff, or project/success" ;;
     ks.dev) printf '%s' "Keystone development — may start keystone_system/develop, keystone_system/issue, keystone_system/convention, or keystone_system/doctor" ;;
-    ks.ea) printf '%s' "Executive assistant — calendar, inbox, events, portfolio reviews, and task coordination" ;;
     *) return 1 ;;
   esac
+}
+
+# Map command ID to archetypes.yaml skill key (empty string if not a skill command)
+command_skill_key() {
+  case "$1" in
+    ks.engineer) printf '%s' "engineer" ;;
+    ks.product) printf '%s' "product" ;;
+    ks.pm) printf '%s' "project-manager" ;;
+    ks.ea) printf '%s' "executive-assistant" ;;
+    *) printf '' ;;
+  esac
+}
+
+# Copy colocated conventions and roles into a skill directory
+colocate_skill_conventions() {
+  local skill_key="$1"
+  local target_dir="$2"
+  local conv_name src_file
+
+  while IFS= read -r conv_name; do
+    [[ -z "$conv_name" ]] && continue
+    src_file="$conventions_dir/${conv_name}.md"
+    [[ -f "$src_file" ]] && write_file "${target_dir}/${conv_name}.md" "$(cat "$src_file")"
+  done < <(yq -r ".skills.\"$skill_key\".colocated_conventions[]?" "$archetypes_file")
+
+  while IFS= read -r conv_name; do
+    [[ -z "$conv_name" ]] && continue
+    src_file="$conventions_dir/roles/${conv_name}.md"
+    [[ -f "$src_file" ]] && write_file "${target_dir}/${conv_name}.md" "$(cat "$src_file")"
+  done < <(yq -r ".skills.\"$skill_key\".colocated_roles[]?" "$archetypes_file")
 }
 
 normalize_command_id() {
@@ -414,6 +457,18 @@ fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'executive-assistant'; then
   ks_allowed_routes_lines+=("- Executive assistant workflows (calendar, inbox, events, portfolio reviews, task coordination): direct the user to \`/ks.ea\` instead of starting executive_assistant workflows directly.")
+fi
+
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'engineer'; then
+  ks_allowed_routes_lines+=("- Engineering workflows (implementation, code review, architecture, CI): direct the user to \`/ks.engineer\` instead of starting engineer workflows directly.")
+fi
+
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'product'; then
+  ks_allowed_routes_lines+=("- Product workflows (press releases, milestones, stakeholder communication): direct the user to \`/ks.product\` instead of starting project workflows directly.")
+fi
+
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'project-manager'; then
+  ks_allowed_routes_lines+=("- Project management workflows (task decomposition, tracking, boards): direct the user to \`/ks.pm\` instead of managing tasks directly.")
 fi
 
 repo_checkout="$(json_get '.repoCheckout')"
@@ -617,17 +672,17 @@ write_file "$(target_path ".keystone/repos/AGENTS.md")" "$repos_agents_content"
 
 # Includes all possible command files (e.g., ks.ea) so stale assets are cleaned
 # even when a capability is not active. rm -f is harmless for non-existent files.
-managed_claude_commands=(ks.md ks.system.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md)
+managed_claude_commands=(ks.md ks.system.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engineer.md ks.product.md ks.pm.md)
 for command_file in "${managed_claude_commands[@]}"; do
   rm -f "$(target_path ".claude/commands/$command_file")"
 done
 
-managed_gemini_commands=(ks.toml ks.system.toml ks.notes.toml ks.projects.toml ks.dev.toml ks.ea.toml deepwork.toml wrap-up.toml)
+managed_gemini_commands=(ks.toml ks.system.toml ks.notes.toml ks.projects.toml ks.dev.toml ks.ea.toml ks.engineer.toml ks.product.toml ks.pm.toml deepwork.toml wrap-up.toml)
 for command_file in "${managed_gemini_commands[@]}"; do
   rm -f "$(target_path ".gemini/commands/$command_file")"
 done
 
-managed_opencode_commands=(ks.md ks.system.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md)
+managed_opencode_commands=(ks.md ks.system.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engineer.md ks.product.md ks.pm.md)
 for command_file in "${managed_opencode_commands[@]}"; do
   rm -f "$(target_path ".config/opencode/commands/$command_file")"
 done
@@ -654,23 +709,10 @@ for command_id in "${published_commands[@]}"; do
   write_file "$(target_path ".claude/skills/${skill_name}/SKILL.md")" "$ks_skill_md"
   write_file "$(target_path ".config/opencode/skills/${skill_name}/SKILL.md")" "$ks_skill_md"
 
-  if [[ "$command_id" == "ks.ea" ]]; then
-    ea_conventions=(
-      "roles/executive-assistant.md:executive-assistant.md"
-      "tool.calendula.md:tool.calendula.md"
-      "tool.himalaya.md:tool.himalaya.md"
-      "tool.stalwart.md:tool.stalwart.md"
-    )
-    for entry in "${ea_conventions[@]}"; do
-      src_rel="${entry%%:*}"
-      dest_name="${entry##*:}"
-      src_file="$conventions_dir/$src_rel"
-      if [[ -f "$src_file" ]]; then
-        content="$(cat "$src_file")"
-        write_file "$(target_path ".claude/skills/${skill_name}/${dest_name}")" "$content"
-        write_file "$(target_path ".config/opencode/skills/${skill_name}/${dest_name}")" "$content"
-      fi
-    done
+  skill_key="$(command_skill_key "$command_id")"
+  if [[ -n "$skill_key" ]]; then
+    colocate_skill_conventions "$skill_key" "$(target_path ".claude/skills/${skill_name}")"
+    colocate_skill_conventions "$skill_key" "$(target_path ".config/opencode/skills/${skill_name}")"
   fi
 done
 
@@ -723,22 +765,9 @@ dependencies:
       description: "DeepWork MCP server"
 '
 
-  if [[ "$command_id" == "ks.ea" ]]; then
-    ea_conventions=(
-      "roles/executive-assistant.md:executive-assistant.md"
-      "tool.calendula.md:tool.calendula.md"
-      "tool.himalaya.md:tool.himalaya.md"
-      "tool.stalwart.md:tool.stalwart.md"
-    )
-    for entry in "${ea_conventions[@]}"; do
-      src_rel="${entry%%:*}"
-      dest_name="${entry##*:}"
-      src_file="$conventions_dir/$src_rel"
-      if [[ -f "$src_file" ]]; then
-        content="$(cat "$src_file")"
-        write_file "$(target_path ".codex/skills/${skill_name}/${dest_name}")" "$content"
-      fi
-    done
+  skill_key="$(command_skill_key "$command_id")"
+  if [[ -n "$skill_key" ]]; then
+    colocate_skill_conventions "$skill_key" "$(target_path ".codex/skills/${skill_name}")"
   fi
 done
 
