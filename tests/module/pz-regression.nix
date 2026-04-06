@@ -50,32 +50,12 @@ pkgs.runCommand "test-pz-regression"
     EOF
     chmod +x "$PWD/bin/pz"
 
-    cat > "$PWD/bin/zk" <<'EOF'
-    #!${pkgs.bash}/bin/bash
-    set -euo pipefail
-
-    if [[ "$*" == *"list index/"* ]]; then
-      cat <<'JSON'
-    [
-      {
-        "absPath": "/tmp/notes/index/keystone.md",
-        "metadata": {
-          "type": "index",
-          "project": "keystone",
-          "description": "Build Keystone tooling.",
-          "last_active": "2026-03-31"
-        },
-        "body": "Build Keystone tooling."
-      }
-    ]
-    JSON
-      exit 0
-    fi
-
-    printf 'unexpected zk args: %s\n' "$*" >&2
-    exit 1
+    cat > "$HOME/.keystone/repos/example/config/projects.yaml" <<'EOF'
+    keystone:
+      mission: "Build Keystone tooling."
+      repos:
+        - ncrmro/keystone
     EOF
-    chmod +x "$PWD/bin/zk"
 
     cat > "$PWD/bin/zellij" <<'EOF'
     #!${pkgs.bash}/bin/bash

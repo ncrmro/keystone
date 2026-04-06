@@ -396,6 +396,9 @@
           keystone-photos = import ./tests/module/keystone-photos.nix {
             inherit pkgs lib;
           };
+          projects-schema = import ./tests/module/projects-schema.nix {
+            inherit pkgs lib;
+          };
           pz-regression = import ./tests/module/pz-regression.nix {
             inherit pkgs lib;
           };
