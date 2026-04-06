@@ -20,6 +20,7 @@ let
       timeZone ? "UTC",
       storage,
       admin,
+      adminUsername ? "admin",
       users,
       secureBoot ? {
         enable = true;
@@ -39,16 +40,22 @@ let
       },
       config ? { },
     }:
-    {
+    lib.recursiveUpdate {
       networking.hostName = hostname;
       system.stateVersion = stateVersion;
       time.timeZone = timeZone;
       boot.loader.systemd-boot.enable = lib.mkDefault true;
 
+      # Apply keystone overlay so pkgs.keystone.* packages are available
+      nixpkgs.overlays = [ self.overlays.default ];
+
       keystone.os = {
         enable = true;
+        # Tailscale requires hosts registry — template configs don't have one
+        tailscale.enable = lib.mkDefault false;
         inherit
           admin
+          adminUsername
           users
           storage
           secureBoot
@@ -62,8 +69,7 @@ let
         "root"
         "@wheel"
       ];
-    }
-    // config;
+    } config;
 
   mkLinuxHost =
     {
@@ -73,6 +79,7 @@ let
       timeZone ? "UTC",
       storage,
       admin,
+      adminUsername ? "admin",
       users ? { },
       desktop ? false,
       secureBoot ? {
@@ -110,6 +117,7 @@ let
             timeZone
             storage
             admin
+            adminUsername
             users
             secureBoot
             tpm
@@ -259,39 +267,103 @@ let
       spec;
 
   # Build an installer ISO with the admin's terminal environment (helix, zsh,
-  # starship) and SSH keys for remote access. Boots to a root shell on tty1.
+  # starship) and SSH keys for remote access. Boots to the admin user on tty1.
   # TUI installer is experimental — auto-enabled only when keystone.experimental = true.
-  # self.homeModules.terminal already embeds keystoneInputs via _module.args,
-  # so we don't need the full keystoneInputs attrset here.
+  #
+  # Imports iso-image.nix + base.nix + minimal.nix directly (skipping
+  # installation-device.nix which hardcodes a "nixos" user and auto-login).
   mkInstallerIsoForFlake =
     {
       system ? "x86_64-linux",
       sshKeys ? [ ],
+      adminUsername ? "admin",
       adminName ? "System Administrator",
       adminEmail ? "admin@example.com",
     }:
     (nixpkgs.lib.nixosSystem {
       inherit system;
       modules = [
-        "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+        # ISO image infrastructure (replaces installation-cd-minimal.nix to
+        # avoid the hardcoded "nixos" user from installation-device.nix)
+        "${nixpkgs}/nixos/modules/installer/cd-dvd/iso-image.nix"
+        "${nixpkgs}/nixos/modules/profiles/base.nix"
+        "${nixpkgs}/nixos/modules/profiles/minimal.nix"
+        # Hardware detection and installer channel (from installation-device.nix)
+        "${nixpkgs}/nixos/modules/installer/scan/detected.nix"
+        "${nixpkgs}/nixos/modules/installer/scan/not-detected.nix"
+        "${nixpkgs}/nixos/modules/installer/cd-dvd/channel.nix"
+
+        # fileSystems must reference config.lib.isoFileSystems from inside a module
+        (
+          { config, ... }:
+          {
+            fileSystems = lib.mkImageMediaOverride config.lib.isoFileSystems;
+          }
+        )
+
         self.nixosModules.isoInstaller
         self.nixosModules.experimental
         home-manager.nixosModules.home-manager
         {
-          # Force kernel 6.12 — must override minimal CD default
+          # Force kernel 6.12
           boot.kernelPackages = lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
+
+          # From installation-cd-base.nix
+          hardware.enableAllHardware = true;
+          isoImage.makeEfiBootable = true;
+          isoImage.makeUsbBootable = true;
+          isoImage.edition = lib.mkOverride 500 "minimal";
+          boot.loader.grub.memtest86.enable = true;
+          swapDevices = lib.mkImageMediaOverride [ ];
+          boot.initrd.luks.devices = lib.mkImageMediaOverride { };
+          programs.git.enable = lib.mkDefault true;
+          documentation.man.enable = lib.mkOverride 500 true;
+          documentation.doc.enable = lib.mkOverride 500 true;
+          fonts.fontconfig.enable = lib.mkOverride 500 false;
+
+          # Admin user (replaces the hardcoded "nixos" user)
+          users.users.${adminUsername} = {
+            isNormalUser = true;
+            extraGroups = [
+              "wheel"
+              "networkmanager"
+              "video"
+            ];
+            initialHashedPassword = "";
+          };
+          users.users.root.initialHashedPassword = "";
+
+          security.polkit.enable = true;
+          security.sudo = {
+            enable = lib.mkDefault true;
+            wheelNeedsPassword = lib.mkImageMediaOverride false;
+          };
+
+          # Auto-login as the admin user
+          services.getty.autologinUser = adminUsername;
+          nix.settings.trusted-users = [
+            "root"
+            adminUsername
+          ];
+
+          boot.swraid.enable = true;
+          boot.swraid.mdadmConf = "PROGRAM ${nixpkgs.legacyPackages.${system}.coreutils}/bin/true";
+          networking.firewall.logRefusedConnections = lib.mkDefault false;
 
           keystone.installer.sshKeys = sshKeys;
           # TUI is experimental — default off, auto-enabled by keystone.experimental
           keystone.installer.tui.enable = lib.mkDefault false;
           nixpkgs.overlays = [ self.overlays.default ];
 
-          # Terminal environment for root user (helix, zsh, starship)
+          # Terminal environment for root and admin users (helix, zsh, starship)
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
           home-manager.backupFileExtension = "backup";
+          home-manager.sharedModules = [
+            self.homeModules.terminal
+            self.homeModules.notes
+          ];
           home-manager.users.root = {
-            imports = [ self.homeModules.terminal ];
             home.stateVersion = "25.05";
             keystone.terminal = {
               enable = true;
@@ -303,7 +375,26 @@ let
               };
             };
             keystone.projects.enable = false;
+            keystone.notes.enable = false;
           };
+          home-manager.users.${adminUsername} = {
+            home.stateVersion = "25.05";
+            home.username = adminUsername;
+            home.homeDirectory = "/home/${adminUsername}";
+            keystone.terminal = {
+              enable = true;
+              ai.enable = false;
+              sandbox.enable = false;
+              git = {
+                userName = adminName;
+                userEmail = adminEmail;
+              };
+            };
+            keystone.projects.enable = false;
+            keystone.notes.enable = false;
+          };
+
+          programs.zsh.enable = true;
         }
       ];
     }).config.system.build.isoImage;
@@ -461,7 +552,8 @@ rec {
       };
 
       # admin is the single source of truth — strip template-only fields
-      # (username, sshKeys) to produce a valid userSubmodule config
+      # (sshKeys) to produce a valid userSubmodule config.
+      # username is passed through to keystone.os.adminUsername.
       adminUsername = admin.username or "admin";
       adminSshKeys = admin.sshKeys or [ ];
       sharedAdmin = builtins.removeAttrs admin [
@@ -519,6 +611,7 @@ rec {
                   kindDefaults.system;
               timeZone = if hostCfg ? timeZone then hostCfg.timeZone else sharedTimeZone;
               admin = if hostCfg ? admin then hostCfg.admin else sharedAdmin;
+              inherit adminUsername;
               users = sharedUsers // (hostCfg.users or { });
               nixosModules = kindDefaults.nixosModules ++ (hostCfg.nixosModules or [ ]);
               config = lib.recursiveUpdate mergedConfig {
@@ -576,6 +669,7 @@ rec {
       packages.${defaultLinuxSystem}.iso = mkInstallerIsoForFlake {
         system = defaultLinuxSystem;
         sshKeys = adminSshKeys;
+        inherit adminUsername;
         adminName = sharedAdmin.fullName;
         adminEmail = sharedAdmin.email;
       };

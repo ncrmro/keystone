@@ -69,9 +69,7 @@ in
       openssh.authorizedKeys.keys = installerCfg.sshKeys;
     };
 
-    # Enable networking via NetworkManager (for TUI installer network detection)
-    # mkForce needed — installation-cd-minimal.nix enables wpa_supplicant which
-    # conflicts with NetworkManager's own wireless management
+    # Disable wpa_supplicant — NetworkManager handles wireless
     networking = {
       wireless.enable = lib.mkForce false;
     };
