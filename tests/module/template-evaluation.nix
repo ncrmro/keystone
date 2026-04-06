@@ -71,7 +71,7 @@ let
 
     template-default-iso =
       let
-        isoImage = templateOutputs.packages.x86_64-linux.iso;
+        isoImage = templateOutputs.packages."x86_64-linux".iso;
       in
       pkgs.runCommand "eval-template-iso" { } ''
         mkdir -p $out
