@@ -23,6 +23,18 @@ let
 in
 {
   options.keystone.installer = {
+    edition = lib.mkOption {
+      type = lib.types.str;
+      default = "server";
+      description = "ISO edition name used in the filename (e.g. server, desktop).";
+    };
+
+    version = lib.mkOption {
+      type = lib.types.str;
+      default = "0.0.0";
+      description = "Keystone installer version embedded in the ISO filename.";
+    };
+
     sshKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -186,8 +198,8 @@ in
     documentation.enable = false;
     documentation.nixos.enable = false;
 
-    # Set the ISO label and boot splash image
-    image.fileName = lib.mkDefault "keystone-installer.iso";
+    # Set the ISO name, label, and boot splash image
+    image.baseName = lib.mkForce "keystone-${installerCfg.edition}-installer-${installerCfg.version}";
     isoImage.volumeID = lib.mkDefault "KEYSTONE";
     isoImage.efiSplashImage = ../assets/installer-splash.png;
     isoImage.splashImage = ../assets/installer-splash.png;
