@@ -204,6 +204,49 @@ hosts.server-ocean = {
 4. Build: `ks build new-server`
 5. Deploy: `nixos-anywhere --flake .#new-server root@<ip>`
 
+## Exploring keystone via Nix CLI
+
+### Flake outputs
+
+```bash
+# Show all keystone flake outputs (modules, packages, checks, templates)
+nix flake show github:ncrmro/keystone
+
+# List exported NixOS modules
+nix eval github:ncrmro/keystone#nixosModules --apply 'x: builtins.attrNames x'
+
+# List exported home-manager modules
+nix eval github:ncrmro/keystone#homeModules --apply 'x: builtins.attrNames x'
+
+# List available packages
+nix eval github:ncrmro/keystone#packages.x86_64-linux --apply 'x: builtins.attrNames x'
+```
+
+### Inspecting options from a config repo
+
+```bash
+# List keystone.os options
+nix eval .#nixosConfigurations.<hostname>.options.keystone.os --apply 'x: builtins.attrNames x'
+
+# Inspect a specific option (type, default, description)
+nix eval .#nixosConfigurations.<hostname>.options.keystone.os.storage.type.type.description
+
+# List keystone services options
+nix eval .#nixosConfigurations.<hostname>.options.keystone.services --apply 'x: builtins.attrNames x'
+
+# List keystone terminal options (home-manager)
+nix eval .#nixosConfigurations.<hostname>.config.home-manager.users.<username>.options.keystone.terminal --apply 'x: builtins.attrNames x'
+```
+
+### Interactive exploration
+
+```bash
+# REPL is the most powerful tool for exploring options and config
+nix repl .#nixosConfigurations.<hostname>
+# then tab-complete: config.keystone.os.<TAB>
+#                    options.keystone.os.<TAB>
+```
+
 ## Keystone module reference
 
 | Module area | What it provides |
