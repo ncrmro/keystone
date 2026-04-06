@@ -1,4 +1,4 @@
-# Tool-native instruction file generation from keystone conventions.
+# Tool-native instruction file generation from keystone conventions.  [EXPERIMENTAL]
 #
 # See conventions/tool.cli-coding-agents.md
 # See conventions/process.keystone-development-mode.md (dev-mode repos AGENTS.md)
@@ -203,14 +203,16 @@ let
   overlappingConventions = filter (c: elem c globalInlined) reposInlined;
 in
 {
+  imports = [ ../shared/experimental.nix ];
+
   options.keystone.terminal.conventions = {
     enable = mkOption {
       type = types.bool;
-      default = true;
+      default = config.keystone.experimental;
       description = ''
         Enable convention generation at each CLI coding tool's native
         instruction file path (~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md,
-        ~/.codex/AGENTS.md). See conventions/tool.cli-coding-agents.md.
+        ~/.codex/AGENTS.md) (EXPERIMENTAL). See conventions/tool.cli-coding-agents.md.
       '';
     };
 

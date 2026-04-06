@@ -43,20 +43,21 @@ zk integration may be restructured.
 **Options**: `keystone.notes.enable`, `.repo`, `.path`, `.syncInterval`,
 `.commitPrefix`, `.sync.enable`, `.zk.enable`
 
-### `archetypes.yaml` — Agent instruction composition
+### `keystone.terminal.conventions` — Agent instruction generation
 
 | | |
 |---|---|
-| **File** | `conventions/archetypes.yaml` |
-| **Flag** | Not module-gated (file-level only) |
+| **Module** | `modules/terminal/conventions.nix` |
+| **Flag** | `keystone.terminal.conventions.enable` (defaults to `keystone.experimental`) |
 | **Milestone** | [v2 — Un-experimental](https://github.com/ncrmro/keystone/milestone/10) |
 
-Defines agent archetypes with inlined and referenced conventions that compose
-into system prompts for AI coding agents. The `conventions.nix` module
-regenerates instruction files during `ks build` and `ks update --dev`.
+Reads `archetypes.yaml` and generates tool-native instruction files
+(`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`).
+In development mode, also generates `~/.keystone/repos/AGENTS.md`.
 
 **Why experimental**: The archetype schema, convention composition model, and
-generated file format are actively evolving.
+generated file format are actively evolving. Role definitions and convention
+assignment patterns may change.
 
 ## For module authors
 
