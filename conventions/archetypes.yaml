@@ -38,11 +38,9 @@ archetypes:
     description: "NixOS host — Nix devshells, direnv, declarative config"
     inlined_conventions:
       - process.version-control
-      - process.git-repos
       - process.privileged-approval
       - process.prose
       - tool.standard-utilities
-      - process.vcs-context-continuity
     referenced_conventions:
       - os.requirements
       - tool.nix-devshell
@@ -62,6 +60,8 @@ archetypes:
       - process.enable-by-default
       - os.zfs-backup
       - tool.stalwart
+      - process.git-repos
+      - process.vcs-context-continuity
 
   # Archetype for working directly on keystone platform repos:
   # ncrmro/keystone, ncrmro/nixos-config, Unsupervisedcom/deepwork.
@@ -271,3 +271,77 @@ archetypes:
         conventions:
           - process.diagrams
           - tool.mermaid
+
+# 3. skills (Progressive Knowledge Loading):
+#    Skills are invocable knowledge bundles that load on demand via slash commands
+#    (e.g., /ks.engineer). Each skill colocates its conventions in the skill folder
+#    so all relevant context loads together when the skill is activated.
+#
+#    Fields:
+#    - description: Human-facing skill description for routing and discovery
+#    - template: Template file in modules/terminal/agent-assets/
+#    - colocated_conventions: Convention files copied into the skill folder
+#    - colocated_roles: Role definition files copied into the skill folder
+
+skills:
+  engineer:
+    description: "Engineering — implementation, code review, architecture, and CI"
+    template: engineer-skill.template.md
+    colocated_conventions:
+      - process.feature-delivery
+      - process.pull-request
+      - process.code-review-ownership
+      - process.continuous-integration
+      - process.refactor
+      - process.version-control
+      - process.version-control-advanced
+      - process.vcs-context-continuity
+      - process.git-repos
+      - code.shell-scripts
+      - code.comments
+      - tool.nix-devshell
+    colocated_roles:
+      - software-engineer
+      - code-reviewer
+      - architect
+
+  product:
+    description: "Product — planning, milestones, stakeholder communication"
+    template: product-skill.template.md
+    colocated_conventions:
+      - process.product-engineering-handoff
+      - process.press-release
+      - process.project-board
+      - process.prose
+      - process.diagrams
+      - tool.mermaid
+      - tool.forgejo
+    colocated_roles:
+      - business-analyst
+      - project-lead
+
+  project-manager:
+    description: "Project management — task decomposition, tracking, and boards"
+    template: pm-skill.template.md
+    colocated_conventions:
+      - process.feature-delivery
+      - process.project-board
+      - process.task-tracking
+      - process.blocker
+      - process.issue-journal
+      - process.vcs-context-continuity
+      - tool.forgejo
+      - tool.github
+    colocated_roles:
+      - project-lead
+      - task-decomposer
+
+  executive-assistant:
+    description: "Executive assistant — calendar, inbox, events, portfolio reviews"
+    template: ks-executive-assistant.template.md
+    colocated_conventions:
+      - tool.calendula
+      - tool.himalaya
+      - tool.stalwart
+    colocated_roles:
+      - executive-assistant
