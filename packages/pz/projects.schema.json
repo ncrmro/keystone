@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ncrmro/keystone/schemas/projects.schema.json",
+  "title": "Keystone projects",
+  "description": "Declarative project registry for the keystone platform. Lives next to flake.nix in the consumer config.",
+  "type": "object",
+  "additionalProperties": {
+    "$ref": "#/$defs/project"
+  },
+  "propertyNames": {
+    "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+    "description": "Project slug: lowercase alphanumeric with hyphens"
+  },
+  "$defs": {
+    "project": {
+      "type": "object",
+      "required": ["mission", "repos"],
+      "additionalProperties": false,
+      "properties": {
+        "mission": {
+          "type": "string",
+          "description": "One-line summary of the project's purpose."
+        },
+        "repos": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"
+          },
+          "minItems": 1,
+          "description": "Associated repositories as owner/repo identifiers."
+        },
+        "icon": {
+          "type": "string",
+          "description": "Icon path relative to projects.yaml or an HTTP(S) URL."
+        },
+        "milestones": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/milestone"
+          },
+          "description": "Active milestones displayed in menus."
+        }
+      }
+    },
+    "milestone": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Milestone name."
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Target date in YYYY-MM-DD format."
+        }
+      }
+    }
+  }
+}

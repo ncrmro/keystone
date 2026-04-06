@@ -121,6 +121,7 @@ Keep development workflows separate from initial setup:
 ## Quick Links
 
 - **[Project Roadmap](https://github.com/ncrmro/keystone/blob/main/ROADMAP.md)** - Development milestones and future plans
+- **[Experimental features](experimental.md)** - Stability tiers and the `keystone.experimental` flag
 - **[GitHub Repository](https://github.com/ncrmro/keystone)** - Source code and issue tracking
 - **[Create `keystone-config`](#core-concept-keystone-config)** - Scaffold a new Keystone configuration repo
 

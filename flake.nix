@@ -235,6 +235,9 @@
         # Shared host registry (keystone.hosts) — host identity and connection metadata
         hosts = ./modules/hosts.nix;
 
+        # Experimental feature flag (keystone.experimental)
+        experimental = ./modules/shared/experimental.nix;
+
         # Managed repo registry + development mode toggle (keystone.repos, keystone.development)
         repos = ./modules/shared/repos.nix;
 
@@ -252,6 +255,7 @@
             ./modules/domain.nix
             ./modules/services.nix
             ./modules/hosts.nix
+            ./modules/shared/experimental.nix
             ./modules/shared/repos.nix
             ./modules/os
             ./modules/installer.nix
@@ -394,6 +398,9 @@
             inherit pkgs;
           };
           keystone-photos = import ./tests/module/keystone-photos.nix {
+            inherit pkgs lib;
+          };
+          projects-schema = import ./tests/module/projects-schema.nix {
             inherit pkgs lib;
           };
           pz-regression = import ./tests/module/pz-regression.nix {

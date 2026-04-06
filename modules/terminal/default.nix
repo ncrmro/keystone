@@ -81,6 +81,7 @@ let
 in
 {
   imports = [
+    ../shared/experimental.nix
     ../shared/repos.nix
     ./shell.nix
     ./editor.nix

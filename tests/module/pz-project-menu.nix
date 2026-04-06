@@ -72,50 +72,19 @@ pkgs.runCommand "test-pz-project-menu"
     chmod +x "$PWD/bin/keystone-project-menu"
     ln -s "$PWD/bin/keystone-project-menu" "$HOME/.local/bin/keystone-project-menu"
 
-    cat > "$PWD/bin/zk" <<'EOF'
-    #!${pkgs.bash}/bin/bash
-    set -euo pipefail
-
-    if [[ "$*" == *"list index/"* ]]; then
-      cat <<'JSON'
-    [
-      {
-        "absPath": "/tmp/notes/index/keystone.md",
-        "metadata": {
-          "type": "index",
-          "project": "keystone",
-          "description": "Build Keystone tooling.",
-          "last_active": "2026-03-31",
-          "milestones": [
-            {
-              "name": "Fix pz completion",
-              "date": "2026-04-01"
-            }
-          ]
-        },
-        "body": "Build Keystone tooling."
-      },
-      {
-        "absPath": "/tmp/notes/index/agents.md",
-        "metadata": {
-          "type": "index",
-          "tags": [
-            "project",
-            "agents"
-          ],
-          "last_active": "2026-03-30"
-        },
-        "body": "Coordinate agent workflows.\n\nArchive notes."
-      }
-    ]
-    JSON
-      exit 0
-    fi
-
-    printf 'unexpected zk args: %s\n' "$*" >&2
-    exit 1
+    cat > "$NIXOS_CONFIG_DIR/projects.yaml" <<'EOF'
+    keystone:
+      mission: "Build Keystone tooling."
+      repos:
+        - ncrmro/keystone
+      milestones:
+        - name: "Fix pz completion"
+          date: "2026-04-01"
+    agents:
+      mission: "Coordinate agent workflows."
+      repos:
+        - ncrmro/keystone
     EOF
-    chmod +x "$PWD/bin/zk"
 
     cat > "$PWD/bin/zellij" <<'EOF'
     #!${pkgs.bash}/bin/bash

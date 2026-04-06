@@ -326,6 +326,70 @@ specs_review:
       unchanged_matching_files: true
 
 # =====================================================================
+# Experimental Feature Consistency
+# When modules or docs/experimental.md change, verify the three-way
+# contract: module flag, header comment, and docs page stay in sync.
+# Also catches graduation candidates (flag removed but docs not updated).
+# =====================================================================
+experimental_consistency:
+  description: "Verify experimental modules, flags, header markers, and docs/experimental.md stay in sync."
+  match:
+    include:
+      - "modules/**/*.nix"
+      - "docs/experimental.md"
+      - "modules/shared/experimental.nix"
+    exclude:
+      - "modules/**/scripts/**"
+      - "tests/**"
+  review:
+    strategy: matches_together
+    additional_context:
+      unchanged_matching_files: true
+    instructions: |
+      Audit the three-way contract between experimental modules, their flags,
+      and docs/experimental.md. All three must agree.
+
+      ## 1. Find all gated modules
+
+      Run:
+        rg "config\.keystone\.experimental" modules/ --type nix -l
+
+      For each file found:
+        a. The module file header MUST contain `[EXPERIMENTAL]`.
+        b. The module MUST import `../shared/experimental.nix`.
+        c. The module MUST have an entry in `docs/experimental.md` under
+           "Current experimental features."
+
+      Flag any module that uses `config.keystone.experimental` but is missing
+      the header marker or docs entry.
+
+      ## 2. Check docs/experimental.md completeness
+
+      Read docs/experimental.md. For each feature listed under
+      "Current experimental features":
+        a. The referenced module file MUST exist.
+        b. The module MUST actually use `config.keystone.experimental` in its
+           enable default.
+        c. If the module no longer uses the flag (graduation candidate), flag
+           as "docs entry stale — module has graduated or flag was removed."
+
+      ## 3. Graduation detection
+
+      If a changed module previously used `config.keystone.experimental` but
+      now defaults to `true`:
+        a. The `[EXPERIMENTAL]` header MUST be removed.
+        b. The docs/experimental.md entry MUST be moved to the stable surface
+           list or removed.
+        c. Flag if the graduation is incomplete (header or docs not updated).
+
+      ## Report
+
+      - List all modules gated behind `keystone.experimental`
+      - PASS if all three artifacts agree
+      - FAIL with specific mismatches: missing header, missing docs entry,
+        stale docs entry, incomplete graduation
+
+# =====================================================================
 # Suggest New Reviews (DeepWork native)
 # Analyzes all changes to suggest new review rules that would catch
 # issues going forward. Conservative — only suggests high-value rules.

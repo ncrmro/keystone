@@ -1,4 +1,7 @@
-# Keystone Notes — Home Manager module
+# Keystone Notes — Home Manager module  [EXPERIMENTAL]
+#
+# EXPERIMENTAL: This module is not part of the stable v1 surface.
+# It may change significantly or be restructured in future releases.
 #
 # Syncs a git-backed notes repository on a timer using repo-sync.
 # Optionally initializes a zk Zettelkasten notebook structure.
@@ -275,8 +278,14 @@ let
   '';
 in
 {
+  imports = [ ../shared/experimental.nix ];
+
   options.keystone.notes = {
-    enable = lib.mkEnableOption "Keystone notes sync";
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = config.keystone.experimental;
+      description = "Enable Keystone notes sync (EXPERIMENTAL). Auto-enabled when keystone.experimental = true.";
+    };
 
     repo = lib.mkOption {
       type = lib.types.str;

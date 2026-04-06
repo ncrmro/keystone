@@ -14,10 +14,6 @@
 #   --help, -h           Show this help message
 #   --layout <name>      Use a named zellij layout (dev, ops, write) on session creation
 #
-# Environment:
-#   VAULT_ROOT  Root zk notebook directory
-#               Defaults to $HOME/notes
-#
 # Session naming:
 #   Default sessions are named after the project slug directly.
 #   Named sub-sessions append the session slug with a hyphen.
@@ -25,14 +21,12 @@
 #   Example: "pz backend-api review" creates/attaches to session "backend-api-review"
 #
 # Project validation:
-#   A project is considered valid when an active hub note exists in the zk
-#   notebook with matching `project: <slug>` frontmatter and/or `project/<slug>`
-#   tag.
+#   A project is considered valid when it is declared in projects.yaml
+#   next to the consumer flake (nixos-config).
 #
 # Environment variables set inside the session:
 #   PROJECT_NAME    The project slug
-#   PROJECT_PATH    Absolute path to the legacy project directory
-#   PROJECT_README  Absolute path to the legacy project README.md
+#   PROJECT_PATH    Absolute path to the project directory
 #   VAULT_ROOT      Root directory for all projects
 
 set -euo pipefail
@@ -73,9 +67,6 @@ Options:
   -h, --help           Show this help message
   --layout <name>      Use a named zellij layout on session creation (dev, ops, write)
   --host <hostname>    Use the selected host instead of the local machine
-
-Environment:
-  VAULT_ROOT      Root zk notebook directory (default: ~/notes)
 EOF
 }
 
@@ -129,6 +120,29 @@ find_hosts_repo() {
 
   echo "error: cannot find nixos-config repo (no hosts.nix found)" >&2
   return 1
+}
+
+find_projects_file() {
+  local repo_root
+  repo_root=$(find_hosts_repo)
+  local projects_file="$repo_root/projects.yaml"
+  if [[ -f "$projects_file" ]]; then
+    printf '%s\n' "$projects_file"
+    return 0
+  fi
+  echo "error: no projects.yaml found in $repo_root" >&2
+  return 1
+}
+
+projects_json() {
+  local projects_file
+  projects_file=$(find_projects_file)
+  yq -o=json eval '.' "$projects_file"
+}
+
+project_yaml_json() {
+  local slug="$1"
+  projects_json | jq -c --arg slug "$slug" '.[$slug] // empty'
 }
 
 hosts_inventory_json() {
@@ -362,157 +376,15 @@ valid_slug() {
 }
 
 discover_projects() {
-  local zk_json
-  local -A seen=()
-  local note_path resolved_project last_active
-
-  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet); then
-    echo "error: failed to discover active projects via zk in ${VAULT_ROOT}" >&2
-    return 1
-  fi
-
-  while IFS=$'\t' read -r note_path resolved_project last_active; do
-    if [[ -z "$resolved_project" ]]; then
-      continue
-    fi
-
-    if [[ "$resolved_project" == __AMBIGUOUS__:* ]]; then
-      echo "error: active project hub ${note_path} has ambiguous project tags: ${resolved_project#__AMBIGUOUS__:}" >&2
-      return 1
-    fi
-
-    if ! valid_slug "$resolved_project"; then
-      echo "error: active project hub ${note_path} uses invalid project slug '${resolved_project}'" >&2
-      return 1
-    fi
-
-    if [[ -z "${seen[$resolved_project]:-}" ]]; then
-      seen["$resolved_project"]=1
-      printf "%s\t%s\n" "$resolved_project" "$last_active"
-    fi
-  done < <(
-    printf "%s\n" "$zk_json" | jq -r '
-      def merged_tags:
-        if ((.metadata.tags // []) | length) > 0 then
-          (.metadata.tags // [])
-        else
-          (.tags // [])
-        end
-        | map(select(type == "string"))
-        | unique;
-
-      def explicit_project_tags:
-        merged_tags
-        | map(select(startswith("project/")) | sub("^project/"; ""))
-        | unique;
-
-      def bare_project_tags:
-        if (merged_tags | index("project")) == null then
-          []
-        else
-          merged_tags
-          | map(
-              select(
-                test("^[a-z0-9]+(-[a-z0-9]+)*$")
-                and . != "index"
-                and . != "project"
-                and . != "archive"
-              )
-            )
-          | unique
-        end;
-
-      def status_markers:
-        merged_tags
-        | map(select(startswith("status/") or . == "archive"))
-        | unique;
-
-      def inferred_project:
-        if (.metadata.project // "") != "" then
-          .metadata.project
-        elif (explicit_project_tags | length) == 1 then
-          explicit_project_tags[0]
-        elif (explicit_project_tags | length) > 1 then
-          "__AMBIGUOUS__:" + (explicit_project_tags | join(","))
-        elif (bare_project_tags | length) == 1 then
-          bare_project_tags[0]
-        elif (bare_project_tags | length) > 1 then
-          "__AMBIGUOUS__:" + (bare_project_tags | join(","))
-        else
-          ""
-        end;
-
-      .[]
-      | select((.metadata.type // "") == "index")
-      | select((status_markers | index("status/archived")) == null)
-      | select((status_markers | index("archive")) == null)
-      | select((.metadata.status // "") != "archived")
-      | [
-          .absPath,
-          inferred_project,
-          (.metadata.last_active // "")
-        ]
-      | @tsv
-    '
-  )
+  local pj
+  pj=$(projects_json)
+  printf '%s\n' "$pj" | jq -r 'to_entries[] | [.key, ""] | @tsv'
 }
 
-project_hub_path() {
-  local target_slug="$1"
-  local zk_json
-
-  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet); then
-    echo "error: failed to discover project hubs via zk in ${VAULT_ROOT}" >&2
-    return 1
-  fi
-
-  printf "%s\n" "$zk_json" | jq -r --arg slug "$target_slug" '
-    def merged_tags:
-      if ((.metadata.tags // []) | length) > 0 then
-        (.metadata.tags // [])
-      else
-        (.tags // [])
-      end
-      | map(select(type == "string"))
-      | unique;
-
-    def explicit_project_tags:
-      merged_tags
-      | map(select(startswith("project/")) | sub("^project/"; ""))
-      | unique;
-
-    def bare_project_tags:
-      if (merged_tags | index("project")) == null then
-        []
-      else
-        merged_tags
-        | map(
-            select(
-              test("^[a-z0-9]+(-[a-z0-9]+)*$")
-              and . != "index"
-              and . != "project"
-              and . != "archive"
-            )
-          )
-        | unique
-      end;
-
-    def inferred_project:
-      if (.metadata.project // "") != "" then
-        .metadata.project
-      elif (explicit_project_tags | length) == 1 then
-        explicit_project_tags[0]
-      elif (bare_project_tags | length) == 1 then
-        bare_project_tags[0]
-      else
-        ""
-      end;
-
-    .[]
-    | select((.metadata.type // "") == "index")
-    | select(inferred_project == $slug)
-    | .absPath
-  ' | head -n 1
+projects_file_dir() {
+  local projects_file
+  projects_file=$(find_projects_file)
+  dirname "$projects_file"
 }
 
 sanitize_text() {
@@ -521,7 +393,7 @@ sanitize_text() {
 
 project_icon_value() {
   local project_json="$1"
-  printf "%s\n" "$project_json" | jq -r '.metadata.icon // ""'
+  printf "%s\n" "$project_json" | jq -r '.icon // ""'
 }
 
 icon_extension_from_source() {
@@ -594,7 +466,7 @@ download_icon_to_cache() {
 resolve_project_icon() {
   local project_slug="$1"
   local project_json="$2"
-  local hub_path="$3"
+  local base_dir="$3"
   local icon_value local_icon
 
   icon_value=$(project_icon_value "$project_json")
@@ -605,7 +477,9 @@ resolve_project_icon() {
     return $?
   fi
 
-  if local_icon=$(resolve_local_icon_path "$icon_value" "$hub_path"); then
+  # Resolve relative icon paths against the projects.yaml directory
+  local dummy_path="${base_dir}/projects.yaml"
+  if local_icon=$(resolve_local_icon_path "$icon_value" "$dummy_path"); then
     printf "%s\n" "$local_icon"
     return 0
   fi
@@ -623,126 +497,22 @@ cmd_menu_cache_path() {
 
 project_note_json() {
   local target_slug="$1"
-  local zk_json
-
-  if ! zk_json=$(zk --notebook-dir "$VAULT_ROOT" list index/ --format json --quiet 2>/dev/null); then
-    return 1
-  fi
-
-  printf "%s\n" "$zk_json" | jq -c --arg slug "$target_slug" '
-    def merged_tags:
-      if ((.metadata.tags // []) | length) > 0 then
-        (.metadata.tags // [])
-      else
-        (.tags // [])
-      end
-      | map(select(type == "string"))
-      | unique;
-
-    def explicit_project_tags:
-      merged_tags
-      | map(select(startswith("project/")) | sub("^project/"; ""))
-      | unique;
-
-    def bare_project_tags:
-      if (merged_tags | index("project")) == null then
-        []
-      else
-        merged_tags
-        | map(
-            select(
-              test("^[a-z0-9]+(-[a-z0-9]+)*$")
-              and . != "index"
-              and . != "project"
-              and . != "archive"
-            )
-          )
-        | unique
-      end;
-
-    def inferred_project:
-      if (.metadata.project // "") != "" then
-        .metadata.project
-      elif (explicit_project_tags | length) == 1 then
-        explicit_project_tags[0]
-      elif (bare_project_tags | length) == 1 then
-        bare_project_tags[0]
-      else
-        ""
-      end;
-
-    first(
-      .[]
-      | select((.metadata.type // "") == "index")
-      | select(inferred_project == $slug)
-    )
-  ' | head -n 1
+  project_yaml_json "$target_slug"
 }
 
 project_mission() {
   local project_json="$1"
-  local description
-  local body
-  local first_paragraph
-
-  description=$(printf "%s\n" "$project_json" | jq -r '.metadata.description // ""')
-  if [[ -n "$description" && "$description" != "null" ]]; then
-    printf "%s\n" "$(sanitize_text "$description")"
-    return 0
-  fi
-
-  body=$(printf "%s\n" "$project_json" | jq -r '.body // ""')
-  first_paragraph=$(
-    printf "%s\n" "$body" | awk '
-      /^## / { next }
-      /^#/ { next }
-      /^\|/ { next }
-      /^- / { next }
-      /^\s*$/ {
-        if (paragraph != "") {
-          print paragraph
-          exit
-        }
-        next
-      }
-      {
-        if (paragraph == "") {
-          paragraph = $0
-        } else {
-          paragraph = paragraph " " $0
-        }
-      }
-      END {
-        if (paragraph != "") {
-          print paragraph
-        }
-      }
-    '
-  )
-
-  if [[ -n "$first_paragraph" ]]; then
-    printf "%s\n" "$(sanitize_text "$first_paragraph")"
-  else
-    printf "No mission summary found in the project hub.\n"
-  fi
+  printf '%s\n' "$project_json" | jq -r '.mission // "No mission defined."'
 }
 
 project_milestones() {
   local project_json="$1"
 
   printf "%s\n" "$project_json" | jq -r '
-    def milestone_entries:
-      (.metadata.milestones? // empty)
-      | if type == "array" then .[] else . end;
-
     [
-      milestone_entries
-      | {
-          name: (.name // .title // .summary // .evidence // .description // "Milestone"),
-          date: (.date // .due_date // .due // "")
-        }
-      | if .date != "" then "\(.date) \(.name)" else .name end
-    ][0:3][]
+      (.milestones // [])[0:3][]
+      | if .date != "" and .date != null then "\(.date) \(.name)" else .name end
+    ][]
   ' 2>/dev/null
 }
 
@@ -992,7 +762,7 @@ cmd_export_menu_cache() {
     esac
   done
 
-  local project_output project_slug project_json mission hub_path icon_path
+  local project_output project_slug project_json mission icon_path base_dir
   local sessions line session_name session_slug status
   local -a slugs=()
   local project_json_lines=""
@@ -1004,56 +774,43 @@ cmd_export_menu_cache() {
     exit 1
   fi
 
+  base_dir=$(projects_file_dir)
+
   while IFS=$'\t' read -r project_slug _; do
     [[ -z "$project_slug" ]] && continue
     slugs+=("$project_slug")
 
-    hub_path=$(project_hub_path "$project_slug" || true)
     project_json=$(project_note_json "$project_slug")
     if [[ -n "$project_json" ]]; then
       mission=$(project_mission "$project_json")
     else
-      mission="No project hub details found."
+      mission="No project details found."
     fi
     icon_path=""
     if [[ -n "$project_json" ]]; then
-      icon_path=$(resolve_project_icon "$project_slug" "$project_json" "$hub_path" || true)
+      icon_path=$(resolve_project_icon "$project_slug" "$project_json" "$base_dir" || true)
     fi
 
     project_json_lines+="$(
-      printf "%s\n" "$project_json" | jq -cn \
+      jq -cn \
         --arg slug "$project_slug" \
         --arg mission "$(sanitize_text "$mission")" \
         --arg icon_path "$icon_path" \
         --argjson note "${project_json:-null}" '
-          def milestone_lines:
-            if ($note | type) != "object" then
-              []
-            else
-              [
-                (($note.metadata.milestones? // empty)
-                  | if type == "array" then .[] else . end
-                  | {
-                      name: (.name // .title // .summary // .evidence // .description // "Milestone"),
-                      date: (.date // .due_date // .due // "")
-                    }
-                  | if .date != "" then "\(.date) \(.name)" else .name end
-                )
-              ][0:3]
-            end;
-
           {
             slug: $slug,
             mission: $mission,
             icon: $icon_path,
-            milestones: milestone_lines,
-            last_active: (
+            milestones: (
               if ($note | type) == "object" then
-                ($note.metadata.last_active // "")
+                [($note.milestones // [])[0:3][]
+                  | if .date != "" and .date != null then "\(.date) \(.name)" else .name end
+                ]
               else
-                ""
+                []
               end
-            )
+            ),
+            last_active: ""
           }
         '
     )"$'\n'
@@ -1285,19 +1042,19 @@ cmd_list() {
     return 0
   fi
 
-  echo "PROJECT / SESSION                                           LAST ACTIVE"
-  echo "----------------------------------------------------------  -----------"
+  echo "PROJECT / SESSION"
+  echo "-------------------------------------------"
 
-  # Sort projects by last_active descending
+  # Sort projects alphabetically
   local sorted_projects
   mapfile -t sorted_projects < <(
     for p in "${!project_sessions[@]}"; do
-      printf "%s\t%s\n" "${project_last_active[$p]:-0000-00-00}" "$p"
-    done | sort -r | cut -f2
+      printf "%s\n" "$p"
+    done | sort
   )
 
   for p in "${sorted_projects[@]}"; do
-    printf "%-58s  %s\n" "$p" "${project_last_active[$p]:-}"
+    printf "%s\n" "$p"
     
     local p_sess
     # Use sort -u to avoid duplicates like multiple "main" sessions
@@ -1332,13 +1089,10 @@ cmd_session() {
   local session_slug="${2:-main}"
   local layout="${3:-}"
   local target_host="${4:-$PZ_CURRENT_HOST}"
-  local project_path="${VAULT_ROOT}/projects/${slug}"
-  local project_readme="${project_path}/README.md"
-  local project_cwd="${VAULT_ROOT}"
+  local project_cwd="${HOME}"
   local session_name="$slug"
   local existing
   local project_output
-  local hub_path=""
 
   if ! valid_slug "$slug"; then
     echo "error: invalid project slug '${slug}'" >&2
@@ -1361,33 +1115,13 @@ cmd_session() {
   fi
 
   if ! printf "%s\n" "$project_output" | cut -f1 | grep -Fxq "$slug"; then
-    echo "error: project '${slug}' is not an active project hub in ${VAULT_ROOT}" >&2
-    exit 1
-  fi
-
-  if ! hub_path=$(project_hub_path "$slug"); then
+    echo "error: project '${slug}' is not declared in projects.yaml" >&2
     exit 1
   fi
 
   if [[ "$target_host" != "$PZ_CURRENT_HOST" ]]; then
     open_project_on_host "$target_host" "$slug" "$session_slug" "$layout"
     return 0
-  fi
-
-  if [[ -d "$project_path" ]]; then
-    project_cwd="$project_path"
-  fi
-
-  # Preserve the legacy project directory contract when it still exists.
-  # When projects live only in the notes repo, fall back to the hub note.
-  if [[ -f "$project_readme" ]]; then
-    :
-  elif [[ -n "$hub_path" ]]; then
-    project_readme="$hub_path"
-    project_path="$VAULT_ROOT"
-  else
-    project_readme=""
-    project_path="$VAULT_ROOT"
   fi
 
   # Check if session already exists
@@ -1397,11 +1131,9 @@ cmd_session() {
     # Attach to existing session — layout only applies to new sessions
     exec zellij attach "${session_name}"
   else
-    # Create new session in the project directory with project env vars set
+    # Create new session with project env vars set
     export PROJECT_NAME="${slug}"
-    export PROJECT_PATH="${project_path}"
-    export PROJECT_README="${project_readme}"
-    export VAULT_ROOT="${VAULT_ROOT}"
+    export VAULT_ROOT="${VAULT_ROOT:-$HOME/notes}"
 
     local layout_args=()
     if [[ -n "$layout" ]]; then
