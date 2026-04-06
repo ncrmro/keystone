@@ -1,0 +1,9 @@
+interface:
+  display_name: "KS Agent"
+  short_description: "Keystone assistant — may start keystone_system/issue or keystone_system/doctor"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"
