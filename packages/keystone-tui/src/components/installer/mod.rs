@@ -134,6 +134,12 @@ impl InstallerScreen {
         self
     }
 
+    /// Poll async channels — called from the event loop every tick.
+    pub fn poll(&mut self) {
+        self.poll_usb();
+        self.poll_build();
+    }
+
     fn toggle_profile(&mut self) {
         self.profile = match self.profile {
             InstallProfile::Desktop => InstallProfile::Server,

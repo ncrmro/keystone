@@ -333,6 +333,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
             AppScreen::Deploy(ref mut deploy) => deploy.poll(),
             AppScreen::Hosts(ref mut hosts) => hosts.poll(),
             AppScreen::Install(ref mut install) => install.poll(),
+            AppScreen::Installer(ref mut installer) => installer.poll(),
             AppScreen::FirstBoot(ref mut first_boot) => first_boot.poll(),
             _ => {}
         }
