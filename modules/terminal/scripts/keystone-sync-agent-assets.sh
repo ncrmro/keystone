@@ -542,35 +542,53 @@ global_agents_tmp="$(mktemp)"
   cat <<EOF
 # Keystone session
 
-- Canonical instruction path: \`~/.keystone/AGENTS.md\`
 - Development mode: $development_mode_display
 - Available Keystone capabilities: $capabilities_display
 - Published Keystone commands: $published_commands_display
 EOF
 } > "$global_agents_tmp"
 
-if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
-  cat <<'EOF' >> "$global_agents_tmp"
+# Build the available skills section dynamically from published commands
+{
+  printf '\n# Available skills\n\n'
+  printf 'Use these skills to load domain-specific knowledge and workflows on demand.\n'
+  printf 'Each skill brings its own conventions, role definitions, and DeepWork routing.\n\n'
+} >> "$global_agents_tmp"
 
-# Notes command guidance
-
-- Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
-- Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
-- On Keystone systems, use `NOTES_DIR` as the canonical notebook root. It resolves to `keystone.notes.path` (`~/notes` for human users, per-agent notes paths for OS agents).
-- When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
-- When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
-EOF
-fi
+for command_id in "${published_commands[@]}"; do
+  cmd_description="$(command_description "$command_id")"
+  printf -- '- **/%s** — %s\n' "$command_id" "$cmd_description" >> "$global_agents_tmp"
+done
 
 cat <<'EOF' >> "$global_agents_tmp"
 
 # Shared-surface tracking
 
-- For issue-backed work, follow `process.issue-journal` and post `Work Started` and `Work Update` comments on the source issue.
-- For milestone and board-backed work, follow `process.project-board` so issue and PR state stays visible on the shared board.
-- Treat issues, pull requests, milestones, and boards as the canonical public record for status, review state, and decisions that affect collaborators.
-- Use notes to preserve durable rationale and memory, not to replace shared-surface tracking.
+- For issue-backed work, post `Work Started` and `Work Update` comments on the source issue.
+- Treat issues, pull requests, milestones, and boards as the canonical public record.
+- Use notes for durable rationale and memory, not to replace shared-surface tracking.
+
+# Privileged operations
+
+- Ask for permission before running `ks update`, `ks switch`, or other host-mutating commands.
+- Include the exact command, target host, and reason in the request.
+
+# Commit format
+
+- Use Conventional Commits: `type(scope): subject`.
+- Valid types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `ci`, `perf`, `build`.
+- Each commit SHOULD represent one logical change.
 EOF
+
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
+  cat <<'EOF' >> "$global_agents_tmp"
+
+# Notes
+
+- Route note capture and notebook repair through `/ks.notes`.
+- Use `NOTES_DIR` as the canonical notebook root.
+EOF
+fi
 
 while IFS= read -r convention_name; do
   [[ -z "$convention_name" ]] && continue

@@ -36,12 +36,12 @@ archetypes:
   # Minimal footprint — just host orientation and links to everything else.
   keystone-system-host:
     description: "NixOS host — Nix devshells, direnv, declarative config"
-    inlined_conventions:
+    inlined_conventions: []
+    referenced_conventions:
       - process.version-control
       - process.privileged-approval
       - process.prose
       - tool.standard-utilities
-    referenced_conventions:
       - os.requirements
       - tool.nix-devshell
       - tool.nix
