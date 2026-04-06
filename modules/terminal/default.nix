@@ -12,7 +12,7 @@
 with lib;
 let
   cfg = config.keystone.terminal;
-  notesPath = config.keystone.notes.path;
+  notesPath = config.keystone.notes.path or "${config.home.homeDirectory}/notes";
   keystoneHome = "${config.home.homeDirectory}/.keystone";
   codeRoot = "${config.home.homeDirectory}/repos";
   worktreeRoot = "${config.home.homeDirectory}/.worktrees";
