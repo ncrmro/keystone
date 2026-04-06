@@ -13,7 +13,7 @@
 with lib;
 let
   cfg = config.keystone.terminal;
-  notesPath = config.keystone.notes.path;
+  notesPath = config.keystone.notes.path or "${config.home.homeDirectory}/notes";
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
   inherit (devScripts) mkHomeRepoFiles mkHomeScriptCommand;
   zellijNewTabPrompt = pkgs.writeShellScriptBin "keystone-zellij-new-tab-prompt" ''
