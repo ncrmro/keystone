@@ -80,6 +80,39 @@
 - If a user disables agent generation for a specific CLI, Keystone MUST avoid installing stale generated definitions for that CLI.
 - If a tool changes its native agent schema, Keystone MUST update the generator and the per-tool docs together.
 
+## Skill composition
+
+### Data model
+
+Keystone defines skills in the `skills:` section of `conventions/archetypes.yaml`. Each skill declares:
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `description` | string | yes | Human-facing skill description for routing and discovery |
+| `template` | string | yes | Template file name in `modules/terminal/agent-assets/` |
+| `colocated_conventions` | list | no | Convention files copied into the skill folder at generation time |
+| `colocated_roles` | list | no | Role definition files from `conventions/roles/` copied into the skill folder |
+
+### Behavioral requirements
+
+29. Keystone MUST define skills as composable knowledge bundles in `archetypes.yaml`.
+30. Each skill MUST colocate its declared conventions and roles in the generated skill folder so all context loads together when the skill is invoked.
+31. Convention colocation MUST apply to all CLIs that support multi-file skill directories (Claude Code, OpenCode, Codex).
+32. For CLIs that only support single-file commands (Gemini), the skill template MUST be rendered as a standalone command without colocation.
+33. The system host instruction file (CLAUDE.md/AGENTS.md) MUST NOT inline conventions that are better served by skill colocation.
+34. Skills MUST be gated on resolved capabilities so they only generate when their capability is active.
+35. The `skills:` data model MUST be extensible — users SHOULD be able to add extra conventions to any skill via Nix options.
+36. Skill names MUST be namespaced under `ks.` for consistency with existing commands (e.g., `ks.engineer`, `ks.product`, `ks.pm`).
+
+### Cross-CLI support matrix
+
+| CLI | Skill format | Convention colocation | Command format |
+| --- | --- | --- | --- |
+| Claude Code | `~/.claude/skills/{name}/SKILL.md` + colocated files | yes | `~/.claude/commands/{id}.md` |
+| OpenCode | `~/.config/opencode/skills/{name}/SKILL.md` + colocated files | yes | `~/.config/opencode/commands/{id}.md` |
+| Codex | `~/.codex/skills/{name}/SKILL.md` + colocated files | yes | via skill interface |
+| Gemini CLI | n/a (single-file commands) | no | `~/.gemini/commands/{id}.toml` |
+
 ## Cross-spec dependencies
 
 - `specs/002-repo-backed-terminal-assets.md`
