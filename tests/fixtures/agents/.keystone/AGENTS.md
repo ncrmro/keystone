@@ -15,11 +15,6 @@ Each skill loads domain-specific conventions and DeepWork workflows on demand.
 - Treat issues, pull requests, milestones, and boards as the canonical public record.
 - Use notes for durable rationale and memory, not to replace shared-surface tracking.
 
-# Privileged operations
-
-- Ask for permission before running `ks update`, `ks switch`, or other host-mutating commands.
-- Include the exact command, target host, and reason in the request.
-
 # Commit format
 
 - Use Conventional Commits: `type(scope): subject`.
