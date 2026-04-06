@@ -11,7 +11,7 @@
 - `modules/terminal/scripts/keystone-sync-agent-assets.sh`
 - `modules/terminal/cli-coding-agent-configs.nix`
 - `modules/os/agents/scripts/agentctl.sh`
-- `docs/architecture/coding-cli-agents.md`
+- `docs/terminal/cli-coding-agents.md`
 - `docs/terminal/terminal.md`
 - `conventions/tool.cli-coding-agents.md`
 
