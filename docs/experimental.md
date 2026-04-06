@@ -11,12 +11,43 @@ releases. They are not part of the stable v1 surface.
 - The feature may be restructured, renamed, or removed in a future release.
 - Bug reports are welcome but fixes are lower priority than stable features.
 
+## The `keystone.experimental` flag
+
+All experimental modules are gated behind a single boolean:
+
+```nix
+keystone.experimental = true;  # opt in to experimental features
+```
+
+**Module**: `modules/shared/experimental.nix` — zero-dependency, imported by
+every module layer (NixOS, home-manager). Nix deduplicates identical imports.
+
+When `keystone.experimental = true`, experimental modules auto-enable (their
+`enable` option defaults to `true`). When `false` (the default), they stay
+disabled unless explicitly enabled.
+
+### For module authors
+
+To mark a module as experimental:
+
+1. Import `../shared/experimental.nix` in the module.
+2. Default the `enable` option to `config.keystone.experimental`:
+   ```nix
+   enable = lib.mkOption {
+     type = lib.types.bool;
+     default = config.keystone.experimental;
+     description = "Enable <feature> (EXPERIMENTAL).";
+   };
+   ```
+3. Add `[EXPERIMENTAL]` to the module file header comment.
+4. Add an entry to this document.
+
 ## Stability tiers
 
 | Tier | Meaning |
 |------|---------|
 | **Stable** | Part of the v1 surface. Breaking changes require a migration path. |
-| **Experimental** | Functional but subject to change. Marked with `[EXPERIMENTAL]` in module headers and option descriptions. |
+| **Experimental** | Gated behind `keystone.experimental`. Marked with `[EXPERIMENTAL]` in module headers. |
 
 ## Experimental features
 

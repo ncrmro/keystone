@@ -278,8 +278,14 @@ let
   '';
 in
 {
+  imports = [ ../shared/experimental.nix ];
+
   options.keystone.notes = {
-    enable = lib.mkEnableOption "Keystone notes sync (EXPERIMENTAL)";
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = config.keystone.experimental;
+      description = "Enable Keystone notes sync (EXPERIMENTAL). Auto-enabled when keystone.experimental = true.";
+    };
 
     repo = lib.mkOption {
       type = lib.types.str;
