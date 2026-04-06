@@ -382,16 +382,6 @@ while IFS= read -r convention_name; do
   append_file_content "$global_agents_tmp" "$conventions_dir/${convention_name}.md"
 done < <(yq -r ".archetypes.\"$archetype\".inlined_conventions[]?" "$archetypes_file")
 
-mapfile -t referenced_global_conventions < <(yq -r ".archetypes.\"$archetype\".referenced_conventions[]?" "$archetypes_file")
-if [[ ${#referenced_global_conventions[@]} -gt 0 ]]; then
-  {
-    printf '\n# Reference conventions\n\nThe following conventions are available for on-demand context:\n\n'
-    for convention_name in "${referenced_global_conventions[@]}"; do
-      printf -- '- [%s](%s/%s.md)\n' "$convention_name" "$conventions_dir" "$convention_name"
-    done
-  } >> "$global_agents_tmp"
-fi
-
 global_agents_content="$(cat "$global_agents_tmp")"
 rm -f "$global_agents_tmp"
 
@@ -448,16 +438,6 @@ EOF
 while IFS= read -r convention_name; do
   append_file_content "$repos_agents_tmp" "$conventions_dir/${convention_name}.md"
 done < <(yq -r '.archetypes."keystone-developer".inlined_conventions[]?' "$archetypes_file")
-
-mapfile -t referenced_repo_conventions < <(yq -r '.archetypes."keystone-developer".referenced_conventions[]?' "$archetypes_file")
-if [[ ${#referenced_repo_conventions[@]} -gt 0 ]]; then
-  {
-    printf '\n# Reference conventions\n\nThe following conventions are available for on-demand context:\n\n'
-    for convention_name in "${referenced_repo_conventions[@]}"; do
-      printf -- '- [%s](ncrmro/keystone/conventions/%s.md)\n' "$convention_name" "$convention_name"
-    done
-  } >> "$repos_agents_tmp"
-fi
 
 repos_agents_content="$(cat "$repos_agents_tmp")"
 rm -f "$repos_agents_tmp"

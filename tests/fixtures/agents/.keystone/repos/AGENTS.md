@@ -514,20 +514,3 @@ at the Nix module level, see `process.keystone-development-mode`.
 21. When fixing or extending a shared library job, edit it in
     `Unsupervisedcom/deepwork/library/jobs/`. For keystone-specific jobs, edit in
     `ncrmro/keystone/.deepwork/jobs/`.
-
-# Reference conventions
-
-The following conventions are available for on-demand context:
-
-- [process.keystone-development-mode](ncrmro/keystone/conventions/process.keystone-development-mode.md)
-- [tool.nix-devshell](ncrmro/keystone/conventions/tool.nix-devshell.md)
-- [tool.forgejo](ncrmro/keystone/conventions/tool.forgejo.md)
-- [tool.github](ncrmro/keystone/conventions/tool.github.md)
-- [code.shell-scripts](ncrmro/keystone/conventions/code.shell-scripts.md)
-- [process.issue-journal](ncrmro/keystone/conventions/process.issue-journal.md)
-- [process.project-board](ncrmro/keystone/conventions/process.project-board.md)
-- [process.vcs-context-continuity](ncrmro/keystone/conventions/process.vcs-context-continuity.md)
-- [process.enable-by-default](ncrmro/keystone/conventions/process.enable-by-default.md)
-- [os.requirements](ncrmro/keystone/conventions/os.requirements.md)
-- [process.deepwork-job](ncrmro/keystone/conventions/process.deepwork-job.md)
-- [tool.process-compose-agent](ncrmro/keystone/conventions/tool.process-compose-agent.md)
