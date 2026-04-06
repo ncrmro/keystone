@@ -429,8 +429,11 @@ in
   options.keystone.terminal.aiExtensions = {
     enable = mkOption {
       type = types.bool;
-      default = true;
-      description = "Generate curated Keystone commands and skills for supported AI CLIs.";
+      default = false;
+      description = ''
+        Generate curated Keystone commands and skills for supported AI CLIs.
+        Experimental — opt in explicitly until the skill composition surface stabilises.
+      '';
     };
 
     capabilities = mkOption {
