@@ -1,8 +1,5 @@
 # Keystone Conventions
 
-Archetype: **keystone-system-host**
-NixOS host — Nix devshells, direnv, declarative config
-
 ---
 
 ## Keystone session

@@ -544,9 +544,6 @@ global_agents_tmp="$(mktemp)"
   cat <<EOF
 # Keystone Conventions
 
-Archetype: **$archetype**
-$archetype_description
-
 ---
 
 ## Keystone session
