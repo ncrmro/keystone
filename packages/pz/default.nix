@@ -7,7 +7,6 @@
   openssh,
   writeShellApplication,
   yq-go,
-  zk,
   zellij,
 }:
 writeShellApplication {
@@ -19,7 +18,6 @@ writeShellApplication {
     nix
     openssh
     yq-go
-    zk
     zellij
   ];
   text = builtins.readFile ./pz.sh;
