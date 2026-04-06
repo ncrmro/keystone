@@ -327,20 +327,14 @@ ks_allowed_routes="$(printf '%s\n' "${ks_allowed_routes_lines[@]}")"
 
 global_agents_tmp="$(mktemp)"
 {
-  cat <<EOF
-# Keystone session
+  cat <<'EOF'
+# Available skills
 
-- Development mode: $development_mode_display
-- Available Keystone capabilities: $capabilities_display
-- Published Keystone commands: $published_commands_display
 EOF
 } > "$global_agents_tmp"
 
-# Build the available skills section dynamically from published commands
 {
-  printf '\n# Available skills\n\n'
-  printf 'Use these skills to load domain-specific knowledge and workflows on demand.\n'
-  printf 'Each skill brings its own conventions, role definitions, and DeepWork routing.\n\n'
+  printf 'Each skill loads domain-specific conventions and DeepWork workflows on demand.\n\n'
 } >> "$global_agents_tmp"
 
 for command_id in "${published_commands[@]}"; do

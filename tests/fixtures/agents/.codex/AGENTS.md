@@ -1,13 +1,6 @@
-# Keystone session
-
-- Development mode: disabled
-- Available Keystone capabilities: ks, notes, project, engineer, product, project-manager
-- Published Keystone commands: ks, ks.notes, ks.projects, ks.engineer, ks.product, ks.pm
-
 # Available skills
 
-Use these skills to load domain-specific knowledge and workflows on demand.
-Each skill brings its own conventions, role definitions, and DeepWork routing.
+Each skill loads domain-specific conventions and DeepWork workflows on demand.
 
 - **/ks** — Keystone assistant — may start keystone_system/issue or keystone_system/doctor
 - **/ks.notes** — Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup
