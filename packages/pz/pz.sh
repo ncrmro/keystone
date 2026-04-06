@@ -992,12 +992,10 @@ cmd_list() {
     exit 1
   fi
 
-  local -A project_last_active
   local slugs=()
-  while IFS=$'\t' read -r s la; do
+  while IFS=$'\t' read -r s _la; do
     [[ -z "$s" ]] && continue
     slugs+=("$s")
-    project_last_active["$s"]="$la"
   done <<< "$project_output"
 
   local sessions
