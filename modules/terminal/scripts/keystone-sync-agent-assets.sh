@@ -112,17 +112,6 @@ $body
 EOF
 }
 
-write_gemini_command() {
-  local rel_path="$1"
-  local description="$2"
-  local body="$3"
-  write_file "$HOME/.gemini/commands/$rel_path" "description = $(yaml_quote "$description")"$'\n'"prompt = $(yaml_quote "$body")"$'\n'
-}
-
-gemini_command_rel_path() {
-  printf '%s.toml' "$1"
-}
-
 write_codex_skill() {
   local skill_name="$1"
   local display_name="$2"
@@ -480,14 +469,11 @@ for command_file in ks.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engin
   rm -f "$HOME/.claude/commands/$command_file"
   rm -f "$HOME/.config/opencode/commands/$command_file"
 done
-rm -rf "$HOME/.claude/skills/ks"
-rm -rf "$HOME/.config/opencode/skills/ks"
-
-# Gemini uses single-file commands (no multi-file skill support)
-managed_gemini_commands=(ks.toml notes.toml projects.toml dev.toml deepwork.toml ks.ea.toml ks.engineer.toml ks.product.toml ks.pm.toml)
-for command_file in "${managed_gemini_commands[@]}"; do
+for command_file in ks.toml notes.toml projects.toml dev.toml deepwork.toml ks.ea.toml ks.engineer.toml ks.product.toml ks.pm.toml wrap-up.toml; do
   rm -f "$HOME/.gemini/commands/$command_file"
 done
+rm -rf "$HOME/.claude/skills/ks"
+rm -rf "$HOME/.config/opencode/skills/ks"
 
 for command_id in "${published_commands[@]}"; do
   description="$(command_description "$command_id")"
@@ -496,19 +482,17 @@ for command_id in "${published_commands[@]}"; do
   command_body="$(render_template "$templates_dir/$template_name")"
   skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
 
-  # Gemini: single-file command (only CLI without multi-file skills)
-  gemini_rel="$(gemini_command_rel_path "$command_id")"
-  write_gemini_command "$gemini_rel" "$description" "$command_body"
-
-  # Claude, OpenCode: skills only (skills register as slash commands)
+  # Skills are the canonical format — all CLIs with skill support get them
   ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"
   write_file "$HOME/.claude/skills/${skill_name}/SKILL.md" "$ks_skill_md"
+  write_file "$HOME/.gemini/skills/${skill_name}/SKILL.md" "$ks_skill_md"
   write_file "$HOME/.config/opencode/skills/${skill_name}/SKILL.md" "$ks_skill_md"
 
   # Colocate conventions for skill commands
   skill_key="$(command_skill_key "$command_id")"
   if [[ -n "$skill_key" ]]; then
     colocate_skill_conventions "$skill_key" "$HOME/.claude/skills/${skill_name}"
+    colocate_skill_conventions "$skill_key" "$HOME/.gemini/skills/${skill_name}"
     colocate_skill_conventions "$skill_key" "$HOME/.config/opencode/skills/${skill_name}"
   fi
 done
@@ -516,9 +500,8 @@ done
 deepwork_body="$(cat "$templates_dir/deepwork-skill.template.md")"
 deepwork_skill_md="$(render_skill_md "deepwork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_body")"
 write_file "$HOME/.claude/skills/deepwork/SKILL.md" "$deepwork_skill_md"
+write_file "$HOME/.gemini/skills/deepwork/SKILL.md" "$deepwork_skill_md"
 write_file "$HOME/.config/opencode/skills/deepwork/SKILL.md" "$deepwork_skill_md"
-
-write_gemini_command "deepwork.toml" "Start or continue DeepWork workflows using MCP tools" "$deepwork_body"
 
 write_codex_skill "deepwork" "DeepWork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_skill_md" '
 dependencies:
@@ -531,9 +514,8 @@ dependencies:
 wrapup_body="$(cat "$templates_dir/wrap-up-skill.template.md")"
 wrapup_skill_md="$(render_skill_md "wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body")"
 write_file "$HOME/.claude/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
+write_file "$HOME/.gemini/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
 write_file "$HOME/.config/opencode/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
-
-write_gemini_command "wrap-up.toml" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body"
 
 write_codex_skill "wrap-up" "Wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_skill_md"
 
