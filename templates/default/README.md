@@ -73,9 +73,33 @@ Shared infrastructure placement belongs in the top-level `keystoneServices` bloc
 - Keystone terminal Home Manager module: `keystone/modules/terminal/default.nix`
 - Keystone desktop Home Manager module: `keystone/modules/desktop/home/default.nix`
 
+## Build installer ISO
+
+The flake automatically produces an installer ISO with your terminal environment and SSH keys:
+
+```bash
+nix build .#packages.x86_64-linux.iso -o installer-iso
+```
+
+The ISO boots a live environment with SSH access (if `owner.sshKeys` is set), the Keystone TUI installer, and your terminal config (helix, zsh, starship).
+
+Validate in a VM before flashing:
+
+```bash
+qemu-system-x86_64 -m 4096 -smp 2 -enable-kvm \
+  -bios $(nix build nixpkgs#OVMF.fd --print-out-paths --no-link)/FV/OVMF.fd \
+  -cdrom installer-iso/iso/*.iso
+```
+
+Flash to a USB drive:
+
+```bash
+sudo dd if=installer-iso/iso/*.iso of=/dev/sdX bs=4M status=progress oflag=sync
+```
+
 ## Deploy
 
-Fresh laptop install:
+Fresh install from the ISO (run from another machine):
 
 ```bash
 nixos-anywhere --flake .#laptop root@<installer-ip>
