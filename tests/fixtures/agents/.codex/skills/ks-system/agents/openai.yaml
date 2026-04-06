@@ -1,0 +1,9 @@
+interface:
+  display_name: "KS System"
+  short_description: "Keystone system — may start keystone_system/issue or keystone_system/doctor"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

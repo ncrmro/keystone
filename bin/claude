@@ -85,7 +85,7 @@ def build_worktree_prompt(worktree_path):
     prompt = f"""
 # Git Worktree Context
 
-You are working in a git worktree. Your scope is strictly limited to this directory:
+You are working in git worktree. Your scope is strictly limited to this directory:
 
 **Worktree Directory:** `{worktree_path}`
 
@@ -142,6 +142,23 @@ When working in any directory, ALWAYS check for and read the AGENTS.md file in t
     base_prompt += agents_md_instruction
 
     return base_prompt
+
+
+def generate_tree(dir_path):
+    """Generate a simple tree output for a directory"""
+    try:
+        output = subprocess.check_output(["ls", "-R", str(dir_path)], text=True)
+        return output
+    except Exception:
+        return "Unable to generate tree output."
+
+
+def detect_worktree(project_root):
+    """Detect if current directory is a worktree or if one should be active"""
+    cwd = Path.cwd()
+    if ".worktrees" in str(cwd):
+        return cwd
+    return None
 
 
 def main():

@@ -393,6 +393,9 @@
           shellcheck = import ./tests/module/shellcheck.nix {
             inherit pkgs;
           };
+          native-cli-agent-preview = import ./tests/module/native-cli-agent-preview.nix {
+            inherit pkgs;
+          };
           keystone-photos = import ./tests/module/keystone-photos.nix {
             inherit pkgs lib;
           };

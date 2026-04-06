@@ -163,7 +163,7 @@ ks switch --boot ocean
 ### `ks sync-agent-assets`
 
 ```bash
-ks sync-agent-assets
+ks sync-agent-assets [--output-root DIR] [--conventions-link-base DIR]
 ```
 
 Refresh generated Keystone agent assets for the current user from the current
@@ -172,11 +172,14 @@ profile manifest.
 - Rewrites generated instruction files, curated command files, and managed
   Codex skills from the live keystone checkout in development mode.
 - This is the supported no-sudo refresh path for development-mode agent assets.
+- Use `--output-root` to generate preview assets into a repo directory for
+  review or fixture updates.
 
 Example:
 
 ```bash
 ks sync-agent-assets
+ks sync-agent-assets --output-root tests/fixtures/agents
 ```
 
 ### `ks sync-host-keys`
