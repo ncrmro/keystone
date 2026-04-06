@@ -259,7 +259,8 @@ let
       spec;
 
   # Build an installer ISO with the admin's terminal environment (helix, zsh,
-  # starship), SSH keys for remote access, and the TUI installer.
+  # starship) and SSH keys for remote access. Boots to a root shell on tty1.
+  # TUI installer is experimental — auto-enabled only when keystone.experimental = true.
   # self.homeModules.terminal already embeds keystoneInputs via _module.args,
   # so we don't need the full keystoneInputs attrset here.
   mkInstallerIsoForFlake =
@@ -274,12 +275,15 @@ let
       modules = [
         "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
         self.nixosModules.isoInstaller
+        self.nixosModules.experimental
         home-manager.nixosModules.home-manager
         {
           # Force kernel 6.12 — must override minimal CD default
           boot.kernelPackages = lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
 
           keystone.installer.sshKeys = sshKeys;
+          # TUI is experimental — default off, auto-enabled by keystone.experimental
+          keystone.installer.tui.enable = lib.mkDefault false;
           nixpkgs.overlays = [ self.overlays.default ];
 
           # Terminal environment for root user (helix, zsh, starship)

@@ -43,8 +43,8 @@ in
 
     tui.enable = lib.mkOption {
       type = lib.types.bool;
-      default = true;
-      description = "Whether to install and auto-start the Keystone installer TUI on the ISO.";
+      default = false;
+      description = "Whether to install and auto-start the Keystone installer TUI on the ISO (experimental).";
     };
   };
 
