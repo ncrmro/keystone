@@ -404,6 +404,7 @@ rec {
   mkHost = mkLinuxHost;
   mkSharedLinuxHost = mkSharedLinuxHostHelper;
   mkSharedMacosHome = mkSharedMacosHomeHelper;
+  inherit mkInstallerIsoForFlake;
 
   mkLaptop =
     {
