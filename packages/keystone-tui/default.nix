@@ -7,7 +7,15 @@
   cmake,
 }:
 let
-  src = craneLib.cleanCargoSource ./.;
+  src = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./src
+      ./tests
+      ./Cargo.toml
+      ./Cargo.lock
+    ];
+  };
 
   commonArgs = {
     inherit src;
