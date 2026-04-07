@@ -353,6 +353,12 @@ let
           keystone.installer.sshKeys = sshKeys;
           # TUI is experimental — default off, auto-enabled by keystone.experimental
           keystone.installer.tui.enable = lib.mkDefault false;
+
+          # Serial console — required for QEMU -serial output and headless VM testing
+          boot.kernelParams = [
+            "console=ttyS0,115200n8"
+            "console=tty0"
+          ];
           nixpkgs.overlays = [ self.overlays.default ];
 
           # Terminal environment for root and admin users (helix, zsh, starship)

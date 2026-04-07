@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ISO_RESULT="$PROJECT_DIR/.test-iso"
-SSH_PORT=2222
+SSH_PORT=12222
 QEMU_MEM=4096
 QEMU_CPUS=2
 
