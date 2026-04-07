@@ -6,10 +6,6 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(name = "keystone-tui", version, about)]
 pub struct Cli {
-    /// Generate config from JSON on stdin (legacy alias for `template --json`).
-    #[arg(long)]
-    pub json: bool,
-
     /// Render a single screen to stdout as ANSI and exit.
     #[arg(long, value_name = "SCREEN")]
     pub screenshot: Option<String>,
