@@ -7,6 +7,10 @@ on:
         description: "Release version without the v prefix, for example 0.9.0"
         required: true
         type: string
+  push:
+    branches:
+      - "release/**"
+      - "chore/setup-ks-systems-cachix"
 
 permissions:
   contents: write
@@ -21,7 +25,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     env:
-      VERSION: ${{ inputs.version }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       # TODO: Remove this temporary branch exception and the matching GitHub
       # Actions environment branch whitelist after this release path is no
@@ -38,32 +41,44 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" && "${GITHUB_REF_NAME}" != "${TEMP_RELEASE_BRANCH}" ]]; then
-            echo "The Release workflow must run from ${DEFAULT_BRANCH} or temporary release branch ${TEMP_RELEASE_BRANCH}"
-            exit 1
-          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            VERSION_INPUT="${{ inputs.version }}"
 
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release version must match MAJOR.MINOR.PATCH"
-            exit 1
-          fi
+            if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" && "${GITHUB_REF_NAME}" != "${TEMP_RELEASE_BRANCH}" ]]; then
+              echo "The Release workflow must run from ${DEFAULT_BRANCH} or temporary release branch ${TEMP_RELEASE_BRANCH}"
+              exit 1
+            fi
 
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "Tag v$VERSION already exists"
-            exit 1
-          fi
+            if [[ ! "$VERSION_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release version must match MAJOR.MINOR.PATCH"
+              exit 1
+            fi
 
-          echo "RELEASE_SERIES=${VERSION%.*}" >> "$GITHUB_ENV"
-          echo "RELEASE_BRANCH=release/${VERSION%.*}" >> "$GITHUB_ENV"
-          echo "RELEASE_SOURCE_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
-          if [[ "${GITHUB_REF_NAME}" == "${TEMP_RELEASE_BRANCH}" ]]; then
-            echo "RELEASE_TARGET_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+            if git rev-parse "v$VERSION_INPUT" >/dev/null 2>&1; then
+              echo "Tag v$VERSION_INPUT already exists"
+              exit 1
+            fi
+
+            echo "VERSION=$VERSION_INPUT" >> "$GITHUB_ENV"
+            echo "RELEASE_SERIES=${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
+            echo "RELEASE_BRANCH=release/${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
+            echo "RELEASE_SOURCE_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+            if [[ "${GITHUB_REF_NAME}" == "${TEMP_RELEASE_BRANCH}" ]]; then
+              echo "RELEASE_TARGET_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+            else
+              echo "RELEASE_TARGET_BRANCH=release/${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
+            fi
           else
-            echo "RELEASE_TARGET_BRANCH=release/${VERSION%.*}" >> "$GITHUB_ENV"
+            if [[ "${GITHUB_REF_NAME}" != "${TEMP_RELEASE_BRANCH}" && "${GITHUB_REF_NAME}" != release/* ]]; then
+              echo "Automatic release validation only runs on release/* or temporary release branch ${TEMP_RELEASE_BRANCH}"
+              exit 1
+            fi
+
+            echo "RELEASE_TARGET_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
           fi
 
       - name: Create or reuse release branch
-        if: github.ref_name == github.event.repository.default_branch
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch
         run: |
           set -euo pipefail
 
@@ -81,10 +96,10 @@ jobs:
           fi
 
       - name: Temporary release branch mode
-        if: github.ref_name == env.TEMP_RELEASE_BRANCH
+        if: github.event_name == 'push' || github.ref_name == env.TEMP_RELEASE_BRANCH
         run: |
           set -euo pipefail
-          echo "Skipping release branch creation for temporary release branch ${TEMP_RELEASE_BRANCH}"
+          echo "Skipping release branch creation in branch-triggered release mode"
           echo "TODO: remove TEMP_RELEASE_BRANCH and the matching GitHub Actions environment whitelist."
 
       - name: Install Nix
@@ -137,6 +152,7 @@ jobs:
             .#packages.x86_64-linux.zesh
 
       - name: Tag stage
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -145,6 +161,7 @@ jobs:
           git push origin "refs/tags/v$VERSION"
 
       - name: Publish stage
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
