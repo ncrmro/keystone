@@ -98,12 +98,16 @@
       url = "github:nicolas-graves/lfs-s3/0.2.1";
       flake = false;
     };
+
+    # Rust build tooling — splits dependency builds for fast incremental rebuilds
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs =
     {
       self,
       nixpkgs,
+      crane,
       disko,
       home-manager,
       omarchy,
@@ -162,6 +166,8 @@
         {
           # Force kernel 6.12 — must be set here to override minimal CD default
           boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
+          # Apply keystone overlay so crane-built packages (e.g. keystone-tui) resolve
+          nixpkgs.overlays = [ self.overlays.default ];
         }
       ];
 
@@ -209,6 +215,7 @@
       overlays.default = import ./overlays/default.nix {
         inherit
           self
+          crane
           himalaya
           calendula
           cardamum
