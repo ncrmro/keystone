@@ -18,6 +18,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
   dontConfigure = true;
   dontBuild = true;
+  doInstallCheck = true;
 
   installPhase = ''
     runHook preInstall
@@ -33,6 +34,15 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       --add-flags "$pkgDir/build/src/bin/chrome-devtools.js"
 
     runHook postInstall
+  '';
+
+  installCheckPhase = ''
+    runHook preInstallCheck
+
+    $out/bin/chrome-devtools-mcp --help >/dev/null
+    $out/bin/chrome-devtools --help >/dev/null
+
+    runHook postInstallCheck
   '';
 
   meta = {
