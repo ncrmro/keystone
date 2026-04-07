@@ -24,7 +24,18 @@ let
       exit 0
     fi
 
-    exec ${pkgs.zellij}/bin/zellij action new-tab --name "$tab_name"
+    # Avoid inheriting a deleted worktree cwd, which can wedge new-tab creation.
+    tab_cwd="''${PWD:-$HOME}"
+    if [[ -z "$tab_cwd" || ! -d "$tab_cwd" ]]; then
+      tab_cwd="$HOME"
+    fi
+
+    if ! ${pkgs.coreutils}/bin/timeout 5s \
+      ${pkgs.zellij}/bin/zellij action new-tab --cwd "$tab_cwd" --name "$tab_name"; then
+      printf 'Failed to create tab. Try again from a live shell in the target directory.\n' >&2
+      sleep 2
+      exit 1
+    fi
   '';
   ksCommand = mkHomeScriptCommand {
     inherit config pkgs;
@@ -189,6 +200,16 @@ in
             eval "$(pz completion)"
           fi
 
+          _keystone_zellij_effective_cwd() {
+            local cwd="''${PWD:-$HOME}"
+
+            if [[ -z "$cwd" || ! -d "$cwd" ]]; then
+              cwd="$HOME"
+            fi
+
+            print -r -- "$cwd"
+          }
+
           _keystone_zellij_pipe_tab_name() {
             [[ -n "''${ZELLIJ:-}" && -n "''${ZELLIJ_PANE_ID:-}" ]] || return 1
 
@@ -216,13 +237,17 @@ in
 
           znewtab() {
             local title="$*"
+            local tab_cwd
+            tab_cwd="$(_keystone_zellij_effective_cwd)"
 
             if [[ -n "$title" ]]; then
-              ${pkgs.zellij}/bin/zellij action new-tab --name "$title"
+              ${pkgs.coreutils}/bin/timeout 5s \
+                ${pkgs.zellij}/bin/zellij action new-tab --cwd "$tab_cwd" --name "$title"
             else
               ${pkgs.zellij}/bin/zellij run \
                 --floating \
                 --close-on-exit \
+                --cwd "$tab_cwd" \
                 -- "${zellijNewTabPrompt}/bin/keystone-zellij-new-tab-prompt"
             fi
           }

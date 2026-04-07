@@ -74,6 +74,18 @@ pkgs.runCommand "zellij-tab-prompt-check" { } ''
       exit 1
     fi
 
+    if ! grep -Fq 'zellij action new-tab --cwd "$tab_cwd" --name "$title"' "$zsh_init_file"; then
+      echo "FAIL: zsh init is missing the explicit cwd for new tabs" >&2
+      cat "$zsh_init_file" >&2
+      exit 1
+    fi
+
+    if ! grep -Fq -- '--close-on-exit' "$zsh_init_file" || ! grep -Fq -- '--cwd "$tab_cwd"' "$zsh_init_file"; then
+      echo "FAIL: zsh init is missing the explicit cwd for the floating new-tab prompt" >&2
+      cat "$zsh_init_file" >&2
+      exit 1
+    fi
+
     if ! grep -Fq 'zellij-tab-name.wasm' "$zsh_init_file"; then
       echo "FAIL: zsh init is missing the zellij-tab-name plugin reference" >&2
       cat "$zsh_init_file" >&2
