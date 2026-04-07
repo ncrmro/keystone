@@ -143,7 +143,7 @@ EOF
 
 command_display_name() {
   case "$1" in
-    ks) printf '%s' "KS System" ;;
+    ks) printf '%s' "KS Assistant" ;;
     ks.notes) printf '%s' "KS Notes" ;;
     ks.projects) printf '%s' "KS Projects" ;;
     ks.dev) printf '%s' "KS Development" ;;
@@ -233,7 +233,8 @@ colocate_skill_conventions() {
 
 normalize_command_id() {
   case "$1" in
-    ks) printf '%s' "ks.system" ;;
+    ks) printf '%s' "ks.assistant" ;;
+    ks.pm) printf '%s' "ks.project-manager" ;;
     *) printf '%s' "$1" ;;
   esac
 }
@@ -432,7 +433,11 @@ for command_file in ks.toml notes.toml projects.toml dev.toml deepwork.toml ks.e
   rm -f "$HOME/.gemini/commands/$command_file"
 done
 rm -rf "$HOME/.claude/skills/ks"
+rm -rf "$HOME/.claude/skills/ks-system"
+rm -rf "$HOME/.claude/skills/ks-pm"
 rm -rf "$HOME/.config/opencode/skills/ks"
+rm -rf "$HOME/.config/opencode/skills/ks-system"
+rm -rf "$HOME/.config/opencode/skills/ks-pm"
 
 for command_id in "${published_commands[@]}"; do
   description="$(command_description "$command_id")"
@@ -485,7 +490,7 @@ legacy_codex_skill_names=(
   notes-doctor notes-process_inbox notes-project notes-report portfolio-review
   project-onboard project-press_release project-success repo-doctor repo-setup
   research-deep research-quick task-ingest task-run
-  ks
+  ks ks-system ks-pm
 )
 
 for skill_name in "${legacy_codex_skill_names[@]}"; do
