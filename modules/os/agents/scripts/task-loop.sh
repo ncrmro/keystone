@@ -130,7 +130,7 @@ extract_urls_json() {
     return
   fi
 
-  grep -Eo 'https?://[^ )"'"'"']+' "$file" 2>/dev/null | sort -u | jq -R . | jq -s .
+  grep -Eo 'https?://[^ )"'"'"']+' "$file" 2>/dev/null | sort -u | jq -R . | jq -s . || printf '[]\n'
 }
 
 extract_issue_urls_json() {
