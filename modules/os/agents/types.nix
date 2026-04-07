@@ -142,8 +142,12 @@ in
             types.enum [
               "ks"
               "ks-dev"
+              "assistant"
               "notes"
+              "project"
               "engineer"
+              "product"
+              "project-manager"
               "executive-assistant"
             ]
           );
