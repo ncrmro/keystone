@@ -338,6 +338,37 @@ let
     - No context: `/deepwork` alone means ask the user to choose from available workflows.
   '';
 
+  deepplanSkillMetadata = {
+    name = "deepplan";
+    description = "Start structured planning — explores, designs, and produces an executable plan";
+  };
+
+  deepplanSkillBody = ''
+    # DeepPlan
+
+    Structured planning workflow that explores the codebase, generates competing
+    designs, and produces an executable DeepWork job definition.
+
+    ## How to Use
+
+    1. Call `EnterPlanMode` if not already in plan mode
+    2. Call `start_workflow` with:
+       - `job_name`: `"deepplan"`
+       - `workflow_name`: `"create_deep_plan"`
+       - `goal`: the user's planning request
+    3. Follow the step instructions returned by the MCP tools — they supersede
+       the default planning phases
+
+    ## Intent Parsing
+
+    When the user invokes `/deepplan`, parse their intent:
+    - **With goal**: `/deepplan <goal>` → enter plan mode and start the workflow
+      with `<goal>`
+    - **No context**: `/deepplan` alone → enter plan mode and start the workflow
+      using conversation context as the goal; if no context, ask the user what
+      they want to plan
+  '';
+
   wrapUpSkillMetadata = {
     name = "wrap-up";
     description = "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human";
@@ -356,6 +387,26 @@ let
         interface:
           display_name: "DeepWork"
           short_description: "Start or continue DeepWork workflows using MCP tools"
+
+        dependencies:
+          tools:
+            - type: "mcp"
+              value: "deepwork"
+              description: "DeepWork MCP server"
+      '';
+    }
+    {
+      relativePath = ".codex/skills/deepplan/SKILL.md";
+      source = pkgs.writeText "codex-skill-deepplan-SKILL.md" (
+        mkSkillMd deepplanSkillMetadata deepplanSkillBody
+      );
+    }
+    {
+      relativePath = ".codex/skills/deepplan/agents/openai.yaml";
+      source = pkgs.writeText "codex-skill-deepplan-openai.yaml" ''
+        interface:
+          display_name: "DeepPlan"
+          short_description: "Start structured planning — explores, designs, and produces an executable plan"
 
         dependencies:
           tools:
@@ -437,6 +488,7 @@ let
 
   activeCodexSkillNames = [
     "deepwork"
+    "deepplan"
     "wrap-up"
   ]
   ++ map (command: codexSkillName command.id) publishedCommands;
@@ -572,6 +624,34 @@ in
               ".config/opencode"
             ];
 
+        deepplanSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              let
+                skillDir = "${toolDir}/skills/deepplan";
+              in
+              if toolDir == ".gemini" then
+                acc
+                // {
+                  "${toolDir}/commands/deepplan.toml".text = ''
+                    description = ${builtins.toJSON deepplanSkillMetadata.description}
+                    prompt = ${builtins.toJSON deepplanSkillBody}
+                  '';
+                }
+              else
+                acc
+                // {
+                  "${skillDir}/SKILL.md".text = mkSkillMd deepplanSkillMetadata deepplanSkillBody;
+                }
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
+
         wrapUpSkillsByTool =
           foldl'
             (
@@ -636,7 +716,11 @@ in
               ".config/opencode"
             ];
       in
-      commandFilesByTool // deepworkSkillsByTool // wrapUpSkillsByTool // ksSkillsByTool
+      commandFilesByTool
+      // deepworkSkillsByTool
+      // deepplanSkillsByTool
+      // wrapUpSkillsByTool
+      // ksSkillsByTool
     );
 
     home.activation = mkIf (!isDev) {
