@@ -15,8 +15,7 @@
 #   @executeJson@      - Execute-stage overrides JSON
 #   @profilesJson@     - Merged built-in + custom profile catalog JSON
 #   @projectIndexHelper@ - zk-backed project index helper path
-set -Eeuo pipefail
-trap 'echo "ERROR: line $LINENO (${FUNCNAME[0]:-main}) exited with code $?" >&2' ERR
+set -euo pipefail
 
 # Sanity check: Ensure required system utilities are available
 for cmd in bash tr systemctl jq yq; do
@@ -141,7 +140,7 @@ extract_issue_urls_json() {
 
 extract_pr_urls_json() {
   local urls_json="$1"
-  printf '%s\n' "$urls_json" | jq '[.[] | select(test("/pulls?/([0-9]+)$"))]'
+  printf '%s\n' "$urls_json" | jq '[.[] | select(test("/pulls?/[0-9]+$"))]'
 }
 
 extract_token_total() {
