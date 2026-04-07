@@ -18,6 +18,7 @@
     lanzaboote = {
       url = "github:nix-community/lanzaboote";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.crane.follows = "crane";
     };
     hyprland.url = "github:hyprwm/Hyprland";
     himalaya = {
