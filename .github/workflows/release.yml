@@ -84,12 +84,39 @@ jobs:
         run: |
           set -euo pipefail
           nix build .#packages.x86_64-linux.keystone-tui
-          nix build .#iso --dry-run
+          nix build .#packages.x86_64-linux.keystone-ha-tui-client
+          nix build .#iso
 
       - name: Test stage
         run: |
           set -euo pipefail
           nix flake check
+
+      - name: Warm cache stage
+        run: |
+          set -euo pipefail
+
+          nix build \
+            .#packages.x86_64-linux.agent-coding-agent \
+            .#packages.x86_64-linux.agent-mail \
+            .#packages.x86_64-linux.chrome-devtools-mcp \
+            .#packages.x86_64-linux.deepwork-library-jobs \
+            .#packages.x86_64-linux.fetch-email-source \
+            .#packages.x86_64-linux.fetch-forgejo-sources \
+            .#packages.x86_64-linux.fetch-github-sources \
+            .#packages.x86_64-linux.forgejo-cli-ex \
+            .#packages.x86_64-linux.forgejo-project \
+            .#packages.x86_64-linux.grafana-mcp \
+            .#packages.x86_64-linux.keystone-conventions \
+            .#packages.x86_64-linux.keystone-deepwork-jobs \
+            .#packages.x86_64-linux.ks \
+            .#packages.x86_64-linux.lfs-s3 \
+            .#packages.x86_64-linux.podman-agent \
+            .#packages.x86_64-linux.pz \
+            .#packages.x86_64-linux.repo-sync \
+            .#packages.x86_64-linux.slidev \
+            .#packages.x86_64-linux.zellij-tab-name \
+            .#packages.x86_64-linux.zesh
 
       - name: Tag stage
         run: |
