@@ -10,7 +10,6 @@ on:
   push:
     branches:
       - "release/**"
-      - "chore/setup-ks-systems-cachix"
 
 permissions:
   contents: write
@@ -26,10 +25,6 @@ jobs:
     environment: release
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      # TODO: Remove this temporary branch exception and the matching GitHub
-      # Actions environment branch whitelist after this release path is no
-      # longer needed.
-      TEMP_RELEASE_BRANCH: chore/setup-ks-systems-cachix
 
     steps:
       - name: Checkout
@@ -44,8 +39,8 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             VERSION_INPUT="${{ inputs.version }}"
 
-            if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" && "${GITHUB_REF_NAME}" != "${TEMP_RELEASE_BRANCH}" ]]; then
-              echo "The Release workflow must run from ${DEFAULT_BRANCH} or temporary release branch ${TEMP_RELEASE_BRANCH}"
+            if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]]; then
+              echo "The Release workflow must run from the default branch ${DEFAULT_BRANCH}"
               exit 1
             fi
 
@@ -63,14 +58,10 @@ jobs:
             echo "RELEASE_SERIES=${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
             echo "RELEASE_BRANCH=release/${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
             echo "RELEASE_SOURCE_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
-            if [[ "${GITHUB_REF_NAME}" == "${TEMP_RELEASE_BRANCH}" ]]; then
-              echo "RELEASE_TARGET_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
-            else
-              echo "RELEASE_TARGET_BRANCH=release/${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
-            fi
+            echo "RELEASE_TARGET_BRANCH=release/${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
           else
-            if [[ "${GITHUB_REF_NAME}" != "${TEMP_RELEASE_BRANCH}" && "${GITHUB_REF_NAME}" != release/* ]]; then
-              echo "Automatic release validation only runs on release/* or temporary release branch ${TEMP_RELEASE_BRANCH}"
+            if [[ "${GITHUB_REF_NAME}" != release/* ]]; then
+              echo "Automatic release validation only runs on release/* branches"
               exit 1
             fi
 
@@ -95,12 +86,11 @@ jobs:
             git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
           fi
 
-      - name: Temporary release branch mode
-        if: github.event_name == 'push' || github.ref_name == env.TEMP_RELEASE_BRANCH
+      - name: Branch release validation mode
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           echo "Skipping release branch creation in branch-triggered release mode"
-          echo "TODO: remove TEMP_RELEASE_BRANCH and the matching GitHub Actions environment whitelist."
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
