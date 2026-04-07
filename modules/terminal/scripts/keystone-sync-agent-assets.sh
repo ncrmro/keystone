@@ -143,7 +143,7 @@ EOF
 
 command_display_name() {
   case "$1" in
-    ks) printf '%s' "KS Agent" ;;
+    ks) printf '%s' "KS System" ;;
     ks.notes) printf '%s' "KS Notes" ;;
     ks.projects) printf '%s' "KS Projects" ;;
     ks.dev) printf '%s' "KS Development" ;;
@@ -339,7 +339,7 @@ EOF
 
 for command_id in "${published_commands[@]}"; do
   cmd_description="$(command_description "$command_id")"
-  printf -- '- **/%s** — %s\n' "$command_id" "$cmd_description" >> "$global_agents_tmp"
+  printf -- '- **/%s** — %s\n' "$(normalize_command_id "$command_id")" "$cmd_description" >> "$global_agents_tmp"
 done
 
 cat <<'EOF' >> "$global_agents_tmp"
@@ -439,7 +439,7 @@ for command_id in "${published_commands[@]}"; do
   display_name="$(command_display_name "$command_id")"
   template_name="$(command_template_name "$command_id")"
   command_body="$(render_template "$templates_dir/$template_name")"
-  skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
+  skill_name="$(printf '%s' "$(normalize_command_id "$command_id")" | tr '.' '-')"
 
   # Skills are the canonical format — all CLIs with skill support get them
   ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"
@@ -497,7 +497,7 @@ for command_id in "${published_commands[@]}"; do
   display_name="$(command_display_name "$command_id")"
   template_name="$(command_template_name "$command_id")"
   command_body="$(render_template "$templates_dir/$template_name")"
-  skill_name="$(codex_skill_name "$command_id")"
+  skill_name="$(codex_skill_name "$(normalize_command_id "$command_id")")"
   skill_body="$(render_codex_skill_body "$command_body" "$skill_name")"
   skill_md="$(render_skill_md "$skill_name" "$description" "$skill_body")"
 
