@@ -335,6 +335,7 @@ in
 
     home.packages = [
       pkgs.keystone.himalaya
+      pkgs.keystone.fetch-email-source
     ];
 
     xdg.configFile."himalaya/config.toml" = mkIf (activeAccounts != { }) {
