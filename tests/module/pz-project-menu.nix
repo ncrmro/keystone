@@ -158,6 +158,33 @@ pkgs.runCommand "test-pz-project-menu"
       whence -w _pz_completion | grep -F "function"
     '
 
+    ${pkgs.zsh}/bin/zsh -lc '
+      autoload -Uz compinit
+      compinit
+      source =(pz completion)
+      setopt KSH_ARRAYS
+
+      typeset -ga captured
+      captured=()
+      compadd() {
+        local item
+        for item in "$@"; do
+          [[ "$item" == "--" ]] && continue
+          captured+=("$item")
+        done
+      }
+
+      words=(pz agents re)
+      CURRENT=3
+      _pz_completion
+      print -l -- "''${captured[@]}" | grep -Fx "review"
+      print -l -- "''${captured[@]}" | grep -Fx "new"
+      ! print -l -- "''${captured[@]}" | grep -Fx "list"
+      ! print -l -- "''${captured[@]}" | grep -Fx "agent"
+      ! print -l -- "''${captured[@]}" | grep -Fx "info"
+      ! print -l -- "''${captured[@]}" | grep -Fx "completion"
+    '
+
     projects_json="$(keystone-project-menu projects-json)"
     printf '%s\n' "$projects_json" | jq -e '
       length == 2

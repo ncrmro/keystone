@@ -1298,7 +1298,11 @@ if [[ -n "${ZSH_VERSION:-}" ]]; then
       return 0
     fi
 
-    project="${words[2]}"
+    local project_index=2
+    if [[ -o KSH_ARRAYS ]]; then
+      project_index=1
+    fi
+    project="${words[$project_index]}"
     case "$project" in
       list|agent|info|completion)
         return 0
