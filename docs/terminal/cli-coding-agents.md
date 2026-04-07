@@ -1,27 +1,95 @@
 ---
 title: CLI coding agents
-description: How Keystone configures AI coding CLIs with unified MCP, commands, and skills
+description: How Keystone configures AI coding CLIs with unified skills, MCP, and progressive knowledge loading
 ---
 
 # CLI coding agents
 
 Keystone manages four AI coding CLIs — Claude Code, Gemini CLI, Codex, and
 OpenCode — through a shared Nix module stack. Each CLI receives identical
-DeepWork integration, MCP server definitions, and Keystone workflow commands,
-adapted to the tool's native configuration format.
+skills, MCP server definitions, and a slim instruction file adapted to the
+tool's native format.
 
 ## Architecture
 
-Three terminal modules collaborate:
+### Progressive knowledge loading
+
+The system host instruction file (CLAUDE.md, GEMINI.md, etc.) is a concise
+routing guide — not a convention dump. It lists available skills, universal
+rules (commit format, privileged ops, shared surfaces), and reference links.
+
+Domain knowledge loads on demand when a skill is activated:
+
+- `/ks.engineer` — implementation, code review, architecture, CI
+- `/ks.product` — press releases, milestones, stakeholder communication
+- `/ks.pm` — task decomposition, tracking, boards
+- `/ks.notes` — durable notebook capture and repair
+- `/ks.projects` — project lifecycle workflows
+
+Each skill folder colocates its conventions, role definitions, and DeepWork
+routing so all relevant context arrives together.
+
+### Module responsibilities
 
 | Module | Responsibility |
 |--------|---------------|
 | `ai.nix` | Installs CLI packages and the DeepWork binary |
 | `cli-coding-agent-configs.nix` | Generates MCP server configs at each tool's expected path |
-| `ai-extensions.nix` | Generates Keystone commands and skills for each tool |
+| `ai-extensions.nix` | Defines capabilities, published commands, and skill metadata |
+| `keystone-sync-agent-assets.sh` | Generates skills, instruction files, and colocated conventions |
 
-`deepwork.nix` sets `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` to point at the curated
-job libraries (shared library jobs and keystone-native jobs).
+## Skill composition
+
+Skills are defined in the `skills:` section of `conventions/archetypes.yaml`.
+Each skill declares which conventions and roles to colocate:
+
+```yaml
+skills:
+  engineer:
+    description: "Engineering — implementation, code review, architecture, and CI"
+    template: engineer-skill.template.md
+    colocated_conventions:
+      - process.feature-delivery
+      - process.pull-request
+      - process.version-control
+      # ...
+    colocated_roles:
+      - software-engineer
+      - code-reviewer
+      - architect
+```
+
+At generation time, the sync script reads these lists and copies convention
+files into each skill directory alongside `SKILL.md`. This means when
+`/ks.engineer` is activated, the LLM receives all engineering conventions
+without them being pre-loaded in the instruction file.
+
+### All four CLIs use skills
+
+| CLI | Skill path | Colocation | Extra files |
+|-----|-----------|-----------|-------------|
+| Claude Code | `~/.claude/skills/{name}/SKILL.md` | yes | — |
+| Gemini CLI | `~/.gemini/skills/{name}/SKILL.md` | yes | — |
+| OpenCode | `~/.config/opencode/skills/{name}/SKILL.md` | yes | — |
+| Codex | `~/.codex/skills/{name}/SKILL.md` | yes | `agents/openai.yaml` |
+
+Skills are the canonical format. Claude Code and Gemini CLI automatically
+register skills as slash commands. Separate command files are not generated.
+
+### Adding conventions to a skill
+
+To add a convention to an existing skill, add it to `colocated_conventions`
+in `archetypes.yaml`:
+
+```yaml
+skills:
+  engineer:
+    colocated_conventions:
+      - process.feature-delivery
+      - my-company.code-style    # your custom convention
+```
+
+The convention file must exist at `conventions/my-company.code-style.md`.
 
 ## MCP server configuration
 
@@ -29,12 +97,12 @@ All CLIs share a single `keystone.terminal.cliCodingAgents.mcpServers` option.
 The DeepWork MCP server is appended automatically when
 `keystone.terminal.deepwork.enable = true`.
 
-| CLI | Config path | Platform flag | Merge strategy |
-|-----|------------|---------------|----------------|
-| Claude Code | `~/.claude.json` | `claude` | jq — merges `mcpServers` key, preserves runtime state |
-| Gemini CLI | `~/.gemini/settings.json` | `gemini` | jq — merges `mcpServers` + `context`, preserves runtime state |
-| Codex | `~/.codex/config.toml` | `codex` | Python TOML rewriter — replaces `[mcp_servers]` section |
-| OpenCode | `~/.config/opencode/opencode.json` | `opencode` | jq — merges `.mcp` key, preserves runtime state |
+| CLI | Config path | Merge strategy |
+|-----|------------|----------------|
+| Claude Code | `~/.claude.json` | jq — merges `mcpServers` key, preserves runtime state |
+| Gemini CLI | `~/.gemini/settings.json` | jq — merges `mcpServers` + `context`, preserves runtime state |
+| Codex | `~/.codex/config.toml` | Python TOML rewriter — replaces `[mcp_servers]` section |
+| OpenCode | `~/.config/opencode/opencode.json` | jq — merges `.mcp` key, preserves runtime state |
 
 Each activation script follows the same safety pattern:
 
@@ -54,58 +122,40 @@ keystone.terminal.cliCodingAgents.mcpServers.my-server = {
 
 This definition propagates to all four CLIs automatically.
 
-## Commands and skills
-
-`ai-extensions.nix` generates the same Keystone workflow commands (`/ks`,
-`/ks.dev`, `/ks.notes`, `/ks.projects`) and skills (`deepwork`, `wrap-up`)
-for each CLI, adapted to the tool's native format. `ks.notes` is the durable
-memory entrypoint: agents should use it proactively when work produces
-meaningful decisions, findings, or reusable operational context.
-
-### Format mapping
-
-| CLI | Commands | Skills |
-|-----|----------|--------|
-| Claude Code | `.claude/commands/{id}.md` with YAML frontmatter | `.claude/skills/{name}/SKILL.md` |
-| Gemini CLI | `.gemini/commands/{path}.toml` | `.gemini/commands/{name}.toml` (flattened) |
-| Codex | N/A — uses `$skill-name` tokens | `.codex/skills/{name}/SKILL.md` + `agents/openai.yaml` |
-| OpenCode | `.config/opencode/commands/{id}.md` | `.config/opencode/skills/{name}/SKILL.md` |
-
-### Tool-specific notes
-
-- **Gemini** flattens skills into its `commands/` directory as TOML files.
-  There is no separate `skills/` directory.
-- **Codex** does not receive command files. Users invoke workflows via
-  `$ks`, `$ks-dev`, etc. Codex skills include an `agents/openai.yaml`
-  metadata file alongside each `SKILL.md`. Because this two-file layout
-  cannot use `home.file`, Codex skills are written by an activation script
-  with stale-skill cleanup.
-- **Claude Code** and **OpenCode** share the same directory structure
-  (commands + skills with `SKILL.md`).
-
 ## Capability-driven generation
 
-The set of published commands depends on resolved capabilities:
+The set of published skills depends on resolved capabilities:
 
-| Capability | Commands enabled |
-|-----------|-----------------|
+| Capability | Skills enabled |
+|-----------|---------------|
 | `ks` (always) | `/ks` |
 | `notes` (default) | `/ks.notes` |
 | `project` (default) | `/ks.projects` |
+| `engineer` (archetype) | `/ks.engineer` |
+| `product` (archetype) | `/ks.product` |
+| `project-manager` (explicit) | `/ks.pm` |
+| `executive-assistant` (explicit) | `/ks.ea` |
 | `ks-dev` (dev mode only) | `/ks.dev` |
 
-Capabilities merge from base defaults, archetype defaults (e.g., `engineer`),
-explicit `aiExtensions.capabilities`, and dev-mode gating.
+Capabilities merge from base defaults, archetype defaults (e.g., `engineer`
+archetype auto-enables the `engineer` capability), explicit
+`aiExtensions.capabilities`, and dev-mode gating.
 
-## Durable memory and shared surfaces
+## Instruction files
 
-- `ks.notes` owns durable notebook capture: decisions, reports, hub-linked notes,
-  and shared-surface refs stored in zk frontmatter.
-- Issues, pull requests, milestones, and project boards remain the public system
-  of record for status, review state, and collaborator-visible decisions.
-- Generated `AGENTS.md` guidance now tells agents to use `ks.notes`
-  proactively, while still following `process.issue-journal` and
-  `process.project-board` for shared-surface work.
+The sync script generates a slim instruction file for each CLI:
+
+| CLI | Path |
+|-----|------|
+| Claude Code | `~/.claude/CLAUDE.md` |
+| Gemini CLI | `~/.gemini/GEMINI.md` |
+| Codex | `~/.codex/AGENTS.md` |
+| OpenCode | `~/.config/opencode/AGENTS.md` |
+| Keystone | `~/.keystone/AGENTS.md` (canonical) |
+
+These files contain session metadata, available skill descriptions, brief
+universal rules, and reference convention links. They do NOT inline full
+convention content — that lives in skills.
 
 ## Development mode
 
@@ -113,8 +163,8 @@ When `keystone.development = true`:
 
 - `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` points at local repo checkouts instead of
   Nix store derivations, so job edits take effect immediately.
-- Commands and skills are written to the live repo checkout (appearing as git
-  diffs) rather than via `home.file` symlinks.
+- Skills and instruction files are written to the live repo checkout (appearing
+  as git diffs) rather than via `home.file` symlinks.
 - `ks-dev` capability is automatically enabled.
 
 ## DeepWork integration

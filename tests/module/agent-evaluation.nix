@@ -158,15 +158,15 @@ let
           echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
           exit 1
         fi
-        if echo '${resolvedCapabilitiesJson}' | grep -q '"ks"' && echo '${resolvedCapabilitiesJson}' | grep -q '"notes"'; then
-          echo "  ✓ Found default ks and notes capabilities"
+        if echo '${resolvedCapabilitiesJson}' | grep -q '"ks"'; then
+          echo "  ✓ Found default ks capability"
         else
-          echo "  ✗ Missing default ks/notes capabilities"
+          echo "  ✗ Missing default ks capability"
           echo "  Actual capabilities: ${resolvedCapabilitiesJson}"
           exit 1
         fi
-        if echo '${publishedCommandsJson}' | grep -q '"ks"' && ! echo '${publishedCommandsJson}' | grep -q '"ks.dev"'; then
-          echo "  ✓ Published only /ks in locked mode"
+        if echo '${publishedCommandsJson}' | grep -q '"ks.system"' && ! echo '${publishedCommandsJson}' | grep -q '"ks.dev"'; then
+          echo "  ✓ Published /ks.system in locked mode (no /ks.dev)"
         else
           echo "  ✗ Unexpected locked-mode command surface"
           echo "  Actual commands: ${publishedCommandsJson}"
@@ -185,10 +185,10 @@ let
           echo "  ✗ Missing privileged approval guidance in ~/.keystone/AGENTS.md"
           exit 1
         fi
-        if echo ${canonicalAgentsTextJson} | grep -q 'Route durable note capture' && echo ${canonicalAgentsTextJson} | grep -q '~/.config/keystone/conventions/process.notes.md'; then
-          echo "  ✓ Found notes routing and conventions guidance in ~/.keystone/AGENTS.md"
+        if echo ${canonicalAgentsTextJson} | grep -q 'Shared-surface tracking'; then
+          echo "  ✓ Found shared-surface tracking guidance in ~/.keystone/AGENTS.md"
         else
-          echo "  ✗ Missing notes routing or conventions guidance in ~/.keystone/AGENTS.md"
+          echo "  ✗ Missing shared-surface tracking guidance in ~/.keystone/AGENTS.md"
           exit 1
         fi
       fi
@@ -237,7 +237,7 @@ let
           echo "  Actual DeepWork MCP config: ${deepworkMcpJson}"
           exit 1
         fi
-        if echo '${resolvedCapabilitiesJson}' | grep -q '"ks.dev"'; then
+        if echo '${resolvedCapabilitiesJson}' | grep -q '"ks-dev"'; then
           echo "  ✓ Found ks-dev capability in development mode"
         else
           echo "  ✗ Missing ks-dev capability in development mode"
@@ -352,6 +352,7 @@ let
             initialPassword = "testpass";
             terminal.enable = true;
             email = "testuser@example.com";
+            capabilities = [ "ks" ];
           };
         };
         fileSystems."/" = {
@@ -376,6 +377,7 @@ let
             initialPassword = "testpass";
             terminal.enable = true;
             email = "testuser@example.com";
+            capabilities = [ "ks" ];
           };
         };
         fileSystems."/" = {

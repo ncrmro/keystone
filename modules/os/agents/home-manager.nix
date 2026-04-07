@@ -58,6 +58,7 @@ in
                 keystone.terminal = {
                   enable = mkDefault agentCfg.terminal.enable;
                   conventions.archetype = mkDefault agentCfg.archetype;
+                  aiExtensions.experimental = mkDefault (agentCfg.capabilities != [ ]);
                   aiExtensions.capabilities = mkDefault agentCfg.capabilities;
 
                   # development and repos are no longer bridged here;

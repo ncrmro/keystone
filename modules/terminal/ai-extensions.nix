@@ -23,32 +23,42 @@ let
   capabilityType = types.enum [
     "ks"
     "ks-dev"
+    "assistant"
     "notes"
     "project"
     "engineer"
+    "product"
+    "project-manager"
     "executive-assistant"
   ];
 
   baseCapabilities = [
     "ks"
-    "notes"
+    "assistant"
     "project"
   ];
 
   explicitCapabilities = filter (capability: capability != "ks-dev" || isDev) cfg.capabilities;
 
-  archetypeCapabilities = if archetype == "engineer" then [ "engineer" ] else [ ];
+  archetypeCapabilities =
+    optionals (archetype == "engineer") [ "engineer" ]
+    ++ optionals (archetype == "product") [ "product" ];
 
   resolvedCapabilities = unique (
     baseCapabilities ++ archetypeCapabilities ++ explicitCapabilities ++ optionals isDev [ "ks-dev" ]
   );
 
   publishedCommandIds = [
-    "ks"
+    "ks.system"
   ]
+  ++ optionals (elem "assistant" resolvedCapabilities) [ "ks.assistant" ]
   ++ optionals (elem "notes" resolvedCapabilities) [ "ks.notes" ]
   ++ optionals (elem "project" resolvedCapabilities) [ "ks.projects" ]
-  ++ optionals (elem "ks-dev" resolvedCapabilities) [ "ks.dev" ];
+  ++ optionals (elem "ks-dev" resolvedCapabilities) [ "ks.dev" ]
+  ++ optionals (elem "engineer" resolvedCapabilities) [ "ks.engineer" ]
+  ++ optionals (elem "product" resolvedCapabilities) [ "ks.product" ]
+  ++ optionals (elem "project-manager" resolvedCapabilities) [ "ks.project-manager" ]
+  ++ optionals (elem "executive-assistant" resolvedCapabilities) [ "ks.ea" ];
 
   formatCapabilities =
     capabilities: if capabilities == [ ] then "_none_" else concatStringsSep ", " capabilities;
@@ -77,6 +87,9 @@ let
     "- Feature requests, bug reports, paper cuts, and missing Keystone capabilities: start `keystone_system/issue`."
     "- Keystone health checks and troubleshooting: start `keystone_system/doctor` when the user wants diagnosis rather than documentation."
   ]
+  ++ optionals (elem "assistant" resolvedCapabilities) [
+    "- Personal assistant requests (reservations, birthdays, calendar, photo memories): direct the user to `/ks.assistant` instead of handling directly."
+  ]
   ++ optionals (elem "notes" resolvedCapabilities) [
     "- Notes workflows (repair, inbox, init, setup): direct the user to `/ks.notes` instead of starting a notes workflow directly."
   ]
@@ -84,28 +97,48 @@ let
     "- Project workflows (onboard, press release, milestone, engineering handoff, success): direct the user to `/ks.projects` instead of starting a project workflow directly."
   ]
   ++ optionals (elem "executive-assistant" resolvedCapabilities) [
-    "- Calendar triage and scheduling: start `executive_assistant/manage_calendar`."
-    "- Inbox cleanup and reply drafting: start `executive_assistant/clean_inbox`."
-    "- Event planning and recommendations: start `executive_assistant/plan_event` or `executive_assistant/discover_events`."
-    "- Daily priority and owner-note coordination: start `executive_assistant/task_loop`."
+    "- Executive assistant workflows (calendar, inbox, events, portfolio reviews, task coordination): direct the user to `/ks.ea` instead of starting executive_assistant workflows directly."
+  ]
+  ++ optionals (elem "engineer" resolvedCapabilities) [
+    "- Engineering workflows (implementation, code review, architecture, CI): direct the user to `/ks.engineer` instead of starting engineer workflows directly."
+  ]
+  ++ optionals (elem "product" resolvedCapabilities) [
+    "- Product workflows (press releases, milestones, stakeholder communication): direct the user to `/ks.product` instead of starting project workflows directly."
+  ]
+  ++ optionals (elem "project-manager" resolvedCapabilities) [
+    "- Project management workflows (task decomposition, tracking, boards): direct the user to `/ks.pm` instead of managing tasks directly."
   ];
 
   ksCommandBody = renderTemplate ./agent-assets/ks.template.md;
+  ksAssistantCommandBody = builtins.readFile ./agent-assets/ks-assistant.template.md;
   ksDevCommandBody = renderTemplate ./agent-assets/ks-dev.template.md;
   ksNotesCommandBody = builtins.readFile ./agent-assets/ks-notes.template.md;
   ksProjectsCommandBody = builtins.readFile ./agent-assets/ks-projects.template.md;
+  ksEngineerCommandBody = builtins.readFile ./agent-assets/engineer-skill.template.md;
+  ksProductCommandBody = builtins.readFile ./agent-assets/product-skill.template.md;
+  ksPmCommandBody = builtins.readFile ./agent-assets/pm-skill.template.md;
+  ksEaCommandBody = builtins.readFile ./agent-assets/ks-executive-assistant.template.md;
 
   ksDescription =
-    "Keystone assistant — may start keystone_system/issue or keystone_system/doctor"
+    "Keystone system — may start keystone_system/issue or keystone_system/doctor"
     + optionalString (elem "executive-assistant" resolvedCapabilities) ", or executive_assistant workflows";
 
   publishedCommands = [
     {
-      id = "ks";
+      id = "ks.system";
       description = ksDescription;
       argumentHint = "<request>";
-      displayName = "KS Agent";
+      displayName = "KS System";
       body = ksCommandBody;
+    }
+  ]
+  ++ optionals (elem "assistant" resolvedCapabilities) [
+    {
+      id = "ks.assistant";
+      description = "Personal assistant — may start personal_assistant/reservation, personal_assistant/birthday, personal_assistant/calendar_prioritize, or personal_assistant/memory_search";
+      argumentHint = "<request>";
+      displayName = "KS Assistant";
+      body = ksAssistantCommandBody;
     }
   ]
   ++ optionals (elem "notes" resolvedCapabilities) [
@@ -133,6 +166,42 @@ let
       argumentHint = "<goal>";
       displayName = "KS Development";
       body = ksDevCommandBody;
+    }
+  ]
+  ++ optionals (elem "engineer" resolvedCapabilities) [
+    {
+      id = "ks.engineer";
+      description = "Engineering — implementation, code review, architecture, and CI";
+      argumentHint = "<goal>";
+      displayName = "KS Engineer";
+      body = ksEngineerCommandBody;
+    }
+  ]
+  ++ optionals (elem "product" resolvedCapabilities) [
+    {
+      id = "ks.product";
+      description = "Product — planning, milestones, stakeholder communication";
+      argumentHint = "<request>";
+      displayName = "KS Product";
+      body = ksProductCommandBody;
+    }
+  ]
+  ++ optionals (elem "project-manager" resolvedCapabilities) [
+    {
+      id = "ks.project-manager";
+      description = "Project management — task decomposition, tracking, and boards";
+      argumentHint = "<request>";
+      displayName = "KS Project Manager";
+      body = ksPmCommandBody;
+    }
+  ]
+  ++ optionals (elem "executive-assistant" resolvedCapabilities) [
+    {
+      id = "ks.ea";
+      description = "Executive assistant — calendar, inbox, events, portfolio reviews, and task coordination";
+      argumentHint = "<request>";
+      displayName = "KS Executive Assistant";
+      body = ksEaCommandBody;
     }
   ];
 
@@ -362,6 +431,8 @@ let
     "task-ingest"
     "task-run"
     "ks"
+    "ks-pm"
+    "ks-assistant"
   ];
 
   activeCodexSkillNames = [
@@ -374,9 +445,19 @@ let
 in
 {
   options.keystone.terminal.aiExtensions = {
+    experimental = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Opt in to experimental AI extensions. When true, enables the curated
+        Keystone skill composition surface (commands, skills, colocated conventions).
+        Set to false until the skill composition API stabilises.
+      '';
+    };
+
     enable = mkOption {
       type = types.bool;
-      default = true;
+      default = cfg.experimental;
       description = "Generate curated Keystone commands and skills for supported AI CLIs.";
     };
 

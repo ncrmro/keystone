@@ -60,7 +60,7 @@ append_file_content() {
   local output_file="$1"
   local source_file="$2"
 
-  printf '\n---\n\n' >> "$output_file"
+  printf '\n' >> "$output_file"
   cat "$source_file" >> "$output_file"
 }
 
@@ -112,13 +112,6 @@ $body
 EOF
 }
 
-write_gemini_command() {
-  local rel_path="$1"
-  local description="$2"
-  local body="$3"
-  write_file "$HOME/.gemini/commands/$rel_path" "description = $(yaml_quote "$description")"$'\n'"prompt = $(yaml_quote "$body")"$'\n'
-}
-
 write_codex_skill() {
   local skill_name="$1"
   local display_name="$2"
@@ -150,25 +143,37 @@ EOF
 
 command_display_name() {
   case "$1" in
-    ks) printf '%s' "KS Agent" ;;
+    ks.system) printf '%s' "KS System" ;;
+    ks.assistant) printf '%s' "KS Assistant" ;;
     ks.notes) printf '%s' "KS Notes" ;;
     ks.projects) printf '%s' "KS Projects" ;;
     ks.dev) printf '%s' "KS Development" ;;
+    ks.ea) printf '%s' "KS Executive Assistant" ;;
+    ks.engineer) printf '%s' "KS Engineer" ;;
+    ks.product) printf '%s' "KS Product" ;;
+    ks.project-manager) printf '%s' "KS Project Manager" ;;
     *) return 1 ;;
   esac
 }
 
 command_argument_hint() {
   case "$1" in
-    ks|ks.notes|ks.projects) printf '%s' "<request>" ;;
-    ks.dev) printf '%s' "<goal>" ;;
+    ks.system|ks.assistant|ks.notes|ks.projects|ks.ea|ks.product|ks.project-manager) printf '%s' "<request>" ;;
+    ks.dev|ks.engineer) printf '%s' "<goal>" ;;
     *) return 1 ;;
   esac
 }
 
 command_template_name() {
+  local skill_key
+  skill_key="$(command_skill_key "$1")"
+  if [[ -n "$skill_key" ]]; then
+    yq -r ".skills.\"$skill_key\".template" "$archetypes_file"
+    return
+  fi
   case "$1" in
-    ks) printf '%s' "ks.template.md" ;;
+    ks.system) printf '%s' "ks.template.md" ;;
+    ks.assistant) printf '%s' "ks-assistant.template.md" ;;
     ks.notes) printf '%s' "ks-notes.template.md" ;;
     ks.projects) printf '%s' "ks-projects.template.md" ;;
     ks.dev) printf '%s' "ks-dev.template.md" ;;
@@ -177,19 +182,56 @@ command_template_name() {
 }
 
 command_description() {
+  local skill_key
+  skill_key="$(command_skill_key "$1")"
+  if [[ -n "$skill_key" ]]; then
+    yq -r ".skills.\"$skill_key\".description" "$archetypes_file"
+    return
+  fi
   case "$1" in
-    ks)
-      local desc="Keystone assistant — may start keystone_system/issue or keystone_system/doctor"
+    ks.system)
+      local desc="Keystone system — may start keystone_system/issue or keystone_system/doctor"
       if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'executive-assistant'; then
         desc+=", or executive_assistant workflows"
       fi
       printf '%s' "$desc"
       ;;
+    ks.assistant) printf '%s' "Personal assistant — may start personal_assistant/reservation, personal_assistant/birthday, personal_assistant/calendar_prioritize, or personal_assistant/memory_search" ;;
     ks.notes) printf '%s' "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup" ;;
     ks.projects) printf '%s' "Project workflows — may start project/onboard, project/press_release, or project/success" ;;
     ks.dev) printf '%s' "Keystone development — may start keystone_system/develop, keystone_system/issue, keystone_system/convention, or keystone_system/doctor" ;;
     *) return 1 ;;
   esac
+}
+
+# Map command ID to archetypes.yaml skill key (empty string if not a skill command)
+command_skill_key() {
+  case "$1" in
+    ks.engineer) printf '%s' "engineer" ;;
+    ks.product) printf '%s' "product" ;;
+    ks.project-manager) printf '%s' "project-manager" ;;
+    ks.ea) printf '%s' "executive-assistant" ;;
+    *) printf '' ;;
+  esac
+}
+
+# Copy colocated conventions and roles into a skill directory
+colocate_skill_conventions() {
+  local skill_key="$1"
+  local target_dir="$2"
+  local conv_name src_file
+
+  while IFS= read -r conv_name; do
+    [[ -z "$conv_name" ]] && continue
+    src_file="$conventions_dir/${conv_name}.md"
+    [[ -f "$src_file" ]] && write_file "${target_dir}/${conv_name}.md" "$(cat "$src_file")"
+  done < <(yq -r ".skills.\"$skill_key\".colocated_conventions[]?" "$archetypes_file")
+
+  while IFS= read -r conv_name; do
+    [[ -z "$conv_name" ]] && continue
+    src_file="$conventions_dir/roles/${conv_name}.md"
+    [[ -f "$src_file" ]] && write_file "${target_dir}/${conv_name}.md" "$(cat "$src_file")"
+  done < <(yq -r ".skills.\"$skill_key\".colocated_roles[]?" "$archetypes_file")
 }
 
 ks_allowed_routes_lines=(
@@ -213,6 +255,10 @@ while IFS= read -r repo_name; do
   repos+=("$repo_name")
 done < <(json_get_lines '.repos')
 
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'assistant'; then
+  ks_allowed_routes_lines+=("- Personal assistant requests (reservations, birthdays, calendar, photo memories): direct the user to \`/ks.assistant\` instead of handling directly.")
+fi
+
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
   ks_allowed_routes_lines+=("- Notes workflows (repair, inbox, init, setup): direct the user to \`/ks.notes\` instead of starting a notes workflow directly.")
 fi
@@ -222,10 +268,19 @@ if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'project'; then
 fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'executive-assistant'; then
-  ks_allowed_routes_lines+=("- Calendar triage and scheduling: start \`executive_assistant/manage_calendar\`.")
-  ks_allowed_routes_lines+=("- Inbox cleanup and reply drafting: start \`executive_assistant/clean_inbox\`.")
-  ks_allowed_routes_lines+=("- Event planning and recommendations: start \`executive_assistant/plan_event\` or \`executive_assistant/discover_events\`.")
-  ks_allowed_routes_lines+=("- Daily priority and owner-note coordination: start \`executive_assistant/task_loop\`.")
+  ks_allowed_routes_lines+=("- Executive assistant workflows (calendar, inbox, events, portfolio reviews, task coordination): direct the user to \`/ks.ea\` instead of starting executive_assistant workflows directly.")
+fi
+
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'engineer'; then
+  ks_allowed_routes_lines+=("- Engineering workflows (implementation, code review, architecture, CI): direct the user to \`/ks.engineer\` instead of starting engineer workflows directly.")
+fi
+
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'product'; then
+  ks_allowed_routes_lines+=("- Product workflows (press releases, milestones, stakeholder communication): direct the user to \`/ks.product\` instead of starting project workflows directly.")
+fi
+
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'project-manager'; then
+  ks_allowed_routes_lines+=("- Project management workflows (task decomposition, tracking, boards): direct the user to \`/ks.pm\` instead of managing tasks directly.")
 fi
 
 repo_checkout="$(json_get '.repoCheckout')"
@@ -269,66 +324,42 @@ if [[ "$development_mode" == "true" ]]; then
 fi
 
 ks_allowed_routes="$(printf '%s\n' "${ks_allowed_routes_lines[@]}")"
-archetype_description="$(yq -r ".archetypes.\"$archetype\".description // \"\"" "$archetypes_file")"
+
 global_agents_tmp="$(mktemp)"
 {
-  cat <<EOF
-# Keystone Conventions
+  cat <<'EOF'
+# Available skills
 
-Archetype: **$archetype**
-$archetype_description
-
----
-
-## Keystone session
-
-- Canonical instruction path: \`~/.keystone/AGENTS.md\`
-- Development mode: $development_mode_display
-- Available Keystone capabilities: $capabilities_display
-- Published Keystone commands: $published_commands_display
 EOF
 } > "$global_agents_tmp"
 
-if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
-  cat <<'EOF' >> "$global_agents_tmp"
+{
+  printf 'Each skill loads domain-specific conventions and DeepWork workflows on demand.\n\n'
+} >> "$global_agents_tmp"
 
----
-
-## Notes command guidance
-
-- Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
-- Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
-- On Keystone systems, use `NOTES_DIR` as the canonical notebook root. It resolves to `keystone.notes.path` (`~/notes` for human users, per-agent notes paths for OS agents).
-- When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
-- When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
-EOF
-fi
+for command_id in "${published_commands[@]}"; do
+  cmd_description="$(command_description "$command_id")"
+  printf -- '- **/%s** — %s\n' "$command_id" "$cmd_description" >> "$global_agents_tmp"
+done
 
 cat <<'EOF' >> "$global_agents_tmp"
 
----
+# Shared-surface tracking
 
-## Shared-surface tracking
+- For issue-backed work, post `Work Started` and `Work Update` comments on the source issue.
+- Treat issues, pull requests, milestones, and boards as the canonical public record.
+- Use notes for durable rationale and memory, not to replace shared-surface tracking.
 
-- For issue-backed work, follow `process.issue-journal` and post `Work Started` and `Work Update` comments on the source issue.
-- For milestone and board-backed work, follow `process.project-board` so issue and PR state stays visible on the shared board.
-- Treat issues, pull requests, milestones, and boards as the canonical public record for status, review state, and decisions that affect collaborators.
-- Use notes to preserve durable rationale and memory, not to replace shared-surface tracking.
+# Commit format
+
+- Use Conventional Commits: `type(scope): subject`.
+- Valid types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `ci`, `perf`, `build`.
+- Each commit SHOULD represent one logical change.
 EOF
 
 while IFS= read -r convention_name; do
   append_file_content "$global_agents_tmp" "$conventions_dir/${convention_name}.md"
 done < <(yq -r ".archetypes.\"$archetype\".inlined_conventions[]?" "$archetypes_file")
-
-mapfile -t referenced_global_conventions < <(yq -r ".archetypes.\"$archetype\".referenced_conventions[]?" "$archetypes_file")
-if [[ ${#referenced_global_conventions[@]} -gt 0 ]]; then
-  {
-    printf '\n---\n\n## Reference Conventions\n\nThe following conventions are available for on-demand context:\n\n'
-    for convention_name in "${referenced_global_conventions[@]}"; do
-      printf -- '- [%s](%s/%s.md)\n' "$convention_name" "$conventions_dir" "$convention_name"
-    done
-  } >> "$global_agents_tmp"
-fi
 
 global_agents_content="$(cat "$global_agents_tmp")"
 rm -f "$global_agents_tmp"
@@ -387,77 +418,53 @@ while IFS= read -r convention_name; do
   append_file_content "$repos_agents_tmp" "$conventions_dir/${convention_name}.md"
 done < <(yq -r '.archetypes."keystone-developer".inlined_conventions[]?' "$archetypes_file")
 
-mapfile -t referenced_repo_conventions < <(yq -r '.archetypes."keystone-developer".referenced_conventions[]?' "$archetypes_file")
-if [[ ${#referenced_repo_conventions[@]} -gt 0 ]]; then
-  {
-    printf '\n---\n\n## Reference Conventions\n\nThe following conventions are available for on-demand context:\n\n'
-    for convention_name in "${referenced_repo_conventions[@]}"; do
-      printf -- '- [%s](ncrmro/keystone/conventions/%s.md)\n' "$convention_name" "$convention_name"
-    done
-  } >> "$repos_agents_tmp"
-fi
-
 repos_agents_content="$(cat "$repos_agents_tmp")"
 rm -f "$repos_agents_tmp"
 
 write_file "$HOME/.keystone/repos/AGENTS.md" "$repos_agents_content"
 
-managed_claude_commands=(ks.md ks.notes.md ks.projects.md ks.dev.md)
-for command_file in "${managed_claude_commands[@]}"; do
+# Clean up legacy command files (skills are the canonical format now)
+for command_file in ks.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engineer.md ks.product.md ks.pm.md; do
   rm -f "$HOME/.claude/commands/$command_file"
-done
-
-managed_gemini_commands=(ks.toml notes.toml projects.toml dev.toml deepwork.toml)
-for command_file in "${managed_gemini_commands[@]}"; do
-  rm -f "$HOME/.gemini/commands/$command_file"
-done
-
-managed_opencode_commands=(ks.md ks.notes.md ks.projects.md ks.dev.md)
-for command_file in "${managed_opencode_commands[@]}"; do
   rm -f "$HOME/.config/opencode/commands/$command_file"
 done
-
-# Clean up old /ks skill directories (renamed to ks-system)
+for command_file in ks.toml notes.toml projects.toml dev.toml deepwork.toml ks.ea.toml ks.engineer.toml ks.product.toml ks.pm.toml wrap-up.toml; do
+  rm -f "$HOME/.gemini/commands/$command_file"
+done
 rm -rf "$HOME/.claude/skills/ks"
+rm -rf "$HOME/.claude/skills/ks-pm"
+rm -rf "$HOME/.claude/skills/ks-assistant"
 rm -rf "$HOME/.config/opencode/skills/ks"
+rm -rf "$HOME/.config/opencode/skills/ks-pm"
+rm -rf "$HOME/.config/opencode/skills/ks-assistant"
 
 for command_id in "${published_commands[@]}"; do
   description="$(command_description "$command_id")"
-  argument_hint="$(command_argument_hint "$command_id")"
   display_name="$(command_display_name "$command_id")"
   template_name="$(command_template_name "$command_id")"
   command_body="$(render_template "$templates_dir/$template_name")"
   skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
 
-  # Command files (user-invocable slash commands)
-  claude_content="$(render_frontmatter "$command_id" "$description" "$argument_hint" "$display_name")"$'\n\n'"$command_body"$'\n'
-  write_file "$HOME/.claude/commands/${command_id}.md" "$claude_content"
-
-  if [[ "$command_id" == "ks.dev" ]]; then
-    gemini_rel="dev.toml"
-  elif [[ "$command_id" == "ks.notes" ]]; then
-    gemini_rel="notes.toml"
-  elif [[ "$command_id" == "ks.projects" ]]; then
-    gemini_rel="projects.toml"
-  else
-    gemini_rel="ks.toml"
-  fi
-  write_gemini_command "$gemini_rel" "$description" "$command_body"
-
-  write_file "$HOME/.config/opencode/commands/${command_id}.md" "$command_body"$'\n'
-
-  # Skill files (agent-callable, available to all LLM agents)
+  # Skills are the canonical format — all CLIs with skill support get them
   ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"
   write_file "$HOME/.claude/skills/${skill_name}/SKILL.md" "$ks_skill_md"
+  write_file "$HOME/.gemini/skills/${skill_name}/SKILL.md" "$ks_skill_md"
   write_file "$HOME/.config/opencode/skills/${skill_name}/SKILL.md" "$ks_skill_md"
+
+  # Colocate conventions for skill commands
+  skill_key="$(command_skill_key "$command_id")"
+  if [[ -n "$skill_key" ]]; then
+    colocate_skill_conventions "$skill_key" "$HOME/.claude/skills/${skill_name}"
+    colocate_skill_conventions "$skill_key" "$HOME/.gemini/skills/${skill_name}"
+    colocate_skill_conventions "$skill_key" "$HOME/.config/opencode/skills/${skill_name}"
+  fi
 done
 
 deepwork_body="$(cat "$templates_dir/deepwork-skill.template.md")"
 deepwork_skill_md="$(render_skill_md "deepwork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_body")"
 write_file "$HOME/.claude/skills/deepwork/SKILL.md" "$deepwork_skill_md"
+write_file "$HOME/.gemini/skills/deepwork/SKILL.md" "$deepwork_skill_md"
 write_file "$HOME/.config/opencode/skills/deepwork/SKILL.md" "$deepwork_skill_md"
-
-write_gemini_command "deepwork.toml" "Start or continue DeepWork workflows using MCP tools" "$deepwork_body"
 
 write_codex_skill "deepwork" "DeepWork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_skill_md" '
 dependencies:
@@ -470,9 +477,8 @@ dependencies:
 wrapup_body="$(cat "$templates_dir/wrap-up-skill.template.md")"
 wrapup_skill_md="$(render_skill_md "wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body")"
 write_file "$HOME/.claude/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
+write_file "$HOME/.gemini/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
 write_file "$HOME/.config/opencode/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
-
-write_gemini_command "wrap-up.toml" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body"
 
 write_codex_skill "wrap-up" "Wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_skill_md"
 
@@ -483,7 +489,7 @@ legacy_codex_skill_names=(
   notes-doctor notes-process_inbox notes-project notes-report portfolio-review
   project-onboard project-press_release project-success repo-doctor repo-setup
   research-deep research-quick task-ingest task-run
-  ks
+  ks ks-pm
 )
 
 for skill_name in "${legacy_codex_skill_names[@]}"; do
@@ -507,22 +513,9 @@ dependencies:
       description: "DeepWork MCP server"
 '
 
-  # Supporting convention files for Codex multi-file skills
-  if [[ "$command_id" == "ks.ea" ]]; then
-    ea_conventions=(
-      "roles/executive-assistant.md:executive-assistant.md"
-      "tool.calendula.md:tool.calendula.md"
-      "tool.himalaya.md:tool.himalaya.md"
-      "tool.stalwart.md:tool.stalwart.md"
-    )
-    for entry in "${ea_conventions[@]}"; do
-      src_rel="${entry%%:*}"
-      dest_name="${entry##*:}"
-      src_file="$conventions_dir/$src_rel"
-      if [[ -f "$src_file" ]]; then
-        content="$(cat "$src_file")"
-        write_file "$HOME/.codex/skills/${skill_name}/${dest_name}" "$content"
-      fi
-    done
+  # Colocate conventions for skill commands in Codex
+  skill_key="$(command_skill_key "$command_id")"
+  if [[ -n "$skill_key" ]]; then
+    colocate_skill_conventions "$skill_key" "$HOME/.codex/skills/${skill_name}"
   fi
 done
