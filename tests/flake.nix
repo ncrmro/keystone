@@ -49,7 +49,10 @@
     }:
     let
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ keystone.overlays.default ];
+      };
       lib = pkgs.lib;
     in
     {

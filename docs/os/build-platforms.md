@@ -53,6 +53,11 @@ wsl
 
 ## GitHub Actions
 
+Keystone CI can pull from the public `ks-systems` cache without secrets. To let only
+release jobs push new build results back to that cache, create a GitHub Actions
+environment named `release`, store `CACHIX_AUTH_TOKEN` as an environment secret
+there, and attach that environment only to the publishing job.
+
 Add to `.github/workflows/build-iso.yml`:
 
 ```yaml
@@ -70,7 +75,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v22
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v15
+        with:
+          name: ks-systems
 
       - name: Build ISO with SSH key
         if: github.event.inputs.ssh_key != ''
@@ -85,6 +93,22 @@ jobs:
         with:
           name: keystone-iso
           path: result/iso/*.iso
+```
+
+For a publishing job, scope the token to the `release` environment:
+
+```yaml
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v15
+        with:
+          name: ks-systems
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 ```
 
 ## Fork Instructions

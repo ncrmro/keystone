@@ -504,6 +504,30 @@ in
       };
     };
 
+    # Shared binary caches
+    binaryCaches = {
+      ksSystems = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Enable the shared Keystone Cachix cache on all Keystone systems by default.";
+        };
+
+        url = mkOption {
+          type = types.str;
+          default = "https://ks-systems.cachix.org";
+          example = "https://my-team.cachix.org";
+          description = "Cachix substituter URL for the shared Keystone systems cache.";
+        };
+
+        publicKey = mkOption {
+          type = types.str;
+          default = "ks-systems.cachix.org-1:Abbd38auzcLIfJUtX7kSD6zdGUU4v831Sb2KfajR5Mo=";
+          description = "Public key used to verify binaries from the shared Keystone systems cache.";
+        };
+      };
+    };
+
     # Nix configuration
     nix = {
       optimiseStore = mkOption {
@@ -582,6 +606,13 @@ in
 
   config = mkIf cfg.enable {
     keystone.security.privilegedApproval.enable = mkDefault true;
+
+    nix.settings.substituters = mkIf cfg.binaryCaches.ksSystems.enable (mkBefore [
+      cfg.binaryCaches.ksSystems.url
+    ]);
+    nix.settings.trusted-public-keys = mkIf cfg.binaryCaches.ksSystems.enable (mkBefore [
+      cfg.binaryCaches.ksSystems.publicKey
+    ]);
 
     # Assertions for configuration validation
     assertions = [

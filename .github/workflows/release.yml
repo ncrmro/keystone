@@ -7,6 +7,10 @@ on:
         description: "Release version without the v prefix, for example 0.9.0"
         required: true
         type: string
+  push:
+    branches:
+      - main
+      - "release/**"
 
 permissions:
   contents: write
@@ -19,8 +23,8 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: release
     env:
-      VERSION: ${{ inputs.version }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
@@ -33,25 +37,40 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]]; then
-            echo "The Release workflow must run from the default branch ${DEFAULT_BRANCH}"
-            exit 1
-          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            VERSION_INPUT="${{ inputs.version }}"
 
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release version must match MAJOR.MINOR.PATCH"
-            exit 1
-          fi
+            if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]]; then
+              echo "The Release workflow must run from the default branch ${DEFAULT_BRANCH}"
+              exit 1
+            fi
 
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "Tag v$VERSION already exists"
-            exit 1
-          fi
+            if [[ ! "$VERSION_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release version must match MAJOR.MINOR.PATCH"
+              exit 1
+            fi
 
-          echo "RELEASE_SERIES=${VERSION%.*}" >> "$GITHUB_ENV"
-          echo "RELEASE_BRANCH=release/${VERSION%.*}" >> "$GITHUB_ENV"
+            if git rev-parse "v$VERSION_INPUT" >/dev/null 2>&1; then
+              echo "Tag v$VERSION_INPUT already exists"
+              exit 1
+            fi
+
+            echo "VERSION=$VERSION_INPUT" >> "$GITHUB_ENV"
+            echo "RELEASE_SERIES=${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
+            echo "RELEASE_BRANCH=release/${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
+            echo "RELEASE_SOURCE_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+            echo "RELEASE_TARGET_BRANCH=release/${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
+          else
+            if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" && "${GITHUB_REF_NAME}" != release/* ]]; then
+              echo "Automatic release validation only runs on ${DEFAULT_BRANCH} or release/* branches"
+              exit 1
+            fi
+
+            echo "RELEASE_TARGET_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          fi
 
       - name: Create or reuse release branch
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch
         run: |
           set -euo pipefail
 
@@ -62,43 +81,82 @@ jobs:
             git fetch origin "$RELEASE_BRANCH":"refs/remotes/origin/$RELEASE_BRANCH"
             git checkout --track "origin/$RELEASE_BRANCH"
           else
-            echo "Creating release branch $RELEASE_BRANCH from origin/$DEFAULT_BRANCH"
-            git fetch origin "$DEFAULT_BRANCH":"refs/remotes/origin/$DEFAULT_BRANCH"
-            git checkout -b "$RELEASE_BRANCH" "origin/$DEFAULT_BRANCH"
+            echo "Creating release branch $RELEASE_BRANCH from origin/$RELEASE_SOURCE_BRANCH"
+            git fetch origin "$RELEASE_SOURCE_BRANCH":"refs/remotes/origin/$RELEASE_SOURCE_BRANCH"
+            git checkout -b "$RELEASE_BRANCH" "origin/$RELEASE_SOURCE_BRANCH"
             git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
           fi
+
+      - name: Branch release validation mode
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          echo "Skipping release branch creation in branch-triggered release mode"
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 
+      - name: Configure Cachix
+        uses: cachix/cachix-action@v15
+        with:
+          name: ks-systems
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+
       - name: Build stage
         run: |
           set -euo pipefail
           nix build .#packages.x86_64-linux.keystone-tui
-          nix build .#iso --dry-run
 
       - name: Test stage
         run: |
           set -euo pipefail
           nix flake check
 
-      - name: Tag stage
+      - name: Warm cache stage
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push origin "refs/tags/v$VERSION"
 
-      - name: Publish stage
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release create "v$VERSION" \
-            --verify-tag \
-            --generate-notes \
-            --title "Keystone v$VERSION" \
-            --target "$RELEASE_BRANCH"
+          nix build \
+            .#packages.x86_64-linux.agent-coding-agent \
+            .#packages.x86_64-linux.agent-mail \
+            .#packages.x86_64-linux.chrome-devtools-mcp \
+            .#packages.x86_64-linux.deepwork-library-jobs \
+            .#packages.x86_64-linux.fetch-email-source \
+            .#packages.x86_64-linux.fetch-forgejo-sources \
+            .#packages.x86_64-linux.fetch-github-sources \
+            .#packages.x86_64-linux.forgejo-cli-ex \
+            .#packages.x86_64-linux.forgejo-project \
+            .#packages.x86_64-linux.grafana-mcp \
+            .#packages.x86_64-linux.keystone-conventions \
+            .#packages.x86_64-linux.keystone-deepwork-jobs \
+            .#packages.x86_64-linux.ks \
+            .#packages.x86_64-linux.lfs-s3 \
+            .#packages.x86_64-linux.podman-agent \
+            .#packages.x86_64-linux.pz \
+            .#packages.x86_64-linux.repo-sync \
+            .#packages.x86_64-linux.slidev \
+            .#packages.x86_64-linux.zellij-tab-name \
+            .#packages.x86_64-linux.zesh
+
+      # - name: Tag stage
+      #   if: github.event_name == 'workflow_dispatch'
+      #   run: |
+      #     set -euo pipefail
+      #     git config user.name "github-actions[bot]"
+      #     git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      #     git tag -a "v$VERSION" -m "Release v$VERSION"
+      #     git push origin "refs/tags/v$VERSION"
+
+      # - name: Publish stage
+      #   if: github.event_name == 'workflow_dispatch'
+      #   env:
+      #     GH_TOKEN: ${{ github.token }}
+      #   run: |
+      #     set -euo pipefail
+      #     gh release create "v$VERSION" \
+      #       --verify-tag \
+      #       --generate-notes \
+      #       --title "Keystone v$VERSION" \
+      #       --target "$RELEASE_TARGET_BRANCH"
