@@ -519,12 +519,11 @@ if [[ "$(echo "$SOURCES_JSON" | jq '[.[].data | length] | add // 0')" -gt 0 ]]; 
   else
     log "Step 2: Ingesting sources..."
     emit_event "stage_start" "Ingesting sources" "stage_name" "ingest"
+    mkdir -p "$NOTES_DIR/.deepwork"
+    echo "$SOURCES_JSON" | jq '.' > "$NOTES_DIR/.deepwork/sources.json"
     INGEST_RUNTIME=$(resolve_stage_runtime "ingest")
     set +o pipefail
-    run_provider_prompt "ingest" "$INGEST_RUNTIME" "/deepwork task_loop ingest
-
-Source data (pre-fetched):
-$(echo "$SOURCES_JSON" | jq '.')" 2>&1 | tee -a "$LOG_FILE" >&2
+    run_provider_prompt "ingest" "$INGEST_RUNTIME" "/deepwork task_loop ingest" 2>&1 | tee -a "$LOG_FILE" >&2
     INGEST_EXIT=${PIPESTATUS[0]}
     set -o pipefail
     if [[ "$INGEST_EXIT" -ne 0 ]]; then

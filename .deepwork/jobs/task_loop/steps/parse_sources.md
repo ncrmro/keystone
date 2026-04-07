@@ -15,8 +15,9 @@ The task loop orchestrator has already run declarative shell commands to fetch s
    - Read PROJECTS.yaml from the repo root to understand project associations
    - If TASKS.yaml does not exist, create it with `tasks: []`
 
-2. **Parse the injected source JSON**
-   - The source JSON is provided directly in this prompt (injected by the task loop orchestrator)
+2. **Parse the source JSON**
+   - Read the source JSON from `.deepwork/sources.json` in the repo root (written by the task loop orchestrator before invoking this workflow)
+   - If the file is missing or empty, report zero items ingested and finish
    - Each source section is labeled with its source name (e.g., "email", "github-issues")
    - Email source JSON includes envelope metadata AND a `body` field with full message text
    - Use BOTH the subject and body fields when determining if an email is actionable (subjects may be empty)
@@ -171,4 +172,4 @@ Summary of what was ingested.
 
 ## Context
 
-This is the first step in the task loop pipeline. The task loop orchestrator runs declarative shell commands to fetch source data before invoking this workflow, injecting the JSON directly into the prompt. This saves tool calls and latency compared to having the agent fetch sources itself. The output feeds into the prioritize workflow, which orders tasks by project priority.
+This is the first step in the task loop pipeline. The task loop orchestrator runs declarative shell commands to fetch source data before invoking this workflow, writing the JSON to `.deepwork/sources.json`. Read that file to get the pre-fetched data. The output feeds into the prioritize workflow, which orders tasks by project priority.
