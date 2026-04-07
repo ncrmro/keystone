@@ -16,6 +16,7 @@
 #   @profilesJson@     - Merged built-in + custom profile catalog JSON
 #   @projectIndexHelper@ - zk-backed project index helper path
 set -euo pipefail
+trap 'echo "ERROR: line $LINENO exited with code $?" >&2' ERR
 
 # Sanity check: Ensure required system utilities are available
 for cmd in bash tr systemctl jq yq; do
