@@ -19,10 +19,28 @@
 }:
 let
   keystone-tui = pkgs.callPackage ../packages/keystone-tui { };
+  keystonePhotos = pkgs.callPackage ../packages/keystone-photos { };
+  agentsE2E = pkgs.callPackage ../packages/agents-e2e { };
+  ks = pkgs.callPackage ../packages/ks {
+    inherit keystonePhotos;
+    agents-e2e = agentsE2E;
+  };
   installerCfg = config.keystone.installer;
 in
 {
   options.keystone.installer = {
+    edition = lib.mkOption {
+      type = lib.types.str;
+      default = "server";
+      description = "ISO edition name used in the filename (e.g. server, desktop).";
+    };
+
+    version = lib.mkOption {
+      type = lib.types.str;
+      default = "0.0.0";
+      description = "Keystone installer version embedded in the ISO filename.";
+    };
+
     sshKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -31,8 +49,8 @@ in
 
     tui.enable = lib.mkOption {
       type = lib.types.bool;
-      default = true;
-      description = "Whether to install and auto-start the Keystone installer TUI on the ISO.";
+      default = false;
+      description = "Whether to install and auto-start the Keystone installer TUI on the ISO (experimental).";
     };
   };
 
@@ -57,45 +75,52 @@ in
       openssh.authorizedKeys.keys = installerCfg.sshKeys;
     };
 
-    # Enable networking via NetworkManager (for TUI installer network detection)
-    # mkForce needed — installation-cd-minimal.nix enables wpa_supplicant which
-    # conflicts with NetworkManager's own wireless management
+    # Disable wpa_supplicant — NetworkManager handles wireless
     networking = {
       wireless.enable = lib.mkForce false;
     };
 
     # Include TUI installer and tools for installation
-    environment.systemPackages =
-      (lib.optionals installerCfg.tui.enable [ keystone-tui ])
-      ++ (with pkgs; [
-        git
-        curl
-        wget
-        htop
-        lsof
-        rsync
-        jq
-        # Tools needed for installation and recovery
-        parted
-        cryptsetup
-        util-linux
-        dosfstools
-        e2fsprogs
-        nix
-        nixos-install-tools
-        disko
-        shadow
-        iproute2
-        networkmanager
-        tpm2-tools
-        # ZFS utilities — use the same package boot.supportedFilesystems selects
-        config.boot.zfs.package
-        # Secure Boot key management
-        sbctl
-      ]);
+    environment.systemPackages = [
+      # Provide `ks` in the live installer shell so `ks install` works
+      # immediately after boot.
+      ks
+      # Keep the installer command path available even when the autostart
+      # TUI service is disabled.
+      keystone-tui
+    ]
+    ++ (with pkgs; [
+      git
+      curl
+      wget
+      htop
+      lsof
+      rsync
+      jq
+      # Tools needed for installation and recovery
+      parted
+      cryptsetup
+      util-linux
+      dosfstools
+      e2fsprogs
+      nix
+      nixos-install-tools
+      disko
+      shadow
+      iproute2
+      networkmanager
+      tpm2-tools
+      # ZFS utilities — use the same package boot.supportedFilesystems selects
+      config.boot.zfs.package
+      # Secure Boot key management
+      sbctl
+    ]);
 
-    # NetworkManager for network detection (required by TUI installer)
-    networking.networkmanager.enable = true;
+    # installation-cd-minimal enables NetworkManager by default, but in headless
+    # VM tests that can leave interfaces unconfigured. Use classic DHCP for the
+    # non-TUI path so SSH comes up reliably, and keep NetworkManager for TUI mode.
+    networking.networkmanager.enable = lib.mkForce installerCfg.tui.enable;
+    networking.useDHCP = lib.mkIf (!installerCfg.tui.enable) (lib.mkForce true);
 
     # Disable getty on tty1 so the TUI installer can take over the console.
     systemd.services."getty@tty1".enable = lib.mkIf installerCfg.tui.enable false;
@@ -186,8 +211,8 @@ in
     documentation.enable = false;
     documentation.nixos.enable = false;
 
-    # Set the ISO label and boot splash image
-    image.fileName = lib.mkDefault "keystone-installer.iso";
+    # Set the ISO name, label, and boot splash image
+    image.baseName = lib.mkForce "keystone-${installerCfg.edition}-installer-${installerCfg.version}";
     isoImage.volumeID = lib.mkDefault "KEYSTONE";
     isoImage.efiSplashImage = ../assets/installer-splash.png;
     isoImage.splashImage = ../assets/installer-splash.png;

@@ -23,6 +23,9 @@ pub enum AppAction {
     IsoTargetDown,
     IsoTargetSelect,
     RefreshDashboard,
+    InstallHostUp,
+    InstallHostDown,
+    InstallHostSelect,
     InstallProceed,
     InstallConfirm,
     InstallBack,
@@ -290,8 +293,16 @@ pub fn handle_install_input(
     use screens::install::InstallPhase;
 
     match install.phase() {
+        InstallPhase::HostSelection => match key.code {
+            KeyCode::Up | KeyCode::Char('k') => Some(AppAction::InstallHostUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(AppAction::InstallHostDown),
+            KeyCode::Enter => Some(AppAction::InstallHostSelect),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
         InstallPhase::Summary => match key.code {
             KeyCode::Enter => Some(AppAction::InstallProceed),
+            KeyCode::Esc => Some(AppAction::InstallBack),
             KeyCode::Char('q') => Some(AppAction::Quit),
             _ => None,
         },
@@ -438,6 +449,21 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         AppAction::RefreshDashboard => {
             // Re-load the hosts screen from the active repo
             app.go_to_hosts(app.active_repo_index.unwrap_or(0)).await;
+        }
+        AppAction::InstallHostUp => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.host_up();
+            }
+        }
+        AppAction::InstallHostDown => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.host_down();
+            }
+        }
+        AppAction::InstallHostSelect => {
+            if let AppScreen::Install(ref mut install) = app.current_screen {
+                install.select_host();
+            }
         }
         AppAction::InstallProceed => {
             if let AppScreen::Install(ref mut install) = app.current_screen {

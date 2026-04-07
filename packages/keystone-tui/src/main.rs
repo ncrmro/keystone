@@ -8,7 +8,7 @@
 
 use std::io;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event},
     execute,
@@ -32,6 +32,37 @@ use app::{App, AppScreen};
 use input::{dispatch_key, handle_action, AppAction};
 use screens::first_boot::FirstBootConfig;
 use screens::install::InstallerConfig;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LaunchMode {
+    Auto,
+    InstallOnly,
+}
+
+fn print_help() {
+    println!(
+        "Usage: keystone-tui [--install] [-h|--help]\n\n  --install  Require installer mode using /etc/keystone/install-repo or /etc/keystone/install-config\n  -h, --help Show this help"
+    );
+}
+
+fn parse_launch_mode() -> Result<LaunchMode> {
+    let mut mode = LaunchMode::Auto;
+
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--install" => mode = LaunchMode::InstallOnly,
+            "-h" | "--help" => {
+                print_help();
+                std::process::exit(0);
+            }
+            other => {
+                return Err(anyhow!("Unknown argument: {}", other));
+            }
+        }
+    }
+
+    Ok(mode)
+}
 
 /// Set up the terminal for TUI rendering.
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
@@ -57,6 +88,8 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Re
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let launch_mode = parse_launch_mode()?;
+
     // Set up panic hook to restore terminal on panic
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -68,15 +101,27 @@ async fn main() -> Result<()> {
     let mut terminal = setup_terminal()?;
 
     // Priority detection:
-    // 1. Installer mode: pre-baked ISO with config at /etc/keystone/install-config/
+    // 1. Installer mode: embedded install repo or legacy config bundle
     // 2. First-boot mode: freshly installed system with .first-boot-pending marker
     // 3. Normal mode: repo management dashboard
-    let mut app = if let Some(installer_config) = InstallerConfig::detect() {
-        App::new_for_installer(installer_config)
-    } else if let Some(first_boot_config) = FirstBootConfig::detect() {
-        App::new_for_first_boot(first_boot_config)
-    } else {
-        App::new().await
+    let mut app = match launch_mode {
+        LaunchMode::InstallOnly => {
+            let installer_config = InstallerConfig::detect()?.ok_or_else(|| {
+                anyhow!(
+                    "Installer data not found at /etc/keystone/install-repo or /etc/keystone/install-config; cannot run --install mode"
+                )
+            })?;
+            App::new_for_installer(installer_config)
+        }
+        LaunchMode::Auto => {
+            if let Some(installer_config) = InstallerConfig::detect()? {
+                App::new_for_installer(installer_config)
+            } else if let Some(first_boot_config) = FirstBootConfig::detect() {
+                App::new_for_first_boot(first_boot_config)
+            } else {
+                App::new().await
+            }
+        }
     };
 
     let result = run_app(&mut terminal, &mut app).await;

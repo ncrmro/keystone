@@ -13,7 +13,6 @@
   pandoc,
   polkit,
   cups,
-  sudo,
   systemd,
   python3Packages,
   agents-e2e,
@@ -33,7 +32,6 @@ writeShellApplication {
     pandoc
     polkit
     cups
-    sudo
     systemd
     python3Packages.weasyprint
   ];
