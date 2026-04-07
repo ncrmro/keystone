@@ -45,19 +45,18 @@ Options:
                         Default: all ~/.ssh/id_*.pub files.
   --build-only          Build the ISO but do not start the VM.
   --no-build            Skip the build step and boot an existing ISO.
+  --headless            No GUI window — poll for SSH in the background.
   -m, --memory MB       QEMU RAM in MB (default: $QEMU_MEM).
   -p, --port PORT       Host SSH port to forward (default: $SSH_PORT).
   -h, --help            Show this help.
 
-SSH key input:
-  File path  — starts with /, ~, or .  (one key per line)
-  Key string — starts with ssh-        (single key inline)
+By default the QEMU window opens (GUI mode) with serial output on the
+terminal. Use --headless to run without a window (SSH-only).
 
 Examples:
-  ./bin/test-iso
+  ./bin/test-iso                           # GUI + serial
+  ./bin/test-iso --headless                # no window, polls SSH
   ./bin/test-iso --ssh-key ~/.ssh/id_ed25519.pub
-  ./bin/test-iso -k ~/.ssh/id_ed25519.pub -k ~/.ssh/id_ed25519_sk.pub
-  ./bin/test-iso --ssh-key "ssh-ed25519 AAAA... user@host"
   ./bin/test-iso --build-only
 EOF
 }
@@ -67,6 +66,7 @@ EOF
 SSH_KEY_INPUTS=()
 BUILD=true
 BOOT=true
+HEADLESS=false
 
 # Admin identity — read from flake outputs (mkSystemFlake exposes these).
 ADMIN_USERNAME=""
@@ -85,6 +85,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-build)
             BUILD=false
+            shift
+            ;;
+        --headless)
+            HEADLESS=true
             shift
             ;;
         -m|--memory)
@@ -256,40 +260,49 @@ fi
 log_info "Starting QEMU with ISO: $(basename "$iso_path")"
 log_info "SSH port forwarding: localhost:$SSH_PORT → VM:22"
 echo >&2
-log_ok "Connect once the VM boots:"
+log_ok "SSH command:"
 log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
 echo >&2
-log_warn "Press Ctrl-C to stop the VM."
-echo >&2
 
-# Boot headless. QEMU runs in the background; we poll SSH until it's up.
-qemu-system-x86_64 \
-    -enable-kvm \
-    -m "$QEMU_MEM" \
-    -smp "$QEMU_CPUS" \
-    -bios "$ovmf_path" \
-    -cdrom "$iso_path" \
-    -nic "user,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22" \
-    -display none \
-    -boot d &
-QEMU_PID=$!
+QEMU_COMMON=(
+    -enable-kvm
+    -m "$QEMU_MEM"
+    -smp "$QEMU_CPUS"
+    -bios "$ovmf_path"
+    -cdrom "$iso_path"
+    -nic "user,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
+    -boot d
+)
 
-trap 'kill "$QEMU_PID" 2>/dev/null; exit 0' INT TERM
+if [[ "$HEADLESS" == "true" ]]; then
+    # ── headless: background QEMU, poll for SSH ──────────────────────────────
+    log_warn "Headless mode. Press Ctrl-C to stop the VM."
+    echo >&2
 
-log_info "Waiting for SSH on port $SSH_PORT (this takes ~60s)..."
-until ssh \
-        -p "$SSH_PORT" \
-        -o StrictHostKeyChecking=no \
-        -o ConnectTimeout=2 \
-        -o LogLevel=ERROR \
-        "${ADMIN_USERNAME}@localhost" \
-        exit 0 2>/dev/null; do
-    kill -0 "$QEMU_PID" 2>/dev/null || { log_error "QEMU exited unexpectedly."; exit 1; }
-    sleep 3
-done
+    qemu-system-x86_64 "${QEMU_COMMON[@]}" -display none &
+    QEMU_PID=$!
+    trap 'kill "$QEMU_PID" 2>/dev/null; exit 0' INT TERM
 
-log_ok "SSH is up!"
-log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
-echo >&2
-log_warn "VM is running (PID $QEMU_PID). Press Ctrl-C to shut it down."
-wait "$QEMU_PID"
+    log_info "Waiting for SSH on port $SSH_PORT (this takes ~60s)..."
+    until ssh \
+            -p "$SSH_PORT" \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=2 \
+            -o LogLevel=ERROR \
+            "${ADMIN_USERNAME}@localhost" \
+            exit 0 2>/dev/null; do
+        kill -0 "$QEMU_PID" 2>/dev/null || { log_error "QEMU exited unexpectedly."; exit 1; }
+        sleep 3
+    done
+
+    log_ok "SSH is up!"
+    log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+    echo >&2
+    log_warn "VM is running (PID $QEMU_PID). Press Ctrl-C to shut it down."
+    wait "$QEMU_PID"
+else
+    # ── GUI: QEMU window + serial on the terminal ───────────────────────────
+    log_warn "Close the QEMU window or Ctrl-C to stop."
+    echo >&2
+    exec qemu-system-x86_64 "${QEMU_COMMON[@]}" -serial stdio
+fi
