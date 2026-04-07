@@ -60,6 +60,8 @@ in
       # OpenCode - Open-source AI coding agent
       pkgs.keystone.opencode
 
+    ]
+    ++ optionals cfg.deepwork.enable [
       # DeepWork - workflow orchestration MCP server
       pkgs.keystone.deepwork
     ]
