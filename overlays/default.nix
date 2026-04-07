@@ -3,6 +3,7 @@
 # correctly when a consumer flake applies the overlay.
 {
   self,
+  crane,
   himalaya,
   calendula,
   cardamum,
@@ -59,6 +60,9 @@ let
   system = final.stdenv.hostPlatform.system;
 in
 {
+  # Expose crane library for Rust package builds — auto-resolved by callPackage
+  craneLib = crane.mkLib final;
+
   keystone = {
     zesh = final.callPackage zesh-src { };
     agent-coding-agent = final.callPackage agent-coding-agent-src { };
