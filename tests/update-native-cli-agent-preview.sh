@@ -16,8 +16,8 @@ cat > "$manifest_path" <<EOF
   "developmentMode": false,
   "repoCheckout": "$repo_root",
   "archetype": "keystone-system-host",
-  "resolvedCapabilities": ["ks", "project", "engineer", "product", "project-manager"],
-  "publishedCommands": ["ks", "ks.projects", "ks.engineer", "ks.product", "ks.pm"],
+  "resolvedCapabilities": ["ks", "assistant", "project", "engineer", "product", "project-manager"],
+  "publishedCommands": ["ks", "ks.assistant", "ks.projects", "ks.engineer", "ks.product", "ks.pm"],
   "repos": ["ncrmro/keystone"],
   "agents": {}
 }

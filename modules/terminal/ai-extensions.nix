@@ -23,6 +23,7 @@ let
   capabilityType = types.enum [
     "ks"
     "ks-dev"
+    "assistant"
     "notes"
     "project"
     "engineer"
@@ -33,6 +34,7 @@ let
 
   baseCapabilities = [
     "ks"
+    "assistant"
     "project"
   ];
 
@@ -49,6 +51,7 @@ let
   publishedCommandIds = [
     "ks"
   ]
+  ++ optionals (elem "assistant" resolvedCapabilities) [ "ks.assistant" ]
   ++ optionals (elem "notes" resolvedCapabilities) [ "ks.notes" ]
   ++ optionals (elem "project" resolvedCapabilities) [ "ks.projects" ]
   ++ optionals (elem "ks-dev" resolvedCapabilities) [ "ks.dev" ]
@@ -84,6 +87,9 @@ let
     "- Feature requests, bug reports, paper cuts, and missing Keystone capabilities: start `keystone_system/issue`."
     "- Keystone health checks and troubleshooting: start `keystone_system/doctor` when the user wants diagnosis rather than documentation."
   ]
+  ++ optionals (elem "assistant" resolvedCapabilities) [
+    "- Personal assistant requests (reservations, birthdays, calendar, photo memories): direct the user to `/ks.assistant` instead of handling directly."
+  ]
   ++ optionals (elem "notes" resolvedCapabilities) [
     "- Notes workflows (repair, inbox, init, setup): direct the user to `/ks.notes` instead of starting a notes workflow directly."
   ]
@@ -104,6 +110,7 @@ let
   ];
 
   ksCommandBody = renderTemplate ./agent-assets/ks.template.md;
+  ksAssistantCommandBody = builtins.readFile ./agent-assets/ks-assistant.template.md;
   ksDevCommandBody = renderTemplate ./agent-assets/ks-dev.template.md;
   ksNotesCommandBody = builtins.readFile ./agent-assets/ks-notes.template.md;
   ksProjectsCommandBody = builtins.readFile ./agent-assets/ks-projects.template.md;
@@ -121,8 +128,17 @@ let
       id = "ks";
       description = ksDescription;
       argumentHint = "<request>";
-      displayName = "KS Agent";
+      displayName = "KS System";
       body = ksCommandBody;
+    }
+  ]
+  ++ optionals (elem "assistant" resolvedCapabilities) [
+    {
+      id = "ks.assistant";
+      description = "Personal assistant — may start personal_assistant/reservation, personal_assistant/birthday, personal_assistant/calendar_prioritize, or personal_assistant/memory_search";
+      argumentHint = "<request>";
+      displayName = "KS Assistant";
+      body = ksAssistantCommandBody;
     }
   ]
   ++ optionals (elem "notes" resolvedCapabilities) [
@@ -415,6 +431,7 @@ let
     "task-ingest"
     "task-run"
     "ks"
+    "ks-pm"
   ];
 
   activeCodexSkillNames = [

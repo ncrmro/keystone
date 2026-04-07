@@ -143,7 +143,8 @@ EOF
 
 command_display_name() {
   case "$1" in
-    ks) printf '%s' "KS Assistant" ;;
+    ks) printf '%s' "KS System" ;;
+    ks.assistant) printf '%s' "KS Assistant" ;;
     ks.notes) printf '%s' "KS Notes" ;;
     ks.projects) printf '%s' "KS Projects" ;;
     ks.dev) printf '%s' "KS Development" ;;
@@ -157,7 +158,7 @@ command_display_name() {
 
 command_argument_hint() {
   case "$1" in
-    ks|ks.notes|ks.projects|ks.ea|ks.product|ks.pm) printf '%s' "<request>" ;;
+    ks|ks.assistant|ks.notes|ks.projects|ks.ea|ks.product|ks.pm) printf '%s' "<request>" ;;
     ks.dev|ks.engineer) printf '%s' "<goal>" ;;
     *) return 1 ;;
   esac
@@ -172,6 +173,7 @@ command_template_name() {
   fi
   case "$1" in
     ks) printf '%s' "ks.template.md" ;;
+    ks.assistant) printf '%s' "ks-assistant.template.md" ;;
     ks.notes) printf '%s' "ks-notes.template.md" ;;
     ks.projects) printf '%s' "ks-projects.template.md" ;;
     ks.dev) printf '%s' "ks-dev.template.md" ;;
@@ -194,6 +196,7 @@ command_description() {
       fi
       printf '%s' "$desc"
       ;;
+    ks.assistant) printf '%s' "Personal assistant — may start personal_assistant/reservation, personal_assistant/birthday, personal_assistant/calendar_prioritize, or personal_assistant/memory_search" ;;
     ks.notes) printf '%s' "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup" ;;
     ks.projects) printf '%s' "Project workflows — may start project/onboard, project/press_release, or project/success" ;;
     ks.dev) printf '%s' "Keystone development — may start keystone_system/develop, keystone_system/issue, keystone_system/convention, or keystone_system/doctor" ;;
@@ -233,7 +236,7 @@ colocate_skill_conventions() {
 
 normalize_command_id() {
   case "$1" in
-    ks) printf '%s' "ks.assistant" ;;
+    ks) printf '%s' "ks.system" ;;
     ks.pm) printf '%s' "ks.project-manager" ;;
     *) printf '%s' "$1" ;;
   esac
@@ -259,6 +262,10 @@ repos=()
 while IFS= read -r repo_name; do
   repos+=("$repo_name")
 done < <(json_get_lines '.repos')
+
+if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'assistant'; then
+  ks_allowed_routes_lines+=("- Personal assistant requests (reservations, birthdays, calendar, photo memories): direct the user to \`/ks.assistant\` instead of handling directly.")
+fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
   ks_allowed_routes_lines+=("- Notes workflows (repair, inbox, init, setup): direct the user to \`/ks.notes\` instead of starting a notes workflow directly.")
@@ -433,10 +440,8 @@ for command_file in ks.toml notes.toml projects.toml dev.toml deepwork.toml ks.e
   rm -f "$HOME/.gemini/commands/$command_file"
 done
 rm -rf "$HOME/.claude/skills/ks"
-rm -rf "$HOME/.claude/skills/ks-system"
 rm -rf "$HOME/.claude/skills/ks-pm"
 rm -rf "$HOME/.config/opencode/skills/ks"
-rm -rf "$HOME/.config/opencode/skills/ks-system"
 rm -rf "$HOME/.config/opencode/skills/ks-pm"
 
 for command_id in "${published_commands[@]}"; do
@@ -490,7 +495,7 @@ legacy_codex_skill_names=(
   notes-doctor notes-process_inbox notes-project notes-report portfolio-review
   project-onboard project-press_release project-success repo-doctor repo-setup
   research-deep research-quick task-ingest task-run
-  ks ks-system ks-pm
+  ks ks-pm
 )
 
 for skill_name in "${legacy_codex_skill_names[@]}"; do
