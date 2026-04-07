@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::components::build::BuildScreen;
 use crate::components::deploy::DeployScreen;
+use crate::components::doctor::DoctorScreen;
 use crate::components::first_boot::FirstBootScreen;
 use crate::components::host_detail::HostDetailScreen;
 use crate::components::hosts::HostsScreen;
@@ -12,6 +13,7 @@ use crate::components::secrets::SecretsScreen;
 use crate::components::security::SecurityScreen;
 use crate::components::services::ServicesScreen;
 use crate::components::template::CreateConfigScreen;
+use crate::components::update::UpdateScreen;
 use crate::components::welcome::WelcomeScreen;
 use crate::config::{AppConfig, KeystoneRepo};
 use crate::nix;
@@ -33,6 +35,8 @@ pub enum AppScreen {
     Secrets(SecretsScreen),
     Security(SecurityScreen),
     Services(ServicesScreen),
+    Update(UpdateScreen),
+    Doctor(DoctorScreen),
 }
 
 impl AppScreen {
@@ -52,6 +56,8 @@ impl AppScreen {
             AppScreen::Security(s) => Some(s),
             AppScreen::Services(s) => Some(s),
             AppScreen::FirstBoot(s) => Some(s),
+            AppScreen::Update(s) => Some(s),
+            AppScreen::Doctor(s) => Some(s),
         }
     }
 }
@@ -219,10 +225,12 @@ impl App {
                 self.current_screen = AppScreen::Services(ServicesScreen::new());
             }
             Screen::Update => {
-                // TODO: implement update screen
+                self.current_screen =
+                    AppScreen::Update(crate::components::update::UpdateScreen::new());
             }
             Screen::Doctor => {
-                // TODO: implement doctor screen
+                self.current_screen =
+                    AppScreen::Doctor(crate::components::doctor::DoctorScreen::new());
             }
         }
     }
