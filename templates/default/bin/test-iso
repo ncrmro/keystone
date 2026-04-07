@@ -270,8 +270,8 @@ QEMU_COMMON=(
     -smp "$QEMU_CPUS"
     -bios "$ovmf_path"
     -cdrom "$iso_path"
-    -nic "user,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
-    -boot d
+    -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
+    -device "virtio-net-pci,netdev=net0,romfile="
 )
 
 if [[ "$HEADLESS" == "true" ]]; then
