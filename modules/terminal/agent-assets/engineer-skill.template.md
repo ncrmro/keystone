@@ -28,8 +28,6 @@ Before starting implementation, review the relevant convention files
 
 - **engineer/implement** -- implement a feature, fix, or refactor with TDD and quality gates
 - **engineer/doctor** -- diagnose and fix engineering environment issues
-- **keystone_system/develop** -- keystone-specific development workflow (module changes, convention edits)
-- **keystone_system/issue** -- file a new issue for a bug, feature request, or paper cut
 
 ## Routing rules
 
@@ -37,8 +35,8 @@ Before starting implementation, review the relevant convention files
 - Code review requests --> read `code-reviewer.md`, then review directly
 - Architecture or design questions --> read `architect.md`, then answer directly or start `engineer/implement` for spec-driven work
 - Engineering environment issues --> `engineer/doctor`
-- Keystone module or convention changes --> `keystone_system/develop`
-- Filing issues for discovered problems --> `keystone_system/issue`
+- Keystone module or convention changes --> use `/ks.system` instead
+- Filing issues for discovered problems --> use `/ks.system` instead
 - If unclear, ask the user which workflow to run before starting
 
 ## How to start a workflow
