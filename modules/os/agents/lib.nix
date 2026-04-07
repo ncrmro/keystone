@@ -30,15 +30,7 @@ let
     let
       registryName = "agent-${name}";
     in
-    if keysCfg ? ${registryName} then
-      let
-        u = keysCfg.${registryName};
-        hostKeys = mapAttrsToList (_: h: h.publicKey) u.hosts;
-        hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
-      in
-      hostKeys ++ hwKeys
-    else
-      [ ];
+    if keysCfg ? ${registryName} then keysCfg.${registryName}.allKeys else [ ];
 
   # TODO: Re-evaluate agent ZFS home folders. Implementation needs to be reconciled with legacy setups.
   useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;

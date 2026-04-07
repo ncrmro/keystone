@@ -40,21 +40,13 @@ let
     in
     keysCfg.${username}.hardwareKeys.${keyname}.publicKey;
 
-  # All public keys for a user (all hosts + all hardware keys) from keystone.keys
-  allKeysFor =
-    username:
-    let
-      u = keysCfg.${username};
-      hostKeys = mapAttrsToList (_: h: h.publicKey) u.hosts;
-      hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
-    in
-    hostKeys ++ hwKeys;
-
   # Collect keys from wheel users via keystone.keys
   wheelUserKeys = concatLists (
     mapAttrsToList (
       username: u:
-      optionals (elem "wheel" u.extraGroups) (if keysCfg ? ${username} then allKeysFor username else [ ])
+      optionals (elem "wheel" u.extraGroups) (
+        if keysCfg ? ${username} then keysCfg.${username}.allKeys else [ ]
+      )
     ) osCfg.users
   );
 

@@ -21,10 +21,6 @@
 # This registry feeds: authorized_keys, git signing, git allowed_signers,
 # root SSH access, installer ISO keys, and Forgejo key registration.
 #
-# TODO: Add computed helpers as lib functions or _internal options:
-# - `adminKeys` — all keys for all wheel users (for root/zfs-sync authorized_keys)
-# - `rootKeys` — hardware-only keys for root (root should only accept hardware keys)
-# - Migrate root authorized_keys consumers to use hardware-only rootKeys
 {
   lib,
   config,
@@ -38,9 +34,27 @@ in
   options.keystone.keys = mkOption {
     type = types.attrsOf (
       types.submodule (
-        { name, ... }:
+        { name, config, ... }:
         {
           options = {
+            allKeys = mkOption {
+              type = types.listOf types.str;
+              readOnly = true;
+              description = "All SSH public keys for this user (host + hardware). Computed automatically.";
+            };
+
+            hostKeys = mkOption {
+              type = types.listOf types.str;
+              readOnly = true;
+              description = "Software host SSH public keys for this user. Computed automatically.";
+            };
+
+            hwKeys = mkOption {
+              type = types.listOf types.str;
+              readOnly = true;
+              description = "Hardware SSH public keys for this user. Computed automatically.";
+            };
+
             hosts = mkOption {
               type = types.attrsOf (
                 types.submodule {
@@ -79,6 +93,12 @@ in
               default = { };
               description = "Portable hardware keys (FIDO2/YubiKey). Work across all hosts, require physical touch.";
             };
+          };
+
+          config = {
+            hostKeys = mapAttrsToList (_: h: h.publicKey) config.hosts;
+            hwKeys = mapAttrsToList (_: h: h.publicKey) config.hardwareKeys;
+            allKeys = config.hostKeys ++ config.hwKeys;
           };
         }
       )

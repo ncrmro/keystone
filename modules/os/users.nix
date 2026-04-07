@@ -50,16 +50,6 @@ let
   # TODO: Re-evaluate ZFS home folder management. Current implementation can interfere with legacy setups.
   useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
 
-  # All public keys for a user (all hosts + all hardware keys)
-  allKeysFor =
-    username:
-    let
-      u = keysCfg.${username};
-      hostKeys = mapAttrsToList (_: h: h.publicKey) u.hosts;
-      hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
-    in
-    hostKeys ++ hwKeys;
-
   # Public keys valid on a specific host for a user
   # (that host's software key + all hardware keys)
   keysForUserOnHost =
@@ -67,9 +57,8 @@ let
     let
       u = keysCfg.${username};
       hostKey = optional (u.hosts ? ${hn}) u.hosts.${hn}.publicKey;
-      hwKeys = mapAttrsToList (_: h: h.publicKey) u.hardwareKeys;
     in
-    hostKey ++ hwKeys;
+    hostKey ++ u.hwKeys;
 
   screenshotUsers = filterAttrs (
     _: userCfg: userCfg.desktop.enable && userCfg.desktop.screenshotSync.enable
@@ -268,7 +257,7 @@ in
         initialPassword = userCfg.initialPassword;
         hashedPassword = userCfg.hashedPassword;
         # Read all keys from keystone.keys registry
-        openssh.authorizedKeys.keys = if keysCfg ? ${username} then allKeysFor username else [ ];
+        openssh.authorizedKeys.keys = if keysCfg ? ${username} then keysCfg.${username}.allKeys else [ ];
         shell = mkIf userCfg.terminal.enable pkgs.zsh;
       }) effectiveUsers;
 
@@ -389,7 +378,7 @@ in
                     userName = mkDefault userCfg.fullName;
                     userEmail = mkDefault userCfg.email;
                     # Bridge SSH public keys from keystone.keys for allowed_signers
-                    sshPublicKeys = mkDefault (if keysCfg ? ${username} then allKeysFor username else [ ]);
+                    sshPublicKeys = mkDefault (if keysCfg ? ${username} then keysCfg.${username}.allKeys else [ ]);
                     forgejo.enable = mkDefault (config.keystone.services.git.host != null);
                   };
 
