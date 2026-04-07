@@ -664,9 +664,12 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
     "source_ref" "$TASK_SOURCE_REF"
 
   TASK_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  log "  DEBUG: setting started_at"
   yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).started_at = \"$TASK_STARTED_AT\"" TASKS.yaml
+  log "  DEBUG: setting in_progress"
   yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"in_progress\"" TASKS.yaml
 
+  log "  DEBUG: building prompt (workflow=|$TASK_WORKFLOW|)"
   if [[ -n "$TASK_WORKFLOW" && "$TASK_WORKFLOW" != "null" && "$TASK_WORKFLOW" != "" ]]; then
     PROMPT="/deepwork $TASK_WORKFLOW
 
@@ -678,13 +681,18 @@ Description: $TASK_DESC"
 Task: $TASK_NAME
 Description: $TASK_DESC"
   fi
+  log "  DEBUG: prompt built (${#PROMPT} chars)"
 
+  log "  DEBUG: build_task_runtime_json"
   TASK_RUNTIME_JSON=$(build_task_runtime_json "$TASK_NAME")
+  log "  DEBUG: resolve_stage_runtime"
   EXECUTE_RUNTIME=$(resolve_stage_runtime "execute" "$TASK_RUNTIME_JSON")
+  log "  DEBUG: extracting provider/model"
   TASK_PROVIDER=$(echo "$EXECUTE_RUNTIME" | jq -r '.provider // ""')
   TASK_PROFILE=$(echo "$EXECUTE_RUNTIME" | jq -r '.profile // ""')
   TASK_MODEL=$(echo "$EXECUTE_RUNTIME" | jq -r '.model // ""')
 
+  log "  DEBUG: about to run_provider_prompt"
   set +o pipefail
   run_provider_prompt "execute" "$EXECUTE_RUNTIME" "$PROMPT" 2>&1 | tee "$TASK_LOG" >&2
   TASK_EXIT=${PIPESTATUS[0]}
