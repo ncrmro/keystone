@@ -10,6 +10,7 @@
 //! 5. **Done** — Prompt to remove USB and reboot
 
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -69,13 +70,10 @@ impl InstallerConfig {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
 
-        // Copy to writable location so we can inject disk selection later
-        let writable_dir = PathBuf::from("/tmp/keystone-install-config");
-        let effective_dir = if Self::copy_to_writable(config_dir, &writable_dir).is_ok() {
-            writable_dir
-        } else {
-            config_dir.to_path_buf()
-        };
+        // Copy to a fresh writable location so disk selection can inject
+        // the chosen device without being blocked by a stale root-owned temp dir.
+        let effective_dir =
+            Self::prepare_writable_copy(config_dir).unwrap_or_else(|_| config_dir.to_path_buf());
 
         // Parse storage type and disk device from configuration.nix
         let (storage_type, disk_device) =
@@ -100,6 +98,39 @@ impl InstallerConfig {
             std::fs::remove_dir_all(dst)?;
         }
         Self::copy_dir_recursive(src, dst)
+    }
+
+    /// Copy the embedded config tree into a fresh temp directory.
+    fn prepare_writable_copy(src: &Path) -> std::io::Result<PathBuf> {
+        let mut candidates = Vec::new();
+        let unique_suffix = format!(
+            "keystone-install-config-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+
+        if let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+            candidates.push(PathBuf::from(runtime_dir).join(&unique_suffix));
+        }
+        candidates.push(std::env::temp_dir().join(unique_suffix));
+
+        let mut last_error = None;
+        for dst in candidates {
+            match Self::copy_to_writable(src, &dst) {
+                Ok(()) => return Ok(dst),
+                Err(err) => last_error = Some(err),
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "Failed to create writable installer config copy",
+            )
+        }))
     }
 
     /// Recursively copy a directory tree.
@@ -1448,6 +1479,53 @@ mod tests {
         screen.phase = InstallPhase::DiskSelection;
         screen.go_back();
         assert_eq!(*screen.phase(), InstallPhase::Summary);
+    }
+
+    #[test]
+    fn test_select_disk_updates_writable_config_copy() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let config_dir = tempdir.path();
+        std::fs::write(config_dir.join("hostname"), "test-laptop\n").unwrap();
+        std::fs::create_dir_all(config_dir.join("hosts").join("test-laptop")).unwrap();
+        let hardware_nix = config_dir
+            .join("hosts")
+            .join("test-laptop")
+            .join("hardware.nix");
+        std::fs::write(
+            &hardware_nix,
+            r#"{ keystone.os.storage.devices = [ "__KEYSTONE_DISK__" ]; }"#,
+        )
+        .unwrap();
+
+        let config = InstallerConfig {
+            config_dir: config_dir.to_path_buf(),
+            hostname: "test-laptop".to_string(),
+            username: Some("testuser".to_string()),
+            github_username: None,
+            storage_type: Some("ext4".to_string()),
+            disk_device: None,
+        };
+
+        let mut screen = InstallScreen::new(config);
+        screen.phase = InstallPhase::DiskSelection;
+        screen.available_disks = vec![DiskEntry {
+            by_id_path: "/dev/disk/by-id/nvme-test".to_string(),
+            model: "Test Disk".to_string(),
+            size: "500G".to_string(),
+            transport: "nvme".to_string(),
+        }];
+
+        screen.select_disk();
+
+        assert_eq!(*screen.phase(), InstallPhase::Confirm);
+        assert_eq!(
+            screen.config().disk_device.as_deref(),
+            Some("/dev/disk/by-id/nvme-test")
+        );
+
+        let updated = std::fs::read_to_string(hardware_nix).unwrap();
+        assert!(updated.contains("/dev/disk/by-id/nvme-test"));
+        assert!(!updated.contains("__KEYSTONE_DISK__"));
     }
 
     #[test]
