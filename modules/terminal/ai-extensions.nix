@@ -49,7 +49,7 @@ let
   );
 
   publishedCommandIds = [
-    "ks"
+    "ks.system"
   ]
   ++ optionals (elem "assistant" resolvedCapabilities) [ "ks.assistant" ]
   ++ optionals (elem "notes" resolvedCapabilities) [ "ks.notes" ]
@@ -57,7 +57,7 @@ let
   ++ optionals (elem "ks-dev" resolvedCapabilities) [ "ks.dev" ]
   ++ optionals (elem "engineer" resolvedCapabilities) [ "ks.engineer" ]
   ++ optionals (elem "product" resolvedCapabilities) [ "ks.product" ]
-  ++ optionals (elem "project-manager" resolvedCapabilities) [ "ks.pm" ]
+  ++ optionals (elem "project-manager" resolvedCapabilities) [ "ks.project-manager" ]
   ++ optionals (elem "executive-assistant" resolvedCapabilities) [ "ks.ea" ];
 
   formatCapabilities =
@@ -120,12 +120,12 @@ let
   ksEaCommandBody = builtins.readFile ./agent-assets/ks-executive-assistant.template.md;
 
   ksDescription =
-    "Keystone assistant — may start keystone_system/issue or keystone_system/doctor"
+    "Keystone system — may start keystone_system/issue or keystone_system/doctor"
     + optionalString (elem "executive-assistant" resolvedCapabilities) ", or executive_assistant workflows";
 
   publishedCommands = [
     {
-      id = "ks";
+      id = "ks.system";
       description = ksDescription;
       argumentHint = "<request>";
       displayName = "KS System";
@@ -188,7 +188,7 @@ let
   ]
   ++ optionals (elem "project-manager" resolvedCapabilities) [
     {
-      id = "ks.pm";
+      id = "ks.project-manager";
       description = "Project management — task decomposition, tracking, and boards";
       argumentHint = "<request>";
       displayName = "KS Project Manager";
@@ -432,6 +432,7 @@ let
     "task-run"
     "ks"
     "ks-pm"
+    "ks-assistant"
   ];
 
   activeCodexSkillNames = [

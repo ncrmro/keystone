@@ -2,7 +2,7 @@
 
 Each skill loads domain-specific conventions and DeepWork workflows on demand.
 
-- **/ks.system** — Keystone assistant — may start keystone_system/issue or keystone_system/doctor
+- **/ks.system** — Keystone system — may start keystone_system/issue or keystone_system/doctor
 - **/ks.assistant** — Personal assistant — may start personal_assistant/reservation, personal_assistant/birthday, personal_assistant/calendar_prioritize, or personal_assistant/memory_search
 - **/ks.projects** — Project workflows — may start project/onboard, project/press_release, or project/success
 - **/ks.engineer** — Engineering — implementation, code review, architecture, and CI

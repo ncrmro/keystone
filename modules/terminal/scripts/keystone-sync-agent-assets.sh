@@ -143,7 +143,7 @@ EOF
 
 command_display_name() {
   case "$1" in
-    ks) printf '%s' "KS System" ;;
+    ks.system) printf '%s' "KS System" ;;
     ks.assistant) printf '%s' "KS Assistant" ;;
     ks.notes) printf '%s' "KS Notes" ;;
     ks.projects) printf '%s' "KS Projects" ;;
@@ -151,14 +151,14 @@ command_display_name() {
     ks.ea) printf '%s' "KS Executive Assistant" ;;
     ks.engineer) printf '%s' "KS Engineer" ;;
     ks.product) printf '%s' "KS Product" ;;
-    ks.pm) printf '%s' "KS Project Manager" ;;
+    ks.project-manager) printf '%s' "KS Project Manager" ;;
     *) return 1 ;;
   esac
 }
 
 command_argument_hint() {
   case "$1" in
-    ks|ks.assistant|ks.notes|ks.projects|ks.ea|ks.product|ks.pm) printf '%s' "<request>" ;;
+    ks.system|ks.assistant|ks.notes|ks.projects|ks.ea|ks.product|ks.project-manager) printf '%s' "<request>" ;;
     ks.dev|ks.engineer) printf '%s' "<goal>" ;;
     *) return 1 ;;
   esac
@@ -172,7 +172,7 @@ command_template_name() {
     return
   fi
   case "$1" in
-    ks) printf '%s' "ks.template.md" ;;
+    ks.system) printf '%s' "ks.template.md" ;;
     ks.assistant) printf '%s' "ks-assistant.template.md" ;;
     ks.notes) printf '%s' "ks-notes.template.md" ;;
     ks.projects) printf '%s' "ks-projects.template.md" ;;
@@ -189,8 +189,8 @@ command_description() {
     return
   fi
   case "$1" in
-    ks)
-      local desc="Keystone assistant — may start keystone_system/issue or keystone_system/doctor"
+    ks.system)
+      local desc="Keystone system — may start keystone_system/issue or keystone_system/doctor"
       if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'executive-assistant'; then
         desc+=", or executive_assistant workflows"
       fi
@@ -209,7 +209,7 @@ command_skill_key() {
   case "$1" in
     ks.engineer) printf '%s' "engineer" ;;
     ks.product) printf '%s' "product" ;;
-    ks.pm) printf '%s' "project-manager" ;;
+    ks.project-manager) printf '%s' "project-manager" ;;
     ks.ea) printf '%s' "executive-assistant" ;;
     *) printf '' ;;
   esac
@@ -232,14 +232,6 @@ colocate_skill_conventions() {
     src_file="$conventions_dir/roles/${conv_name}.md"
     [[ -f "$src_file" ]] && write_file "${target_dir}/${conv_name}.md" "$(cat "$src_file")"
   done < <(yq -r ".skills.\"$skill_key\".colocated_roles[]?" "$archetypes_file")
-}
-
-normalize_command_id() {
-  case "$1" in
-    ks) printf '%s' "ks.system" ;;
-    ks.pm) printf '%s' "ks.project-manager" ;;
-    *) printf '%s' "$1" ;;
-  esac
 }
 
 ks_allowed_routes_lines=(
@@ -347,7 +339,7 @@ EOF
 
 for command_id in "${published_commands[@]}"; do
   cmd_description="$(command_description "$command_id")"
-  printf -- '- **/%s** — %s\n' "$(normalize_command_id "$command_id")" "$cmd_description" >> "$global_agents_tmp"
+  printf -- '- **/%s** — %s\n' "$command_id" "$cmd_description" >> "$global_agents_tmp"
 done
 
 cat <<'EOF' >> "$global_agents_tmp"
@@ -441,15 +433,17 @@ for command_file in ks.toml notes.toml projects.toml dev.toml deepwork.toml ks.e
 done
 rm -rf "$HOME/.claude/skills/ks"
 rm -rf "$HOME/.claude/skills/ks-pm"
+rm -rf "$HOME/.claude/skills/ks-assistant"
 rm -rf "$HOME/.config/opencode/skills/ks"
 rm -rf "$HOME/.config/opencode/skills/ks-pm"
+rm -rf "$HOME/.config/opencode/skills/ks-assistant"
 
 for command_id in "${published_commands[@]}"; do
   description="$(command_description "$command_id")"
   display_name="$(command_display_name "$command_id")"
   template_name="$(command_template_name "$command_id")"
   command_body="$(render_template "$templates_dir/$template_name")"
-  skill_name="$(printf '%s' "$(normalize_command_id "$command_id")" | tr '.' '-')"
+  skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
 
   # Skills are the canonical format — all CLIs with skill support get them
   ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"
@@ -507,7 +501,7 @@ for command_id in "${published_commands[@]}"; do
   display_name="$(command_display_name "$command_id")"
   template_name="$(command_template_name "$command_id")"
   command_body="$(render_template "$templates_dir/$template_name")"
-  skill_name="$(codex_skill_name "$(normalize_command_id "$command_id")")"
+  skill_name="$(codex_skill_name "$command_id")"
   skill_body="$(render_codex_skill_body "$command_body" "$skill_name")"
   skill_md="$(render_skill_md "$skill_name" "$description" "$skill_body")"
 
