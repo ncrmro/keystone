@@ -7,13 +7,38 @@ description: Generate a Keystone installer ISO with SSH keys for remote installa
 
 Generate a Keystone installer ISO with SSH keys for remote installation.
 
-## Quick Build
+## Config repo (mkSystemFlake)
+
+Flakes built with `mkSystemFlake` automatically produce an installer ISO. Add your SSH
+public keys to the `owner` block and build:
+
+```nix
+# flake.nix
+keystone.lib.mkSystemFlake {
+  owner = {
+    name = "Your Name";
+    username = "admin";
+    email = "admin@example.com";
+    sshKeys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host"
+    ];
+  };
+  # ...
+};
+```
 
 ```bash
-# Clone and build
-git clone https://github.com/yourusername/keystone
-cd keystone
+nix build .#packages.x86_64-linux.iso -o installer-iso
+```
 
+The ISO includes the admin's terminal environment (helix, zsh, starship), SSH access
+with the declared keys, and the Keystone TUI installer.
+
+## Keystone repo (build-iso)
+
+From the keystone repo itself, use the `build-iso` command:
+
+```bash
 # Build without SSH keys
 ./bin/build-iso
 
@@ -24,39 +49,22 @@ cd keystone
 ./bin/build-iso --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host"
 ```
 
-## SSH Key Options
+The `--ssh-key` option accepts a file path (`~/.ssh/id_ed25519.pub`) or an inline key
+string.
 
-The `--ssh-key` option accepts either:
+## Validate in a VM
 
-### File Path
-
-```bash
-# File paths (starts with /, ~, or .)
-./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
-./bin/build-iso --ssh-key /home/user/.ssh/authorized_keys
-./bin/build-iso --ssh-key ./my-keys.txt
-```
-
-### Direct Key String
+Test the ISO before flashing to hardware:
 
 ```bash
-# SSH key string directly
-./bin/build-iso --ssh-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host"
-./bin/build-iso --ssh-key "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD... user@host"
+# UEFI boot with QEMU (requires KVM and OVMF)
+qemu-system-x86_64 -m 4096 -smp 2 -enable-kvm \
+  -bios $(nix build nixpkgs#OVMF.fd --print-out-paths --no-link)/FV/OVMF.fd \
+  -cdrom installer-iso/iso/*.iso
 ```
 
-## Get Your SSH Key
-
-```bash
-# Ed25519 (recommended)
-cat ~/.ssh/id_ed25519.pub
-
-# RSA
-cat ~/.ssh/id_rsa.pub
-
-# Generate if needed
-ssh-keygen -t ed25519 -C "your-email@example.com"
-```
+The VM boots to the Keystone TUI installer on the graphical console. SSH is available
+at the VM's DHCP address if keys were configured.
 
 ## Write to USB
 
@@ -64,47 +72,28 @@ ssh-keygen -t ed25519 -C "your-email@example.com"
 # Find USB device
 lsblk
 
-# Write ISO
-sudo dd if=result/iso/*.iso of=/dev/sdX bs=4M status=progress
-sync
+# Write ISO (WARNING: erases all data on target device)
+sudo dd if=installer-iso/iso/*.iso of=/dev/sdX bs=4M status=progress oflag=sync
 ```
-
-⚠️ **Warning**: `dd` will erase all data on target device.
 
 ## Use the ISO
 
-1. Boot from USB
-2. System auto-configures: SSH, DHCP, tools
+1. Boot from USB (UEFI)
+2. System auto-configures: SSH, DHCP, networking
 3. Get IP: `ip addr show`
 4. Connect: `ssh root@<ip-address>`
+5. Install: `nixos-anywhere --flake .#hostname root@<ip-address>`
 
 ## Features
 
-- SSH with your keys
-- DHCP networking
-- Essential tools (git, vim, parted, etc.)
-- ZFS support
+- Terminal environment (helix, zsh, starship) when built via `mkSystemFlake`
+- SSH with your keys (public key auth only)
+- DHCP networking via NetworkManager
+- ZFS, disko, cryptsetup, sbctl, and TPM tools pre-installed
+- Keystone TUI installer on tty1
 - nixos-anywhere compatible
 
-## Advanced Usage
+## Platform setup
 
-```bash
-./bin/build-iso --help              # Show all options
-./bin/build-iso -o custom-dir       # Custom output directory
-
-# Direct Nix commands (no SSH keys)
-nix build .#iso                     # Build ISO directly
-```
-
-## Platform Setup
-
-Need to install Nix first? See **[Build Platforms](build-platforms.md)** for setup instructions on Ubuntu, macOS, Windows, and GitHub Actions.
-
-## File Format
-
-When using a file path, SSH keys file should contain one public key per line:
-
-```
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@workstation
-ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD... admin@server
-```
+Need to install Nix first? See [Build Platforms](build-platforms.md) for setup on
+Ubuntu, macOS, Windows, and GitHub Actions.

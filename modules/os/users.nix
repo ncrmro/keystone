@@ -19,12 +19,13 @@ with lib;
 let
   osCfg = config.keystone.os;
   cfg = osCfg.users;
+  adminUsername = osCfg.adminUsername;
   legacyAdminCfg = if cfg ? admin then cfg.admin else null;
   effectiveAdminCfg = if osCfg.admin != null then osCfg.admin else legacyAdminCfg;
   effectiveUsers =
     (removeAttrs cfg [ "admin" ])
     // optionalAttrs (effectiveAdminCfg != null) {
-      admin = effectiveAdminCfg // {
+      ${adminUsername} = effectiveAdminCfg // {
         extraGroups = unique ([ "wheel" ] ++ effectiveAdminCfg.extraGroups);
       };
     };
@@ -364,49 +365,55 @@ in
             users = mapAttrs (
               username: userCfg:
               { pkgs, ... }:
-              {
-                home.username = username;
-                home.homeDirectory = "/home/${username}";
-                home.stateVersion = config.system.stateVersion;
+              # NOTE: use lib.recursiveUpdate (not //) to merge terminal and
+              # desktop configs. Both live under `keystone.*`, so a shallow //
+              # merge causes `keystone.desktop` to replace `keystone.terminal`.
+              lib.recursiveUpdate
+                {
+                  home.username = username;
+                  home.homeDirectory = "/home/${username}";
+                  home.stateVersion = config.system.stateVersion;
 
-                # Terminal development environment
-                # NOTE: Do NOT wrap this in mkIf — mkIf inside function-type
-                # home-manager.users definitions silently fails to merge when
-                # another module also defines the same user. Use mkDefault on
-                # enable instead; the terminal module's own config = mkIf cfg.enable
-                # handles gating.
-                keystone.terminal = {
-                  enable = mkDefault userCfg.terminal.enable;
-                  aiExtensions.capabilities = mkDefault userCfg.capabilities;
+                  # Terminal development environment
+                  # NOTE: Do NOT wrap this in mkIf — mkIf inside function-type
+                  # home-manager.users definitions silently fails to merge when
+                  # another module also defines the same user. Use mkDefault on
+                  # enable instead; the terminal module's own config = mkIf cfg.enable
+                  # handles gating.
+                  keystone.terminal = {
+                    enable = mkDefault userCfg.terminal.enable;
+                    aiExtensions.capabilities = mkDefault userCfg.capabilities;
 
-                  # development and repos are no longer bridged here;
-                  # they are inherited globally from keystone.development
-                  # and keystone.repos which are now shared options.
+                    # development and repos are no longer bridged here;
+                    # they are inherited globally from keystone.development
+                    # and keystone.repos which are now shared options.
 
-                  git = {
-                    enable = mkDefault (userCfg.terminal.enable && userCfg.email != null);
-                    userName = mkDefault userCfg.fullName;
-                    userEmail = mkDefault userCfg.email;
-                    # Bridge SSH public keys from keystone.keys for allowed_signers
-                    sshPublicKeys = mkDefault (if keysCfg ? ${username} then allKeysFor username else [ ]);
-                    forgejo.enable = mkDefault (config.keystone.services.git.host != null);
+                    git = {
+                      enable = mkDefault (userCfg.terminal.enable && userCfg.email != null);
+                      userName = mkDefault userCfg.fullName;
+                      userEmail = mkDefault userCfg.email;
+                      # Bridge SSH public keys from keystone.keys for allowed_signers
+                      sshPublicKeys = mkDefault (if keysCfg ? ${username} then allKeysFor username else [ ]);
+                      forgejo.enable = mkDefault (config.keystone.services.git.host != null);
+                    };
+
+                    sshAutoLoad.enable = mkDefault userCfg.sshAutoLoad.enable;
                   };
-
-                  sshAutoLoad.enable = mkDefault userCfg.sshAutoLoad.enable;
-                };
-              }
-              // optionalAttrs hasDesktopModule {
-                # Desktop configuration (Hyprland) — only set when desktop NixOS module is imported
-                keystone.desktop = mkIf userCfg.desktop.enable {
-                  enable = mkDefault true;
-                  uhk.enable = mkDefault config.keystone.hardware.uhk.enable;
-                  hyprland = {
-                    enable = mkDefault true;
-                    modifierKey = mkDefault userCfg.desktop.hyprland.modifierKey;
-                    capslockAsControl = mkDefault userCfg.desktop.hyprland.capslockAsControl;
-                  };
-                };
-              }
+                }
+                (
+                  optionalAttrs hasDesktopModule {
+                    # Desktop configuration (Hyprland) — only set when desktop NixOS module is imported
+                    keystone.desktop = mkIf userCfg.desktop.enable {
+                      enable = mkDefault true;
+                      uhk.enable = mkDefault config.keystone.hardware.uhk.enable;
+                      hyprland = {
+                        enable = mkDefault true;
+                        modifierKey = mkDefault userCfg.desktop.hyprland.modifierKey;
+                        capslockAsControl = mkDefault userCfg.desktop.hyprland.capslockAsControl;
+                      };
+                    };
+                  }
+                )
             ) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) effectiveUsers);
           };
     })

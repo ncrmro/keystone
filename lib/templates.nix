@@ -20,6 +20,7 @@ let
       timeZone ? "UTC",
       storage,
       admin,
+      adminUsername ? "admin",
       users,
       secureBoot ? {
         enable = true;
@@ -39,16 +40,22 @@ let
       },
       config ? { },
     }:
-    {
+    lib.recursiveUpdate {
       networking.hostName = hostname;
       system.stateVersion = stateVersion;
       time.timeZone = timeZone;
       boot.loader.systemd-boot.enable = lib.mkDefault true;
 
+      # Apply keystone overlay so pkgs.keystone.* packages are available
+      nixpkgs.overlays = [ self.overlays.default ];
+
       keystone.os = {
         enable = true;
+        # Tailscale requires hosts registry — template configs don't have one
+        tailscale.enable = lib.mkDefault false;
         inherit
           admin
+          adminUsername
           users
           storage
           secureBoot
@@ -62,8 +69,7 @@ let
         "root"
         "@wheel"
       ];
-    }
-    // config;
+    } config;
 
   mkLinuxHost =
     {
@@ -73,6 +79,7 @@ let
       timeZone ? "UTC",
       storage,
       admin,
+      adminUsername ? "admin",
       users ? { },
       desktop ? false,
       secureBoot ? {
@@ -110,6 +117,7 @@ let
             timeZone
             storage
             admin
+            adminUsername
             users
             secureBoot
             tpm
@@ -258,11 +266,104 @@ let
     else
       spec;
 
+  # Build an installer ISO with the admin's terminal environment (helix, zsh,
+  # starship) and SSH keys for remote access. Boots to the admin user on tty1.
+  # TUI installer is experimental — auto-enabled only when keystone.experimental = true.
+  #
+  # Imports iso-image.nix + base.nix + minimal.nix directly (skipping
+  # installation-device.nix which hardcodes a "nixos" user and auto-login).
+  mkInstallerIsoForFlake =
+    {
+      system ? "x86_64-linux",
+      sshKeys ? [ ],
+      adminUsername ? "admin",
+      adminName ? "System Administrator",
+      adminEmail ? "admin@example.com",
+    }:
+    (nixpkgs.lib.nixosSystem {
+      inherit system;
+      modules = [
+        "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+        self.nixosModules.isoInstaller
+        self.nixosModules.experimental
+        home-manager.nixosModules.home-manager
+        {
+          # Force kernel 6.12 — must override minimal CD default
+          boot.kernelPackages = lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
+
+          # Admin user alongside the default "nixos" user from installation-device.nix
+          users.users.${adminUsername} = {
+            isNormalUser = true;
+            extraGroups = [
+              "wheel"
+              "networkmanager"
+              "video"
+            ];
+            initialHashedPassword = "";
+          };
+
+          # Auto-login as admin instead of "nixos"
+          services.getty.autologinUser = lib.mkForce adminUsername;
+          nix.settings.trusted-users = [
+            "root"
+            adminUsername
+          ];
+
+          keystone.installer.sshKeys = sshKeys;
+          # TUI is experimental — default off, auto-enabled by keystone.experimental
+          keystone.installer.tui.enable = lib.mkDefault false;
+          nixpkgs.overlays = [ self.overlays.default ];
+
+          # Terminal environment for root and admin users (helix, zsh, starship)
+          home-manager.useGlobalPkgs = true;
+          home-manager.useUserPackages = true;
+          home-manager.backupFileExtension = "backup";
+          home-manager.sharedModules = [
+            self.homeModules.terminal
+            self.homeModules.notes
+          ];
+          home-manager.users.root = {
+            home.stateVersion = "25.05";
+            keystone.terminal = {
+              enable = true;
+              ai.enable = false;
+              sandbox.enable = false;
+              git = {
+                userName = adminName;
+                userEmail = adminEmail;
+              };
+            };
+            keystone.projects.enable = false;
+            keystone.notes.enable = false;
+          };
+          home-manager.users.${adminUsername} = {
+            home.stateVersion = "25.05";
+            home.username = adminUsername;
+            home.homeDirectory = "/home/${adminUsername}";
+            keystone.terminal = {
+              enable = true;
+              ai.enable = false;
+              sandbox.enable = false;
+              git = {
+                userName = adminName;
+                userEmail = adminEmail;
+              };
+            };
+            keystone.projects.enable = false;
+            keystone.notes.enable = false;
+          };
+
+          programs.zsh.enable = true;
+        }
+      ];
+    }).config.system.build.isoImage;
+
 in
 rec {
   mkHost = mkLinuxHost;
   mkSharedLinuxHost = mkSharedLinuxHostHelper;
   mkSharedMacosHome = mkSharedMacosHomeHelper;
+  inherit mkInstallerIsoForFlake;
 
   mkLaptop =
     {
@@ -376,7 +477,7 @@ rec {
 
   mkSystemFlake =
     {
-      owner,
+      admin,
       defaults ? { },
       shared ? { },
       hostsRoot ? null,
@@ -410,16 +511,20 @@ rec {
         };
       };
 
-      sharedAdmin =
-        shared.admin or {
-          fullName = owner.name;
-          email = owner.email or "admin@example.com";
-          initialPassword = "changeme";
-        };
+      # admin is the single source of truth — strip template-only fields
+      # (sshKeys) to produce a valid userSubmodule config.
+      # username is passed through to keystone.os.adminUsername.
+      adminUsername = admin.username or "admin";
+      adminSshKeys = admin.sshKeys or [ ];
+      sharedAdmin = builtins.removeAttrs admin [
+        "username"
+        "sshKeys"
+      ];
       sharedUsers = shared.users or { };
       sharedSystemModules = shared.systemModules or [ ];
       sharedUserModules = shared.userModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
+      defaultLinuxSystem = defaults.system or "x86_64-linux";
 
       hostFilePath =
         name: file:
@@ -466,6 +571,7 @@ rec {
                   kindDefaults.system;
               timeZone = if hostCfg ? timeZone then hostCfg.timeZone else sharedTimeZone;
               admin = if hostCfg ? admin then hostCfg.admin else sharedAdmin;
+              inherit adminUsername;
               users = sharedUsers // (hostCfg.users or { });
               nixosModules = kindDefaults.nixosModules ++ (hostCfg.nixosModules or [ ]);
               config = lib.recursiveUpdate mergedConfig {
@@ -503,7 +609,7 @@ rec {
             ])
             // {
               system = if hostCfg ? system then hostCfg.system else kindDefaults.system;
-              username = if hostCfg ? username then hostCfg.username else owner.username or "admin";
+              username = if hostCfg ? username then hostCfg.username else adminUsername;
               fullName = if hostCfg ? fullName then hostCfg.fullName else sharedAdmin.fullName;
               email = if hostCfg ? email then hostCfg.email else sharedAdmin.email;
               timeZone = if hostCfg ? timeZone then hostCfg.timeZone else sharedTimeZone;
@@ -518,5 +624,19 @@ rec {
     {
       nixosConfigurations = lib.mapAttrs mkLinuxInventoryHost linuxHosts;
       homeConfigurations = lib.mapAttrs mkDarwinInventoryHost darwinHosts;
+      # Expose admin identity so tooling (e.g. bin/test-iso) can read it without
+      # parsing flake.nix directly.
+      inherit adminUsername;
+      adminEmail = sharedAdmin.email;
+      adminName = sharedAdmin.fullName;
+    }
+    // lib.optionalAttrs (linuxHosts != { }) {
+      packages.${defaultLinuxSystem}.iso = mkInstallerIsoForFlake {
+        system = defaultLinuxSystem;
+        sshKeys = adminSshKeys;
+        inherit adminUsername;
+        adminName = sharedAdmin.fullName;
+        adminEmail = sharedAdmin.email;
+      };
     };
 }

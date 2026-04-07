@@ -87,8 +87,8 @@ in
 
     tui.enable = mkOption {
       type = types.bool;
-      default = true;
-      description = "Whether the installer ISO should include and auto-start the Keystone TUI.";
+      default = false;
+      description = "Whether the installer ISO should include and auto-start the Keystone TUI (experimental).";
     };
 
     isoImage = mkOption {
@@ -99,6 +99,9 @@ in
   };
 
   config = mkIf osCfg.enable {
+    # Auto-enable TUI when experimental features are on
+    keystone.os.installer.tui.enable = mkDefault config.keystone.experimental;
+
     # Auto-collect from wheel users + hardware root keys unless overridden
     keystone.os.installer.sshKeys = mkDefault autoCollectedKeys;
 

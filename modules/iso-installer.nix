@@ -23,6 +23,18 @@ let
 in
 {
   options.keystone.installer = {
+    edition = lib.mkOption {
+      type = lib.types.str;
+      default = "server";
+      description = "ISO edition name used in the filename (e.g. server, desktop).";
+    };
+
+    version = lib.mkOption {
+      type = lib.types.str;
+      default = "0.0.0";
+      description = "Keystone installer version embedded in the ISO filename.";
+    };
+
     sshKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -31,8 +43,8 @@ in
 
     tui.enable = lib.mkOption {
       type = lib.types.bool;
-      default = true;
-      description = "Whether to install and auto-start the Keystone installer TUI on the ISO.";
+      default = false;
+      description = "Whether to install and auto-start the Keystone installer TUI on the ISO (experimental).";
     };
   };
 
@@ -57,9 +69,7 @@ in
       openssh.authorizedKeys.keys = installerCfg.sshKeys;
     };
 
-    # Enable networking via NetworkManager (for TUI installer network detection)
-    # mkForce needed — installation-cd-minimal.nix enables wpa_supplicant which
-    # conflicts with NetworkManager's own wireless management
+    # Disable wpa_supplicant — NetworkManager handles wireless
     networking = {
       wireless.enable = lib.mkForce false;
     };
@@ -186,8 +196,8 @@ in
     documentation.enable = false;
     documentation.nixos.enable = false;
 
-    # Set the ISO label and boot splash image
-    image.fileName = lib.mkDefault "keystone-installer.iso";
+    # Set the ISO name, label, and boot splash image
+    image.baseName = lib.mkForce "keystone-${installerCfg.edition}-installer-${installerCfg.version}";
     isoImage.volumeID = lib.mkDefault "KEYSTONE";
     isoImage.efiSplashImage = ../assets/installer-splash.png;
     isoImage.splashImage = ../assets/installer-splash.png;

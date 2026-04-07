@@ -539,13 +539,23 @@ in
     };
 
     # User configuration
+    adminUsername = mkOption {
+      type = types.str;
+      default = "admin";
+      description = ''
+        Unix username for the administrator account. Defaults to "admin".
+        Set via admin.username in mkSystemFlake.
+      '';
+      example = "noah";
+    };
+
     admin = mkOption {
       type = types.nullOr (userSubmodule);
       default = null;
       description = ''
         Canonical default administrator for this Keystone multi-host system.
-        Keystone synthesizes the normal `admin` account from this definition and
-        grants administrator privileges automatically.
+        Keystone synthesizes the user account named by adminUsername from this
+        definition and grants administrator privileges automatically.
       '';
       example = literalExpression ''
         {
