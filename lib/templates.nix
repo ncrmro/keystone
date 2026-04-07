@@ -291,12 +291,6 @@ let
           # Force kernel 6.12 — must override minimal CD default
           boot.kernelPackages = lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
 
-          # Serial console for QEMU headless testing
-          boot.kernelParams = [
-            "console=ttyS0,115200n8"
-            "console=tty0"
-          ];
-
           # Admin user alongside the default "nixos" user from installation-device.nix
           users.users.${adminUsername} = {
             isNormalUser = true;

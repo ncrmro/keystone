@@ -301,8 +301,8 @@ if [[ "$HEADLESS" == "true" ]]; then
     log_warn "VM is running (PID $QEMU_PID). Press Ctrl-C to shut it down."
     wait "$QEMU_PID"
 else
-    # ── GUI: QEMU window + serial on the terminal ───────────────────────────
-    log_warn "Close the QEMU window or Ctrl-C to stop."
+    # ── GUI: QEMU window ────────────────────────────────────────────────────
+    log_warn "Close the QEMU window to stop."
     echo >&2
-    exec qemu-system-x86_64 "${QEMU_COMMON[@]}" -serial stdio
+    exec qemu-system-x86_64 "${QEMU_COMMON[@]}"
 fi
