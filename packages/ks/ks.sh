@@ -1740,20 +1740,11 @@ deploy_unlocked_current_state() {
     host_hostname=$(echo "$host_json" | jq -r '.hostname')
 
     if [[ "$host_hostname" == "$current_hostname" ]]; then
-      local old_sw new_sw old_kernel new_kernel old_initrd new_initrd etc_changed=false
-      old_sw=$(readlink -f /run/current-system/sw 2>/dev/null || echo "old")
-      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
-      old_kernel=$(readlink -f /run/current-system/kernel 2>/dev/null || echo "old")
-      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
-      old_initrd=$(readlink -f /run/current-system/initrd 2>/dev/null || echo "old")
-      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
+      local current_system
+      current_system=$(readlink -f /run/current-system 2>/dev/null || echo "none")
 
-      if ! diff -r -q --exclude="per-user" "$(readlink -f /run/current-system/etc)" "$(readlink -f "$path/etc")" >/dev/null 2>&1; then
-        etc_changed=true
-      fi
-
-      if [[ "$old_sw" == "$new_sw" && "$old_kernel" == "$new_kernel" && "$old_initrd" == "$new_initrd" && "$etc_changed" == false ]]; then
-        echo "OS core unchanged. Activating fast home-manager switch locally..."
+      if [[ "$current_system" == "$(readlink -f "$path")" ]]; then
+        echo "System closure unchanged. Activating fast home-manager switch locally..."
         deploy_home_manager_only "$repo_root" "$host"
         run_root_command nix-env -p /nix/var/nix/profiles/system --set "$path"
         echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
@@ -1779,23 +1770,13 @@ deploy_unlocked_current_state() {
       echo "Deploying $host to root@$resolved ($mode)..."
       nix copy --to "ssh://root@$resolved" "$path"
 
-      local new_sw new_kernel new_initrd check_cmd remote_status
-      new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
-      new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
-      new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
-
+      local check_cmd remote_status
       check_cmd="
-        old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
-        old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
-        old_initrd=\$(readlink -f /run/current-system/initrd 2>/dev/null || echo 'old')
-        if [[ \"\$old_sw\" == \"$new_sw\" && \"\$old_kernel\" == \"$new_kernel\" && \"\$old_initrd\" == \"$new_initrd\" ]]; then
-          if ! diff -r -q --exclude='per-user' \"\$(readlink -f /run/current-system/etc)\" \"\$(readlink -f $path/etc)\" >/dev/null 2>&1; then
-            echo 'OS'
-          else
-            echo 'HM'
-          fi
-        else
+        current_system=\$(readlink -f /run/current-system 2>/dev/null || echo 'none')
+        if [[ \"\$current_system\" != \"$(readlink -f "$path")\" ]]; then
           echo 'OS'
+        else
+          echo 'HM'
         fi
       "
       # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
@@ -2276,17 +2257,11 @@ cmd_update() {
       new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
       
       check_cmd="
-        old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
-        old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
-        old_initrd=\$(readlink -f /run/current-system/initrd 2>/dev/null || echo 'old')
-        if [[ \"\$old_sw\" == \"$new_sw\" && \"\$old_kernel\" == \"$new_kernel\" && \"\$old_initrd\" == \"$new_initrd\" ]]; then
-          if ! diff -r -q --exclude='per-user' \"\$(readlink -f /run/current-system/etc)\" \"\$(readlink -f $path/etc)\" >/dev/null 2>&1; then
-            echo 'OS'
-          else
-            echo 'HM'
-          fi
-        else
+        current_system=\$(readlink -f /run/current-system 2>/dev/null || echo 'none')
+        if [[ \"\$current_system\" != \"$(readlink -f "$path")\" ]]; then
           echo 'OS'
+        else
+          echo 'HM'
         fi
       "
       # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
