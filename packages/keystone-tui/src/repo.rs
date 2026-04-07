@@ -230,13 +230,13 @@ pub async fn local_override_args(repo_root: &Path) -> Result<Vec<String>> {
             continue;
         }
 
-        let name = key.rsplit('/').next().unwrap_or(key);
+        let repo_name = key.rsplit('/').next().unwrap_or(key);
 
         let candidates = [
             home.join(".keystone").join("repos").join(key),
-            repo_root.join(".repos").join(name),
-            repo_root.join(".submodules").join(name),
-            repo_root.join(name),
+            repo_root.join(".repos").join(repo_name),
+            repo_root.join(".submodules").join(repo_name),
+            repo_root.join(repo_name),
         ];
 
         for candidate in &candidates {
@@ -486,7 +486,7 @@ pub async fn create_new_repo_from_config(
         let tree = repo.find_tree(tree_id).context("Failed to find tree")?;
 
         // Create initial commit
-        let sig = git2::Signature::now("Keystone TUI", "keystone-tui@localhost")
+        let sig = git2::Signature::now("Keystone", "ks@localhost")
             .context("Failed to create signature")?;
         repo.commit(
             Some("HEAD"),

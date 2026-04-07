@@ -3,7 +3,7 @@
 //! Tests the CLI subcommand routing, JSON output, and repo discovery
 //! without requiring nix or an actual nixos-config repo.
 
-use keystone_tui::cmd;
+use ks::cmd;
 
 #[test]
 fn json_output_envelope_ok() {

@@ -35,14 +35,14 @@ async fn pull_managed_repos(repo_root: &Path) -> Result<()> {
         }
 
         let home = home::home_dir().unwrap_or_default();
-        let name = key.rsplit('/').next().unwrap_or(key);
+        let repo_name = key.rsplit('/').next().unwrap_or(key);
 
         // Find existing checkout
         let candidates = [
             home.join(".keystone").join("repos").join(key),
-            repo_root.join(".repos").join(name),
-            repo_root.join(".submodules").join(name),
-            repo_root.join(name),
+            repo_root.join(".repos").join(repo_name),
+            repo_root.join(".submodules").join(repo_name),
+            repo_root.join(repo_name),
         ];
 
         let target = candidates
@@ -53,30 +53,36 @@ async fn pull_managed_repos(repo_root: &Path) -> Result<()> {
 
         if target.join(".git").exists() {
             eprintln!("Pulling {}...", key);
-            let status = tokio::process::Command::new("git")
+            let output = tokio::process::Command::new("git")
                 .args(["-C"])
                 .arg(&target)
                 .args(["pull", "--ff-only"])
-                .status()
+                .output()
                 .await;
-            if let Ok(s) = status {
-                if !s.success() {
-                    eprintln!("Warning: failed to pull {}", key);
+            match output {
+                Ok(o) if !o.status.success() => {
+                    let stderr = String::from_utf8_lossy(&o.stderr);
+                    eprintln!("Warning: failed to pull {}: {}", key, stderr.trim());
                 }
+                Err(e) => eprintln!("Warning: failed to pull {}: {}", key, e),
+                _ => {}
             }
         } else {
             eprintln!("Cloning {}...", key);
             let parent = target.parent().unwrap_or(Path::new("."));
             let _ = tokio::fs::create_dir_all(parent).await;
-            let status = tokio::process::Command::new("git")
+            let output = tokio::process::Command::new("git")
                 .args(["clone", url])
                 .arg(&target)
-                .status()
+                .output()
                 .await;
-            if let Ok(s) = status {
-                if !s.success() {
-                    eprintln!("Warning: failed to clone {}", key);
+            match output {
+                Ok(o) if !o.status.success() => {
+                    let stderr = String::from_utf8_lossy(&o.stderr);
+                    eprintln!("Warning: failed to clone {}: {}", key, stderr.trim());
                 }
+                Err(e) => eprintln!("Warning: failed to clone {}: {}", key, e),
+                _ => {}
             }
         }
     }
@@ -157,12 +163,12 @@ async fn verify_all_repos_lock_ready(repo_root: &Path) -> Result<()> {
 
     let home = home::home_dir().unwrap_or_default();
     for (key, _value) in obj {
-        let name = key.rsplit('/').next().unwrap_or(key);
+        let repo_name = key.rsplit('/').next().unwrap_or(key);
         let candidates = [
             home.join(".keystone").join("repos").join(key),
-            repo_root.join(".repos").join(name),
-            repo_root.join(".submodules").join(name),
-            repo_root.join(name),
+            repo_root.join(".repos").join(repo_name),
+            repo_root.join(".submodules").join(repo_name),
+            repo_root.join(repo_name),
         ];
         if let Some(path) = candidates.iter().find(|p| p.is_dir()) {
             verify_repo_lock_ready(path, key).await?;
@@ -174,7 +180,7 @@ async fn verify_all_repos_lock_ready(repo_root: &Path) -> Result<()> {
 /// Deploy a built system closure to a local host.
 async fn deploy_local(host: &str, mode: &str, store_path: &str) -> Result<()> {
     eprintln!("Deploying {} locally ({} mode)...", host, mode);
-    let _ = tokio::process::Command::new("sudo")
+    let status = tokio::process::Command::new("sudo")
         .args([
             "nix-env",
             "--profile",
@@ -183,14 +189,25 @@ async fn deploy_local(host: &str, mode: &str, store_path: &str) -> Result<()> {
         ])
         .arg(store_path)
         .status()
-        .await;
+        .await
+        .context("Failed to run nix-env --set")?;
+
+    if !status.success() {
+        anyhow::bail!("Failed to set system profile for {}", host);
+    }
 
     let switch_cmd = format!("{}/bin/switch-to-configuration", store_path);
-    let _ = tokio::process::Command::new("sudo")
+    let status = tokio::process::Command::new("sudo")
         .arg(&switch_cmd)
         .arg(mode)
         .status()
-        .await;
+        .await
+        .context("Failed to switch configuration")?;
+
+    if !status.success() {
+        anyhow::bail!("Failed to {} for {}", mode, host);
+    }
+
     Ok(())
 }
 

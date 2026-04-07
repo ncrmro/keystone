@@ -139,7 +139,7 @@ impl App {
         if flake_info.version == nix::ConfigVersion::V0 {
             screen.set_warning(
                 "This config uses legacy format (v0.0.0). \
-                 Regenerate with `keystone-tui template` to upgrade to v1.0.0."
+                 Regenerate with `ks template` to upgrade to v1.0.0."
                     .to_string(),
             );
         }

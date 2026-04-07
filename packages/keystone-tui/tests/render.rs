@@ -5,14 +5,12 @@
 
 use ratatui::{backend::TestBackend, Terminal};
 
-use keystone_tui::components::build::{BuildMessage, BuildResult, BuildScreen};
-use keystone_tui::components::host_detail::HostDetailScreen;
-use keystone_tui::components::hosts::HostsScreen;
-use keystone_tui::components::welcome::WelcomeScreen;
-use keystone_tui::nix::HostInfo;
-use keystone_tui::system::{
-    CpuHistory, DiskInfo, HostStatus, SystemMetrics, TailscalePeer, TempReading,
-};
+use ks::components::build::{BuildMessage, BuildResult, BuildScreen};
+use ks::components::host_detail::HostDetailScreen;
+use ks::components::hosts::HostsScreen;
+use ks::components::welcome::WelcomeScreen;
+use ks::nix::HostInfo;
+use ks::system::{CpuHistory, DiskInfo, HostStatus, SystemMetrics, TailscalePeer, TempReading};
 use tokio::sync::mpsc;
 
 /// Render a screen to a string using TestBackend.

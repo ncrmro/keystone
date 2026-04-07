@@ -1,12 +1,12 @@
 [package]
-name = "keystone-tui"
+name = "ks"
 version = "0.1.0"
 edition = "2021"
-description = "TUI for Keystone NixOS infrastructure configuration and management"
+description = "Keystone CLI/TUI — NixOS infrastructure configuration and management"
 license = "MIT"
 
 [[bin]]
-name = "keystone-tui"
+name = "ks"
 path = "src/main.rs"
 
 [dependencies]

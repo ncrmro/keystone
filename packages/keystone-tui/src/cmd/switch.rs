@@ -166,10 +166,9 @@ async fn deploy_unlocked(repo_root: &Path, mode: &str, hosts: &[String]) -> Resu
             let status = tokio::process::Command::new("ssh")
                 .arg(format!("root@{}", ssh_target))
                 .arg(format!(
-                    "nix-env --profile /nix/var/nix/profiles/system --set {} && {}",
-                    store_path, switch_cmd
+                    "nix-env --profile /nix/var/nix/profiles/system --set {} && {} {}",
+                    store_path, switch_cmd, mode
                 ))
-                .arg(mode)
                 .status()
                 .await
                 .context("Failed to switch on remote host")?;

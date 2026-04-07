@@ -51,7 +51,7 @@
 
       # Container image with Gemini + Rust toolchain
       agentImage = pkgs.dockerTools.buildLayeredImage {
-        name = "keystone-tui-agent";
+        name = "ks-agent";
         tag = "latest";
 
         contents = with pkgs; [
@@ -122,7 +122,7 @@
         run-gemini = pkgs.writeShellScriptBin "run-gemini" ''
           set -e
 
-          IMAGE_NAME="keystone-tui-agent:latest"
+          IMAGE_NAME="ks-agent:latest"
           WORKSPACE="''${1:-$(pwd)}"
           PROMPT="''${2:-}"
 

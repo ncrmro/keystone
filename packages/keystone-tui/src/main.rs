@@ -1,8 +1,8 @@
-//! Keystone TUI
+//! Keystone CLI/TUI
 //!
-//! Terminal user interface for Keystone NixOS infrastructure configuration
-//! and management. Handles repo setup, secrets, key enrollment, host
-//! configuration, building, and git operations.
+//! Terminal user interface and CLI for Keystone NixOS infrastructure
+//! configuration and management. Handles repo setup, secrets, key enrollment,
+//! host configuration, building, and git operations.
 
 #![allow(dead_code)]
 #![warn(clippy::correctness)]

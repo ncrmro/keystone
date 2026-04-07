@@ -6,8 +6,8 @@ This crate is a **TUI + CLI + JSON** tool following the **ratatui Component
 Architecture**. The same binary serves three modes:
 
 - **TUI mode** (default): Full-screen ratatui terminal interface
-- **CLI mode** (`keystone-tui <subcommand>`): Line-based interactive prompts
-- **JSON mode** (`keystone-tui <subcommand> --json`): Structured stdin/stdout for
+- **CLI mode** (`ks <subcommand>`): Line-based interactive prompts
+- **JSON mode** (`ks <subcommand> --json`): Structured stdin/stdout for
   scripting and desktop menu integration (Walker, Elephant)
 
 ### Component Architecture

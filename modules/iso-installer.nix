@@ -18,7 +18,7 @@
   ...
 }:
 let
-  keystone-tui = pkgs.callPackage ../packages/keystone-tui { };
+  ks = pkgs.callPackage ../packages/keystone-tui { };
   installerCfg = config.keystone.installer;
 in
 {
@@ -66,7 +66,7 @@ in
 
     # Include TUI installer and tools for installation
     environment.systemPackages =
-      (lib.optionals installerCfg.tui.enable [ keystone-tui ])
+      (lib.optionals installerCfg.tui.enable [ ks ])
       ++ (with pkgs; [
         git
         curl
@@ -139,7 +139,7 @@ in
         # Clear any residual boot output and restore cursor before TUI starts.
         # Uses /bin/sh because systemd ExecStartPre doesn't support shell redirects.
         ExecStartPre = "/bin/sh -c '${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1'";
-        ExecStart = "${keystone-tui}/bin/keystone-tui";
+        ExecStart = "${ks}/bin/ks";
         Restart = "on-failure";
         RestartSec = "5s";
         StandardInput = "tty";

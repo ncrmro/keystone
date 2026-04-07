@@ -6,10 +6,10 @@
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 
-use keystone_tui::action::{Action, Screen};
-use keystone_tui::app::{App, AppScreen};
-use keystone_tui::components::hosts::HostsScreen;
-use keystone_tui::nix::HostInfo;
+use ks::action::{Action, Screen};
+use ks::app::{App, AppScreen};
+use ks::components::hosts::HostsScreen;
+use ks::nix::HostInfo;
 
 /// Helper to create a key press Event.
 fn key_event(code: KeyCode) -> Event {
@@ -74,9 +74,8 @@ fn test_hosts_to_detail_and_back() {
         Some(Action::NavigateTo(Screen::HostDetail(host))) => {
             assert_eq!(host.name, "laptop");
             // Manually transition
-            app.current_screen = AppScreen::HostDetail(
-                keystone_tui::components::host_detail::HostDetailScreen::new(*host),
-            );
+            app.current_screen =
+                AppScreen::HostDetail(ks::components::host_detail::HostDetailScreen::new(*host));
         }
         other => panic!("Expected NavigateTo(HostDetail), got {:?}", other),
     }
@@ -164,15 +163,15 @@ fn test_quit_from_any_screen() {
 
     // Quit from HostDetail
     let mut app = App::new_for_test();
-    app.current_screen = AppScreen::HostDetail(
-        keystone_tui::components::host_detail::HostDetailScreen::new(HostInfo {
+    app.current_screen = AppScreen::HostDetail(ks::components::host_detail::HostDetailScreen::new(
+        HostInfo {
             name: "host".to_string(),
             system: None,
             keystone_modules: vec![],
             config_files: vec![],
             metadata: None,
-        }),
-    );
+        },
+    ));
     let action = app
         .current_screen
         .as_component_mut()
