@@ -283,45 +283,21 @@ let
     (nixpkgs.lib.nixosSystem {
       inherit system;
       modules = [
-        # ISO image infrastructure (replaces installation-cd-minimal.nix to
-        # avoid the hardcoded "nixos" user from installation-device.nix)
-        "${nixpkgs}/nixos/modules/installer/cd-dvd/iso-image.nix"
-        "${nixpkgs}/nixos/modules/profiles/base.nix"
-        "${nixpkgs}/nixos/modules/profiles/minimal.nix"
-        # Hardware detection and installer channel (from installation-device.nix)
-        "${nixpkgs}/nixos/modules/installer/scan/detected.nix"
-        "${nixpkgs}/nixos/modules/installer/scan/not-detected.nix"
-        "${nixpkgs}/nixos/modules/installer/cd-dvd/channel.nix"
-
-        # fileSystems must reference config.lib.isoFileSystems from inside a module
-        (
-          { config, ... }:
-          {
-            fileSystems = lib.mkImageMediaOverride config.lib.isoFileSystems;
-          }
-        )
-
+        "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
         self.nixosModules.isoInstaller
         self.nixosModules.experimental
         home-manager.nixosModules.home-manager
         {
-          # Force kernel 6.12
+          # Force kernel 6.12 — must override minimal CD default
           boot.kernelPackages = lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
 
-          # From installation-cd-base.nix
-          hardware.enableAllHardware = true;
-          isoImage.makeEfiBootable = true;
-          isoImage.makeUsbBootable = true;
-          isoImage.edition = lib.mkOverride 500 "minimal";
-          boot.loader.grub.memtest86.enable = true;
-          swapDevices = lib.mkImageMediaOverride [ ];
-          boot.initrd.luks.devices = lib.mkImageMediaOverride { };
-          programs.git.enable = lib.mkDefault true;
-          documentation.man.enable = lib.mkOverride 500 true;
-          documentation.doc.enable = lib.mkOverride 500 true;
-          fonts.fontconfig.enable = lib.mkOverride 500 false;
+          # Serial console for QEMU headless testing
+          boot.kernelParams = [
+            "console=ttyS0,115200n8"
+            "console=tty0"
+          ];
 
-          # Admin user (replaces the hardcoded "nixos" user)
+          # Admin user alongside the default "nixos" user from installation-device.nix
           users.users.${adminUsername} = {
             isNormalUser = true;
             extraGroups = [
@@ -331,34 +307,17 @@ let
             ];
             initialHashedPassword = "";
           };
-          users.users.root.initialHashedPassword = "";
 
-          security.polkit.enable = true;
-          security.sudo = {
-            enable = lib.mkDefault true;
-            wheelNeedsPassword = lib.mkImageMediaOverride false;
-          };
-
-          # Auto-login as the admin user
-          services.getty.autologinUser = adminUsername;
+          # Auto-login as admin instead of "nixos"
+          services.getty.autologinUser = lib.mkForce adminUsername;
           nix.settings.trusted-users = [
             "root"
             adminUsername
           ];
 
-          boot.swraid.enable = true;
-          boot.swraid.mdadmConf = "PROGRAM ${nixpkgs.legacyPackages.${system}.coreutils}/bin/true";
-          networking.firewall.logRefusedConnections = lib.mkDefault false;
-
           keystone.installer.sshKeys = sshKeys;
           # TUI is experimental — default off, auto-enabled by keystone.experimental
           keystone.installer.tui.enable = lib.mkDefault false;
-
-          # Serial console — required for QEMU -serial output and headless VM testing
-          boot.kernelParams = [
-            "console=ttyS0,115200n8"
-            "console=tty0"
-          ];
           nixpkgs.overlays = [ self.overlays.default ];
 
           # Terminal environment for root and admin users (helix, zsh, starship)
