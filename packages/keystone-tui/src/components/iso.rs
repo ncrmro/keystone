@@ -875,7 +875,7 @@ mod tests {
 
     #[test]
     fn test_find_iso_file_in_result_iso_dir() {
-        let tmp = std::env::temp_dir().join("ks-test-iso");
+        let tmp = std::env::temp_dir().join("keystone-tui-test-iso");
         let iso_dir = tmp.join("result").join("iso");
         std::fs::create_dir_all(&iso_dir).unwrap();
         let iso_file = iso_dir.join("nixos-minimal-26.05pre-git-x86_64-linux.iso");
@@ -890,7 +890,7 @@ mod tests {
 
     #[test]
     fn test_find_iso_file_returns_none_without_result() {
-        let tmp = std::env::temp_dir().join("ks-test-no-result");
+        let tmp = std::env::temp_dir().join("keystone-tui-test-no-result");
         let _ = std::fs::remove_dir_all(&tmp);
         let found = IsoScreen::find_iso_file(&tmp);
         assert!(found.is_none());

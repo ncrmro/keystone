@@ -6,11 +6,6 @@ use serde::Serialize;
 pub use crate::components::template::run::execute as run_template;
 pub use crate::components::template::types::{TemplateParams, TemplateResult};
 
-pub mod build;
-pub mod doctor;
-pub mod switch;
-pub mod update;
-
 /// Standard JSON output envelope for all commands.
 #[derive(Debug, Serialize)]
 pub struct JsonOutput<T: Serialize> {

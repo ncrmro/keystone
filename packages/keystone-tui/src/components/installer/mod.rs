@@ -10,7 +10,7 @@
 //! - The user's SSH public keys (for remote access during install)
 //! - The host's NixOS configuration (flake.nix + hosts/<name>/)
 //! - NetworkManager for wired+wireless connectivity
-//! - The ks installer which runs disko + nixos-install
+//! - The keystone-tui installer which runs disko + nixos-install
 //!
 //! Future:
 //! - WiFi setup screen during install

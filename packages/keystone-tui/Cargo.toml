@@ -1,12 +1,12 @@
 [package]
-name = "ks"
+name = "keystone-tui"
 version = "0.1.0"
 edition = "2021"
-description = "Keystone CLI/TUI — NixOS infrastructure configuration and management"
+description = "TUI for Keystone NixOS infrastructure configuration and management"
 license = "MIT"
 
 [[bin]]
-name = "ks"
+name = "keystone-tui"
 path = "src/main.rs"
 
 [dependencies]
@@ -52,7 +52,6 @@ serde_json = "1"
 # Error handling
 anyhow = "1"
 thiserror = "2"
-hostname = "0.4.2"
 
 [dev-dependencies]
 insta = "1"

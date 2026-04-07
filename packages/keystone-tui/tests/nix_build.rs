@@ -8,7 +8,9 @@
 //! cargo test config_builds -- --ignored      # full build + ISO (minutes)
 //! ```
 
-use ks::template::{GenerateConfig, MachineType, RemoteUnlockConfig, StorageType, UserConfig};
+use keystone_tui::template::{
+    GenerateConfig, MachineType, RemoteUnlockConfig, StorageType, UserConfig,
+};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -119,15 +121,15 @@ fn test_prebaked_iso_evaluates() {
     let hostname = &config.hostname;
 
     // Generate the target machine's config files
-    let target_flake = ks::template::generate_flake_nix(&config).replace(
+    let target_flake = keystone_tui::template::generate_flake_nix(&config).replace(
         "keystone.url = \"github:ncrmro/keystone\"",
         &format!("keystone.url = \"path:{}\"", local_root.display()),
     );
-    let target_config = ks::template::generate_configuration_nix(&config);
-    let target_hardware = ks::template::generate_hardware_nix(&config);
+    let target_config = keystone_tui::template::generate_configuration_nix(&config);
+    let target_hardware = keystone_tui::template::generate_hardware_nix(&config);
 
     // Generate the ISO flake that wraps the config
-    let iso_flake = ks::template::generate_iso_flake_nix(&config).replace(
+    let iso_flake = keystone_tui::template::generate_iso_flake_nix(&config).replace(
         "url = \"github:ncrmro/keystone\"",
         &format!("url = \"path:{}\"", local_root.display()),
     );
@@ -185,15 +187,15 @@ fn test_prebaked_iso_builds() {
     let hostname = &config.hostname;
 
     // Generate the target machine's config files
-    let target_flake = ks::template::generate_flake_nix(&config).replace(
+    let target_flake = keystone_tui::template::generate_flake_nix(&config).replace(
         "keystone.url = \"github:ncrmro/keystone\"",
         &format!("keystone.url = \"path:{}\"", local_root.display()),
     );
-    let target_config = ks::template::generate_configuration_nix(&config);
-    let target_hardware = ks::template::generate_hardware_nix(&config);
+    let target_config = keystone_tui::template::generate_configuration_nix(&config);
+    let target_hardware = keystone_tui::template::generate_hardware_nix(&config);
 
     // Generate the ISO flake that wraps the config
-    let iso_flake = ks::template::generate_iso_flake_nix(&config).replace(
+    let iso_flake = keystone_tui::template::generate_iso_flake_nix(&config).replace(
         "url = \"github:ncrmro/keystone\"",
         &format!("url = \"path:{}\"", local_root.display()),
     );
@@ -320,9 +322,9 @@ fn write_generated_config(
 ) -> tempfile::TempDir {
     let config = make_config(hostname, machine_type, storage_type);
 
-    let flake_nix = ks::template::generate_flake_nix(&config);
-    let configuration_nix = ks::template::generate_configuration_nix(&config);
-    let hardware_nix = ks::template::generate_hardware_nix(&config);
+    let flake_nix = keystone_tui::template::generate_flake_nix(&config);
+    let configuration_nix = keystone_tui::template::generate_configuration_nix(&config);
+    let hardware_nix = keystone_tui::template::generate_hardware_nix(&config);
 
     // Point at the local repo so we test uncommitted module changes instead
     // of whatever is on GitHub.

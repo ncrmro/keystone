@@ -1,8 +1,8 @@
-//! Keystone CLI/TUI
+//! Keystone TUI
 //!
-//! Terminal user interface and CLI for Keystone NixOS infrastructure
-//! configuration and management. Handles repo setup, secrets, key enrollment,
-//! host configuration, building, and git operations.
+//! Terminal user interface for Keystone NixOS infrastructure configuration
+//! and management. Handles repo setup, secrets, key enrollment, host
+//! configuration, building, and git operations.
 
 #![allow(dead_code)]
 #![warn(clippy::correctness)]
@@ -54,22 +54,6 @@ async fn main() -> Result<()> {
                 output,
                 json,
             } => run_template_command(github_username, output, json).await,
-            Command::Build { lock, hosts, json } => {
-                run_build_command(hosts.as_deref(), lock, json).await
-            }
-            Command::Switch { boot, hosts, json } => {
-                run_switch_command(hosts.as_deref(), boot, json).await
-            }
-            Command::Update {
-                debug: _,
-                dev,
-                boot,
-                pull,
-                lock: _,
-                hosts,
-                json,
-            } => run_update_command(hosts.as_deref(), dev, boot, pull, json).await,
-            Command::Doctor { json } => run_doctor_command(json).await,
         };
     }
 
@@ -285,134 +269,6 @@ async fn run_template_command(
                 for file in &result.files {
                     println!("  {}/{}", result.output_dir.display(), file);
                 }
-            }
-            Ok(())
-        }
-        Err(e) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&cmd::JsonError::new(e.to_string()))?
-                );
-                Ok(())
-            } else {
-                Err(e)
-            }
-        }
-    }
-}
-
-/// Run the `build` subcommand.
-async fn run_build_command(hosts: Option<&str>, lock: bool, json: bool) -> Result<()> {
-    match cmd::build::execute(hosts, lock).await {
-        Ok(result) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&cmd::JsonOutput::ok(&result))?
-                );
-            } else {
-                let mode = if result.lock {
-                    "full system"
-                } else {
-                    "home-manager"
-                };
-                println!("Build complete ({}) for: {}", mode, result.hosts.join(", "));
-            }
-            Ok(())
-        }
-        Err(e) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&cmd::JsonError::new(e.to_string()))?
-                );
-                Ok(())
-            } else {
-                Err(e)
-            }
-        }
-    }
-}
-
-/// Run the `switch` subcommand.
-async fn run_switch_command(hosts: Option<&str>, boot: bool, json: bool) -> Result<()> {
-    match cmd::switch::execute(hosts, boot).await {
-        Ok(result) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&cmd::JsonOutput::ok(&result))?
-                );
-            } else {
-                println!("Switch complete for: {}", result.hosts.join(", "));
-            }
-            Ok(())
-        }
-        Err(e) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&cmd::JsonError::new(e.to_string()))?
-                );
-                Ok(())
-            } else {
-                Err(e)
-            }
-        }
-    }
-}
-
-/// Run the `update` subcommand.
-async fn run_update_command(
-    hosts: Option<&str>,
-    dev: bool,
-    boot: bool,
-    pull: bool,
-    json: bool,
-) -> Result<()> {
-    match cmd::update::execute(hosts, dev, boot, pull).await {
-        Ok(result) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&cmd::JsonOutput::ok(&result))?
-                );
-            } else {
-                let mode_label = if result.dev { "dev" } else { "lock" };
-                println!(
-                    "Update complete ({} mode) for: {}",
-                    mode_label,
-                    result.hosts.join(", ")
-                );
-            }
-            Ok(())
-        }
-        Err(e) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&cmd::JsonError::new(e.to_string()))?
-                );
-                Ok(())
-            } else {
-                Err(e)
-            }
-        }
-    }
-}
-
-/// Run the `doctor` subcommand.
-async fn run_doctor_command(json: bool) -> Result<()> {
-    match cmd::doctor::execute().await {
-        Ok(report) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&cmd::JsonOutput::ok(&report))?
-                );
-            } else {
-                print!("{}", report.markdown);
             }
             Ok(())
         }

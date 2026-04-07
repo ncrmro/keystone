@@ -11,7 +11,7 @@ pub async fn fetch_ssh_keys(username: &str) -> Result<Vec<String>> {
 
     let response = reqwest::Client::new()
         .get(&url)
-        .header("User-Agent", "ks")
+        .header("User-Agent", "keystone-tui")
         .send()
         .await?;
 
@@ -37,7 +37,7 @@ pub async fn fetch_user_name(username: &str) -> String {
     let url = format!("https://api.github.com/users/{}", username);
     let resp = reqwest::Client::new()
         .get(&url)
-        .header("User-Agent", "ks")
+        .header("User-Agent", "keystone-tui")
         .send()
         .await;
 

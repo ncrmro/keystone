@@ -1,6 +1,8 @@
 //! Tests for Nix configuration generation with mkSystemFlake template.
 
-use ks::template::{GenerateConfig, MachineType, RemoteUnlockConfig, StorageType, UserConfig};
+use keystone_tui::template::{
+    GenerateConfig, MachineType, RemoteUnlockConfig, StorageType, UserConfig,
+};
 
 fn test_config() -> GenerateConfig {
     GenerateConfig {
@@ -28,7 +30,7 @@ fn test_config() -> GenerateConfig {
 #[test]
 fn test_flake_uses_mksystemflake() {
     let config = test_config();
-    let flake = ks::template::generate_flake_nix(&config);
+    let flake = keystone_tui::template::generate_flake_nix(&config);
 
     assert!(
         flake.contains("keystone.lib.mkSystemFlake"),
@@ -52,7 +54,7 @@ fn test_flake_contains_owner() {
         ..test_config()
     };
 
-    let flake = ks::template::generate_flake_nix(&config);
+    let flake = keystone_tui::template::generate_flake_nix(&config);
     assert!(flake.contains(r#"name = "Noah""#));
     assert!(flake.contains(r#"email = "noah@example.com""#));
     assert!(flake.contains(r#"username = "admin""#));
@@ -61,7 +63,7 @@ fn test_flake_contains_owner() {
 #[test]
 fn test_hardware_nix_contains_storage_config() {
     let config = test_config();
-    let hardware = ks::template::generate_hardware_nix(&config);
+    let hardware = keystone_tui::template::generate_hardware_nix(&config);
 
     assert!(
         hardware.contains("/dev/disk/by-id/nvme-test"),
@@ -87,7 +89,7 @@ fn test_laptop_kind_in_flake() {
         ..test_config()
     };
 
-    let flake = ks::template::generate_flake_nix(&config);
+    let flake = keystone_tui::template::generate_flake_nix(&config);
     assert!(
         flake.contains(r#"kind = "laptop""#),
         "laptop config should have kind = laptop"

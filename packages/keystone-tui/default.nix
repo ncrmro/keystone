@@ -7,7 +7,7 @@
   cmake,
 }:
 rustPlatform.buildRustPackage {
-  pname = "ks";
+  pname = "keystone-tui";
   version = "0.1.0";
 
   src = ./.;
@@ -26,10 +26,10 @@ rustPlatform.buildRustPackage {
   # Let libgit2-sys vendor its own libgit2 to avoid version mismatches
 
   meta = with lib; {
-    description = "Keystone CLI/TUI — NixOS infrastructure configuration and management";
+    description = "TUI for Keystone NixOS infrastructure configuration and management";
     homepage = "https://github.com/ncrmro/keystone";
     license = licenses.mit;
     maintainers = [ ];
-    mainProgram = "ks";
+    mainProgram = "keystone-tui";
   };
 }
