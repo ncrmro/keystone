@@ -9,6 +9,28 @@ description: Share Nix builds across multiple NixOS machines to avoid redundant 
 
 With multiple NixOS machines (workstations, laptops, NAS, VPS), each rebuilds many of the same derivations independently. A kernel update on one machine means every other machine rebuilds the same kernel from source. The goal: **build once, share everywhere**.
 
+## Default Keystone Cache
+
+Keystone systems trust the public `ks-systems` Cachix cache by default. No extra
+host configuration is required to pull from it:
+
+```nix
+keystone.os.enable = true;
+```
+
+To disable that default on a specific host:
+
+```nix
+keystone.os.binaryCaches.ksSystems.enable = false;
+```
+
+The default `ks-systems` cache is additive. You can still layer a self-hosted Attic
+cache on top for private or deployment-specific artifacts.
+
+GitHub Actions can read from this public cache without credentials. If you want CI to
+publish new paths, put `CACHIX_AUTH_TOKEN` on a protected environment such as
+`release` and only assign that environment to the publishing workflow job.
+
 ## Approaches Considered
 
 ### Harmonia (current)

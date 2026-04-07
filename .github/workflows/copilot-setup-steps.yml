@@ -22,6 +22,10 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+      - name: Configure Cachix
+        uses: cachix/cachix-action@v15
+        with:
+          name: ks-systems
       # Validate flake syntax and configuration correctness
       # This catches basic errors like missing inputs or invalid Nix expressions
       - name: Check flake
