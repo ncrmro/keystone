@@ -438,6 +438,9 @@
           agentctl-regression = import ./tests/module/agentctl-regression.nix {
             inherit pkgs;
           };
+          binary-cache-client-merge = import ./tests/module/binary-cache-client-merge.nix {
+            inherit pkgs lib self;
+          };
           zellij-tab-prompt = import ./tests/module/zellij-tab-prompt.nix {
             inherit
               pkgs

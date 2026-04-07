@@ -66,12 +66,12 @@ in
           message = "keystone.binaryCache.push requires age.secrets.\"attic-push-token\" to be declared.";
         };
 
-    nix.settings = {
+    nix.settings.substituters = mkAfter [
       # Append cacheName because nix probes <url>/nix-cache-info, and attic
       # serves that endpoint at /<cache>/nix-cache-info (not at the root).
-      substituters = [ "${cfg.url}/${cfg.push.cacheName}" ];
-      trusted-public-keys = mkIf (cfg.publicKey != null) [ cfg.publicKey ];
-    };
+      "${cfg.url}/${cfg.push.cacheName}"
+    ];
+    nix.settings.trusted-public-keys = mkIf (cfg.publicKey != null) (mkAfter [ cfg.publicKey ]);
 
     environment.systemPackages = mkIf cfg.push.enable [ pkgs.attic-client ];
 
