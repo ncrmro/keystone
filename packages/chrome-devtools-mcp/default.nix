@@ -1,9 +1,11 @@
 {
   lib,
-  buildNpmPackage,
   fetchzip,
+  makeWrapper,
+  nodejs,
+  stdenvNoCC,
 }:
-buildNpmPackage (finalAttrs: {
+stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "chrome-devtools-mcp";
   version = "0.20.0";
 
@@ -12,17 +14,26 @@ buildNpmPackage (finalAttrs: {
     hash = "sha256-tbi5cmrF1m3uI2fgHg5GgbmKhPaamn2dCeKwS8gRe6w=";
   };
 
-  npmDepsHash = "sha256-mfd7CsuMgS84NDaT2BEXEXVRFM3zANXhO5D2w3DH/N4=";
+  nativeBuildInputs = [ makeWrapper ];
 
-  postPatch = ''
-    cp ${./package-lock.json} package-lock.json
+  dontConfigure = true;
+  dontBuild = true;
+
+  installPhase = ''
+    runHook preInstall
+
+    pkgDir="$out/lib/node_modules/chrome-devtools-mcp"
+    mkdir -p "$pkgDir" "$out/bin"
+
+    cp -r --no-preserve=mode,ownership LICENSE build package.json "$pkgDir"/
+
+    makeWrapper ${nodejs}/bin/node "$out/bin/chrome-devtools-mcp" \
+      --add-flags "$pkgDir/build/src/bin/chrome-devtools-mcp.js"
+    makeWrapper ${nodejs}/bin/node "$out/bin/chrome-devtools" \
+      --add-flags "$pkgDir/build/src/bin/chrome-devtools.js"
+
+    runHook postInstall
   '';
-
-  env.PUPPETEER_SKIP_DOWNLOAD = "1";
-
-  npmFlags = [ "--ignore-scripts" ];
-
-  dontNpmBuild = true;
 
   meta = {
     description = "Chrome DevTools MCP server for browser automation";
