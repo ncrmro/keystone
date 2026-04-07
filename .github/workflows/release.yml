@@ -117,8 +117,6 @@ jobs:
         run: |
           set -euo pipefail
           nix build .#packages.x86_64-linux.keystone-tui
-          nix build .#packages.x86_64-linux.keystone-ha-tui-client
-          nix build .#iso
 
       - name: Test stage
         run: |
@@ -160,14 +158,14 @@ jobs:
           git tag -a "v$VERSION" -m "Release v$VERSION"
           git push origin "refs/tags/v$VERSION"
 
-      - name: Publish stage
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release create "v$VERSION" \
-            --verify-tag \
-            --generate-notes \
-            --title "Keystone v$VERSION" \
-            --target "$RELEASE_TARGET_BRANCH"
+      # - name: Publish stage
+      #   if: github.event_name == 'workflow_dispatch'
+      #   env:
+      #     GH_TOKEN: ${{ github.token }}
+      #   run: |
+      #     set -euo pipefail
+      #     gh release create "v$VERSION" \
+      #       --verify-tag \
+      #       --generate-notes \
+      #       --title "Keystone v$VERSION" \
+      #       --target "$RELEASE_TARGET_BRANCH"
