@@ -1,3 +1,0 @@
-interface:
-  display_name: "Wrap-up"
-  short_description: "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human"

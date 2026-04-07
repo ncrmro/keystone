@@ -1,4 +1,6 @@
-# Convention and role files are colocated at runtime from conventions/ sources.
-# The SKILL.md references are sufficient to show what changed.
-# SKILL.md starts with uppercase so is not matched by the pattern below.
-**/skills/*/[a-z]*.md
+# Only track .claude/CLAUDE.md as the canonical fixture.
+# Everything else is generated at runtime and excluded.
+*
+!.gitignore
+!.claude/
+!.claude/CLAUDE.md

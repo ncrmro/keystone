@@ -1,9 +1,0 @@
-interface:
-  display_name: "KS Product"
-  short_description: "Product — planning, milestones, stakeholder communication"
-
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"

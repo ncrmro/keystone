@@ -1,9 +1,0 @@
-interface:
-  display_name: "KS Engineer"
-  short_description: "Engineering — implementation, code review, architecture, and CI"
-
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"

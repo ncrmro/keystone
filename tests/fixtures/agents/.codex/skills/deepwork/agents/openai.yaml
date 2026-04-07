@@ -1,9 +1,0 @@
-interface:
-  display_name: "DeepWork"
-  short_description: "Start or continue DeepWork workflows using MCP tools"
-
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"

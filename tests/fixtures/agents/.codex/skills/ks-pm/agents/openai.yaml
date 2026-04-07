@@ -1,9 +1,0 @@
-interface:
-  display_name: "KS Project Manager"
-  short_description: "Project management — task decomposition, tracking, and boards"
-
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"
