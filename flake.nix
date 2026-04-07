@@ -441,6 +441,9 @@
           agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
             inherit pkgs lib;
           };
+          agent-task-loop-ping-pong = import ./tests/module/agent-task-loop-ping-pong.nix {
+            inherit pkgs lib;
+          };
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)

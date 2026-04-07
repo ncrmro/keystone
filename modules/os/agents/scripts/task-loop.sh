@@ -375,28 +375,9 @@ run_provider_prompt() {
 
 build_task_runtime_json() {
   local task_name="$1"
-  local task_profile task_provider task_model task_fallback_model task_effort
-
-  task_profile=$(yq "[.tasks[] | select(.name == \"$task_name\")] | .[0].profile // \"\"" TASKS.yaml)
-  task_provider=$(yq "[.tasks[] | select(.name == \"$task_name\")] | .[0].provider // \"\"" TASKS.yaml)
-  task_model=$(yq "[.tasks[] | select(.name == \"$task_name\")] | .[0].model // \"\"" TASKS.yaml)
-  task_fallback_model=$(yq "[.tasks[] | select(.name == \"$task_name\")] | .[0].fallback_model // \"\"" TASKS.yaml)
-  task_effort=$(yq "[.tasks[] | select(.name == \"$task_name\")] | .[0].effort // \"\"" TASKS.yaml)
-
-  jq -cn \
-    --arg profile "$task_profile" \
-    --arg provider "$task_provider" \
-    --arg model "$task_model" \
-    --arg fallback_model "$task_fallback_model" \
-    --arg effort "$task_effort" '
-      {
-        profile: $profile,
-        provider: $provider,
-        model: $model,
-        fallback_model: $fallback_model,
-        effort: $effort
-      }
-    '
+  local task_entry
+  task_entry=$(yq -o=json "[.tasks[] | select(.name == \"$task_name\")] | .[0]" TASKS.yaml)
+  printf '%s' "$task_entry" | jq -c '{profile: (.profile // ""), provider: (.provider // ""), model: (.model // ""), fallback_model: (.fallback_model // ""), effort: (.effort // "")}'
 }
 
 # Lock to prevent concurrent runs (flock auto-releases on process death, even SIGKILL)
@@ -664,12 +645,9 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
     "source_ref" "$TASK_SOURCE_REF"
 
   TASK_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  log "  DEBUG: setting started_at"
   yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).started_at = \"$TASK_STARTED_AT\"" TASKS.yaml
-  log "  DEBUG: setting in_progress"
   yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"in_progress\"" TASKS.yaml
 
-  log "  DEBUG: building prompt (workflow=|$TASK_WORKFLOW|)"
   if [[ -n "$TASK_WORKFLOW" && "$TASK_WORKFLOW" != "null" && "$TASK_WORKFLOW" != "" ]]; then
     PROMPT="/deepwork $TASK_WORKFLOW
 
@@ -681,18 +659,16 @@ Description: $TASK_DESC"
 Task: $TASK_NAME
 Description: $TASK_DESC"
   fi
-  log "  DEBUG: prompt built (${#PROMPT} chars)"
 
-  log "  DEBUG: build_task_runtime_json"
   TASK_RUNTIME_JSON=$(build_task_runtime_json "$TASK_NAME")
-  log "  DEBUG: resolve_stage_runtime"
-  EXECUTE_RUNTIME=$(resolve_stage_runtime "execute" "$TASK_RUNTIME_JSON")
-  log "  DEBUG: extracting provider/model"
+  if [[ -z "$TASK_RUNTIME_JSON" ]]; then
+    TASK_RUNTIME_JSON="{}"
+  fi
+  EXECUTE_RUNTIME=$(resolve_stage_runtime "execute")
   TASK_PROVIDER=$(echo "$EXECUTE_RUNTIME" | jq -r '.provider // ""')
   TASK_PROFILE=$(echo "$EXECUTE_RUNTIME" | jq -r '.profile // ""')
   TASK_MODEL=$(echo "$EXECUTE_RUNTIME" | jq -r '.model // ""')
 
-  log "  DEBUG: about to run_provider_prompt"
   set +o pipefail
   run_provider_prompt "execute" "$EXECUTE_RUNTIME" "$PROMPT" 2>&1 | tee "$TASK_LOG" >&2
   TASK_EXIT=${PIPESTATUS[0]}
