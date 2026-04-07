@@ -32,8 +32,10 @@ HOME="$output_root" KEYSTONE_AGENT_ASSETS_MANIFEST="$manifest_path" \
 # Restore the gitignore after the sync script wipes output_root.
 # Excludes colocated convention/role files — SKILL.md (uppercase) is kept.
 cat > "$output_root/.gitignore" <<'GITIGNORE'
-# Convention and role files are colocated at runtime from conventions/ sources.
-# The SKILL.md references are sufficient to show what changed.
-# SKILL.md starts with uppercase so is not matched by the pattern below.
-**/skills/*/[a-z]*.md
+# Only track .claude/CLAUDE.md as the canonical fixture.
+# Everything else is generated at runtime and excluded.
+*
+!.gitignore
+!.claude/
+!.claude/CLAUDE.md
 GITIGNORE
