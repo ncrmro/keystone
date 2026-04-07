@@ -108,6 +108,7 @@ let
               "ks-dev"
               "notes"
               "engineer"
+              "product"
               "executive-assistant"
             ]
           );
