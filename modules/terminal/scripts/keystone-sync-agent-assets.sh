@@ -296,7 +296,7 @@ if [[ ! -d "$repo_checkout" ]]; then
   repo_slug="${repo_checkout##*/.keystone/repos/}"
   echo "Live keystone repo checkout not found at $repo_checkout — cloning $repo_slug..."
   mkdir -p "$(dirname "$repo_checkout")"
-  gh repo clone "$repo_slug" "$repo_checkout"
+  git clone "https://github.com/$repo_slug.git" "$repo_checkout"
 fi
 
 conventions_dir="$repo_checkout/conventions"
