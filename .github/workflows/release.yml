@@ -23,6 +23,10 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      # TODO: Remove this temporary branch exception and the matching GitHub
+      # Actions environment branch whitelist after this release path is no
+      # longer needed.
+      TEMP_RELEASE_BRANCH: chore/setup-ks-systems-cachix
 
     steps:
       - name: Checkout
@@ -34,8 +38,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]]; then
-            echo "The Release workflow must run from the default branch ${DEFAULT_BRANCH}"
+          if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" && "${GITHUB_REF_NAME}" != "${TEMP_RELEASE_BRANCH}" ]]; then
+            echo "The Release workflow must run from ${DEFAULT_BRANCH} or temporary release branch ${TEMP_RELEASE_BRANCH}"
             exit 1
           fi
 
@@ -51,8 +55,15 @@ jobs:
 
           echo "RELEASE_SERIES=${VERSION%.*}" >> "$GITHUB_ENV"
           echo "RELEASE_BRANCH=release/${VERSION%.*}" >> "$GITHUB_ENV"
+          echo "RELEASE_SOURCE_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          if [[ "${GITHUB_REF_NAME}" == "${TEMP_RELEASE_BRANCH}" ]]; then
+            echo "RELEASE_TARGET_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_TARGET_BRANCH=release/${VERSION%.*}" >> "$GITHUB_ENV"
+          fi
 
       - name: Create or reuse release branch
+        if: github.ref_name == github.event.repository.default_branch
         run: |
           set -euo pipefail
 
@@ -63,11 +74,18 @@ jobs:
             git fetch origin "$RELEASE_BRANCH":"refs/remotes/origin/$RELEASE_BRANCH"
             git checkout --track "origin/$RELEASE_BRANCH"
           else
-            echo "Creating release branch $RELEASE_BRANCH from origin/$DEFAULT_BRANCH"
-            git fetch origin "$DEFAULT_BRANCH":"refs/remotes/origin/$DEFAULT_BRANCH"
-            git checkout -b "$RELEASE_BRANCH" "origin/$DEFAULT_BRANCH"
+            echo "Creating release branch $RELEASE_BRANCH from origin/$RELEASE_SOURCE_BRANCH"
+            git fetch origin "$RELEASE_SOURCE_BRANCH":"refs/remotes/origin/$RELEASE_SOURCE_BRANCH"
+            git checkout -b "$RELEASE_BRANCH" "origin/$RELEASE_SOURCE_BRANCH"
             git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
           fi
+
+      - name: Temporary release branch mode
+        if: github.ref_name == env.TEMP_RELEASE_BRANCH
+        run: |
+          set -euo pipefail
+          echo "Skipping release branch creation for temporary release branch ${TEMP_RELEASE_BRANCH}"
+          echo "TODO: remove TEMP_RELEASE_BRANCH and the matching GitHub Actions environment whitelist."
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
@@ -135,4 +153,4 @@ jobs:
             --verify-tag \
             --generate-notes \
             --title "Keystone v$VERSION" \
-            --target "$RELEASE_BRANCH"
+            --target "$RELEASE_TARGET_BRANCH"
