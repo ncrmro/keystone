@@ -293,8 +293,10 @@ if [[ "$repo_checkout" == "null" || -z "$repo_checkout" ]]; then
 fi
 
 if [[ ! -d "$repo_checkout" ]]; then
-  echo "Error: live keystone repo checkout not found at $repo_checkout" >&2
-  exit 1
+  repo_slug="${repo_checkout##*/.keystone/repos/}"
+  echo "Live keystone repo checkout not found at $repo_checkout — cloning $repo_slug..."
+  mkdir -p "$(dirname "$repo_checkout")"
+  gh repo clone "$repo_slug" "$repo_checkout"
 fi
 
 conventions_dir="$repo_checkout/conventions"
