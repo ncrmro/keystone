@@ -8,8 +8,9 @@ with lib;
 let
   terminalCfg = config.keystone.terminal;
   isDev = config.keystone.development;
+  isAgent = lib.hasPrefix "agent-" config.home.username;
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
-  repoCheckout = devScripts.resolveRepoCheckout config "keystone";
+  repoCheckout = if isAgent then null else devScripts.resolveRepoCheckout config "keystone";
   agentsLib = import ../os/agents/lib.nix { inherit lib config pkgs; };
   osAgents =
     if config.keystone ? os && config.keystone.os ? agents then config.keystone.os.agents else { };
@@ -81,7 +82,7 @@ in
       ];
     })
 
-    (mkIf isDev {
+    (mkIf (isDev && !isAgent) {
       home.activation.keystoneSyncAgentAssets = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         export PATH="${
           lib.makeBinPath [

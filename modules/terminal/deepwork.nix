@@ -22,6 +22,7 @@ let
   cfg = config.keystone.terminal.deepwork;
   terminalCfg = config.keystone.terminal;
   isDev = config.keystone.development;
+  isAgent = lib.hasPrefix "agent-" config.home.username;
   repos = config.keystone.repos;
   homeDir = config.home.homeDirectory;
 
@@ -82,13 +83,13 @@ in
     home.sessionVariables = {
       DEEPWORK_ADDITIONAL_JOBS_FOLDERS = builtins.concatStringsSep ":" [
         (
-          if isDev && deepworkPath != null then
+          if isDev && !isAgent && deepworkPath != null then
             "${deepworkPath}/library/jobs"
           else
             "${pkgs.keystone.deepwork-library-jobs}"
         )
         (
-          if isDev && keystonePath != null then
+          if isDev && !isAgent && keystonePath != null then
             "${keystonePath}/.deepwork/jobs"
           else
             "${pkgs.keystone.keystone-deepwork-jobs}"
