@@ -1009,6 +1009,24 @@ get_repos_registry() {
   fi
 }
 
+# --- Resolve sshTarget, deriving from hostname + headscaleDomain if missing ---
+resolve_ssh_target() {
+  local repo_root="$1" host="$2" host_json="$3"
+  local target
+  target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+  if [[ -n "$target" ]]; then
+    echo "$target"
+    return
+  fi
+  # Derive from hostname + headscaleDomain (mirrors modules/hosts.nix default)
+  local hostname hs_domain
+  hostname=$(echo "$host_json" | jq -r '.hostname')
+  hs_domain=$(nix eval "$repo_root#nixosConfigurations.$host.config.keystone.headscaleDomain" --raw 2>/dev/null || true)
+  if [[ -n "$hs_domain" ]]; then
+    echo "${hostname}.${hs_domain}"
+  fi
+}
+
 # --- Resolve HOST from hosts.nix ---
 resolve_host() {
   local hosts_nix="$1"
@@ -1459,7 +1477,7 @@ deploy_home_manager_only() {
     local host_json host_hostname ssh_target fallback_ip
     host_json=$(nix eval -f "$hosts_nix" "$host" --json 2>/dev/null) || continue
     host_hostname=$(echo "$host_json" | jq -r '.hostname')
-    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+    ssh_target=$(resolve_ssh_target "$repo_root" "$host" "$host_json")
     fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
 
     while IFS= read -r user; do
@@ -1717,7 +1735,7 @@ deploy_unlocked_current_state() {
     local path="${build_paths[$i]}"
     local host_json ssh_target fallback_ip host_hostname
     host_json=$(nix eval -f "$hosts_nix" "$host" --json)
-    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+    ssh_target=$(resolve_ssh_target "$repo_root" "$host" "$host_json")
     fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
     host_hostname=$(echo "$host_json" | jq -r '.hostname')
 
@@ -1832,7 +1850,7 @@ cmd_sync_host_keys() {
   for host in $host_list; do
     local host_json ssh_target fallback_ip
     host_json=$(nix eval -f "$hosts_nix" "$host" --json)
-    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+    ssh_target=$(resolve_ssh_target "$repo_root" "$host" "$host_json")
 
     if [[ -z "$ssh_target" ]]; then
       echo "SKIP $host (no sshTarget)"
@@ -2207,7 +2225,7 @@ cmd_update() {
     local path="${build_paths[$i]}"
     local host_json ssh_target fallback_ip host_hostname
     host_json=$(nix eval -f "$hosts_nix" "$host" --json)
-    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // empty')
+    ssh_target=$(resolve_ssh_target "$repo_root" "$host" "$host_json")
     fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // empty')
     host_hostname=$(echo "$host_json" | jq -r '.hostname')
 
