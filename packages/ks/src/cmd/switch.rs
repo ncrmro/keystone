@@ -2,15 +2,22 @@
 
 use anyhow::{Context, Result};
 use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::repo;
+use crate::{cmd::ssh::SshSessionManager, repo};
 
 #[derive(Debug, Serialize)]
 pub struct SwitchResult {
     pub hosts: Vec<String>,
     pub mode: String,
     pub store_paths: Vec<String>,
+}
+
+pub struct DeploySession {
+    local_hosts: BTreeSet<String>,
+    remote_targets: BTreeMap<String, String>,
+    ssh: SshSessionManager,
 }
 
 async fn build_targets(repo_root: &Path, hosts: &[String]) -> Result<Vec<String>> {
@@ -91,13 +98,23 @@ async fn deploy_local(host: &str, mode: &str, store_path: &str) -> Result<()> {
     Ok(())
 }
 
-async fn deploy_remote(host: &str, mode: &str, store_path: &str, ssh_target: &str) -> Result<()> {
+async fn deploy_remote(
+    ssh: &SshSessionManager,
+    host: &str,
+    mode: &str,
+    store_path: &str,
+    ssh_target: &str,
+) -> Result<()> {
     eprintln!("Deploying {} remotely to {}...", host, ssh_target);
 
-    let copy_status = tokio::process::Command::new("nix")
+    let mut copy_cmd = tokio::process::Command::new("nix");
+    copy_cmd
         .args(["copy", "--to"])
         .arg(format!("ssh://root@{}", ssh_target))
-        .arg(store_path)
+        .arg(store_path);
+    ssh.configure_nix_copy_command(&mut copy_cmd, ssh_target);
+
+    let copy_status = copy_cmd
         .status()
         .await
         .context("Failed to copy closure to remote host")?;
@@ -109,7 +126,9 @@ async fn deploy_remote(host: &str, mode: &str, store_path: &str, ssh_target: &st
     }
 
     let switch_cmd = format!("{}/bin/switch-to-configuration", store_path);
-    let remote_status = tokio::process::Command::new("ssh")
+    let mut remote_cmd = tokio::process::Command::new("ssh");
+    ssh.configure_ssh_command(&mut remote_cmd, ssh_target);
+    let remote_status = remote_cmd
         .arg(format!("root@{}", ssh_target))
         .arg(format!(
             "nix-env --profile /nix/var/nix/profiles/system --set {} && {} {}",
@@ -125,43 +144,93 @@ async fn deploy_remote(host: &str, mode: &str, store_path: &str, ssh_target: &st
     Ok(())
 }
 
+pub async fn prepare_deploy_session(repo_root: &Path, hosts: &[String]) -> Result<DeploySession> {
+    let current_hostname = hostname::get()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let hosts_nix = repo_root.join("hosts.nix");
+    let mut local_hosts = BTreeSet::new();
+    let mut remote_targets = BTreeMap::new();
+    let mut ssh = SshSessionManager::new();
+
+    for host in hosts {
+        let host_info = repo::host_info(&hosts_nix, host).await?;
+        if host_info.hostname == current_hostname {
+            local_hosts.insert(host.clone());
+            continue;
+        }
+
+        let ssh_target = repo::resolve_ssh_target(repo_root, host, &host_info)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("{} has no sshTarget, cannot deploy remotely.", host))?;
+
+        let mut resolved = ssh_target.clone();
+        if let Some(fallback_ip) = host_info
+            .fallback_ip
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            if !ssh.ssh_test(&ssh_target).await? {
+                resolved = fallback_ip.to_string();
+                eprintln!(
+                    "Tailscale unavailable for {}, using LAN: {}",
+                    host, fallback_ip
+                );
+            }
+        }
+
+        ssh.open_master(&resolved).await?;
+        remote_targets.insert(host.clone(), resolved);
+    }
+
+    Ok(DeploySession {
+        local_hosts,
+        remote_targets,
+        ssh,
+    })
+}
+
+pub async fn deploy_paths_with_session(
+    _repo_root: &Path,
+    session: &DeploySession,
+    mode: &str,
+    hosts: &[String],
+    store_paths: &[String],
+) -> Result<()> {
+    for (host, store_path) in hosts.iter().zip(store_paths.iter()) {
+        if session.local_hosts.contains(host) {
+            deploy_local(host, mode, store_path).await?;
+            continue;
+        }
+
+        let ssh_target = session.remote_targets.get(host).ok_or_else(|| {
+            anyhow::anyhow!("{} is not available in the prepared deploy session.", host)
+        })?;
+        deploy_remote(&session.ssh, host, mode, store_path, ssh_target).await?;
+    }
+
+    Ok(())
+}
+
 pub async fn deploy_paths(
     repo_root: &Path,
     mode: &str,
     hosts: &[String],
     store_paths: &[String],
 ) -> Result<()> {
-    let current_hostname = hostname::get()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let hosts_nix = repo_root.join("hosts.nix");
-
-    for (host, store_path) in hosts.iter().zip(store_paths.iter()) {
-        let host_info = repo::host_info(&hosts_nix, host).await?;
-        if host_info.hostname == current_hostname {
-            deploy_local(host, mode, store_path).await?;
-        } else {
-            let ssh_target = host_info
-                .ssh_target
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| {
-                    anyhow::anyhow!("{} has no sshTarget, cannot deploy remotely.", host)
-                })?;
-            deploy_remote(host, mode, store_path, &ssh_target).await?;
-        }
-    }
-
-    Ok(())
+    let session = prepare_deploy_session(repo_root, hosts).await?;
+    deploy_paths_with_session(repo_root, &session, mode, hosts, store_paths).await
 }
 
 pub async fn execute(hosts_arg: Option<&str>, boot: bool) -> Result<SwitchResult> {
     let repo_root = repo::find_repo()?;
     let hosts = repo::resolve_hosts(&repo_root, hosts_arg).await?;
     let mode = if boot { "boot" } else { "switch" };
+    let session = prepare_deploy_session(&repo_root, &hosts).await?;
     let store_paths = build_targets(&repo_root, &hosts).await?;
 
-    deploy_paths(&repo_root, mode, &hosts, &store_paths).await?;
+    deploy_paths_with_session(&repo_root, &session, mode, &hosts, &store_paths).await?;
 
     Ok(SwitchResult {
         hosts,
@@ -184,5 +253,22 @@ mod tests {
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["hosts"][0], "laptop");
         assert_eq!(json["mode"], "switch");
+    }
+
+    #[test]
+    fn deploy_session_tracks_local_and_remote_hosts() {
+        let session = DeploySession {
+            local_hosts: ["local".to_string()].into_iter().collect(),
+            remote_targets: [("remote".to_string(), "tail.example.ts.net".to_string())]
+                .into_iter()
+                .collect(),
+            ssh: SshSessionManager::new(),
+        };
+
+        assert!(session.local_hosts.contains("local"));
+        assert_eq!(
+            session.remote_targets.get("remote"),
+            Some(&"tail.example.ts.net".to_string())
+        );
     }
 }

@@ -360,6 +360,56 @@ pub async fn host_info(hosts_nix: &Path, host: &str) -> Result<HostInfo> {
         .with_context(|| format!("Failed to parse host metadata for {}", host))
 }
 
+pub fn derive_ssh_target(hostname: &str, headscale_domain: &str) -> Option<String> {
+    let hostname = hostname.trim();
+    let headscale_domain = headscale_domain.trim();
+    if hostname.is_empty() || headscale_domain.is_empty() {
+        return None;
+    }
+
+    Some(format!("{}.{}", hostname, headscale_domain))
+}
+
+pub async fn resolve_ssh_target(
+    repo_root: &Path,
+    host: &str,
+    info: &HostInfo,
+) -> Result<Option<String>> {
+    if let Some(target) = info
+        .ssh_target
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(Some(target.to_string()));
+    }
+
+    let mut cmd = tokio::process::Command::new("nix");
+    cmd.arg("eval")
+        .arg(format!(
+            "{}#nixosConfigurations.{}.config.keystone.headscaleDomain",
+            repo_root.display(),
+            host,
+        ))
+        .arg("--raw");
+
+    for arg in local_override_args(repo_root).await? {
+        cmd.arg(arg);
+    }
+
+    let output = cmd
+        .output()
+        .await
+        .with_context(|| format!("Failed to evaluate headscaleDomain for {}", host))?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let headscale_domain = String::from_utf8_lossy(&output.stdout);
+    Ok(derive_ssh_target(&info.hostname, &headscale_domain))
+}
+
 pub async fn list_hm_users(repo_root: &Path, host: &str) -> Result<Vec<String>> {
     let mut cmd = tokio::process::Command::new("nix");
     cmd.arg("eval")
@@ -880,4 +930,23 @@ pub async fn create_github_repo(repo_path: &std::path::Path, repo_name: &str) ->
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     Ok(stdout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derive_ssh_target_requires_values() {
+        assert_eq!(derive_ssh_target("", "tail.example.ts.net"), None);
+        assert_eq!(derive_ssh_target("laptop", ""), None);
+    }
+
+    #[test]
+    fn derive_ssh_target_joins_hostname_and_domain() {
+        assert_eq!(
+            derive_ssh_target(" laptop ", " tail.example.ts.net "),
+            Some("laptop.tail.example.ts.net".to_string())
+        );
+    }
 }

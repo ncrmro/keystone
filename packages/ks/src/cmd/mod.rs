@@ -13,6 +13,7 @@ pub mod hardware_key;
 pub mod photos;
 pub mod print;
 pub mod screenshots;
+pub mod ssh;
 pub mod switch;
 pub mod sync_agent_assets;
 pub mod sync_host_keys;

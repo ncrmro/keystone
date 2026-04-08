@@ -200,10 +200,96 @@ async fn gather_ollama_diagnostics(repo_root: &Path, current_host: Option<&str>)
     lines.join("\n")
 }
 
-async fn gather_fleet_health(hosts_nix: &Path, local_gen: Option<&str>) -> String {
+async fn ssh_probe(target: &str, timeout_seconds: &str) -> bool {
+    tokio::process::Command::new("ssh")
+        .args([
+            "-o",
+            &format!("ConnectTimeout={timeout_seconds}"),
+            "-o",
+            "BatchMode=yes",
+        ])
+        .arg(format!("root@{}", target))
+        .arg("true")
+        .status()
+        .await
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+async fn remote_nixos_generation(target: &str) -> String {
+    tokio::process::Command::new("ssh")
+        .args(["-o", "ConnectTimeout=5", "-o", "BatchMode=yes"])
+        .arg(format!("root@{}", target))
+        .arg("nixos-version")
+        .output()
+        .await
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+async fn fleet_status_row(
+    repo_root: &Path,
+    hosts_nix: &Path,
+    current_hostname: &str,
+    host: &str,
+    local_gen: Option<&str>,
+) -> Option<String> {
+    let info = repo::host_info(hosts_nix, host).await.ok()?;
+
+    if info.hostname == current_hostname {
+        return Some(format!(
+            "| {} | local | {} | ← current |",
+            host,
+            local_gen.unwrap_or("unknown")
+        ));
+    }
+
+    let ssh_target = repo::resolve_ssh_target(repo_root, host, &info)
+        .await
+        .ok()??;
+    let mut resolved = ssh_target.clone();
+    let mut reachable = "no".to_string();
+
+    if ssh_probe(&ssh_target, "3").await {
+        reachable = "yes".to_string();
+    } else if let Some(fallback_ip) = info
+        .fallback_ip
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        if ssh_probe(fallback_ip, "3").await {
+            reachable = "yes (LAN)".to_string();
+            resolved = fallback_ip.to_string();
+        }
+    }
+
+    if reachable == "no" {
+        return Some(format!("| {} | {} | — | unreachable |", host, reachable));
+    }
+
+    let remote_gen = remote_nixos_generation(&resolved).await;
+    let status = if Some(remote_gen.as_str()) == local_gen {
+        "ok"
+    } else if remote_gen == "unknown" {
+        "unknown"
+    } else {
+        "drift"
+    };
+
+    Some(format!(
+        "| {} | {} | {} | {} |",
+        host, reachable, remote_gen, status
+    ))
+}
+
+async fn gather_fleet_health(repo_root: &Path, local_gen: Option<&str>) -> String {
+    let hosts_nix = repo_root.join("hosts.nix");
     let output = tokio::process::Command::new("nix")
         .args(["eval", "-f"])
-        .arg(hosts_nix)
+        .arg(&hosts_nix)
         .args(["--json", "--apply", "builtins.attrNames"])
         .output()
         .await;
@@ -231,85 +317,13 @@ async fn gather_fleet_health(hosts_nix: &Path, local_gen: Option<&str>) -> Strin
     ];
 
     for host in hosts {
-        let Ok(info) = repo::host_info(hosts_nix, &host).await else {
-            continue;
-        };
-
-        if info.hostname == current_hostname {
-            lines.push(format!(
-                "| {} | local | {} | ← current |",
-                host,
-                local_gen.unwrap_or("unknown")
-            ));
-            continue;
-        }
-
-        let Some(ssh_target) = info.ssh_target.as_deref().filter(|value| !value.is_empty()) else {
-            lines.push(format!("| {} | — | — | no sshTarget |", host));
-            continue;
-        };
-
-        let mut resolved = ssh_target.to_string();
-        let mut reachable = "no".to_string();
-        let mut remote_gen = "—".to_string();
-        let mut status = "unreachable".to_string();
-
-        let ssh_ok = tokio::process::Command::new("ssh")
-            .args(["-o", "ConnectTimeout=3", "-o", "BatchMode=yes"])
-            .arg(format!("root@{}", ssh_target))
-            .arg("true")
-            .status()
-            .await
-            .map(|status| status.success())
-            .unwrap_or(false);
-
-        if ssh_ok {
-            reachable = "yes".to_string();
-        } else if let Some(fallback_ip) = info
-            .fallback_ip
-            .as_deref()
-            .filter(|value| !value.is_empty())
+        if let Some(row) =
+            fleet_status_row(repo_root, &hosts_nix, &current_hostname, &host, local_gen).await
         {
-            let fallback_ok = tokio::process::Command::new("ssh")
-                .args(["-o", "ConnectTimeout=3", "-o", "BatchMode=yes"])
-                .arg(format!("root@{}", fallback_ip))
-                .arg("true")
-                .status()
-                .await
-                .map(|status| status.success())
-                .unwrap_or(false);
-            if fallback_ok {
-                reachable = "yes (LAN)".to_string();
-                resolved = fallback_ip.to_string();
-            }
+            lines.push(row);
+        } else {
+            lines.push(format!("| {} | — | — | no sshTarget |", host));
         }
-
-        if reachable != "no" {
-            let version = tokio::process::Command::new("ssh")
-                .args(["-o", "ConnectTimeout=5", "-o", "BatchMode=yes"])
-                .arg(format!("root@{}", resolved))
-                .arg("nixos-version")
-                .output()
-                .await
-                .ok()
-                .filter(|output| output.status.success())
-                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| "unknown".to_string());
-            remote_gen = version.clone();
-            status = if Some(version.as_str()) == local_gen {
-                "ok".to_string()
-            } else if version == "unknown" {
-                "unknown".to_string()
-            } else {
-                "drift".to_string()
-            };
-        }
-
-        lines.push(format!(
-            "| {} | {} | {} | {} |",
-            host, reachable, remote_gen, status
-        ));
     }
 
     lines.join("\n")
@@ -453,7 +467,7 @@ pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
     markdown.push_str("\n\n");
 
     doctor_progress("checking fleet health");
-    let fleet = gather_fleet_health(&repo_root.join("hosts.nix"), generation.as_deref()).await;
+    let fleet = gather_fleet_health(repo_root, generation.as_deref()).await;
     if !fleet.is_empty() {
         markdown.push_str(&fleet);
         markdown.push_str("\n\n");

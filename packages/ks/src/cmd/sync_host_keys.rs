@@ -15,6 +15,13 @@ pub struct SyncHostKeysResult {
     pub changed_hosts: Vec<String>,
 }
 
+enum HostSyncOutcome {
+    Updated { content: String, pubkey: String },
+    Unchanged,
+    Skipped,
+    Failed(String),
+}
+
 fn root_target(target: &str) -> String {
     format!("root@{}", target)
 }
@@ -169,6 +176,60 @@ fn update_host_public_key(
     Ok(updated)
 }
 
+async fn sync_host_entry(
+    repo_root: &Path,
+    hosts_nix: &Path,
+    hosts_nix_content: &str,
+    host: &str,
+) -> Result<HostSyncOutcome> {
+    let info = match repo::host_info(hosts_nix, host).await {
+        Ok(info) => info,
+        Err(error) => return Ok(HostSyncOutcome::Failed(error.to_string())),
+    };
+
+    let Some(ssh_target) = repo::resolve_ssh_target(repo_root, host, &info).await? else {
+        return Ok(HostSyncOutcome::Skipped);
+    };
+
+    let mut resolved = ssh_target.clone();
+    if !ssh_reachable(&root_target(&ssh_target)).await? {
+        if let Some(fallback_ip) = info
+            .fallback_ip
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            resolved = fallback_ip.to_string();
+            println!(
+                "  Tailscale unavailable for {}, using LAN: {}",
+                host, fallback_ip
+            );
+        } else {
+            return Ok(HostSyncOutcome::Failed(format!(
+                "unreachable via {}",
+                ssh_target
+            )));
+        }
+    }
+
+    let Some(pubkey) = fetch_public_key(&root_target(&resolved)).await? else {
+        return Ok(HostSyncOutcome::Failed(format!(
+            "could not read host key from {}",
+            resolved
+        )));
+    };
+
+    let current_key = info
+        .host_public_key
+        .as_deref()
+        .filter(|value| !value.is_empty());
+    if current_key == Some(pubkey.as_str()) {
+        return Ok(HostSyncOutcome::Unchanged);
+    }
+
+    let content = update_host_public_key(hosts_nix_content, host, current_key, &pubkey)?;
+    Ok(HostSyncOutcome::Updated { content, pubkey })
+}
+
 pub async fn execute() -> Result<SyncHostKeysResult> {
     let repo_root = repo::find_repo()?;
     let hosts_nix = repo_root.join("hosts.nix");
@@ -185,64 +246,22 @@ pub async fn execute() -> Result<SyncHostKeysResult> {
     };
 
     for host in hosts {
-        let info = match repo::host_info(&hosts_nix, &host).await {
-            Ok(info) => info,
-            Err(error) => {
-                println!("FAIL {} ({})", host, error);
-                result.failed += 1;
-                continue;
-            }
-        };
-
-        let Some(ssh_target) = info.ssh_target.as_deref().filter(|value| !value.is_empty()) else {
-            println!("SKIP {} (no sshTarget)", host);
-            result.skipped += 1;
-            continue;
-        };
-
-        let mut resolved = ssh_target.to_string();
-        if !ssh_reachable(&root_target(ssh_target)).await? {
-            if let Some(fallback_ip) = info
-                .fallback_ip
-                .as_deref()
-                .filter(|value| !value.is_empty())
-            {
-                resolved = fallback_ip.to_string();
-                println!(
-                    "  Tailscale unavailable for {}, using LAN: {}",
-                    host, fallback_ip
-                );
-            } else {
-                println!("FAIL {} (unreachable via {})", host, ssh_target);
-                result.failed += 1;
-                continue;
-            }
-        }
-
-        let Some(pubkey) = fetch_public_key(&root_target(&resolved)).await? else {
-            println!("FAIL {} (could not read host key from {})", host, resolved);
-            result.failed += 1;
-            continue;
-        };
-
-        let current_key = info
-            .host_public_key
-            .as_deref()
-            .filter(|value| !value.is_empty());
-        if current_key == Some(pubkey.as_str()) {
-            println!("  OK {} (unchanged)", host);
-            continue;
-        }
-
-        match update_host_public_key(&hosts_nix_content, &host, current_key, &pubkey) {
-            Ok(updated) => {
-                hosts_nix_content = updated;
+        match sync_host_entry(&repo_root, &hosts_nix, &hosts_nix_content, &host).await? {
+            HostSyncOutcome::Updated { content, pubkey } => {
+                hosts_nix_content = content;
                 println!("  SET {} -> {}...", host, &pubkey[..pubkey.len().min(40)]);
                 result.updated += 1;
                 result.changed_hosts.push(host);
             }
-            Err(error) => {
-                println!("FAIL {} ({})", host, error);
+            HostSyncOutcome::Unchanged => {
+                println!("  OK {} (unchanged)", host);
+            }
+            HostSyncOutcome::Skipped => {
+                println!("SKIP {} (no sshTarget)", host);
+                result.skipped += 1;
+            }
+            HostSyncOutcome::Failed(detail) => {
+                println!("FAIL {} ({})", host, detail);
                 result.failed += 1;
             }
         }

@@ -176,8 +176,16 @@ async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result
     pull_managed_repos(repo_root).await?;
     verify_all_repos_lock_ready(repo_root).await?;
 
+    let deploy_session = cmd::switch::prepare_deploy_session(repo_root, hosts).await?;
     let build_result = cmd::build::execute(Some(&hosts.join(",")), true, None, false).await?;
-    cmd::switch::deploy_paths(repo_root, mode, hosts, &build_result.store_paths).await?;
+    cmd::switch::deploy_paths_with_session(
+        repo_root,
+        &deploy_session,
+        mode,
+        hosts,
+        &build_result.store_paths,
+    )
+    .await?;
 
     let push_status = tokio::process::Command::new("git")
         .args(["-C"])
