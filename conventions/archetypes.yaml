@@ -36,14 +36,18 @@ archetypes:
   # Minimal footprint — just host orientation and links to everything else.
   keystone-system-host:
     description: "NixOS host — Nix devshells, direnv, declarative config"
-    inlined_conventions: []
+    inlined_conventions:
+      - process.prose
+      - code.comments
+      - tool.nix-devshell
+      - tool.process-compose-agent
+      - process.git-repos
+      - process.project-navigation
     referenced_conventions:
       - process.version-control
       - process.privileged-approval
-      - process.prose
       - tool.standard-utilities
       - os.requirements
-      - tool.nix-devshell
       - tool.nix
       - code.shell-scripts
       - process.grafana-dashboard-development
@@ -60,7 +64,6 @@ archetypes:
       - process.enable-by-default
       - os.zfs-backup
       - tool.stalwart
-      - process.git-repos
       - process.vcs-context-continuity
 
   # Archetype for working directly on keystone platform repos:

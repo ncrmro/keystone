@@ -333,7 +333,6 @@ cat <<'EOF' > "$global_agents_tmp"
 
 - For issue-backed work, post `Work Started` and `Work Update` comments on the source issue.
 - Treat issues, pull requests, milestones, and boards as the canonical public record.
-- Use notes for durable rationale and memory, not to replace shared-surface tracking.
 
 # Commit format
 
