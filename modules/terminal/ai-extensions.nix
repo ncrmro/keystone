@@ -7,6 +7,21 @@
 #
 # See conventions/tool.cli-coding-agents.md
 # See specs/002-repo-backed-terminal-assets.md
+#
+# When aiArtifacts is enabled, skills are loaded from the committed artifact
+# tree and are archetype-scoped (REQ-10, REQ-22).  Commands are still
+# generated uniformly (all archetypes get all commands for tools that support
+# them).
+#
+# Each tool has its own directory structure and configuration requirements:
+# - Claude: ~/.claude/commands/*.md, ~/.claude/skills/<name>/SKILL.md
+# - Gemini: ~/.gemini/commands/*.toml, ~/.gemini/skills/<name>/SKILL.md
+# - OpenCode: ~/.config/opencode/commands/*.md, ~/.config/opencode/skills/<name>/SKILL.md
+# - Codex: ~/.codex/skills/<name>/SKILL.md + agents/openai.yaml
+#
+# Development mode (REQ-018): When keystone.development is true and
+# a keystone repo is registered, templates are out-of-store symlinks to the
+# checkout — editable in place.
 {
   config,
   lib,
@@ -17,6 +32,7 @@ with lib;
 let
   terminalCfg = config.keystone.terminal;
   cfg = terminalCfg.aiExtensions;
+  aiArtifactsCfg = config.keystone.terminal.aiArtifacts;
   isDev = config.keystone.development;
   archetype = terminalCfg.conventions.archetype;
 
@@ -30,6 +46,55 @@ let
     "product"
     "project-manager"
     "executive-assistant"
+  ];
+
+  # Whether to use archetype-scoped skills from the artifact tree
+  useArtifactTree = aiArtifactsCfg.enable;
+
+  repos = config.keystone.repos;
+  homeDir = config.home.homeDirectory;
+
+  # Look up the keystone repo's local checkout path.
+  keystoneEntry = findFirst (name: (repos.${name}.flakeInput or null) == "keystone") null (
+    attrNames repos
+  );
+  devPath =
+    if isDev && keystoneEntry != null then "${homeDir}/.keystone/repos/${keystoneEntry}" else null;
+
+  # DeepWork Workflow slash commands (templates in ./ai-commands/)
+  commandFiles = [
+    "agent.bootstrap.md"
+    "agent.doctor.md"
+    "agent.issue.md"
+    "agent.onboard.md"
+    "daily_status.send.md"
+    "ks.convention.md"
+    "ks.develop.md"
+    "ks.doctor.md"
+    "ks.issue.md"
+    "ks.update.md"
+    "marketing.social_media_setup.md"
+    "milestone.eng_handoff.md"
+    "milestone.setup.md"
+    "notes.process_inbox.md"
+    "notes.doctor.md"
+    "notes.project.md"
+    "notes.report.md"
+    "portfolio.review.md"
+    "project.onboard.md"
+    "project.press_release.md"
+    "project.success.md"
+    "repo.doctor.md"
+    "repo.setup.md"
+    "research.deep.md"
+    "research.quick.md"
+    "sweng.audit.md"
+    "sweng.design.md"
+    "sweng.fix.md"
+    "sweng.implement.md"
+    "sweng.refactor.md"
+    "task.ingest.md"
+    "task.run.md"
   ];
 
   baseCapabilities = [
@@ -376,6 +441,108 @@ let
 
   wrapUpSkillBody = builtins.readFile ./agent-assets/wrap-up-skill.template.md;
 
+  # Helper: resolve skill source from artifact tree.
+  # In dev mode: out-of-store symlink. In non-dev mode: Nix store path.
+  mkArtifactSkillSource =
+    relPath:
+    if devPath != null then
+      {
+        source = config.lib.file.mkOutOfStoreSymlink "${devPath}/ai-artifacts/archetypes/${archetype}/skills/${relPath}";
+      }
+    else
+      {
+        source = ./. + "/../../ai-artifacts/archetypes/${archetype}/skills/${relPath}";
+      };
+
+  # Read the archetype's skill list from archetypes.yaml for artifact-tree mode.
+  conventionsPath = pkgs.keystone.keystone-conventions;
+  archetypesFile = "${conventionsPath}/archetypes.yaml";
+  hasArchetypes = builtins.pathExists archetypesFile;
+  archetypesYaml =
+    if hasArchetypes then
+      builtins.fromJSON (
+        builtins.readFile (
+          pkgs.runCommand "archetypes-skills-json" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+            yq -o=json '.' ${archetypesFile} > $out
+          ''
+        )
+      )
+    else
+      { archetypes = { }; };
+  archetypeConfig = archetypesYaml.archetypes.${archetype} or { };
+  archetypeSkills = archetypeConfig.skills or [ ];
+
+  # Convert skill name from archetypes.yaml (e.g., "sweng.audit") to directory
+  # name in the artifact tree (e.g., "sweng-audit")
+  skillDirName = name: replaceStrings [ "." ] [ "-" ] name;
+
+  # Build artifact-tree skill files for all tool directories.
+  # Each archetype skill gets installed at the tool's native skill path.
+  artifactSkillsByTool =
+    let
+      # Standard tool directories (Claude, Gemini, OpenCode)
+      standardToolDirs = [
+        ".claude"
+        ".gemini"
+        ".config/opencode"
+      ];
+
+      # DeepWork skill for all tools (always included, REQ-10)
+      deepworkSkills = foldl' (
+        acc: toolDir:
+        acc
+        // {
+          "${toolDir}/skills/deepwork/SKILL.md" = mkArtifactSkillSource "deepwork/SKILL.md";
+        }
+      ) { } (standardToolDirs ++ [ ".codex" ]);
+
+      # Codex-specific DeepWork agent metadata
+      codexDeepworkAgent = {
+        ".codex/skills/deepwork/agents/openai.yaml" = mkArtifactSkillSource "deepwork/agents/openai.yaml";
+      };
+
+      # Archetype-scoped skills for standard tools (Claude, Gemini, OpenCode)
+      standardSkills = foldl' (
+        acc: toolDir:
+        acc
+        // (listToAttrs (
+          map (
+            name:
+            let
+              sdir = skillDirName name;
+            in
+            {
+              name = "${toolDir}/skills/${sdir}/SKILL.md";
+              value = mkArtifactSkillSource "${sdir}/SKILL.md";
+            }
+          ) archetypeSkills
+        ))
+      ) { } standardToolDirs;
+
+      # Codex-specific archetype skills (SKILL.md + agents/openai.yaml)
+      codexSkills = listToAttrs (
+        flatten (
+          map (
+            name:
+            let
+              sdir = skillDirName name;
+            in
+            [
+              {
+                name = ".codex/skills/${sdir}/SKILL.md";
+                value = mkArtifactSkillSource "${sdir}/codex/SKILL.md";
+              }
+              {
+                name = ".codex/skills/${sdir}/agents/openai.yaml";
+                value = mkArtifactSkillSource "${sdir}/codex/agents/openai.yaml";
+              }
+            ]
+          ) archetypeSkills
+        )
+      );
+    in
+    deepworkSkills // codexDeepworkAgent // standardSkills // codexSkills;
+
   codexManagedFiles = [
     {
       relativePath = ".codex/skills/deepwork/SKILL.md";
@@ -551,6 +718,7 @@ in
 
     home.file = mkIf (!isDev) (
       let
+        # Slash commands — generated uniformly for all archetypes (not skill-scoped)
         commandFilesByTool =
           foldl'
             (
@@ -596,131 +764,137 @@ in
               ".config/opencode"
             ];
 
-        deepworkSkillsByTool =
-          foldl'
-            (
-              acc: toolDir:
-              let
-                skillDir = "${toolDir}/skills/deepwork";
-              in
-              if toolDir == ".gemini" then
-                acc
-                // {
-                  "${toolDir}/commands/deepwork.toml".text = ''
-                    description = ${builtins.toJSON skillMetadata.description}
-                    prompt = ${builtins.toJSON deepworkSkillBody}
-                  '';
-                }
-              else
-                acc
-                // {
-                  "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
-                }
-            )
-            { }
-            [
-              ".claude"
-              ".gemini"
-              ".config/opencode"
-            ];
+        # Skills — archetype-aware when artifact tree is enabled (REQ-10)
+        skillFiles =
+          if useArtifactTree then
+            artifactSkillsByTool
+          else
+            # Fallback: uniform DeepWork + per-tool skills (backward compat, REQ-35)
+            let
+              deepworkSkillsByTool =
+                foldl'
+                  (
+                    acc: toolDir:
+                    let
+                      skillDir = "${toolDir}/skills/deepwork";
+                    in
+                    if toolDir == ".gemini" then
+                      acc
+                      // {
+                        "${toolDir}/commands/deepwork.toml".text = ''
+                          description = ${builtins.toJSON skillMetadata.description}
+                          prompt = ${builtins.toJSON deepworkSkillBody}
+                        '';
+                      }
+                    else
+                      acc
+                      // {
+                        "${skillDir}/SKILL.md".text = mkSkillMd skillMetadata deepworkSkillBody;
+                      }
+                  )
+                  { }
+                  [
+                    ".claude"
+                    ".gemini"
+                    ".config/opencode"
+                  ];
 
-        deepplanSkillsByTool =
-          foldl'
-            (
-              acc: toolDir:
-              let
-                skillDir = "${toolDir}/skills/deepplan";
-              in
-              if toolDir == ".gemini" then
-                acc
-                // {
-                  "${toolDir}/commands/deepplan.toml".text = ''
-                    description = ${builtins.toJSON deepplanSkillMetadata.description}
-                    prompt = ${builtins.toJSON deepplanSkillBody}
-                  '';
-                }
-              else
-                acc
-                // {
-                  "${skillDir}/SKILL.md".text = mkSkillMd deepplanSkillMetadata deepplanSkillBody;
-                }
-            )
-            { }
-            [
-              ".claude"
-              ".gemini"
-              ".config/opencode"
-            ];
+              deepplanSkillsByTool =
+                foldl'
+                  (
+                    acc: toolDir:
+                    let
+                      skillDir = "${toolDir}/skills/deepplan";
+                    in
+                    if toolDir == ".gemini" then
+                      acc
+                      // {
+                        "${toolDir}/commands/deepplan.toml".text = ''
+                          description = ${builtins.toJSON deepplanSkillMetadata.description}
+                          prompt = ${builtins.toJSON deepplanSkillBody}
+                        '';
+                      }
+                    else
+                      acc
+                      // {
+                        "${skillDir}/SKILL.md".text = mkSkillMd deepplanSkillMetadata deepplanSkillBody;
+                      }
+                  )
+                  { }
+                  [
+                    ".claude"
+                    ".gemini"
+                    ".config/opencode"
+                  ];
 
-        wrapUpSkillsByTool =
-          foldl'
-            (
-              acc: toolDir:
-              let
-                skillDir = "${toolDir}/skills/wrap-up";
-              in
-              if toolDir == ".gemini" then
-                acc
-                // {
-                  "${toolDir}/commands/wrap-up.toml".text = ''
-                    description = ${builtins.toJSON wrapUpSkillMetadata.description}
-                    prompt = ${builtins.toJSON wrapUpSkillBody}
-                  '';
-                }
-              else
-                acc
-                // {
-                  "${skillDir}/SKILL.md".text = mkSkillMd wrapUpSkillMetadata wrapUpSkillBody;
-                }
-            )
-            { }
-            [
-              ".claude"
-              ".gemini"
-              ".config/opencode"
-            ];
-        ksSkillsByTool =
-          foldl'
-            (
-              acc: toolDir:
-              acc
-              // (listToAttrs (
-                map (
-                  command:
-                  let
-                    skillName = command.id;
-                    skillDir = "${toolDir}/skills/${skillName}";
-                  in
-                  if toolDir == ".gemini" then
-                    {
-                      name = "${toolDir}/commands/${replaceStrings [ "." ] [ "/" ] command.id}.toml";
-                      value = mkGeminiToml command;
-                    }
-                  else
-                    {
-                      name = "${skillDir}/SKILL.md";
-                      value = {
-                        text = mkSkillMd {
-                          name = skillName;
-                          description = command.description;
-                        } command.body;
-                      };
-                    }
-                ) publishedCommands
-              ))
-            )
-            { }
-            [
-              ".claude"
-              ".gemini"
-              ".config/opencode"
-            ];
+              wrapUpSkillsByTool =
+                foldl'
+                  (
+                    acc: toolDir:
+                    let
+                      skillDir = "${toolDir}/skills/wrap-up";
+                    in
+                    if toolDir == ".gemini" then
+                      acc
+                      // {
+                        "${toolDir}/commands/wrap-up.toml".text = ''
+                          description = ${builtins.toJSON wrapUpSkillMetadata.description}
+                          prompt = ${builtins.toJSON wrapUpSkillBody}
+                        '';
+                      }
+                    else
+                      acc
+                      // {
+                        "${skillDir}/SKILL.md".text = mkSkillMd wrapUpSkillMetadata wrapUpSkillBody;
+                      }
+                  )
+                  { }
+                  [
+                    ".claude"
+                    ".gemini"
+                    ".config/opencode"
+                  ];
+
+              ksSkillsByTool =
+                foldl'
+                  (
+                    acc: toolDir:
+                    acc
+                    // (listToAttrs (
+                      map (
+                        command:
+                        let
+                          skillName = command.id;
+                          skillDir = "${toolDir}/skills/${skillName}";
+                        in
+                        if toolDir == ".gemini" then
+                          {
+                            name = "${toolDir}/commands/${replaceStrings [ "." ] [ "/" ] command.id}.toml";
+                            value = mkGeminiToml command;
+                          }
+                        else
+                          {
+                            name = "${skillDir}/SKILL.md";
+                            value = {
+                              text = mkSkillMd {
+                                name = skillName;
+                                description = command.description;
+                              } command.body;
+                            };
+                          }
+                      ) publishedCommands
+                    ))
+                  )
+                  { }
+                  [
+                    ".claude"
+                    ".gemini"
+                    ".config/opencode"
+                  ];
+            in
+            deepworkSkillsByTool // deepplanSkillsByTool // wrapUpSkillsByTool // ksSkillsByTool;
       in
-      commandFilesByTool
-      // deepworkSkillsByTool
-      // deepplanSkillsByTool
-      // wrapUpSkillsByTool
-      // ksSkillsByTool
+      commandFilesByTool // skillFiles
     );
 
     home.activation = mkIf (!isDev) {

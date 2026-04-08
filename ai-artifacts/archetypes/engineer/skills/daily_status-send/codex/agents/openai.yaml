@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the daily_status/send DeepWork workflow to send the daily digest"
+  short_description: "Start the daily_status/send DeepWork workflow to send the daily digest"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the notes/process_inbox DeepWork workflow to review and promote fleeting notes"
+  short_description: "Start the notes/process_inbox DeepWork workflow to review and promote fleeting notes"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

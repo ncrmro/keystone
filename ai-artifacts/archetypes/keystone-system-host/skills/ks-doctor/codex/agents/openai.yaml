@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the keystone_system/doctor DeepWork workflow to check fleet health"
+  short_description: "Start the keystone_system/doctor DeepWork workflow to check fleet health"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

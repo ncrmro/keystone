@@ -1,0 +1,9 @@
+interface:
+  display_name: "Create a milestone from scope or press release"
+  short_description: "Create a milestone from scope or press release"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

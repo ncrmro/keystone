@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the sweng/implement DeepWork workflow for a new feature or capability"
+  short_description: "Start the sweng/implement DeepWork workflow for a new feature or capability"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

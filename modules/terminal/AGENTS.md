@@ -98,12 +98,24 @@ store doesn't need to be rebuilt on each invocation.
 
 Generates canonical `~/.keystone/AGENTS.md`, then derives
 `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`, and
-`~/.config/opencode/AGENTS.md` from the same content. The archetype is set
-per-agent via `keystone.os.agents.<name>.archetype`.
+`~/.config/opencode/AGENTS.md` from `conventions/archetypes.yaml`. When `aiArtifacts`
+is enabled (default), instruction files are installed from the committed `ai-artifacts/`
+tree instead of in-memory generation. The archetype is set per-agent via
+`keystone.os.agents.<name>.archetype`.
 
 **Budget warning**: emits a Nix warning if the generated file exceeds `maxGlobalBytes`
 (default 16KB). If triggered, move conventions from `inlined_conventions` to
 `referenced_conventions` in `archetypes.yaml`.
+
+## AI Artifacts (`ai-artifacts.nix`)
+
+Installs archetype-aware instruction files, skills, and role agent profiles from the
+committed `ai-artifacts/` directory tree. Options at `keystone.terminal.aiArtifacts`:
+- `enable` (default: true) — install from the artifact tree
+- `archetype` — defaults to `conventions.archetype`
+- `tools.<tool>.enable` — per-tool enablement (claude, gemini, codex, opencode)
+
+Regenerate the artifact tree with `generate-ai-artifacts` after editing source metadata.
 
 ## Development Mode vs Locked Mode (`development` + `repos` in `terminal/default.nix`)
 

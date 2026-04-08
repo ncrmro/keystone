@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the task_loop/run DeepWork workflow to execute a single pending task"
+  short_description: "Start the task_loop/run DeepWork workflow to execute a single pending task"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

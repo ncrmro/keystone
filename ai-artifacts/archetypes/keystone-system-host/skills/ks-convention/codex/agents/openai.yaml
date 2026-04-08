@@ -1,0 +1,9 @@
+interface:
+  display_name: "Start the keystone_system/convention DeepWork workflow"
+  short_description: "Start the keystone_system/convention DeepWork workflow"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"

@@ -5,12 +5,16 @@
 # Implements REQ-017 (Conventions and Grafana MCP)
 # Implements REQ-021 (Agent Context Budget)
 #
-# Reads archetypes.yaml from the keystone-conventions Nix store derivation and
-# writes conventions to each CLI coding tool's native instruction file path:
+# When aiArtifacts is enabled, instruction files are installed from the
+# committed ai-artifacts/ tree (or local checkout in dev mode) so content
+# varies by archetype (REQ-9).  Falls back to in-memory generation when
+# aiArtifacts is disabled for backward compatibility (REQ-35).
+#
+# Writes conventions to each CLI coding tool's native instruction file path:
 #   - ~/.claude/CLAUDE.md   (Claude Code)
 #   - ~/.gemini/GEMINI.md   (Gemini CLI)
 #   - ~/.codex/AGENTS.md    (Codex)
-#   - OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file needed
+#   - ~/.config/opencode/AGENTS.md  (OpenCode — REQ-21)
 #
 # When keystone.development = true, also generates:
 #   - ~/.keystone/repos/AGENTS.md  using the keystone-developer archetype
@@ -29,11 +33,32 @@ with lib;
 let
   cfg = config.keystone.terminal.conventions;
   terminalCfg = config.keystone.terminal;
+  aiArtifactsCfg = config.keystone.terminal.aiArtifacts;
   conventionsPath = pkgs.keystone.keystone-conventions;
   aiCapabilities = config.keystone.terminal.aiExtensions.resolvedCapabilities or [ ];
   aiCommandIds = config.keystone.terminal.aiExtensions.publishedCommands or [ ];
+  isDev = config.keystone.development;
+  repos = config.keystone.repos;
+  homeDir = config.home.homeDirectory;
 
-  # Read archetypes.yaml from the conventions derivation.
+  # Look up the keystone repo's local checkout path.
+  keystoneEntry = findFirst (name: (repos.${name}.flakeInput or null) == "keystone") null (
+    attrNames repos
+  );
+  devPath =
+    if isDev && keystoneEntry != null then "${homeDir}/.keystone/repos/${keystoneEntry}" else null;
+
+  # Use artifact tree when aiArtifacts is enabled
+  useArtifactTree = aiArtifactsCfg.enable;
+
+  # Artifact tree paths (REQ-15, REQ-16)
+  artifactArchetypeDir =
+    if devPath != null then
+      "${devPath}/ai-artifacts/archetypes/${cfg.archetype}"
+    else
+      ./. + "/../../ai-artifacts/archetypes/${cfg.archetype}";
+
+  # Read archetypes.yaml from the conventions derivation (fallback path).
   # Guard: if the file doesn't exist, produce empty config (graceful degradation).
   archetypesFile = "${conventionsPath}/archetypes.yaml";
   hasArchetypes = builtins.pathExists archetypesFile;
@@ -54,7 +79,7 @@ let
   # Get the archetype config
   archetypeConfig = archetypesYaml.archetypes.${cfg.archetype} or { };
 
-  # Build inlined conventions content
+  # Build inlined conventions content (fallback when artifact tree is not used)
   inlinedConventions = map (
     name:
     let
@@ -78,7 +103,7 @@ let
     "- [${name}](${conventionsPath}/${filename})"
   ) (archetypeConfig.referenced_conventions or [ ]);
 
-  # Compose the AGENTS.md content
+  # Compose the AGENTS.md content (fallback)
   agentsMdContent = concatStringsSep "\n\n---\n\n" (
     [
       ''
@@ -129,7 +154,6 @@ let
 
   # --- Repos AGENTS.md (keystone.development = true only) ---
 
-  isDev = config.keystone.development;
   reposArchetype = archetypesYaml.archetypes."keystone-developer" or { };
 
   reposInlinedConventions = map (
@@ -201,6 +225,20 @@ let
   globalInlined = archetypeConfig.inlined_conventions or [ ];
   reposInlined = reposArchetype.inlined_conventions or [ ];
   overlappingConventions = filter (c: elem c globalInlined) reposInlined;
+
+  # Helper: resolve instruction file source from artifact tree.
+  # In dev mode: out-of-store symlink to local checkout.
+  # In non-dev mode: Nix store path from committed tree.
+  mkArtifactSource =
+    relPath:
+    if devPath != null then
+      {
+        source = config.lib.file.mkOutOfStoreSymlink "${devPath}/ai-artifacts/archetypes/${cfg.archetype}/${relPath}";
+      }
+    else
+      {
+        source = ./. + "/../../ai-artifacts/archetypes/${cfg.archetype}/${relPath}";
+      };
 in
 {
   imports = [ ../shared/experimental.nix ];
@@ -212,7 +250,8 @@ in
       description = ''
         Enable convention generation at each CLI coding tool's native
         instruction file path (~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md,
-        ~/.codex/AGENTS.md) (EXPERIMENTAL). See conventions/tool.cli-coding-agents.md.
+        ~/.codex/AGENTS.md, ~/.config/opencode/AGENTS.md).
+        See conventions/tool.cli-coding-agents.md.
       '';
     };
 
@@ -242,17 +281,18 @@ in
       # REQ-021: Warn when generated conventions exceed the context budget.
       # The global CLAUDE.md should be minimal — only host basics and essential
       # daily-use rules. Most conventions should be referenced, not inlined.
+      # Only applies to the in-memory fallback path.
       warnings =
         let
           globalSize = builtins.stringLength agentsMdContent;
           reposSize = builtins.stringLength reposAgentsMdContent;
         in
-        optional (globalSize > cfg.maxGlobalBytes)
+        optional (!useArtifactTree && globalSize > cfg.maxGlobalBytes)
           "keystone.terminal.conventions: generated CLAUDE.md is ${toString globalSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
             toString (cfg.maxGlobalBytes / 4)
           } tokens). Move conventions from inlined_conventions to referenced_conventions in archetypes.yaml."
         ++
-          optional (isDev && reposSize > cfg.maxGlobalBytes)
+          optional (!useArtifactTree && isDev && reposSize > cfg.maxGlobalBytes)
             "keystone.terminal.conventions: generated repos AGENTS.md is ${toString reposSize} bytes (budget: ${toString cfg.maxGlobalBytes} bytes, ~${
               toString (cfg.maxGlobalBytes / 4)
             } tokens). Move conventions from keystone-developer inlined_conventions to referenced_conventions in archetypes.yaml."
@@ -269,11 +309,40 @@ in
       # instruction files from the same content. In development mode these are
       # refreshed from the live checkout by keystone-sync-agent-assets instead of
       # being immutable Home Manager text outputs.
-      home.file.".keystone/AGENTS.md".text = agentsMdContent;
-      home.file.".claude/CLAUDE.md".text = agentsMdContent;
-      home.file.".gemini/GEMINI.md".text = agentsMdContent;
-      home.file.".codex/AGENTS.md".text = agentsMdContent;
-      home.file.".config/opencode/AGENTS.md".text = agentsMdContent;
-      home.file.".keystone/repos/AGENTS.md".text = reposAgentsMdContent;
+      #
+      # REQ-9:  Content varies by archetype when artifact tree is used.
+      # REQ-20: Install from artifact tree instead of single in-memory blob.
+      # REQ-35: Fallback to in-memory generation for backward compatibility.
+      home.file =
+        (
+          if useArtifactTree then
+            (optionalAttrs (aiArtifactsCfg.tools.claude.enable) {
+              ".claude/CLAUDE.md" = mkArtifactSource "claude/CLAUDE.md";
+            })
+            // (optionalAttrs (aiArtifactsCfg.tools.gemini.enable) {
+              ".gemini/GEMINI.md" = mkArtifactSource "gemini/GEMINI.md";
+            })
+            // (optionalAttrs (aiArtifactsCfg.tools.codex.enable) {
+              ".codex/AGENTS.md" = mkArtifactSource "codex/AGENTS.md";
+            })
+            // (optionalAttrs (aiArtifactsCfg.tools.opencode.enable) {
+              ".config/opencode/AGENTS.md" = mkArtifactSource "opencode/AGENTS.md";
+            })
+          else
+            # Fallback: in-memory generation for backward compatibility (REQ-35)
+            {
+              ".keystone/AGENTS.md".text = agentsMdContent;
+              ".claude/CLAUDE.md".text = agentsMdContent;
+              ".gemini/GEMINI.md".text = agentsMdContent;
+              ".codex/AGENTS.md".text = agentsMdContent;
+              ".config/opencode/AGENTS.md".text = agentsMdContent;
+              ".keystone/repos/AGENTS.md".text = reposAgentsMdContent;
+            }
+        )
+        // {
+          # Expose the full conventions directory for on-demand reading
+          # (referenced conventions link to Nix store paths in this directory)
+          ".config/keystone/conventions".source = conventionsPath;
+        };
     };
 }
