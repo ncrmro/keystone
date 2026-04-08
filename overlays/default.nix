@@ -40,7 +40,6 @@ let
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
   pdf-extract-src = ../packages/pdf-extract;
   whisper-transcribe-src = ../packages/whisper-transcribe;
-  immich-search-src = ../packages/immich-search;
   voice-recorder-src = ../packages/voice-recorder;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
   lfs-s3-pkg-src = ../packages/lfs-s3;
@@ -170,7 +169,6 @@ in
     docling = final.python3Packages.docling;
     pdf-extract = final.callPackage pdf-extract-src { };
     whisper-transcribe = final.callPackage whisper-transcribe-src { };
-    immich-search = final.callPackage immich-search-src { };
     voice-recorder = final.callPackage voice-recorder-src { };
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;

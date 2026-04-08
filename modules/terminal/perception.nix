@@ -5,7 +5,6 @@
 # - pdf-extract: convenience wrapper around docling with bbox JSON output
 # - whisper-transcribe: local audio transcription via whisper.cpp
 # - Keystone Photos (`ks photos`, backed by `keystone-photos`)
-# - immich-search: Immich REST API search (smart, person, recent)
 # - voice-recorder: PipeWire microphone capture helper
 #
 # Implements REQ-024.36 (terminal perception.enable option).
@@ -62,7 +61,6 @@ in
       pkgs.keystone.docling
       pkgs.keystone.pdf-extract
       (pkgs.keystone.whisper-transcribe.override { defaultLanguage = cfg.whisper.language; defaultModel = cfg.whisper.model; })
-      pkgs.keystone.immich-search
       pkgs.keystone.voice-recorder
     ] ++ optional cfg.search.enable pkgs.keystone.keystone-photos;
   };

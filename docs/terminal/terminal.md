@@ -182,7 +182,6 @@ keystone.terminal.perception = {
 This adds:
 - `docling` and `pdf-extract` for PDF parsing
 - `whisper-transcribe` for local transcription via `whisper.cpp`
-- `immich-search` for searching photos and screenshots
 - `voice-recorder` for quick microphone capture
 
 ### Transcribe a video locally

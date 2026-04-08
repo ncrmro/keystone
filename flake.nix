@@ -493,7 +493,6 @@
             docling
             pdf-extract
             whisper-transcribe
-            immich-search
             voice-recorder
             keystone-conventions
             slidev
