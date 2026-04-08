@@ -38,6 +38,7 @@ What you get:
 Start here:
 
 - [ISO Generation](os/iso-generation.md)
+- [Installer cache warming](os/installer-cache.md)
 - [Keystone OS install](os/installation.md)
 - [OS module reference](os/server.md)
 

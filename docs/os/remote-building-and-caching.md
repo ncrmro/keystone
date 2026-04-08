@@ -31,6 +31,9 @@ GitHub Actions can read from this public cache without credentials. If you want 
 publish new paths, put `CACHIX_AUTH_TOKEN` on a protected environment such as
 `release` and only assign that environment to the publishing workflow job.
 
+For the separate release/installer path that warms starter-template host closures
+into `ks-systems`, see [Installer cache warming](installer-cache.md).
+
 ## Approaches Considered
 
 ### Harmonia (current)
