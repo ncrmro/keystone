@@ -100,6 +100,12 @@
       flake = false;
     };
 
+    # Extracted standalone packages
+    repo-sync = {
+      url = "github:kdrgo/repo-sync";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Rust build tooling — splits dependency builds for fast incremental rebuilds
     crane.url = "github:ipetkov/crane";
   };
@@ -131,6 +137,7 @@
       deepwork,
       grafana-mcp-src,
       lfs-s3-src,
+      repo-sync,
       ...
     }:
     let
@@ -229,6 +236,7 @@
           deepwork
           grafana-mcp-src
           lfs-s3-src
+          repo-sync
           ;
       };
 
