@@ -5,7 +5,10 @@ use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::{cmd::ssh::SshSessionManager, repo};
+use crate::{
+    cmd::{build, ssh::SshSessionManager},
+    repo,
+};
 
 #[derive(Debug, Serialize)]
 pub struct SwitchResult {
@@ -66,9 +69,23 @@ async fn build_targets(repo_root: &Path, hosts: &[String]) -> Result<Vec<String>
     Ok(paths)
 }
 
-async fn deploy_local(host: &str, mode: &str, store_path: &str) -> Result<()> {
-    eprintln!("Deploying {} locally ({} mode)...", host, mode);
+fn canonical_path(path: &str) -> Option<String> {
+    std::fs::canonicalize(path)
+        .ok()
+        .map(|resolved| resolved.to_string_lossy().to_string())
+}
 
+fn local_system_closure_matches(store_path: &str) -> bool {
+    match (
+        canonical_path("/run/current-system"),
+        canonical_path(store_path),
+    ) {
+        (Some(current), Some(target)) => current == target,
+        _ => false,
+    }
+}
+
+async fn set_local_system_profile(host: &str, store_path: &str) -> Result<()> {
     let set_status = tokio::process::Command::new("sudo")
         .args([
             "nix-env",
@@ -82,6 +99,19 @@ async fn deploy_local(host: &str, mode: &str, store_path: &str) -> Result<()> {
         .context("Failed to set local system profile")?;
     if !set_status.success() {
         anyhow::bail!("Failed to set system profile for {}", host);
+    }
+
+    Ok(())
+}
+
+async fn switch_local_system(host: &str, mode: &str, store_path: &str) -> Result<()> {
+    let touch_status = tokio::process::Command::new("sudo")
+        .args(["touch", "/var/run/nixos-rebuild-safe-to-update-bootloader"])
+        .status()
+        .await
+        .context("Failed to mark local bootloader safe-to-update")?;
+    if !touch_status.success() {
+        anyhow::bail!("Failed to mark bootloader safe-to-update for {}", host);
     }
 
     let switch_cmd = format!("{}/bin/switch-to-configuration", store_path);
@@ -98,15 +128,17 @@ async fn deploy_local(host: &str, mode: &str, store_path: &str) -> Result<()> {
     Ok(())
 }
 
-async fn deploy_remote(
-    ssh: &SshSessionManager,
-    host: &str,
-    mode: &str,
-    store_path: &str,
-    ssh_target: &str,
-) -> Result<()> {
-    eprintln!("Deploying {} remotely to {}...", host, ssh_target);
+async fn deploy_local(host: &str, mode: &str, store_path: &str) -> Result<()> {
+    eprintln!("Deploying {} locally ({} mode)...", host, mode);
+    set_local_system_profile(host, store_path).await?;
+    switch_local_system(host, mode, store_path).await
+}
 
+async fn copy_remote_store_path(
+    ssh: &SshSessionManager,
+    ssh_target: &str,
+    store_path: &str,
+) -> Result<()> {
     let mut copy_cmd = tokio::process::Command::new("nix");
     copy_cmd
         .args(["copy", "--to"])
@@ -125,13 +157,67 @@ async fn deploy_remote(
         );
     }
 
+    Ok(())
+}
+
+async fn remote_system_closure_matches(
+    ssh: &SshSessionManager,
+    ssh_target: &str,
+    store_path: &str,
+) -> Result<bool> {
+    let mut check_cmd = tokio::process::Command::new("ssh");
+    ssh.configure_ssh_command(&mut check_cmd, ssh_target);
+    let output = check_cmd
+        .arg(format!("root@{}", ssh_target))
+        .arg(format!(
+            "current_system=$(readlink -f /run/current-system 2>/dev/null || echo none); if [ \"$current_system\" = \"{}\" ]; then echo HM; else echo OS; fi",
+            store_path
+        ))
+        .output()
+        .await
+        .context("Failed to inspect remote system closure")?;
+
+    Ok(output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "HM")
+}
+
+async fn set_remote_system_profile(
+    ssh: &SshSessionManager,
+    host: &str,
+    ssh_target: &str,
+    store_path: &str,
+) -> Result<()> {
+    let mut remote_cmd = tokio::process::Command::new("ssh");
+    ssh.configure_ssh_command(&mut remote_cmd, ssh_target);
+    let remote_status = remote_cmd
+        .arg(format!("root@{}", ssh_target))
+        .arg(format!(
+            "nix-env --profile /nix/var/nix/profiles/system --set {}",
+            store_path
+        ))
+        .status()
+        .await
+        .context("Failed to set remote system profile")?;
+    if !remote_status.success() {
+        anyhow::bail!("Failed to set remote system profile for {}", host);
+    }
+
+    Ok(())
+}
+
+async fn switch_remote_system(
+    ssh: &SshSessionManager,
+    host: &str,
+    mode: &str,
+    store_path: &str,
+    ssh_target: &str,
+) -> Result<()> {
     let switch_cmd = format!("{}/bin/switch-to-configuration", store_path);
     let mut remote_cmd = tokio::process::Command::new("ssh");
     ssh.configure_ssh_command(&mut remote_cmd, ssh_target);
     let remote_status = remote_cmd
         .arg(format!("root@{}", ssh_target))
         .arg(format!(
-            "nix-env --profile /nix/var/nix/profiles/system --set {} && {} {}",
+            "nix-env --profile /nix/var/nix/profiles/system --set {} && touch /var/run/nixos-rebuild-safe-to-update-bootloader && {} {}",
             store_path, switch_cmd, mode
         ))
         .status()
@@ -139,6 +225,93 @@ async fn deploy_remote(
         .context("Failed to switch remote configuration")?;
     if !remote_status.success() {
         anyhow::bail!("Failed to {} on remote host {}", mode, host);
+    }
+
+    Ok(())
+}
+
+async fn build_home_manager_records_for_host(
+    repo_root: &Path,
+    host: &str,
+) -> Result<Vec<build::HmActivationRecord>> {
+    build::build_home_manager_records(repo_root, &[host.to_string()], None, false).await
+}
+
+async fn deploy_home_manager_only(
+    repo_root: &Path,
+    session: &DeploySession,
+    host: &str,
+) -> Result<()> {
+    let records = build_home_manager_records_for_host(repo_root, host).await?;
+    if records.is_empty() {
+        return Ok(());
+    }
+
+    if session.local_hosts.contains(host) {
+        for record in records {
+            eprintln!(
+                "Activating home-manager for {} on {} (local)...",
+                record.user, record.host
+            );
+            let status = tokio::process::Command::new("sudo")
+                .arg("-u")
+                .arg(&record.user)
+                .arg(format!("{}/activate", record.store_path))
+                .status()
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to activate home-manager for {} on {}",
+                        record.user, record.host
+                    )
+                })?;
+            if !status.success() {
+                anyhow::bail!(
+                    "Home-manager activation failed for {} on {}",
+                    record.user,
+                    record.host
+                );
+            }
+        }
+        return Ok(());
+    }
+
+    let ssh_target = session.remote_targets.get(host).ok_or_else(|| {
+        anyhow::anyhow!("{} is not available in the prepared deploy session.", host)
+    })?;
+
+    for record in records {
+        eprintln!(
+            "Activating home-manager for {} on {} (remote: {})...",
+            record.user, record.host, ssh_target
+        );
+        copy_remote_store_path(&session.ssh, ssh_target, &record.store_path).await?;
+
+        let mut remote_cmd = tokio::process::Command::new("ssh");
+        session
+            .ssh
+            .configure_ssh_command(&mut remote_cmd, ssh_target);
+        let status = remote_cmd
+            .arg(format!("root@{}", ssh_target))
+            .arg(format!(
+                "sudo -u '{}' '{}/activate'",
+                record.user, record.store_path
+            ))
+            .status()
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to activate remote home-manager for {} on {}",
+                    record.user, record.host
+                )
+            })?;
+        if !status.success() {
+            anyhow::bail!(
+                "Home-manager activation failed for {} on {}",
+                record.user,
+                record.host
+            );
+        }
     }
 
     Ok(())
@@ -192,7 +365,7 @@ pub async fn prepare_deploy_session(repo_root: &Path, hosts: &[String]) -> Resul
 }
 
 pub async fn deploy_paths_with_session(
-    _repo_root: &Path,
+    repo_root: &Path,
     session: &DeploySession,
     mode: &str,
     hosts: &[String],
@@ -200,14 +373,40 @@ pub async fn deploy_paths_with_session(
 ) -> Result<()> {
     for (host, store_path) in hosts.iter().zip(store_paths.iter()) {
         if session.local_hosts.contains(host) {
-            deploy_local(host, mode, store_path).await?;
+            if local_system_closure_matches(store_path) {
+                eprintln!(
+                    "System closure unchanged. Activating fast home-manager switch locally..."
+                );
+                deploy_home_manager_only(repo_root, session, host).await?;
+                set_local_system_profile(host, store_path).await?;
+                eprintln!(
+                    "Skipped switch-to-configuration for {} because the system closure is unchanged.",
+                    host
+                );
+            } else {
+                deploy_local(host, mode, store_path).await?;
+            }
             continue;
         }
 
         let ssh_target = session.remote_targets.get(host).ok_or_else(|| {
             anyhow::anyhow!("{} is not available in the prepared deploy session.", host)
         })?;
-        deploy_remote(&session.ssh, host, mode, store_path, ssh_target).await?;
+
+        eprintln!("Deploying {} remotely to {}...", host, ssh_target);
+        copy_remote_store_path(&session.ssh, ssh_target, store_path).await?;
+
+        if remote_system_closure_matches(&session.ssh, ssh_target, store_path).await? {
+            eprintln!("OS core unchanged. Activating fast home-manager switch remotely...");
+            deploy_home_manager_only(repo_root, session, host).await?;
+            set_remote_system_profile(&session.ssh, host, ssh_target, store_path).await?;
+            eprintln!(
+                "Skipped switch-to-configuration for {} because the system closure is unchanged.",
+                host
+            );
+        } else {
+            switch_remote_system(&session.ssh, host, mode, store_path, ssh_target).await?;
+        }
     }
 
     Ok(())
@@ -270,5 +469,12 @@ mod tests {
             session.remote_targets.get("remote"),
             Some(&"tail.example.ts.net".to_string())
         );
+    }
+
+    #[test]
+    fn local_system_closure_mismatch_is_false_for_missing_path() {
+        assert!(!local_system_closure_matches(
+            "/nix/store/does-not-exist-system"
+        ));
     }
 }

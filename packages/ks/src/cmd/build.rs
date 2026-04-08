@@ -14,6 +14,13 @@ pub struct BuildResult {
     pub store_paths: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct HmActivationRecord {
+    pub host: String,
+    pub user: String,
+    pub store_path: String,
+}
+
 async fn run_nix_build(
     repo_root: &Path,
     targets: &[String],
@@ -46,14 +53,15 @@ async fn run_nix_build(
         .collect())
 }
 
-async fn build_home_manager(
+pub async fn build_home_manager_records(
     repo_root: &Path,
     hosts: &[String],
     user_filter: Option<&str>,
     all_users: bool,
-) -> Result<BuildResult> {
+) -> Result<Vec<HmActivationRecord>> {
     let override_args = repo::local_override_args(repo_root).await?;
     let mut build_targets = Vec::new();
+    let mut target_map = Vec::new();
 
     for host in hosts {
         let users = repo::list_target_hm_users(repo_root, host, user_filter, all_users).await?;
@@ -64,16 +72,47 @@ async fn build_home_manager(
                 host,
                 user,
             ));
+            target_map.push((host.clone(), user));
         }
     }
 
     eprintln!("Building home-manager profiles for: {}", hosts.join(", "));
     let paths = run_nix_build(repo_root, &build_targets, &override_args).await?;
 
+    if paths.len() != target_map.len() {
+        anyhow::bail!(
+            "nix build returned {} path(s) for {} home-manager activation target(s).",
+            paths.len(),
+            target_map.len()
+        );
+    }
+
+    Ok(target_map
+        .into_iter()
+        .zip(paths.into_iter())
+        .map(|((host, user), store_path)| HmActivationRecord {
+            host,
+            user,
+            store_path,
+        })
+        .collect())
+}
+
+async fn build_home_manager(
+    repo_root: &Path,
+    hosts: &[String],
+    user_filter: Option<&str>,
+    all_users: bool,
+) -> Result<BuildResult> {
+    let records = build_home_manager_records(repo_root, hosts, user_filter, all_users).await?;
+
     Ok(BuildResult {
         hosts: hosts.to_vec(),
         lock: false,
-        store_paths: paths,
+        store_paths: records
+            .into_iter()
+            .map(|record| record.store_path)
+            .collect(),
     })
 }
 
