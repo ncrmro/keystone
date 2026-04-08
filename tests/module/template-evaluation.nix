@@ -71,7 +71,8 @@ let
 
     template-default-iso =
       let
-        isoImage = templateOutputs.packages.x86_64-linux.iso;
+        isoSystem = templateOutputs.nixosConfigurations.laptop.pkgs.stdenv.hostPlatform.system;
+        isoImage = templateOutputs.packages.${isoSystem}.iso;
       in
       pkgs.runCommand "eval-template-iso" { } ''
         mkdir -p $out

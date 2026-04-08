@@ -336,8 +336,7 @@ if [[ "$BUILD" == "true" ]]; then
       let
         self = builtins.getFlake (toString $(printf '%q' "$PROJECT_SNAPSHOT_DIR"));
         keystone = ${keystone_expr};
-        installerTargets =
-          builtins.fromJSON (builtins.readFile self.outputs.packages.x86_64-linux.installerTargetsJson.outPath);
+        installerTargets = self.outputs.installerTargets;
       in keystone.lib.mkInstallerIsoForFlake {
         sshKeys = $nix_keys_list;
         adminUsername = \"$ADMIN_USERNAME\";

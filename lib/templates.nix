@@ -611,7 +611,6 @@ rec {
       sharedSystemModules = shared.systemModules or [ ];
       sharedUserModules = shared.userModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
-      defaultLinuxSystem = defaults.system or "x86_64-linux";
       effectiveRepoRoot =
         if repoRoot != null then
           repoRoot
@@ -636,16 +635,40 @@ rec {
           in
           if lib.hasPrefix prefix pathString then lib.removePrefix prefix pathString else null;
 
+      linuxKindDefaultsFor =
+        hostCfg:
+        if builtins.hasAttr hostCfg.kind linuxKindDefaults then
+          linuxKindDefaults.${hostCfg.kind}
+        else
+          throw "Unsupported Keystone Linux host kind `${hostCfg.kind}`.";
+
+      linuxHardwarePathFor =
+        name: hostCfg: if hostCfg ? hardware then hostCfg.hardware else hostFilePath name "hardware.nix";
+
+      linuxHardwareSpecFor =
+        name: hostCfg:
+        let
+          hardwarePath = linuxHardwarePathFor name hostCfg;
+        in
+        if hardwarePath == null then { } else normalizeHardwareSpec hardwarePath;
+
+      linuxHostSystemFor =
+        name: hostCfg:
+        let
+          kindDefaults = linuxKindDefaultsFor hostCfg;
+          hardwareSpec = linuxHardwareSpecFor name hostCfg;
+        in
+        if hostCfg ? system then
+          hostCfg.system
+        else if hardwareSpec ? system then
+          hardwareSpec.system
+        else
+          kindDefaults.system;
+
       mkLinuxInstallerTarget =
         name: hostCfg:
         let
-          kindDefaults =
-            if builtins.hasAttr hostCfg.kind linuxKindDefaults then
-              linuxKindDefaults.${hostCfg.kind}
-            else
-              throw "Unsupported Keystone Linux host kind `${hostCfg.kind}`.";
-          hardwarePath = if hostCfg ? hardware then hostCfg.hardware else hostFilePath name "hardware.nix";
-          hardwareSpec = if hardwarePath == null then { } else normalizeHardwareSpec hardwarePath;
+          hardwarePath = linuxHardwarePathFor name hostCfg;
           relativeHardwarePath = relativeRepoPath hardwarePath;
           storageType =
             if hostCfg ? storage && hostCfg.storage ? type then
@@ -658,13 +681,7 @@ rec {
         lib.optionalAttrs (relativeHardwarePath != null) {
           flakeHost = name;
           hostname = hostCfg.hostname or name;
-          system =
-            if hostCfg ? system then
-              hostCfg.system
-            else if hardwareSpec ? system then
-              hardwareSpec.system
-            else
-              kindDefaults.system;
+          system = linuxHostSystemFor name hostCfg;
           inherit storageType;
           hardwarePath = relativeHardwarePath;
         };
@@ -672,13 +689,9 @@ rec {
       mkLinuxInventoryHost =
         name: hostCfg:
         let
-          kindDefaults =
-            if builtins.hasAttr hostCfg.kind linuxKindDefaults then
-              linuxKindDefaults.${hostCfg.kind}
-            else
-              throw "Unsupported Keystone Linux host kind `${hostCfg.kind}`.";
-          hardwarePath = if hostCfg ? hardware then hostCfg.hardware else hostFilePath name "hardware.nix";
-          hardwareSpec = if hardwarePath == null then { } else normalizeHardwareSpec hardwarePath;
+          kindDefaults = linuxKindDefaultsFor hostCfg;
+          hardwarePath = linuxHardwarePathFor name hostCfg;
+          hardwareSpec = linuxHardwareSpecFor name hostCfg;
           configurationPath =
             if hostCfg ? configuration then hostCfg.configuration else hostFilePath name "configuration.nix";
           mergedConfig = lib.recursiveUpdate (hostCfg.config or { }) (
@@ -701,13 +714,7 @@ rec {
             ])
             // {
               hostname = hostCfg.hostname or name;
-              system =
-                if hostCfg ? system then
-                  hostCfg.system
-                else if hardwareSpec ? system then
-                  hardwareSpec.system
-                else
-                  kindDefaults.system;
+              system = linuxHostSystemFor name hostCfg;
               timeZone = if hostCfg ? timeZone then hostCfg.timeZone else sharedTimeZone;
               admin = if hostCfg ? admin then hostCfg.admin else sharedAdmin;
               inherit adminUsername;
@@ -759,6 +766,26 @@ rec {
 
       linuxHosts = lib.filterAttrs (_: hostCfg: builtins.hasAttr hostCfg.kind linuxKindDefaults) hosts;
       darwinHosts = lib.filterAttrs (_: hostCfg: builtins.hasAttr hostCfg.kind darwinKindDefaults) hosts;
+      linuxHostSystems = lib.unique (lib.mapAttrsToList linuxHostSystemFor linuxHosts);
+      installerSystem =
+        if linuxHostSystems == [ ] then
+          defaults.system or null
+        else if lib.length linuxHostSystems > 1 then
+          throw ''
+            mkSystemFlake exposes a single installer ISO output, but the Linux host inventory uses multiple systems: ${lib.concatStringsSep ", " linuxHostSystems}.
+            Split those hosts into separate flakes or make their Linux systems agree before building one shared installer ISO.
+          ''
+        else
+          let
+            detectedSystem = builtins.head linuxHostSystems;
+          in
+          if defaults ? system && defaults.system != detectedSystem then
+            throw ''
+              mkSystemFlake defaults.system (${defaults.system}) does not match the detected Linux host system (${detectedSystem}).
+              Remove defaults.system or update it to match the Linux host inventory before building the installer ISO.
+            ''
+          else
+            detectedSystem;
       installerTargets = lib.filterAttrs (_: target: target != { }) (
         lib.mapAttrs mkLinuxInstallerTarget linuxHosts
       );
@@ -773,15 +800,15 @@ rec {
       adminEmail = sharedAdmin.email;
       adminName = sharedAdmin.fullName;
     }
-    // lib.optionalAttrs (linuxHosts != { }) {
-      packages.${defaultLinuxSystem} =
+    // lib.optionalAttrs (installerSystem != null) {
+      packages.${installerSystem} =
         let
-          pkgs = nixpkgs.legacyPackages.${defaultLinuxSystem};
+          pkgs = nixpkgs.legacyPackages.${installerSystem};
         in
         {
           installerTargetsJson = pkgs.writeText "installer-targets.json" (builtins.toJSON installerTargets);
           iso = mkInstallerIsoForFlake {
-            system = defaultLinuxSystem;
+            system = installerSystem;
             sshKeys = adminSshKeys;
             inherit
               adminUsername
