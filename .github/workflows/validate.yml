@@ -232,6 +232,19 @@ jobs:
       - name: Run tests
         run: cargo test --manifest-path packages/ks/Cargo.toml --verbose
 
+  # TODO: Remove this temporary PR-only cache-warming job after validating the
+  # generated-template installer closure warming path on this branch.
+  warm-cache:
+    name: warm-cache
+    if: github.event_name == 'pull_request' && github.head_ref == 'ci/installer-cache-warm-validation'
+    needs:
+      - flake-check
+    uses: ./.github/workflows/warm-cache.yml
+    with:
+      cache_branch_name: ${{ github.head_ref }}
+      save_nix_cache: true
+    secrets: inherit
+
   # Build the real ISO from a generated template fixture when
   # installer or template surfaces change, or when a workflow caller
   # explicitly forces the build for cache warming or publishing.
