@@ -274,6 +274,7 @@ let
       system ? "x86_64-linux",
       sshKeys ? [ ],
       adminUsername ? "keystone",
+      repoOwner ? adminUsername,
       adminName ? "System Administrator",
       adminEmail ? "admin@example.com",
       hostname ? "keystone",
@@ -401,6 +402,7 @@ let
               "keystone/install-repo".source = installRepo;
               "keystone/install-keystone".source = self.outPath;
               "keystone/install-metadata/admin-username".text = "${adminUsername}\n";
+              "keystone/install-metadata/repo-owner".text = "${repoOwner}\n";
               "keystone/install-metadata/repo-name".text = "${repoName}\n";
               "keystone/install-metadata/targets.json".text = builtins.toJSON installerTargets;
             };
@@ -583,6 +585,7 @@ rec {
   mkSystemFlake =
     {
       admin,
+      repoOwner ? null,
       defaults ? { },
       shared ? { },
       hostsRoot ? null,
@@ -621,6 +624,7 @@ rec {
       # (sshKeys) to produce a valid userSubmodule config.
       # username is passed through to keystone.os.adminUsername.
       adminUsername = admin.username or "keystone";
+      effectiveRepoOwner = if repoOwner != null then repoOwner else adminUsername;
       adminSshKeys = admin.sshKeys or [ ];
       sharedAdmin = builtins.removeAttrs admin [
         "username"
@@ -836,6 +840,7 @@ rec {
             adminName = sharedAdmin.fullName;
             adminEmail = sharedAdmin.email;
             repoPath = effectiveRepoRoot;
+            repoOwner = effectiveRepoOwner;
             repoName =
               if effectiveRepoRoot == null then
                 "nixos-config"
