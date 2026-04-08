@@ -87,7 +87,7 @@ if [[ "$EXT_LOWER" == "wav" ]]; then
 else
   echo "whisper-transcribe: converting $EXT_LOWER to WAV" >&2
   WAV_INPUT="$TMPDIR_WORK/input.wav"
-  ffmpeg -y -i "$INPUT" -ar 16000 -ac 1 -c:a pcm_s16le "$WAV_INPUT" 2>/dev/null
+  ffmpeg -y -i "$INPUT" -ar 16000 -ac 1 -c:a pcm_s16le "$WAV_INPUT" 
 fi
 
 # ── Run whisper.cpp ──────────────────────────────────────────────────
@@ -95,18 +95,18 @@ OUTPUT_TXT="$OUTPUT_DIR/$BASENAME_NOEXT.txt"
 
 echo "whisper-transcribe: model=$MODEL file=$INPUT" >&2
 
-whisper-cpp \
+whisper-cli \
   --model "$MODEL_PATH" \
   --output-txt \
   --output-file "$TMPDIR_WORK/transcript" \
   --print-timestamps \
-  "$WAV_INPUT" 2>/dev/null
+  "$WAV_INPUT" 
 
-# whisper-cpp creates transcript.txt
+# whisper-cli creates transcript.txt
 if [[ -f "$TMPDIR_WORK/transcript.txt" ]]; then
   cp "$TMPDIR_WORK/transcript.txt" "$OUTPUT_TXT"
 else
-  echo "Error: whisper-cpp produced no output" >&2
+  echo "Error: whisper-cli produced no output" >&2
   exit 1
 fi
 
