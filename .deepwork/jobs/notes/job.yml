@@ -108,6 +108,22 @@ step_arguments:
     description: "Confirmation that changes were committed and pushed"
     type: file_path
 
+  - name: task_note_path
+    description: "Absolute path to the created task note (e.g., /home/agent-drago/notes/notes/202604081420 implement-notes-task-workflow.md)"
+    type: file_path
+
+  - name: enrichment_log
+    description: "Summary of artifact tags added: which tags were added (milestone, issue, PR, repo), current status tag, and git commit hash"
+    type: string
+
+  - name: comment_log
+    description: "Summary of progress comments posted: which shared surfaces were updated (issue URL, PR URL), comment excerpts, and any surfaces skipped with reason"
+    type: string
+
+  - name: task_close_log
+    description: "Summary of task completion: final status tag applied, commit hash, push result, and note path"
+    type: string
+
 workflows:
   setup:
     summary: "Detect source format and convert to zk Zettelkasten structure"
@@ -2259,6 +2275,35 @@ workflows:
           - The doctor report is transient workflow state. Store it under `.deepwork/tmp/` and do not commit it.
           - The workflow should FAIL if substantial note-like markdown still lives outside canonical groups without an explicit operational-residue justification.
           - The workflow should also FAIL if there are obvious missing project tags on clearly project-owned notes after migration.
+          - Active task notes missing artifact tags (status/in-progress or status/needs-review) are actionable findings and SHOULD be flagged.
+
+          12. **Task note tag audit**:
+
+          Find task notes (notes in `notes/` with a `status/*` tag) that are missing expected
+          artifact tags given their content:
+
+          ```bash
+          # Find all task notes (have a status tag)
+          rg -l "status/(in-progress|blocked|needs-review|completed)" notes/ -g '*.md'
+          ```
+
+          For each task note found, check:
+          - If the body mentions a GitHub/Forgejo issue number or URL → SHOULD have `issue:gh:` or `issue:fj:` tag
+          - If the body mentions a PR number or URL → SHOULD have `pull_request:gh:` or `pull_request:fj:` tag
+          - Every task note SHOULD have at least one `project/*` tag
+
+          Flag notes with `status/in-progress` or `status/needs-review` that are missing
+          these tags as actionable findings. Completed tasks with missing tags are advisory only.
+
+          Add a `## Task note tag audit` section to the doctor report:
+
+          ```markdown
+          ## Task note tag audit
+
+          - Task notes found: N
+          - Active tasks missing artifact tags: N (list each with recommended tag values)
+          - Completed tasks with missing tags: N (advisory)
+          ```
         inputs:
           migration_log:
             required: true
@@ -2602,4 +2647,291 @@ workflows:
             required: true
         outputs:
           sync_status:
+            required: true
+
+  task:
+    summary: "Create a task note at work start, enrich it with artifact tags as work progresses, and close it when done"
+    common_job_info_provided_to_all_steps_at_runtime: |
+      This workflow creates and maintains task notes in a zk Zettelkasten notes repo.
+      Task notes live in the `notes/` group and use `type: permanent`.
+
+      ## Notes Repo Structure
+
+      Task notes are created in:
+      ```
+      notes-repo/
+        notes/                 # Permanent notes, including task notes
+        .zk/config.toml        # zk configuration
+      ```
+
+      ## Key zk Commands
+
+      - `zk new notes/ --title "Title" --no-input --print-path` — Create note (non-interactive)
+      - `zk list notes/ --tag "project/keystone" --format json` — Query by tag
+      - `zk index` — Rebuild note index
+
+      ## Required Frontmatter
+
+      ```yaml
+      ---
+      id: "202604081420"
+      title: "Task title"
+      type: permanent
+      created: 2026-04-08T14:20:00Z
+      author: drago
+      tags:
+        - project/keystone
+        - status/in-progress
+      ---
+      ```
+
+      ## Task Note Tag Schema
+
+      Tags are sparse at creation and grow richer as the lifecycle advances.
+
+      | Tag pattern | Example | Meaning |
+      |-------------|---------|---------|
+      | `project/<slug>` | `project/keystone` | Project identifier |
+      | `milestone:<number>` | `milestone:8` | Milestone number on the project's VCS platform |
+      | `issue:gh:<owner>/<repo>#<number>` | `issue:gh:ncrmro/keystone#242` | GitHub issue |
+      | `issue:fj:<owner>/<repo>#<number>` | `issue:fj:ncrmro/keystone#42` | Forgejo issue |
+      | `pull_request:gh:<owner>/<repo>#<number>` | `pull_request:gh:ncrmro/keystone#250` | GitHub PR |
+      | `pull_request:fj:<owner>/<repo>#<number>` | `pull_request:fj:ncrmro/keystone#55` | Forgejo PR |
+      | `repo:gh:<owner>/<repo>` | `repo:gh:ncrmro/keystone` | GitHub repository |
+      | `repo:fj:<owner>/<repo>` | `repo:fj:ncrmro/keystone` | Forgejo repository |
+      | `status/in-progress` | — | Work is active |
+      | `status/blocked` | — | Work is blocked waiting on something external |
+      | `status/needs-review` | — | Work is complete, awaiting review |
+      | `status/completed` | — | Task is done |
+
+      Status tags are mutually exclusive — only one `status/*` tag should be present at a time.
+
+      ## Shared Surfaces
+
+      Shared surfaces are collaborative artifacts on VCS platforms: GitHub and Forgejo issues,
+      pull requests, and milestone discussions. These are the canonical public record of work.
+      Task notes complement them by providing a queryable, local record with structured artifact tags.
+
+      Agents comment on shared surfaces to post progress updates. VCS platforms auto-link
+      cross-references (e.g., mentioning an issue number creates a backlink), so commenting
+      creates bidirectional traceability without manual URL construction.
+
+      ## Querying Task Notes
+
+      ```bash
+      # All tasks for a project
+      zk list notes/ --tag "project/keystone" --format json
+
+      # Tasks for a specific milestone
+      zk list notes/ --tag "milestone:8" --format json
+
+      # Completed tasks
+      zk list notes/ --tag "status/completed" --format json
+
+      # Tasks by author
+      zk list notes/ --tag "author:drago" --format json
+
+      # Tasks linked to a specific issue
+      zk list notes/ --tag "issue:gh:ncrmro/keystone#242" --format json
+      ```
+    steps:
+      - name: create
+        instructions: |
+          # Create Task Note
+
+          ## Objective
+
+          Create a task note at the start of work with sparse initial tags. This establishes
+          a traceable record from the beginning of the task lifecycle.
+
+          ## Task
+
+          1. Determine the task context:
+             - Title: short slug describing the work (e.g., "implement notes.task workflow")
+             - Project slug: the primary project being worked on (e.g., `keystone`)
+             - Initial tags: `project/<slug>` and `status/in-progress`
+
+          2. Create the note:
+
+             ```bash
+             cd <notes_path>
+             zk new notes/ --title "<title>" --no-input --print-path
+             ```
+
+          3. Edit the created note to set frontmatter and body:
+
+             ```yaml
+             ---
+             id: "<12-digit timestamp>"
+             title: "<task title>"
+             type: permanent
+             created: <ISO 8601 timestamp>
+             author: <agent name from SOUL.md>
+             tags:
+               - project/<slug>
+               - status/in-progress
+             ---
+
+             ## Objective
+
+             <One paragraph describing what this task accomplishes and why.>
+
+             ## Progress
+
+             - Started: <date>
+             ```
+
+          4. Commit the note:
+
+             ```bash
+             git add notes/
+             git commit -m "chore(notes): create task note for <title>"
+             ```
+
+          5. Output the absolute path to the created note.
+        inputs: {}
+        outputs:
+          task_note_path:
+            required: true
+
+      - name: enrich
+        instructions: |
+          # Enrich Task Note with Artifact Tags
+
+          ## Objective
+
+          Add shared surface artifact tags to the task note as work produces concrete artifacts.
+          Run this step each time a new artifact (issue, PR, milestone, repo) is created or
+          identified.
+
+          ## Task
+
+          1. Read the current frontmatter of the task note at `task_note_path`.
+
+          2. Determine which artifact tags to add based on current work state:
+             - **Repo**: add `repo:gh:<owner>/<repo>` or `repo:fj:<owner>/<repo>` for the
+               primary repo being modified
+             - **Issue**: add `issue:gh:<owner>/<repo>#<number>` or `issue:fj:...` for any
+               tracking issue
+             - **Milestone**: add `milestone:<number>` if the task is part of a milestone
+             - **PR**: add `pull_request:gh:<owner>/<repo>#<number>` when a PR is opened
+             - **Status**: update the `status/*` tag if the work state has changed (e.g.,
+               `status/in-progress` → `status/needs-review`)
+
+          3. Edit the note frontmatter to add the new tags. Remove the old `status/*` tag
+             before adding the new one (only one status tag at a time).
+
+          4. Update the `## Progress` section in the note body with a brief entry:
+
+             ```markdown
+             - <date>: <what happened> (issue #N, PR #N, etc.)
+             ```
+
+          5. Commit the changes:
+
+             ```bash
+             git add notes/
+             git commit -m "chore(notes): enrich task note with <artifact type> tags"
+             ```
+
+          6. Output a summary: which tags were added, current status tag, and commit hash.
+        inputs:
+          task_note_path:
+            required: true
+        outputs:
+          enrichment_log:
+            required: true
+
+      - name: comment
+        instructions: |
+          # Comment on Shared Surfaces
+
+          ## Objective
+
+          Post a progress update on the relevant shared surfaces so that any agent or human
+          can follow work from the VCS platform without reading the notes repo.
+
+          ## Task
+
+          1. Read the task note at `task_note_path` to identify which shared surfaces to update:
+             - Extract `issue:*` tags → comment on those issues
+             - Extract `pull_request:*` tags → comment on those PRs
+
+          2. For each shared surface, post a concise progress comment that includes:
+             - A one-sentence summary of current status
+             - Any blockers or decisions made since the last update
+             - Next actions (if the task is still in progress)
+
+             Use the appropriate CLI tool:
+             ```bash
+             # GitHub issue
+             gh issue comment <number> --repo <owner>/<repo> --body "..."
+
+             # GitHub PR
+             gh pr comment <number> --repo <owner>/<repo> --body "..."
+
+             # Forgejo issue
+             fj issue comment --repo <owner>/<repo> --issue <number> --body "..."
+             ```
+
+          3. If no shared surfaces exist yet (no `issue:*` or `pull_request:*` tags), skip
+             this step and note "no shared surfaces yet" in the output.
+
+          4. Output a summary of which surfaces were updated and what was posted.
+        inputs:
+          task_note_path:
+            required: true
+          enrichment_log:
+            required: false
+        outputs:
+          comment_log:
+            required: true
+
+      - name: close
+        instructions: |
+          # Close Task Note
+
+          ## Objective
+
+          Mark the task note as completed, add a final progress entry, and sync to remote.
+
+          ## Task
+
+          1. Read the task note at `task_note_path`.
+
+          2. Update the frontmatter:
+             - Replace the current `status/*` tag with `status/completed`
+
+          3. Add a final entry to the `## Progress` section:
+
+             ```markdown
+             - <date>: completed — <one sentence summary of what was accomplished>
+             ```
+
+          4. Commit the change:
+
+             ```bash
+             git add notes/
+             git commit -m "chore(notes): close task note — <title>"
+             ```
+
+          5. Push to remote:
+
+             ```bash
+             git push
+             ```
+
+             If push fails due to upstream changes:
+
+             ```bash
+             git pull --rebase
+             git push
+             ```
+
+          6. Output a summary: final status tag, commit hash, push result, and note path.
+        inputs:
+          task_note_path:
+            required: true
+        outputs:
+          task_close_log:
             required: true
