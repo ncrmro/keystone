@@ -26,6 +26,8 @@ jobs:
     environment: release
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      FIXTURE_DIR: ${{ runner.temp }}/keystone-starter-fixture
+      STARTER_ARTIFACT_DIR: ${{ runner.temp }}/starter-iso-artifact
 
     steps:
       - name: Checkout
@@ -113,6 +115,41 @@ jobs:
         run: |
           set -euo pipefail
           nix flake check
+
+      - name: Build starter ISO fixture
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'release/')
+        run: |
+          set -euo pipefail
+
+          ./bin/generate-template-fixture --output "$FIXTURE_DIR"
+
+          cd "$FIXTURE_DIR"
+          ./bin/test-iso --build-only
+
+          mkdir -p "$STARTER_ARTIFACT_DIR"
+
+          iso_path="$(find "$FIXTURE_DIR/.test-iso/iso" -maxdepth 1 -name '*.iso' -print -quit)"
+          if [[ -z "$iso_path" ]]; then
+            echo "Generated fixture build completed but no ISO artifact was found"
+            exit 1
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            artifact_name="keystone-starter-installer-v${VERSION}.iso"
+          else
+            artifact_name="keystone-starter-installer-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::12}.iso"
+          fi
+
+          cp "$iso_path" "$STARTER_ARTIFACT_DIR/$artifact_name"
+          echo "STARTER_ISO_PATH=$STARTER_ARTIFACT_DIR/$artifact_name" >> "$GITHUB_ENV"
+
+      - name: Upload starter ISO artifact
+        if: env.STARTER_ISO_PATH != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: starter-installer-iso
+          path: ${{ env.STARTER_ISO_PATH }}
+          if-no-files-found: error
 
       - name: Warm cache stage
         run: |
