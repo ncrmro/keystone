@@ -45,56 +45,39 @@ To inspect the current effective location:
 printf '%s\n' "${KEYSTONE_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
 ```
 
-## Current stopgap sync flow
+## Immich sync
 
-The full declarative Keystone implementation is still tracked in issue
-[#279](https://github.com/ncrmro/keystone/issues/279).
-
-Until that lands, the current stopgap is a local helper script:
+Keystone now syncs screenshots through the Rust `ks` CLI:
 
 ```bash
-bash ~/.local/bin/keystone-screenshot-rsync-stopgap --dry-run --verbose
+ks screenshots sync
 ```
 
-The script:
+This command:
 
 - reads screenshots from `KEYSTONE_SCREENSHOT_DIR`, `XDG_PICTURES_DIR`, or `~/Pictures`
-- syncs them to `ocean.mercury` with `rsync --ignore-existing`
-- defaults to the canonical target layout:
-
-```text
-/ocean/users/$USER/hosts/$(hostname)/Pictures
-```
-
-Current options:
-
-```bash
-bash ~/.local/bin/keystone-screenshot-rsync-stopgap --help
-```
+- uploads PNG screenshots to Immich
+- adds them to a Screenshots album for the current account
+- tags each uploaded screenshot with source, host, and account metadata
 
 Common usage:
 
 ```bash
-# Preview what would sync
-bash ~/.local/bin/keystone-screenshot-rsync-stopgap --dry-run --verbose
-
-# Sync to the current stopgap path validated on ocean
-bash ~/.local/bin/keystone-screenshot-rsync-stopgap \
-  --verbose \
-  --target-dir /ocean/media/users/ncrmro/hosts/ncrmro-workstation/Pictures
+ks screenshots sync
+ks screenshots sync --directory ~/Pictures
+ks screenshots sync --album-name "Screenshots - alice"
 ```
 
 ## Immich OCR search
 
-After screenshots are on `ocean`, they still need to be visible to Immich.
+After screenshots are uploaded to Immich, they are searchable through the same
+photo index as the rest of the library.
 
 Current manual flow:
 
-1. Add the screenshot directory in Immich as an external library.
-2. Trigger a scan or wait for indexing.
-3. Confirm the screenshot appears in Immich.
-4. Search for known text from the screenshot in the Immich UI.
-5. Configure local Immich credentials and use `ks photos search`.
+1. Run `ks screenshots sync`.
+2. Wait for Immich to finish indexing OCR and metadata.
+3. Search locally with `ks photos search`.
 
 Example:
 
@@ -106,13 +89,8 @@ ks photos search --text "known text from screenshot" --type screenshot
 
 ## Current caveats
 
-- The canonical target path under `/ocean/users/...` must already exist and be
-  writable for the stopgap script's default target to work.
-- The currently validated fallback path is `/ocean/media/users/...`.
-- The stopgap script is local-only for now. It is not yet a repo-tracked
-  Keystone module or packaged desktop command.
 - Screenshot OCR search depends on Immich library attachment and indexing, not
-  only on the rsync step.
+  only on the upload step.
 
 ## Related docs
 

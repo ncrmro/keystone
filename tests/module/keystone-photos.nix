@@ -1,4 +1,8 @@
-{ pkgs, lib }:
+{
+  pkgs,
+  lib,
+  ks ? pkgs.keystone.ks,
+}:
 pkgs.runCommand "keystone-photos-check"
   {
     nativeBuildInputs = with pkgs; [
@@ -7,6 +11,7 @@ pkgs.runCommand "keystone-photos-check"
       gnugrep
       gnused
       jq
+      python3
       util-linux
     ];
   }
@@ -18,17 +23,23 @@ pkgs.runCommand "keystone-photos-check"
             pkgs.gnugrep
             pkgs.gnused
             pkgs.jq
+            pkgs.python3
             pkgs.util-linux
           ]
         }"
 
         cd ${../..}
-
-        SCRIPT="$PWD/packages/keystone-photos/keystone-photos.sh"
+        KS_BIN="${ks}/bin/ks"
         TMP_DIR="$(mktemp -d)"
+        IMMICH_URL="http://127.0.0.1:18080"
+        SERVER_PID=""
 
         cleanup() {
           local exit_code=$?
+          if [[ -n "$SERVER_PID" ]]; then
+            kill "$SERVER_PID" >/dev/null 2>&1 || true
+            wait "$SERVER_PID" >/dev/null 2>&1 || true
+          fi
           rm -rf "$TMP_DIR"
           exit "$exit_code"
         }
@@ -79,234 +90,217 @@ pkgs.runCommand "keystone-photos-check"
           fi
         }
 
-        create_fake_curl() {
-          cat >"$TMP_DIR/curl" <<'EOF'
-    #!${pkgs.bash}/bin/bash
-    set -euo pipefail
+        create_fake_server() {
+          cat >"$TMP_DIR/immich-server.py" <<'PY'
+    import json
+    import os
+    import pathlib
+    import re
+    import sys
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-    method="GET"
-    body=""
-    url=""
-    data_file=""
-    output_file=""
-    headers_file="''${TMP_DIR}/curl-headers.log"
+    tmp_dir = pathlib.Path(sys.argv[1])
+    port = int(sys.argv[2])
 
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        -X)
-          method="$2"
-          shift 2
-          ;;
-        -d)
-          body="$2"
-          shift 2
-          ;;
-        -H)
-          printf '%s\n' "$2" >>"$headers_file"
-          shift 2
-          ;;
-        -F)
-          printf '%s\n' "$2" >>"''${TMP_DIR}/curl-form.log"
-          if [[ "$2" == assetData=@* ]]; then
-            data_file="''${2#assetData=@}"
-            data_file="''${data_file%%;*}"
-          fi
-          shift 2
-          ;;
-        -o)
-          output_file="$2"
-          shift 2
-          ;;
-        http://*|https://*)
-          url="$1"
-          shift
-          ;;
-        *)
-          shift
-          ;;
-      esac
-    done
+    def write_text(path: pathlib.Path, value: str) -> None:
+        path.write_text(value, encoding="utf-8")
 
-    if [[ -n "$body" ]]; then
-      printf '%s' "$body" >"''${TMP_DIR}/request.json"
-    fi
+    def append_text(path: pathlib.Path, value: str) -> None:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(value)
 
-    case "''${method} ''${url}" in
-      "GET http://immich.local/api/people")
-        cat <<'JSON'
-    [
-      {"id":"person-1","name":"Nick Romero","isFavorite":true},
-      {"id":"person-2","name":"Someone Else","isFavorite":false}
-    ]
-    JSON
-        ;;
-      "GET http://immich.local/api/tags")
-        cat <<'JSON'
-    [
-      {"id":"tag-1","name":"receipt","value":"receipt"},
-      {"id":"tag-2","name":"family","value":"family"}
-    ]
-    JSON
-        ;;
-      "POST http://immich.local/api/search/smart")
-        cat <<'JSON'
-    {
-      "assets": {
-        "items": [
-          {
-            "id": "asset-1",
-            "originalFileName": "nick-romero-card.jpg",
-            "originalPath": "/photos/cards/nick-romero-card.jpg",
-            "type": "IMAGE",
-            "fileCreatedAt": "2026-03-01T12:00:00.000Z",
-            "exifInfo": {
-              "dateTimeOriginal": "2026-03-01T12:00:00.000Z",
-              "description": "Nick Romero business card",
-              "city": "Austin",
-              "state": "Texas",
-              "country": "United States",
-              "make": "Apple",
-              "model": "iPhone 15 Pro",
-              "lensModel": "Main Camera"
-            },
-            "people": [
-              {"name":"Nick Romero"}
-            ],
-            "tags": [
-              {"name":"receipt","value":"receipt"}
-            ]
-          }
-        ]
-      }
-    }
-    JSON
-        ;;
-      "POST http://immich.local/api/search/metadata")
-        cat <<'JSON'
-    {
-      "assets": {
-        "items": [
-          {
-            "id": "asset-2",
-            "originalFileName": "IMG_2048.jpg",
-            "originalPath": "/photos/trips/IMG_2048.jpg",
-            "type": "IMAGE",
-            "fileCreatedAt": "2026-02-01T12:00:00.000Z",
-            "exifInfo": {
-              "dateTimeOriginal": "2026-02-01T12:00:00.000Z",
-              "description": "Family receipt in Austin",
-              "city": "Austin",
-              "state": "Texas",
-              "country": "United States",
-              "make": "Apple",
-              "model": "iPhone 15 Pro",
-              "lensModel": "Main Camera"
-            },
-            "people": [
-              {"name":"Nick Romero"},
-              {"name":"Someone Else"}
-            ],
-            "tags": [
-              {"name":"receipt","value":"receipt"},
-              {"name":"family","value":"family"}
-            ]
-          }
-        ]
-      }
-    }
-    JSON
-        ;;
-      "GET http://immich.local/api/assets/asset-1")
-        cat <<'JSON'
-    {
-      "id": "asset-1",
-      "originalFileName": "nick-romero-card.jpg",
-      "originalPath": "/photos/cards/nick-romero-card.jpg",
-      "type": "IMAGE"
-    }
-    JSON
-        ;;
-      "GET http://immich.local/api/assets/asset-1/original")
-        [[ -n "$output_file" ]] || exit 1
-        printf 'fake-binary-data\n' >"$output_file"
-        ;;
-      "GET http://immich.local/api/albums")
-        if [[ -f "''${TMP_DIR}/album-created" ]]; then
-          cat <<'JSON'
-    [
-      {"id":"album-1","albumName":"Screenshots - testuser"},
-      {"id":"album-2","albumName":"New Screenshots - testuser"}
-    ]
-    JSON
-        else
-          cat <<'JSON'
-    [
-      {"id":"album-1","albumName":"Screenshots - testuser"}
-    ]
-    JSON
-        fi
-        ;;
-      "POST http://immich.local/api/albums")
-        touch "''${TMP_DIR}/album-created"
-        printf '%s\n' "create-album" >>"''${TMP_DIR}/sync-events.log"
-        cat <<'JSON'
-    {"id":"album-2","albumName":"New Screenshots - testuser"}
-    JSON
-        ;;
-      "POST http://immich.local/api/assets")
-        if [[ -n "$data_file" ]]; then
-          printf '%s\n' "upload $(basename "$data_file")" >>"''${TMP_DIR}/sync-events.log"
-        fi
-        cat <<'JSON'
-    {"id":"uploaded-asset-1","status":"created"}
-    JSON
-        ;;
-      "POST http://immich.local/api/albums/album-1/assets"|"POST http://immich.local/api/albums/album-2/assets")
-        printf '%s\n' "album-add" >>"''${TMP_DIR}/sync-events.log"
-        printf '{}\n'
-        ;;
-      "POST http://immich.local/api/tags/upsert")
-        printf '%s\n' "tag-upsert" >>"''${TMP_DIR}/sync-events.log"
-        printf '%s' "$body" >"''${TMP_DIR}/tag-upsert-request.json"
-        cat <<'JSON'
-    [
-      {"id":"tag-source","value":"source:screenshot"},
-      {"id":"tag-host","value":"host:test-host"},
-      {"id":"tag-account","value":"account:testuser"}
-    ]
-    JSON
-        ;;
-      "POST http://immich.local/api/tags/tag-source/assets"|"POST http://immich.local/api/tags/tag-host/assets"|"POST http://immich.local/api/tags/tag-account/assets")
-        printf '%s\n' "tag-asset" >>"''${TMP_DIR}/sync-events.log"
-        printf '{}\n'
-        ;;
-      *)
-        echo "Unexpected curl invocation: ''${method} ''${url}" >&2
-        exit 1
-        ;;
-    esac
-    EOF
-          chmod +x "$TMP_DIR/curl"
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return
+
+        def _body(self) -> bytes:
+            length = int(self.headers.get("Content-Length", "0"))
+            return self.rfile.read(length) if length > 0 else b""
+
+        def _json(self, payload, status=200):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _bytes(self, payload: bytes, content_type: str):
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_GET(self):
+            if self.path == "/api/people":
+                self._json([
+                    {"id": "person-1", "name": "Nick Romero", "isFavorite": True},
+                    {"id": "person-2", "name": "Someone Else", "isFavorite": False},
+                ])
+                return
+            if self.path == "/api/tags":
+                self._json([
+                    {"id": "tag-1", "name": "receipt", "value": "receipt"},
+                    {"id": "tag-2", "name": "family", "value": "family"},
+                ])
+                return
+            if self.path == "/api/assets/asset-1":
+                self._json({
+                    "id": "asset-1",
+                    "originalFileName": "nick-romero-card.jpg",
+                    "originalPath": "/photos/cards/nick-romero-card.jpg",
+                    "type": "IMAGE",
+                })
+                return
+            if self.path == "/api/assets/asset-1/original":
+                self._bytes(b"fake-binary-data\n", "application/octet-stream")
+                return
+            if self.path == "/api/albums":
+                albums = [{"id": "album-1", "albumName": "Screenshots - testuser"}]
+                if (tmp_dir / "album-created").exists():
+                    albums.append({"id": "album-2", "albumName": "New Screenshots - testuser"})
+                self._json(albums)
+                return
+
+            self.send_error(404, "unknown path")
+
+        def do_POST(self):
+            body = self._body()
+            if self.path in {"/api/search/smart", "/api/search/metadata"}:
+                write_text((tmp_dir / "request.json"), body.decode("utf-8"))
+                if self.path == "/api/search/smart":
+                    self._json({
+                        "assets": {
+                            "items": [
+                                {
+                                    "id": "asset-1",
+                                    "originalFileName": "nick-romero-card.jpg",
+                                    "originalPath": "/photos/cards/nick-romero-card.jpg",
+                                    "type": "IMAGE",
+                                    "fileCreatedAt": "2026-03-01T12:00:00.000Z",
+                                    "exifInfo": {
+                                        "dateTimeOriginal": "2026-03-01T12:00:00.000Z",
+                                        "description": "Nick Romero business card",
+                                        "city": "Austin",
+                                        "state": "Texas",
+                                        "country": "United States",
+                                        "make": "Apple",
+                                        "model": "iPhone 15 Pro",
+                                        "lensModel": "Main Camera",
+                                    },
+                                    "people": [{"name": "Nick Romero"}],
+                                    "tags": [{"name": "receipt", "value": "receipt"}],
+                                }
+                            ]
+                        }
+                    })
+                else:
+                    self._json({
+                        "assets": {
+                            "items": [
+                                {
+                                    "id": "asset-2",
+                                    "originalFileName": "IMG_2048.jpg",
+                                    "originalPath": "/photos/trips/IMG_2048.jpg",
+                                    "type": "IMAGE",
+                                    "fileCreatedAt": "2026-02-01T12:00:00.000Z",
+                                    "exifInfo": {
+                                        "dateTimeOriginal": "2026-02-01T12:00:00.000Z",
+                                        "description": "Family receipt in Austin",
+                                        "city": "Austin",
+                                        "state": "Texas",
+                                        "country": "United States",
+                                        "make": "Apple",
+                                        "model": "iPhone 15 Pro",
+                                        "lensModel": "Main Camera",
+                                    },
+                                    "people": [{"name": "Nick Romero"}, {"name": "Someone Else"}],
+                                    "tags": [
+                                        {"name": "receipt", "value": "receipt"},
+                                        {"name": "family", "value": "family"},
+                                    ],
+                                }
+                            ]
+                        }
+                    })
+                return
+            if self.path == "/api/albums":
+                (tmp_dir / "album-created").touch()
+                append_text((tmp_dir / "sync-events.log"), "create-album\n")
+                self._json({"id": "album-2", "albumName": "New Screenshots - testuser"})
+                return
+            if self.path == "/api/assets":
+                text = body.decode("utf-8", errors="ignore")
+                match = re.search(r'filename="([^"]+)"', text)
+                if match:
+                    append_text((tmp_dir / "sync-events.log"), f"upload {os.path.basename(match.group(1))}\n")
+                self._json({"id": "uploaded-asset-1", "status": "created"})
+                return
+            if self.path in {"/api/albums/album-1/assets", "/api/albums/album-2/assets"}:
+                append_text((tmp_dir / "sync-events.log"), "album-add\n")
+                self._json({})
+                return
+            if self.path == "/api/tags/upsert":
+                append_text((tmp_dir / "sync-events.log"), "tag-upsert\n")
+                write_text((tmp_dir / "tag-upsert-request.json"), body.decode("utf-8"))
+                self._json([
+                    {"id": "tag-source", "value": "source:screenshot"},
+                    {"id": "tag-host", "value": "host:test-host"},
+                    {"id": "tag-account", "value": "account:testuser"},
+                ])
+                return
+            if self.path in {
+                "/api/tags/tag-source/assets",
+                "/api/tags/tag-host/assets",
+                "/api/tags/tag-account/assets",
+            }:
+                append_text((tmp_dir / "sync-events.log"), "tag-asset\n")
+                self._json({})
+                return
+
+            self.send_error(404, "unknown path")
+
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    write_text((tmp_dir / "server-ready"), "ready\n")
+    server.serve_forever()
+    PY
+
+          ${pkgs.python3}/bin/python3 "$TMP_DIR/immich-server.py" "$TMP_DIR" 18080 >"$TMP_DIR/server.log" 2>&1 &
+          SERVER_PID=$!
+
+          for _ in $(seq 1 50); do
+            [[ -f "$TMP_DIR/server-ready" ]] && return 0
+            sleep 0.1
+          done
+
+          echo "FAIL: fake Immich server did not start" >&2
+          cat "$TMP_DIR/server.log" >&2 || true
+          exit 1
         }
 
-        create_fake_curl
+        create_fake_server
 
-        run_capture help env PATH="$TMP_DIR:$PATH" bash "$SCRIPT" --help
+        run_capture help env "$KS_BIN" photos --help
         assert_status help 0
-        assert_contains help "keystone-photos — search and sync Immich assets from the terminal"
-        assert_contains help "Credential discovery:"
-        assert_contains help "keystone-photos preview <asset-id>"
+        assert_contains help "Usage: ks photos"
+        assert_contains help "search"
+        assert_contains help "people"
 
-        run_capture missing-creds env PATH="$TMP_DIR:$PATH" bash "$SCRIPT" search --text acme
+        run_capture screenshots-help env "$KS_BIN" screenshots --help
+        assert_status screenshots-help 0
+        assert_contains screenshots-help "Usage: ks screenshots"
+        assert_contains screenshots-help "sync"
+
+        run_capture missing-creds env "$KS_BIN" photos search --text acme
         assert_status missing-creds 1
         assert_contains missing-creds "missing Immich URL"
 
         run_capture json-search env \
-          PATH="$TMP_DIR:$PATH" \
-          IMMICH_URL="http://immich.local" \
+          IMMICH_URL="$IMMICH_URL" \
           IMMICH_API_KEY="secret" \
           TMP_DIR="$TMP_DIR" \
-          bash "$SCRIPT" search --text "Nick Romero" --kind business-card --json
+          "$KS_BIN" photos search --text "Nick Romero" --kind business-card --json
         assert_status json-search 0
         assert_contains json-search '"filename": "nick-romero-card.jpg"'
         assert_contains json-search '"kind": "business-card"'
@@ -318,31 +312,28 @@ pkgs.runCommand "keystone-photos-check"
         fi
 
         run_capture person-search env \
-          PATH="$TMP_DIR:$PATH" \
-          IMMICH_URL="http://immich.local" \
+          IMMICH_URL="$IMMICH_URL" \
           IMMICH_API_KEY="secret" \
           TMP_DIR="$TMP_DIR" \
-          bash "$SCRIPT" search --person "Nick Romero" --json
+          "$KS_BIN" photos search --person "Nick Romero" --json
         assert_status person-search 0
         assert_contains person-search '"people": ['
         assert_contains person-search '"filename": "IMG_2048.jpg"'
 
         run_capture table-search env \
-          PATH="$TMP_DIR:$PATH" \
-          IMMICH_URL="http://immich.local" \
+          IMMICH_URL="$IMMICH_URL" \
           IMMICH_API_KEY="secret" \
           TMP_DIR="$TMP_DIR" \
-          bash "$SCRIPT" search --text "Nick Romero"
+          "$KS_BIN" photos search --text "Nick Romero"
         assert_status table-search 0
         assert_contains table-search 'nick-romero-card.jpg'
         assert_contains table-search 'MATCH'
 
         run_capture advanced-search env \
-          PATH="$TMP_DIR:$PATH" \
-          IMMICH_URL="http://immich.local" \
+          IMMICH_URL="$IMMICH_URL" \
           IMMICH_API_KEY="secret" \
           TMP_DIR="$TMP_DIR" \
-          bash "$SCRIPT" search \
+          "$KS_BIN" photos search \
             --album "Screenshots - testuser" \
             --tag "receipt" \
             --country "United States" \
@@ -375,21 +366,19 @@ pkgs.runCommand "keystone-photos-check"
         fi
 
         run_capture people-list env \
-          PATH="$TMP_DIR:$PATH" \
-          IMMICH_URL="http://immich.local" \
+          IMMICH_URL="$IMMICH_URL" \
           IMMICH_API_KEY="secret" \
           TMP_DIR="$TMP_DIR" \
-          bash "$SCRIPT" people --json
+          "$KS_BIN" photos people --json
         assert_status people-list 0
         assert_contains people-list '"name": "Nick Romero"'
 
         run_capture download env \
-          PATH="$TMP_DIR:$PATH" \
-          IMMICH_URL="http://immich.local" \
+          IMMICH_URL="$IMMICH_URL" \
           IMMICH_API_KEY="secret" \
           TMP_DIR="$TMP_DIR" \
           XDG_CACHE_HOME="$TMP_DIR/cache" \
-          bash "$SCRIPT" download asset-1 --print-path
+          "$KS_BIN" photos download asset-1 --print-path
         assert_status download 0
 
         downloaded_path="$(tr -d '\n' < "$TMP_DIR/download.out")"
@@ -408,11 +397,10 @@ pkgs.runCommand "keystone-photos-check"
         printf 'fake png\n' >"$TMP_DIR/screenshots/screenshot-1.png"
 
         run_capture sync-first env \
-          PATH="$TMP_DIR:$PATH" \
-          IMMICH_URL="http://immich.local" \
+          IMMICH_URL="$IMMICH_URL" \
           IMMICH_API_KEY="secret" \
           TMP_DIR="$TMP_DIR" \
-          bash "$SCRIPT" sync-screenshots \
+          "$KS_BIN" screenshots sync \
             --directory "$TMP_DIR/screenshots" \
             --album-name "New Screenshots - testuser" \
             --host-name "test-host" \
@@ -441,11 +429,10 @@ pkgs.runCommand "keystone-photos-check"
         sync_event_count_before="$(wc -l < "$TMP_DIR/sync-events.log")"
 
         run_capture sync-second env \
-          PATH="$TMP_DIR:$PATH" \
-          IMMICH_URL="http://immich.local" \
+          IMMICH_URL="$IMMICH_URL" \
           IMMICH_API_KEY="secret" \
           TMP_DIR="$TMP_DIR" \
-          bash "$SCRIPT" sync-screenshots \
+          "$KS_BIN" screenshots sync \
             --directory "$TMP_DIR/screenshots" \
             --album-name "New Screenshots - testuser" \
             --host-name "test-host" \

@@ -80,7 +80,7 @@ in
     tui.enable = mkOption {
       type = types.bool;
       default = true;
-      description = "Whether the installer ISO should include and auto-start the Keystone TUI.";
+      description = "Whether the installer ISO should include and auto-start the ks.";
     };
 
     isoImage = mkOption {

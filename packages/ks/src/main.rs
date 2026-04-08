@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
     // 1. Installer mode: pre-baked ISO with config at /etc/keystone/install-config/
     // 2. First-boot mode: freshly installed system with .first-boot-pending marker
     // 3. Normal mode: repo management dashboard
-    let mut app = if let Some(installer_config) = InstallerConfig::detect() {
+    let mut app = if let Some(installer_config) = InstallerConfig::detect()? {
         App::new_for_installer(installer_config)
     } else if let Some(first_boot_config) = FirstBootConfig::detect() {
         App::new_for_first_boot(first_boot_config)

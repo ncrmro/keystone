@@ -18,13 +18,7 @@
   ...
 }:
 let
-  keystone-tui = pkgs.callPackage ../packages/keystone-tui { };
-  keystonePhotos = pkgs.callPackage ../packages/keystone-photos { };
-  agentsE2E = pkgs.callPackage ../packages/agents-e2e { };
-  ks = pkgs.callPackage ../packages/ks {
-    inherit keystonePhotos;
-    agents-e2e = agentsE2E;
-  };
+  ks = pkgs.callPackage ../packages/ks { };
   installerCfg = config.keystone.installer;
 in
 {
@@ -93,9 +87,6 @@ in
       # Provide `ks` in the live installer shell so `ks install` works
       # immediately after boot.
       ks
-      # Keep the installer command path available even when the autostart
-      # TUI service is disabled.
-      keystone-tui
     ]
     ++ (with pkgs; [
       git
@@ -134,7 +125,7 @@ in
     systemd.services."getty@tty1".enable = lib.mkIf installerCfg.tui.enable false;
     systemd.services."autovt@tty1".enable = lib.mkIf installerCfg.tui.enable false;
 
-    # Keystone TUI installer service - auto-starts on boot
+    # ks installer service - auto-starts on boot
     systemd.services.keystone-installer = lib.mkIf installerCfg.tui.enable {
       description = "Keystone Installer TUI";
       after = [
@@ -172,7 +163,7 @@ in
         # Clear any residual boot output and restore cursor before TUI starts.
         # Uses /bin/sh because systemd ExecStartPre doesn't support shell redirects.
         ExecStartPre = "/bin/sh -c '${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1'";
-        ExecStart = "${keystone-tui}/bin/keystone-tui";
+        ExecStart = "${ks}/bin/ks";
         Restart = "on-failure";
         RestartSec = "5s";
         StandardInput = "tty";

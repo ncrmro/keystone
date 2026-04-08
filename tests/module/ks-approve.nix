@@ -1,4 +1,7 @@
-{ pkgs }:
+{
+  pkgs,
+  ks ? pkgs.keystone.ks,
+}:
 pkgs.runCommand "test-ks-approve"
   {
     nativeBuildInputs = with pkgs; [
@@ -26,7 +29,7 @@ pkgs.runCommand "test-ks-approve"
 
     cat > "$PWD/bin/ks" <<'EOF'
     #!${pkgs.bash}/bin/bash
-    exec ${pkgs.bash}/bin/bash "$REPO_ROOT/packages/ks/ks.sh" "$@"
+    exec ${ks}/bin/ks "$@"
     EOF
     chmod +x "$PWD/bin/ks"
 

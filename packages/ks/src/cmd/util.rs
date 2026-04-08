@@ -1,0 +1,62 @@
+//! Shared helpers for Rust-owned CLI commands.
+
+use std::env;
+use std::io::{self, IsTerminal};
+use std::path::PathBuf;
+use std::process::{Command, ExitStatus, Stdio};
+
+use anyhow::{anyhow, Context, Result};
+
+pub fn find_executable(name: &str) -> Option<PathBuf> {
+    let path = env::var_os("PATH")?;
+    for entry in env::split_paths(&path) {
+        let candidate = entry.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+pub fn require_executable(name: &str, guidance: &str) -> Result<PathBuf> {
+    find_executable(name).ok_or_else(|| anyhow!(guidance.to_string()))
+}
+
+pub fn run_inherited(command: &mut Command, context: &str) -> Result<ExitStatus> {
+    command
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .with_context(|| context.to_string())
+}
+
+pub fn finish_status(status: ExitStatus) -> Result<()> {
+    if status.success() {
+        Ok(())
+    } else {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+}
+
+pub fn parse_or_exit<T>(result: std::result::Result<T, clap::Error>) -> Result<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            let exit_code = match error.kind() {
+                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => 0,
+                _ => 2,
+            };
+            error.print()?;
+            std::process::exit(exit_code);
+        }
+    }
+}
+
+pub fn interactive_terminal() -> bool {
+    io::stdin().is_terminal() && io::stdout().is_terminal()
+}
+
+pub fn stderr_terminal() -> bool {
+    io::stderr().is_terminal()
+}

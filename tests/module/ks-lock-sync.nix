@@ -88,7 +88,7 @@ pkgs.runCommand "ks-lock-sync"
     printf '%s\n' no-drift > "$PWD/repos/no-drift/.rev-list-state"
     printf '%s\n' needs-rebase-before > "$PWD/repos/needs-rebase/.rev-list-state"
 
-    sed '/# --- Main dispatch ---/,$d' "$REPO_ROOT/packages/ks/ks.sh" > "$PWD/ks-functions.sh"
+    sed '/# --- Main dispatch ---/,$d' "$REPO_ROOT/packages/ks-legacy/ks.sh" > "$PWD/ks-functions.sh"
 
     cat > "$PWD/test.sh" <<'EOF'
     #!${pkgs.bash}/bin/bash

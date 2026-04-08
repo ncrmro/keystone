@@ -105,7 +105,6 @@ in
     ./conventions.nix
     ./ai-extensions.nix
     ./generated-agent-assets.nix
-    ./perception.nix
   ];
 
   options.keystone.terminal = {
