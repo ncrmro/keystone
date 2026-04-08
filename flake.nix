@@ -420,9 +420,7 @@
           ks-lock-sync = import ./tests/module/ks-lock-sync.nix {
             inherit pkgs;
           };
-          keystone-photos = import ./tests/module/keystone-photos.nix {
-            inherit pkgs lib;
-          };
+          keystone-photos = ksPhotos;
           projects-schema = import ./tests/module/projects-schema.nix {
             inherit pkgs lib;
           };
