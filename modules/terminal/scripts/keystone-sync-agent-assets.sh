@@ -426,7 +426,7 @@ rm -f "$repos_agents_tmp"
 write_file "$HOME/.keystone/repos/AGENTS.md" "$repos_agents_content"
 
 # Clean up legacy command files (skills are the canonical format now)
-for command_file in ks.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engineer.md ks.product.md ks.pm.md; do
+for command_file in ks.md ks.system.md ks.assistant.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engineer.md ks.product.md ks.project-manager.md ks.pm.md; do
   rm -f "$HOME/.claude/commands/$command_file"
   rm -f "$HOME/.config/opencode/commands/$command_file"
 done
@@ -445,7 +445,15 @@ for command_id in "${published_commands[@]}"; do
   display_name="$(command_display_name "$command_id")"
   template_name="$(command_template_name "$command_id")"
   command_body="$(render_template "$templates_dir/$template_name")"
-  skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
+  skill_name="$command_id"
+  legacy_skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
+
+  # Clean up legacy dash-named skill directories
+  if [[ "$skill_name" != "$legacy_skill_name" ]]; then
+    rm -rf "$HOME/.claude/skills/${legacy_skill_name}"
+    rm -rf "$HOME/.gemini/skills/${legacy_skill_name}"
+    rm -rf "$HOME/.config/opencode/skills/${legacy_skill_name}"
+  fi
 
   # Skills are the canonical format — all CLIs with skill support get them
   ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"

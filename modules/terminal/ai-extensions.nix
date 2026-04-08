@@ -688,7 +688,7 @@ in
                 map (
                   command:
                   let
-                    skillName = codexSkillName command.id;
+                    skillName = command.id;
                     skillDir = "${toolDir}/skills/${skillName}";
                   in
                   if toolDir == ".gemini" then
