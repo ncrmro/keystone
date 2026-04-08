@@ -5,7 +5,7 @@
 1. Agents MUST use Nix devshells (`flake.nix`) to manage dependencies for all technical projects.
 2. Repositories SHOULD use `flake.nix` if the agent is the creator or primary maintainer.
 3. If working in a third-party repository where the agent is NOT the primary maintainer, the agent SHOULD avoid committing Nix configuration files, instead using local or untracked Nix shells to manage their own toolchain.
-4. If a project requires service orchestration (e.g., databases, caching), `process-compose` SHOULD be included in the devshell.
+4. If a project requires service orchestration (e.g., databases, caching), `process-compose` SHOULD be included in the devshell. See `tool.process-compose-agent` for dynamic port allocation and configuration standards.
 5. The use of `.envrc` with `direnv` is the standard method for auto-loading the environment.
 
 ## Shell Usage
@@ -43,7 +43,7 @@ For shell script authoring standards (strict mode, ShellCheck, Nix packaging), s
 ## Flake Conventions
 
 19. Dev shells SHOULD provide all build and test dependencies — no manual setup steps.
-20. Shell hooks MAY set environment variables (e.g., `PLAYWRIGHT_BROWSERS_PATH`, `DATABASE_URL`).
+20. Shell hooks MAY set environment variables (e.g., `PLAYWRIGHT_BROWSERS_PATH`, `DATABASE_URL`). See `tool.process-compose-agent` rule 20 for the exception when `env_cmds` manages port variables.
 21. Changes to `flake.nix` MUST be tested with `nix develop --command true` to verify the shell builds.
 
 ## Nix-Managed Configs
