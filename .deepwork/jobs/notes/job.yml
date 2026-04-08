@@ -2245,6 +2245,18 @@ workflows:
           - Ambiguous candidates: N
           - (list strong misses; summarize ambiguous ones)
 
+
+          ## Task Note Tag Audit
+
+          - Total task notes: N
+          - Fully tagged: N
+          - Partially tagged: N
+          - Flagged: N
+
+          (For each flagged note:)
+          - `notes/<id> <slug>.md` — missing: `pull_request:gh:...` (completed without PR tag)
+          - `notes/<id> <slug>.md` — malformed tag: `status/done` (unknown status state)
+
           ## Operational Files
 
           - TASKS.yaml: unchanged
