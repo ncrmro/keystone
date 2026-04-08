@@ -291,6 +291,22 @@ let
         (
           { pkgs, ... }:
           let
+            installerRepoExtraIgnores = [
+              "result"
+              "result-*"
+              "installer-iso"
+              ".test-iso*"
+              "*.iso"
+              ".direnv/"
+              ".vscode/"
+              ".gemini/"
+              "*.swp"
+              "*.swo"
+              "*~"
+              ".DS_Store"
+              "Thumbs.db"
+            ];
+
             repoSource =
               if repoPath == null then
                 null
@@ -305,19 +321,10 @@ let
                 #
                 # Instead, snapshot a gitignore-filtered working tree up front,
                 # then synthesize a fresh single-commit repo below for the ISO.
-                pkgs.nix-gitignore.gitignoreSource [
-                  "result"
-                  "result-*"
-                  "installer-iso"
-                  ".test-iso*"
-                  "*.iso"
-                  ".direnv/"
-                  ".vscode/"
-                  ".gemini/"
-                  "*.swp"
-                  "*.swo"
-                  ".DS_Store"
-                ] repoPath;
+                # gitignoreSource also loads repoPath/.gitignore automatically,
+                # so generated template repos keep their shared ignore rules
+                # while these extra patterns cover transient local build output.
+                pkgs.nix-gitignore.gitignoreSource installerRepoExtraIgnores repoPath;
 
             installRepo =
               if repoSource == null then
