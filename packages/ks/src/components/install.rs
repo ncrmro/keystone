@@ -624,6 +624,12 @@ pub enum InstallResult {
     Cancelled,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CommandSpec {
+    program: String,
+    args: Vec<String>,
+}
+
 pub struct InstallScreen {
     config: InstallerConfig,
     phase: InstallPhase,
@@ -904,6 +910,7 @@ impl InstallScreen {
                 &config_dir,
                 &tx,
                 &cancel_token,
+                true,
             )
             .await;
 
@@ -938,6 +945,7 @@ impl InstallScreen {
                 &config_dir,
                 &tx,
                 &cancel_token,
+                true,
             )
             .await;
 
@@ -1645,12 +1653,14 @@ async fn run_command(
     cwd: &Path,
     tx: &mpsc::UnboundedSender<InstallMessage>,
     cancel_token: &CancellationToken,
+    privileged: bool,
 ) -> Result<(), String> {
-    let cmd_display = format!("$ {} {}", program, args.join(" "));
+    let command = build_command_spec(program, args, privileged);
+    let cmd_display = format!("$ {} {}", command.program, command.args.join(" "));
     let _ = tx.send(InstallMessage::Output(cmd_display));
 
-    let child_result = Command::new(program)
-        .args(args)
+    let child_result = Command::new(&command.program)
+        .args(&command.args)
         .current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1708,6 +1718,24 @@ async fn run_command(
             let _ = stdout_task.await;
             Err("Cancelled".to_string())
         }
+    }
+}
+
+fn build_command_spec(program: &str, args: &[&str], privileged: bool) -> CommandSpec {
+    if privileged {
+        let mut command_args = Vec::with_capacity(args.len() + 2);
+        command_args.push("-n".to_string());
+        command_args.push(program.to_string());
+        command_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        return CommandSpec {
+            program: "sudo".to_string(),
+            args: command_args,
+        };
+    }
+
+    CommandSpec {
+        program: program.to_string(),
+        args: args.iter().map(|arg| (*arg).to_string()).collect(),
     }
 }
 
@@ -2103,5 +2131,21 @@ mod tests {
 
         screen.poll();
         assert_eq!(screen.selected_disk_index(), 1);
+    }
+
+    #[test]
+    fn test_build_command_spec_wraps_privileged_commands_in_sudo() {
+        let command = build_command_spec("disko", &["--mode", "disko"], true);
+
+        assert_eq!(command.program, "sudo");
+        assert_eq!(command.args, vec!["-n", "disko", "--mode", "disko"]);
+    }
+
+    #[test]
+    fn test_build_command_spec_keeps_non_privileged_commands_direct() {
+        let command = build_command_spec("disko", &["--mode", "disko"], false);
+
+        assert_eq!(command.program, "disko");
+        assert_eq!(command.args, vec!["--mode", "disko"]);
     }
 }
