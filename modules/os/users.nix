@@ -378,16 +378,17 @@ in
                     # they are inherited globally from keystone.development
                     # and keystone.repos which are now shared options.
 
-                  git = {
-                    enable = mkDefault (userCfg.terminal.enable && userCfg.email != null);
-                    userName = mkDefault userCfg.fullName;
-                    userEmail = mkDefault userCfg.email;
-                    # Bridge SSH public keys from keystone.keys for allowed_signers
-                    sshPublicKeys = mkDefault (if keysCfg ? ${username} then keysCfg.${username}.allKeys else [ ]);
-                    forgejo.enable = mkDefault (config.keystone.services.git.host != null);
-                  };
+                    git = {
+                      enable = mkDefault (userCfg.terminal.enable && userCfg.email != null);
+                      userName = mkDefault userCfg.fullName;
+                      userEmail = mkDefault userCfg.email;
+                      # Bridge SSH public keys from keystone.keys for allowed_signers
+                      sshPublicKeys = mkDefault (if keysCfg ? ${username} then keysCfg.${username}.allKeys else [ ]);
+                      forgejo.enable = mkDefault (config.keystone.services.git.host != null);
+                    };
 
-                  sshAutoLoad.enable = mkDefault userCfg.sshAutoLoad.enable;
+                    sshAutoLoad.enable = mkDefault userCfg.sshAutoLoad.enable;
+                  };
                 }
                 (
                   optionalAttrs hasDesktopModule {
