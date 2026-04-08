@@ -7,10 +7,12 @@
 # `journalRemote = true` becomes the server, all other hosts auto-forward
 # via systemd-journal-upload. No per-host config needed in nixos-config.
 #
-# TRANSPORT: When keystone.domain is set, uploads use HTTPS via the nginx
-# reverse proxy (journal.<domain>). The server-side nginx vhost is registered
-# by modules/server/services/journal-remote.nix. When no domain is set,
-# the module falls back to direct HTTP over Tailscale.
+# TRANSPORT: When keystone.domain is set, uploads use HTTPS directly via
+# systemd-journal-remote (journal.<domain>:<port>) using the ACME wildcard
+# certificate. This preserves the real client source endpoint in journal
+# filenames. When no domain is set, the module falls back to direct HTTP
+# over Tailscale. (Previously used nginx as an HTTPS proxy, which caused
+# all journal files to be named remote-127.0.0.1... — fixed by #278.)
 {
   config,
   lib,
@@ -37,11 +39,11 @@ let
   effectiveServerHost = if cfg.serverHost != null then cfg.serverHost else derivedServerHost;
 
   # Derive the server URL from the serverHost hostname.
-  # When domain is set, use the nginx HTTPS proxy. Otherwise use direct HTTP.
+  # When domain is set, use direct HTTPS to systemd-journal-remote. Otherwise use direct HTTP.
   derivedServerUrl =
     if effectiveServerHost != null then
       if domain != null then
-        "https://journal.${domain}:443"
+        "https://journal.${domain}:${toString cfg.server.port}"
       else
         "http://${effectiveServerHost}:${toString cfg.server.port}"
     else
@@ -57,8 +59,13 @@ let
   # Should this host upload? Only if: not the server, upload enabled, and a URL exists.
   shouldUpload = !isServer && cfg.upload.enable && effectiveServerUrl != null;
 
-  # When a domain is configured, nginx terminates HTTPS and proxies locally.
-  useNginxProxy = domain != null;
+  # When a domain is configured, systemd-journal-remote serves HTTPS directly
+  # using the ACME wildcard cert. This preserves real client source endpoints.
+  useDirectHttps = domain != null;
+
+  # ACME cert name and directory (only relevant when useDirectHttps)
+  certName = optionalString useDirectHttps ("wildcard-${replaceStrings [ "." ] [ "-" ] domain}");
+  acmeCertDir = "/run/acme/${certName}";
 in
 {
   options.keystone.os.journalRemote = {
@@ -135,21 +142,31 @@ in
     (mkIf isServer {
       services.journald.remote = {
         enable = true;
-        listen = "http";
+        listen = if useDirectHttps then "https" else "http";
         port = cfg.server.port;
       };
-    })
 
-    # When nginx is proxying, bind journal-remote to localhost only.
-    (mkIf (isServer && useNginxProxy) {
-      systemd.sockets.systemd-journal-remote.listenStreams = mkForce [
-        "127.0.0.1:${toString cfg.server.port}"
-      ];
-    })
-
-    # Without nginx, expose the backend directly on Tailscale only.
-    (mkIf (isServer && !useNginxProxy) {
+      # Expose journal-remote directly on Tailscale. Access is restricted by
+      # the firewall to Tailscale IPs; nginx is NOT in the data path so the
+      # real client source endpoint is preserved in journal filenames.
       networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ cfg.server.port ];
+    })
+
+    # When using direct HTTPS: configure TLS cert/key, grant cert read access,
+    # and hook cert renewal to restart the service.
+    (mkIf (isServer && useDirectHttps) {
+      # Write TLS parameters for systemd-journal-remote.
+      environment.etc."systemd/journal-remote.conf".text = ''
+        [Remote]
+        ServerCertificateFile=${acmeCertDir}/cert.pem
+        ServerKeyFile=${acmeCertDir}/key.pem
+      '';
+
+      # Allow systemd-journal-remote to read the ACME cert files (group nginx, mode 640).
+      systemd.services.systemd-journal-remote.serviceConfig.SupplementaryGroups = "nginx";
+
+      # Reload journal-remote when the wildcard cert is renewed.
+      security.acme.certs.${certName}.reloadServices = [ "systemd-journal-remote.service" ];
     })
 
     # --- Client: forward journals to the server ---
@@ -162,11 +179,11 @@ in
         settings.Upload = {
           URL = effectiveServerUrl;
         }
-        // optionalAttrs useNginxProxy {
-          # nginx terminates TLS, so the client must not require a separate mTLS keypair.
+        // optionalAttrs useDirectHttps {
+          # No client certificate — mTLS is disabled.
           ServerCertificateFile = "-";
           ServerKeyFile = "-";
-          # Use the system CA bundle to verify nginx's public certificate chain.
+          # Verify the server's ACME certificate via the system CA bundle.
           TrustedCertificateFile = "/etc/ssl/certs/ca-bundle.crt";
         };
       };
