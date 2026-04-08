@@ -16,9 +16,23 @@ let
     if config.keystone ? os && config.keystone.os ? agents then config.keystone.os.agents else { };
   manifestRelPath = ".config/keystone/agent-assets.json";
   scriptRelPath = "modules/terminal/scripts/keystone-sync-agent-assets.sh";
-  scriptPackage = pkgs.writeShellScriptBin "keystone-sync-agent-assets" (
-    builtins.readFile ./scripts/keystone-sync-agent-assets.sh
-  );
+  scriptPackage =
+    let
+      scriptBin = pkgs.writeShellScriptBin "keystone-sync-agent-assets" (
+        builtins.readFile ./scripts/keystone-sync-agent-assets.sh
+      );
+      templates = pkgs.runCommandLocal "keystone-sync-agent-assets-templates" { } ''
+        mkdir -p $out/share/agent-assets
+        cp -r ${./agent-assets}/. $out/share/agent-assets/
+      '';
+    in
+    pkgs.symlinkJoin {
+      name = "keystone-sync-agent-assets";
+      paths = [
+        scriptBin
+        templates
+      ];
+    };
   agentsWithMcp = mapAttrs (name: agentCfg: {
     inherit (agentCfg) host archetype;
     notesPath = agentCfg.notes.path;
@@ -97,9 +111,11 @@ in
         }:$PATH"
         if [ -f "${syncScriptPath}" ]; then
           KEYSTONE_AGENT_ASSETS_MANIFEST="$HOME/${manifestRelPath}" \
+          KEYSTONE_AGENT_TEMPLATES_DIR="${scriptPackage}/share/agent-assets" \
             ${pkgs.bash}/bin/bash "${syncScriptPath}"
         else
           KEYSTONE_AGENT_ASSETS_MANIFEST="$HOME/${manifestRelPath}" \
+          KEYSTONE_AGENT_TEMPLATES_DIR="${scriptPackage}/share/agent-assets" \
             ${scriptPackage}/bin/keystone-sync-agent-assets
         fi
       '';
