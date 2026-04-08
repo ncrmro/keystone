@@ -1077,11 +1077,12 @@ open_ssh_master() {
   fi
   local ctl
   ctl=$(_ssh_control_path "$target")
+  # Only open if not already connected
   if ! ssh -o ControlPath="$ctl" -O check "root@${target}" 2>/dev/null; then
     echo "Establishing SSH connection to root@${target} (hardware key touch may be required)..."
     ssh -o ControlMaster=yes -o ControlPath="$ctl" -o ControlPersist=600 \
-      -o ConnectTimeout=10 -o BatchMode=yes -o ServerAliveInterval=30 \
-      -fN "root@${target}"
+        -o ConnectTimeout=10 -o BatchMode=yes -o ServerAliveInterval=30 \
+        -fN "root@${target}"
   fi
 }
 
@@ -1102,9 +1103,9 @@ close_all_ssh_masters() {
   fi
 }
 
+# SSH wrapper that uses ControlMaster when available
 ks_ssh() {
-  local target="$1"
-  shift
+  local target="$1"; shift
   local ctl
   ctl=$(_ssh_control_path "$target")
   if [[ -n "$KS_SSH_CONTROL_DIR" ]] && ssh -o ControlPath="$ctl" -O check "root@${target}" 2>/dev/null; then
@@ -1114,9 +1115,9 @@ ks_ssh() {
   fi
 }
 
+# nix copy wrapper that routes through ControlMaster
 ks_nix_copy() {
-  local target="$1"
-  shift
+  local target="$1"; shift
   local ctl
   ctl=$(_ssh_control_path "$target")
   if [[ -n "$KS_SSH_CONTROL_DIR" ]] && ssh -o ControlPath="$ctl" -O check "root@${target}" 2>/dev/null; then
@@ -1126,6 +1127,7 @@ ks_nix_copy() {
   fi
 }
 
+# Test SSH connectivity, preferring ControlMaster
 ks_ssh_test() {
   local target="$1"
   local ctl
@@ -2456,7 +2458,7 @@ cmd_update() {
       new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
       new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
       new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
-      
+
       check_cmd="
         old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
         old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
