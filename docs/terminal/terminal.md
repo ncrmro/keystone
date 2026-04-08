@@ -169,6 +169,55 @@ keystone.terminal.deepwork = {
 
 When enabled, the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable is set and injected into the generated DeepWork MCP server configs, allowing spawned MCP sessions to discover shared project job definitions alongside the built-in ones.
 
+## Perception CLI tools
+
+The perception terminal module installs local CLI tools for document parsing, audio transcription, photo search, and voice recording.
+
+```nix
+keystone.terminal.perception = {
+  enable = true;
+};
+```
+
+This adds:
+- `docling` and `pdf-extract` for PDF parsing
+- `whisper-transcribe` for local transcription via `whisper.cpp`
+- `immich-search` for searching photos and screenshots
+- `voice-recorder` for quick microphone capture
+
+### Transcribe a video locally
+
+Use `whisper-transcribe` when you have a screen recording, meeting recording, or demo video and need a timestamped transcript.
+
+```bash
+whisper-transcribe ~/Videos/demo.mp4
+```
+
+The wrapper uses `ffmpeg` to extract and normalize the audio track to `16kHz` mono WAV, then runs `whisper.cpp` locally and writes:
+
+```text
+~/Videos/demo.txt
+```
+
+You can also choose a model size and output directory:
+
+```bash
+whisper-transcribe ~/Videos/demo.mp4 \
+  --model small \
+  --output-dir ~/Videos/transcripts
+```
+
+This writes:
+
+```text
+~/Videos/transcripts/demo.txt
+```
+
+Notes:
+- On first run, the selected Whisper model is downloaded to `~/.local/share/whisper-models/`.
+- After the model is present, transcription runs locally on your machine.
+- The transcript output is plain text with timestamps, which makes it suitable as a building block for later summarization or scene-skipping workflows.
+
 ## Notes
 
 Keystone supports a shared `zk` notebook model for both human note-taking and

@@ -160,6 +160,15 @@ available but MUST fall back to CPU-only processing.
 PipeWire to capture microphone input and save to a timestamped WAV file in
 a configurable directory.
 
+> **GPU Offloading Requirement**
+>
+> Keystone SHOULD support offloading transcription onto a GPU-enabled workstation
+> while the operator initiates the request from another machine such as a
+> laptop. The workstation-hosted path SHOULD remain local-first: processing
+> happens on Keystone-managed hardware, not a third-party transcription
+> service. This is not configured by the
+> current perception CLI tooling.
+
 ### Screenshot Syncing to Immich
 
 **REQ-023.13** Each agent with `perception.enable = true` and

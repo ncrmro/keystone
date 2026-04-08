@@ -29,13 +29,14 @@ with lib;
 let
   cfg = config.keystone.terminal.conventions;
   terminalCfg = config.keystone.terminal;
+  conventionsEvalPath = ../../conventions;
   conventionsPath = pkgs.keystone.keystone-conventions;
   aiCapabilities = config.keystone.terminal.aiExtensions.resolvedCapabilities or [ ];
   aiCommandIds = config.keystone.terminal.aiExtensions.publishedCommands or [ ];
 
   # Read archetypes.yaml from the conventions derivation.
   # Guard: if the file doesn't exist, produce empty config (graceful degradation).
-  archetypesFile = "${conventionsPath}/archetypes.yaml";
+  archetypesFile = "${conventionsEvalPath}/archetypes.yaml";
   hasArchetypes = builtins.pathExists archetypesFile;
 
   # Parse archetypes.yaml to determine which conventions to inline
@@ -61,7 +62,7 @@ let
       # Convention names use dots (e.g., "process.version-control") but files
       # use the full name as filename (e.g., "process.version-control.md")
       filename = "${name}.md";
-      filepath = "${conventionsPath}/${filename}";
+      filepath = "${conventionsEvalPath}/${filename}";
     in
     if builtins.pathExists filepath then
       builtins.readFile filepath
@@ -135,7 +136,7 @@ let
   reposInlinedConventions = map (
     name:
     let
-      filepath = "${conventionsPath}/${name}.md";
+      filepath = "${conventionsEvalPath}/${name}.md";
     in
     if builtins.pathExists filepath then
       builtins.readFile filepath
