@@ -1,9 +1,8 @@
-# Keystone Journal Remote Nginx Proxy
+# Keystone Journal Remote DNS Registration
 #
-# Auto-registers an nginx virtual host for systemd-journal-remote when the
-# server module and journal-remote are both active. This provides HTTPS
-# termination via the ACME wildcard certificate, with access restricted to
-# the Tailscale network.
+# Registers the `journal.<domain>` DNS record when systemd-journal-remote is
+# active on this host. journal-remote now serves HTTPS directly (no nginx
+# proxy in the data path), so only the DNS A record is needed here.
 #
 # See conventions/tool.journal-remote.md
 # See specs/REQ-020-journal-remote/requirements.md
@@ -14,26 +13,23 @@
 }:
 let
   serverCfg = config.keystone.server;
+  domain = config.keystone.domain;
   journalRemoteActive = config.services.journald.remote.enable;
-  journalRemotePort = config.services.journald.remote.port;
 in
 {
-  config = lib.mkIf (serverCfg.enable && journalRemoteActive) {
-    keystone.server._enabledServices.journalRemote = {
-      subdomain = "journal";
-      port = journalRemotePort;
-      access = "tailscale";
-      maxBodySize = "0";
-      websockets = false;
-      registerDNS = true;
-    };
-
-    services.nginx.virtualHosts."journal.${config.keystone.domain}".locations."/".extraConfig = ''
-      # systemd-journal-upload sends a streaming request body; avoid buffering
-      # or downgrading the upstream request when proxying to journal-remote.
-      proxy_http_version 1.1;
-      proxy_request_buffering off;
-      proxy_buffering off;
-    '';
-  };
+  config =
+    lib.mkIf
+      (serverCfg.enable && journalRemoteActive && domain != null && serverCfg.tailscaleIP != null)
+      {
+        # Register a DNS A record for journal.<domain> so that upload clients can
+        # resolve the journal-remote endpoint. No nginx vhost is created — HTTPS is
+        # terminated directly by systemd-journal-remote using the ACME wildcard cert.
+        keystone.server.generatedDNSRecords = [
+          {
+            name = "journal.${domain}";
+            type = "A";
+            value = serverCfg.tailscaleIP;
+          }
+        ];
+      };
 }
