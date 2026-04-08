@@ -68,6 +68,9 @@
 
 set -euo pipefail
 
+# Clean up SSH ControlMaster sockets on exit
+trap 'close_all_ssh_masters 2>/dev/null || true' EXIT
+
 KS_DEBUG=false
 KS_HM_USERS_FILTER=""
 KS_HM_ALL_USERS=false
@@ -1027,6 +1030,85 @@ resolve_ssh_target() {
   fi
 }
 
+# --- SSH ControlMaster for hardware-key hosts ---
+# Opens a persistent SSH connection so YubiKey touch is only needed once per
+# host per deploy session. All subsequent ssh/nix-copy commands reuse it.
+
+KS_SSH_CONTROL_DIR=""
+
+_ssh_control_path() {
+  local target="$1"
+  echo "${KS_SSH_CONTROL_DIR}/ks-%r@%h:%p"
+}
+
+open_ssh_master() {
+  local target="$1"
+  if [[ -z "$KS_SSH_CONTROL_DIR" ]]; then
+    KS_SSH_CONTROL_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ks-ssh.XXXXXX")
+  fi
+  local ctl
+  ctl=$(_ssh_control_path "$target")
+  # Only open if not already connected
+  if ! ssh -o ControlPath="$ctl" -O check "root@${target}" 2>/dev/null; then
+    echo "Establishing SSH connection to root@${target} (hardware key touch may be required)..."
+    ssh -o ControlMaster=yes -o ControlPath="$ctl" -o ControlPersist=600 \
+        -o ConnectTimeout=10 -o BatchMode=yes -o ServerAliveInterval=30 \
+        -fN "root@${target}"
+  fi
+}
+
+close_ssh_master() {
+  local target="$1"
+  local ctl
+  ctl=$(_ssh_control_path "$target")
+  ssh -o ControlPath="$ctl" -O exit "root@${target}" 2>/dev/null || true
+}
+
+close_all_ssh_masters() {
+  if [[ -n "$KS_SSH_CONTROL_DIR" && -d "$KS_SSH_CONTROL_DIR" ]]; then
+    for sock in "$KS_SSH_CONTROL_DIR"/ks-*; do
+      [[ -e "$sock" ]] && ssh -o ControlPath="$sock" -O exit "" 2>/dev/null || true
+    done
+    rm -rf "$KS_SSH_CONTROL_DIR"
+    KS_SSH_CONTROL_DIR=""
+  fi
+}
+
+# SSH wrapper that uses ControlMaster when available
+ks_ssh() {
+  local target="$1"; shift
+  local ctl
+  ctl=$(_ssh_control_path "$target")
+  if [[ -n "$KS_SSH_CONTROL_DIR" ]] && ssh -o ControlPath="$ctl" -O check "root@${target}" 2>/dev/null; then
+    ssh -o ControlPath="$ctl" "root@${target}" "$@"
+  else
+    ssh "root@${target}" "$@"
+  fi
+}
+
+# nix copy wrapper that routes through ControlMaster
+ks_nix_copy() {
+  local target="$1"; shift
+  local ctl
+  ctl=$(_ssh_control_path "$target")
+  if [[ -n "$KS_SSH_CONTROL_DIR" ]] && ssh -o ControlPath="$ctl" -O check "root@${target}" 2>/dev/null; then
+    NIX_SSHOPTS="-o ControlPath=$ctl" nix copy --to "ssh://root@${target}" "$@"
+  else
+    nix copy --to "ssh://root@${target}" "$@"
+  fi
+}
+
+# Test SSH connectivity, preferring ControlMaster
+ks_ssh_test() {
+  local target="$1"
+  local ctl
+  ctl=$(_ssh_control_path "$target")
+  if [[ -n "$KS_SSH_CONTROL_DIR" ]] && ssh -o ControlPath="$ctl" -O check "root@${target}" 2>/dev/null; then
+    return 0
+  fi
+  ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${target}" true 2>/dev/null
+}
+
 # --- Resolve HOST from hosts.nix ---
 resolve_host() {
   local hosts_nix="$1"
@@ -1513,18 +1595,20 @@ deploy_home_manager_only() {
 
         local resolved="$ssh_target"
         if [[ -n "$fallback_ip" ]]; then
-          if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+          if ! ks_ssh_test "$ssh_target"; then
             resolved="$fallback_ip"
             echo "Tailscale unavailable for $host, using LAN: $fallback_ip"
           fi
         fi
 
+        open_ssh_master "$resolved"
+
         echo "Activating home-manager for $user on $host (remote: $resolved)..."
         # Copy the closure to the remote host, then activate
-        nix copy --to "ssh://root@$resolved" "$activation_path" "${override_args[@]}" 2>/dev/null || true
+        ks_nix_copy "$resolved" "$activation_path" "${override_args[@]}" 2>/dev/null || true
         # $user and $activation_path are intentionally expanded client-side
         # shellcheck disable=SC2029
-        ssh "root@$resolved" "sudo -u '$user' '$activation_path/activate'" || {
+        ks_ssh "$resolved" "sudo -u '$user' '$activation_path/activate'" || {
           echo "Error: Remote activation failed for $user on $host" >&2
         }
       fi
@@ -1762,13 +1846,15 @@ deploy_unlocked_current_state() {
       fi
       local resolved="$ssh_target"
       if [[ -n "$fallback_ip" ]]; then
-        if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+        if ! ks_ssh_test "$ssh_target"; then
           resolved="$fallback_ip"
         fi
       fi
 
+      open_ssh_master "$resolved"
+
       echo "Deploying $host to root@$resolved ($mode)..."
-      nix copy --to "ssh://root@$resolved" "$path"
+      ks_nix_copy "$resolved" "$path"
 
       local check_cmd remote_status
       check_cmd="
@@ -1780,23 +1866,25 @@ deploy_unlocked_current_state() {
         fi
       "
       # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
-      remote_status=$(ssh "root@$resolved" "$check_cmd")
+      remote_status=$(ks_ssh "$resolved" "$check_cmd")
 
       if [[ "$remote_status" == "HM" ]]; then
         echo "OS core unchanged. Activating fast home-manager switch remotely..."
         deploy_home_manager_only "$repo_root" "$host"
         # shellcheck disable=SC2029  # $path intentionally expanded client-side; remote only receives the resolved store path string
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path"
+        ks_ssh "$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path"
         echo "Skipped switch-to-configuration for $host because the system closure is unchanged."
       else
         # shellcheck disable=SC2029  # $path and $mode intentionally expanded client-side; remote receives the resolved store path and mode strings
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
+        ks_ssh "$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
       fi
+      close_ssh_master "$resolved"
     fi
 
     [[ "$mode" == "boot" ]] && echo "Reboot required to apply changes for $host."
     echo "Update complete for $host"
   done
+  close_all_ssh_masters
   maybe_sync_grafana_dashboards "$repo_root"
 }
 
@@ -1843,7 +1931,7 @@ cmd_sync_host_keys() {
 
     # Resolve SSH target with Tailscale → LAN fallback
     local resolved="$ssh_target"
-    if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+    if ! ks_ssh_test "$ssh_target"; then
       if [[ -n "$fallback_ip" ]]; then
         resolved="$fallback_ip"
         echo "  Tailscale unavailable for $host, using LAN: $fallback_ip"
@@ -1854,9 +1942,11 @@ cmd_sync_host_keys() {
       fi
     fi
 
+    open_ssh_master "$resolved"
+
     # Fetch host public key
     local pubkey
-    pubkey=$(ssh -o ConnectTimeout=5 -o BatchMode=yes "root@${resolved}" \
+    pubkey=$(ks_ssh "$resolved" \
       'cat /etc/ssh/ssh_host_ed25519_key.pub' 2>/dev/null | awk '{print $1" "$2}') || true
 
     if [[ -z "$pubkey" ]]; then
@@ -2242,20 +2332,22 @@ cmd_update() {
       fi
       local resolved="$ssh_target"
       if [[ -n "$fallback_ip" ]]; then
-        if ! ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+        if ! ks_ssh_test "$ssh_target"; then
           resolved="$fallback_ip"
         fi
       fi
-      
+
+      open_ssh_master "$resolved"
+
       echo "Deploying $host to root@$resolved ($mode)..."
-      nix copy --to "ssh://root@$resolved" "$path"
-      
+      ks_nix_copy "$resolved" "$path"
+
       # Check remote OS state
       local new_sw new_kernel new_initrd check_cmd remote_status
       new_sw=$(readlink -f "$path/sw" 2>/dev/null || echo "new")
       new_kernel=$(readlink -f "$path/kernel" 2>/dev/null || echo "new")
       new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
-      
+
       check_cmd="
         current_system=\$(readlink -f /run/current-system 2>/dev/null || echo 'none')
         if [[ \"\$current_system\" != \"$(readlink -f "$path")\" ]]; then
@@ -2265,22 +2357,24 @@ cmd_update() {
         fi
       "
       # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
-      remote_status=$(ssh "root@$resolved" "$check_cmd")
+      remote_status=$(ks_ssh "$resolved" "$check_cmd")
 
       if [[ "$remote_status" == "HM" ]]; then
         echo "OS core unchanged. Activating fast home-manager switch remotely..."
         deploy_home_manager_only "$repo_root" "$host"
         # shellcheck disable=SC2029  # $path intentionally expanded client-side; remote only receives the resolved store path string
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration boot"
+        ks_ssh "$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration boot"
       else
         # shellcheck disable=SC2029  # $path and $mode intentionally expanded client-side; remote receives the resolved store path and mode strings
-        ssh "root@$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
+        ks_ssh "$resolved" "nix-env -p /nix/var/nix/profiles/system --set $path && touch /var/run/nixos-rebuild-safe-to-update-bootloader && $path/bin/switch-to-configuration $mode"
       fi
+      close_ssh_master "$resolved"
     fi
 
     [[ "$mode" == "boot" ]] && echo "Reboot required to apply changes for $host."
     echo "Update complete for $host"
   done
+  close_all_ssh_masters
   maybe_sync_grafana_dashboards "$repo_root"
 }
 
@@ -2827,15 +2921,15 @@ gather_fleet_health() {
     local remote_gen="—"
     local status="unreachable"
 
-    if ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${ssh_target}" true 2>/dev/null; then
+    if ks_ssh_test "$ssh_target"; then
       reachable="yes"
-    elif [[ -n "$fallback_ip" ]] && ssh -o ConnectTimeout=3 -o BatchMode=yes "root@${fallback_ip}" true 2>/dev/null; then
+    elif [[ -n "$fallback_ip" ]] && ks_ssh_test "$fallback_ip"; then
       reachable="yes (LAN)"
       resolved="$fallback_ip"
     fi
 
     if [[ "$reachable" != "no" ]]; then
-      remote_gen=$(ssh -o ConnectTimeout=5 -o BatchMode=yes "root@${resolved}" nixos-version 2>/dev/null || echo "unknown")
+      remote_gen=$(ks_ssh "$resolved" nixos-version 2>/dev/null || echo "unknown")
       if [[ "$remote_gen" == "$local_gen" ]]; then
         status="ok"
       elif [[ "$remote_gen" == "unknown" ]]; then
