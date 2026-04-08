@@ -111,6 +111,8 @@ jobs:
       upload_iso_artifact: ${{ needs.prepare.outputs.publish_release == 'true' }}
       iso_artifact_name: ${{ needs.prepare.outputs.iso_artifact_name }}
       iso_file_name: ${{ needs.prepare.outputs.iso_file_name }}
+      cache_branch_name: ${{ github.ref_name }}
+      save_nix_cache: true
     secrets: inherit
 
   warm-cache:

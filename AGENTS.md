@@ -139,13 +139,16 @@ For notes workflows, keep the shared owner note repos cloned at:
 
 > **CRITICAL: Verifying Changes**
 > Agents MUST start with `nix flake check` for repo-native validation and CI parity.
-> Tests, CLI regressions, script lint and format checks, and launcher/backend regression checks SHOULD live under `checks` in `flake.nix`, not in ad hoc wrapper scripts.
-> `nix flake check` SHOULD cover repo-wide `shellcheck`, repo-wide `nixfmt --check`, and deterministic command-contract tests for critical terminal and desktop backends such as `pz`, `ks`, `agentctl`, and Walker/Elephant menu adapters.
+> Agents MAY use `nix flake check --no-build` during local iteration as a fast evaluation-only probe to catch flake wiring, module evaluation, and derivation-construction failures before running heavier validation.
+> `nix flake check --no-build` MUST NOT be treated as equivalent to passing repo validation, CI, or repo-wide lint and format enforcement.
+> Deterministic command-contract tests, module evaluation tests, and launcher/backend regression checks SHOULD live under `checks` in `flake.nix`, not in ad hoc wrapper scripts.
+> Repo-wide `shellcheck` and `nixfmt --check` MUST be enforced via the staged-file pre-commit hook and dedicated CI jobs rather than bundled into `nix flake check`.
 > Agents MUST run `ks build` when a change affects host integration, generated assets, or behavior that isolated flake checks cannot validate.
 > Agents MUST NOT treat `ks build` as a substitute for adding a deterministic flake check when one can be added.
 > For agenix user-home secrets, agents MUST ensure both sides of the contract are updated together: the encrypted secret recipients must include every host where that Home Manager user is installed, and the corresponding `age.secrets.<name>` declaration must exist on each of those hosts when the profile expects `/run/agenix/<name>` at runtime.
 
 ```bash
+nix flake check --no-build  # Fast local probe: evaluate outputs without building checks
 nix flake check       # First pass: repo-native checks and CI parity
 ks build              # Build home-manager profiles for current host when host integration matters
 ks build --lock       # Full system build + lock + push (requires sudo)

@@ -358,7 +358,8 @@
         notes = ./modules/notes/default.nix;
       };
 
-      # Flake checks — run via `nix flake check` and CI
+      # Focused flake checks — run via `nix flake check` and CI.
+      # Repo-wide nixfmt and shellcheck live in pre-commit and dedicated CI jobs.
       checks.x86_64-linux =
         let
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
@@ -419,13 +420,9 @@
           ks-lock-sync = import ./tests/module/ks-lock-sync.nix {
             inherit pkgs;
           };
-          nixfmt-check = import ./tests/module/nixfmt-check.nix {
-            inherit pkgs;
+          keystone-photos = import ./tests/module/keystone-photos.nix {
+            inherit pkgs lib;
           };
-          shellcheck = import ./tests/module/shellcheck.nix {
-            inherit pkgs;
-          };
-          ks-photos = ksPhotos;
           projects-schema = import ./tests/module/projects-schema.nix {
             inherit pkgs lib;
           };
@@ -571,12 +568,24 @@
             ];
 
             shellHook = ''
+              repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+              if [ -n "$repo_root" ]; then
+                hook_file="$(git rev-parse --git-path hooks/pre-commit)"
+                expected_hook="$repo_root/bin/pre-commit"
+                current_hook="$(readlink "$hook_file" 2>/dev/null || true)"
+
+                if [ "$current_hook" != "$expected_hook" ] && [ -x "$expected_hook" ]; then
+                  "$expected_hook" --install >/dev/null
+                fi
+              fi
+
               echo "🔑 Keystone development shell"
               echo ""
               echo "Available commands:"
               echo "  ./bin/build-iso        - Build installer ISO"
               echo "  ./bin/build-vm         - Fast VM testing (terminal/desktop)"
               echo "  ./bin/virtual-machine  - Full stack VM with libvirt"
+              echo "  ./bin/pre-commit       - Install or run the pre-commit hook"
               echo "  ci                     - Run nix flake check"
               echo ""
               echo "Rust packages:  packages/keystone-ha/, packages/ks/"
