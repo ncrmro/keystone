@@ -38,9 +38,6 @@ let
   pz-src = ../packages/pz;
   keystone-photos-src = ../packages/keystone-photos;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
-  pdf-extract-src = ../packages/pdf-extract;
-  whisper-transcribe-src = ../packages/whisper-transcribe;
-  voice-recorder-src = ../packages/voice-recorder;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
   lfs-s3-pkg-src = ../packages/lfs-s3;
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
@@ -167,9 +164,6 @@ in
     chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src { };
     # Perception layer CLI tools (REQ-024)
     docling = final.python3Packages.docling;
-    pdf-extract = final.callPackage pdf-extract-src { };
-    whisper-transcribe = final.callPackage whisper-transcribe-src { };
-    voice-recorder = final.callPackage voice-recorder-src { };
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;
     };

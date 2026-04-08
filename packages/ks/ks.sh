@@ -19,6 +19,10 @@
 #   sync-host-keys                                   Populate hostPublicKey in hosts.nix from live hosts
 #   agent  [--local [MODEL]] [args...]               Launch AI agent with keystone OS context
 #   doctor [--local [MODEL]] [args...]               Launch diagnostic AI agent with system state
+  audio-transcribe <audio-file> [options]           Transcribe audio or video locally
+  doc-extractor <input.pdf> [options]               Convert PDF to markdown with citations
+  audio-transcribe <audio-file> [options]                  Transcribe audio or video locally
+  doc-extractor <input.pdf> [options]               Convert PDF to markdown with citations
 #
 # Host resolution:
 #   1. If HOST is provided, use it directly
@@ -110,6 +114,10 @@ Commands:
   print <file.md> [-o output.pdf] [--open]          Convert a markdown file to a print-ready PDF
   agent [--local [MODEL]] [args...]                 Launch an AI agent with Keystone context
   doctor [--local [MODEL]] [args...]                Launch a diagnostic AI agent with system state
+  audio-transcribe <audio-file> [options]           Transcribe audio or video locally
+  doc-extractor <input.pdf> [options]               Convert PDF to markdown with citations
+  audio-transcribe <audio-file> [options]                  Transcribe audio or video locally
+  doc-extractor <input.pdf> [options]               Convert PDF to markdown with citations
 
 HOSTS:
   Comma-separated host names such as workstation,ocean.
@@ -3691,6 +3699,523 @@ cmd_doctor() {
   esac
 }
 
+# --- Perception commands ---
+cmd_audio_transcribe() {
+  local input=""
+  local model="${AUDIO_TRANSCRIBE_DEFAULT_MODEL:-large-v3}"
+  local language="${AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE:-en}"
+  local output_dir=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -m|--model) model="$2"; shift 2 ;;
+      -l|--language) language="$2"; shift 2 ;;
+      --output-dir) output_dir="$2"; shift 2 ;;
+      -h|--help)
+        echo "Usage: ks audio-transcribe <audio-file> [options]"
+        echo ""
+        echo "Transcribe audio or video locally using whisper.cpp."
+        echo ""
+        echo "Options:"
+        echo "  -m, --model <size>     Model size (default: $model)"
+        echo "  -l, --language <lang>  Spoken language (default: $language)"
+        echo "  --output-dir <dir>     Output directory (default: same as input file)"
+        return 0
+        ;;
+      -*) echo "Unknown option: $1" >&2; return 1 ;;
+      *) input="$1"; shift ;;
+    esac
+  done
+
+  if [[ -z "$input" ]]; then
+    echo "Error: no input audio file specified" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$input" ]]; then
+    echo "Error: file not found: $input" >&2
+    return 1
+  fi
+
+  local whisper_models_dir="${XDG_DATA_HOME:-$HOME/.local/share}/whisper-models"
+  local model_file="ggml-${model}.bin"
+  local model_path="$whisper_models_dir/$model_file"
+
+  if [[ ! -f "$model_path" ]]; then
+    echo "ks audio-transcribe: downloading model '$model' to $whisper_models_dir" >&2
+    mkdir -p "$whisper_models_dir"
+    local model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${model_file}"
+    curl -fSL --progress-bar -o "$model_path.tmp" "$model_url"
+    mv "$model_path.tmp" "$model_path"
+  fi
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  local wav_input="$tmpdir/input.wav"
+  echo "ks audio-transcribe: converting to WAV" >&2
+  ffmpeg -y -i "$input" -ar 16000 -ac 1 -c:a pcm_s16le "$wav_input" >/dev/null 2>&1
+
+  local basename
+  basename=$(basename "$input")
+  local basename_noext="${basename%.*}"
+  local in_dir
+  in_dir=$(dirname "$input")
+  output_dir="${output_dir:-$in_dir}"
+  mkdir -p "$output_dir"
+
+  local out_txt="$output_dir/$basename_noext.txt"
+  local out_vtt="$output_dir/$basename_noext.vtt"
+
+  echo "ks audio-transcribe: model=$model lang=$language file=$input" >&2
+  whisper-cli \
+    --model "$model_path" \
+    --language "$language" \
+    --output-txt \
+    --output-vtt \
+    --output-file "$tmpdir/transcript" \
+    --file "$wav_input" >/dev/null 2>&1
+
+  cp "$tmpdir/transcript.txt" "$out_txt"
+  cp "$tmpdir/transcript.vtt" "$out_vtt"
+  echo "ks audio-transcribe: wrote $out_txt and $out_vtt" >&2
+}
+
+cmd_doc_extractor() {
+  local input=""
+  local output_dir=""
+  local ocr_mode="auto"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --output-dir) output_dir="$2"; shift 2 ;;
+      --ocr-mode) ocr_mode="$2"; shift 2 ;;
+      -h|--help)
+        echo "Usage: ks doc-extractor <input.pdf> [options]"
+        echo ""
+        echo "Convert PDF to markdown with element-level bounding box citations."
+        echo ""
+        echo "Options:"
+        echo "  --output-dir <dir>       Output directory (default: same as input file)"
+        echo "  --ocr-mode auto|force|off  OCR strategy (default: auto)"
+        return 0
+        ;;
+      -*) echo "Unknown option: $1" >&2; return 1 ;;
+      *) input="$1"; shift ;;
+    esac
+  done
+
+  if [[ -z "$input" ]]; then
+    echo "Error: no input PDF specified" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$input" ]]; then
+    echo "Error: file not found: $input" >&2
+    return 1
+  fi
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  local docling_args=(convert --from pdf --to md --output "$tmpdir")
+  case "$ocr_mode" in
+    auto)  docling_args+=(--ocr-engine easyocr) ;;
+    force) docling_args+=(--ocr-engine easyocr --force-ocr) ;;
+    off)   docling_args+=(--no-ocr) ;;
+  esac
+  docling_args+=("$input")
+
+  echo "ks doc-extractor: running docling on $input" >&2
+  docling "${docling_args[@]}" >/dev/null 2>&1
+
+  local md_src
+  md_src=$(find "$tmpdir" -name "*.md" -type f | head -1)
+  if [[ -z "$md_src" ]]; then
+    echo "Error: docling produced no markdown output" >&2
+    return 1
+  fi
+
+  local basename
+  basename=$(basename "$input" .pdf)
+  local in_dir
+  in_dir=$(dirname "$input")
+  output_dir="${output_dir:-$in_dir}"
+  mkdir -p "$output_dir"
+
+  local md_out="$output_dir/$basename.md"
+  cp "$md_src" "$md_out"
+
+  # JSON/bbox pass
+  local docling_json_args=(convert --from pdf --to json --output "$tmpdir/json")
+  case "$ocr_mode" in
+    auto)  docling_json_args+=(--ocr-engine easyocr) ;;
+    force) docling_json_args+=(--ocr-engine easyocr --force-ocr) ;;
+    off)   docling_json_args+=(--no-ocr) ;;
+  esac
+  docling_json_args+=("$input")
+  mkdir -p "$tmpdir/json"
+  docling "${docling_json_args[@]}" >/dev/null 2>&1 || true
+
+  local json_src
+  json_src=$(find "$tmpdir/json" -name "*.json" -type f | head -1)
+  local bbox_out="$output_dir/$basename.bbox.json"
+
+  if [[ -n "$json_src" && -f "$json_src" ]]; then
+    jq '[.main_text[]? // .body[]? | select(.prov != null) | .prov[] | {page: .page_no, label: .type, bbox: {xMin: .bbox.l, yMin: .bbox.t, xMax: .bbox.r, yMax: .bbox.b}}] // []' "$json_src" > "$bbox_out" 2>/dev/null || echo "[]" > "$bbox_out"
+  else
+    echo "[]" > "$bbox_out"
+  fi
+
+  echo "ks doc-extractor: wrote $md_out and $bbox_out" >&2
+}
+cmd_audio_transcribe() {
+  local input=""
+  local model="${AUDIO_TRANSCRIBE_DEFAULT_MODEL:-large-v3}"
+  local language="${AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE:-en}"
+  local output_dir=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -m|--model) model="$2"; shift 2 ;;
+      -l|--language) language="$2"; shift 2 ;;
+      --output-dir) output_dir="$2"; shift 2 ;;
+      -h|--help)
+        echo "Usage: ks audio-transcribe <audio-file> [options]"
+        echo ""
+        echo "Transcribe audio or video locally using whisper.cpp."
+        echo ""
+        echo "Options:"
+        echo "  -m, --model <size>     Model size (default: $model)"
+        echo "  -l, --language <lang>  Spoken language (default: $language)"
+        echo "  --output-dir <dir>     Output directory (default: same as input file)"
+        return 0
+        ;;
+      -*) echo "Unknown option: $1" >&2; return 1 ;;
+      *) input="$1"; shift ;;
+    esac
+  done
+
+  if [[ -z "$input" ]]; then
+    echo "Error: no input audio file specified" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$input" ]]; then
+    echo "Error: file not found: $input" >&2
+    return 1
+  fi
+
+  local whisper_models_dir="${XDG_DATA_HOME:-$HOME/.local/share}/whisper-models"
+  local model_file="ggml-${model}.bin"
+  local model_path="$whisper_models_dir/$model_file"
+
+  if [[ ! -f "$model_path" ]]; then
+    echo "ks audio-transcribe: downloading model '$model' to $whisper_models_dir" >&2
+    mkdir -p "$whisper_models_dir"
+    local model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${model_file}"
+    curl -fSL --progress-bar -o "$model_path.tmp" "$model_url"
+    mv "$model_path.tmp" "$model_path"
+  fi
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  local wav_input="$tmpdir/input.wav"
+  echo "ks audio-transcribe: converting to WAV" >&2
+  ffmpeg -y -i "$input" -ar 16000 -ac 1 -c:a pcm_s16le "$wav_input" >/dev/null 2>&1
+
+  local basename
+  basename=$(basename "$input")
+  local basename_noext="${basename%.*}"
+  local in_dir
+  in_dir=$(dirname "$input")
+  output_dir="${output_dir:-$in_dir}"
+  mkdir -p "$output_dir"
+
+  local out_txt="$output_dir/$basename_noext.txt"
+  local out_vtt="$output_dir/$basename_noext.vtt"
+
+  echo "ks audio-transcribe: model=$model lang=$language file=$input" >&2
+  whisper-cli \
+    --model "$model_path" \
+    --language "$language" \
+    --output-txt \
+    --output-vtt \
+    --output-file "$tmpdir/transcript" \
+    --file "$wav_input" >/dev/null 2>&1
+
+  cp "$tmpdir/transcript.txt" "$out_txt"
+  cp "$tmpdir/transcript.vtt" "$out_vtt"
+  echo "ks audio-transcribe: wrote $out_txt and $out_vtt" >&2
+}
+
+cmd_doc_extractor() {
+  local input=""
+  local output_dir=""
+  local ocr_mode="auto"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --output-dir) output_dir="$2"; shift 2 ;;
+      --ocr-mode) ocr_mode="$2"; shift 2 ;;
+      -h|--help)
+        echo "Usage: ks doc-extractor <input.pdf> [options]"
+        echo ""
+        echo "Convert PDF to markdown with element-level bounding box citations."
+        echo ""
+        echo "Options:"
+        echo "  --output-dir <dir>       Output directory (default: same as input file)"
+        echo "  --ocr-mode auto|force|off  OCR strategy (default: auto)"
+        return 0
+        ;;
+      -*) echo "Unknown option: $1" >&2; return 1 ;;
+      *) input="$1"; shift ;;
+    esac
+  done
+
+  if [[ -z "$input" ]]; then
+    echo "Error: no input PDF specified" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$input" ]]; then
+    echo "Error: file not found: $input" >&2
+    return 1
+  fi
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  local docling_args=(convert --from pdf --to md --output "$tmpdir")
+  case "$ocr_mode" in
+    auto)  docling_args+=(--ocr-engine easyocr) ;;
+    force) docling_args+=(--ocr-engine easyocr --force-ocr) ;;
+    off)   docling_args+=(--no-ocr) ;;
+  esac
+  docling_args+=("$input")
+
+  echo "ks doc-extractor: running docling on $input" >&2
+  docling "${docling_args[@]}" >/dev/null 2>&1
+
+  local md_src
+  md_src=$(find "$tmpdir" -name "*.md" -type f | head -1)
+  if [[ -z "$md_src" ]]; then
+    echo "Error: docling produced no markdown output" >&2
+    return 1
+  fi
+
+  local basename
+  basename=$(basename "$input" .pdf)
+  local in_dir
+  in_dir=$(dirname "$input")
+  output_dir="${output_dir:-$in_dir}"
+  mkdir -p "$output_dir"
+
+  local md_out="$output_dir/$basename.md"
+  cp "$md_src" "$md_out"
+
+  # JSON/bbox pass
+  local docling_json_args=(convert --from pdf --to json --output "$tmpdir/json")
+  case "$ocr_mode" in
+    auto)  docling_json_args+=(--ocr-engine easyocr) ;;
+    force) docling_json_args+=(--ocr-engine easyocr --force-ocr) ;;
+    off)   docling_json_args+=(--no-ocr) ;;
+  esac
+  docling_json_args+=("$input")
+  mkdir -p "$tmpdir/json"
+  docling "${docling_json_args[@]}" >/dev/null 2>&1 || true
+
+  local json_src
+  json_src=$(find "$tmpdir/json" -name "*.json" -type f | head -1)
+  local bbox_out="$output_dir/$basename.bbox.json"
+
+  if [[ -n "$json_src" && -f "$json_src" ]]; then
+    jq '[.main_text[]? // .body[]? | select(.prov != null) | .prov[] | {page: .page_no, label: .type, bbox: {xMin: .bbox.l, yMin: .bbox.t, xMax: .bbox.r, yMax: .bbox.b}}] // []' "$json_src" > "$bbox_out" 2>/dev/null || echo "[]" > "$bbox_out"
+  else
+    echo "[]" > "$bbox_out"
+  fi
+
+  echo "ks doc-extractor: wrote $md_out and $bbox_out" >&2
+}
+
+# --- Perception commands ---
+cmd_audio_transcribe() {
+  local input=""
+  local model="${AUDIO_TRANSCRIBE_DEFAULT_MODEL:-large-v3}"
+  local language="${AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE:-en}"
+  local output_dir=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -m|--model) model="$2"; shift 2 ;;
+      -l|--language) language="$2"; shift 2 ;;
+      --output-dir) output_dir="$2"; shift 2 ;;
+      -h|--help)
+        echo "Usage: ks audio-transcribe <audio-file> [options]"
+        echo ""
+        echo "Transcribe audio or video locally using whisper.cpp."
+        echo ""
+        echo "Options:"
+        echo "  -m, --model <size>     Model size (default: $model)"
+        echo "  -l, --language <lang>  Spoken language (default: $language)"
+        echo "  --output-dir <dir>     Output directory (default: same as input file)"
+        return 0
+        ;;
+      -*) echo "Unknown option: $1" >&2; return 1 ;;
+      *) input="$1"; shift ;;
+    esac
+  done
+
+  if [[ -z "$input" ]]; then
+    echo "Error: no input audio file specified" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$input" ]]; then
+    echo "Error: file not found: $input" >&2
+    return 1
+  fi
+
+  local whisper_models_dir="${XDG_DATA_HOME:-$HOME/.local/share}/whisper-models"
+  local model_file="ggml-${model}.bin"
+  local model_path="$whisper_models_dir/$model_file"
+
+  if [[ ! -f "$model_path" ]]; then
+    echo "ks audio-transcribe: downloading model '$model' to $whisper_models_dir" >&2
+    mkdir -p "$whisper_models_dir"
+    local model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${model_file}"
+    curl -fSL --progress-bar -o "$model_path.tmp" "$model_url"
+    mv "$model_path.tmp" "$model_path"
+  fi
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  local wav_input="$tmpdir/input.wav"
+  echo "ks audio-transcribe: converting to WAV" >&2
+  ffmpeg -y -i "$input" -ar 16000 -ac 1 -c:a pcm_s16le "$wav_input" >/dev/null 2>&1
+
+  local basename
+  basename=$(basename "$input")
+  local basename_noext="${basename%.*}"
+  local in_dir
+  in_dir=$(dirname "$input")
+  output_dir="${output_dir:-$in_dir}"
+  mkdir -p "$output_dir"
+
+  local out_txt="$output_dir/$basename_noext.txt"
+  local out_vtt="$output_dir/$basename_noext.vtt"
+
+  echo "ks audio-transcribe: model=$model lang=$language file=$input" >&2
+  whisper-cli \
+    --model "$model_path" \
+    --language "$language" \
+    --output-txt \
+    --output-vtt \
+    --output-file "$tmpdir/transcript" \
+    --file "$wav_input" >/dev/null 2>&1
+
+  cp "$tmpdir/transcript.txt" "$out_txt"
+  cp "$tmpdir/transcript.vtt" "$out_vtt"
+  echo "ks audio-transcribe: wrote $out_txt and $out_vtt" >&2
+}
+
+cmd_doc_extractor() {
+  local input=""
+  local output_dir=""
+  local ocr_mode="auto"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --output-dir) output_dir="$2"; shift 2 ;;
+      --ocr-mode) ocr_mode="$2"; shift 2 ;;
+      -h|--help)
+        echo "Usage: ks doc-extractor <input.pdf> [options]"
+        echo ""
+        echo "Convert PDF to markdown with element-level bounding box citations."
+        echo ""
+        echo "Options:"
+        echo "  --output-dir <dir>       Output directory (default: same as input file)"
+        echo "  --ocr-mode auto|force|off  OCR strategy (default: auto)"
+        return 0
+        ;;
+      -*) echo "Unknown option: $1" >&2; return 1 ;;
+      *) input="$1"; shift ;;
+    esac
+  done
+
+  if [[ -z "$input" ]]; then
+    echo "Error: no input PDF specified" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$input" ]]; then
+    echo "Error: file not found: $input" >&2
+    return 1
+  fi
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  local docling_args=(convert --from pdf --to md --output "$tmpdir")
+  case "$ocr_mode" in
+    auto)  docling_args+=(--ocr-engine easyocr) ;;
+    force) docling_args+=(--ocr-engine easyocr --force-ocr) ;;
+    off)   docling_args+=(--no-ocr) ;;
+  esac
+  docling_args+=("$input")
+
+  echo "ks doc-extractor: running docling on $input" >&2
+  docling "${docling_args[@]}" >/dev/null 2>&1
+
+  local md_src
+  md_src=$(find "$tmpdir" -name "*.md" -type f | head -1)
+  if [[ -z "$md_src" ]]; then
+    echo "Error: docling produced no markdown output" >&2
+    return 1
+  fi
+
+  local basename
+  basename=$(basename "$input" .pdf)
+  local in_dir
+  in_dir=$(dirname "$input")
+  output_dir="${output_dir:-$in_dir}"
+  mkdir -p "$output_dir"
+
+  local md_out="$output_dir/$basename.md"
+  cp "$md_src" "$md_out"
+
+  # JSON/bbox pass
+  local docling_json_args=(convert --from pdf --to json --output "$tmpdir/json")
+  case "$ocr_mode" in
+    auto)  docling_json_args+=(--ocr-engine easyocr) ;;
+    force) docling_json_args+=(--ocr-engine easyocr --force-ocr) ;;
+    off)   docling_json_args+=(--no-ocr) ;;
+  esac
+  docling_json_args+=("$input")
+  mkdir -p "$tmpdir/json"
+  docling "${docling_json_args[@]}" >/dev/null 2>&1 || true
+
+  local json_src
+  json_src=$(find "$tmpdir/json" -name "*.json" -type f | head -1)
+  local bbox_out="$output_dir/$basename.bbox.json"
+
+  if [[ -n "$json_src" && -f "$json_src" ]]; then
+    jq '[.main_text[]? // .body[]? | select(.prov != null) | .prov[] | {page: .page_no, label: .type, bbox: {xMin: .bbox.l, yMin: .bbox.t, xMax: .bbox.r, yMax: .bbox.b}}] // []' "$json_src" > "$bbox_out" 2>/dev/null || echo "[]" > "$bbox_out"
+  else
+    echo "[]" > "$bbox_out"
+  fi
+
+  echo "ks doc-extractor: wrote $md_out and $bbox_out" >&2
+}
+
 # --- Main dispatch ---
 if [[ $# -lt 1 ]]; then
   print_main_help >&2
@@ -3719,6 +4244,10 @@ case "$CMD" in
   print)  cmd_print "$@" ;;
   agent)  cmd_agent "$@" ;;
   doctor) cmd_doctor "$@" ;;
+  audio-transcribe) cmd_audio_transcribe "$@" ;;
+  doc-extractor) cmd_doc_extractor "$@" ;;
+  audio-transcribe) cmd_audio_transcribe "$@" ;;
+  doc-extractor) cmd_doc_extractor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
     echo "Known commands: help, approve, build, update, switch, install, agents, docs, photos, sync-agent-assets, sync-host-keys, grafana, print, agent, doctor" >&2

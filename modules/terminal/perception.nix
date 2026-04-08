@@ -1,22 +1,12 @@
 # Keystone Terminal Perception
 #
 # Installs CLI tools for the perception layer:
-# - docling: IBM Docling PDF-to-markdown with structure preservation
-# - pdf-extract: convenience wrapper around docling with bbox JSON output
-# - whisper-transcribe: local audio transcription via whisper.cpp
-# - Keystone Photos (`ks photos`, backed by `keystone-photos`)
-# - voice-recorder: PipeWire microphone capture helper
+# - ks audio-transcribe: local audio transcription via whisper.cpp
+# - ks doc-extractor: PDF-to-markdown with citations (Docling)
+# - ks photos: Immich-backed photo search
 #
 # Implements REQ-024.36 (terminal perception.enable option).
 # Implements REQ-024.40 (standalone CLI commands for agents and task loops).
-#
-# ## Example
-#
-# ```nix
-# keystone.terminal.perception = {
-#   enable = true;
-# };
-# ```
 {
   config,
   lib,
@@ -26,42 +16,45 @@
 with lib;
 let
   cfg = config.keystone.terminal.perception;
+  immichHost = config.keystone.services.immich.host;
 in
 {
   options.keystone.terminal.perception = {
     enable = mkOption {
       type = types.bool;
       default = false;
-      description = "Enable perception CLI tools (PDF parsing, voice transcription, photo search).";
+      description = "Enable perception CLI tools via ks.";
     };
 
     search.enable = mkOption {
       type = types.bool;
-      default = true;
+      default = immichHost != null;
+      defaultText = literalExpression "config.keystone.services.immich.host != null";
       description = "Install the Keystone Photos search CLI in the user's environment.";
     };
 
-    whisper = {
+    audioTranscribe = {
       language = mkOption {
         type = types.str;
         default = "en";
-        description = "Default language for whisper-transcribe.";
+        description = "Default language for audio-transcribe.";
       };
 
       model = mkOption {
         type = types.str;
         default = "large-v3";
-        description = "Default model for whisper-transcribe.";
+        description = "Default model for audio-transcribe.";
       };
     };
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
     home.packages = [
-      pkgs.keystone.docling
-      pkgs.keystone.pdf-extract
-      (pkgs.keystone.whisper-transcribe.override { defaultLanguage = cfg.whisper.language; defaultModel = cfg.whisper.model; })
-      pkgs.keystone.voice-recorder
-    ] ++ optional cfg.search.enable pkgs.keystone.keystone-photos;
+      (pkgs.keystone.ks.override {
+        defaultLanguage = cfg.audioTranscribe.language;
+        defaultModel = cfg.audioTranscribe.model;
+      })
+    ]
+    ++ optional cfg.search.enable pkgs.keystone.keystone-photos;
   };
 }

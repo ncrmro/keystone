@@ -16,6 +16,10 @@
   systemd,
   python3Packages,
   agents-e2e,
+  whisper-cpp,
+  ffmpeg,
+  defaultLanguage ? "en",
+  defaultModel ? "large-v3",
 }:
 writeShellApplication {
   name = "ks";
@@ -34,12 +38,19 @@ writeShellApplication {
     cups
     systemd
     python3Packages.weasyprint
+    python3Packages.docling
+    whisper-cpp
+    ffmpeg
   ];
-  text =
-    builtins.replaceStrings
+  text = ''
+    export AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE="${defaultLanguage}"
+    export AUDIO_TRANSCRIBE_DEFAULT_MODEL="${defaultModel}"
+    ${builtins.replaceStrings
       [ "@KS_PRINT_CSS@" "@KS_AGENTS_E2E@" ]
       [ "${./print.css}" "${agents-e2e}/bin/agents-e2e" ]
-      (builtins.readFile ./ks.sh);
+      (builtins.readFile ./ks.sh)
+    }
+  '';
   meta = with lib; {
     description = "Keystone infrastructure CLI — build and deploy NixOS configurations";
     license = licenses.mit;

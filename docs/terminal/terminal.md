@@ -180,16 +180,16 @@ keystone.terminal.perception = {
 ```
 
 This adds:
-- `docling` and `pdf-extract` for PDF parsing
-- `whisper-transcribe` for local transcription via `whisper.cpp`
+- `docling` and `ks doc-extractor` for PDF parsing
+- `ks audio-transcribe` for local transcription via `whisper.cpp`
 - `voice-recorder` for quick microphone capture
 
 ### Transcribe a video locally
 
-Use `whisper-transcribe` when you have a screen recording, meeting recording, or demo video and need a timestamped transcript.
+Use `ks audio-transcribe` when you have a screen recording, meeting recording, or demo video and need a timestamped transcript.
 
 ```bash
-whisper-transcribe ~/Videos/demo.mp4
+ks audio-transcribe ~/Videos/demo.mp4
 ```
 
 The wrapper uses `ffmpeg` to extract and normalize the audio track to `16kHz` mono WAV, then runs `whisper.cpp` locally and writes both plain text and timestamped VTT transcripts:
@@ -202,7 +202,7 @@ The wrapper uses `ffmpeg` to extract and normalize the audio track to `16kHz` mo
 You can also choose a model size and output directory:
 
 ```bash
-whisper-transcribe ~/Videos/demo.mp4 \
+ks audio-transcribe ~/Videos/demo.mp4 \
   --model small \
   --output-dir ~/Videos/transcripts
 ```
