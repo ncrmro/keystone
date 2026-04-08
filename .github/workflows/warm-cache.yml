@@ -17,11 +17,6 @@ on:
     secrets:
       CACHIX_AUTH_TOKEN:
         required: false
-  # TODO: Remove this temporary branch trigger after validating installer cache
-  # warming on PR #309. Keep `workflow_call` as the long-term entrypoint.
-  push:
-    branches:
-      - "ci/installer-cache-warm-validation"
 
 permissions:
   contents: read
