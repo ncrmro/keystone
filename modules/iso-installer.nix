@@ -57,6 +57,12 @@ in
       "ks-systems.cachix.org-1:Abbd38auzcLIfJUtX7kSD6zdGUU4v831Sb2KfajR5Mo="
     ];
 
+    # The live installer can still hit legitimate cache misses while realizing
+    # the target host closure. The default minimal ISO has no swap, which makes
+    # moderate-memory VM installs fragile. Enable zram-backed swap on the live
+    # environment so `nixos-install` has some headroom when the cache is cold.
+    zramSwap.enable = true;
+
     # Enable SSH daemon for remote access
     # mkForce overrides keystone.os.ssh's "prohibit-password" — the installer
     # needs key-based root login for remote installation workflows
