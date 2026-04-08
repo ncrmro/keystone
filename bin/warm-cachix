@@ -40,6 +40,9 @@ CURATED_ATTRS=(
     .#packages.x86_64-linux.zesh
 )
 
+WATCHLIST_REGEX='(claude-code|codex|gemini-cli|opencode|himalaya|yazi|walker|hyprland|hypr[a-z-]*|aquamarine|xdg-desktop-portal-hyprland|llm-agents)'
+WATCHLIST_LABEL="Rust-heavy watchlist"
+
 installer_targets=()
 target_attrs=()
 
@@ -57,6 +60,17 @@ human_size() {
     else
         printf '%s' "$1"
     fi
+}
+
+json_size_or_unknown() {
+    local value="${1:-null}"
+
+    if [[ "$value" == "null" || -z "$value" ]]; then
+        printf 'unknown'
+        return
+    fi
+
+    human_size "$value"
 }
 
 load_local_env() {
@@ -153,9 +167,37 @@ summarize_dry_run() {
         fi
     fi
 
+    report_watchlist_matches "would build locally" "${build_items[@]}"
+    report_watchlist_matches "would fetch from cache" "${fetch_items[@]}"
+
     if [[ -z "$build_header" && -z "$fetch_header" ]]; then
         log_info "  no local builds or remote fetches reported"
     fi
+}
+
+report_watchlist_matches() {
+    local action="$1"
+    shift
+
+    local item base
+    local -a matches=()
+
+    for item in "$@"; do
+        base="$(basename "$item")"
+        if [[ "$base" =~ $WATCHLIST_REGEX ]]; then
+            matches+=("$base")
+        fi
+    done
+
+    if (( ${#matches[@]} == 0 )); then
+        log_info "  ${WATCHLIST_LABEL} ${action}: none"
+        return
+    fi
+
+    log_info "  ${WATCHLIST_LABEL} ${action}:"
+    for item in "${matches[@]}"; do
+        log_info "    $item"
+    done
 }
 
 report_remote_output() {
@@ -168,11 +210,11 @@ report_remote_output() {
         return
     fi
 
-    nar_size="$(jq -r --arg path "$output_path" '.[$path].narSize // 0' <<<"$path_info")"
-    download_size="$(jq -r --arg path "$output_path" '.[$path].downloadSize // 0' <<<"$path_info")"
+    nar_size="$(jq -r --arg path "$output_path" '.[$path].narSize' <<<"$path_info")"
+    download_size="$(jq -r --arg path "$output_path" '.[$path].downloadSize' <<<"$path_info")"
     log_info "  ${label}: top-level output is cached"
     log_info "    output: $(basename "$output_path")"
-    log_info "    nar size: $(human_size "$nar_size"), download size: $(human_size "$download_size")"
+    log_info "    nar size: $(json_size_or_unknown "$nar_size"), download size: $(json_size_or_unknown "$download_size")"
 
     # A recursive query only succeeds when the full closure is present in the
     # remote cache. That distinguishes "the toplevel output exists" from "the
