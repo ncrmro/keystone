@@ -163,6 +163,13 @@ ykman piv info
 cat ~/.ssh/id_ed25519_sk_yubi_green.pub
 ```
 
+For Keystone-side validation of the registered inventory and runtime wiring, run:
+
+```bash
+ks hardware-key doctor
+ks hardware-key doctor ncrmro/yubi-green --json
+```
+
 ## Adding a YubiKey to NixOS Configuration
 
 After completing the YubiKey setup above, add the public keys to your NixOS configuration.
