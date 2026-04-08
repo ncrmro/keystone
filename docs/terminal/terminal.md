@@ -193,10 +193,11 @@ Use `whisper-transcribe` when you have a screen recording, meeting recording, or
 whisper-transcribe ~/Videos/demo.mp4
 ```
 
-The wrapper uses `ffmpeg` to extract and normalize the audio track to `16kHz` mono WAV, then runs `whisper.cpp` locally and writes:
+The wrapper uses `ffmpeg` to extract and normalize the audio track to `16kHz` mono WAV, then runs `whisper.cpp` locally and writes both plain text and timestamped VTT transcripts:
 
 ```text
 ~/Videos/demo.txt
+~/Videos/demo.vtt
 ```
 
 You can also choose a model size and output directory:

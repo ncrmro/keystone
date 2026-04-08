@@ -3,7 +3,7 @@
 #
 # Auto-downloads the whisper model on first use to
 # ~/.local/share/whisper-models/. Converts non-WAV input to WAV via ffmpeg.
-# Outputs timestamped plain text transcript.
+# Outputs both plain text (.txt) and timestamped (.vtt) transcripts.
 #
 # Implements REQ-024.7–REQ-024.11
 #
@@ -92,22 +92,25 @@ fi
 
 # ── Run whisper.cpp ──────────────────────────────────────────────────
 OUTPUT_TXT="$OUTPUT_DIR/$BASENAME_NOEXT.txt"
+OUTPUT_VTT="$OUTPUT_DIR/$BASENAME_NOEXT.vtt"
 
 echo "whisper-transcribe: model=$MODEL file=$INPUT" >&2
 
 whisper-cli \
   --model "$MODEL_PATH" \
   --output-txt \
+  --output-vtt \
   --output-file "$TMPDIR_WORK/transcript" \
    \
   "$WAV_INPUT" 
 
-# whisper-cli creates transcript.txt
+# whisper-cli creates transcript.txt and transcript.vtt
 if [[ -f "$TMPDIR_WORK/transcript.txt" ]]; then
   cp "$TMPDIR_WORK/transcript.txt" "$OUTPUT_TXT"
+  cp "$TMPDIR_WORK/transcript.vtt" "$OUTPUT_VTT"
 else
   echo "Error: whisper-cli produced no output" >&2
   exit 1
 fi
 
-echo "whisper-transcribe: wrote transcript to $OUTPUT_TXT" >&2
+echo "whisper-transcribe: wrote transcript to $OUTPUT_TXT and $OUTPUT_VTT" >&2
