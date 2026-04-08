@@ -68,10 +68,10 @@ test-template-eval: ## Evaluate template configs (TUI output contract)
 ## Rust integration tests that generate configs and validate against local modules
 
 test-tui-eval: ## Evaluate TUI-generated configs against local modules
-	cd packages/keystone-tui && nix develop ../../ --command cargo test config_evaluates -- --ignored
+	cd packages/ks && nix develop ../../ --command cargo test config_evaluates -- --ignored
 
 test-tui-build: ## Build-test TUI-generated configs + ISO (slow, on-demand only)
-	cd packages/keystone-tui && nix develop ../../ --command cargo test _builds -- --ignored
+	cd packages/ks && nix develop ../../ --command cargo test _builds -- --ignored
 
 ## ISO Building
 
