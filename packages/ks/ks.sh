@@ -1075,6 +1075,7 @@ close_all_ssh_masters() {
 }
 
 # SSH wrapper that uses ControlMaster when available
+# shellcheck disable=SC2029  # $@ intentionally expanded client-side; callers pass pre-resolved commands
 ks_ssh() {
   local target="$1"; shift
   local ctl
@@ -1794,6 +1795,24 @@ deploy_unlocked_current_state() {
     fi
   fi
 
+  # Establish SSH ControlMaster for remote hosts upfront (one hardware key touch)
+  for h in "${target_hosts[@]}"; do
+    local h_json h_hostname h_ssh_target h_fallback_ip
+    h_json=$(nix eval -f "$hosts_nix" "$h" --json 2>/dev/null) || continue
+    h_hostname=$(echo "$h_json" | jq -r '.hostname')
+    [[ "$h_hostname" == "$current_hostname" ]] && continue
+    h_ssh_target=$(resolve_ssh_target "$repo_root" "$h" "$h_json")
+    [[ -z "$h_ssh_target" ]] && continue
+    h_fallback_ip=$(echo "$h_json" | jq -r '.fallbackIP // empty')
+    local h_resolved="$h_ssh_target"
+    if [[ -n "$h_fallback_ip" ]]; then
+      if ! ks_ssh_test "$h_ssh_target"; then
+        h_resolved="$h_fallback_ip"
+      fi
+    fi
+    open_ssh_master "$h_resolved"
+  done
+
   local override_args=()
   read -ra override_args <<< "$(local_override_args "$repo_root")"
 
@@ -2201,9 +2220,28 @@ cmd_update() {
       # Keepalive: refresh every 60 s so a long pull/lock/build doesn't expire the ticket.
       ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 60; done ) &
       SUDO_KEEPALIVE_PID=$!
-      trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; trap - EXIT' EXIT
+      trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; close_all_ssh_masters 2>/dev/null || true; trap - EXIT' EXIT
     fi
   fi
+
+  # Step 1b: Establish SSH ControlMaster for remote hosts upfront so hardware
+  # key touch happens now — not after a long build.
+  for h in "${target_hosts[@]}"; do
+    local h_json h_hostname h_ssh_target h_fallback_ip
+    h_json=$(nix eval -f "$hosts_nix" "$h" --json 2>/dev/null) || continue
+    h_hostname=$(echo "$h_json" | jq -r '.hostname')
+    [[ "$h_hostname" == "$current_hostname" ]] && continue
+    h_ssh_target=$(resolve_ssh_target "$repo_root" "$h" "$h_json")
+    [[ -z "$h_ssh_target" ]] && continue
+    h_fallback_ip=$(echo "$h_json" | jq -r '.fallbackIP // empty')
+    local h_resolved="$h_ssh_target"
+    if [[ -n "$h_fallback_ip" ]]; then
+      if ! ks_ssh_test "$h_ssh_target"; then
+        h_resolved="$h_fallback_ip"
+      fi
+    fi
+    open_ssh_master "$h_resolved"
+  done
 
   # ── UPFRONT PHASE ───────────────────────────────────────────────────────────
   # Step 1: Pull nixos-config so we operate on latest
