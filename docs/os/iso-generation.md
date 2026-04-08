@@ -92,9 +92,16 @@ sync
 ./bin/build-iso --help              # Show all options
 ./bin/build-iso -o custom-dir       # Custom output directory
 
-# Direct Nix commands (no SSH keys)
-nix build .#iso                     # Build ISO directly
+# Direct Nix commands from a config flake built with mkSystemFlake
+# Replace <system> with the detected Linux host system, such as
+# x86_64-linux or aarch64-linux.
+nix build .#packages.<system>.iso
 ```
+
+`mkSystemFlake` exposes `packages.<system>.iso` when it can resolve one Linux
+installer system from the flake. If your flake has Linux hosts, Keystone now
+infers that system from the inventory. If your flake has no Linux hosts, set
+`defaults.system` explicitly if you still want an ISO output.
 
 ## Platform Setup
 

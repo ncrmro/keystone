@@ -9,6 +9,7 @@
 # Commands:
 #   approve --reason "<reason>" -- <command> [args...]  Run one allowlisted privileged command
 #   build  [--lock] [HOSTS]                            Build home-manager profiles (or full system with --lock)
+#   install [--force]                                   Launch the local installer workflow
 #   update [--debug] [--dev] [--boot] [--pull] [--lock] [HOSTS]  Deploy (unlocked current checkout with --dev, locked full system by default)
 #   agents <pause|resume|status> <agent|all> [reason]  Pause or inspect agent task loops
 #   docs   [topic|path]                                Browse keystone markdown docs with glow and fzf
@@ -94,6 +95,7 @@ Commands:
   approve --reason "<reason>" -- <command> [args...] Run one allowlisted privileged command
   build [--lock] [--user USERS] [--all-users] [HOSTS]
                                                     Build home-manager profiles, or full systems with --lock
+  install [--force]                                  Launch the Keystone installer workflow
   update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
                                                     Pull, lock, build, push, and deploy
   agents <pause|resume|status|e2e> <agent|all> [options]
@@ -223,6 +225,30 @@ Examples:
   ks switch
   ks switch workstation,ocean
   ks switch --boot ocean
+EOF
+}
+
+print_install_help() {
+  cat <<'EOF'
+Usage: ks install [--force]
+
+Launch the Keystone installer workflow on a booted installer environment.
+
+Options:
+  --force              Allow running even when /etc/NIXOS is not present
+  -h, --help           Show this help
+
+Behavior:
+  Requires keystone-tui in PATH.
+  Requires /etc/keystone/install-repo or /etc/keystone/install-config to be present.
+  Re-execs the installer through non-interactive sudo on live media so
+  disko and nixos-install run as root.
+  Starts the installer flow, including explicit disk selection and confirmation
+  before destructive disko operations.
+
+Examples:
+  ks install
+  ks install --force
 EOF
 }
 
@@ -498,6 +524,9 @@ show_help_topic() {
       ;;
     switch)
       print_switch_help
+      ;;
+    install)
+      print_install_help
       ;;
     sync-agent-assets)
       print_sync_agent_assets_help
@@ -2130,6 +2159,69 @@ cmd_switch() {
   deploy_unlocked_current_state "$repo_root" "$mode" "${target_hosts[@]}"
 }
 
+# --- Install command (interactive ISO installer flow) ---
+cmd_install() {
+  local force=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        print_install_help
+        return 0
+        ;;
+      --force)
+        force=true
+        shift
+        ;;
+      -*)
+        echo "Error: Unknown option '$1'" >&2
+        print_install_help >&2
+        return 1
+        ;;
+      *)
+        echo "Error: Unexpected argument '$1'" >&2
+        print_install_help >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if ! command -v keystone-tui >/dev/null 2>&1; then
+    echo "Error: keystone-tui is not available in PATH." >&2
+    echo "Enable the installer TUI package in the ISO environment first." >&2
+    return 1
+  fi
+
+  if [[ ! -f /etc/NIXOS && "$force" != true ]]; then
+    echo "Error: ks install is intended for a booted NixOS installer environment." >&2
+    echo "Use --force to bypass this check." >&2
+    return 1
+  fi
+
+  if [[ ! -d /etc/keystone/install-repo && ! -d /etc/keystone/install-config ]]; then
+    echo "Error: installer data is missing." >&2
+    echo "Boot an installer image with an embedded install repo or legacy install-config bundle, then retry." >&2
+    return 1
+  fi
+
+  if [[ "$(id -u)" -eq 0 ]]; then
+    exec keystone-tui --install
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "Error: ks install needs sudo to launch the installer as root." >&2
+    echo "The live Keystone installer ISO should provide non-interactive sudo for the admin user." >&2
+    return 1
+  fi
+
+  if ! sudo -n true >/dev/null 2>&1; then
+    echo "Error: ks install needs non-interactive sudo in the live installer environment." >&2
+    echo "Rebuild or boot a Keystone installer ISO that grants passwordless sudo to the admin user." >&2
+    return 1
+  fi
+
+  exec sudo -n -- keystone-tui --install
+}
+
 # --- Update command ---
 cmd_update() {
   local mode="switch" hosts_arg="" pull=false lock=true
@@ -2387,11 +2479,17 @@ cmd_update() {
       new_initrd=$(readlink -f "$path/initrd" 2>/dev/null || echo "new")
 
       check_cmd="
-        current_system=\$(readlink -f /run/current-system 2>/dev/null || echo 'none')
-        if [[ \"\$current_system\" != \"$(readlink -f "$path")\" ]]; then
-          echo 'OS'
+        old_sw=\$(readlink -f /run/current-system/sw 2>/dev/null || echo 'old')
+        old_kernel=\$(readlink -f /run/current-system/kernel 2>/dev/null || echo 'old')
+        old_initrd=\$(readlink -f /run/current-system/initrd 2>/dev/null || echo 'old')
+        if [[ \"\$old_sw\" == \"$new_sw\" && \"\$old_kernel\" == \"$new_kernel\" && \"\$old_initrd\" == \"$new_initrd\" ]]; then
+          if ! diff -r -q --exclude='per-user' \"\$(readlink -f /run/current-system/etc)\" \"\$(readlink -f $path/etc)\" >/dev/null 2>&1; then
+            echo 'OS'
+          else
+            echo 'HM'
+          fi
         else
-          echo 'HM'
+          echo 'OS'
         fi
       "
       # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
@@ -2938,7 +3036,7 @@ gather_fleet_health() {
     local host_json hostname ssh_target fallback_ip
     host_json=$(nix eval -f "$hosts_nix" "$host" --json 2>/dev/null) || continue
     hostname=$(echo "$host_json" | jq -r '.hostname // ""')
-    ssh_target=$(echo "$host_json" | jq -r '.sshTarget // ""')
+    ssh_target=$(resolve_ssh_target "$repo_root" "$host" "$host_json")
     fallback_ip=$(echo "$host_json" | jq -r '.fallbackIP // ""')
 
     # Current host — use local data
@@ -3616,13 +3714,14 @@ case "$CMD" in
   sync-agent-assets) cmd_sync_agent_assets "$@" ;;
   update) cmd_update "$@" ;;
   switch) cmd_switch "$@" ;;
+  install) cmd_install "$@" ;;
   sync-host-keys) cmd_sync_host_keys "$@" ;;
   print)  cmd_print "$@" ;;
   agent)  cmd_agent "$@" ;;
   doctor) cmd_doctor "$@" ;;
   *)
     echo "Error: Unknown command '$CMD'" >&2
-    echo "Known commands: help, approve, build, update, agents, docs, photos, sync-agent-assets, switch, sync-host-keys, grafana, print, agent, doctor" >&2
+    echo "Known commands: help, approve, build, update, switch, install, agents, docs, photos, sync-agent-assets, sync-host-keys, grafana, print, agent, doctor" >&2
     exit 1
     ;;
 esac

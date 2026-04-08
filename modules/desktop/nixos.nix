@@ -148,7 +148,9 @@ in
 
     # Networking (for laptops, portables, and thin clients)
     networking.networkmanager.enable = mkIf cfg.networking.enable (mkDefault true);
-    services.resolved.enable = mkIf cfg.networking.enable (mkDefault true);
+    # Route the desktop default through keystone.os so the core OS module stays
+    # the single writer of services.resolved.enable.
+    keystone.os.services.resolved.enable = mkIf cfg.networking.enable (mkDefault true);
     # Required for Tailscale MagicDNS to work with systemd-resolved
     # https://github.com/NixOS/nixpkgs/issues/231191#issuecomment-1664053176
     environment.etc."resolv.conf".mode = mkIf cfg.networking.enable "direct-symlink";

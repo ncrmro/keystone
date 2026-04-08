@@ -42,7 +42,7 @@ pub async fn discover_disks() -> anyhow::Result<Vec<DiskEntry>> {
 
     // Get lsblk data for correlation
     let lsblk_output = tokio::process::Command::new("lsblk")
-        .args(["--json", "-d", "-o", "NAME,SIZE,MODEL,TRAN"])
+        .args(["--json", "-d", "-o", "NAME,SIZE,MODEL,TRAN,TYPE"])
         .output()
         .await?;
 
@@ -69,6 +69,8 @@ pub async fn discover_disks() -> anyhow::Result<Vec<DiskEntry>> {
             || name.contains("loop")
             || name.contains("cdrom")
             || name.contains("CD-ROM")
+            || name.contains("DVD")
+            || name.contains("dvd")
         {
             continue;
         }
@@ -80,7 +82,7 @@ pub async fn discover_disks() -> anyhow::Result<Vec<DiskEntry>> {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            if !dev_name.is_empty() {
+            if !dev_name.is_empty() && !dev_name.starts_with("sr") {
                 raw_links.push((name, dev_name));
             }
         }
@@ -123,6 +125,14 @@ pub async fn discover_disks() -> anyhow::Result<Vec<DiskEntry>> {
                 .map(|n| n == dev_name)
                 .unwrap_or(false)
         });
+
+        if lsblk_info
+            .and_then(|d| d.get("type"))
+            .and_then(|v| v.as_str())
+            .is_some_and(|device_type| device_type != "disk")
+        {
+            continue;
+        }
 
         let model = lsblk_info
             .and_then(|d| d.get("model"))

@@ -3,7 +3,7 @@
 ## Pre-Push Checklist
 
 Before pushing any changes, run **all** of the following locally. These mirror
-the `Validate TUI` CI workflow — if any fail locally they will fail in CI.
+the `Validate / ks-cli` CI job — if any fail locally they will fail in CI.
 
 ```bash
 # 1. Formatting (must pass with zero diff)

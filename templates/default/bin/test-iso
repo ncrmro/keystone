@@ -1,0 +1,517 @@
+#!/usr/bin/env bash
+# test-iso — build the installer ISO with SSH keys and boot it in QEMU
+#
+# Usage:
+#   ./bin/test-iso                          # auto-detect ~/.ssh/id_*.pub
+#   ./bin/test-iso --ssh-key ~/.ssh/id_ed25519.pub
+#   ./bin/test-iso --ssh-key "ssh-ed25519 AAAA... user@host"
+#   ./bin/test-iso --build-only             # build but don't start VM
+#   ./bin/test-iso --no-build               # skip build, boot existing ISO
+#   ./bin/test-iso --dev                    # allow embedding a dirty working tree snapshot
+#   ./bin/test-iso --update-keystone-input  # refresh keystone flake input before build
+#
+# SSH access once the VM boots:
+#   ssh -p 2222 -o StrictHostKeyChecking=no admin@localhost
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+ISO_RESULT="$PROJECT_DIR/.test-iso"
+VM_DISK_PATH="$PROJECT_DIR/.test-iso-disk.raw"
+SSH_PORT=12222
+QEMU_MEM=4096
+QEMU_CPUS=2
+SSH_WAIT_TIMEOUT=240
+VM_DISK_SIZE=64G
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info()  { echo -e "${BLUE}$*${NC}" >&2; }
+log_ok()    { echo -e "${GREEN}$*${NC}" >&2; }
+log_warn()  { echo -e "${YELLOW}$*${NC}" >&2; }
+log_error() { echo -e "${RED}$*${NC}" >&2; }
+
+PROJECT_SNAPSHOT_DIR=""
+
+cleanup_project_snapshot() {
+    if [[ -n "$PROJECT_SNAPSHOT_DIR" && -d "$PROJECT_SNAPSHOT_DIR" ]]; then
+        rm -rf "$PROJECT_SNAPSHOT_DIR"
+    fi
+}
+
+trap cleanup_project_snapshot EXIT
+
+check_iso_artifact() {
+    local iso_path="$1"
+    local check_output
+
+    log_info "Verifying installer ISO artifact..."
+    if ! check_output="$(
+        nix shell nixpkgs#xorriso nixpkgs#squashfsTools --command bash -s -- "$iso_path" <<'EOF' 2>&1
+set -euo pipefail
+
+iso_path="$1"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# Prove we built the Keystone installer artifact, not just any bootable ISO.
+xorriso -indev "$iso_path" -pvd_info > "$tmp/pvd.txt"
+grep -F "Volume Id    : KEYSTONE" "$tmp/pvd.txt" >/dev/null
+
+# version.txt is a cheap sanity check that the ISO root filesystem layout is intact.
+xorriso -osirrox on -indev "$iso_path" -extract /version.txt "$tmp/version.txt" >/dev/null 2>&1
+grep -Eq '^[0-9]{2}\.[0-9]{2}\.' "$tmp/version.txt"
+
+xorriso -osirrox on -indev "$iso_path" -extract /nix-store.squashfs "$tmp/nix-store.squashfs" >/dev/null 2>&1
+# Keep the known-good ICU read gate that caught the earlier corrupt squashfs issue.
+unsquashfs -cat "$tmp/nix-store.squashfs" 4424mzk2pyia5v1j33zjgrjaivrdy03y-icu4c-76.1/lib/libicudata.so.76 >/dev/null
+unsquashfs -ll "$tmp/nix-store.squashfs" > "$tmp/nix-store.list"
+
+# Make sure the live installer closure still carries the commands the ISO boot flow needs.
+for tool in ks keystone-tui disko nixos-install; do
+    grep -Eq "/bin/${tool}$" "$tmp/nix-store.list"
+done
+EOF
+    )"; then
+        log_error "Installer ISO artifact gate failed."
+        printf '%s\n' "$check_output" >&2
+        exit 1
+    fi
+    log_ok "Installer ISO artifact checks passed."
+}
+
+show_help() {
+    cat >&2 << EOF
+test-iso — build the installer ISO with SSH keys and boot it in QEMU
+
+Usage:
+  $(basename "$0") [OPTIONS]
+
+Options:
+  -k, --ssh-key INPUT   SSH public key as a file path or inline key string.
+                        May be repeated for multiple keys.
+                        Default: all ~/.ssh/id_*.pub files.
+  --build-only          Build the ISO but do not start the VM.
+  --no-build            Skip the build step and boot an existing ISO.
+  --dev                 Allow building from a dirty working tree snapshot.
+                        Without this flag, the repo must be clean.
+  --update-keystone-input
+                        Refresh flake input 'keystone' before building.
+                        For path-locked keystone inputs, this refreshes the
+                        lock to the current local path snapshot.
+  --headless            No GUI window — poll for SSH in the background.
+  --ssh-timeout SEC     Max wait time for SSH in headless mode (default: $SSH_WAIT_TIMEOUT).
+  --disk-size SIZE      Size of the attached install disk image (default: $VM_DISK_SIZE).
+  --disk-path PATH      Path to the attached install disk image
+                        (default: $VM_DISK_PATH).
+  -m, --memory MB       QEMU RAM in MB (default: $QEMU_MEM).
+  -p, --port PORT       Host SSH port to forward (default: $SSH_PORT).
+  -h, --help            Show this help.
+
+By default the QEMU window opens (GUI mode) with serial output on the
+terminal. Use --headless to run without a window (SSH-only).
+
+Examples:
+  ./bin/test-iso                           # GUI + serial
+  ./bin/test-iso --dev                     # build from local uncommitted changes
+  ./bin/test-iso --headless                # no window, polls SSH
+  ./bin/test-iso --disk-size 100G          # attach a larger install disk
+  ./bin/test-iso --update-keystone-input   # refresh keystone input then build
+  ./bin/test-iso --ssh-key ~/.ssh/id_ed25519.pub
+  ./bin/test-iso --build-only
+EOF
+}
+
+# ── argument parsing ──────────────────────────────────────────────────────────
+
+SSH_KEY_INPUTS=()
+BUILD=true
+BOOT=true
+HEADLESS=false
+UPDATE_KEYSTONE_INPUT=false
+DEV_MODE=false
+
+# Admin identity — read from flake outputs (mkSystemFlake exposes these).
+ADMIN_USERNAME=""
+ADMIN_NAME=""
+ADMIN_EMAIL=""
+KEYSTONE_LOCKED_PATH=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -k|--ssh-key)
+            SSH_KEY_INPUTS+=("$2")
+            shift 2
+            ;;
+        --build-only)
+            BOOT=false
+            shift
+            ;;
+        --no-build)
+            BUILD=false
+            shift
+            ;;
+        --update-keystone-input)
+            UPDATE_KEYSTONE_INPUT=true
+            shift
+            ;;
+        --dev)
+            DEV_MODE=true
+            shift
+            ;;
+        --headless)
+            HEADLESS=true
+            shift
+            ;;
+        --ssh-timeout)
+            SSH_WAIT_TIMEOUT="$2"
+            shift 2
+            ;;
+        --disk-size)
+            VM_DISK_SIZE="$2"
+            shift 2
+            ;;
+        --disk-path)
+            VM_DISK_PATH="$2"
+            shift 2
+            ;;
+        -m|--memory)
+            QEMU_MEM="$2"
+            shift 2
+            ;;
+        -p|--port)
+            SSH_PORT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            log_error "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+# ── read admin identity from flake ───────────────────────────────────────────
+
+ADMIN_USERNAME="$(nix eval --raw "${PROJECT_DIR}#adminUsername" 2>/dev/null)"
+ADMIN_NAME="$(nix eval --raw "${PROJECT_DIR}#adminName" 2>/dev/null)"
+ADMIN_EMAIL="$(nix eval --raw "${PROJECT_DIR}#adminEmail" 2>/dev/null)"
+
+if [[ -z "$ADMIN_USERNAME" ]]; then
+    log_error "Could not read adminUsername from flake. Ensure the flake uses mkSystemFlake and has admin.username set."
+    exit 1
+fi
+
+if [[ -f "$PROJECT_DIR/flake.lock" ]]; then
+    KEYSTONE_LOCKED_PATH="$(jq -r '.nodes.keystone.locked.path // empty' "$PROJECT_DIR/flake.lock" 2>/dev/null || true)"
+fi
+
+refresh_keystone_input() {
+    local node_json locked_type locked_path
+
+    node_json="$(nix flake metadata --json "$PROJECT_DIR" 2>/dev/null | jq -c '.locks.nodes.keystone // empty')"
+    if [[ -z "$node_json" ]]; then
+        log_warn "Could not inspect flake lock for 'keystone'; running targeted update."
+        nix flake update keystone
+        return
+    fi
+
+    locked_type="$(jq -r '.locked.type // empty' <<< "$node_json")"
+    if [[ "$locked_type" == "path" ]]; then
+        locked_path="$(jq -r '.locked.path // empty' <<< "$node_json")"
+        if [[ -n "$locked_path" ]]; then
+            log_info "Refreshing path-locked keystone input: $locked_path"
+            nix flake lock --override-input keystone "path:${locked_path}"
+            return
+        fi
+
+        log_warn "Keystone input is path-locked but missing locked.path; running targeted update."
+        nix flake update keystone
+        return
+    fi
+
+    log_info "Updating flake input 'keystone'."
+    nix flake update keystone
+}
+
+assert_clean_repo() {
+    if [[ -n "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=normal)" ]]; then
+        log_error "Refusing to build installer ISO from a dirty repo."
+        log_error "Commit or stash changes first, or rebuild with --dev."
+        exit 1
+    fi
+}
+
+create_project_snapshot() {
+    local snapshot_dir="$1"
+
+    mkdir -p "$snapshot_dir"
+
+    # Do not evaluate the flake from the raw working tree path.
+    #
+    # Nix will eagerly traverse that path before the installer snapshot logic
+    # runs, which pulls local VM artifacts like .test-iso-disk.raw into the
+    # build input. Build from a git-filtered temp snapshot instead so flake
+    # evaluation and repo embedding see the same clean file set.
+    if [[ "$DEV_MODE" == "true" ]]; then
+        git -C "$PROJECT_DIR" ls-files -z --cached --modified --others --exclude-standard \
+            | (cd "$PROJECT_DIR" && tar --null -T - -cf -) \
+            | tar -xf - -C "$snapshot_dir"
+    else
+        git -C "$PROJECT_DIR" archive --format=tar HEAD | tar -xf - -C "$snapshot_dir"
+    fi
+}
+
+# ── collect SSH keys ──────────────────────────────────────────────────────────
+
+collect_keys() {
+    # Returns a newline-separated list of SSH public key strings.
+    local input
+    for input in "${SSH_KEY_INPUTS[@]}"; do
+        if [[ "$input" =~ ^[/~.] ]]; then
+            # Expand ~ manually so the path check works
+            local expanded="${input/#\~/$HOME}"
+            if [[ ! -f "$expanded" ]]; then
+                log_error "SSH key file not found: $input"
+                exit 1
+            fi
+            grep "^ssh-" "$expanded" || true
+        else
+            echo "$input"
+        fi
+    done
+}
+
+SSH_KEYS_LIST=""
+
+if [[ ${#SSH_KEY_INPUTS[@]} -gt 0 ]]; then
+    SSH_KEYS_LIST="$(collect_keys)"
+else
+    # Auto-detect from ~/.ssh/id_*.pub
+    local_pub_keys=()
+    for f in "$HOME/.ssh/id_"*.pub; do
+        [[ -f "$f" ]] && local_pub_keys+=("$f")
+    done
+    if [[ ${#local_pub_keys[@]} -eq 0 ]]; then
+        log_warn "No SSH public keys found in ~/.ssh/id_*.pub"
+        log_warn "The ISO will have no SSH access unless you pass --ssh-key"
+    else
+        for f in "${local_pub_keys[@]}"; do
+            log_info "Using SSH key: $f"
+            SSH_KEYS_LIST+="$(grep "^ssh-" "$f" || true)"$'\n'
+        done
+    fi
+fi
+
+# Build a Nix list literal: [ "key1" "key2" ]
+nix_keys_list="["
+while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    escaped="${key//\"/\\\"}"
+    nix_keys_list+=" \"$escaped\""
+done <<< "$SSH_KEYS_LIST"
+nix_keys_list+=" ]"
+
+# ── build ─────────────────────────────────────────────────────────────────────
+
+if [[ "$BUILD" == "true" ]]; then
+    if [[ "$UPDATE_KEYSTONE_INPUT" == "true" ]]; then
+        refresh_keystone_input
+    fi
+
+    if [[ "$DEV_MODE" != "true" ]]; then
+        assert_clean_repo
+    else
+        log_warn "Building installer ISO in --dev mode from the current working tree snapshot."
+    fi
+
+    PROJECT_SNAPSHOT_DIR="$(mktemp -d)"
+    create_project_snapshot "$PROJECT_SNAPSHOT_DIR"
+
+    log_info "Building installer ISO..."
+
+    keystone_expr="self.inputs.keystone"
+    if [[ -n "$KEYSTONE_LOCKED_PATH" && -e "$KEYSTONE_LOCKED_PATH" ]]; then
+        # Path-locked local keystone inputs are iterative development surfaces.
+        # Read the live worktree directly here so test builds pick up the latest
+        # keystone changes even when flake.lock still points at an older store
+        # snapshot of the same path.
+        keystone_expr="builtins.getFlake (toString $(printf '%q' "$KEYSTONE_LOCKED_PATH"))"
+    fi
+
+    # Build via keystone.lib.mkInstallerIsoForFlake so the ISO carries the
+    # embedded repo and installer metadata from the current config repo.
+    nix_expr="
+      let
+        self = builtins.getFlake (toString $(printf '%q' "$PROJECT_SNAPSHOT_DIR"));
+        keystone = ${keystone_expr};
+        installerTargets = self.outputs.installerTargets;
+      in keystone.lib.mkInstallerIsoForFlake {
+        sshKeys = $nix_keys_list;
+        adminUsername = \"$ADMIN_USERNAME\";
+        adminName    = \"$ADMIN_NAME\";
+        adminEmail   = \"$ADMIN_EMAIL\";
+        repoPath = $(printf '%q' "$PROJECT_SNAPSHOT_DIR");
+        repoName = \"$(basename "$PROJECT_DIR")\";
+        inherit installerTargets;
+        devMode = ${DEV_MODE};
+      }
+    "
+
+    nix build \
+        --impure \
+        --expr "$nix_expr" \
+        --out-link "$ISO_RESULT" \
+        --print-build-logs
+
+    iso_path="$(find "$ISO_RESULT/iso" -maxdepth 1 -name '*.iso' -print -quit 2>/dev/null || true)"
+    if [[ -z "$iso_path" ]]; then
+        log_error "Build succeeded but no ISO found in $ISO_RESULT/iso/"
+        exit 1
+    fi
+
+    iso_size="$(du -h "$iso_path" | cut -f1)"
+    log_ok "ISO built: $iso_path ($iso_size)"
+    check_iso_artifact "$iso_path"
+elif [[ "$UPDATE_KEYSTONE_INPUT" == "true" ]]; then
+    log_warn "--update-keystone-input has no effect with --no-build; skipping input refresh."
+fi
+
+if [[ "$BOOT" == "false" ]]; then
+    exit 0
+fi
+
+# ── locate the ISO ────────────────────────────────────────────────────────────
+
+iso_path="$(find "$ISO_RESULT/iso" -maxdepth 1 -name '*.iso' -print -quit 2>/dev/null || true)"
+if [[ -z "$iso_path" ]]; then
+    log_error "No ISO found at $ISO_RESULT/iso/"
+    log_error "Run without --no-build to build it first."
+    exit 1
+fi
+
+check_iso_artifact "$iso_path"
+
+# ── locate OVMF firmware ──────────────────────────────────────────────────────
+
+find_ovmf() {
+    # 1. Prefer nixpkgs OVMF for reproducible behavior. Some host-provided
+    # OVMF builds fail to boot this ISO in QEMU and never touch the CD-ROM.
+    local candidate store_path
+    store_path="$(nix build nixpkgs#OVMF.fd --print-out-paths --no-link 2>/dev/null || true)"
+    [[ -n "$store_path" ]] && candidate="$store_path/FV/OVMF.fd"
+    [[ -f "${candidate:-}" ]] && { echo "$candidate"; return; }
+
+    # 2. Fallback to host/system firmware paths
+    candidate="$(find /run/current-system/sw/share -name 'OVMF.fd' 2>/dev/null | head -1 || true)"
+    [[ -n "$candidate" ]] && { echo "$candidate"; return; }
+
+    candidate="$(find /nix/store -maxdepth 3 -name 'OVMF.fd' 2>/dev/null | head -1 || true)"
+    [[ -n "$candidate" ]] && { echo "$candidate"; return; }
+
+    log_error "Could not locate OVMF firmware. Install it with:"
+    log_error "  environment.systemPackages = [ pkgs.OVMF ];"
+    exit 1
+}
+
+ovmf_path="$(find_ovmf)"
+log_info "OVMF: $ovmf_path"
+
+# ── ensure a writable install target disk exists ─────────────────────────────
+
+ensure_vm_disk() {
+    local disk_path="$1"
+    local disk_size="$2"
+    local disk_dir
+
+    disk_dir="$(dirname "$disk_path")"
+    mkdir -p "$disk_dir"
+
+    if [[ ! -e "$disk_path" ]]; then
+        log_info "Creating VM install disk: $disk_path ($disk_size)"
+        truncate -s "$disk_size" "$disk_path"
+    fi
+}
+
+ensure_vm_disk "$VM_DISK_PATH" "$VM_DISK_SIZE"
+log_info "VM install disk: $VM_DISK_PATH"
+
+# ── check port availability ───────────────────────────────────────────────────
+
+if ss -tlnp 2>/dev/null | grep -q ":${SSH_PORT} " || \
+   netstat -tlnp 2>/dev/null | grep -q ":${SSH_PORT} "; then
+    log_warn "Port $SSH_PORT is already in use — choose another with --port"
+    exit 1
+fi
+
+# ── boot the VM ──────────────────────────────────────────────────────────────
+
+log_info "Starting QEMU with ISO: $(basename "$iso_path")"
+log_info "SSH port forwarding: localhost:$SSH_PORT → VM:22"
+echo >&2
+log_ok "SSH command:"
+log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+echo >&2
+
+QEMU_COMMON=(
+    -enable-kvm
+    -m "$QEMU_MEM"
+    -smp "$QEMU_CPUS"
+    -bios "$ovmf_path"
+    -cdrom "$iso_path"
+    -drive "if=none,id=installdisk,file=${VM_DISK_PATH},format=raw"
+    -device "virtio-blk-pci,drive=installdisk,serial=keystone-test-disk"
+    -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
+    -device "virtio-net-pci,netdev=net0,romfile="
+)
+
+if [[ "$HEADLESS" == "true" ]]; then
+    # ── headless: background QEMU, poll for SSH ──────────────────────────────
+    log_warn "Headless mode. Press Ctrl-C to stop the VM."
+    echo >&2
+
+    qemu-system-x86_64 "${QEMU_COMMON[@]}" -display none &
+    QEMU_PID=$!
+    trap 'kill "$QEMU_PID" 2>/dev/null; exit 0' INT TERM
+
+    log_info "Waiting for SSH on port $SSH_PORT (timeout: ${SSH_WAIT_TIMEOUT}s)..."
+    start_time="$(date +%s)"
+    until ssh \
+            -p "$SSH_PORT" \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=2 \
+            -o LogLevel=ERROR \
+            "${ADMIN_USERNAME}@localhost" \
+            exit 0 2>/dev/null; do
+        kill -0 "$QEMU_PID" 2>/dev/null || { log_error "QEMU exited unexpectedly."; exit 1; }
+        now="$(date +%s)"
+        if (( now - start_time >= SSH_WAIT_TIMEOUT )); then
+            log_error "Timed out waiting for SSH after ${SSH_WAIT_TIMEOUT}s."
+            log_error "Try GUI mode to inspect boot state: ./bin/test-iso --no-build"
+            kill "$QEMU_PID" 2>/dev/null || true
+            exit 1
+        fi
+        sleep 3
+    done
+
+    log_ok "SSH is up!"
+    log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+    echo >&2
+    log_warn "VM is running (PID $QEMU_PID). Press Ctrl-C to shut it down."
+    wait "$QEMU_PID"
+else
+    # ── GUI: QEMU window ────────────────────────────────────────────────────
+    log_warn "Close the QEMU window to stop."
+    echo >&2
+    exec qemu-system-x86_64 "${QEMU_COMMON[@]}"
+fi
