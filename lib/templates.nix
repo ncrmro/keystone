@@ -524,7 +524,34 @@ rec {
       sharedSystemModules = shared.systemModules or [ ];
       sharedUserModules = shared.userModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
-      defaultLinuxSystem = defaults.system or "x86_64-linux";
+
+      # Resolve the system for each Linux host using the explicit per-host value
+      # (hostCfg.system) or the kind default.  Note: system overrides declared
+      # only inside a host's hardware.nix cannot be detected here without
+      # importing that file; if your hosts set a non-default system solely via
+      # hardware.nix, also set defaults.system explicitly.
+      linuxHostSystems = lib.unique (
+        lib.mapAttrsToList (
+          _: hostCfg:
+          if hostCfg ? system then
+            hostCfg.system
+          else
+            (linuxKindDefaults.${hostCfg.kind} or { system = "x86_64-linux"; }).system
+        ) linuxHosts
+      );
+
+      # defaults.system is the explicit override; when absent, infer from the
+      # Linux host inventory (requiring a single consistent system across all
+      # hosts).
+      defaultLinuxSystem =
+        if defaults ? system then
+          defaults.system
+        else if linuxHostSystems == [ ] then
+          "x86_64-linux"
+        else if builtins.length linuxHostSystems == 1 then
+          builtins.head linuxHostSystems
+        else
+          throw "keystone mkSystemFlake: Linux hosts use multiple systems (${lib.concatStringsSep ", " linuxHostSystems}). Set defaults.system to specify which system to use for the installer ISO.";
 
       hostFilePath =
         name: file:

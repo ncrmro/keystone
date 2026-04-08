@@ -9,14 +9,14 @@ Generate a Keystone installer ISO with SSH keys for remote installation.
 
 ## Config repo (mkSystemFlake)
 
-Flakes built with `mkSystemFlake` automatically produce an installer ISO. Add your SSH
-public keys to the `owner` block and build:
+Flakes built with `mkSystemFlake` automatically produce an installer ISO when the flake
+declares at least one Linux host. Add your SSH public keys to the `admin` block and build:
 
 ```nix
 # flake.nix
 keystone.lib.mkSystemFlake {
-  owner = {
-    name = "Your Name";
+  admin = {
+    fullName = "Your Name";
     username = "admin";
     email = "admin@example.com";
     sshKeys = [
@@ -30,6 +30,10 @@ keystone.lib.mkSystemFlake {
 ```bash
 nix build .#packages.x86_64-linux.iso -o installer-iso
 ```
+
+Replace `x86_64-linux` with the correct target system for your flake, such as
+`aarch64-linux`, if you are not building for x86_64. The system is inferred
+automatically from your Linux host inventory; set `defaults.system` to override.
 
 The ISO includes the admin's terminal environment (helix, zsh, starship), SSH access
 with the declared keys, and the Keystone TUI installer.
