@@ -48,6 +48,19 @@ jobs:
           gc-max-store-size-linux: 6G
           save: ${{ github.event_name == 'workflow_call' && inputs.save_nix_cache || false }}
 
+      - name: Configure Cachix
+        if: env.CACHIX_AUTH_TOKEN == ''
+        uses: cachix/cachix-action@v15
+        with:
+          name: ks-systems
+
+      - name: Configure Cachix (auth)
+        if: env.CACHIX_AUTH_TOKEN != ''
+        uses: cachix/cachix-action@v15
+        with:
+          name: ks-systems
+          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
+
       - name: Warm cache
         run: |
           ./bin/warm-cachix --fixture-dir "$RUNNER_TEMP/keystone-starter-fixture"

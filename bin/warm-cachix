@@ -12,6 +12,7 @@ RUN_GENERATED=true
 RUN_CURATED=true
 KEEP_TEMP=false
 TOKEN="${CACHIX_AUTH_TOKEN:-}"
+IN_CI="${CI:-}"
 
 log_info() {
     printf 'INFO: %s\n' "$*" >&2
@@ -42,7 +43,8 @@ Environment:
   CACHIX_AUTH_TOKEN           Auth token used when --token is not provided
 
 This command uses a temporary XDG config directory by default so the Cachix
-token is not persisted locally after the process exits.
+token is not persisted locally after the process exits. In CI, the command
+assumes Cachix is already configured and skips that local-only setup.
 EOF
 }
 
@@ -93,15 +95,20 @@ if [[ "$RUN_GENERATED" == false && "$RUN_CURATED" == false ]]; then
     exit 1
 fi
 
-if [[ -z "$TOKEN" ]]; then
-    log_error "Set CACHIX_AUTH_TOKEN or pass --token to push warmed paths"
-    exit 1
-fi
-
-TEMP_XDG_CONFIG_HOME="$(mktemp -d)"
+TEMP_XDG_CONFIG_HOME=""
 FIXTURE_WAS_TEMP=false
 
 cleanup() {
+    if [[ -z "$TEMP_XDG_CONFIG_HOME" ]]; then
+        if [[ "$KEEP_TEMP" == true && "$FIXTURE_WAS_TEMP" == true ]]; then
+            log_info "Keeping temporary fixture directory:"
+            log_info "  FIXTURE_DIR=${FIXTURE_DIR}"
+        elif [[ "$FIXTURE_WAS_TEMP" == true ]]; then
+            rm -rf "$FIXTURE_DIR"
+        fi
+        return
+    fi
+
     if [[ "$KEEP_TEMP" == true ]]; then
         log_info "Keeping temporary state:"
         log_info "  XDG_CONFIG_HOME=${TEMP_XDG_CONFIG_HOME}"
@@ -118,8 +125,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-export XDG_CONFIG_HOME="$TEMP_XDG_CONFIG_HOME"
-
 if [[ -z "$FIXTURE_DIR" ]]; then
     FIXTURE_DIR="$(mktemp -d)"
     FIXTURE_WAS_TEMP=true
@@ -135,9 +140,21 @@ run_cachix() {
     "${CACHIX_CMD[@]}" "$@"
 }
 
-log_info "Configuring temporary Cachix credentials for ${CACHE_NAME}"
-run_cachix authtoken "$TOKEN"
-run_cachix use "$CACHE_NAME"
+if [[ "$IN_CI" == "true" ]]; then
+    log_info "Detected CI environment; using existing Cachix configuration"
+else
+    if [[ -z "$TOKEN" ]]; then
+        log_error "Set CACHIX_AUTH_TOKEN or pass --token to push warmed paths"
+        exit 1
+    fi
+
+    TEMP_XDG_CONFIG_HOME="$(mktemp -d)"
+    export XDG_CONFIG_HOME="$TEMP_XDG_CONFIG_HOME"
+
+    log_info "Configuring temporary Cachix credentials for ${CACHE_NAME}"
+    run_cachix authtoken "$TOKEN"
+    run_cachix use "$CACHE_NAME"
+fi
 
 if [[ "$RUN_GENERATED" == true ]]; then
     log_info "Generating template fixture in ${FIXTURE_DIR}"
