@@ -94,6 +94,11 @@ archetypes:
 
   engineer:
     description: "Engineering agents — implementation, code review, architecture"
+    proactive_skills:
+      # Invoke /notes task at the start of any substantive engineering work — before
+      # writing code, opening PRs, or making architectural decisions. The task note
+      # becomes the living record for the session and enables progressive tag enrichment.
+      - notes
     inlined_conventions:
       - process.version-control
       - process.enable-by-default
