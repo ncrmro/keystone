@@ -22,6 +22,23 @@ log_error() {
     printf 'ERROR: %s\n' "$*" >&2
 }
 
+load_local_env() {
+    local env_file
+
+    env_file="${REPO_ROOT}/.env"
+    if [[ ! -f "$env_file" ]]; then
+        return
+    fi
+
+    log_info "Loading local environment from ${env_file}"
+    # shellcheck disable=SC1090
+    set -a
+    source "$env_file"
+    set +a
+
+    TOKEN="${CACHIX_AUTH_TOKEN:-$TOKEN}"
+}
+
 show_help() {
     cat <<EOF
 Warm the Keystone Cachix cache from a generated template fixture.
@@ -44,7 +61,8 @@ Environment:
 
 This command uses a temporary XDG config directory by default so the Cachix
 token is not persisted locally after the process exits. In CI, the command
-assumes Cachix is already configured and skips that local-only setup.
+assumes Cachix is already configured and skips that local-only setup. For
+local use, a repo-local .env file may provide CACHIX_AUTH_TOKEN.
 EOF
 }
 
@@ -144,7 +162,11 @@ if [[ "$IN_CI" == "true" ]]; then
     log_info "Detected CI environment; using existing Cachix configuration"
 else
     if [[ -z "$TOKEN" ]]; then
-        log_error "Set CACHIX_AUTH_TOKEN or pass --token to push warmed paths"
+        load_local_env
+    fi
+
+    if [[ -z "$TOKEN" ]]; then
+        log_error "Set CACHIX_AUTH_TOKEN, add it to .env, or pass --token to push warmed paths"
         exit 1
     fi
 

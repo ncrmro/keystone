@@ -5,6 +5,7 @@ installer-iso
 
 # Nix development
 .direnv/
+.env
 
 # ISO files (they are large)
 *.iso
