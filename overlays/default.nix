@@ -48,7 +48,7 @@ let
   calendula-flake = calendula;
   cardamum-flake = cardamum;
   comodoro-flake = comodoro;
-  llm-agents-flake = llm-agents;
+  llm-agents-src = llm-agents;
   browser-previews-flake = browser-previews;
   ghostty-flake = ghostty;
   yazi-flake = yazi;
@@ -58,6 +58,22 @@ in
 final: prev:
 let
   system = final.stdenv.hostPlatform.system;
+  llmAgentsPkgs = import prev.path {
+    inherit system;
+    config.allowUnfree = true;
+  };
+  llmAgentsWrapBuddy =
+    llmAgentsPkgs.callPackage "${llm-agents-src}/packages/wrapBuddy/package.nix"
+      { };
+  llmAgentsVersionCheckHomeHook =
+    llmAgentsPkgs.callPackage "${llm-agents-src}/packages/versionCheckHomeHook/default.nix"
+      { };
+  llmAgentsPerSystem = {
+    self = {
+      wrapBuddy = llmAgentsWrapBuddy;
+      versionCheckHomeHook = llmAgentsVersionCheckHomeHook;
+    };
+  };
 in
 {
   # Expose crane library for Rust package builds — auto-resolved by callPackage
@@ -112,11 +128,24 @@ in
         '';
       }
     );
-    # AI coding agents from llm-agents.nix
-    claude-code = llm-agents-flake.packages.${system}.claude-code;
-    gemini-cli = llm-agents-flake.packages.${system}.gemini-cli;
-    codex = llm-agents-flake.packages.${system}.codex;
-    opencode = llm-agents-flake.packages.${system}.opencode;
+    # Import only the four upstream agent packages Keystone exposes. Avoid
+    # llm-agents.packages.${system}: unrelated broken upstream packages can make
+    # the whole package set fail evaluation during nixos-install.
+    claude-code = import "${llm-agents-src}/packages/claude-code/default.nix" {
+      pkgs = llmAgentsPkgs;
+      perSystem = llmAgentsPerSystem;
+    };
+    gemini-cli = import "${llm-agents-src}/packages/gemini-cli/default.nix" {
+      pkgs = llmAgentsPkgs;
+      perSystem = llmAgentsPerSystem;
+    };
+    codex = import "${llm-agents-src}/packages/codex/default.nix" {
+      pkgs = llmAgentsPkgs;
+    };
+    opencode = import "${llm-agents-src}/packages/opencode/default.nix" {
+      pkgs = llmAgentsPkgs;
+      perSystem = llmAgentsPerSystem;
+    };
     # Browsers from browser-previews
     google-chrome = browser-previews-flake.packages.${system}.google-chrome;
     # Desktop tools from flake inputs
