@@ -495,6 +495,40 @@ cmd_project_preview() {
   '
 }
 
+cmd_sessions_json() {
+  local raw
+  raw=$(pz all-sessions-json 2>/dev/null || printf '[]\n')
+
+  printf '%s\n' "$raw" | jq '
+    [
+      {
+        Text: "New session",
+        Subtext: "Browse projects to create a new session",
+        Value: "new-session",
+        Icon: "list-add"
+      }
+    ]
+    + [
+        .[]
+        | if .project != "" then
+            {
+              Text: (if .session_slug == "main" then .project else (.project + " / " + .session_slug) end),
+              Subtext: .status,
+              Value: ("open\t" + .project + "\t" + .session_slug + "\t"),
+              Icon: "folder-development"
+            }
+          else
+            {
+              Text: .session_name,
+              Subtext: (.status + " · ad-hoc"),
+              Value: ("attach-raw\t" + .session_name),
+              Icon: "utilities-terminal"
+            }
+          end
+      ]
+  '
+}
+
 cmd_refresh_cache() {
   refresh_snapshot_sync
   printf "%s\n" "$SNAPSHOT_PATH"
@@ -546,6 +580,13 @@ cmd_dispatch() {
     clear-project-prefs)
       pz project-clear-prefs "$project_slug" >/dev/null
       ;;
+    attach-raw)
+      detach ghostty -e zellij attach "$project_slug"
+      ;;
+    new-session)
+      walker -q >/dev/null 2>&1 || true
+      setsid "$(keystone_cmd keystone-launch-walker)" -m "menus:keystone-projects" >/dev/null 2>&1 &
+      ;;
     open-note)
       cmd_open_note "$project_slug"
       ;;
@@ -581,6 +622,10 @@ case "${1:-}" in
     shift
     cmd_projects_json "$@"
     ;;
+  sessions-json)
+    shift
+    cmd_sessions_json "$@"
+    ;;
   project-details-json)
     shift
     cmd_project_details_json "$@"
@@ -604,7 +649,7 @@ case "${1:-}" in
     exec pz "$cmd" "$@"
     ;;
   *)
-    echo "Usage: keystone-project-menu {open|set-current-project|get-current-project|open-session-menu|refresh-cache|projects-json|project-details-json|project-notes-json|project-preview|dispatch|summary|sessions|preview|export-menu-data|export-menu-cache|menu-cache-path} ..." >&2
+    echo "Usage: keystone-project-menu {open|set-current-project|get-current-project|open-session-menu|refresh-cache|projects-json|sessions-json|project-details-json|project-notes-json|project-preview|dispatch|summary|sessions|preview|export-menu-data|export-menu-cache|menu-cache-path} ..." >&2
     exit 1
     ;;
 esac

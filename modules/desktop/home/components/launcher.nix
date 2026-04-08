@@ -104,6 +104,11 @@ in
           sourcePath = ./keystone-project-notes.lua;
         }
         {
+          targetPath = ".config/elephant/menus/keystone-sessions.lua";
+          relativePath = "modules/desktop/home/components/keystone-sessions.lua";
+          sourcePath = ./keystone-sessions.lua;
+        }
+        {
           targetPath = ".config/elephant/menus/keystone-project-session.lua";
           relativePath = "modules/desktop/home/components/keystone-project-session.lua";
           sourcePath = ./keystone-project-session.lua;
@@ -286,6 +291,10 @@ in
             "menus:keystone-update" = {
               input = " Update";
               list = "No update actions available";
+            };
+            "menus:keystone-sessions" = {
+              input = " Sessions";
+              list = "No active sessions";
             };
             "menus:keystone-projects" = {
               input = " Projects";

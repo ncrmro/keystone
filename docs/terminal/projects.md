@@ -124,6 +124,23 @@ pz keystone review
 zellij list-sessions
 ```
 
+### Session management
+
+There are three ways to find and switch between Zellij sessions:
+
+| Method | Context | What it shows |
+|--------|---------|---------------|
+| `pz` / `pz list` | Terminal | Project sessions in a tree view |
+| `zs` (`zesh connect`) | Terminal | Interactive fzf picker across all sessions with zoxide ranking |
+| `$mod+D` | Desktop | Walker fuzzy-search menu showing all active sessions |
+
+For scripting and tooling, `pz all-sessions-json` outputs every active Zellij
+session as JSON, annotated with project metadata where available:
+
+```bash
+pz all-sessions-json | jq '.[] | select(.status == "attached")'
+```
+
 ### Helix
 
 Use Helix as the default editor for code, notes, and docs:
@@ -179,27 +196,31 @@ Or refresh the hub through the workflow command:
 
 Use [Notes](../notes.md) for the canonical hub-note structure and note flow.
 
-## Desktop project navigation with Walker
+## Desktop session picker with Walker
 
-Keystone Desktop uses Walker as the quick project switcher. The desktop menu is
-an adapter over the same project data that powers `pz`, so there is no separate
-desktop-only project registry.
+`$mod+D` opens a Walker menu showing all active Zellij sessions with fuzzy
+search. Select a session to attach, or choose "New session" to browse projects
+and create one through the project picker.
+
+The sessions menu shows both project-backed sessions (with project metadata)
+and ad-hoc sessions (with their raw Zellij session name).
 
 Relevant commands and scripts:
 
-- `keystone-context-switch` opens the Walker project switcher
+- `keystone-context-switch` opens the Walker session picker
 - `keystone-project-menu` delegates session data and launch behavior to `pz`
 - `pz` remains the source of truth for sessions and project metadata
 
 The practical effect is:
 
-- active hub note in `~/notes/index/` creates a discoverable project,
-- `pz` resolves the project session and metadata,
-- Walker lets you jump to the right Ghostty/Zellij window or launch it if it is
-  not already open.
+- `pz all-sessions-json` enumerates every active Zellij session,
+- project-backed sessions get project icons and route through the full
+  project launch flow (host targeting, layouts),
+- ad-hoc sessions attach directly via `zellij attach`,
+- Walker provides native fuzzy matching across all entries.
 
-That is why stale notes state leads to stale desktop project menus. Keep the
-notes repo synchronized and keep the project hub note accurate.
+The project picker remains accessible via the "New session" entry and through
+the `$mod+Escape` main menu.
 
 ## Session naming
 
