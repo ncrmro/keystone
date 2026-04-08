@@ -52,14 +52,14 @@ check_iso_artifact() {
     local check_output
 
     log_info "Verifying installer squashfs payload..."
-    if ! check_output="$(nix shell nixpkgs#xorriso nixpkgs#squashfsTools --command sh -lc '
+    if ! check_output="$(nix shell nixpkgs#xorriso nixpkgs#squashfsTools --command bash -lc '
         set -euo pipefail
         iso_path="$1"
         tmp="$(mktemp -d)"
         trap '\''rm -rf "$tmp"'\'' EXIT
         xorriso -osirrox on -indev "$iso_path" -extract /nix-store.squashfs "$tmp/nix-store.squashfs" >/dev/null 2>&1
         unsquashfs -cat "$tmp/nix-store.squashfs" 4424mzk2pyia5v1j33zjgrjaivrdy03y-icu4c-76.1/lib/libicudata.so.76 >/dev/null
-    ' sh "$iso_path" 2>&1)"; then
+    ' bash "$iso_path" 2>&1)"; then
         log_error "Installer ISO artifact gate failed."
         printf '%s\n' "$check_output" >&2
         exit 1
