@@ -12,6 +12,10 @@ installer-iso
 # Editor / AI tool files
 .vscode/
 .gemini/
+.opencode/
+.ruby-lsp/
+.claude/settings.local.json
+.claude/settings.json.backup
 *.swp
 *.swo
 *~
@@ -24,6 +28,7 @@ Thumbs.db
 tmp/
 temp/
 .cache/
+.jekyll-cache/
 .nix-store/
 .nixos-test-history
 

@@ -182,7 +182,8 @@ A human's operating rhythm with a two-agent team (Luce: product archetype, Drago
   4. Triage backlog: reprioritize issues for next week.
      Move highest-impact items to To Do, defer lower-priority items.
   5. Review any open needs-decision issues that slipped through daily batches.
-  6. Update ROADMAP.md if priorities shifted (commit to repo, not just notes).
+  6. Update the canonical project record if priorities shifted: milestones,
+     board state, and any linked issues or release artifacts.
 ```
 
 ### Monthly (First Monday)

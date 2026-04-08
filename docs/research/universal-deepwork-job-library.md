@@ -12,7 +12,6 @@ tags:
   - reusable-steps
 ingested: "2026-03-20"
 slug: "universal-deepwork-job-library"
-filed_to: "/home/ncrmro/code/ncrmro/obsidian/research/universal-deepwork-job-library/README.md"
 ---
 
 # Universal DeepWork Job Library
