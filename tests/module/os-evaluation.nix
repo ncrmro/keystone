@@ -244,6 +244,94 @@ let
         };
       }
     ];
+
+    # ZFS backup sender — host with backups declared in keystone.hosts
+    zfs-backup-sender = eval "zfs-backup-sender" [
+      {
+        keystone.hosts = {
+          workstation = {
+            hostname = "workstation";
+            role = "client";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 workstation";
+            zfs = {
+              backups.rpool.targets = [
+                "ocean:ocean"
+                "maia:lake"
+              ];
+            };
+          };
+          ocean = {
+            hostname = "ocean";
+            role = "server";
+            sshTarget = "ocean.ts";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOcean ocean";
+          };
+          maia = {
+            hostname = "maia";
+            role = "server";
+            sshTarget = "maia.ts";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMaia maia";
+          };
+        };
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "workstation";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    # ZFS backup receiver — host targeted by another host's backups
+    zfs-backup-receiver = eval "zfs-backup-receiver" [
+      {
+        keystone.hosts = {
+          workstation = {
+            hostname = "workstation";
+            role = "client";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 workstation";
+            zfs = {
+              backups.rpool.targets = [
+                "ocean:ocean"
+              ];
+            };
+          };
+          ocean = {
+            hostname = "ocean";
+            role = "server";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOcean ocean";
+          };
+        };
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "ocean";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-os-evaluation"
@@ -265,6 +353,8 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - zfs-backup-sender: ZFS backup sender with sanoid/syncoid"
+    echo "  - zfs-backup-receiver: ZFS backup receiver with sync users"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
