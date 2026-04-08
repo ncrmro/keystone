@@ -1,21 +1,21 @@
 ---
-title: Installing Keystone TUI
+title: Installing ks
 description: How to install the Keystone Terminal UI environment
 ---
 
-# Installing Keystone TUI
+# Installing ks
 
-Keystone TUI is a curated terminal environment powered by Nix. It provides a consistent, high-performance developer experience across macOS and Linux.
+ks is a curated terminal environment powered by Nix. It provides a consistent, high-performance developer experience across macOS and Linux.
 
 **What's included:** [Zsh](https://www.zsh.org/), [Helix](https://helix-editor.com/) editor, [Zellij](https://zellij.dev/) terminal multiplexer, [Lazygit](https://github.com/jesseduffield/lazygit), [Direnv](https://direnv.net/), [Zoxide](https://github.com/ajeetdsouza/zoxide), Ripgrep, Eza, and language servers for Bash, Nix, TypeScript, YAML, and more.
 
 ## Keystone OS Users
 
-If you are using **Keystone OS**, you don't need to do anything. Keystone TUI comes pre-installed and configured out of the box.
+If you are using **Keystone OS**, you don't need to do anything. ks comes pre-installed and configured out of the box.
 
 ## Non-Keystone OS Users (macOS / Linux)
 
-For users on macOS or other Linux distributions (Ubuntu, Fedora, Arch, etc.), you can install Keystone TUI by following these steps.
+For users on macOS or other Linux distributions (Ubuntu, Fedora, Arch, etc.), you can install ks by following these steps.
 
 ### 1. Install Nix
 
@@ -30,9 +30,9 @@ If you already have Nix but flakes are not enabled, add this to `/etc/nix/nix.co
 experimental-features = nix-command flakes
 ```
 
-### 2. Install Keystone TUI
+### 2. Install ks
 
-Once Nix is installed and flakes are enabled, you can run Keystone TUI directly or install it into your profile.
+Once Nix is installed and flakes are enabled, you can run ks directly or install it into your profile.
 
 #### Option A: Try it out (Ephemeral Shell)
 
@@ -54,7 +54,7 @@ For a permanent installation that manages your configuration files (dotfiles), w
 
     ```nix
     {
-      description = "My Keystone TUI Configuration";
+      description = "My ks Configuration";
 
       inputs = {
         nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
@@ -67,7 +67,7 @@ For a permanent installation that manages your configuration files (dotfiles), w
         homeConfigurations."YOUR_USERNAME" = home-manager.lib.homeManagerConfiguration {
           pkgs = nixpkgs.legacyPackages.x86_64-linux; # Or aarch64-darwin for Apple Silicon
           modules = [
-            # Import Keystone TUI module
+            # Import ks module
             keystone.homeManagerModules.tui
 
             {

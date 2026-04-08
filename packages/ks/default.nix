@@ -1,48 +1,114 @@
 {
   lib,
-  writeShellApplication,
-  curl,
+  craneLib,
+  pkg-config,
+  openssl,
+  zlib,
+  cmake,
+  makeWrapper,
+  bash,
+  coreutils,
+  cups,
   fzf,
-  nix,
   git,
   glow,
-  jq,
-  openssh,
   hostname,
-  keystonePhotos,
+  nix,
+  openssh,
   pandoc,
   polkit,
-  cups,
+  sudo,
   systemd,
   python3Packages,
-  agents-e2e,
 }:
-writeShellApplication {
-  name = "ks";
-  runtimeInputs = [
-    curl
+let
+  version = "0.1.0";
+  pname = "ks";
+
+  src = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./src
+      ./tests
+      ./Cargo.toml
+      ./Cargo.lock
+      ./print.css
+    ];
+  };
+
+  commonArgs = {
+    inherit pname version src;
+    strictDeps = true;
+
+    nativeBuildInputs = [
+      pkg-config
+      cmake
+    ];
+
+    buildInputs = [
+      openssl
+      zlib
+    ];
+  };
+
+  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+  runtimePath = lib.makeBinPath [
+    bash
+    coreutils
+    cups
     fzf
-    nix
     git
     glow
-    jq
-    openssh
     hostname
-    keystonePhotos
+    nix
+    openssh
     pandoc
     polkit
-    cups
+    sudo
     systemd
     python3Packages.weasyprint
   ];
-  text =
-    builtins.replaceStrings
-      [ "@KS_PRINT_CSS@" "@KS_AGENTS_E2E@" ]
-      [ "${./print.css}" "${agents-e2e}/bin/agents-e2e" ]
-      (builtins.readFile ./ks.sh);
-  meta = with lib; {
-    description = "Keystone infrastructure CLI — build and deploy NixOS configurations";
-    license = licenses.mit;
-    mainProgram = "ks";
+
+  package = craneLib.buildPackage (
+    commonArgs
+    // {
+      inherit cargoArtifacts;
+      doCheck = false;
+
+      nativeBuildInputs = commonArgs.nativeBuildInputs ++ [ makeWrapper ];
+
+      postFixup = ''
+        wrapProgram $out/bin/ks --suffix PATH : "${runtimePath}"
+      '';
+
+      meta = with lib; {
+        description = "Keystone CLI/TUI for infrastructure configuration and management";
+        homepage = "https://github.com/ncrmro/keystone";
+        license = licenses.mit;
+        maintainers = [ ];
+        mainProgram = "ks";
+      };
+    }
+  );
+in
+package.overrideAttrs (old: {
+  passthru = (old.passthru or { }) // {
+    tests = {
+      cargo-test = craneLib.cargoTest (
+        commonArgs
+        // {
+          inherit cargoArtifacts;
+          cargoTestExtraArgs = "--all-features";
+        }
+      );
+      cargo-clippy = craneLib.cargoClippy (
+        commonArgs
+        // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "--all-targets --all-features -- --deny warnings";
+        }
+      );
+    };
   };
-}
+})

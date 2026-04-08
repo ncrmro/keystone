@@ -116,18 +116,41 @@ ks docs desktop
 ks docs terminal/projects.md
 ```
 
+### `ks hardware-key`
+
+```bash
+ks hardware-key doctor [user|user/key] [--json]
+ks hardware-key secrets [--json]
+```
+
+Inspect hardware-key wiring for the current host and current user.
+
+- `doctor` validates registered SSH hardware keys, host root-key wiring, current-user `ageYubikey` identities, local YubiKey visibility, FIDO2 device visibility, and disk-unlock status when available.
+- With no selector, `doctor` prefers the current user’s registered keys and falls back to all registered keys when no current-user keys exist.
+- `secrets` is an explicit TODO stub for future agenix recipient and rekey orchestration. It currently reports the detected secrets layout and the planned implementation path.
+
+Examples:
+
+```bash
+ks hardware-key doctor
+ks hardware-key doctor ncrmro
+ks hardware-key doctor ncrmro/yubi-black --json
+ks hardware-key secrets --json
+```
+
 ### `ks photos`
 
 ```bash
 ks photos search [options]
 ks photos people [options]
+ks photos download <asset-id> [options]
+ks photos preview <asset-id>
 ```
 
-Search Immich-backed photo, screenshot, and OCR results through Keystone Photos.
+Search and preview the remote Immich-backed photo library.
 
 - `Keystone Photos` is the canonical name for this feature.
 - The public CLI entrypoint is `ks photos`.
-- The implementation package and backend helper are `keystone-photos`.
 - `immich-search` is legacy spec wording and should not be used for new docs.
 
 Examples:
@@ -140,6 +163,25 @@ ks photos search --person "Nick Romero" --type photo
 ks photos search --filename "IMG_" --camera-make "Apple" --camera-model "iPhone 15 Pro"
 ks photos people --json
 ks photos search --text "ks build" --type screenshot --from 2026-01-01 --to 2026-03-31
+```
+
+### `ks screenshots`
+
+```bash
+ks screenshots sync [options]
+```
+
+Sync local PNG screenshots into the configured Immich server.
+
+- `ks screenshots` manages the local screenshot pipeline.
+- `ks photos` remains the remote search and preview surface.
+
+Examples:
+
+```bash
+ks screenshots sync
+ks screenshots sync --directory ~/Pictures --album-name "Screenshots - alice"
+ks screenshots sync --url https://photos.example.com --api-key-file /run/agenix/alice-immich-api-key
 ```
 
 ### `ks switch`

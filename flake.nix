@@ -167,7 +167,7 @@
         {
           # Force kernel 6.12 — must be set here to override minimal CD default
           boot.kernelPackages = nixpkgs.lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
-          # Apply keystone overlay so crane-built packages (e.g. keystone-tui) resolve
+          # Apply keystone overlay so crane-built packages resolve inside the installer
           nixpkgs.overlays = [ self.overlays.default ];
         }
       ];
@@ -363,6 +363,28 @@
         let
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
           lib = pkgs.lib;
+          ksPkgs = import nixpkgs {
+            system = "x86_64-linux";
+            overlays = [ self.overlays.default ];
+          };
+          ks = ksPkgs.keystone.ks;
+          ksRustTests = ks.passthru.tests.cargo-test;
+          ksRustClippy = ks.passthru.tests.cargo-clippy;
+          ksHelp = import ./tests/module/ks-help.nix {
+            pkgs = ksPkgs;
+            inherit ks;
+          };
+          ksPhotos = import ./tests/module/keystone-photos.nix {
+            pkgs = ksPkgs;
+            inherit lib ks;
+          };
+          ksApprove = import ./tests/module/ks-approve.nix {
+            pkgs = ksPkgs;
+            inherit ks;
+          };
+          ksDoctorReport = import ./tests/module/ks-doctor-report.nix {
+            inherit pkgs;
+          };
         in
         {
           # Module evaluation tests (fast, no VM boot required)
@@ -393,9 +415,7 @@
             inherit pkgs lib nixpkgs;
             self = self;
           };
-          ks-help = import ./tests/module/ks-help.nix {
-            inherit pkgs;
-          };
+          ks-help = ksHelp;
           ks-lock-sync = import ./tests/module/ks-lock-sync.nix {
             inherit pkgs;
           };
@@ -405,9 +425,7 @@
           shellcheck = import ./tests/module/shellcheck.nix {
             inherit pkgs;
           };
-          keystone-photos = import ./tests/module/keystone-photos.nix {
-            inherit pkgs lib;
-          };
+          ks-photos = ksPhotos;
           projects-schema = import ./tests/module/projects-schema.nix {
             inherit pkgs lib;
           };
@@ -432,9 +450,19 @@
           hyprland-bindings-agent-conflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
             inherit pkgs;
           };
-          ks-approve = import ./tests/module/ks-approve.nix {
-            inherit pkgs;
-          };
+          ks-approve = ksApprove;
+          ks-doctor-report = ksDoctorReport;
+          ks-rust-tests = ksRustTests;
+          ks-rust-clippy = ksRustClippy;
+          ks = pkgs.runCommand "ks-checks" { } ''
+            mkdir -p "$out"
+            ln -s ${ksHelp} "$out/help"
+            ln -s ${ksPhotos} "$out/photos"
+            ln -s ${ksApprove} "$out/approve"
+            ln -s ${ksDoctorReport} "$out/doctor-report"
+            ln -s ${ksRustTests} "$out/rust-tests"
+            ln -s ${ksRustClippy} "$out/rust-clippy"
+          '';
           agentctl-regression = import ./tests/module/agentctl-regression.nix {
             inherit pkgs;
           };
@@ -482,7 +510,6 @@
             podman-agent
             ks
             pz
-            keystone-photos
             cfait
             zellij-tab-name
             chrome-devtools-mcp
@@ -493,7 +520,6 @@
             keystone-conventions
             slidev
             ;
-          keystone-tui = pkgs.callPackage ./packages/keystone-tui { };
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
         };
 
@@ -553,7 +579,7 @@
               echo "  ./bin/virtual-machine  - Full stack VM with libvirt"
               echo "  ci                     - Run nix flake check"
               echo ""
-              echo "Rust packages:  packages/keystone-ha/, packages/keystone-tui/"
+              echo "Rust packages:  packages/keystone-ha/, packages/ks/"
 
               alias ci='nix flake check'
             '';

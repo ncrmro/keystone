@@ -15,7 +15,7 @@ let
   cfg = config.keystone.terminal;
   notesPath = config.keystone.notes.path or "${config.home.homeDirectory}/notes";
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
-  inherit (devScripts) mkHomeRepoFiles mkHomeScriptCommand;
+  inherit (devScripts) mkHomeRepoFiles;
   zellijNewTabPrompt = pkgs.writeShellScriptBin "keystone-zellij-new-tab-prompt" ''
     printf '\nName new tab: '
     IFS= read -r tab_name
@@ -37,11 +37,8 @@ let
       exit 1
     fi
   '';
-  ksCommand = mkHomeScriptCommand {
-    inherit config pkgs;
-    commandName = "ks";
-    relativePath = "packages/ks/ks.sh";
-    package = pkgs.keystone.ks;
+  ksCommand = {
+    home.packages = [ pkgs.keystone.ks ];
   };
 in
 {

@@ -132,22 +132,22 @@ jobs:
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
-          path: packages/keystone-tui/target
+          path: packages/ks/target
           key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-build-
 
       - name: Check formatting
-        run: cargo fmt --all --manifest-path packages/keystone-tui/Cargo.toml -- --check
+        run: cargo fmt --all --manifest-path packages/ks/Cargo.toml -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features --manifest-path packages/keystone-tui/Cargo.toml -- -D warnings
+        run: cargo clippy --all-targets --all-features --manifest-path packages/ks/Cargo.toml -- -D warnings
 
       - name: Build
-        run: cargo build --manifest-path packages/keystone-tui/Cargo.toml --verbose
+        run: cargo build --manifest-path packages/ks/Cargo.toml --verbose
 
       - name: Run tests
-        run: cargo test --manifest-path packages/keystone-tui/Cargo.toml --verbose
+        run: cargo test --manifest-path packages/ks/Cargo.toml --verbose
 
   # Build the real ISO from a generated template fixture when
   # installer or template surfaces change, or when a workflow caller

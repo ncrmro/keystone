@@ -585,7 +585,6 @@ let
       package = keystonePhotosMenu;
       runtimeInputs = [
         pkgs.jq
-        pkgs.keystone.keystone-photos
         pkgs.keystone.ks
         pkgs.libnotify
         pkgs.walker

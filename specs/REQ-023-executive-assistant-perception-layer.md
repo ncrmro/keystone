@@ -37,7 +37,7 @@ orchestration or sending anything to cloud services.
 │  │  executive_assistant DeepWork Job                           │        │
 │  │                                                             │        │
 │  │  summarize_audio ──► whisper.cpp ──► Ollama ──► zk note    │        │
-│  │  review_photos   ──► keystone-photos ────────► terminal    │        │
+│  │  review_photos   ──► ks photos ─────────────► terminal    │        │
 │  │  start_recording ──► OBS WebSocket ──────────► daily note  │        │
 │  │  task_loop, plan_event, … (existing)                       │        │
 │  └─────────────────────────────────────────────────────────────┘        │
@@ -101,9 +101,9 @@ orchestration or sending anything to cloud services.
 - `modules/os/agents/scripts/screenshot-sync.sh` — **new**: inotify/timer watcher that uploads screenshots to Immich
 - `modules/os/agents/scripts/perception-processor.sh` — **new**: collects outputs, queries Immich, links contacts, writes summaries
 - `modules/os/agents/default.nix` — import perception.nix
-- `modules/terminal/perception.nix` — `enable` option scaffolded ✓; CLI packages added in Phase 2
-- `modules/terminal/default.nix` — import perception.nix
-- `packages/keystone-photos/` — CLI wrapper for Immich search, people, and preview flows ✓
+- `modules/terminal/shell.nix` — installs `ks` into the normal terminal environment ✓
+- `packages/ks/src/cmd/photos.rs` — `ks photos` Rust CLI for Immich search, people, download, and preview ✓
+- `packages/ks/src/cmd/screenshots.rs` — `ks screenshots sync` Rust CLI for uploading local screenshots into Immich ✓
 - `packages/perception-processor/` — **new**: activity summary builder
 - `flake.nix` — add Docling, whisper.cpp packages; expose new packages
 
@@ -183,11 +183,11 @@ name and host name for filtering.
 
 ### Photo and Screenshot Search
 
-**REQ-023.19** The terminal module MUST provide a `keystone-photos` CLI tool,
-published to users as `ks photos`, that queries the Immich API for assets and
+**REQ-023.19** The terminal module MUST provide `ks photos` as part of the
+main `ks` CLI, and that command MUST query the Immich API for assets and
 people.
 
-**REQ-023.20** `keystone-photos search` MUST support structured search by:
+**REQ-023.20** `ks photos search` MUST support structured search by:
 
 - Face/person name, including multiple people filters
 - Album name, including multiple album filters
@@ -198,7 +198,7 @@ people.
 - Camera make, camera model, and lens model
 - File name and description metadata
 
-**REQ-023.21** `keystone-photos search` MUST support text search across
+**REQ-023.21** `ks photos search` MUST support text search across
 Immich's smart-search surface, including generic context text and OCR-focused
 queries.
 
@@ -292,10 +292,6 @@ keystone.os.agents.drago = {
       syncOnCalendar = "*:0/5";   # Sync interval
     };
 
-    search = {
-      enable = true;              # Immich search CLI
-    };
-
     contacts = {
       enable = true;              # Face → contact linking
     };
@@ -310,13 +306,13 @@ keystone.os.agents.drago = {
 ```
 
 **REQ-023.37** When `perception.enable` is true, the sub-options (`pdf`,
-`voice`, `screenshots`, `search`, `contacts`, `processor`) MUST default to
+`voice`, `screenshots`, `contacts`, `processor`) MUST default to
 enabled. Individual sub-options MAY be disabled to exclude specific
 capabilities.
 
-**REQ-023.38** The terminal module MUST expose a
-`keystone.terminal.perception.enable` option that installs the CLI tools
-(docling, whisper.cpp, keystone-photos) into the user's environment.
+**REQ-023.38** The terminal module MUST install `ks` when
+`keystone.terminal.enable = true`, and `ks photos` MUST be available through
+that normal CLI surface without a separate perception-specific terminal option.
 
 ### Integration
 
@@ -401,7 +397,7 @@ notebook with `source_ref` frontmatter linking to the source audio file.
 **REQ-023.56** The `executive_assistant` job MUST provide a `review_photos`
 workflow with steps: `parse_query`, `search_immich`, `present_results`.
 
-**REQ-023.57** The workflow MUST invoke `keystone-photos` (REQ-023.19) to
+**REQ-023.57** The workflow MUST invoke `ks photos` (REQ-023.19) to
 query Immich. It MUST support natural-language date ranges and person names
 as query inputs.
 

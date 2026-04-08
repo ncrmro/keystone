@@ -550,14 +550,14 @@ in
           };
         };
 
-        # Perception layer: document parsing, voice transcription, photo search,
+        # Perception layer: document parsing, voice transcription,
         # screenshot syncing, contact linking, and activity reconstruction.
         # See specs/REQ-023-executive-assistant-perception-layer.md
         perception = {
           enable = mkOption {
             type = types.bool;
             default = false;
-            description = "Enable perception layer for this agent (PDF parsing, voice transcription, photo search, screenshot sync, contact linking, activity summaries).";
+            description = "Enable perception layer for this agent (PDF parsing, voice transcription, screenshot sync, contact linking, activity summaries).";
           };
 
           pdf = {
@@ -623,14 +623,6 @@ in
               type = types.str;
               default = "*:0/5";
               description = "Systemd calendar expression for screenshot sync interval.";
-            };
-          };
-
-          search = {
-            enable = mkOption {
-              type = types.bool;
-              default = true;
-              description = "Enable Immich photo/screenshot search CLI.";
             };
           };
 

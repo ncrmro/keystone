@@ -108,7 +108,7 @@ in
             script = ''
               export HOME=/home/${username}
               export XDG_STATE_HOME="''${XDG_STATE_HOME:-$HOME/.local/state}"
-              exec ${pkgs.keystone.keystone-photos}/bin/keystone-photos sync-screenshots \
+              exec ${pkgs.keystone.ks}/bin/ks screenshots sync \
                 --url ${lib.escapeShellArg immichServerUrl} \
                 --api-key-file /run/agenix/agent-${name}-immich-api-key \
                 --album-name ${lib.escapeShellArg "Screenshots - ${username}"} \

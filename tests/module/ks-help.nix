@@ -1,4 +1,7 @@
-{ pkgs }:
+{
+  pkgs,
+  ks ? pkgs.keystone.ks,
+}:
 pkgs.runCommand "ks-help-check"
   {
     nativeBuildInputs = with pkgs; [
@@ -18,9 +21,7 @@ pkgs.runCommand "ks-help-check"
       ]
     }"
 
-    cd ${../..}
-
-    KS_SCRIPT="$PWD/packages/ks/ks.sh"
+    KS_BIN="${ks}/bin/ks"
     TMP_DIR="$(mktemp -d)"
 
     cleanup() {
@@ -38,7 +39,7 @@ pkgs.runCommand "ks-help-check"
       local stderr_file="$TMP_DIR/$name.err"
       local status_file="$TMP_DIR/$name.status"
 
-      if ${pkgs.bash}/bin/bash "$KS_SCRIPT" "$@" >"$stdout_file" 2>"$stderr_file"; then
+      if "$KS_BIN" "$@" >"$stdout_file" 2>"$stderr_file"; then
         printf '0\n' >"$status_file"
       else
         printf '%s\n' "$?" >"$status_file"
@@ -61,6 +62,16 @@ pkgs.runCommand "ks-help-check"
       fi
     }
 
+    assert_nonzero() {
+      local name="$1"
+      local actual
+      actual="$(cat "$TMP_DIR/$name.status")"
+      if [[ "$actual" == "0" ]]; then
+        echo "FAIL: $name unexpectedly succeeded" >&2
+        exit 1
+      fi
+    }
+
     assert_contains() {
       local name="$1"
       local pattern="$2"
@@ -77,22 +88,20 @@ pkgs.runCommand "ks-help-check"
 
     run_capture main-long --help
     assert_status main-long 0
-    assert_contains main-long "Usage: ks <command> [options]"
-    assert_contains main-long "help [command]"
+    assert_contains main-long "Usage: ks"
+    assert_contains main-long "Commands:"
+    assert_contains main-long "template"
+    assert_contains main-long "build"
+    assert_contains main-long "doctor"
 
     run_capture main-short -h
     assert_status main-short 0
-    assert_contains main-short "Usage: ks <command> [options]"
+    assert_contains main-short "Usage: ks"
 
-    run_capture help-root help
-    assert_status help-root 0
-    assert_contains help-root 'Use "ks help <command>" for command-specific help.'
-
-    for command in approve build update switch sync-host-keys agent doctor grafana docs photos; do
+    for command in template approve agents build update switch sync-agent-assets sync-host-keys agent doctor grafana docs photos screenshots print hardware-key; do
       run_capture "help-$command" help "$command"
       assert_status "help-$command" 0
       assert_contains "help-$command" "Usage: ks $command"
-      assert_contains "help-$command" "Examples:"
 
       run_capture "$command-long" "$command" --help
       assert_status "$command-long" 0
@@ -103,39 +112,29 @@ pkgs.runCommand "ks-help-check"
       assert_contains "$command-short" "Usage: ks $command"
     done
 
-    run_capture help-grafana-dashboards help grafana dashboards
-    assert_status help-grafana-dashboards 0
-    assert_contains help-grafana-dashboards "Usage: ks grafana dashboards <apply|export> [uid]"
+    run_capture grafana-dashboards-help grafana dashboards --help
+    assert_status grafana-dashboards-help 0
+    assert_contains grafana-dashboards-help "Usage: ks grafana dashboards"
 
-    run_capture docs-topic docs --help
-    assert_status docs-topic 0
-    assert_contains docs-topic "Topics:"
-    assert_contains docs-topic "ks docs terminal/projects.md"
+    run_capture hardware-key-doctor-help hardware-key doctor --help
+    assert_status hardware-key-doctor-help 0
+    assert_contains hardware-key-doctor-help "Usage: ks hardware-key doctor"
 
-    run_capture grafana-dashboards-long grafana dashboards --help
-    assert_status grafana-dashboards-long 0
-    assert_contains grafana-dashboards-long "Subcommands:"
-    assert_contains grafana-dashboards-long "export <uid>"
-
-    run_capture grafana-dashboards-short grafana dashboards -h
-    assert_status grafana-dashboards-short 0
-    assert_contains grafana-dashboards-short "Usage: ks grafana dashboards <apply|export> [uid]"
+    run_capture hardware-key-secrets-help hardware-key secrets --help
+    assert_status hardware-key-secrets-help 0
+    assert_contains hardware-key-secrets-help "Usage: ks hardware-key secrets"
 
     run_capture unknown-command unknown-command
-    assert_status unknown-command 1
-    assert_contains unknown-command "Error: Unknown command 'unknown-command'"
+    assert_nonzero unknown-command
+    assert_contains unknown-command "error:"
 
     run_capture build-bad-flag build --bad-flag
-    assert_status build-bad-flag 1
-    assert_contains build-bad-flag "Error: Unknown option '--bad-flag'"
+    assert_nonzero build-bad-flag
+    assert_contains build-bad-flag "error:"
 
     run_capture help-unknown help unknown-topic
-    assert_status help-unknown 1
-    assert_contains help-unknown "Error: Unknown help topic 'unknown-topic'"
-
-    run_capture grafana-missing grafana dashboards
-    assert_status grafana-missing 1
-    assert_contains grafana-missing "Error: Missing grafana dashboards action"
+    assert_nonzero help-unknown
+    assert_contains help-unknown "error:"
 
     touch "$out"
   ''

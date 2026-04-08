@@ -176,7 +176,7 @@ dispatch() {
       prompt_query
       ;;
     preview)
-      detach "$(keystone_cmd keystone-photos)" preview "$arg1"
+      detach "$(keystone_cmd ks)" photos preview "$arg1"
       ;;
     *)
       printf "Unknown photos menu action: %s\n" "$action" >&2

@@ -13,7 +13,7 @@ configuration, desktop environments, terminal tooling, and server services.
 | `modules/terminal/`      | [modules/terminal/AGENTS.md](modules/terminal/AGENTS.md)           | [docs/terminal.md](docs/terminal.md)   |
 | `modules/desktop/`       | [modules/desktop/AGENTS.md](modules/desktop/AGENTS.md)             | —                                      |
 | `modules/server/`        | [modules/server/AGENTS.md](modules/server/AGENTS.md)               | [docs/server.md](docs/server.md)       |
-| `packages/keystone-tui/` | [packages/keystone-tui/AGENTS.md](packages/keystone-tui/AGENTS.md) | —                                      |
+| `packages/ks/` | [packages/ks/AGENTS.md](packages/ks/AGENTS.md) | —                                      |
 | `conventions/`           | [conventions/AGENTS.md](conventions/AGENTS.md)                     | —                                      |
 
 ## Module File Tree
@@ -83,10 +83,10 @@ modules/
 ### Native (`packages/`)
 
 `zesh`, `agent-mail`, `agent-coding-agent`, `fetch-email-source`, `fetch-forgejo-sources`,
-`fetch-github-sources`, `repo-sync`, `podman-agent`, `keystone-tui`, `keystone-ha`,
-`ks`, `pz`, `forgejo-project`, `forgejo-cli-ex`, `chrome-devtools-mcp`, `grafana-mcp`,
+`fetch-github-sources`, `repo-sync`, `podman-agent`, `ks`, `keystone-ha`,
+`pz`, `forgejo-project`, `forgejo-cli-ex`, `chrome-devtools-mcp`, `grafana-mcp`,
 `lfs-s3`, `slidev`, `cfait`, `zellij-tab-name`, `hyprpolkitagent`, `agents-e2e`,
-`keystone-photos`, `keystone-conventions`, `keystone-deepwork-jobs`, `deepwork-library-jobs`
+`keystone-conventions`, `keystone-deepwork-jobs`, `deepwork-library-jobs`
 
 ### Overlay (`pkgs.keystone.*`)
 
