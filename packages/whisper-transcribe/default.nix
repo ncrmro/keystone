@@ -6,6 +6,8 @@
   ffmpeg,
   curl,
   coreutils,
+  defaultLanguage ? "en",
+  defaultModel ? "large-v3",
 }:
 stdenv.mkDerivation {
   pname = "whisper-transcribe";
@@ -23,14 +25,14 @@ stdenv.mkDerivation {
     chmod +x $out/bin/*
 
     wrapProgram $out/bin/whisper-transcribe \
-      --prefix PATH : ${
-        lib.makeBinPath [
-          whisper-cpp
-          ffmpeg
-          curl
-          coreutils
-        ]
-      }
+      --prefix PATH : ${lib.makeBinPath [
+        whisper-cpp
+        ffmpeg
+        curl
+        coreutils
+      ]} \
+      --set WHISPER_DEFAULT_LANGUAGE "${defaultLanguage}" \
+      --set WHISPER_DEFAULT_MODEL "${defaultModel}"
   '';
 
   meta = with lib; {

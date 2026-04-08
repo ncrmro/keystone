@@ -7,30 +7,34 @@
 #
 # Implements REQ-024.7–REQ-024.11
 #
-# Usage: whisper-transcribe <audio-file> [--model tiny|base|small|medium|large] [--output-dir <dir>]
+# Usage: whisper-transcribe <audio-file> [options]
 set -euo pipefail
 
 WHISPER_MODELS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/whisper-models"
 
 usage() {
-  echo "Usage: whisper-transcribe <audio-file> [--model <size>] [--output-dir <dir>]"
+  echo "Usage: whisper-transcribe <audio-file> [options]"
   echo ""
   echo "Transcribe audio locally using whisper.cpp."
   echo ""
   echo "Options:"
-  echo "  --model <size>      Model size: tiny, base, small, medium, large (default: base)"
-  echo "  --output-dir <dir>  Output directory (default: same as input file)"
-  echo "  --help              Show this help"
+  echo "  -m, --model <size>     Model size (default: ${WHISPER_DEFAULT_MODEL:-large-v3})"
+  echo "                         Supported: tiny, base, small, medium, large-v1, large-v2, large-v3, large-v3-turbo"
+  echo "  -l, --language <lang>  Spoken language (default: ${WHISPER_DEFAULT_LANGUAGE:-en}, use 'auto' for detect)"
+  echo "  --output-dir <dir>     Output directory (default: same as input file)"
+  echo "  --help                 Show this help"
   exit "${1:-0}"
 }
 
 INPUT=""
-MODEL="base"
+MODEL="${WHISPER_DEFAULT_MODEL:-large-v3}"
+LANGUAGE="${WHISPER_DEFAULT_LANGUAGE:-en}"
 OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --model) MODEL="$2"; shift 2 ;;
+    -m|--model) MODEL="$2"; shift 2 ;;
+    -l|--language) LANGUAGE="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --help) usage 0 ;;
     -*) echo "Unknown option: $1" >&2; usage 1 ;;
@@ -50,8 +54,8 @@ fi
 
 # Validate model name
 case "$MODEL" in
-  tiny|base|small|medium|large) ;;
-  *) echo "Error: invalid model: $MODEL (choose: tiny, base, small, medium, large)" >&2; exit 1 ;;
+  tiny|base|small|medium|large-v1|large-v2|large-v3|large-v3-turbo) ;;
+  *) echo "Error: invalid model: $MODEL" >&2; exit 1 ;;
 esac
 
 BASENAME=$(basename "$INPUT")
@@ -87,22 +91,22 @@ if [[ "$EXT_LOWER" == "wav" ]]; then
 else
   echo "whisper-transcribe: converting $EXT_LOWER to WAV" >&2
   WAV_INPUT="$TMPDIR_WORK/input.wav"
-  ffmpeg -y -i "$INPUT" -ar 16000 -ac 1 -c:a pcm_s16le "$WAV_INPUT" 
+  ffmpeg -y -i "$INPUT" -ar 16000 -ac 1 -c:a pcm_s16le "$WAV_INPUT" 2>/dev/null
 fi
 
 # ── Run whisper.cpp ──────────────────────────────────────────────────
 OUTPUT_TXT="$OUTPUT_DIR/$BASENAME_NOEXT.txt"
 OUTPUT_VTT="$OUTPUT_DIR/$BASENAME_NOEXT.vtt"
 
-echo "whisper-transcribe: model=$MODEL file=$INPUT" >&2
+echo "whisper-transcribe: model=$MODEL lang=$LANGUAGE file=$INPUT" >&2
 
 whisper-cli \
   --model "$MODEL_PATH" \
+  --language "$LANGUAGE" \
   --output-txt \
   --output-vtt \
   --output-file "$TMPDIR_WORK/transcript" \
-   \
-  "$WAV_INPUT" 
+  --file "$WAV_INPUT" >/dev/null 2>&1
 
 # whisper-cli creates transcript.txt and transcript.vtt
 if [[ -f "$TMPDIR_WORK/transcript.txt" ]]; then

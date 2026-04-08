@@ -41,13 +41,27 @@ in
       default = true;
       description = "Install the Keystone Photos search CLI in the user's environment.";
     };
+
+    whisper = {
+      language = mkOption {
+        type = types.str;
+        default = "en";
+        description = "Default language for whisper-transcribe.";
+      };
+
+      model = mkOption {
+        type = types.str;
+        default = "large-v3";
+        description = "Default model for whisper-transcribe.";
+      };
+    };
   };
 
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
     home.packages = [
       pkgs.keystone.docling
       pkgs.keystone.pdf-extract
-      pkgs.keystone.whisper-transcribe
+      (pkgs.keystone.whisper-transcribe.override { defaultLanguage = cfg.whisper.language; defaultModel = cfg.whisper.model; })
       pkgs.keystone.immich-search
       pkgs.keystone.voice-recorder
     ] ++ optional cfg.search.enable pkgs.keystone.keystone-photos;

@@ -490,6 +490,11 @@
             lfs-s3
             deepwork-library-jobs
             keystone-deepwork-jobs
+            docling
+            pdf-extract
+            whisper-transcribe
+            immich-search
+            voice-recorder
             keystone-conventions
             slidev
             ;
