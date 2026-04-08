@@ -118,6 +118,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   flake-check:
+    needs: changes
     runs-on: ubuntu-latest
     env:
       CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -238,7 +239,7 @@ jobs:
     name: warm-cache
     if: github.event_name == 'pull_request' && github.head_ref == 'ci/installer-cache-warm-validation'
     needs:
-      - flake-check
+      - changes
     uses: ./.github/workflows/warm-cache.yml
     with:
       cache_branch_name: ${{ github.head_ref }}
