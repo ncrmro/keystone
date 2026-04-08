@@ -4,9 +4,14 @@
 # - NixOS user accounts with proper groups and authentication
 # - ZFS home directories with delegated permissions and quotas
 # - Optional home-manager integration for terminal/desktop config
+# - Screenshot sync to the Immich host via rsync (when desktop.screenshotSync.enable)
 #
 # SSH keys are read from keystone.keys.<username> — all host keys
 # plus all hardware keys are added to authorized_keys.
+#
+# Implements REQ-001 (Keystone OS)
+# Implements REQ-023 (Perception Layer) — user-side screenshot sync (ISSUE-REQ-10)
+# See conventions/process.keystone-principal-parity.md
 #
 {
   lib,

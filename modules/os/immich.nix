@@ -5,6 +5,9 @@
 # - workers: Remote GPU/ML workers
 #
 # Roles are auto-detected by hostname.
+#
+# Implements REQ-023 (Perception Layer) — screenshotRoot provides the
+# filesystem ingestion target for rsync-based screenshot sync.
 {
   config,
   lib,

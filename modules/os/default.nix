@@ -1,6 +1,7 @@
 # Keystone OS - Unified Operating System Module
 #
 # Implements REQ-001 (Keystone OS)
+# Implements REQ-023 (Perception Layer) — desktop.screenshotSync user option schema
 #
 # This module consolidates all OS-level configuration for Keystone:
 # - Storage (ZFS/ext4 with encryption)
