@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
+CACHE_NAME="ks-systems"
+KEYSTONE_SOURCE="path:${REPO_ROOT}"
+FIXTURE_DIR=""
+RUN_GENERATED=true
+RUN_CURATED=true
+KEEP_TEMP=false
+TOKEN="${CACHIX_AUTH_TOKEN:-}"
+
+log_info() {
+    printf 'INFO: %s\n' "$*" >&2
+}
+
+log_error() {
+    printf 'ERROR: %s\n' "$*" >&2
+}
+
+show_help() {
+    cat <<EOF
+Warm the Keystone Cachix cache from a generated template fixture.
+
+Usage: $(basename "$0") [OPTIONS]
+
+Options:
+  -c, --cache NAME            Cachix cache name (default: ${CACHE_NAME})
+  -s, --keystone-source REF   Flake ref for the generated fixture's keystone input
+                              (default: ${KEYSTONE_SOURCE})
+  -f, --fixture-dir DIR       Reuse or create the fixture in DIR instead of a temp dir
+      --token TOKEN           Cachix auth token. Prefer CACHIX_AUTH_TOKEN instead.
+      --skip-generated        Skip warming generated-template host closures
+      --skip-curated          Skip warming curated package attrs
+      --keep-temp             Keep temporary XDG config and fixture directories
+  -h, --help                  Show this help
+
+Environment:
+  CACHIX_AUTH_TOKEN           Auth token used when --token is not provided
+
+This command uses a temporary XDG config directory by default so the Cachix
+token is not persisted locally after the process exits.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|--cache)
+            CACHE_NAME="$2"
+            shift 2
+            ;;
+        -s|--keystone-source)
+            KEYSTONE_SOURCE="$2"
+            shift 2
+            ;;
+        -f|--fixture-dir)
+            FIXTURE_DIR="$2"
+            shift 2
+            ;;
+        --token)
+            TOKEN="$2"
+            shift 2
+            ;;
+        --skip-generated)
+            RUN_GENERATED=false
+            shift
+            ;;
+        --skip-curated)
+            RUN_CURATED=false
+            shift
+            ;;
+        --keep-temp)
+            KEEP_TEMP=true
+            shift
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            log_error "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+if [[ "$RUN_GENERATED" == false && "$RUN_CURATED" == false ]]; then
+    log_error "Nothing to warm: both generated targets and curated packages are disabled"
+    exit 1
+fi
+
+if [[ -z "$TOKEN" ]]; then
+    log_error "Set CACHIX_AUTH_TOKEN or pass --token to push warmed paths"
+    exit 1
+fi
+
+TEMP_XDG_CONFIG_HOME="$(mktemp -d)"
+FIXTURE_WAS_TEMP=false
+
+cleanup() {
+    if [[ "$KEEP_TEMP" == true ]]; then
+        log_info "Keeping temporary state:"
+        log_info "  XDG_CONFIG_HOME=${TEMP_XDG_CONFIG_HOME}"
+        if [[ "$FIXTURE_WAS_TEMP" == true ]]; then
+            log_info "  FIXTURE_DIR=${FIXTURE_DIR}"
+        fi
+        return
+    fi
+
+    rm -rf "$TEMP_XDG_CONFIG_HOME"
+    if [[ "$FIXTURE_WAS_TEMP" == true ]]; then
+        rm -rf "$FIXTURE_DIR"
+    fi
+}
+trap cleanup EXIT
+
+export XDG_CONFIG_HOME="$TEMP_XDG_CONFIG_HOME"
+
+if [[ -z "$FIXTURE_DIR" ]]; then
+    FIXTURE_DIR="$(mktemp -d)"
+    FIXTURE_WAS_TEMP=true
+fi
+
+if command -v cachix >/dev/null 2>&1; then
+    CACHIX_CMD=(cachix)
+else
+    CACHIX_CMD=(nix shell nixpkgs#cachix -c cachix)
+fi
+
+run_cachix() {
+    "${CACHIX_CMD[@]}" "$@"
+}
+
+log_info "Configuring temporary Cachix credentials for ${CACHE_NAME}"
+run_cachix authtoken "$TOKEN"
+run_cachix use "$CACHE_NAME"
+
+if [[ "$RUN_GENERATED" == true ]]; then
+    log_info "Generating template fixture in ${FIXTURE_DIR}"
+    "${SCRIPT_DIR}/generate-template-fixture" \
+        --output "$FIXTURE_DIR" \
+        --keystone-source "$KEYSTONE_SOURCE" >/dev/null
+
+    log_info "Resolving generated installer targets"
+    mapfile -t installer_targets < <(
+        nix eval \
+            --apply 'targets: builtins.concatStringsSep "\n" (builtins.attrNames targets)' \
+            --raw \
+            "$FIXTURE_DIR#installerTargets"
+    )
+
+    if [[ "${#installer_targets[@]}" -eq 0 ]]; then
+        log_error "Generated fixture did not expose any installer targets"
+        exit 1
+    fi
+
+    target_attrs=()
+    for target in "${installer_targets[@]}"; do
+        target_attrs+=("$FIXTURE_DIR#nixosConfigurations.${target}.config.system.build.toplevel")
+    done
+
+    log_info "Warming generated-template host closures"
+    run_cachix watch-exec "$CACHE_NAME" -- \
+        nix build "${target_attrs[@]}" --print-build-logs
+fi
+
+if [[ "$RUN_CURATED" == true ]]; then
+    log_info "Warming curated package cache"
+    run_cachix watch-exec "$CACHE_NAME" -- \
+        nix build \
+            .#packages.x86_64-linux.agent-coding-agent \
+            .#packages.x86_64-linux.agent-mail \
+            .#packages.x86_64-linux.chrome-devtools-mcp \
+            .#packages.x86_64-linux.deepwork-library-jobs \
+            .#packages.x86_64-linux.fetch-email-source \
+            .#packages.x86_64-linux.fetch-forgejo-sources \
+            .#packages.x86_64-linux.fetch-github-sources \
+            .#packages.x86_64-linux.forgejo-cli-ex \
+            .#packages.x86_64-linux.forgejo-project \
+            .#packages.x86_64-linux.grafana-mcp \
+            .#packages.x86_64-linux.keystone-conventions \
+            .#packages.x86_64-linux.keystone-deepwork-jobs \
+            .#packages.x86_64-linux.ks \
+            .#packages.x86_64-linux.lfs-s3 \
+            .#packages.x86_64-linux.podman-agent \
+            .#packages.x86_64-linux.pz \
+            .#packages.x86_64-linux.repo-sync \
+            .#packages.x86_64-linux.slidev \
+            .#packages.x86_64-linux.zellij-tab-name \
+            .#packages.x86_64-linux.zesh
+fi
