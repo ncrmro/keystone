@@ -38,6 +38,13 @@ pub struct FirstBootConfig {
 
 impl FirstBootConfig {
     fn installed_config_dir() -> Option<PathBuf> {
+        let default_owner = std::fs::read_to_string("/etc/keystone/install-config/username")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| std::env::var("USER").ok())
+            .unwrap_or_else(|| "keystone".to_string());
+
         std::env::var_os("KEYSTONE_SYSTEM_FLAKE")
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
@@ -50,7 +57,12 @@ impl FirstBootConfig {
             })
             .or_else(|| {
                 let home = home::home_dir()?;
-                Some(home.join(".keystone").join("repos").join("nixos-config"))
+                Some(
+                    home.join(".keystone")
+                        .join("repos")
+                        .join(default_owner)
+                        .join("keystone-config"),
+                )
             })
     }
 

@@ -78,6 +78,7 @@ pub struct InstallerConfig {
     pub flake_host: String,
     pub hostname: String,
     pub username: Option<String>,
+    pub repo_owner: Option<String>,
     pub github_username: Option<String>,
     pub storage_type: Option<String>,
     pub disk_device: Option<String>,
@@ -107,6 +108,8 @@ impl InstallerConfig {
                 flake_host: String::new(),
                 hostname: String::new(),
                 username: read_install_metadata("admin-username"),
+                repo_owner: read_install_metadata("repo-owner")
+                    .or_else(|| read_install_metadata("admin-username")),
                 github_username: None,
                 storage_type: None,
                 disk_device: None,
@@ -154,6 +157,7 @@ impl InstallerConfig {
             config_dir: effective_dir,
             flake_host: hostname.clone(),
             hostname,
+            repo_owner: username.clone(),
             username,
             github_username,
             storage_type,
@@ -417,8 +421,15 @@ impl InstallerConfig {
     fn installed_repo_name(&self) -> &str {
         match &self.source {
             InstallSource::EmbeddedRepo { repo_name, .. } => repo_name.as_str(),
-            InstallSource::PrebakedConfig => "nixos-config",
+            InstallSource::PrebakedConfig => "keystone-config",
         }
+    }
+
+    fn installed_repo_owner(&self) -> &str {
+        self.repo_owner
+            .as_deref()
+            .or(self.username.as_deref())
+            .unwrap_or("keystone")
     }
 }
 
@@ -482,6 +493,22 @@ fn copy_repo_to_writable(src: &Path, dst: &Path) -> AnyhowResult<()> {
     if !status.success() {
         anyhow::bail!(
             "cp -a failed while copying installer repo to {}",
+            dst.display()
+        );
+    }
+
+    // The embedded repo comes from a read-only store-style snapshot. After
+    // copying it into /tmp or the installed system, the installer needs to
+    // mutate files like flake.lock and hardware.nix, so add owner write bits
+    // recursively while preserving the rest of the copied metadata.
+    let chmod_status = StdCommand::new("chmod")
+        .args(["-R", "u+w", &dst.display().to_string()])
+        .status()
+        .with_context(|| format!("Failed to make copied repo writable at {}", dst.display()))?;
+
+    if !chmod_status.success() {
+        anyhow::bail!(
+            "chmod -R u+w failed while preparing writable repo at {}",
             dst.display()
         );
     }
@@ -857,6 +884,7 @@ impl InstallScreen {
         let config_dir = self.config.config_dir.clone();
         let flake_host = self.config.flake_host.clone();
         let username = self.config.username.clone();
+        let repo_owner = self.config.installed_repo_owner().to_string();
         let repo_name = self.config.installed_repo_name().to_string();
 
         tokio::spawn(async move {
@@ -921,7 +949,8 @@ impl InstallScreen {
                             "Copying config to installed system...".to_string(),
                         ));
                         if let Err(e) =
-                            copy_config_to_target(&config_dir, user, &repo_name, &tx).await
+                            copy_config_to_target(&config_dir, user, &repo_owner, &repo_name, &tx)
+                                .await
                         {
                             let _ = tx.send(InstallMessage::Output(format!(
                                 "Warning: failed to copy config: {}",
@@ -1520,11 +1549,16 @@ async fn copy_dir_recursive_async(src: &Path, dst: &Path) -> Result<(), String> 
 async fn copy_config_to_target(
     config_dir: &Path,
     username: &str,
+    repo_owner: &str,
     repo_name: &str,
     tx: &mpsc::UnboundedSender<InstallMessage>,
 ) -> Result<(), String> {
     let target_home = PathBuf::from(format!("/mnt/home/{}", username));
-    let repo_dir = target_home.join(".keystone").join("repos").join(repo_name);
+    let repo_dir = target_home
+        .join(".keystone")
+        .join("repos")
+        .join(repo_owner)
+        .join(repo_name);
 
     tokio::fs::create_dir_all(&repo_dir)
         .await
@@ -1801,6 +1835,7 @@ mod tests {
             flake_host: "test-laptop".to_string(),
             hostname: "test-laptop".to_string(),
             username: Some("testuser".to_string()),
+            repo_owner: Some("testuser".to_string()),
             github_username: None,
             storage_type: Some("ext4".to_string()),
             disk_device: Some("/dev/disk/by-id/nvme-TEST".to_string()),
@@ -1815,6 +1850,7 @@ mod tests {
             flake_host: "test-laptop".to_string(),
             hostname: "test-laptop".to_string(),
             username: Some("testuser".to_string()),
+            repo_owner: Some("testuser".to_string()),
             github_username: None,
             storage_type: Some("ext4".to_string()),
             disk_device: None,
@@ -1848,6 +1884,7 @@ mod tests {
             flake_host: String::new(),
             hostname: String::new(),
             username: Some("noah".to_string()),
+            repo_owner: Some("noah".to_string()),
             github_username: None,
             storage_type: None,
             disk_device: None,
