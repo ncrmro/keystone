@@ -328,24 +328,7 @@ fi
 ks_allowed_routes="$(printf '%s\n' "${ks_allowed_routes_lines[@]}")"
 
 global_agents_tmp="$(mktemp)"
-{
-  cat <<'EOF'
-# Available skills
-
-EOF
-} > "$global_agents_tmp"
-
-{
-  printf 'Each skill loads domain-specific conventions and DeepWork workflows on demand.\n\n'
-} >> "$global_agents_tmp"
-
-for command_id in "${published_commands[@]}"; do
-  cmd_description="$(command_description "$command_id")"
-  printf -- '- **/%s** — %s\n' "$command_id" "$cmd_description" >> "$global_agents_tmp"
-done
-
-cat <<'EOF' >> "$global_agents_tmp"
-
+cat <<'EOF' > "$global_agents_tmp"
 # Shared-surface tracking
 
 - For issue-backed work, post `Work Started` and `Work Update` comments on the source issue.

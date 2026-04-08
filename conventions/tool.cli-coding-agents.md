@@ -152,6 +152,8 @@ when OpenCode-specific configuration is needed.
 6. MUST keep command filenames and Codex skill ids stable unless a breaking rename is explicitly intended
 7. `ks.notes` SHOULD act as the durable-memory skill for decision capture, report capture, and zk-linked shared-surface refs
 8. Keystone workflow skills SHOULD remind agents to use `ks.notes` when work produces durable findings or decisions
+9. Skill directory names for Claude Code, Gemini, and OpenCode MUST use the dot-notation command id (e.g., `ks.system`, `ks.dev`). The `codexSkillName` dot-to-dash transform MUST only apply to Codex skills, which do not support dots in skill names.
+10. Generated instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`) MUST NOT duplicate the list of available skills. CLI coding agents inject the skill catalog into the system prompt automatically; repeating it in instruction files wastes context tokens.
 
 ### `modules/terminal/cli-coding-agent-configs.nix`
 
