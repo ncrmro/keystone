@@ -20,6 +20,8 @@ agents/
   ssh.nix            -- ssh-agent + assertions
   notes.nix          -- notes-sync, task-loop, scheduler services + timers
   home-manager.nix   -- home-manager terminal integration
+  observability.nix  -- observability/alloy integration
+  perception.nix     -- screenshot sync and perception processor services + timers
   scripts/
     agent-svc.sh     -- per-agent service helper
     task-loop.sh     -- task loop script

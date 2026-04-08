@@ -1,7 +1,12 @@
 # Agent perception layer: screenshot sync and activity processor as systemd user services.
 #
+# Implements REQ-023 (Perception Layer) — screenshot sync replaces the former
+# Immich-upload approach with rsync-over-SSH to the Immich host filesystem.
+# The Immich host is expected to have an external library path mounted at
+# screenshotRoot (configured in modules/os/immich.nix).
+#
 # Services created per agent (when perception.enable = true):
-# - agent-{name}-screenshot-sync: uploads screenshots to Immich on a timer
+# - agent-{name}-screenshot-sync: rsyncs screenshots to the Immich host over SSH
 # - agent-{name}-perception-processor: collects PDFs, transcripts, photos → notes
 {
   lib,
@@ -15,34 +20,35 @@ let
   inherit (agentsLib) osCfg localAgents;
   immichServiceCfg = config.keystone.services.immich;
 
+  hostname = config.networking.hostName;
+  immichHost = config.keystone.services.immich.host;
+
   # Filter to agents with perception enabled
   perceptionAgents = filterAttrs (_: agentCfg: agentCfg.perception.enable) localAgents;
 
-  # Filter to agents with perception + desktop (needed for screenshot sync)
+  # Filter to agents with perception + desktop + screenshots enabled
   screenshotAgents = filterAttrs (
     _: agentCfg: agentCfg.desktop.enable && agentCfg.perception.screenshots.enable
   ) perceptionAgents;
 
-  immichServerUrl =
+  # Resolve rsync destination for a given agent
+  rsyncDestFor =
+    name: agentCfg:
     let
-      immichHostName = immichServiceCfg.host;
-      hostEntry = findFirst (h: h.hostname == immichHostName) null (attrValues config.keystone.hosts);
-      hostTarget =
-        if hostEntry == null then
-          immichHostName
-        else if hostEntry.tailscaleIP != null then
-          hostEntry.tailscaleIP
-        else if hostEntry.sshTarget != null then
-          hostEntry.sshTarget
-        else if hostEntry.fallbackIP != null then
-          hostEntry.fallbackIP
-        else
-          immichHostName;
+      username = "agent-${name}";
     in
-    if config.keystone.domain != null then
-      "https://photos.${config.keystone.domain}"
+    if agentCfg.perception.screenshots.rsyncDestPath != null then
+      agentCfg.perception.screenshots.rsyncDestPath
     else
-      "http://${hostTarget}:2283";
+      "/srv/screenshots/${username}/hosts/${hostname}/Pictures/";
+
+  # Resolve rsync target host for a given agent
+  rsyncTargetFor =
+    _name: agentCfg:
+    if agentCfg.perception.screenshots.rsyncTarget != null then
+      agentCfg.perception.screenshots.rsyncTarget
+    else
+      immichHost;
 in
 {
   config = mkIf (osCfg.enable && perceptionAgents != { }) {
@@ -53,68 +59,47 @@ in
       }
     ];
 
-    warnings = concatLists (
-      mapAttrsToList (
-        name: _:
-        optional (!(config.age.secrets ? "agent-${name}-immich-api-key")) ''
-          Screenshot sync is enabled for agent '${name}', but agenix secret "agent-${name}-immich-api-key" is not declared yet.
-
-          To finish setup:
-          1. Add to agenix-secrets/secrets.nix:
-             "secrets/agent-${name}-immich-api-key.age".publicKeys = adminKeys ++ [ systems.${config.networking.hostName} ];
-          2. Create the secret with the agent Immich API key:
-             cd agenix-secrets && agenix -e secrets/agent-${name}-immich-api-key.age
-          3. If keystone.secrets.repo is null, declare it in host config:
-             age.secrets.agent-${name}-immich-api-key = {
-               file = "${"$"}{inputs.agenix-secrets}/secrets/agent-${name}-immich-api-key.age";
-               owner = "agent-${name}";
-               mode = "0400";
-             };
-
-          TODO: automate Immich API key provisioning and secret enrollment from Keystone tooling.
-        ''
-      ) screenshotAgents
-    );
-
-    age.secrets = mkIf (config.keystone.secrets.repo != null) (
-      listToAttrs (
-        concatLists (
-          mapAttrsToList (name: _: [
-            (nameValuePair "agent-${name}-immich-api-key" {
-              file = "${config.keystone.secrets.repo}/secrets/agent-${name}-immich-api-key.age";
-              owner = "agent-${name}";
-              mode = "0400";
-            })
-          ]) screenshotAgents
-        )
-      )
-    );
-
     systemd.user.services = mkMerge (
-      # Screenshot sync services (only for agents with desktop enabled)
+      # Screenshot sync services (only for agents with desktop + screenshots enabled)
       (mapAttrsToList (
         name: agentCfg:
         let
           username = "agent-${name}";
+          agentHome = "/home/${username}";
+          rsyncTarget = rsyncTargetFor name agentCfg;
+          rsyncDest = rsyncDestFor name agentCfg;
         in
         mkIf agentCfg.perception.screenshots.enable {
           "agent-${name}-screenshot-sync" = {
-            description = "Sync screenshots to Immich for ${username}";
+            description = "Sync screenshots to ${rsyncTarget} for ${username}";
             unitConfig.ConditionUser = username;
             serviceConfig = {
               Type = "oneshot";
               SyslogIdentifier = "agent-${name}-screenshot-sync";
             };
+            path = [
+              pkgs.rsync
+              pkgs.openssh
+            ];
+            # Rsync screenshots over SSH using the agent's managed key.
+            # No Immich API key required — files land in the Immich external library path.
             script = ''
-              export HOME=/home/${username}
-              export XDG_STATE_HOME="''${XDG_STATE_HOME:-$HOME/.local/state}"
-              exec ${pkgs.keystone.ks}/bin/ks screenshots sync \
-                --url ${lib.escapeShellArg immichServerUrl} \
-                --api-key-file /run/agenix/agent-${name}-immich-api-key \
-                --album-name ${lib.escapeShellArg "Screenshots - ${username}"} \
-                --host-name ${lib.escapeShellArg config.networking.hostName} \
-                --account-name ${lib.escapeShellArg username} \
-                --state-file "''${XDG_STATE_HOME}/keystone-photos/screenshot-sync.tsv"
+              [[ -f ${agentHome}/.config/user-dirs.dirs ]] && source ${agentHome}/.config/user-dirs.dirs
+              SCREENSHOT_DIR="''${KEYSTONE_SCREENSHOT_DIR:-''${XDG_PICTURES_DIR:-${agentHome}/Pictures}}"
+
+              if [[ ! -d "$SCREENSHOT_DIR" ]]; then
+                echo "screenshot-sync: source directory does not exist: $SCREENSHOT_DIR" >&2
+                exit 0
+              fi
+
+              rsync \
+                --archive \
+                --compress \
+                --checksum \
+                --mkpath \
+                --rsh "ssh -i ${agentHome}/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+                "$SCREENSHOT_DIR/" \
+                "${rsyncTarget}:${rsyncDest}"
             '';
           };
         }
@@ -138,7 +123,7 @@ in
                 TimeoutStartSec = "30m";
                 SyslogIdentifier = "agent-${name}-perception-processor";
               };
-              # Placeholder — actual script added in Phase 3 (feat/perception-processor)
+              # Placeholder — actual script added in feat/perception-processor
               script = ''
                 echo "perception-processor: not yet implemented for ${username}"
               '';

@@ -211,6 +211,25 @@ let
         fi
       fi
 
+      # Verify rsync-based screenshot sync service for perception agents
+      if [ "${name}" = "perception-screenshot-rsync" ]; then
+        echo "Verifying rsync screenshot sync service..."
+        if echo '${userServicesJson}' | grep -q 'agent-researcher-screenshot-sync'; then
+          echo "  ✓ Found agent-researcher-screenshot-sync service"
+        else
+          echo "  ✗ Missing agent-researcher-screenshot-sync service"
+          echo "  Actual user services: ${userServicesJson}"
+          exit 1
+        fi
+        if echo '${userTimersJson}' | grep -q 'agent-researcher-screenshot-sync'; then
+          echo "  ✓ Found agent-researcher-screenshot-sync timer"
+        else
+          echo "  ✗ Missing agent-researcher-screenshot-sync timer"
+          echo "  Actual user timers: ${userTimersJson}"
+          exit 1
+        fi
+      fi
+
       # Verify DEEPWORK_ADDITIONAL_JOBS_FOLDERS for development-mode test
       if [ "${name}" = "development-mode" ]; then
         echo "Verifying DEEPWORK_ADDITIONAL_JOBS_FOLDERS in development-mode..."
@@ -896,6 +915,38 @@ let
             notes.repo = "git@example.com:quiet/notes.git";
           };
         };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with rsync-based screenshot sync (perception layer)
+    perception-screenshot-rsync = eval "perception-screenshot-rsync" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            notes.repo = "git@example.com:researcher/notes.git";
+            host = "test-host"; # Must match networking.hostName for localAgents filter
+            desktop.enable = true;
+            perception = {
+              enable = true;
+              screenshots = {
+                enable = true;
+                rsyncTarget = "ocean";
+              };
+            };
+          };
+        };
+        # Provide a services.immich.host so the module can resolve the default rsyncTarget
+        keystone.services.immich.host = "ocean";
         fileSystems."/" = {
           device = lib.mkForce "/dev/vda2";
           fsType = lib.mkForce "ext4";
