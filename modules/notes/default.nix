@@ -77,6 +77,11 @@ let
     [group.index.note]
     template = "index.md"
 
+    [group.report]
+    paths = ["reports"]
+    [group.report.note]
+    template = "report.md"
+
     [lsp.diagnostics]
     wiki-title = "hint"
     dead-link = "error"
@@ -217,6 +222,32 @@ let
     -
   '';
 
+  # Template: report note
+  templateReport = ''
+    ---
+    id: "{{id}}"
+    title: "{{title}}"
+    type: report
+    created: {{format-date now '%Y-%m-%dT%H:%M:%S%z'}}
+    author: {{env.USER}}
+    tags: []
+    ---
+
+    # {{title}}
+
+    ## Summary
+
+
+
+    ## Details
+
+
+
+    ## Links
+
+    -
+  '';
+
   # Scaffold script: creates .zk/ structure if absent
   zkScaffoldScript = pkgs.writeShellScript "zk-scaffold" ''
     NOTES_PATH="${cfg.path}"
@@ -259,8 +290,12 @@ let
     ${templateIndex}
     TPLEOF
 
+      cat > "$NOTES_PATH/.zk/templates/report.md" << 'TPLEOF'
+    ${templateReport}
+    TPLEOF
+
       # Create note directories with .gitkeep
-      for dir in inbox literature notes decisions index; do
+      for dir in inbox literature notes decisions index reports; do
         mkdir -p "$NOTES_PATH/$dir"
         touch "$NOTES_PATH/$dir/.gitkeep"
       done
