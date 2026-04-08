@@ -10,14 +10,14 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
-      starter-iso: ${{ steps.filter.outputs.starter_iso }}
+      iso_build: ${{ steps.filter.outputs.iso_build }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
-            starter_iso:
+            iso_build:
               - '.github/workflows/test.yml'
               - '.github/workflows/release.yml'
               - 'bin/generate-template-fixture'
@@ -43,11 +43,12 @@ jobs:
       - name: Check flake
         run: nix flake check
 
-  # Build the real starter ISO from a generated template fixture when
+  # Build the real ISO from a generated template fixture when
   # installer or template surfaces change.
-  starter-iso-build:
+  iso-build:
+    name: iso-build
     needs: changes
-    if: needs.changes.outputs.starter-iso == 'true'
+    if: needs.changes.outputs.iso_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +60,7 @@ jobs:
         with:
           name: ks-systems
 
-      - name: Generate starter template fixture
+      - name: Generate ISO template fixture
         run: |
           FIXTURE_DIR="$RUNNER_TEMP/keystone-starter-fixture"
           ./bin/generate-template-fixture --output "$FIXTURE_DIR"
@@ -69,7 +70,7 @@ jobs:
         run: |
           grep -n 'username = "keystone";' "$FIXTURE_DIR/flake.nix"
 
-      - name: Build starter ISO from generated fixture
+      - name: Build ISO from generated fixture
         run: |
           cd "$FIXTURE_DIR"
           ./bin/test-iso --build-only
