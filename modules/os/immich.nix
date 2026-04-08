@@ -84,6 +84,21 @@ in
       type = types.path;
       default = "/var/lib/immich";
     };
+
+    screenshotRoot = mkOption {
+      type = types.path;
+      default = "/srv/screenshots";
+      description = ''
+        Filesystem root for rsync-ingested screenshots on the Immich host.
+        Desktop hosts rsync screenshots here; subdirectories follow the layout
+        <screenshotRoot>/<account>/hosts/<host>/Pictures/.
+
+        NOTE: Attaching this directory to Immich as an external library is a
+        manual step in the Immich web UI (Library → Add external library).
+        Keystone only creates the directory; it does not configure Immich's
+        library list declaratively.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -146,6 +161,12 @@ in
     users.users.immich.extraGroups = mkIf (cfg.acceleration != null) [
       "video"
       "render"
+    ];
+
+    # Create screenshot ingestion root on the server so rsync clients can push files.
+    # Owned by immich so the Immich process can scan it as an external library.
+    systemd.tmpfiles.rules = mkIf (cfg.role == "server") [
+      "d ${cfg.screenshotRoot} 0755 immich immich -"
     ];
 
     # Open ML port only on tailscale interface for worker access
