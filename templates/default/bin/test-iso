@@ -51,20 +51,39 @@ check_iso_artifact() {
     local iso_path="$1"
     local check_output
 
-    log_info "Verifying installer squashfs payload..."
-    if ! check_output="$(nix shell nixpkgs#xorriso nixpkgs#squashfsTools --command bash -lc '
-        set -euo pipefail
-        iso_path="$1"
-        tmp="$(mktemp -d)"
-        trap '\''rm -rf "$tmp"'\'' EXIT
-        xorriso -osirrox on -indev "$iso_path" -extract /nix-store.squashfs "$tmp/nix-store.squashfs" >/dev/null 2>&1
-        unsquashfs -cat "$tmp/nix-store.squashfs" 4424mzk2pyia5v1j33zjgrjaivrdy03y-icu4c-76.1/lib/libicudata.so.76 >/dev/null
-    ' bash "$iso_path" 2>&1)"; then
+    log_info "Verifying installer ISO artifact..."
+    if ! check_output="$(
+        nix shell nixpkgs#xorriso nixpkgs#squashfsTools --command bash -s -- "$iso_path" <<'EOF' 2>&1
+set -euo pipefail
+
+iso_path="$1"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# Prove we built the Keystone installer artifact, not just any bootable ISO.
+xorriso -indev "$iso_path" -pvd_info > "$tmp/pvd.txt"
+grep -F "Volume Id    : KEYSTONE" "$tmp/pvd.txt" >/dev/null
+
+# version.txt is a cheap sanity check that the ISO root filesystem layout is intact.
+xorriso -osirrox on -indev "$iso_path" -extract /version.txt "$tmp/version.txt" >/dev/null 2>&1
+grep -Eq '^[0-9]{2}\.[0-9]{2}\.' "$tmp/version.txt"
+
+xorriso -osirrox on -indev "$iso_path" -extract /nix-store.squashfs "$tmp/nix-store.squashfs" >/dev/null 2>&1
+# Keep the known-good ICU read gate that caught the earlier corrupt squashfs issue.
+unsquashfs -cat "$tmp/nix-store.squashfs" 4424mzk2pyia5v1j33zjgrjaivrdy03y-icu4c-76.1/lib/libicudata.so.76 >/dev/null
+unsquashfs -ll "$tmp/nix-store.squashfs" > "$tmp/nix-store.list"
+
+# Make sure the live installer closure still carries the commands the ISO boot flow needs.
+for tool in ks keystone-tui disko nixos-install; do
+    grep -Eq "/bin/${tool}$" "$tmp/nix-store.list"
+done
+EOF
+    )"; then
         log_error "Installer ISO artifact gate failed."
         printf '%s\n' "$check_output" >&2
         exit 1
     fi
-    log_ok "Installer squashfs payload is readable."
+    log_ok "Installer ISO artifact checks passed."
 }
 
 show_help() {
