@@ -369,6 +369,51 @@ let
       they want to plan
   '';
 
+  notesSkillMetadata = {
+    name = "notes";
+    description = "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, notes/setup, or notes/task";
+  };
+
+  notesSkillBody = ''
+    # Notes workflow manager
+
+    Create and maintain Zettelkasten task notes, process inbox, run doctor checks,
+    and manage the notes repo lifecycle via DeepWork workflows.
+
+    ## Workflows
+
+    | Workflow | When to use |
+    |----------|-------------|
+    | `task` | Start a structured task note at the beginning of engineering work |
+    | `process_inbox` | Promote or discard fleeting notes in `inbox/` |
+    | `doctor` | Diagnose and repair the notes repo structure |
+    | `init` | Initialize a new notes repo |
+    | `setup` | Detect and migrate an existing notes repo |
+
+    ## How to use
+
+    1. Call `get_workflows` with `job_name="notes"` to see available workflows.
+    2. Call `start_workflow` with the chosen `job_name="notes"` and `workflow_name`.
+    3. Follow step instructions returned by the MCP server.
+    4. Call `finished_step` with outputs when a step is complete.
+
+    ## Intent parsing
+
+    - `/notes task` or `/notes` at the start of engineering work → `notes/task`
+    - `/notes inbox` or `/notes process_inbox` → `notes/process_inbox`
+    - `/notes doctor` → `notes/doctor`
+    - `/notes init` → `notes/init`
+    - `/notes setup` → `notes/setup`
+    - No argument → infer from context; default to `notes/task` when starting a task
+
+    ## Proactive invocation
+
+    Invoke `/notes task` automatically at the start of any substantive engineering task
+    — before writing code, opening PRs, or making architectural decisions. The task note
+    becomes the living record for the work session and enables progressive tag enrichment
+    as issues and PRs are created.
+  '';
+
   wrapUpSkillMetadata = {
     name = "wrap-up";
     description = "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human";
@@ -427,6 +472,24 @@ let
         interface:
           display_name: "Wrap-up"
           short_description: "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human"
+      '';
+    }
+    {
+      relativePath = ".codex/skills/notes/SKILL.md";
+      source = pkgs.writeText "codex-skill-notes-SKILL.md" (mkSkillMd notesSkillMetadata notesSkillBody);
+    }
+    {
+      relativePath = ".codex/skills/notes/agents/openai.yaml";
+      source = pkgs.writeText "codex-skill-notes-openai.yaml" ''
+        interface:
+          display_name: "Notes"
+          short_description: "Notes workflows — task notes, inbox, doctor, init, setup"
+
+        dependencies:
+          tools:
+            - type: "mcp"
+              value: "deepwork"
+              description: "DeepWork MCP server"
       '';
     }
   ]
@@ -490,6 +553,7 @@ let
     "deepwork"
     "deepplan"
     "wrap-up"
+    "notes"
   ]
   ++ map (command: codexSkillName command.id) publishedCommands;
 
@@ -679,6 +743,35 @@ in
               ".gemini"
               ".config/opencode"
             ];
+
+        notesSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              let
+                skillDir = "${toolDir}/skills/notes";
+              in
+              if toolDir == ".gemini" then
+                acc
+                // {
+                  "${toolDir}/commands/notes.toml".text = ''
+                    description = ${builtins.toJSON notesSkillMetadata.description}
+                    prompt = ${builtins.toJSON notesSkillBody}
+                  '';
+                }
+              else
+                acc
+                // {
+                  "${skillDir}/SKILL.md".text = mkSkillMd notesSkillMetadata notesSkillBody;
+                }
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
+
         ksSkillsByTool =
           foldl'
             (
@@ -720,6 +813,7 @@ in
       // deepworkSkillsByTool
       // deepplanSkillsByTool
       // wrapUpSkillsByTool
+      // notesSkillsByTool
       // ksSkillsByTool
     );
 

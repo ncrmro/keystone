@@ -2245,6 +2245,18 @@ workflows:
           - Ambiguous candidates: N
           - (list strong misses; summarize ambiguous ones)
 
+
+          ## Task Note Tag Audit
+
+          - Total task notes: N
+          - Fully tagged: N
+          - Partially tagged: N
+          - Flagged: N
+
+          (For each flagged note:)
+          - `notes/<id> <slug>.md` — missing: `pull_request:gh:...` (completed without PR tag)
+          - `notes/<id> <slug>.md` — malformed tag: `status/done` (unknown status state)
+
           ## Operational Files
 
           - TASKS.yaml: unchanged
@@ -2602,4 +2614,365 @@ workflows:
             required: true
         outputs:
           sync_status:
+            required: true
+  task:
+    summary: "Create and maintain a structured task note with progressive artifact linking"
+    common_job_info_provided_to_all_steps_at_runtime: |
+      This job manages Zettelkasten-structured notes repositories using the `zk` CLI.
+      It applies to both human user notes repos and OS agent notes repos (agent-space).
+
+      ## Keystone Notes Architecture
+
+      Notes repos are git-backed repositories synced via `repo-sync` on systemd timers.
+      Human users: `keystone.notes` (home-manager module, syncs to `~/notes`).
+      OS agents: `keystone.os.agents.<name>.notes` (NixOS module, syncs to `/home/agent-{name}/notes`).
+
+      ## Zettelkasten Structure (standardized by process.knowledge-management convention)
+
+      ```
+      notes-repo/
+        .zk/
+          config.toml             # zk configuration (ID format, groups, wikilinks)
+          templates/
+            fleeting.md           # Template for inbox notes
+            permanent.md          # Template for atomic ideas
+            decision.md           # Template for ADRs
+            index.md              # Template for Maps of Content
+        inbox/                    # Fleeting notes (ephemeral, to be processed)
+        notes/                    # Permanent notes (atomic, linked) — task notes live here
+        decisions/                # Decision records
+        index/                    # Maps of Content and project hub notes
+        TASKS.yaml                # Agent task state (existing, untouched)
+      ```
+
+      ## Task Note Tag Schema
+
+      Tags in task note frontmatter follow these namespaced formats:
+
+      | Tag pattern | Example | Description |
+      |-------------|---------|-------------|
+      | `project/<slug>` | `project/keystone` | Project the task belongs to |
+      | `milestone:<platform>:<owner>/<repo>#<number>` | `milestone:gh:ncrmro/keystone#8` | Linked milestone |
+      | `issue:<platform>:<owner>/<repo>#<number>` | `issue:gh:ncrmro/keystone#242` | Linked issue |
+      | `pull_request:<platform>:<owner>/<repo>#<number>` | `pull_request:gh:ncrmro/keystone#243` | Linked PR |
+      | `repo:<platform>:<owner>/<repo>` | `repo:gh:ncrmro/keystone` | Repository reference |
+      | `status/<state>` | `status/in-progress` | Current task status |
+
+      Platform prefixes: `gh` (GitHub), `fj` (Forgejo).
+      Status states: `in-progress`, `blocked`, `needs-review`, `completed`.
+
+      ## Task Note Workflow
+
+      The `task` workflow has three steps:
+      1. `create_task_note` — create the note with initial frontmatter and commit
+      2. `enrich_tags` — add artifact tags as PRs/issues are created; transition status
+      3. `comment_shared_surface` — post progress updates on GitHub/Forgejo artifacts
+
+      The workflow is designed for progressive enrichment: call `enrich_tags` and
+      `comment_shared_surface` repeatedly as new artifacts emerge, not just once.
+
+      ## Query Patterns
+
+      ```bash
+      # All tasks for a project
+      zk list notes/ --tag "project/keystone" --format json
+
+      # Tasks for a specific milestone
+      zk list notes/ --tag "milestone:gh:ncrmro/keystone#8" --format json
+
+      # Completed tasks
+      zk list notes/ --tag "status/completed" --format json
+
+      # Blocked tasks
+      zk list notes/ --tag "status/blocked" --format json
+      ```
+
+      ## Key zk Commands
+
+      - `zk new notes/ --title "Title" --no-input --print-path` — Create task note
+      - `zk list notes/ --tag "<tag>" --format json` — Query task notes by tag
+      - `zk index` — Rebuild note index
+
+      ## Operational Files
+
+      YAML files (TASKS.yaml, PROJECTS.yaml, SCHEDULES.yaml) and identity files (SOUL.md,
+      AGENTS.md) are NOT notes and MUST NOT be modified by this job.
+
+      ## Transient Workflow Outputs
+
+      Write step outputs under `.deepwork/tmp/` and pass those paths back to the workflow
+      engine. Do NOT commit transient outputs to git.
+
+      ## Shared Surface
+
+      A shared surface is a VCS artifact (issue, PR, milestone) visible to all collaborators.
+      The `comment_shared_surface` step posts progress to these artifacts so any participant
+      can resume context without reading the full task note.
+    steps:
+      - name: create_task_note
+        instructions: |
+          # Create Task Note
+
+          ## Objective
+
+          Create a structured permanent note in `notes/` to track an agent task. The note captures the
+          task goal, links it to VCS artifacts, and becomes the living record for the work session.
+
+          ## Task
+
+          1. **Collect context**: Gather the task title, project slug, and any known artifact references
+             (issue number, milestone, repository). Ask the operator if any are missing and required.
+
+          2. **Create the note**:
+
+             ```bash
+             zk new notes/ --title "<task title>" --no-input --print-path
+             ```
+
+             Save the returned path as the note path for subsequent steps.
+
+          3. **Write frontmatter**: Open the note and set the required frontmatter fields:
+
+             ```yaml
+             ---
+             id: "<generated by zk>"
+             title: "<task title>"
+             type: permanent
+             created: <ISO 8601 timestamp>
+             author: <unix username of agent, e.g. agent-drago>
+             tags:
+               - project/<slug>
+               - status/in-progress
+             ---
+             ```
+
+             - `project/<slug>` MUST be present at creation time.
+             - `status/in-progress` MUST be the initial status tag.
+             - Add `repo:gh:<owner>/<repo>` if a repository is known.
+             - Add `issue:gh:<owner>/<repo>#<number>` if an issue is known.
+             - Add `milestone:gh:<owner>/<repo>#<number>` if a milestone is known.
+
+          4. **Write body**: Add the required body sections:
+
+             ```markdown
+             ## Objective
+
+             <One or two sentences summarising the task goal.>
+
+             ## Progress
+
+             - [ ] (update as work proceeds)
+             ```
+
+          5. **Commit the note**:
+
+             ```bash
+             git add notes/
+             git commit -m "chore(notes): create task note — <task title>"
+             ```
+
+          6. **Verify**: Run `zk list notes/ --tag "project/<slug>" --format json | head` and confirm the
+             new note appears.
+
+          ## Output Format
+
+          Write `.deepwork/tmp/task_note_path.md`:
+
+          ```markdown
+          # Task Note Created
+
+          - **Path**: notes/<id> <title-slug>.md
+          - **Title**: <task title>
+          - **Tags**: project/<slug>, status/in-progress [, repo:gh:..., issue:gh:..., ...]
+          - **Commit**: <git short hash>
+          ```
+
+          ## Important Notes
+
+          - If `zk new` fails (directory permissions, missing `.zk/` directory), STOP and report the error.
+            Direct the operator to run `notes/init` first if the notebook is not initialised.
+          - Do NOT proceed to `enrich_tags` if the note was not committed successfully.
+          - The note path output from this step is the required input for `enrich_tags` and
+            `comment_shared_surface`.
+        inputs: {}
+        outputs:
+          task_note_path:
+            required: true
+      - name: enrich_tags
+        instructions: |
+          # Enrich Tags
+
+          ## Objective
+
+          Add artifact tags to an existing task note and transition its status tag. Called after new VCS
+          artifacts (issues, PRs, milestones) are created or when the task status changes.
+
+          ## Task
+
+          1. **Identify the note**: Use the path from `create_task_note` output, or accept a manually
+             provided note path if this step is invoked standalone.
+
+          2. **Read the current frontmatter**:
+
+             ```bash
+             head -30 <note_path>
+             ```
+
+          3. **Validate new tags**: For each artifact reference to add, verify it follows the schema from
+             `process.knowledge-management`:
+
+             | Tag pattern | Example |
+             |-------------|---------|
+             | `issue:<platform>:<owner>/<repo>#<number>` | `issue:gh:ncrmro/keystone#242` |
+             | `pull_request:<platform>:<owner>/<repo>#<number>` | `pull_request:gh:ncrmro/keystone#243` |
+             | `milestone:<platform>:<owner>/<repo>#<number>` | `milestone:gh:ncrmro/keystone#8` |
+             | `repo:<platform>:<owner>/<repo>` | `repo:gh:ncrmro/keystone` |
+             | `status/<state>` | `status/completed` |
+
+             Valid platforms: `gh` (GitHub), `fj` (Forgejo).
+             Valid status states: `in-progress`, `blocked`, `needs-review`, `completed`.
+
+          4. **Add new artifact tags**: Edit the `tags:` list in the frontmatter YAML to append new tags.
+             Do NOT create duplicate entries — check if a tag already exists before adding.
+
+          5. **Update status tag** (if status transition requested): Find the existing `status/*` entry and
+             replace it with the new status. Only one `status/*` tag must exist at a time.
+
+          6. **Commit changes**:
+
+             ```bash
+             git add <note_path>
+             git commit -m "chore(notes): enrich tags — <note title> [<new tags summary>]"
+             ```
+
+          7. **Verify**: Read the note frontmatter again and confirm the tags list is correct.
+
+          ## Output Format
+
+          Write `.deepwork/tmp/enrichment_log.md`:
+
+          ```markdown
+          # Tag Enrichment Log
+
+          - **Note**: notes/<id> <title-slug>.md
+          - **Tags added**: issue:gh:ncrmro/keystone#242, milestone:gh:ncrmro/keystone#8
+          - **Status**: in-progress → completed  (or "unchanged")
+          - **Commit**: <git short hash>
+
+          ## Resulting frontmatter tags
+
+          ```yaml
+          tags:
+            - project/keystone
+            - repo:gh:ncrmro/keystone
+            - milestone:gh:ncrmro/keystone#8
+            - issue:gh:ncrmro/keystone#242
+            - pull_request:gh:ncrmro/keystone#243
+            - status/completed
+          ```
+          ```
+
+          ## Important Notes
+
+          - This step is idempotent — adding a tag that already exists MUST NOT create a duplicate.
+          - If the note path is not provided and no prior `create_task_note` output exists, ask the
+            operator for the note path.
+          - If a platform prefix is unknown (not `gh` or `fj`), ask the operator rather than guessing.
+          - Do NOT enrich tags on notes in `archive/` — archived notes are frozen state.
+          - If status is transitioning to `completed`, verify the task note has at least one
+            `pull_request:` or `issue:` tag as evidence of delivery.
+        inputs:
+          task_note_path:
+            required: true
+        outputs:
+          enrichment_log:
+            required: true
+      - name: comment_shared_surface
+        instructions: |
+          # Comment on Shared Surface
+
+          ## Objective
+
+          Post a structured progress comment on the VCS artifacts referenced by the task note. Keeps
+          collaborators informed and ensures any agent can resume context from the shared surface alone.
+
+          ## Task
+
+          1. **Identify artifacts**: Read the task note frontmatter and collect all artifact tags:
+             - `issue:gh:<owner>/<repo>#<number>` → `gh issue comment <owner>/<repo> <number>`
+             - `pull_request:gh:<owner>/<repo>#<number>` → `gh pr comment <owner>/<repo> <number>`
+             - `milestone:gh:<owner>/<repo>#<number>` → comment on the milestone issue
+             - `issue:fj:<owner>/<repo>#<number>` → `fj issue comment <owner>/<repo> <number>`
+             - `pull_request:fj:<owner>/<repo>#<number>` → `fj issue comment <owner>/<repo> <number>`
+
+          2. **Skip if no artifacts**: If no `issue:`, `pull_request:`, or `milestone:` tags exist yet,
+             log "No shared surface artifacts — skipping" and output an empty comment log. Do NOT fail.
+
+          3. **Draft comment body**: Write a concise progress update. Include:
+             - What was done (1–3 bullet points)
+             - How to verify (command to run, URL to check, or screenshot description)
+             - What comes next (if known)
+             - Reference related artifacts by number (e.g., `#242`) for platform auto-linking.
+
+             Example:
+
+             ```
+             ## Work Update
+
+             - Implemented `create_task_note` and `enrich_tags` steps in `.deepwork/jobs/notes/`
+             - Added task note tag schema to `conventions/process.knowledge-management.md`
+
+             To verify: `zk list notes/ --tag "project/keystone" --format json`
+
+             Next: open PR for Phase 2 (relates to #243).
+             ```
+
+          4. **Post the comment** on each artifact:
+
+             ```bash
+             # GitHub issue
+             gh issue comment <number> --repo <owner>/<repo> --body "<comment>"
+
+             # GitHub PR
+             gh pr comment <number> --repo <owner>/<repo> --body "<comment>"
+
+             # Forgejo issue
+             fj issue comment <owner>/<repo> <number> --body "<comment>"
+             ```
+
+          5. **Log each post**: Record the artifact URL returned by the CLI.
+
+          ## Output Format
+
+          Write `.deepwork/tmp/comment_log.md`:
+
+          ```markdown
+          # Shared Surface Comment Log
+
+          ## Comments posted
+
+          | Artifact | URL |
+          |----------|-----|
+          | issue:gh:ncrmro/keystone#242 | https://github.com/ncrmro/keystone/issues/242#issuecomment-... |
+          | milestone:gh:ncrmro/keystone#8 | https://github.com/ncrmro/keystone/issues/8#issuecomment-... |
+
+          ## Comment body
+
+          <the comment text that was posted>
+          ```
+
+          ## Important Notes
+
+          - If an artifact does not exist (e.g., deleted issue), skip it and log a warning — do NOT fail.
+          - If `gh` or `fj` CLI is unavailable, log the error and ask the operator to post manually.
+          - Comments MUST include actionable context — do not post empty or boilerplate-only comments.
+          - If the same comment would be a duplicate of the previous one, skip and note "no new progress
+            to report."
+          - The milestone issue receives the same comment as a regular issue — there is no special
+            milestone comment command.
+        inputs:
+          task_note_path:
+            required: true
+        outputs:
+          comment_log:
             required: true

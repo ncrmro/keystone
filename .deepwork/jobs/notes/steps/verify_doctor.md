@@ -91,6 +91,30 @@ Run post-migration health checks to confirm the notebook is valid and no data wa
   - strong misses that should fail verification
   - ambiguous matches that should be called out for manual follow-up
 
+12. **Task note tag audit**: Identify notes with `status/*` tags (task notes) and verify their
+    tag completeness. Do NOT modify any note — this is a read-only audit.
+
+    ```bash
+    # Find all task notes (notes/ group with any status/* tag)
+    zk list notes/ --format json | jq '[.[] | select(.tags != null and (.tags | map(startswith("status/")) | any))]'
+    ```
+
+    For each task note check:
+    - At least one `project/<slug>` tag is present.
+    - Exactly one `status/<state>` tag is present.
+    - If `repo:` tag is present, whether related `issue:` or `pull_request:` tags exist.
+    - If `status/completed` is set but no `pull_request:` tag exists, flag as potential omission.
+    - All tags are lowercase and hyphenated with valid platform prefixes (`gh` or `fj`).
+
+    For VCS cross-checking (skip if `gh`/`fj` CLI is unavailable — offline mode):
+
+    ```bash
+    # Verify referenced issues still exist (example for GitHub)
+    gh issue view <number> --repo <owner>/<repo> --json state 2>/dev/null || echo "WARN: issue not found"
+    ```
+
+    If no task notes exist, report "No task notes found" and pass without error.
+
 ## Output Format
 
 Write `.deepwork/tmp/doctor_report.md`:
@@ -144,6 +168,17 @@ Write `.deepwork/tmp/doctor_report.md`:
 - Strong misses: N
 - Ambiguous candidates: N
 - (list strong misses; summarize ambiguous ones)
+
+## Task Note Tag Audit
+
+- Total task notes: N
+- Fully tagged: N
+- Partially tagged: N
+- Flagged: N
+
+(For each flagged note:)
+- `notes/<id> <slug>.md` — missing: `pull_request:gh:...` (completed without PR tag)
+- `notes/<id> <slug>.md` — malformed tag: `status/done` (unknown status state)
 
 ## Operational Files
 
