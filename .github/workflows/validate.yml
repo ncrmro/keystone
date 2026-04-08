@@ -63,6 +63,7 @@ jobs:
       should_build_iso: ${{ steps.pr-policy.outputs.should_build_iso || steps.call-policy.outputs.should_build_iso || 'false' }}
       should_run_nixfmt: ${{ steps.pr-policy.outputs.should_run_nixfmt || steps.call-policy.outputs.should_run_nixfmt || 'false' }}
       should_run_shellcheck: ${{ steps.pr-policy.outputs.should_run_shellcheck || steps.call-policy.outputs.should_run_shellcheck || 'false' }}
+      should_run_ks_cli: ${{ steps.pr-policy.outputs.should_run_ks_cli || steps.call-policy.outputs.should_run_ks_cli || 'false' }}
     steps:
       - uses: actions/checkout@v4
         if: github.event_name == 'pull_request'
@@ -90,6 +91,9 @@ jobs:
               - '.github/workflows/validate.yml'
               - '**/*.sh'
               - '**/*.bash'
+            ks_cli:
+              - '.github/workflows/validate.yml'
+              - 'packages/ks/**'
 
       - name: Use pull request ISO policy
         if: github.event_name == 'pull_request'
@@ -99,6 +103,7 @@ jobs:
             echo "should_build_iso=${{ steps.filter.outputs.iso_build }}"
             echo "should_run_nixfmt=${{ steps.filter.outputs.nixfmt }}"
             echo "should_run_shellcheck=${{ steps.filter.outputs.shellcheck }}"
+            echo "should_run_ks_cli=${{ steps.filter.outputs.ks_cli }}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Use workflow-call ISO policy
@@ -109,6 +114,7 @@ jobs:
             echo "should_build_iso=${{ inputs.force_iso_build }}"
             echo "should_run_nixfmt=true"
             echo "should_run_shellcheck=true"
+            echo "should_run_ks_cli=true"
           } >> "$GITHUB_OUTPUT"
 
   flake-check:
@@ -183,6 +189,8 @@ jobs:
 
   ks-cli:
     name: ks-cli
+    needs: changes
+    if: needs.changes.outputs.should_run_ks_cli == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
