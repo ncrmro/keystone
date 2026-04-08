@@ -65,26 +65,6 @@ let
     _: userCfg: userCfg.desktop.enable && userCfg.desktop.screenshotSync.enable
   ) effectiveUsers;
 
-  immichServerUrl =
-    let
-      immichHostName = immichServiceCfg.host;
-      hostEntry = findFirst (h: h.hostname == immichHostName) null (attrValues config.keystone.hosts);
-      hostTarget =
-        if hostEntry == null then
-          immichHostName
-        else if hostEntry.tailscaleIP != null then
-          hostEntry.tailscaleIP
-        else if hostEntry.sshTarget != null then
-          hostEntry.sshTarget
-        else if hostEntry.fallbackIP != null then
-          hostEntry.fallbackIP
-        else
-          immichHostName;
-    in
-    if config.keystone.domain != null then
-      "https://photos.${config.keystone.domain}"
-    else
-      "http://${hostTarget}:2283";
 in
 {
   config = mkMerge [
@@ -290,27 +270,51 @@ in
         '';
       };
 
+      # Screenshot sync services for users with desktop.screenshotSync.enable = true.
+      # Uses rsync over SSH — no Immich API key required.
       systemd.user.services = mkMerge (
         mapAttrsToList (
           username: userCfg:
+          let
+            rsyncTarget =
+              if userCfg.desktop.screenshotSync.rsyncTarget != null then
+                userCfg.desktop.screenshotSync.rsyncTarget
+              else
+                immichServiceCfg.host;
+            rsyncDest =
+              if userCfg.desktop.screenshotSync.rsyncDestPath != null then
+                userCfg.desktop.screenshotSync.rsyncDestPath
+              else
+                "/srv/screenshots/${username}/hosts/${hostname}/Pictures/";
+          in
           mkIf userCfg.desktop.screenshotSync.enable {
             "keystone-${username}-screenshot-sync" = {
-              description = "Sync screenshots to Immich for ${username}";
+              description = "Sync screenshots to ${rsyncTarget} for ${username}";
               unitConfig.ConditionUser = username;
               serviceConfig = {
                 Type = "oneshot";
-                SyslogIdentifier = "keystone-screenshot-sync";
+                SyslogIdentifier = "keystone-${username}-screenshot-sync";
               };
+              path = [
+                pkgs.rsync
+                pkgs.openssh
+              ];
               script = ''
-                export HOME=/home/${username}
-                export XDG_STATE_HOME="''${XDG_STATE_HOME:-$HOME/.local/state}"
-                exec ${pkgs.keystone.ks}/bin/ks screenshots sync \
-                  --url ${lib.escapeShellArg immichServerUrl} \
-                  --api-key-file /run/agenix/${username}-immich-api-key \
-                  --album-name ${lib.escapeShellArg "Screenshots - ${username}"} \
-                  --host-name ${lib.escapeShellArg hostname} \
-                  --account-name ${lib.escapeShellArg username} \
-                  --state-file "''${XDG_STATE_HOME}/keystone-photos/screenshot-sync.tsv"
+                [[ -f $HOME/.config/user-dirs.dirs ]] && source $HOME/.config/user-dirs.dirs
+                SCREENSHOT_DIR="''${KEYSTONE_SCREENSHOT_DIR:-''${XDG_PICTURES_DIR:-$HOME/Pictures}}"
+
+                if [[ ! -d "$SCREENSHOT_DIR" ]]; then
+                  echo "screenshot-sync: source directory does not exist: $SCREENSHOT_DIR" >&2
+                  exit 0
+                fi
+
+                rsync \
+                  --archive \
+                  --compress \
+                  --checksum \
+                  --mkpath \
+                  "$SCREENSHOT_DIR/" \
+                  "${rsyncTarget}:${rsyncDest}"
               '';
             };
           }
@@ -325,7 +329,7 @@ in
               wantedBy = [ "default.target" ];
               unitConfig.ConditionUser = username;
               timerConfig = {
-                OnCalendar = userCfg.desktop.screenshotSync.syncOnCalendar;
+                OnCalendar = userCfg.desktop.screenshotSync.onCalendar;
                 Persistent = true;
               };
             };

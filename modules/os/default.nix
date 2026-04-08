@@ -142,20 +142,6 @@ let
             description = "Enable desktop environment (Hyprland, waybar, etc.)";
           };
 
-          screenshotSync = {
-            enable = mkOption {
-              type = types.bool;
-              default = false;
-              description = "Enable screenshot syncing to Immich for this desktop user.";
-            };
-
-            syncOnCalendar = mkOption {
-              type = types.str;
-              default = "*:0/5";
-              description = "Systemd calendar expression for screenshot sync interval.";
-            };
-          };
-
           hyprland = {
             modifierKey = mkOption {
               type = types.enum [
@@ -170,6 +156,42 @@ let
               type = types.bool;
               default = true;
               description = "Remap Caps Lock to Control";
+            };
+          };
+
+          screenshotSync = {
+            enable = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Enable periodic rsync of screenshots to the Immich host.
+                Requires SSH access from this user to the rsync target.
+                Uses the user's normal SSH config; no dedicated key is provisioned.
+              '';
+            };
+
+            rsyncTarget = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "SSH hostname to rsync screenshots to. Defaults to keystone.services.immich.host.";
+              example = "ocean";
+            };
+
+            rsyncDestPath = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = ''
+                Destination path on the rsync target host.
+                Defaults to /srv/screenshots/<username>/hosts/<hostname>/Pictures/.
+                Must end with a trailing slash.
+              '';
+              example = "/srv/screenshots/alice/hosts/workstation/Pictures/";
+            };
+
+            onCalendar = mkOption {
+              type = types.str;
+              default = "*:0/5";
+              description = "Systemd calendar expression for screenshot sync interval.";
             };
           };
         };
