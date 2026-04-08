@@ -951,20 +951,24 @@ impl InstallScreen {
 
             match install_result {
                 Ok(()) => {
-                    // Copy config to the installed system for first-boot flow
-                    if let Some(ref user) = username {
-                        let _ = tx.send(InstallMessage::Output(
-                            "Copying config to installed system...".to_string(),
-                        ));
-                        if let Err(e) =
-                            copy_config_to_target(&config_dir, user, &repo_owner, &repo_name, &tx)
-                                .await
-                        {
-                            let _ = tx.send(InstallMessage::Output(format!(
-                                "Warning: failed to copy config: {}",
-                                e
-                            )));
-                        }
+                    let Some(ref user) = username else {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(
+                            "Installer metadata is missing the admin username needed for the installed repo path.".to_string(),
+                        )));
+                        return;
+                    };
+
+                    let _ = tx.send(InstallMessage::Output(
+                        "Copying config to installed system...".to_string(),
+                    ));
+                    if let Err(e) =
+                        copy_config_to_target(&config_dir, user, &repo_owner, &repo_name, &tx).await
+                    {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                            "post-install config copy failed: {}",
+                            e
+                        ))));
+                        return;
                     }
 
                     let _ = tx.send(InstallMessage::Finished(InstallResult::Success));
@@ -1549,6 +1553,52 @@ async fn copy_dir_recursive_async(src: &Path, dst: &Path) -> Result<(), String> 
     Ok(())
 }
 
+async fn run_command_quiet(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    privileged: bool,
+) -> Result<(), String> {
+    let command = build_command_spec(program, args, privileged);
+    let command_display = format!("{} {}", command.program, command.args.join(" "));
+
+    let mut child = Command::new(&command.program);
+    child.args(&command.args);
+    if let Some(cwd) = cwd {
+        child.current_dir(cwd);
+    }
+
+    let output = child
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run `{}`: {}", command_display, e))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let details = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        "no output".to_string()
+    };
+
+    Err(format!(
+        "`{}` exited with {}: {}",
+        command_display,
+        output
+            .status
+            .code()
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "signal".to_string()),
+        details
+    ))
+}
+
 /// Copy the generated config to the installed system for the first-boot flow.
 ///
 /// Creates the installed system flake directory on the target and copies
@@ -1567,47 +1617,85 @@ async fn copy_config_to_target(
         .join("repos")
         .join(repo_owner)
         .join(repo_name);
+    let repo_parent = repo_dir
+        .parent()
+        .ok_or_else(|| format!("Installed repo path has no parent: {}", repo_dir.display()))?;
+    let staging_root = PathBuf::from(format!(
+        "/tmp/keystone-installed-config-{}",
+        std::process::id()
+    ));
+    let staged_repo_dir = staging_root.join(repo_name);
+    let staged_system_flake = staging_root.join("system-flake");
+    let repo_parent_string = repo_parent.display().to_string();
+    let repo_dir_string = repo_dir.display().to_string();
+    let staged_repo_contents = format!("{}/.", staged_repo_dir.display());
+    let staged_system_flake_string = staged_system_flake.display().to_string();
 
-    tokio::fs::create_dir_all(&repo_dir)
+    let _ = tokio::fs::remove_dir_all(&staging_root).await;
+    tokio::fs::create_dir_all(&staged_repo_dir)
         .await
-        .map_err(|e| format!("Failed to create config dir: {}", e))?;
+        .map_err(|e| format!("Failed to create staging dir: {}", e))?;
 
-    // Copy entire config directory tree (handles both flat and hosts/ layouts)
-    copy_dir_recursive_async(config_dir, &repo_dir)
+    // Stage the repo in /tmp first, then copy it into /mnt through sudo so the
+    // installer's success state means the first-boot handoff is actually usable.
+    copy_dir_recursive_async(config_dir, &staged_repo_dir)
         .await
-        .map_err(|e| format!("Failed to copy config files: {}", e))?;
+        .map_err(|e| format!("Failed to stage config files: {}", e))?;
 
     let embedded_keystone = Path::new(INSTALL_KEYSTONE_PATH);
     if embedded_keystone.exists() {
-        let vendored_keystone = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+        let vendored_keystone = staged_repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
         copy_repo_to_writable(embedded_keystone, &vendored_keystone).map_err(|e| {
             format!(
-                "Failed to copy embedded keystone input to installed repo {}: {}",
-                repo_dir.display(),
+                "Failed to copy embedded keystone input to staged repo {}: {}",
+                staged_repo_dir.display(),
                 e
             )
         })?;
-        rewrite_keystone_lock_input(&repo_dir, &vendored_keystone).map_err(|e| {
+        rewrite_keystone_lock_input(&staged_repo_dir, &vendored_keystone).map_err(|e| {
             format!(
-                "Failed to rewrite keystone input in installed repo {}: {}",
-                repo_dir.display(),
+                "Failed to rewrite keystone input in staged repo {}: {}",
+                staged_repo_dir.display(),
                 e
             )
         })?;
     }
 
-    // Write first-boot marker
-    tokio::fs::write(repo_dir.join(".first-boot-pending"), "")
+    tokio::fs::write(staged_repo_dir.join(".first-boot-pending"), "")
         .await
         .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
-
-    let keystone_etc_dir = PathBuf::from("/mnt/etc/keystone");
-    tokio::fs::create_dir_all(&keystone_etc_dir)
+    tokio::fs::write(&staged_system_flake, format!("{}\n", repo_dir.display()))
         .await
-        .map_err(|e| format!("Failed to create /etc/keystone: {}", e))?;
-    tokio::fs::write(
-        keystone_etc_dir.join("system-flake"),
-        format!("{}\n", repo_dir.display()),
+        .map_err(|e| format!("Failed to stage system flake path: {}", e))?;
+
+    run_command_quiet("mkdir", &["-p", &repo_parent_string], None, true)
+        .await
+        .map_err(|e| format!("Failed to create installed repo parent: {}", e))?;
+    run_command_quiet("rm", &["-rf", &repo_dir_string], None, true)
+        .await
+        .map_err(|e| format!("Failed to clear installed repo dir: {}", e))?;
+    run_command_quiet("mkdir", &["-p", &repo_dir_string], None, true)
+        .await
+        .map_err(|e| format!("Failed to create installed repo dir: {}", e))?;
+    run_command_quiet(
+        "cp",
+        &["-a", &staged_repo_contents, &repo_dir_string],
+        None,
+        true,
+    )
+    .await
+    .map_err(|e| format!("Failed to copy staged repo into target system: {}", e))?;
+    run_command_quiet("mkdir", &["-p", "/mnt/etc/keystone"], None, true)
+        .await
+        .map_err(|e| format!("Failed to create /mnt/etc/keystone: {}", e))?;
+    run_command_quiet(
+        "cp",
+        &[
+            &staged_system_flake_string,
+            "/mnt/etc/keystone/system-flake",
+        ],
+        None,
+        true,
     )
     .await
     .map_err(|e| format!("Failed to write system flake path: {}", e))?;
@@ -1627,17 +1715,21 @@ async fn copy_config_to_target(
                 let uid = parts[2];
                 let gid = parts[3];
                 let keystone_dir = target_home.join(".keystone");
-                let _ = Command::new("chown")
-                    .args([
-                        "-R",
-                        &format!("{}:{}", uid, gid),
-                        &keystone_dir.display().to_string(),
-                    ])
-                    .output()
-                    .await;
+                let ownership = format!("{}:{}", uid, gid);
+                let keystone_dir_string = keystone_dir.display().to_string();
+                run_command_quiet(
+                    "chown",
+                    &["-R", &ownership, &keystone_dir_string],
+                    None,
+                    true,
+                )
+                .await
+                .map_err(|e| format!("Failed to set installed repo ownership: {}", e))?;
             }
         }
     }
+
+    let _ = tokio::fs::remove_dir_all(&staging_root).await;
 
     let _ = tx.send(InstallMessage::Output(format!(
         "Config copied to {}",
