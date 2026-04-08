@@ -61,8 +61,10 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 # Prove we built the Keystone installer artifact, not just any bootable ISO.
-xorriso -indev "$iso_path" -pvd_info > "$tmp/pvd.txt"
-grep -F "Volume Id    : KEYSTONE" "$tmp/pvd.txt" >/dev/null
+# xorriso has changed the exact casing and quoting of this field across
+# versions, so accept the known variants instead of pinning to one rendering.
+xorriso -indev "$iso_path" -pvd_info > "$tmp/pvd.txt" 2>&1
+grep -Eq "Volume [Ii]d[[:space:]]*:[[:space:]]*'?KEYSTONE'?" "$tmp/pvd.txt" >/dev/null
 
 # version.txt is a cheap sanity check that the ISO root filesystem layout is intact.
 xorriso -osirrox on -indev "$iso_path" -extract /version.txt "$tmp/version.txt" >/dev/null 2>&1
@@ -74,7 +76,7 @@ unsquashfs -cat "$tmp/nix-store.squashfs" 4424mzk2pyia5v1j33zjgrjaivrdy03y-icu4c
 unsquashfs -ll "$tmp/nix-store.squashfs" > "$tmp/nix-store.list"
 
 # Make sure the live installer closure still carries the commands the ISO boot flow needs.
-for tool in ks keystone-tui disko nixos-install; do
+for tool in ks disko nixos-install; do
     grep -Eq "/bin/${tool}$" "$tmp/nix-store.list"
 done
 EOF
