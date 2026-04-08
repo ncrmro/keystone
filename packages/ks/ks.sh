@@ -1894,7 +1894,7 @@ deploy_unlocked_current_state() {
           echo 'HM'
         fi
       "
-      # shellcheck disable=SC2029  # $path intentionally expanded client-side before the string is sent to the remote shell
+      # shellcheck disable=SC2029  # $new_sw, $new_kernel, $new_initrd, $path intentionally expanded client-side before the string is sent to the remote shell
       remote_status=$(ks_ssh "$resolved" "$check_cmd")
 
       if [[ "$remote_status" == "HM" ]]; then
