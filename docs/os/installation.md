@@ -7,6 +7,10 @@ description: Complete guide for installing NixOS using the Keystone installer IS
 
 Complete guide for installing NixOS using the Keystone installer ISO and nixos-anywhere.
 
+> **After installation**: Complete disk encryption enrollment and unlock
+> method setup — see [Disk Encryption](disk-encryption.md) for the full
+> guide, including TPM, FIDO2, password, and recovery key options.
+
 ## Prerequisites
 
 - Keystone ISO generated and burned to USB (see [ISO Generation](iso-generation.md))
