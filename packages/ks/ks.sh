@@ -1104,6 +1104,7 @@ close_all_ssh_masters() {
 }
 
 # SSH wrapper that uses ControlMaster when available
+# shellcheck disable=SC2029  # $@ intentionally expanded client-side; callers pass pre-resolved commands
 ks_ssh() {
   local target="$1"; shift
   local ctl
