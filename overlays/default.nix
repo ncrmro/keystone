@@ -16,6 +16,7 @@
   deepwork,
   grafana-mcp-src,
   lfs-s3-src,
+  repo-sync,
 }:
 let
   # Paths must be captured in `let` BEFORE the overlay function, otherwise they
@@ -28,7 +29,7 @@ let
   forgejo-cli-ex-src = ../packages/forgejo-cli-ex;
   forgejo-project-src = ../packages/forgejo-project;
   fetch-github-sources-src = ../packages/fetch-github-sources;
-  repo-sync-src = ../packages/repo-sync;
+  repo-sync-flake = repo-sync;
   podman-agent-src = ../packages/podman-agent;
   cfait-src = ../packages/cfait;
   zellij-tab-name-src = ../packages/zellij-tab-name;
@@ -90,7 +91,7 @@ in
     forgejo-cli-ex = final.callPackage forgejo-cli-ex-src { };
     forgejo-project = final.callPackage forgejo-project-src { };
     fetch-github-sources = final.callPackage fetch-github-sources-src { };
-    repo-sync = final.callPackage repo-sync-src { };
+    repo-sync = repo-sync-flake.packages.${system}.default;
     podman-agent = final.callPackage podman-agent-src { };
     agents-e2e = final.callPackage agents-e2e-src { };
     ks-legacy = final.callPackage ks-legacy-src {

@@ -1364,6 +1364,26 @@
         "type": "github"
       }
     },
+    "repo-sync": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1775657689,
+        "narHash": "sha256-Jt8V+7lyJZNKcfsfNPw8QQSlUttQIJ8tAZgobVB9y44=",
+        "owner": "kdrgo",
+        "repo": "repo-sync",
+        "rev": "94c033af9c3f7cd6d89f468ddee03cab374633b9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kdrgo",
+        "repo": "repo-sync",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "agenix": "agenix",
@@ -1388,6 +1408,7 @@
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs_3",
         "omarchy": "omarchy",
+        "repo-sync": "repo-sync",
         "walker": "walker",
         "yazi": "yazi"
       }
