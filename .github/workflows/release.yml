@@ -17,16 +17,22 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: release-${{ inputs.version }}
+  group: release-${{ github.event_name }}-${{ inputs.version || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  prepare:
     runs-on: ubuntu-latest
-    environment: release
+    outputs:
+      force_iso_build: ${{ steps.prepare.outputs.force_iso_build }}
+      publish_release: ${{ steps.prepare.outputs.publish_release }}
+      version: ${{ steps.prepare.outputs.version }}
+      release_branch: ${{ steps.prepare.outputs.release_branch }}
+      release_target: ${{ steps.prepare.outputs.release_target }}
+      iso_artifact_name: ${{ steps.prepare.outputs.iso_artifact_name }}
+      iso_file_name: ${{ steps.prepare.outputs.iso_file_name }}
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,71 +40,87 @@ jobs:
           fetch-depth: 0
 
       - name: Validate release request
+        id: prepare
         run: |
           set -euo pipefail
 
+          git fetch --prune origin --tags
+
+          force_iso_build=true
+          publish_release=false
+          version=""
+          release_branch=""
+          release_target="$GITHUB_SHA"
+          iso_artifact_name="starter-installer-iso"
+          iso_file_name="keystone-starter-installer-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::12}.iso"
+
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            VERSION_INPUT="${{ inputs.version }}"
+            version="${{ inputs.version }}"
 
             if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]]; then
               echo "The Release workflow must run from the default branch ${DEFAULT_BRANCH}"
               exit 1
             fi
 
-            if [[ ! "$VERSION_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "Release version must match MAJOR.MINOR.PATCH"
               exit 1
             fi
 
-            if git rev-parse "v$VERSION_INPUT" >/dev/null 2>&1; then
-              echo "Tag v$VERSION_INPUT already exists"
+            if git rev-parse "v$version" >/dev/null 2>&1; then
+              echo "Tag v$version already exists"
               exit 1
             fi
 
-            {
-              echo "VERSION=$VERSION_INPUT"
-              echo "RELEASE_SERIES=${VERSION_INPUT%.*}"
-              echo "RELEASE_BRANCH=release/${VERSION_INPUT%.*}"
-              echo "RELEASE_SOURCE_BRANCH=${GITHUB_REF_NAME}"
-              echo "RELEASE_TARGET_BRANCH=release/${VERSION_INPUT%.*}"
-            } >> "$GITHUB_ENV"
+            publish_release=true
+            release_branch="release/${version%.*}"
+            iso_file_name="keystone-starter-installer-v${version}.iso"
+
+            # TODO: Re-enable automatic release branch creation before publishing stable releases.
+            # if git ls-remote --exit-code --heads origin "$release_branch" >/dev/null 2>&1; then
+            #   echo "Using existing release branch $release_branch for this release series"
+            # else
+            #   echo "Creating release branch $release_branch from origin/$DEFAULT_BRANCH"
+            #   git push origin "HEAD:refs/heads/$release_branch"
+            # fi
+            #
+            # TODO: Once release branch creation is active again, publish from "$release_branch"
+            # instead of the dispatch SHA so future hotfixes stabilize on that branch.
           else
             if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" && "${GITHUB_REF_NAME}" != release/* ]]; then
               echo "Automatic release validation only runs on ${DEFAULT_BRANCH} or release/* branches"
               exit 1
             fi
-
-            echo "RELEASE_TARGET_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
           fi
 
           {
-            echo "FIXTURE_DIR=$RUNNER_TEMP/keystone-starter-fixture"
-            echo "STARTER_ARTIFACT_DIR=$RUNNER_TEMP/starter-iso-artifact"
-          } >> "$GITHUB_ENV"
+            echo "force_iso_build=$force_iso_build"
+            echo "publish_release=$publish_release"
+            echo "version=$version"
+            echo "release_branch=$release_branch"
+            echo "release_target=$release_target"
+            echo "iso_artifact_name=$iso_artifact_name"
+            echo "iso_file_name=$iso_file_name"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Create or reuse release branch
-        if: github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch
-        run: |
-          set -euo pipefail
+  validate:
+    needs: prepare
+    uses: ./.github/workflows/validate.yml
+    with:
+      force_iso_build: ${{ needs.prepare.outputs.force_iso_build == 'true' }}
+      upload_iso_artifact: ${{ needs.prepare.outputs.publish_release == 'true' }}
+      iso_artifact_name: ${{ needs.prepare.outputs.iso_artifact_name }}
+      iso_file_name: ${{ needs.prepare.outputs.iso_file_name }}
+    secrets: inherit
 
-          git fetch --prune origin
-
-          if git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null 2>&1; then
-            echo "Using existing release branch $RELEASE_BRANCH"
-            git fetch origin "$RELEASE_BRANCH":"refs/remotes/origin/$RELEASE_BRANCH"
-            git checkout --track "origin/$RELEASE_BRANCH"
-          else
-            echo "Creating release branch $RELEASE_BRANCH from origin/$RELEASE_SOURCE_BRANCH"
-            git fetch origin "$RELEASE_SOURCE_BRANCH":"refs/remotes/origin/$RELEASE_SOURCE_BRANCH"
-            git checkout -b "$RELEASE_BRANCH" "origin/$RELEASE_SOURCE_BRANCH"
-            git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
-          fi
-
-      - name: Branch release validation mode
-        if: github.event_name == 'push'
-        run: |
-          set -euo pipefail
-          echo "Skipping release branch creation in branch-triggered release mode"
+  warm-cache:
+    needs:
+      - prepare
+      - validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
@@ -109,52 +131,7 @@ jobs:
         uses: cachix/cachix-action@v15
         with:
           name: ks-systems
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
-
-      - name: Build stage
-        run: |
-          set -euo pipefail
-          nix build .#packages.x86_64-linux.keystone-tui
-
-      - name: Test stage
-        run: |
-          set -euo pipefail
-          nix flake check
-
-      - name: Build starter ISO fixture
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'release/')
-        run: |
-          set -euo pipefail
-
-          ./bin/generate-template-fixture --output "$FIXTURE_DIR"
-
-          cd "$FIXTURE_DIR"
-          ./bin/test-iso --build-only
-
-          mkdir -p "$STARTER_ARTIFACT_DIR"
-
-          iso_path="$(find "$FIXTURE_DIR/.test-iso/iso" -maxdepth 1 -name '*.iso' -print -quit)"
-          if [[ -z "$iso_path" ]]; then
-            echo "Generated fixture build completed but no ISO artifact was found"
-            exit 1
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            artifact_name="keystone-starter-installer-v${VERSION}.iso"
-          else
-            artifact_name="keystone-starter-installer-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::12}.iso"
-          fi
-
-          cp "$iso_path" "$STARTER_ARTIFACT_DIR/$artifact_name"
-          echo "STARTER_ISO_PATH=$STARTER_ARTIFACT_DIR/$artifact_name" >> "$GITHUB_ENV"
-
-      - name: Upload starter ISO artifact
-        if: env.STARTER_ISO_PATH != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: starter-installer-iso
-          path: ${{ env.STARTER_ISO_PATH }}
-          if-no-files-found: error
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Warm cache stage
         run: |
@@ -182,23 +159,48 @@ jobs:
             .#packages.x86_64-linux.zellij-tab-name \
             .#packages.x86_64-linux.zesh
 
-      # - name: Tag stage
-      #   if: github.event_name == 'workflow_dispatch'
-      #   run: |
-      #     set -euo pipefail
-      #     git config user.name "github-actions[bot]"
-      #     git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      #     git tag -a "v$VERSION" -m "Release v$VERSION"
-      #     git push origin "refs/tags/v$VERSION"
+  publish:
+    needs:
+      - prepare
+      - validate
+      - warm-cache
+    if: needs.prepare.outputs.publish_release == 'true' && needs.validate.outputs.iso_built == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download starter ISO artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.validate.outputs.iso_artifact_name }}
+          path: ${{ runner.temp }}/starter-installer-iso
 
-      # - name: Publish stage
-      #   if: github.event_name == 'workflow_dispatch'
-      #   env:
-      #     GH_TOKEN: ${{ github.token }}
-      #   run: |
-      #     set -euo pipefail
-      #     gh release create "v$VERSION" \
-      #       --verify-tag \
-      #       --generate-notes \
-      #       --title "Keystone v$VERSION" \
-      #       --target "$RELEASE_TARGET_BRANCH"
+      - name: Resolve starter ISO artifact
+        id: iso
+        run: |
+          set -euo pipefail
+
+          iso_path="$RUNNER_TEMP/starter-installer-iso/${{ needs.validate.outputs.iso_file_name }}"
+          if [[ ! -f "$iso_path" ]]; then
+            iso_path="$(find "$RUNNER_TEMP/starter-installer-iso" -maxdepth 1 -name '*.iso' -print -quit)"
+          fi
+
+          if [[ -z "$iso_path" || ! -f "$iso_path" ]]; then
+            echo "The release validation workflow did not produce a starter ISO artifact"
+            exit 1
+          fi
+
+          echo "iso_path=$iso_path" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISO_PATH: ${{ steps.iso.outputs.iso_path }}
+          RELEASE_TARGET: ${{ needs.prepare.outputs.release_target }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          gh release create "v$VERSION" \
+            --generate-notes \
+            --title "Keystone v$VERSION" \
+            --target "$RELEASE_TARGET" \
+            "$ISO_PATH"
