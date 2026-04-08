@@ -244,6 +244,75 @@ let
         };
       }
     ];
+    credstore-recovery-config =
+      let
+        # Evaluate a ZFS config and verify credstore recovery policy
+        result = nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            self.nixosModules.operating-system
+            {
+              system.stateVersion = "25.05";
+              boot.loader.systemd-boot.enable = true;
+              keystone.os = {
+                enable = true;
+                storage = {
+                  type = "zfs";
+                  devices = [ "/dev/vda" ];
+                };
+                users.testuser = {
+                  fullName = "Test User";
+                  initialPassword = "testpass";
+                };
+              };
+              networking.hostId = "deadbeef";
+              fileSystems."/" = {
+                device = lib.mkForce "rpool/crypt/system";
+                fsType = lib.mkForce "zfs";
+              };
+            }
+          ];
+        };
+
+        credstoreOpts = result.config.boot.initrd.luks.devices.credstore.crypttabExtraOpts;
+        hasTokenTimeout = lib.any (opt: lib.hasPrefix "token-timeout=" opt) credstoreOpts;
+        rpoolLoadKey = result.config.boot.initrd.systemd.services.rpool-load-key;
+        rpoolScript = rpoolLoadKey.script or "";
+        hasRpoolDiagnostics = builtins.match ".*CRITICAL.*credstore.*" rpoolScript != null;
+      in
+      pkgs.runCommand "eval-credstore-recovery-config" { } ''
+        echo "Evaluating credstore-recovery-config..."
+
+        # Verify token-timeout is set in credstore crypttab options
+        ${
+          if hasTokenTimeout then
+            ''
+              echo "  PASS: credstore crypttabExtraOpts includes token-timeout"
+            ''
+          else
+            ''
+              echo "  FAIL: credstore crypttabExtraOpts missing token-timeout" >&2
+              echo "  Got: ${builtins.toJSON credstoreOpts}" >&2
+              exit 1
+            ''
+        }
+
+        # Verify rpool-load-key has diagnostic error messages
+        ${
+          if hasRpoolDiagnostics then
+            ''
+              echo "  PASS: rpool-load-key includes credstore failure diagnostics"
+            ''
+          else
+            ''
+              echo "  FAIL: rpool-load-key missing credstore failure diagnostics" >&2
+              exit 1
+            ''
+        }
+
+        echo "  All credstore recovery policy assertions passed."
+        touch $out
+      '';
   };
 in
 pkgs.runCommand "test-os-evaluation"
@@ -265,6 +334,7 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - credstore-recovery-config: Credstore TPM fallback recovery policy"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
