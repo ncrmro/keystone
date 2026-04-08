@@ -11,6 +11,7 @@ KEYSTONE_SOURCE="path:${REPO_ROOT}"
 FIXTURE_DIR=""
 RUN_GENERATED=true
 RUN_CURATED=true
+RUN_HEAVY=true
 RUN_REPORT=true
 REPORT_ONLY=false
 KEEP_TEMP=false
@@ -45,6 +46,7 @@ WATCHLIST_LABEL="Rust-heavy watchlist"
 
 installer_targets=()
 target_attrs=()
+HEAVY_EXPR_FILE=""
 
 log_info() {
     printf 'INFO: %s\n' "$*" >&2
@@ -74,20 +76,27 @@ json_size_or_unknown() {
 }
 
 load_local_env() {
-    local env_file
+    local env_file token_line token_value
 
     env_file="${REPO_ROOT}/.env"
     if [[ ! -f "$env_file" ]]; then
         return
     fi
 
-    log_info "Loading local environment from ${env_file}"
-    # shellcheck disable=SC1090
-    set -a
-    source "$env_file"
-    set +a
+    token_line="$(grep -E '^(export[[:space:]]+)?CACHIX_AUTH_TOKEN=' "$env_file" | tail -n1 || true)"
+    if [[ -z "$token_line" ]]; then
+        return
+    fi
 
-    TOKEN="${CACHIX_AUTH_TOKEN:-$TOKEN}"
+    token_value="${token_line#*=}"
+    if [[ "$token_value" =~ ^\".*\"$ || "$token_value" =~ ^\'.*\'$ ]]; then
+        token_value="${token_value:1:${#token_value}-2}"
+    fi
+
+    if [[ -n "$token_value" ]]; then
+        log_info "Loading CACHIX_AUTH_TOKEN from ${env_file}"
+        TOKEN="$token_value"
+    fi
 }
 
 show_help() {
@@ -106,6 +115,7 @@ Options:
       --skip-report           Skip the pre-warm cache coverage report
       --skip-generated        Skip generated-template host closures
       --skip-curated          Skip curated package attrs
+      --skip-heavy            Skip explicit heavy Rust/tool stack warm targets
       --keep-temp             Keep temporary XDG config and fixture directories
   -h, --help                  Show this help
 
@@ -248,6 +258,99 @@ report_curated_cache_coverage() {
     summarize_dry_run "Curated package set" "${CURATED_ATTRS[@]}"
 }
 
+resolve_build_outputs() {
+    nix build "$@" --json --dry-run --no-link 2>/dev/null | jq -r '.[].outputs.out'
+}
+
+heavy_label_for_output() {
+    local output_path="$1"
+    local base
+
+    base="$(basename "$output_path")"
+    case "$base" in
+        *claude-code*) printf 'claude-code' ;;
+        *gemini-cli*) printf 'gemini-cli' ;;
+        *codex*) printf 'codex' ;;
+        *opencode*) printf 'opencode' ;;
+        *himalaya*) printf 'himalaya' ;;
+        *yazi*) printf 'yazi' ;;
+        *walker*) printf 'walker' ;;
+        *hyprland*) printf 'hyprland' ;;
+        *) printf '%s' "$base" ;;
+    esac
+}
+
+write_heavy_expr() {
+    HEAVY_EXPR_FILE="${FIXTURE_DIR}/warm-cache-heavy.nix"
+    cat >"$HEAVY_EXPR_FILE" <<EOF
+let
+  flake = builtins.getFlake "${KEYSTONE_SOURCE}";
+  system = "x86_64-linux";
+  pkgs = import flake.inputs.nixpkgs {
+    inherit system;
+    overlays = [ flake.overlays.default ];
+  };
+in [
+  pkgs.keystone.claude-code
+  pkgs.keystone.gemini-cli
+  pkgs.keystone.codex
+  pkgs.keystone.opencode
+  pkgs.keystone.himalaya
+  pkgs.yazi
+  flake.inputs.walker.packages.\${system}.default
+  flake.inputs.hyprland.packages.\${system}.hyprland
+]
+EOF
+}
+
+report_heavy_cache_coverage() {
+    local -a heavy_outputs=()
+    local output_path
+
+    log_info "Heavy Rust/tool cache coverage against ${CACHE_URL}"
+    summarize_dry_run "Heavy Rust/tool stack" --impure --file "$HEAVY_EXPR_FILE"
+
+    mapfile -t heavy_outputs < <(resolve_build_outputs --impure --file "$HEAVY_EXPR_FILE")
+    for output_path in "${heavy_outputs[@]}"; do
+        report_remote_output "$(heavy_label_for_output "$output_path")" "$output_path"
+    done
+}
+
+push_store_paths() {
+    local -a batch=()
+    local path
+
+    while IFS= read -r path; do
+        [[ -n "$path" ]] || continue
+        batch+=("$path")
+
+        if (( ${#batch[@]} >= 200 )); then
+            run_cachix push "$CACHE_NAME" "${batch[@]}"
+            batch=()
+        fi
+    done
+
+    if (( ${#batch[@]} > 0 )); then
+        run_cachix push "$CACHE_NAME" "${batch[@]}"
+    fi
+}
+
+push_heavy_closures() {
+    local -a heavy_outputs=()
+
+    mapfile -t heavy_outputs < <(
+        nix build --impure --file "$HEAVY_EXPR_FILE" --json --no-link | jq -r '.[].outputs.out'
+    )
+
+    if (( ${#heavy_outputs[@]} == 0 )); then
+        log_error "Heavy Rust/tool stack produced no output paths to push"
+        exit 1
+    fi
+
+    log_info "Pushing heavy Rust/tool closures to ${CACHE_NAME}"
+    nix path-info --recursive "${heavy_outputs[@]}" | sort -u | push_store_paths
+}
+
 configure_local_cachix() {
     if [[ "$IN_CI" == "true" ]]; then
         log_info "Detected CI environment; using existing Cachix configuration"
@@ -333,6 +436,10 @@ while [[ $# -gt 0 ]]; do
             RUN_CURATED=false
             shift
             ;;
+        --skip-heavy)
+            RUN_HEAVY=false
+            shift
+            ;;
         --keep-temp)
             KEEP_TEMP=true
             shift
@@ -353,13 +460,13 @@ if [[ "$REPORT_ONLY" == true ]]; then
     RUN_REPORT=true
 fi
 
-if [[ "$RUN_REPORT" == false && "$RUN_GENERATED" == false && "$RUN_CURATED" == false ]]; then
+if [[ "$RUN_REPORT" == false && "$RUN_GENERATED" == false && "$RUN_CURATED" == false && "$RUN_HEAVY" == false ]]; then
     log_error "Nothing to do: reporting and all warm targets are disabled"
     exit 1
 fi
 
-if [[ "$REPORT_ONLY" == true && "$RUN_GENERATED" == false && "$RUN_CURATED" == false ]]; then
-    log_error "Nothing to report: both generated targets and curated packages are disabled"
+if [[ "$REPORT_ONLY" == true && "$RUN_GENERATED" == false && "$RUN_CURATED" == false && "$RUN_HEAVY" == false ]]; then
+    log_error "Nothing to report: generated targets, curated packages, and heavy targets are disabled"
     exit 1
 fi
 
@@ -411,6 +518,9 @@ run_cachix() {
 }
 
 prepare_fixture_and_targets
+if [[ "$RUN_HEAVY" == true ]]; then
+    write_heavy_expr
+fi
 
 if [[ "$RUN_REPORT" == true ]]; then
     if [[ "$RUN_GENERATED" == true ]]; then
@@ -419,6 +529,10 @@ if [[ "$RUN_REPORT" == true ]]; then
 
     if [[ "$RUN_CURATED" == true ]]; then
         report_curated_cache_coverage
+    fi
+
+    if [[ "$RUN_HEAVY" == true ]]; then
+        report_heavy_cache_coverage
     fi
 fi
 
@@ -438,4 +552,11 @@ if [[ "$RUN_CURATED" == true ]]; then
     log_info "Warming curated package cache"
     run_cachix watch-exec "$CACHE_NAME" -- \
         nix build "${CURATED_ATTRS[@]}"
+fi
+
+if [[ "$RUN_HEAVY" == true ]]; then
+    log_info "Warming explicit heavy Rust/tool stack"
+    run_cachix watch-exec "$CACHE_NAME" -- \
+        nix build --impure --file "$HEAVY_EXPR_FILE"
+    push_heavy_closures
 fi
