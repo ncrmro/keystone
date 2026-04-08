@@ -61,6 +61,8 @@ jobs:
       pull-requests: read
     outputs:
       should_build_iso: ${{ steps.pr-policy.outputs.should_build_iso || steps.call-policy.outputs.should_build_iso || 'false' }}
+      should_run_nixfmt: ${{ steps.pr-policy.outputs.should_run_nixfmt || steps.call-policy.outputs.should_run_nixfmt || 'false' }}
+      should_run_shellcheck: ${{ steps.pr-policy.outputs.should_run_shellcheck || steps.call-policy.outputs.should_run_shellcheck || 'false' }}
     steps:
       - uses: actions/checkout@v4
         if: github.event_name == 'pull_request'
@@ -80,18 +82,34 @@ jobs:
               - 'modules/**'
               - 'packages/**'
               - 'templates/default/**'
+            nixfmt:
+              - '.github/workflows/validate.yml'
+              - 'flake.nix'
+              - '**/*.nix'
+            shellcheck:
+              - '.github/workflows/validate.yml'
+              - '**/*.sh'
+              - '**/*.bash'
 
       - name: Use pull request ISO policy
         if: github.event_name == 'pull_request'
         id: pr-policy
         run: |
-          echo "should_build_iso=${{ steps.filter.outputs.iso_build }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "should_build_iso=${{ steps.filter.outputs.iso_build }}"
+            echo "should_run_nixfmt=${{ steps.filter.outputs.nixfmt }}"
+            echo "should_run_shellcheck=${{ steps.filter.outputs.shellcheck }}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Use workflow-call ISO policy
         if: github.event_name == 'workflow_call'
         id: call-policy
         run: |
-          echo "should_build_iso=${{ inputs.force_iso_build }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "should_build_iso=${{ inputs.force_iso_build }}"
+            echo "should_run_nixfmt=true"
+            echo "should_run_shellcheck=true"
+          } >> "$GITHUB_OUTPUT"
 
   flake-check:
     runs-on: ubuntu-latest
@@ -128,6 +146,8 @@ jobs:
 
   nixfmt:
     name: nixfmt
+    needs: changes
+    if: needs.changes.outputs.should_run_nixfmt == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -144,6 +164,8 @@ jobs:
 
   shellcheck:
     name: shellcheck
+    needs: changes
+    if: needs.changes.outputs.should_run_shellcheck == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
