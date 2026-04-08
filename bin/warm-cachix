@@ -6,13 +6,42 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 CACHE_NAME="ks-systems"
+CACHE_URL=""
 KEYSTONE_SOURCE="path:${REPO_ROOT}"
 FIXTURE_DIR=""
 RUN_GENERATED=true
 RUN_CURATED=true
+RUN_REPORT=true
+REPORT_ONLY=false
 KEEP_TEMP=false
 TOKEN="${CACHIX_AUTH_TOKEN:-}"
 IN_CI="${CI:-}"
+
+CURATED_ATTRS=(
+    .#packages.x86_64-linux.agent-coding-agent
+    .#packages.x86_64-linux.agent-mail
+    .#packages.x86_64-linux.chrome-devtools-mcp
+    .#packages.x86_64-linux.deepwork-library-jobs
+    .#packages.x86_64-linux.fetch-email-source
+    .#packages.x86_64-linux.fetch-forgejo-sources
+    .#packages.x86_64-linux.fetch-github-sources
+    .#packages.x86_64-linux.forgejo-cli-ex
+    .#packages.x86_64-linux.forgejo-project
+    .#packages.x86_64-linux.grafana-mcp
+    .#packages.x86_64-linux.keystone-conventions
+    .#packages.x86_64-linux.keystone-deepwork-jobs
+    .#packages.x86_64-linux.ks
+    .#packages.x86_64-linux.lfs-s3
+    .#packages.x86_64-linux.podman-agent
+    .#packages.x86_64-linux.pz
+    .#packages.x86_64-linux.repo-sync
+    .#packages.x86_64-linux.slidev
+    .#packages.x86_64-linux.zellij-tab-name
+    .#packages.x86_64-linux.zesh
+)
+
+installer_targets=()
+target_attrs=()
 
 log_info() {
     printf 'INFO: %s\n' "$*" >&2
@@ -20,6 +49,14 @@ log_info() {
 
 log_error() {
     printf 'ERROR: %s\n' "$*" >&2
+}
+
+human_size() {
+    if [[ "${1:-0}" =~ ^[0-9]+$ ]]; then
+        numfmt --to=iec-i --suffix=B "$1"
+    else
+        printf '%s' "$1"
+    fi
 }
 
 load_local_env() {
@@ -51,8 +88,10 @@ Options:
                               (default: ${KEYSTONE_SOURCE})
   -f, --fixture-dir DIR       Reuse or create the fixture in DIR instead of a temp dir
       --token TOKEN           Cachix auth token. Prefer CACHIX_AUTH_TOKEN instead.
-      --skip-generated        Skip warming generated-template host closures
-      --skip-curated          Skip warming curated package attrs
+      --report-only           Report cache coverage without pushing anything
+      --skip-report           Skip the pre-warm cache coverage report
+      --skip-generated        Skip generated-template host closures
+      --skip-curated          Skip curated package attrs
       --keep-temp             Keep temporary XDG config and fixture directories
   -h, --help                  Show this help
 
@@ -64,6 +103,158 @@ token is not persisted locally after the process exits. In CI, the command
 assumes Cachix is already configured and skips that local-only setup. For
 local use, a repo-local .env file may provide CACHIX_AUTH_TOKEN.
 EOF
+}
+
+summarize_dry_run() {
+    local label="$1"
+    shift
+
+    local output build_header fetch_header item
+    local -a build_items fetch_items
+
+    output="$(nix build "$@" --dry-run --no-link 2>&1 || true)"
+    build_header="$(printf '%s\n' "$output" | grep -E '^these [0-9]+ derivations will be built:$' | head -n1 || true)"
+    fetch_header="$(printf '%s\n' "$output" | grep -E '^these [0-9]+ paths will be fetched ' | head -n1 || true)"
+
+    mapfile -t build_items < <(
+        printf '%s\n' "$output" | awk '
+            /^these [0-9]+ derivations will be built:$/ { section="build"; next }
+            /^these [0-9]+ paths will be fetched / { section=""; next }
+            section == "build" && /^\/nix\/store\// { print; next }
+            section == "build" && /^$/ { section="" }
+        '
+    )
+    mapfile -t fetch_items < <(
+        printf '%s\n' "$output" | awk '
+            /^these [0-9]+ paths will be fetched / { section="fetch"; next }
+            section == "fetch" && /^\/nix\/store\// { print; next }
+            section == "fetch" && /^$/ { section="" }
+        '
+    )
+
+    log_info "${label} dry-run summary"
+    if [[ -n "$build_header" ]]; then
+        log_info "  ${build_header%:}"
+        for item in "${build_items[@]:0:5}"; do
+            log_info "    build $(basename "$item")"
+        done
+        if (( ${#build_items[@]} > 5 )); then
+            log_info "    ... and $(( ${#build_items[@]} - 5 )) more derivations"
+        fi
+    fi
+
+    if [[ -n "$fetch_header" ]]; then
+        log_info "  $fetch_header"
+        for item in "${fetch_items[@]:0:5}"; do
+            log_info "    fetch $(basename "$item")"
+        done
+        if (( ${#fetch_items[@]} > 5 )); then
+            log_info "    ... and $(( ${#fetch_items[@]} - 5 )) more store paths"
+        fi
+    fi
+
+    if [[ -z "$build_header" && -z "$fetch_header" ]]; then
+        log_info "  no local builds or remote fetches reported"
+    fi
+}
+
+report_remote_output() {
+    local label="$1"
+    local output_path="$2"
+    local path_info closure_info nar_size download_size closure_size closure_count
+
+    if ! path_info="$(nix path-info --json --store "$CACHE_URL" "$output_path" 2>/dev/null)"; then
+        log_info "  ${label}: top-level output is not cached"
+        return
+    fi
+
+    nar_size="$(jq -r --arg path "$output_path" '.[$path].narSize // 0' <<<"$path_info")"
+    download_size="$(jq -r --arg path "$output_path" '.[$path].downloadSize // 0' <<<"$path_info")"
+    log_info "  ${label}: top-level output is cached"
+    log_info "    output: $(basename "$output_path")"
+    log_info "    nar size: $(human_size "$nar_size"), download size: $(human_size "$download_size")"
+
+    # A recursive query only succeeds when the full closure is present in the
+    # remote cache. That distinguishes "the toplevel output exists" from "the
+    # installer can substitute the entire host closure without local builds".
+    if closure_info="$(nix path-info --recursive --closure-size --json --store "$CACHE_URL" "$output_path" 2>/dev/null)"; then
+        closure_size="$(jq -r --arg path "$output_path" '.[$path].closureSize // 0' <<<"$closure_info")"
+        closure_count="$(jq 'length' <<<"$closure_info")"
+        log_info "    full closure cached: yes ($(human_size "$closure_size"), ${closure_count} paths)"
+    else
+        log_info "    full closure cached: no"
+    fi
+}
+
+report_generated_cache_coverage() {
+    local index output_path
+
+    log_info "Installer cache coverage against ${CACHE_URL}"
+    summarize_dry_run "Generated installer targets" "${target_attrs[@]}"
+
+    for index in "${!installer_targets[@]}"; do
+        output_path="$(
+            nix build "${target_attrs[$index]}" --dry-run --json --no-link 2>/dev/null \
+                | jq -r '.[0].outputs.out'
+        )"
+        report_remote_output "${installer_targets[$index]}" "$output_path"
+    done
+}
+
+report_curated_cache_coverage() {
+    log_info "Curated package cache coverage against ${CACHE_URL}"
+    summarize_dry_run "Curated package set" "${CURATED_ATTRS[@]}"
+}
+
+configure_local_cachix() {
+    if [[ "$IN_CI" == "true" ]]; then
+        log_info "Detected CI environment; using existing Cachix configuration"
+        return
+    fi
+
+    if [[ -z "$TOKEN" ]]; then
+        load_local_env
+    fi
+
+    if [[ -z "$TOKEN" ]]; then
+        log_error "Set CACHIX_AUTH_TOKEN, add it to .env, or pass --token to push warmed paths"
+        exit 1
+    fi
+
+    TEMP_XDG_CONFIG_HOME="$(mktemp -d)"
+    export XDG_CONFIG_HOME="$TEMP_XDG_CONFIG_HOME"
+
+    log_info "Configuring temporary Cachix credentials for ${CACHE_NAME}"
+    run_cachix authtoken "$TOKEN"
+    run_cachix use "$CACHE_NAME"
+}
+
+prepare_fixture_and_targets() {
+    if [[ "$RUN_GENERATED" != true ]]; then
+        return
+    fi
+
+    log_info "Generating template fixture in ${FIXTURE_DIR}"
+    "${SCRIPT_DIR}/generate-template-fixture" \
+        --output "$FIXTURE_DIR" \
+        --keystone-source "$KEYSTONE_SOURCE" >/dev/null
+
+    log_info "Resolving generated installer targets"
+    mapfile -t installer_targets < <(
+        nix eval \
+            --apply 'targets: builtins.concatStringsSep "\n" (builtins.attrNames targets)' \
+            --raw \
+            "$FIXTURE_DIR#installerTargets"
+    )
+
+    if [[ "${#installer_targets[@]}" -eq 0 ]]; then
+        log_error "Generated fixture did not expose any installer targets"
+        exit 1
+    fi
+
+    for target in "${installer_targets[@]}"; do
+        target_attrs+=("$FIXTURE_DIR#nixosConfigurations.${target}.config.system.build.toplevel")
+    done
 }
 
 while [[ $# -gt 0 ]]; do
@@ -83,6 +274,14 @@ while [[ $# -gt 0 ]]; do
         --token)
             TOKEN="$2"
             shift 2
+            ;;
+        --report-only)
+            REPORT_ONLY=true
+            shift
+            ;;
+        --skip-report)
+            RUN_REPORT=false
+            shift
             ;;
         --skip-generated)
             RUN_GENERATED=false
@@ -108,8 +307,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ "$RUN_GENERATED" == false && "$RUN_CURATED" == false ]]; then
-    log_error "Nothing to warm: both generated targets and curated packages are disabled"
+if [[ "$REPORT_ONLY" == true ]]; then
+    RUN_REPORT=true
+fi
+
+if [[ "$RUN_REPORT" == false && "$RUN_GENERATED" == false && "$RUN_CURATED" == false ]]; then
+    log_error "Nothing to do: reporting and all warm targets are disabled"
+    exit 1
+fi
+
+if [[ "$REPORT_ONLY" == true && "$RUN_GENERATED" == false && "$RUN_CURATED" == false ]]; then
+    log_error "Nothing to report: both generated targets and curated packages are disabled"
     exit 1
 fi
 
@@ -148,6 +356,8 @@ if [[ -z "$FIXTURE_DIR" ]]; then
     FIXTURE_WAS_TEMP=true
 fi
 
+CACHE_URL="https://${CACHE_NAME}.cachix.org"
+
 if command -v cachix >/dev/null 2>&1; then
     CACHIX_CMD=(cachix)
 else
@@ -158,50 +368,25 @@ run_cachix() {
     "${CACHIX_CMD[@]}" "$@"
 }
 
-if [[ "$IN_CI" == "true" ]]; then
-    log_info "Detected CI environment; using existing Cachix configuration"
-else
-    if [[ -z "$TOKEN" ]]; then
-        load_local_env
+prepare_fixture_and_targets
+
+if [[ "$RUN_REPORT" == true ]]; then
+    if [[ "$RUN_GENERATED" == true ]]; then
+        report_generated_cache_coverage
     fi
 
-    if [[ -z "$TOKEN" ]]; then
-        log_error "Set CACHIX_AUTH_TOKEN, add it to .env, or pass --token to push warmed paths"
-        exit 1
+    if [[ "$RUN_CURATED" == true ]]; then
+        report_curated_cache_coverage
     fi
-
-    TEMP_XDG_CONFIG_HOME="$(mktemp -d)"
-    export XDG_CONFIG_HOME="$TEMP_XDG_CONFIG_HOME"
-
-    log_info "Configuring temporary Cachix credentials for ${CACHE_NAME}"
-    run_cachix authtoken "$TOKEN"
-    run_cachix use "$CACHE_NAME"
 fi
 
+if [[ "$REPORT_ONLY" == true ]]; then
+    exit 0
+fi
+
+configure_local_cachix
+
 if [[ "$RUN_GENERATED" == true ]]; then
-    log_info "Generating template fixture in ${FIXTURE_DIR}"
-    "${SCRIPT_DIR}/generate-template-fixture" \
-        --output "$FIXTURE_DIR" \
-        --keystone-source "$KEYSTONE_SOURCE" >/dev/null
-
-    log_info "Resolving generated installer targets"
-    mapfile -t installer_targets < <(
-        nix eval \
-            --apply 'targets: builtins.concatStringsSep "\n" (builtins.attrNames targets)' \
-            --raw \
-            "$FIXTURE_DIR#installerTargets"
-    )
-
-    if [[ "${#installer_targets[@]}" -eq 0 ]]; then
-        log_error "Generated fixture did not expose any installer targets"
-        exit 1
-    fi
-
-    target_attrs=()
-    for target in "${installer_targets[@]}"; do
-        target_attrs+=("$FIXTURE_DIR#nixosConfigurations.${target}.config.system.build.toplevel")
-    done
-
     log_info "Warming generated-template host closures"
     run_cachix watch-exec "$CACHE_NAME" -- \
         nix build "${target_attrs[@]}" --print-build-logs
@@ -210,25 +395,5 @@ fi
 if [[ "$RUN_CURATED" == true ]]; then
     log_info "Warming curated package cache"
     run_cachix watch-exec "$CACHE_NAME" -- \
-        nix build \
-            .#packages.x86_64-linux.agent-coding-agent \
-            .#packages.x86_64-linux.agent-mail \
-            .#packages.x86_64-linux.chrome-devtools-mcp \
-            .#packages.x86_64-linux.deepwork-library-jobs \
-            .#packages.x86_64-linux.fetch-email-source \
-            .#packages.x86_64-linux.fetch-forgejo-sources \
-            .#packages.x86_64-linux.fetch-github-sources \
-            .#packages.x86_64-linux.forgejo-cli-ex \
-            .#packages.x86_64-linux.forgejo-project \
-            .#packages.x86_64-linux.grafana-mcp \
-            .#packages.x86_64-linux.keystone-conventions \
-            .#packages.x86_64-linux.keystone-deepwork-jobs \
-            .#packages.x86_64-linux.ks \
-            .#packages.x86_64-linux.lfs-s3 \
-            .#packages.x86_64-linux.podman-agent \
-            .#packages.x86_64-linux.pz \
-            .#packages.x86_64-linux.repo-sync \
-            .#packages.x86_64-linux.slidev \
-            .#packages.x86_64-linux.zellij-tab-name \
-            .#packages.x86_64-linux.zesh
+        nix build "${CURATED_ATTRS[@]}"
 fi
