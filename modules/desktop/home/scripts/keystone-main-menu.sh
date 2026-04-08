@@ -140,9 +140,10 @@ main_json() {
       },
       {
         Text: "Update",
-        Subtext: "Use nix flake update",
-        Value: "blocked\tUpdate\tUse nix flake update for system updates.",
-        Icon: "software-update-available-symbolic"
+        Subtext: "Keystone release status and update actions",
+        Value: "update",
+        Icon: "software-update-available-symbolic",
+        SubMenu: "keystone-update"
       },
       {
         Text: "System",
@@ -381,6 +382,10 @@ open_menu() {
       menu_id="menus:keystone-setup"
       prompt="Setup"
       ;;
+    update)
+      menu_id="menus:keystone-update"
+      prompt="Update"
+      ;;
     system)
       menu_id="menus:keystone-system"
       prompt="System"
@@ -402,7 +407,7 @@ dispatch() {
   IFS=$'\t' read -r action arg1 arg2 <<<"$payload"
 
   case "$action" in
-    learn | capture | screenshot | toggle | style | theme | setup | system | agents)
+    learn | capture | screenshot | toggle | style | theme | setup | system | agents | update)
       ;;
     open-apps)
       detach walker
@@ -505,7 +510,7 @@ case "${1:-}" in
     dispatch "$@"
     ;;
   *)
-    echo "Usage: keystone-main-menu {open-menu|main-json|learn-json|capture-json|screenshot-json|toggle-json|style-json|theme-json|system-json|preview-blocked|dispatch} ..." >&2
+    echo "Usage: keystone-main-menu {open-menu|main-json|learn-json|capture-json|screenshot-json|toggle-json|style-json|theme-json|system-json|preview-blocked|dispatch} [args...]" >&2
     exit 1
     ;;
 esac
