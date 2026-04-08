@@ -99,7 +99,7 @@ whisper-cli \
   --model "$MODEL_PATH" \
   --output-txt \
   --output-file "$TMPDIR_WORK/transcript" \
-  --print-timestamps \
+   \
   "$WAV_INPUT" 
 
 # whisper-cli creates transcript.txt
