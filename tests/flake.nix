@@ -212,6 +212,38 @@
         test-iso-evaluation = import ./module/iso-evaluation.nix {
           inherit pkgs lib;
         };
+
+        # Service Account Provisioning Tests
+        # Each test targets one subsystem so failures identify the affected module.
+        # See: https://github.com/ncrmro/keystone/issues/228
+
+        # Stalwart-only: principal creation, CalDAV bootstrap, ACL sharing
+        test-stalwart-provisioning = import ./module/stalwart-provisioning.nix {
+          inherit pkgs lib;
+          self = keystone;
+          inherit home-manager;
+        };
+
+        # Forgejo-only: agent user creation, repo bootstrap, CLI credentials
+        test-forgejo-provisioning = import ./module/forgejo-provisioning.nix {
+          inherit pkgs lib;
+          self = keystone;
+          inherit home-manager;
+        };
+
+        # Offline regression: both services start and provision without outbound internet
+        test-service-account-offline = import ./module/service-account-offline.nix {
+          inherit pkgs lib;
+          self = keystone;
+          inherit home-manager;
+        };
+
+        # CLI config: home-manager writes tea/fj configs; provisioning writes API token
+        test-service-account-cli-config = import ./module/service-account-cli-config.nix {
+          inherit pkgs lib;
+          self = keystone;
+          inherit home-manager;
+        };
       };
 
       # Also expose tests as packages for convenience
