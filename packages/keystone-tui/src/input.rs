@@ -393,6 +393,11 @@ pub fn handle_first_boot_input(
                 None
             }
         },
+        FirstBootPhase::DirtyRepo(_) => match key.code {
+            KeyCode::Char('s') => Some(AppAction::FirstBootSkip),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
         FirstBootPhase::Done => match key.code {
             KeyCode::Char('q') => Some(AppAction::Quit),
             _ => None,

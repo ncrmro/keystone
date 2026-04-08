@@ -214,8 +214,11 @@ pub enum FirstBootPhase {
     ReviewPlan,
     /// Applying the accepted patch to disk.
     ApplyingPatch,
-    /// git init + add + commit.
+    /// git init + selective add + commit.
     GitSetup,
+    /// Repo has pre-existing uncommitted changes unrelated to hardware reconciliation.
+    /// The flow refuses to auto-commit mixed work; the user must resolve or skip.
+    DirtyRepo(Vec<String>),
     /// Display SSH public key + GitHub instructions.
     ShowSshKey,
     /// Text input for git remote URL.
@@ -237,10 +240,65 @@ pub enum FirstBootMessage {
     Output(String),
     HardwareFacts(FirstBootHardwareFacts, PushbackPatchPlan),
     PatchApplied,
+    /// Repo has pre-existing uncommitted changes unrelated to hardware reconciliation.
+    /// Contains the list of dirty file paths that blocked the auto-commit.
+    DirtyRepo(Vec<String>),
     GitReady,
     SshKey(String),
     PushResult(Result<(), String>),
     Failed(String),
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Return file paths that have staged or unstaged tracked-file changes in `repo_dir`,
+/// excluding files in `allowed`. Untracked files (`??`) are intentionally ignored
+/// because the first-boot workflow may operate on a freshly initialised repo where
+/// every file is still untracked.
+async fn collect_dirty_unrelated_files(
+    repo_dir: &std::path::Path,
+    allowed: &[&str],
+) -> Vec<String> {
+    let mut dirty: Vec<String> = Vec::new();
+
+    // Staged changes: files that differ between HEAD and the index.
+    // On a brand-new repo (no commits) this command exits non-zero but produces no
+    // output, which is safe to ignore — we fall through to the unstaged check.
+    if let Ok(out) = Command::new("git")
+        .args(["diff", "--cached", "--name-only"])
+        .current_dir(repo_dir)
+        .output()
+        .await
+    {
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        for line in stdout.lines() {
+            let name = line.trim();
+            if !name.is_empty() && !allowed.iter().any(|a| *a == name) {
+                dirty.push(name.to_string());
+            }
+        }
+    }
+
+    // Unstaged changes: tracked files modified in the working tree.
+    if let Ok(out) = Command::new("git")
+        .args(["diff", "--name-only"])
+        .current_dir(repo_dir)
+        .output()
+        .await
+    {
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        for line in stdout.lines() {
+            let name = line.trim();
+            if !name.is_empty()
+                && !allowed.iter().any(|a| *a == name)
+                && !dirty.contains(&name.to_string())
+            {
+                dirty.push(name.to_string());
+            }
+        }
+    }
+
+    dirty
 }
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
@@ -483,6 +541,13 @@ impl FirstBootScreen {
             .as_ref()
             .map(|p| p.commit_message.clone())
             .unwrap_or_else(|| "feat: initial Keystone configuration".to_string());
+        let hardware_nix_name = self
+            .patch_plan
+            .as_ref()
+            .and_then(|p| p.hardware_nix_path.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("hardware.nix")
+            .to_string();
 
         tokio::spawn(async move {
             let _ = tx.send(FirstBootMessage::Output(
@@ -508,12 +573,32 @@ impl FirstBootScreen {
                 .output()
                 .await;
 
-            // Add .gitignore to exclude the marker from future commits
+            // Write .gitignore to exclude the marker from future commits
             let gitignore_path = config_dir.join(".gitignore");
             let _ = tokio::fs::write(&gitignore_path, ".first-boot-pending\n").await;
 
+            // Check for pre-existing dirty tracked files (staged or unstaged modifications)
+            // that are unrelated to the hardware reconciliation files being committed.
+            //
+            // SECURITY: Staging `git add .` in an already-dirty repo would silently bundle
+            // unrelated changes into the hardware reconciliation commit, making history
+            // harder to audit and preventing clean bisect or revert operations later.
+            let dirty_files = collect_dirty_unrelated_files(
+                &config_dir,
+                &[hardware_nix_name.as_str(), ".gitignore"],
+            )
+            .await;
+
+            if !dirty_files.is_empty() {
+                let _ = tx.send(FirstBootMessage::DirtyRepo(dirty_files));
+                return;
+            }
+
+            // Stage only the hardware reconciliation files — not the entire working tree.
+            // This satisfies spec requirement 16: first-boot commits MUST contain only
+            // hardware pushback artifacts.
             let add = Command::new("git")
-                .args(["add", "."])
+                .args(["add", &hardware_nix_name, ".gitignore"])
                 .current_dir(&config_dir)
                 .output()
                 .await;
@@ -532,8 +617,7 @@ impl FirstBootScreen {
             match commit {
                 Ok(out) if out.status.success() => {
                     let _ = tx.send(FirstBootMessage::Output(
-                        "Git repository initialized with hardware reconciliation commit."
-                            .to_string(),
+                        "Hardware reconciliation commit created.".to_string(),
                     ));
                     let _ = tx.send(FirstBootMessage::GitReady);
                 }
@@ -711,9 +795,9 @@ impl FirstBootScreen {
         }
     }
 
-    /// Skip the current step (SSH key display or push).
+    /// Skip the current step (SSH key display, push, or dirty-repo warning).
     pub fn skip(&mut self) {
-        match self.phase {
+        match &self.phase {
             FirstBootPhase::ShowSshKey => {
                 self.phase = FirstBootPhase::RemoteInput;
                 self.remote_input.set_focused(true);
@@ -725,6 +809,9 @@ impl FirstBootScreen {
             FirstBootPhase::Pushing => {
                 self.push_skipped = true;
                 self.finish();
+            }
+            FirstBootPhase::DirtyRepo(_) => {
+                self.dismiss_dirty_repo();
             }
             _ => {}
         }
@@ -765,6 +852,19 @@ impl FirstBootScreen {
     pub fn handle_text_input(&mut self, key: crossterm::event::KeyEvent) {
         if self.phase == FirstBootPhase::RemoteInput {
             self.remote_input.handle_key(key);
+        }
+    }
+
+    /// Dismiss the dirty-repo warning and leave the first-boot marker so the user
+    /// can clean up the repo and retry later.
+    ///
+    /// Per spec: the flow MUST refuse to auto-commit mixed work. Dismissing here
+    /// means the commit is skipped entirely; the marker remains on disk.
+    pub fn dismiss_dirty_repo(&mut self) {
+        if matches!(self.phase, FirstBootPhase::DirtyRepo(_)) {
+            // Intentionally do NOT call finish() — marker stays on disk.
+            self.phase = FirstBootPhase::Done;
+            self.push_skipped = true;
         }
     }
 
@@ -814,6 +914,9 @@ impl FirstBootScreen {
                     self.phase = FirstBootPhase::GitSetup;
                     self.spawn_git_setup();
                 }
+                FirstBootMessage::DirtyRepo(files) => {
+                    self.phase = FirstBootPhase::DirtyRepo(files);
+                }
                 FirstBootMessage::GitReady => {
                     self.phase = FirstBootPhase::ShowSshKey;
                     self.spawn_ssh_key_check();
@@ -846,6 +949,7 @@ impl FirstBootScreen {
             }
             FirstBootPhase::ReviewPlan => self.render_review_plan(frame, area),
             FirstBootPhase::GitSetup => self.render_progress(frame, area),
+            FirstBootPhase::DirtyRepo(files) => self.render_dirty_repo(frame, area, files),
             FirstBootPhase::ShowSshKey => self.render_ssh_key(frame, area),
             FirstBootPhase::RemoteInput => self.render_remote_input(frame, area),
             FirstBootPhase::Pushing => self.render_progress(frame, area),
@@ -1047,6 +1151,69 @@ impl FirstBootScreen {
         let diff_hint = if self.show_diff { "v: hide diff" } else { "v: view diff" };
         let help = Paragraph::new(Text::styled(
             format!("Enter: apply and commit • s: skip for now • {}", diff_hint),
+            Style::default().fg(Color::DarkGray),
+        ))
+        .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
+    }
+
+    fn render_dirty_repo(&self, frame: &mut Frame, area: Rect, dirty_files: &[String]) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let title = Paragraph::new(Text::styled(
+            "Cannot commit: repo has unrelated changes",
+            Style::default().bold().fg(Color::Yellow),
+        ))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(title, chunks[0]);
+
+        let mut lines: Vec<Line> = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  The repository has uncommitted changes unrelated to hardware",
+                Style::default().fg(Color::Yellow),
+            )),
+            Line::from(Span::styled(
+                "  reconciliation. Auto-commit is refused to avoid bundling mixed work.",
+                Style::default().fg(Color::Yellow),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Affected files:",
+                Style::default().add_modifier(Modifier::BOLD),
+            )),
+        ];
+
+        for file in dirty_files {
+            lines.push(Line::from(Span::styled(
+                format!("    • {}", file),
+                Style::default().fg(Color::Red),
+            )));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from("  Resolve or stash these changes, then re-run first-boot setup."));
+        lines.push(Line::from("  The first-boot marker has been preserved for retry."));
+
+        let body = Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            )
+            .wrap(Wrap { trim: false });
+        frame.render_widget(body, chunks[1]);
+
+        let help = Paragraph::new(Text::styled(
+            "s: skip for now (marker preserved) • q: exit",
             Style::default().fg(Color::DarkGray),
         ))
         .alignment(Alignment::Center);
@@ -1602,5 +1769,65 @@ mod tests {
 
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("No stable"));
+    }
+
+    // ─── DirtyRepo tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_poll_dirty_repo_transitions_to_dirty_phase() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::GitSetup;
+
+        tx.send(FirstBootMessage::DirtyRepo(vec![
+            "configuration.nix".to_string(),
+        ]))
+        .unwrap();
+
+        screen.poll();
+        assert!(matches!(screen.phase(), FirstBootPhase::DirtyRepo(_)));
+        if let FirstBootPhase::DirtyRepo(files) = screen.phase() {
+            assert_eq!(files, &["configuration.nix".to_string()]);
+        }
+    }
+
+    #[test]
+    fn test_dismiss_dirty_repo_preserves_marker() {
+        // dismiss_dirty_repo transitions to Done with push_skipped=true but does NOT
+        // call finish(), so the first-boot marker remains on disk.
+        let mut screen = FirstBootScreen::new(test_config());
+        screen.phase = FirstBootPhase::DirtyRepo(vec!["configuration.nix".to_string()]);
+        screen.dismiss_dirty_repo();
+        assert_eq!(*screen.phase(), FirstBootPhase::Done);
+        assert!(screen.push_skipped);
+    }
+
+    #[test]
+    fn test_skip_from_dirty_repo_preserves_marker() {
+        let mut screen = FirstBootScreen::new(test_config());
+        screen.phase = FirstBootPhase::DirtyRepo(vec!["configuration.nix".to_string()]);
+        screen.skip();
+        assert_eq!(*screen.phase(), FirstBootPhase::Done);
+        assert!(screen.push_skipped);
+    }
+
+    #[test]
+    fn test_dismiss_dirty_repo_noop_when_not_dirty_phase() {
+        let mut screen = FirstBootScreen::new(test_config());
+        screen.phase = FirstBootPhase::Welcome;
+        screen.dismiss_dirty_repo();
+        // Phase must be unchanged
+        assert_eq!(*screen.phase(), FirstBootPhase::Welcome);
+        assert!(!screen.push_skipped);
+    }
+
+    #[tokio::test]
+    async fn test_collect_dirty_unrelated_files_empty_on_clean_dir() {
+        // A temporary directory with no git repo — commands fail silently and
+        // the helper returns an empty list (no panic, no false positives).
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dirty = collect_dirty_unrelated_files(tmp.path(), &["hardware.nix", ".gitignore"]).await;
+        assert!(dirty.is_empty());
     }
 }
