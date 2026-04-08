@@ -19,6 +19,7 @@ stdenv.mkDerivation {
     mkdir -p $out/bin
     cp $src/podman-agent.sh $out/bin/podman-agent
     chmod +x $out/bin/podman-agent
+    ln -s $out/bin/podman-agent $out/bin/pma
     wrapProgram $out/bin/podman-agent \
       --prefix PATH : ${
         lib.makeBinPath [

@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Usage:
-#   podman-agent [--chrome] <agent> [agent-args...]
-#   podman-agent claude -p "fix the failing tests"
-#   podman-agent --chrome claude -p "debug the page"
-#   podman-agent gemini "explain this codebase"
-#   podman-agent codex "add unit tests"
-#   podman-agent opencode
+#   podman-agent [--chrome] <agent> <slug> [agent-args...]
+#   pma [--chrome] <agent> <slug> [agent-args...]
+#
+#   podman-agent claude my-fix -p "fix the failing tests"
+#   podman-agent --chrome claude debug-page -p "debug the page"
+#   podman-agent gemini explore "explain this codebase"
+#   podman-agent codex add-tests "add unit tests"
+#   podman-agent opencode my-task
+#
+# The <slug> uniquely identifies this agent session and is used to:
+#   - Name the container: pma-<dirname>-<agent>-<slug>
+#   - Rename the current zellij tab (when running inside zellij)
 #
 # Environment variables:
 #   PODMAN_AGENT_INTERACTIVE=1  - Run with TTY (default: auto-detect)
@@ -38,8 +44,16 @@ while [[ "${1:-}" == --* ]]; do
 done
 
 # -- Parse arguments ---------------------------------------------------------
-AGENT="${1:?Usage: podman-agent [--chrome] <agent> [agent-args...]}"
+AGENT="${1:?Usage: podman-agent [--chrome] <agent> <slug> [agent-args...]}"
 shift
+SLUG="${1:?Usage: podman-agent [--chrome] <agent> <slug> [agent-args...]}"
+shift
+
+# Validate slug: only lowercase alphanumeric and hyphens allowed
+if [[ ! "$SLUG" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$ ]]; then
+  echo "Error: slug '$SLUG' is invalid. Use only lowercase letters, digits, and hyphens (e.g. 'my-task')." >&2
+  exit 1
+fi
 
 # Map agent name to llm-agents.nix package and CLI command
 AGENT_PKG=""
@@ -176,12 +190,15 @@ MEMORY_LIMIT="${PODMAN_AGENT_MEMORY:-4g}"
 CPU_LIMIT="${PODMAN_AGENT_CPUS:-4}"
 
 # -- Container name ----------------------------------------------------------
-# Inside pyclaude: obs-PROJECT_NAME-SLUG (e.g., obs-nixos-config-fix-auth)
-# From host: AGENT-DIRNAME (e.g., claude-catalyst)
-if [[ -n "${SESSION_SLUG:-}" && -n "${PROJECT_NAME:-}" ]]; then
-  CONTAINER_NAME="obs-${PROJECT_NAME}-${SESSION_SLUG}"
-else
-  CONTAINER_NAME="${AGENT}-$(basename "$WORKDIR")"
+# Format: pma-<dirname>-<agent>-<slug>
+# The slug ensures uniqueness and identifies this session.
+CONTAINER_NAME="pma-$(basename "$WORKDIR")-${AGENT}-${SLUG}"
+
+# -- Zellij session rename ---------------------------------------------------
+# When running inside a zellij session, rename the current tab to the slug
+# so the session can be identified at a glance.
+if [[ -n "${ZELLIJ:-}" ]]; then
+  zellij action rename-tab "$SLUG" 2>/dev/null || true
 fi
 
 # -- TTY detection -----------------------------------------------------------
