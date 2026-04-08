@@ -32,9 +32,12 @@ pub enum AppAction {
     InstallDiskSelect,
     FirstBootStart,
     FirstBootSkip,
+    FirstBootAcceptPlan,
+    FirstBootToggleDiff,
     FirstBootContinue,
     FirstBootSubmitRemote,
     FirstBootRetry,
+    FirstBootFinishNoChanges,
     Reboot,
     Quit,
 }
@@ -357,10 +360,25 @@ pub fn handle_first_boot_input(
             KeyCode::Char('q') => Some(AppAction::Quit),
             _ => None,
         },
-        FirstBootPhase::GeneratingHardware | FirstBootPhase::GitSetup | FirstBootPhase::Pushing => {
+        FirstBootPhase::GatheringFacts
+        | FirstBootPhase::ApplyingPatch
+        | FirstBootPhase::GitSetup
+        | FirstBootPhase::Pushing => {
             // No user input during async phases
             None
         }
+        FirstBootPhase::ReviewPlan => match key.code {
+            KeyCode::Enter => Some(AppAction::FirstBootAcceptPlan),
+            KeyCode::Char('s') => Some(AppAction::FirstBootSkip),
+            KeyCode::Char('v') => Some(AppAction::FirstBootToggleDiff),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
+        FirstBootPhase::NoChangesRequired => match key.code {
+            KeyCode::Enter => Some(AppAction::FirstBootFinishNoChanges),
+            KeyCode::Char('q') => Some(AppAction::Quit),
+            _ => None,
+        },
         FirstBootPhase::ShowSshKey => match key.code {
             KeyCode::Enter => Some(AppAction::FirstBootContinue),
             KeyCode::Char('s') => Some(AppAction::FirstBootSkip),
@@ -481,7 +499,25 @@ pub async fn handle_action(app: &mut App, action: AppAction) {
         }
         AppAction::FirstBootSkip => {
             if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
-                fb.skip();
+                match fb.phase() {
+                    screens::first_boot::FirstBootPhase::ReviewPlan => fb.skip_plan(),
+                    _ => fb.skip(),
+                }
+            }
+        }
+        AppAction::FirstBootAcceptPlan => {
+            if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
+                fb.accept_plan();
+            }
+        }
+        AppAction::FirstBootToggleDiff => {
+            if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
+                fb.toggle_diff();
+            }
+        }
+        AppAction::FirstBootFinishNoChanges => {
+            if let AppScreen::FirstBoot(ref mut fb) = app.current_screen {
+                fb.finish_no_changes();
             }
         }
         AppAction::FirstBootContinue => {
