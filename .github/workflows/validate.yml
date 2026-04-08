@@ -3,6 +3,10 @@ name: Validate
 on:
   pull_request:
 
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Detect which files changed to conditionally run expensive jobs.
   changes:
