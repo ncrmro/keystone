@@ -49,8 +49,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.starter-iso == 'true'
     runs-on: ubuntu-latest
-    env:
-      FIXTURE_DIR: ${{ runner.temp }}/keystone-starter-fixture
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -63,7 +61,9 @@ jobs:
 
       - name: Generate starter template fixture
         run: |
+          FIXTURE_DIR="$RUNNER_TEMP/keystone-starter-fixture"
           ./bin/generate-template-fixture --output "$FIXTURE_DIR"
+          echo "FIXTURE_DIR=$FIXTURE_DIR" >> "$GITHUB_ENV"
 
       - name: Verify generated fixture user
         run: |

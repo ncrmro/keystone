@@ -26,8 +26,6 @@ jobs:
     environment: release
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      FIXTURE_DIR: ${{ runner.temp }}/keystone-starter-fixture
-      STARTER_ARTIFACT_DIR: ${{ runner.temp }}/starter-iso-artifact
 
     steps:
       - name: Checkout
@@ -57,11 +55,13 @@ jobs:
               exit 1
             fi
 
-            echo "VERSION=$VERSION_INPUT" >> "$GITHUB_ENV"
-            echo "RELEASE_SERIES=${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
-            echo "RELEASE_BRANCH=release/${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
-            echo "RELEASE_SOURCE_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
-            echo "RELEASE_TARGET_BRANCH=release/${VERSION_INPUT%.*}" >> "$GITHUB_ENV"
+            {
+              echo "VERSION=$VERSION_INPUT"
+              echo "RELEASE_SERIES=${VERSION_INPUT%.*}"
+              echo "RELEASE_BRANCH=release/${VERSION_INPUT%.*}"
+              echo "RELEASE_SOURCE_BRANCH=${GITHUB_REF_NAME}"
+              echo "RELEASE_TARGET_BRANCH=release/${VERSION_INPUT%.*}"
+            } >> "$GITHUB_ENV"
           else
             if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" && "${GITHUB_REF_NAME}" != release/* ]]; then
               echo "Automatic release validation only runs on ${DEFAULT_BRANCH} or release/* branches"
@@ -70,6 +70,11 @@ jobs:
 
             echo "RELEASE_TARGET_BRANCH=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
           fi
+
+          {
+            echo "FIXTURE_DIR=$RUNNER_TEMP/keystone-starter-fixture"
+            echo "STARTER_ARTIFACT_DIR=$RUNNER_TEMP/starter-iso-artifact"
+          } >> "$GITHUB_ENV"
 
       - name: Create or reuse release branch
         if: github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch
