@@ -60,6 +60,7 @@ Usage:
   pz project-set-host <slug> <host>  Set a project-specific target host
   pz project-set-models <slug> <provider> <model> [fallback]  Set project launch defaults
   pz project-clear-prefs <slug>   Clear project-specific launch defaults
+  pz all-sessions-json             List all Zellij sessions as JSON
   pz agent <agent> <cmd> [args]   Run agentctl within the project context
   pz --help                       Show this help message
 
@@ -946,6 +947,69 @@ match_registered_project_slug() {
   fi
 }
 
+# list all active zellij sessions as JSON, annotated with project metadata
+cmd_all_sessions_json() {
+  local project_output
+  project_output=$(discover_projects 2>/dev/null || true)
+
+  local slugs=()
+  if [[ -n "$project_output" ]]; then
+    while IFS=$'\t' read -r s _rest; do
+      [[ -z "$s" ]] && continue
+      slugs+=("$s")
+    done <<< "$project_output"
+  fi
+
+  local sessions
+  sessions=$(zellij list-sessions --no-formatting 2>/dev/null || true)
+  if [[ -z "$sessions" ]]; then
+    printf '[]\n'
+    return 0
+  fi
+
+  local json_entries=()
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == *"EXITED"* ]] && continue
+
+    local session_name status project_slug session_slug
+    session_name=$(printf "%s\n" "$line" | awk '{print $1}')
+    status=$(session_status_from_line "$line")
+
+    if [[ ${#slugs[@]} -gt 0 ]]; then
+      project_slug=$(match_registered_project_slug "$session_name" "${slugs[@]}")
+    else
+      project_slug=""
+    fi
+
+    if [[ -n "$project_slug" ]]; then
+      local suffix="${session_name#"$project_slug"}"
+      if [[ -z "$suffix" ]]; then
+        session_slug="main"
+      else
+        session_slug="${suffix#-}"
+        [[ -z "$session_slug" ]] && session_slug="main"
+      fi
+    else
+      session_slug=""
+    fi
+
+    json_entries+=("$(jq -cn \
+      --arg session_name "$session_name" \
+      --arg project "$project_slug" \
+      --arg session_slug "$session_slug" \
+      --arg status "$status" \
+      '{session_name: $session_name, project: $project, session_slug: $session_slug, status: $status}'
+    )")
+  done <<< "$sessions"
+
+  if [[ ${#json_entries[@]} -eq 0 ]]; then
+    printf '[]\n'
+    return 0
+  fi
+
+  printf '%s\n' "${json_entries[@]}" | jq -s '.'
+}
+
 # list active project sessions for registered projects only
 cmd_list() {
   set +e
@@ -1495,6 +1559,10 @@ case "$1" in
     ;;
   completion)
     cmd_completion
+    ;;
+  all-sessions-json)
+    shift
+    cmd_all_sessions_json "$@"
     ;;
   discover-slugs)
     cmd_discover_slugs
