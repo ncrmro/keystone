@@ -89,6 +89,7 @@ in
             pkgs.bash
             pkgs.coreutils
             pkgs.findutils
+            pkgs.git
             pkgs.gnugrep
             pkgs.jq
             pkgs.yq-go
