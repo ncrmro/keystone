@@ -3,7 +3,7 @@ summary: "Ingest tasks from sources, prioritize by project, and execute tasks in
 
 step_arguments:
   - name: source_json
-    description: "Pre-fetched source data as JSON, injected into the prompt by the task loop orchestrator"
+    description: "Pre-fetched source data as JSON, written to .deepwork/sources.json by the task loop orchestrator"
     type: string
 
   - name: task_name

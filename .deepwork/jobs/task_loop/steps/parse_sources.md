@@ -2,11 +2,11 @@
 
 ## Objective
 
-Parse pre-fetched source data (JSON injected into the prompt) and create or update tasks in TASKS.yaml. This step bridges external sources (email, GitHub) with the internal task tracking system.
+Parse pre-fetched source data and create or update tasks in TASKS.yaml. This step bridges external sources (email, GitHub) with the internal task tracking system.
 
 ## Task
 
-The task loop orchestrator has already run declarative shell commands to fetch source data and injected the JSON output into this prompt. Your job is to parse that JSON, compare it against the current TASKS.yaml, and add any new tasks while avoiding duplicates.
+The task loop orchestrator has already run declarative shell commands to fetch source data and written the output to `.deepwork/sources.json`. Your FIRST action MUST be to read that file. Then parse the JSON, compare it against the current TASKS.yaml, and add any new tasks while avoiding duplicates.
 
 ### Process
 
