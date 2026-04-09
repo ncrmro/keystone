@@ -37,7 +37,10 @@ fn ensure_model(model: &str) -> Result<PathBuf> {
         .with_context(|| format!("Failed to create model directory: {}", dir.display()))?;
 
     let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{filename}");
-    eprintln!("ks audio-transcribe: downloading model '{model}' to {}", dir.display());
+    eprintln!(
+        "ks audio-transcribe: downloading model '{model}' to {}",
+        dir.display()
+    );
 
     util::require_executable("curl", "curl is not available in PATH.")?;
 
@@ -59,14 +62,22 @@ fn ensure_model(model: &str) -> Result<PathBuf> {
     Ok(model_path)
 }
 
-pub fn execute(file: &str, model: &str, language: &str, output_dir: Option<&str>) -> Result<TranscribeResult> {
+pub fn execute(
+    file: &str,
+    model: &str,
+    language: &str,
+    output_dir: Option<&str>,
+) -> Result<TranscribeResult> {
     let input = Path::new(file);
     if !input.is_file() {
         anyhow::bail!("File not found: {file}");
     }
 
     util::require_executable("ffmpeg", "ffmpeg is not available in PATH.")?;
-    util::require_executable("whisper-cli", "whisper-cli is not available in PATH. Install whisper-cpp.")?;
+    util::require_executable(
+        "whisper-cli",
+        "whisper-cli is not available in PATH. Install whisper-cpp.",
+    )?;
 
     let model_path = ensure_model(model)?;
 
@@ -124,14 +135,16 @@ pub fn execute(file: &str, model: &str, language: &str, output_dir: Option<&str>
     let out_txt = out_dir.join(format!("{basename}.txt"));
     let out_vtt = out_dir.join(format!("{basename}.vtt"));
 
-    fs::copy(tmpdir.join("transcript.txt"), &out_txt)
-        .context("Failed to copy transcript.txt")?;
-    fs::copy(tmpdir.join("transcript.vtt"), &out_vtt)
-        .context("Failed to copy transcript.vtt")?;
+    fs::copy(tmpdir.join("transcript.txt"), &out_txt).context("Failed to copy transcript.txt")?;
+    fs::copy(tmpdir.join("transcript.vtt"), &out_vtt).context("Failed to copy transcript.vtt")?;
 
     let _ = fs::remove_dir_all(&tmpdir);
 
-    eprintln!("ks audio-transcribe: wrote {} and {}", out_txt.display(), out_vtt.display());
+    eprintln!(
+        "ks audio-transcribe: wrote {} and {}",
+        out_txt.display(),
+        out_vtt.display()
+    );
 
     Ok(TranscribeResult {
         txt_path: out_txt.display().to_string(),

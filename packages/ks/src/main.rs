@@ -356,12 +356,8 @@ async fn run_audio_transcribe_command(args: cli::AudioTranscribeArgs) -> Result<
     let language = args.language.unwrap_or_else(|| {
         std::env::var("AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE").unwrap_or_else(|_| "auto".to_string())
     });
-    match cmd::audio_transcribe::execute(
-        &args.file,
-        &model,
-        &language,
-        args.output_dir.as_deref(),
-    ) {
+    match cmd::audio_transcribe::execute(&args.file, &model, &language, args.output_dir.as_deref())
+    {
         Ok(result) => {
             if args.json {
                 print_json_success(&result)
