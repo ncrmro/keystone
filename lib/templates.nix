@@ -399,8 +399,8 @@ let
             # TUI is experimental — default off, auto-enabled by keystone.experimental
             keystone.installer.tui.enable = lib.mkDefault false;
             nixpkgs.overlays = [ self.overlays.default ];
-            environment.etc =
-              lib.mkIf (installRepo != null) {
+            environment.etc = lib.mkIf (installRepo != null) (
+              {
                 "keystone/install-repo".source = installRepo;
                 "keystone/install-keystone".source = self.outPath;
                 "keystone/install-metadata/admin-username".text = "${adminUsername}\n";
@@ -411,7 +411,8 @@ let
               // lib.optionalAttrs (installedSshKeys != [ ]) {
                 "keystone/install-metadata/installed-ssh-keys".text =
                   "${lib.concatStringsSep "\n" installedSshKeys}\n";
-              };
+              }
+            );
 
             # Plain first-login bootstrap for the live installer user.
             systemd.services.installer-admin-zshrc = {
