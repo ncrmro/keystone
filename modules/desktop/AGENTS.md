@@ -8,21 +8,21 @@ two layers: NixOS system-level (`nixos.nix`) and home-manager level (`home/`).
 ```nix
 keystone.desktop = {
   enable = true;
-  user = "alice";          # User for greetd auto-login
-  hyprland.enable = true;  # Default
-  greetd.enable = true;
-  audio.enable = true;     # PipeWire (ALSA + Pulse + Jack)
-  bluetooth.enable = true; # Blueman
-  networking.enable = true; # NetworkManager + systemd-resolved
-  obs.enable = true;       # OBS Studio (default: true, disable per-host if needed)
+  user = "alice";    # Primary desktop user for the Hyprland session
+  obs.enable = true; # OBS Studio (default: true, disable per-host if needed)
 };
 ```
 
-**Included at NixOS level**: Hyprland + UWSM, greetd auto-login, PipeWire audio,
-Bluetooth, CUPS printing, NetworkManager, flatpak, Nerd Fonts (JetBrains Mono,
+**Included at NixOS level**: Hyprland + UWSM, greetd session launch, startup
+`hyprlock` authentication, PipeWire audio, Bluetooth, CUPS printing,
+NetworkManager, flatpak, Nerd Fonts (JetBrains Mono,
 Caskaydia Mono), polkit, OOM protection (Docker/Podman get `OOMScoreAdjust = 1000`),
 OBS Studio with PipeWire audio capture (enabled by default, disable per-host via
 `obs.enable = false` for hosts without GPU encoding support).
+
+**Security invariant**: when `keystone.desktop.enable = true`, the session MUST
+fail closed if startup `hyprlock` cannot start. Missing theme or wallpaper state
+MUST NOT expose an unlocked desktop.
 
 OS-level changes require a full `nixos-rebuild switch` — not just `ks build`.
 
