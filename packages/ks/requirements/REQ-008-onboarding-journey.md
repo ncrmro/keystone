@@ -84,25 +84,28 @@ edit the embedded `/etc/keystone/install-config/` tree in place.
 copy, it MUST fail early with a clear error before partitioning begins.
 
 **REQ-008.16** The install flow MUST: show config summary, allow disk
-selection, confirm before erasing, run disko for partitioning, and run
-nixos-install with the embedded configuration.
+selection, confirm before erasing, run disko for partitioning, run
+`nixos-generate-config --root /mnt --show-hardware-config`, record the
+local install commit, and only then run `nixos-install` with the embedded
+configuration.
 
-**REQ-008.17** After successful `nixos-install` and before the installer
-declares success or prompts for reboot, the TUI MUST run
-`nixos-generate-config --show-hardware-config` against the installed
-system to detect actual hardware and update `hosts/<hostname>/hardware.nix`
-with stable disk identifiers, kernel modules, and CPU microcode settings.
+**REQ-008.17** After `disko` mounts the target system and before
+`nixos-install` begins, the TUI MUST run
+`nixos-generate-config --root /mnt --show-hardware-config` to detect
+actual hardware and update the host hardware config committed for the
+install.
 
-**REQ-008.18** The installer MUST stage and create a local git commit on
-the installed system before reboot. That commit MUST include the
-reconciled `hardware.nix` and any install-time config mutations required
-to boot and continue onboarding. The installer MUST NOT attempt to push —
-the ISO does not contain private SSH keys.
+**REQ-008.18** The installer MUST stage and create a local git commit in
+the writable install repo before `nixos-install`. That commit MUST
+include the reconciled host hardware config and any install-time config
+mutations required to boot and continue onboarding. The installer MUST
+NOT attempt to push — the ISO does not contain private SSH keys.
 
 **REQ-008.19** The installer MUST write a `.first-boot-pending` marker to
-the installed system's config directory only after the install-time
-hardware reconciliation and local commit succeed, so the first-boot flow
-triggers on next login with a committed baseline config.
+the installed system's config directory only after the pre-install
+hardware reconciliation, local commit, `nixos-install`, and repo handoff
+succeed, so the first-boot flow triggers on next login with a committed
+baseline config.
 
 ## Stage 5: First Boot (target machine, installed system)
 
