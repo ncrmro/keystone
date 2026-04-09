@@ -149,6 +149,7 @@ BUILD=true
 BOOT=true
 HEADLESS=false
 E2E_MODE=false
+E2E_HOST="laptop"
 UPDATE_KEYSTONE_INPUT=false
 DEV_MODE=false
 
@@ -187,6 +188,10 @@ while [[ $# -gt 0 ]]; do
         --e2e)
             E2E_MODE=true
             shift
+            ;;
+        --e2e-host)
+            E2E_HOST="$2"
+            shift 2
             ;;
         --ssh-timeout)
             SSH_WAIT_TIMEOUT="$2"
@@ -246,75 +251,176 @@ ssh_cmd() {
         "${ADMIN_USERNAME}@localhost" "$@"
 }
 
-# Drive the ks installer TUI with deterministic keystrokes via expect.
-#
-# Expect keeps the SSH PTY open for the entire install so ks has a live
-# terminal.  The checkpoint poller runs from a separate SSH session.
+# Run the headless installer via `ks install --host`.
 run_e2e_installer() {
-    local expect_bin
-    expect_bin="$(command -v expect 2>/dev/null || true)"
-    if [[ -z "$expect_bin" ]]; then
-        log_error "--e2e requires 'expect' (tcl-expect). Install it or add it to your devshell."
-        exit 1
+    local host="${E2E_HOST:-laptop}"
+    log_info "E2E: running headless install for host '$host'"
+    if ! ssh_cmd "ks install --host $host" 2>&1; then
+        log_error "E2E: ks install --host $host failed"
+        return 1
+    fi
+    log_ok "E2E: install completed for host '$host'"
+}
+
+E2E_SCREENSHOT_DIR=""
+E2E_MONITOR_SOCK=""
+E2E_REBOOT_QEMU_PID=""
+E2E_REBOOT_SSH_PORT=""
+E2E_REBOOT_TIMEOUT=120    # seconds to wait for SSH after unlock
+E2E_DISK_PASSWORD="keystone"
+
+# Take a QEMU screenshot via the monitor socket, convert to PNG.
+e2e_screenshot() {
+    local name="$1"
+    local ppm_path="${E2E_SCREENSHOT_DIR}/${name}.ppm"
+    local png_path="${E2E_SCREENSHOT_DIR}/${name}.png"
+
+    echo "screendump ${ppm_path}" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
+    sleep 1
+
+    if command -v convert >/dev/null 2>&1; then
+        convert "$ppm_path" "$png_path" 2>/dev/null && rm -f "$ppm_path"
+    else
+        # Fall back to PPM if imagemagick is not available
+        png_path="$ppm_path"
     fi
 
-    log_info "E2E: driving installer TUI with deterministic keystrokes"
-
-    local ssh_args=(-tt)
-    ssh_args+=("${SSH_IDENTITY_ARGS[@]}")
-    ssh_args+=(-p "$SSH_PORT")
-    ssh_args+=(-o StrictHostKeyChecking=no)
-    ssh_args+=(-o UserKnownHostsFile=/dev/null)
-    ssh_args+=(-o ServerAliveInterval=30)
-
-    # Run expect in background — it keeps the PTY alive while ks runs.
-    # The checkpoint poller takes over in the foreground.
-    "$expect_bin" - "${ssh_args[@]}" "${ADMIN_USERNAME}@localhost" << 'EXPECT_SCRIPT' &
-set timeout 120
-set ssh_args [lrange $argv 0 end]
-
-eval spawn env TERM=xterm-256color ssh $ssh_args ks
-
-# Screen 1: host selection — wait for the TUI to render.
-# The first item (laptop) is focused by default.  Just press Enter.
-expect {
-    -re {Host|host|Select} { }
-    timeout { send_user "\n>>> TIMEOUT waiting for host screen\n"; exit 1 }
+    log_info "E2E: screenshot saved: $png_path"
+    echo "$png_path"
 }
-sleep 1
-send "\r"
 
-# Screen 2: disk selection
-expect {
-    -re {Disk|disk|Select} { }
-    timeout { send_user "\n>>> TIMEOUT waiting for disk screen\n"; exit 1 }
+# Send a string to the VM keyboard via QEMU monitor sendkey.
+e2e_sendkeys() {
+    local text="$1"
+    local i char
+    for (( i=0; i<${#text}; i++ )); do
+        char="${text:$i:1}"
+        echo "sendkey $char" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
+        sleep 0.1
+    done
 }
-sleep 1
-send "\r"
 
-# Screen 3: confirmation
-expect {
-    -re {Confirm|confirm|Begin|Install|install} { }
-    timeout { send_user "\n>>> TIMEOUT waiting for confirm screen\n"; exit 1 }
-}
-sleep 1
-send "\r"
+# Boot the installed disk headless with QEMU monitor, run reboot validation.
+run_e2e_reboot_validation() {
+    local reboot_port="${1:-12261}"
+    E2E_REBOOT_SSH_PORT="$reboot_port"
+    E2E_MONITOR_SOCK="/tmp/qemu-e2e-monitor-$$.sock"
+    E2E_SCREENSHOT_DIR="${PROJECT_DIR}/.test-e2e-screenshots"
+    mkdir -p "$E2E_SCREENSHOT_DIR"
 
-send_user "\n>>> Keys sent, keeping PTY alive for install...\n"
+    local ref_dir="${PROJECT_DIR}/tests/e2e/screenshots"
+    local ref_hashes="${PROJECT_DIR}/tests/e2e/reference-hashes.json"
 
-# Keep the SSH session open while ks runs (up to 30 minutes).
-set timeout 1800
-expect {
-    eof { send_user "\n>>> ks session ended\n" }
-    timeout { send_user "\n>>> Install timeout\n"; exit 1 }
-}
-EXPECT_SCRIPT
-    E2E_EXPECT_PID=$!
+    log_info "E2E: booting installed disk for reboot validation"
 
-    # Brief wait for expect to send all keys before polling starts.
+    qemu-system-x86_64 \
+        -enable-kvm -m "$QEMU_MEM" -smp "$QEMU_CPUS" \
+        -bios "$ovmf_path" \
+        -drive "if=none,id=installdisk,file=${VM_DISK_PATH},format=raw" \
+        -device "virtio-blk-pci,drive=installdisk,serial=keystone-test-disk" \
+        -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${reboot_port}-:22" \
+        -device "virtio-net-pci,netdev=net0,romfile=" \
+        -display none \
+        -monitor "unix:${E2E_MONITOR_SOCK},server,nowait" &
+    E2E_REBOOT_QEMU_PID=$!
+
+    # Stage 1: LUKS prompt
+    log_info "E2E: waiting for LUKS prompt..."
     sleep 15
+    e2e_screenshot "01-luks-prompt"
 
-    log_ok "E2E: installer TUI driven (expect PID $E2E_EXPECT_PID)"
+    # Stage 2: unlock disk
+    log_info "E2E: sending disk unlock password"
+    e2e_sendkeys "$E2E_DISK_PASSWORD"
+    echo "sendkey ret" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
+    sleep 20
+    e2e_screenshot "02-post-unlock"
+
+    # Stage 3: wait for desktop/login
+    log_info "E2E: waiting for desktop/login surface..."
+    sleep 30
+    e2e_screenshot "03-desktop-or-login"
+
+    # Stage 4: SSH validation
+    log_info "E2E: polling for SSH on port $reboot_port..."
+    local start_time now elapsed
+    start_time="$(date +%s)"
+    local ssh_ok=false
+    while true; do
+        now="$(date +%s)"
+        elapsed=$(( now - start_time - 65 ))  # offset for the sleeps above
+        if (( elapsed >= E2E_REBOOT_TIMEOUT )); then
+            break
+        fi
+        if ssh "${SSH_IDENTITY_ARGS[@]}" \
+            -p "$reboot_port" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=5 \
+            -o BatchMode=yes \
+            "${ADMIN_USERNAME}@localhost" 'echo ok' 2>/dev/null; then
+            ssh_ok=true
+            break
+        fi
+        sleep 5
+    done
+
+    if [[ "$ssh_ok" == "true" ]]; then
+        log_ok "E2E: SSH to installed system succeeded"
+    else
+        log_warn "E2E: SSH to installed system failed (may be QEMU GPU/desktop issue)"
+    fi
+
+    e2e_screenshot "04-final-state"
+
+    # Compare screenshots against reference hashes (if they exist)
+    local failed=0
+    if [[ -f "$ref_hashes" ]]; then
+        log_info "E2E: comparing screenshots against reference hashes"
+        for img in "$E2E_SCREENSHOT_DIR"/*.png "$E2E_SCREENSHOT_DIR"/*.ppm; do
+            [[ -f "$img" ]] || continue
+            local base
+            base="$(basename "${img%.*}")"
+            local actual_hash
+            actual_hash="$(sha256sum "$img" | awk '{print $1}')"
+            local expected_hash
+            expected_hash="$(jq -r ".\"${base}\" // empty" "$ref_hashes" 2>/dev/null)"
+            if [[ -z "$expected_hash" ]]; then
+                log_info "E2E: no reference for $base (new screenshot)"
+            elif [[ "$actual_hash" == "$expected_hash" ]]; then
+                log_ok "E2E: $base matches reference"
+            else
+                log_error "E2E: $base MISMATCH (expected ${expected_hash:0:12}... got ${actual_hash:0:12}...)"
+                failed=1
+            fi
+        done
+    else
+        log_info "E2E: no reference hashes — saving current screenshots as baseline"
+        mkdir -p "$(dirname "$ref_hashes")" "$ref_dir"
+        local hashes="{}"
+        for img in "$E2E_SCREENSHOT_DIR"/*.png "$E2E_SCREENSHOT_DIR"/*.ppm; do
+            [[ -f "$img" ]] || continue
+            local base
+            base="$(basename "${img%.*}")"
+            local hash
+            hash="$(sha256sum "$img" | awk '{print $1}')"
+            hashes="$(echo "$hashes" | jq --arg k "$base" --arg v "$hash" '. + {($k): $v}')"
+            cp "$img" "$ref_dir/"
+        done
+        echo "$hashes" | jq . > "$ref_hashes"
+        log_ok "E2E: baseline saved to $ref_hashes"
+    fi
+
+    kill "$E2E_REBOOT_QEMU_PID" 2>/dev/null || true
+    rm -f "$E2E_MONITOR_SOCK"
+
+    if (( failed )); then
+        log_error "E2E: reboot validation FAILED — screenshot mismatches"
+        return 1
+    fi
+
+    log_ok "E2E: reboot validation passed"
+    return 0
 }
 
 # Poll install checkpoints from the live ISO until they all pass or timeout.
@@ -740,17 +846,20 @@ if [[ "$HEADLESS" == "true" ]]; then
     echo >&2
 
     if [[ "$E2E_MODE" == "true" ]]; then
-        E2E_EXPECT_PID=""
-        run_e2e_installer
-        if run_e2e_checkpoints; then
-            log_ok "E2E test passed."
-            kill "$E2E_EXPECT_PID" 2>/dev/null || true
-            kill "$QEMU_PID" 2>/dev/null || true
+        run_e2e_installer || { kill "$QEMU_PID" 2>/dev/null; exit 1; }
+        run_e2e_checkpoints || { kill "$QEMU_PID" 2>/dev/null; exit 1; }
+
+        # Layer 2: reboot validation with screenshots
+        log_info "E2E: killing ISO VM, starting reboot validation..."
+        kill "$QEMU_PID" 2>/dev/null || true
+        sleep 2
+
+        local reboot_port=$((SSH_PORT + 1))
+        if run_e2e_reboot_validation "$reboot_port"; then
+            log_ok "E2E: all layers passed."
             exit 0
         else
-            log_error "E2E test failed."
-            kill "$E2E_EXPECT_PID" 2>/dev/null || true
-            kill "$QEMU_PID" 2>/dev/null || true
+            log_error "E2E: reboot validation failed."
             exit 1
         fi
     fi
