@@ -7,7 +7,7 @@
 #   ./bin/test-iso --ssh-key "ssh-ed25519 AAAA... user@host"
 #   ./bin/test-iso --build-only             # build but don't start VM
 #   ./bin/test-iso --no-build               # skip build, boot existing ISO
-#   ./bin/test-iso --dev                    # allow embedding a dirty working tree snapshot
+#   ./bin/test-iso --dev                    # build from a dirty tree and use a repo-local test SSH key
 #   ./bin/test-iso --update-keystone-input  # refresh keystone flake input before build
 #
 # SSH access once the VM boots:
@@ -27,6 +27,8 @@ QEMU_MEM=8192
 QEMU_CPUS=4
 SSH_WAIT_TIMEOUT=240
 VM_DISK_SIZE=64G
+DEV_SSH_KEY_PATH="$PROJECT_DIR/.test-iso-dev-key"
+USE_DEV_SSH_KEY=false
 
 # Colors
 RED='\033[0;31m'
@@ -105,7 +107,10 @@ Options:
   --build-only          Build the ISO but do not start the VM.
   --no-build            Skip the build step and boot an existing ISO.
   --dev                 Allow building from a dirty working tree snapshot.
-                        Without this flag, the repo must be clean.
+                        In --dev mode, the script prefers a repo-local
+                        gitignored SSH key at $DEV_SSH_KEY_PATH and generates
+                        it automatically if missing. Without this flag, the
+                        repo must be clean.
   --update-keystone-input
                         Refresh flake input 'keystone' before building.
                         For path-locked keystone inputs, this refreshes the
@@ -125,7 +130,7 @@ terminal. Use --headless to run without a window (SSH-only).
 
 Examples:
   ./bin/test-iso                           # GUI + serial
-  ./bin/test-iso --dev                     # build from local uncommitted changes
+  ./bin/test-iso --dev                     # build from local changes + use repo-local test SSH key
   ./bin/test-iso --headless                # no window, polls SSH
   ./bin/test-iso --disk-size 100G          # attach a larger install disk
   ./bin/test-iso --update-keystone-input   # refresh keystone input then build
@@ -302,25 +307,56 @@ collect_keys() {
     done
 }
 
+ensure_dev_ssh_key() {
+    local key_path="$1"
+    local pub_path="${key_path}.pub"
+
+    if [[ -f "$key_path" && -f "$pub_path" ]]; then
+        return 0
+    fi
+
+    if ! command -v ssh-keygen >/dev/null 2>&1; then
+        return 1
+    fi
+
+    log_info "Generating dev-only SSH key: $key_path"
+    rm -f "$key_path" "$pub_path"
+    ssh-keygen -q -t ed25519 -N "" -C "keystone-test-iso@$(hostname)" -f "$key_path" >/dev/null
+}
+
 SSH_KEYS_LIST=""
 
 if [[ ${#SSH_KEY_INPUTS[@]} -gt 0 ]]; then
     SSH_KEYS_LIST="$(collect_keys)"
 else
-    # Auto-detect from ~/.ssh/id_*.pub
-    local_pub_keys=()
-    for f in "$HOME/.ssh/id_"*.pub; do
-        [[ -f "$f" ]] && local_pub_keys+=("$f")
-    done
-    if [[ ${#local_pub_keys[@]} -eq 0 ]]; then
-        log_warn "No SSH public keys found in ~/.ssh/id_*.pub"
-        log_warn "The ISO will have no SSH access unless you pass --ssh-key"
+    if [[ "$DEV_MODE" == "true" ]] && ensure_dev_ssh_key "$DEV_SSH_KEY_PATH"; then
+        USE_DEV_SSH_KEY=true
+        log_info "Using dev-only SSH key: ${DEV_SSH_KEY_PATH}.pub"
+        SSH_KEYS_LIST="$(grep "^ssh-" "${DEV_SSH_KEY_PATH}.pub" || true)"
     else
-        for f in "${local_pub_keys[@]}"; do
-            log_info "Using SSH key: $f"
-            SSH_KEYS_LIST+="$(grep "^ssh-" "$f" || true)"$'\n'
+        # Auto-detect from ~/.ssh/id_*.pub
+        local_pub_keys=()
+        for f in "$HOME/.ssh/id_"*.pub; do
+            [[ -f "$f" ]] && local_pub_keys+=("$f")
         done
+        if [[ ${#local_pub_keys[@]} -eq 0 ]]; then
+            if [[ "$DEV_MODE" == "true" ]]; then
+                log_warn "Could not use a dev-only SSH key at ${DEV_SSH_KEY_PATH}.pub"
+            fi
+            log_warn "No SSH public keys found in ~/.ssh/id_*.pub"
+            log_warn "The ISO will have no SSH access unless you pass --ssh-key"
+        else
+            for f in "${local_pub_keys[@]}"; do
+                log_info "Using SSH key: $f"
+                SSH_KEYS_LIST+="$(grep "^ssh-" "$f" || true)"$'\n'
+            done
+        fi
     fi
+fi
+
+SSH_IDENTITY_ARGS=()
+if [[ "$USE_DEV_SSH_KEY" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+    SSH_IDENTITY_ARGS=(-i "$DEV_SSH_KEY_PATH")
 fi
 
 # Build a Nix list literal: [ "key1" "key2" ]
@@ -470,7 +506,11 @@ log_info "Starting QEMU with ISO: $(basename "$iso_path")"
 log_info "SSH port forwarding: localhost:$SSH_PORT → VM:22"
 echo >&2
 log_ok "SSH command:"
-log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+if [[ "$DEV_MODE" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+    log_ok "  ssh -i $DEV_SSH_KEY_PATH -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+else
+    log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+fi
 echo >&2
 
 QEMU_COMMON=(
@@ -497,6 +537,7 @@ if [[ "$HEADLESS" == "true" ]]; then
     log_info "Waiting for SSH on port $SSH_PORT (timeout: ${SSH_WAIT_TIMEOUT}s)..."
     start_time="$(date +%s)"
     until ssh \
+            "${SSH_IDENTITY_ARGS[@]}" \
             -p "$SSH_PORT" \
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=2 \
@@ -515,7 +556,11 @@ if [[ "$HEADLESS" == "true" ]]; then
     done
 
     log_ok "SSH is up!"
-    log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+    if [[ "$DEV_MODE" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+        log_ok "  ssh -i $DEV_SSH_KEY_PATH -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+    else
+        log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+    fi
     echo >&2
     log_warn "VM is running (PID $QEMU_PID). Press Ctrl-C to shut it down."
     wait "$QEMU_PID"
