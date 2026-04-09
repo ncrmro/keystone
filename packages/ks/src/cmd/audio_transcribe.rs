@@ -1,4 +1,8 @@
-//! `ks audio-transcribe` command — transcribe audio or video locally using whisper.cpp.
+//! `ks audio-transcribe` command — transcribe audio or video using whisper.cpp.
+//!
+//! Supports two modes:
+//! - Local: shells out to whisper-cli (requires whisper-cpp + ffmpeg in PATH)
+//! - Remote: POSTs audio to a whisper-server HTTP endpoint (--server flag)
 
 use std::env;
 use std::fs;
@@ -6,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::util;
 
@@ -150,6 +154,94 @@ pub fn execute(
         txt_path: out_txt.display().to_string(),
         vtt_path: out_vtt.display().to_string(),
         model: model.to_string(),
+        language: language.to_string(),
+    })
+}
+
+/// Response from whisper-server /inference endpoint.
+#[derive(Debug, Deserialize)]
+struct InferenceResponse {
+    text: String,
+}
+
+/// Transcribe via a remote whisper-server HTTP endpoint.
+pub fn execute_remote(
+    file: &str,
+    server: &str,
+    language: &str,
+    output_dir: Option<&str>,
+) -> Result<TranscribeResult> {
+    let input = Path::new(file);
+    if !input.is_file() {
+        anyhow::bail!("File not found: {file}");
+    }
+
+    util::require_executable("ffmpeg", "ffmpeg is not available in PATH.")?;
+    util::require_executable("curl", "curl is not available in PATH.")?;
+
+    // Convert to 16kHz mono WAV
+    let tmpdir = env::temp_dir().join(format!("ks-transcribe-{}", std::process::id()));
+    fs::create_dir_all(&tmpdir)?;
+    let wav_path = tmpdir.join("input.wav");
+
+    eprintln!("ks audio-transcribe: converting to WAV");
+    let status = Command::new("ffmpeg")
+        .args(["-y", "-i"])
+        .arg(file)
+        .args(["-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le"])
+        .arg(&wav_path)
+        .args(["-loglevel", "error"])
+        .status()
+        .context("Failed to run ffmpeg")?;
+
+    if !status.success() {
+        let _ = fs::remove_dir_all(&tmpdir);
+        anyhow::bail!("ffmpeg conversion failed");
+    }
+
+    // POST to whisper-server /inference endpoint
+    let url = format!("{}/inference", server.trim_end_matches('/'));
+    eprintln!("ks audio-transcribe: sending to {url}");
+
+    let output = Command::new("curl")
+        .args(["-sS", "-X", "POST"])
+        .arg(&url)
+        .arg("-F")
+        .arg(format!("file=@{}", wav_path.display()))
+        .arg("-F")
+        .arg(format!("language={language}"))
+        .arg("-F")
+        .arg("response_format=verbose_json")
+        .output()
+        .context("Failed to run curl")?;
+
+    let _ = fs::remove_dir_all(&tmpdir);
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("whisper-server request failed: {stderr}");
+    }
+
+    let response: InferenceResponse = serde_json::from_slice(&output.stdout)
+        .context("Failed to parse whisper-server response")?;
+
+    // Write output files
+    let basename = input.file_stem().unwrap_or_default().to_string_lossy();
+    let out_dir = match output_dir {
+        Some(d) => PathBuf::from(d),
+        None => input.parent().unwrap_or(Path::new(".")).to_path_buf(),
+    };
+    fs::create_dir_all(&out_dir)?;
+
+    let out_txt = out_dir.join(format!("{basename}.txt"));
+    fs::write(&out_txt, &response.text).context("Failed to write transcript")?;
+
+    eprintln!("ks audio-transcribe: wrote {}", out_txt.display());
+
+    Ok(TranscribeResult {
+        txt_path: out_txt.display().to_string(),
+        vtt_path: String::new(),
+        model: "server".to_string(),
         language: language.to_string(),
     })
 }

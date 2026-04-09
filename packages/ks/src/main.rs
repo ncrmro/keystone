@@ -350,17 +350,32 @@ async fn run_docs_command(topic_or_path: Option<String>) -> Result<()> {
 }
 
 async fn run_audio_transcribe_command(args: cli::AudioTranscribeArgs) -> Result<()> {
-    let model = args.model.unwrap_or_else(|| {
-        std::env::var("AUDIO_TRANSCRIBE_DEFAULT_MODEL").unwrap_or_else(|_| "large-v3".to_string())
-    });
+    let server = args
+        .server
+        .or_else(|| std::env::var("WHISPER_SERVER_URL").ok());
     let language = args.language.unwrap_or_else(|| {
         std::env::var("AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE").unwrap_or_else(|_| "auto".to_string())
     });
-    match cmd::audio_transcribe::execute(&args.file, &model, &language, args.output_dir.as_deref())
-    {
-        Ok(result) => {
+
+    let result = if let Some(ref server_url) = server {
+        cmd::audio_transcribe::execute_remote(
+            &args.file,
+            server_url,
+            &language,
+            args.output_dir.as_deref(),
+        )
+    } else {
+        let model = args.model.unwrap_or_else(|| {
+            std::env::var("AUDIO_TRANSCRIBE_DEFAULT_MODEL")
+                .unwrap_or_else(|_| "large-v3".to_string())
+        });
+        cmd::audio_transcribe::execute(&args.file, &model, &language, args.output_dir.as_deref())
+    };
+
+    match result {
+        Ok(r) => {
             if args.json {
-                print_json_success(&result)
+                print_json_success(&r)
             } else {
                 Ok(())
             }

@@ -159,6 +159,10 @@ pub struct AudioTranscribeArgs {
     #[arg(long)]
     pub output_dir: Option<String>,
 
+    /// Whisper server URL for remote transcription (e.g. http://workstation:8080).
+    #[arg(long)]
+    pub server: Option<String>,
+
     #[arg(long)]
     pub json: bool,
 }
