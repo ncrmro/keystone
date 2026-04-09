@@ -28,9 +28,9 @@ private keys, tokens). Age-encrypted secrets MAY be committed.
 
 ### Post-Install Commit (target machine, ISO install)
 
-**REQ-005.6** During ISO install, after `nixos-install` succeeds and
-before the installer declares success or prompts for reboot, the TUI
-MUST create a local git commit on the installed system.
+**REQ-005.6** During ISO install, after `disko` mounts the target system
+and before `nixos-install` begins, the TUI MUST create a local git
+commit in the writable install repo.
 
 **REQ-005.7** That install-time commit MUST include the reconciled
 `hosts/<hostname>/hardware.nix` and any install-time config mutations
