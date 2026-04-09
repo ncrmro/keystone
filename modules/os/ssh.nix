@@ -18,11 +18,6 @@ in
     # Enable SSH server with secure defaults
     services.openssh = {
       enable = true;
-      # NixOS sets AuthorizedKeysFile to only /etc/ssh/authorized_keys.d/%u when
-      # declarative keys are present.  Include the conventional per-user path so
-      # keys placed by the installer (dev SSH handoff) or other runtime tools are
-      # also accepted.
-      authorizedKeysFiles = [ ".ssh/authorized_keys" ];
       settings = {
         # Security hardening
         PermitRootLogin = "prohibit-password";
