@@ -1605,6 +1605,22 @@ async fn run_command_quiet(
 /// Creates the installed system flake directory on the target and copies
 /// the config tree with a `.first-boot-pending` marker so the TUI knows
 /// to run the first-boot wizard on next login.
+fn installed_repo_paths(username: &str, repo_owner: &str, repo_name: &str) -> (PathBuf, PathBuf) {
+    let system_repo_dir = PathBuf::from("/home")
+        .join(username)
+        .join(".keystone")
+        .join("repos")
+        .join(repo_owner)
+        .join(repo_name);
+    let mounted_repo_dir = PathBuf::from("/mnt").join(
+        system_repo_dir
+            .strip_prefix("/")
+            .expect("installed repo path should be absolute"),
+    );
+
+    (system_repo_dir, mounted_repo_dir)
+}
+
 async fn copy_config_to_target(
     config_dir: &Path,
     username: &str,
@@ -1612,15 +1628,21 @@ async fn copy_config_to_target(
     repo_name: &str,
     tx: &mpsc::UnboundedSender<InstallMessage>,
 ) -> Result<(), String> {
-    let target_home = PathBuf::from(format!("/mnt/home/{}", username));
-    let repo_dir = target_home
-        .join(".keystone")
-        .join("repos")
-        .join(repo_owner)
-        .join(repo_name);
-    let repo_parent = repo_dir
+    let (system_repo_dir, mounted_repo_dir) = installed_repo_paths(username, repo_owner, repo_name);
+    let target_home = PathBuf::from("/mnt").join(
+        Path::new("/home")
+            .join(username)
+            .strip_prefix("/")
+            .expect("target home should be absolute"),
+    );
+    let repo_parent = mounted_repo_dir
         .parent()
-        .ok_or_else(|| format!("Installed repo path has no parent: {}", repo_dir.display()))?;
+        .ok_or_else(|| {
+            format!(
+                "Installed repo path has no parent: {}",
+                mounted_repo_dir.display()
+            )
+        })?;
     let staging_root = PathBuf::from(format!(
         "/tmp/keystone-installed-config-{}",
         std::process::id()
@@ -1628,18 +1650,18 @@ async fn copy_config_to_target(
     let staged_repo_dir = staging_root.join(repo_name);
     let staged_system_flake = staging_root.join("system-flake");
     let repo_parent_string = repo_parent.display().to_string();
-    let repo_dir_string = repo_dir.display().to_string();
+    let repo_dir_string = mounted_repo_dir.display().to_string();
     let staged_repo_contents = format!("{}/.", staged_repo_dir.display());
     let staged_system_flake_string = staged_system_flake.display().to_string();
     let staged_marker = staged_repo_dir.join(".first-boot-pending");
     let staged_marker_string = staged_marker.display().to_string();
-    let target_marker = repo_dir.join(".first-boot-pending");
+    let target_marker = mounted_repo_dir.join(".first-boot-pending");
     let target_marker_string = target_marker.display().to_string();
     let target_system_flake = "/mnt/etc/keystone/system-flake";
 
     let _ = tx.send(InstallMessage::Output(format!(
         "Preparing installed repo handoff to {}",
-        repo_dir.display()
+        mounted_repo_dir.display()
     )));
 
     let _ = tokio::fs::remove_dir_all(&staging_root).await;
@@ -1675,7 +1697,11 @@ async fn copy_config_to_target(
     tokio::fs::write(staged_repo_dir.join(".first-boot-pending"), "")
         .await
         .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
-    tokio::fs::write(&staged_system_flake, format!("{}\n", repo_dir.display()))
+    // Write the final on-disk repo location, not the install-time /mnt path.
+    tokio::fs::write(
+        &staged_system_flake,
+        format!("{}\n", system_repo_dir.display()),
+    )
         .await
         .map_err(|e| format!("Failed to stage system flake path: {}", e))?;
     run_command_quiet("test", &["-f", &staged_marker_string], None, false)
@@ -1684,7 +1710,7 @@ async fn copy_config_to_target(
 
     let _ = tx.send(InstallMessage::Output(format!(
         "Copying installed repo to {}",
-        repo_dir.display()
+        mounted_repo_dir.display()
     )));
     run_command_quiet("install", &["-d", &repo_parent_string], None, true)
         .await
@@ -1768,7 +1794,7 @@ async fn copy_config_to_target(
 
     let _ = tx.send(InstallMessage::Output(format!(
         "Config copied to {} and /etc/keystone/system-flake updated",
-        repo_dir.display()
+        mounted_repo_dir.display()
     )));
     Ok(())
 }
@@ -2289,6 +2315,21 @@ mod tests {
         assert_eq!(
             test_embedded_repo_config().installed_repo_name(),
             "keystone-config"
+        );
+    }
+
+    #[test]
+    fn test_installed_repo_paths_keep_system_flake_pointer_outside_mnt() {
+        let (system_repo_dir, mounted_repo_dir) =
+            installed_repo_paths("noah", "noah", "keystone-config");
+
+        assert_eq!(
+            system_repo_dir,
+            PathBuf::from("/home/noah/.keystone/repos/noah/keystone-config")
+        );
+        assert_eq!(
+            mounted_repo_dir,
+            PathBuf::from("/mnt/home/noah/.keystone/repos/noah/keystone-config")
         );
     }
 }
