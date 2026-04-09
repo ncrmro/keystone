@@ -714,6 +714,43 @@ fn ensure_marker_gitignore_contents(current: Option<&str>) -> String {
     }
 }
 
+fn strip_generated_storage_assignments(generated_hardware: &str) -> String {
+    let storage_prefixes = ["fileSystems.", "swapDevices", "boot.initrd.luks.devices."];
+    let mut sanitized = String::new();
+    let mut skipping = false;
+    let mut nesting_depth: i32 = 0;
+
+    for line in generated_hardware.lines() {
+        let trimmed = line.trim_start();
+
+        if !skipping
+            && storage_prefixes
+                .iter()
+                .any(|prefix| trimmed.starts_with(prefix) && trimmed.contains('='))
+        {
+            skipping = true;
+            nesting_depth = 0;
+        }
+
+        if skipping {
+            nesting_depth += line.matches('{').count() as i32;
+            nesting_depth += line.matches('[').count() as i32;
+            nesting_depth -= line.matches('}').count() as i32;
+            nesting_depth -= line.matches(']').count() as i32;
+
+            if nesting_depth <= 0 && trimmed.ends_with(';') {
+                skipping = false;
+            }
+            continue;
+        }
+
+        sanitized.push_str(line);
+        sanitized.push('\n');
+    }
+
+    sanitized.trim_end().to_string()
+}
+
 fn resolve_hardware_path(config: &InstallerConfig) -> Result<PathBuf, String> {
     if let Some(path) = config.hardware_path.clone() {
         return Ok(path);
@@ -1999,6 +2036,7 @@ async fn detect_hardware_config(
         .await
         .map_err(|e| format!("Failed to read captured hardware config: {}", e))?;
     let _ = tokio::fs::remove_file(&capture_path).await;
+    let sanitized_generated_hardware = strip_generated_storage_assignments(&generated_hardware);
 
     let stable_disk_ids = extract_stable_disk_identifiers(&generated_hardware);
     if stable_disk_ids.is_empty() {
@@ -2018,7 +2056,7 @@ async fn detect_hardware_config(
 
     tokio::fs::write(
         &generated_hardware_path,
-        format!("{}\n", generated_hardware.trim_end()),
+        format!("{}\n", sanitized_generated_hardware),
     )
     .await
     .map_err(|e| {
@@ -2867,5 +2905,42 @@ in
             build_reconciled_hardware_wrapper(current, Some("/dev/disk/by-id/fallback")).unwrap();
 
         assert!(reconciled.contains("\"/dev/disk/by-id/fallback\""));
+    }
+
+    #[test]
+    fn test_strip_generated_storage_assignments_removes_storage_conflicts() {
+        let generated = r#"
+{ config, lib, pkgs, modulesPath, ... }:
+
+{
+  imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+
+  boot.initrd.availableKernelModules = [ "virtio_blk" ];
+  fileSystems."/" =
+    { device = "/dev/mapper/cryptroot";
+      fsType = "ext4";
+    };
+
+  boot.initrd.luks.devices."cryptroot".device = "/dev/disk/by-uuid/root";
+
+  fileSystems."/boot" =
+    { device = "/dev/disk/by-uuid/boot";
+      fsType = "vfat";
+    };
+
+  swapDevices = [ ];
+  nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
+}
+"#;
+
+        let sanitized = strip_generated_storage_assignments(generated);
+
+        assert!(sanitized.contains("imports = [ (modulesPath + \"/profiles/qemu-guest.nix\") ];"));
+        assert!(sanitized.contains("boot.initrd.availableKernelModules = [ \"virtio_blk\" ];"));
+        assert!(sanitized.contains("nixpkgs.hostPlatform = lib.mkDefault \"x86_64-linux\";"));
+        assert!(!sanitized.contains("fileSystems.\"/\""));
+        assert!(!sanitized.contains("fileSystems.\"/boot\""));
+        assert!(!sanitized.contains("boot.initrd.luks.devices.\"cryptroot\""));
+        assert!(!sanitized.contains("swapDevices = [ ];"));
     }
 }
