@@ -443,6 +443,42 @@ fn read_install_metadata(name: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+fn read_install_metadata_lines(name: &str) -> Vec<String> {
+    std::fs::read_to_string(Path::new(INSTALL_METADATA_DIR).join(name))
+        .ok()
+        .map(|contents| {
+            contents
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn merge_authorized_keys(existing: Option<&str>, additional: &[String]) -> String {
+    let mut merged: Vec<String> = existing
+        .into_iter()
+        .flat_map(|contents| contents.lines())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+
+    for key in additional {
+        if !merged.iter().any(|existing_key| existing_key == key) {
+            merged.push(key.clone());
+        }
+    }
+
+    if merged.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", merged.join("\n"))
+    }
+}
+
 fn load_install_targets(repo_dir: &Path) -> AnyhowResult<Vec<InstallTarget>> {
     let targets_path = Path::new(INSTALL_METADATA_DIR).join("targets.json");
     let targets_json = std::fs::read_to_string(&targets_path).with_context(|| {
@@ -2190,6 +2226,11 @@ async fn copy_config_to_target(
     let target_marker = mounted_repo_dir.join(FIRST_BOOT_MARKER);
     let target_marker_string = target_marker.display().to_string();
     let target_system_flake = "/mnt/etc/keystone/system-flake";
+    let installed_ssh_keys = read_install_metadata_lines("installed-ssh-keys");
+    let target_ssh_dir = target_home.join(".ssh");
+    let target_ssh_dir_string = target_ssh_dir.display().to_string();
+    let target_authorized_keys = target_ssh_dir.join("authorized_keys");
+    let target_authorized_keys_string = target_authorized_keys.display().to_string();
 
     let _ = tx.send(InstallMessage::Output(format!(
         "Preparing installed repo handoff to {}",
@@ -2270,6 +2311,45 @@ async fn copy_config_to_target(
         .await
         .map_err(|e| format!("Installed system is missing system-flake: {}", e))?;
 
+    if !installed_ssh_keys.is_empty() {
+        let _ = tx.send(InstallMessage::Output(format!(
+            "Installing development SSH keys for {}",
+            username
+        )));
+        run_command_quiet(
+            "install",
+            &["-d", "-m", "0700", &target_ssh_dir_string],
+            None,
+            true,
+        )
+        .await
+        .map_err(|e| format!("Failed to create installed SSH directory: {}", e))?;
+
+        let existing_authorized_keys = tokio::fs::read_to_string(&target_authorized_keys)
+            .await
+            .ok();
+        let merged_authorized_keys =
+            merge_authorized_keys(existing_authorized_keys.as_deref(), &installed_ssh_keys);
+        let staged_authorized_keys = staging_root.join("authorized_keys");
+        let staged_authorized_keys_string = staged_authorized_keys.display().to_string();
+        tokio::fs::write(&staged_authorized_keys, merged_authorized_keys)
+            .await
+            .map_err(|e| format!("Failed to stage installed SSH keys: {}", e))?;
+        run_command_quiet(
+            "install",
+            &[
+                "-m",
+                "0600",
+                &staged_authorized_keys_string,
+                &target_authorized_keys_string,
+            ],
+            None,
+            true,
+        )
+        .await
+        .map_err(|e| format!("Failed to install development SSH keys: {}", e))?;
+    }
+
     // Fix ownership — look up uid/gid from the installed system's passwd
     let passwd_path = PathBuf::from("/mnt/etc/passwd");
     if passwd_path.exists() {
@@ -2285,8 +2365,10 @@ async fn copy_config_to_target(
                 let uid = parts[2];
                 let gid = parts[3];
                 let keystone_dir = target_home.join(".keystone");
+                let ssh_dir = target_home.join(".ssh");
                 let ownership = format!("{}:{}", uid, gid);
                 let keystone_dir_string = keystone_dir.display().to_string();
+                let ssh_dir_string = ssh_dir.display().to_string();
                 let _ = tx.send(InstallMessage::Output(format!(
                     "Fixing installed repo ownership at {}",
                     keystone_dir.display()
@@ -2299,6 +2381,11 @@ async fn copy_config_to_target(
                 )
                 .await
                 .map_err(|e| format!("Failed to set installed repo ownership: {}", e))?;
+                if !installed_ssh_keys.is_empty() {
+                    run_command_quiet("chown", &["-R", &ownership, &ssh_dir_string], None, true)
+                        .await
+                        .map_err(|e| format!("Failed to set installed SSH key ownership: {}", e))?;
+                }
             }
         }
     }
@@ -2853,6 +2940,19 @@ mod tests {
 
         let unchanged = ensure_marker_gitignore_contents(Some(".first-boot-pending\n"));
         assert_eq!(unchanged, ".first-boot-pending\n");
+    }
+
+    #[test]
+    fn test_merge_authorized_keys_appends_missing_keys_without_duplicates() {
+        let merged = merge_authorized_keys(
+            Some("ssh-ed25519 AAAA existing\n"),
+            &[
+                "ssh-ed25519 AAAA existing".to_string(),
+                "ssh-ed25519 BBBB new".to_string(),
+            ],
+        );
+
+        assert_eq!(merged, "ssh-ed25519 AAAA existing\nssh-ed25519 BBBB new\n");
     }
 
     #[test]

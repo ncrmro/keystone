@@ -273,6 +273,7 @@ let
     {
       system ? "x86_64-linux",
       sshKeys ? [ ],
+      installedSshKeys ? [ ],
       adminUsername ? "keystone",
       repoOwner ? adminUsername,
       adminName ? "System Administrator",
@@ -398,14 +399,19 @@ let
             # TUI is experimental — default off, auto-enabled by keystone.experimental
             keystone.installer.tui.enable = lib.mkDefault false;
             nixpkgs.overlays = [ self.overlays.default ];
-            environment.etc = lib.mkIf (installRepo != null) {
-              "keystone/install-repo".source = installRepo;
-              "keystone/install-keystone".source = self.outPath;
-              "keystone/install-metadata/admin-username".text = "${adminUsername}\n";
-              "keystone/install-metadata/repo-owner".text = "${repoOwner}\n";
-              "keystone/install-metadata/repo-name".text = "${repoName}\n";
-              "keystone/install-metadata/targets.json".text = builtins.toJSON installerTargets;
-            };
+            environment.etc =
+              lib.mkIf (installRepo != null) {
+                "keystone/install-repo".source = installRepo;
+                "keystone/install-keystone".source = self.outPath;
+                "keystone/install-metadata/admin-username".text = "${adminUsername}\n";
+                "keystone/install-metadata/repo-owner".text = "${repoOwner}\n";
+                "keystone/install-metadata/repo-name".text = "${repoName}\n";
+                "keystone/install-metadata/targets.json".text = builtins.toJSON installerTargets;
+              }
+              // lib.optionalAttrs (installedSshKeys != [ ]) {
+                "keystone/install-metadata/installed-ssh-keys".text =
+                  "${lib.concatStringsSep "\n" installedSshKeys}\n";
+              };
 
             # Plain first-login bootstrap for the live installer user.
             systemd.services.installer-admin-zshrc = {
