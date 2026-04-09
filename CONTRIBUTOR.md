@@ -23,6 +23,8 @@ From a consumer repo such as `~/repos/noah-horton/keystone-config`:
 ```
 
 That builds the installer ISO from the current Keystone working tree snapshot.
+In `--dev` mode, the template harness prefers a repo-local gitignored SSH key
+at `.test-iso-dev-key` and generates it automatically if missing.
 
 Before each clean install run, remove the old test disk:
 
@@ -48,6 +50,12 @@ Useful flags:
 ./bin/test-iso --build-only --dev
 ./bin/test-iso --no-build --headless -p 12251
 ./bin/test-iso --no-build -p 12251
+```
+
+When `--dev` created the repo-local test key, use it for live ISO SSH:
+
+```bash
+ssh -i .test-iso-dev-key -tt -p 12251 -o StrictHostKeyChecking=no noah@localhost
 ```
 
 ## Driving the installer TUI
