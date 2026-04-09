@@ -28,13 +28,17 @@ private keys, tokens). Age-encrypted secrets MAY be committed.
 
 ### Post-Install Commit (target machine, ISO install)
 
-**REQ-005.6** After generating hardware config during ISO install, the TUI
-MUST commit the changes to the local git repository on the installed
-system.
+**REQ-005.6** During ISO install, after `nixos-install` succeeds and
+before the installer declares success or prompts for reboot, the TUI
+MUST create a local git commit on the installed system.
 
-**REQ-005.7** The TUI MUST NOT attempt to push during ISO install. The
+**REQ-005.7** That install-time commit MUST include the reconciled
+`hosts/<hostname>/hardware.nix` and any install-time config mutations
+required to boot the installed system and continue onboarding.
+
+**REQ-005.8** The TUI MUST NOT attempt to push during ISO install. The
 ISO does not contain private SSH keys and push would fail.
 
-**REQ-005.8** After the user configures SSH keys on the installed system
+**REQ-005.9** After the user configures SSH keys on the installed system
 (first-boot Stage 6), the TUI MUST prompt the user to push the pending
-hardware config commit to the remote repository.
+install commit to the remote repository.
