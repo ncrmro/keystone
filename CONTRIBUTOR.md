@@ -24,7 +24,9 @@ From a consumer repo such as `~/repos/noah-horton/keystone-config`:
 
 That builds the installer ISO from the current Keystone working tree snapshot.
 In `--dev` mode, the template harness prefers a repo-local gitignored SSH key
-at `.test-iso-dev-key` and generates it automatically if missing.
+at `.test-iso-dev-key` and generates it automatically if missing. The same
+development key is also handed off into the installed user's
+`~/.ssh/authorized_keys` so reboot testing can keep using the same identity.
 
 Before each clean install run, remove the old test disk:
 

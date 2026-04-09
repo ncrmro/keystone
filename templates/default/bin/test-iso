@@ -404,6 +404,7 @@ if [[ "$BUILD" == "true" ]]; then
         installerTargets = self.outputs.installerTargets;
       in keystone.lib.mkInstallerIsoForFlake {
         sshKeys = $nix_keys_list;
+        installedSshKeys = if ${DEV_MODE} then $nix_keys_list else [ ];
         adminUsername = \"$ADMIN_USERNAME\";
         adminName    = \"$ADMIN_NAME\";
         adminEmail   = \"$ADMIN_EMAIL\";
