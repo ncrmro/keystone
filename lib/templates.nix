@@ -20,7 +20,7 @@ let
       timeZone ? "UTC",
       storage,
       admin,
-      adminUsername ? "admin",
+      adminUsername ? "keystone",
       users,
       secureBoot ? {
         enable = true;
@@ -79,7 +79,7 @@ let
       timeZone ? "UTC",
       storage,
       admin,
-      adminUsername ? "admin",
+      adminUsername ? "keystone",
       users ? { },
       desktop ? false,
       secureBoot ? {
@@ -273,7 +273,7 @@ let
     {
       system ? "x86_64-linux",
       sshKeys ? [ ],
-      adminUsername ? "admin",
+      adminUsername ? "keystone",
       adminName ? "System Administrator",
       adminEmail ? "admin@example.com",
       hostname ? "keystone",
@@ -482,6 +482,9 @@ rec {
       desktop ? true,
       ...
     }@args:
+    let
+      effectiveSystem = args.system or "x86_64-linux";
+    in
     mkLinuxHost (
       args
       // {
@@ -490,6 +493,9 @@ rec {
         storage = lib.recursiveUpdate {
           type = "zfs";
           mode = "single";
+          # The template ZFS archetypes should evaluate cleanly out of the box.
+          # Pin a known-good kernel until Keystone's broader ZFS default changes.
+          zfs.kernel = nixpkgs.legacyPackages.${effectiveSystem}.linuxPackages_6_12;
         } storage;
       }
     );
@@ -502,6 +508,9 @@ rec {
       modules ? [ ],
       ...
     }@args:
+    let
+      effectiveSystem = args.system or "x86_64-linux";
+    in
     mkLinuxHost (
       (builtins.removeAttrs args [
         "dataPool"
@@ -512,6 +521,9 @@ rec {
         storage = lib.recursiveUpdate {
           type = "zfs";
           mode = "single";
+          # The template ZFS archetypes should evaluate cleanly out of the box.
+          # Pin a known-good kernel until Keystone's broader ZFS default changes.
+          zfs.kernel = nixpkgs.legacyPackages.${effectiveSystem}.linuxPackages_6_12;
         } storage;
         modules =
           modules
@@ -608,7 +620,7 @@ rec {
       # admin is the single source of truth — strip template-only fields
       # (sshKeys) to produce a valid userSubmodule config.
       # username is passed through to keystone.os.adminUsername.
-      adminUsername = admin.username or "admin";
+      adminUsername = admin.username or "keystone";
       adminSshKeys = admin.sshKeys or [ ];
       sharedAdmin = builtins.removeAttrs admin [
         "username"

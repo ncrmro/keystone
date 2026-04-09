@@ -103,6 +103,10 @@ installer system from the flake. If your flake has Linux hosts, Keystone now
 infers that system from the inventory. If your flake has no Linux hosts, set
 `defaults.system` explicitly if you still want an ISO output.
 
+For how Keystone warms the public `ks-systems` cache with the generated starter
+template host closures used by the installer, see
+[Installer cache warming](installer-cache.md).
+
 ## Platform Setup
 
 Need to install Nix first? See **[Build Platforms](build-platforms.md)** for setup instructions on Ubuntu, macOS, Windows, and GitHub Actions.

@@ -11,7 +11,7 @@
 #   ./bin/test-iso --update-keystone-input  # refresh keystone flake input before build
 #
 # SSH access once the VM boots:
-#   ssh -p 2222 -o StrictHostKeyChecking=no admin@localhost
+#   ssh -p 2222 -o StrictHostKeyChecking=no keystone@localhost
 
 set -euo pipefail
 
@@ -20,8 +20,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ISO_RESULT="$PROJECT_DIR/.test-iso"
 VM_DISK_PATH="$PROJECT_DIR/.test-iso-disk.raw"
 SSH_PORT=12222
-QEMU_MEM=4096
-QEMU_CPUS=2
+# Full installs regularly realize large target closures, so use the same
+# baseline we needed in manual verification instead of the old 4 GiB / 2 vCPU
+# defaults that pushed `nixos-install` into OOM territory.
+QEMU_MEM=8192
+QEMU_CPUS=4
 SSH_WAIT_TIMEOUT=240
 VM_DISK_SIZE=64G
 
@@ -113,6 +116,7 @@ Options:
   --disk-path PATH      Path to the attached install disk image
                         (default: $VM_DISK_PATH).
   -m, --memory MB       QEMU RAM in MB (default: $QEMU_MEM).
+  -c, --cpus N          QEMU vCPU count (default: $QEMU_CPUS).
   -p, --port PORT       Host SSH port to forward (default: $SSH_PORT).
   -h, --help            Show this help.
 
@@ -185,6 +189,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -m|--memory)
             QEMU_MEM="$2"
+            shift 2
+            ;;
+        -c|--cpus)
+            QEMU_CPUS="$2"
             shift 2
             ;;
         -p|--port)
