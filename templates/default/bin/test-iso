@@ -384,6 +384,18 @@ if [[ "$BUILD" == "true" ]]; then
     PROJECT_SNAPSHOT_DIR="$(mktemp -d)"
     create_project_snapshot "$PROJECT_SNAPSHOT_DIR"
 
+    # Inject SSH keys into the snapshot's admin.sshKeys so they are part of the
+    # NixOS configuration that nixos-install builds.  This makes the keys
+    # available on the installed system through the declarative authorized_keys
+    # path rather than relying on file-based injection.
+    if [[ -n "$SSH_KEYS_LIST" ]]; then
+        # Handle both commented and uncommented forms of the sshKeys field.
+        sed -i "s|# sshKeys = \\[\\];.*|sshKeys = $nix_keys_list;|" \
+            "$PROJECT_SNAPSHOT_DIR/flake.nix"
+        sed -i "s|sshKeys = \\[\\];.*|sshKeys = $nix_keys_list;|" \
+            "$PROJECT_SNAPSHOT_DIR/flake.nix"
+    fi
+
     log_info "Building installer ISO..."
 
     keystone_expr="self.inputs.keystone"

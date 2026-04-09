@@ -36,7 +36,7 @@
         fullName = "Your Name"; # TODO: Change to your full name
         email = "admin@example.com"; # TODO: Change to your email
         initialPassword = "changeme";
-        # sshKeys = []; # TODO: Add SSH public keys for installer ISO remote access
+        sshKeys = [ ]; # TODO: Add SSH public keys for remote access
       };
       defaults = {
         timeZone = "UTC"; # TODO: Set your default timezone

@@ -758,6 +758,11 @@ rec {
                   home-manager.sharedModules = sharedUserModules;
                 }
               ]
+              ++ lib.optional (adminSshKeys != [ ]) {
+                # Bridge admin.sshKeys to installed hosts so the keys survive
+                # NixOS system activation (which overwrites ~/.ssh/authorized_keys).
+                users.users.${adminUsername}.openssh.authorizedKeys.keys = adminSshKeys;
+              }
               ++ sharedSystemModules
               ++ modules;
             };
