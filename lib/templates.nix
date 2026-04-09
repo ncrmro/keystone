@@ -279,7 +279,7 @@ let
       adminEmail ? "admin@example.com",
       hostname ? "keystone",
       repoPath ? null,
-      repoName ? "nixos-config",
+      repoName ? "keystone-config",
       installerTargets ? { },
       devMode ? false,
     }:
@@ -843,7 +843,7 @@ rec {
             repoOwner = effectiveRepoOwner;
             repoName =
               if effectiveRepoRoot == null then
-                "nixos-config"
+                "keystone-config"
               else
                 builtins.baseNameOf (toString effectiveRepoRoot);
           };

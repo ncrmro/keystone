@@ -41,6 +41,7 @@ const INSTALL_METADATA_DIR: &str = "/etc/keystone/install-metadata";
 const WRITABLE_INSTALL_REPO_PATH: &str = "/tmp/keystone-install-repo";
 const WRITABLE_INSTALL_KEYSTONE_PATH: &str = "/tmp/keystone-install-keystone";
 const VENDORED_KEYSTONE_INPUT_DIR: &str = ".keystone-input";
+const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
 
 #[derive(Debug, Clone)]
 pub enum InstallSource {
@@ -96,8 +97,8 @@ impl InstallerConfig {
         let repo_dir = Path::new(INSTALL_REPO_PATH);
         if repo_dir.exists() {
             let targets = load_install_targets(repo_dir)?;
-            let repo_name =
-                read_install_metadata("repo-name").unwrap_or_else(|| "nixos-config".to_string());
+            let repo_name = read_install_metadata("repo-name")
+                .unwrap_or_else(|| DEFAULT_INSTALLED_REPO_NAME.to_string());
             return Ok(Some(Self {
                 source: InstallSource::EmbeddedRepo {
                     repo_dir: repo_dir.to_path_buf(),
@@ -421,7 +422,7 @@ impl InstallerConfig {
     fn installed_repo_name(&self) -> &str {
         match &self.source {
             InstallSource::EmbeddedRepo { repo_name, .. } => repo_name.as_str(),
-            InstallSource::PrebakedConfig => "keystone-config",
+            InstallSource::PrebakedConfig => DEFAULT_INSTALLED_REPO_NAME,
         }
     }
 
@@ -1630,6 +1631,16 @@ async fn copy_config_to_target(
     let repo_dir_string = repo_dir.display().to_string();
     let staged_repo_contents = format!("{}/.", staged_repo_dir.display());
     let staged_system_flake_string = staged_system_flake.display().to_string();
+    let staged_marker = staged_repo_dir.join(".first-boot-pending");
+    let staged_marker_string = staged_marker.display().to_string();
+    let target_marker = repo_dir.join(".first-boot-pending");
+    let target_marker_string = target_marker.display().to_string();
+    let target_system_flake = "/mnt/etc/keystone/system-flake";
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Preparing installed repo handoff to {}",
+        repo_dir.display()
+    )));
 
     let _ = tokio::fs::remove_dir_all(&staging_root).await;
     tokio::fs::create_dir_all(&staged_repo_dir)
@@ -1667,14 +1678,21 @@ async fn copy_config_to_target(
     tokio::fs::write(&staged_system_flake, format!("{}\n", repo_dir.display()))
         .await
         .map_err(|e| format!("Failed to stage system flake path: {}", e))?;
+    run_command_quiet("test", &["-f", &staged_marker_string], None, false)
+        .await
+        .map_err(|e| format!("Failed to verify staged first-boot marker: {}", e))?;
 
-    run_command_quiet("mkdir", &["-p", &repo_parent_string], None, true)
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Copying installed repo to {}",
+        repo_dir.display()
+    )));
+    run_command_quiet("install", &["-d", &repo_parent_string], None, true)
         .await
         .map_err(|e| format!("Failed to create installed repo parent: {}", e))?;
     run_command_quiet("rm", &["-rf", &repo_dir_string], None, true)
         .await
         .map_err(|e| format!("Failed to clear installed repo dir: {}", e))?;
-    run_command_quiet("mkdir", &["-p", &repo_dir_string], None, true)
+    run_command_quiet("install", &["-d", &repo_dir_string], None, true)
         .await
         .map_err(|e| format!("Failed to create installed repo dir: {}", e))?;
     run_command_quiet(
@@ -1685,20 +1703,33 @@ async fn copy_config_to_target(
     )
     .await
     .map_err(|e| format!("Failed to copy staged repo into target system: {}", e))?;
-    run_command_quiet("mkdir", &["-p", "/mnt/etc/keystone"], None, true)
+    run_command_quiet("test", &["-f", &target_marker_string], None, true)
+        .await
+        .map_err(|e| format!("Installed repo is missing the first-boot marker: {}", e))?;
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Writing KEYSTONE_SYSTEM_FLAKE pointer to {}",
+        target_system_flake
+    )));
+    run_command_quiet("install", &["-d", "/mnt/etc/keystone"], None, true)
         .await
         .map_err(|e| format!("Failed to create /mnt/etc/keystone: {}", e))?;
     run_command_quiet(
-        "cp",
+        "install",
         &[
+            "-m",
+            "0644",
             &staged_system_flake_string,
-            "/mnt/etc/keystone/system-flake",
+            target_system_flake,
         ],
         None,
         true,
     )
     .await
     .map_err(|e| format!("Failed to write system flake path: {}", e))?;
+    run_command_quiet("test", &["-f", target_system_flake], None, true)
+        .await
+        .map_err(|e| format!("Installed system is missing system-flake: {}", e))?;
 
     // Fix ownership — look up uid/gid from the installed system's passwd
     let passwd_path = PathBuf::from("/mnt/etc/passwd");
@@ -1717,6 +1748,10 @@ async fn copy_config_to_target(
                 let keystone_dir = target_home.join(".keystone");
                 let ownership = format!("{}:{}", uid, gid);
                 let keystone_dir_string = keystone_dir.display().to_string();
+                let _ = tx.send(InstallMessage::Output(format!(
+                    "Fixing installed repo ownership at {}",
+                    keystone_dir.display()
+                )));
                 run_command_quiet(
                     "chown",
                     &["-R", &ownership, &keystone_dir_string],
@@ -1732,7 +1767,7 @@ async fn copy_config_to_target(
     let _ = tokio::fs::remove_dir_all(&staging_root).await;
 
     let _ = tx.send(InstallMessage::Output(format!(
-        "Config copied to {}",
+        "Config copied to {} and /etc/keystone/system-flake updated",
         repo_dir.display()
     )));
     Ok(())
@@ -2239,5 +2274,21 @@ mod tests {
 
         assert_eq!(command.program, "disko");
         assert_eq!(command.args, vec!["--mode", "disko"]);
+    }
+
+    #[test]
+    fn test_prebaked_config_defaults_installed_repo_name_to_keystone_config() {
+        assert_eq!(
+            test_config().installed_repo_name(),
+            DEFAULT_INSTALLED_REPO_NAME
+        );
+    }
+
+    #[test]
+    fn test_embedded_repo_uses_configured_installed_repo_name() {
+        assert_eq!(
+            test_embedded_repo_config().installed_repo_name(),
+            "keystone-config"
+        );
     }
 }
