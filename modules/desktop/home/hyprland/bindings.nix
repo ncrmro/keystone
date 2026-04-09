@@ -11,10 +11,11 @@
 }:
 with lib;
 let
+  desktopCfg = config.keystone.desktop;
   cfg = config.keystone.desktop.hyprland;
 in
 {
-  config = mkIf cfg.enable {
+  config = mkIf desktopCfg.enable {
     wayland.windowManager.hyprland.settings = {
       "$mod" = mkDefault cfg.modifierKey;
 

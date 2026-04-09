@@ -6,10 +6,10 @@
 }:
 with lib;
 let
-  cfg = config.keystone.desktop.hyprland;
+  desktopCfg = config.keystone.desktop;
 in
 {
-  config = mkIf cfg.enable {
+  config = mkIf desktopCfg.enable {
     # UWSM session target fix: greetd starts wayland-session-envelope@ but not
     # wayland-session@ which is what binds to graphical-session.target.
     # hypridle and other services depend on graphical-session.target, so we need

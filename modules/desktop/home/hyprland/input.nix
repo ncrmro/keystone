@@ -6,6 +6,7 @@
 }:
 with lib;
 let
+  desktopCfg = config.keystone.desktop;
   cfg = config.keystone.desktop.hyprland;
   # Build kb_options based on configuration
   # - altwin:swap_alt_win: Swap Alt and Super keys for ergonomic window management
@@ -16,7 +17,7 @@ let
   kbOptions = "${capsOption},altwin:swap_alt_win";
 in
 {
-  config = mkIf cfg.enable {
+  config = mkIf desktopCfg.enable {
     wayland.windowManager.hyprland.settings = {
       input = mkDefault {
         kb_layout = "us";

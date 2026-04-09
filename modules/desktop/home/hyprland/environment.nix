@@ -7,6 +7,7 @@
 }:
 with lib;
 let
+  desktopCfg = config.keystone.desktop;
   cfg = config.keystone.desktop.hyprland;
   terminalCfg = config.keystone.terminal;
   hasNvidiaDrivers =
@@ -21,7 +22,7 @@ let
   ];
 in
 {
-  config = mkIf cfg.enable {
+  config = mkIf desktopCfg.enable {
     wayland.windowManager.hyprland.settings = {
       env = mkDefault (
         (optionals hasNvidiaDrivers nvidiaEnv)

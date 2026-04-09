@@ -6,10 +6,10 @@
 }:
 with lib;
 let
-  cfg = config.keystone.desktop.hyprland;
+  desktopCfg = config.keystone.desktop;
 in
 {
-  config = mkIf cfg.enable {
+  config = mkIf desktopCfg.enable {
     services.hyprpaper = {
       enable = mkDefault true;
       # TODO: remove once home-manager is updated — newer HM defaults importantPrefixes to ["$" "monitor"]
