@@ -10,6 +10,7 @@ The Keystone Desktop provides a keyboard-driven, efficient workspace for develop
 - **Keyboard-First Interaction**: Minimal mouse dependency with discoverable keybindings
 - **Runtime Theming**: Switch themes without rebuilding the system
 - **Unified Menu System**: Consistent access to all desktop functions via `Super+Escape`
+- **Fail-Closed Startup Authentication**: Hyprland sessions MUST start behind `hyprlock`, and the session MUST exit instead of failing open when startup locking fails
 
 ## Architecture
 
@@ -47,6 +48,9 @@ themes/
 ### Active Theme
 
 The current theme is symlinked at `~/.config/keystone/current/theme/` and sourced by all components.
+
+Startup `hyprlock` is the exception: it uses a built-in minimal secure config so
+password entry does not depend on mutable theme or wallpaper symlinks.
 
 ### Theme Switching
 
@@ -231,9 +235,13 @@ Monitor configurations are runtime-only by default. For persistent configuration
 ## Nix Options
 
 ```nix
-keystone.desktop.hyprland = {
-  enable = mkEnableOption "Hyprland window manager";
+keystone.desktop = {
+  enable = true;
+  user = "alice";
+  obs.enable = true;
+};
 
+keystone.desktop.hyprland = {
   monitors = mkOption {
     type = types.listOf types.str;
     default = [ ",preferred,auto,1" ];
@@ -298,8 +306,12 @@ The desktop module supports keyboard remapping options:
 **Example: Traditional keybindings (no swap)**
 
 ```nix
-keystone.desktop.hyprland = {
+keystone.desktop = {
   enable = true;
+  user = "alice";
+};
+
+keystone.desktop.hyprland = {
   modifierKey = "SUPER";        # Physical Super key for window management
   capslockAsControl = false;    # Keep Caps Lock as Caps Lock
   # Note: Browser back/forward with Alt+arrows works natively
