@@ -6,13 +6,13 @@
 }:
 with lib;
 let
-  cfg = config.keystone.desktop.hyprland;
+  desktopCfg = config.keystone.desktop;
 in
 {
   # hyprsunset is started via autostart.nix exec-once
   # This module provides the configuration file
 
-  config = mkIf cfg.enable {
+  config = mkIf desktopCfg.enable {
     xdg.configFile."hypr/hyprsunset.conf".text = mkDefault ''
       # Makes hyprsunset do nothing to the screen by default
       # Without this, the default applies some tint to the monitor

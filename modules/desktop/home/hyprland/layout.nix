@@ -6,10 +6,10 @@
 }:
 with lib;
 let
-  cfg = config.keystone.desktop.hyprland;
+  desktopCfg = config.keystone.desktop;
 in
 {
-  config = mkIf cfg.enable {
+  config = mkIf desktopCfg.enable {
     wayland.windowManager.hyprland.settings = {
       general = {
         layout = mkDefault "dwindle";
