@@ -2191,6 +2191,138 @@ fn installed_repo_paths(username: &str, repo_owner: &str, repo_name: &str) -> (P
     (system_repo_dir, mounted_repo_dir)
 }
 
+/// Stage the config repo into a temporary directory with first-boot marker and system-flake pointer.
+async fn stage_config_to_temp(
+    config_dir: &Path,
+    staging_root: &Path,
+    staged_repo_dir: &Path,
+    staged_system_flake: &Path,
+    system_repo_dir: &Path,
+) -> Result<(), String> {
+    let _ = tokio::fs::remove_dir_all(staging_root).await;
+    tokio::fs::create_dir_all(staged_repo_dir)
+        .await
+        .map_err(|e| format!("Failed to create staging dir: {}", e))?;
+
+    copy_dir_recursive_async(config_dir, staged_repo_dir)
+        .await
+        .map_err(|e| format!("Failed to stage config files: {}", e))?;
+
+    tokio::fs::write(staged_repo_dir.join(FIRST_BOOT_MARKER), "")
+        .await
+        .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
+    // Write the final on-disk repo location, not the install-time /mnt path.
+    tokio::fs::write(
+        staged_system_flake,
+        format!("{}\n", system_repo_dir.display()),
+    )
+    .await
+    .map_err(|e| format!("Failed to stage system flake path: {}", e))?;
+
+    let staged_marker_string = staged_repo_dir
+        .join(FIRST_BOOT_MARKER)
+        .display()
+        .to_string();
+    run_command_quiet("test", &["-f", &staged_marker_string], None, false)
+        .await
+        .map_err(|e| format!("Failed to verify staged first-boot marker: {}", e))?;
+    Ok(())
+}
+
+/// Install development SSH keys into the target system's authorized_keys.
+async fn install_ssh_keys(
+    installed_ssh_keys: &[String],
+    target_ssh_dir: &Path,
+    target_authorized_keys: &Path,
+    staging_root: &Path,
+) -> Result<(), String> {
+    let target_ssh_dir_string = target_ssh_dir.display().to_string();
+    let target_authorized_keys_string = target_authorized_keys.display().to_string();
+    run_command_quiet(
+        "install",
+        &["-d", "-m", "0700", &target_ssh_dir_string],
+        None,
+        true,
+    )
+    .await
+    .map_err(|e| format!("Failed to create installed SSH directory: {}", e))?;
+
+    let existing_authorized_keys = tokio::fs::read_to_string(target_authorized_keys).await.ok();
+    let merged_authorized_keys =
+        merge_authorized_keys(existing_authorized_keys.as_deref(), installed_ssh_keys);
+    let staged_authorized_keys = staging_root.join("authorized_keys");
+    let staged_authorized_keys_string = staged_authorized_keys.display().to_string();
+    tokio::fs::write(&staged_authorized_keys, merged_authorized_keys)
+        .await
+        .map_err(|e| format!("Failed to stage installed SSH keys: {}", e))?;
+    run_command_quiet(
+        "install",
+        &[
+            "-m",
+            "0600",
+            &staged_authorized_keys_string,
+            &target_authorized_keys_string,
+        ],
+        None,
+        true,
+    )
+    .await
+    .map_err(|e| format!("Failed to install development SSH keys: {}", e))?;
+    Ok(())
+}
+
+/// Fix ownership of .keystone and optionally .ssh directories on the installed target.
+async fn fix_target_ownership(
+    target_home: &Path,
+    username: &str,
+    has_ssh_keys: bool,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
+    let passwd_path = PathBuf::from("/mnt/etc/passwd");
+    if !passwd_path.exists() {
+        return Ok(());
+    }
+    let passwd = tokio::fs::read_to_string(&passwd_path)
+        .await
+        .unwrap_or_default();
+    let line = match passwd
+        .lines()
+        .find(|l| l.starts_with(&format!("{}:", username)))
+    {
+        Some(l) => l.to_string(),
+        None => return Ok(()),
+    };
+    let parts: Vec<&str> = line.split(':').collect();
+    if parts.len() < 4 {
+        return Ok(());
+    }
+    let uid = parts[2];
+    let gid = parts[3];
+    let keystone_dir = target_home.join(".keystone");
+    let ownership = format!("{}:{}", uid, gid);
+    let keystone_dir_string = keystone_dir.display().to_string();
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Fixing installed repo ownership at {}",
+        keystone_dir.display()
+    )));
+    run_command_quiet(
+        "chown",
+        &["-R", &ownership, &keystone_dir_string],
+        None,
+        true,
+    )
+    .await
+    .map_err(|e| format!("Failed to set installed repo ownership: {}", e))?;
+    if has_ssh_keys {
+        let ssh_dir = target_home.join(".ssh");
+        let ssh_dir_string = ssh_dir.display().to_string();
+        run_command_quiet("chown", &["-R", &ownership, &ssh_dir_string], None, true)
+            .await
+            .map_err(|e| format!("Failed to set installed SSH key ownership: {}", e))?;
+    }
+    Ok(())
+}
+
 async fn copy_config_to_target(
     config_dir: &Path,
     username: &str,
@@ -2221,46 +2353,28 @@ async fn copy_config_to_target(
     let repo_dir_string = mounted_repo_dir.display().to_string();
     let staged_repo_contents = format!("{}/.", staged_repo_dir.display());
     let staged_system_flake_string = staged_system_flake.display().to_string();
-    let staged_marker = staged_repo_dir.join(FIRST_BOOT_MARKER);
-    let staged_marker_string = staged_marker.display().to_string();
     let target_marker = mounted_repo_dir.join(FIRST_BOOT_MARKER);
     let target_marker_string = target_marker.display().to_string();
     let target_system_flake = "/mnt/etc/keystone/system-flake";
     let installed_ssh_keys = read_install_metadata_lines("installed-ssh-keys");
     let target_ssh_dir = target_home.join(".ssh");
-    let target_ssh_dir_string = target_ssh_dir.display().to_string();
     let target_authorized_keys = target_ssh_dir.join("authorized_keys");
-    let target_authorized_keys_string = target_authorized_keys.display().to_string();
 
     let _ = tx.send(InstallMessage::Output(format!(
         "Preparing installed repo handoff to {}",
         mounted_repo_dir.display()
     )));
 
-    let _ = tokio::fs::remove_dir_all(&staging_root).await;
-    tokio::fs::create_dir_all(&staged_repo_dir)
-        .await
-        .map_err(|e| format!("Failed to create staging dir: {}", e))?;
-
     // Stage the repo in /tmp first, then copy it into /mnt through sudo so the
     // installer's success state means the first-boot handoff is actually usable.
-    copy_dir_recursive_async(config_dir, &staged_repo_dir)
-        .await
-        .map_err(|e| format!("Failed to stage config files: {}", e))?;
-
-    tokio::fs::write(staged_repo_dir.join(FIRST_BOOT_MARKER), "")
-        .await
-        .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
-    // Write the final on-disk repo location, not the install-time /mnt path.
-    tokio::fs::write(
+    stage_config_to_temp(
+        config_dir,
+        &staging_root,
+        &staged_repo_dir,
         &staged_system_flake,
-        format!("{}\n", system_repo_dir.display()),
+        &system_repo_dir,
     )
-    .await
-    .map_err(|e| format!("Failed to stage system flake path: {}", e))?;
-    run_command_quiet("test", &["-f", &staged_marker_string], None, false)
-        .await
-        .map_err(|e| format!("Failed to verify staged first-boot marker: {}", e))?;
+    .await?;
 
     let _ = tx.send(InstallMessage::Output(format!(
         "Copying installed repo to {}",
@@ -2316,79 +2430,16 @@ async fn copy_config_to_target(
             "Installing development SSH keys for {}",
             username
         )));
-        run_command_quiet(
-            "install",
-            &["-d", "-m", "0700", &target_ssh_dir_string],
-            None,
-            true,
+        install_ssh_keys(
+            &installed_ssh_keys,
+            &target_ssh_dir,
+            &target_authorized_keys,
+            &staging_root,
         )
-        .await
-        .map_err(|e| format!("Failed to create installed SSH directory: {}", e))?;
-
-        let existing_authorized_keys = tokio::fs::read_to_string(&target_authorized_keys)
-            .await
-            .ok();
-        let merged_authorized_keys =
-            merge_authorized_keys(existing_authorized_keys.as_deref(), &installed_ssh_keys);
-        let staged_authorized_keys = staging_root.join("authorized_keys");
-        let staged_authorized_keys_string = staged_authorized_keys.display().to_string();
-        tokio::fs::write(&staged_authorized_keys, merged_authorized_keys)
-            .await
-            .map_err(|e| format!("Failed to stage installed SSH keys: {}", e))?;
-        run_command_quiet(
-            "install",
-            &[
-                "-m",
-                "0600",
-                &staged_authorized_keys_string,
-                &target_authorized_keys_string,
-            ],
-            None,
-            true,
-        )
-        .await
-        .map_err(|e| format!("Failed to install development SSH keys: {}", e))?;
+        .await?;
     }
 
-    // Fix ownership — look up uid/gid from the installed system's passwd
-    let passwd_path = PathBuf::from("/mnt/etc/passwd");
-    if passwd_path.exists() {
-        let passwd = tokio::fs::read_to_string(&passwd_path)
-            .await
-            .unwrap_or_default();
-        if let Some(line) = passwd
-            .lines()
-            .find(|l| l.starts_with(&format!("{}:", username)))
-        {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() >= 4 {
-                let uid = parts[2];
-                let gid = parts[3];
-                let keystone_dir = target_home.join(".keystone");
-                let ssh_dir = target_home.join(".ssh");
-                let ownership = format!("{}:{}", uid, gid);
-                let keystone_dir_string = keystone_dir.display().to_string();
-                let ssh_dir_string = ssh_dir.display().to_string();
-                let _ = tx.send(InstallMessage::Output(format!(
-                    "Fixing installed repo ownership at {}",
-                    keystone_dir.display()
-                )));
-                run_command_quiet(
-                    "chown",
-                    &["-R", &ownership, &keystone_dir_string],
-                    None,
-                    true,
-                )
-                .await
-                .map_err(|e| format!("Failed to set installed repo ownership: {}", e))?;
-                if !installed_ssh_keys.is_empty() {
-                    run_command_quiet("chown", &["-R", &ownership, &ssh_dir_string], None, true)
-                        .await
-                        .map_err(|e| format!("Failed to set installed SSH key ownership: {}", e))?;
-                }
-            }
-        }
-    }
+    fix_target_ownership(&target_home, username, !installed_ssh_keys.is_empty(), tx).await?;
 
     let _ = tokio::fs::remove_dir_all(&staging_root).await;
 
