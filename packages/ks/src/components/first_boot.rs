@@ -27,6 +27,8 @@ use crate::action::Action;
 use crate::component::Component;
 use crate::widgets::TextInput;
 
+const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
+
 /// Configuration for the first-boot flow.
 #[derive(Debug, Clone)]
 pub struct FirstBootConfig {
@@ -37,13 +39,17 @@ pub struct FirstBootConfig {
 }
 
 impl FirstBootConfig {
-    fn installed_config_dir() -> Option<PathBuf> {
-        let default_owner = std::fs::read_to_string("/etc/keystone/install-config/username")
+    fn default_repo_owner() -> String {
+        std::fs::read_to_string("/etc/keystone/install-config/username")
             .ok()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .or_else(|| std::env::var("USER").ok())
-            .unwrap_or_else(|| "keystone".to_string());
+            .unwrap_or_else(|| "keystone".to_string())
+    }
+
+    fn installed_config_dir() -> Option<PathBuf> {
+        let default_owner = Self::default_repo_owner();
 
         std::env::var_os("KEYSTONE_SYSTEM_FLAKE")
             .filter(|value| !value.is_empty())
@@ -61,7 +67,7 @@ impl FirstBootConfig {
                     home.join(".keystone")
                         .join("repos")
                         .join(default_owner)
-                        .join("keystone-config"),
+                        .join(DEFAULT_INSTALLED_REPO_NAME),
                 )
             })
     }
@@ -163,14 +169,20 @@ pub struct FirstBootScreen {
 
 impl FirstBootScreen {
     pub fn new(config: FirstBootConfig) -> Self {
+        let default_repo_name = config
+            .config_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .unwrap_or(DEFAULT_INSTALLED_REPO_NAME);
         let default_remote = config
             .github_username
             .as_ref()
-            .map(|gh| format!("git@github.com:{}/nixos-config.git", gh))
+            .map(|gh| format!("git@github.com:{}/{}.git", gh, default_repo_name))
             .unwrap_or_default();
 
         let mut remote_input =
-            TextInput::new().with_placeholder("git@github.com:user/nixos-config.git");
+            TextInput::new().with_placeholder("git@github.com:user/keystone-config.git");
         if !default_remote.is_empty() {
             remote_input.set_value(&default_remote);
         }
@@ -1443,7 +1455,7 @@ mod tests {
 
     fn test_first_boot_config() -> FirstBootConfig {
         FirstBootConfig {
-            config_dir: PathBuf::from("/home/testuser/.worktrees/ncrmro/nixos-config/main"),
+            config_dir: PathBuf::from("/home/testuser/.keystone/repos/testuser/keystone-config"),
             hostname: "test-machine".to_string(),
             username: "testuser".to_string(),
             github_username: Some("octocat".to_string()),
@@ -1472,20 +1484,35 @@ mod tests {
         let screen = FirstBootScreen::new(test_first_boot_config());
         assert_eq!(
             screen.remote_input.value(),
-            "git@github.com:octocat/nixos-config.git"
+            "git@github.com:octocat/keystone-config.git"
         );
     }
 
     #[test]
     fn test_remote_input_empty_without_github() {
         let config = FirstBootConfig {
-            config_dir: PathBuf::from("/home/testuser/.worktrees/ncrmro/nixos-config/main"),
+            config_dir: PathBuf::from("/home/testuser/.keystone/repos/testuser/keystone-config"),
             hostname: "test-machine".to_string(),
             username: "testuser".to_string(),
             github_username: None,
         };
         let screen = FirstBootScreen::new(config);
         assert_eq!(screen.remote_input.value(), "");
+    }
+
+    #[test]
+    fn test_remote_input_uses_custom_installed_repo_name() {
+        let config = FirstBootConfig {
+            config_dir: PathBuf::from("/home/testuser/.keystone/repos/testuser/custom-config"),
+            hostname: "test-machine".to_string(),
+            username: "testuser".to_string(),
+            github_username: Some("octocat".to_string()),
+        };
+        let screen = FirstBootScreen::new(config);
+        assert_eq!(
+            screen.remote_input.value(),
+            "git@github.com:octocat/custom-config.git"
+        );
     }
 
     #[test]
