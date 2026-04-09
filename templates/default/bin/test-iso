@@ -116,6 +116,9 @@ Options:
                         For path-locked keystone inputs, this refreshes the
                         lock to the current local path snapshot.
   --headless            No GUI window — poll for SSH in the background.
+  --e2e                 Requires --headless --dev. After SSH is up, drive the
+                        installer TUI with deterministic keystrokes, poll for
+                        install checkpoints, and report pass/fail.
   --ssh-timeout SEC     Max wait time for SSH in headless mode (default: $SSH_WAIT_TIMEOUT).
   --disk-size SIZE      Size of the attached install disk image (default: $VM_DISK_SIZE).
   --disk-path PATH      Path to the attached install disk image
@@ -145,6 +148,7 @@ SSH_KEY_INPUTS=()
 BUILD=true
 BOOT=true
 HEADLESS=false
+E2E_MODE=false
 UPDATE_KEYSTONE_INPUT=false
 DEV_MODE=false
 
@@ -178,6 +182,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --headless)
             HEADLESS=true
+            shift
+            ;;
+        --e2e)
+            E2E_MODE=true
             shift
             ;;
         --ssh-timeout)
@@ -215,6 +223,161 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# ── e2e mode gate ────────────────────────────────────────────────────────────
+
+if [[ "$E2E_MODE" == "true" ]]; then
+    if [[ "$HEADLESS" != "true" || "$DEV_MODE" != "true" ]]; then
+        log_error "--e2e requires both --headless and --dev"
+        exit 1
+    fi
+fi
+
+E2E_INSTALL_TIMEOUT=900   # 15 minutes for nixos-install to complete
+E2E_CHECKPOINT_POLL=30    # seconds between checkpoint polls
+
+# SSH command fragments reused by the e2e driver.
+ssh_cmd() {
+    ssh "${SSH_IDENTITY_ARGS[@]}" \
+        -p "$SSH_PORT" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=5 \
+        "${ADMIN_USERNAME}@localhost" "$@"
+}
+
+# Drive the ks installer TUI with deterministic keystrokes via expect.
+#
+# Expect keeps the SSH PTY open for the entire install so ks has a live
+# terminal.  The checkpoint poller runs from a separate SSH session.
+run_e2e_installer() {
+    local expect_bin
+    expect_bin="$(command -v expect 2>/dev/null || true)"
+    if [[ -z "$expect_bin" ]]; then
+        log_error "--e2e requires 'expect' (tcl-expect). Install it or add it to your devshell."
+        exit 1
+    fi
+
+    log_info "E2E: driving installer TUI with deterministic keystrokes"
+
+    local ssh_args=(-tt)
+    ssh_args+=("${SSH_IDENTITY_ARGS[@]}")
+    ssh_args+=(-p "$SSH_PORT")
+    ssh_args+=(-o StrictHostKeyChecking=no)
+    ssh_args+=(-o UserKnownHostsFile=/dev/null)
+    ssh_args+=(-o ServerAliveInterval=30)
+
+    # Run expect in background — it keeps the PTY alive while ks runs.
+    # The checkpoint poller takes over in the foreground.
+    "$expect_bin" - "${ssh_args[@]}" "${ADMIN_USERNAME}@localhost" << 'EXPECT_SCRIPT' &
+set timeout 120
+set ssh_args [lrange $argv 0 end]
+
+eval spawn env TERM=xterm-256color ssh $ssh_args ks
+
+# Screen 1: host selection — wait for the TUI to render.
+# The first item (laptop) is focused by default.  Just press Enter.
+expect {
+    -re {Host|host|Select} { }
+    timeout { send_user "\n>>> TIMEOUT waiting for host screen\n"; exit 1 }
+}
+sleep 1
+send "\r"
+
+# Screen 2: disk selection
+expect {
+    -re {Disk|disk|Select} { }
+    timeout { send_user "\n>>> TIMEOUT waiting for disk screen\n"; exit 1 }
+}
+sleep 1
+send "\r"
+
+# Screen 3: confirmation
+expect {
+    -re {Confirm|confirm|Begin|Install|install} { }
+    timeout { send_user "\n>>> TIMEOUT waiting for confirm screen\n"; exit 1 }
+}
+sleep 1
+send "\r"
+
+send_user "\n>>> Keys sent, keeping PTY alive for install...\n"
+
+# Keep the SSH session open while ks runs (up to 30 minutes).
+set timeout 1800
+expect {
+    eof { send_user "\n>>> ks session ended\n" }
+    timeout { send_user "\n>>> Install timeout\n"; exit 1 }
+}
+EXPECT_SCRIPT
+    E2E_EXPECT_PID=$!
+
+    # Brief wait for expect to send all keys before polling starts.
+    sleep 15
+
+    log_ok "E2E: installer TUI driven (expect PID $E2E_EXPECT_PID)"
+}
+
+# Poll install checkpoints from the live ISO until they all pass or timeout.
+run_e2e_checkpoints() {
+    local repo_name
+    repo_name="$(basename "$PROJECT_DIR")"
+
+    log_info "E2E: polling install checkpoints (timeout: ${E2E_INSTALL_TIMEOUT}s)"
+
+    local start_time
+    start_time="$(date +%s)"
+
+    while true; do
+        local now elapsed
+        now="$(date +%s)"
+        elapsed=$(( now - start_time ))
+        if (( elapsed >= E2E_INSTALL_TIMEOUT )); then
+            log_error "E2E: install checkpoint timeout after ${E2E_INSTALL_TIMEOUT}s"
+            return 1
+        fi
+
+        if ssh_cmd "sudo -n test -f /mnt/nix/var/nix/profiles/system" 2>/dev/null; then
+            break
+        fi
+        log_info "E2E: waiting for system profile... (${elapsed}s elapsed)"
+        sleep "$E2E_CHECKPOINT_POLL"
+    done
+
+    log_ok "E2E: system profile exists"
+
+    # Verify all checkpoints
+    local failed=0
+
+    if ssh_cmd "sudo -n test -f /mnt/etc/keystone/system-flake" 2>/dev/null; then
+        log_ok "E2E: /etc/keystone/system-flake exists"
+    else
+        log_error "E2E: /etc/keystone/system-flake MISSING"
+        failed=1
+    fi
+
+    if ssh_cmd "sudo -n test -f /mnt/home/${ADMIN_USERNAME}/.ssh/authorized_keys" 2>/dev/null; then
+        log_ok "E2E: authorized_keys exists"
+    else
+        log_error "E2E: authorized_keys MISSING"
+        failed=1
+    fi
+
+    local repo_marker="/mnt/home/${ADMIN_USERNAME}/.keystone/repos/${ADMIN_USERNAME}/${repo_name}/.first-boot-pending"
+    if ssh_cmd "sudo -n test -f '${repo_marker}'" 2>/dev/null; then
+        log_ok "E2E: first-boot-pending marker exists"
+    else
+        log_error "E2E: first-boot-pending marker MISSING"
+        failed=1
+    fi
+
+    if (( failed )); then
+        log_error "E2E: FAIL — some checkpoints missing"
+        return 1
+    fi
+
+    log_ok "E2E: PASS — all install checkpoints verified"
+    return 0
+}
 
 # ── read admin identity from flake ───────────────────────────────────────────
 
@@ -575,6 +738,23 @@ if [[ "$HEADLESS" == "true" ]]; then
         log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
     fi
     echo >&2
+
+    if [[ "$E2E_MODE" == "true" ]]; then
+        E2E_EXPECT_PID=""
+        run_e2e_installer
+        if run_e2e_checkpoints; then
+            log_ok "E2E test passed."
+            kill "$E2E_EXPECT_PID" 2>/dev/null || true
+            kill "$QEMU_PID" 2>/dev/null || true
+            exit 0
+        else
+            log_error "E2E test failed."
+            kill "$E2E_EXPECT_PID" 2>/dev/null || true
+            kill "$QEMU_PID" 2>/dev/null || true
+            exit 1
+        fi
+    fi
+
     log_warn "VM is running (PID $QEMU_PID). Press Ctrl-C to shut it down."
     wait "$QEMU_PID"
 else
