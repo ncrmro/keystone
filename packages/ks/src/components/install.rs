@@ -8,7 +8,7 @@
 //! 2. **Summary** — Show the selected config (hostname, storage, user)
 //! 3. **Disk selection** — Choose the destination disk explicitly
 //! 4. **Confirm** — Final warning before erasing the disk
-//! 5. **Install** — Run disko + nixos-install, streaming output
+//! 5. **Install** — Run disko + hardware capture + local commit + nixos-install
 //! 6. **Done** — Prompt to remove USB and reboot
 
 use std::collections::BTreeMap;
@@ -39,9 +39,11 @@ const INSTALL_CONFIG_PATH: &str = "/etc/keystone/install-config";
 const INSTALL_KEYSTONE_PATH: &str = "/etc/keystone/install-keystone";
 const INSTALL_METADATA_DIR: &str = "/etc/keystone/install-metadata";
 const WRITABLE_INSTALL_REPO_PATH: &str = "/tmp/keystone-install-repo";
-const WRITABLE_INSTALL_KEYSTONE_PATH: &str = "/tmp/keystone-install-keystone";
 const VENDORED_KEYSTONE_INPUT_DIR: &str = ".keystone-input";
 const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
+const GENERATED_HARDWARE_FILENAME: &str = "hardware-generated.nix";
+const FIRST_BOOT_MARKER: &str = ".first-boot-pending";
+const INITIAL_INSTALL_COMMIT_MESSAGE: &str = "feat: initial Keystone configuration";
 
 #[derive(Debug, Clone)]
 pub enum InstallSource {
@@ -553,7 +555,7 @@ fn vendor_embedded_keystone_input(repo_dir: &Path) -> AnyhowResult<Option<PathBu
         return Ok(None);
     }
 
-    let vendored_dir = PathBuf::from(WRITABLE_INSTALL_KEYSTONE_PATH);
+    let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
     copy_repo_to_writable(embedded_keystone, &vendored_dir).with_context(|| {
         format!(
             "Failed to copy embedded keystone input from {} to {}",
@@ -589,6 +591,224 @@ fn parse_hardware_disk_device(hardware_path: &Path) -> Option<String> {
     }
 
     None
+}
+
+fn extract_quoted_strings(line: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut in_string = false;
+    let mut escape = false;
+
+    for ch in line.chars() {
+        if !in_string {
+            if ch == '"' {
+                in_string = true;
+                current.clear();
+            }
+            continue;
+        }
+
+        if escape {
+            current.push(ch);
+            escape = false;
+            continue;
+        }
+
+        match ch {
+            '\\' => escape = true,
+            '"' => {
+                in_string = false;
+                values.push(current.clone());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    values
+}
+
+fn push_unique(values: &mut Vec<String>, candidate: String) {
+    if !values.iter().any(|existing| existing == &candidate) {
+        values.push(candidate);
+    }
+}
+
+fn parse_nix_string_assignment(content: &str, attr: &str) -> Option<String> {
+    content.lines().find_map(|line| {
+        let trimmed = line.trim();
+        if trimmed.starts_with(attr) && trimmed.contains('=') {
+            extract_quoted_strings(trimmed).into_iter().next()
+        } else {
+            None
+        }
+    })
+}
+
+fn parse_nix_string_list_assignment(content: &str, attr: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut in_list = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if !in_list && trimmed.starts_with(attr) && trimmed.contains('[') {
+            in_list = true;
+        }
+
+        if in_list {
+            for value in extract_quoted_strings(trimmed) {
+                push_unique(&mut values, value);
+            }
+            if trimmed.contains("];") {
+                break;
+            }
+        }
+    }
+
+    values
+}
+
+fn extract_stable_disk_identifiers(config: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+
+    for line in config.lines() {
+        for value in extract_quoted_strings(line) {
+            if value.contains("/dev/disk/by-")
+                || value.contains("UUID=")
+                || value.contains("PARTUUID=")
+            {
+                push_unique(&mut ids, value);
+            }
+        }
+    }
+
+    ids
+}
+
+fn escape_nix_string(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace("${", "\\${")
+        .replace('\n', "\\n")
+}
+
+fn ensure_marker_gitignore_contents(current: Option<&str>) -> String {
+    let existing = current.unwrap_or_default();
+    if existing
+        .lines()
+        .any(|line| line.trim() == FIRST_BOOT_MARKER)
+    {
+        if existing.ends_with('\n') {
+            return existing.to_string();
+        }
+        return format!("{existing}\n");
+    }
+
+    if existing.trim().is_empty() {
+        format!("{FIRST_BOOT_MARKER}\n")
+    } else if existing.ends_with('\n') {
+        format!("{existing}{FIRST_BOOT_MARKER}\n")
+    } else {
+        format!("{existing}\n{FIRST_BOOT_MARKER}\n")
+    }
+}
+
+fn resolve_hardware_path(config: &InstallerConfig) -> Result<PathBuf, String> {
+    if let Some(path) = config.hardware_path.clone() {
+        return Ok(path);
+    }
+
+    InstallerConfig::find_host_file(&config.config_dir, &config.hostname, "hardware.nix")
+        .ok_or_else(|| {
+            format!(
+                "Failed to locate hardware.nix for host {} in {}",
+                config.hostname,
+                config.config_dir.display()
+            )
+        })
+}
+
+fn build_reconciled_hardware_wrapper(
+    current_hardware_nix: &str,
+    selected_disk: Option<&str>,
+) -> Result<String, String> {
+    let system = parse_nix_string_assignment(current_hardware_nix, "system")
+        .unwrap_or_else(|| "x86_64-linux".to_string());
+    let host_id = parse_nix_string_assignment(current_hardware_nix, "networking.hostId")
+        .unwrap_or_else(|| "00000000".to_string());
+    let mut storage_devices =
+        parse_nix_string_list_assignment(current_hardware_nix, "keystone.os.storage.devices");
+    if storage_devices.is_empty() {
+        if let Some(device) = selected_disk {
+            storage_devices.push(device.to_string());
+        }
+    }
+    if storage_devices.is_empty() {
+        return Err(
+            "Could not determine keystone.os.storage.devices while reconciling hardware.nix."
+                .to_string(),
+        );
+    }
+    let storage_mode =
+        parse_nix_string_assignment(current_hardware_nix, "keystone.os.storage.mode")
+            .unwrap_or_else(|| "single".to_string());
+    let remote_unlock_network_module = parse_nix_string_assignment(
+        current_hardware_nix,
+        "keystone.os.remoteUnlock.networkModule",
+    );
+
+    let rendered_storage_devices = storage_devices
+        .iter()
+        .map(|device| format!("        \"{}\"\n", escape_nix_string(device)))
+        .collect::<String>();
+    let rendered_remote_unlock = remote_unlock_network_module
+        .map(|module| {
+            format!(
+                "\n      keystone.os.remoteUnlock.networkModule = \"{}\";\n",
+                escape_nix_string(&module)
+            )
+        })
+        .unwrap_or_default();
+
+    Ok(format!(
+        r#"let
+  system = "{system}";
+in
+{{
+  inherit system;
+
+  module =
+    {{
+      config,
+      lib,
+      pkgs,
+      modulesPath,
+      ...
+    }}:
+    {{
+      imports = [
+        ./{generated_hardware_filename}
+      ];
+
+      networking.hostId = "{host_id}";
+
+      keystone.os.storage.devices = [
+{rendered_storage_devices}      ];
+      keystone.os.storage.mode = "{storage_mode}";
+{rendered_remote_unlock}      hardware.cpu.intel.updateMicrocode =
+        lib.mkDefault config.hardware.enableRedistributableFirmware;
+      hardware.enableRedistributableFirmware = true;
+    }};
+}}
+"#,
+        system = escape_nix_string(&system),
+        generated_hardware_filename = GENERATED_HARDWARE_FILENAME,
+        host_id = escape_nix_string(&host_id),
+        rendered_storage_devices = rendered_storage_devices,
+        storage_mode = escape_nix_string(&storage_mode),
+        rendered_remote_unlock = rendered_remote_unlock,
+    ))
 }
 
 /// The phases of the install flow.
@@ -889,6 +1109,7 @@ impl InstallScreen {
         self.cancel_token = cancel_token.clone();
 
         let config_dir = self.config.config_dir.clone();
+        let install_config = self.config.clone();
         let flake_host = self.config.flake_host.clone();
         let username = self.config.username.clone();
         let repo_owner = self.config.installed_repo_owner().to_string();
@@ -897,7 +1118,7 @@ impl InstallScreen {
         tokio::spawn(async move {
             // Phase 1: Run disko to partition and format the disk
             let _ = tx.send(InstallMessage::Output(
-                "=== Phase 1/2: Partitioning with disko ===".to_string(),
+                "=== Phase 1/4: Partitioning with disko ===".to_string(),
             ));
 
             let disko_result = run_command(
@@ -932,10 +1153,62 @@ impl InstallScreen {
                 "Disk partitioning complete.".to_string(),
             ));
 
-            // Phase 2: Run nixos-install
+            let Some(ref user) = username else {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(
+                    "Installer metadata is missing the admin username needed for the install commit and installed repo path.".to_string(),
+                )));
+                return;
+            };
+
+            // Phase 2: Capture hardware before nixos-install so the committed
+            // repo already reflects the real target machine when the system is built.
             let _ = tx.send(InstallMessage::Output(String::new()));
             let _ = tx.send(InstallMessage::Output(
-                "=== Phase 2/2: Installing NixOS ===".to_string(),
+                "=== Phase 2/4: Detecting hardware ===".to_string(),
+            ));
+            if let Err(e) = detect_hardware_config(&install_config, &tx, &cancel_token).await {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                    "hardware detection failed: {}",
+                    e
+                ))));
+                return;
+            }
+
+            if cancel_token.is_cancelled() {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Cancelled));
+                return;
+            }
+
+            let _ = tx.send(InstallMessage::PhaseComplete(
+                "Hardware config recorded.".to_string(),
+            ));
+
+            // Phase 3: Create the local install commit before nixos-install.
+            let _ = tx.send(InstallMessage::Output(String::new()));
+            let _ = tx.send(InstallMessage::Output(
+                "=== Phase 3/4: Recording install commit ===".to_string(),
+            ));
+            if let Err(e) = create_install_commit(&config_dir, user, &tx).await {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                    "install commit failed: {}",
+                    e
+                ))));
+                return;
+            }
+
+            if cancel_token.is_cancelled() {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Cancelled));
+                return;
+            }
+
+            let _ = tx.send(InstallMessage::PhaseComplete(
+                "Local install commit recorded.".to_string(),
+            ));
+
+            // Phase 4: Run nixos-install from the reconciled, committed repo.
+            let _ = tx.send(InstallMessage::Output(String::new()));
+            let _ = tx.send(InstallMessage::Output(
+                "=== Phase 4/4: Installing NixOS ===".to_string(),
             ));
 
             let flake_ref = format!("{}#{}", config_dir.display(), flake_host);
@@ -952,13 +1225,6 @@ impl InstallScreen {
 
             match install_result {
                 Ok(()) => {
-                    let Some(ref user) = username else {
-                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(
-                            "Installer metadata is missing the admin username needed for the installed repo path.".to_string(),
-                        )));
-                        return;
-                    };
-
                     let _ = tx.send(InstallMessage::Output(
                         "Copying config to installed system...".to_string(),
                     ));
@@ -1600,11 +1866,241 @@ async fn run_command_quiet(
     ))
 }
 
-/// Copy the generated config to the installed system for the first-boot flow.
+async fn git_config_get(repo_dir: &Path, key: &str) -> Result<Option<String>, String> {
+    let output = Command::new("git")
+        .args(["config", "--get", key])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to read git config {key}: {e}"))?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(value))
+    }
+}
+
+async fn ensure_git_identity(repo_dir: &Path, username: &str) -> Result<(), String> {
+    if git_config_get(repo_dir, "user.name").await?.is_none() {
+        run_command_quiet(
+            "git",
+            &["config", "user.name", username],
+            Some(repo_dir),
+            false,
+        )
+        .await
+        .map_err(|e| format!("Failed to configure git user.name: {e}"))?;
+    }
+
+    if git_config_get(repo_dir, "user.email").await?.is_none() {
+        let email = format!("{username}@keystone.local");
+        run_command_quiet(
+            "git",
+            &["config", "user.email", &email],
+            Some(repo_dir),
+            false,
+        )
+        .await
+        .map_err(|e| format!("Failed to configure git user.email: {e}"))?;
+    }
+
+    Ok(())
+}
+
+async fn ensure_repo_on_main(repo_dir: &Path) -> Result<(), String> {
+    let git_dir = repo_dir.join(".git");
+    if !git_dir.exists() {
+        return run_command_quiet("git", &["init", "-b", "main"], Some(repo_dir), false)
+            .await
+            .map_err(|e| format!("Failed to initialize git repo: {e}"));
+    }
+
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to inspect current git branch: {e}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Failed to inspect current git branch: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch == "main" {
+        return Ok(());
+    }
+
+    if branch == "HEAD" {
+        run_command_quiet("git", &["checkout", "-B", "main"], Some(repo_dir), false)
+            .await
+            .map_err(|e| format!("Failed to create main branch: {e}"))?;
+    } else {
+        run_command_quiet("git", &["branch", "-M", "main"], Some(repo_dir), false)
+            .await
+            .map_err(|e| format!("Failed to rename branch to main: {e}"))?;
+    }
+
+    Ok(())
+}
+
+async fn detect_hardware_config(
+    config: &InstallerConfig,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+    cancel_token: &CancellationToken,
+) -> Result<(), String> {
+    let hardware_path = resolve_hardware_path(config)?;
+    let generated_hardware_path = hardware_path
+        .parent()
+        .ok_or_else(|| {
+            format!(
+                "hardware.nix has no parent dir: {}",
+                hardware_path.display()
+            )
+        })?
+        .join(GENERATED_HARDWARE_FILENAME);
+    let capture_path = PathBuf::from(format!(
+        "/tmp/keystone-detected-hardware-{}.nix",
+        std::process::id()
+    ));
+    let capture_script = format!(
+        "nixos-generate-config --root /mnt --show-hardware-config > {}",
+        capture_path.display()
+    );
+
+    let current_hardware_nix = tokio::fs::read_to_string(&hardware_path)
+        .await
+        .map_err(|e| format!("Failed to read {}: {}", hardware_path.display(), e))?;
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Capturing detected hardware config for {}",
+        config.hostname
+    )));
+    run_command(
+        "sh",
+        &["-c", &capture_script],
+        &config.config_dir,
+        tx,
+        cancel_token,
+        true,
+    )
+    .await?;
+
+    let generated_hardware = tokio::fs::read_to_string(&capture_path)
+        .await
+        .map_err(|e| format!("Failed to read captured hardware config: {}", e))?;
+    let _ = tokio::fs::remove_file(&capture_path).await;
+
+    let stable_disk_ids = extract_stable_disk_identifiers(&generated_hardware);
+    if stable_disk_ids.is_empty() {
+        return Err(
+            "No confident stable disk mapping was detected in the generated hardware config. The installer will not guess."
+                .to_string(),
+        );
+    }
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Detected stable disk identifiers: {}",
+        stable_disk_ids.join(", ")
+    )));
+
+    let reconciled_hardware =
+        build_reconciled_hardware_wrapper(&current_hardware_nix, config.disk_device.as_deref())?;
+
+    tokio::fs::write(
+        &generated_hardware_path,
+        format!("{}\n", generated_hardware.trim_end()),
+    )
+    .await
+    .map_err(|e| {
+        format!(
+            "Failed to write generated hardware module {}: {}",
+            generated_hardware_path.display(),
+            e
+        )
+    })?;
+    tokio::fs::write(&hardware_path, reconciled_hardware)
+        .await
+        .map_err(|e| format!("Failed to update {}: {}", hardware_path.display(), e))?;
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Updated {} to import {}",
+        hardware_path.display(),
+        generated_hardware_path.display()
+    )));
+
+    Ok(())
+}
+
+async fn create_install_commit(
+    config_dir: &Path,
+    username: &str,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
+    let _ = tx.send(InstallMessage::Output(
+        "Preparing local install commit...".to_string(),
+    ));
+
+    ensure_repo_on_main(config_dir).await?;
+    ensure_git_identity(config_dir, username).await?;
+
+    let gitignore_path = config_dir.join(".gitignore");
+    let current_gitignore = tokio::fs::read_to_string(&gitignore_path).await.ok();
+    let gitignore_contents = ensure_marker_gitignore_contents(current_gitignore.as_deref());
+    tokio::fs::write(&gitignore_path, gitignore_contents)
+        .await
+        .map_err(|e| format!("Failed to update {}: {}", gitignore_path.display(), e))?;
+
+    let _ = Command::new("git")
+        .args([
+            "rm",
+            "--cached",
+            "-f",
+            "--ignore-unmatch",
+            FIRST_BOOT_MARKER,
+        ])
+        .current_dir(config_dir)
+        .output()
+        .await;
+
+    run_command_quiet("git", &["add", "."], Some(config_dir), false)
+        .await
+        .map_err(|e| format!("Failed to stage install repo changes: {e}"))?;
+    run_command_quiet(
+        "git",
+        &[
+            "commit",
+            "--allow-empty",
+            "-m",
+            INITIAL_INSTALL_COMMIT_MESSAGE,
+        ],
+        Some(config_dir),
+        false,
+    )
+    .await
+    .map_err(|e| format!("Failed to create install commit: {e}"))?;
+
+    let _ = tx.send(InstallMessage::Output(
+        "Recorded local install commit.".to_string(),
+    ));
+
+    Ok(())
+}
+
+/// Copy the prepared config to the installed system for the post-install onboarding flow.
 ///
 /// Creates the installed system flake directory on the target and copies
 /// the config tree with a `.first-boot-pending` marker so the TUI knows
-/// to run the first-boot wizard on next login.
+/// to continue onboarding on next login.
 fn installed_repo_paths(username: &str, repo_owner: &str, repo_name: &str) -> (PathBuf, PathBuf) {
     let system_repo_dir = PathBuf::from("/home")
         .join(username)
@@ -1635,14 +2131,12 @@ async fn copy_config_to_target(
             .strip_prefix("/")
             .expect("target home should be absolute"),
     );
-    let repo_parent = mounted_repo_dir
-        .parent()
-        .ok_or_else(|| {
-            format!(
-                "Installed repo path has no parent: {}",
-                mounted_repo_dir.display()
-            )
-        })?;
+    let repo_parent = mounted_repo_dir.parent().ok_or_else(|| {
+        format!(
+            "Installed repo path has no parent: {}",
+            mounted_repo_dir.display()
+        )
+    })?;
     let staging_root = PathBuf::from(format!(
         "/tmp/keystone-installed-config-{}",
         std::process::id()
@@ -1653,9 +2147,9 @@ async fn copy_config_to_target(
     let repo_dir_string = mounted_repo_dir.display().to_string();
     let staged_repo_contents = format!("{}/.", staged_repo_dir.display());
     let staged_system_flake_string = staged_system_flake.display().to_string();
-    let staged_marker = staged_repo_dir.join(".first-boot-pending");
+    let staged_marker = staged_repo_dir.join(FIRST_BOOT_MARKER);
     let staged_marker_string = staged_marker.display().to_string();
-    let target_marker = mounted_repo_dir.join(".first-boot-pending");
+    let target_marker = mounted_repo_dir.join(FIRST_BOOT_MARKER);
     let target_marker_string = target_marker.display().to_string();
     let target_system_flake = "/mnt/etc/keystone/system-flake";
 
@@ -1675,26 +2169,7 @@ async fn copy_config_to_target(
         .await
         .map_err(|e| format!("Failed to stage config files: {}", e))?;
 
-    let embedded_keystone = Path::new(INSTALL_KEYSTONE_PATH);
-    if embedded_keystone.exists() {
-        let vendored_keystone = staged_repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
-        copy_repo_to_writable(embedded_keystone, &vendored_keystone).map_err(|e| {
-            format!(
-                "Failed to copy embedded keystone input to staged repo {}: {}",
-                staged_repo_dir.display(),
-                e
-            )
-        })?;
-        rewrite_keystone_lock_input(&staged_repo_dir, &vendored_keystone).map_err(|e| {
-            format!(
-                "Failed to rewrite keystone input in staged repo {}: {}",
-                staged_repo_dir.display(),
-                e
-            )
-        })?;
-    }
-
-    tokio::fs::write(staged_repo_dir.join(".first-boot-pending"), "")
+    tokio::fs::write(staged_repo_dir.join(FIRST_BOOT_MARKER), "")
         .await
         .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
     // Write the final on-disk repo location, not the install-time /mnt path.
@@ -1702,8 +2177,8 @@ async fn copy_config_to_target(
         &staged_system_flake,
         format!("{}\n", system_repo_dir.display()),
     )
-        .await
-        .map_err(|e| format!("Failed to stage system flake path: {}", e))?;
+    .await
+    .map_err(|e| format!("Failed to stage system flake path: {}", e))?;
     run_command_quiet("test", &["-f", &staged_marker_string], None, false)
         .await
         .map_err(|e| format!("Failed to verify staged first-boot marker: {}", e))?;
@@ -2331,5 +2806,66 @@ mod tests {
             mounted_repo_dir,
             PathBuf::from("/mnt/home/noah/.keystone/repos/noah/keystone-config")
         );
+    }
+
+    #[test]
+    fn test_ensure_marker_gitignore_contents_preserves_existing_entries() {
+        let updated = ensure_marker_gitignore_contents(Some("result\nnode_modules/\n"));
+        assert_eq!(updated, "result\nnode_modules/\n.first-boot-pending\n");
+
+        let unchanged = ensure_marker_gitignore_contents(Some(".first-boot-pending\n"));
+        assert_eq!(unchanged, ".first-boot-pending\n");
+    }
+
+    #[test]
+    fn test_build_reconciled_hardware_wrapper_preserves_keystone_fields() {
+        let current = r#"let
+  system = "x86_64-linux";
+in
+{
+  inherit system;
+
+  module =
+    { config, lib, pkgs, modulesPath, ... }:
+    {
+      networking.hostId = "deadbeef";
+      keystone.os.storage.devices = [
+        "/dev/disk/by-id/test-disk"
+      ];
+      keystone.os.storage.mode = "mirror";
+      keystone.os.remoteUnlock.networkModule = "e1000e";
+    };
+}
+"#;
+
+        let reconciled =
+            build_reconciled_hardware_wrapper(current, Some("/dev/disk/by-id/fallback")).unwrap();
+
+        assert!(reconciled.contains("./hardware-generated.nix"));
+        assert!(reconciled.contains("networking.hostId = \"deadbeef\";"));
+        assert!(reconciled.contains("\"/dev/disk/by-id/test-disk\""));
+        assert!(reconciled.contains("keystone.os.storage.mode = \"mirror\";"));
+        assert!(reconciled.contains("keystone.os.remoteUnlock.networkModule = \"e1000e\";"));
+        assert!(reconciled.contains("hardware.enableRedistributableFirmware = true;"));
+    }
+
+    #[test]
+    fn test_build_reconciled_hardware_wrapper_uses_selected_disk_fallback() {
+        let current = r#"let
+  system = "x86_64-linux";
+in
+{
+  inherit system;
+
+  module = { ... }: {
+    networking.hostId = "deadbeef";
+  };
+}
+"#;
+
+        let reconciled =
+            build_reconciled_hardware_wrapper(current, Some("/dev/disk/by-id/fallback")).unwrap();
+
+        assert!(reconciled.contains("\"/dev/disk/by-id/fallback\""));
     }
 }
