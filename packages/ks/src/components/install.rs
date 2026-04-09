@@ -1038,6 +1038,67 @@ impl InstallScreen {
         self.selected_disk_index
     }
 
+    pub fn set_host_index(&mut self, index: usize) {
+        self.selected_host_index = index;
+    }
+
+    /// Run the install headlessly — no TUI.  Selects the pre-set host and
+    /// first available disk, then streams output to stdout.
+    pub async fn run_headless(&mut self) -> Result<(), String> {
+        // Phase 1: select host (copies repo, vendors keystone input)
+        self.select_host();
+        if let InstallPhase::Failed(msg) = &self.phase {
+            return Err(msg.clone());
+        }
+
+        // Phase 2: discover disks
+        eprintln!("Discovering disks...");
+        let disks = crate::disk::discover_disks()
+            .await
+            .map_err(|e| format!("Disk discovery failed: {}", e))?;
+        if disks.is_empty() {
+            return Err("No disks found".to_string());
+        }
+        eprintln!("Found {} disk(s), selecting: {}", disks.len(), disks[0].by_id_path);
+        self.available_disks = disks;
+        self.phase = InstallPhase::DiskSelection;
+        self.select_disk();
+        if let InstallPhase::Failed(msg) = &self.phase {
+            return Err(msg.clone());
+        }
+
+        // Phase 3: start install
+        self.start_install();
+
+        // Drain messages to stdout
+        if let Some(ref mut rx) = self.rx {
+            loop {
+                match rx.recv().await {
+                    Some(InstallMessage::Output(line)) => eprintln!("{}", line),
+                    Some(InstallMessage::PhaseComplete(phase)) => {
+                        eprintln!("=== Phase complete: {} ===", phase);
+                    }
+                    Some(InstallMessage::Finished(InstallResult::Success)) => {
+                        eprintln!("Install completed successfully.");
+                        return Ok(());
+                    }
+                    Some(InstallMessage::Finished(InstallResult::Failed(msg))) => {
+                        return Err(format!("Install failed: {}", msg));
+                    }
+                    Some(InstallMessage::Finished(InstallResult::Cancelled)) => {
+                        return Err("Install cancelled".to_string());
+                    }
+                    Some(InstallMessage::DisksDiscovered(_)) => {}
+                    None => {
+                        return Err("Install channel closed unexpectedly".to_string());
+                    }
+                }
+            }
+        }
+
+        Err("No install channel available".to_string())
+    }
+
     pub fn host_up(&mut self) {
         if !self.available_hosts.is_empty() {
             self.selected_host_index = if self.selected_host_index == 0 {

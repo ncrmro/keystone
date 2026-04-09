@@ -92,6 +92,7 @@ async fn main() -> Result<()> {
             Command::Print { args } => run_print_command(args).await,
             Command::Agent(args) => run_agent_command(args).await,
             Command::Doctor(args) => run_doctor_command(args).await,
+            Command::Install(args) => run_headless_install(&args.host).await,
         };
     }
 
@@ -121,6 +122,42 @@ async fn main() -> Result<()> {
     app.save_config().await;
 
     result
+}
+
+/// Run the installer headlessly for a specific host, streaming output to stderr.
+/// No TUI — auto-selects the first available disk.
+async fn run_headless_install(host: &str) -> Result<()> {
+    use components::install::InstallScreen;
+
+    let installer_config = InstallerConfig::detect()?
+        .ok_or_else(|| anyhow::anyhow!("--host requires installer ISO context (no install-repo found)"))?;
+
+    let targets = match &installer_config.source {
+        components::install::InstallSource::EmbeddedRepo { targets, .. } => targets.clone(),
+        _ => anyhow::bail!("--host requires an embedded-repo installer ISO"),
+    };
+
+    let host_idx = targets
+        .iter()
+        .position(|t| t.flake_host == host)
+        .ok_or_else(|| {
+            let available: Vec<_> = targets.iter().map(|t| t.flake_host.as_str()).collect();
+            anyhow::anyhow!(
+                "Host '{}' not found. Available: {}",
+                host,
+                available.join(", ")
+            )
+        })?;
+
+    eprintln!("Installing host '{}' headlessly...", host);
+
+    let mut screen = InstallScreen::new(installer_config);
+    screen.set_host_index(host_idx);
+
+    screen
+        .run_headless()
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 /// Render a single screen to stdout as ANSI and exit.
