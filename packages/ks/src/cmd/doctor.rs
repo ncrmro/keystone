@@ -237,7 +237,7 @@ async fn collect_home_disk_pressure() -> Vec<HomeDiskPressureWarning> {
             let size_bytes = parse_du_size_bytes(&result.stdout)?;
             if size_bytes > check.threshold_bytes {
                 Some(HomeDiskPressureWarning {
-                    path: format!("~/{path}", path = check.relative_path),
+                    path: format!("~/{}", check.relative_path),
                     size_bytes,
                     suggestion: check.cleanup_suggestion,
                 })
@@ -337,6 +337,7 @@ fn build_zfs_health_report(
             if dataset.used_bytes == 0 {
                 return None;
             }
+            // Check if snapshots exceed 25% of dataset usage (used_by_snapshots * 4 > used).
             if dataset.used_by_snapshots_bytes.saturating_mul(4) > dataset.used_bytes {
                 Some(ZfsDatasetWarning {
                     dataset: dataset.name.clone(),
@@ -377,8 +378,9 @@ fn build_zfs_health_report(
         }
     }
 
+    let mut seen = std::collections::HashSet::new();
+    dataset_warnings.retain(|warning| seen.insert((warning.dataset.clone(), warning.note.clone())));
     dataset_warnings.sort_by(|a, b| b.used_snapshots_bytes.cmp(&a.used_snapshots_bytes));
-    dataset_warnings.dedup_by(|a, b| a.dataset == b.dataset && a.note == b.note);
 
     ZfsHealthReport {
         pools,
@@ -430,6 +432,120 @@ async fn collect_zfs_health(home_warnings: &[HomeDiskPressureWarning]) -> Option
         home_warnings,
         home_dir.as_deref(),
     ))
+}
+
+fn append_home_disk_pressure_section(
+    markdown: &mut String,
+    checks: &mut Vec<DiagnosticCheck>,
+    home_pressure_warnings: &[HomeDiskPressureWarning],
+) {
+    markdown.push_str("### Disk pressure warnings\n");
+    if home_pressure_warnings.is_empty() {
+        markdown.push_str("_No high-usage ephemeral directories detected_\n\n");
+        checks.push(DiagnosticCheck {
+            name: "disk-pressure-home".to_string(),
+            status: "ok".to_string(),
+            detail: "No ephemeral directories above thresholds".to_string(),
+        });
+        return;
+    }
+
+    markdown.push_str("| Path | Size | Suggestion |\n");
+    markdown.push_str("|---|---|---|\n");
+    for warning in home_pressure_warnings {
+        markdown.push_str(&format!(
+            "| {} | {} | {} |\n",
+            warning.path,
+            format_bytes(warning.size_bytes),
+            warning.suggestion
+        ));
+        checks.push(DiagnosticCheck {
+            name: format!("disk-pressure:{}", warning.path),
+            status: "warning".to_string(),
+            detail: format!(
+                "{} exceeds threshold ({})",
+                warning.path,
+                format_bytes(warning.size_bytes)
+            ),
+        });
+    }
+    markdown.push('\n');
+}
+
+fn append_zfs_health_section(
+    markdown: &mut String,
+    checks: &mut Vec<DiagnosticCheck>,
+    zfs_health: &Option<ZfsHealthReport>,
+) {
+    let Some(zfs_health) = zfs_health else {
+        return;
+    };
+
+    markdown.push_str("### ZFS pool health\n");
+    markdown.push_str("| Pool | Available | Snapshot overhead | Status |\n");
+    markdown.push_str("|---|---|---|---|\n");
+    for pool in &zfs_health.pools {
+        markdown.push_str(&format!(
+            "| {} | {} | {} | {} |\n",
+            pool.pool,
+            format_bytes(pool.available_bytes),
+            format_bytes(pool.snapshot_overhead_bytes),
+            pool.status
+        ));
+        checks.push(DiagnosticCheck {
+            name: format!("zfs-pool:{}", pool.pool),
+            status: pool.status.to_string(),
+            detail: format!(
+                "Pool available {} (snapshot overhead {})",
+                format_bytes(pool.available_bytes),
+                format_bytes(pool.snapshot_overhead_bytes)
+            ),
+        });
+    }
+    markdown.push('\n');
+
+    if zfs_health.dataset_warnings.is_empty() {
+        return;
+    }
+
+    markdown.push_str("### Snapshot overhead by dataset\n");
+    markdown.push_str("| Dataset | REFER | USEDSNAP | Note |\n");
+    markdown.push_str("|---|---|---|---|\n");
+    for warning in &zfs_health.dataset_warnings {
+        markdown.push_str(&format!(
+            "| {} | {} | {} | {} |\n",
+            warning.dataset,
+            format_bytes(warning.refer_bytes),
+            format_bytes(warning.used_snapshots_bytes),
+            warning.note
+        ));
+        checks.push(DiagnosticCheck {
+            name: format!("zfs-dataset:{}", warning.dataset),
+            status: "warning".to_string(),
+            detail: format!(
+                "{} ({} snapshot usage)",
+                warning.note,
+                format_bytes(warning.used_snapshots_bytes)
+            ),
+        });
+    }
+    markdown.push('\n');
+}
+
+fn append_summary_section(markdown: &mut String, checks: &[DiagnosticCheck]) {
+    let warning_count = checks
+        .iter()
+        .filter(|check| check.status == "warning")
+        .count();
+    let error_count = checks
+        .iter()
+        .filter(|check| check.status == "error")
+        .count();
+    markdown.push_str("### Summary\n");
+    markdown.push_str(&format!(
+        "- warnings: **{}**\n- errors: **{}**\n\n",
+        warning_count, error_count
+    ));
 }
 
 async fn collect_flake_lock_age(repo_root: &Path) -> String {
@@ -757,7 +873,6 @@ fn gather_agent_tasks() -> String {
     lines.join("\n")
 }
 
-#[allow(clippy::cognitive_complexity)]
 pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
     let hostname = hostname::get()
         .context("Failed to get hostname")?
@@ -819,100 +934,9 @@ pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
         detail: lock_age,
     });
 
-    markdown.push_str("### Disk pressure warnings\n");
-    if home_pressure_warnings.is_empty() {
-        markdown.push_str("_No high-usage ephemeral directories detected_\n\n");
-        checks.push(DiagnosticCheck {
-            name: "disk-pressure-home".to_string(),
-            status: "ok".to_string(),
-            detail: "No ephemeral directories above thresholds".to_string(),
-        });
-    } else {
-        markdown.push_str("| Path | Size | Suggestion |\n");
-        markdown.push_str("|---|---|---|\n");
-        for warning in &home_pressure_warnings {
-            markdown.push_str(&format!(
-                "| {} | {} | {} |\n",
-                warning.path,
-                format_bytes(warning.size_bytes),
-                warning.suggestion
-            ));
-            checks.push(DiagnosticCheck {
-                name: format!("disk-pressure:{}", warning.path),
-                status: "warning".to_string(),
-                detail: format!(
-                    "{} exceeds threshold ({})",
-                    warning.path,
-                    format_bytes(warning.size_bytes)
-                ),
-            });
-        }
-        markdown.push('\n');
-    }
-
-    if let Some(zfs_health) = &zfs_health {
-        markdown.push_str("### ZFS pool health\n");
-        markdown.push_str("| Pool | Available | Snapshot overhead | Status |\n");
-        markdown.push_str("|---|---|---|---|\n");
-        for pool in &zfs_health.pools {
-            markdown.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
-                pool.pool,
-                format_bytes(pool.available_bytes),
-                format_bytes(pool.snapshot_overhead_bytes),
-                pool.status
-            ));
-            checks.push(DiagnosticCheck {
-                name: format!("zfs-pool:{}", pool.pool),
-                status: pool.status.to_string(),
-                detail: format!(
-                    "Pool available {} (snapshot overhead {})",
-                    format_bytes(pool.available_bytes),
-                    format_bytes(pool.snapshot_overhead_bytes)
-                ),
-            });
-        }
-        markdown.push('\n');
-
-        if !zfs_health.dataset_warnings.is_empty() {
-            markdown.push_str("### Snapshot overhead by dataset\n");
-            markdown.push_str("| Dataset | REFER | USEDSNAP | Note |\n");
-            markdown.push_str("|---|---|---|---|\n");
-            for warning in &zfs_health.dataset_warnings {
-                markdown.push_str(&format!(
-                    "| {} | {} | {} | {} |\n",
-                    warning.dataset,
-                    format_bytes(warning.refer_bytes),
-                    format_bytes(warning.used_snapshots_bytes),
-                    warning.note
-                ));
-                checks.push(DiagnosticCheck {
-                    name: format!("zfs-dataset:{}", warning.dataset),
-                    status: "warning".to_string(),
-                    detail: format!(
-                        "{} ({} snapshot usage)",
-                        warning.note,
-                        format_bytes(warning.used_snapshots_bytes)
-                    ),
-                });
-            }
-            markdown.push('\n');
-        }
-    }
-
-    let warning_count = checks
-        .iter()
-        .filter(|check| check.status == "warning")
-        .count();
-    let error_count = checks
-        .iter()
-        .filter(|check| check.status == "error")
-        .count();
-    markdown.push_str("### Summary\n");
-    markdown.push_str(&format!(
-        "- warnings: **{}**\n- errors: **{}**\n\n",
-        warning_count, error_count
-    ));
+    append_home_disk_pressure_section(&mut markdown, &mut checks, &home_pressure_warnings);
+    append_zfs_health_section(&mut markdown, &mut checks, &zfs_health);
+    append_summary_section(&mut markdown, &checks);
 
     doctor_progress("checking Ollama diagnostics");
     markdown.push_str(&gather_ollama_diagnostics(repo_root, current_host.as_deref()).await);
