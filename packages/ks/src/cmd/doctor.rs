@@ -4,7 +4,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -26,6 +26,54 @@ pub struct DoctorReport {
     pub checks: Vec<DiagnosticCheck>,
     pub markdown: String,
 }
+
+#[derive(Debug, Clone, Copy)]
+struct EphemeralPathCheck {
+    relative_path: &'static str,
+    threshold_bytes: u64,
+    cleanup_suggestion: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct HomeDiskPressureWarning {
+    path: String,
+    size_bytes: u64,
+    suggestion: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct ZfsPoolHealth {
+    pool: String,
+    available_bytes: u64,
+    snapshot_overhead_bytes: u64,
+    status: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct ZfsDatasetInfo {
+    name: String,
+    used_bytes: u64,
+    used_by_snapshots_bytes: u64,
+    mountpoint: String,
+}
+
+#[derive(Debug, Clone)]
+struct ZfsDatasetWarning {
+    dataset: String,
+    refer_bytes: u64,
+    used_snapshots_bytes: u64,
+    note: String,
+}
+
+#[derive(Debug, Clone)]
+struct ZfsHealthReport {
+    pools: Vec<ZfsPoolHealth>,
+    dataset_warnings: Vec<ZfsDatasetWarning>,
+}
+
+const KIBIBYTE: u64 = 1024;
+const MEBIBYTE: u64 = KIBIBYTE * 1024;
+const GIBIBYTE: u64 = MEBIBYTE * 1024;
 
 fn doctor_progress(message: &str) {
     if util::stderr_terminal() {
@@ -78,6 +126,310 @@ async fn collect_disk_usage() -> String {
             .join("\n"),
         _ => "unavailable".to_string(),
     }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= GIBIBYTE {
+        format!("{}G", bytes / GIBIBYTE)
+    } else if bytes >= MEBIBYTE {
+        format!("{}M", bytes / MEBIBYTE)
+    } else if bytes >= KIBIBYTE {
+        format!("{}K", bytes / KIBIBYTE)
+    } else {
+        format!("{bytes}B")
+    }
+}
+
+fn home_disk_checks() -> [EphemeralPathCheck; 9] {
+    [
+        EphemeralPathCheck {
+            relative_path: ".cache",
+            threshold_bytes: 10 * GIBIBYTE,
+            cleanup_suggestion: "rm -rf ~/.cache/llama.cpp ~/.cache/huggingface ~/.cache/yarn",
+        },
+        EphemeralPathCheck {
+            relative_path: ".local/share/containers",
+            threshold_bytes: 20 * GIBIBYTE,
+            cleanup_suggestion: "podman system prune -a --volumes",
+        },
+        EphemeralPathCheck {
+            relative_path: ".local/share/docker",
+            threshold_bytes: 20 * GIBIBYTE,
+            cleanup_suggestion: "docker system prune -a --volumes",
+        },
+        EphemeralPathCheck {
+            relative_path: ".local/share/Steam",
+            threshold_bytes: 100 * GIBIBYTE,
+            cleanup_suggestion: "Remove unused Steam libraries/games",
+        },
+        EphemeralPathCheck {
+            relative_path: ".local/share/Trash",
+            threshold_bytes: GIBIBYTE,
+            cleanup_suggestion: "Empty trash",
+        },
+        EphemeralPathCheck {
+            relative_path: ".npm",
+            threshold_bytes: 2 * GIBIBYTE,
+            cleanup_suggestion: "npm cache clean --force",
+        },
+        EphemeralPathCheck {
+            relative_path: ".local/share/pnpm",
+            threshold_bytes: 2 * GIBIBYTE,
+            cleanup_suggestion: "pnpm store prune",
+        },
+        EphemeralPathCheck {
+            relative_path: ".cache/yarn",
+            threshold_bytes: 2 * GIBIBYTE,
+            cleanup_suggestion: "yarn cache clean",
+        },
+        EphemeralPathCheck {
+            relative_path: ".local/share/opencode",
+            threshold_bytes: 5 * GIBIBYTE,
+            cleanup_suggestion: "Remove stale OpenCode runs under ~/.local/share/opencode",
+        },
+    ]
+}
+
+fn resolve_home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(home::home_dir)
+}
+
+fn parse_du_size_bytes(stdout: &[u8]) -> Option<u64> {
+    let output = String::from_utf8_lossy(stdout);
+    let first_field = output
+        .split_whitespace()
+        .next()
+        .filter(|value| !value.is_empty())?;
+    first_field.parse::<u64>().ok()
+}
+
+async fn collect_home_disk_pressure() -> Vec<HomeDiskPressureWarning> {
+    let Some(home_dir) = resolve_home_dir() else {
+        return Vec::new();
+    };
+
+    let mut handles = Vec::new();
+    for check in home_disk_checks() {
+        let path = home_dir.join(check.relative_path);
+        handles.push(tokio::spawn(async move {
+            if !path.exists() {
+                return None;
+            }
+
+            let result = tokio::time::timeout(
+                Duration::from_secs(10),
+                tokio::process::Command::new("du")
+                    .args(["-sb"])
+                    .arg(&path)
+                    .output(),
+            )
+            .await
+            .ok()?
+            .ok()?;
+
+            if !result.status.success() {
+                return None;
+            }
+
+            let size_bytes = parse_du_size_bytes(&result.stdout)?;
+            if size_bytes > check.threshold_bytes {
+                Some(HomeDiskPressureWarning {
+                    path: format!("~/{path}", path = check.relative_path),
+                    size_bytes,
+                    suggestion: check.cleanup_suggestion,
+                })
+            } else {
+                None
+            }
+        }));
+    }
+
+    let mut warnings = Vec::new();
+    for handle in handles {
+        if let Ok(Some(warning)) = handle.await {
+            warnings.push(warning);
+        }
+    }
+    warnings.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+    warnings
+}
+
+fn parse_zpool_avail(stdout: &[u8]) -> Vec<(String, u64)> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split('\t');
+            let pool = parts.next()?.trim();
+            let avail = parts.next()?.trim().parse::<u64>().ok()?;
+            if pool.is_empty() {
+                None
+            } else {
+                Some((pool.to_string(), avail))
+            }
+        })
+        .collect()
+}
+
+fn parse_zfs_dataset_info(stdout: &[u8]) -> Vec<ZfsDatasetInfo> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split('\t');
+            let name = parts.next()?.trim().to_string();
+            let used_bytes = parts.next()?.trim().parse::<u64>().ok()?;
+            let used_by_snapshots_bytes = parts.next()?.trim().parse::<u64>().ok()?;
+            let mountpoint = parts.next()?.trim().to_string();
+            if name.is_empty() {
+                None
+            } else {
+                Some(ZfsDatasetInfo {
+                    name,
+                    used_bytes,
+                    used_by_snapshots_bytes,
+                    mountpoint,
+                })
+            }
+        })
+        .collect()
+}
+
+fn zfs_pool_status(avail_bytes: u64) -> &'static str {
+    if avail_bytes < 10 * GIBIBYTE {
+        "error"
+    } else if avail_bytes < 50 * GIBIBYTE {
+        "warning"
+    } else {
+        "ok"
+    }
+}
+
+fn build_zfs_health_report(
+    pools: Vec<(String, u64)>,
+    datasets: Vec<ZfsDatasetInfo>,
+    home_warnings: &[HomeDiskPressureWarning],
+    home_dir: Option<&Path>,
+) -> ZfsHealthReport {
+    let mut snapshot_overhead_by_pool = std::collections::BTreeMap::<String, u64>::new();
+    for dataset in &datasets {
+        if let Some(pool) = dataset.name.split('/').next() {
+            *snapshot_overhead_by_pool
+                .entry(pool.to_string())
+                .or_default() += dataset.used_by_snapshots_bytes;
+        }
+    }
+
+    let pools = pools
+        .into_iter()
+        .map(|(pool, available_bytes)| ZfsPoolHealth {
+            snapshot_overhead_bytes: snapshot_overhead_by_pool.get(&pool).copied().unwrap_or(0),
+            status: zfs_pool_status(available_bytes),
+            pool,
+            available_bytes,
+        })
+        .collect::<Vec<_>>();
+
+    let mut dataset_warnings = datasets
+        .iter()
+        .filter_map(|dataset| {
+            if dataset.used_bytes == 0 {
+                return None;
+            }
+            if dataset.used_by_snapshots_bytes.saturating_mul(4) > dataset.used_bytes {
+                Some(ZfsDatasetWarning {
+                    dataset: dataset.name.clone(),
+                    refer_bytes: dataset.used_bytes,
+                    used_snapshots_bytes: dataset.used_by_snapshots_bytes,
+                    note: "Snapshot overhead above 25%".to_string(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(home_dir) = home_dir {
+        for warning in home_warnings {
+            let path = home_dir.join(warning.path.trim_start_matches("~/"));
+            if let Some(dataset) = datasets
+                .iter()
+                .filter(|dataset| {
+                    !dataset.mountpoint.is_empty()
+                        && dataset.mountpoint != "-"
+                        && dataset.mountpoint != "none"
+                        && path.starts_with(&dataset.mountpoint)
+                        && dataset.used_by_snapshots_bytes > 0
+                })
+                .max_by_key(|dataset| dataset.mountpoint.len())
+            {
+                dataset_warnings.push(ZfsDatasetWarning {
+                    dataset: dataset.name.clone(),
+                    refer_bytes: dataset.used_bytes,
+                    used_snapshots_bytes: dataset.used_by_snapshots_bytes,
+                    note: format!(
+                        "Ephemeral dir {} is in snapshot surface; consider a no-snapshot child dataset",
+                        warning.path
+                    ),
+                });
+            }
+        }
+    }
+
+    dataset_warnings.sort_by(|a, b| b.used_snapshots_bytes.cmp(&a.used_snapshots_bytes));
+    dataset_warnings.dedup_by(|a, b| a.dataset == b.dataset && a.note == b.note);
+
+    ZfsHealthReport {
+        pools,
+        dataset_warnings,
+    }
+}
+
+async fn collect_zfs_health(home_warnings: &[HomeDiskPressureWarning]) -> Option<ZfsHealthReport> {
+    let _ = util::find_executable("zfs")?;
+
+    let pool_output = tokio::process::Command::new("zpool")
+        .args(["list", "-H", "-p", "-o", "name,free"])
+        .output()
+        .await
+        .ok()?;
+    if !pool_output.status.success() {
+        return None;
+    }
+
+    let pools = parse_zpool_avail(&pool_output.stdout);
+    if pools.is_empty() {
+        return None;
+    }
+
+    let dataset_output = tokio::process::Command::new("zfs")
+        .args([
+            "list",
+            "-H",
+            "-p",
+            "-t",
+            "filesystem,volume",
+            "-o",
+            "name,used,usedbysnapshots,mountpoint",
+        ])
+        .output()
+        .await
+        .ok()?;
+
+    let datasets = if dataset_output.status.success() {
+        parse_zfs_dataset_info(&dataset_output.stdout)
+    } else {
+        Vec::new()
+    };
+
+    let home_dir = resolve_home_dir();
+    Some(build_zfs_health_report(
+        pools,
+        datasets,
+        home_warnings,
+        home_dir.as_deref(),
+    ))
 }
 
 async fn collect_flake_lock_age(repo_root: &Path) -> String {
@@ -405,6 +757,7 @@ fn gather_agent_tasks() -> String {
     lines.join("\n")
 }
 
+#[allow(clippy::cognitive_complexity)]
 pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
     let hostname = hostname::get()
         .context("Failed to get hostname")?
@@ -413,10 +766,14 @@ pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
     let current_host = repo::resolve_current_host(repo_root).await?;
 
     doctor_progress("collecting local system state");
-    let generation = collect_nixos_generation().await;
-    let failed_units = collect_failed_units().await;
-    let disk_usage = collect_disk_usage().await;
-    let lock_age = collect_flake_lock_age(repo_root).await;
+    let (generation, failed_units, disk_usage, lock_age, home_pressure_warnings) = tokio::join!(
+        collect_nixos_generation(),
+        collect_failed_units(),
+        collect_disk_usage(),
+        collect_flake_lock_age(repo_root),
+        collect_home_disk_pressure(),
+    );
+    let zfs_health = collect_zfs_health(&home_pressure_warnings).await;
 
     let mut checks = Vec::new();
     let mut markdown = String::from("## System State\n\n");
@@ -461,6 +818,101 @@ pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
         status: "ok".to_string(),
         detail: lock_age,
     });
+
+    markdown.push_str("### Disk pressure warnings\n");
+    if home_pressure_warnings.is_empty() {
+        markdown.push_str("_No high-usage ephemeral directories detected_\n\n");
+        checks.push(DiagnosticCheck {
+            name: "disk-pressure-home".to_string(),
+            status: "ok".to_string(),
+            detail: "No ephemeral directories above thresholds".to_string(),
+        });
+    } else {
+        markdown.push_str("| Path | Size | Suggestion |\n");
+        markdown.push_str("|---|---|---|\n");
+        for warning in &home_pressure_warnings {
+            markdown.push_str(&format!(
+                "| {} | {} | {} |\n",
+                warning.path,
+                format_bytes(warning.size_bytes),
+                warning.suggestion
+            ));
+            checks.push(DiagnosticCheck {
+                name: format!("disk-pressure:{}", warning.path),
+                status: "warning".to_string(),
+                detail: format!(
+                    "{} exceeds threshold ({})",
+                    warning.path,
+                    format_bytes(warning.size_bytes)
+                ),
+            });
+        }
+        markdown.push('\n');
+    }
+
+    if let Some(zfs_health) = &zfs_health {
+        markdown.push_str("### ZFS pool health\n");
+        markdown.push_str("| Pool | Available | Snapshot overhead | Status |\n");
+        markdown.push_str("|---|---|---|---|\n");
+        for pool in &zfs_health.pools {
+            markdown.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                pool.pool,
+                format_bytes(pool.available_bytes),
+                format_bytes(pool.snapshot_overhead_bytes),
+                pool.status
+            ));
+            checks.push(DiagnosticCheck {
+                name: format!("zfs-pool:{}", pool.pool),
+                status: pool.status.to_string(),
+                detail: format!(
+                    "Pool available {} (snapshot overhead {})",
+                    format_bytes(pool.available_bytes),
+                    format_bytes(pool.snapshot_overhead_bytes)
+                ),
+            });
+        }
+        markdown.push('\n');
+
+        if !zfs_health.dataset_warnings.is_empty() {
+            markdown.push_str("### Snapshot overhead by dataset\n");
+            markdown.push_str("| Dataset | REFER | USEDSNAP | Note |\n");
+            markdown.push_str("|---|---|---|---|\n");
+            for warning in &zfs_health.dataset_warnings {
+                markdown.push_str(&format!(
+                    "| {} | {} | {} | {} |\n",
+                    warning.dataset,
+                    format_bytes(warning.refer_bytes),
+                    format_bytes(warning.used_snapshots_bytes),
+                    warning.note
+                ));
+                checks.push(DiagnosticCheck {
+                    name: format!("zfs-dataset:{}", warning.dataset),
+                    status: "warning".to_string(),
+                    detail: format!(
+                        "{} ({} snapshot usage)",
+                        warning.note,
+                        format_bytes(warning.used_snapshots_bytes)
+                    ),
+                });
+            }
+            markdown.push('\n');
+        }
+    }
+
+    let warning_count = checks
+        .iter()
+        .filter(|check| check.status == "warning")
+        .count();
+    let error_count = checks
+        .iter()
+        .filter(|check| check.status == "error")
+        .count();
+    markdown.push_str("### Summary\n");
+    markdown.push_str(&format!(
+        "- warnings: **{}**\n- errors: **{}**\n\n",
+        warning_count, error_count
+    ));
 
     doctor_progress("checking Ollama diagnostics");
     markdown.push_str(&gather_ollama_diagnostics(repo_root, current_host.as_deref()).await);
@@ -549,6 +1001,7 @@ pub async fn render_and_maybe_launch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn doctor_report_serialization() {
@@ -565,5 +1018,66 @@ mod tests {
         let json = serde_json::to_value(&report).unwrap();
         assert_eq!(json["hostname"], "test-host");
         assert_eq!(json["checks"][0]["status"], "ok");
+    }
+
+    #[test]
+    fn format_bytes_uses_human_units() {
+        assert_eq!(format_bytes(512), "512B");
+        assert_eq!(format_bytes(2 * KIBIBYTE), "2K");
+        assert_eq!(format_bytes(3 * MEBIBYTE), "3M");
+        assert_eq!(format_bytes(4 * GIBIBYTE), "4G");
+    }
+
+    #[test]
+    fn parse_du_size_bytes_reads_first_field() {
+        assert_eq!(
+            parse_du_size_bytes(b"1048576\t/home/user/.cache\n"),
+            Some(1_048_576)
+        );
+        assert_eq!(parse_du_size_bytes(b"invalid"), None);
+    }
+
+    #[test]
+    fn build_zfs_health_report_flags_pool_and_snapshot_overhead() {
+        let report = build_zfs_health_report(
+            vec![("rpool".to_string(), 8 * GIBIBYTE)],
+            vec![ZfsDatasetInfo {
+                name: "rpool/home".to_string(),
+                used_bytes: 100 * GIBIBYTE,
+                used_by_snapshots_bytes: 30 * GIBIBYTE,
+                mountpoint: "/home/test".to_string(),
+            }],
+            &[],
+            Some(Path::new("/home/test")),
+        );
+
+        assert_eq!(report.pools[0].status, "error");
+        assert_eq!(report.dataset_warnings.len(), 1);
+        assert_eq!(report.dataset_warnings[0].dataset, "rpool/home");
+    }
+
+    #[test]
+    fn build_zfs_health_report_flags_ephemeral_dir_in_snapshot_surface() {
+        let report = build_zfs_health_report(
+            vec![("rpool".to_string(), 80 * GIBIBYTE)],
+            vec![ZfsDatasetInfo {
+                name: "rpool/home".to_string(),
+                used_bytes: 100 * GIBIBYTE,
+                used_by_snapshots_bytes: 10 * GIBIBYTE,
+                mountpoint: "/home/test".to_string(),
+            }],
+            &[HomeDiskPressureWarning {
+                path: "~/.cache".to_string(),
+                size_bytes: 11 * GIBIBYTE,
+                suggestion: "cleanup",
+            }],
+            Some(Path::new("/home/test")),
+        );
+
+        assert!(report.dataset_warnings.iter().any(|warning| {
+            warning
+                .note
+                .contains("Ephemeral dir ~/.cache is in snapshot surface")
+        }));
     }
 }
