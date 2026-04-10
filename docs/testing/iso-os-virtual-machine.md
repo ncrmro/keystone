@@ -147,17 +147,43 @@ Screenshot stages:
 First run saves baseline screenshots and hashes. Subsequent runs compare against
 the baseline and fail on SHA mismatch.
 
-## QEMU GPU for Hyprland
+## VM lifecycle: bin/virtual-machine
 
-Hyprland requires a DRM/KMS device. Without a GPU, the display stalls at
-`Holding login session` on the text console. The e2e reboot validation uses:
+`test-iso --e2e` delegates VM lifecycle to `bin/virtual-machine` (in the keystone
+repo) via `$KEYSTONE_LOCKED_PATH/bin/virtual-machine`. This is a Python/libvirt
+script that provides the proven Q35 + EDK2 SecureBoot + TPM + QXL configuration.
 
-- `-device virtio-gpu-pci` — provides DRM device
-- `-display egl-headless` — GPU rendering without a window
-- `hardware.graphics.enable = true` in `modules/desktop/nixos.nix` — mesa/virgl drivers
+`test-iso` resolves the keystone repo path from `flake.lock` automatically.
 
-For interactive debugging, use `-display gtk` instead of `egl-headless` to get
-a visible QEMU window.
+```bash
+# What test-iso --e2e does internally:
+VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+
+# Install phase
+"$VM_SCRIPT" --name e2e-install --iso "$iso" --disk-path "$disk" \
+  --memory 12288 --ssh-port 12260 --headless --start --wait-ssh
+
+# After install completes
+"$VM_SCRIPT" --post-install-reboot e2e-install \
+  --headless --monitor-socket /tmp/e2e-monitor.sock
+
+# Cleanup
+"$VM_SCRIPT" --reset e2e-install
+```
+
+### Why libvirt instead of raw QEMU
+
+- OVMF boot device discovery works correctly (proven in `bin/test-deployment`)
+- TPM 2.0 via swtpm is managed by libvirt automatically
+- Disk snapshots for quick revert
+- Consistent PCI topology between install and reboot phases
+- QXL display provides a framebuffer for `screendump` even headless
+
+### hardware.graphics
+
+`modules/desktop/nixos.nix` enables `hardware.graphics = true` when desktop is
+enabled. This pulls in mesa + virgl drivers so Hyprland can render on the QXL
+device in VMs and on real GPUs on bare metal.
 
 ## Troubleshooting
 

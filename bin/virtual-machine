@@ -169,6 +169,8 @@ def create_uefi_secureboot_vm(
     disk_size_gb=20,
     iso_path=None,
     ssh_port=22222,
+    headless=False,
+    monitor_socket=None,
 ):
     """
     Create a VM with UEFI Secure Boot enabled in Setup Mode
@@ -338,10 +340,10 @@ def create_uefi_secureboot_vm(
       <target type='serial' port='0'/>
     </console>
     
-    <!-- Graphics for remote-viewer -->
-    <graphics type='spice' autoport='yes'>
+    <!-- Graphics -->
+    {"" if headless else """<graphics type='spice' autoport='yes'>
       <listen type='address' address='127.0.0.1'/>
-    </graphics>
+    </graphics>"""}
     <video>
       <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
     </video>
@@ -355,6 +357,12 @@ def create_uefi_secureboot_vm(
       <backend type='emulator' version='2.0'/>
     </tpm>
   </devices>
+  {"" if not monitor_socket else f"""
+  <qemu:commandline xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+    <qemu:arg value='-monitor'/>
+    <qemu:arg value='unix:{monitor_socket},server,nowait'/>
+  </qemu:commandline>
+  """}
 </domain>
 """
     
@@ -580,6 +588,35 @@ def get_serial_pty(conn, vm_name):
         return None
 
 
+def wait_for_ssh(ssh_port, timeout=240, ssh_key=None, username="keystone"):
+    """Block until SSH is ready on the given port."""
+    import subprocess
+    import time
+
+    start = time.time()
+    ssh_cmd = ["ssh", "-p", str(ssh_port),
+               "-o", "StrictHostKeyChecking=no",
+               "-o", "UserKnownHostsFile=/dev/null",
+               "-o", "ConnectTimeout=5",
+               "-o", "BatchMode=yes"]
+    if ssh_key:
+        ssh_cmd.extend(["-i", ssh_key])
+    ssh_cmd.extend([f"{username}@localhost", "exit", "0"])
+
+    while time.time() - start < timeout:
+        try:
+            result = subprocess.run(ssh_cmd, capture_output=True, timeout=10)
+            if result.returncode == 0:
+                print(f"✓ SSH is ready on port {ssh_port}")
+                return True
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+        time.sleep(3)
+
+    print(f"ERROR: SSH timeout after {timeout}s on port {ssh_port}")
+    return False
+
+
 def print_connection_commands(vm_name, ssh_port):
     """
     Print helpful connection commands
@@ -674,6 +711,12 @@ def main():
     parser.add_argument('--reset', metavar='VM_NAME', help='Delete VM and all associated files (forces destroy if running)')
     parser.add_argument('--reset-setup-mode', metavar='VM_NAME', help='Reset VM NVRAM to Setup Mode (VM must be shut down)')
     parser.add_argument('--start', action='store_true', help='Start VM after creation')
+    parser.add_argument('--disk-path', help='Custom disk image path (default: vms/<name>/disk.qcow2)')
+    parser.add_argument('--headless', action='store_true', help='No SPICE display (CI-compatible)')
+    parser.add_argument('--monitor-socket', help='Expose QEMU monitor on a Unix socket for screendump/sendkey')
+    parser.add_argument('--wait-ssh', action='store_true', help='After --start, block until SSH is ready')
+    parser.add_argument('--ssh-timeout', type=int, default=240, help='Timeout in seconds for --wait-ssh (default: 240)')
+    parser.add_argument('--ssh-key', help='SSH private key for --wait-ssh authentication')
 
     args = parser.parse_args()
 
@@ -725,8 +768,7 @@ def main():
         iso_path = os.path.abspath(iso_path)
 
     # VM configuration
-    vm_dir = f"vms/{args.name}"
-    disk_path = f"{vm_dir}/disk.qcow2"
+    disk_path = args.disk_path or f"vms/{args.name}/disk.qcow2"
 
     # Create the VM
     dom = create_uefi_secureboot_vm(
@@ -737,13 +779,25 @@ def main():
         disk_path=disk_path,
         disk_size_gb=args.disk_size,
         iso_path=iso_path,
-        ssh_port=args.ssh_port
+        ssh_port=args.ssh_port,
+        headless=args.headless,
+        monitor_socket=args.monitor_socket,
     )
 
     # Start VM if requested
     if args.start:
         dom.create()
         print(f"✓ VM '{args.name}' started")
+
+    # Wait for SSH if requested
+    if args.wait_ssh:
+        if not wait_for_ssh(
+            args.ssh_port,
+            timeout=args.ssh_timeout,
+            ssh_key=args.ssh_key,
+        ):
+            conn.close()
+            sys.exit(1)
 
     # Print connection commands
     print_connection_commands(args.name, args.ssh_port)
