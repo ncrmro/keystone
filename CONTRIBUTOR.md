@@ -4,6 +4,9 @@ For the full automated ISO and desktop testing workflow, including what requires
 an ISO rebuild vs what can be iterated on the fly, see
 [ISO and OS virtual machine testing](docs/testing/iso-os-virtual-machine.md).
 
+`bin/virtual-machine` is the canonical VM tool for all Keystone VM workflows.
+The testing consolidation plan is tracked in #339.
+
 The sections below cover manual debugging during development.
 
 ## End-to-end VM install testing

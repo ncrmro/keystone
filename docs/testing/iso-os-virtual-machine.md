@@ -170,6 +170,73 @@ a visible QEMU window.
 | SSH rejected post-reboot | `admin.sshKeys` not bridged to installed system | Check `lib/templates.nix` `adminSshKeys` bridge |
 | nixos-install rebuilds from source | Closure not in cache | Run `bin/warm-cachix` or `nix build .#nixosConfigurations.laptop.config.system.build.toplevel` on the host first |
 
+## Existing VM test infrastructure
+
+`bin/virtual-machine` is the canonical VM tool. All VM workflows should converge
+on it. See #339 for the consolidation plan.
+
+| Script | Tier | Machine | SecureBoot | TPM | Display | Purpose |
+|--------|------|---------|-----------|-----|---------|---------|
+| `bin/virtual-machine` | 3 | Q35 | EDK2 | tpm-crb | SPICE+QXL | Full libvirt VM lifecycle |
+| `bin/test-deployment` | 3 | (via virtual-machine) | Yes | Yes | — | nixos-anywhere workflow |
+| `bin/build-vm` | 2 | — | No | No | — | Fast nixos-rebuild iteration |
+| `bin/test-microvm-tpm` | 1 | Q35 | No | tpm-tis | — | Lightweight TPM test (~20s) |
+| `test-iso --e2e` | — | Q35 | No | No | QXL | Template → ISO → install → desktop |
+
+Test configs in `tests/flake.nix`: `test-server`, `test-hyprland`, `build-vm-terminal`,
+`build-vm-desktop`, `tpm-microvm`.
+
+## Target architecture
+
+The unified e2e pipeline validates the full new-user journey. One command:
+
+```
+./bin/test-iso --dev --headless --e2e --port 12260 --memory 12288
+```
+
+Stages (current status):
+
+| # | Stage | Status | Requirement |
+|---|-------|--------|-------------|
+| 1 | Template generation (`mkSystemFlake`) | Working | REQ-008.3 |
+| 2 | ISO build + artifact verification | Working | REQ-003 |
+| 3 | Headless install (`ks install --host`) | Working | REQ-008.12-18 |
+| 4 | Install checkpoint verification | Working | REQ-003 |
+| 5 | Reboot from installed disk | Pending — OVMF boot discovery (#339) | REQ-008.20 |
+| 6 | LUKS unlock via QEMU `sendkey` | Working (when boot succeeds) | — |
+| 7 | Screenshot capture at boot stages | Working (PPM via `screendump`) | — |
+| 8 | Desktop validation (Hyprland + hyprlock) | Pending — needs QXL + boot fix | REQ-002 |
+| 9 | SSH validation with dev key | Working | — |
+| 10 | SHA-to-SHA screenshot comparison | Working (LFS baselines) | — |
+
+### Future stages (separate issues)
+
+- SecureBoot enrollment (sbctl + lanzaboote) — #283
+- TPM enrollment (systemd-cryptenroll) — #283
+- First-boot wizard completion — REQ-008.20-23
+- Service provisioning — #228
+
+## Requirements traceability
+
+| Requirement | What it covers | Where tested |
+|------------|----------------|--------------|
+| REQ-003 | Build and e2e validation: template eval, ISO, VM test matrix | `test-iso --e2e` stages 1-4 |
+| REQ-008 | Onboarding journey: template → install → first boot → services | `test-iso --e2e` stages 1-9 |
+| REQ-001 | Config generation: flake.nix, hosts, hardware.nix | `nix flake check` (eval tests) |
+| REQ-002 | Template data model: storage, security, desktop | Desktop screenshot validation |
+
+## Screenshot standardization
+
+All VM testing uses a standard screenshot pipeline:
+
+1. QEMU monitor `screendump <path>.ppm` via `socat` to the monitor socket
+2. Convert PPM → PNG via `imagemagick` (`magick` or `convert`)
+3. SHA256 hash for regression comparison
+4. Reference images committed to Git LFS at `templates/default/tests/e2e/screenshots/`
+5. Reference hashes at `templates/default/tests/e2e/reference-hashes.json`
+
+First run saves the baseline. Subsequent runs compare and fail on mismatch.
+
 ## TUI testing notes
 
 The `ks` installer is a terminal UI (ratatui). It is not a line-oriented CLI.
