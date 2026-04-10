@@ -67,6 +67,10 @@ in
       portalPackage = mkDefault pkgs.xdg-desktop-portal-hyprland; # Use stable nixpkgs version to fix Qt version mismatch
     };
 
+    # Mesa and GPU drivers for Wayland compositors (Hyprland requires DRM/KMS).
+    # Enables virtio-gpu support in VMs and hardware GPU on bare metal.
+    hardware.graphics.enable = mkDefault true;
+
     # Greetd launches the user's Hyprland session directly. Startup
     # authentication happens inside Hyprland via keystone-startup-lock, which
     # MUST fail closed if hyprlock cannot come up securely.
