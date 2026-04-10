@@ -1,5 +1,11 @@
 # Contributor guide
 
+For the full automated ISO and desktop testing workflow, including what requires
+an ISO rebuild vs what can be iterated on the fly, see
+[ISO and OS virtual machine testing](docs/testing/iso-os-virtual-machine.md).
+
+The sections below cover manual debugging during development.
+
 ## End-to-end VM install testing
 
 This repo's installer work is easiest to validate against a real consumer repo

@@ -118,6 +118,7 @@ Keep development workflows separate from initial setup:
 - [Thin client workflow](terminal/tui-developer-workflow-thin-client.md)
 - [Testing procedures](os/testing-procedure.md)
 - [VM testing](os/testing-vm.md)
+- [ISO and OS VM testing](testing/iso-os-virtual-machine.md)
 
 ## Quick Links
 
