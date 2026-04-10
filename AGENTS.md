@@ -15,6 +15,7 @@ configuration, desktop environments, terminal tooling, and server services.
 | `modules/server/`        | [modules/server/AGENTS.md](modules/server/AGENTS.md)               | [docs/server.md](docs/server.md)       |
 | `packages/ks/` | [packages/ks/AGENTS.md](packages/ks/AGENTS.md) | —                                      |
 | `conventions/`           | [conventions/AGENTS.md](conventions/AGENTS.md)                     | —                                      |
+| `docs/testing/`          | —                                                                  | [docs/testing/iso-os-virtual-machine.md](docs/testing/iso-os-virtual-machine.md) |
 
 ## Module File Tree
 
@@ -125,6 +126,7 @@ See `modules/terminal/AGENTS.md` § "llm-agents input strategy" for full example
   Outside development mode, those same two roots resolve to the packaged derivations `pkgs.keystone.deepwork-library-jobs` and `pkgs.keystone.keystone-deepwork-jobs`.
   When fixing a shared library job discovered through this env var, update the editable files in `~/.keystone/repos/Unsupervisedcom/deepwork/`. When fixing a Keystone-native shared job, update `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs/`. Usually there are no additional per-project DeepWork job files to change beyond the job root already named by `DEEPWORK_ADDITIONAL_JOBS_FOLDERS`.
 - DeepWork `keystone_system/issue` draft bodies are temporary artifacts. Write them under `.deepwork/tmp/`, not `.deepwork/jobs/`; the GitHub issue is the canonical source.
+- **VM Testing**: `bin/virtual-machine` is the canonical VM tool (Q35 + EDK2 SecureBoot + TPM + QXL). The template e2e test (`./bin/test-iso --dev --headless --e2e`) validates the full new-user journey: template → ISO → install → desktop. Changes to NixOS modules do NOT require an ISO rebuild — only `ks` binary or installer module changes do. Update the fixture with `nix flake update keystone` and use `--no-build`. See `docs/testing/iso-os-virtual-machine.md` for the full workflow, screenshot standardization, and requirements traceability. Consolidation tracked in #339.
 
 ## Keystone Config Repo
 

@@ -317,9 +317,17 @@ run_e2e_reboot_validation() {
 
     # Use egl-headless + virtio-gpu so Hyprland has a DRM render target
     # and screendump captures the actual compositor output.
+    #
+    # OVMF NVRAM: the install phase wrote UEFI boot entries into the disk's
+    # EFI System Partition.  We use a writable pflash NVRAM copy so OVMF
+    # can discover those entries.  The PCI layout must match the install
+    # phase (virtio-blk + virtio-net + virtio-gpu) — the only difference
+    # is no -cdrom (the ISO is gone after install).
     qemu-system-x86_64 \
+        -machine q35 \
         -enable-kvm -m "$QEMU_MEM" -smp "$QEMU_CPUS" \
-        -bios "$ovmf_path" \
+        -drive "if=pflash,format=raw,readonly=on,file=${ovmf_path}" \
+        -drive "if=pflash,format=raw,file=${NVRAM_PATH}" \
         -drive "if=none,id=installdisk,file=${VM_DISK_PATH},format=raw" \
         -device "virtio-blk-pci,drive=installdisk,serial=keystone-test-disk" \
         -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${reboot_port}-:22" \
@@ -800,11 +808,23 @@ else
 fi
 echo >&2
 
+# Persistent OVMF NVRAM so UEFI boot entries survive across QEMU invocations.
+# The install phase writes entries (systemd-boot/lanzaboote) that the reboot
+# phase needs to find.
+OVMF_VARS_TEMPLATE="$(dirname "$ovmf_path")/OVMF_VARS.fd"
+NVRAM_PATH="${VM_DISK_PATH%.raw}.nvram"
+if [[ ! -f "$NVRAM_PATH" ]]; then
+    cp "$OVMF_VARS_TEMPLATE" "$NVRAM_PATH"
+    chmod 644 "$NVRAM_PATH"
+fi
+
 QEMU_COMMON=(
+    -machine q35
     -enable-kvm
     -m "$QEMU_MEM"
     -smp "$QEMU_CPUS"
-    -bios "$ovmf_path"
+    -drive "if=pflash,format=raw,readonly=on,file=${ovmf_path}"
+    -drive "if=pflash,format=raw,file=${NVRAM_PATH}"
     -cdrom "$iso_path"
     -drive "if=none,id=installdisk,file=${VM_DISK_PATH},format=raw"
     -device "virtio-blk-pci,drive=installdisk,serial=keystone-test-disk"
