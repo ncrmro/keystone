@@ -244,6 +244,63 @@ let
         };
       }
     ];
+
+    # Immich ML worker with ROCm acceleration and custom HSA GFX version
+    immich-worker-rocm = eval "immich-worker-rocm" [
+      {
+        keystone = {
+          services.immich = {
+            host = "ocean";
+            workers = [ "gpu-worker" ];
+          };
+          hosts.gpu-worker = {
+            hostname = "gpu-worker";
+            role = "client";
+          };
+          os = {
+            enable = true;
+            storage = {
+              type = "ext4";
+              devices = [ "/dev/vda" ];
+            };
+            services.immich.hsaGfxVersion = "12.0.1";
+          };
+        };
+        networking.hostName = "gpu-worker";
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Immich ML worker with ROCm but no HSA override (native gfx target)
+    immich-worker-rocm-no-hsa = eval "immich-worker-rocm-no-hsa" [
+      {
+        keystone = {
+          services.immich = {
+            host = "ocean";
+            workers = [ "gpu-worker2" ];
+          };
+          hosts.gpu-worker2 = {
+            hostname = "gpu-worker2";
+            role = "client";
+          };
+          os = {
+            enable = true;
+            storage = {
+              type = "ext4";
+              devices = [ "/dev/vda" ];
+            };
+          };
+        };
+        networking.hostName = "gpu-worker2";
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-os-evaluation"
@@ -265,6 +322,8 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - immich-worker-rocm: Immich ML worker with ROCm + custom HSA GFX version"
+    echo "  - immich-worker-rocm-no-hsa: Immich ML worker with ROCm (native gfx target)"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
