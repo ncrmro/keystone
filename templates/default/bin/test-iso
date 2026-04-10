@@ -278,7 +278,9 @@ e2e_screenshot() {
     echo "screendump ${ppm_path}" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
     sleep 1
 
-    if command -v convert >/dev/null 2>&1; then
+    if command -v magick >/dev/null 2>&1; then
+        magick "$ppm_path" "$png_path" 2>/dev/null && rm -f "$ppm_path"
+    elif command -v convert >/dev/null 2>&1; then
         convert "$ppm_path" "$png_path" 2>/dev/null && rm -f "$ppm_path"
     else
         # Fall back to PPM if imagemagick is not available
@@ -313,6 +315,8 @@ run_e2e_reboot_validation() {
 
     log_info "E2E: booting installed disk for reboot validation"
 
+    # Use egl-headless + virtio-gpu so Hyprland has a DRM render target
+    # and screendump captures the actual compositor output.
     qemu-system-x86_64 \
         -enable-kvm -m "$QEMU_MEM" -smp "$QEMU_CPUS" \
         -bios "$ovmf_path" \
@@ -320,7 +324,8 @@ run_e2e_reboot_validation() {
         -device "virtio-blk-pci,drive=installdisk,serial=keystone-test-disk" \
         -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${reboot_port}-:22" \
         -device "virtio-net-pci,netdev=net0,romfile=" \
-        -display none \
+        -device "virtio-gpu-pci" \
+        -display egl-headless \
         -monitor "unix:${E2E_MONITOR_SOCK},server,nowait" &
     E2E_REBOOT_QEMU_PID=$!
 
@@ -442,7 +447,7 @@ run_e2e_checkpoints() {
             return 1
         fi
 
-        if ssh_cmd "sudo -n test -f /mnt/nix/var/nix/profiles/system" 2>/dev/null; then
+        if ssh_cmd "test -L /mnt/nix/var/nix/profiles/system" 2>/dev/null; then
             break
         fi
         log_info "E2E: waiting for system profile... (${elapsed}s elapsed)"
@@ -805,6 +810,7 @@ QEMU_COMMON=(
     -device "virtio-blk-pci,drive=installdisk,serial=keystone-test-disk"
     -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
     -device "virtio-net-pci,netdev=net0,romfile="
+    -device "virtio-gpu-pci"
 )
 
 if [[ "$HEADLESS" == "true" ]]; then
@@ -854,7 +860,7 @@ if [[ "$HEADLESS" == "true" ]]; then
         kill "$QEMU_PID" 2>/dev/null || true
         sleep 2
 
-        local reboot_port=$((SSH_PORT + 1))
+        reboot_port=$((SSH_PORT + 1))
         if run_e2e_reboot_validation "$reboot_port"; then
             log_ok "E2E: all layers passed."
             exit 0
