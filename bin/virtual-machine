@@ -52,6 +52,7 @@ import os
 import xml.etree.ElementTree as ET
 import subprocess
 import glob
+import re
 
 def validate_nvram_setup_mode(nvram_path):
     """
@@ -168,7 +169,7 @@ def create_uefi_secureboot_vm(
     disk_path=None,
     disk_size_gb=20,
     iso_path=None,
-    ssh_port=22222,
+    ssh_port=None,
     headless=False,
     monitor_socket=None,
 ):
@@ -268,6 +269,42 @@ def create_uefi_secureboot_vm(
 
     print(f"✓ Secure Boot enabled")
 
+    # Network interface: bridge when no ssh_port, user-mode via qemu:commandline when set
+    if ssh_port is None:
+        network_xml = """
+    <!-- Network with static IP via keystone-net -->
+    <interface type='network'>
+      <source network='keystone-net'/>
+      <mac address='52:54:00:72:a2:99'/>
+      <model type='virtio'/>
+    </interface>"""
+    else:
+        network_xml = "<!-- user-mode networking via qemu:commandline -->"
+
+    # Build qemu:commandline block (user-mode networking + monitor socket)
+    _qemu_args = []
+    if ssh_port is not None:
+        _qemu_args.extend([
+            "<qemu:arg value='-netdev'/>",
+            f"<qemu:arg value='user,id=hostnet0,hostfwd=tcp:127.0.0.1:{ssh_port}-:22'/>",
+            "<qemu:arg value='-device'/>",
+            "<qemu:arg value='virtio-net-pci,netdev=hostnet0,romfile='/>",
+        ])
+    if monitor_socket:
+        _qemu_args.extend([
+            "<qemu:arg value='-monitor'/>",
+            f"<qemu:arg value='unix:{monitor_socket},server,nowait'/>",
+        ])
+
+    if _qemu_args:
+        _args_str = "\n    ".join(_qemu_args)
+        qemu_commandline_xml = f"""
+  <qemu:commandline xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+    {_args_str}
+  </qemu:commandline>"""
+    else:
+        qemu_commandline_xml = ""
+
     # Build XML configuration
     xml_config = f"""
 <domain type='kvm'>
@@ -322,14 +359,9 @@ def create_uefi_secureboot_vm(
       <readonly/>
     </disk>
     """}
-    
-    <!-- Network with static IP via keystone-net -->
-    <interface type='network'>
-      <source network='keystone-net'/>
-      <mac address='52:54:00:72:a2:99'/>
-      <model type='virtio'/>
-    </interface>
-    
+
+    {network_xml}
+
     <!-- Serial console (PTY) -->
     <serial type='pty'>
       <target type='isa-serial' port='0'>
@@ -357,12 +389,7 @@ def create_uefi_secureboot_vm(
       <backend type='emulator' version='2.0'/>
     </tpm>
   </devices>
-  {"" if not monitor_socket else f"""
-  <qemu:commandline xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
-    <qemu:arg value='-monitor'/>
-    <qemu:arg value='unix:{monitor_socket},server,nowait'/>
-  </qemu:commandline>
-  """}
+  {qemu_commandline_xml}
 </domain>
 """
     
@@ -379,14 +406,21 @@ def create_uefi_secureboot_vm(
         sys.exit(1)
 
 
-def post_install_reboot(conn, vm_name):
+def post_install_reboot(conn, vm_name, headless=False, monitor_socket=None):
     """
-    Post-installation cleanup: detach ISO, snapshot disk, and reboot
-    VM must be shut down before running this
+    Post-installation cleanup: detach ISO, snapshot disk, and reboot.
+    VM must be shut down before running this.
+
+    Uses regex-based XML manipulation to preserve qemu namespace declarations
+    that ElementTree would mangle.
+
+    Args:
+        headless: Remove SPICE graphics from the restarted VM
+        monitor_socket: Add a QEMU monitor socket for screendump/sendkey
     """
     try:
         dom = conn.lookupByName(vm_name)
-        
+
         # Check if VM is shut down
         if dom.isActive():
             print(f"ERROR: VM '{vm_name}' is still running!")
@@ -394,53 +428,67 @@ def post_install_reboot(conn, vm_name):
             print(f"  virsh shutdown {vm_name}")
             print("Wait for it to power off, then run this command again.")
             sys.exit(1)
-        
+
         print(f"✓ VM '{vm_name}' is shut down")
-        
-        # Get disk path from XML
+
         xml = dom.XMLDesc(0)
-        root = ET.fromstring(xml)
-        
-        disk_path = None
-        for disk in root.findall('.//disk[@device="disk"]'):
-            source = disk.find('source')
-            if source is not None:
-                disk_path = source.get('file')
-                break
-        
+
+        # Get disk path for snapshot
+        disk_match = re.search(r'<source file="([^"]+)"', xml)
+        disk_path = disk_match.group(1) if disk_match else None
+
         # Create snapshot of disk
         if disk_path:
-            snapshot_name = f"{os.path.basename(disk_path)}.post-install-snapshot"
-            snapshot_path = os.path.join(os.path.dirname(disk_path), snapshot_name)
-            
-            print(f"Creating disk snapshot: {snapshot_name}")
+            print(f"Creating disk snapshot: post-install")
             ret = os.system(f"qemu-img snapshot -c post-install {disk_path}")
             if ret != 0:
                 print(f"WARNING: Snapshot creation failed")
             else:
                 print(f"✓ Disk snapshot 'post-install' created")
-        
-        # Remove cdrom device from XML
-        devices = root.find('devices')
-        removed = False
-        for disk in devices.findall('disk'):
-            if disk.get('device') == 'cdrom':
-                devices.remove(disk)
-                removed = True
-        
-        if removed:
-            # Update the domain configuration
-            new_xml = ET.tostring(root, encoding='unicode')
-            conn.defineXML(new_xml)
+
+        # Remove cdrom elements (regex preserves namespace declarations)
+        new_xml = re.sub(
+            r'\s*<disk[^>]*device=["\']cdrom["\'][^>]*>.*?</disk>',
+            '', xml, flags=re.DOTALL
+        )
+        if new_xml != xml:
             print(f"✓ ISO detached from '{vm_name}'")
         else:
             print("ℹ No ISO was attached")
-        
-        # Start the VM
+
+        # Handle headless: remove SPICE graphics
+        if headless:
+            new_xml = re.sub(
+                r'\s*<graphics[^>]*type=["\']spice["\'][^>]*>.*?</graphics>',
+                '', new_xml, flags=re.DOTALL
+            )
+
+        # Add monitor socket for screendump/sendkey
+        if monitor_socket:
+            monitor_args = (
+                "\n    <qemu:arg value='-monitor'/>"
+                f"\n    <qemu:arg value='unix:{monitor_socket},server,nowait'/>"
+            )
+            if '<qemu:commandline' in new_xml:
+                new_xml = new_xml.replace(
+                    '</qemu:commandline>',
+                    f'{monitor_args}\n  </qemu:commandline>'
+                )
+            else:
+                ns = "xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'"
+                new_xml = new_xml.replace(
+                    '</domain>',
+                    f'  <qemu:commandline {ns}>{monitor_args}\n  </qemu:commandline>\n</domain>'
+                )
+
+        conn.defineXML(new_xml)
+
+        # Re-fetch domain after redefine and start
+        dom = conn.lookupByName(vm_name)
         dom.create()
         print(f"✓ VM '{vm_name}' started")
         print("\nPost-installation setup complete!")
-        
+
     except libvirt.libvirtError as e:
         print(f"ERROR: {e}")
         sys.exit(1)
@@ -706,7 +754,7 @@ def main():
     parser.add_argument('--vcpus', type=int, default=2, help='Number of vCPUs')
     parser.add_argument('--disk-size', type=int, default=30, help='Disk size in GB')
     parser.add_argument('--iso', help='Path to NixOS installation ISO (default: vms/keystone-installer.iso)')
-    parser.add_argument('--ssh-port', type=int, default=22220, help='SSH port on host')
+    parser.add_argument('--ssh-port', type=int, default=None, help='SSH port on host (enables user-mode networking with port forwarding)')
     parser.add_argument('--post-install-reboot', metavar='VM_NAME', help='Post-install: snapshot disk, remove ISO, reboot (VM must be shut down)')
     parser.add_argument('--reset', metavar='VM_NAME', help='Delete VM and all associated files (forces destroy if running)')
     parser.add_argument('--reset-setup-mode', metavar='VM_NAME', help='Reset VM NVRAM to Setup Mode (VM must be shut down)')
@@ -717,6 +765,8 @@ def main():
     parser.add_argument('--wait-ssh', action='store_true', help='After --start, block until SSH is ready')
     parser.add_argument('--ssh-timeout', type=int, default=240, help='Timeout in seconds for --wait-ssh (default: 240)')
     parser.add_argument('--ssh-key', help='SSH private key for --wait-ssh authentication')
+    parser.add_argument('--ssh-user', default='keystone', help='SSH username for --wait-ssh (default: keystone)')
+    parser.add_argument('--destroy', metavar='VM_NAME', help='Force stop a running VM')
 
     args = parser.parse_args()
 
@@ -735,9 +785,28 @@ def main():
         print("    users.users.<youruser>.extraGroups = [ \"libvirtd\" ];")
         sys.exit(1)
     
+    # Handle force stop
+    if args.destroy:
+        try:
+            dom = conn.lookupByName(args.destroy)
+            if dom.isActive():
+                dom.destroy()
+                print(f"✓ VM '{args.destroy}' destroyed")
+            else:
+                print(f"ℹ VM '{args.destroy}' is not running")
+        except libvirt.libvirtError as e:
+            print(f"ERROR: {e}")
+            sys.exit(1)
+        conn.close()
+        return
+
     # Handle post-installation reboot
     if args.post_install_reboot:
-        post_install_reboot(conn, args.post_install_reboot)
+        post_install_reboot(
+            conn, args.post_install_reboot,
+            headless=args.headless,
+            monitor_socket=args.monitor_socket,
+        )
         conn.close()
         return
 
@@ -792,9 +861,10 @@ def main():
     # Wait for SSH if requested
     if args.wait_ssh:
         if not wait_for_ssh(
-            args.ssh_port,
+            args.ssh_port or 22220,
             timeout=args.ssh_timeout,
             ssh_key=args.ssh_key,
+            username=args.ssh_user,
         ):
             conn.close()
             sys.exit(1)

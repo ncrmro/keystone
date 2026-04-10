@@ -18,7 +18,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ISO_RESULT="$PROJECT_DIR/.test-iso"
-VM_DISK_PATH="$PROJECT_DIR/.test-iso-disk.raw"
+VM_DISK_PATH="$PROJECT_DIR/.test-iso-disk.qcow2"
 SSH_PORT=12222
 # Full installs regularly realize large target closures, so use the same
 # baseline we needed in manual verification instead of the old 4 GiB / 2 vCPU
@@ -26,7 +26,7 @@ SSH_PORT=12222
 QEMU_MEM=8192
 QEMU_CPUS=4
 SSH_WAIT_TIMEOUT=240
-VM_DISK_SIZE=64G
+VM_DISK_SIZE=64
 DEV_SSH_KEY_PATH="$PROJECT_DIR/.test-iso-dev-key"
 USE_DEV_SSH_KEY=false
 
@@ -120,7 +120,7 @@ Options:
                         installer TUI with deterministic keystrokes, poll for
                         install checkpoints, and report pass/fail.
   --ssh-timeout SEC     Max wait time for SSH in headless mode (default: $SSH_WAIT_TIMEOUT).
-  --disk-size SIZE      Size of the attached install disk image (default: $VM_DISK_SIZE).
+  --disk-size GB        Size of the attached install disk image in GB (default: $VM_DISK_SIZE).
   --disk-path PATH      Path to the attached install disk image
                         (default: $VM_DISK_PATH).
   -m, --memory MB       QEMU RAM in MB (default: $QEMU_MEM).
@@ -264,8 +264,6 @@ run_e2e_installer() {
 
 E2E_SCREENSHOT_DIR=""
 E2E_MONITOR_SOCK=""
-E2E_REBOOT_QEMU_PID=""
-E2E_REBOOT_SSH_PORT=""
 E2E_REBOOT_TIMEOUT=120    # seconds to wait for SSH after unlock
 E2E_DISK_PASSWORD="keystone"
 
@@ -302,40 +300,14 @@ e2e_sendkeys() {
     done
 }
 
-# Boot the installed disk headless with QEMU monitor, run reboot validation.
+# Validate the rebooted installed system: screenshots, LUKS unlock, SSH.
+# Expects E2E_MONITOR_SOCK, E2E_SCREENSHOT_DIR, and SSH_PORT to be set.
+# The VM must already be running (started via --post-install-reboot).
 run_e2e_reboot_validation() {
-    local reboot_port="${1:-12261}"
-    E2E_REBOOT_SSH_PORT="$reboot_port"
-    E2E_MONITOR_SOCK="/tmp/qemu-e2e-monitor-$$.sock"
-    E2E_SCREENSHOT_DIR="${PROJECT_DIR}/.test-e2e-screenshots"
-    mkdir -p "$E2E_SCREENSHOT_DIR"
-
     local ref_dir="${PROJECT_DIR}/tests/e2e/screenshots"
     local ref_hashes="${PROJECT_DIR}/tests/e2e/reference-hashes.json"
 
-    log_info "E2E: booting installed disk for reboot validation"
-
-    # Use egl-headless + virtio-gpu so Hyprland has a DRM render target
-    # and screendump captures the actual compositor output.
-    #
-    # OVMF NVRAM: the install phase wrote UEFI boot entries into the disk's
-    # EFI System Partition.  We use a writable pflash NVRAM copy so OVMF
-    # can discover those entries.  The PCI layout must match the install
-    # phase (virtio-blk + virtio-net + virtio-gpu) — the only difference
-    # is no -cdrom (the ISO is gone after install).
-    qemu-system-x86_64 \
-        -machine q35 \
-        -enable-kvm -m "$QEMU_MEM" -smp "$QEMU_CPUS" \
-        -drive "if=pflash,format=raw,readonly=on,file=${ovmf_path}" \
-        -drive "if=pflash,format=raw,file=${NVRAM_PATH}" \
-        -drive "if=none,id=installdisk,file=${VM_DISK_PATH},format=raw" \
-        -device "virtio-blk-pci,drive=installdisk,serial=keystone-test-disk" \
-        -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${reboot_port}-:22" \
-        -device "virtio-net-pci,netdev=net0,romfile=" \
-        -device "virtio-gpu-pci" \
-        -display egl-headless \
-        -monitor "unix:${E2E_MONITOR_SOCK},server,nowait" &
-    E2E_REBOOT_QEMU_PID=$!
+    log_info "E2E: validating rebooted installed system"
 
     # Stage 1: LUKS prompt
     log_info "E2E: waiting for LUKS prompt..."
@@ -355,7 +327,7 @@ run_e2e_reboot_validation() {
     e2e_screenshot "03-desktop-or-login"
 
     # Stage 4: SSH validation
-    log_info "E2E: polling for SSH on port $reboot_port..."
+    log_info "E2E: polling for SSH on port $SSH_PORT..."
     local start_time now elapsed
     start_time="$(date +%s)"
     local ssh_ok=false
@@ -366,7 +338,7 @@ run_e2e_reboot_validation() {
             break
         fi
         if ssh "${SSH_IDENTITY_ARGS[@]}" \
-            -p "$reboot_port" \
+            -p "$SSH_PORT" \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
             -o ConnectTimeout=5 \
@@ -424,7 +396,6 @@ run_e2e_reboot_validation() {
         log_ok "E2E: baseline saved to $ref_hashes"
     fi
 
-    kill "$E2E_REBOOT_QEMU_PID" 2>/dev/null || true
     rm -f "$E2E_MONITOR_SOCK"
 
     if (( failed )); then
@@ -743,61 +714,28 @@ fi
 
 check_iso_artifact "$iso_path"
 
-# ── locate OVMF firmware ──────────────────────────────────────────────────────
+# ── resolve VM management script ──────────────────────────────────────────────
 
-find_ovmf() {
-    # 1. Prefer nixpkgs OVMF for reproducible behavior. Some host-provided
-    # OVMF builds fail to boot this ISO in QEMU and never touch the CD-ROM.
-    local candidate store_path
-    store_path="$(nix build nixpkgs#OVMF.fd --print-out-paths --no-link 2>/dev/null || true)"
-    [[ -n "$store_path" ]] && candidate="$store_path/FV/OVMF.fd"
-    [[ -f "${candidate:-}" ]] && { echo "$candidate"; return; }
-
-    # 2. Fallback to host/system firmware paths
-    candidate="$(find /run/current-system/sw/share -name 'OVMF.fd' 2>/dev/null | head -1 || true)"
-    [[ -n "$candidate" ]] && { echo "$candidate"; return; }
-
-    candidate="$(find /nix/store -maxdepth 3 -name 'OVMF.fd' 2>/dev/null | head -1 || true)"
-    [[ -n "$candidate" ]] && { echo "$candidate"; return; }
-
-    log_error "Could not locate OVMF firmware. Install it with:"
-    log_error "  environment.systemPackages = [ pkgs.OVMF ];"
-    exit 1
-}
-
-ovmf_path="$(find_ovmf)"
-log_info "OVMF: $ovmf_path"
-
-# ── ensure a writable install target disk exists ─────────────────────────────
-
-ensure_vm_disk() {
-    local disk_path="$1"
-    local disk_size="$2"
-    local disk_dir
-
-    disk_dir="$(dirname "$disk_path")"
-    mkdir -p "$disk_dir"
-
-    if [[ ! -e "$disk_path" ]]; then
-        log_info "Creating VM install disk: $disk_path ($disk_size)"
-        truncate -s "$disk_size" "$disk_path"
-    fi
-}
-
-ensure_vm_disk "$VM_DISK_PATH" "$VM_DISK_SIZE"
-log_info "VM install disk: $VM_DISK_PATH"
-
-# ── check port availability ───────────────────────────────────────────────────
-
-if ss -tlnp 2>/dev/null | grep -q ":${SSH_PORT} " || \
-   netstat -tlnp 2>/dev/null | grep -q ":${SSH_PORT} "; then
-    log_warn "Port $SSH_PORT is already in use — choose another with --port"
+if [[ -z "$KEYSTONE_LOCKED_PATH" || ! -x "$KEYSTONE_LOCKED_PATH/bin/virtual-machine" ]]; then
+    log_error "Cannot locate bin/virtual-machine via KEYSTONE_LOCKED_PATH."
+    log_error "Ensure the flake has a path-locked keystone input."
     exit 1
 fi
 
+VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+VM_NAME="keystone-e2e-$$"
+
+cleanup_vm() {
+    if [[ -n "${VM_NAME:-}" ]]; then
+        "$VM_SCRIPT" --reset "$VM_NAME" 2>/dev/null || true
+    fi
+}
+
+trap 'cleanup_vm; cleanup_project_snapshot' EXIT
+
 # ── boot the VM ──────────────────────────────────────────────────────────────
 
-log_info "Starting QEMU with ISO: $(basename "$iso_path")"
+log_info "Booting ISO via libvirt: $(basename "$iso_path")"
 log_info "SSH port forwarding: localhost:$SSH_PORT → VM:22"
 echo >&2
 log_ok "SSH command:"
@@ -808,60 +746,27 @@ else
 fi
 echo >&2
 
-# Persistent OVMF NVRAM so UEFI boot entries survive across QEMU invocations.
-# The install phase writes entries (systemd-boot/lanzaboote) that the reboot
-# phase needs to find.
-OVMF_VARS_TEMPLATE="$(dirname "$ovmf_path")/OVMF_VARS.fd"
-NVRAM_PATH="${VM_DISK_PATH%.raw}.nvram"
-if [[ ! -f "$NVRAM_PATH" ]]; then
-    cp "$OVMF_VARS_TEMPLATE" "$NVRAM_PATH"
-    chmod 644 "$NVRAM_PATH"
-fi
-
-QEMU_COMMON=(
-    -machine q35
-    -enable-kvm
-    -m "$QEMU_MEM"
-    -smp "$QEMU_CPUS"
-    -drive "if=pflash,format=raw,readonly=on,file=${ovmf_path}"
-    -drive "if=pflash,format=raw,file=${NVRAM_PATH}"
-    -cdrom "$iso_path"
-    -drive "if=none,id=installdisk,file=${VM_DISK_PATH},format=raw"
-    -device "virtio-blk-pci,drive=installdisk,serial=keystone-test-disk"
-    -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
-    -device "virtio-net-pci,netdev=net0,romfile="
-    -device "virtio-gpu-pci"
+VM_ARGS=(
+    --name "$VM_NAME"
+    --iso "$iso_path"
+    --disk-path "$VM_DISK_PATH"
+    --disk-size "$VM_DISK_SIZE"
+    --memory "$QEMU_MEM"
+    --vcpus "$QEMU_CPUS"
+    --ssh-port "$SSH_PORT"
+    --ssh-user "$ADMIN_USERNAME"
+    --start
 )
 
+if [[ "$USE_DEV_SSH_KEY" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+    VM_ARGS+=(--ssh-key "$DEV_SSH_KEY_PATH")
+fi
+
 if [[ "$HEADLESS" == "true" ]]; then
-    # ── headless: background QEMU, poll for SSH ──────────────────────────────
-    log_warn "Headless mode. Press Ctrl-C to stop the VM."
-    echo >&2
+    VM_ARGS+=(--headless --wait-ssh --ssh-timeout "$SSH_WAIT_TIMEOUT")
 
-    qemu-system-x86_64 "${QEMU_COMMON[@]}" -display none &
-    QEMU_PID=$!
-    trap 'kill "$QEMU_PID" 2>/dev/null; exit 0' INT TERM
-
-    log_info "Waiting for SSH on port $SSH_PORT (timeout: ${SSH_WAIT_TIMEOUT}s)..."
-    start_time="$(date +%s)"
-    until ssh \
-            "${SSH_IDENTITY_ARGS[@]}" \
-            -p "$SSH_PORT" \
-            -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=2 \
-            -o LogLevel=ERROR \
-            "${ADMIN_USERNAME}@localhost" \
-            exit 0 2>/dev/null; do
-        kill -0 "$QEMU_PID" 2>/dev/null || { log_error "QEMU exited unexpectedly."; exit 1; }
-        now="$(date +%s)"
-        if (( now - start_time >= SSH_WAIT_TIMEOUT )); then
-            log_error "Timed out waiting for SSH after ${SSH_WAIT_TIMEOUT}s."
-            log_error "Try GUI mode to inspect boot state: ./bin/test-iso --no-build"
-            kill "$QEMU_PID" 2>/dev/null || true
-            exit 1
-        fi
-        sleep 3
-    done
+    log_info "Starting headless VM with libvirt..."
+    "$VM_SCRIPT" "${VM_ARGS[@]}"
 
     log_ok "SSH is up!"
     if [[ "$DEV_MODE" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
@@ -872,29 +777,43 @@ if [[ "$HEADLESS" == "true" ]]; then
     echo >&2
 
     if [[ "$E2E_MODE" == "true" ]]; then
-        run_e2e_installer || { kill "$QEMU_PID" 2>/dev/null; exit 1; }
-        run_e2e_checkpoints || { kill "$QEMU_PID" 2>/dev/null; exit 1; }
+        run_e2e_installer || { cleanup_vm; exit 1; }
+        run_e2e_checkpoints || { cleanup_vm; exit 1; }
 
         # Layer 2: reboot validation with screenshots
-        log_info "E2E: killing ISO VM, starting reboot validation..."
-        kill "$QEMU_PID" 2>/dev/null || true
+        log_info "E2E: stopping install VM for reboot validation..."
+        "$VM_SCRIPT" --destroy "$VM_NAME" 2>/dev/null || true
         sleep 2
 
-        reboot_port=$((SSH_PORT + 1))
-        if run_e2e_reboot_validation "$reboot_port"; then
+        E2E_MONITOR_SOCK="/tmp/qemu-e2e-monitor-$$.sock"
+        E2E_SCREENSHOT_DIR="${PROJECT_DIR}/.test-e2e-screenshots"
+        mkdir -p "$E2E_SCREENSHOT_DIR"
+
+        "$VM_SCRIPT" --post-install-reboot "$VM_NAME" \
+            --headless --monitor-socket "$E2E_MONITOR_SOCK"
+
+        if run_e2e_reboot_validation; then
             log_ok "E2E: all layers passed."
+            cleanup_vm
             exit 0
         else
             log_error "E2E: reboot validation failed."
+            cleanup_vm
             exit 1
         fi
     fi
 
-    log_warn "VM is running (PID $QEMU_PID). Press Ctrl-C to shut it down."
-    wait "$QEMU_PID"
+    log_warn "VM '$VM_NAME' is running. Press Ctrl-C to shut it down."
+    # Keep alive — trap handles cleanup on Ctrl-C
+    while virsh dominfo "$VM_NAME" 2>/dev/null | grep -q "running"; do
+        sleep 5
+    done
 else
-    # ── GUI: QEMU window ────────────────────────────────────────────────────
-    log_warn "Close the QEMU window to stop."
-    echo >&2
-    exec qemu-system-x86_64 "${QEMU_COMMON[@]}"
+    # ── GUI: start VM with SPICE display ────────────────────────────────────
+    log_info "Starting VM with SPICE display..."
+    "$VM_SCRIPT" "${VM_ARGS[@]}"
+    log_warn "VM '$VM_NAME' is running. Connect via SPICE or press Ctrl-C to stop."
+    while virsh dominfo "$VM_NAME" 2>/dev/null | grep -q "running"; do
+        sleep 5
+    done
 fi
