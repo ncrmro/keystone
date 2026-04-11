@@ -80,6 +80,7 @@ async fn main() -> Result<()> {
                 let pull_only = pull && dev_mode;
                 run_update_command(hosts.as_deref(), dev_mode, boot, pull_only, json).await
             }
+            Command::AudioTranscribe(args) => run_audio_transcribe_command(args).await,
             Command::Approve(args) => run_approve_command(args).await,
             Command::Agents(args) => run_agents_command(args).await,
             Command::Docs { topic_or_path } => run_docs_command(topic_or_path).await,
@@ -346,6 +347,56 @@ async fn run_update_command(
 
 async fn run_docs_command(topic_or_path: Option<String>) -> Result<()> {
     cmd::docs::execute(topic_or_path.as_deref())
+}
+
+async fn run_audio_transcribe_command(args: cli::AudioTranscribeArgs) -> Result<()> {
+    let server = args
+        .server
+        .or_else(|| std::env::var("WHISPER_SERVER_URL").ok());
+    let language = args
+        .language
+        .or_else(|| std::env::var("AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE").ok());
+    let language = match language {
+        Some(l) => l,
+        None => anyhow::bail!(
+            "No language specified.\n\n\
+             Set a default:  export AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE=en\n\
+             Or per-command:  ks audio-transcribe -l en <file>\n\n\
+             Use \"auto\" if you work with multiple languages."
+        ),
+    };
+
+    let result = if let Some(ref server_url) = server {
+        cmd::audio_transcribe::execute_remote(
+            &args.file,
+            server_url,
+            &language,
+            args.output_dir.as_deref(),
+        )
+    } else {
+        let model = args.model.unwrap_or_else(|| {
+            std::env::var("AUDIO_TRANSCRIBE_DEFAULT_MODEL")
+                .unwrap_or_else(|_| "large-v3".to_string())
+        });
+        cmd::audio_transcribe::execute(&args.file, &model, &language, args.output_dir.as_deref())
+    };
+
+    match result {
+        Ok(r) => {
+            if args.json {
+                print_json_success(&r)
+            } else {
+                Ok(())
+            }
+        }
+        Err(e) => {
+            if args.json {
+                print_json_error(&e)
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 async fn run_photos_command(command: cmd::photos::PhotosCommand) -> Result<()> {

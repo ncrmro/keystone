@@ -5,6 +5,7 @@ use serde::Serialize;
 pub mod agent;
 pub mod agents;
 pub mod approve;
+pub mod audio_transcribe;
 pub mod build;
 pub mod docs;
 pub mod doctor;

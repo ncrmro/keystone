@@ -8,7 +8,9 @@
   makeWrapper,
   bash,
   coreutils,
+  curl,
   cups,
+  ffmpeg,
   fzf,
   git,
   glow,
@@ -20,6 +22,7 @@
   sudo,
   systemd,
   python3Packages,
+  whisper-cpp,
 }:
 let
   version = "0.1.0";
@@ -56,7 +59,9 @@ let
   runtimePath = lib.makeBinPath [
     bash
     coreutils
+    curl
     cups
+    ffmpeg
     fzf
     git
     glow
@@ -68,6 +73,7 @@ let
     sudo
     systemd
     python3Packages.weasyprint
+    whisper-cpp
   ];
 
   package = craneLib.buildPackage (

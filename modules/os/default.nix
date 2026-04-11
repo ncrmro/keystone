@@ -237,6 +237,7 @@ in
     ./hypervisor.nix
     ./iphone-tether.nix
     ./ollama.nix
+    ./whisper.nix
     ./immich.nix
     ./tailscale.nix
     ./containers.nix
