@@ -329,6 +329,13 @@ def create_uefi_secureboot_vm(
             "<qemu:arg value='-monitor'/>",
             f"<qemu:arg value='unix:{monitor_socket},server,nowait'/>",
         ])
+    # Use egl-headless display backend for virgl — offscreen GPU context
+    # avoids SPICE GL deadlock where host compositor and QEMU contend for
+    # the same render context (guest virtio-gpu D-state).
+    _qemu_args.extend([
+        "<qemu:arg value='-display'/>",
+        "<qemu:arg value='egl-headless,rendernode=/dev/dri/renderD128'/>",
+    ])
 
     if _qemu_args:
         _args_str = "\n    ".join(_qemu_args)
@@ -408,22 +415,18 @@ def create_uefi_secureboot_vm(
     </console>
     
     <!-- Graphics:
-         Headed: SPICE + virgl (accel3d) for GPU-accelerated rendering.
-           Known issue: virgl can deadlock the guest kernel's virtio-gpu
-           driver (Hyprland stuck in D-state). If this happens, the installed
-           system needs LIBGL_ALWAYS_SOFTWARE=1 and WLR_RENDERER_ALLOW_SOFTWARE=1
-           in the Hyprland env config, and the VM must be run WITHOUT accel3d.
-         Headless: no SPICE, no accel3d — uses llvmpipe. screendump captures
-           the CPU framebuffer. hyprlock cannot render in this mode (no EGL).
-         TODO: investigate virgl deadlock root cause (QEMU 10.x + host Hyprland
-         compositing on same GPU may cause resource contention). -->
-    {"" if headless else """<graphics type='spice' autoport='yes'>
-      <listen type='address' address='127.0.0.1'/>
-      <gl enable='yes' rendernode='/dev/dri/renderD128'/>
-    </graphics>"""}
+         Always use accel3d (virgl) so the guest has EGL/GL for hyprlock
+         and desktop compositing. The display backend is egl-headless
+         (offscreen GPU context) — avoids SPICE GL deadlocks where the
+         host compositor and QEMU contend for the same GPU render context.
+         Screenshots are captured via grim over SSH (Wayland surface),
+         not QEMU screendump (which returns "no surface" with virgl).
+         Headed mode adds SPICE (no GL) for interactive viewing. -->
+    {"" if not headless else "<!-- headless: no SPICE display -->"}
+    {"<graphics type='spice' autoport='yes'><listen type='address' address='127.0.0.1'/></graphics>" if not headless else ""}
     <video>
       <model type='virtio' heads='1' primary='yes'>
-        {"<acceleration accel3d='yes'/>" if not headless else "<!-- no accel3d in headless — screendump needs CPU framebuffer -->"}
+        <acceleration accel3d='yes'/>
       </model>
     </video>
     

@@ -66,10 +66,6 @@ in
 
           # Allow software rendering fallback in VMs (no-op on bare metal with GPU)
           "WLR_RENDERER_ALLOW_SOFTWARE,1"
-          # TODO: hyprlock needs LIBGL_ALWAYS_SOFTWARE=1 on virtio-gpu without
-          # virgl (accel3d), but setting it globally would force software rendering
-          # on bare metal. Detect virtio-gpu at runtime in autostart or add a
-          # keystone.desktop.vm option that sets this conditionally.
         ]
       );
 
