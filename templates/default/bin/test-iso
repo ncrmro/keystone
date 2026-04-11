@@ -371,7 +371,14 @@ run_e2e_reboot_validation() {
     # Req 2: wait for desktop/login — screenshot must show hyprlock
     log_info "E2E: waiting for desktop/login surface..."
     sleep 30
-    e2e_screenshot "03-desktop-or-login"
+    e2e_screenshot "03-hyprlock"
+
+    # Stage 4: unlock hyprlock by typing the user password + Enter
+    log_info "E2E: unlocking hyprlock with user password"
+    e2e_sendkeys "changeme"
+    echo "sendkey ret" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
+    sleep 10
+    e2e_screenshot "04-desktop"
 
     # Req 1: SSH validation post-reboot must succeed
     log_info "E2E: polling for SSH on port $SSH_PORT..."
@@ -403,7 +410,7 @@ run_e2e_reboot_validation() {
         log_warn "E2E: SSH to installed system failed (may be QEMU GPU/desktop issue)"
     fi
 
-    e2e_screenshot "04-final-state"
+    e2e_screenshot "05-final-state"
 
     # Req 5: compare screenshots against LFS baselines (SHA-256 in pointer files)
     local failed=0
