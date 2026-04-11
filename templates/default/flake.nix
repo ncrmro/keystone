@@ -119,6 +119,7 @@
           nixfmt
           nil
           imagemagick # PPM→PNG conversion for e2e screenshots
+          nix-serve # local binary cache for e2e VM installs
         ];
       };
     };
