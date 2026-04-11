@@ -410,9 +410,12 @@ def create_uefi_secureboot_vm(
     <!-- Graphics -->
     {"" if headless else """<graphics type='spice' autoport='yes'>
       <listen type='address' address='127.0.0.1'/>
+      <gl enable='yes' rendernode='/dev/dri/renderD128'/>
     </graphics>"""}
     <video>
-      <model type='virtio' heads='1' primary='yes'/>
+      <model type='virtio' heads='1' primary='yes'>
+        {"<acceleration accel3d='yes'/>" if not headless else "<!-- no accel3d in headless — screendump needs CPU framebuffer -->"}
+      </model>
     </video>
     
     <!-- Input devices -->

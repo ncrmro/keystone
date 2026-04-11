@@ -267,21 +267,38 @@ E2E_MONITOR_SOCK=""
 E2E_REBOOT_TIMEOUT=180    # seconds to wait for SSH after unlock
 E2E_DISK_PASSWORD="keystone"
 
-# Take a QEMU screenshot via the monitor socket, convert to PNG.
+# Take a screenshot via QEMU monitor screendump (headless/llvmpipe) or
+# grim over SSH (headed/virgl where screendump returns "no surface").
 e2e_screenshot() {
     local name="$1"
     local ppm_path="${E2E_SCREENSHOT_DIR}/${name}.ppm"
     local png_path="${E2E_SCREENSHOT_DIR}/${name}.png"
 
-    if ! echo "screendump ${ppm_path}" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" 2>&1; then
-        log_error "E2E: failed to connect to monitor socket ${E2E_MONITOR_SOCK}"
-        return 1
+    # Try QEMU monitor screendump first (works in headless/llvmpipe mode)
+    local screendump_ok=false
+    if echo "screendump ${ppm_path}" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" 2>&1 | command grep -qv "no surface"; then
+        sleep 1
+        if [[ -f "$ppm_path" ]]; then
+            screendump_ok=true
+        fi
     fi
-    sleep 1
 
-    if [[ ! -f "$ppm_path" ]]; then
-        log_error "E2E: screendump did not produce $ppm_path"
-        return 1
+    # Fallback: capture via grim over SSH (works with virgl/GL rendering)
+    if [[ "$screendump_ok" != "true" ]]; then
+        log_info "E2E: screendump unavailable (virgl?), trying grim over SSH"
+        if ssh "${SSH_IDENTITY_ARGS[@]}" -p "$SSH_PORT" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=5 -o BatchMode=yes \
+            "${ADMIN_USERNAME}@localhost" \
+            "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 grim -" \
+            > "$png_path" 2>/dev/null; then
+            log_info "E2E: screenshot saved (grim): $png_path"
+            echo "$png_path"
+            return 0
+        else
+            log_error "E2E: both screendump and grim failed for $name"
+            return 1
+        fi
     fi
 
     if command -v magick >/dev/null 2>&1; then
