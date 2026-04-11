@@ -258,6 +258,12 @@ ssh_cmd() {
 run_e2e_installer() {
     local host="${E2E_HOST:-laptop}"
     log_info "E2E: running headless install for host '$host'"
+    # Remove build artifacts that ks install would try to copy to the
+    # installed system. These are nix store symlinks that don't exist
+    # inside the VM and cause the post-install config copy to fail.
+    ssh_cmd "rm -f /tmp/keystone-install-repo/.keystone-input/templates/default/.test-iso" 2>/dev/null
+    ssh_cmd "rm -f /tmp/keystone-install-repo/.keystone-input/templates/default/.test-iso-disk.qcow2" 2>/dev/null
+    ssh_cmd "rm -rf /tmp/keystone-install-repo/.keystone-input/templates/default/.test-e2e-screenshots" 2>/dev/null
     if ! ssh_cmd "ks install --host $host" 2>&1; then
         log_error "E2E: ks install --host $host failed"
         return 1
