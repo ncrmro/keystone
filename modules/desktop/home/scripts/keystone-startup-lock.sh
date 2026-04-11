@@ -11,6 +11,16 @@ set -u -o pipefail
 poll_interval_seconds="${KEYSTONE_STARTUP_LOCK_POLL_INTERVAL_SECONDS:-0.1}"
 timeout_steps="${KEYSTONE_STARTUP_LOCK_TIMEOUT_STEPS:-50}"
 
+# SECURITY: During session startup (greetd → uwsm → Hyprland), the
+# compositor may deny the session lock while outputs are being
+# reconfigured. hyprlock reports this as "yeeten" and exits non-zero.
+# We retry a limited number of times to handle this transient denial,
+# but still fail closed if all attempts are exhausted. Each retry is
+# a full hyprlock launch + surface poll cycle — the retry count does
+# NOT extend the per-attempt timeout.
+max_lock_attempts="${KEYSTONE_STARTUP_LOCK_MAX_ATTEMPTS:-3}"
+retry_delay_seconds="${KEYSTONE_STARTUP_LOCK_RETRY_DELAY:-1}"
+
 log() {
   local priority="$1"
   shift
@@ -56,35 +66,52 @@ fail_closed() {
   exit 1
 }
 
+try_lock() {
+  hyprlock >/dev/null 2>&1 &
+  lock_pid=$!
+
+  for _ in $(seq 1 "$timeout_steps"); do
+    if lock_surface_present; then
+      log info "startup lock is ready"
+      return 0
+    fi
+
+    if ! kill -0 "$lock_pid" >/dev/null 2>&1; then
+      wait "$lock_pid"
+      lock_status=$?
+      # hyprlock exit 0 means successful authentication — the user
+      # unlocked before we polled. This is not a failure.
+      if [[ "$lock_status" -eq 0 ]]; then
+        log info "hyprlock exited cleanly (user authenticated)"
+        return 0
+      fi
+      # Non-zero exit: hyprlock was denied the session lock ("yeeten")
+      # or crashed. Return the status for the retry logic.
+      return "$lock_status"
+    fi
+
+    sleep "$poll_interval_seconds"
+  done
+
+  # Timeout — hyprlock is running but never presented a surface.
+  pkill -TERM -x hyprlock >/dev/null 2>&1 || true
+  return 1
+}
+
 if pgrep -x hyprlock >/dev/null 2>&1; then
   log info "hyprlock is already running"
   exit 0
 fi
 
-hyprlock >/dev/null 2>&1 &
-lock_pid=$!
-lock_was_presented=false
-
-for _ in $(seq 1 "$timeout_steps"); do
-  if lock_surface_present; then
-    log info "startup lock is ready"
-    lock_was_presented=true
+for attempt in $(seq 1 "$max_lock_attempts"); do
+  if try_lock; then
     exit 0
   fi
 
-  if ! kill -0 "$lock_pid" >/dev/null 2>&1; then
-    wait "$lock_pid"
-    lock_status=$?
-    # hyprlock exit 0 means successful authentication — the user
-    # unlocked before we polled. This is not a failure.
-    if [[ "$lock_status" -eq 0 ]]; then
-      log info "hyprlock exited cleanly (user authenticated)"
-      exit 0
-    fi
-    fail_closed "hyprlock exited before presenting the startup lock (status $lock_status)."
+  if [[ "$attempt" -lt "$max_lock_attempts" ]]; then
+    log warning "hyprlock denied on attempt $attempt/$max_lock_attempts (session lock not ready), retrying in ${retry_delay_seconds}s"
+    sleep "$retry_delay_seconds"
   fi
-
-  sleep "$poll_interval_seconds"
 done
 
-fail_closed "hyprlock did not present a startup lock surface within the expected time."
+fail_closed "hyprlock failed to present a startup lock after $max_lock_attempts attempts."
