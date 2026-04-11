@@ -72,6 +72,8 @@ target/
 
 # VM screenshots for debugging
 screenshots/
+# LFS-tracked e2e baseline screenshots (negates the rule above)
+!templates/default/tests/e2e/screenshots/
 *.sock
 
 # DeepWork runtime artifacts (job definitions are tracked, outputs are not)

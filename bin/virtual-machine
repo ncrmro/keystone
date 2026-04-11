@@ -380,9 +380,7 @@ def create_uefi_secureboot_vm(
       <listen type='address' address='127.0.0.1'/>
     </graphics>"""}
     <video>
-      <model type='virtio' heads='1' primary='yes'>
-        <acceleration accel3d='yes'/>
-      </model>
+      <model type='virtio' heads='1' primary='yes'/>
     </video>
     
     <!-- Input devices -->

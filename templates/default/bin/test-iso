@@ -329,7 +329,6 @@ verify_imagemagick_available() {
 # The VM must already be running (started via --post-install-reboot).
 run_e2e_reboot_validation() {
     local ref_dir="${PROJECT_DIR}/tests/e2e/screenshots"
-    local ref_hashes="${PROJECT_DIR}/tests/e2e/reference-hashes.json"
 
     log_info "E2E: validating rebooted installed system"
 
@@ -382,42 +381,44 @@ run_e2e_reboot_validation() {
 
     e2e_screenshot "04-final-state"
 
-    # Req 5: compare screenshots against reference hashes
+    # Req 5: compare screenshots against LFS baselines (SHA-256 in pointer files)
     local failed=0
-    if [[ -f "$ref_hashes" ]]; then
-        log_info "E2E: comparing screenshots against reference hashes"
+    local has_baselines=false
+    if [[ -d "$ref_dir" ]] && ls "$ref_dir"/*.png "$ref_dir"/*.ppm 2>/dev/null | grep -q .; then
+        has_baselines=true
+    fi
+
+    if [[ "$has_baselines" == "true" ]]; then
+        log_info "E2E: comparing screenshots against LFS baselines"
         for img in "$E2E_SCREENSHOT_DIR"/*.png "$E2E_SCREENSHOT_DIR"/*.ppm; do
             [[ -f "$img" ]] || continue
-            local base
+            local base ext ref_file
             base="$(basename "${img%.*}")"
-            local actual_hash
-            actual_hash="$(sha256sum "$img" | awk '{print $1}')"
-            local expected_hash
-            expected_hash="$(jq -r ".\"${base}\" // empty" "$ref_hashes" 2>/dev/null)"
-            if [[ -z "$expected_hash" ]]; then
-                log_info "E2E: no reference for $base (new screenshot)"
-            elif [[ "$actual_hash" == "$expected_hash" ]]; then
-                log_ok "E2E: $base matches reference"
+            ext="${img##*.}"
+            ref_file="$ref_dir/${base}.${ext}"
+            if [[ ! -f "$ref_file" ]]; then
+                log_info "E2E: no baseline for $base (new screenshot)"
+                continue
+            fi
+            if cmp -s "$img" "$ref_file"; then
+                log_ok "E2E: $base matches baseline"
             else
+                local actual_hash expected_hash
+                actual_hash="$(sha256sum "$img" | awk '{print $1}')"
+                expected_hash="$(sha256sum "$ref_file" | awk '{print $1}')"
                 log_error "E2E: $base MISMATCH (expected ${expected_hash:0:12}... got ${actual_hash:0:12}...)"
                 failed=1
             fi
         done
     else
-        log_info "E2E: no reference hashes — saving current screenshots as baseline"
-        mkdir -p "$(dirname "$ref_hashes")" "$ref_dir"
-        local hashes="{}"
+        log_info "E2E: no baselines — saving current screenshots as LFS baseline"
+        mkdir -p "$ref_dir"
         for img in "$E2E_SCREENSHOT_DIR"/*.png "$E2E_SCREENSHOT_DIR"/*.ppm; do
             [[ -f "$img" ]] || continue
-            local base
-            base="$(basename "${img%.*}")"
-            local hash
-            hash="$(sha256sum "$img" | awk '{print $1}')"
-            hashes="$(echo "$hashes" | jq --arg k "$base" --arg v "$hash" '. + {($k): $v}')"
             cp "$img" "$ref_dir/"
+            log_info "E2E: saved $(basename "$img") to baselines"
         done
-        echo "$hashes" | jq . > "$ref_hashes"
-        log_ok "E2E: baseline saved to $ref_hashes"
+        log_ok "E2E: baselines saved to $ref_dir (commit with git lfs)"
     fi
 
     rm -f "$E2E_MONITOR_SOCK"

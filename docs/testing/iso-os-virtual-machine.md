@@ -227,12 +227,12 @@ Exit code 0 means success. The `--e2e` flag in `test-iso` uses this internally.
 The `--e2e` flag in `test-iso` adds a second layer after install completes:
 
 1. Destroys the install VM (`--destroy`)
-2. Boots the installed disk via `--post-install-reboot` with QXL display
+2. Boots the installed disk via `--post-install-reboot` with virtio-gpu display
 3. Creates a `post-install` qcow2 snapshot automatically
 4. Takes QEMU monitor screenshots at each boot stage via `screendump` + `socat`
 5. Unlocks LUKS via `sendkey`
 6. Validates SSH connectivity with the dev key
-7. Compares screenshot SHA256 against committed references in Git LFS
+7. Compares screenshots against LFS-tracked baselines (byte-for-byte via `cmp`)
 
 Screenshot stages:
 
@@ -243,14 +243,15 @@ Screenshot stages:
 | 03-desktop-or-login | Hyprland/hyprlock lockscreen |
 | 04-final-state | Final state after login timeout |
 
-First run saves baseline screenshots and hashes. Subsequent runs compare against
-the baseline and fail on SHA mismatch.
+First run copies captured screenshots into `tests/e2e/screenshots/` as baselines.
+Subsequent runs compare byte-for-byte and fail on mismatch. The LFS pointer SHA-256
+serves as the natural checksum (see "LFS as natural checksum" below).
 
 ## VM lifecycle: bin/virtual-machine
 
 `test-iso --e2e` delegates VM lifecycle to `bin/virtual-machine` (in the keystone
 repo) via `$KEYSTONE_LOCKED_PATH/bin/virtual-machine`. This is a Python/libvirt
-script that provides the proven Q35 + EDK2 SecureBoot + TPM + QXL configuration.
+script that provides the proven Q35 + EDK2 SecureBoot + TPM + virtio-gpu configuration.
 
 `test-iso` resolves the keystone repo path from `flake.lock` automatically.
 
@@ -364,11 +365,27 @@ All VM testing uses a standard screenshot pipeline:
 
 1. QEMU monitor `screendump <path>.ppm` via `socat` to the monitor socket
 2. Convert PPM → PNG via `imagemagick` (`magick` or `convert`)
-3. SHA256 hash for regression comparison
-4. Reference images committed to Git LFS at `templates/default/tests/e2e/screenshots/`
-5. Reference hashes at `templates/default/tests/e2e/reference-hashes.json`
+3. Compare against LFS-tracked baselines at `templates/default/tests/e2e/screenshots/`
 
-First run saves the baseline. Subsequent runs compare and fail on mismatch.
+First run saves the baseline (copy captured screenshots into the baseline directory).
+Subsequent runs compare captured screenshots byte-for-byte against the committed
+baselines and fail on mismatch.
+
+### LFS as natural checksum
+
+Git LFS pointer files contain the SHA-256 of the stored object:
+
+```
+version https://git-lfs.github.com/spec/v1
+oid sha256:abc123...
+size 12345
+```
+
+This makes a separate `reference-hashes.json` redundant. The LFS-tracked screenshots
+ARE the reference — `git diff` shows when a baseline changes, `git blame` shows who
+changed it and why, and the SHA-256 is immutable in the pointer. The e2e runner uses
+`cmp` for byte-for-byte comparison against the checked-out LFS files; on mismatch it
+reports both SHA-256 values for debugging.
 
 ## TUI testing notes
 
