@@ -756,14 +756,45 @@ fi
 
 VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
 VM_NAME="keystone-e2e-$$"
+NIX_SERVE_PID=""
+NIX_SERVE_PORT=""
+
+# Start nix-serve so the VM can substitute from the host's store.
+# In user-mode networking the host is at 10.0.2.2.
+start_nix_serve() {
+    if ! command -v nix-serve >/dev/null 2>&1; then
+        log_warn "nix-serve not found — VM will fetch from cache.nixos.org (slow)"
+        return
+    fi
+    NIX_SERVE_PORT="$(shuf -i 10000-60000 -n 1)"
+    nix-serve --port "$NIX_SERVE_PORT" &
+    NIX_SERVE_PID=$!
+    log_ok "nix-serve started on port $NIX_SERVE_PORT (PID $NIX_SERVE_PID)"
+}
+
+# Configure the VM to use the host's nix-serve as a substituter.
+configure_vm_substituter() {
+    if [[ -z "$NIX_SERVE_PORT" ]]; then
+        return
+    fi
+    log_info "E2E: configuring VM to use host nix-serve at 10.0.2.2:$NIX_SERVE_PORT"
+    ssh_cmd "sudo mkdir -p /etc/nix && echo 'extra-substituters = http://10.0.2.2:${NIX_SERVE_PORT}' | sudo tee -a /etc/nix/nix.conf > /dev/null && echo 'extra-trusted-substituters = http://10.0.2.2:${NIX_SERVE_PORT}' | sudo tee -a /etc/nix/nix.conf > /dev/null && sudo systemctl restart nix-daemon" 2>/dev/null \
+        && log_ok "E2E: VM substituter configured" \
+        || log_warn "E2E: failed to configure VM substituter"
+}
 
 cleanup_vm() {
+    if [[ -n "${NIX_SERVE_PID:-}" ]]; then
+        kill "$NIX_SERVE_PID" 2>/dev/null || true
+    fi
     if [[ -n "${VM_NAME:-}" ]]; then
         "$VM_SCRIPT" --reset "$VM_NAME" 2>/dev/null || true
     fi
 }
 
 trap 'cleanup_vm; cleanup_project_snapshot' EXIT
+
+start_nix_serve
 
 # ── boot the VM ──────────────────────────────────────────────────────────────
 
@@ -809,6 +840,7 @@ if [[ "$HEADLESS" == "true" ]]; then
     echo >&2
 
     if [[ "$E2E_MODE" == "true" ]]; then
+        configure_vm_substituter
         run_e2e_installer || { cleanup_vm; exit 1; }
         run_e2e_checkpoints || { cleanup_vm; exit 1; }
 
