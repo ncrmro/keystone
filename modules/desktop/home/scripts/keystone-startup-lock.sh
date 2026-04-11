@@ -63,17 +63,25 @@ fi
 
 hyprlock >/dev/null 2>&1 &
 lock_pid=$!
+lock_was_presented=false
 
 for _ in $(seq 1 "$timeout_steps"); do
+  if lock_surface_present; then
+    log info "startup lock is ready"
+    lock_was_presented=true
+    exit 0
+  fi
+
   if ! kill -0 "$lock_pid" >/dev/null 2>&1; then
     wait "$lock_pid"
     lock_status=$?
+    # hyprlock exit 0 means successful authentication — the user
+    # unlocked before we polled. This is not a failure.
+    if [[ "$lock_status" -eq 0 ]]; then
+      log info "hyprlock exited cleanly (user authenticated)"
+      exit 0
+    fi
     fail_closed "hyprlock exited before presenting the startup lock (status $lock_status)."
-  fi
-
-  if lock_surface_present; then
-    log info "startup lock is ready"
-    exit 0
   fi
 
   sleep "$poll_interval_seconds"
