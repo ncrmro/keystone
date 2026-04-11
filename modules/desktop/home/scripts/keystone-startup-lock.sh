@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 set -u -o pipefail
 
-poll_interval_seconds="${KEYSTONE_STARTUP_LOCK_POLL_INTERVAL_SECONDS:-0.1}"
-timeout_steps="${KEYSTONE_STARTUP_LOCK_TIMEOUT_STEPS:-50}"
+# VMs with software rendering (llvmpipe/virgl) need more time for
+# hyprlock to initialize its EGL context and present the lock surface.
+# Detect virtio-gpu and use a longer timeout.
+if command grep -q virtio /sys/class/drm/card*/device/uevent 2>/dev/null; then
+  default_poll="0.5"
+  default_steps="120"  # 60 seconds
+else
+  default_poll="0.1"
+  default_steps="50"   # 5 seconds
+fi
+poll_interval_seconds="${KEYSTONE_STARTUP_LOCK_POLL_INTERVAL_SECONDS:-$default_poll}"
+timeout_steps="${KEYSTONE_STARTUP_LOCK_TIMEOUT_STEPS:-$default_steps}"
 
 log() {
   local priority="$1"
