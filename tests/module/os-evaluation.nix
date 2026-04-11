@@ -244,6 +244,75 @@ let
         };
       }
     ];
+
+    # Ephemeral datasets on ZFS — service ordering, ownership, and migrate flag
+    ephemeral-datasets-zfs = eval "ephemeral-datasets-zfs" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          ephemeralDatasets = {
+            enable = true;
+            datasets = {
+              prometheus = {
+                mountpoint = "/var/lib/prometheus2";
+                service = "prometheus.service";
+              };
+              user-cache = {
+                mountpoint = "/home/testuser/.cache";
+                owner = "testuser";
+              };
+              containers = {
+                mountpoint = "/var/lib/containers";
+                migrate = false;
+              };
+            };
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    # Ephemeral datasets disabled on ext4 — must be a no-op
+    ephemeral-datasets-ext4-noop = eval "ephemeral-datasets-ext4-noop" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          ephemeralDatasets = {
+            enable = true;
+            datasets = {
+              user-cache = {
+                mountpoint = "/home/testuser/.cache";
+                owner = "testuser";
+              };
+            };
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-os-evaluation"
@@ -265,6 +334,8 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - ephemeral-datasets-zfs: Ephemeral datasets with service deps, ownership, and migrate flag"
+    echo "  - ephemeral-datasets-ext4-noop: Ephemeral datasets are no-op on ext4"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
