@@ -19,7 +19,10 @@ in
         # lock. If it does not come up, keystone-startup-lock exits the session
         # rather than exposing an unlocked desktop.
         "keystone-startup-lock"
-        "uwsm app -- hyprsunset"
+        # Only start hyprsunset if the GPU supports CTM (color transform).
+        # virtio-gpu in VMs lacks CTM, and hyprsunset's CTM commits block
+        # all page-flips, freezing the display.
+        "sh -c 'for card in /sys/class/drm/card*/device/driver; do readlink -f $card 2>/dev/null; done | grep -q virtio || uwsm app -- hyprsunset'"
         "systemctl --user start hyprpolkitagent"
         "wl-clip-persist --clipboard regular & uwsm app -- clipse -listen"
       ];
