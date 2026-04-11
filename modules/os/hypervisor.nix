@@ -60,10 +60,23 @@ in
       ];
       description = "Bridge devices usable by session VMs via qemu-bridge-helper. Written to /etc/qemu/bridge.conf.";
     };
+
+    nestedVirtualization.enable = mkEnableOption ''
+      nested KVM support for guests that need to launch their own VMs
+    '';
   };
 
   config = mkMerge [
     (mkIf (osCfg.enable && cfg.enable) {
+      boot.kernelModules = mkIf cfg.nestedVirtualization.enable [ "kvm" ];
+      boot.extraModprobeConfig = mkIf cfg.nestedVirtualization.enable ''
+        # Allow KVM guests on this host to expose hardware virtualization
+        # extensions to their own nested guests when their VM definition uses
+        # host CPU passthrough.
+        options kvm_intel nested=1
+        options kvm_amd nested=1
+      '';
+
       virtualisation.libvirtd = {
         enable = true;
         allowedBridges = cfg.allowedBridges;

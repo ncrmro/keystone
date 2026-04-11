@@ -41,6 +41,33 @@ let
       touch $out
     '';
 
+  expectFailure =
+    name: modules: expectedMessage:
+    let
+      result = builtins.tryEval (
+        (nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            self.nixosModules.operating-system
+            {
+              system.stateVersion = "25.05";
+              boot.loader.systemd-boot.enable = true;
+            }
+          ]
+          ++ modules;
+        }).config.system.build.toplevel
+      );
+    in
+    pkgs.runCommand "eval-failure-${name}" { } ''
+      echo "Evaluating failure case ${name}..."
+      if [ "${if result.success then "true" else "false"}" = "true" ]; then
+        echo "Expected evaluation to fail but it succeeded."
+        exit 1
+      fi
+      echo "  Failure triggered as expected: ${expectedMessage}"
+      touch $out
+    '';
+
   tests = {
     minimal-zfs = eval "minimal-zfs" [
       {
@@ -244,6 +271,91 @@ let
         };
       }
     ];
+
+    hypervisor-nested = eval "hypervisor-nested" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          hypervisor = {
+            enable = true;
+            nestedVirtualization.enable = true;
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "hypervisor";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    github-runner-vm = eval "github-runner-vm" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          hypervisor = {
+            enable = true;
+            nestedVirtualization.enable = true;
+          };
+          githubRunner = {
+            enable = true;
+            url = "https://github.com/example/repository";
+            tokenFile = "/run/agenix/github-runner-token";
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "builder";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    github-runner-requires-nested = expectFailure "github-runner-requires-nested" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          hypervisor.enable = true;
+          githubRunner = {
+            enable = true;
+            url = "https://github.com/example/repository";
+            tokenFile = "/run/agenix/github-runner-token";
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "builder";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ] "githubRunner requires keystone.os.hypervisor.nestedVirtualization.enable";
   };
 in
 pkgs.runCommand "test-os-evaluation"
@@ -265,6 +377,9 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - hypervisor-nested: Hypervisor with nested KVM enabled"
+    echo "  - github-runner-vm: GitHub runner guest VM with nested KVM prerequisites"
+    echo "  - github-runner-requires-nested: Assertion when runner is enabled without nested virtualization"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
