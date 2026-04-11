@@ -87,6 +87,104 @@ cp <worktree>/templates/default/bin/test-iso bin/test-iso
 ./bin/test-iso --dev --headless --e2e --port 12260 --no-build --memory 12288
 ```
 
+## Snapshot-based iteration
+
+`bin/virtual-machine` uses qcow2 internal snapshots so you can roll back to
+known-good states without reinstalling.  `--post-install-reboot` automatically
+creates a `post-install` snapshot before booting the installed disk.
+
+### Snapshot checkpoints
+
+| Checkpoint | Created by | VM state | What it captures |
+|------------|-----------|----------|-----------------|
+| `post-install` | `--post-install-reboot` (automatic) | stopped | Complete NixOS install — partitions, system profile, handoff |
+| `post-unlock` | manual | stopped | System booted past LUKS, before desktop |
+| (none / fresh) | deleting the disk file | — | Start from scratch |
+
+### Snapshot commands
+
+```bash
+VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+
+# List snapshots
+$VM_SCRIPT --list-snapshots <vm-name>
+
+# Restore to a checkpoint (VM must be stopped)
+$VM_SCRIPT --destroy <vm-name>                     # stop if running
+$VM_SCRIPT --restore <vm-name> post-install        # revert disk
+
+# Create a custom checkpoint
+$VM_SCRIPT --destroy <vm-name>
+$VM_SCRIPT --snapshot <vm-name> my-checkpoint
+
+# Boot from the restored snapshot
+$VM_SCRIPT --post-install-reboot <vm-name> --headless --monitor-socket /tmp/e2e-monitor.sock
+```
+
+### Desktop debugging workflow (most common)
+
+After a full e2e run completes the install but desktop validation fails:
+
+1. The `post-install` snapshot already exists.
+2. Edit NixOS modules (e.g. `modules/desktop/`) in the keystone worktree.
+3. Restore and re-boot without reinstalling:
+
+```bash
+VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+VM_NAME="keystone-e2e-<pid>"   # from the test run output
+
+# Restore to the state right after install
+$VM_SCRIPT --destroy "$VM_NAME"
+$VM_SCRIPT --restore "$VM_NAME" post-install
+
+# Re-boot the installed disk
+$VM_SCRIPT --post-install-reboot "$VM_NAME" \
+  --headless --monitor-socket /tmp/e2e-monitor.sock
+```
+
+4. SSH in and apply the module change without full reinstall:
+
+```bash
+# In the fixture:
+nix flake update keystone
+
+# Copy updated flake into the VM:
+scp -P 12260 -i .test-iso-dev-key -r . keystone@localhost:~/updated-flake/
+ssh -i .test-iso-dev-key -p 12260 keystone@localhost \
+  'sudo nixos-rebuild switch --flake ~/updated-flake#laptop'
+```
+
+5. Reboot the VM and check the desktop — or take a new snapshot if it works.
+
+This loop takes 2-3 minutes instead of 15+ minutes for a full reinstall.
+
+### When to use each strategy
+
+| Situation | Strategy | Time |
+|-----------|----------|------|
+| Module/template change, install known good | Restore `post-install` → `nixos-rebuild switch` | 2-3 min |
+| Boot/LUKS issues | Restore `post-install` → re-boot | 30 sec |
+| Installer change (`ks` binary) | Full reinstall (rebuild ISO) | 15-20 min |
+| Disko layout change | Delete disk → full reinstall | 15-20 min |
+| Template flake change | `nix flake update keystone` → `--no-build` reinstall | 15-20 min |
+| First run (no snapshots) | Full e2e run | 15-20 min |
+
+### Keeping the VM alive for manual debugging
+
+`test-iso --e2e` cleans up the VM on exit.  For manual debugging, run without
+`--e2e` to keep the VM alive after SSH is ready:
+
+```bash
+# Boot and keep alive (no automated install):
+./bin/test-iso --dev --headless --port 12260 --no-build --memory 12288
+
+# SSH in and drive manually:
+ssh -i .test-iso-dev-key -p 12260 keystone@localhost
+ks install --host laptop   # or drive the TUI with: TERM=xterm-256color ks
+```
+
+Then use snapshot commands directly to save and restore checkpoints.
+
 ## Editing files on a running ISO
 
 SSH into the live ISO to test changes without rebuilding:
@@ -128,12 +226,13 @@ Exit code 0 means success. The `--e2e` flag in `test-iso` uses this internally.
 
 The `--e2e` flag in `test-iso` adds a second layer after install completes:
 
-1. Kills the ISO VM
-2. Boots the installed disk with `virtio-gpu-pci` + `-display egl-headless`
-3. Takes QEMU monitor screenshots at each boot stage via `screendump` + `socat`
-4. Unlocks LUKS via `sendkey`
-5. Validates SSH connectivity with the dev key
-6. Compares screenshot SHA256 against committed references in Git LFS
+1. Destroys the install VM (`--destroy`)
+2. Boots the installed disk via `--post-install-reboot` with QXL display
+3. Creates a `post-install` qcow2 snapshot automatically
+4. Takes QEMU monitor screenshots at each boot stage via `screendump` + `socat`
+5. Unlocks LUKS via `sendkey`
+6. Validates SSH connectivity with the dev key
+7. Compares screenshot SHA256 against committed references in Git LFS
 
 Screenshot stages:
 
@@ -163,9 +262,15 @@ VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
 "$VM_SCRIPT" --name e2e-install --iso "$iso" --disk-path "$disk" \
   --memory 12288 --ssh-port 12260 --headless --start --wait-ssh
 
-# After install completes
+# After install completes (creates "post-install" snapshot automatically)
 "$VM_SCRIPT" --post-install-reboot e2e-install \
   --headless --monitor-socket /tmp/e2e-monitor.sock
+
+# Snapshot management for iterative debugging:
+"$VM_SCRIPT" --list-snapshots e2e-install
+"$VM_SCRIPT" --destroy e2e-install
+"$VM_SCRIPT" --restore e2e-install post-install
+"$VM_SCRIPT" --post-install-reboot e2e-install --headless  # re-boot from snapshot
 
 # Cleanup
 "$VM_SCRIPT" --reset e2e-install
@@ -195,6 +300,8 @@ device in VMs and on real GPUs on bare metal.
 | `Cannot find terminfo for xterm-ghostty` | Host TERM passed to VM | Set `TERM=xterm-256color` |
 | SSH rejected post-reboot | `admin.sshKeys` not bridged to installed system | Check `lib/templates.nix` `adminSshKeys` bridge |
 | nixos-install rebuilds from source | Closure not in cache | Run `bin/warm-cachix` or `nix build .#nixosConfigurations.laptop.config.system.build.toplevel` on the host first |
+| `No disks found` in ks install | Disk has no serial number | `ks` discovers disks via `/dev/disk/by-id/`; virtio-blk needs `<serial>` in XML |
+| PCI slot conflict on VM start | qemu:commandline device collides with libvirt-managed device | Assign explicit `bus=pcie.0,addr=0xNN` to qemu:commandline devices |
 
 ## Existing VM test infrastructure
 
@@ -207,7 +314,7 @@ on it. See #339 for the consolidation plan.
 | `bin/test-deployment` | 3 | (via virtual-machine) | Yes | Yes | — | nixos-anywhere workflow |
 | `bin/build-vm` | 2 | — | No | No | — | Fast nixos-rebuild iteration |
 | `bin/test-microvm-tpm` | 1 | Q35 | No | tpm-tis | — | Lightweight TPM test (~20s) |
-| `test-iso --e2e` | — | Q35 | No | No | QXL | Template → ISO → install → desktop |
+| `test-iso --e2e` | — | (via virtual-machine) | Yes | Yes | QXL | Template → ISO → install → desktop |
 
 Test configs in `tests/flake.nix`: `test-server`, `test-hyprland`, `build-vm-terminal`,
 `build-vm-desktop`, `tpm-microvm`.

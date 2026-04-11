@@ -288,7 +288,9 @@ def create_uefi_secureboot_vm(
             "<qemu:arg value='-netdev'/>",
             f"<qemu:arg value='user,id=hostnet0,hostfwd=tcp:127.0.0.1:{ssh_port}-:22'/>",
             "<qemu:arg value='-device'/>",
-            "<qemu:arg value='virtio-net-pci,netdev=hostnet0,romfile='/>",
+            # Explicit PCI address avoids slot collision with libvirt-managed
+            # devices (e.g. QXL video) that share the pcie.0 bus.
+            f"<qemu:arg value='virtio-net-pci,netdev=hostnet0,romfile=,bus=pcie.0,addr=0x{0x10:02x}'/>",
         ])
     if monitor_socket:
         _qemu_args.extend([
@@ -348,6 +350,7 @@ def create_uefi_secureboot_vm(
       <driver name='qemu' type='qcow2'/>
       <source file='{disk_path}'/>
       <target dev='vda' bus='virtio'/>
+      <serial>keystone-test-disk</serial>
     </disk>
     
     <!-- Installation ISO (if provided) -->
@@ -745,6 +748,75 @@ def print_connection_commands(vm_name, ssh_port):
     print("="*70 + "\n")
 
 
+def get_disk_path_for_vm(conn, vm_name):
+    """Get the primary disk path from a VM's XML definition."""
+    try:
+        dom = conn.lookupByName(vm_name)
+        xml = dom.XMLDesc(0)
+        match = re.search(r'<disk[^>]*device="disk"[^>]*>.*?<source file="([^"]+)"', xml, re.DOTALL)
+        return match.group(1) if match else None
+    except libvirt.libvirtError:
+        return None
+
+
+def snapshot_create(conn, vm_name, snap_name):
+    """Create a qcow2 internal snapshot. VM must be stopped."""
+    try:
+        dom = conn.lookupByName(vm_name)
+        if dom.isActive():
+            print(f"ERROR: VM '{vm_name}' must be stopped for snapshots")
+            print(f"  virsh destroy {vm_name}")
+            sys.exit(1)
+    except libvirt.libvirtError as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
+
+    disk_path = get_disk_path_for_vm(conn, vm_name)
+    if not disk_path:
+        print(f"ERROR: Could not find disk for VM '{vm_name}'")
+        sys.exit(1)
+
+    ret = os.system(f"qemu-img snapshot -c {snap_name} {disk_path}")
+    if ret != 0:
+        print(f"ERROR: Failed to create snapshot '{snap_name}'")
+        sys.exit(1)
+    print(f"✓ Snapshot '{snap_name}' created for VM '{vm_name}'")
+
+
+def snapshot_restore(conn, vm_name, snap_name):
+    """Restore a qcow2 internal snapshot. VM must be stopped."""
+    try:
+        dom = conn.lookupByName(vm_name)
+        if dom.isActive():
+            print(f"ERROR: VM '{vm_name}' must be stopped for restore")
+            print(f"  virsh destroy {vm_name}")
+            sys.exit(1)
+    except libvirt.libvirtError as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
+
+    disk_path = get_disk_path_for_vm(conn, vm_name)
+    if not disk_path:
+        print(f"ERROR: Could not find disk for VM '{vm_name}'")
+        sys.exit(1)
+
+    ret = os.system(f"qemu-img snapshot -a {snap_name} {disk_path}")
+    if ret != 0:
+        print(f"ERROR: Failed to restore snapshot '{snap_name}'")
+        sys.exit(1)
+    print(f"✓ Restored VM '{vm_name}' to snapshot '{snap_name}'")
+
+
+def snapshot_list(conn, vm_name):
+    """List qcow2 internal snapshots for a VM."""
+    disk_path = get_disk_path_for_vm(conn, vm_name)
+    if not disk_path:
+        print(f"ERROR: Could not find disk for VM '{vm_name}'")
+        sys.exit(1)
+
+    os.system(f"qemu-img snapshot -l {disk_path}")
+
+
 def main():
     import argparse
 
@@ -767,6 +839,12 @@ def main():
     parser.add_argument('--ssh-key', help='SSH private key for --wait-ssh authentication')
     parser.add_argument('--ssh-user', default='keystone', help='SSH username for --wait-ssh (default: keystone)')
     parser.add_argument('--destroy', metavar='VM_NAME', help='Force stop a running VM')
+    parser.add_argument('--snapshot', nargs=2, metavar=('VM_NAME', 'SNAP_NAME'),
+                        help='Create a qcow2 snapshot (VM must be stopped)')
+    parser.add_argument('--restore', nargs=2, metavar=('VM_NAME', 'SNAP_NAME'),
+                        help='Restore a qcow2 snapshot (VM must be stopped)')
+    parser.add_argument('--list-snapshots', metavar='VM_NAME',
+                        help='List qcow2 snapshots for a VM')
 
     args = parser.parse_args()
 
@@ -785,6 +863,20 @@ def main():
         print("    users.users.<youruser>.extraGroups = [ \"libvirtd\" ];")
         sys.exit(1)
     
+    # Handle snapshot operations
+    if args.snapshot:
+        snapshot_create(conn, args.snapshot[0], args.snapshot[1])
+        conn.close()
+        return
+    if args.restore:
+        snapshot_restore(conn, args.restore[0], args.restore[1])
+        conn.close()
+        return
+    if args.list_snapshots:
+        snapshot_list(conn, args.list_snapshots)
+        conn.close()
+        return
+
     # Handle force stop
     if args.destroy:
         try:

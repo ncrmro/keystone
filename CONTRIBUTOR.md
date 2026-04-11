@@ -251,6 +251,39 @@ Practical guidance:
 The most reliable measure is not the TUI itself, but whether the VM finishes
 without OOM and whether `rustc`/`cargo` processes actually appear.
 
+## Snapshot-based iteration
+
+`bin/virtual-machine` creates a `post-install` qcow2 snapshot automatically
+during `--post-install-reboot`. Use it to skip the 15-minute nixos-install
+when debugging boot, desktop, or service issues:
+
+```bash
+VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+VM_NAME="keystone-e2e-<pid>"   # from test output
+
+# Restore to right after install
+$VM_SCRIPT --destroy "$VM_NAME"
+$VM_SCRIPT --restore "$VM_NAME" post-install
+
+# Re-boot without reinstalling
+$VM_SCRIPT --post-install-reboot "$VM_NAME" --headless
+
+# List available snapshots
+$VM_SCRIPT --list-snapshots "$VM_NAME"
+```
+
+To iterate on NixOS modules after restoring, SSH in and rebuild:
+
+```bash
+nix flake update keystone                                   # in fixture
+scp -P 12260 -i .test-iso-dev-key -r . keystone@localhost:~/updated-flake/
+ssh -i .test-iso-dev-key -p 12260 keystone@localhost \
+  'sudo nixos-rebuild switch --flake ~/updated-flake#laptop'
+```
+
+See [ISO and OS virtual machine testing](docs/testing/iso-os-virtual-machine.md)
+for the full checkpoint table and strategy guide.
+
 ## Reboot and installed-disk testing
 
 A successful install is not the end of the test. Reboot from the installed disk
@@ -264,9 +297,9 @@ Important details:
 
 For reboot debugging, prefer one of:
 
-- headful QEMU so you can watch the console
-- serial logging
-- explicit disk-only boot harnesses
+- headful mode via `bin/virtual-machine` (SPICE display)
+- serial logging via `virsh console`
+- snapshot restore + `--post-install-reboot` for fast retry
 
 Do not assume a failed SSH check means the installed system failed to boot. It
 may simply be waiting for disk unlock.
