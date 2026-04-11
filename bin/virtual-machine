@@ -436,8 +436,8 @@ def post_install_reboot(conn, vm_name, headless=False, monitor_socket=None):
 
         xml = dom.XMLDesc(0)
 
-        # Get disk path for snapshot
-        disk_match = re.search(r'<source file="([^"]+)"', xml)
+        # Get disk path for snapshot (libvirt XML uses single quotes)
+        disk_match = re.search(r"<source file=['\"]([^'\"]+)['\"]", xml)
         disk_path = disk_match.group(1) if disk_match else None
 
         # Create snapshot of disk
@@ -753,7 +753,7 @@ def get_disk_path_for_vm(conn, vm_name):
     try:
         dom = conn.lookupByName(vm_name)
         xml = dom.XMLDesc(0)
-        match = re.search(r'<disk[^>]*device="disk"[^>]*>.*?<source file="([^"]+)"', xml, re.DOTALL)
+        match = re.search(r"<disk[^>]*device=['\"]disk['\"][^>]*>.*?<source file=['\"]([^'\"]+)['\"]", xml, re.DOTALL)
         return match.group(1) if match else None
     except libvirt.libvirtError:
         return None
