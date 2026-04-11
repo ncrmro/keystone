@@ -805,7 +805,9 @@ configure_vm_substituter() {
         return
     fi
     log_info "E2E: configuring VM to use host nix-serve at 10.0.2.2:$NIX_SERVE_PORT"
-    ssh_cmd "sudo mkdir -p /etc/nix && echo 'extra-substituters = http://10.0.2.2:${NIX_SERVE_PORT}' | sudo tee -a /etc/nix/nix.conf > /dev/null && echo 'extra-trusted-substituters = http://10.0.2.2:${NIX_SERVE_PORT}' | sudo tee -a /etc/nix/nix.conf > /dev/null && sudo systemctl restart nix-daemon" 2>/dev/null \
+    # NixOS manages /etc/nix/nix.conf declaratively — appending is overwritten
+    # on daemon restart. Use a drop-in conf.d file instead.
+    ssh_cmd "sudo mkdir -p /etc/nix/conf.d && printf 'extra-substituters = http://10.0.2.2:${NIX_SERVE_PORT}\nextra-trusted-substituters = http://10.0.2.2:${NIX_SERVE_PORT}\n' | sudo tee /etc/nix/conf.d/e2e-local-cache.conf > /dev/null && sudo systemctl restart nix-daemon" 2>/dev/null \
         && log_ok "E2E: VM substituter configured" \
         || log_warn "E2E: failed to configure VM substituter"
 }
