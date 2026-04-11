@@ -4,7 +4,7 @@
 # Mirrors the CI pipeline in .github/workflows/test.yml (flake-check).
 # =====================================================================
 nix_validate:
-  description: "Run nixfmt check and nix flake check when Nix files change."
+  description: "Run nixfmt check and nix flake evaluation check when Nix files change."
   match:
     include:
       - "**/*.nix"
@@ -14,15 +14,18 @@ nix_validate:
   review:
     strategy: matches_together
     instructions: |
-      Nix files changed. Run these checks from the project root and report failures:
+      Nix files changed. Run exactly these two commands from the project root
+      and report failures. Do NOT run any other nix commands.
 
-      1. **Formatting** — Run `nix fmt -- --check **/*.nix` and report any
-         unformatted files. Do NOT auto-fix; just list which files need formatting.
+      1. **Formatting** — Run `nix fmt -- --check **/*.nix 2>&1 | head -30`
+         and report any unformatted files. Do NOT auto-fix; just list them.
 
-      2. **Flake check** — Run `nix flake check` and report any evaluation
-         errors, broken module imports, or type mismatches.
+      2. **Evaluation check** — Run `nix flake check --no-build 2>&1 | head -30`
+         and report any evaluation errors, broken module imports, or type
+         mismatches. Use `--no-build` only — full builds run in CI, not here.
 
       If both pass, report "All checks passed." with a brief summary.
+      Do NOT run `nix flake check` without `--no-build`.
 
 # =====================================================================
 # Implementation Sync: Docs, specs, and tests stay current with code
@@ -98,7 +101,7 @@ implementation_sync:
 
       ## 3. Tests (tests/)
 
-      1. Run `nix flake check --no-build` to verify all evaluation tests pass.
+      1. Do NOT run `nix flake check` here — the `nix_validate` review handles that.
       2. For each changed module, check if the relevant test file exercises the
          new or changed options:
          - modules/os/** → tests/module/os-evaluation.nix
