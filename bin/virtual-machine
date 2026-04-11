@@ -51,6 +51,7 @@ import sys
 import os
 import xml.etree.ElementTree as ET
 import subprocess
+import shutil
 import glob
 import re
 
@@ -259,7 +260,8 @@ def create_uefi_secureboot_vm(
         if not is_valid:
             print(warning)
 
-        os.system(f"cp {ovmf_vars} {nvram_path}")
+        shutil.copy2(ovmf_vars, nvram_path)
+        os.chmod(nvram_path, 0o644)  # QEMU needs write access
         print(f"✓ Created NVRAM: {nvram_path}")
     else:
         # Validate existing NVRAM file
@@ -268,6 +270,26 @@ def create_uefi_secureboot_vm(
             print(warning)
 
     print(f"✓ Secure Boot enabled")
+
+    # Start swtpm in user mode for TPM 2.0 (session-mode compatible)
+    swtpm_dir = os.path.join(vm_dir, "swtpm")
+    swtpm_sock = os.path.join(swtpm_dir, "swtpm.sock")
+    has_swtpm = shutil.which("swtpm") is not None
+    if has_swtpm:
+        os.makedirs(swtpm_dir, exist_ok=True)
+        subprocess.run(
+            ["swtpm_setup", "--tpmstate", swtpm_dir, "--tpm2", "--createek", "--create-ek-cert"],
+            capture_output=True,
+        )
+        swtpm_proc = subprocess.Popen(
+            ["swtpm", "socket", "--tpmstate", f"dir={swtpm_dir}",
+             "--ctrl", f"type=unixio,path={swtpm_sock}",
+             "--tpm2", "--daemon"],
+        )
+        swtpm_proc.wait()  # --daemon forks, parent exits immediately
+        print(f"✓ swtpm started: {swtpm_sock}")
+    else:
+        print("⚠ swtpm not found — VM will have no TPM (add swtpm to devShell)")
 
     # Network interface: bridge when no ssh_port, user-mode via qemu:commandline when set
     if ssh_port is None:
@@ -291,6 +313,16 @@ def create_uefi_secureboot_vm(
             # Explicit PCI address avoids slot collision with libvirt-managed
             # devices (e.g. virtio-gpu video) that share the pcie.0 bus.
             f"<qemu:arg value='virtio-net-pci,netdev=hostnet0,romfile=,bus=pcie.0,addr=0x{0x10:02x}'/>",
+        ])
+    # TPM 2.0 via chardev→swtpm socket (session-mode compatible)
+    if has_swtpm:
+        _qemu_args.extend([
+            "<qemu:arg value='-chardev'/>",
+            f"<qemu:arg value='socket,id=chrtpm,path={swtpm_sock}'/>",
+            "<qemu:arg value='-tpmdev'/>",
+            "<qemu:arg value='emulator,id=tpm0,chardev=chrtpm'/>",
+            "<qemu:arg value='-device'/>",
+            "<qemu:arg value='tpm-crb,tpmdev=tpm0'/>",
         ])
     if monitor_socket:
         _qemu_args.extend([
@@ -387,10 +419,7 @@ def create_uefi_secureboot_vm(
     <input type='tablet' bus='usb'/>
     <input type='keyboard' bus='usb'/>
     
-    <!-- TPM 2.0 (useful for Windows 11 and Secure Boot) -->
-    <tpm model='tpm-crb'>
-      <backend type='emulator' version='2.0'/>
-    </tpm>
+    <!-- TPM 2.0 via qemu:commandline (session-mode compatible) -->
   </devices>
   {qemu_commandline_xml}
 </domain>
@@ -614,7 +643,20 @@ def reset_vm(conn, vm_name):
         if nvram_path and os.path.exists(nvram_path):
             os.remove(nvram_path)
             print(f"✓ Deleted: {nvram_path}")
-        
+
+        # Kill swtpm and clean up state directory
+        for disk_path in disk_paths:
+            swtpm_dir = os.path.join(os.path.dirname(disk_path), "swtpm")
+            swtpm_sock = os.path.join(swtpm_dir, "swtpm.sock")
+            if os.path.exists(swtpm_sock):
+                # Find and kill the swtpm process using this socket
+                subprocess.run(["pkill", "-f", f"swtpm.*{swtpm_sock}"],
+                               capture_output=True)
+                print(f"✓ Stopped swtpm")
+            if os.path.isdir(swtpm_dir):
+                shutil.rmtree(swtpm_dir)
+                print(f"✓ Deleted: {swtpm_dir}")
+
         print(f"\n✓ VM '{vm_name}' completely removed!")
         
     except libvirt.libvirtError as e:
