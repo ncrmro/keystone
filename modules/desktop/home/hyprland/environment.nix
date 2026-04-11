@@ -63,6 +63,9 @@ in
 
           # GTK theme
           "GTK_THEME,Adwaita:dark"
+
+          # Allow software rendering fallback in VMs (no-op on bare metal with GPU)
+          "WLR_RENDERER_ALLOW_SOFTWARE,1"
         ]
       );
 

@@ -289,7 +289,7 @@ def create_uefi_secureboot_vm(
             f"<qemu:arg value='user,id=hostnet0,hostfwd=tcp:127.0.0.1:{ssh_port}-:22'/>",
             "<qemu:arg value='-device'/>",
             # Explicit PCI address avoids slot collision with libvirt-managed
-            # devices (e.g. QXL video) that share the pcie.0 bus.
+            # devices (e.g. virtio-gpu video) that share the pcie.0 bus.
             f"<qemu:arg value='virtio-net-pci,netdev=hostnet0,romfile=,bus=pcie.0,addr=0x{0x10:02x}'/>",
         ])
     if monitor_socket:
@@ -380,7 +380,9 @@ def create_uefi_secureboot_vm(
       <listen type='address' address='127.0.0.1'/>
     </graphics>"""}
     <video>
-      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+      <model type='virtio' heads='1' primary='yes'>
+        <acceleration accel3d='yes'/>
+      </model>
     </video>
     
     <!-- Input devices -->
@@ -486,8 +488,16 @@ def post_install_reboot(conn, vm_name, headless=False, monitor_socket=None):
 
         conn.defineXML(new_xml)
 
-        # Re-fetch domain after redefine and start
+        # Verify networking survived the redefine
         dom = conn.lookupByName(vm_name)
+        verify_xml = dom.XMLDesc(0)
+        if 'hostfwd' in verify_xml:
+            print("✓ SSH port forwarding preserved after redefine")
+        elif '<qemu:commandline' in verify_xml:
+            print("⚠ qemu:commandline present but no hostfwd — check networking")
+        else:
+            print("⚠ No qemu:commandline in redefined XML — SSH may not work")
+
         dom.create()
         print(f"✓ VM '{vm_name}' started")
         print("\nPost-installation setup complete!")

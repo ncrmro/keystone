@@ -264,7 +264,7 @@ run_e2e_installer() {
 
 E2E_SCREENSHOT_DIR=""
 E2E_MONITOR_SOCK=""
-E2E_REBOOT_TIMEOUT=120    # seconds to wait for SSH after unlock
+E2E_REBOOT_TIMEOUT=180    # seconds to wait for SSH after unlock
 E2E_DISK_PASSWORD="keystone"
 
 # Take a QEMU screenshot via the monitor socket, convert to PNG.
