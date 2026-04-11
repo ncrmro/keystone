@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -u -o pipefail
 
+# SECURITY: This script is the fail-closed gate for the desktop session.
+# If hyprlock does not present a lock surface within the timeout, the
+# entire session is terminated rather than exposing an unlocked desktop.
+#
+# Do NOT increase the timeout to work around rendering issues — fix the
+# rendering instead. A longer timeout means a longer window where the
+# desktop could be exposed without a lock screen.
 poll_interval_seconds="${KEYSTONE_STARTUP_LOCK_POLL_INTERVAL_SECONDS:-0.1}"
 timeout_steps="${KEYSTONE_STARTUP_LOCK_TIMEOUT_STEPS:-50}"
 
