@@ -853,15 +853,20 @@ if [[ "$USE_DEV_SSH_KEY" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
 fi
 
 if [[ "$HEADLESS" == "true" ]]; then
-    VM_ARGS+=(--headless --wait-ssh --ssh-timeout "$SSH_WAIT_TIMEOUT")
+    VM_ARGS+=(--headless)
     log_info "Starting headless VM with libvirt..."
 else
     log_info "Starting VM with SPICE display..."
 fi
 
+# e2e and headless both need SSH polling before proceeding
+if [[ "$E2E_MODE" == "true" || "$HEADLESS" == "true" ]]; then
+    VM_ARGS+=(--wait-ssh --ssh-timeout "$SSH_WAIT_TIMEOUT")
+fi
+
 "$VM_SCRIPT" "${VM_ARGS[@]}"
 
-if [[ "$HEADLESS" == "true" ]]; then
+if [[ "$E2E_MODE" == "true" || "$HEADLESS" == "true" ]]; then
     log_ok "SSH is up!"
 fi
 if [[ "$DEV_MODE" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
