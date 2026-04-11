@@ -118,6 +118,7 @@
         packages = with keystone.inputs.nixpkgs.legacyPackages.x86_64-linux; [
           nixfmt
           nil
+          imagemagick # PPM→PNG conversion for e2e screenshots
         ];
       };
     };
