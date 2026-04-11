@@ -24,9 +24,11 @@ in
 
         background = {
           monitor = "";
-          # Locking is security-critical, so the lockscreen must not depend on
-          # mutable theme symlinks existing at login time.
-          path = "screenshot";
+          # Use the theme background directly so the lockscreen renders on
+          # first boot (before hyprpaper sets the wallpaper). The theme
+          # symlink is created by home-manager activation, which runs
+          # before greetd starts the session.
+          path = "${config.xdg.configHome}/keystone/current/background";
           blur_passes = 3;
           brightness = 0.5;
         };
