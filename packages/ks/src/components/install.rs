@@ -1059,7 +1059,11 @@ impl InstallScreen {
         if disks.is_empty() {
             return Err("No disks found".to_string());
         }
-        eprintln!("Found {} disk(s), selecting: {}", disks.len(), disks[0].by_id_path);
+        eprintln!(
+            "Found {} disk(s), selecting: {}",
+            disks.len(),
+            disks[0].by_id_path
+        );
         self.available_disks = disks;
         self.phase = InstallPhase::DiskSelection;
         self.select_disk();

@@ -129,8 +129,9 @@ async fn main() -> Result<()> {
 async fn run_headless_install(host: &str) -> Result<()> {
     use components::install::InstallScreen;
 
-    let installer_config = InstallerConfig::detect()?
-        .ok_or_else(|| anyhow::anyhow!("--host requires installer ISO context (no install-repo found)"))?;
+    let installer_config = InstallerConfig::detect()?.ok_or_else(|| {
+        anyhow::anyhow!("--host requires installer ISO context (no install-repo found)")
+    })?;
 
     let targets = match &installer_config.source {
         components::install::InstallSource::EmbeddedRepo { targets, .. } => targets.clone(),
