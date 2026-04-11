@@ -116,9 +116,12 @@ Options:
                         For path-locked keystone inputs, this refreshes the
                         lock to the current local path snapshot.
   --headless            No GUI window — poll for SSH in the background.
-  --e2e                 Requires --headless --dev. After SSH is up, drive the
-                        installer TUI with deterministic keystrokes, poll for
-                        install checkpoints, and report pass/fail.
+                        In e2e mode, uses llvmpipe + screendump (CI-compatible).
+  --e2e                 Requires --dev. After SSH is up, drive the installer
+                        TUI with deterministic keystrokes, poll for install
+                        checkpoints, capture screenshots, and report pass/fail.
+                        Headed (default): uses virgl + grim over SSH for screenshots.
+                        Headless (--headless): uses llvmpipe + QEMU screendump.
   --ssh-timeout SEC     Max wait time for SSH in headless mode (default: $SSH_WAIT_TIMEOUT).
   --disk-size GB        Size of the attached install disk image in GB (default: $VM_DISK_SIZE).
   --disk-path PATH      Path to the attached install disk image
@@ -232,8 +235,8 @@ done
 # ── e2e mode gate ────────────────────────────────────────────────────────────
 
 if [[ "$E2E_MODE" == "true" ]]; then
-    if [[ "$HEADLESS" != "true" || "$DEV_MODE" != "true" ]]; then
-        log_error "--e2e requires both --headless and --dev"
+    if [[ "$DEV_MODE" != "true" ]]; then
+        log_error "--e2e requires --dev"
         exit 1
     fi
 fi
@@ -851,63 +854,67 @@ fi
 
 if [[ "$HEADLESS" == "true" ]]; then
     VM_ARGS+=(--headless --wait-ssh --ssh-timeout "$SSH_WAIT_TIMEOUT")
-
     log_info "Starting headless VM with libvirt..."
-    "$VM_SCRIPT" "${VM_ARGS[@]}"
-
-    log_ok "SSH is up!"
-    if [[ "$DEV_MODE" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
-        log_ok "  ssh -i $DEV_SSH_KEY_PATH -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
-    else
-        log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
-    fi
-    echo >&2
-
-    if [[ "$E2E_MODE" == "true" ]]; then
-        configure_vm_substituter
-        run_e2e_installer || { cleanup_vm; exit 1; }
-        run_e2e_checkpoints || { cleanup_vm; exit 1; }
-
-        # Layer 2: reboot validation with screenshots
-        log_info "E2E: stopping install VM for reboot validation..."
-        "$VM_SCRIPT" --destroy "$VM_NAME" 2>/dev/null || true
-        sleep 2
-
-        E2E_MONITOR_SOCK="/tmp/qemu-e2e-monitor-$$.sock"
-        E2E_SCREENSHOT_DIR="${PROJECT_DIR}/.test-e2e-screenshots"
-        mkdir -p "$E2E_SCREENSHOT_DIR"
-
-        "$VM_SCRIPT" --post-install-reboot "$VM_NAME" \
-            --headless --monitor-socket "$E2E_MONITOR_SOCK"
-
-        # Req 3: verify snapshot was created by post-install-reboot
-        verify_post_install_snapshot "$VM_DISK_PATH" || true
-
-        # Req 4: check imagemagick before screenshot capture
-        verify_imagemagick_available || true
-
-        if run_e2e_reboot_validation; then
-            log_ok "E2E: all layers passed."
-            cleanup_vm
-            exit 0
-        else
-            log_error "E2E: reboot validation failed."
-            cleanup_vm
-            exit 1
-        fi
-    fi
-
-    log_warn "VM '$VM_NAME' is running. Press Ctrl-C to shut it down."
-    # Keep alive — trap handles cleanup on Ctrl-C
-    while virsh dominfo "$VM_NAME" 2>/dev/null | grep -q "running"; do
-        sleep 5
-    done
 else
-    # ── GUI: start VM with SPICE display ────────────────────────────────────
     log_info "Starting VM with SPICE display..."
-    "$VM_SCRIPT" "${VM_ARGS[@]}"
-    log_warn "VM '$VM_NAME' is running. Connect via SPICE or press Ctrl-C to stop."
-    while virsh dominfo "$VM_NAME" 2>/dev/null | grep -q "running"; do
-        sleep 5
-    done
 fi
+
+"$VM_SCRIPT" "${VM_ARGS[@]}"
+
+if [[ "$HEADLESS" == "true" ]]; then
+    log_ok "SSH is up!"
+fi
+if [[ "$DEV_MODE" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+    log_ok "  ssh -i $DEV_SSH_KEY_PATH -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+else
+    log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+fi
+echo >&2
+
+if [[ "$E2E_MODE" == "true" ]]; then
+    configure_vm_substituter
+    run_e2e_installer || { cleanup_vm; exit 1; }
+    run_e2e_checkpoints || { cleanup_vm; exit 1; }
+
+    # Layer 2: reboot validation with screenshots
+    log_info "E2E: stopping install VM for reboot validation..."
+    "$VM_SCRIPT" --destroy "$VM_NAME" 2>/dev/null || true
+    sleep 2
+
+    E2E_MONITOR_SOCK="/tmp/qemu-e2e-monitor-$$.sock"
+    E2E_SCREENSHOT_DIR="${PROJECT_DIR}/.test-e2e-screenshots"
+    mkdir -p "$E2E_SCREENSHOT_DIR"
+
+    reboot_args=(--post-install-reboot "$VM_NAME" --monitor-socket "$E2E_MONITOR_SOCK")
+    if [[ "$HEADLESS" == "true" ]]; then
+        reboot_args+=(--headless)
+    fi
+    # TODO(ci): GitHub Actions runners lack GPU — headless + screendump is the
+    # only option there. For local dev, headed + grim produces accurate screenshots
+    # of the real GPU pipeline. See docs/testing/iso-os-virtual-machine.md.
+    "$VM_SCRIPT" "${reboot_args[@]}"
+
+    # Req 3: verify snapshot was created by post-install-reboot
+    verify_post_install_snapshot "$VM_DISK_PATH" || true
+
+    # Req 4: check imagemagick before screenshot capture
+    verify_imagemagick_available || true
+
+    if run_e2e_reboot_validation; then
+        log_ok "E2E: all layers passed."
+        # TODO(ci): In CI, cleanup_vm unconditionally. For local dev, consider
+        # preserving the VM for debugging (--keep-vm flag).
+        cleanup_vm
+        exit 0
+    else
+        log_error "E2E: reboot validation failed."
+        cleanup_vm
+        exit 1
+    fi
+fi
+
+log_warn "VM '$VM_NAME' is running. Press Ctrl-C to shut it down."
+# Keep alive — trap handles cleanup on Ctrl-C
+while virsh -c qemu:///session dominfo "$VM_NAME" 2>/dev/null | grep -q "running"; do
+    sleep 5
+done
