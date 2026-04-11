@@ -245,7 +245,7 @@ let
       }
     ];
 
-    # Ephemeral datasets on ZFS — service ordering and ownership
+    # Ephemeral datasets on ZFS — service ordering, ownership, and migrate flag
     ephemeral-datasets-zfs = eval "ephemeral-datasets-zfs" [
       {
         keystone.os = {
@@ -267,6 +267,7 @@ let
               };
               containers = {
                 mountpoint = "/var/lib/containers";
+                migrate = false;
               };
             };
           };
@@ -333,7 +334,7 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
-    echo "  - ephemeral-datasets-zfs: Ephemeral datasets with service deps and ownership"
+    echo "  - ephemeral-datasets-zfs: Ephemeral datasets with service deps, ownership, and migrate flag"
     echo "  - ephemeral-datasets-ext4-noop: Ephemeral datasets are no-op on ext4"
     echo ""
     echo "All configurations evaluated successfully!"
