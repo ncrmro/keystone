@@ -273,15 +273,22 @@ e2e_screenshot() {
     local ppm_path="${E2E_SCREENSHOT_DIR}/${name}.ppm"
     local png_path="${E2E_SCREENSHOT_DIR}/${name}.png"
 
-    echo "screendump ${ppm_path}" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
+    if ! echo "screendump ${ppm_path}" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" 2>&1; then
+        log_error "E2E: failed to connect to monitor socket ${E2E_MONITOR_SOCK}"
+        return 1
+    fi
     sleep 1
 
+    if [[ ! -f "$ppm_path" ]]; then
+        log_error "E2E: screendump did not produce $ppm_path"
+        return 1
+    fi
+
     if command -v magick >/dev/null 2>&1; then
-        magick "$ppm_path" "$png_path" 2>/dev/null && rm -f "$ppm_path"
+        magick "$ppm_path" "$png_path" && rm -f "$ppm_path"
     elif command -v convert >/dev/null 2>&1; then
-        convert "$ppm_path" "$png_path" 2>/dev/null && rm -f "$ppm_path"
+        convert "$ppm_path" "$png_path" && rm -f "$ppm_path"
     else
-        # Fall back to PPM if imagemagick is not available
         png_path="$ppm_path"
     fi
 

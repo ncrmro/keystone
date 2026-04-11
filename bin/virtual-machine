@@ -858,9 +858,9 @@ def main():
 
     # Connect to libvirt
     try:
-        conn = libvirt.open('qemu:///system')
+        conn = libvirt.open('qemu:///session')
         if conn is None:
-            print('Failed to open connection to qemu:///system')
+            print('Failed to open connection to qemu:///session')
             sys.exit(1)
         print("✓ Connected to libvirt")
     except libvirt.libvirtError as e:
