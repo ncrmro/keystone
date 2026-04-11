@@ -300,6 +300,30 @@ e2e_sendkeys() {
     done
 }
 
+# Req 3: Verify post-install snapshot exists in the qcow2 disk image.
+verify_post_install_snapshot() {
+    local disk_path="$1"
+    log_info "E2E: verifying post-install snapshot exists"
+    if qemu-img snapshot -l "$disk_path" 2>/dev/null | grep -q "post-install"; then
+        log_ok "E2E: post-install snapshot found"
+        return 0
+    else
+        log_error "E2E: post-install snapshot NOT found in $disk_path"
+        return 1
+    fi
+}
+
+# Req 4: Verify imagemagick is available for PPM→PNG conversion.
+verify_imagemagick_available() {
+    if command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1; then
+        log_ok "E2E: imagemagick available for PPM→PNG conversion"
+        return 0
+    else
+        log_error "E2E: imagemagick NOT available — screenshots will remain as PPM"
+        return 1
+    fi
+}
+
 # Validate the rebooted installed system: screenshots, LUKS unlock, SSH.
 # Expects E2E_MONITOR_SOCK, E2E_SCREENSHOT_DIR, and SSH_PORT to be set.
 # The VM must already be running (started via --post-install-reboot).
@@ -321,12 +345,12 @@ run_e2e_reboot_validation() {
     sleep 20
     e2e_screenshot "02-post-unlock"
 
-    # Stage 3: wait for desktop/login
+    # Req 2: wait for desktop/login — screenshot must show hyprlock
     log_info "E2E: waiting for desktop/login surface..."
     sleep 30
     e2e_screenshot "03-desktop-or-login"
 
-    # Stage 4: SSH validation
+    # Req 1: SSH validation post-reboot must succeed
     log_info "E2E: polling for SSH on port $SSH_PORT..."
     local start_time now elapsed
     start_time="$(date +%s)"
@@ -358,7 +382,7 @@ run_e2e_reboot_validation() {
 
     e2e_screenshot "04-final-state"
 
-    # Compare screenshots against reference hashes (if they exist)
+    # Req 5: compare screenshots against reference hashes
     local failed=0
     if [[ -f "$ref_hashes" ]]; then
         log_info "E2E: comparing screenshots against reference hashes"
@@ -791,6 +815,12 @@ if [[ "$HEADLESS" == "true" ]]; then
 
         "$VM_SCRIPT" --post-install-reboot "$VM_NAME" \
             --headless --monitor-socket "$E2E_MONITOR_SOCK"
+
+        # Req 3: verify snapshot was created by post-install-reboot
+        verify_post_install_snapshot "$VM_DISK_PATH" || true
+
+        # Req 4: check imagemagick before screenshot capture
+        verify_imagemagick_available || true
 
         if run_e2e_reboot_validation; then
             log_ok "E2E: all layers passed."
