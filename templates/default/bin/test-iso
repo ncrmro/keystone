@@ -17,8 +17,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-ISO_RESULT="$PROJECT_DIR/.test-iso"
-VM_DISK_PATH="$PROJECT_DIR/.test-iso-disk.qcow2"
+ISO_RESULT="/tmp/keystone-test-iso"
+VM_DISK_PATH="/tmp/keystone-test-iso-disk.qcow2"
 SSH_PORT=12222
 # Full installs regularly realize large target closures, so use the same
 # baseline we needed in manual verification instead of the old 4 GiB / 2 vCPU
@@ -258,12 +258,6 @@ ssh_cmd() {
 run_e2e_installer() {
     local host="${E2E_HOST:-laptop}"
     log_info "E2E: running headless install for host '$host'"
-    # Remove build artifacts that ks install would try to copy to the
-    # installed system. These are nix store symlinks that don't exist
-    # inside the VM and cause the post-install config copy to fail.
-    ssh_cmd "rm -f /tmp/keystone-install-repo/.keystone-input/templates/default/.test-iso" 2>/dev/null
-    ssh_cmd "rm -f /tmp/keystone-install-repo/.keystone-input/templates/default/.test-iso-disk.qcow2" 2>/dev/null
-    ssh_cmd "rm -rf /tmp/keystone-install-repo/.keystone-input/templates/default/.test-e2e-screenshots" 2>/dev/null
     if ! ssh_cmd "ks install --host $host" 2>&1; then
         log_error "E2E: ks install --host $host failed"
         return 1
@@ -823,6 +817,8 @@ cleanup_vm() {
     if [[ -n "${VM_NAME:-}" ]]; then
         "$VM_SCRIPT" --reset "$VM_NAME" 2>/dev/null || true
     fi
+    rm -f "$ISO_RESULT" "$VM_DISK_PATH"
+    rm -rf "${E2E_SCREENSHOT_DIR:-}"
 }
 
 trap 'cleanup_vm; cleanup_project_snapshot' EXIT
@@ -893,7 +889,7 @@ if [[ "$E2E_MODE" == "true" ]]; then
     sleep 2
 
     E2E_MONITOR_SOCK="/tmp/qemu-e2e-monitor-$$.sock"
-    E2E_SCREENSHOT_DIR="${PROJECT_DIR}/.test-e2e-screenshots"
+    E2E_SCREENSHOT_DIR="/tmp/keystone-e2e-screenshots"
     mkdir -p "$E2E_SCREENSHOT_DIR"
 
     reboot_args=(--post-install-reboot "$VM_NAME" --monitor-socket "$E2E_MONITOR_SOCK")
