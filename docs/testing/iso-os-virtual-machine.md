@@ -283,13 +283,14 @@ VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
 - TPM 2.0 via swtpm is managed by libvirt automatically
 - Disk snapshots for quick revert
 - Consistent PCI topology between install and reboot phases
-- QXL display provides a framebuffer for `screendump` even headless
+- virtio-gpu with egl-headless provides virgl 3D for guest GL/EGL
+- Screenshots captured via grim over SSH (Wayland surface), not screendump
 
 ### hardware.graphics
 
 `modules/desktop/nixos.nix` enables `hardware.graphics = true` when desktop is
-enabled. This pulls in mesa + virgl drivers so Hyprland can render on the QXL
-device in VMs and on real GPUs on bare metal.
+enabled. This pulls in mesa + virgl drivers so Hyprland can render on the
+virtio-gpu device in VMs and on real GPUs on bare metal.
 
 ## Troubleshooting
 
@@ -311,11 +312,11 @@ on it. See #339 for the consolidation plan.
 
 | Script | Tier | Machine | SecureBoot | TPM | Display | Purpose |
 |--------|------|---------|-----------|-----|---------|---------|
-| `bin/virtual-machine` | 3 | Q35 | EDK2 | tpm-crb | SPICE+QXL | Full libvirt VM lifecycle |
+| `bin/virtual-machine` | 3 | Q35 | EDK2 | tpm-crb | egl-headless+virtio-gpu | Full libvirt VM lifecycle |
 | `bin/test-deployment` | 3 | (via virtual-machine) | Yes | Yes | — | nixos-anywhere workflow |
 | `bin/build-vm` | 2 | — | No | No | — | Fast nixos-rebuild iteration |
 | `bin/test-microvm-tpm` | 1 | Q35 | No | tpm-tis | — | Lightweight TPM test (~20s) |
-| `test-iso --e2e` | — | (via virtual-machine) | Yes | Yes | QXL | Template → ISO → install → desktop |
+| `test-iso --e2e` | — | (via virtual-machine) | Yes | Yes | virtio-gpu | Template → ISO → install → desktop |
 
 Test configs in `tests/flake.nix`: `test-server`, `test-hyprland`, `build-vm-terminal`,
 `build-vm-desktop`, `tpm-microvm`.
@@ -339,7 +340,7 @@ Stages (current status):
 | 5 | Reboot from installed disk | Pending — OVMF boot discovery (#339) | REQ-008.20 |
 | 6 | LUKS unlock via QEMU `sendkey` | Working (when boot succeeds) | — |
 | 7 | Screenshot capture at boot stages | Working (PPM via `screendump`) | — |
-| 8 | Desktop validation (Hyprland + hyprlock) | Pending — needs QXL + boot fix | REQ-002 |
+| 8 | Desktop validation (Hyprland + hyprlock) | Working — virgl + egl-headless + grim | REQ-002 |
 | 9 | SSH validation with dev key | Working | — |
 | 10 | SHA-to-SHA screenshot comparison | Working (LFS baselines) | — |
 
