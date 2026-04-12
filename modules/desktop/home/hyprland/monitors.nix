@@ -5,8 +5,8 @@
 }:
 with lib;
 let
+  desktopCfg = config.keystone.desktop;
   cfg = config.keystone.desktop.monitors;
-  hyprlandCfg = config.keystone.desktop.hyprland;
 in
 {
   options.keystone.desktop.monitors = {
@@ -29,7 +29,7 @@ in
     };
   };
 
-  config = mkIf hyprlandCfg.enable {
+  config = mkIf desktopCfg.enable {
     wayland.windowManager.hyprland.settings = {
       monitor = mkDefault (
         (if cfg.settings == [ ] then [ ", preferred, auto, 1" ] else cfg.settings)

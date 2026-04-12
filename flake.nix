@@ -559,6 +559,7 @@
               libvirt
               virt-viewer
               swtpm
+              nix-serve # local binary cache for e2e VM installs
 
               # General utilities
               jq

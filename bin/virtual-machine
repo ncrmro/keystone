@@ -51,7 +51,9 @@ import sys
 import os
 import xml.etree.ElementTree as ET
 import subprocess
+import shutil
 import glob
+import re
 
 def validate_nvram_setup_mode(nvram_path):
     """
@@ -168,7 +170,9 @@ def create_uefi_secureboot_vm(
     disk_path=None,
     disk_size_gb=20,
     iso_path=None,
-    ssh_port=22222,
+    ssh_port=None,
+    headless=False,
+    monitor_socket=None,
 ):
     """
     Create a VM with UEFI Secure Boot enabled in Setup Mode
@@ -256,7 +260,8 @@ def create_uefi_secureboot_vm(
         if not is_valid:
             print(warning)
 
-        os.system(f"cp {ovmf_vars} {nvram_path}")
+        shutil.copy2(ovmf_vars, nvram_path)
+        os.chmod(nvram_path, 0o644)  # QEMU needs write access
         print(f"✓ Created NVRAM: {nvram_path}")
     else:
         # Validate existing NVRAM file
@@ -265,6 +270,81 @@ def create_uefi_secureboot_vm(
             print(warning)
 
     print(f"✓ Secure Boot enabled")
+
+    # Start swtpm in user mode for TPM 2.0 (session-mode compatible)
+    swtpm_dir = os.path.join(vm_dir, "swtpm")
+    swtpm_sock = os.path.join(swtpm_dir, "swtpm.sock")
+    has_swtpm = shutil.which("swtpm") is not None
+    if has_swtpm:
+        os.makedirs(swtpm_dir, exist_ok=True)
+        subprocess.run(
+            ["swtpm_setup", "--tpmstate", swtpm_dir, "--tpm2", "--createek", "--create-ek-cert"],
+            capture_output=True,
+        )
+        swtpm_proc = subprocess.Popen(
+            ["swtpm", "socket", "--tpmstate", f"dir={swtpm_dir}",
+             "--ctrl", f"type=unixio,path={swtpm_sock}",
+             "--tpm2", "--daemon"],
+        )
+        swtpm_proc.wait()  # --daemon forks, parent exits immediately
+        print(f"✓ swtpm started: {swtpm_sock}")
+    else:
+        print("⚠ swtpm not found — VM will have no TPM (add swtpm to devShell)")
+
+    # Network interface: bridge when no ssh_port, user-mode via qemu:commandline when set
+    if ssh_port is None:
+        network_xml = """
+    <!-- Network with static IP via keystone-net -->
+    <interface type='network'>
+      <source network='keystone-net'/>
+      <mac address='52:54:00:72:a2:99'/>
+      <model type='virtio'/>
+    </interface>"""
+    else:
+        network_xml = "<!-- user-mode networking via qemu:commandline -->"
+
+    # Build qemu:commandline block (user-mode networking + monitor socket)
+    _qemu_args = []
+    if ssh_port is not None:
+        _qemu_args.extend([
+            "<qemu:arg value='-netdev'/>",
+            f"<qemu:arg value='user,id=hostnet0,hostfwd=tcp:127.0.0.1:{ssh_port}-:22'/>",
+            "<qemu:arg value='-device'/>",
+            # Explicit PCI address avoids slot collision with libvirt-managed
+            # devices (e.g. virtio-gpu video) that share the pcie.0 bus.
+            f"<qemu:arg value='virtio-net-pci,netdev=hostnet0,romfile=,bus=pcie.0,addr=0x{0x10:02x}'/>",
+        ])
+    # TPM 2.0 via chardev→swtpm socket (session-mode compatible)
+    if has_swtpm:
+        _qemu_args.extend([
+            "<qemu:arg value='-chardev'/>",
+            f"<qemu:arg value='socket,id=chrtpm,path={swtpm_sock}'/>",
+            "<qemu:arg value='-tpmdev'/>",
+            "<qemu:arg value='emulator,id=tpm0,chardev=chrtpm'/>",
+            "<qemu:arg value='-device'/>",
+            "<qemu:arg value='tpm-crb,tpmdev=tpm0'/>",
+        ])
+    if monitor_socket:
+        _qemu_args.extend([
+            "<qemu:arg value='-monitor'/>",
+            f"<qemu:arg value='unix:{monitor_socket},server,nowait'/>",
+        ])
+    # Use egl-headless display backend for virgl — offscreen GPU context
+    # avoids SPICE GL deadlock where host compositor and QEMU contend for
+    # the same render context (guest virtio-gpu D-state).
+    _qemu_args.extend([
+        "<qemu:arg value='-display'/>",
+        "<qemu:arg value='egl-headless,rendernode=/dev/dri/renderD128'/>",
+    ])
+
+    if _qemu_args:
+        _args_str = "\n    ".join(_qemu_args)
+        qemu_commandline_xml = f"""
+  <qemu:commandline xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+    {_args_str}
+  </qemu:commandline>"""
+    else:
+        qemu_commandline_xml = ""
 
     # Build XML configuration
     xml_config = f"""
@@ -309,6 +389,7 @@ def create_uefi_secureboot_vm(
       <driver name='qemu' type='qcow2'/>
       <source file='{disk_path}'/>
       <target dev='vda' bus='virtio'/>
+      <serial>keystone-test-disk</serial>
     </disk>
     
     <!-- Installation ISO (if provided) -->
@@ -320,14 +401,9 @@ def create_uefi_secureboot_vm(
       <readonly/>
     </disk>
     """}
-    
-    <!-- Network with static IP via keystone-net -->
-    <interface type='network'>
-      <source network='keystone-net'/>
-      <mac address='52:54:00:72:a2:99'/>
-      <model type='virtio'/>
-    </interface>
-    
+
+    {network_xml}
+
     <!-- Serial console (PTY) -->
     <serial type='pty'>
       <target type='isa-serial' port='0'>
@@ -338,23 +414,29 @@ def create_uefi_secureboot_vm(
       <target type='serial' port='0'/>
     </console>
     
-    <!-- Graphics for remote-viewer -->
-    <graphics type='spice' autoport='yes'>
-      <listen type='address' address='127.0.0.1'/>
-    </graphics>
+    <!-- Graphics:
+         Always use accel3d (virgl) so the guest has EGL/GL for hyprlock
+         and desktop compositing. The display backend is egl-headless
+         (offscreen GPU context) — avoids SPICE GL deadlocks where the
+         host compositor and QEMU contend for the same GPU render context.
+         Screenshots are captured via grim over SSH (Wayland surface),
+         not QEMU screendump (which returns "no surface" with virgl).
+         Headed mode adds SPICE (no GL) for interactive viewing. -->
+    {"" if not headless else "<!-- headless: no SPICE display -->"}
+    {"<graphics type='spice' autoport='yes'><listen type='address' address='127.0.0.1'/></graphics>" if not headless else ""}
     <video>
-      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1'/>
+      <model type='virtio' heads='1' primary='yes'>
+        <acceleration accel3d='yes'/>
+      </model>
     </video>
     
     <!-- Input devices -->
     <input type='tablet' bus='usb'/>
     <input type='keyboard' bus='usb'/>
     
-    <!-- TPM 2.0 (useful for Windows 11 and Secure Boot) -->
-    <tpm model='tpm-crb'>
-      <backend type='emulator' version='2.0'/>
-    </tpm>
+    <!-- TPM 2.0 via qemu:commandline (session-mode compatible) -->
   </devices>
+  {qemu_commandline_xml}
 </domain>
 """
     
@@ -371,14 +453,21 @@ def create_uefi_secureboot_vm(
         sys.exit(1)
 
 
-def post_install_reboot(conn, vm_name):
+def post_install_reboot(conn, vm_name, headless=False, monitor_socket=None):
     """
-    Post-installation cleanup: detach ISO, snapshot disk, and reboot
-    VM must be shut down before running this
+    Post-installation cleanup: detach ISO, snapshot disk, and reboot.
+    VM must be shut down before running this.
+
+    Uses regex-based XML manipulation to preserve qemu namespace declarations
+    that ElementTree would mangle.
+
+    Args:
+        headless: Remove SPICE graphics from the restarted VM
+        monitor_socket: Add a QEMU monitor socket for screendump/sendkey
     """
     try:
         dom = conn.lookupByName(vm_name)
-        
+
         # Check if VM is shut down
         if dom.isActive():
             print(f"ERROR: VM '{vm_name}' is still running!")
@@ -386,53 +475,75 @@ def post_install_reboot(conn, vm_name):
             print(f"  virsh shutdown {vm_name}")
             print("Wait for it to power off, then run this command again.")
             sys.exit(1)
-        
+
         print(f"✓ VM '{vm_name}' is shut down")
-        
-        # Get disk path from XML
+
         xml = dom.XMLDesc(0)
-        root = ET.fromstring(xml)
-        
-        disk_path = None
-        for disk in root.findall('.//disk[@device="disk"]'):
-            source = disk.find('source')
-            if source is not None:
-                disk_path = source.get('file')
-                break
-        
+
+        # Get disk path for snapshot (libvirt XML uses single quotes)
+        disk_match = re.search(r"<source file=['\"]([^'\"]+)['\"]", xml)
+        disk_path = disk_match.group(1) if disk_match else None
+
         # Create snapshot of disk
         if disk_path:
-            snapshot_name = f"{os.path.basename(disk_path)}.post-install-snapshot"
-            snapshot_path = os.path.join(os.path.dirname(disk_path), snapshot_name)
-            
-            print(f"Creating disk snapshot: {snapshot_name}")
+            print(f"Creating disk snapshot: post-install")
             ret = os.system(f"qemu-img snapshot -c post-install {disk_path}")
             if ret != 0:
                 print(f"WARNING: Snapshot creation failed")
             else:
                 print(f"✓ Disk snapshot 'post-install' created")
-        
-        # Remove cdrom device from XML
-        devices = root.find('devices')
-        removed = False
-        for disk in devices.findall('disk'):
-            if disk.get('device') == 'cdrom':
-                devices.remove(disk)
-                removed = True
-        
-        if removed:
-            # Update the domain configuration
-            new_xml = ET.tostring(root, encoding='unicode')
-            conn.defineXML(new_xml)
+
+        # Remove cdrom elements (regex preserves namespace declarations)
+        new_xml = re.sub(
+            r'\s*<disk[^>]*device=["\']cdrom["\'][^>]*>.*?</disk>',
+            '', xml, flags=re.DOTALL
+        )
+        if new_xml != xml:
             print(f"✓ ISO detached from '{vm_name}'")
         else:
             print("ℹ No ISO was attached")
-        
-        # Start the VM
+
+        # Handle headless: remove SPICE graphics
+        if headless:
+            new_xml = re.sub(
+                r'\s*<graphics[^>]*type=["\']spice["\'][^>]*>.*?</graphics>',
+                '', new_xml, flags=re.DOTALL
+            )
+
+        # Add monitor socket for screendump/sendkey
+        if monitor_socket:
+            monitor_args = (
+                "\n    <qemu:arg value='-monitor'/>"
+                f"\n    <qemu:arg value='unix:{monitor_socket},server,nowait'/>"
+            )
+            if '<qemu:commandline' in new_xml:
+                new_xml = new_xml.replace(
+                    '</qemu:commandline>',
+                    f'{monitor_args}\n  </qemu:commandline>'
+                )
+            else:
+                ns = "xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'"
+                new_xml = new_xml.replace(
+                    '</domain>',
+                    f'  <qemu:commandline {ns}>{monitor_args}\n  </qemu:commandline>\n</domain>'
+                )
+
+        conn.defineXML(new_xml)
+
+        # Verify networking survived the redefine
+        dom = conn.lookupByName(vm_name)
+        verify_xml = dom.XMLDesc(0)
+        if 'hostfwd' in verify_xml:
+            print("✓ SSH port forwarding preserved after redefine")
+        elif '<qemu:commandline' in verify_xml:
+            print("⚠ qemu:commandline present but no hostfwd — check networking")
+        else:
+            print("⚠ No qemu:commandline in redefined XML — SSH may not work")
+
         dom.create()
         print(f"✓ VM '{vm_name}' started")
         print("\nPost-installation setup complete!")
-        
+
     except libvirt.libvirtError as e:
         print(f"ERROR: {e}")
         sys.exit(1)
@@ -547,7 +658,20 @@ def reset_vm(conn, vm_name):
         if nvram_path and os.path.exists(nvram_path):
             os.remove(nvram_path)
             print(f"✓ Deleted: {nvram_path}")
-        
+
+        # Kill swtpm and clean up state directory
+        for disk_path in disk_paths:
+            swtpm_dir = os.path.join(os.path.dirname(disk_path), "swtpm")
+            swtpm_sock = os.path.join(swtpm_dir, "swtpm.sock")
+            if os.path.exists(swtpm_sock):
+                # Find and kill the swtpm process using this socket
+                subprocess.run(["pkill", "-f", f"swtpm.*{swtpm_sock}"],
+                               capture_output=True)
+                print(f"✓ Stopped swtpm")
+            if os.path.isdir(swtpm_dir):
+                shutil.rmtree(swtpm_dir)
+                print(f"✓ Deleted: {swtpm_dir}")
+
         print(f"\n✓ VM '{vm_name}' completely removed!")
         
     except libvirt.libvirtError as e:
@@ -578,6 +702,35 @@ def get_serial_pty(conn, vm_name):
         return None
     except:
         return None
+
+
+def wait_for_ssh(ssh_port, timeout=240, ssh_key=None, username="keystone"):
+    """Block until SSH is ready on the given port."""
+    import subprocess
+    import time
+
+    start = time.time()
+    ssh_cmd = ["ssh", "-p", str(ssh_port),
+               "-o", "StrictHostKeyChecking=no",
+               "-o", "UserKnownHostsFile=/dev/null",
+               "-o", "ConnectTimeout=5",
+               "-o", "BatchMode=yes"]
+    if ssh_key:
+        ssh_cmd.extend(["-i", ssh_key])
+    ssh_cmd.extend([f"{username}@localhost", "exit", "0"])
+
+    while time.time() - start < timeout:
+        try:
+            result = subprocess.run(ssh_cmd, capture_output=True, timeout=10)
+            if result.returncode == 0:
+                print(f"✓ SSH is ready on port {ssh_port}")
+                return True
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+        time.sleep(3)
+
+    print(f"ERROR: SSH timeout after {timeout}s on port {ssh_port}")
+    return False
 
 
 def print_connection_commands(vm_name, ssh_port):
@@ -660,6 +813,75 @@ def print_connection_commands(vm_name, ssh_port):
     print("="*70 + "\n")
 
 
+def get_disk_path_for_vm(conn, vm_name):
+    """Get the primary disk path from a VM's XML definition."""
+    try:
+        dom = conn.lookupByName(vm_name)
+        xml = dom.XMLDesc(0)
+        match = re.search(r"<disk[^>]*device=['\"]disk['\"][^>]*>.*?<source file=['\"]([^'\"]+)['\"]", xml, re.DOTALL)
+        return match.group(1) if match else None
+    except libvirt.libvirtError:
+        return None
+
+
+def snapshot_create(conn, vm_name, snap_name):
+    """Create a qcow2 internal snapshot. VM must be stopped."""
+    try:
+        dom = conn.lookupByName(vm_name)
+        if dom.isActive():
+            print(f"ERROR: VM '{vm_name}' must be stopped for snapshots")
+            print(f"  virsh destroy {vm_name}")
+            sys.exit(1)
+    except libvirt.libvirtError as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
+
+    disk_path = get_disk_path_for_vm(conn, vm_name)
+    if not disk_path:
+        print(f"ERROR: Could not find disk for VM '{vm_name}'")
+        sys.exit(1)
+
+    ret = os.system(f"qemu-img snapshot -c {snap_name} {disk_path}")
+    if ret != 0:
+        print(f"ERROR: Failed to create snapshot '{snap_name}'")
+        sys.exit(1)
+    print(f"✓ Snapshot '{snap_name}' created for VM '{vm_name}'")
+
+
+def snapshot_restore(conn, vm_name, snap_name):
+    """Restore a qcow2 internal snapshot. VM must be stopped."""
+    try:
+        dom = conn.lookupByName(vm_name)
+        if dom.isActive():
+            print(f"ERROR: VM '{vm_name}' must be stopped for restore")
+            print(f"  virsh destroy {vm_name}")
+            sys.exit(1)
+    except libvirt.libvirtError as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
+
+    disk_path = get_disk_path_for_vm(conn, vm_name)
+    if not disk_path:
+        print(f"ERROR: Could not find disk for VM '{vm_name}'")
+        sys.exit(1)
+
+    ret = os.system(f"qemu-img snapshot -a {snap_name} {disk_path}")
+    if ret != 0:
+        print(f"ERROR: Failed to restore snapshot '{snap_name}'")
+        sys.exit(1)
+    print(f"✓ Restored VM '{vm_name}' to snapshot '{snap_name}'")
+
+
+def snapshot_list(conn, vm_name):
+    """List qcow2 internal snapshots for a VM."""
+    disk_path = get_disk_path_for_vm(conn, vm_name)
+    if not disk_path:
+        print(f"ERROR: Could not find disk for VM '{vm_name}'")
+        sys.exit(1)
+
+    os.system(f"qemu-img snapshot -l {disk_path}")
+
+
 def main():
     import argparse
 
@@ -669,19 +891,33 @@ def main():
     parser.add_argument('--vcpus', type=int, default=2, help='Number of vCPUs')
     parser.add_argument('--disk-size', type=int, default=30, help='Disk size in GB')
     parser.add_argument('--iso', help='Path to NixOS installation ISO (default: vms/keystone-installer.iso)')
-    parser.add_argument('--ssh-port', type=int, default=22220, help='SSH port on host')
+    parser.add_argument('--ssh-port', type=int, default=None, help='SSH port on host (enables user-mode networking with port forwarding)')
     parser.add_argument('--post-install-reboot', metavar='VM_NAME', help='Post-install: snapshot disk, remove ISO, reboot (VM must be shut down)')
     parser.add_argument('--reset', metavar='VM_NAME', help='Delete VM and all associated files (forces destroy if running)')
     parser.add_argument('--reset-setup-mode', metavar='VM_NAME', help='Reset VM NVRAM to Setup Mode (VM must be shut down)')
     parser.add_argument('--start', action='store_true', help='Start VM after creation')
+    parser.add_argument('--disk-path', help='Custom disk image path (default: vms/<name>/disk.qcow2)')
+    parser.add_argument('--headless', action='store_true', help='No SPICE display (CI-compatible)')
+    parser.add_argument('--monitor-socket', help='Expose QEMU monitor on a Unix socket for screendump/sendkey')
+    parser.add_argument('--wait-ssh', action='store_true', help='After --start, block until SSH is ready')
+    parser.add_argument('--ssh-timeout', type=int, default=240, help='Timeout in seconds for --wait-ssh (default: 240)')
+    parser.add_argument('--ssh-key', help='SSH private key for --wait-ssh authentication')
+    parser.add_argument('--ssh-user', default='keystone', help='SSH username for --wait-ssh (default: keystone)')
+    parser.add_argument('--destroy', metavar='VM_NAME', help='Force stop a running VM')
+    parser.add_argument('--snapshot', nargs=2, metavar=('VM_NAME', 'SNAP_NAME'),
+                        help='Create a qcow2 snapshot (VM must be stopped)')
+    parser.add_argument('--restore', nargs=2, metavar=('VM_NAME', 'SNAP_NAME'),
+                        help='Restore a qcow2 snapshot (VM must be stopped)')
+    parser.add_argument('--list-snapshots', metavar='VM_NAME',
+                        help='List qcow2 snapshots for a VM')
 
     args = parser.parse_args()
 
     # Connect to libvirt
     try:
-        conn = libvirt.open('qemu:///system')
+        conn = libvirt.open('qemu:///session')
         if conn is None:
-            print('Failed to open connection to qemu:///system')
+            print('Failed to open connection to qemu:///session')
             sys.exit(1)
         print("✓ Connected to libvirt")
     except libvirt.libvirtError as e:
@@ -692,9 +928,42 @@ def main():
         print("    users.users.<youruser>.extraGroups = [ \"libvirtd\" ];")
         sys.exit(1)
     
+    # Handle snapshot operations
+    if args.snapshot:
+        snapshot_create(conn, args.snapshot[0], args.snapshot[1])
+        conn.close()
+        return
+    if args.restore:
+        snapshot_restore(conn, args.restore[0], args.restore[1])
+        conn.close()
+        return
+    if args.list_snapshots:
+        snapshot_list(conn, args.list_snapshots)
+        conn.close()
+        return
+
+    # Handle force stop
+    if args.destroy:
+        try:
+            dom = conn.lookupByName(args.destroy)
+            if dom.isActive():
+                dom.destroy()
+                print(f"✓ VM '{args.destroy}' destroyed")
+            else:
+                print(f"ℹ VM '{args.destroy}' is not running")
+        except libvirt.libvirtError as e:
+            print(f"ERROR: {e}")
+            sys.exit(1)
+        conn.close()
+        return
+
     # Handle post-installation reboot
     if args.post_install_reboot:
-        post_install_reboot(conn, args.post_install_reboot)
+        post_install_reboot(
+            conn, args.post_install_reboot,
+            headless=args.headless,
+            monitor_socket=args.monitor_socket,
+        )
         conn.close()
         return
 
@@ -725,8 +994,7 @@ def main():
         iso_path = os.path.abspath(iso_path)
 
     # VM configuration
-    vm_dir = f"vms/{args.name}"
-    disk_path = f"{vm_dir}/disk.qcow2"
+    disk_path = args.disk_path or f"vms/{args.name}/disk.qcow2"
 
     # Create the VM
     dom = create_uefi_secureboot_vm(
@@ -737,13 +1005,26 @@ def main():
         disk_path=disk_path,
         disk_size_gb=args.disk_size,
         iso_path=iso_path,
-        ssh_port=args.ssh_port
+        ssh_port=args.ssh_port,
+        headless=args.headless,
+        monitor_socket=args.monitor_socket,
     )
 
     # Start VM if requested
     if args.start:
         dom.create()
         print(f"✓ VM '{args.name}' started")
+
+    # Wait for SSH if requested
+    if args.wait_ssh:
+        if not wait_for_ssh(
+            args.ssh_port or 22220,
+            timeout=args.ssh_timeout,
+            ssh_key=args.ssh_key,
+            username=args.ssh_user,
+        ):
+            conn.close()
+            sys.exit(1)
 
     # Print connection commands
     print_connection_commands(args.name, args.ssh_port)

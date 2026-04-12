@@ -322,7 +322,7 @@ jobs:
           cd "$FIXTURE_DIR"
           ./bin/test-iso --build-only
 
-          iso_path="$(find "$FIXTURE_DIR/.test-iso/iso" -maxdepth 1 -name '*.iso' -print -quit)"
+          iso_path="$(find "/tmp/keystone-test-iso/iso" -maxdepth 1 -name '*.iso' -print -quit)"
           if [[ -z "$iso_path" ]]; then
             echo "Generated fixture build completed but no ISO artifact was found"
             exit 1

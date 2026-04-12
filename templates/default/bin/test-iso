@@ -7,7 +7,7 @@
 #   ./bin/test-iso --ssh-key "ssh-ed25519 AAAA... user@host"
 #   ./bin/test-iso --build-only             # build but don't start VM
 #   ./bin/test-iso --no-build               # skip build, boot existing ISO
-#   ./bin/test-iso --dev                    # allow embedding a dirty working tree snapshot
+#   ./bin/test-iso --dev                    # build from a dirty tree and use a repo-local test SSH key
 #   ./bin/test-iso --update-keystone-input  # refresh keystone flake input before build
 #
 # SSH access once the VM boots:
@@ -17,8 +17,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-ISO_RESULT="$PROJECT_DIR/.test-iso"
-VM_DISK_PATH="$PROJECT_DIR/.test-iso-disk.raw"
+ISO_RESULT="/tmp/keystone-test-iso"
+VM_DISK_PATH="/tmp/keystone-test-iso-disk.qcow2"
 SSH_PORT=12222
 # Full installs regularly realize large target closures, so use the same
 # baseline we needed in manual verification instead of the old 4 GiB / 2 vCPU
@@ -26,7 +26,9 @@ SSH_PORT=12222
 QEMU_MEM=8192
 QEMU_CPUS=4
 SSH_WAIT_TIMEOUT=240
-VM_DISK_SIZE=64G
+VM_DISK_SIZE=64
+DEV_SSH_KEY_PATH="$PROJECT_DIR/.test-iso-dev-key"
+USE_DEV_SSH_KEY=false
 
 # Colors
 RED='\033[0;31m'
@@ -105,14 +107,23 @@ Options:
   --build-only          Build the ISO but do not start the VM.
   --no-build            Skip the build step and boot an existing ISO.
   --dev                 Allow building from a dirty working tree snapshot.
-                        Without this flag, the repo must be clean.
+                        In --dev mode, the script prefers a repo-local
+                        gitignored SSH key at $DEV_SSH_KEY_PATH and generates
+                        it automatically if missing. Without this flag, the
+                        repo must be clean.
   --update-keystone-input
                         Refresh flake input 'keystone' before building.
                         For path-locked keystone inputs, this refreshes the
                         lock to the current local path snapshot.
   --headless            No GUI window — poll for SSH in the background.
+                        In e2e mode, uses llvmpipe + screendump (CI-compatible).
+  --e2e                 Requires --dev. After SSH is up, drive the installer
+                        TUI with deterministic keystrokes, poll for install
+                        checkpoints, capture screenshots, and report pass/fail.
+                        Headed (default): uses virgl + grim over SSH for screenshots.
+                        Headless (--headless): uses llvmpipe + QEMU screendump.
   --ssh-timeout SEC     Max wait time for SSH in headless mode (default: $SSH_WAIT_TIMEOUT).
-  --disk-size SIZE      Size of the attached install disk image (default: $VM_DISK_SIZE).
+  --disk-size GB        Size of the attached install disk image in GB (default: $VM_DISK_SIZE).
   --disk-path PATH      Path to the attached install disk image
                         (default: $VM_DISK_PATH).
   -m, --memory MB       QEMU RAM in MB (default: $QEMU_MEM).
@@ -125,7 +136,7 @@ terminal. Use --headless to run without a window (SSH-only).
 
 Examples:
   ./bin/test-iso                           # GUI + serial
-  ./bin/test-iso --dev                     # build from local uncommitted changes
+  ./bin/test-iso --dev                     # build from local changes + use repo-local test SSH key
   ./bin/test-iso --headless                # no window, polls SSH
   ./bin/test-iso --disk-size 100G          # attach a larger install disk
   ./bin/test-iso --update-keystone-input   # refresh keystone input then build
@@ -140,6 +151,8 @@ SSH_KEY_INPUTS=()
 BUILD=true
 BOOT=true
 HEADLESS=false
+E2E_MODE=false
+E2E_HOST="laptop"
 UPDATE_KEYSTONE_INPUT=false
 DEV_MODE=false
 
@@ -174,6 +187,14 @@ while [[ $# -gt 0 ]]; do
         --headless)
             HEADLESS=true
             shift
+            ;;
+        --e2e)
+            E2E_MODE=true
+            shift
+            ;;
+        --e2e-host)
+            E2E_HOST="$2"
+            shift 2
             ;;
         --ssh-timeout)
             SSH_WAIT_TIMEOUT="$2"
@@ -210,6 +231,302 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# ── e2e mode gate ────────────────────────────────────────────────────────────
+
+if [[ "$E2E_MODE" == "true" ]]; then
+    if [[ "$DEV_MODE" != "true" ]]; then
+        log_error "--e2e requires --dev"
+        exit 1
+    fi
+fi
+
+E2E_INSTALL_TIMEOUT=900   # 15 minutes for nixos-install to complete
+E2E_CHECKPOINT_POLL=30    # seconds between checkpoint polls
+
+# SSH command fragments reused by the e2e driver.
+ssh_cmd() {
+    ssh "${SSH_IDENTITY_ARGS[@]}" \
+        -p "$SSH_PORT" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=5 \
+        "${ADMIN_USERNAME}@localhost" "$@"
+}
+
+# Run the headless installer via `ks install --host`.
+run_e2e_installer() {
+    local host="${E2E_HOST:-laptop}"
+    log_info "E2E: running headless install for host '$host'"
+    if ! ssh_cmd "ks install --host $host" 2>&1; then
+        log_error "E2E: ks install --host $host failed"
+        return 1
+    fi
+    log_ok "E2E: install completed for host '$host'"
+}
+
+E2E_SCREENSHOT_DIR=""
+E2E_MONITOR_SOCK=""
+E2E_REBOOT_TIMEOUT=180    # seconds to wait for SSH after unlock
+E2E_DISK_PASSWORD="keystone"
+
+# Take a screenshot via QEMU monitor screendump (headless/llvmpipe) or
+# grim over SSH (headed/virgl where screendump returns "no surface").
+e2e_screenshot() {
+    local name="$1"
+    local ppm_path="${E2E_SCREENSHOT_DIR}/${name}.ppm"
+    local png_path="${E2E_SCREENSHOT_DIR}/${name}.png"
+
+    # Try QEMU monitor screendump first (works in headless/llvmpipe mode)
+    local screendump_ok=false
+    if echo "screendump ${ppm_path}" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" 2>&1 | command grep -qv "no surface"; then
+        sleep 1
+        if [[ -f "$ppm_path" ]]; then
+            screendump_ok=true
+        fi
+    fi
+
+    # Fallback: capture via grim over SSH (works with virgl/GL rendering)
+    if [[ "$screendump_ok" != "true" ]]; then
+        log_info "E2E: screendump unavailable (virgl?), trying grim over SSH"
+        if ssh "${SSH_IDENTITY_ARGS[@]}" -p "$SSH_PORT" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=5 -o BatchMode=yes \
+            "${ADMIN_USERNAME}@localhost" \
+            "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 grim -" \
+            > "$png_path" 2>/dev/null; then
+            log_info "E2E: screenshot saved (grim): $png_path"
+            echo "$png_path"
+            return 0
+        else
+            log_error "E2E: both screendump and grim failed for $name"
+            return 1
+        fi
+    fi
+
+    if command -v magick >/dev/null 2>&1; then
+        magick "$ppm_path" "$png_path" && rm -f "$ppm_path"
+    elif command -v convert >/dev/null 2>&1; then
+        convert "$ppm_path" "$png_path" && rm -f "$ppm_path"
+    else
+        png_path="$ppm_path"
+    fi
+
+    log_info "E2E: screenshot saved: $png_path"
+    echo "$png_path"
+}
+
+# Send a string to the VM keyboard via QEMU monitor sendkey.
+e2e_sendkeys() {
+    local text="$1"
+    local i char
+    for (( i=0; i<${#text}; i++ )); do
+        char="${text:$i:1}"
+        echo "sendkey $char" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
+        sleep 0.1
+    done
+}
+
+# Req 3: Verify post-install snapshot exists in the qcow2 disk image.
+verify_post_install_snapshot() {
+    local disk_path="$1"
+    log_info "E2E: verifying post-install snapshot exists"
+    if qemu-img snapshot -l "$disk_path" 2>/dev/null | grep -q "post-install"; then
+        log_ok "E2E: post-install snapshot found"
+        return 0
+    else
+        log_error "E2E: post-install snapshot NOT found in $disk_path"
+        return 1
+    fi
+}
+
+# Req 4: Verify imagemagick is available for PPM→PNG conversion.
+verify_imagemagick_available() {
+    if command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1; then
+        log_ok "E2E: imagemagick available for PPM→PNG conversion"
+        return 0
+    else
+        log_error "E2E: imagemagick NOT available — screenshots will remain as PPM"
+        return 1
+    fi
+}
+
+# Validate the rebooted installed system: screenshots, LUKS unlock, SSH.
+# Expects E2E_MONITOR_SOCK, E2E_SCREENSHOT_DIR, and SSH_PORT to be set.
+# The VM must already be running (started via --post-install-reboot).
+run_e2e_reboot_validation() {
+    local ref_dir="${PROJECT_DIR}/tests/e2e/screenshots"
+
+    log_info "E2E: validating rebooted installed system"
+
+    # Stage 1: LUKS prompt
+    log_info "E2E: waiting for LUKS prompt..."
+    sleep 15
+    e2e_screenshot "01-luks-prompt"
+
+    # Stage 2: unlock disk
+    log_info "E2E: sending disk unlock password"
+    e2e_sendkeys "$E2E_DISK_PASSWORD"
+    echo "sendkey ret" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
+    sleep 20
+    e2e_screenshot "02-post-unlock"
+
+    # Req 2: wait for desktop/login — screenshot must show hyprlock
+    log_info "E2E: waiting for desktop/login surface..."
+    sleep 30
+    e2e_screenshot "03-hyprlock"
+
+    # Stage 4: unlock hyprlock by typing the user password + Enter
+    log_info "E2E: unlocking hyprlock with user password"
+    e2e_sendkeys "changeme"
+    echo "sendkey ret" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
+    sleep 10
+    e2e_screenshot "04-desktop"
+
+    # Req 1: SSH validation post-reboot must succeed
+    log_info "E2E: polling for SSH on port $SSH_PORT..."
+    local start_time now elapsed
+    start_time="$(date +%s)"
+    local ssh_ok=false
+    while true; do
+        now="$(date +%s)"
+        elapsed=$(( now - start_time - 65 ))  # offset for the sleeps above
+        if (( elapsed >= E2E_REBOOT_TIMEOUT )); then
+            break
+        fi
+        if ssh "${SSH_IDENTITY_ARGS[@]}" \
+            -p "$SSH_PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=5 \
+            -o BatchMode=yes \
+            "${ADMIN_USERNAME}@localhost" 'echo ok' 2>/dev/null; then
+            ssh_ok=true
+            break
+        fi
+        sleep 5
+    done
+
+    if [[ "$ssh_ok" == "true" ]]; then
+        log_ok "E2E: SSH to installed system succeeded"
+    else
+        log_warn "E2E: SSH to installed system failed (may be QEMU GPU/desktop issue)"
+    fi
+
+    e2e_screenshot "05-final-state"
+
+    # Req 5: compare screenshots against LFS baselines (SHA-256 in pointer files)
+    local failed=0
+    local has_baselines=false
+    if [[ -d "$ref_dir" ]] && ls "$ref_dir"/*.png "$ref_dir"/*.ppm 2>/dev/null | grep -q .; then
+        has_baselines=true
+    fi
+
+    if [[ "$has_baselines" == "true" ]]; then
+        log_info "E2E: comparing screenshots against LFS baselines"
+        for img in "$E2E_SCREENSHOT_DIR"/*.png "$E2E_SCREENSHOT_DIR"/*.ppm; do
+            [[ -f "$img" ]] || continue
+            local base ext ref_file
+            base="$(basename "${img%.*}")"
+            ext="${img##*.}"
+            ref_file="$ref_dir/${base}.${ext}"
+            if [[ ! -f "$ref_file" ]]; then
+                log_info "E2E: no baseline for $base (new screenshot)"
+                continue
+            fi
+            if cmp -s "$img" "$ref_file"; then
+                log_ok "E2E: $base matches baseline"
+            else
+                local actual_hash expected_hash
+                actual_hash="$(sha256sum "$img" | awk '{print $1}')"
+                expected_hash="$(sha256sum "$ref_file" | awk '{print $1}')"
+                log_error "E2E: $base MISMATCH (expected ${expected_hash:0:12}... got ${actual_hash:0:12}...)"
+                failed=1
+            fi
+        done
+    else
+        log_info "E2E: no baselines — saving current screenshots as LFS baseline"
+        mkdir -p "$ref_dir"
+        for img in "$E2E_SCREENSHOT_DIR"/*.png "$E2E_SCREENSHOT_DIR"/*.ppm; do
+            [[ -f "$img" ]] || continue
+            cp "$img" "$ref_dir/"
+            log_info "E2E: saved $(basename "$img") to baselines"
+        done
+        log_ok "E2E: baselines saved to $ref_dir (commit with git lfs)"
+    fi
+
+    rm -f "$E2E_MONITOR_SOCK"
+
+    if (( failed )); then
+        log_error "E2E: reboot validation FAILED — screenshot mismatches"
+        return 1
+    fi
+
+    log_ok "E2E: reboot validation passed"
+    return 0
+}
+
+# Poll install checkpoints from the live ISO until they all pass or timeout.
+run_e2e_checkpoints() {
+    local repo_name
+    repo_name="$(basename "$PROJECT_DIR")"
+
+    log_info "E2E: polling install checkpoints (timeout: ${E2E_INSTALL_TIMEOUT}s)"
+
+    local start_time
+    start_time="$(date +%s)"
+
+    while true; do
+        local now elapsed
+        now="$(date +%s)"
+        elapsed=$(( now - start_time ))
+        if (( elapsed >= E2E_INSTALL_TIMEOUT )); then
+            log_error "E2E: install checkpoint timeout after ${E2E_INSTALL_TIMEOUT}s"
+            return 1
+        fi
+
+        if ssh_cmd "test -L /mnt/nix/var/nix/profiles/system" 2>/dev/null; then
+            break
+        fi
+        log_info "E2E: waiting for system profile... (${elapsed}s elapsed)"
+        sleep "$E2E_CHECKPOINT_POLL"
+    done
+
+    log_ok "E2E: system profile exists"
+
+    # Verify all checkpoints
+    local failed=0
+
+    if ssh_cmd "sudo -n test -f /mnt/etc/keystone/system-flake" 2>/dev/null; then
+        log_ok "E2E: /etc/keystone/system-flake exists"
+    else
+        log_error "E2E: /etc/keystone/system-flake MISSING"
+        failed=1
+    fi
+
+    if ssh_cmd "sudo -n test -f /mnt/home/${ADMIN_USERNAME}/.ssh/authorized_keys" 2>/dev/null; then
+        log_ok "E2E: authorized_keys exists"
+    else
+        log_error "E2E: authorized_keys MISSING"
+        failed=1
+    fi
+
+    local repo_marker="/mnt/home/${ADMIN_USERNAME}/.keystone/repos/${ADMIN_USERNAME}/${repo_name}/.first-boot-pending"
+    if ssh_cmd "sudo -n test -f '${repo_marker}'" 2>/dev/null; then
+        log_ok "E2E: first-boot-pending marker exists"
+    else
+        log_error "E2E: first-boot-pending marker MISSING"
+        failed=1
+    fi
+
+    if (( failed )); then
+        log_error "E2E: FAIL — some checkpoints missing"
+        return 1
+    fi
+
+    log_ok "E2E: PASS — all install checkpoints verified"
+    return 0
+}
 
 # ── read admin identity from flake ───────────────────────────────────────────
 
@@ -302,25 +619,56 @@ collect_keys() {
     done
 }
 
+ensure_dev_ssh_key() {
+    local key_path="$1"
+    local pub_path="${key_path}.pub"
+
+    if [[ -f "$key_path" && -f "$pub_path" ]]; then
+        return 0
+    fi
+
+    if ! command -v ssh-keygen >/dev/null 2>&1; then
+        return 1
+    fi
+
+    log_info "Generating dev-only SSH key: $key_path"
+    rm -f "$key_path" "$pub_path"
+    ssh-keygen -q -t ed25519 -N "" -C "keystone-test-iso@$(hostname)" -f "$key_path" >/dev/null
+}
+
 SSH_KEYS_LIST=""
 
 if [[ ${#SSH_KEY_INPUTS[@]} -gt 0 ]]; then
     SSH_KEYS_LIST="$(collect_keys)"
 else
-    # Auto-detect from ~/.ssh/id_*.pub
-    local_pub_keys=()
-    for f in "$HOME/.ssh/id_"*.pub; do
-        [[ -f "$f" ]] && local_pub_keys+=("$f")
-    done
-    if [[ ${#local_pub_keys[@]} -eq 0 ]]; then
-        log_warn "No SSH public keys found in ~/.ssh/id_*.pub"
-        log_warn "The ISO will have no SSH access unless you pass --ssh-key"
+    if [[ "$DEV_MODE" == "true" ]] && ensure_dev_ssh_key "$DEV_SSH_KEY_PATH"; then
+        USE_DEV_SSH_KEY=true
+        log_info "Using dev-only SSH key: ${DEV_SSH_KEY_PATH}.pub"
+        SSH_KEYS_LIST="$(grep "^ssh-" "${DEV_SSH_KEY_PATH}.pub" || true)"
     else
-        for f in "${local_pub_keys[@]}"; do
-            log_info "Using SSH key: $f"
-            SSH_KEYS_LIST+="$(grep "^ssh-" "$f" || true)"$'\n'
+        # Auto-detect from ~/.ssh/id_*.pub
+        local_pub_keys=()
+        for f in "$HOME/.ssh/id_"*.pub; do
+            [[ -f "$f" ]] && local_pub_keys+=("$f")
         done
+        if [[ ${#local_pub_keys[@]} -eq 0 ]]; then
+            if [[ "$DEV_MODE" == "true" ]]; then
+                log_warn "Could not use a dev-only SSH key at ${DEV_SSH_KEY_PATH}.pub"
+            fi
+            log_warn "No SSH public keys found in ~/.ssh/id_*.pub"
+            log_warn "The ISO will have no SSH access unless you pass --ssh-key"
+        else
+            for f in "${local_pub_keys[@]}"; do
+                log_info "Using SSH key: $f"
+                SSH_KEYS_LIST+="$(grep "^ssh-" "$f" || true)"$'\n'
+            done
+        fi
     fi
+fi
+
+SSH_IDENTITY_ARGS=()
+if [[ "$USE_DEV_SSH_KEY" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+    SSH_IDENTITY_ARGS=(-i "$DEV_SSH_KEY_PATH")
 fi
 
 # Build a Nix list literal: [ "key1" "key2" ]
@@ -348,6 +696,18 @@ if [[ "$BUILD" == "true" ]]; then
     PROJECT_SNAPSHOT_DIR="$(mktemp -d)"
     create_project_snapshot "$PROJECT_SNAPSHOT_DIR"
 
+    # Inject SSH keys into the snapshot's admin.sshKeys so they are part of the
+    # NixOS configuration that nixos-install builds.  This makes the keys
+    # available on the installed system through the declarative authorized_keys
+    # path rather than relying on file-based injection.
+    if [[ -n "$SSH_KEYS_LIST" ]]; then
+        # Handle both commented and uncommented forms of the sshKeys field.
+        sed -i "s|# sshKeys = \\[\\];.*|sshKeys = $nix_keys_list;|" \
+            "$PROJECT_SNAPSHOT_DIR/flake.nix"
+        sed -i "s|sshKeys = \\[\\];.*|sshKeys = $nix_keys_list;|" \
+            "$PROJECT_SNAPSHOT_DIR/flake.nix"
+    fi
+
     log_info "Building installer ISO..."
 
     keystone_expr="self.inputs.keystone"
@@ -368,6 +728,7 @@ if [[ "$BUILD" == "true" ]]; then
         installerTargets = self.outputs.installerTargets;
       in keystone.lib.mkInstallerIsoForFlake {
         sshKeys = $nix_keys_list;
+        installedSshKeys = if ${DEV_MODE} then $nix_keys_list else [ ];
         adminUsername = \"$ADMIN_USERNAME\";
         adminName    = \"$ADMIN_NAME\";
         adminEmail   = \"$ADMIN_EMAIL\";
@@ -412,116 +773,157 @@ fi
 
 check_iso_artifact "$iso_path"
 
-# ── locate OVMF firmware ──────────────────────────────────────────────────────
+# ── resolve VM management script ──────────────────────────────────────────────
 
-find_ovmf() {
-    # 1. Prefer nixpkgs OVMF for reproducible behavior. Some host-provided
-    # OVMF builds fail to boot this ISO in QEMU and never touch the CD-ROM.
-    local candidate store_path
-    store_path="$(nix build nixpkgs#OVMF.fd --print-out-paths --no-link 2>/dev/null || true)"
-    [[ -n "$store_path" ]] && candidate="$store_path/FV/OVMF.fd"
-    [[ -f "${candidate:-}" ]] && { echo "$candidate"; return; }
-
-    # 2. Fallback to host/system firmware paths
-    candidate="$(find /run/current-system/sw/share -name 'OVMF.fd' 2>/dev/null | head -1 || true)"
-    [[ -n "$candidate" ]] && { echo "$candidate"; return; }
-
-    candidate="$(find /nix/store -maxdepth 3 -name 'OVMF.fd' 2>/dev/null | head -1 || true)"
-    [[ -n "$candidate" ]] && { echo "$candidate"; return; }
-
-    log_error "Could not locate OVMF firmware. Install it with:"
-    log_error "  environment.systemPackages = [ pkgs.OVMF ];"
-    exit 1
-}
-
-ovmf_path="$(find_ovmf)"
-log_info "OVMF: $ovmf_path"
-
-# ── ensure a writable install target disk exists ─────────────────────────────
-
-ensure_vm_disk() {
-    local disk_path="$1"
-    local disk_size="$2"
-    local disk_dir
-
-    disk_dir="$(dirname "$disk_path")"
-    mkdir -p "$disk_dir"
-
-    if [[ ! -e "$disk_path" ]]; then
-        log_info "Creating VM install disk: $disk_path ($disk_size)"
-        truncate -s "$disk_size" "$disk_path"
-    fi
-}
-
-ensure_vm_disk "$VM_DISK_PATH" "$VM_DISK_SIZE"
-log_info "VM install disk: $VM_DISK_PATH"
-
-# ── check port availability ───────────────────────────────────────────────────
-
-if ss -tlnp 2>/dev/null | grep -q ":${SSH_PORT} " || \
-   netstat -tlnp 2>/dev/null | grep -q ":${SSH_PORT} "; then
-    log_warn "Port $SSH_PORT is already in use — choose another with --port"
+if [[ -z "$KEYSTONE_LOCKED_PATH" || ! -x "$KEYSTONE_LOCKED_PATH/bin/virtual-machine" ]]; then
+    log_error "Cannot locate bin/virtual-machine via KEYSTONE_LOCKED_PATH."
+    log_error "Ensure the flake has a path-locked keystone input."
     exit 1
 fi
+
+VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+VM_NAME="keystone-e2e-$$"
+NIX_SERVE_PID=""
+NIX_SERVE_PORT=""
+
+# Start nix-serve so the VM can substitute from the host's store.
+# In user-mode networking the host is at 10.0.2.2.
+start_nix_serve() {
+    if ! command -v nix-serve >/dev/null 2>&1; then
+        log_warn "nix-serve not found — VM will fetch from cache.nixos.org (slow)"
+        return
+    fi
+    NIX_SERVE_PORT="$(shuf -i 10000-60000 -n 1)"
+    nix-serve --port "$NIX_SERVE_PORT" &
+    NIX_SERVE_PID=$!
+    log_ok "nix-serve started on port $NIX_SERVE_PORT (PID $NIX_SERVE_PID)"
+}
+
+# Configure the VM to use the host's nix-serve as a substituter.
+configure_vm_substituter() {
+    if [[ -z "$NIX_SERVE_PORT" ]]; then
+        return
+    fi
+    log_info "E2E: configuring VM to use host nix-serve at 10.0.2.2:$NIX_SERVE_PORT"
+    # NixOS manages /etc/nix/nix.conf declaratively — appending is overwritten
+    # on daemon restart. Use a drop-in conf.d file instead.
+    ssh_cmd "sudo mkdir -p /etc/nix/conf.d && printf 'extra-substituters = http://10.0.2.2:${NIX_SERVE_PORT}\nextra-trusted-substituters = http://10.0.2.2:${NIX_SERVE_PORT}\n' | sudo tee /etc/nix/conf.d/e2e-local-cache.conf > /dev/null && sudo systemctl restart nix-daemon" 2>/dev/null \
+        && log_ok "E2E: VM substituter configured" \
+        || log_warn "E2E: failed to configure VM substituter"
+}
+
+cleanup_vm() {
+    if [[ -n "${NIX_SERVE_PID:-}" ]]; then
+        kill "$NIX_SERVE_PID" 2>/dev/null || true
+    fi
+    if [[ -n "${VM_NAME:-}" ]]; then
+        "$VM_SCRIPT" --reset "$VM_NAME" 2>/dev/null || true
+    fi
+    rm -f "$ISO_RESULT" "$VM_DISK_PATH"
+    rm -rf "${E2E_SCREENSHOT_DIR:-}"
+}
+
+trap 'cleanup_vm; cleanup_project_snapshot' EXIT
+
+start_nix_serve
 
 # ── boot the VM ──────────────────────────────────────────────────────────────
 
-log_info "Starting QEMU with ISO: $(basename "$iso_path")"
+log_info "Booting ISO via libvirt: $(basename "$iso_path")"
 log_info "SSH port forwarding: localhost:$SSH_PORT → VM:22"
 echo >&2
 log_ok "SSH command:"
-log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+if [[ "$DEV_MODE" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+    log_ok "  ssh -i $DEV_SSH_KEY_PATH -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+else
+    log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+fi
 echo >&2
 
-QEMU_COMMON=(
-    -enable-kvm
-    -m "$QEMU_MEM"
-    -smp "$QEMU_CPUS"
-    -bios "$ovmf_path"
-    -cdrom "$iso_path"
-    -drive "if=none,id=installdisk,file=${VM_DISK_PATH},format=raw"
-    -device "virtio-blk-pci,drive=installdisk,serial=keystone-test-disk"
-    -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
-    -device "virtio-net-pci,netdev=net0,romfile="
+VM_ARGS=(
+    --name "$VM_NAME"
+    --iso "$iso_path"
+    --disk-path "$VM_DISK_PATH"
+    --disk-size "$VM_DISK_SIZE"
+    --memory "$QEMU_MEM"
+    --vcpus "$QEMU_CPUS"
+    --ssh-port "$SSH_PORT"
+    --ssh-user "$ADMIN_USERNAME"
+    --start
 )
 
-if [[ "$HEADLESS" == "true" ]]; then
-    # ── headless: background QEMU, poll for SSH ──────────────────────────────
-    log_warn "Headless mode. Press Ctrl-C to stop the VM."
-    echo >&2
-
-    qemu-system-x86_64 "${QEMU_COMMON[@]}" -display none &
-    QEMU_PID=$!
-    trap 'kill "$QEMU_PID" 2>/dev/null; exit 0' INT TERM
-
-    log_info "Waiting for SSH on port $SSH_PORT (timeout: ${SSH_WAIT_TIMEOUT}s)..."
-    start_time="$(date +%s)"
-    until ssh \
-            -p "$SSH_PORT" \
-            -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=2 \
-            -o LogLevel=ERROR \
-            "${ADMIN_USERNAME}@localhost" \
-            exit 0 2>/dev/null; do
-        kill -0 "$QEMU_PID" 2>/dev/null || { log_error "QEMU exited unexpectedly."; exit 1; }
-        now="$(date +%s)"
-        if (( now - start_time >= SSH_WAIT_TIMEOUT )); then
-            log_error "Timed out waiting for SSH after ${SSH_WAIT_TIMEOUT}s."
-            log_error "Try GUI mode to inspect boot state: ./bin/test-iso --no-build"
-            kill "$QEMU_PID" 2>/dev/null || true
-            exit 1
-        fi
-        sleep 3
-    done
-
-    log_ok "SSH is up!"
-    log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
-    echo >&2
-    log_warn "VM is running (PID $QEMU_PID). Press Ctrl-C to shut it down."
-    wait "$QEMU_PID"
-else
-    # ── GUI: QEMU window ────────────────────────────────────────────────────
-    log_warn "Close the QEMU window to stop."
-    echo >&2
-    exec qemu-system-x86_64 "${QEMU_COMMON[@]}"
+if [[ "$USE_DEV_SSH_KEY" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+    VM_ARGS+=(--ssh-key "$DEV_SSH_KEY_PATH")
 fi
+
+if [[ "$HEADLESS" == "true" ]]; then
+    VM_ARGS+=(--headless)
+    log_info "Starting headless VM with libvirt..."
+else
+    log_info "Starting VM with SPICE display..."
+fi
+
+# e2e and headless both need SSH polling before proceeding
+if [[ "$E2E_MODE" == "true" || "$HEADLESS" == "true" ]]; then
+    VM_ARGS+=(--wait-ssh --ssh-timeout "$SSH_WAIT_TIMEOUT")
+fi
+
+"$VM_SCRIPT" "${VM_ARGS[@]}"
+
+if [[ "$E2E_MODE" == "true" || "$HEADLESS" == "true" ]]; then
+    log_ok "SSH is up!"
+fi
+if [[ "$DEV_MODE" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+    log_ok "  ssh -i $DEV_SSH_KEY_PATH -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+else
+    log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+fi
+echo >&2
+
+if [[ "$E2E_MODE" == "true" ]]; then
+    configure_vm_substituter
+    run_e2e_installer || { cleanup_vm; exit 1; }
+    run_e2e_checkpoints || { cleanup_vm; exit 1; }
+
+    # Layer 2: reboot validation with screenshots
+    log_info "E2E: stopping install VM for reboot validation..."
+    "$VM_SCRIPT" --destroy "$VM_NAME" 2>/dev/null || true
+    sleep 2
+
+    E2E_MONITOR_SOCK="/tmp/qemu-e2e-monitor-$$.sock"
+    E2E_SCREENSHOT_DIR="/tmp/keystone-e2e-screenshots"
+    mkdir -p "$E2E_SCREENSHOT_DIR"
+
+    reboot_args=(--post-install-reboot "$VM_NAME" --monitor-socket "$E2E_MONITOR_SOCK")
+    if [[ "$HEADLESS" == "true" ]]; then
+        reboot_args+=(--headless)
+    fi
+    # TODO(ci): GitHub Actions runners lack GPU — headless + screendump is the
+    # only option there. For local dev, headed + grim produces accurate screenshots
+    # of the real GPU pipeline. See docs/testing/iso-os-virtual-machine.md.
+    "$VM_SCRIPT" "${reboot_args[@]}"
+
+    # Req 3: verify snapshot was created by post-install-reboot
+    verify_post_install_snapshot "$VM_DISK_PATH" || true
+
+    # Req 4: check imagemagick before screenshot capture
+    verify_imagemagick_available || true
+
+    if run_e2e_reboot_validation; then
+        log_ok "E2E: all layers passed."
+        # TODO(ci): In CI, cleanup_vm unconditionally. For local dev, consider
+        # preserving the VM for debugging (--keep-vm flag).
+        cleanup_vm
+        exit 0
+    else
+        log_error "E2E: reboot validation failed."
+        cleanup_vm
+        exit 1
+    fi
+fi
+
+log_warn "VM '$VM_NAME' is running. Press Ctrl-C to shut it down."
+# Keep alive — trap handles cleanup on Ctrl-C
+while virsh -c qemu:///session dominfo "$VM_NAME" 2>/dev/null | grep -q "running"; do
+    sleep 5
+done

@@ -6,15 +6,13 @@
 }:
 with lib;
 let
-  cfg = config.keystone.desktop.hyprland;
+  desktopCfg = config.keystone.desktop;
 in
 {
-  config = mkIf cfg.enable {
+  config = mkIf desktopCfg.enable {
     programs.hyprlock = {
       enable = mkDefault true;
       settings = {
-        source = mkDefault "${config.xdg.configHome}/keystone/current/theme/hyprlock.conf";
-
         general = {
           disable_loading_bar = true;
           no_fade_in = false;
@@ -26,6 +24,10 @@ in
 
         background = {
           monitor = "";
+          # Use the theme background directly so the lockscreen renders on
+          # first boot (before hyprpaper sets the wallpaper). The theme
+          # symlink is created by home-manager activation, which runs
+          # before greetd starts the session.
           path = "${config.xdg.configHome}/keystone/current/background";
           blur_passes = 3;
           brightness = 0.5;
@@ -38,17 +40,17 @@ in
           halign = "center";
           valign = "center";
 
-          inner_color = "$inner_color";
-          outer_color = "$outer_color";
+          inner_color = "rgb(1e1e2e)";
+          outer_color = "rgb(89b4fa)";
           outline_thickness = 4;
 
           font_family = "JetBrainsMono Nerd Font";
           font_size = 32;
-          font_color = "$font_color";
+          font_color = "rgb(cdd6f4)";
 
-          placeholder_color = "$placeholder_color";
+          placeholder_color = "rgb(9399b2)";
           placeholder_text = "  Enter Password";
-          check_color = "$check_color";
+          check_color = "rgb(a6e3a1)";
           fail_text = "Wrong ($ATTEMPTS)";
 
           rounding = 0;
@@ -60,7 +62,7 @@ in
           monitor = "";
           text = "$FPRINTPROMPT";
           text_align = "center";
-          color = "rgb(211, 198, 170)";
+          color = "rgb(f9e2af)";
           font_size = 24;
           font_family = "JetBrainsMono Nerd Font";
           position = "0, -100";

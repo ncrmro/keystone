@@ -4,6 +4,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   keystoneInputs,
   ...
@@ -24,6 +25,9 @@ in
         default = true;
         description = "Enable OBS Studio for screen recording and streaming";
       };
+      # TODO: Teach hosts to declare their GPU type and derive this default
+      # automatically so desktop systems do not need to set OBS GPU support
+      # manually.
       gpuType = mkOption {
         type = types.nullOr (
           types.enum [
@@ -39,53 +43,15 @@ in
           - intel: enables VA-API plugin
           - nvidia: enables Vulkan capture plugin (NVENC is built into OBS core)
           When null, only PipeWire audio capture is included (no GPU-specific plugins).
+          Future desktop hosts SHOULD declare their GPU type so Keystone can
+          select this automatically.
         '';
       };
     };
 
     user = mkOption {
       type = types.str;
-      description = "User for auto-login to Hyprland session";
-    };
-
-    hyprland = {
-      enable = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Enable Hyprland window manager";
-      };
-    };
-
-    greetd = {
-      enable = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Enable Greetd display manager";
-      };
-    };
-
-    audio = {
-      enable = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Enable Pipewire audio stack";
-      };
-    };
-
-    bluetooth = {
-      enable = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Enable Bluetooth support";
-      };
-    };
-
-    networking = {
-      enable = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Enable NetworkManager and systemd-resolved for laptops, portables, and thin clients";
-      };
+      description = "Primary desktop user for the Hyprland session";
     };
   };
 
@@ -94,20 +60,26 @@ in
     services.flatpak.enable = mkDefault true;
 
     # Hyprland with UWSM (using official flake for latest features)
-    programs.hyprland = mkIf cfg.hyprland.enable {
+    programs.hyprland = {
       enable = mkDefault true;
       withUWSM = mkDefault true;
       package = mkDefault keystoneInputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
       portalPackage = mkDefault pkgs.xdg-desktop-portal-hyprland; # Use stable nixpkgs version to fix Qt version mismatch
     };
 
-    # Greetd display manager with auto-login to Hyprland
+    # Mesa and GPU drivers for Wayland compositors (Hyprland requires DRM/KMS).
+    # Enables virtio-gpu support in VMs and hardware GPU on bare metal.
+    hardware.graphics.enable = mkDefault true;
+
+    # Greetd launches the user's Hyprland session directly. Startup
+    # authentication happens inside Hyprland via keystone-startup-lock, which
+    # MUST fail closed if hyprlock cannot come up securely.
     # CRITICAL: XDG_SESSION_CLASS=user must be in the command environment so pam_systemd.so
     # sees it before registering the logind session. The PAM class= argument alone is not
     # sufficient — pam_systemd gives XDG_SESSION_CLASS env var highest precedence.
     # Without this, the session registers as Class=greeter on seat0, causing polkit's
     # allow_active=yes policy to deny access — breaking pcscd, YubiKey PIV, and power management.
-    services.greetd = mkIf cfg.greetd.enable {
+    services.greetd = {
       enable = mkDefault true;
       settings.default_session = {
         command = mkDefault "env XDG_SESSION_CLASS=user uwsm start -F Hyprland";
@@ -115,9 +87,23 @@ in
       };
     };
 
+    # The desktop session depends on Home Manager activation having already
+    # materialized mutable theme links like ~/.config/keystone/current/theme
+    # and ~/.config/keystone/current/background. Without explicit ordering,
+    # display-manager can start the Hyprland session before home-manager-$user
+    # has finished on a fresh install, which leaves the first session without
+    # wallpaper and increases the chance of startup errors in user services.
+    systemd.services."home-manager-${cfg.user}" = mkIf (options ? home-manager) {
+      before = [ "display-manager.service" ];
+    };
+    systemd.services.display-manager = mkIf (options ? home-manager) {
+      wants = [ "home-manager-${cfg.user}.service" ];
+      after = [ "home-manager-${cfg.user}.service" ];
+    };
+
     # Configure PAM to register greetd session as wayland type
     # This enables loginctl lock-session to work properly
-    security.pam.services.greetd.rules.session.systemd.settings = mkIf cfg.greetd.enable {
+    security.pam.services.greetd.rules.session.systemd.settings = {
       type = "wayland";
       # Belt-and-suspenders: also set class=user in PAM for any code path that doesn't
       # inherit the env var. The env var takes precedence per pam_systemd docs.
@@ -125,9 +111,9 @@ in
     };
 
     # Pipewire audio stack
-    security.rtkit.enable = mkIf cfg.audio.enable (mkDefault true);
-    services.pulseaudio.enable = mkIf cfg.audio.enable (mkDefault false);
-    services.pipewire = mkIf cfg.audio.enable {
+    security.rtkit.enable = mkDefault true;
+    services.pulseaudio.enable = mkDefault false;
+    services.pipewire = {
       enable = mkDefault true;
       alsa.enable = mkDefault true;
       pulse.enable = mkDefault true;
@@ -135,8 +121,8 @@ in
     };
 
     # Bluetooth
-    hardware.bluetooth.enable = mkIf cfg.bluetooth.enable (mkDefault true);
-    services.blueman.enable = mkIf cfg.bluetooth.enable (mkDefault true);
+    hardware.bluetooth.enable = mkDefault true;
+    services.blueman.enable = mkDefault true;
 
     # Printing (CUPS + Avahi/mDNS discovery)
     services.printing.enable = mkDefault true;
@@ -147,13 +133,13 @@ in
     };
 
     # Networking (for laptops, portables, and thin clients)
-    networking.networkmanager.enable = mkIf cfg.networking.enable (mkDefault true);
+    networking.networkmanager.enable = mkDefault true;
     # Route the desktop default through keystone.os so the core OS module stays
     # the single writer of services.resolved.enable.
-    keystone.os.services.resolved.enable = mkIf cfg.networking.enable (mkDefault true);
+    keystone.os.services.resolved.enable = mkDefault true;
     # Required for Tailscale MagicDNS to work with systemd-resolved
     # https://github.com/NixOS/nixpkgs/issues/231191#issuecomment-1664053176
-    environment.etc."resolv.conf".mode = mkIf cfg.networking.enable "direct-symlink";
+    environment.etc."resolv.conf".mode = "direct-symlink";
 
     # Fonts
     fonts.packages = with pkgs; [
