@@ -38,6 +38,7 @@ let
   ks-legacy-src = ../packages/ks-legacy;
   pz-src = ../packages/pz;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
+  mermaidtui-src = ../packages/mermaidtui;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
   lfs-s3-pkg-src = ../packages/lfs-s3;
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
@@ -162,6 +163,7 @@ in
       keystone-src = self;
     };
     chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src { };
+    mermaidtui = final.callPackage mermaidtui-src { };
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;
     };

@@ -14,6 +14,9 @@ in
       # Csview - CSV viewer for terminal
       # https://github.com/wfxr/csview
       csview
+      # MermaidTUI - Mermaid diagram renderer for the terminal
+      # https://github.com/tariqshams/mermaidtui
+      keystone.mermaidtui
     ];
   };
 }

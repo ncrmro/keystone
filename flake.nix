@@ -510,6 +510,7 @@
             chrome-devtools-mcp
             grafana-mcp
             lfs-s3
+            mermaidtui
             deepwork-library-jobs
             keystone-deepwork-jobs
             keystone-conventions
