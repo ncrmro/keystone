@@ -12,6 +12,7 @@
 //! 6. **Done** — Prompt to remove USB and reboot
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
 
@@ -994,29 +995,46 @@ fn build_headless_confirmation_message(
         ));
     }
 
-    lines.push(format!(
-        "This will erase all data on '{}'. Pass --yes to continue.",
-        selected_disk
-    ));
+    lines.push(format!("This will erase all data on '{}'.", selected_disk));
     lines.push(String::new());
     lines.push(format_available_disks(disks, Some(selected_disk)));
     lines.push(String::new());
-    lines.push("Re-run with:".to_string());
-    if disk_was_autoselected {
-        lines.push(format!("  ks install --host {} --yes", host));
-        lines.push("Or choose a different disk explicitly:".to_string());
-        lines.push(format!(
-            "  ks install --host {} --disk <disk-by-id-path> --yes",
-            host
-        ));
-    } else {
-        lines.push(format!(
-            "  ks install --host {} --disk {} --yes",
-            host, selected_disk
+    lines.push(format!(
+        "Type '{}' to confirm installation, or anything else to cancel.",
+        selected_disk
+    ));
+
+    lines.join("\n")
+}
+
+fn confirm_headless_install(
+    host: &str,
+    selected_disk: &str,
+    disk_was_autoselected: bool,
+    disks: &[DiskEntry],
+) -> Result<(), String> {
+    eprintln!(
+        "{}",
+        build_headless_confirmation_message(host, selected_disk, disk_was_autoselected, disks)
+    );
+    eprint!("Confirmation> ");
+    std::io::stderr()
+        .flush()
+        .map_err(|error| format!("Failed to flush confirmation prompt: {}", error))?;
+
+    let mut confirmation = String::new();
+    std::io::stdin()
+        .read_line(&mut confirmation)
+        .map_err(|error| format!("Failed to read confirmation: {}", error))?;
+
+    if confirmation.trim() != selected_disk {
+        return Err(format!(
+            "Install cancelled. Expected '{}' at the confirmation prompt.",
+            selected_disk
         ));
     }
 
-    lines.join("\n")
+    Ok(())
 }
 
 impl InstallScreen {
@@ -1144,13 +1162,9 @@ impl InstallScreen {
     }
 
     /// Run the install headlessly — no TUI. Resolves disk selection using the
-    /// same best-guess policy as the TUI, but requires explicit confirmation
-    /// before destructive actions proceed.
-    pub async fn run_headless(
-        &mut self,
-        disk_path: Option<&str>,
-        confirmed: bool,
-    ) -> Result<(), String> {
+    /// same best-guess policy as the TUI, then requires an explicit
+    /// confirmation prompt before destructive actions proceed.
+    pub async fn run_headless(&mut self, disk_path: Option<&str>) -> Result<(), String> {
         // Phase 1: select host (copies repo, vendors keystone input)
         self.select_host();
         if let InstallPhase::Failed(msg) = &self.phase {
@@ -1188,14 +1202,12 @@ impl InstallScreen {
             eprintln!("Using requested disk: {}", selected_disk);
         }
 
-        if !confirmed {
-            return Err(build_headless_confirmation_message(
-                &self.config.flake_host,
-                &selected_disk,
-                disk_was_autoselected,
-                &self.available_disks,
-            ));
-        }
+        confirm_headless_install(
+            &self.config.flake_host,
+            &selected_disk,
+            disk_was_autoselected,
+            &self.available_disks,
+        )?;
 
         eprintln!(
             "Installing host '{}' headlessly to '{}'...",
@@ -3220,7 +3232,7 @@ mod tests {
 
         assert!(message.contains("No --disk was provided for host 'laptop'."));
         assert!(message.contains("This will erase all data on '/dev/disk/by-id/nvme-best'."));
-        assert!(message.contains("ks install --host laptop --yes"));
+        assert!(message.contains("Type '/dev/disk/by-id/nvme-best' to confirm installation"));
     }
 
     #[test]

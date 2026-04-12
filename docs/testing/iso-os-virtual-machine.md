@@ -180,8 +180,7 @@ This loop takes 2-3 minutes instead of 15+ minutes for a full reinstall.
 
 # SSH in and drive manually:
 ssh -i .test-iso-dev-key -p 12260 keystone@localhost
-ks install --host laptop   # preview disks and best guess
-ks install --host laptop --yes   # accept the best guess and erase it
+ks install --host laptop   # previews disks and asks you to type the target path
 ```
 
 Then use snapshot commands directly to save and restore checkpoints.
@@ -218,15 +217,15 @@ Skip the TUI entirely for automated testing:
 ```bash
 # On the live ISO (via SSH):
 ks install --host laptop
-ks install --host laptop --yes
 # or pin the disk explicitly:
-ks install --host laptop --disk /dev/disk/by-id/virtio-keystone-test-disk --yes
+ks install --host laptop --disk /dev/disk/by-id/virtio-keystone-test-disk
 ```
 
-Without `--yes`, the command prints discovered disks, a best guess, and a
-destructive warning. Passing `--yes` accepts that target. Use `--disk` to
-override the best guess with an explicit `/dev/disk/by-id/...` path. Exit code
-0 means success. The `--e2e` flag in `test-iso` uses this internally.
+The command prints discovered disks, highlights the selected target, and then
+requires you to type the exact `/dev/disk/by-id/...` path before it will erase
+the disk. If `--disk` is omitted, it shows a best guess first. Exit code 0
+means success. The `--e2e` flag in `test-iso` pipes the confirmation string
+into this prompt.
 
 ## Screenshot-based reboot validation
 
@@ -432,10 +431,11 @@ TERM=xterm-256color ks
 
 ### Automated TUI driving
 
-For scripted testing, `ks install --host laptop --yes` is preferred over
-driving the TUI with `expect` or FIFO-based key injection. The headless
-install reuses the same code paths (host selection, disk discovery, disko,
-nixos-install, handoff) without needing a PTY.
+For scripted testing, `ks install --host laptop` is preferred over driving the
+TUI with `expect` or FIFO-based key injection. The headless install reuses the
+same code paths (host selection, disk discovery, disko, nixos-install,
+handoff) without needing a PTY; automation can pipe the selected disk path into
+stdin to satisfy the confirmation prompt.
 
 If TUI-level regression testing is needed (verifying screen rendering,
 navigation, key bindings), use `ks --screenshot <screen>` which renders a

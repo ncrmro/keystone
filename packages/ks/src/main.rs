@@ -92,9 +92,7 @@ async fn main() -> Result<()> {
             Command::Print { args } => run_print_command(args).await,
             Command::Agent(args) => run_agent_command(args).await,
             Command::Doctor(args) => run_doctor_command(args).await,
-            Command::Install(args) => {
-                run_headless_install(&args.host, args.disk.as_deref(), args.yes).await
-            }
+            Command::Install(args) => run_headless_install(&args.host, args.disk.as_deref()).await,
         };
     }
 
@@ -127,8 +125,8 @@ async fn main() -> Result<()> {
 }
 
 /// Run the installer headlessly for a specific host, optionally selecting a
-/// target disk before an explicit destructive confirmation.
-async fn run_headless_install(host: &str, disk: Option<&str>, confirmed: bool) -> Result<()> {
+/// target disk before an explicit destructive confirmation prompt.
+async fn run_headless_install(host: &str, disk: Option<&str>) -> Result<()> {
     use components::install::InstallScreen;
 
     let installer_config = InstallerConfig::detect()?.ok_or_else(|| {
@@ -158,7 +156,7 @@ async fn run_headless_install(host: &str, disk: Option<&str>, confirmed: bool) -
     screen.set_host_index(host_idx);
 
     screen
-        .run_headless(disk, confirmed)
+        .run_headless(disk)
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))
 }
