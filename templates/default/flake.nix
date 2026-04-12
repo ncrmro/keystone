@@ -32,7 +32,7 @@
     }:
     keystone.lib.mkSystemFlake {
       admin = {
-        username = "admin"; # TODO: Change to your login username
+        username = "keystone"; # TODO: Change to your login username
         fullName = "Your Name"; # TODO: Change to your full name
         email = "admin@example.com"; # TODO: Change to your email
         initialPassword = "changeme";
