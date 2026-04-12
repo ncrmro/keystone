@@ -15,7 +15,8 @@ This guide is the shortest reliable path for validating the full Keystone flow:
 
 ## Baseline validation
 
-From `/home/runner/work/keystone/keystone`:
+From the keystone repository root (for GitHub Actions, this is typically
+`$GITHUB_WORKSPACE`, often `/home/runner/work/keystone/keystone`):
 
 ```bash
 nix flake check --no-build
@@ -59,6 +60,7 @@ Expected key checkpoints:
 ## Known blockers and tuning items
 
 1. **Startup lock denial (`yeeten`)** during greetd → uwsm → Hyprland startup.
+   - `yeeten` is hyprlock's session-lock denial path (lock request finished/rejected by compositor).
    - Track `keystone-startup-lock` journal logs and Hyprland debug logs.
    - Validate whether lock dispatch succeeds on cold boot repeatedly.
 2. **LUKS screenshot in headed mode** can be unavailable with virgl (`screendump` no surface).

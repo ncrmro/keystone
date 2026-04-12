@@ -20,8 +20,12 @@ timeout_steps="${KEYSTONE_STARTUP_LOCK_TIMEOUT_STEPS:-50}"
 # NOT extend the per-attempt timeout.
 max_lock_attempts="${KEYSTONE_STARTUP_LOCK_MAX_ATTEMPTS:-6}"
 retry_delay_seconds="${KEYSTONE_STARTUP_LOCK_RETRY_DELAY:-2}"
-session_ready_timeout_steps="${KEYSTONE_STARTUP_LOCK_SESSION_READY_TIMEOUT_STEPS:-120}"
+# Poll monitor availability every 100ms for up to 12s by default:
+# 120 steps × 0.1s = 12s.
+session_ready_max_poll_attempts="${KEYSTONE_STARTUP_LOCK_SESSION_READY_TIMEOUT_STEPS:-120}"
 session_ready_poll_interval_seconds="${KEYSTONE_STARTUP_LOCK_SESSION_READY_POLL_INTERVAL_SECONDS:-0.1}"
+use_hyprctl_dispatch="${KEYSTONE_STARTUP_LOCK_USE_HYPRCTL_DISPATCH:-true}"
+lock_dispatch_timeout_status=2
 
 log() {
   local priority="$1"
@@ -52,14 +56,21 @@ session_lock_prereqs_ready() {
 }
 
 wait_for_session_lock_prereqs() {
-  for _ in $(seq 1 "$session_ready_timeout_steps"); do
+  local i
+  for ((i = 1; i <= session_ready_max_poll_attempts; i++)); do
     if session_lock_prereqs_ready; then
       return 0
     fi
     sleep "$session_ready_poll_interval_seconds"
   done
 
+  log warning "timed out waiting for Hyprland monitor readiness after ${session_ready_max_poll_attempts} polls"
   return 1
+}
+
+can_use_hyprctl_dispatch() {
+  [[ "$use_hyprctl_dispatch" == "true" ]] || return 1
+  command -v hyprctl >/dev/null 2>&1
 }
 
 fail_closed() {
@@ -87,10 +98,18 @@ fail_closed() {
 
 try_lock() {
   local lock_pid=""
+  local used_dispatch=false
 
-  if command -v hyprctl >/dev/null 2>&1 && hyprctl dispatch lockscreen >/dev/null 2>&1; then
+  # dispatch success is advisory only; actual success is lock surface detection.
+  if can_use_hyprctl_dispatch && hyprctl dispatch lockscreen >/dev/null 2>&1; then
+    used_dispatch=true
     log info "requested lockscreen via hyprctl dispatch"
   else
+    if [[ "$use_hyprctl_dispatch" == "true" ]]; then
+      log warning "hyprctl dispatch lockscreen failed; falling back to direct hyprlock"
+    fi
+    # --immediate-render is a best-effort optimization to reduce compositor
+    # startup races where the lock surface appears too late.
     hyprlock --immediate-render >/dev/null 2>&1 &
     lock_pid=$!
   fi
@@ -121,6 +140,13 @@ try_lock() {
   # Timeout — hyprlock is running but never presented a surface.
   if [[ -n "$lock_pid" ]]; then
     kill -TERM "$lock_pid" >/dev/null 2>&1 || true
+  elif [[ "$used_dispatch" == "true" ]]; then
+    # Nothing to kill here: dispatch is compositor-managed and this branch only
+    # happens when no lock surface appeared in time.
+    log warning "hyprctl dispatch did not produce a lock surface before timeout"
+    # Return code 2: dispatch path timed out without a lock surface.
+    # The caller uses this to disable dispatch and fall back to direct hyprlock.
+    return "$lock_dispatch_timeout_status"
   else
     pkill -TERM -x hyprlock >/dev/null 2>&1 || true
   fi
@@ -137,8 +163,16 @@ if ! wait_for_session_lock_prereqs; then
 fi
 
 for attempt in $(seq 1 "$max_lock_attempts"); do
-  if try_lock; then
+  try_lock
+  lock_status=$?
+
+  if [[ "$lock_status" -eq 0 ]]; then
     exit 0
+  fi
+
+  if [[ "$lock_status" -eq "$lock_dispatch_timeout_status" ]]; then
+    use_hyprctl_dispatch=false
+    log warning "falling back to direct hyprlock launch for subsequent attempts"
   fi
 
   if [[ "$attempt" -lt "$max_lock_attempts" ]]; then
