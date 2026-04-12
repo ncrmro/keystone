@@ -254,12 +254,12 @@ ssh_cmd() {
         "${ADMIN_USERNAME}@localhost" "$@"
 }
 
-# Run the headless installer via `ks install --host --disk`.
+# Run the headless installer via `ks install --host --disk --yes`.
 run_e2e_installer() {
     local host="${E2E_HOST:-laptop}"
     log_info "E2E: running headless install for host '$host' on '$E2E_DISK_DEVICE'"
-    if ! ssh_cmd "ks install --host $host --disk $E2E_DISK_DEVICE" 2>&1; then
-        log_error "E2E: ks install --host $host --disk $E2E_DISK_DEVICE failed"
+    if ! ssh_cmd "ks install --host $host --disk $E2E_DISK_DEVICE --yes" 2>&1; then
+        log_error "E2E: ks install --host $host --disk $E2E_DISK_DEVICE --yes failed"
         return 1
     fi
     log_ok "E2E: install completed for host '$host'"

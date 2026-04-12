@@ -150,7 +150,11 @@ pub struct InstallArgs {
 
     /// Target disk to install to (must match a discovered /dev/disk/by-id path).
     #[arg(long)]
-    pub disk: String,
+    pub disk: Option<String>,
+
+    /// Confirm the destructive install after disk selection is resolved.
+    #[arg(long)]
+    pub yes: bool,
 }
 
 #[derive(Args)]
