@@ -76,3 +76,56 @@ Expected key checkpoints:
 - Run one `test-iso --dev --e2e` cycle (headed for desktop screenshot fidelity).
 - Confirm `03-hyprlock` and `04-desktop` are captured and compared.
 - If failures occur after install, re-run with `--no-build` first before rebuilding ISO.
+
+## Agent sandbox limitations — why e2e screenshots cannot be committed automatically
+
+Copilot agents (GitHub Copilot coding agent / Copilot cloud tasks) run in an **ephemeral
+sandboxed container** on Azure-hosted GitHub Actions runners. In this environment:
+
+| Requirement | Status | Reason |
+|-------------|--------|--------|
+| `/dev/kvm` | ✅ Present | Azure runner exposes the device |
+| `virsh` / `libvirt` | ❌ Missing | Not installed in the default image |
+| `qemu-system-x86_64` | ❌ Missing | No QEMU packages installed |
+| GPU / EGL context | ❌ Not applicable | No physical GPU; `egl-headless` requires GPU host |
+| `nix-serve` | ❌ Missing | Not in the image; no binary cache acceleration |
+| `swtpm` (TPM emulator) | ❌ Missing | Required by `bin/virtual-machine` |
+| RAM for nixos-install | ⚠️ Borderline | ~16 GB total; `--memory 12288` may be insufficient with runner overhead |
+| Disk space for ISO build | ✅ ~81 GB free | Sufficient in principle |
+| Git LFS push credentials | ✅ Available via `report_progress` | LFS objects can be pushed if files exist |
+
+**Conclusion**: The agent **cannot** run the e2e VM pipeline and therefore **cannot** capture
+or commit new screenshots to Git LFS. The missing VM runtime (`virsh`, `qemu`,
+`libvirt`, `swtpm`) is the primary blocker.
+
+### What the agent can do
+
+- Make and validate module/script changes (`nix flake check` passes in the sandbox).
+- Review and update documentation.
+- Stage screenshot baseline infrastructure (create directories, `.gitattributes`, etc.)
+  so a human or a dedicated GPU runner can populate them on first run.
+
+### How to generate and commit baseline screenshots
+
+Run the e2e pipeline on a machine that has libvirt + QEMU installed (Linux with KVM):
+
+```bash
+# From the template consumer repo (fixture directory):
+./bin/test-iso --dev --headless --e2e --port 12260 --memory 12288
+
+# On first run there are no baselines — test-iso saves captures to:
+#   templates/default/tests/e2e/screenshots/
+# Commit them:
+git add templates/default/tests/e2e/screenshots/
+git commit -m "test(e2e): add initial screenshot baselines"
+git push
+```
+
+Subsequent runs compare byte-for-byte against the committed LFS pointers.
+On mismatch the run fails and reports both SHA-256 values.
+
+### CI path (GitHub Actions)
+
+A self-hosted runner with libvirt + KVM would be able to run the full pipeline.
+Standard GitHub-hosted runners lack QEMU and the VM management stack.
+Track this in issue #339 alongside the broader VM tooling consolidation.
