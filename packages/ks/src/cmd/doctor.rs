@@ -376,11 +376,7 @@ fn gather_agent_tasks() -> String {
     for agent in agents {
         let yaml = Command::new("agentctl")
             .arg(&agent)
-            .args([
-                "exec",
-                "cat",
-                &format!("/home/agent-{agent}/TASKS.yaml"),
-            ])
+            .args(["exec", "cat", &format!("/home/agent-{agent}/TASKS.yaml")])
             .output()
             .ok()
             .filter(|output| output.status.success())

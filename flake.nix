@@ -478,6 +478,12 @@
           agent-task-loop-ping-pong = import ./tests/module/agent-task-loop-ping-pong.nix {
             inherit pkgs lib;
           };
+          agent-runtime-coherence = import ./tests/module/agent-runtime-coherence.nix {
+            inherit pkgs lib;
+          };
+          agent-queue-migration = import ./tests/module/agent-queue-migration.nix {
+            inherit pkgs lib;
+          };
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)
