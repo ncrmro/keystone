@@ -11,8 +11,8 @@ The task loop orchestrator has read the next pending task from TASKS.yaml and pa
 ### Process
 
 1. **Read current state**
-   - Read TASKS.yaml from the repo root
-   - Read ISSUES.yaml from the repo root (create with `issues: []` if missing)
+   - Read TASKS.yaml from the working directory
+   - Read ISSUES.yaml from the working directory (create with `issues: []` if missing)
    - Locate the specified task by name
 
 2. **Update status to in_progress**
@@ -24,7 +24,7 @@ The task loop orchestrator has read the next pending task from TASKS.yaml and pa
    - If clearly blocked (e.g., a required service is unreachable, a dependency isn't installed), skip to step 5
 
 4. **Read tool conventions** (before any external tool use)
-   - Read AGENTS.md and CLAUDE.md at the repo root
+   - Read AGENTS.md and CLAUDE.md in the working directory
    - These contain required conventions for tools like himalaya, git, etc.
    - You MUST follow these conventions exactly — incorrect usage can cause commands to hang or fail silently in this automated (non-TTY) environment
 

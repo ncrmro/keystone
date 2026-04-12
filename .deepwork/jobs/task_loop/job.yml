@@ -68,17 +68,17 @@ workflows:
   ingest:
     summary: "Parse pre-fetched source JSON and create/update tasks in TASKS.yaml"
     common_job_info_provided_to_all_steps_at_runtime: |
-      TASKS.yaml at the repo root tracks work items with fields: name, description, status,
+      TASKS.yaml in the working directory tracks work items with fields: name, description, status,
       project, source, source_ref, model, workflow, needs. Status values: pending, in_progress, completed, blocked.
       Tasks with a workflow field should invoke that DeepWork workflow instead of interpreting the description freely.
       Tasks with a needs field (array of task names) MUST NOT execute until all named tasks are completed.
 
-      PROJECTS.yaml at the repo root defines active projects (listed in priority order, first = highest)
+      PROJECTS.yaml in the working directory defines active projects (listed in priority order, first = highest)
       and declarative source commands that output JSON.
 
-      ISSUES.yaml at the repo root documents blockers discovered during task execution.
+      ISSUES.yaml in the working directory documents blockers discovered during task execution.
 
-      CLAUDE.md and AGENTS.md at the repo root contain REQUIRED tool-specific conventions.
+      CLAUDE.md and AGENTS.md in the working directory contain REQUIRED tool-specific conventions.
       You MUST read these before using any external tool. Failure to follow conventions
       (e.g., using wrong himalaya subcommand) can cause commands to hang in automated contexts.
 
@@ -106,12 +106,12 @@ workflows:
           ### Process
 
           1. **Read the current state**
-             - Read TASKS.yaml from the repo root
-             - Read PROJECTS.yaml from the repo root to understand project associations
+             - Read TASKS.yaml from the working directory
+             - Read PROJECTS.yaml from the working directory to understand project associations
              - If TASKS.yaml does not exist, create it with `tasks: []`
 
           2. **Parse the source JSON**
-             - Read the source JSON from `.deepwork/sources.json` in the repo root (written by the task loop orchestrator before invoking this workflow)
+             - Read the source JSON from `.deepwork/sources.json` in the working directory (written by the task loop orchestrator before invoking this workflow)
              - If the file is missing or empty, report zero items ingested and finish
              - Each source section is labeled with its source name (e.g., "email", "github-issues")
              - Email source JSON includes envelope metadata AND a `body` field with full message text
@@ -277,17 +277,17 @@ workflows:
   prioritize:
     summary: "Order pending tasks by project priority from PROJECTS.yaml"
     common_job_info_provided_to_all_steps_at_runtime: |
-      TASKS.yaml at the repo root tracks work items with fields: name, description, status,
+      TASKS.yaml in the working directory tracks work items with fields: name, description, status,
       project, source, source_ref, model, workflow, needs. Status values: pending, in_progress, completed, blocked.
       Tasks with a workflow field should invoke that DeepWork workflow instead of interpreting the description freely.
       Tasks with a needs field (array of task names) MUST NOT execute until all named tasks are completed.
 
-      PROJECTS.yaml at the repo root defines active projects (listed in priority order, first = highest)
+      PROJECTS.yaml in the working directory defines active projects (listed in priority order, first = highest)
       and declarative source commands that output JSON.
 
-      ISSUES.yaml at the repo root documents blockers discovered during task execution.
+      ISSUES.yaml in the working directory documents blockers discovered during task execution.
 
-      CLAUDE.md and AGENTS.md at the repo root contain REQUIRED tool-specific conventions.
+      CLAUDE.md and AGENTS.md in the working directory contain REQUIRED tool-specific conventions.
       You MUST read these before using any external tool. Failure to follow conventions
       (e.g., using wrong himalaya subcommand) can cause commands to hang in automated contexts.
 
@@ -315,8 +315,8 @@ workflows:
           ### Process
 
           1. **Read both files**
-             - Read TASKS.yaml from the repo root
-             - Read PROJECTS.yaml from the repo root
+             - Read TASKS.yaml from the working directory
+             - Read PROJECTS.yaml from the working directory
              - Extract the project priority order from PROJECTS.yaml (list position = priority rank)
 
           2. **Categorize tasks**
@@ -447,17 +447,17 @@ workflows:
   run:
     summary: "Execute a single pending task"
     common_job_info_provided_to_all_steps_at_runtime: |
-      TASKS.yaml at the repo root tracks work items with fields: name, description, status,
+      TASKS.yaml in the working directory tracks work items with fields: name, description, status,
       project, source, source_ref, model, workflow, needs. Status values: pending, in_progress, completed, blocked.
       Tasks with a workflow field should invoke that DeepWork workflow instead of interpreting the description freely.
       Tasks with a needs field (array of task names) MUST NOT execute until all named tasks are completed.
 
-      PROJECTS.yaml at the repo root defines active projects (listed in priority order, first = highest)
+      PROJECTS.yaml in the working directory defines active projects (listed in priority order, first = highest)
       and declarative source commands that output JSON.
 
-      ISSUES.yaml at the repo root documents blockers discovered during task execution.
+      ISSUES.yaml in the working directory documents blockers discovered during task execution.
 
-      CLAUDE.md and AGENTS.md at the repo root contain REQUIRED tool-specific conventions.
+      CLAUDE.md and AGENTS.md in the working directory contain REQUIRED tool-specific conventions.
       You MUST read these before using any external tool. Failure to follow conventions
       (e.g., using wrong himalaya subcommand) can cause commands to hang in automated contexts.
 
@@ -485,8 +485,8 @@ workflows:
           ### Process
 
           1. **Read current state**
-             - Read TASKS.yaml from the repo root
-             - Read ISSUES.yaml from the repo root (create with `issues: []` if missing)
+             - Read TASKS.yaml from the working directory
+             - Read ISSUES.yaml from the working directory (create with `issues: []` if missing)
              - Locate the specified task by name
 
           2. **Update status to in_progress**
@@ -498,7 +498,7 @@ workflows:
              - If clearly blocked (e.g., a required service is unreachable, a dependency isn't installed), skip to step 5
 
           4. **Read tool conventions** (before any external tool use)
-             - Read AGENTS.md and CLAUDE.md at the repo root
+             - Read AGENTS.md and CLAUDE.md in the working directory
              - These contain required conventions for tools like himalaya, git, etc.
              - You MUST follow these conventions exactly — incorrect usage can cause commands to hang or fail silently in this automated (non-TTY) environment
 
@@ -618,8 +618,8 @@ workflows:
           ### Process
 
           1. **Read the updated files**
-             - Read TASKS.yaml from the repo root
-             - Read ISSUES.yaml from the repo root
+             - Read TASKS.yaml from the working directory
+             - Read ISSUES.yaml from the working directory
              - Identify the task that was just processed (it should be the one with status `completed` or `blocked` that was most recently changed)
 
           2. **Write the report**

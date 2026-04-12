@@ -11,12 +11,12 @@ The task loop orchestrator has already run declarative shell commands to fetch s
 ### Process
 
 1. **Read the current state**
-   - Read TASKS.yaml from the repo root
-   - Read PROJECTS.yaml from the repo root to understand project associations
+   - Read TASKS.yaml from the working directory
+   - Read PROJECTS.yaml from the working directory to understand project associations
    - If TASKS.yaml does not exist, create it with `tasks: []`
 
 2. **Parse the source JSON**
-   - Read the source JSON from `.deepwork/sources.json` in the repo root (written by the task loop orchestrator before invoking this workflow)
+   - Read the source JSON from `.deepwork/sources.json` in the working directory (written by the task loop orchestrator before invoking this workflow)
    - If the file is missing or empty, report zero items ingested and finish
    - Each source section is labeled with its source name (e.g., "email", "github-issues")
    - Email source JSON includes envelope metadata AND a `body` field with full message text

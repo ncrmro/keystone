@@ -379,7 +379,7 @@ fn gather_agent_tasks() -> String {
             .args([
                 "exec",
                 "cat",
-                &format!("/home/agent-{agent}/notes/TASKS.yaml"),
+                &format!("/home/agent-{agent}/TASKS.yaml"),
             ])
             .output()
             .ok()
