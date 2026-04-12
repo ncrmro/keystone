@@ -12,8 +12,28 @@ NixOS-level options.
 Zsh + oh-my-zsh (robbyrussell), starship, zoxide, direnv+nix-direnv, zellij.
 
 Shell aliases and zellij keybinds are defined here. When adding keybinds, check for
-conflicts with Claude Code (`Ctrl+G`) and lazygit (`Ctrl+O`) — those are unbound
-intentionally.
+conflicts with inner applications — see the cross-reference table below.
+
+### Ctrl-key cross-reference table
+
+| Key           | Zellij (outer)            | Claude Code (inner) | Other        | Resolution                          |
+| ------------- | ------------------------- | ------------------- | ------------ | ----------------------------------- |
+| `Ctrl+B`      | ~~Tmux mode~~ → unbound   | Background tasks    | —            | Unbound in Zellij; rebind: `Ctrl+Shift+B` |
+| `Ctrl+G`      | ~~Lock mode~~ → unbound   | Open in editor      | —            | Unbound in Zellij; rebind: `Ctrl+Shift+G` |
+| `Ctrl+O`      | ~~Session mode~~ → unbound| Toggle transcript   | lazygit      | Unbound in Zellij; rebind: `Ctrl+Shift+O` |
+| `Ctrl+T`      | New tab prompt            | Toggle task list    | —            | Zellij intercepts; Claude Code uses it inside pane |
+| `Ctrl+W`      | Close tab                 | —                   | —            | Zellij intercepts                   |
+| `Ctrl+R`      | —                         | Reverse history     | zsh          | Passed through                      |
+| `Ctrl+L`      | —                         | Clear prompt        | zsh          | Passed through                      |
+| `Ctrl+,`      | Previous tab              | —                   | —            | Zellij intercepts                   |
+| `Ctrl+.`      | Next tab                  | —                   | —            | Zellij intercepts                   |
+| `Ctrl+Shift+B`| Tmux mode (rebound)       | —                   | —            | Rebound from `Ctrl+B`               |
+| `Ctrl+Shift+G`| Lock mode (rebound)       | —                   | —            | Rebound from `Ctrl+G`               |
+| `Ctrl+Shift+O`| Session mode (rebound)    | —                   | —            | Rebound from `Ctrl+O`               |
+
+**Rule**: when Zellij's default binding conflicts with a Claude Code or inner-application
+binding, unbind in Zellij `normal` mode (and `scroll`/`search` where the same key also
+has a default) and rebind to `Ctrl+Shift+<key>` to preserve the Zellij feature.
 
 ## Editor (`editor.nix`)
 

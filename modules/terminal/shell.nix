@@ -136,6 +136,20 @@ in
               "bind \"Ctrl Shift o\"" = {
                 SwitchToMode = "session";
               };
+              # Unbind default Ctrl+B (conflict with Claude Code background tasks)
+              "unbind \"Ctrl b\"" = [ ];
+              # Tmux mode: Ctrl+Shift+B
+              "bind \"Ctrl Shift b\"" = {
+                SwitchToMode = "tmux";
+              };
+            };
+            scroll = {
+              # Unbind default Ctrl+B (PageScrollUp) to avoid conflict with Claude Code
+              "unbind \"Ctrl b\"" = [ ];
+            };
+            search = {
+              # Unbind default Ctrl+B (PageScrollUp) to avoid conflict with Claude Code
+              "unbind \"Ctrl b\"" = [ ];
             };
           };
         };
