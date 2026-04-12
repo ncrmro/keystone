@@ -29,6 +29,7 @@
 #   8070 | miniflux     |
 #   8080 | headscale    |
 #   8082 | mail         | Stalwart admin
+#   8083 | zulip        | Team chat
 #   8199 | attic        | Binary cache
 #   8222 | vaultwarden  |
 #   8333 | seaweedfs    | S3-compatible API (proxied); 8880/8888/9333 internal
@@ -78,6 +79,7 @@ in
     ./services/adguard.nix
     ./services/seaweedfs.nix
     ./services/journal-remote.nix
+    ./services/zulip.nix
 
     # Headscale DNS integration
     ./headscale/dns-import.nix
