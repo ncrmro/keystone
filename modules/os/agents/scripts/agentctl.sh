@@ -524,9 +524,12 @@ case "$CMD" in
     fi
     BUILD_IDENTITY=$(cat "$AGENT_IDENTITY_FILE")
     # Probe runtime identity input existence
-    SOUL_EXISTS=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec test -f "$NOTES_DIR/SOUL.md" 2>/dev/null && echo true || echo false)
-    TEAM_EXISTS=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec test -f "$NOTES_DIR/TEAM.md" 2>/dev/null && echo true || echo false)
-    SERVICES_EXISTS=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec test -f "$NOTES_DIR/SERVICES.md" 2>/dev/null && echo true || echo false)
+    probe_identity_file() {
+      sudo -u "agent-${AGENT_NAME}" "$HELPER" exec test -f "$NOTES_DIR/$1" 2>/dev/null && echo true || echo false
+    }
+    SOUL_EXISTS=$(probe_identity_file "SOUL.md")
+    TEAM_EXISTS=$(probe_identity_file "TEAM.md")
+    SERVICES_EXISTS=$(probe_identity_file "SERVICES.md")
     # Merge build-time identity with runtime probe results
     printf '%s\n' "$BUILD_IDENTITY" | jq \
       --argjson soul "$SOUL_EXISTS" \
