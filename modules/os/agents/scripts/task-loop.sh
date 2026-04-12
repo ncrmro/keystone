@@ -530,13 +530,35 @@ if [[ "$(echo "$SOURCES_JSON" | jq '[.[].data | length] | add // 0')" -gt 0 ]]; 
     fi
 
     if ! yq '.' TASKS.yaml >/dev/null 2>&1; then
-      log "  ERROR: TASKS.yaml corrupted during ingest. Reverting from backup..."
+      log "  ERROR: TASKS.yaml corrupted during ingest. Pausing task loop."
       if [[ -f "$STATE_DIR/TASKS.yaml.pre-ingest" ]]; then
         cp "$STATE_DIR/TASKS.yaml.pre-ingest" TASKS.yaml
+      else
+        printf 'tasks: []\n' > TASKS.yaml
       fi
+      # Document corruption in ISSUES.yaml
+      if [[ ! -f ISSUES.yaml ]]; then
+        printf 'issues: []\n' > ISSUES.yaml
+      fi
+      CORRUPT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      yq -i ".issues += [{
+        \"name\": \"tasks-yaml-corrupted-ingest-${TIMESTAMP}\",
+        \"description\": \"TASKS.yaml was corrupted during the ingest stage and restored from backup.\",
+        \"discovered_during\": \"task-loop-ingest\",
+        \"status\": \"open\",
+        \"created_at\": \"$CORRUPT_TS\"
+      }]" ISSUES.yaml
+      # Pause the task loop so an operator investigates
+      mkdir -p "$(dirname "$PAUSE_FILE")"
+      {
+        printf "paused_at=%s\n" "$CORRUPT_TS"
+        printf "paused_by=task-loop\n"
+        printf "reason=TASKS.yaml corrupted during ingest stage\n"
+      } > "$PAUSE_FILE"
       INGEST_RAN=false
+      RUN_STATUS="error"
     fi
-    emit_event "stage_finish" "Finished ingest stage" "stage_name" "ingest" "status" "ok"
+    emit_event "stage_finish" "Finished ingest stage" "stage_name" "ingest" "status" "$(if [[ "$RUN_STATUS" == "error" ]]; then printf 'error'; else printf 'ok'; fi)"
   fi
 else
   log "  No source data to ingest, skipping"
@@ -588,10 +610,32 @@ else
       log "  WARNING: Prioritize step failed, continuing..."
     else
       if ! yq '.' TASKS.yaml >/dev/null 2>&1; then
-        log "  ERROR: TASKS.yaml corrupted during prioritize. Reverting from backup..."
+        log "  ERROR: TASKS.yaml corrupted during prioritize. Pausing task loop."
         if [[ -f "$STATE_DIR/TASKS.yaml.pre-prioritize" ]]; then
           cp "$STATE_DIR/TASKS.yaml.pre-prioritize" TASKS.yaml
+        else
+          printf 'tasks: []\n' > TASKS.yaml
         fi
+        # Document corruption in ISSUES.yaml
+        if [[ ! -f ISSUES.yaml ]]; then
+          printf 'issues: []\n' > ISSUES.yaml
+        fi
+        CORRUPT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        yq -i ".issues += [{
+          \"name\": \"tasks-yaml-corrupted-prioritize-${TIMESTAMP}\",
+          \"description\": \"TASKS.yaml was corrupted during the prioritize stage and restored from backup.\",
+          \"discovered_during\": \"task-loop-prioritize\",
+          \"status\": \"open\",
+          \"created_at\": \"$CORRUPT_TS\"
+        }]" ISSUES.yaml
+        # Pause the task loop so an operator investigates
+        mkdir -p "$(dirname "$PAUSE_FILE")"
+        {
+          printf "paused_at=%s\n" "$CORRUPT_TS"
+          printf "paused_by=task-loop\n"
+          printf "reason=TASKS.yaml corrupted during prioritize stage\n"
+        } > "$PAUSE_FILE"
+        RUN_STATUS="error"
       else
         echo -n "$CURRENT_HASH" > "$PRIORITIZE_HASH_FILE"
       fi
