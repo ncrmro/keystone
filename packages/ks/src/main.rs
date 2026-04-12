@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
             Command::Print { args } => run_print_command(args).await,
             Command::Agent(args) => run_agent_command(args).await,
             Command::Doctor(args) => run_doctor_command(args).await,
-            Command::Install(args) => run_headless_install(&args.host).await,
+            Command::Install(args) => run_headless_install(&args.host, &args.disk).await,
         };
     }
 
@@ -124,9 +124,8 @@ async fn main() -> Result<()> {
     result
 }
 
-/// Run the installer headlessly for a specific host, streaming output to stderr.
-/// No TUI — auto-selects the first available disk.
-async fn run_headless_install(host: &str) -> Result<()> {
+/// Run the installer headlessly for a specific host and target disk, streaming output to stderr.
+async fn run_headless_install(host: &str, disk: &str) -> Result<()> {
     use components::install::InstallScreen;
 
     let installer_config = InstallerConfig::detect()?.ok_or_else(|| {
@@ -150,13 +149,13 @@ async fn run_headless_install(host: &str) -> Result<()> {
             )
         })?;
 
-    eprintln!("Installing host '{}' headlessly...", host);
+    eprintln!("Installing host '{}' headlessly to '{}'...", host, disk);
 
     let mut screen = InstallScreen::new(installer_config);
     screen.set_host_index(host_idx);
 
     screen
-        .run_headless()
+        .run_headless(disk)
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))
 }

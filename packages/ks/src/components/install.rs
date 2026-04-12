@@ -1042,9 +1042,31 @@ impl InstallScreen {
         self.selected_host_index = index;
     }
 
-    /// Run the install headlessly — no TUI.  Selects the pre-set host and
-    /// first available disk, then streams output to stdout.
-    pub async fn run_headless(&mut self) -> Result<(), String> {
+    fn set_disk_by_path(&mut self, disk_path: &str) -> Result<(), String> {
+        let Some(index) = self
+            .available_disks
+            .iter()
+            .position(|disk| disk.by_id_path == disk_path)
+        else {
+            let available = self
+                .available_disks
+                .iter()
+                .map(|disk| disk.by_id_path.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!(
+                "Requested disk '{}' was not found. Available: {}",
+                disk_path, available
+            ));
+        };
+
+        self.selected_disk_index = index;
+        Ok(())
+    }
+
+    /// Run the install headlessly — no TUI. Selects the pre-set host and a
+    /// caller-provided disk, then streams output to stdout.
+    pub async fn run_headless(&mut self, disk_path: &str) -> Result<(), String> {
         // Phase 1: select host (copies repo, vendors keystone input)
         self.select_host();
         if let InstallPhase::Failed(msg) = &self.phase {
@@ -1059,12 +1081,13 @@ impl InstallScreen {
         if disks.is_empty() {
             return Err("No disks found".to_string());
         }
+        self.available_disks = disks;
+        self.set_disk_by_path(disk_path)?;
         eprintln!(
             "Found {} disk(s), selecting: {}",
-            disks.len(),
-            disks[0].by_id_path
+            self.available_disks.len(),
+            self.available_disks[self.selected_disk_index].by_id_path
         );
-        self.available_disks = disks;
         self.phase = InstallPhase::DiskSelection;
         self.select_disk();
         if let InstallPhase::Failed(msg) = &self.phase {
@@ -3000,6 +3023,50 @@ mod tests {
 
         screen.poll();
         assert_eq!(screen.selected_disk_index(), 1);
+    }
+
+    #[test]
+    fn test_set_disk_by_path_selects_requested_disk() {
+        let mut screen = InstallScreen::new(test_config_no_disk());
+        screen.available_disks = vec![
+            DiskEntry {
+                by_id_path: "/dev/disk/by-id/ata-other".to_string(),
+                model: "Other Disk".to_string(),
+                size: "1T".to_string(),
+                transport: "sata".to_string(),
+            },
+            DiskEntry {
+                by_id_path: "/dev/disk/by-id/virtio-keystone-test-disk".to_string(),
+                model: "Fixture Disk".to_string(),
+                size: "64G".to_string(),
+                transport: "virtio".to_string(),
+            },
+        ];
+
+        screen
+            .set_disk_by_path("/dev/disk/by-id/virtio-keystone-test-disk")
+            .unwrap();
+
+        assert_eq!(screen.selected_disk_index(), 1);
+    }
+
+    #[test]
+    fn test_set_disk_by_path_errors_when_requested_disk_missing() {
+        let mut screen = InstallScreen::new(test_config_no_disk());
+        screen.available_disks = vec![DiskEntry {
+            by_id_path: "/dev/disk/by-id/ata-other".to_string(),
+            model: "Other Disk".to_string(),
+            size: "1T".to_string(),
+            transport: "sata".to_string(),
+        }];
+
+        let error = screen
+            .set_disk_by_path("/dev/disk/by-id/virtio-keystone-test-disk")
+            .unwrap_err();
+
+        assert!(error
+            .contains("Requested disk '/dev/disk/by-id/virtio-keystone-test-disk' was not found."));
+        assert!(error.contains("/dev/disk/by-id/ata-other"));
     }
 
     #[test]
