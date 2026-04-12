@@ -125,6 +125,17 @@ let
           )
         else
           "[]";
+      # REQ-030: Resolved agent identity model JSON
+      dragoIdentityJson =
+        if result.config.keystone.os.agents ? drago then
+          builtins.toJSON result.config.keystone.os.agents.drago.resolvedIdentity
+        else
+          "{}";
+      luceIdentityJson =
+        if result.config.keystone.os.agents ? luce then
+          builtins.toJSON result.config.keystone.os.agents.luce.resolvedIdentity
+        else
+          "{}";
     in
     pkgs.runCommand "eval-${name}" { } ''
       echo "Evaluating ${name}..."
@@ -278,6 +289,107 @@ let
         fi
       fi
 
+      # REQ-030: Verify resolved agent identity model
+      if [ "${name}" = "agent-identity-resolution" ]; then
+        echo "Verifying resolved agent identity model (REQ-030)..."
+        # Drago: engineer archetype
+        if echo '${dragoIdentityJson}' | grep -q '"archetype":"engineer"'; then
+          echo "  ✓ Drago identity has engineer archetype"
+        else
+          echo "  ✗ Drago identity missing engineer archetype"
+          echo "  Actual: ${dragoIdentityJson}"
+          exit 1
+        fi
+        if echo '${dragoIdentityJson}' | grep -q '"fullName":"Drago"'; then
+          echo "  ✓ Drago identity has correct fullName"
+        else
+          echo "  ✗ Drago identity missing correct fullName"
+          echo "  Actual: ${dragoIdentityJson}"
+          exit 1
+        fi
+        if echo '${dragoIdentityJson}' | grep -q '"email":"drago@example.com"'; then
+          echo "  ✓ Drago identity has correct email"
+        else
+          echo "  ✗ Drago identity missing correct email"
+          echo "  Actual: ${dragoIdentityJson}"
+          exit 1
+        fi
+        if echo '${dragoIdentityJson}' | grep -q '"soul":"/home/agent-drago/notes/SOUL.md"'; then
+          echo "  ✓ Drago identity has correct SOUL.md path"
+        else
+          echo "  ✗ Drago identity missing correct SOUL.md path"
+          echo "  Actual: ${dragoIdentityJson}"
+          exit 1
+        fi
+        if echo '${dragoIdentityJson}' | grep -q '"team":"/home/agent-drago/notes/TEAM.md"'; then
+          echo "  ✓ Drago identity has correct TEAM.md path"
+        else
+          echo "  ✗ Drago identity missing correct TEAM.md path"
+          echo "  Actual: ${dragoIdentityJson}"
+          exit 1
+        fi
+        if echo '${dragoIdentityJson}' | grep -q '"services":"/home/agent-drago/notes/SERVICES.md"'; then
+          echo "  ✓ Drago identity has correct SERVICES.md path"
+        else
+          echo "  ✗ Drago identity missing correct SERVICES.md path"
+          echo "  Actual: ${dragoIdentityJson}"
+          exit 1
+        fi
+        # Verify tool surfaces are present
+        if echo '${dragoIdentityJson}' | grep -q '"claude":"~/.claude/CLAUDE.md"'; then
+          echo "  ✓ Drago identity has Claude tool surface"
+        else
+          echo "  ✗ Drago identity missing Claude tool surface"
+          echo "  Actual: ${dragoIdentityJson}"
+          exit 1
+        fi
+        if echo '${dragoIdentityJson}' | grep -q '"canonical":"~/.keystone/AGENTS.md"'; then
+          echo "  ✓ Drago identity has canonical tool surface"
+        else
+          echo "  ✗ Drago identity missing canonical tool surface"
+          echo "  Actual: ${dragoIdentityJson}"
+          exit 1
+        fi
+        # Luce: product archetype
+        if echo '${luceIdentityJson}' | grep -q '"archetype":"product"'; then
+          echo "  ✓ Luce identity has product archetype"
+        else
+          echo "  ✗ Luce identity missing product archetype"
+          echo "  Actual: ${luceIdentityJson}"
+          exit 1
+        fi
+        if echo '${luceIdentityJson}' | grep -q '"fullName":"Luce"'; then
+          echo "  ✓ Luce identity has correct fullName"
+        else
+          echo "  ✗ Luce identity missing correct fullName"
+          echo "  Actual: ${luceIdentityJson}"
+          exit 1
+        fi
+        if echo '${luceIdentityJson}' | grep -q '"soul":"/home/agent-luce/notes/SOUL.md"'; then
+          echo "  ✓ Luce identity has correct SOUL.md path"
+        else
+          echo "  ✗ Luce identity missing correct SOUL.md path"
+          echo "  Actual: ${luceIdentityJson}"
+          exit 1
+        fi
+        # Cross-tool parity: both agents have the same tool surface paths
+        if echo '${dragoIdentityJson}' | grep -q '"gemini":"~/.gemini/GEMINI.md"' && echo '${luceIdentityJson}' | grep -q '"gemini":"~/.gemini/GEMINI.md"'; then
+          echo "  ✓ Both agents have consistent Gemini tool surface path"
+        else
+          echo "  ✗ Tool surface path mismatch between agents"
+          echo "  Drago: ${dragoIdentityJson}"
+          echo "  Luce: ${luceIdentityJson}"
+          exit 1
+        fi
+        if echo '${dragoIdentityJson}' | grep -q '"codex":"~/.codex/AGENTS.md"' && echo '${luceIdentityJson}' | grep -q '"codex":"~/.codex/AGENTS.md"'; then
+          echo "  ✓ Both agents have consistent Codex tool surface path"
+        else
+          echo "  ✗ Tool surface path mismatch between agents"
+          exit 1
+        fi
+        echo "  ✓ All resolved identity checks passed"
+      fi
+
       if [ "${name}" = "user-screenshot-sync" ]; then
         if echo '${userServicesJson}' | grep -q '"keystone-testuser-screenshot-sync"'; then
           echo "  ✓ Found desktop user screenshot sync service"
@@ -418,6 +530,45 @@ let
               "notes"
               "executive-assistant"
             ];
+            notes.repo = "git@example.com:luce/notes.git";
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # REQ-030: Resolved agent identity model — cross-tool parity validation
+    agent-identity-resolution = eval "agent-identity-resolution" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.drago = {
+            fullName = "Drago";
+            email = "drago@example.com";
+            archetype = "engineer";
+            capabilities = [
+              "engineer"
+              "notes"
+            ];
+            host = "test-host";
+            notes.repo = "git@example.com:drago/notes.git";
+          };
+          agents.luce = {
+            fullName = "Luce";
+            email = "luce@example.com";
+            archetype = "product";
+            capabilities = [
+              "notes"
+              "executive-assistant"
+            ];
+            host = "test-host";
             notes.repo = "git@example.com:luce/notes.git";
           };
         };

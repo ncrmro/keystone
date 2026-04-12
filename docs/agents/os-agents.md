@@ -142,6 +142,37 @@ Each agent has:
 - **TEAM.md** — Full roster of humans and agents with roles and handles
 - **SERVICES.md** — Intranet services (Git, Mail, Grafana, Vaultwarden)
 
+### Resolved Agent Identity Model
+
+Each named agent produces a **resolved identity** that composes all build-time and runtime inputs into one inspectable model (REQ-030). This ensures that selecting the same agent across different CLI tools always loads the same effective identity.
+
+**Build-time inputs** (resolved at NixOS evaluation):
+
+- Agent name, `fullName`, `email`, `host`
+- `archetype` — determines inlined/referenced conventions from `archetypes.yaml`
+- `capabilities` — merged from archetype defaults and explicit overrides
+- `notesPath` — where SOUL.md, TEAM.md, SERVICES.md are expected
+- `toolSurfaces` — paths to all generated instruction files (CLAUDE.md, GEMINI.md, etc.)
+- GitHub and Forgejo usernames
+
+**Runtime inputs** (loaded at session start):
+
+- SOUL.md, TEAM.md, SERVICES.md content from the agent's notes directory
+- Launcher state preferences (provider, model overrides)
+- Project-specific AGENTS.md context
+
+**Introspection:**
+
+```bash
+agentctl drago identity    # Print the resolved identity as JSON
+```
+
+The resolved identity is also available as a NixOS read-only option:
+
+```nix
+config.keystone.os.agents.drago.resolvedIdentity
+```
+
 ## Agent Space (Workspace Cloning)
 
 The `notes.repo` option clones a git repository into `/home/agent-{name}/notes/` on first boot.
