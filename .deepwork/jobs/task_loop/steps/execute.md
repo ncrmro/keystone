@@ -11,8 +11,8 @@ The task loop orchestrator has read the next pending task from TASKS.yaml and pa
 ### Process
 
 1. **Read current state**
-   - Read TASKS.yaml from the repo root
-   - Read ISSUES.yaml from the repo root (create with `issues: []` if missing)
+   - Read TASKS.yaml from the working directory
+   - Read ISSUES.yaml from the working directory (create with `issues: []` if missing)
    - Locate the specified task by name
 
 2. **Update status to in_progress**
@@ -21,28 +21,23 @@ The task loop orchestrator has read the next pending task from TASKS.yaml and pa
 3. **Assess feasibility**
    - Before committing to execution, verify the task is doable
    - Check that required tools, services, or files are available
-   - If clearly blocked (e.g., a required service is unreachable, a dependency isn't installed), skip to step 5
+   - If clearly blocked (e.g., a required service is unreachable, a dependency isn't installed), skip to step 4
 
-4. **Read tool conventions** (before any external tool use)
-   - Read AGENTS.md and CLAUDE.md at the repo root
-   - These contain required conventions for tools like himalaya, git, etc.
-   - You MUST follow these conventions exactly — incorrect usage can cause commands to hang or fail silently in this automated (non-TTY) environment
-
-5. **Perform the work**
+4. **Perform the work**
    - If the task has a `workflow` field, invoke that DeepWork workflow using `/deepwork {workflow}` instead of interpreting the task description freely. Pass the task description as the goal.
    - Otherwise, read the task description and execute the work it describes
    - This may involve: writing code, running commands, researching topics, configuring systems, editing files, sending emails, interacting with APIs, browser automation, or any other operational task
    - For browser UI tasks (signing into websites, filling forms, clicking through web flows): use the chrome-devtools MCP tools (`mcp__chrome-devtools__*`) to navigate, click, fill, and take screenshots. These are NOT the same as CLI commands — do not confuse browser sign-in with CLI auth tools like `gh auth login`.
    - Use available tools (Bash, Read, Write, Edit, WebSearch, chrome-devtools MCP, etc.) as appropriate
 
-6. **Verify the work was done**
+5. **Verify the work was done**
    - Before marking any task as completed, confirm you actually performed the work
    - You MUST be able to cite concrete evidence: commands you ran and their output, files you created or modified, responses you received, repos you cloned, etc.
    - "Completed" means the work described in the task description has been fully performed and the result is observable in the system (a file exists, an email was sent, a repo was cloned, etc.)
-   - If you cannot point to a specific action you took and its result, you have NOT completed the task -- go back to step 5
+   - If you cannot point to a specific action you took and its result, you have NOT completed the task -- go back to step 4
    - NEVER mark a task as completed just because you read or understood the description
 
-7. **Handle the outcome**
+6. **Handle the outcome**
 
    **If the task completes successfully:**
    - Update the task's status to `completed` in TASKS.yaml

@@ -152,7 +152,7 @@ Secrets:
   - A capable model for execute (default: sonnet), overridable per-task via the `model` field
 - Each task in `TASKS.yaml` MAY specify a `needs` field for dependency ordering
 - Each task in `TASKS.yaml` MAY specify a `workflow` field for DeepWork workflow dispatch
-- The task loop MUST validate `TASKS.yaml` after each write and restore from git on validation failure
+- The task loop MUST validate `TASKS.yaml` after each write and restore from a pre-stage backup on validation failure
 
 ### FR-011: Audit Trail — Security Logging
 

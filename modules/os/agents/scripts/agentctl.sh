@@ -497,9 +497,10 @@ case "$CMD" in
     '
     ;;
   tasks)
-    TASKS_YAML=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec cat "$NOTES_DIR/TASKS.yaml" 2>/dev/null)
+    AGENT_HOME="/home/agent-${AGENT_NAME}"
+    TASKS_YAML=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec cat "$AGENT_HOME/TASKS.yaml" 2>/dev/null)
     if [ -z "$TASKS_YAML" ]; then
-      echo "No TASKS.yaml found in $NOTES_DIR" >&2
+      echo "No TASKS.yaml found in $AGENT_HOME" >&2
       exit 1
     fi
     echo "$TASKS_YAML" | "$PYTHON3" "$TASKS_FORMATTER"
@@ -556,7 +557,7 @@ case "$CMD" in
 
       PROJECT_NAME=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.name // .slug')
       PROJECT_DESC=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.description // ""')
-      PROJECT_PATH="$NOTES_DIR"
+      PROJECT_PATH="/home/agent-${AGENT_NAME}"
 
       REPO_COUNT=$(printf '%s\n' "$PROJECT_JSON" | jq -r '.repos | length')
       if [[ "$REPO_COUNT" == "1" ]]; then
@@ -589,7 +590,8 @@ case "$CMD" in
     fi
 
     # Determine working directory and project context (from zellij re-entry)
-    WORK_DIR="$NOTES_DIR"
+    # Default to agent home so queue files (TASKS.yaml etc.) are in CWD.
+    WORK_DIR="/home/agent-${AGENT_NAME}"
     PROJECT_CONTEXT=""
     EFFECTIVE_PROVIDER=$(printf '%s\n' "$EFFECTIVE_PREFS" | jq -r '.provider // ""')
     EFFECTIVE_MODEL=$(printf '%s\n' "$EFFECTIVE_PREFS" | jq -r '.model // ""')

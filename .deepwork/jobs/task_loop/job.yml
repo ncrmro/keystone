@@ -68,19 +68,15 @@ workflows:
   ingest:
     summary: "Parse pre-fetched source JSON and create/update tasks in TASKS.yaml"
     common_job_info_provided_to_all_steps_at_runtime: |
-      TASKS.yaml at the repo root tracks work items with fields: name, description, status,
+      TASKS.yaml in the working directory tracks work items with fields: name, description, status,
       project, source, source_ref, model, workflow, needs. Status values: pending, in_progress, completed, blocked.
       Tasks with a workflow field should invoke that DeepWork workflow instead of interpreting the description freely.
       Tasks with a needs field (array of task names) MUST NOT execute until all named tasks are completed.
 
-      PROJECTS.yaml at the repo root defines active projects (listed in priority order, first = highest)
+      PROJECTS.yaml in the working directory defines active projects (listed in priority order, first = highest)
       and declarative source commands that output JSON.
 
-      ISSUES.yaml at the repo root documents blockers discovered during task execution.
-
-      CLAUDE.md and AGENTS.md at the repo root contain REQUIRED tool-specific conventions.
-      You MUST read these before using any external tool. Failure to follow conventions
-      (e.g., using wrong himalaya subcommand) can cause commands to hang in automated contexts.
+      ISSUES.yaml in the working directory documents blockers discovered during task execution.
 
       Model separation: Ingest and prioritize run with haiku (cheap, just parsing/organizing).
       The prioritize step assigns a model field to every pending task based on complexity:
@@ -106,12 +102,12 @@ workflows:
           ### Process
 
           1. **Read the current state**
-             - Read TASKS.yaml from the repo root
-             - Read PROJECTS.yaml from the repo root to understand project associations
+             - Read TASKS.yaml from the working directory
+             - Read PROJECTS.yaml from the working directory to understand project associations
              - If TASKS.yaml does not exist, create it with `tasks: []`
 
           2. **Parse the source JSON**
-             - Read the source JSON from `.deepwork/sources.json` in the repo root (written by the task loop orchestrator before invoking this workflow)
+             - Read the source JSON from `.deepwork/sources.json` in the working directory (written by the task loop orchestrator before invoking this workflow)
              - If the file is missing or empty, report zero items ingested and finish
              - Each source section is labeled with its source name (e.g., "email", "github-issues")
              - Email source JSON includes envelope metadata AND a `body` field with full message text
@@ -277,19 +273,15 @@ workflows:
   prioritize:
     summary: "Order pending tasks by project priority from PROJECTS.yaml"
     common_job_info_provided_to_all_steps_at_runtime: |
-      TASKS.yaml at the repo root tracks work items with fields: name, description, status,
+      TASKS.yaml in the working directory tracks work items with fields: name, description, status,
       project, source, source_ref, model, workflow, needs. Status values: pending, in_progress, completed, blocked.
       Tasks with a workflow field should invoke that DeepWork workflow instead of interpreting the description freely.
       Tasks with a needs field (array of task names) MUST NOT execute until all named tasks are completed.
 
-      PROJECTS.yaml at the repo root defines active projects (listed in priority order, first = highest)
+      PROJECTS.yaml in the working directory defines active projects (listed in priority order, first = highest)
       and declarative source commands that output JSON.
 
-      ISSUES.yaml at the repo root documents blockers discovered during task execution.
-
-      CLAUDE.md and AGENTS.md at the repo root contain REQUIRED tool-specific conventions.
-      You MUST read these before using any external tool. Failure to follow conventions
-      (e.g., using wrong himalaya subcommand) can cause commands to hang in automated contexts.
+      ISSUES.yaml in the working directory documents blockers discovered during task execution.
 
       Model separation: Ingest and prioritize run with haiku (cheap, just parsing/organizing).
       The prioritize step assigns a model field to every pending task based on complexity:
@@ -315,8 +307,8 @@ workflows:
           ### Process
 
           1. **Read both files**
-             - Read TASKS.yaml from the repo root
-             - Read PROJECTS.yaml from the repo root
+             - Read TASKS.yaml from the working directory
+             - Read PROJECTS.yaml from the working directory
              - Extract the project priority order from PROJECTS.yaml (list position = priority rank)
 
           2. **Categorize tasks**
@@ -447,19 +439,15 @@ workflows:
   run:
     summary: "Execute a single pending task"
     common_job_info_provided_to_all_steps_at_runtime: |
-      TASKS.yaml at the repo root tracks work items with fields: name, description, status,
+      TASKS.yaml in the working directory tracks work items with fields: name, description, status,
       project, source, source_ref, model, workflow, needs. Status values: pending, in_progress, completed, blocked.
       Tasks with a workflow field should invoke that DeepWork workflow instead of interpreting the description freely.
       Tasks with a needs field (array of task names) MUST NOT execute until all named tasks are completed.
 
-      PROJECTS.yaml at the repo root defines active projects (listed in priority order, first = highest)
+      PROJECTS.yaml in the working directory defines active projects (listed in priority order, first = highest)
       and declarative source commands that output JSON.
 
-      ISSUES.yaml at the repo root documents blockers discovered during task execution.
-
-      CLAUDE.md and AGENTS.md at the repo root contain REQUIRED tool-specific conventions.
-      You MUST read these before using any external tool. Failure to follow conventions
-      (e.g., using wrong himalaya subcommand) can cause commands to hang in automated contexts.
+      ISSUES.yaml in the working directory documents blockers discovered during task execution.
 
       Model separation: Ingest and prioritize run with haiku (cheap, just parsing/organizing).
       The prioritize step assigns a model field to every pending task based on complexity:
@@ -485,8 +473,8 @@ workflows:
           ### Process
 
           1. **Read current state**
-             - Read TASKS.yaml from the repo root
-             - Read ISSUES.yaml from the repo root (create with `issues: []` if missing)
+             - Read TASKS.yaml from the working directory
+             - Read ISSUES.yaml from the working directory (create with `issues: []` if missing)
              - Locate the specified task by name
 
           2. **Update status to in_progress**
@@ -495,28 +483,23 @@ workflows:
           3. **Assess feasibility**
              - Before committing to execution, verify the task is doable
              - Check that required tools, services, or files are available
-             - If clearly blocked (e.g., a required service is unreachable, a dependency isn't installed), skip to step 5
+             - If clearly blocked (e.g., a required service is unreachable, a dependency isn't installed), skip to step 4
 
-          4. **Read tool conventions** (before any external tool use)
-             - Read AGENTS.md and CLAUDE.md at the repo root
-             - These contain required conventions for tools like himalaya, git, etc.
-             - You MUST follow these conventions exactly — incorrect usage can cause commands to hang or fail silently in this automated (non-TTY) environment
-
-          5. **Perform the work**
+          4. **Perform the work**
              - If the task has a `workflow` field, invoke that DeepWork workflow using `/deepwork {workflow}` instead of interpreting the task description freely. Pass the task description as the goal.
              - Otherwise, read the task description and execute the work it describes
              - This may involve: writing code, running commands, researching topics, configuring systems, editing files, sending emails, interacting with APIs, browser automation, or any other operational task
              - For browser UI tasks (signing into websites, filling forms, clicking through web flows): use the chrome-devtools MCP tools (`mcp__chrome-devtools__*`) to navigate, click, fill, and take screenshots. These are NOT the same as CLI commands — do not confuse browser sign-in with CLI auth tools like `gh auth login`.
              - Use available tools (Bash, Read, Write, Edit, WebSearch, chrome-devtools MCP, etc.) as appropriate
 
-          6. **Verify the work was done**
+          5. **Verify the work was done**
              - Before marking any task as completed, confirm you actually performed the work
              - You MUST be able to cite concrete evidence: commands you ran and their output, files you created or modified, responses you received, repos you cloned, etc.
              - "Completed" means the work described in the task description has been fully performed and the result is observable in the system (a file exists, an email was sent, a repo was cloned, etc.)
-             - If you cannot point to a specific action you took and its result, you have NOT completed the task -- go back to step 5
+             - If you cannot point to a specific action you took and its result, you have NOT completed the task -- go back to step 4
              - NEVER mark a task as completed just because you read or understood the description
 
-          7. **Handle the outcome**
+          6. **Handle the outcome**
 
              **If the task completes successfully:**
              - Update the task's status to `completed` in TASKS.yaml
@@ -618,8 +601,8 @@ workflows:
           ### Process
 
           1. **Read the updated files**
-             - Read TASKS.yaml from the repo root
-             - Read ISSUES.yaml from the repo root
+             - Read TASKS.yaml from the working directory
+             - Read ISSUES.yaml from the working directory
              - Identify the task that was just processed (it should be the one with status `completed` or `blocked` that was most recently changed)
 
           2. **Write the report**

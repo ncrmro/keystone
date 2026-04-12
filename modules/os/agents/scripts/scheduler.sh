@@ -13,7 +13,7 @@ for cmd in bash tr systemctl; do
 done
 
 # Config values substituted by NixOS module via pkgs.replaceVars
-NOTES_DIR="@notesDir@"
+NOTES_DIR="@notesDir@"    # only used for one-time migration
 AGENT_NAME="@agentName@"
 
 LOGS_DIR="$HOME/.local/state/agent-scheduler/logs"
@@ -127,11 +127,16 @@ finish_run() {
 
 trap finish_run EXIT
 
-if [ ! -d "$NOTES_DIR" ]; then
-  echo "Notes directory $NOTES_DIR does not exist yet, skipping"
-  exit 0
-fi
-cd "$NOTES_DIR"
+# -- Migrate queue files from notes repo to agent home (one-time) -------------
+for _mf in TASKS.yaml SCHEDULES.yaml; do
+  if [[ -f "$NOTES_DIR/$_mf" && ! -f "$HOME/$_mf" ]]; then
+    cp "$NOTES_DIR/$_mf" "$HOME/$_mf"
+    log "Migrated $_mf from $NOTES_DIR to $HOME"
+  fi
+done
+unset _mf
+
+cd "$HOME"
 emit_event "run_start" "Starting scheduler" "status" "started" "date" "$TODAY" "day_of_week" "$DOW" "day_of_month" "$DOM"
 
 if [ ! -f SCHEDULES.yaml ]; then

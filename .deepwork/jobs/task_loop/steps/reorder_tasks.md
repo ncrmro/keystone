@@ -11,8 +11,8 @@ Reorder the pending tasks in TASKS.yaml based on project priority defined in PRO
 ### Process
 
 1. **Read both files**
-   - Read TASKS.yaml from the repo root
-   - Read PROJECTS.yaml from the repo root
+   - Read TASKS.yaml from the working directory
+   - Read PROJECTS.yaml from the working directory
    - Extract the project priority order from PROJECTS.yaml (list position = priority rank)
 
 2. **Categorize tasks**

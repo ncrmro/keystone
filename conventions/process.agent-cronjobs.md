@@ -45,7 +45,7 @@ Schedules use [systemd calendar syntax](https://www.freedesktop.org/software/sys
 
 Five-phase cycle:
 
-1. **Pre-fetch** — Sync external sources (Forgejo issues, email) into the notes repo
+1. **Pre-fetch** — Sync external sources (Forgejo issues, email) into the agent home
 2. **Ingest** — Parse new items into `TASKS.yaml`
 3. **Prioritize** — Rank pending tasks
 4. **Execute** — Run up to `maxTasks` pending tasks (invokes Claude Code per task)
@@ -66,7 +66,7 @@ Key properties:
 ## Scheduler (`agent-{name}-scheduler`)
 
 - Pure bash, no LLM invocation
-- Reads `SCHEDULES.yaml` from the agent's notes directory
+- Reads `SCHEDULES.yaml` from the agent's home directory
 - Creates tasks in `TASKS.yaml` when schedule conditions match (day-of-week, day-of-month, date)
 - Logs to `~/.local/state/agent-scheduler/logs/`
 - `SyslogIdentifier = agent-{name}-scheduler`
