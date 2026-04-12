@@ -100,6 +100,7 @@ in
     ./ssh-auto-load.nix
     ./forgejo.nix
     ./grafana.nix
+    ./obs.nix
     ./projects.nix
     ./cli-coding-agent-configs.nix
     ./conventions.nix
