@@ -18,8 +18,10 @@ timeout_steps="${KEYSTONE_STARTUP_LOCK_TIMEOUT_STEPS:-50}"
 # but still fail closed if all attempts are exhausted. Each retry is
 # a full hyprlock launch + surface poll cycle — the retry count does
 # NOT extend the per-attempt timeout.
-max_lock_attempts="${KEYSTONE_STARTUP_LOCK_MAX_ATTEMPTS:-3}"
-retry_delay_seconds="${KEYSTONE_STARTUP_LOCK_RETRY_DELAY:-1}"
+max_lock_attempts="${KEYSTONE_STARTUP_LOCK_MAX_ATTEMPTS:-6}"
+retry_delay_seconds="${KEYSTONE_STARTUP_LOCK_RETRY_DELAY:-2}"
+session_ready_timeout_steps="${KEYSTONE_STARTUP_LOCK_SESSION_READY_TIMEOUT_STEPS:-120}"
+session_ready_poll_interval_seconds="${KEYSTONE_STARTUP_LOCK_SESSION_READY_POLL_INTERVAL_SECONDS:-0.1}"
 
 log() {
   local priority="$1"
@@ -41,6 +43,23 @@ lock_surface_present() {
       or (.name? // "") == "hyprlock"
     )
   ' >/dev/null
+}
+
+session_lock_prereqs_ready() {
+  hyprctl monitors -j 2>/dev/null | jq -e '
+    type == "array" and length > 0
+  ' >/dev/null
+}
+
+wait_for_session_lock_prereqs() {
+  for _ in $(seq 1 "$session_ready_timeout_steps"); do
+    if session_lock_prereqs_ready; then
+      return 0
+    fi
+    sleep "$session_ready_poll_interval_seconds"
+  done
+
+  return 1
 }
 
 fail_closed() {
@@ -67,8 +86,14 @@ fail_closed() {
 }
 
 try_lock() {
-  hyprlock >/dev/null 2>&1 &
-  lock_pid=$!
+  local lock_pid=""
+
+  if command -v hyprctl >/dev/null 2>&1 && hyprctl dispatch lockscreen >/dev/null 2>&1; then
+    log info "requested lockscreen via hyprctl dispatch"
+  else
+    hyprlock --immediate-render >/dev/null 2>&1 &
+    lock_pid=$!
+  fi
 
   for _ in $(seq 1 "$timeout_steps"); do
     if lock_surface_present; then
@@ -76,7 +101,7 @@ try_lock() {
       return 0
     fi
 
-    if ! kill -0 "$lock_pid" >/dev/null 2>&1; then
+    if [[ -n "$lock_pid" ]] && ! kill -0 "$lock_pid" >/dev/null 2>&1; then
       wait "$lock_pid"
       lock_status=$?
       # hyprlock exit 0 means successful authentication — the user
@@ -94,13 +119,21 @@ try_lock() {
   done
 
   # Timeout — hyprlock is running but never presented a surface.
-  pkill -TERM -x hyprlock >/dev/null 2>&1 || true
+  if [[ -n "$lock_pid" ]]; then
+    kill -TERM "$lock_pid" >/dev/null 2>&1 || true
+  else
+    pkill -TERM -x hyprlock >/dev/null 2>&1 || true
+  fi
   return 1
 }
 
 if pgrep -x hyprlock >/dev/null 2>&1; then
   log info "hyprlock is already running"
   exit 0
+fi
+
+if ! wait_for_session_lock_prereqs; then
+  fail_closed "Hyprland did not expose monitors before startup lock timeout."
 fi
 
 for attempt in $(seq 1 "$max_lock_attempts"); do
