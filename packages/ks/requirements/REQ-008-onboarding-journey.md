@@ -16,7 +16,7 @@ The onboarding journey has seven stages across two machines:
 | 1 | Dev machine | Template | Generate NixOS config from user info |
 | 2 | Dev machine | Publish | Git init + push to GitHub |
 | 3 | Dev machine | Installer | Build ISO + burn to USB |
-| 4 | Target machine | Install (ISO) | Disk setup + nixos-install |
+| 4 | Target machine | Install (ISO) | Disk setup + nixos-install + hardware capture + local commit |
 | 5 | Target machine | First Boot | Secure Boot + TPM enrollment |
 | 6 | Target machine | Security | SSH keys + push + secrets |
 | 7 | Target machine | Services | Service placement + onboarding |
@@ -84,21 +84,28 @@ edit the embedded `/etc/keystone/install-config/` tree in place.
 copy, it MUST fail early with a clear error before partitioning begins.
 
 **REQ-008.16** The install flow MUST: show config summary, allow disk
-selection, confirm before erasing, run disko for partitioning, and run
-nixos-install with the embedded configuration.
+selection, confirm before erasing, run disko for partitioning, run
+`nixos-generate-config --root /mnt --show-hardware-config`, record the
+local install commit, and only then run `nixos-install` with the embedded
+configuration.
 
-**REQ-008.17** After successful install, the TUI MUST run
-`nixos-generate-config --show-hardware-config` to detect actual hardware
-and update `hosts/<hostname>/hardware.nix` with stable disk identifiers,
-kernel modules, and CPU microcode settings.
+**REQ-008.17** After `disko` mounts the target system and before
+`nixos-install` begins, the TUI MUST run
+`nixos-generate-config --root /mnt --show-hardware-config` to detect
+actual hardware and update the host hardware config committed for the
+install.
 
-**REQ-008.18** The TUI MUST commit the hardware config changes to the
-local git repository on the installed system. The TUI MUST NOT attempt
-to push — the ISO does not contain private SSH keys.
+**REQ-008.18** The installer MUST stage and create a local git commit in
+the writable install repo before `nixos-install`. That commit MUST
+include the reconciled host hardware config and any install-time config
+mutations required to boot and continue onboarding. The installer MUST
+NOT attempt to push — the ISO does not contain private SSH keys.
 
-**REQ-008.19** The TUI MUST write a `.first-boot-pending` marker to the
-installed system's config directory so the first-boot flow triggers on
-next login.
+**REQ-008.19** The installer MUST write a `.first-boot-pending` marker to
+the installed system's config directory only after the pre-install
+hardware reconciliation, local commit, `nixos-install`, and repo handoff
+succeed, so the first-boot flow triggers on next login with a committed
+baseline config.
 
 ## Stage 5: First Boot (target machine, installed system)
 
@@ -125,8 +132,7 @@ ed25519 key pair, or enrolling a FIDO2 hardware key (YubiKey) via
 `ssh-keygen -t ed25519-sk`.
 
 **REQ-008.26** Once SSH keys are configured, the TUI MUST prompt the user
-to push the pending hardware config commit (from Stage 4) to the remote
-repository.
+to push the pending install commit from Stage 4 to the remote repository.
 
 **REQ-008.27** The TUI SHOULD guide the user through initializing agenix
 secrets for the system.

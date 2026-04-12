@@ -397,7 +397,6 @@ in
                       enable = mkDefault true;
                       uhk.enable = mkDefault config.keystone.hardware.uhk.enable;
                       hyprland = {
-                        enable = mkDefault true;
                         modifierKey = mkDefault userCfg.desktop.hyprland.modifierKey;
                         capslockAsControl = mkDefault userCfg.desktop.hyprland.capslockAsControl;
                       };

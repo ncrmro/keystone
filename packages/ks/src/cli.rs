@@ -137,6 +137,16 @@ pub enum Command {
 
     /// Generate a system health diagnostic report.
     Doctor(DoctorArgs),
+
+    /// Run the installer headlessly (no TUI). Requires installer ISO context.
+    Install(InstallArgs),
+}
+
+#[derive(Args)]
+pub struct InstallArgs {
+    /// Target host to install (must match an embedded installer target).
+    #[arg(long)]
+    pub host: String,
 }
 
 #[derive(Args)]

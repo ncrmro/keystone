@@ -332,6 +332,12 @@ let
     fi
   '';
 
+  # Startup lock wrapper. Launches hyprlock at session start and terminates the
+  # session if the lock surface never appears.
+  keystoneStartupLock = pkgs.writeShellScriptBin "keystone-startup-lock" (
+    builtins.readFile ./keystone-startup-lock.sh
+  );
+
   linkedCommands = [
     (mkHomeScriptCommand {
       inherit config pkgs;
@@ -538,6 +544,20 @@ let
       commandName = "keystone-menu-keybindings";
       relativePath = "modules/desktop/home/scripts/keystone-menu-keybindings.sh";
       package = keystoneMenuKeybindings;
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-startup-lock";
+      relativePath = "modules/desktop/home/scripts/keystone-startup-lock.sh";
+      package = keystoneStartupLock;
+      runtimeInputs = [
+        pkgs.coreutils
+        hyprlandPkg
+        pkgs.jq
+        pkgs.procps
+        pkgs.systemd
+        pkgs.uwsm
+      ];
     })
     (mkHomeScriptCommand {
       inherit config pkgs;

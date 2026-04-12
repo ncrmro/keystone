@@ -7,7 +7,8 @@
 }:
 with lib;
 let
-  cfg = config.keystone.desktop.hyprland;
+  desktopCfg = config.keystone.desktop;
+  cfg = desktopCfg.hyprland;
   hyprlandPkg = keystoneInputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
 in
 {
@@ -26,8 +27,6 @@ in
   ];
 
   options.keystone.desktop.hyprland = {
-    enable = mkEnableOption "Hyprland window manager configuration";
-
     terminal = mkOption {
       type = types.str;
       default = "uwsm app -- ghostty";
@@ -79,7 +78,7 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
+  config = mkIf desktopCfg.enable {
     wayland.windowManager.hyprland = {
       enable = true;
       package = hyprlandPkg;

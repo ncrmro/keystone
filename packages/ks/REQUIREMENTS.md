@@ -66,5 +66,6 @@ This document defines the functional requirements for `ks`, the primary configur
 
 - When running on a pre-baked Keystone ISO that embeds `/etc/keystone/install-config/`, the TUI MUST enter installer mode automatically.
 - Installer mode MUST treat `/etc/keystone/install-config/` as immutable input and stage a writable per-run copy before mutating deferred values such as `__KEYSTONE_DISK__`.
+- Installer mode MUST complete hardware detection and create the initial installed-system git commit after `disko` mounts `/mnt` and before `nixos-install`; first boot is for security enrollment and later push/secrets work, not baseline hardware capture.
 - The detailed install and first-boot journey contract lives in `requirements/REQ-008-onboarding-journey.md`; this section is only a summary.
 - This mode replaces the previous React Ink installer TUI.

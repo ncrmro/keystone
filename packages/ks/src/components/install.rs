@@ -8,7 +8,7 @@
 //! 2. **Summary** — Show the selected config (hostname, storage, user)
 //! 3. **Disk selection** — Choose the destination disk explicitly
 //! 4. **Confirm** — Final warning before erasing the disk
-//! 5. **Install** — Run disko + nixos-install, streaming output
+//! 5. **Install** — Run disko + hardware capture + local commit + nixos-install
 //! 6. **Done** — Prompt to remove USB and reboot
 
 use std::collections::BTreeMap;
@@ -39,8 +39,11 @@ const INSTALL_CONFIG_PATH: &str = "/etc/keystone/install-config";
 const INSTALL_KEYSTONE_PATH: &str = "/etc/keystone/install-keystone";
 const INSTALL_METADATA_DIR: &str = "/etc/keystone/install-metadata";
 const WRITABLE_INSTALL_REPO_PATH: &str = "/tmp/keystone-install-repo";
-const WRITABLE_INSTALL_KEYSTONE_PATH: &str = "/tmp/keystone-install-keystone";
 const VENDORED_KEYSTONE_INPUT_DIR: &str = ".keystone-input";
+const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
+const GENERATED_HARDWARE_FILENAME: &str = "hardware-generated.nix";
+const FIRST_BOOT_MARKER: &str = ".first-boot-pending";
+const INITIAL_INSTALL_COMMIT_MESSAGE: &str = "feat: initial Keystone configuration";
 
 #[derive(Debug, Clone)]
 pub enum InstallSource {
@@ -78,6 +81,7 @@ pub struct InstallerConfig {
     pub flake_host: String,
     pub hostname: String,
     pub username: Option<String>,
+    pub repo_owner: Option<String>,
     pub github_username: Option<String>,
     pub storage_type: Option<String>,
     pub disk_device: Option<String>,
@@ -95,8 +99,8 @@ impl InstallerConfig {
         let repo_dir = Path::new(INSTALL_REPO_PATH);
         if repo_dir.exists() {
             let targets = load_install_targets(repo_dir)?;
-            let repo_name =
-                read_install_metadata("repo-name").unwrap_or_else(|| "nixos-config".to_string());
+            let repo_name = read_install_metadata("repo-name")
+                .unwrap_or_else(|| DEFAULT_INSTALLED_REPO_NAME.to_string());
             return Ok(Some(Self {
                 source: InstallSource::EmbeddedRepo {
                     repo_dir: repo_dir.to_path_buf(),
@@ -107,6 +111,8 @@ impl InstallerConfig {
                 flake_host: String::new(),
                 hostname: String::new(),
                 username: read_install_metadata("admin-username"),
+                repo_owner: read_install_metadata("repo-owner")
+                    .or_else(|| read_install_metadata("admin-username")),
                 github_username: None,
                 storage_type: None,
                 disk_device: None,
@@ -154,6 +160,7 @@ impl InstallerConfig {
             config_dir: effective_dir,
             flake_host: hostname.clone(),
             hostname,
+            repo_owner: username.clone(),
             username,
             github_username,
             storage_type,
@@ -417,8 +424,15 @@ impl InstallerConfig {
     fn installed_repo_name(&self) -> &str {
         match &self.source {
             InstallSource::EmbeddedRepo { repo_name, .. } => repo_name.as_str(),
-            InstallSource::PrebakedConfig => "nixos-config",
+            InstallSource::PrebakedConfig => DEFAULT_INSTALLED_REPO_NAME,
         }
+    }
+
+    fn installed_repo_owner(&self) -> &str {
+        self.repo_owner
+            .as_deref()
+            .or(self.username.as_deref())
+            .unwrap_or("keystone")
     }
 }
 
@@ -427,6 +441,42 @@ fn read_install_metadata(name: &str) -> Option<String> {
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+fn read_install_metadata_lines(name: &str) -> Vec<String> {
+    std::fs::read_to_string(Path::new(INSTALL_METADATA_DIR).join(name))
+        .ok()
+        .map(|contents| {
+            contents
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn merge_authorized_keys(existing: Option<&str>, additional: &[String]) -> String {
+    let mut merged: Vec<String> = existing
+        .into_iter()
+        .flat_map(|contents| contents.lines())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+
+    for key in additional {
+        if !merged.iter().any(|existing_key| existing_key == key) {
+            merged.push(key.clone());
+        }
+    }
+
+    if merged.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", merged.join("\n"))
+    }
 }
 
 fn load_install_targets(repo_dir: &Path) -> AnyhowResult<Vec<InstallTarget>> {
@@ -486,6 +536,22 @@ fn copy_repo_to_writable(src: &Path, dst: &Path) -> AnyhowResult<()> {
         );
     }
 
+    // The embedded repo comes from a read-only store-style snapshot. After
+    // copying it into /tmp or the installed system, the installer needs to
+    // mutate files like flake.lock and hardware.nix, so add owner write bits
+    // recursively while preserving the rest of the copied metadata.
+    let chmod_status = StdCommand::new("chmod")
+        .args(["-R", "u+w", &dst.display().to_string()])
+        .status()
+        .with_context(|| format!("Failed to make copied repo writable at {}", dst.display()))?;
+
+    if !chmod_status.success() {
+        anyhow::bail!(
+            "chmod -R u+w failed while preparing writable repo at {}",
+            dst.display()
+        );
+    }
+
     Ok(())
 }
 
@@ -525,7 +591,7 @@ fn vendor_embedded_keystone_input(repo_dir: &Path) -> AnyhowResult<Option<PathBu
         return Ok(None);
     }
 
-    let vendored_dir = PathBuf::from(WRITABLE_INSTALL_KEYSTONE_PATH);
+    let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
     copy_repo_to_writable(embedded_keystone, &vendored_dir).with_context(|| {
         format!(
             "Failed to copy embedded keystone input from {} to {}",
@@ -563,6 +629,261 @@ fn parse_hardware_disk_device(hardware_path: &Path) -> Option<String> {
     None
 }
 
+fn extract_quoted_strings(line: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut in_string = false;
+    let mut escape = false;
+
+    for ch in line.chars() {
+        if !in_string {
+            if ch == '"' {
+                in_string = true;
+                current.clear();
+            }
+            continue;
+        }
+
+        if escape {
+            current.push(ch);
+            escape = false;
+            continue;
+        }
+
+        match ch {
+            '\\' => escape = true,
+            '"' => {
+                in_string = false;
+                values.push(current.clone());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    values
+}
+
+fn push_unique(values: &mut Vec<String>, candidate: String) {
+    if !values.iter().any(|existing| existing == &candidate) {
+        values.push(candidate);
+    }
+}
+
+fn parse_nix_string_assignment(content: &str, attr: &str) -> Option<String> {
+    content.lines().find_map(|line| {
+        let trimmed = line.trim();
+        if trimmed.starts_with(attr) && trimmed.contains('=') {
+            extract_quoted_strings(trimmed).into_iter().next()
+        } else {
+            None
+        }
+    })
+}
+
+fn parse_nix_string_list_assignment(content: &str, attr: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut in_list = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if !in_list && trimmed.starts_with(attr) && trimmed.contains('[') {
+            in_list = true;
+        }
+
+        if in_list {
+            for value in extract_quoted_strings(trimmed) {
+                push_unique(&mut values, value);
+            }
+            if trimmed.contains("];") {
+                break;
+            }
+        }
+    }
+
+    values
+}
+
+fn extract_stable_disk_identifiers(config: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+
+    for line in config.lines() {
+        for value in extract_quoted_strings(line) {
+            if value.contains("/dev/disk/by-")
+                || value.contains("UUID=")
+                || value.contains("PARTUUID=")
+            {
+                push_unique(&mut ids, value);
+            }
+        }
+    }
+
+    ids
+}
+
+fn escape_nix_string(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace("${", "\\${")
+        .replace('\n', "\\n")
+}
+
+fn ensure_marker_gitignore_contents(current: Option<&str>) -> String {
+    let existing = current.unwrap_or_default();
+    if existing
+        .lines()
+        .any(|line| line.trim() == FIRST_BOOT_MARKER)
+    {
+        if existing.ends_with('\n') {
+            return existing.to_string();
+        }
+        return format!("{existing}\n");
+    }
+
+    if existing.trim().is_empty() {
+        format!("{FIRST_BOOT_MARKER}\n")
+    } else if existing.ends_with('\n') {
+        format!("{existing}{FIRST_BOOT_MARKER}\n")
+    } else {
+        format!("{existing}\n{FIRST_BOOT_MARKER}\n")
+    }
+}
+
+fn strip_generated_storage_assignments(generated_hardware: &str) -> String {
+    let storage_prefixes = ["fileSystems.", "swapDevices", "boot.initrd.luks.devices."];
+    let mut sanitized = String::new();
+    let mut skipping = false;
+    let mut nesting_depth: i32 = 0;
+
+    for line in generated_hardware.lines() {
+        let trimmed = line.trim_start();
+
+        if !skipping
+            && storage_prefixes
+                .iter()
+                .any(|prefix| trimmed.starts_with(prefix) && trimmed.contains('='))
+        {
+            skipping = true;
+            nesting_depth = 0;
+        }
+
+        if skipping {
+            nesting_depth += line.matches('{').count() as i32;
+            nesting_depth += line.matches('[').count() as i32;
+            nesting_depth -= line.matches('}').count() as i32;
+            nesting_depth -= line.matches(']').count() as i32;
+
+            if nesting_depth <= 0 && trimmed.ends_with(';') {
+                skipping = false;
+            }
+            continue;
+        }
+
+        sanitized.push_str(line);
+        sanitized.push('\n');
+    }
+
+    sanitized.trim_end().to_string()
+}
+
+fn resolve_hardware_path(config: &InstallerConfig) -> Result<PathBuf, String> {
+    if let Some(path) = config.hardware_path.clone() {
+        return Ok(path);
+    }
+
+    InstallerConfig::find_host_file(&config.config_dir, &config.hostname, "hardware.nix")
+        .ok_or_else(|| {
+            format!(
+                "Failed to locate hardware.nix for host {} in {}",
+                config.hostname,
+                config.config_dir.display()
+            )
+        })
+}
+
+fn build_reconciled_hardware_wrapper(
+    current_hardware_nix: &str,
+    selected_disk: Option<&str>,
+) -> Result<String, String> {
+    let system = parse_nix_string_assignment(current_hardware_nix, "system")
+        .unwrap_or_else(|| "x86_64-linux".to_string());
+    let host_id = parse_nix_string_assignment(current_hardware_nix, "networking.hostId")
+        .unwrap_or_else(|| "00000000".to_string());
+    let mut storage_devices =
+        parse_nix_string_list_assignment(current_hardware_nix, "keystone.os.storage.devices");
+    if storage_devices.is_empty() {
+        if let Some(device) = selected_disk {
+            storage_devices.push(device.to_string());
+        }
+    }
+    if storage_devices.is_empty() {
+        return Err(
+            "Could not determine keystone.os.storage.devices while reconciling hardware.nix."
+                .to_string(),
+        );
+    }
+    let storage_mode =
+        parse_nix_string_assignment(current_hardware_nix, "keystone.os.storage.mode")
+            .unwrap_or_else(|| "single".to_string());
+    let remote_unlock_network_module = parse_nix_string_assignment(
+        current_hardware_nix,
+        "keystone.os.remoteUnlock.networkModule",
+    );
+
+    let rendered_storage_devices = storage_devices
+        .iter()
+        .map(|device| format!("        \"{}\"\n", escape_nix_string(device)))
+        .collect::<String>();
+    let rendered_remote_unlock = remote_unlock_network_module
+        .map(|module| {
+            format!(
+                "\n      keystone.os.remoteUnlock.networkModule = \"{}\";\n",
+                escape_nix_string(&module)
+            )
+        })
+        .unwrap_or_default();
+
+    Ok(format!(
+        r#"let
+  system = "{system}";
+in
+{{
+  inherit system;
+
+  module =
+    {{
+      config,
+      lib,
+      pkgs,
+      modulesPath,
+      ...
+    }}:
+    {{
+      imports = [
+        ./{generated_hardware_filename}
+      ];
+
+      networking.hostId = "{host_id}";
+
+      keystone.os.storage.devices = [
+{rendered_storage_devices}      ];
+      keystone.os.storage.mode = "{storage_mode}";
+{rendered_remote_unlock}      hardware.cpu.intel.updateMicrocode =
+        lib.mkDefault config.hardware.enableRedistributableFirmware;
+      hardware.enableRedistributableFirmware = true;
+    }};
+}}
+"#,
+        system = escape_nix_string(&system),
+        generated_hardware_filename = GENERATED_HARDWARE_FILENAME,
+        host_id = escape_nix_string(&host_id),
+        rendered_storage_devices = rendered_storage_devices,
+        storage_mode = escape_nix_string(&storage_mode),
+        rendered_remote_unlock = rendered_remote_unlock,
+    ))
+}
+
 /// The phases of the install flow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallPhase {
@@ -595,6 +916,12 @@ pub enum InstallResult {
     Success,
     Failed(String),
     Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CommandSpec {
+    program: String,
+    args: Vec<String>,
 }
 
 pub struct InstallScreen {
@@ -709,6 +1036,71 @@ impl InstallScreen {
 
     pub fn selected_disk_index(&self) -> usize {
         self.selected_disk_index
+    }
+
+    pub fn set_host_index(&mut self, index: usize) {
+        self.selected_host_index = index;
+    }
+
+    /// Run the install headlessly — no TUI.  Selects the pre-set host and
+    /// first available disk, then streams output to stdout.
+    pub async fn run_headless(&mut self) -> Result<(), String> {
+        // Phase 1: select host (copies repo, vendors keystone input)
+        self.select_host();
+        if let InstallPhase::Failed(msg) = &self.phase {
+            return Err(msg.clone());
+        }
+
+        // Phase 2: discover disks
+        eprintln!("Discovering disks...");
+        let disks = crate::disk::discover_disks()
+            .await
+            .map_err(|e| format!("Disk discovery failed: {}", e))?;
+        if disks.is_empty() {
+            return Err("No disks found".to_string());
+        }
+        eprintln!(
+            "Found {} disk(s), selecting: {}",
+            disks.len(),
+            disks[0].by_id_path
+        );
+        self.available_disks = disks;
+        self.phase = InstallPhase::DiskSelection;
+        self.select_disk();
+        if let InstallPhase::Failed(msg) = &self.phase {
+            return Err(msg.clone());
+        }
+
+        // Phase 3: start install
+        self.start_install();
+
+        // Drain messages to stdout
+        if let Some(ref mut rx) = self.rx {
+            loop {
+                match rx.recv().await {
+                    Some(InstallMessage::Output(line)) => eprintln!("{}", line),
+                    Some(InstallMessage::PhaseComplete(phase)) => {
+                        eprintln!("=== Phase complete: {} ===", phase);
+                    }
+                    Some(InstallMessage::Finished(InstallResult::Success)) => {
+                        eprintln!("Install completed successfully.");
+                        return Ok(());
+                    }
+                    Some(InstallMessage::Finished(InstallResult::Failed(msg))) => {
+                        return Err(format!("Install failed: {}", msg));
+                    }
+                    Some(InstallMessage::Finished(InstallResult::Cancelled)) => {
+                        return Err("Install cancelled".to_string());
+                    }
+                    Some(InstallMessage::DisksDiscovered(_)) => {}
+                    None => {
+                        return Err("Install channel closed unexpectedly".to_string());
+                    }
+                }
+            }
+        }
+
+        Err("No install channel available".to_string())
     }
 
     pub fn host_up(&mut self) {
@@ -855,14 +1247,16 @@ impl InstallScreen {
         self.cancel_token = cancel_token.clone();
 
         let config_dir = self.config.config_dir.clone();
+        let install_config = self.config.clone();
         let flake_host = self.config.flake_host.clone();
         let username = self.config.username.clone();
+        let repo_owner = self.config.installed_repo_owner().to_string();
         let repo_name = self.config.installed_repo_name().to_string();
 
         tokio::spawn(async move {
             // Phase 1: Run disko to partition and format the disk
             let _ = tx.send(InstallMessage::Output(
-                "=== Phase 1/2: Partitioning with disko ===".to_string(),
+                "=== Phase 1/4: Partitioning with disko ===".to_string(),
             ));
 
             let disko_result = run_command(
@@ -876,6 +1270,7 @@ impl InstallScreen {
                 &config_dir,
                 &tx,
                 &cancel_token,
+                true,
             )
             .await;
 
@@ -896,10 +1291,62 @@ impl InstallScreen {
                 "Disk partitioning complete.".to_string(),
             ));
 
-            // Phase 2: Run nixos-install
+            let Some(ref user) = username else {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(
+                    "Installer metadata is missing the admin username needed for the install commit and installed repo path.".to_string(),
+                )));
+                return;
+            };
+
+            // Phase 2: Capture hardware before nixos-install so the committed
+            // repo already reflects the real target machine when the system is built.
             let _ = tx.send(InstallMessage::Output(String::new()));
             let _ = tx.send(InstallMessage::Output(
-                "=== Phase 2/2: Installing NixOS ===".to_string(),
+                "=== Phase 2/4: Detecting hardware ===".to_string(),
+            ));
+            if let Err(e) = detect_hardware_config(&install_config, &tx, &cancel_token).await {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                    "hardware detection failed: {}",
+                    e
+                ))));
+                return;
+            }
+
+            if cancel_token.is_cancelled() {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Cancelled));
+                return;
+            }
+
+            let _ = tx.send(InstallMessage::PhaseComplete(
+                "Hardware config recorded.".to_string(),
+            ));
+
+            // Phase 3: Create the local install commit before nixos-install.
+            let _ = tx.send(InstallMessage::Output(String::new()));
+            let _ = tx.send(InstallMessage::Output(
+                "=== Phase 3/4: Recording install commit ===".to_string(),
+            ));
+            if let Err(e) = create_install_commit(&config_dir, user, &tx).await {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                    "install commit failed: {}",
+                    e
+                ))));
+                return;
+            }
+
+            if cancel_token.is_cancelled() {
+                let _ = tx.send(InstallMessage::Finished(InstallResult::Cancelled));
+                return;
+            }
+
+            let _ = tx.send(InstallMessage::PhaseComplete(
+                "Local install commit recorded.".to_string(),
+            ));
+
+            // Phase 4: Run nixos-install from the reconciled, committed repo.
+            let _ = tx.send(InstallMessage::Output(String::new()));
+            let _ = tx.send(InstallMessage::Output(
+                "=== Phase 4/4: Installing NixOS ===".to_string(),
             ));
 
             let flake_ref = format!("{}#{}", config_dir.display(), flake_host);
@@ -910,24 +1357,23 @@ impl InstallScreen {
                 &config_dir,
                 &tx,
                 &cancel_token,
+                true,
             )
             .await;
 
             match install_result {
                 Ok(()) => {
-                    // Copy config to the installed system for first-boot flow
-                    if let Some(ref user) = username {
-                        let _ = tx.send(InstallMessage::Output(
-                            "Copying config to installed system...".to_string(),
-                        ));
-                        if let Err(e) =
-                            copy_config_to_target(&config_dir, user, &repo_name, &tx).await
-                        {
-                            let _ = tx.send(InstallMessage::Output(format!(
-                                "Warning: failed to copy config: {}",
-                                e
-                            )));
-                        }
+                    let _ = tx.send(InstallMessage::Output(
+                        "Copying config to installed system...".to_string(),
+                    ));
+                    if let Err(e) =
+                        copy_config_to_target(&config_dir, user, &repo_owner, &repo_name, &tx).await
+                    {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                            "post-install config copy failed: {}",
+                            e
+                        ))));
+                        return;
                     }
 
                     let _ = tx.send(InstallMessage::Finished(InstallResult::Success));
@@ -1512,94 +1958,559 @@ async fn copy_dir_recursive_async(src: &Path, dst: &Path) -> Result<(), String> 
     Ok(())
 }
 
-/// Copy the generated config to the installed system for the first-boot flow.
-///
-/// Creates the installed system flake directory on the target and copies
-/// the config tree with a `.first-boot-pending` marker so the TUI knows
-/// to run the first-boot wizard on next login.
-async fn copy_config_to_target(
-    config_dir: &Path,
-    username: &str,
-    repo_name: &str,
-    tx: &mpsc::UnboundedSender<InstallMessage>,
+async fn run_command_quiet(
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    privileged: bool,
 ) -> Result<(), String> {
-    let target_home = PathBuf::from(format!("/mnt/home/{}", username));
-    let repo_dir = target_home.join(".keystone").join("repos").join(repo_name);
+    let command = build_command_spec(program, args, privileged);
+    let command_display = format!("{} {}", command.program, command.args.join(" "));
 
-    tokio::fs::create_dir_all(&repo_dir)
-        .await
-        .map_err(|e| format!("Failed to create config dir: {}", e))?;
-
-    // Copy entire config directory tree (handles both flat and hosts/ layouts)
-    copy_dir_recursive_async(config_dir, &repo_dir)
-        .await
-        .map_err(|e| format!("Failed to copy config files: {}", e))?;
-
-    let embedded_keystone = Path::new(INSTALL_KEYSTONE_PATH);
-    if embedded_keystone.exists() {
-        let vendored_keystone = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
-        copy_repo_to_writable(embedded_keystone, &vendored_keystone).map_err(|e| {
-            format!(
-                "Failed to copy embedded keystone input to installed repo {}: {}",
-                repo_dir.display(),
-                e
-            )
-        })?;
-        rewrite_keystone_lock_input(&repo_dir, &vendored_keystone).map_err(|e| {
-            format!(
-                "Failed to rewrite keystone input in installed repo {}: {}",
-                repo_dir.display(),
-                e
-            )
-        })?;
+    let mut child = Command::new(&command.program);
+    child.args(&command.args);
+    if let Some(cwd) = cwd {
+        child.current_dir(cwd);
     }
 
-    // Write first-boot marker
-    tokio::fs::write(repo_dir.join(".first-boot-pending"), "")
+    let output = child
+        .output()
         .await
-        .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
+        .map_err(|e| format!("Failed to run `{}`: {}", command_display, e))?;
 
-    let keystone_etc_dir = PathBuf::from("/mnt/etc/keystone");
-    tokio::fs::create_dir_all(&keystone_etc_dir)
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let details = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        "no output".to_string()
+    };
+
+    Err(format!(
+        "`{}` exited with {}: {}",
+        command_display,
+        output
+            .status
+            .code()
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "signal".to_string()),
+        details
+    ))
+}
+
+async fn git_config_get(repo_dir: &Path, key: &str) -> Result<Option<String>, String> {
+    let output = Command::new("git")
+        .args(["config", "--get", key])
+        .current_dir(repo_dir)
+        .output()
         .await
-        .map_err(|e| format!("Failed to create /etc/keystone: {}", e))?;
-    tokio::fs::write(
-        keystone_etc_dir.join("system-flake"),
-        format!("{}\n", repo_dir.display()),
-    )
-    .await
-    .map_err(|e| format!("Failed to write system flake path: {}", e))?;
+        .map_err(|e| format!("Failed to read git config {key}: {e}"))?;
 
-    // Fix ownership — look up uid/gid from the installed system's passwd
-    let passwd_path = PathBuf::from("/mnt/etc/passwd");
-    if passwd_path.exists() {
-        let passwd = tokio::fs::read_to_string(&passwd_path)
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(value))
+    }
+}
+
+async fn ensure_git_identity(repo_dir: &Path, username: &str) -> Result<(), String> {
+    if git_config_get(repo_dir, "user.name").await?.is_none() {
+        run_command_quiet(
+            "git",
+            &["config", "user.name", username],
+            Some(repo_dir),
+            false,
+        )
+        .await
+        .map_err(|e| format!("Failed to configure git user.name: {e}"))?;
+    }
+
+    if git_config_get(repo_dir, "user.email").await?.is_none() {
+        let email = format!("{username}@keystone.local");
+        run_command_quiet(
+            "git",
+            &["config", "user.email", &email],
+            Some(repo_dir),
+            false,
+        )
+        .await
+        .map_err(|e| format!("Failed to configure git user.email: {e}"))?;
+    }
+
+    Ok(())
+}
+
+async fn ensure_repo_on_main(repo_dir: &Path) -> Result<(), String> {
+    let git_dir = repo_dir.join(".git");
+    if !git_dir.exists() {
+        return run_command_quiet("git", &["init", "-b", "main"], Some(repo_dir), false)
             .await
-            .unwrap_or_default();
-        if let Some(line) = passwd
-            .lines()
-            .find(|l| l.starts_with(&format!("{}:", username)))
-        {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() >= 4 {
-                let uid = parts[2];
-                let gid = parts[3];
-                let keystone_dir = target_home.join(".keystone");
-                let _ = Command::new("chown")
-                    .args([
-                        "-R",
-                        &format!("{}:{}", uid, gid),
-                        &keystone_dir.display().to_string(),
-                    ])
-                    .output()
-                    .await;
-            }
-        }
+            .map_err(|e| format!("Failed to initialize git repo: {e}"));
+    }
+
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to inspect current git branch: {e}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Failed to inspect current git branch: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch == "main" {
+        return Ok(());
+    }
+
+    if branch == "HEAD" {
+        run_command_quiet("git", &["checkout", "-B", "main"], Some(repo_dir), false)
+            .await
+            .map_err(|e| format!("Failed to create main branch: {e}"))?;
+    } else {
+        run_command_quiet("git", &["branch", "-M", "main"], Some(repo_dir), false)
+            .await
+            .map_err(|e| format!("Failed to rename branch to main: {e}"))?;
+    }
+
+    Ok(())
+}
+
+async fn detect_hardware_config(
+    config: &InstallerConfig,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+    cancel_token: &CancellationToken,
+) -> Result<(), String> {
+    let hardware_path = resolve_hardware_path(config)?;
+    let generated_hardware_path = hardware_path
+        .parent()
+        .ok_or_else(|| {
+            format!(
+                "hardware.nix has no parent dir: {}",
+                hardware_path.display()
+            )
+        })?
+        .join(GENERATED_HARDWARE_FILENAME);
+    let capture_path = PathBuf::from(format!(
+        "/tmp/keystone-detected-hardware-{}.nix",
+        std::process::id()
+    ));
+    let capture_script = format!(
+        "nixos-generate-config --root /mnt --show-hardware-config > {}",
+        capture_path.display()
+    );
+
+    let current_hardware_nix = tokio::fs::read_to_string(&hardware_path)
+        .await
+        .map_err(|e| format!("Failed to read {}: {}", hardware_path.display(), e))?;
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Capturing detected hardware config for {}",
+        config.hostname
+    )));
+    run_command(
+        "sh",
+        &["-c", &capture_script],
+        &config.config_dir,
+        tx,
+        cancel_token,
+        true,
+    )
+    .await?;
+
+    let generated_hardware = tokio::fs::read_to_string(&capture_path)
+        .await
+        .map_err(|e| format!("Failed to read captured hardware config: {}", e))?;
+    let _ = tokio::fs::remove_file(&capture_path).await;
+    let sanitized_generated_hardware = strip_generated_storage_assignments(&generated_hardware);
+
+    let stable_disk_ids = extract_stable_disk_identifiers(&generated_hardware);
+    if stable_disk_ids.is_empty() {
+        return Err(
+            "No confident stable disk mapping was detected in the generated hardware config. The installer will not guess."
+                .to_string(),
+        );
     }
 
     let _ = tx.send(InstallMessage::Output(format!(
-        "Config copied to {}",
-        repo_dir.display()
+        "Detected stable disk identifiers: {}",
+        stable_disk_ids.join(", ")
+    )));
+
+    let reconciled_hardware =
+        build_reconciled_hardware_wrapper(&current_hardware_nix, config.disk_device.as_deref())?;
+
+    tokio::fs::write(
+        &generated_hardware_path,
+        format!("{}\n", sanitized_generated_hardware),
+    )
+    .await
+    .map_err(|e| {
+        format!(
+            "Failed to write generated hardware module {}: {}",
+            generated_hardware_path.display(),
+            e
+        )
+    })?;
+    tokio::fs::write(&hardware_path, reconciled_hardware)
+        .await
+        .map_err(|e| format!("Failed to update {}: {}", hardware_path.display(), e))?;
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Updated {} to import {}",
+        hardware_path.display(),
+        generated_hardware_path.display()
+    )));
+
+    Ok(())
+}
+
+async fn create_install_commit(
+    config_dir: &Path,
+    username: &str,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
+    let _ = tx.send(InstallMessage::Output(
+        "Preparing local install commit...".to_string(),
+    ));
+
+    ensure_repo_on_main(config_dir).await?;
+    ensure_git_identity(config_dir, username).await?;
+
+    let gitignore_path = config_dir.join(".gitignore");
+    let current_gitignore = tokio::fs::read_to_string(&gitignore_path).await.ok();
+    let gitignore_contents = ensure_marker_gitignore_contents(current_gitignore.as_deref());
+    tokio::fs::write(&gitignore_path, gitignore_contents)
+        .await
+        .map_err(|e| format!("Failed to update {}: {}", gitignore_path.display(), e))?;
+
+    let _ = Command::new("git")
+        .args([
+            "rm",
+            "--cached",
+            "-f",
+            "--ignore-unmatch",
+            FIRST_BOOT_MARKER,
+        ])
+        .current_dir(config_dir)
+        .output()
+        .await;
+
+    run_command_quiet("git", &["add", "."], Some(config_dir), false)
+        .await
+        .map_err(|e| format!("Failed to stage install repo changes: {e}"))?;
+    run_command_quiet(
+        "git",
+        &[
+            "commit",
+            "--allow-empty",
+            "-m",
+            INITIAL_INSTALL_COMMIT_MESSAGE,
+        ],
+        Some(config_dir),
+        false,
+    )
+    .await
+    .map_err(|e| format!("Failed to create install commit: {e}"))?;
+
+    let _ = tx.send(InstallMessage::Output(
+        "Recorded local install commit.".to_string(),
+    ));
+
+    Ok(())
+}
+
+/// Copy the prepared config to the installed system for the post-install onboarding flow.
+///
+/// Creates the installed system flake directory on the target and copies
+/// the config tree with a `.first-boot-pending` marker so the TUI knows
+/// to continue onboarding on next login.
+fn installed_repo_paths(username: &str, repo_owner: &str, repo_name: &str) -> (PathBuf, PathBuf) {
+    let system_repo_dir = PathBuf::from("/home")
+        .join(username)
+        .join(".keystone")
+        .join("repos")
+        .join(repo_owner)
+        .join(repo_name);
+    let mounted_repo_dir = PathBuf::from("/mnt").join(
+        system_repo_dir
+            .strip_prefix("/")
+            .expect("installed repo path should be absolute"),
+    );
+
+    (system_repo_dir, mounted_repo_dir)
+}
+
+/// Stage the config repo into a temporary directory with first-boot marker and system-flake pointer.
+async fn stage_config_to_temp(
+    config_dir: &Path,
+    staging_root: &Path,
+    staged_repo_dir: &Path,
+    staged_system_flake: &Path,
+    system_repo_dir: &Path,
+) -> Result<(), String> {
+    let _ = tokio::fs::remove_dir_all(staging_root).await;
+    tokio::fs::create_dir_all(staged_repo_dir)
+        .await
+        .map_err(|e| format!("Failed to create staging dir: {}", e))?;
+
+    copy_dir_recursive_async(config_dir, staged_repo_dir)
+        .await
+        .map_err(|e| format!("Failed to stage config files: {}", e))?;
+
+    tokio::fs::write(staged_repo_dir.join(FIRST_BOOT_MARKER), "")
+        .await
+        .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
+    // Write the final on-disk repo location, not the install-time /mnt path.
+    tokio::fs::write(
+        staged_system_flake,
+        format!("{}\n", system_repo_dir.display()),
+    )
+    .await
+    .map_err(|e| format!("Failed to stage system flake path: {}", e))?;
+
+    let staged_marker_string = staged_repo_dir
+        .join(FIRST_BOOT_MARKER)
+        .display()
+        .to_string();
+    run_command_quiet("test", &["-f", &staged_marker_string], None, false)
+        .await
+        .map_err(|e| format!("Failed to verify staged first-boot marker: {}", e))?;
+    Ok(())
+}
+
+/// Install development SSH keys into the target system's authorized_keys.
+async fn install_ssh_keys(
+    installed_ssh_keys: &[String],
+    target_ssh_dir: &Path,
+    target_authorized_keys: &Path,
+    staging_root: &Path,
+) -> Result<(), String> {
+    let target_ssh_dir_string = target_ssh_dir.display().to_string();
+    let target_authorized_keys_string = target_authorized_keys.display().to_string();
+    run_command_quiet(
+        "install",
+        &["-d", "-m", "0700", &target_ssh_dir_string],
+        None,
+        true,
+    )
+    .await
+    .map_err(|e| format!("Failed to create installed SSH directory: {}", e))?;
+
+    let existing_authorized_keys = tokio::fs::read_to_string(target_authorized_keys).await.ok();
+    let merged_authorized_keys =
+        merge_authorized_keys(existing_authorized_keys.as_deref(), installed_ssh_keys);
+    let staged_authorized_keys = staging_root.join("authorized_keys");
+    let staged_authorized_keys_string = staged_authorized_keys.display().to_string();
+    tokio::fs::write(&staged_authorized_keys, merged_authorized_keys)
+        .await
+        .map_err(|e| format!("Failed to stage installed SSH keys: {}", e))?;
+    run_command_quiet(
+        "install",
+        &[
+            "-m",
+            "0600",
+            &staged_authorized_keys_string,
+            &target_authorized_keys_string,
+        ],
+        None,
+        true,
+    )
+    .await
+    .map_err(|e| format!("Failed to install development SSH keys: {}", e))?;
+    Ok(())
+}
+
+/// Fix ownership of .keystone and optionally .ssh directories on the installed target.
+async fn fix_target_ownership(
+    target_home: &Path,
+    username: &str,
+    has_ssh_keys: bool,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
+    let passwd_path = PathBuf::from("/mnt/etc/passwd");
+    if !passwd_path.exists() {
+        return Ok(());
+    }
+    let passwd = tokio::fs::read_to_string(&passwd_path)
+        .await
+        .unwrap_or_default();
+    let line = match passwd
+        .lines()
+        .find(|l| l.starts_with(&format!("{}:", username)))
+    {
+        Some(l) => l.to_string(),
+        None => return Ok(()),
+    };
+    let parts: Vec<&str> = line.split(':').collect();
+    if parts.len() < 4 {
+        return Ok(());
+    }
+    let uid = parts[2];
+    let gid = parts[3];
+    let keystone_dir = target_home.join(".keystone");
+    let ownership = format!("{}:{}", uid, gid);
+    let keystone_dir_string = keystone_dir.display().to_string();
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Fixing installed repo ownership at {}",
+        keystone_dir.display()
+    )));
+    run_command_quiet(
+        "chown",
+        &["-R", &ownership, &keystone_dir_string],
+        None,
+        true,
+    )
+    .await
+    .map_err(|e| format!("Failed to set installed repo ownership: {}", e))?;
+    if has_ssh_keys {
+        let ssh_dir = target_home.join(".ssh");
+        let ssh_dir_string = ssh_dir.display().to_string();
+        run_command_quiet("chown", &["-R", &ownership, &ssh_dir_string], None, true)
+            .await
+            .map_err(|e| format!("Failed to set installed SSH key ownership: {}", e))?;
+    }
+    Ok(())
+}
+
+async fn copy_config_to_target(
+    config_dir: &Path,
+    username: &str,
+    repo_owner: &str,
+    repo_name: &str,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
+    let (system_repo_dir, mounted_repo_dir) = installed_repo_paths(username, repo_owner, repo_name);
+    let target_home = PathBuf::from("/mnt").join(
+        Path::new("/home")
+            .join(username)
+            .strip_prefix("/")
+            .expect("target home should be absolute"),
+    );
+    let repo_parent = mounted_repo_dir.parent().ok_or_else(|| {
+        format!(
+            "Installed repo path has no parent: {}",
+            mounted_repo_dir.display()
+        )
+    })?;
+    let staging_root = PathBuf::from(format!(
+        "/tmp/keystone-installed-config-{}",
+        std::process::id()
+    ));
+    let staged_repo_dir = staging_root.join(repo_name);
+    let staged_system_flake = staging_root.join("system-flake");
+    let repo_parent_string = repo_parent.display().to_string();
+    let repo_dir_string = mounted_repo_dir.display().to_string();
+    let staged_repo_contents = format!("{}/.", staged_repo_dir.display());
+    let staged_system_flake_string = staged_system_flake.display().to_string();
+    let target_marker = mounted_repo_dir.join(FIRST_BOOT_MARKER);
+    let target_marker_string = target_marker.display().to_string();
+    let target_system_flake = "/mnt/etc/keystone/system-flake";
+    let installed_ssh_keys = read_install_metadata_lines("installed-ssh-keys");
+    let target_ssh_dir = target_home.join(".ssh");
+    let target_authorized_keys = target_ssh_dir.join("authorized_keys");
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Preparing installed repo handoff to {}",
+        mounted_repo_dir.display()
+    )));
+
+    // Stage the repo in /tmp first, then copy it into /mnt through sudo so the
+    // installer's success state means the first-boot handoff is actually usable.
+    stage_config_to_temp(
+        config_dir,
+        &staging_root,
+        &staged_repo_dir,
+        &staged_system_flake,
+        &system_repo_dir,
+    )
+    .await?;
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Copying installed repo to {}",
+        mounted_repo_dir.display()
+    )));
+    run_command_quiet("install", &["-d", &repo_parent_string], None, true)
+        .await
+        .map_err(|e| format!("Failed to create installed repo parent: {}", e))?;
+    run_command_quiet("rm", &["-rf", &repo_dir_string], None, true)
+        .await
+        .map_err(|e| format!("Failed to clear installed repo dir: {}", e))?;
+    run_command_quiet("install", &["-d", &repo_dir_string], None, true)
+        .await
+        .map_err(|e| format!("Failed to create installed repo dir: {}", e))?;
+    run_command_quiet(
+        "cp",
+        &["-a", &staged_repo_contents, &repo_dir_string],
+        None,
+        true,
+    )
+    .await
+    .map_err(|e| format!("Failed to copy staged repo into target system: {}", e))?;
+    run_command_quiet("test", &["-f", &target_marker_string], None, true)
+        .await
+        .map_err(|e| format!("Installed repo is missing the first-boot marker: {}", e))?;
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Writing KEYSTONE_SYSTEM_FLAKE pointer to {}",
+        target_system_flake
+    )));
+    run_command_quiet("install", &["-d", "/mnt/etc/keystone"], None, true)
+        .await
+        .map_err(|e| format!("Failed to create /mnt/etc/keystone: {}", e))?;
+    run_command_quiet(
+        "install",
+        &[
+            "-m",
+            "0644",
+            &staged_system_flake_string,
+            target_system_flake,
+        ],
+        None,
+        true,
+    )
+    .await
+    .map_err(|e| format!("Failed to write system flake path: {}", e))?;
+    run_command_quiet("test", &["-f", target_system_flake], None, true)
+        .await
+        .map_err(|e| format!("Installed system is missing system-flake: {}", e))?;
+
+    if !installed_ssh_keys.is_empty() {
+        let _ = tx.send(InstallMessage::Output(format!(
+            "Installing development SSH keys for {}",
+            username
+        )));
+        install_ssh_keys(
+            &installed_ssh_keys,
+            &target_ssh_dir,
+            &target_authorized_keys,
+            &staging_root,
+        )
+        .await?;
+    }
+
+    fix_target_ownership(&target_home, username, !installed_ssh_keys.is_empty(), tx).await?;
+
+    let _ = tokio::fs::remove_dir_all(&staging_root).await;
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Config copied to {} and /etc/keystone/system-flake updated",
+        mounted_repo_dir.display()
     )));
     Ok(())
 }
@@ -1611,12 +2522,14 @@ async fn run_command(
     cwd: &Path,
     tx: &mpsc::UnboundedSender<InstallMessage>,
     cancel_token: &CancellationToken,
+    privileged: bool,
 ) -> Result<(), String> {
-    let cmd_display = format!("$ {} {}", program, args.join(" "));
+    let command = build_command_spec(program, args, privileged);
+    let cmd_display = format!("$ {} {}", command.program, command.args.join(" "));
     let _ = tx.send(InstallMessage::Output(cmd_display));
 
-    let child_result = Command::new(program)
-        .args(args)
+    let child_result = Command::new(&command.program)
+        .args(&command.args)
         .current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1674,6 +2587,24 @@ async fn run_command(
             let _ = stdout_task.await;
             Err("Cancelled".to_string())
         }
+    }
+}
+
+fn build_command_spec(program: &str, args: &[&str], privileged: bool) -> CommandSpec {
+    if privileged {
+        let mut command_args = Vec::with_capacity(args.len() + 2);
+        command_args.push("-n".to_string());
+        command_args.push(program.to_string());
+        command_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        return CommandSpec {
+            program: "sudo".to_string(),
+            args: command_args,
+        };
+    }
+
+    CommandSpec {
+        program: program.to_string(),
+        args: args.iter().map(|arg| (*arg).to_string()).collect(),
     }
 }
 
@@ -1801,6 +2732,7 @@ mod tests {
             flake_host: "test-laptop".to_string(),
             hostname: "test-laptop".to_string(),
             username: Some("testuser".to_string()),
+            repo_owner: Some("testuser".to_string()),
             github_username: None,
             storage_type: Some("ext4".to_string()),
             disk_device: Some("/dev/disk/by-id/nvme-TEST".to_string()),
@@ -1815,6 +2747,7 @@ mod tests {
             flake_host: "test-laptop".to_string(),
             hostname: "test-laptop".to_string(),
             username: Some("testuser".to_string()),
+            repo_owner: Some("testuser".to_string()),
             github_username: None,
             storage_type: Some("ext4".to_string()),
             disk_device: None,
@@ -1848,6 +2781,7 @@ mod tests {
             flake_host: String::new(),
             hostname: String::new(),
             username: Some("noah".to_string()),
+            repo_owner: Some("noah".to_string()),
             github_username: None,
             storage_type: None,
             disk_device: None,
@@ -2066,5 +3000,163 @@ mod tests {
 
         screen.poll();
         assert_eq!(screen.selected_disk_index(), 1);
+    }
+
+    #[test]
+    fn test_build_command_spec_wraps_privileged_commands_in_sudo() {
+        let command = build_command_spec("disko", &["--mode", "disko"], true);
+
+        assert_eq!(command.program, "sudo");
+        assert_eq!(command.args, vec!["-n", "disko", "--mode", "disko"]);
+    }
+
+    #[test]
+    fn test_build_command_spec_keeps_non_privileged_commands_direct() {
+        let command = build_command_spec("disko", &["--mode", "disko"], false);
+
+        assert_eq!(command.program, "disko");
+        assert_eq!(command.args, vec!["--mode", "disko"]);
+    }
+
+    #[test]
+    fn test_prebaked_config_defaults_installed_repo_name_to_keystone_config() {
+        assert_eq!(
+            test_config().installed_repo_name(),
+            DEFAULT_INSTALLED_REPO_NAME
+        );
+    }
+
+    #[test]
+    fn test_embedded_repo_uses_configured_installed_repo_name() {
+        assert_eq!(
+            test_embedded_repo_config().installed_repo_name(),
+            "keystone-config"
+        );
+    }
+
+    #[test]
+    fn test_installed_repo_paths_keep_system_flake_pointer_outside_mnt() {
+        let (system_repo_dir, mounted_repo_dir) =
+            installed_repo_paths("noah", "noah", "keystone-config");
+
+        assert_eq!(
+            system_repo_dir,
+            PathBuf::from("/home/noah/.keystone/repos/noah/keystone-config")
+        );
+        assert_eq!(
+            mounted_repo_dir,
+            PathBuf::from("/mnt/home/noah/.keystone/repos/noah/keystone-config")
+        );
+    }
+
+    #[test]
+    fn test_ensure_marker_gitignore_contents_preserves_existing_entries() {
+        let updated = ensure_marker_gitignore_contents(Some("result\nnode_modules/\n"));
+        assert_eq!(updated, "result\nnode_modules/\n.first-boot-pending\n");
+
+        let unchanged = ensure_marker_gitignore_contents(Some(".first-boot-pending\n"));
+        assert_eq!(unchanged, ".first-boot-pending\n");
+    }
+
+    #[test]
+    fn test_merge_authorized_keys_appends_missing_keys_without_duplicates() {
+        let merged = merge_authorized_keys(
+            Some("ssh-ed25519 AAAA existing\n"),
+            &[
+                "ssh-ed25519 AAAA existing".to_string(),
+                "ssh-ed25519 BBBB new".to_string(),
+            ],
+        );
+
+        assert_eq!(merged, "ssh-ed25519 AAAA existing\nssh-ed25519 BBBB new\n");
+    }
+
+    #[test]
+    fn test_build_reconciled_hardware_wrapper_preserves_keystone_fields() {
+        let current = r#"let
+  system = "x86_64-linux";
+in
+{
+  inherit system;
+
+  module =
+    { config, lib, pkgs, modulesPath, ... }:
+    {
+      networking.hostId = "deadbeef";
+      keystone.os.storage.devices = [
+        "/dev/disk/by-id/test-disk"
+      ];
+      keystone.os.storage.mode = "mirror";
+      keystone.os.remoteUnlock.networkModule = "e1000e";
+    };
+}
+"#;
+
+        let reconciled =
+            build_reconciled_hardware_wrapper(current, Some("/dev/disk/by-id/fallback")).unwrap();
+
+        assert!(reconciled.contains("./hardware-generated.nix"));
+        assert!(reconciled.contains("networking.hostId = \"deadbeef\";"));
+        assert!(reconciled.contains("\"/dev/disk/by-id/test-disk\""));
+        assert!(reconciled.contains("keystone.os.storage.mode = \"mirror\";"));
+        assert!(reconciled.contains("keystone.os.remoteUnlock.networkModule = \"e1000e\";"));
+        assert!(reconciled.contains("hardware.enableRedistributableFirmware = true;"));
+    }
+
+    #[test]
+    fn test_build_reconciled_hardware_wrapper_uses_selected_disk_fallback() {
+        let current = r#"let
+  system = "x86_64-linux";
+in
+{
+  inherit system;
+
+  module = { ... }: {
+    networking.hostId = "deadbeef";
+  };
+}
+"#;
+
+        let reconciled =
+            build_reconciled_hardware_wrapper(current, Some("/dev/disk/by-id/fallback")).unwrap();
+
+        assert!(reconciled.contains("\"/dev/disk/by-id/fallback\""));
+    }
+
+    #[test]
+    fn test_strip_generated_storage_assignments_removes_storage_conflicts() {
+        let generated = r#"
+{ config, lib, pkgs, modulesPath, ... }:
+
+{
+  imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+
+  boot.initrd.availableKernelModules = [ "virtio_blk" ];
+  fileSystems."/" =
+    { device = "/dev/mapper/cryptroot";
+      fsType = "ext4";
+    };
+
+  boot.initrd.luks.devices."cryptroot".device = "/dev/disk/by-uuid/root";
+
+  fileSystems."/boot" =
+    { device = "/dev/disk/by-uuid/boot";
+      fsType = "vfat";
+    };
+
+  swapDevices = [ ];
+  nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
+}
+"#;
+
+        let sanitized = strip_generated_storage_assignments(generated);
+
+        assert!(sanitized.contains("imports = [ (modulesPath + \"/profiles/qemu-guest.nix\") ];"));
+        assert!(sanitized.contains("boot.initrd.availableKernelModules = [ \"virtio_blk\" ];"));
+        assert!(sanitized.contains("nixpkgs.hostPlatform = lib.mkDefault \"x86_64-linux\";"));
+        assert!(!sanitized.contains("fileSystems.\"/\""));
+        assert!(!sanitized.contains("fileSystems.\"/boot\""));
+        assert!(!sanitized.contains("boot.initrd.luks.devices.\"cryptroot\""));
+        assert!(!sanitized.contains("swapDevices = [ ];"));
     }
 }

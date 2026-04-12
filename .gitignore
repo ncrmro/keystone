@@ -10,6 +10,9 @@ installer-iso
 # ISO files (they are large)
 *.iso
 
+# E2E test working screenshots (ephemeral)
+.test-e2e-screenshots/
+
 # Editor / AI tool files
 .vscode/
 .gemini/
@@ -69,6 +72,8 @@ target/
 
 # VM screenshots for debugging
 screenshots/
+# LFS-tracked e2e baseline screenshots (negates the rule above)
+!templates/default/tests/e2e/screenshots/
 *.sock
 
 # DeepWork runtime artifacts (job definitions are tracked, outputs are not)
