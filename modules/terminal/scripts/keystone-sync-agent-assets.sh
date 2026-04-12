@@ -125,6 +125,14 @@ write_codex_skill() {
 ${extra_yaml}"
 }
 
+write_shared_skill() {
+  local skill_name="$1"
+  local skill_md="$2"
+  write_file "$HOME/.claude/skills/$skill_name/SKILL.md" "$skill_md"
+  write_file "$HOME/.gemini/skills/$skill_name/SKILL.md" "$skill_md"
+  write_file "$HOME/.config/opencode/skills/$skill_name/SKILL.md" "$skill_md"
+}
+
 render_codex_skill_body() {
   local command_body="$1"
   local skill_name="$2"
@@ -454,9 +462,7 @@ done
 
 deepwork_body="$(cat "$templates_dir/deepwork-skill.template.md")"
 deepwork_skill_md="$(render_skill_md "deepwork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_body")"
-write_file "$HOME/.claude/skills/deepwork/SKILL.md" "$deepwork_skill_md"
-write_file "$HOME/.gemini/skills/deepwork/SKILL.md" "$deepwork_skill_md"
-write_file "$HOME/.config/opencode/skills/deepwork/SKILL.md" "$deepwork_skill_md"
+write_shared_skill "deepwork" "$deepwork_skill_md"
 
 write_codex_skill "deepwork" "DeepWork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_skill_md" '
 dependencies:
@@ -466,11 +472,94 @@ dependencies:
       description: "DeepWork MCP server"
 '
 
+deepplan_body="$(cat <<'EOF'
+# DeepPlan
+
+Structured planning workflow that explores the codebase, generates competing
+designs, and produces an executable DeepWork job definition.
+
+## How to Use
+
+1. Call `EnterPlanMode` if not already in plan mode
+2. Call `start_workflow` with:
+   - `job_name`: `"deepplan"`
+   - `workflow_name`: `"create_deep_plan"`
+   - `goal`: the user's planning request
+3. Follow the step instructions returned by the MCP tools — they supersede
+   the default planning phases
+
+## Intent Parsing
+
+When the user invokes `/deepplan`, parse their intent:
+- **With goal**: `/deepplan <goal>` → enter plan mode and start the workflow
+  with `<goal>`
+- **No context**: `/deepplan` alone → enter plan mode and start the workflow
+  using conversation context as the goal; if no context, ask the user what
+  they want to plan
+EOF
+)"
+deepplan_skill_md="$(render_skill_md "deepplan" "Start structured planning — explores, designs, and produces an executable plan" "$deepplan_body")"
+write_shared_skill "deepplan" "$deepplan_skill_md"
+
+write_codex_skill "deepplan" "DeepPlan" "Start structured planning — explores, designs, and produces an executable plan" "$deepplan_skill_md" '
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"
+'
+
+deepreviews_body="$(cat "$templates_dir/deepreviews-skill.template.md")"
+deepreviews_skill_md="$(render_skill_md "deepreviews" "Reference documentation for DeepWork Reviews — automated code review rules using .deepreview configs and DeepSchema-generated rules" "$deepreviews_body")"
+write_shared_skill "deepreviews" "$deepreviews_skill_md"
+
+write_codex_skill "deepreviews" "DeepWork Reviews" "Reference documentation for DeepWork Reviews" "$deepreviews_skill_md" '
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"
+'
+
+deepschema_body="$(cat "$templates_dir/deepschema-skill.template.md")"
+deepschema_skill_md="$(render_skill_md "deepschema" "Create and manage DeepSchemas — rich file-level schemas with automatic validation and review generation" "$deepschema_body")"
+write_shared_skill "deepschema" "$deepschema_skill_md"
+
+write_codex_skill "deepschema" "DeepSchema" "Create and manage DeepSchemas" "$deepschema_skill_md" '
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"
+'
+
+review_body="$(cat "$templates_dir/review-skill.template.md")"
+review_skill_md="$(render_skill_md "review" "Run DeepWork Reviews on the current branch — review changed files using .deepreview rules" "$review_body")"
+write_shared_skill "review" "$review_skill_md"
+
+write_codex_skill "review" "Review" "Run DeepWork Reviews on the current branch" "$review_skill_md" '
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"
+'
+
+configure_reviews_body="$(cat "$templates_dir/configure-reviews-skill.template.md")"
+configure_reviews_skill_md="$(render_skill_md "configure_reviews" "Set up DeepWork Reviews — automated code review rules using .deepreview config files" "$configure_reviews_body")"
+write_shared_skill "configure_reviews" "$configure_reviews_skill_md"
+
+write_codex_skill "configure_reviews" "Configure Reviews" "Set up DeepWork Reviews" "$configure_reviews_skill_md" '
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "deepwork"
+      description: "DeepWork MCP server"
+'
+
 wrapup_body="$(cat "$templates_dir/wrap-up-skill.template.md")"
 wrapup_skill_md="$(render_skill_md "wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body")"
-write_file "$HOME/.claude/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
-write_file "$HOME/.gemini/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
-write_file "$HOME/.config/opencode/skills/wrap-up/SKILL.md" "$wrapup_skill_md"
+write_shared_skill "wrap-up" "$wrapup_skill_md"
 
 write_codex_skill "wrap-up" "Wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_skill_md"
 

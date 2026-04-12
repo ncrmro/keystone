@@ -7,6 +7,7 @@
 #
 # See conventions/tool.cli-coding-agents.md
 # See specs/002-repo-backed-terminal-assets.md
+# See specs/REQ-023-executive-assistant-perception-layer.md
 {
   config,
   lib,
@@ -369,6 +370,34 @@ let
       they want to plan
   '';
 
+  deepreviewsSkillMetadata = {
+    name = "deepreviews";
+    description = "Reference documentation for DeepWork Reviews — automated code review rules using .deepreview configs and DeepSchema-generated rules";
+  };
+
+  deepreviewsSkillBody = builtins.readFile ./agent-assets/deepreviews-skill.template.md;
+
+  deepschemaSkillMetadata = {
+    name = "deepschema";
+    description = "Create and manage DeepSchemas — rich file-level schemas with automatic validation and review generation";
+  };
+
+  deepschemaSkillBody = builtins.readFile ./agent-assets/deepschema-skill.template.md;
+
+  reviewSkillMetadata = {
+    name = "review";
+    description = "Run DeepWork Reviews on the current branch — review changed files using .deepreview rules";
+  };
+
+  reviewSkillBody = builtins.readFile ./agent-assets/review-skill.template.md;
+
+  configureReviewsSkillMetadata = {
+    name = "configure_reviews";
+    description = "Set up DeepWork Reviews — automated code review rules using .deepreview config files";
+  };
+
+  configureReviewsSkillBody = builtins.readFile ./agent-assets/configure-reviews-skill.template.md;
+
   wrapUpSkillMetadata = {
     name = "wrap-up";
     description = "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human";
@@ -407,6 +436,86 @@ let
         interface:
           display_name: "DeepPlan"
           short_description: "Start structured planning — explores, designs, and produces an executable plan"
+
+        dependencies:
+          tools:
+            - type: "mcp"
+              value: "deepwork"
+              description: "DeepWork MCP server"
+      '';
+    }
+    {
+      relativePath = ".codex/skills/deepreviews/SKILL.md";
+      source = pkgs.writeText "codex-skill-deepreviews-SKILL.md" (
+        mkSkillMd deepreviewsSkillMetadata deepreviewsSkillBody
+      );
+    }
+    {
+      relativePath = ".codex/skills/deepreviews/agents/openai.yaml";
+      source = pkgs.writeText "codex-skill-deepreviews-openai.yaml" ''
+        interface:
+          display_name: "DeepWork Reviews"
+          short_description: "Reference documentation for DeepWork Reviews"
+
+        dependencies:
+          tools:
+            - type: "mcp"
+              value: "deepwork"
+              description: "DeepWork MCP server"
+      '';
+    }
+    {
+      relativePath = ".codex/skills/deepschema/SKILL.md";
+      source = pkgs.writeText "codex-skill-deepschema-SKILL.md" (
+        mkSkillMd deepschemaSkillMetadata deepschemaSkillBody
+      );
+    }
+    {
+      relativePath = ".codex/skills/deepschema/agents/openai.yaml";
+      source = pkgs.writeText "codex-skill-deepschema-openai.yaml" ''
+        interface:
+          display_name: "DeepSchema"
+          short_description: "Create and manage DeepSchemas"
+
+        dependencies:
+          tools:
+            - type: "mcp"
+              value: "deepwork"
+              description: "DeepWork MCP server"
+      '';
+    }
+    {
+      relativePath = ".codex/skills/review/SKILL.md";
+      source = pkgs.writeText "codex-skill-review-SKILL.md" (
+        mkSkillMd reviewSkillMetadata reviewSkillBody
+      );
+    }
+    {
+      relativePath = ".codex/skills/review/agents/openai.yaml";
+      source = pkgs.writeText "codex-skill-review-openai.yaml" ''
+        interface:
+          display_name: "Review"
+          short_description: "Run DeepWork Reviews on the current branch"
+
+        dependencies:
+          tools:
+            - type: "mcp"
+              value: "deepwork"
+              description: "DeepWork MCP server"
+      '';
+    }
+    {
+      relativePath = ".codex/skills/configure_reviews/SKILL.md";
+      source = pkgs.writeText "codex-skill-configure-reviews-SKILL.md" (
+        mkSkillMd configureReviewsSkillMetadata configureReviewsSkillBody
+      );
+    }
+    {
+      relativePath = ".codex/skills/configure_reviews/agents/openai.yaml";
+      source = pkgs.writeText "codex-skill-configure-reviews-openai.yaml" ''
+        interface:
+          display_name: "Configure Reviews"
+          short_description: "Set up DeepWork Reviews"
 
         dependencies:
           tools:
@@ -489,6 +598,10 @@ let
   activeCodexSkillNames = [
     "deepwork"
     "deepplan"
+    "deepreviews"
+    "deepschema"
+    "review"
+    "configure_reviews"
     "wrap-up"
   ]
   ++ map (command: codexSkillName command.id) publishedCommands;
@@ -652,6 +765,118 @@ in
               ".config/opencode"
             ];
 
+        deepreviewsSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              let
+                skillDir = "${toolDir}/skills/deepreviews";
+              in
+              if toolDir == ".gemini" then
+                acc
+                // {
+                  "${toolDir}/commands/deepreviews.toml".text = ''
+                    description = ${builtins.toJSON deepreviewsSkillMetadata.description}
+                    prompt = ${builtins.toJSON deepreviewsSkillBody}
+                  '';
+                }
+              else
+                acc
+                // {
+                  "${skillDir}/SKILL.md".text = mkSkillMd deepreviewsSkillMetadata deepreviewsSkillBody;
+                }
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
+
+        deepschemaSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              let
+                skillDir = "${toolDir}/skills/deepschema";
+              in
+              if toolDir == ".gemini" then
+                acc
+                // {
+                  "${toolDir}/commands/deepschema.toml".text = ''
+                    description = ${builtins.toJSON deepschemaSkillMetadata.description}
+                    prompt = ${builtins.toJSON deepschemaSkillBody}
+                  '';
+                }
+              else
+                acc
+                // {
+                  "${skillDir}/SKILL.md".text = mkSkillMd deepschemaSkillMetadata deepschemaSkillBody;
+                }
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
+
+        reviewSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              let
+                skillDir = "${toolDir}/skills/review";
+              in
+              if toolDir == ".gemini" then
+                acc
+                // {
+                  "${toolDir}/commands/review.toml".text = ''
+                    description = ${builtins.toJSON reviewSkillMetadata.description}
+                    prompt = ${builtins.toJSON reviewSkillBody}
+                  '';
+                }
+              else
+                acc
+                // {
+                  "${skillDir}/SKILL.md".text = mkSkillMd reviewSkillMetadata reviewSkillBody;
+                }
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
+
+        configureReviewsSkillsByTool =
+          foldl'
+            (
+              acc: toolDir:
+              let
+                skillDir = "${toolDir}/skills/configure_reviews";
+              in
+              if toolDir == ".gemini" then
+                acc
+                // {
+                  "${toolDir}/commands/configure_reviews.toml".text = ''
+                    description = ${builtins.toJSON configureReviewsSkillMetadata.description}
+                    prompt = ${builtins.toJSON configureReviewsSkillBody}
+                  '';
+                }
+              else
+                acc
+                // {
+                  "${skillDir}/SKILL.md".text = mkSkillMd configureReviewsSkillMetadata configureReviewsSkillBody;
+                }
+            )
+            { }
+            [
+              ".claude"
+              ".gemini"
+              ".config/opencode"
+            ];
+
         wrapUpSkillsByTool =
           foldl'
             (
@@ -719,6 +944,10 @@ in
       commandFilesByTool
       // deepworkSkillsByTool
       // deepplanSkillsByTool
+      // deepreviewsSkillsByTool
+      // deepschemaSkillsByTool
+      // reviewSkillsByTool
+      // configureReviewsSkillsByTool
       // wrapUpSkillsByTool
       // ksSkillsByTool
     );
