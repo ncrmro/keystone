@@ -92,7 +92,8 @@ workflows:
           short bullet sections, one per category above. Mark anything still
           unconfirmed as `[TBD]`.
         outputs:
-          - requirements_file
+          requirements_file:
+            required: true
 
       - name: research
         instructions: |
@@ -116,7 +117,8 @@ workflows:
 
           Write the options list to `options_file`. Order by best fit first.
         outputs:
-          - options_file
+          options_file:
+            required: true
 
       - name: confirm
         instructions: |
@@ -141,7 +143,8 @@ workflows:
 
           Write the confirmed booking details and any next steps to `plan_file`.
         outputs:
-          - plan_file
+          plan_file:
+            required: true
 
   birthday:
     summary: "Plan a birthday: gift research, reservation, and celebration checklist"
@@ -184,7 +187,8 @@ workflows:
 
           Write a structured summary to `requirements_file`.
         outputs:
-          - requirements_file
+          requirements_file:
+            required: true
 
       - name: research
         instructions: |
@@ -213,7 +217,8 @@ workflows:
 
           Write all results to `options_file`.
         outputs:
-          - options_file
+          options_file:
+            required: true
 
       - name: plan
         instructions: |
@@ -232,7 +237,8 @@ workflows:
 
           Write the plan to `plan_file`.
         outputs:
-          - plan_file
+          plan_file:
+            required: true
 
   calendar_prioritize:
     summary: "Review upcoming commitments and propose a prioritized calendar aligned to the user's goals"
@@ -272,7 +278,8 @@ workflows:
           Write the audit to `calendar_audit_file`. Include a short summary of the
           top 3 issues found.
         outputs:
-          - calendar_audit_file
+          calendar_audit_file:
+            required: true
 
       - name: propose
         instructions: |
@@ -299,7 +306,8 @@ workflows:
 
           Write the proposal to `calendar_proposal_file`.
         outputs:
-          - calendar_proposal_file
+          calendar_proposal_file:
+            required: true
 
       - name: apply
         instructions: |
@@ -317,7 +325,8 @@ workflows:
           4. For approved removals or declines, draft the response email if needed.
           5. Record any changes made in `plan_file` for the user's reference.
         outputs:
-          - plan_file
+          plan_file:
+            required: true
 
   memory_search:
     summary: "Search Keystone Photos (Immich) to find specific memories, albums, or moments"
@@ -360,7 +369,8 @@ workflows:
 
           Write a concise search brief to `requirements_file`.
         outputs:
-          - requirements_file
+          requirements_file:
+            required: true
 
       - name: search
         instructions: |
@@ -380,7 +390,8 @@ workflows:
 
           Write results to `memory_results_file`.
         outputs:
-          - memory_results_file
+          memory_results_file:
+            required: true
 
       - name: present
         instructions: |
@@ -400,4 +411,5 @@ workflows:
              `presentation` job with the asset details.
           5. Record the final selection or outcome in `plan_file`.
         outputs:
-          - plan_file
+          plan_file:
+            required: true

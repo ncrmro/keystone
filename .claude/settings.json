@@ -1,14 +1,2 @@
 {
-  "extraKnownMarketplaces": {
-    "deepwork-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "Unsupervisedcom/deepwork"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "deepwork@deepwork-plugins": true,
-    "learning-agents@deepwork-plugins": true
-  }
 }

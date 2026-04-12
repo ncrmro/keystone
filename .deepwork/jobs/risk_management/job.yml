@@ -1,5 +1,4 @@
 name: risk_management
-version: "1.0.0"
 summary: "Audit project risk posture, detect missing business functions, and produce a stakeholder reprioritization brief"
 
 step_arguments:
