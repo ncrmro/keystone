@@ -580,6 +580,253 @@ async fn fetch_github(username: &str) -> Result<(SourceEntry, Vec<String>)> {
     ))
 }
 
+// ── Forgejo source ────────────────────────────────────────────────────
+
+/// Forgejo API helper — authenticated GET via curl.
+async fn forgejo_api_get(host: &str, token: &str, path: &str) -> Result<serde_json::Value> {
+    let url = format!("{host}/api/v1{path}");
+    let output = Command::new("curl")
+        .args([
+            "-sf",
+            "-H", "Accept: application/json",
+            "-H", &format!("Authorization: token {token}"),
+            &url,
+        ])
+        .output()
+        .await
+        .context("failed to run curl")?;
+
+    if !output.status.success() {
+        anyhow::bail!("forgejo API request failed: {path}");
+    }
+
+    Ok(serde_json::from_slice(&output.stdout).unwrap_or(serde_json::json!([])))
+}
+
+/// Fetch unread Forgejo notifications and enrich with issue/PR details.
+/// ISSUE-REQ-4: Uses unread-only notifications endpoint.
+async fn fetch_forgejo(
+    host: &str,
+    token: &str,
+    username: &str,
+) -> Result<(SourceEntry, Vec<String>)> {
+    // Fetch unread notifications only (default — no status-types=read param)
+    let raw = forgejo_api_get(host, token, "/notifications?limit=100").await?;
+    let notifications = raw.as_array().cloned().unwrap_or_default();
+
+    // Collect thread IDs for ack manifest
+    let thread_ids: Vec<String> = notifications
+        .iter()
+        .filter_map(|n| n.get("id").and_then(|v| v.as_u64()).map(|id| id.to_string()))
+        .collect();
+
+    // Deduplicate by subject URL
+    let mut seen = std::collections::HashSet::new();
+    struct FjNotif {
+        subject_url: String,
+        repo: String,
+        subject_type: String, // "Issue" or "Pull"
+    }
+
+    let mut deduped: Vec<FjNotif> = Vec::new();
+    for notif in &notifications {
+        let subject_type = notif
+            .pointer("/subject/type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("");
+        let subject_url = notif
+            .pointer("/subject/url")
+            .and_then(|u| u.as_str())
+            .unwrap_or("");
+        let repo = notif
+            .pointer("/repository/full_name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("");
+
+        if (subject_type != "Issue" && subject_type != "Pull")
+            || subject_url.is_empty()
+            || !seen.insert(subject_url.to_string())
+        {
+            continue;
+        }
+
+        deduped.push(FjNotif {
+            subject_url: subject_url.to_string(),
+            repo: repo.to_string(),
+            subject_type: subject_type.to_string(),
+        });
+    }
+
+    // Parallel enrichment
+    enum FjResult {
+        Issue(serde_json::Value),
+        Pr(serde_json::Value),
+        Reviews(Vec<serde_json::Value>),
+    }
+
+    let enrich_futures: Vec<_> = deduped
+        .into_iter()
+        .map(|notif| {
+            let host = host.to_string();
+            let token = token.to_string();
+            let username = username.to_string();
+
+            async move {
+                let raw = forgejo_api_get(&host, &token, "")
+                    .await
+                    .ok(); // dummy — we use the full subject_url directly
+
+                // Forgejo subject URLs are full API URLs already
+                let item_raw = {
+                    let output = Command::new("curl")
+                        .args([
+                            "-sf",
+                            "-H", "Accept: application/json",
+                            "-H", &format!("Authorization: token {token}"),
+                            &notif.subject_url,
+                        ])
+                        .output()
+                        .await
+                        .ok()?;
+                    if !output.status.success() {
+                        return None;
+                    }
+                    serde_json::from_slice::<serde_json::Value>(&output.stdout).ok()?
+                };
+                drop(raw);
+
+                let state = item_raw.get("state").and_then(|s| s.as_str()).unwrap_or("");
+                if state != "open" {
+                    return None;
+                }
+
+                match notif.subject_type.as_str() {
+                    "Issue" => {
+                        Some(FjResult::Issue(serde_json::json!({
+                            "repo": notif.repo,
+                            "number": item_raw.get("number"),
+                            "title": item_raw.get("title"),
+                            "url": item_raw.get("html_url"),
+                            "assignee": item_raw.pointer("/assignee/login"),
+                            "labels": item_raw.get("labels").and_then(|l| l.as_array()).map(|arr|
+                                arr.iter().filter_map(|l| l.get("name").and_then(|n| n.as_str())).collect::<Vec<_>>()
+                            ).unwrap_or_default(),
+                            "created_at": item_raw.get("created_at"),
+                        })))
+                    }
+                    "Pull" => {
+                        let pr_author = item_raw.pointer("/user/login").and_then(|l| l.as_str()).unwrap_or("");
+                        let pr_number = item_raw.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+                        let pr_title = item_raw.get("title").and_then(|t| t.as_str()).unwrap_or("");
+                        let pr_url = item_raw.get("html_url").and_then(|u| u.as_str()).unwrap_or("");
+                        let pr_branch = item_raw.pointer("/head/ref").and_then(|r| r.as_str()).unwrap_or("");
+
+                        if pr_author != username {
+                            // Check if we're a requested reviewer
+                            let is_reviewer = item_raw
+                                .get("requested_reviewers")
+                                .and_then(|r| r.as_array())
+                                .map(|arr| arr.iter().any(|r| r.get("login").and_then(|l| l.as_str()) == Some(&username)))
+                                .unwrap_or(false);
+
+                            if is_reviewer {
+                                return Some(FjResult::Pr(serde_json::json!({
+                                    "repo": notif.repo,
+                                    "number": pr_number,
+                                    "title": pr_title,
+                                    "url": pr_url,
+                                    "author": pr_author,
+                                    "created_at": item_raw.get("created_at"),
+                                })));
+                            }
+                            return None;
+                        }
+
+                        // Author's PR — fetch reviews
+                        let (owner, name) = notif.repo.split_once('/').unwrap_or(("", ""));
+                        let reviews_path = format!("/repos/{owner}/{name}/pulls/{pr_number}/reviews");
+                        let reviews_raw = forgejo_api_get(&host, &token, &reviews_path).await.ok()?;
+                        let reviews_arr = reviews_raw.as_array().cloned().unwrap_or_default();
+
+                        let mut results = Vec::new();
+                        for review in &reviews_arr {
+                            let reviewer = review.pointer("/user/login").and_then(|l| l.as_str()).unwrap_or("");
+                            let review_state = review.get("state").and_then(|s| s.as_str()).unwrap_or("");
+
+                            if reviewer == username {
+                                continue;
+                            }
+                            // Forgejo uses REQUEST_CHANGES and COMMENT
+                            if review_state != "REQUEST_CHANGES" && review_state != "COMMENT" {
+                                continue;
+                            }
+
+                            let review_id = review.get("id").and_then(|i| i.as_u64()).unwrap_or(0);
+                            let comments_path = format!("/repos/{owner}/{name}/pulls/{pr_number}/reviews/{review_id}/comments");
+                            let comments_raw = forgejo_api_get(&host, &token, &comments_path).await.unwrap_or(serde_json::json!([]));
+                            let comments: Vec<serde_json::Value> = comments_raw
+                                .as_array()
+                                .map(|arr| {
+                                    arr.iter()
+                                        .map(|c| serde_json::json!({
+                                            "id": c.get("id"),
+                                            "path": c.get("path"),
+                                            "body": c.get("body"),
+                                        }))
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+
+                            results.push(serde_json::json!({
+                                "repo": notif.repo,
+                                "pr_number": pr_number,
+                                "pr_title": pr_title,
+                                "pr_url": pr_url,
+                                "pr_branch": pr_branch,
+                                "review_id": review_id,
+                                "reviewer": reviewer,
+                                "review_state": review_state,
+                                "comments": comments,
+                            }));
+                        }
+
+                        if results.is_empty() { None } else { Some(FjResult::Reviews(results)) }
+                    }
+                    _ => None,
+                }
+            }
+        })
+        .collect();
+
+    let results = futures::future::join_all(enrich_futures).await;
+
+    let mut issues = Vec::new();
+    let mut prs = Vec::new();
+    let mut reviews = Vec::new();
+
+    for result in results.into_iter().flatten() {
+        match result {
+            FjResult::Issue(i) => issues.push(i),
+            FjResult::Pr(p) => prs.push(p),
+            FjResult::Reviews(mut r) => reviews.append(&mut r),
+        }
+    }
+
+    let data = serde_json::json!({
+        "forgejo-issues": issues,
+        "forgejo-prs": prs,
+        "forgejo-pr-reviews": reviews,
+    });
+
+    Ok((
+        SourceEntry {
+            source: "forgejo".to_string(),
+            data,
+        },
+        thread_ids,
+    ))
+}
+
 // ── Ack ────────────────────────────────────────────────────────────────
 
 /// ISSUE-REQ-6: Mark items as read at the source.
@@ -593,6 +840,7 @@ async fn execute_ack(manifest_path: &PathBuf) -> Result<()> {
         match source.source.as_str() {
             "email" => ack_email(&source.ids).await?,
             "github" => ack_github(&source.ids).await?,
+            "forgejo" => ack_forgejo(&source.ids).await?,
             other => eprintln!("warning: unknown source in manifest: {other}"),
         }
     }
@@ -632,6 +880,42 @@ async fn ack_github(thread_ids: &[String]) -> Result<()> {
             eprintln!("warning: failed to mark GitHub thread {id} as read");
         }
     }
+    Ok(())
+}
+
+/// Mark Forgejo notification threads as read.
+async fn ack_forgejo(thread_ids: &[String]) -> Result<()> {
+    let host = std::env::var("FORGEJO_HOST").unwrap_or_else(|_| "https://git.ncrmro.com".to_string());
+    let token = std::env::var("FORGEJO_TOKEN").unwrap_or_default();
+    if token.is_empty() {
+        eprintln!("warning: FORGEJO_TOKEN not set, skipping forgejo ack");
+        return Ok(());
+    }
+
+    let futures: Vec<_> = thread_ids
+        .iter()
+        .map(|id| {
+            let url = format!("{host}/api/v1/notifications/threads/{id}");
+            let token = token.clone();
+            async move {
+                let status = Command::new("curl")
+                    .args([
+                        "-sf", "-X", "PATCH",
+                        "-H", "Accept: application/json",
+                        "-H", &format!("Authorization: token {token}"),
+                        &url,
+                    ])
+                    .status()
+                    .await;
+
+                if status.map(|s| !s.success()).unwrap_or(true) {
+                    eprintln!("warning: failed to mark Forgejo thread {id} as read");
+                }
+            }
+        })
+        .collect();
+
+    futures::future::join_all(futures).await;
     Ok(())
 }
 
@@ -701,6 +985,42 @@ async fn execute_list(json: bool) -> Result<()> {
                     }
                 }
             }
+            "forgejo" => {
+                if let Some(issues) = entry.data.get("forgejo-issues").and_then(|v| v.as_array()) {
+                    if !issues.is_empty() {
+                        println!("  Issues:");
+                        for issue in issues {
+                            let repo = issue.get("repo").and_then(|r| r.as_str()).unwrap_or("");
+                            let number = issue.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+                            let title = issue.get("title").and_then(|t| t.as_str()).unwrap_or("");
+                            println!("    {repo}#{number}: {title}");
+                        }
+                    }
+                }
+                if let Some(prs) = entry.data.get("forgejo-prs").and_then(|v| v.as_array()) {
+                    if !prs.is_empty() {
+                        println!("  PRs requesting review:");
+                        for pr in prs {
+                            let repo = pr.get("repo").and_then(|r| r.as_str()).unwrap_or("");
+                            let number = pr.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+                            let title = pr.get("title").and_then(|t| t.as_str()).unwrap_or("");
+                            println!("    {repo}#{number}: {title}");
+                        }
+                    }
+                }
+                if let Some(reviews) = entry.data.get("forgejo-pr-reviews").and_then(|v| v.as_array()) {
+                    if !reviews.is_empty() {
+                        println!("  Reviews on your PRs:");
+                        for rev in reviews {
+                            let repo = rev.get("repo").and_then(|r| r.as_str()).unwrap_or("");
+                            let pr_number = rev.get("pr_number").and_then(|n| n.as_u64()).unwrap_or(0);
+                            let reviewer = rev.get("reviewer").and_then(|r| r.as_str()).unwrap_or("");
+                            let state = rev.get("review_state").and_then(|s| s.as_str()).unwrap_or("");
+                            println!("    {repo}#{pr_number}: {reviewer} ({state})");
+                        }
+                    }
+                }
+            }
             _ => {
                 println!("  {}", serde_json::to_string_pretty(&entry.data)?);
             }
@@ -731,6 +1051,18 @@ async fn fetch_all_sources() -> Vec<SourceEntry> {
     });
     if let Some(ref user) = gh_user {
         if let Ok((entry, _)) = fetch_github(user).await {
+            if entry.data != serde_json::json!({}) {
+                entries.push(entry);
+            }
+        }
+    }
+
+    // Forgejo
+    let fj_host = std::env::var("FORGEJO_HOST").ok();
+    let fj_token = std::env::var("FORGEJO_TOKEN").ok();
+    let fj_user = std::env::var("FORGEJO_USERNAME").ok();
+    if let (Some(ref host), Some(ref token), Some(ref user)) = (&fj_host, &fj_token, &fj_user) {
+        if let Ok((entry, _)) = fetch_forgejo(host, token, user).await {
             if entry.data != serde_json::json!({}) {
                 entries.push(entry);
             }
@@ -773,6 +1105,37 @@ async fn execute_sources(json: bool) -> Result<()> {
         "tool": "gh",
         "available": gh_ok,
         "username": std::env::var("GITHUB_USERNAME").unwrap_or_default(),
+    }));
+
+    // Check Forgejo
+    let fj_host = std::env::var("FORGEJO_HOST").unwrap_or_default();
+    let fj_token = std::env::var("FORGEJO_TOKEN").ok();
+    let fj_ok = if let Some(ref token) = fj_token {
+        if !fj_host.is_empty() {
+            Command::new("curl")
+                .args([
+                    "-sf",
+                    "-H", "Accept: application/json",
+                    "-H", &format!("Authorization: token {token}"),
+                    &format!("{fj_host}/api/v1/user"),
+                ])
+                .output()
+                .await
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    sources.push(serde_json::json!({
+        "source": "forgejo",
+        "tool": "curl",
+        "available": fj_ok,
+        "host": fj_host,
+        "username": std::env::var("FORGEJO_USERNAME").unwrap_or_default(),
     }));
 
     if json {
