@@ -204,10 +204,21 @@ async fn fetch_email() -> Result<(SourceEntry, Vec<String>)> {
 
     let ids: Vec<String> = envelopes.iter().map(|e| e.id.clone()).collect();
 
-    // Enrich each envelope with its body
+    // Enrich each envelope with its body — parallel fetches
+    let body_futures: Vec<_> = envelopes
+        .iter()
+        .map(|env| {
+            let id = env.id.clone();
+            async move {
+                let body = fetch_email_body(&id).await.unwrap_or_default();
+                (id, body)
+            }
+        })
+        .collect();
+    let bodies: Vec<_> = futures::future::join_all(body_futures).await;
+
     let mut enriched = Vec::new();
-    for env in &envelopes {
-        let body = fetch_email_body(&env.id).await.unwrap_or_default();
+    for (env, (_id, body)) in envelopes.iter().zip(bodies.into_iter()) {
         let mut obj = serde_json::Map::new();
         obj.insert("id".to_string(), serde_json::Value::String(env.id.clone()));
         for (k, v) in &env.rest {
@@ -269,59 +280,93 @@ async fn fetch_github(username: &str) -> Result<(SourceEntry, Vec<String>)> {
     // Deduplicate by subject URL, keep most recent
     let notifications = dedup_notifications(&raw);
 
-    // Phase 2-4: Enrich (issues, PRs, reviews) — mirrors fetch-github-sources
+    // Phase 2-4: Enrich (issues, PRs, reviews) — parallel, mirrors fetch-github-sources
+    enum EnrichResult {
+        Issue(serde_json::Value, Option<serde_json::Value>),
+        Pr(serde_json::Value),
+        Reviews(Vec<serde_json::Value>),
+    }
+
+    let enrich_futures: Vec<_> = notifications
+        .iter()
+        .filter_map(|notif| {
+            let subject_type = notif
+                .get("subject")
+                .and_then(|s| s.get("type"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            let subject_url = notif
+                .get("subject")
+                .and_then(|s| s.get("url"))
+                .and_then(|u| u.as_str())
+                .unwrap_or("")
+                .to_string();
+            let repo = notif
+                .get("repository")
+                .and_then(|r| r.get("full_name"))
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            let reason = notif
+                .get("reason")
+                .and_then(|r| r.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            if subject_url.is_empty() {
+                return None;
+            }
+
+            let notif = notif.clone();
+            let username = username.to_string();
+
+            Some(async move {
+                match subject_type.as_str() {
+                    "Issue" => {
+                        if let Ok(issue) = enrich_issue(&subject_url, &repo, &notif).await {
+                            let comment =
+                                enrich_issue_comment(&notif, &repo, &issue).await;
+                            Some(EnrichResult::Issue(issue, comment))
+                        } else {
+                            None
+                        }
+                    }
+                    "PullRequest" if reason == "review_requested" => {
+                        enrich_pr(&subject_url, &repo)
+                            .await
+                            .ok()
+                            .map(EnrichResult::Pr)
+                    }
+                    "PullRequest" if reason == "author" => {
+                        enrich_reviews(&subject_url, &repo, &username)
+                            .await
+                            .ok()
+                            .map(EnrichResult::Reviews)
+                    }
+                    _ => None,
+                }
+            })
+        })
+        .collect();
+
+    let results = futures::future::join_all(enrich_futures).await;
+
     let mut issues = Vec::new();
     let mut prs = Vec::new();
     let mut reviews = Vec::new();
     let mut issue_comments = Vec::new();
 
-    for notif in &notifications {
-        let subject_type = notif
-            .get("subject")
-            .and_then(|s| s.get("type"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("");
-        let subject_url = notif
-            .get("subject")
-            .and_then(|s| s.get("url"))
-            .and_then(|u| u.as_str())
-            .unwrap_or("");
-        let repo = notif
-            .get("repository")
-            .and_then(|r| r.get("full_name"))
-            .and_then(|n| n.as_str())
-            .unwrap_or("");
-        let reason = notif
-            .get("reason")
-            .and_then(|r| r.as_str())
-            .unwrap_or("");
-
-        if subject_url.is_empty() {
-            continue;
-        }
-
-        match subject_type {
-            "Issue" => {
-                if let Ok(issue) = enrich_issue(subject_url, repo, notif).await {
-                    if let Some(comment) =
-                        enrich_issue_comment(notif, repo, &issue).await
-                    {
-                        issue_comments.push(comment);
-                    }
-                    issues.push(issue);
+    for result in results.into_iter().flatten() {
+        match result {
+            EnrichResult::Issue(issue, comment) => {
+                issues.push(issue);
+                if let Some(c) = comment {
+                    issue_comments.push(c);
                 }
             }
-            "PullRequest" if reason == "review_requested" => {
-                if let Ok(pr) = enrich_pr(subject_url, repo).await {
-                    prs.push(pr);
-                }
-            }
-            "PullRequest" if reason == "author" => {
-                if let Ok(mut rev) = enrich_reviews(subject_url, repo, username).await {
-                    reviews.append(&mut rev);
-                }
-            }
-            _ => {}
+            EnrichResult::Pr(pr) => prs.push(pr),
+            EnrichResult::Reviews(mut revs) => reviews.append(&mut revs),
         }
     }
 
