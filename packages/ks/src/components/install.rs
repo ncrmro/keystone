@@ -999,6 +999,8 @@ fn format_available_disks(disks: &[DiskEntry], selected_disk: Option<&str>) -> S
     lines.join("\n")
 }
 
+const HEADLESS_CONFIRMATION_TOKEN: &str = "destroy";
+
 fn build_headless_confirmation_message(
     host: &str,
     selected_disk: &str,
@@ -1023,7 +1025,7 @@ fn build_headless_confirmation_message(
     lines.push(String::new());
     lines.push(format!(
         "Type '{}' to confirm installation, or anything else to cancel.",
-        selected_disk
+        HEADLESS_CONFIRMATION_TOKEN
     ));
 
     lines.join("\n")
@@ -1049,10 +1051,10 @@ fn confirm_headless_install(
         .read_line(&mut confirmation)
         .map_err(|error| format!("Failed to read confirmation: {}", error))?;
 
-    if confirmation.trim() != selected_disk {
+    if confirmation.trim() != HEADLESS_CONFIRMATION_TOKEN {
         return Err(format!(
             "Install cancelled. Expected '{}' at the confirmation prompt.",
-            selected_disk
+            HEADLESS_CONFIRMATION_TOKEN
         ));
     }
 
@@ -3343,7 +3345,7 @@ mod tests {
 
         assert!(message.contains("No --disk was provided for host 'laptop'."));
         assert!(message.contains("This will erase all data on '/dev/disk/by-id/nvme-best'."));
-        assert!(message.contains("Type '/dev/disk/by-id/nvme-best' to confirm installation"));
+        assert!(message.contains("Type 'destroy' to confirm installation"));
     }
 
     #[test]
