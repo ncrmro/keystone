@@ -183,11 +183,11 @@ async fn execute_fetch(
 // ── Email source ───────────────────────────────────────────────────────
 
 /// Fetch unseen email envelopes and enrich with bodies.
-/// ISSUE-REQ-2: Uses `--filter "NOT SEEN"` to exclude already-read messages.
+/// ISSUE-REQ-2: Uses `not flag seen` query to exclude already-read messages.
 async fn fetch_email() -> Result<(SourceEntry, Vec<String>)> {
     // Fetch only unseen envelopes
     let output = Command::new("himalaya")
-        .args(["envelope", "list", "--filter", "NOT SEEN", "-o", "json", "--page-size", "50"])
+        .args(["envelope", "list", "-o", "json", "-s", "50", "not", "flag", "seen"])
         .output()
         .await
         .context("failed to run himalaya")?;
@@ -702,7 +702,16 @@ async fn fetch_all_sources() -> Vec<SourceEntry> {
         }
     }
 
-    if let Ok(ref user) = std::env::var("GITHUB_USERNAME") {
+    let gh_user = std::env::var("GITHUB_USERNAME").ok().or_else(|| {
+        std::process::Command::new("gh")
+            .args(["api", "/user", "--jq", ".login"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+    });
+    if let Some(ref user) = gh_user {
         if let Ok((entry, _)) = fetch_github(user).await {
             if entry.data != serde_json::json!({}) {
                 entries.push(entry);
