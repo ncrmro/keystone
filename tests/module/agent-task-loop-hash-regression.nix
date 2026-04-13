@@ -72,7 +72,8 @@ pkgs.runCommand "test-agent-task-loop-hash-regression"
 
         mkdir -p "$HOME" "$TASK_LOOP_TEST_STATE_DIR" "$PWD/stubs" /tmp/task-loop-hash-regression-notes
 
-        printf '%s\n' 'tasks: []' > /tmp/task-loop-hash-regression-notes/TASKS.yaml
+        # Queue files live in $HOME (agent home), not the notes dir
+        printf '%s\n' 'tasks: []' > "$HOME/TASKS.yaml"
 
         printf '%s\n' '#!${pkgs.bash}/bin/bash' 'exit 0' > "$PWD/stubs/systemctl"
         chmod +x "$PWD/stubs/systemctl"

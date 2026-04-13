@@ -2821,7 +2821,7 @@ gather_agent_tasks() {
   while IFS= read -r agent; do
     [[ -n "$agent" ]] || continue
     local tasks_yaml pending in_progress blocked completed
-    tasks_yaml=$(agentctl "$agent" exec cat "/home/agent-${agent}/notes/TASKS.yaml" 2>/dev/null || true)
+    tasks_yaml=$(agentctl "$agent" exec cat "/home/agent-${agent}/TASKS.yaml" 2>/dev/null || true)
 
     if [[ -z "$tasks_yaml" ]]; then
       echo "| $agent | — | — | — | — |"

@@ -579,7 +579,7 @@ those providers until their CLIs support equivalent controls.
 
 **Concurrency control**: `flock` prevents concurrent task-loop runs. The timer safely skips overlapping runs.
 
-**Corruption guard**: After ingest and prioritize, the script validates TASKS.yaml with `yq` and reverts via `git checkout` if corrupted.
+**Corruption guard**: After ingest and prioritize, the script validates TASKS.yaml with `yq` and reverts from a pre-stage backup if corrupted.
 
 **YAML validation**: Both ingest and prioritize steps have DeepWork quality gates that verify schema compliance, deduplication, and field correctness.
 

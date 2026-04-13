@@ -89,8 +89,9 @@ pkgs.runCommand "test-agent-task-loop-ping-pong"
 
     mkdir -p "$HOME" "$TASK_LOOP_TEST_STATE_DIR" "$PWD/stubs" ${notesDir}
 
-    printf '%s\n' 'tasks: []' > ${notesDir}/TASKS.yaml
-    mkdir -p ${notesDir}/.deepwork
+    # Queue files live in $HOME (agent home), not the notes dir
+    printf '%s\n' 'tasks: []' > "$HOME/TASKS.yaml"
+    mkdir -p "$HOME/.deepwork"
 
     # Stub: systemctl (no-op)
     printf '%s\n' '#!${pkgs.bash}/bin/bash' 'exit 0' > "$PWD/stubs/systemctl"
@@ -119,15 +120,15 @@ pkgs.runCommand "test-agent-task-loop-ping-pong"
 
     args="$*"
     state_dir="''${TASK_LOOP_TEST_STATE_DIR:?}"
-    notes_dir="${notesDir}"
+    agent_home="''${HOME:?}"
 
     if printf '%s' "$args" | grep -q "task_loop ingest"; then
       printf '%s\n' "1" > "$state_dir/ingest-count"
-      printf 'tasks:\n  - name: reply-pong-to-test\n    description: "Reply with pong to the ping email from test@ncrmro.com"\n    status: pending\n    source: email\n    source_ref: "email-1-test@ncrmro.com"\n' > "$notes_dir/TASKS.yaml"
+      printf 'tasks:\n  - name: reply-pong-to-test\n    description: "Reply with pong to the ping email from test@ncrmro.com"\n    status: pending\n    source: email\n    source_ref: "email-1-test@ncrmro.com"\n' > "$agent_home/TASKS.yaml"
 
     elif printf '%s' "$args" | grep -q "task_loop prioritize"; then
       printf '%s\n' "1" > "$state_dir/prioritize-count"
-      yq -i '(.tasks[] | select(.name == "reply-pong-to-test")).model = "haiku"' "$notes_dir/TASKS.yaml"
+      yq -i '(.tasks[] | select(.name == "reply-pong-to-test")).model = "haiku"' "$agent_home/TASKS.yaml"
 
     else
       # Execute stage: record the task name and exit 0
@@ -161,7 +162,7 @@ pkgs.runCommand "test-agent-task-loop-ping-pong"
     # 3. Execute was invoked
     if [[ ! -f "$TASK_LOOP_TEST_STATE_DIR/execute-count" ]]; then
       echo "FAIL: execute stage was not invoked" >&2
-      cat ${notesDir}/TASKS.yaml >&2
+      cat "$HOME/TASKS.yaml" >&2
       exit 1
     fi
     echo "PASS: execute stage invoked"
@@ -176,10 +177,10 @@ pkgs.runCommand "test-agent-task-loop-ping-pong"
     echo "PASS: execute received pong task name"
 
     # 5. Task marked completed after successful execute
-    pong_status="$(yq '[.tasks[] | select(.name == "reply-pong-to-test")] | .[0].status' ${notesDir}/TASKS.yaml)"
+    pong_status="$(yq '[.tasks[] | select(.name == "reply-pong-to-test")] | .[0].status' "$HOME/TASKS.yaml")"
     if [[ "$pong_status" != "completed" ]]; then
       echo "FAIL: pong task status is '$pong_status', expected 'completed'" >&2
-      cat ${notesDir}/TASKS.yaml >&2
+      cat "$HOME/TASKS.yaml" >&2
       exit 1
     fi
     echo "PASS: pong task completed"
