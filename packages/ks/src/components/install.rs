@@ -154,7 +154,7 @@ impl InstallerConfig {
             Self::parse_configuration_nix(&effective_dir).unwrap_or((None, None));
 
         // Treat the placeholder as "no disk configured"
-        let disk_device = disk_device.filter(|d| d != "__KEYSTONE_DISK__");
+        let disk_device = disk_device.filter(|d| d != crate::template::DISK_PLACEHOLDER);
 
         Ok(Some(Self {
             source: InstallSource::PrebakedConfig,
@@ -671,6 +671,26 @@ fn push_unique(values: &mut Vec<String>, candidate: String) {
     }
 }
 
+fn is_placeholder_host_id(host_id: &str) -> bool {
+    host_id == crate::template::HOST_ID_PLACEHOLDER
+}
+
+fn is_valid_host_id(host_id: &str) -> bool {
+    host_id.len() == 8
+        && host_id.chars().all(|ch| ch.is_ascii_hexdigit())
+        && !is_placeholder_host_id(host_id)
+}
+
+fn resolve_install_host_id(current_hardware_nix: &str) -> String {
+    parse_nix_string_assignment(current_hardware_nix, "networking.hostId")
+        .filter(|host_id| is_valid_host_id(host_id))
+        .unwrap_or_else(crate::template::generate_host_id)
+}
+
+fn is_placeholder_storage_device(device: &str) -> bool {
+    device == crate::template::DISK_PLACEHOLDER || device.contains("YOUR-")
+}
+
 fn parse_nix_string_assignment(content: &str, attr: &str) -> Option<String> {
     content.lines().find_map(|line| {
         let trimmed = line.trim();
@@ -809,10 +829,12 @@ fn build_reconciled_hardware_wrapper(
 ) -> Result<String, String> {
     let system = parse_nix_string_assignment(current_hardware_nix, "system")
         .unwrap_or_else(|| "x86_64-linux".to_string());
-    let host_id = parse_nix_string_assignment(current_hardware_nix, "networking.hostId")
-        .unwrap_or_else(|| "00000000".to_string());
+    let host_id = resolve_install_host_id(current_hardware_nix);
     let mut storage_devices =
-        parse_nix_string_list_assignment(current_hardware_nix, "keystone.os.storage.devices");
+        parse_nix_string_list_assignment(current_hardware_nix, "keystone.os.storage.devices")
+            .into_iter()
+            .filter(|device| !is_placeholder_storage_device(device))
+            .collect::<Vec<_>>();
     if storage_devices.is_empty() {
         if let Some(device) = selected_disk {
             storage_devices.push(device.to_string());
@@ -1296,8 +1318,9 @@ impl InstallScreen {
         }
 
         let hardware_path = writable_repo.join(&selected.hardware_path);
-        let disk_device = parse_hardware_disk_device(&hardware_path)
-            .filter(|path| path.contains("/dev/disk/by-id/") && !path.contains("YOUR-"));
+        let disk_device = parse_hardware_disk_device(&hardware_path).filter(|path| {
+            path.contains("/dev/disk/by-id/") && !is_placeholder_storage_device(path)
+        });
 
         self.config.config_dir = writable_repo;
         self.config.flake_host = selected.flake_host;
@@ -2167,6 +2190,26 @@ async fn git_config_get(repo_dir: &Path, key: &str) -> Result<Option<String>, St
     }
 }
 
+async fn git_remote_get_url(repo_dir: &Path, remote: &str) -> Result<Option<String>, String> {
+    let output = Command::new("git")
+        .args(["remote", "get-url", remote])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to inspect git remote {remote}: {e}"))?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(value))
+    }
+}
+
 async fn ensure_git_identity(repo_dir: &Path, username: &str) -> Result<(), String> {
     if git_config_get(repo_dir, "user.name").await?.is_none() {
         run_command_quiet(
@@ -2375,7 +2418,75 @@ async fn create_install_commit(
         "Recorded local install commit.".to_string(),
     ));
 
+    push_install_commit(config_dir, tx).await;
+
     Ok(())
+}
+
+async fn push_install_commit(config_dir: &Path, tx: &mpsc::UnboundedSender<InstallMessage>) {
+    match git_remote_get_url(config_dir, "origin").await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            let _ = tx.send(InstallMessage::Output(
+                "No origin remote configured; leaving install commit local.".to_string(),
+            ));
+            return;
+        }
+        Err(error) => {
+            let _ = tx.send(InstallMessage::Output(format!(
+                "Warning: failed to inspect git remote origin: {}",
+                error
+            )));
+            return;
+        }
+    }
+
+    let _ = tx.send(InstallMessage::Output(
+        "Attempting to push install commit to origin/main...".to_string(),
+    ));
+
+    let output = match Command::new("git")
+        .args(["push", "-u", "origin", "main"])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env(
+            "GIT_SSH_COMMAND",
+            "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
+        )
+        .current_dir(config_dir)
+        .output()
+        .await
+    {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = tx.send(InstallMessage::Output(format!(
+                "Warning: failed to start git push: {}",
+                error
+            )));
+            return;
+        }
+    };
+
+    if output.status.success() {
+        let _ = tx.send(InstallMessage::Output(
+            "Pushed install commit to origin/main.".to_string(),
+        ));
+        return;
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let details = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        "no output".to_string()
+    };
+
+    let _ = tx.send(InstallMessage::Output(format!(
+        "Warning: failed to push install commit to origin/main: {}",
+        details
+    )));
 }
 
 /// Copy the prepared config to the installed system for the post-install onboarding flow.
@@ -3353,6 +3464,30 @@ in
         let reconciled =
             build_reconciled_hardware_wrapper(current, Some("/dev/disk/by-id/fallback")).unwrap();
 
+        assert!(reconciled.contains("\"/dev/disk/by-id/fallback\""));
+    }
+
+    #[test]
+    fn test_build_reconciled_hardware_wrapper_generates_host_id_from_placeholder() {
+        let current = r#"let
+  system = "x86_64-linux";
+in
+{
+  inherit system;
+
+  module = { ... }: {
+    networking.hostId = "00000000";
+    keystone.os.storage.devices = [
+      "__KEYSTONE_DISK__"
+    ];
+  };
+}
+"#;
+
+        let reconciled =
+            build_reconciled_hardware_wrapper(current, Some("/dev/disk/by-id/fallback")).unwrap();
+
+        assert!(!reconciled.contains("networking.hostId = \"00000000\";"));
         assert!(reconciled.contains("\"/dev/disk/by-id/fallback\""));
     }
 
