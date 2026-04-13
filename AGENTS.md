@@ -1,5 +1,7 @@
 # Keystone
 
+@CONTRIBUTOR.md — development workflow, verification commands, and deployment flow
+
 Keystone is a NixOS-based self-sovereign infrastructure platform for deploying secure,
 encrypted infrastructure on any hardware. It provides declarative modules for OS
 configuration, desktop environments, terminal tooling, and server services.
@@ -95,20 +97,6 @@ modules/
 `keystone-conventions`, `chrome-devtools-mcp`, `grafana-mcp`, `google-chrome`, `ghostty`,
 `yazi`, `himalaya`, `calendula`, `cardamum`, `comodoro`, `cfait`, `agenix`, `slidev`
 
-#### llm-agents input strategy
-
-AI agent packages (`claude-code`, `gemini-cli`, `codex`, `opencode`) come from the
-`llm-agents` flake input. Keystone keeps this pin at nightly-latest. Consumer flakes
-choose one of two strategies:
-
-- **Contributor / nightly-latest**: `llm-agents.follows = "keystone/llm-agents"` —
-  relocking keystone automatically bumps agent versions.
-- **Stable consumer**: declare an independent `llm-agents` input and override with
-  `keystone.inputs.llm-agents.follows = "llm-agents"` — bump manually via
-  `nix flake update llm-agents`.
-
-See `modules/terminal/AGENTS.md` § "llm-agents input strategy" for full examples.
-
 ## Important Notes
 
 - ZFS pool is **always** named `rpool`
@@ -119,14 +107,6 @@ See `modules/terminal/AGENTS.md` § "llm-agents input strategy" for full example
 - All ZFS datasets use native encryption with automatic key management
 - `keystone.repos` auto-populates from flake inputs; `keystone.development` enables local checkout paths
 - `keystone.experimental` (default `false`) gates experimental features. When `true`, experimental modules auto-enable. Defined in `modules/shared/experimental.nix` — a zero-dependency module imported everywhere. See `docs/experimental.md` for the full list and module author guide.
-- **AI Instruction Regeneration**: AI instruction files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are automatically regenerated from `archetypes.yaml` and the `conventions/` directory during `ks build`, `ks switch`, and `ks update --dev`. In development mode (`keystone.development = true`), these files are symlinked from the repository, and `ks switch` regenerates them as committable git diffs to reflect changes.
-- **DeepWork Standard Job Sync**: In `~/.keystone/repos/ncrmro/keystone`, shared DeepWork jobs are discovered through `DEEPWORK_ADDITIONAL_JOBS_FOLDERS`. In development mode, Keystone sets that env var to two job roots:
-  `~/.keystone/repos/Unsupervisedcom/deepwork/library/jobs` for shared DeepWork library jobs, and
-  `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs` for Keystone-native shared jobs.
-  Outside development mode, those same two roots resolve to the packaged derivations `pkgs.keystone.deepwork-library-jobs` and `pkgs.keystone.keystone-deepwork-jobs`.
-  When fixing a shared library job discovered through this env var, update the editable files in `~/.keystone/repos/Unsupervisedcom/deepwork/`. When fixing a Keystone-native shared job, update `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs/`. Usually there are no additional per-project DeepWork job files to change beyond the job root already named by `DEEPWORK_ADDITIONAL_JOBS_FOLDERS`.
-- DeepWork `keystone_system/issue` draft bodies are temporary artifacts. Write them under `.deepwork/tmp/`, not `.deepwork/jobs/`; the GitHub issue is the canonical source.
-- **VM Testing**: `bin/virtual-machine` is the canonical VM tool (Q35 + EDK2 SecureBoot + TPM + QXL). The template e2e test (`./bin/test-iso --dev --headless --e2e`) validates the full new-user journey: template → ISO → install → desktop. Changes to NixOS modules do NOT require an ISO rebuild — only `ks` binary or installer module changes do. Update the fixture with `nix flake update keystone` and use `--no-build`. `--post-install-reboot` creates a `post-install` qcow2 snapshot automatically; restore it with `--restore <vm> post-install` to skip reinstallation when debugging desktop or boot issues. See `docs/testing/iso-os-virtual-machine.md` for the full snapshot workflow, screenshot standardization, and requirements traceability. Consolidation tracked in #339.
 
 ## Keystone Config Repo
 
@@ -139,24 +119,3 @@ For notes workflows, keep the shared owner note repos cloned at:
 - `~/.keystone/repos/luce/notes`
 - `~/.keystone/repos/drago/notes`
 
-> **CRITICAL: Verifying Changes**
-> Agents MUST start with `nix flake check` for repo-native validation and CI parity.
-> Agents MAY use `nix flake check --no-build` during local iteration as a fast evaluation-only probe to catch flake wiring, module evaluation, and derivation-construction failures before running heavier validation.
-> `nix flake check --no-build` MUST NOT be treated as equivalent to passing repo validation, CI, or repo-wide lint and format enforcement.
-> Deterministic command-contract tests, module evaluation tests, and launcher/backend regression checks SHOULD live under `checks` in `flake.nix`, not in ad hoc wrapper scripts.
-> Repo-wide `shellcheck` and `nixfmt --check` MUST be enforced via the staged-file pre-commit hook and dedicated CI jobs rather than bundled into `nix flake check`.
-> Agents MUST run `ks build` when a change affects host integration, generated assets, or behavior that isolated flake checks cannot validate.
-> Agents MUST NOT treat `ks build` as a substitute for adding a deterministic flake check when one can be added.
-> For agenix user-home secrets, agents MUST ensure both sides of the contract are updated together: the encrypted secret recipients must include every host where that Home Manager user is installed, and the corresponding `age.secrets.<name>` declaration must exist on each of those hosts when the profile expects `/run/agenix/<name>` at runtime.
-
-```bash
-nix flake check --no-build  # Fast local probe: evaluate outputs without building checks
-nix flake check       # First pass: repo-native checks and CI parity
-ks build              # Build home-manager profiles for current host when host integration matters
-ks build --lock       # Full system build + lock + push (requires sudo)
-ks update --dev       # Deploy home-manager profiles only
-ks update             # Full system: pull, lock, build, push, deploy (requires sudo)
-ks update --lock      # Pull, lock, build, push, deploy (human-only, requires sudo)
-ks switch             # Fast deploy current local state (no pull/lock/push)
-ks doctor             # Diagnose system health and validate host status
-```
