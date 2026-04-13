@@ -145,8 +145,7 @@ pub fn save_projects_to(pf: &ProjectFile, path: &PathBuf) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    std::fs::write(path, output)
-        .with_context(|| format!("failed to write {}", path.display()))?;
+    std::fs::write(path, output).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
 }
 
@@ -173,7 +172,10 @@ pub fn normalize_repo(url: &str) -> String {
     // Strip .git suffix
     let s = s.strip_suffix(".git").unwrap_or(s);
     // SSH format: git@host:owner/repo
-    if let Some(after_colon) = s.strip_prefix("git@").and_then(|s| s.split_once(':').map(|(_, r)| r)) {
+    if let Some(after_colon) = s
+        .strip_prefix("git@")
+        .and_then(|s| s.split_once(':').map(|(_, r)| r))
+    {
         return after_colon.to_string();
     }
     // HTTPS format: https://host/owner/repo
@@ -219,7 +221,9 @@ pub fn detect_by_subject(pf: &ProjectFile, subject: &str) -> DetectionResult {
 
     for project in &pf.projects {
         let slug_match = lower.contains(&project.slug.to_lowercase());
-        let name_match = project.name.as_ref()
+        let name_match = project
+            .name
+            .as_ref()
             .map(|n| lower.contains(&n.to_lowercase()))
             .unwrap_or(false);
 
@@ -259,9 +263,12 @@ pub async fn execute(args: &ProjectArgs) -> Result<()> {
     match &args.command {
         None => execute_list(args.json),
         Some(ProjectCommand::Show { slug }) => execute_show(slug, args.json),
-        Some(ProjectCommand::Add { slug, name, repo, priority }) => {
-            execute_add(slug, name.as_deref(), repo, *priority)
-        }
+        Some(ProjectCommand::Add {
+            slug,
+            name,
+            repo,
+            priority,
+        }) => execute_add(slug, name.as_deref(), repo, *priority),
         Some(ProjectCommand::Remove { slug }) => execute_remove(slug),
         Some(ProjectCommand::Detect { repo, subject }) => {
             execute_detect(repo.as_deref(), subject.as_deref())
@@ -287,7 +294,10 @@ fn execute_list(json: bool) -> Result<()> {
 
     for p in &pf.projects {
         let name = p.name.as_deref().unwrap_or(&p.slug);
-        let pri = p.priority.map(|n| format!(" (pri: {n})")).unwrap_or_default();
+        let pri = p
+            .priority
+            .map(|n| format!(" (pri: {n})"))
+            .unwrap_or_default();
         let repos = if p.repos.is_empty() {
             String::new()
         } else {
@@ -309,7 +319,10 @@ fn execute_show(slug: &str, json: bool) -> Result<()> {
             if json {
                 println!("{}", serde_json::to_string_pretty(project)?);
             } else {
-                println!("Project: {}", project.name.as_deref().unwrap_or(&project.slug));
+                println!(
+                    "Project: {}",
+                    project.name.as_deref().unwrap_or(&project.slug)
+                );
                 if let Some(desc) = &project.description {
                     println!("  {desc}");
                 }
@@ -334,10 +347,17 @@ fn execute_show(slug: &str, json: bool) -> Result<()> {
 
 // ── Add ───────────────────────────────────────────────────────────────
 
-fn execute_add(slug: &str, name: Option<&str>, repos: &[String], priority: Option<u32>) -> Result<()> {
+fn execute_add(
+    slug: &str,
+    name: Option<&str>,
+    repos: &[String],
+    priority: Option<u32>,
+) -> Result<()> {
     // Validate slug: kebab-case (lowercase alphanumeric + hyphens, no leading/trailing hyphen)
     let valid = !slug.is_empty()
-        && slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         && !slug.starts_with('-')
         && !slug.ends_with('-')
         && !slug.contains("--");
@@ -451,14 +471,18 @@ mod tests {
 
     #[test]
     fn test_add_project_dedup() {
-        let mut pf = ProjectFile { projects: vec![make_project("keystone", &[])] };
+        let mut pf = ProjectFile {
+            projects: vec![make_project("keystone", &[])],
+        };
         assert!(!add_project(&mut pf, make_project("keystone", &[])));
         assert_eq!(pf.projects.len(), 1);
     }
 
     #[test]
     fn test_remove_project() {
-        let mut pf = ProjectFile { projects: vec![make_project("keystone", &[])] };
+        let mut pf = ProjectFile {
+            projects: vec![make_project("keystone", &[])],
+        };
         assert!(remove_project(&mut pf, "keystone"));
         assert!(pf.projects.is_empty());
     }
@@ -505,7 +529,10 @@ mod tests {
     #[test]
     fn test_detect_repo_exact() {
         let pf = ProjectFile {
-            projects: vec![make_project("keystone", &["ncrmro/keystone", "ncrmro/nixos-config"])],
+            projects: vec![make_project(
+                "keystone",
+                &["ncrmro/keystone", "ncrmro/nixos-config"],
+            )],
         };
         let result = detect_by_repo(&pf, "ncrmro/keystone");
         assert_eq!(result.slug, Some("keystone".to_string()));
@@ -549,20 +576,14 @@ mod tests {
 
     #[test]
     fn test_detect_subject_ambiguous() {
-        let pf = ProjectFile {
-            projects: vec![
-                make_project("keystone", &[]),
-                make_project("keystone-infra", &[]),
-            ],
-        };
-        // Both slugs "keystone" and "keystone-infra" contain "keystone",
-        // but "keystone-infra" does not appear in "keystone issue".
-        // Use names that both substring-match the subject.
+        // Use names that both substring-match the subject
         let mut p1 = make_project("proj-a", &[]);
         p1.name = Some("Cloud Platform".to_string());
         let mut p2 = make_project("proj-b", &[]);
         p2.name = Some("Cloud Storage".to_string());
-        let pf = ProjectFile { projects: vec![p1, p2] };
+        let pf = ProjectFile {
+            projects: vec![p1, p2],
+        };
         // "cloud" matches both names
         let result = detect_by_subject(&pf, "cloud migration plan");
         assert_eq!(result.slug, None);
@@ -601,7 +622,10 @@ mod tests {
         };
         let map = build_repo_map(&pf);
         assert_eq!(map.get("ncrmro/keystone"), Some(&"keystone".to_string()));
-        assert_eq!(map.get("ncrmro/plant-caravan"), Some(&"caravan".to_string()));
+        assert_eq!(
+            map.get("ncrmro/plant-caravan"),
+            Some(&"caravan".to_string())
+        );
         assert_eq!(map.len(), 3);
     }
 }

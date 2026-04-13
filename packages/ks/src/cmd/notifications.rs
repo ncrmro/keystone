@@ -106,6 +106,31 @@ pub async fn execute(args: &NotificationArgs) -> Result<()> {
 
 // ── Fetch ──────────────────────────────────────────────────────────────
 
+/// Collect a source fetch result into entries and manifest.
+fn collect_source(
+    result: Result<(SourceEntry, Vec<String>)>,
+    source_name: &str,
+    entries: &mut Vec<SourceEntry>,
+    manifest_sources: &mut Vec<ManifestSource>,
+) {
+    match result {
+        Ok((entry, ids)) => {
+            if !ids.is_empty() {
+                manifest_sources.push(ManifestSource {
+                    source: source_name.to_string(),
+                    ids,
+                });
+            }
+            let empty_array = serde_json::Value::Array(vec![]);
+            let empty_object = serde_json::json!({});
+            if entry.data != empty_array && entry.data != empty_object {
+                entries.push(entry);
+            }
+        }
+        Err(e) => eprintln!("warning: {source_name} fetch failed: {e}"),
+    }
+}
+
 async fn execute_fetch(
     write_manifest: bool,
     source_filter: Option<&[&str]>,
@@ -114,71 +139,49 @@ async fn execute_fetch(
     let mut entries: Vec<SourceEntry> = Vec::new();
     let mut manifest_sources: Vec<ManifestSource> = Vec::new();
 
-    let should_fetch = |name: &str| -> bool {
-        source_filter
-            .map(|f| f.contains(&name))
-            .unwrap_or(true)
-    };
+    let should_fetch =
+        |name: &str| -> bool { source_filter.map(|f| f.contains(&name)).unwrap_or(true) };
 
-    // ISSUE-REQ-2: Email — fetch only UNSEEN via himalaya filter
     if should_fetch("email") {
-        match fetch_email().await {
-            Ok((entry, ids)) => {
-                if !ids.is_empty() {
-                    manifest_sources.push(ManifestSource {
-                        source: "email".to_string(),
-                        ids,
-                    });
-                }
-                if entry.data != serde_json::Value::Array(vec![]) {
-                    entries.push(entry);
-                }
-            }
-            Err(e) => eprintln!("warning: email fetch failed: {e}"),
-        }
+        collect_source(
+            fetch_email().await,
+            "email",
+            &mut entries,
+            &mut manifest_sources,
+        );
     }
 
-    // ISSUE-REQ-3: GitHub — fetch only unread (no all=true)
     if should_fetch("github") {
-        let username = std::env::var("GITHUB_USERNAME").ok();
+        let username = std::env::var("GITHUB_USERNAME").ok().or_else(|| {
+            std::process::Command::new("gh")
+                .args(["api", "/user", "--jq", ".login"])
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
         if let Some(ref user) = username {
-            match fetch_github(user).await {
-                Ok((entry, ids)) => {
-                    if !ids.is_empty() {
-                        manifest_sources.push(ManifestSource {
-                            source: "github".to_string(),
-                            ids,
-                        });
-                    }
-                    if entry.data != serde_json::json!({}) {
-                        entries.push(entry);
-                    }
-                }
-                Err(e) => eprintln!("warning: github fetch failed: {e}"),
-            }
+            collect_source(
+                fetch_github(user).await,
+                "github",
+                &mut entries,
+                &mut manifest_sources,
+            );
         }
     }
 
-    // ISSUE-REQ-4: Forgejo — fetch only unread
     if should_fetch("forgejo") {
         let fj_host = std::env::var("FORGEJO_HOST").ok();
         let fj_token = std::env::var("FORGEJO_TOKEN").ok();
         let fj_user = std::env::var("FORGEJO_USERNAME").ok();
         if let (Some(ref host), Some(ref token), Some(ref user)) = (&fj_host, &fj_token, &fj_user) {
-            match fetch_forgejo(host, token, user).await {
-                Ok((entry, ids)) => {
-                    if !ids.is_empty() {
-                        manifest_sources.push(ManifestSource {
-                            source: "forgejo".to_string(),
-                            ids,
-                        });
-                    }
-                    if entry.data != serde_json::Value::Array(vec![]) {
-                        entries.push(entry);
-                    }
-                }
-                Err(e) => eprintln!("warning: forgejo fetch failed: {e}"),
-            }
+            collect_source(
+                fetch_forgejo(host, token, user).await,
+                "forgejo",
+                &mut entries,
+                &mut manifest_sources,
+            );
         }
     }
 
@@ -210,7 +213,9 @@ async fn execute_fetch(
 async fn fetch_email() -> Result<(SourceEntry, Vec<String>)> {
     // Fetch only unseen envelopes
     let output = Command::new("himalaya")
-        .args(["envelope", "list", "-o", "json", "-s", "50", "not", "flag", "seen"])
+        .args([
+            "envelope", "list", "-o", "json", "-s", "50", "not", "flag", "seen",
+        ])
         .output()
         .await
         .context("failed to run himalaya")?;
@@ -222,8 +227,7 @@ async fn fetch_email() -> Result<(SourceEntry, Vec<String>)> {
         );
     }
 
-    let envelopes: Vec<EmailEnvelope> =
-        serde_json::from_slice(&output.stdout).unwrap_or_default();
+    let envelopes: Vec<EmailEnvelope> = serde_json::from_slice(&output.stdout).unwrap_or_default();
 
     let ids: Vec<String> = envelopes.iter().map(|e| e.id.clone()).collect();
 
@@ -279,7 +283,11 @@ fn parse_number_from_url(url: &str) -> Option<u64> {
 
 /// Construct HTML URL from repo + subject type + number.
 fn github_html_url(repo: &str, subject_type: &str, number: u64) -> String {
-    let kind = if subject_type == "PullRequest" { "pull" } else { "issues" };
+    let kind = if subject_type == "PullRequest" {
+        "pull"
+    } else {
+        "issues"
+    };
     format!("https://github.com/{repo}/{kind}/{number}")
 }
 
@@ -300,8 +308,7 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
         );
     }
 
-    let raw: Vec<serde_json::Value> =
-        serde_json::from_slice(&output.stdout).unwrap_or_default();
+    let raw: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap_or_default();
 
     // Collect thread IDs for manifest (ack needs these)
     let thread_ids: Vec<String> = raw
@@ -330,10 +337,7 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
             .pointer("/repository/full_name")
             .and_then(|n| n.as_str())
             .unwrap_or("");
-        let reason = notif
-            .get("reason")
-            .and_then(|r| r.as_str())
-            .unwrap_or("");
+        let reason = notif.get("reason").and_then(|r| r.as_str()).unwrap_or("");
         let updated_at = notif
             .get("updated_at")
             .and_then(|u| u.as_str())
@@ -375,7 +379,11 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
 
 /// Construct Forgejo HTML URL from host + repo + subject type + number.
 fn forgejo_html_url(host: &str, repo: &str, subject_type: &str, number: u64) -> String {
-    let kind = if subject_type == "Pull" { "pulls" } else { "issues" };
+    let kind = if subject_type == "Pull" {
+        "pulls"
+    } else {
+        "issues"
+    };
     format!("{host}/{repo}/{kind}/{number}")
 }
 
@@ -391,8 +399,10 @@ async fn fetch_forgejo(
     let output = Command::new("curl")
         .args([
             "-sf",
-            "-H", "Accept: application/json",
-            "-H", &format!("Authorization: token {token}"),
+            "-H",
+            "Accept: application/json",
+            "-H",
+            &format!("Authorization: token {token}"),
             &url,
         ])
         .output()
@@ -403,13 +413,16 @@ async fn fetch_forgejo(
         anyhow::bail!("forgejo notifications API failed");
     }
 
-    let raw: Vec<serde_json::Value> =
-        serde_json::from_slice(&output.stdout).unwrap_or_default();
+    let raw: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap_or_default();
 
     // Collect thread IDs for ack manifest
     let thread_ids: Vec<String> = raw
         .iter()
-        .filter_map(|n| n.get("id").and_then(|v| v.as_u64()).map(|id| id.to_string()))
+        .filter_map(|n| {
+            n.get("id")
+                .and_then(|v| v.as_u64())
+                .map(|id| id.to_string())
+        })
         .collect();
 
     // Deduplicate by subject URL, extract metadata from notification envelope
@@ -527,7 +540,8 @@ async fn ack_github(thread_ids: &[String]) -> Result<()> {
 
 /// Mark Forgejo notification threads as read.
 async fn ack_forgejo(thread_ids: &[String]) -> Result<()> {
-    let host = std::env::var("FORGEJO_HOST").unwrap_or_else(|_| "https://git.ncrmro.com".to_string());
+    let host =
+        std::env::var("FORGEJO_HOST").unwrap_or_else(|_| "https://git.ncrmro.com".to_string());
     let token = std::env::var("FORGEJO_TOKEN").unwrap_or_default();
     if token.is_empty() {
         eprintln!("warning: FORGEJO_TOKEN not set, skipping forgejo ack");
@@ -542,9 +556,13 @@ async fn ack_forgejo(thread_ids: &[String]) -> Result<()> {
             async move {
                 let status = Command::new("curl")
                     .args([
-                        "-sf", "-X", "PATCH",
-                        "-H", "Accept: application/json",
-                        "-H", &format!("Authorization: token {token}"),
+                        "-sf",
+                        "-X",
+                        "PATCH",
+                        "-H",
+                        "Accept: application/json",
+                        "-H",
+                        &format!("Authorization: token {token}"),
                         &url,
                     ])
                     .status()
@@ -584,8 +602,14 @@ async fn execute_list(json: bool) -> Result<()> {
             "email" => {
                 if let Some(arr) = entry.data.as_array() {
                     for item in arr {
-                        let from = item.get("from").and_then(|f| f.as_str()).unwrap_or("unknown");
-                        let subject = item.get("subject").and_then(|s| s.as_str()).unwrap_or("(no subject)");
+                        let from = item
+                            .get("from")
+                            .and_then(|f| f.as_str())
+                            .unwrap_or("unknown");
+                        let subject = item
+                            .get("subject")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("(no subject)");
                         let id = item.get("id").and_then(|i| i.as_str()).unwrap_or("");
                         println!("  [{id}] {from}: {subject}");
                     }
@@ -707,8 +731,10 @@ async fn execute_sources(json: bool) -> Result<()> {
             Command::new("curl")
                 .args([
                     "-sf",
-                    "-H", "Accept: application/json",
-                    "-H", &format!("Authorization: token {token}"),
+                    "-H",
+                    "Accept: application/json",
+                    "-H",
+                    &format!("Authorization: token {token}"),
                     &format!("{fj_host}/api/v1/user"),
                 ])
                 .output()
@@ -737,7 +763,10 @@ async fn execute_sources(json: bool) -> Result<()> {
         for s in &sources {
             let name = s.get("source").and_then(|n| n.as_str()).unwrap_or("");
             let tool = s.get("tool").and_then(|t| t.as_str()).unwrap_or("");
-            let ok = s.get("available").and_then(|a| a.as_bool()).unwrap_or(false);
+            let ok = s
+                .get("available")
+                .and_then(|a| a.as_bool())
+                .unwrap_or(false);
             let status = if ok { "connected" } else { "unavailable" };
             println!("  {name:<10} ({tool}) — {status}");
         }

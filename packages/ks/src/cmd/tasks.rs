@@ -190,11 +190,10 @@ fn proposal_path() -> PathBuf {
     if let Ok(p) = std::env::var("KS_PROPOSAL_FILE") {
         return PathBuf::from(p);
     }
-    let state_dir = std::env::var("XDG_STATE_HOME")
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            format!("{home}/.local/state")
-        });
+    let state_dir = std::env::var("XDG_STATE_HOME").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        format!("{home}/.local/state")
+    });
     PathBuf::from(state_dir).join("ks/tasks/proposal.json")
 }
 
@@ -217,15 +216,18 @@ pub fn save_tasks_to(task_file: &TaskFile, path: &PathBuf) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    std::fs::write(path, output)
-        .with_context(|| format!("failed to write {}", path.display()))?;
+    std::fs::write(path, output).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
 }
 
 /// Add a task, deduplicating by source_ref and name. Returns true if added.
 pub fn add_task(task_file: &mut TaskFile, task: Task) -> bool {
     if let Some(ref sref) = task.source_ref {
-        if task_file.tasks.iter().any(|t| t.source_ref.as_deref() == Some(sref)) {
+        if task_file
+            .tasks
+            .iter()
+            .any(|t| t.source_ref.as_deref() == Some(sref))
+        {
             return false;
         }
     }
@@ -313,7 +315,10 @@ pub fn apply_proposal(task_file: &mut TaskFile, proposal: &PrioritizationProposa
     reordered.append(&mut pending); // unmentioned pending tasks at the end
 
     // Reconstruct: in_progress, pending (reordered), blocked, completed
-    task_file.tasks = others.iter().filter(|t| t.status == "in_progress").cloned()
+    task_file.tasks = others
+        .iter()
+        .filter(|t| t.status == "in_progress")
+        .cloned()
         .chain(reordered)
         .chain(others.iter().filter(|t| t.status == "blocked").cloned())
         .chain(others.iter().filter(|t| t.status == "completed").cloned())
@@ -358,8 +363,18 @@ pub async fn execute(args: &TaskArgs) -> Result<()> {
     match &args.command {
         None => execute_list(args.json),
         Some(TaskCommand::Add {
-            description, name, source, source_ref, project,
-        }) => execute_add(description, name.as_deref(), source, source_ref.as_deref(), project.as_deref()),
+            description,
+            name,
+            source,
+            source_ref,
+            project,
+        }) => execute_add(
+            description,
+            name.as_deref(),
+            source,
+            source_ref.as_deref(),
+            project.as_deref(),
+        ),
         Some(TaskCommand::Start { name }) => execute_start(name),
         Some(TaskCommand::Done { name }) => execute_done(name),
         Some(TaskCommand::Block { name, reason }) => execute_block(name, reason.as_deref()),
@@ -386,20 +401,40 @@ fn execute_list(json: bool) -> Result<()> {
         return Ok(());
     }
 
-    let pending: Vec<_> = task_file.tasks.iter().filter(|t| t.status == "pending").collect();
-    let in_progress: Vec<_> = task_file.tasks.iter().filter(|t| t.status == "in_progress").collect();
-    let blocked: Vec<_> = task_file.tasks.iter().filter(|t| t.status == "blocked").collect();
-    let completed: Vec<_> = task_file.tasks.iter().filter(|t| t.status == "completed").collect();
+    let pending: Vec<_> = task_file
+        .tasks
+        .iter()
+        .filter(|t| t.status == "pending")
+        .collect();
+    let in_progress: Vec<_> = task_file
+        .tasks
+        .iter()
+        .filter(|t| t.status == "in_progress")
+        .collect();
+    let blocked: Vec<_> = task_file
+        .tasks
+        .iter()
+        .filter(|t| t.status == "blocked")
+        .collect();
+    let completed: Vec<_> = task_file
+        .tasks
+        .iter()
+        .filter(|t| t.status == "completed")
+        .collect();
 
     if !in_progress.is_empty() {
         println!("In Progress ({}):", in_progress.len());
-        for t in &in_progress { print_task(t); }
+        for t in &in_progress {
+            print_task(t);
+        }
         println!();
     }
 
     if !pending.is_empty() {
         println!("Pending ({}):", pending.len());
-        for t in &pending { print_task(t); }
+        for t in &pending {
+            print_task(t);
+        }
         println!();
     }
 
@@ -408,7 +443,9 @@ fn execute_list(json: bool) -> Result<()> {
         for t in &blocked {
             let reason = t.blocked_reason.as_deref().unwrap_or("");
             println!("  {} — {}", t.name, t.description);
-            if !reason.is_empty() { println!("    reason: {reason}"); }
+            if !reason.is_empty() {
+                println!("    reason: {reason}");
+            }
         }
         println!();
     }
@@ -433,13 +470,18 @@ fn print_task(task: &Task) {
 // ── Add ───────────────────────────────────────────────────────────────
 
 fn execute_add(
-    description: &str, name: Option<&str>, source: &str,
-    source_ref: Option<&str>, project: Option<&str>,
+    description: &str,
+    name: Option<&str>,
+    source: &str,
+    source_ref: Option<&str>,
+    project: Option<&str>,
 ) -> Result<()> {
     let path = tasks_file_path();
     let mut task_file = load_tasks_from(&path)?;
 
-    let task_name = name.map(String::from).unwrap_or_else(|| slugify(description));
+    let task_name = name
+        .map(String::from)
+        .unwrap_or_else(|| slugify(description));
     let task = Task {
         name: task_name.clone(),
         description: description.to_string(),
@@ -447,8 +489,13 @@ fn execute_add(
         project: project.map(String::from),
         source: Some(source.to_string()),
         source_ref: source_ref.map(String::from),
-        model: None, workflow: None, needs: None, blocked_reason: None,
-        created_at: Some(iso_now()), started_at: None, completed_at: None,
+        model: None,
+        workflow: None,
+        needs: None,
+        blocked_reason: None,
+        created_at: Some(iso_now()),
+        started_at: None,
+        completed_at: None,
     };
 
     if add_task(&mut task_file, task) {
@@ -514,8 +561,8 @@ async fn execute_ingest(file: Option<&PathBuf>, apply: bool) -> Result<()> {
         // Read IngestResult JSON from stdin
         let mut buf = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)?;
-        let ingest: IngestResult = serde_json::from_str(&buf)
-            .context("failed to parse ingest JSON from stdin")?;
+        let ingest: IngestResult =
+            serde_json::from_str(&buf).context("failed to parse ingest JSON from stdin")?;
 
         let mut task_file = load_tasks_from(&path)?;
         let (added, skipped) = apply_ingest(&mut task_file, &ingest);
@@ -532,8 +579,9 @@ async fn execute_ingest(file: Option<&PathBuf>, apply: bool) -> Result<()> {
 
     // Read notifications JSON
     let notifications_json = match file {
-        Some(f) => std::fs::read_to_string(f)
-            .with_context(|| format!("failed to read {}", f.display()))?,
+        Some(f) => {
+            std::fs::read_to_string(f).with_context(|| format!("failed to read {}", f.display()))?
+        }
         None => {
             let mut buf = String::new();
             std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)?;
@@ -543,7 +591,9 @@ async fn execute_ingest(file: Option<&PathBuf>, apply: bool) -> Result<()> {
 
     // Load current tasks for context
     let task_file = load_tasks_from(&path)?;
-    let existing_refs: Vec<&str> = task_file.tasks.iter()
+    let existing_refs: Vec<&str> = task_file
+        .tasks
+        .iter()
         .filter_map(|t| t.source_ref.as_deref())
         .collect();
 
@@ -594,7 +644,9 @@ async fn execute_prioritize() -> Result<()> {
     let path = tasks_file_path();
     let task_file = load_tasks_from(&path)?;
 
-    let pending: Vec<&Task> = task_file.tasks.iter()
+    let pending: Vec<&Task> = task_file
+        .tasks
+        .iter()
         .filter(|t| t.status == "pending")
         .collect();
 
@@ -655,7 +707,10 @@ fn execute_proposal(accept: bool) -> Result<()> {
         save_tasks_to(&task_file, &tasks_path)?;
 
         std::fs::remove_file(&path).ok();
-        println!("Accepted prioritization. {} pending tasks reordered.", proposal.items.len());
+        println!(
+            "Accepted prioritization. {} pending tasks reordered.",
+            proposal.items.len()
+        );
         return Ok(());
     }
 
@@ -682,7 +737,10 @@ fn execute_prune(all: bool) -> Result<()> {
     let mut task_file = load_tasks_from(&path)?;
     let removed = prune_tasks(&mut task_file, all);
     save_tasks_to(&task_file, &path)?;
-    println!("Pruned {removed} completed tasks ({} remaining).", task_file.tasks.len());
+    println!(
+        "Pruned {removed} completed tasks ({} remaining).",
+        task_file.tasks.len()
+    );
     Ok(())
 }
 
@@ -753,9 +811,16 @@ mod tests {
             name: name.to_string(),
             description: format!("Test task: {name}"),
             status: status.to_string(),
-            project: None, source: None, source_ref: None, model: None,
-            workflow: None, needs: None, blocked_reason: None,
-            created_at: None, started_at: None, completed_at: None,
+            project: None,
+            source: None,
+            source_ref: None,
+            model: None,
+            workflow: None,
+            needs: None,
+            blocked_reason: None,
+            created_at: None,
+            started_at: None,
+            completed_at: None,
         }
     }
 
@@ -822,7 +887,9 @@ mod tests {
 
     #[test]
     fn test_add_task_dedup_by_name() {
-        let mut tf = TaskFile { tasks: vec![make_task("existing", "pending")] };
+        let mut tf = TaskFile {
+            tasks: vec![make_task("existing", "pending")],
+        };
         let dup = make_task("existing", "pending");
         assert!(!add_task(&mut tf, dup));
         assert_eq!(tf.tasks.len(), 1);
@@ -852,7 +919,9 @@ mod tests {
 
     #[test]
     fn test_start_task() {
-        let mut tf = TaskFile { tasks: vec![make_task("my-task", "pending")] };
+        let mut tf = TaskFile {
+            tasks: vec![make_task("my-task", "pending")],
+        };
         assert!(start_task(&mut tf, "my-task"));
         assert_eq!(tf.tasks[0].status, "in_progress");
         assert!(tf.tasks[0].started_at.is_some());
@@ -866,7 +935,9 @@ mod tests {
 
     #[test]
     fn test_complete_task() {
-        let mut tf = TaskFile { tasks: vec![make_task("fix-bug", "pending")] };
+        let mut tf = TaskFile {
+            tasks: vec![make_task("fix-bug", "pending")],
+        };
         assert!(complete_task(&mut tf, "fix-bug"));
         assert_eq!(tf.tasks[0].status, "completed");
         assert!(tf.tasks[0].completed_at.is_some());
@@ -880,10 +951,19 @@ mod tests {
 
     #[test]
     fn test_block_task() {
-        let mut tf = TaskFile { tasks: vec![make_task("blocked-task", "pending")] };
-        assert!(block_task(&mut tf, "blocked-task", Some("waiting for deploy")));
+        let mut tf = TaskFile {
+            tasks: vec![make_task("blocked-task", "pending")],
+        };
+        assert!(block_task(
+            &mut tf,
+            "blocked-task",
+            Some("waiting for deploy")
+        ));
         assert_eq!(tf.tasks[0].status, "blocked");
-        assert_eq!(tf.tasks[0].blocked_reason.as_deref(), Some("waiting for deploy"));
+        assert_eq!(
+            tf.tasks[0].blocked_reason.as_deref(),
+            Some("waiting for deploy")
+        );
     }
 
     // ── prune ─────────────────────────────────────────────────────
@@ -937,8 +1017,16 @@ mod tests {
         let proposal = PrioritizationProposal {
             proposed_at: "2026-04-13T00:00:00Z".to_string(),
             items: vec![
-                ProposalItem { rank: 1, name: "high-pri".to_string(), rationale: "Urgent".to_string() },
-                ProposalItem { rank: 2, name: "low-pri".to_string(), rationale: "Can wait".to_string() },
+                ProposalItem {
+                    rank: 1,
+                    name: "high-pri".to_string(),
+                    rationale: "Urgent".to_string(),
+                },
+                ProposalItem {
+                    rank: 2,
+                    name: "low-pri".to_string(),
+                    rationale: "Can wait".to_string(),
+                },
             ],
         };
 
@@ -962,8 +1050,16 @@ mod tests {
         let proposal = PrioritizationProposal {
             proposed_at: "2026-04-13T00:00:00Z".to_string(),
             items: vec![
-                ProposalItem { rank: 1, name: "pending-b".to_string(), rationale: "Higher priority".to_string() },
-                ProposalItem { rank: 2, name: "pending-a".to_string(), rationale: "Lower priority".to_string() },
+                ProposalItem {
+                    rank: 1,
+                    name: "pending-b".to_string(),
+                    rationale: "Higher priority".to_string(),
+                },
+                ProposalItem {
+                    rank: 2,
+                    name: "pending-a".to_string(),
+                    rationale: "Lower priority".to_string(),
+                },
             ],
         };
 
@@ -980,16 +1076,14 @@ mod tests {
     fn test_apply_ingest_adds_new() {
         let mut tf = TaskFile { tasks: vec![] };
         let ingest = IngestResult {
-            tasks: vec![
-                IngestTask {
-                    name: "reply-to-ping".to_string(),
-                    description: "Reply with pong".to_string(),
-                    source: Some("email".to_string()),
-                    source_ref: Some("email-99-user@host".to_string()),
-                    project: None,
-                    model: Some("haiku".to_string()),
-                },
-            ],
+            tasks: vec![IngestTask {
+                name: "reply-to-ping".to_string(),
+                description: "Reply with pong".to_string(),
+                source: Some("email".to_string()),
+                source_ref: Some("email-99-user@host".to_string()),
+                project: None,
+                model: Some("haiku".to_string()),
+            }],
         };
 
         let (added, skipped) = apply_ingest(&mut tf, &ingest);
@@ -1044,7 +1138,10 @@ mod tests {
 
         let result: IngestResult = serde_json::from_str(json).unwrap();
         assert_eq!(result.tasks.len(), 2);
-        assert_eq!(result.tasks[0].source_ref, Some("http://example.com/1".to_string()));
+        assert_eq!(
+            result.tasks[0].source_ref,
+            Some("http://example.com/1".to_string())
+        );
         assert_eq!(result.tasks[1].source, None);
     }
 

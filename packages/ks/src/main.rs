@@ -479,7 +479,6 @@ async fn run_doctor_command(args: cli::DoctorArgs) -> Result<()> {
     }
 }
 
-
 /// Handle a global Action from a Component.
 ///
 /// TODO: once all screens implement Component, this replaces handle_action entirely.
