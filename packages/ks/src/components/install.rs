@@ -1001,22 +1001,108 @@ fn format_available_disks(disks: &[DiskEntry], selected_disk: Option<&str>) -> S
 
 const HEADLESS_CONFIRMATION_TOKEN: &str = "destroy";
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum HeadlessSelectionSource {
+    Requested,
+    AutoSelected,
+    Prompted,
+}
+
+fn format_numbered_available_disks(disks: &[DiskEntry], preferred_index: usize) -> String {
+    if disks.is_empty() {
+        return "Discovered disks: none".to_string();
+    }
+
+    let mut lines = vec!["Discovered disks:".to_string()];
+    for (index, disk) in disks.iter().enumerate() {
+        let mut line = format!("  {}. {}", index + 1, format_disk_summary(disk));
+        if index == preferred_index {
+            line.push_str("  [best guess]");
+        }
+        lines.push(line);
+    }
+
+    lines.join("\n")
+}
+
+fn parse_headless_disk_selection(
+    input: &str,
+    disk_count: usize,
+    preferred_index: usize,
+) -> Result<usize, String> {
+    if disk_count == 0 {
+        return Err("Install cancelled. No disks were available for selection.".to_string());
+    }
+
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Ok(preferred_index);
+    }
+
+    let selected = trimmed.parse::<usize>().map_err(|_| {
+        format!(
+            "Install cancelled. Expected a disk number between 1 and {}.",
+            disk_count
+        )
+    })?;
+    if !(1..=disk_count).contains(&selected) {
+        return Err(format!(
+            "Install cancelled. Expected a disk number between 1 and {}.",
+            disk_count
+        ));
+    }
+
+    Ok(selected - 1)
+}
+
+fn prompt_for_headless_disk_selection(
+    host: &str,
+    disks: &[DiskEntry],
+    preferred_index: usize,
+) -> Result<usize, String> {
+    eprintln!("No --disk was provided for host '{}'.", host);
+    eprintln!("Installer media is excluded from this list.");
+    eprintln!(
+        "{}",
+        format_numbered_available_disks(disks, preferred_index)
+    );
+    eprintln!(
+        "Press Enter to use {} or type a disk number between 1 and {}.",
+        preferred_index + 1,
+        disks.len()
+    );
+    eprint!("Disk> ");
+    std::io::stderr()
+        .flush()
+        .map_err(|error| format!("Failed to flush disk selection prompt: {}", error))?;
+
+    let mut selection = String::new();
+    std::io::stdin()
+        .read_line(&mut selection)
+        .map_err(|error| format!("Failed to read disk selection: {}", error))?;
+
+    parse_headless_disk_selection(&selection, disks.len(), preferred_index)
+}
+
 fn build_headless_confirmation_message(
     host: &str,
     selected_disk: &str,
-    disk_was_autoselected: bool,
+    selection_source: HeadlessSelectionSource,
     disks: &[DiskEntry],
 ) -> String {
     let mut lines = Vec::new();
 
-    if disk_was_autoselected {
-        lines.push(format!("No --disk was provided for host '{}'.", host));
-        lines.push(format!("Best guess: {}", selected_disk));
-    } else {
-        lines.push(format!(
-            "Headless install is ready for host '{}' on '{}'.",
-            host, selected_disk
-        ));
+    match selection_source {
+        HeadlessSelectionSource::Requested | HeadlessSelectionSource::Prompted => {
+            lines.push(format!(
+                "Headless install is ready for host '{}' on '{}'.",
+                host, selected_disk
+            ));
+        }
+        HeadlessSelectionSource::AutoSelected => {
+            lines.push(format!("No --disk was provided for host '{}'.", host));
+            lines.push(format!("Only available install disk: {}", selected_disk));
+        }
     }
 
     lines.push(format!("This will erase all data on '{}'.", selected_disk));
@@ -1034,12 +1120,12 @@ fn build_headless_confirmation_message(
 fn confirm_headless_install(
     host: &str,
     selected_disk: &str,
-    disk_was_autoselected: bool,
+    selection_source: HeadlessSelectionSource,
     disks: &[DiskEntry],
 ) -> Result<(), String> {
     eprintln!(
         "{}",
-        build_headless_confirmation_message(host, selected_disk, disk_was_autoselected, disks)
+        build_headless_confirmation_message(host, selected_disk, selection_source, disks)
     );
     eprint!("Confirmation> ");
     std::io::stderr()
@@ -1186,7 +1272,8 @@ impl InstallScreen {
     }
 
     /// Run the install headlessly — no TUI. Resolves disk selection using the
-    /// same best-guess policy as the TUI, then requires an explicit
+    /// same disk discovery as the TUI, prompting for a numbered choice when
+    /// multiple installable disks remain, then requires an explicit
     /// confirmation prompt before destructive actions proceed.
     pub async fn run_headless(&mut self, disk_path: Option<&str>) -> Result<(), String> {
         // Phase 1: select host (copies repo, vendors keystone input)
@@ -1201,35 +1288,49 @@ impl InstallScreen {
             .await
             .map_err(|e| format!("Disk discovery failed: {}", e))?;
         if disks.is_empty() {
-            return Err("No disks found".to_string());
+            return Err("No installable disks found after excluding installer media.".to_string());
         }
         self.available_disks = disks;
-        let disk_was_autoselected = if let Some(disk_path) = disk_path {
+        let selection_source = if let Some(disk_path) = disk_path {
             self.set_disk_by_path(disk_path)?;
-            false
+            HeadlessSelectionSource::Requested
+        } else if self.available_disks.len() == 1 {
+            self.selected_disk_index = 0;
+            HeadlessSelectionSource::AutoSelected
         } else {
-            self.selected_disk_index =
+            let preferred_index =
                 preferred_disk_index(&self.available_disks, self.config.disk_device.as_deref());
-            true
+            self.selected_disk_index = prompt_for_headless_disk_selection(
+                &self.config.flake_host,
+                &self.available_disks,
+                preferred_index,
+            )?;
+            HeadlessSelectionSource::Prompted
         };
         let selected_disk = self.available_disks[self.selected_disk_index]
             .by_id_path
             .clone();
-        eprintln!("Found {} disk(s).", self.available_disks.len(),);
-        if disk_was_autoselected {
-            eprintln!(
-                "{}",
-                format_available_disks(&self.available_disks, Some(&selected_disk))
-            );
-            eprintln!("Best guess: {}", selected_disk);
-        } else {
-            eprintln!("Using requested disk: {}", selected_disk);
+        eprintln!("Found {} installable disk(s).", self.available_disks.len());
+        match selection_source {
+            HeadlessSelectionSource::Requested => {
+                eprintln!("Using requested disk: {}", selected_disk);
+            }
+            HeadlessSelectionSource::AutoSelected => {
+                eprintln!(
+                    "{}",
+                    format_available_disks(&self.available_disks, Some(&selected_disk))
+                );
+                eprintln!("Auto-selected only available disk: {}", selected_disk);
+            }
+            HeadlessSelectionSource::Prompted => {
+                eprintln!("Selected disk: {}", selected_disk);
+            }
         }
 
         confirm_headless_install(
             &self.config.flake_host,
             &selected_disk,
-            disk_was_autoselected,
+            selection_source,
             &self.available_disks,
         )?;
 
@@ -3339,13 +3440,51 @@ mod tests {
         let message = build_headless_confirmation_message(
             "laptop",
             "/dev/disk/by-id/nvme-best",
-            true,
+            HeadlessSelectionSource::AutoSelected,
             &disks,
         );
 
         assert!(message.contains("No --disk was provided for host 'laptop'."));
         assert!(message.contains("This will erase all data on '/dev/disk/by-id/nvme-best'."));
         assert!(message.contains("Type 'destroy' to confirm installation"));
+    }
+
+    #[test]
+    fn test_build_headless_confirmation_message_for_prompted_disk() {
+        let disks = vec![DiskEntry {
+            by_id_path: "/dev/disk/by-id/nvme-best".to_string(),
+            model: "Best Disk".to_string(),
+            size: "2T".to_string(),
+            transport: "nvme".to_string(),
+        }];
+
+        let message = build_headless_confirmation_message(
+            "laptop",
+            "/dev/disk/by-id/nvme-best",
+            HeadlessSelectionSource::Prompted,
+            &disks,
+        );
+
+        assert!(message.contains("Headless install is ready for host 'laptop'"));
+        assert!(!message.contains("Only available install disk"));
+    }
+
+    #[test]
+    fn test_parse_headless_disk_selection_accepts_enter_for_default() {
+        assert_eq!(parse_headless_disk_selection("", 3, 1).unwrap(), 1);
+        assert_eq!(parse_headless_disk_selection(" \n", 3, 2).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_parse_headless_disk_selection_accepts_one_based_choice() {
+        assert_eq!(parse_headless_disk_selection("2", 3, 0).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_parse_headless_disk_selection_rejects_invalid_choice() {
+        let error = parse_headless_disk_selection("9", 3, 0).unwrap_err();
+
+        assert!(error.contains("Expected a disk number between 1 and 3"));
     }
 
     #[test]
