@@ -17,6 +17,7 @@ crossterm = "0.28"
 # Async
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "fs", "io-util"] }
 tokio-util = "0.7"
+futures = "0.3"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -26,6 +27,9 @@ git2 = "0.19"
 
 # SSH keys
 ssh-key = { version = "0.6", features = ["ed25519", "std"] }
+
+# YAML
+serde_yaml = "0.9"
 
 # Nix parsing
 rnix = "0.11"
