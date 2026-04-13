@@ -255,11 +255,11 @@ ssh_cmd() {
 }
 
 # Run the headless installer via `ks install --host --disk` and feed the
-# required destructive confirmation over stdin.
+# required destructive confirmation token over stdin.
 run_e2e_installer() {
     local host="${E2E_HOST:-laptop}"
     log_info "E2E: running headless install for host '$host' on '$E2E_DISK_DEVICE'"
-    if ! ssh_cmd "printf '%s\n' '$E2E_DISK_DEVICE' | ks install --host $host --disk $E2E_DISK_DEVICE" 2>&1; then
+    if ! ssh_cmd "printf 'destroy\n' | ks install --host $host --disk $E2E_DISK_DEVICE" 2>&1; then
         log_error "E2E: ks install --host $host --disk $E2E_DISK_DEVICE failed"
         return 1
     fi

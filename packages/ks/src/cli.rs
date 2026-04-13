@@ -161,6 +161,8 @@ pub struct InstallArgs {
     pub host: String,
 
     /// Target disk to install to (must match a discovered /dev/disk/by-id path).
+    /// When omitted, headless install excludes installer media and may prompt
+    /// for a numbered disk choice.
     #[arg(long)]
     pub disk: Option<String>,
 }
