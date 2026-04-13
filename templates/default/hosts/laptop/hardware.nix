@@ -36,15 +36,18 @@ in
       # Machine identity and storage facts
       # ──────────────────────────────────────────────────────────────────────────
 
-      # Required for ZFS - unique 8-character hex string
-      # Generate with: head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
-      networking.hostId = "00000000"; # TODO: Generate and replace this value
+      # Required for ZFS - unique 8-character hex string.
+      # `ks install` replaces this placeholder automatically during the first
+      # install commit if you leave it unchanged.
+      networking.hostId = "00000000";
 
-      # Disk device(s) - ALWAYS use /dev/disk/by-id/ paths for stability
-      # Find your disk IDs with: ls -la /dev/disk/by-id/
-      # Example: /dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W127373V
+      # Root disk(s) - `ks install` replaces this placeholder automatically
+      # with the disk you confirm in the installer flow.
       keystone.os.storage.devices = [
-        "/dev/disk/by-id/YOUR-DISK-ID-HERE" # TODO: Replace with your disk ID
+        "__KEYSTONE_DISK__"
+        # Add your own stable /dev/disk/by-id/... paths here if you are not
+        # using the installer flow:
+        # "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_2TB_S6B0NL0W127373V"
         # Add more disks for multi-disk configurations:
         # "/dev/disk/by-id/YOUR-SECOND-DISK-ID"
       ];

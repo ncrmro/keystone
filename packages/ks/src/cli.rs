@@ -147,6 +147,10 @@ pub struct InstallArgs {
     /// Target host to install (must match an embedded installer target).
     #[arg(long)]
     pub host: String,
+
+    /// Target disk to install to (must match a discovered /dev/disk/by-id path).
+    #[arg(long)]
+    pub disk: Option<String>,
 }
 
 #[derive(Args)]

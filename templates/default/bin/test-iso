@@ -254,12 +254,13 @@ ssh_cmd() {
         "${ADMIN_USERNAME}@localhost" "$@"
 }
 
-# Run the headless installer via `ks install --host`.
+# Run the headless installer via `ks install --host --disk` and feed the
+# required destructive confirmation over stdin.
 run_e2e_installer() {
     local host="${E2E_HOST:-laptop}"
-    log_info "E2E: running headless install for host '$host'"
-    if ! ssh_cmd "ks install --host $host" 2>&1; then
-        log_error "E2E: ks install --host $host failed"
+    log_info "E2E: running headless install for host '$host' on '$E2E_DISK_DEVICE'"
+    if ! ssh_cmd "printf '%s\n' '$E2E_DISK_DEVICE' | ks install --host $host --disk $E2E_DISK_DEVICE" 2>&1; then
+        log_error "E2E: ks install --host $host --disk $E2E_DISK_DEVICE failed"
         return 1
     fi
     log_ok "E2E: install completed for host '$host'"
@@ -269,6 +270,7 @@ E2E_SCREENSHOT_DIR=""
 E2E_MONITOR_SOCK=""
 E2E_REBOOT_TIMEOUT=180    # seconds to wait for SSH after unlock
 E2E_DISK_PASSWORD="keystone"
+E2E_DISK_DEVICE="${E2E_DISK_DEVICE:-/dev/disk/by-id/virtio-keystone-test-disk}"
 
 # Take a screenshot via QEMU monitor screendump (headless/llvmpipe) or
 # grim over SSH (headed/virgl where screendump returns "no surface").
@@ -356,6 +358,7 @@ verify_imagemagick_available() {
 # The VM must already be running (started via --post-install-reboot).
 run_e2e_reboot_validation() {
     local ref_dir="${PROJECT_DIR}/tests/e2e/screenshots"
+    local failed=0
 
     log_info "E2E: validating rebooted installed system"
 
@@ -410,13 +413,13 @@ run_e2e_reboot_validation() {
     if [[ "$ssh_ok" == "true" ]]; then
         log_ok "E2E: SSH to installed system succeeded"
     else
-        log_warn "E2E: SSH to installed system failed (may be QEMU GPU/desktop issue)"
+        log_error "E2E: SSH to installed system failed"
+        failed=1
     fi
 
     e2e_screenshot "05-final-state"
 
     # Req 5: compare screenshots against LFS baselines (SHA-256 in pointer files)
-    local failed=0
     local has_baselines=false
     if [[ -d "$ref_dir" ]] && ls "$ref_dir"/*.png "$ref_dir"/*.ppm 2>/dev/null | grep -q .; then
         has_baselines=true
@@ -458,7 +461,7 @@ run_e2e_reboot_validation() {
     rm -f "$E2E_MONITOR_SOCK"
 
     if (( failed )); then
-        log_error "E2E: reboot validation FAILED — screenshot mismatches"
+        log_error "E2E: reboot validation FAILED — one or more checks failed"
         return 1
     fi
 
@@ -904,10 +907,10 @@ if [[ "$E2E_MODE" == "true" ]]; then
     "$VM_SCRIPT" "${reboot_args[@]}"
 
     # Req 3: verify snapshot was created by post-install-reboot
-    verify_post_install_snapshot "$VM_DISK_PATH" || true
+    verify_post_install_snapshot "$VM_DISK_PATH"
 
     # Req 4: check imagemagick before screenshot capture
-    verify_imagemagick_available || true
+    verify_imagemagick_available
 
     if run_e2e_reboot_validation; then
         log_ok "E2E: all layers passed."
