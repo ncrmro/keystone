@@ -93,6 +93,7 @@ async fn main() -> Result<()> {
             Command::Agent(args) => run_agent_command(args).await,
             Command::Doctor(args) => run_doctor_command(args).await,
             Command::Install(args) => run_headless_install(&args.host, args.disk.as_deref()).await,
+            Command::Notifications(args) => run_notifications_command(args).await,
         };
     }
 
@@ -474,6 +475,10 @@ async fn run_doctor_command(args: cli::DoctorArgs) -> Result<()> {
         Ok(report) => print_json_success(&report),
         Err(e) => print_json_error(&e),
     }
+}
+
+async fn run_notifications_command(args: cmd::notifications::NotificationsArgs) -> Result<()> {
+    cmd::notifications::execute(&args).await
 }
 
 /// Handle a global Action from a Component.

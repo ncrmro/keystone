@@ -2,7 +2,9 @@
 
 use clap::{Args, Parser, Subcommand};
 
-use crate::cmd::{photos::PhotosCommand, screenshots::ScreenshotsCommand};
+use crate::cmd::{
+    notifications::NotificationsArgs, photos::PhotosCommand, screenshots::ScreenshotsCommand,
+};
 
 /// Keystone CLI/TUI — NixOS infrastructure configuration and management.
 #[derive(Parser)]
@@ -140,6 +142,9 @@ pub enum Command {
 
     /// Run the installer headlessly (no TUI). Requires installer ISO context.
     Install(InstallArgs),
+
+    /// Unified notification fetch with source-level read tracking.
+    Notifications(NotificationsArgs),
 }
 
 #[derive(Args)]
