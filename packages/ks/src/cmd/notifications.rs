@@ -248,15 +248,36 @@ async fn fetch_email_body(id: &str) -> Result<String> {
 
 // ── GitHub source ──────────────────────────────────────────────────────
 
-/// Fetch unread GitHub notifications and enrich with issue/PR details.
+/// Parse owner/repo and number from a REST API URL like
+/// `https://api.github.com/repos/owner/repo/issues/123`
+fn parse_subject_url(url: &str) -> Option<(String, String, u64)> {
+    let parts: Vec<&str> = url.rsplitn(2, '/').collect();
+    let number: u64 = parts.first()?.parse().ok()?;
+    // URL pattern: .../repos/{owner}/{repo}/issues/{n} or .../repos/{owner}/{repo}/pulls/{n}
+    let segments: Vec<&str> = url.split('/').collect();
+    // Find "repos" index, then owner and repo follow
+    let repos_idx = segments.iter().position(|&s| s == "repos")?;
+    let owner = segments.get(repos_idx + 1)?.to_string();
+    let repo = segments.get(repos_idx + 2)?.to_string();
+    Some((owner, repo, number))
+}
+
+/// Notification metadata extracted from REST API, before GraphQL enrichment.
+struct NotifMeta {
+    owner: String,
+    repo: String,
+    number: u64,
+    subject_type: String, // "Issue" or "PullRequest"
+    reason: String,
+}
+
+/// Fetch unread GitHub notifications and enrich via a single GraphQL query.
 /// ISSUE-REQ-3: Does NOT pass `all=true` — only unread notifications.
+/// Uses 2 API calls total: 1 REST (notifications) + 1 GraphQL (enrichment).
 async fn fetch_github(username: &str) -> Result<(SourceEntry, Vec<String>)> {
-    // Phase 1: Fetch unread notifications (no all=true)
+    // ── Call 1: REST — fetch unread notifications ────────────────────
     let output = Command::new("gh")
-        .args([
-            "api",
-            "/notifications?participating=true&per_page=100",
-        ])
+        .args(["api", "/notifications?participating=true&per_page=100"])
         .output()
         .await
         .context("failed to run gh api")?;
@@ -271,102 +292,275 @@ async fn fetch_github(username: &str) -> Result<(SourceEntry, Vec<String>)> {
     let raw: Vec<serde_json::Value> =
         serde_json::from_slice(&output.stdout).unwrap_or_default();
 
-    // Collect thread IDs for manifest
+    // Collect thread IDs for manifest (ack needs these)
     let thread_ids: Vec<String> = raw
         .iter()
         .filter_map(|n| n.get("id").and_then(|v| v.as_str()).map(String::from))
         .collect();
 
-    // Deduplicate by subject URL, keep most recent
-    let notifications = dedup_notifications(&raw);
+    // Deduplicate and extract metadata
+    let mut seen = std::collections::HashSet::new();
+    let mut metas: Vec<NotifMeta> = Vec::new();
 
-    // Phase 2-4: Enrich (issues, PRs, reviews) — parallel, mirrors fetch-github-sources
-    enum EnrichResult {
-        Issue(serde_json::Value, Option<serde_json::Value>),
-        Pr(serde_json::Value),
-        Reviews(Vec<serde_json::Value>),
+    for notif in &raw {
+        let subject_type = notif
+            .get("subject")
+            .and_then(|s| s.get("type"))
+            .and_then(|t| t.as_str())
+            .unwrap_or("");
+        let subject_url = notif
+            .get("subject")
+            .and_then(|s| s.get("url"))
+            .and_then(|u| u.as_str())
+            .unwrap_or("");
+        let reason = notif
+            .get("reason")
+            .and_then(|r| r.as_str())
+            .unwrap_or("");
+
+        if subject_type != "Issue" && subject_type != "PullRequest" {
+            continue;
+        }
+        if subject_url.is_empty() || !seen.insert(subject_url.to_string()) {
+            continue;
+        }
+
+        if let Some((owner, repo, number)) = parse_subject_url(subject_url) {
+            metas.push(NotifMeta {
+                owner,
+                repo,
+                number,
+                subject_type: subject_type.to_string(),
+                reason: reason.to_string(),
+            });
+        }
     }
 
-    let enrich_futures: Vec<_> = notifications
-        .iter()
-        .filter_map(|notif| {
-            let subject_type = notif
-                .get("subject")
-                .and_then(|s| s.get("type"))
-                .and_then(|t| t.as_str())
-                .unwrap_or("")
-                .to_string();
-            let subject_url = notif
-                .get("subject")
-                .and_then(|s| s.get("url"))
-                .and_then(|u| u.as_str())
-                .unwrap_or("")
-                .to_string();
-            let repo = notif
-                .get("repository")
-                .and_then(|r| r.get("full_name"))
-                .and_then(|n| n.as_str())
-                .unwrap_or("")
-                .to_string();
-            let reason = notif
-                .get("reason")
-                .and_then(|r| r.as_str())
-                .unwrap_or("")
-                .to_string();
+    if metas.is_empty() {
+        return Ok((
+            SourceEntry {
+                source: "github".to_string(),
+                data: serde_json::json!({
+                    "github-issues": [],
+                    "github-prs": [],
+                    "github-pr-reviews": [],
+                    "github-issue-comments": [],
+                }),
+            },
+            thread_ids,
+        ));
+    }
 
-            if subject_url.is_empty() {
-                return None;
-            }
+    // ── Call 2: GraphQL — enrich all notifications in one query ──────
+    // Build aliased fragments for each notification
+    let mut fragments = Vec::new();
+    for (i, meta) in metas.iter().enumerate() {
+        let alias = format!("n{i}");
+        if meta.subject_type == "Issue" {
+            fragments.push(format!(
+                r#"{alias}: repository(owner: "{owner}", name: "{repo}") {{
+  issue(number: {number}) {{
+    number
+    title
+    url
+    state
+    createdAt
+    assignees(first: 10) {{ nodes {{ login }} }}
+    labels(first: 10) {{ nodes {{ name }} }}
+    comments(last: 1) {{ nodes {{ databaseId author {{ login }} body createdAt }} }}
+  }}
+}}"#,
+                alias = alias,
+                owner = meta.owner,
+                repo = meta.repo,
+                number = meta.number
+            ));
+        } else {
+            // PullRequest — fetch PR details + reviews with comments
+            fragments.push(format!(
+                r#"{alias}: repository(owner: "{owner}", name: "{repo}") {{
+  pullRequest(number: {number}) {{
+    number
+    title
+    url
+    createdAt
+    author {{ login }}
+    headRefName
+    reviews(last: 20) {{
+      nodes {{
+        databaseId
+        author {{ login }}
+        state
+        comments(first: 20) {{ nodes {{ databaseId path body }} }}
+      }}
+    }}
+  }}
+}}"#,
+                alias = alias,
+                owner = meta.owner,
+                repo = meta.repo,
+                number = meta.number
+            ));
+        }
+    }
 
-            let notif = notif.clone();
-            let username = username.to_string();
+    let query = format!("{{ {} }}", fragments.join("\n"));
+    let output = Command::new("gh")
+        .args(["api", "graphql", "-f", &format!("query={query}")])
+        .output()
+        .await
+        .context("failed to run gh api graphql")?;
 
-            Some(async move {
-                match subject_type.as_str() {
-                    "Issue" => {
-                        if let Ok(issue) = enrich_issue(&subject_url, &repo, &notif).await {
-                            let comment =
-                                enrich_issue_comment(&notif, &repo, &issue).await;
-                            Some(EnrichResult::Issue(issue, comment))
-                        } else {
-                            None
-                        }
-                    }
-                    "PullRequest" if reason == "review_requested" => {
-                        enrich_pr(&subject_url, &repo)
-                            .await
-                            .ok()
-                            .map(EnrichResult::Pr)
-                    }
-                    "PullRequest" if reason == "author" => {
-                        enrich_reviews(&subject_url, &repo, &username)
-                            .await
-                            .ok()
-                            .map(EnrichResult::Reviews)
-                    }
-                    _ => None,
-                }
-            })
-        })
-        .collect();
+    let gql_data: serde_json::Value = if output.status.success() {
+        let resp: serde_json::Value =
+            serde_json::from_slice(&output.stdout).unwrap_or_default();
+        resp.get("data").cloned().unwrap_or(serde_json::json!({}))
+    } else {
+        eprintln!(
+            "warning: GraphQL enrichment failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::json!({})
+    };
 
-    let results = futures::future::join_all(enrich_futures).await;
-
+    // ── Transform GraphQL response into sources.json schema ─────────
     let mut issues = Vec::new();
     let mut prs = Vec::new();
     let mut reviews = Vec::new();
     let mut issue_comments = Vec::new();
 
-    for result in results.into_iter().flatten() {
-        match result {
-            EnrichResult::Issue(issue, comment) => {
-                issues.push(issue);
-                if let Some(c) = comment {
-                    issue_comments.push(c);
+    for (i, meta) in metas.iter().enumerate() {
+        let alias = format!("n{i}");
+        let repo_full = format!("{}/{}", meta.owner, meta.repo);
+        let repo_data = match gql_data.get(&alias) {
+            Some(d) => d,
+            None => continue,
+        };
+
+        if meta.subject_type == "Issue" {
+            let issue = match repo_data.get("issue") {
+                Some(i) => i,
+                None => continue,
+            };
+            let state = issue.get("state").and_then(|s| s.as_str()).unwrap_or("");
+            if state != "OPEN" {
+                continue;
+            }
+
+            let assignees: Vec<&str> = issue
+                .pointer("/assignees/nodes")
+                .and_then(|a| a.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|n| n.get("login").and_then(|l| l.as_str()))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let labels: Vec<&str> = issue
+                .pointer("/labels/nodes")
+                .and_then(|a| a.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|n| n.get("name").and_then(|l| l.as_str()))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            issues.push(serde_json::json!({
+                "repo": repo_full,
+                "number": issue.get("number"),
+                "title": issue.get("title"),
+                "url": issue.get("url"),
+                "assignees": assignees,
+                "labels": labels,
+                "created_at": issue.get("createdAt"),
+            }));
+
+            // Latest comment
+            if let Some(comment) = issue
+                .pointer("/comments/nodes/0")
+                .filter(|c| !c.is_null())
+            {
+                issue_comments.push(serde_json::json!({
+                    "repo": repo_full,
+                    "issue_number": issue.get("number"),
+                    "comment_id": comment.get("databaseId"),
+                    "author": comment.pointer("/author/login"),
+                    "body": comment.get("body"),
+                    "created_at": comment.get("createdAt"),
+                }));
+            }
+        } else {
+            // PullRequest
+            let pr = match repo_data.get("pullRequest") {
+                Some(p) => p,
+                None => continue,
+            };
+
+            if meta.reason == "review_requested" {
+                prs.push(serde_json::json!({
+                    "repo": repo_full,
+                    "number": pr.get("number"),
+                    "title": pr.get("title"),
+                    "url": pr.get("url"),
+                    "author": pr.pointer("/author/login"),
+                    "created_at": pr.get("createdAt"),
+                }));
+            } else if meta.reason == "author" {
+                // Extract reviews from others with actionable states
+                let review_nodes = pr
+                    .pointer("/reviews/nodes")
+                    .and_then(|n| n.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+
+                for review in &review_nodes {
+                    let reviewer = review
+                        .pointer("/author/login")
+                        .and_then(|l| l.as_str())
+                        .unwrap_or("");
+                    let state = review
+                        .get("state")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("");
+
+                    if reviewer == username {
+                        continue;
+                    }
+                    if state != "CHANGES_REQUESTED" && state != "COMMENTED" {
+                        continue;
+                    }
+
+                    let comments: Vec<serde_json::Value> = review
+                        .pointer("/comments/nodes")
+                        .and_then(|n| n.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .map(|c| {
+                                    serde_json::json!({
+                                        "id": c.get("databaseId"),
+                                        "path": c.get("path"),
+                                        "body": c.get("body"),
+                                    })
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    reviews.push(serde_json::json!({
+                        "repo": repo_full,
+                        "pr_number": pr.get("number"),
+                        "pr_title": pr.get("title"),
+                        "pr_url": pr.get("url"),
+                        "pr_branch": pr.get("headRefName"),
+                        "review_id": review.get("databaseId"),
+                        "reviewer": reviewer,
+                        "review_state": state,
+                        "comments": comments,
+                    }));
                 }
             }
-            EnrichResult::Pr(pr) => prs.push(pr),
-            EnrichResult::Reviews(mut revs) => reviews.append(&mut revs),
         }
     }
 
@@ -384,227 +578,6 @@ async fn fetch_github(username: &str) -> Result<(SourceEntry, Vec<String>)> {
         },
         thread_ids,
     ))
-}
-
-fn dedup_notifications(raw: &[serde_json::Value]) -> Vec<serde_json::Value> {
-    use std::collections::HashMap;
-    let mut seen: HashMap<String, &serde_json::Value> = HashMap::new();
-
-    // Sort by updated_at descending is implicit — we just keep first occurrence
-    for notif in raw {
-        let subject_url = notif
-            .get("subject")
-            .and_then(|s| s.get("url"))
-            .and_then(|u| u.as_str())
-            .unwrap_or("");
-        let subject_type = notif
-            .get("subject")
-            .and_then(|s| s.get("type"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("");
-
-        if subject_type != "Issue" && subject_type != "PullRequest" {
-            continue;
-        }
-
-        if !subject_url.is_empty() {
-            seen.entry(subject_url.to_string()).or_insert(notif);
-        }
-    }
-
-    seen.into_values().cloned().collect()
-}
-
-async fn enrich_issue(
-    subject_url: &str,
-    repo: &str,
-    _notif: &serde_json::Value,
-) -> Result<serde_json::Value> {
-    let output = Command::new("gh")
-        .args(["api", subject_url])
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        anyhow::bail!("gh api failed for {subject_url}");
-    }
-
-    let issue: serde_json::Value = serde_json::from_slice(&output.stdout)?;
-    let state = issue.get("state").and_then(|s| s.as_str()).unwrap_or("");
-    if state != "open" {
-        anyhow::bail!("issue is not open");
-    }
-
-    Ok(serde_json::json!({
-        "repo": repo,
-        "number": issue.get("number"),
-        "title": issue.get("title"),
-        "url": issue.get("html_url"),
-        "assignees": issue.get("assignees").and_then(|a| a.as_array()).map(|arr|
-            arr.iter().filter_map(|a| a.get("login").and_then(|l| l.as_str())).collect::<Vec<_>>()
-        ).unwrap_or_default(),
-        "labels": issue.get("labels").and_then(|l| l.as_array()).map(|arr|
-            arr.iter().filter_map(|l| l.get("name").and_then(|n| n.as_str())).collect::<Vec<_>>()
-        ).unwrap_or_default(),
-        "created_at": issue.get("created_at"),
-    }))
-}
-
-async fn enrich_issue_comment(
-    notif: &serde_json::Value,
-    repo: &str,
-    issue: &serde_json::Value,
-) -> Option<serde_json::Value> {
-    let comment_url = notif
-        .get("subject")
-        .and_then(|s| s.get("latest_comment_url"))
-        .and_then(|u| u.as_str())?;
-
-    if comment_url == "null" || comment_url.is_empty() {
-        return None;
-    }
-
-    let output = Command::new("gh")
-        .args(["api", comment_url])
-        .output()
-        .await
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let comment: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
-    let number = issue.get("number");
-
-    Some(serde_json::json!({
-        "repo": repo,
-        "issue_number": number,
-        "comment_id": comment.get("id"),
-        "author": comment.get("user").and_then(|u| u.get("login")),
-        "body": comment.get("body"),
-        "created_at": comment.get("created_at"),
-    }))
-}
-
-async fn enrich_pr(subject_url: &str, repo: &str) -> Result<serde_json::Value> {
-    let output = Command::new("gh")
-        .args(["api", subject_url])
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        anyhow::bail!("gh api failed for {subject_url}");
-    }
-
-    let pr: serde_json::Value = serde_json::from_slice(&output.stdout)?;
-
-    Ok(serde_json::json!({
-        "repo": repo,
-        "number": pr.get("number"),
-        "title": pr.get("title"),
-        "url": pr.get("html_url"),
-        "author": pr.get("user").and_then(|u| u.get("login")),
-        "created_at": pr.get("created_at"),
-    }))
-}
-
-async fn enrich_reviews(
-    subject_url: &str,
-    repo: &str,
-    username: &str,
-) -> Result<Vec<serde_json::Value>> {
-    let output = Command::new("gh")
-        .args(["api", subject_url])
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        anyhow::bail!("gh api failed for {subject_url}");
-    }
-
-    let pr: serde_json::Value = serde_json::from_slice(&output.stdout)?;
-    let pr_number = pr.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
-    let pr_title = pr.get("title").and_then(|t| t.as_str()).unwrap_or("");
-    let pr_url = pr.get("html_url").and_then(|u| u.as_str()).unwrap_or("");
-    let pr_branch = pr
-        .get("head")
-        .and_then(|h| h.get("ref"))
-        .and_then(|r| r.as_str())
-        .unwrap_or("");
-
-    let reviews_url = format!("repos/{repo}/pulls/{pr_number}/reviews");
-    let output = Command::new("gh")
-        .args(["api", &reviews_url])
-        .output()
-        .await?;
-
-    let reviews_raw: Vec<serde_json::Value> = if output.status.success() {
-        serde_json::from_slice(&output.stdout).unwrap_or_default()
-    } else {
-        return Ok(vec![]);
-    };
-
-    let mut results = Vec::new();
-
-    for review in &reviews_raw {
-        let reviewer = review
-            .get("user")
-            .and_then(|u| u.get("login"))
-            .and_then(|l| l.as_str())
-            .unwrap_or("");
-        let state = review
-            .get("state")
-            .and_then(|s| s.as_str())
-            .unwrap_or("");
-
-        if reviewer == username {
-            continue;
-        }
-        if state != "CHANGES_REQUESTED" && state != "COMMENTED" {
-            continue;
-        }
-
-        let review_id = review.get("id").and_then(|i| i.as_u64()).unwrap_or(0);
-
-        // Fetch review comments
-        let comments_url =
-            format!("repos/{repo}/pulls/{pr_number}/reviews/{review_id}/comments");
-        let comments = match Command::new("gh")
-            .args(["api", &comments_url])
-            .output()
-            .await
-        {
-            Ok(out) if out.status.success() => {
-                let raw: Vec<serde_json::Value> =
-                    serde_json::from_slice(&out.stdout).unwrap_or_default();
-                raw.iter()
-                    .map(|c| {
-                        serde_json::json!({
-                            "id": c.get("id"),
-                            "path": c.get("path"),
-                            "body": c.get("body"),
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            }
-            _ => vec![],
-        };
-
-        results.push(serde_json::json!({
-            "repo": repo,
-            "pr_number": pr_number,
-            "pr_title": pr_title,
-            "pr_url": pr_url,
-            "pr_branch": pr_branch,
-            "review_id": review_id,
-            "reviewer": reviewer,
-            "review_state": state,
-            "comments": comments,
-        }));
-    }
-
-    Ok(results)
 }
 
 // ── Ack ────────────────────────────────────────────────────────────────
