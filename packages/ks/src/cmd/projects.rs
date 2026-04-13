@@ -143,7 +143,7 @@ pub fn save_projects_to(pf: &ProjectFile, path: &PathBuf) -> Result<()> {
     let content = serde_yaml::to_string(pf)?;
     let output = format!("---\n{content}");
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).ok();
+        std::fs::create_dir_all(parent).context("failed to create parent directory")?;
     }
     std::fs::write(path, output).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
@@ -168,7 +168,7 @@ pub fn remove_project(pf: &mut ProjectFile, slug: &str) -> bool {
 /// Normalize a repo URL to "owner/repo" format.
 /// Handles: https://github.com/owner/repo.git, git@github.com:owner/repo, owner/repo
 pub fn normalize_repo(url: &str) -> String {
-    let s = url.trim();
+    let s = url.trim().trim_end_matches('/');
     // Strip .git suffix
     let s = s.strip_suffix(".git").unwrap_or(s);
     // SSH format: git@host:owner/repo

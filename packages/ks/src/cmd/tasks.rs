@@ -1,10 +1,11 @@
-//! `ks tasks` — unified task management for humans and agents.
+//! `ks task` — unified task management for humans and agents.
 //!
 //! Manages TASKS.yaml: add, complete, list, prune, and AI-powered ingest
 //! and prioritization. Tasks are created from `ks notifications` sources
 //! or manually. Prioritization proposals include rationale and can be
 //! reviewed before acceptance.
 
+use std::io::Read;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -560,7 +561,7 @@ async fn execute_ingest(file: Option<&PathBuf>, apply: bool) -> Result<()> {
     if apply {
         // Read IngestResult JSON from stdin
         let mut buf = String::new();
-        std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)?;
+        std::io::stdin().read_to_string(&mut buf)?;
         let ingest: IngestResult =
             serde_json::from_str(&buf).context("failed to parse ingest JSON from stdin")?;
 
@@ -584,7 +585,7 @@ async fn execute_ingest(file: Option<&PathBuf>, apply: bool) -> Result<()> {
         }
         None => {
             let mut buf = String::new();
-            std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)?;
+            std::io::stdin().read_to_string(&mut buf)?;
             buf
         }
     };

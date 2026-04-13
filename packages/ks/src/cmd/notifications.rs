@@ -1,4 +1,4 @@
-//! `ks notifications` — unified notification fetch with source-level read tracking.
+//! `ks notification` — unified notification fetch with source-level read tracking.
 //!
 //! Replaces shell-script fetchers (fetch-email-source, fetch-github-sources) with
 //! a single Rust subcommand that only returns unseen items and supports marking them
@@ -106,6 +106,19 @@ pub async fn execute(args: &NotificationArgs) -> Result<()> {
 
 // ── Fetch ──────────────────────────────────────────────────────────────
 
+/// Resolve GitHub username from env var or gh CLI.
+fn resolve_github_username() -> Option<String> {
+    std::env::var("GITHUB_USERNAME").ok().or_else(|| {
+        std::process::Command::new("gh")
+            .args(["api", "/user", "--jq", ".login"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+    })
+}
+
 /// Collect a source fetch result into entries and manifest.
 fn collect_source(
     result: Result<(SourceEntry, Vec<String>)>,
@@ -152,32 +165,23 @@ async fn execute_fetch(
     }
 
     if should_fetch("github") {
-        let username = std::env::var("GITHUB_USERNAME").ok().or_else(|| {
-            std::process::Command::new("gh")
-                .args(["api", "/user", "--jq", ".login"])
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .filter(|s| !s.is_empty())
-        });
-        if let Some(ref user) = username {
-            collect_source(
-                fetch_github(user).await,
-                "github",
-                &mut entries,
-                &mut manifest_sources,
-            );
-        }
+        // Username not required for fetch — only used for filtering reviews
+        let username = resolve_github_username();
+        collect_source(
+            fetch_github(username.as_deref().unwrap_or("")).await,
+            "github",
+            &mut entries,
+            &mut manifest_sources,
+        );
     }
 
     if should_fetch("forgejo") {
         let fj_host = std::env::var("FORGEJO_HOST").ok();
         let fj_token = std::env::var("FORGEJO_TOKEN").ok();
-        let fj_user = std::env::var("FORGEJO_USERNAME").ok();
-        if let (Some(ref host), Some(ref token), Some(ref user)) = (&fj_host, &fj_token, &fj_user) {
+        // Username not required — only host + token needed for notification fetch
+        if let (Some(ref host), Some(ref token)) = (&fj_host, &fj_token) {
             collect_source(
-                fetch_forgejo(host, token, user).await,
+                fetch_forgejo(host, token, "").await,
                 "forgejo",
                 &mut entries,
                 &mut manifest_sources,
@@ -270,6 +274,11 @@ async fn fetch_email_body(id: &str) -> Result<String> {
         .output()
         .await?;
 
+    if !output.status.success() {
+        eprintln!("warning: failed to read email body for id {id}");
+        return Ok(String::new());
+    }
+
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
@@ -310,15 +319,10 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
 
     let raw: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap_or_default();
 
-    // Collect thread IDs for manifest (ack needs these)
-    let thread_ids: Vec<String> = raw
-        .iter()
-        .filter_map(|n| n.get("id").and_then(|v| v.as_str()).map(String::from))
-        .collect();
-
-    // Deduplicate by subject URL, extract metadata from notification envelope
+    // Deduplicate by subject URL, extract metadata, and track only emitted thread IDs
     let mut seen = std::collections::HashSet::new();
     let mut items = Vec::new();
+    let mut thread_ids: Vec<String> = Vec::new();
 
     for notif in &raw {
         let subject_type = notif
@@ -329,6 +333,18 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
             .pointer("/subject/url")
             .and_then(|u| u.as_str())
             .unwrap_or("");
+
+        if (subject_type != "Issue" && subject_type != "PullRequest")
+            || subject_url.is_empty()
+            || !seen.insert(subject_url.to_string())
+        {
+            continue;
+        }
+
+        let Some(number) = parse_number_from_url(subject_url) else {
+            continue; // Skip unparseable URLs rather than emitting number=0
+        };
+
         let title = notif
             .pointer("/subject/title")
             .and_then(|t| t.as_str())
@@ -342,15 +358,6 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
             .get("updated_at")
             .and_then(|u| u.as_str())
             .unwrap_or("");
-
-        if (subject_type != "Issue" && subject_type != "PullRequest")
-            || subject_url.is_empty()
-            || !seen.insert(subject_url.to_string())
-        {
-            continue;
-        }
-
-        let number = parse_number_from_url(subject_url).unwrap_or(0);
         let url = github_html_url(repo, subject_type, number);
 
         items.push(serde_json::json!({
@@ -362,6 +369,11 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
             "reason": reason,
             "updated_at": updated_at,
         }));
+
+        // Only track thread IDs for items we actually emit
+        if let Some(id) = notif.get("id").and_then(|v| v.as_str()) {
+            thread_ids.push(id.to_string());
+        }
     }
 
     let data = serde_json::Value::Array(items);
@@ -656,30 +668,21 @@ async fn fetch_all_sources() -> Vec<SourceEntry> {
         }
     }
 
-    let gh_user = std::env::var("GITHUB_USERNAME").ok().or_else(|| {
-        std::process::Command::new("gh")
-            .args(["api", "/user", "--jq", ".login"])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .filter(|s| !s.is_empty())
-    });
-    if let Some(ref user) = gh_user {
-        if let Ok((entry, _)) = fetch_github(user).await {
-            if entry.data != serde_json::json!({}) {
-                entries.push(entry);
-            }
+    let gh_user = resolve_github_username();
+    if let Ok((entry, _)) = fetch_github(gh_user.as_deref().unwrap_or("")).await {
+        let empty = serde_json::Value::Array(vec![]);
+        if entry.data != empty {
+            entries.push(entry);
         }
     }
 
-    // Forgejo
+    // Forgejo — only host + token required
     let fj_host = std::env::var("FORGEJO_HOST").ok();
     let fj_token = std::env::var("FORGEJO_TOKEN").ok();
-    let fj_user = std::env::var("FORGEJO_USERNAME").ok();
-    if let (Some(ref host), Some(ref token), Some(ref user)) = (&fj_host, &fj_token, &fj_user) {
-        if let Ok((entry, _)) = fetch_forgejo(host, token, user).await {
-            if entry.data != serde_json::json!({}) {
+    if let (Some(ref host), Some(ref token)) = (&fj_host, &fj_token) {
+        if let Ok((entry, _)) = fetch_forgejo(host, token, "").await {
+            let empty = serde_json::Value::Array(vec![]);
+            if entry.data != empty {
                 entries.push(entry);
             }
         }
