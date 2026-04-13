@@ -49,7 +49,7 @@ in
   options.keystone.terminal.sshAutoLoad = {
     enable = mkOption {
       type = types.bool;
-      default = false;
+      default = config.keystone.experimental;
       description = "Auto-load SSH key into ssh-agent at login using agenix passphrase";
     };
 
