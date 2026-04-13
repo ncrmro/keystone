@@ -5,7 +5,13 @@
 
 use std::path::Path;
 
-const INSTALLER_VOLUME_LABEL: &str = "KEYSTONE";
+// Must stay in sync with the installer ISO volume label defined by the build.
+// Prefer setting INSTALLER_VOLUME_LABEL at compile time (for example from Nix)
+// so installer-media exclusion cannot silently drift from the ISO label.
+const INSTALLER_VOLUME_LABEL: &str = match option_env!("INSTALLER_VOLUME_LABEL") {
+    Some(label) => label,
+    None => "KEYSTONE",
+};
 
 /// A discovered disk device suitable for installation.
 #[derive(Debug, Clone)]
