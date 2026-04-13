@@ -28,6 +28,9 @@ git2 = "0.19"
 # SSH keys
 ssh-key = { version = "0.6", features = ["ed25519", "std"] }
 
+# YAML
+serde_yaml = "0.9"
+
 # Nix parsing
 rnix = "0.11"
 

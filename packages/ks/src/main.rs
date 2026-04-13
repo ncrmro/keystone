@@ -94,6 +94,7 @@ async fn main() -> Result<()> {
             Command::Doctor(args) => run_doctor_command(args).await,
             Command::Install(args) => run_headless_install(&args.host, args.disk.as_deref()).await,
             Command::Notifications(args) => run_notifications_command(args).await,
+            Command::Tasks(args) => cmd::tasks::execute(&args).await,
         };
     }
 
