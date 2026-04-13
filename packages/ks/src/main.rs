@@ -93,8 +93,9 @@ async fn main() -> Result<()> {
             Command::Agent(args) => run_agent_command(args).await,
             Command::Doctor(args) => run_doctor_command(args).await,
             Command::Install(args) => run_headless_install(&args.host, args.disk.as_deref()).await,
-            Command::Notifications(args) => run_notifications_command(args).await,
-            Command::Tasks(args) => cmd::tasks::execute(&args).await,
+            Command::Notification(args) => cmd::notifications::execute(&args).await,
+            Command::Task(args) => cmd::tasks::execute(&args).await,
+            Command::Project(args) => cmd::projects::execute(&args).await,
         };
     }
 
@@ -478,9 +479,6 @@ async fn run_doctor_command(args: cli::DoctorArgs) -> Result<()> {
     }
 }
 
-async fn run_notifications_command(args: cmd::notifications::NotificationsArgs) -> Result<()> {
-    cmd::notifications::execute(&args).await
-}
 
 /// Handle a global Action from a Component.
 ///

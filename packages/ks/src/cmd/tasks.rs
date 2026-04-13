@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 // ── CLI definition ────────────────────────────────────────────────────
 
 #[derive(Args)]
-pub struct TasksArgs {
+pub struct TaskArgs {
     #[command(subcommand)]
-    pub command: Option<TasksCommand>,
+    pub command: Option<TaskCommand>,
 
     /// Output as JSON instead of human-readable table.
     #[arg(long)]
@@ -24,7 +24,7 @@ pub struct TasksArgs {
 }
 
 #[derive(Subcommand)]
-pub enum TasksCommand {
+pub enum TaskCommand {
     /// Add a new task.
     Add {
         /// Task description.
@@ -45,6 +45,12 @@ pub enum TasksCommand {
         /// Associated project.
         #[arg(long)]
         project: Option<String>,
+    },
+
+    /// Mark a task as in-progress.
+    Start {
+        /// Task name to start.
+        name: String,
     },
 
     /// Mark a task as completed.
@@ -230,6 +236,17 @@ pub fn add_task(task_file: &mut TaskFile, task: Task) -> bool {
     true
 }
 
+/// Mark a task as in-progress. Returns true if found.
+pub fn start_task(task_file: &mut TaskFile, name: &str) -> bool {
+    if let Some(t) = task_file.tasks.iter_mut().find(|t| t.name == name) {
+        t.status = "in_progress".to_string();
+        t.started_at = Some(iso_now());
+        true
+    } else {
+        false
+    }
+}
+
 /// Mark a task as completed. Returns true if found.
 pub fn complete_task(task_file: &mut TaskFile, name: &str) -> bool {
     if let Some(t) = task_file.tasks.iter_mut().find(|t| t.name == name) {
@@ -337,18 +354,19 @@ pub fn apply_ingest(task_file: &mut TaskFile, ingest: &IngestResult) -> (usize, 
 
 // ── Entry point ───────────────────────────────────────────────────────
 
-pub async fn execute(args: &TasksArgs) -> Result<()> {
+pub async fn execute(args: &TaskArgs) -> Result<()> {
     match &args.command {
         None => execute_list(args.json),
-        Some(TasksCommand::Add {
+        Some(TaskCommand::Add {
             description, name, source, source_ref, project,
         }) => execute_add(description, name.as_deref(), source, source_ref.as_deref(), project.as_deref()),
-        Some(TasksCommand::Done { name }) => execute_done(name),
-        Some(TasksCommand::Block { name, reason }) => execute_block(name, reason.as_deref()),
-        Some(TasksCommand::Ingest { file, apply }) => execute_ingest(file.as_ref(), *apply).await,
-        Some(TasksCommand::Prioritize) => execute_prioritize().await,
-        Some(TasksCommand::Proposal { accept }) => execute_proposal(*accept),
-        Some(TasksCommand::Prune { all }) => execute_prune(*all),
+        Some(TaskCommand::Start { name }) => execute_start(name),
+        Some(TaskCommand::Done { name }) => execute_done(name),
+        Some(TaskCommand::Block { name, reason }) => execute_block(name, reason.as_deref()),
+        Some(TaskCommand::Ingest { file, apply }) => execute_ingest(file.as_ref(), *apply).await,
+        Some(TaskCommand::Prioritize) => execute_prioritize().await,
+        Some(TaskCommand::Proposal { accept }) => execute_proposal(*accept),
+        Some(TaskCommand::Prune { all }) => execute_prune(*all),
     }
 }
 
@@ -442,7 +460,19 @@ fn execute_add(
     Ok(())
 }
 
-// ── Done / Block ──────────────────────────────────────────────────────
+// ── Start / Done / Block ──────────────────────────────────────────────
+
+fn execute_start(name: &str) -> Result<()> {
+    let path = tasks_file_path();
+    let mut task_file = load_tasks_from(&path)?;
+    if start_task(&mut task_file, name) {
+        save_tasks_to(&task_file, &path)?;
+        println!("Started: {name}");
+    } else {
+        eprintln!("Task '{name}' not found.");
+    }
+    Ok(())
+}
 
 fn execute_done(name: &str) -> Result<()> {
     let path = tasks_file_path();
@@ -819,6 +849,20 @@ mod tests {
     }
 
     // ── complete / block ──────────────────────────────────────────
+
+    #[test]
+    fn test_start_task() {
+        let mut tf = TaskFile { tasks: vec![make_task("my-task", "pending")] };
+        assert!(start_task(&mut tf, "my-task"));
+        assert_eq!(tf.tasks[0].status, "in_progress");
+        assert!(tf.tasks[0].started_at.is_some());
+    }
+
+    #[test]
+    fn test_start_task_not_found() {
+        let mut tf = TaskFile { tasks: vec![] };
+        assert!(!start_task(&mut tf, "missing"));
+    }
 
     #[test]
     fn test_complete_task() {

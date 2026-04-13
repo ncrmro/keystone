@@ -3,8 +3,8 @@
 use clap::{Args, Parser, Subcommand};
 
 use crate::cmd::{
-    notifications::NotificationsArgs, photos::PhotosCommand, screenshots::ScreenshotsCommand,
-    tasks::TasksArgs,
+    notifications::NotificationArgs, photos::PhotosCommand, projects::ProjectArgs,
+    screenshots::ScreenshotsCommand, tasks::TaskArgs,
 };
 
 /// Keystone CLI/TUI — NixOS infrastructure configuration and management.
@@ -145,10 +145,13 @@ pub enum Command {
     Install(InstallArgs),
 
     /// Unified notification fetch with source-level read tracking.
-    Notifications(NotificationsArgs),
+    Notification(NotificationArgs),
 
-    /// Manage tasks — list, add, complete, prioritize, prune.
-    Tasks(TasksArgs),
+    /// Manage tasks — list, add, start, complete, prioritize, prune.
+    Task(TaskArgs),
+
+    /// Manage projects — list, add, detect, configure provider overrides.
+    Project(ProjectArgs),
 }
 
 #[derive(Args)]

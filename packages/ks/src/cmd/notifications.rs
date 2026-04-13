@@ -26,9 +26,9 @@ fn state_dir() -> PathBuf {
 // ── CLI definitions ────────────────────────────────────────────────────
 
 #[derive(Args)]
-pub struct NotificationsArgs {
+pub struct NotificationArgs {
     #[command(subcommand)]
-    pub command: Option<NotificationsCommand>,
+    pub command: Option<NotificationCommand>,
 
     /// Output as JSON instead of human-readable table.
     #[arg(long, global = true)]
@@ -36,7 +36,7 @@ pub struct NotificationsArgs {
 }
 
 #[derive(Subcommand)]
-pub enum NotificationsCommand {
+pub enum NotificationCommand {
     /// Fetch unseen notifications, output JSON (machine-readable).
     Fetch {
         /// Write a manifest file for later ack.
@@ -90,16 +90,16 @@ struct EmailEnvelope {
 
 // ── Entrypoint ─────────────────────────────────────────────────────────
 
-pub async fn execute(args: &NotificationsArgs) -> Result<()> {
+pub async fn execute(args: &NotificationArgs) -> Result<()> {
     match &args.command {
-        Some(NotificationsCommand::Fetch { manifest, sources }) => {
+        Some(NotificationCommand::Fetch { manifest, sources }) => {
             let filter: Option<Vec<&str>> = sources
                 .as_ref()
                 .map(|s| s.split(',').map(|s| s.trim()).collect());
             execute_fetch(*manifest, filter.as_deref(), args.json).await
         }
-        Some(NotificationsCommand::Ack { manifest }) => execute_ack(manifest).await,
-        Some(NotificationsCommand::Sources) => execute_sources(args.json).await,
+        Some(NotificationCommand::Ack { manifest }) => execute_ack(manifest).await,
+        Some(NotificationCommand::Sources) => execute_sources(args.json).await,
         None => execute_list(args.json).await,
     }
 }
@@ -155,6 +155,29 @@ async fn execute_fetch(
                     }
                 }
                 Err(e) => eprintln!("warning: github fetch failed: {e}"),
+            }
+        }
+    }
+
+    // ISSUE-REQ-4: Forgejo — fetch only unread
+    if should_fetch("forgejo") {
+        let fj_host = std::env::var("FORGEJO_HOST").ok();
+        let fj_token = std::env::var("FORGEJO_TOKEN").ok();
+        let fj_user = std::env::var("FORGEJO_USERNAME").ok();
+        if let (Some(ref host), Some(ref token), Some(ref user)) = (&fj_host, &fj_token, &fj_user) {
+            match fetch_forgejo(host, token, user).await {
+                Ok((entry, ids)) => {
+                    if !ids.is_empty() {
+                        manifest_sources.push(ManifestSource {
+                            source: "forgejo".to_string(),
+                            ids,
+                        });
+                    }
+                    if entry.data != serde_json::Value::Array(vec![]) {
+                        entries.push(entry);
+                    }
+                }
+                Err(e) => eprintln!("warning: forgejo fetch failed: {e}"),
             }
         }
     }
@@ -726,12 +749,7 @@ async fn execute_sources(json: bool) -> Result<()> {
 // ── Helpers ────────────────────────────────────────────────────────────
 
 fn chrono_now() -> String {
-    // Use system time formatted as ISO 8601
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    format!("{now}")
+    crate::cmd::tasks::iso_now()
 }
 
 fn timestamp_slug() -> String {

@@ -12,6 +12,7 @@ pub mod grafana;
 pub mod hardware_key;
 pub mod notifications;
 pub mod photos;
+pub mod projects;
 pub mod tasks;
 pub mod print;
 pub mod screenshots;
