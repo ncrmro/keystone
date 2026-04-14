@@ -36,6 +36,10 @@ reopen_agents_menu() {
 }
 
 cmd_agents_json() {
+  if ! command -v agentctl >/dev/null 2>&1; then
+    printf '[{"Text":"No agents configured","Subtext":"Enable keystone.os.agents to manage agents from this menu","Value":"","Icon":"dialog-information-symbolic"}]\n'
+    return 0
+  fi
   agentctl list --json | jq '
     map({
       Text: .agent,
@@ -62,6 +66,10 @@ cmd_agents_json() {
 }
 
 cmd_agent_actions_json() {
+  if ! command -v agentctl >/dev/null 2>&1; then
+    printf '[]\n'
+    return 0
+  fi
   local agent_name="$1"
   local quoted_agent
   local state_json
@@ -148,6 +156,9 @@ cmd_agent_actions_json() {
 }
 
 cmd_dispatch() {
+  if ! command -v agentctl >/dev/null 2>&1; then
+    return 0
+  fi
   local payload="${1:-}"
   local action=""
   local agent_name=""
