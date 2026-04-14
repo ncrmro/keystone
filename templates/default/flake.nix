@@ -69,6 +69,33 @@
             }
           )
         ];
+
+        # Desktop-only modules — applied to laptop and workstation hosts, not
+        # servers. Use these for GUI apps and desktop integrations.
+        # desktopUserModules = [
+        #   (
+        #     { pkgs, ... }:
+        #     {
+        #       home.packages = with pkgs; [
+        #         obsidian
+        #       ];
+        #     }
+        #   )
+        # ];
+        # desktopSystemModules = [
+        #   (
+        #     { pkgs, ... }:
+        #     {
+        #       environment.systemPackages = with pkgs; [
+        #         keystone.google-chrome
+        #         vscode
+        #         bitwarden-desktop
+        #       ];
+        #       programs._1password-gui.enable = true;
+        #       programs._1password.enable = true;
+        #     }
+        #   )
+        # ];
       };
       keystoneServices = {
         # Shared infrastructure services are placed globally here.

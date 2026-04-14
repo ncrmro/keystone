@@ -606,18 +606,21 @@ rec {
           builder = mkLaptop;
           system = "x86_64-linux";
           nixosModules = [ ];
+          desktop = true;
         };
 
         workstation = {
           builder = mkWorkstation;
           system = "x86_64-linux";
           nixosModules = [ ];
+          desktop = true;
         };
 
         server = {
           builder = mkServer;
           system = "x86_64-linux";
           nixosModules = [ self.nixosModules.server ];
+          desktop = false;
         };
       };
 
@@ -640,6 +643,8 @@ rec {
       sharedUsers = shared.users or { };
       sharedSystemModules = shared.systemModules or [ ];
       sharedUserModules = shared.userModules or [ ];
+      sharedDesktopSystemModules = shared.desktopSystemModules or [ ];
+      sharedDesktopUserModules = shared.desktopUserModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
       effectiveRepoRoot =
         if repoRoot != null then
@@ -755,7 +760,8 @@ rec {
               };
               modules = [
                 {
-                  home-manager.sharedModules = sharedUserModules;
+                  home-manager.sharedModules =
+                    sharedUserModules ++ lib.optionals kindDefaults.desktop sharedDesktopUserModules;
                 }
               ]
               ++ lib.optional (adminSshKeys != [ ]) {
@@ -764,6 +770,7 @@ rec {
                 users.users.${adminUsername}.openssh.authorizedKeys.keys = adminSshKeys;
               }
               ++ sharedSystemModules
+              ++ lib.optionals kindDefaults.desktop sharedDesktopSystemModules
               ++ modules;
             };
         in
