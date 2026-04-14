@@ -641,8 +641,11 @@ rec {
         "sshKeys"
       ];
       sharedUsers = shared.users or { };
+      # NixOS modules applied OS-wide on every host.
       sharedSystemModules = shared.systemModules or [ ];
+      # Home Manager modules applied per-user on every host.
       sharedUserModules = shared.userModules or [ ];
+      # Home Manager modules applied per-user on desktop hosts (laptop, workstation) only.
       sharedDesktopUserModules = shared.desktopUserModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
       effectiveRepoRoot =
