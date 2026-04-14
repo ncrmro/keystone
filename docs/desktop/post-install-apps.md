@@ -5,16 +5,16 @@ and Chromium. Additional applications are added in your config flake.
 
 ## Where to add packages
 
-| Where | Scope | Example |
-|-------|-------|---------|
-| `shared.desktopUserModules` | Your user profile on desktop hosts | Obsidian, VS Code, Bitwarden |
-| `shared.userModules` | Your user profile on every host | CLI tools (fd, ripgrep) |
-| `shared.systemModules` | System-wide on every host | btop, 1Password NixOS module |
-| `hosts/<name>/configuration.nix` | One specific host only | GPU-specific tools |
+| Where | Scope | Installed via | Example |
+|-------|-------|---------------|---------|
+| `shared.desktopUserModules` | Desktop hosts only | Home Manager (per-user) | Obsidian, VS Code, Bitwarden |
+| `shared.userModules` | Every host | Home Manager (per-user) | fd, ripgrep |
+| `shared.systemModules` | Every host | NixOS (OS-wide) | btop, 1Password NixOS module |
+| `hosts/<name>/configuration.nix` | One host | NixOS (OS-wide) | GPU-specific tools |
 
 Desktop user modules apply to laptop and workstation hosts but not servers.
-GUI apps belong in `desktopUserModules` as home-manager packages — not at the
-OS level.
+GUI apps belong in `desktopUserModules` — installed per-user via Home Manager,
+not at the OS level.
 
 ## flake.nix example
 
