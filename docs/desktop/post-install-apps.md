@@ -68,10 +68,22 @@ Search for available packages and NixOS service options at:
 - [Packages](https://search.nixos.org/packages?channel=unstable) — find the attribute name to use in `home.packages` or `environment.systemPackages`
 - [Options](https://search.nixos.org/options?channel=unstable) — find NixOS module options like `programs._1password-gui.enable`
 
+## Default browser
+
+Chromium ships by default and is bound to `$mod+B`. To switch browsers, set
+`keystone.desktop.browser` to the binary name:
+
+```nix
+keystone.desktop.browser = "google-chrome-stable";  # Chrome
+keystone.desktop.browser = "firefox";               # Firefox
+keystone.desktop.browser = "chromium";               # Chromium (default)
+```
+
+Set this in a shared module or per-host config. Remember to also add the
+browser package in `desktopUserModules`.
+
 ## Notes
 
-- **Chromium** ships by default and is bound to `$mod+B`. Override with
-  `keystone.desktop.hyprland.browser`.
 - **Helix** ships by default via the terminal module with automatic theme
   integration.
 - OS-level desktop settings (like `programs._1password-gui.enable`) go in
