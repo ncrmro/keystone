@@ -61,6 +61,13 @@ keystone.lib.mkSystemFlake {
 }
 ```
 
+## Finding packages
+
+Search for available packages and NixOS service options at:
+
+- [Packages](https://search.nixos.org/packages?channel=unstable) — find the attribute name to use in `home.packages` or `environment.systemPackages`
+- [Options](https://search.nixos.org/options?channel=unstable) — find NixOS module options like `programs._1password-gui.enable`
+
 ## Notes
 
 - **Chromium** ships by default and is bound to `$mod+B`. Override with
