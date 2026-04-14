@@ -232,10 +232,11 @@ pub async fn list_hosts(repo_root: &Path) -> Result<Vec<String>> {
     };
 
     if !output.status.success() {
-        return Ok(Vec::new());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to enumerate hosts: {}", stderr.trim());
     }
 
-    Ok(serde_json::from_slice(&output.stdout).unwrap_or_default())
+    serde_json::from_slice(&output.stdout).context("Failed to parse host list from nix eval output")
 }
 
 /// Resolve the current hostname to a host key.
@@ -447,9 +448,34 @@ pub async fn host_info(repo_root: &Path, host: &str) -> Result<HostInfo> {
                 .with_context(|| format!("Failed to parse host metadata for {}", host))
         }
         RepoLayout::FlakeHosts(root) => {
-            // Construct HostInfo from flake evaluation.
+            // Evaluate keystone.hosts.<key> from the flake config for full metadata.
             let mut cmd = tokio::process::Command::new("nix");
             cmd.arg("eval")
+                .arg(format!(
+                    "{}#nixosConfigurations.{}.config.keystone.hosts.\"{}\"",
+                    root.display(),
+                    host,
+                    host,
+                ))
+                .arg("--json");
+            for arg in local_override_args(repo_root).await? {
+                cmd.arg(arg);
+            }
+            let output = cmd
+                .output()
+                .await
+                .with_context(|| format!("Failed to read host info for {}", host))?;
+
+            if output.status.success() {
+                if let Ok(info) = serde_json::from_slice::<HostInfo>(&output.stdout) {
+                    return Ok(info);
+                }
+            }
+
+            // Fallback: construct minimal HostInfo from networking.hostName.
+            let mut hn_cmd = tokio::process::Command::new("nix");
+            hn_cmd
+                .arg("eval")
                 .arg(format!(
                     "{}#nixosConfigurations.{}.config.networking.hostName",
                     root.display(),
@@ -457,9 +483,9 @@ pub async fn host_info(repo_root: &Path, host: &str) -> Result<HostInfo> {
                 ))
                 .arg("--raw");
             for arg in local_override_args(repo_root).await? {
-                cmd.arg(arg);
+                hn_cmd.arg(arg);
             }
-            let hostname = cmd
+            let hostname = hn_cmd
                 .output()
                 .await
                 .ok()
@@ -1067,5 +1093,39 @@ mod tests {
             derive_ssh_target(" laptop ", " tail.example.ts.net "),
             Some("laptop.tail.example.ts.net".to_string())
         );
+    }
+
+    #[test]
+    fn detect_layout_hosts_nix() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hosts.nix"), "{}").unwrap();
+        let layout = detect_layout(dir.path());
+        assert!(matches!(layout, Some(RepoLayout::HostsNix(_))));
+    }
+
+    #[test]
+    fn detect_layout_flake_hosts() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("flake.nix"), "{}").unwrap();
+        std::fs::create_dir(dir.path().join("hosts")).unwrap();
+        let layout = detect_layout(dir.path());
+        assert!(matches!(layout, Some(RepoLayout::FlakeHosts(_))));
+    }
+
+    #[test]
+    fn detect_layout_prefers_hosts_nix() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hosts.nix"), "{}").unwrap();
+        std::fs::write(dir.path().join("flake.nix"), "{}").unwrap();
+        std::fs::create_dir(dir.path().join("hosts")).unwrap();
+        // When both exist, hosts.nix takes precedence.
+        let layout = detect_layout(dir.path());
+        assert!(matches!(layout, Some(RepoLayout::HostsNix(_))));
+    }
+
+    #[test]
+    fn detect_layout_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(detect_layout(dir.path()).is_none());
     }
 }

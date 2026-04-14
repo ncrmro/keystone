@@ -233,6 +233,13 @@ async fn sync_host_entry(
 pub async fn execute() -> Result<SyncHostKeysResult> {
     let repo_root = repo::find_repo()?;
     let hosts_nix = repo_root.join("hosts.nix");
+    if !hosts_nix.is_file() {
+        anyhow::bail!(
+            "sync-host-keys requires a legacy hosts.nix layout.\n\
+             The repo at {} uses mkSystemFlake (flake.nix + hosts/) which is not yet supported by this command.",
+            repo_root.display()
+        );
+    }
     let hosts = list_hosts(&hosts_nix).await?;
     let mut hosts_nix_content = fs::read_to_string(&hosts_nix)
         .await

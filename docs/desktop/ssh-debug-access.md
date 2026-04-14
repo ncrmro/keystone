@@ -13,14 +13,20 @@ keystone.os.users.admin.authorizedKeys = [
 ];
 ```
 
+You also need SSH enabled on the host:
+
+```nix
+# hosts/<hostname>/configuration.nix
+services.openssh.enable = true;
+```
+
 Rebuild and apply:
 
 ```bash
 ks build && ks switch
 ```
 
-The Keystone OS module enables `sshd` by default. After the rebuild, SSH access
-is available at the laptop's IP.
+After the rebuild, SSH access is available at the laptop's IP.
 
 ## Connecting
 
