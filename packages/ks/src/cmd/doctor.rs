@@ -107,9 +107,10 @@ async fn collect_flake_lock_age(repo_root: &Path) -> String {
 }
 
 fn known_agents_list() -> Result<Vec<String>> {
-    let output = Command::new("agentctl")
-        .output()
-        .context("agentctl is not available in PATH")?;
+    let output = match Command::new("agentctl").output() {
+        Ok(output) => output,
+        Err(_) => return Ok(Vec::new()),
+    };
 
     let combined = format!(
         "{}{}",
@@ -232,12 +233,11 @@ async fn remote_nixos_generation(target: &str) -> String {
 
 async fn fleet_status_row(
     repo_root: &Path,
-    hosts_nix: &Path,
     current_hostname: &str,
     host: &str,
     local_gen: Option<&str>,
 ) -> Option<String> {
-    let info = repo::host_info(hosts_nix, host).await.ok()?;
+    let info = repo::host_info(repo_root, host).await.ok()?;
 
     if info.hostname == current_hostname {
         return Some(format!(
@@ -286,21 +286,10 @@ async fn fleet_status_row(
 }
 
 async fn gather_fleet_health(repo_root: &Path, local_gen: Option<&str>) -> String {
-    let hosts_nix = repo_root.join("hosts.nix");
-    let output = tokio::process::Command::new("nix")
-        .args(["eval", "-f"])
-        .arg(&hosts_nix)
-        .args(["--json", "--apply", "builtins.attrNames"])
-        .output()
-        .await;
-    let Ok(output) = output else {
-        return String::new();
+    let hosts = match repo::list_hosts(repo_root).await {
+        Ok(hosts) => hosts,
+        Err(_) => return String::new(),
     };
-    if !output.status.success() {
-        return String::new();
-    }
-
-    let hosts: Vec<String> = serde_json::from_slice(&output.stdout).unwrap_or_default();
     if hosts.is_empty() {
         return String::new();
     }
@@ -318,7 +307,7 @@ async fn gather_fleet_health(repo_root: &Path, local_gen: Option<&str>) -> Strin
 
     for host in hosts {
         if let Some(row) =
-            fleet_status_row(repo_root, &hosts_nix, &current_hostname, &host, local_gen).await
+            fleet_status_row(repo_root, &current_hostname, &host, local_gen).await
         {
             lines.push(row);
         } else {

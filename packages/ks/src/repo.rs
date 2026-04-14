@@ -8,6 +8,31 @@ use tokio::fs;
 
 use crate::config::KeystoneRepo;
 
+/// Detected repository layout.
+///
+/// Legacy repos have a top-level `hosts.nix` attribute set.
+/// Generated `mkSystemFlake` repos use `flake.nix` + `hosts/` directory
+/// and expose hosts via `nixosConfigurations` flake outputs.
+#[derive(Debug, Clone)]
+pub enum RepoLayout {
+    /// Legacy layout: top-level `hosts.nix` file.
+    HostsNix(PathBuf),
+    /// mkSystemFlake layout: `flake.nix` + `hosts/` directory.
+    FlakeHosts(PathBuf),
+}
+
+/// Detect the repository layout at the given root.
+pub fn detect_layout(repo_root: &Path) -> Option<RepoLayout> {
+    let hosts_nix = repo_root.join("hosts.nix");
+    if hosts_nix.is_file() {
+        return Some(RepoLayout::HostsNix(hosts_nix));
+    }
+    if repo_root.join("flake.nix").is_file() && repo_root.join("hosts").is_dir() {
+        return Some(RepoLayout::FlakeHosts(repo_root.to_path_buf()));
+    }
+    None
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostInfo {
@@ -30,18 +55,16 @@ fn repos_dir() -> Result<PathBuf> {
     Ok(home.join(".keystone").join("repos"))
 }
 
-fn hosts_nix_path(repo_root: &Path) -> PathBuf {
-    repo_root.join("hosts.nix")
-}
-
 fn looks_like_keystone_repo(path: &Path) -> bool {
     path.join("docs").join("ks.md").is_file()
         && path.join("flake.nix").is_file()
         && path.join("packages").join("ks").exists()
 }
 
-/// Walk up to `max_depth` levels looking for a directory containing `hosts.nix`.
-fn find_hosts_nix_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
+/// Walk up to `max_depth` levels looking for a directory with a recognized layout.
+///
+/// Checks for `hosts.nix` (legacy) first, then `flake.nix` + `hosts/` (mkSystemFlake).
+fn find_config_repo_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
     if max_depth == 0 {
         return None;
     }
@@ -56,10 +79,10 @@ fn find_hosts_nix_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
         if !path.is_dir() {
             continue;
         }
-        if path.join("hosts.nix").is_file() {
+        if detect_layout(&path).is_some() {
             return std::fs::canonicalize(&path).ok().or(Some(path));
         }
-        if let Some(found) = find_hosts_nix_recursive(&path, max_depth - 1) {
+        if let Some(found) = find_config_repo_recursive(&path, max_depth - 1) {
             return Some(found);
         }
     }
@@ -69,15 +92,15 @@ fn find_hosts_nix_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
 
 /// Locate the nixos-config repository.
 ///
-/// Mirrors the shell `find_repo` function:
-/// 1. `$NIXOS_CONFIG_DIR` if set and contains `hosts.nix`
-/// 2. Git repo root of current directory if it contains `hosts.nix`
-/// 3. `~/.keystone/repos/*/` if any contains `hosts.nix`
+/// Discovery order:
+/// 1. `$NIXOS_CONFIG_DIR` if set and has a recognized layout
+/// 2. Git repo root of current directory if it has a recognized layout
+/// 3. `~/.keystone/repos/*/` recursive search
 /// 4. `~/nixos-config` as fallback
 pub fn find_repo() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("NIXOS_CONFIG_DIR") {
         let path = PathBuf::from(&dir);
-        if path.join("hosts.nix").is_file() {
+        if detect_layout(&path).is_some() {
             return std::fs::canonicalize(&path)
                 .or(Ok::<PathBuf, std::io::Error>(path))
                 .context("Failed to canonicalize NIXOS_CONFIG_DIR");
@@ -90,7 +113,7 @@ pub fn find_repo() -> Result<PathBuf> {
     {
         if output.status.success() {
             let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
-            if root.join("hosts.nix").is_file() {
+            if detect_layout(&root).is_some() {
                 return std::fs::canonicalize(&root)
                     .or(Ok::<PathBuf, std::io::Error>(root))
                     .context("Failed to canonicalize git root");
@@ -101,7 +124,7 @@ pub fn find_repo() -> Result<PathBuf> {
     if let Ok(home) = home_dir().context("No home directory") {
         let repos = home.join(".keystone").join("repos");
         if repos.is_dir() {
-            if let Some(found) = find_hosts_nix_recursive(&repos, 3) {
+            if let Some(found) = find_config_repo_recursive(&repos, 3) {
                 return Ok(found);
             }
         }
@@ -109,7 +132,7 @@ pub fn find_repo() -> Result<PathBuf> {
 
     if let Some(home) = home_dir() {
         let fallback = home.join("nixos-config");
-        if fallback.join("hosts.nix").is_file() {
+        if detect_layout(&fallback).is_some() {
             return std::fs::canonicalize(&fallback)
                 .or(Ok::<PathBuf, std::io::Error>(fallback))
                 .context("Failed to canonicalize ~/nixos-config");
@@ -117,7 +140,8 @@ pub fn find_repo() -> Result<PathBuf> {
     }
 
     anyhow::bail!(
-        "Cannot find nixos-config repo (no hosts.nix found).\n\
+        "Cannot find nixos-config repo.\n\
+         Expected hosts.nix (legacy) or flake.nix + hosts/ (mkSystemFlake).\n\
          Set NIXOS_CONFIG_DIR or run from within the repo.",
     )
 }
@@ -180,43 +204,60 @@ pub fn resolve_keystone_repo() -> Result<PathBuf> {
     )
 }
 
-/// Resolve the current hostname to a host key in `hosts.nix`.
-///
-/// When `host` is `None`, looks up the current machine's hostname.
-pub async fn resolve_host(repo_root: &Path, host: Option<&str>) -> Result<String> {
-    let hosts_nix = hosts_nix_path(repo_root);
+/// List all host keys from the repository.
+pub async fn list_hosts(repo_root: &Path) -> Result<Vec<String>> {
+    let layout = detect_layout(repo_root).context(
+        "Cannot detect repo layout. Expected hosts.nix or flake.nix + hosts/.",
+    )?;
 
-    if let Some(host) = host {
-        let output = tokio::process::Command::new("nix")
-            .args(["eval", "-f"])
-            .arg(&hosts_nix)
-            .arg(host)
-            .arg("--json")
-            .output()
-            .await
-            .context("Failed to run nix eval")?;
-
-        if !output.status.success() {
-            let list_output = tokio::process::Command::new("nix")
+    let output = match &layout {
+        RepoLayout::HostsNix(hosts_nix) => {
+            tokio::process::Command::new("nix")
                 .args(["eval", "-f"])
-                .arg(&hosts_nix)
-                .args([
-                    "--apply",
-                    "h: builtins.concatStringsSep \", \" (builtins.attrNames h)",
-                    "--raw",
-                ])
+                .arg(hosts_nix)
+                .args(["--json", "--apply", "builtins.attrNames"])
                 .output()
                 .await
-                .ok();
-            let known = list_output
-                .as_ref()
-                .filter(|result| result.status.success())
-                .map(|result| String::from_utf8_lossy(&result.stdout).to_string())
-                .unwrap_or_else(|| "(unknown)".to_string());
-            anyhow::bail!("Unknown host '{}'. Known hosts: {}", host, known.trim());
+                .context("Failed to list hosts from hosts.nix")?
         }
+        RepoLayout::FlakeHosts(root) => {
+            let mut cmd = tokio::process::Command::new("nix");
+            cmd.arg("eval")
+                .arg(format!("{}#nixosConfigurations", root.display()))
+                .args(["--apply", "builtins.attrNames", "--json"]);
+            for arg in local_override_args(repo_root).await? {
+                cmd.arg(arg);
+            }
+            cmd.output()
+                .await
+                .context("Failed to list hosts from flake nixosConfigurations")?
+        }
+    };
 
-        return Ok(host.to_string());
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    Ok(serde_json::from_slice(&output.stdout).unwrap_or_default())
+}
+
+/// Resolve the current hostname to a host key.
+///
+/// When `host` is `None`, looks up the current machine's hostname.
+/// Supports both `hosts.nix` (legacy) and `mkSystemFlake` (flake) layouts.
+pub async fn resolve_host(repo_root: &Path, host: Option<&str>) -> Result<String> {
+    let layout = detect_layout(repo_root).context(
+        "Cannot detect repo layout. Expected hosts.nix or flake.nix + hosts/.",
+    )?;
+
+    if let Some(host) = host {
+        // Validate that the host exists.
+        let hosts = list_hosts(repo_root).await?;
+        if hosts.iter().any(|h| h == host) {
+            return Ok(host.to_string());
+        }
+        let known = hosts.join(", ");
+        anyhow::bail!("Unknown host '{}'. Known hosts: {}", host, known);
     }
 
     let current_hostname = hostname::get()
@@ -224,30 +265,72 @@ pub async fn resolve_host(repo_root: &Path, host: Option<&str>) -> Result<String
         .to_string_lossy()
         .to_string();
 
-    let expr = format!(
-        "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"{}\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m",
-        current_hostname,
-    );
+    match &layout {
+        RepoLayout::HostsNix(hosts_nix) => {
+            let expr = format!(
+                "hosts: let m = builtins.filter (k: (builtins.getAttr k hosts).hostname == \"{}\") (builtins.attrNames hosts); in if m == [] then \"\" else builtins.head m",
+                current_hostname,
+            );
 
-    let output = tokio::process::Command::new("nix")
-        .args(["eval", "-f"])
-        .arg(&hosts_nix)
-        .arg("--raw")
-        .arg("--apply")
-        .arg(&expr)
-        .output()
-        .await
-        .context("Failed to resolve host from hostname")?;
+            let output = tokio::process::Command::new("nix")
+                .args(["eval", "-f"])
+                .arg(hosts_nix)
+                .arg("--raw")
+                .arg("--apply")
+                .arg(&expr)
+                .output()
+                .await
+                .context("Failed to resolve host from hostname")?;
 
-    let host_key = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if host_key.is_empty() {
-        anyhow::bail!(
-            "No hosts.nix entry with hostname '{}'. Specify HOST explicitly.",
-            current_hostname
-        );
+            let host_key = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if host_key.is_empty() {
+                anyhow::bail!(
+                    "No hosts.nix entry with hostname '{}'. Specify HOST explicitly.",
+                    current_hostname
+                );
+            }
+            Ok(host_key)
+        }
+        RepoLayout::FlakeHosts(root) => {
+            // In the flake layout, try matching the hostname against
+            // nixosConfigurations.<key>.config.networking.hostName, or fall
+            // back to matching the attribute name directly.
+            let hosts = list_hosts(repo_root).await?;
+
+            // First try: attribute name matches hostname directly.
+            if hosts.iter().any(|h| h == &current_hostname) {
+                return Ok(current_hostname);
+            }
+
+            // Second try: evaluate networking.hostName for each host.
+            for host_key in &hosts {
+                let mut cmd = tokio::process::Command::new("nix");
+                cmd.arg("eval")
+                    .arg(format!(
+                        "{}#nixosConfigurations.{}.config.networking.hostName",
+                        root.display(),
+                        host_key,
+                    ))
+                    .arg("--raw");
+                for arg in local_override_args(repo_root).await? {
+                    cmd.arg(arg);
+                }
+                if let Ok(output) = cmd.output().await {
+                    if output.status.success() {
+                        let hn = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        if hn == current_hostname {
+                            return Ok(host_key.clone());
+                        }
+                    }
+                }
+            }
+
+            anyhow::bail!(
+                "No host entry with hostname '{}'. Specify HOST explicitly.",
+                current_hostname
+            );
+        }
     }
-
-    Ok(host_key)
 }
 
 /// Resolve the current host from the running machine hostname.
@@ -341,23 +424,63 @@ pub async fn local_override_args(repo_root: &Path) -> Result<Vec<String>> {
     Ok(args)
 }
 
-pub async fn host_info(hosts_nix: &Path, host: &str) -> Result<HostInfo> {
-    let output = tokio::process::Command::new("nix")
-        .args(["eval", "-f"])
-        .arg(hosts_nix)
-        .arg(host)
-        .arg("--json")
-        .output()
-        .await
-        .with_context(|| format!("Failed to read host info for {}", host))?;
+/// Retrieve host metadata.
+///
+/// For `HostsNix` layout, evaluates `hosts.nix` directly.
+/// For `FlakeHosts` layout, constructs HostInfo from flake evaluation.
+pub async fn host_info(repo_root: &Path, host: &str) -> Result<HostInfo> {
+    let layout = detect_layout(repo_root).context("Cannot detect repo layout")?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to evaluate host '{}': {}", host, stderr.trim());
+    match &layout {
+        RepoLayout::HostsNix(hosts_nix) => {
+            let output = tokio::process::Command::new("nix")
+                .args(["eval", "-f"])
+                .arg(hosts_nix)
+                .arg(host)
+                .arg("--json")
+                .output()
+                .await
+                .with_context(|| format!("Failed to read host info for {}", host))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!("Failed to evaluate host '{}': {}", host, stderr.trim());
+            }
+
+            serde_json::from_slice(&output.stdout)
+                .with_context(|| format!("Failed to parse host metadata for {}", host))
+        }
+        RepoLayout::FlakeHosts(root) => {
+            // Construct HostInfo from flake evaluation.
+            let mut cmd = tokio::process::Command::new("nix");
+            cmd.arg("eval")
+                .arg(format!(
+                    "{}#nixosConfigurations.{}.config.networking.hostName",
+                    root.display(),
+                    host,
+                ))
+                .arg("--raw");
+            for arg in local_override_args(repo_root).await? {
+                cmd.arg(arg);
+            }
+            let hostname = cmd
+                .output()
+                .await
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_else(|| host.to_string());
+
+            Ok(HostInfo {
+                hostname,
+                ssh_target: None,
+                fallback_ip: None,
+                role: None,
+                host_public_key: None,
+                build_on_remote: false,
+            })
+        }
     }
-
-    serde_json::from_slice(&output.stdout)
-        .with_context(|| format!("Failed to parse host metadata for {}", host))
 }
 
 pub fn derive_ssh_target(hostname: &str, headscale_domain: &str) -> Option<String> {
@@ -649,7 +772,7 @@ pub async fn list_target_hm_users(
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let info = host_info(&hosts_nix_path(repo_root), host).await?;
+    let info = host_info(repo_root, host).await?;
     if info.hostname == current_hostname {
         if let Some(user) = resolve_current_hm_user(repo_root, host).await? {
             return Ok(vec![user]);

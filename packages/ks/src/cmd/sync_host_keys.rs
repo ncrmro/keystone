@@ -178,11 +178,11 @@ fn update_host_public_key(
 
 async fn sync_host_entry(
     repo_root: &Path,
-    hosts_nix: &Path,
+    _hosts_nix: &Path,
     hosts_nix_content: &str,
     host: &str,
 ) -> Result<HostSyncOutcome> {
-    let info = match repo::host_info(hosts_nix, host).await {
+    let info = match repo::host_info(repo_root, host).await {
         Ok(info) => info,
         Err(error) => return Ok(HostSyncOutcome::Failed(error.to_string())),
     };

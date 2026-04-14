@@ -322,13 +322,12 @@ pub async fn prepare_deploy_session(repo_root: &Path, hosts: &[String]) -> Resul
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let hosts_nix = repo_root.join("hosts.nix");
     let mut local_hosts = BTreeSet::new();
     let mut remote_targets = BTreeMap::new();
     let mut ssh = SshSessionManager::new();
 
     for host in hosts {
-        let host_info = repo::host_info(&hosts_nix, host).await?;
+        let host_info = repo::host_info(repo_root, host).await?;
         if host_info.hostname == current_hostname {
             local_hosts.insert(host.clone());
             continue;
