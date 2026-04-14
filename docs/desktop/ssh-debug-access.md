@@ -4,6 +4,10 @@ How to add SSH access to a fresh Keystone laptop for remote debugging.
 
 ## Adding your SSH public key
 
+The Keystone OS module enables both SSH and Eternal Terminal (ET) by default
+with password authentication disabled. Only public key authentication is
+accepted.
+
 On the fresh laptop, add your public key to the host configuration:
 
 ```nix
@@ -13,31 +17,30 @@ keystone.os.users.admin.authorizedKeys = [
 ];
 ```
 
-You also need SSH enabled on the host:
-
-```nix
-# hosts/<hostname>/configuration.nix
-services.openssh.enable = true;
-```
-
 Rebuild and apply:
 
 ```bash
 ks build && ks switch
 ```
 
-After the rebuild, SSH access is available at the laptop's IP.
+After the rebuild, SSH (port 22) and ET (port 2022) are available at the
+laptop's IP.
 
 ## Connecting
 
 ```bash
+# SSH
 ssh <username>@<laptop-ip>
+
+# Eternal Terminal (survives network changes)
+et <username>@<laptop-ip>
 ```
 
 If the laptop is on the same Tailscale/Headscale network:
 
 ```bash
 ssh <username>@<hostname>
+et <username>@<hostname>
 ```
 
 ## Collecting diagnostic context
@@ -67,8 +70,8 @@ home-manager generations | head -5
 
 ## Troubleshooting
 
-**SSH connection refused:** Verify `services.openssh.enable` is true in the
-host config (enabled by default in the Keystone OS module).
+**SSH connection refused:** SSH is enabled by default via `keystone.os.ssh.enable`.
+Verify the Keystone OS module is active on the host.
 
 **Key not accepted:** Ensure the public key is in `authorizedKeys` for the
 correct user, rebuild was applied, and `sshd` was restarted.
