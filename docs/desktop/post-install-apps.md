@@ -24,17 +24,20 @@ keystone.lib.mkSystemFlake {
   hostsRoot = ./hosts;
 
   shared = {
-    # Home Manager user packages — installed per-user on every host.
+    # Installed in your user profile via Home Manager on every host.
     userModules = [
       ({ pkgs, ... }: { home.packages = with pkgs; [ fd ]; })
     ];
 
-    # NixOS system packages — installed OS-wide on every host.
+    # Installed OS-wide via NixOS on every host.
     systemModules = [
       ({ pkgs, ... }: { environment.systemPackages = with pkgs; [ btop ]; })
     ];
 
-    # Home Manager user packages — per-user on desktop hosts only.
+    # Installed in your user profile via Home Manager on desktop hosts only.
+    # Each entry is a Nix function that receives { pkgs, ... } and returns
+    # config. As the list grows, you can extract it to a file:
+    #   desktopUserModules = [ (import ./modules/home/desktop-apps.nix) ];
     desktopUserModules = [
       (
         { pkgs, ... }:
