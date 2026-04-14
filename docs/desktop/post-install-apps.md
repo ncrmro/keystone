@@ -1,13 +1,72 @@
 # Post-install applications
 
 After a fresh Keystone laptop install, the desktop ships with core utilities
-(file manager, terminal, media player) and Chromium as the default browser.
-Common applications are added in your host's `configuration.nix`.
+and Chromium. Additional applications are added in your config flake.
 
-## Example configuration
+There are three places to add packages, depending on scope:
 
-This shows all common post-install options in one place. Uncomment what you
-need in `hosts/<hostname>/configuration.nix`:
+| Where | Scope | Example |
+|-------|-------|---------|
+| `shared.userModules` | Your user profile on every host | CLI tools, Obsidian |
+| `shared.systemModules` | System-wide on every host | 1Password, printing |
+| `hosts/<name>/configuration.nix` | One specific host only | GPU-specific tools |
+
+## flake.nix — shared modules
+
+In your `mkSystemFlake` call, `shared.userModules` and `shared.systemModules`
+apply to all hosts. This is where most post-install apps belong:
+
+```nix
+keystone.lib.mkSystemFlake {
+  admin = { /* ... */ };
+  hostsRoot = ./hosts;
+
+  shared = {
+    # User-level tools — follow your login environment on every host.
+    userModules = [
+      (
+        { pkgs, ... }:
+        {
+          home.packages = with pkgs; [
+            fd
+            # obsidian              # Knowledge management (vaults at ~/notes/)
+          ];
+        }
+      )
+    ];
+
+    # System-level packages — OS-wide on every host (including servers).
+    systemModules = [
+      (
+        { pkgs, ... }:
+        {
+          environment.systemPackages = with pkgs; [
+            # keystone.google-chrome  # Google Chrome (Keystone overlay)
+            # firefox
+            # vscode                  # VS Code (supports Claude Code extension)
+            # zed-editor              # Zed editor
+            # bitwarden-desktop
+            # bitwarden-cli           # CLI for Walker/agent integration
+          ];
+
+          ## 1Password — uses NixOS module options
+          # programs._1password-gui.enable = true;
+          # programs._1password.enable = true;  # CLI for scripting
+        }
+      )
+    ];
+  };
+
+  hosts = {
+    laptop = { kind = "laptop"; };
+    server-ocean = { kind = "server"; };
+  };
+}
+```
+
+## hosts/laptop/configuration.nix — per-host overrides
+
+For packages that only belong on one machine:
 
 ```nix
 {
@@ -18,45 +77,23 @@ need in `hosts/<hostname>/configuration.nix`:
   environment.systemPackages = with pkgs; [
     git
     helix
-
-    ## Browsers — Chromium ships by default, add others here
-    # keystone.google-chrome     # Google Chrome (Keystone overlay)
-    # firefox
-
-    ## Code editors
-    # vscode                     # VS Code (supports Claude Code extension)
-    # zed-editor                 # Zed
-    # neovim
-    # sublime4
-
-    ## Knowledge management
-    # obsidian                   # Point vault at ~/notes/ to share with zk
-
-    ## Password managers
-    # bitwarden-desktop
-    # bitwarden-cli              # CLI for Walker/agent integration
+    # antigravity              # IDE — only on this laptop
+    # davinci-resolve          # Video editing — needs GPU
   ];
 
-  ## 1Password — uses NixOS module options instead of systemPackages
-  # programs._1password-gui.enable = true;
-  # programs._1password.enable = true;   # CLI for scripting and agent integration
-
-  ## To switch the default browser from Chromium to Chrome:
-  # keystone.desktop.hyprland.browser =
-  #   "uwsm app -- google-chrome-stable --new-window --ozone-platform=wayland";
+  # services.printing.enable = true;
 }
 ```
 
 ## Notes
 
+- **Chromium** ships by default and is bound to `$mod+B`. Override with
+  `keystone.desktop.hyprland.browser`.
 - **Helix** ships by default via the terminal module with automatic theme
   integration.
-- **Chromium** is the default browser bound to `$mod+B`. Override with
-  `keystone.desktop.hyprland.browser`.
-- **1Password / Bitwarden CLI** can be used from Walker's command runner
-  (`$mod+Space`) for quick secret lookups.
-- **Obsidian** vaults are local directories — point at `~/notes/` to share
-  the same directory as `zk` (the Keystone notes CLI).
+- **`shared.systemModules` applies to all hosts** including servers. There is
+  not yet a desktop-only shared module scope — use per-host `configuration.nix`
+  for desktop-specific system packages that should not land on servers.
 
 ## Applying changes
 
