@@ -24,17 +24,17 @@ keystone.lib.mkSystemFlake {
   hostsRoot = ./hosts;
 
   shared = {
-    # User-level tools — every host including servers.
+    # Home Manager user packages — installed per-user on every host.
     userModules = [
       ({ pkgs, ... }: { home.packages = with pkgs; [ fd ]; })
     ];
 
-    # System-level — every host including servers.
+    # NixOS system packages — installed OS-wide on every host.
     systemModules = [
       ({ pkgs, ... }: { environment.systemPackages = with pkgs; [ btop ]; })
     ];
 
-    # Desktop user tools — laptop and workstation only.
+    # Home Manager user packages — per-user on desktop hosts only.
     desktopUserModules = [
       (
         { pkgs, ... }:
