@@ -206,20 +206,17 @@ pub fn resolve_keystone_repo() -> Result<PathBuf> {
 
 /// List all host keys from the repository.
 pub async fn list_hosts(repo_root: &Path) -> Result<Vec<String>> {
-    let layout = detect_layout(repo_root).context(
-        "Cannot detect repo layout. Expected hosts.nix or flake.nix + hosts/.",
-    )?;
+    let layout = detect_layout(repo_root)
+        .context("Cannot detect repo layout. Expected hosts.nix or flake.nix + hosts/.")?;
 
     let output = match &layout {
-        RepoLayout::HostsNix(hosts_nix) => {
-            tokio::process::Command::new("nix")
-                .args(["eval", "-f"])
-                .arg(hosts_nix)
-                .args(["--json", "--apply", "builtins.attrNames"])
-                .output()
-                .await
-                .context("Failed to list hosts from hosts.nix")?
-        }
+        RepoLayout::HostsNix(hosts_nix) => tokio::process::Command::new("nix")
+            .args(["eval", "-f"])
+            .arg(hosts_nix)
+            .args(["--json", "--apply", "builtins.attrNames"])
+            .output()
+            .await
+            .context("Failed to list hosts from hosts.nix")?,
         RepoLayout::FlakeHosts(root) => {
             let mut cmd = tokio::process::Command::new("nix");
             cmd.arg("eval")
@@ -246,9 +243,8 @@ pub async fn list_hosts(repo_root: &Path) -> Result<Vec<String>> {
 /// When `host` is `None`, looks up the current machine's hostname.
 /// Supports both `hosts.nix` (legacy) and `mkSystemFlake` (flake) layouts.
 pub async fn resolve_host(repo_root: &Path, host: Option<&str>) -> Result<String> {
-    let layout = detect_layout(repo_root).context(
-        "Cannot detect repo layout. Expected hosts.nix or flake.nix + hosts/.",
-    )?;
+    let layout = detect_layout(repo_root)
+        .context("Cannot detect repo layout. Expected hosts.nix or flake.nix + hosts/.")?;
 
     if let Some(host) = host {
         // Validate that the host exists.

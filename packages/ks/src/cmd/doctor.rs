@@ -306,9 +306,7 @@ async fn gather_fleet_health(repo_root: &Path, local_gen: Option<&str>) -> Strin
     ];
 
     for host in hosts {
-        if let Some(row) =
-            fleet_status_row(repo_root, &current_hostname, &host, local_gen).await
-        {
+        if let Some(row) = fleet_status_row(repo_root, &current_hostname, &host, local_gen).await {
             lines.push(row);
         } else {
             lines.push(format!("| {} | — | — | no sshTarget |", host));
