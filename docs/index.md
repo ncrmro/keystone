@@ -109,6 +109,7 @@ Use the template, keep the default single-machine structure, and work through:
 2. [Keystone OS install](os/installation.md)
 3. [Terminal module overview](terminal/terminal.md)
 4. [Navigation guide](navigation.md)
+5. [First Days on Keystone](terminal/first-days.md)
 
 ### If you are iterating or contributing
 
