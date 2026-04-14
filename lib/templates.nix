@@ -643,7 +643,6 @@ rec {
       sharedUsers = shared.users or { };
       sharedSystemModules = shared.systemModules or [ ];
       sharedUserModules = shared.userModules or [ ];
-      sharedDesktopSystemModules = shared.desktopSystemModules or [ ];
       sharedDesktopUserModules = shared.desktopUserModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
       effectiveRepoRoot =
@@ -770,7 +769,6 @@ rec {
                 users.users.${adminUsername}.openssh.authorizedKeys.keys = adminSshKeys;
               }
               ++ sharedSystemModules
-              ++ lib.optionals kindDefaults.desktop sharedDesktopSystemModules
               ++ modules;
             };
         in

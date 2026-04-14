@@ -70,29 +70,17 @@
           )
         ];
 
-        # Desktop-only modules — applied to laptop and workstation hosts, not
-        # servers. Use these for GUI apps and desktop integrations.
+        # Desktop-only user modules — applied to laptop and workstation hosts,
+        # not servers. Use for GUI apps that belong in your user profile.
         # desktopUserModules = [
         #   (
         #     { pkgs, ... }:
         #     {
         #       home.packages = with pkgs; [
         #         obsidian
-        #       ];
-        #     }
-        #   )
-        # ];
-        # desktopSystemModules = [
-        #   (
-        #     { pkgs, ... }:
-        #     {
-        #       environment.systemPackages = with pkgs; [
-        #         keystone.google-chrome
         #         vscode
         #         bitwarden-desktop
         #       ];
-        #       programs._1password-gui.enable = true;
-        #       programs._1password.enable = true;
         #     }
         #   )
         # ];
