@@ -8,6 +8,9 @@ use tokio::fs;
 
 use crate::config::KeystoneRepo;
 
+const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
+const SYSTEM_FLAKE_POINTER_PATH: &str = "/etc/keystone/system-flake";
+
 /// Detected repository layout.
 ///
 /// Legacy repos have a top-level `hosts.nix` attribute set.
@@ -61,6 +64,81 @@ fn looks_like_keystone_repo(path: &Path) -> bool {
         && path.join("packages").join("ks").exists()
 }
 
+fn normalize_repo_root(path: &Path) -> Option<PathBuf> {
+    detect_layout(path)?;
+    std::fs::canonicalize(path)
+        .ok()
+        .or_else(|| Some(path.to_path_buf()))
+}
+
+fn current_git_root() -> Option<PathBuf> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    Some(PathBuf::from(
+        String::from_utf8_lossy(&output.stdout).trim(),
+    ))
+}
+
+fn nonempty_env_path(var: &str) -> Option<PathBuf> {
+    std::env::var_os(var)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+fn read_nonempty_path_file(path: &Path) -> Option<PathBuf> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+}
+
+fn repo_resolution_error(source: &str, path: &Path) -> anyhow::Error {
+    anyhow::anyhow!(
+        "Configured {} points to {}, but that path is not a Keystone config repo.\n\
+         Expected hosts.nix (legacy) or flake.nix + hosts/ (mkSystemFlake).",
+        source,
+        path.display()
+    )
+}
+
+fn repo_paths_match(left: &Path, right: &Path) -> bool {
+    std::fs::canonicalize(left)
+        .ok()
+        .zip(std::fs::canonicalize(right).ok())
+        .map(|(a, b)| a == b)
+        .unwrap_or_else(|| left == right)
+}
+
+fn canonical_installed_repo_path_for(home: &Path, owner: &str) -> PathBuf {
+    home.join(".keystone")
+        .join("repos")
+        .join(owner)
+        .join(DEFAULT_INSTALLED_REPO_NAME)
+}
+
+fn current_repo_owner(home: &Path) -> Option<String> {
+    std::env::var("USER")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            home.file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .filter(|value| !value.is_empty())
+        })
+}
+
+fn canonical_installed_repo_path(home: &Path) -> Option<PathBuf> {
+    current_repo_owner(home).map(|owner| canonical_installed_repo_path_for(home, &owner))
+}
+
 /// Walk up to `max_depth` levels looking for a directory with a recognized layout.
 ///
 /// Checks for `hosts.nix` (legacy) first, then `flake.nix` + `hosts/` (mkSystemFlake).
@@ -90,59 +168,82 @@ fn find_config_repo_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
     None
 }
 
-/// Locate the nixos-config repository.
-///
-/// Discovery order:
-/// 1. `$NIXOS_CONFIG_DIR` if set and has a recognized layout
-/// 2. Git repo root of current directory if it has a recognized layout
-/// 3. `~/.keystone/repos/*/` recursive search
-/// 4. `~/nixos-config` as fallback
-pub fn find_repo() -> Result<PathBuf> {
-    if let Ok(dir) = std::env::var("NIXOS_CONFIG_DIR") {
-        let path = PathBuf::from(&dir);
-        if detect_layout(&path).is_some() {
-            return std::fs::canonicalize(&path)
-                .or(Ok::<PathBuf, std::io::Error>(path))
-                .context("Failed to canonicalize NIXOS_CONFIG_DIR");
-        }
+fn find_repo_with_context(
+    home: &Path,
+    nixos_config_dir: Option<&Path>,
+    git_root: Option<&Path>,
+    keystone_system_flake: Option<&Path>,
+    system_flake_pointer: Option<&Path>,
+) -> Result<PathBuf> {
+    if let Some(path) = nixos_config_dir {
+        return normalize_repo_root(path)
+            .ok_or_else(|| repo_resolution_error("NIXOS_CONFIG_DIR", path));
     }
 
-    if let Ok(output) = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        if output.status.success() {
-            let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
-            if detect_layout(&root).is_some() {
-                return std::fs::canonicalize(&root)
-                    .or(Ok::<PathBuf, std::io::Error>(root))
-                    .context("Failed to canonicalize git root");
+    if let Some(root) = git_root.and_then(normalize_repo_root) {
+        return Ok(root);
+    }
+
+    let canonical_installed_repo =
+        canonical_installed_repo_path(home).and_then(|path| normalize_repo_root(&path));
+
+    if let Some(path) = keystone_system_flake {
+        let mirrors_system_pointer = system_flake_pointer
+            .map(|pointer| repo_paths_match(path, pointer))
+            .unwrap_or(false);
+        match normalize_repo_root(path) {
+            Some(repo) if !mirrors_system_pointer => return Ok(repo),
+            Some(_) => {}
+            None if !mirrors_system_pointer => {
+                return Err(repo_resolution_error("KEYSTONE_SYSTEM_FLAKE", path));
             }
+            None => {}
         }
     }
 
-    if let Ok(home) = home_dir().context("No home directory") {
-        let repos = home.join(".keystone").join("repos");
-        if repos.is_dir() {
-            if let Some(found) = find_config_repo_recursive(&repos, 3) {
-                return Ok(found);
-            }
+    if let Some(repo) = canonical_installed_repo {
+        return Ok(repo);
+    }
+
+    if let Some(path) = system_flake_pointer {
+        return normalize_repo_root(path)
+            .ok_or_else(|| repo_resolution_error(SYSTEM_FLAKE_POINTER_PATH, path));
+    }
+
+    let repos = home.join(".keystone").join("repos");
+    if repos.is_dir() {
+        if let Some(found) = find_config_repo_recursive(&repos, 3) {
+            return Ok(found);
         }
     }
 
-    if let Some(home) = home_dir() {
-        let fallback = home.join("nixos-config");
-        if detect_layout(&fallback).is_some() {
-            return std::fs::canonicalize(&fallback)
-                .or(Ok::<PathBuf, std::io::Error>(fallback))
-                .context("Failed to canonicalize ~/nixos-config");
-        }
+    let fallback = home.join("nixos-config");
+    if let Some(repo) = normalize_repo_root(&fallback) {
+        return Ok(repo);
     }
 
     anyhow::bail!(
-        "Cannot find nixos-config repo.\n\
-         Expected hosts.nix (legacy) or flake.nix + hosts/ (mkSystemFlake).\n\
-         Set NIXOS_CONFIG_DIR or run from within the repo.",
+        "Cannot find a Keystone config repo.\n\
+         Looked for, in order:\n\
+           - NIXOS_CONFIG_DIR\n\
+           - current git repo root\n\
+           - ~/.keystone/repos/<owner>/{DEFAULT_INSTALLED_REPO_NAME}\n\
+           - {}\n\
+           - ~/.keystone/repos/**\n\
+           - ~/nixos-config",
+        SYSTEM_FLAKE_POINTER_PATH,
+    )
+}
+
+/// Locate the active Keystone config repository.
+pub fn find_repo() -> Result<PathBuf> {
+    let home = home_dir().context("No home directory")?;
+    find_repo_with_context(
+        &home,
+        nonempty_env_path("NIXOS_CONFIG_DIR").as_deref(),
+        current_git_root().as_deref(),
+        nonempty_env_path("KEYSTONE_SYSTEM_FLAKE").as_deref(),
+        read_nonempty_path_file(Path::new(SYSTEM_FLAKE_POINTER_PATH)).as_deref(),
     )
 }
 
@@ -1081,6 +1182,11 @@ pub async fn create_github_repo(repo_path: &std::path::Path, repo_name: &str) ->
 mod tests {
     use super::*;
 
+    fn write_flake_repo(path: &Path) {
+        std::fs::create_dir_all(path.join("hosts")).unwrap();
+        std::fs::write(path.join("flake.nix"), "{ }").unwrap();
+    }
+
     #[test]
     fn derive_ssh_target_requires_values() {
         assert_eq!(derive_ssh_target("", "tail.example.ts.net"), None);
@@ -1127,5 +1233,81 @@ mod tests {
     fn detect_layout_empty_dir() {
         let dir = tempfile::tempdir().unwrap();
         assert!(detect_layout(dir.path()).is_none());
+    }
+
+    #[test]
+    fn canonical_installed_repo_path_for_builds_expected_location() {
+        let home = Path::new("/home/noah");
+        assert_eq!(
+            canonical_installed_repo_path_for(home, "noah"),
+            PathBuf::from("/home/noah/.keystone/repos/noah/keystone-config")
+        );
+    }
+
+    #[test]
+    fn find_repo_with_context_prefers_canonical_repo_over_mirrored_pointer() {
+        let home = tempfile::tempdir().unwrap();
+        let canonical_repo = canonical_installed_repo_path(home.path()).unwrap();
+        let mirrored_pointer = home.path().join("pointer-repo");
+
+        write_flake_repo(&canonical_repo);
+        write_flake_repo(&mirrored_pointer);
+
+        let repo = find_repo_with_context(
+            home.path(),
+            None,
+            None,
+            Some(mirrored_pointer.as_path()),
+            Some(mirrored_pointer.as_path()),
+        )
+        .unwrap();
+
+        assert_eq!(repo, std::fs::canonicalize(&canonical_repo).unwrap());
+    }
+
+    #[test]
+    fn find_repo_with_context_allows_explicit_key_system_flake_override() {
+        let home = tempfile::tempdir().unwrap();
+        let canonical_repo = canonical_installed_repo_path(home.path()).unwrap();
+        let override_repo = home.path().join("override-repo");
+
+        write_flake_repo(&canonical_repo);
+        write_flake_repo(&override_repo);
+
+        let repo =
+            find_repo_with_context(home.path(), None, None, Some(override_repo.as_path()), None)
+                .unwrap();
+
+        assert_eq!(repo, std::fs::canonicalize(&override_repo).unwrap());
+    }
+
+    #[test]
+    fn find_repo_with_context_reports_invalid_key_system_flake_override() {
+        let home = tempfile::tempdir().unwrap();
+        let invalid_repo = home.path().join("missing-repo");
+
+        let error =
+            find_repo_with_context(home.path(), None, None, Some(invalid_repo.as_path()), None)
+                .unwrap_err();
+
+        assert!(error.to_string().contains("KEYSTONE_SYSTEM_FLAKE"));
+        assert!(error
+            .to_string()
+            .contains(&invalid_repo.display().to_string()));
+    }
+
+    #[test]
+    fn find_repo_with_context_reports_invalid_system_pointer_when_no_canonical_repo_exists() {
+        let home = tempfile::tempdir().unwrap();
+        let invalid_repo = home.path().join("missing-pointer");
+
+        let error =
+            find_repo_with_context(home.path(), None, None, None, Some(invalid_repo.as_path()))
+                .unwrap_err();
+
+        assert!(error.to_string().contains(SYSTEM_FLAKE_POINTER_PATH));
+        assert!(error
+            .to_string()
+            .contains(&invalid_repo.display().to_string()));
     }
 }
