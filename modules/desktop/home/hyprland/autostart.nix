@@ -17,9 +17,11 @@ in
     # See convention os.hyprland-autostart.
     assertions = [
       {
-        assertion = builtins.any (cmd: lib.hasPrefix "keystone-startup-lock" cmd) hyprSettings.exec-once;
+        assertion = builtins.any (
+          cmd: lib.hasPrefix desktopCfg.startupLockCommand cmd
+        ) hyprSettings.exec-once;
         message = ''
-          SECURITY: keystone-startup-lock is missing from Hyprland exec-once.
+          SECURITY: ${desktopCfg.startupLockCommand} is missing from Hyprland exec-once.
           The desktop session MUST start locked to prevent exposing an unlocked
           desktop after reboot. A module likely set exec-once with bare assignment
           or mkDefault instead of mkAfter, replacing the base list from
@@ -34,9 +36,9 @@ in
         "systemctl --user import-environment"
         "dbus-update-activation-environment --systemd --all"
         # Session startup. The first graphical interaction MUST be the startup
-        # lock. If it does not come up, keystone-startup-lock exits the session
+        # lock. If it does not come up, the lock script exits the session
         # rather than exposing an unlocked desktop.
-        "keystone-startup-lock"
+        desktopCfg.startupLockCommand
         # Only start hyprsunset if the GPU supports CTM (color transform).
         # virtio-gpu in VMs lacks CTM, and hyprsunset's CTM commits block
         # all page-flips, freezing the display.

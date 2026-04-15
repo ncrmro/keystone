@@ -57,6 +57,14 @@ exposing an unlocked desktop. This is a fail-closed design. See
 11. `extraConfig` is string-based and appended after all settings — it cannot
     displace the base exec-once list.
 
+## Customizing the lock command
+
+12. Consumer flakes MAY override `keystone.desktop.startupLockCommand` to use
+    a different lock binary. The assertion checks for whatever command is
+    configured — not a hardcoded string.
+13. Any replacement command MUST implement fail-closed semantics: present a
+    lock surface or terminate the session.
+
 ## Golden example
 
 Module adding audio defaults at session start (correct):
