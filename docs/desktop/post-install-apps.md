@@ -54,7 +54,7 @@ keystone.lib.mkSystemFlake {
   };
 
   # Default browser — Chromium ships by default, bound to $mod+B.
-  # Uncomment to switch (the module handles Wayland flags automatically):
+  # Uncomment to switch:
   # keystone.desktop.browser = "google-chrome-stable";
   # keystone.desktop.browser = "firefox";
 
