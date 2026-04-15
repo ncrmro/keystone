@@ -605,6 +605,32 @@ fn vendor_embedded_keystone_input(repo_dir: &Path) -> AnyhowResult<Option<PathBu
     Ok(Some(vendored_dir))
 }
 
+fn normalize_staged_install_repo(repo_dir: &Path, source_lock_path: &Path) -> Result<(), String> {
+    let target_lock_path = repo_dir.join("flake.lock");
+    if source_lock_path.is_file() {
+        std::fs::copy(source_lock_path, &target_lock_path).map_err(|e| {
+            format!(
+                "Failed to restore {} from {}: {}",
+                target_lock_path.display(),
+                source_lock_path.display(),
+                e
+            )
+        })?;
+    }
+
+    let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+    if vendored_dir.exists() {
+        std::fs::remove_dir_all(&vendored_dir)
+            .map_err(|e| format!("Failed to remove {}: {}", vendored_dir.display(), e))?;
+    }
+
+    Ok(())
+}
+
+fn normalize_installed_repo_state(repo_dir: &Path) -> Result<(), String> {
+    normalize_staged_install_repo(repo_dir, &Path::new(INSTALL_REPO_PATH).join("flake.lock"))
+}
+
 fn parse_hardware_disk_device(hardware_path: &Path) -> Option<String> {
     let content = std::fs::read_to_string(hardware_path).ok()?;
     let mut in_devices = false;
@@ -1637,6 +1663,21 @@ impl InstallScreen {
 
             match install_result {
                 Ok(()) => {
+                    if let Err(e) = normalize_installed_repo_state(&config_dir) {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                            "post-install repo normalization failed: {}",
+                            e
+                        ))));
+                        return;
+                    }
+                    if let Err(e) = amend_install_commit(&config_dir, &tx).await {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                            "post-install repo amend failed: {}",
+                            e
+                        ))));
+                        return;
+                    }
+
                     let _ = tx.send(InstallMessage::Output(
                         "Copying config to installed system...".to_string(),
                     ));
@@ -2205,8 +2246,24 @@ async fn copy_dir_recursive_async(src: &Path, dst: &Path) -> Result<(), String> 
     {
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .await
+            .map_err(|e| format!("Failed to inspect {}: {}", src_path.display(), e))?;
 
-        if src_path.is_dir() {
+        if file_type.is_symlink() {
+            let link_target = tokio::fs::read_link(&src_path)
+                .await
+                .map_err(|e| format!("Failed to read symlink {}: {}", src_path.display(), e))?;
+            std::os::unix::fs::symlink(&link_target, &dst_path).map_err(|e| {
+                format!(
+                    "Failed to recreate symlink {} -> {}: {}",
+                    dst_path.display(),
+                    link_target.display(),
+                    e
+                )
+            })?;
+        } else if file_type.is_dir() {
             tokio::fs::create_dir_all(&dst_path)
                 .await
                 .map_err(|e| format!("Failed to create dir {}: {}", dst_path.display(), e))?;
@@ -2522,6 +2579,41 @@ async fn create_install_commit(
     ));
 
     push_install_commit(config_dir, tx).await;
+
+    Ok(())
+}
+
+async fn amend_install_commit(
+    config_dir: &Path,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
+    let _ = tx.send(InstallMessage::Output(
+        "Normalizing install repo state before handoff...".to_string(),
+    ));
+
+    let _ = Command::new("git")
+        .args([
+            "rm",
+            "--cached",
+            "-f",
+            "--ignore-unmatch",
+            FIRST_BOOT_MARKER,
+        ])
+        .current_dir(config_dir)
+        .output()
+        .await;
+
+    run_command_quiet("git", &["add", "-A", "."], Some(config_dir), false)
+        .await
+        .map_err(|e| format!("Failed to stage normalized install repo: {e}"))?;
+    run_command_quiet(
+        "git",
+        &["commit", "--amend", "--no-edit"],
+        Some(config_dir),
+        false,
+    )
+    .await
+    .map_err(|e| format!("Failed to amend install commit: {e}"))?;
 
     Ok(())
 }
@@ -3531,6 +3623,48 @@ mod tests {
         assert_eq!(
             mounted_repo_dir,
             PathBuf::from("/mnt/home/noah/.keystone/repos/noah/keystone-config")
+        );
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_restores_lock_and_removes_vendored_input() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("source-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+
+        std::fs::create_dir_all(&vendored_dir).unwrap();
+        std::fs::write(&source_lock, "original-lock").unwrap();
+        std::fs::write(repo_dir.join("flake.lock"), "path-lock").unwrap();
+        std::fs::write(vendored_dir.join("CLAUDE.md"), "vendored").unwrap();
+
+        normalize_staged_install_repo(&repo_dir, &source_lock).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.join("flake.lock")).unwrap(),
+            "original-lock"
+        );
+        assert!(!vendored_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn test_copy_dir_recursive_async_preserves_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+
+        std::fs::create_dir_all(&src).unwrap();
+        tokio::fs::create_dir_all(&dst).await.unwrap();
+        std::fs::write(src.join("target.txt"), "hello").unwrap();
+        std::os::unix::fs::symlink("target.txt", src.join("link.txt")).unwrap();
+
+        copy_dir_recursive_async(&src, &dst).await.unwrap();
+
+        let metadata = std::fs::symlink_metadata(dst.join("link.txt")).unwrap();
+        assert!(metadata.file_type().is_symlink());
+        assert_eq!(
+            std::fs::read_link(dst.join("link.txt")).unwrap(),
+            PathBuf::from("target.txt")
         );
     }
 
