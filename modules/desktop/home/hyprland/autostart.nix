@@ -7,11 +7,29 @@
 with lib;
 let
   desktopCfg = config.keystone.desktop;
+  hyprSettings = config.wayland.windowManager.hyprland.settings;
 in
 {
   config = mkIf desktopCfg.enable {
+    # SECURITY: Build-time guard — if a module accidentally replaces the
+    # exec-once list (e.g., bare assignment instead of mkAfter), this
+    # assertion stops the build before an unlocked desktop can be deployed.
+    # See convention os.hyprland-autostart.
+    assertions = [
+      {
+        assertion = builtins.any (cmd: lib.hasPrefix "keystone-startup-lock" cmd) hyprSettings.exec-once;
+        message = ''
+          SECURITY: keystone-startup-lock is missing from Hyprland exec-once.
+          The desktop session MUST start locked to prevent exposing an unlocked
+          desktop after reboot. A module likely set exec-once with bare assignment
+          or mkDefault instead of mkAfter, replacing the base list from
+          autostart.nix. See convention os.hyprland-autostart.
+        '';
+      }
+    ];
+
     wayland.windowManager.hyprland.settings = {
-      exec-once = mkDefault [
+      exec-once = [
         # D-Bus activation environment - required for app notifications (Chrome, etc) to use mako
         "systemctl --user import-environment"
         "dbus-update-activation-environment --systemd --all"
@@ -27,7 +45,7 @@ in
         "wl-clip-persist --clipboard regular & uwsm app -- clipse -listen"
       ];
 
-      exec = mkDefault [
+      exec = [
         "pkill -SIGUSR2 waybar || uwsm app -- waybar"
       ];
     };
