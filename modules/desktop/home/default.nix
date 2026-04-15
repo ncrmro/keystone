@@ -60,6 +60,16 @@ in
         description = "Default CUPS printer name to apply at desktop session start.";
       };
     };
+
+    startupLockCommand = mkOption {
+      type = types.str;
+      default = "keystone-startup-lock";
+      description = ''
+        Command to run as the first user-visible exec-once entry in Hyprland.
+        Must present a lock surface or terminate the session (fail-closed).
+        See convention os.hyprland-autostart.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
