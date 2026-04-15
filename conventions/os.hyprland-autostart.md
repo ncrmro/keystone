@@ -1,10 +1,11 @@
 # Convention: Hyprland autostart (os.hyprland-autostart)
 
 The Hyprland `exec-once` list is a security-critical boot chain. Its first
-user-visible command MUST be `keystone-startup-lock`, which launches hyprlock
-and kills the session if the lock surface fails to appear. Dropping or
-reordering this entry exposes an unlocked desktop after reboot — a fail-open
-security defect.
+user-visible command MUST be the configured startup lock command
+(`keystone.desktop.startupLockCommand`, default `keystone-startup-lock`),
+which launches the lock screen and kills the session if the lock surface
+fails to appear. Dropping or reordering this entry exposes an unlocked
+desktop after reboot — a fail-open security defect.
 
 This convention exists because a priority collision between `mkDefault`
 (priority 1000) and `mkAfter` (priority 100) silently replaced the entire

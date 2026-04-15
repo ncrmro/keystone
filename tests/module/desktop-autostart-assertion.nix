@@ -1,11 +1,7 @@
 # Desktop autostart assertion test
 #
 # Verifies the build-time assertion in autostart.nix catches a missing
-# startup lock command. This is a pure evaluation test — no VM needed.
-#
-# The test evaluates the desktop home-manager module twice:
-#   1. Default config → assertion passes (startup lock present)
-#   2. Overridden exec-once without lock → assertion fails
+# or misordered startup lock command. Pure evaluation test — no VM needed.
 #
 # Build: nix build .#test-desktop-autostart-assertion
 #
@@ -51,7 +47,18 @@ let
   defaultExecOnce = defaultConfig.wayland.windowManager.hyprland.settings.exec-once;
   hasStartupLock = builtins.any (cmd: lib.hasPrefix "keystone-startup-lock" cmd) defaultExecOnce;
 
-  # Test 2: Verify that mkAfter properly appends (doesn't replace)
+  # Test 2: Verify startup lock is the first user-visible entry (not just present)
+  userVisible = builtins.filter (
+    cmd:
+    !(
+      lib.hasPrefix "systemctl --user import-environment" cmd
+      || lib.hasPrefix "dbus-update-activation-environment" cmd
+    )
+  ) defaultExecOnce;
+  lockIsFirst =
+    userVisible != [ ] && lib.hasPrefix "keystone-startup-lock" (builtins.head userVisible);
+
+  # Test 3: Verify that mkAfter properly appends (doesn't replace)
   withMkAfterConfig = evalDesktop [
     {
       wayland.windowManager.hyprland.settings.exec-once = lib.mkAfter [
@@ -63,13 +70,25 @@ let
   mkAfterHasLock = builtins.any (cmd: lib.hasPrefix "keystone-startup-lock" cmd) mkAfterExecOnce;
   mkAfterHasCustom = builtins.any (cmd: cmd == "my-custom-app") mkAfterExecOnce;
 
-  # Test 3: Verify assertion fires when lock is missing
-  # We can't evaluate a failing assertion directly, but we can check that
-  # the assertion definition exists and references the right command.
-  defaultAssertions = defaultConfig.assertions;
-  hasLockAssertion = builtins.any (a: lib.hasInfix "startup-lock" a.message) defaultAssertions;
+  # Test 4: Verify assertion fires when lock is replaced via mkForce
+  badConfig = evalDesktop [
+    {
+      wayland.windowManager.hyprland.settings.exec-once = lib.mkForce [
+        "some-other-app"
+      ];
+    }
+  ];
+  badAssertionResult = builtins.tryEval (
+    let
+      failingAssertions = builtins.filter (a: !a.assertion) badConfig.assertions;
+    in
+    builtins.length failingAssertions == 0
+  );
+  # tryEval succeeds (no Nix error), but the value should be false
+  # because the assertion condition fails
+  assertionTripped = badAssertionResult.success && !badAssertionResult.value;
 
-  # Test 4: Custom startupLockCommand is used in exec-once
+  # Test 5: Custom startupLockCommand is used in exec-once
   customLockConfig = evalDesktop [
     { keystone.desktop.startupLockCommand = "my-custom-lock"; }
   ];
@@ -92,14 +111,17 @@ pkgs.runCommand "test-desktop-autostart-assertion" { } ''
   check "${builtins.toString hasStartupLock}" \
     "default exec-once contains keystone-startup-lock"
 
+  check "${builtins.toString lockIsFirst}" \
+    "startup lock is the first user-visible exec-once entry"
+
   check "${builtins.toString mkAfterHasLock}" \
     "mkAfter preserves startup lock in exec-once"
 
   check "${builtins.toString mkAfterHasCustom}" \
     "mkAfter appends custom entry to exec-once"
 
-  check "${builtins.toString hasLockAssertion}" \
-    "assertion referencing startup-lock exists"
+  check "${builtins.toString assertionTripped}" \
+    "assertion fires when exec-once is replaced without lock"
 
   check "${builtins.toString hasCustomLock}" \
     "custom startupLockCommand appears in exec-once"
