@@ -593,6 +593,7 @@ rec {
     {
       admin,
       repoOwner ? null,
+      repoName ? "keystone-config",
       defaults ? { },
       shared ? { },
       hostsRoot ? null,
@@ -861,11 +862,11 @@ rec {
             adminEmail = sharedAdmin.email;
             repoPath = effectiveRepoRoot;
             repoOwner = effectiveRepoOwner;
-            repoName =
-              if effectiveRepoRoot == null then
-                "keystone-config"
-              else
-                builtins.baseNameOf (toString effectiveRepoRoot);
+            # Use an explicit repo name instead of deriving it from the flake
+            # evaluation path. During `nix build`, the repo root often resolves
+            # to a store-style `...-source` path, which would leak that hash
+            # into the installed config handoff.
+            inherit repoName;
           };
         };
     };

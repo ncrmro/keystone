@@ -28,6 +28,19 @@ use crate::component::Component;
 use crate::widgets::TextInput;
 
 const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
+const REMOTE_MAIN_REF: &str = "origin/main";
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct RepoHealthStatus {
+    working_tree_changes: usize,
+    ahead_count: usize,
+}
+
+impl RepoHealthStatus {
+    fn needs_warning(&self) -> bool {
+        self.working_tree_changes > 0 || self.ahead_count > 0
+    }
+}
 
 /// Configuration for the first-boot flow.
 #[derive(Debug, Clone)]
@@ -107,11 +120,166 @@ impl FirstBootConfig {
     }
 }
 
+fn count_nonempty_lines(text: &str) -> usize {
+    text.lines().filter(|line| !line.trim().is_empty()).count()
+}
+
+fn parse_rev_list_counts(output: &str) -> Result<(usize, usize), String> {
+    let mut fields = output.split_whitespace();
+    let behind = fields
+        .next()
+        .ok_or_else(|| format!("Unexpected git rev-list output: {}", output.trim()))?
+        .parse::<usize>()
+        .map_err(|e| format!("Failed to parse behind count from git rev-list: {}", e))?;
+    let ahead = fields
+        .next()
+        .ok_or_else(|| format!("Unexpected git rev-list output: {}", output.trim()))?
+        .parse::<usize>()
+        .map_err(|e| format!("Failed to parse ahead count from git rev-list: {}", e))?;
+
+    Ok((behind, ahead))
+}
+
+async fn git_remote_get_url(repo_dir: &PathBuf, remote: &str) -> Result<Option<String>, String> {
+    let output = Command::new("git")
+        .args(["remote", "get-url", remote])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("git remote get-url {} failed: {}", remote, e))?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if stdout.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(stdout))
+    }
+}
+
+async fn ensure_origin_remote(repo_dir: &PathBuf, remote_url: &str) -> Result<(), String> {
+    match git_remote_get_url(repo_dir, "origin").await? {
+        Some(current_url) if current_url == remote_url => Ok(()),
+        Some(_) => Command::new("git")
+            .args(["remote", "set-url", "origin", remote_url])
+            .current_dir(repo_dir)
+            .output()
+            .await
+            .map_err(|e| format!("git remote set-url failed: {}", e))
+            .and_then(|output| {
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                    Err(format!(
+                        "git remote set-url failed: {}",
+                        if stderr.is_empty() {
+                            "no output".to_string()
+                        } else {
+                            stderr
+                        }
+                    ))
+                }
+            }),
+        None => Command::new("git")
+            .args(["remote", "add", "origin", remote_url])
+            .current_dir(repo_dir)
+            .output()
+            .await
+            .map_err(|e| format!("git remote add failed: {}", e))
+            .and_then(|output| {
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                    Err(format!(
+                        "git remote add failed: {}",
+                        if stderr.is_empty() {
+                            "no output".to_string()
+                        } else {
+                            stderr
+                        }
+                    ))
+                }
+            }),
+    }
+}
+
+async fn gather_repo_health(repo_dir: &PathBuf) -> Result<RepoHealthStatus, String> {
+    let status_output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("git status --porcelain failed: {}", e))?;
+
+    if !status_output.status.success() {
+        let stderr = String::from_utf8_lossy(&status_output.stderr)
+            .trim()
+            .to_string();
+        return Err(format!(
+            "git status --porcelain failed: {}",
+            if stderr.is_empty() {
+                "no output".to_string()
+            } else {
+                stderr
+            }
+        ));
+    }
+
+    let working_tree_changes =
+        count_nonempty_lines(String::from_utf8_lossy(&status_output.stdout).as_ref());
+
+    let remote_ref_output = Command::new("git")
+        .args(["rev-parse", "--verify", REMOTE_MAIN_REF])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("git rev-parse {} failed: {}", REMOTE_MAIN_REF, e))?;
+
+    let ahead_count = if remote_ref_output.status.success() {
+        let rev_list_output = Command::new("git")
+            .args(["rev-list", "--left-right", "--count", "origin/main...HEAD"])
+            .current_dir(repo_dir)
+            .output()
+            .await
+            .map_err(|e| format!("git rev-list origin/main...HEAD failed: {}", e))?;
+
+        if !rev_list_output.status.success() {
+            let stderr = String::from_utf8_lossy(&rev_list_output.stderr)
+                .trim()
+                .to_string();
+            return Err(format!(
+                "git rev-list origin/main...HEAD failed: {}",
+                if stderr.is_empty() {
+                    "no output".to_string()
+                } else {
+                    stderr
+                }
+            ));
+        }
+
+        let (_, ahead) =
+            parse_rev_list_counts(String::from_utf8_lossy(&rev_list_output.stdout).as_ref())?;
+        ahead
+    } else {
+        0
+    };
+
+    Ok(RepoHealthStatus {
+        working_tree_changes,
+        ahead_count,
+    })
+}
+
 /// Phases of the first-boot wizard.
 ///
 /// Onboarding flow (REQ-008):
 /// Stage 5: Secure Boot → TPM → reboot
-/// Stage 6: SSH keys → push pending install commit → secrets
+/// Stage 6: SSH keys → repo review → push pending install commit → secrets
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FirstBootPhase {
     // Stage 5: First boot after install
@@ -121,19 +289,22 @@ pub enum FirstBootPhase {
     TpmEnroll,        // TODO: wire to security::tpm
     RebootPrompt,     // reboot for SB+TPM to take effect
     // Stage 6: After security reboot
-    SshKeySetup,  // TODO: detect/generate/import SSH keys
-    ShowSshKey,   // display public key for user to add to GitHub
-    RemoteInput,  // enter git remote URL
-    Pushing,      // push the pending install commit
-    SecretsSetup, // TODO: agenix secrets initialization
+    SshKeySetup,       // TODO: detect/generate/import SSH keys
+    ShowSshKey,        // display public key for user to add to GitHub
+    RemoteInput,       // enter git remote URL
+    PreparingPush,     // set remote and inspect repo health before push
+    RepoHealthWarning, // warn when local repo state is not fully committed/pushed
+    Pushing,           // push the pending install commit
+    SecretsSetup,      // TODO: agenix secrets initialization
     Done,
     Failed(String),
 }
 
 /// Messages from first-boot async operations.
-pub enum FirstBootMessage {
+enum FirstBootMessage {
     Output(String),
     SshKey(String),
+    RepoPrepared(Result<RepoHealthStatus, String>),
     PushResult(Result<(), String>),
     Failed(String),
 }
@@ -143,6 +314,7 @@ pub struct FirstBootScreen {
     phase: FirstBootPhase,
     output_lines: Vec<String>,
     ssh_public_key: Option<String>,
+    repo_health_status: RepoHealthStatus,
     remote_input: TextInput,
     rx: Option<mpsc::UnboundedReceiver<FirstBootMessage>>,
     push_skipped: bool,
@@ -175,6 +347,7 @@ impl FirstBootScreen {
             phase: FirstBootPhase::Welcome,
             output_lines: Vec::new(),
             ssh_public_key: None,
+            repo_health_status: RepoHealthStatus::default(),
             remote_input,
             rx: None,
             push_skipped: false,
@@ -255,7 +428,7 @@ impl FirstBootScreen {
         });
     }
 
-    fn spawn_push(&mut self) {
+    fn spawn_prepare_push(&mut self) {
         let (tx, rx) = mpsc::unbounded_channel();
         self.rx = Some(rx);
         let config_dir = self.config.config_dir.clone();
@@ -267,36 +440,32 @@ impl FirstBootScreen {
                 remote_url
             )));
 
-            let remote_check = Command::new("git")
-                .args(["remote", "get-url", "origin"])
-                .current_dir(&config_dir)
-                .output()
-                .await;
-
-            let remote_exists = remote_check.map(|o| o.status.success()).unwrap_or(false);
-
-            if remote_exists {
-                let _ = Command::new("git")
-                    .args(["remote", "set-url", "origin", &remote_url])
-                    .current_dir(&config_dir)
-                    .output()
-                    .await;
-            } else {
-                let add = Command::new("git")
-                    .args(["remote", "add", "origin", &remote_url])
-                    .current_dir(&config_dir)
-                    .output()
-                    .await;
-
-                if let Err(e) = add {
-                    let _ = tx.send(FirstBootMessage::PushResult(Err(format!(
-                        "git remote add failed: {}",
-                        e
-                    ))));
-                    return;
-                }
+            if let Err(e) = ensure_origin_remote(&config_dir, &remote_url).await {
+                let _ = tx.send(FirstBootMessage::RepoPrepared(Err(e)));
+                return;
             }
 
+            let _ = tx.send(FirstBootMessage::Output(
+                "Checking keystone-config repo health...".to_string(),
+            ));
+
+            match gather_repo_health(&config_dir).await {
+                Ok(status) => {
+                    let _ = tx.send(FirstBootMessage::RepoPrepared(Ok(status)));
+                }
+                Err(e) => {
+                    let _ = tx.send(FirstBootMessage::RepoPrepared(Err(e)));
+                }
+            }
+        });
+    }
+
+    fn spawn_push(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.rx = Some(rx);
+        let config_dir = self.config.config_dir.clone();
+
+        tokio::spawn(async move {
             let _ = tx.send(FirstBootMessage::Output("Pushing to remote...".to_string()));
 
             let push = Command::new("git")
@@ -329,18 +498,22 @@ impl FirstBootScreen {
     /// Skip the current step.
     pub fn skip(&mut self) {
         match self.phase {
-            FirstBootPhase::ShowSshKey => {
-                self.phase = FirstBootPhase::RemoteInput;
-                self.remote_input.set_focused(true);
-            }
-            FirstBootPhase::RemoteInput => {
+            FirstBootPhase::SshKeySetup => {
                 self.push_skipped = true;
                 self.complete(
                     true,
                     "Post-install onboarding completed without pushing the install commit.",
                 );
             }
-            FirstBootPhase::Pushing => {
+            FirstBootPhase::ShowSshKey => {
+                self.phase = FirstBootPhase::RemoteInput;
+                self.remote_input.set_focused(true);
+            }
+            FirstBootPhase::RemoteInput
+            | FirstBootPhase::PreparingPush
+            | FirstBootPhase::RepoHealthWarning
+            | FirstBootPhase::Pushing
+            | FirstBootPhase::Failed(_) => {
                 self.push_skipped = true;
                 self.complete(
                     true,
@@ -353,13 +526,16 @@ impl FirstBootScreen {
 
     /// Continue from ShowSshKey to RemoteInput.
     pub fn continue_to_remote(&mut self) {
-        if self.phase == FirstBootPhase::ShowSshKey {
+        if matches!(
+            self.phase,
+            FirstBootPhase::ShowSshKey | FirstBootPhase::SshKeySetup
+        ) {
             self.phase = FirstBootPhase::RemoteInput;
             self.remote_input.set_focused(true);
         }
     }
 
-    /// Submit the remote URL and start pushing.
+    /// Submit the remote URL and review repo state before pushing.
     pub fn submit_remote(&mut self) {
         if self.phase != FirstBootPhase::RemoteInput {
             return;
@@ -373,13 +549,21 @@ impl FirstBootScreen {
             );
             return;
         }
-        self.phase = FirstBootPhase::Pushing;
-        self.spawn_push();
+        self.repo_health_status = RepoHealthStatus::default();
+        self.phase = FirstBootPhase::PreparingPush;
+        self.spawn_prepare_push();
     }
 
     /// Retry a failed push.
     pub fn retry_push(&mut self) {
         if matches!(self.phase, FirstBootPhase::Failed(_)) {
+            self.phase = FirstBootPhase::PreparingPush;
+            self.spawn_prepare_push();
+        }
+    }
+
+    pub fn continue_after_repo_warning(&mut self) {
+        if self.phase == FirstBootPhase::RepoHealthWarning {
             self.phase = FirstBootPhase::Pushing;
             self.spawn_push();
         }
@@ -420,6 +604,19 @@ impl FirstBootScreen {
                 FirstBootMessage::SshKey(key) => {
                     self.ssh_public_key = Some(key);
                 }
+                FirstBootMessage::RepoPrepared(Ok(status)) => {
+                    self.repo_health_status = status;
+                    if self.repo_health_status.needs_warning() {
+                        self.phase = FirstBootPhase::RepoHealthWarning;
+                    } else {
+                        self.phase = FirstBootPhase::Pushing;
+                        self.spawn_push();
+                    }
+                }
+                FirstBootMessage::RepoPrepared(Err(e)) => {
+                    self.output_lines.push(format!("Repo check failed: {}", e));
+                    self.phase = FirstBootPhase::Failed(e);
+                }
                 FirstBootMessage::PushResult(Ok(())) => {
                     self.output_lines.push("Push successful!".to_string());
                     self.complete(
@@ -455,6 +652,8 @@ impl FirstBootScreen {
             }
             FirstBootPhase::ShowSshKey => self.render_ssh_key(frame, area),
             FirstBootPhase::RemoteInput => self.render_remote_input(frame, area),
+            FirstBootPhase::PreparingPush => self.render_progress(frame, area),
+            FirstBootPhase::RepoHealthWarning => self.render_repo_health_warning(frame, area),
             FirstBootPhase::Pushing => self.render_progress(frame, area),
             FirstBootPhase::SecretsSetup => {
                 self.render_enrollment_step(frame, area, "Secrets", "agenix init")
@@ -486,7 +685,7 @@ impl FirstBootScreen {
                  This wizard will:\n  \
                  1. Continue Secure Boot enrollment\n  \
                  2. Continue TPM2 enrollment\n  \
-                 3. Set up SSH keys and push the install commit\n  \
+                 3. Set up SSH keys, review repo state, and push the install commit\n  \
                  4. Initialize secrets for services\n\n  \
                  Hardware detection and the initial local commit already happened during install.\n",
                 self.config.hostname
@@ -520,6 +719,7 @@ impl FirstBootScreen {
             .split(area);
 
         let phase_label = match &self.phase {
+            FirstBootPhase::PreparingPush => "Checking repo state...",
             FirstBootPhase::Pushing => "Pushing to remote...",
             _ => "Working...",
         };
@@ -619,11 +819,86 @@ impl FirstBootScreen {
         self.remote_input.render(frame, chunks[2], "Remote URL");
 
         let help = Paragraph::new(Text::styled(
-            "Enter: push • s: skip push",
+            "Enter: review repo • Esc: skip push",
             t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[3]);
+    }
+
+    fn render_repo_health_warning(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let heading = Paragraph::new(Text::styled(
+            "Repo state warning",
+            t.warning_style().add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(heading, chunks[0]);
+
+        let mut lines = vec![
+            Line::from(""),
+            Line::from("  Keystone found local repo state that is not fully committed and pushed."),
+            Line::from(""),
+        ];
+
+        if self.repo_health_status.working_tree_changes > 0 {
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "  {} working tree change(s) are still uncommitted.",
+                    self.repo_health_status.working_tree_changes
+                ),
+                t.warning_style(),
+            )));
+            lines.push(Line::from(
+                "  Those changes will not be included in the push unless you commit them first.",
+            ));
+            lines.push(Line::from(""));
+        }
+
+        if self.repo_health_status.ahead_count > 0 {
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "  {} local commit(s) are ahead of {}.",
+                    self.repo_health_status.ahead_count, REMOTE_MAIN_REF
+                ),
+                t.warning_style(),
+            )));
+            lines.push(Line::from(
+                "  Continuing will push those local commits to the configured origin.",
+            ));
+            lines.push(Line::from(""));
+        }
+
+        lines.push(Line::from(format!(
+            "  Repo: {}",
+            self.config.config_dir.display()
+        )));
+
+        let body = Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(t.warning)),
+            )
+            .wrap(Wrap { trim: false });
+        frame.render_widget(body, chunks[1]);
+
+        let help = Paragraph::new(Text::styled(
+            "Enter: continue to push • s: skip push • q: quit",
+            t.inactive_style(),
+        ))
+        .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
     }
 
     /// Generic enrollment step placeholder for SB, TPM, SSH, secrets.
@@ -681,8 +956,8 @@ impl FirstBootScreen {
 
         let body = Paragraph::new(Text::styled(
             "\n  Secure Boot and TPM enrollment require a reboot to take effect.\n\n  \
-             After rebooting, the TUI will continue with SSH key setup\n  \
-             and push the pending install commit.",
+             After rebooting, the TUI will continue with SSH key setup,\n  \
+             review the repo state, and push the pending install commit.",
             Style::default(),
         ))
         .block(Block::default().borders(Borders::ALL));
@@ -778,7 +1053,7 @@ impl FirstBootScreen {
         frame.render_widget(output, chunks[1]);
 
         let help = Paragraph::new(Text::styled(
-            "r: retry push • s: skip • q: exit",
+            "r: retry • s: skip • q: exit",
             t.inactive_style(),
         ))
         .alignment(Alignment::Center);
@@ -819,7 +1094,7 @@ impl FirstBootScreen {
                 KeyCode::Char('q') => Some(Action::Quit),
                 _ => None,
             },
-            FirstBootPhase::Pushing => {
+            FirstBootPhase::PreparingPush | FirstBootPhase::Pushing => {
                 // No user input during async phases
                 None
             }
@@ -865,7 +1140,8 @@ impl FirstBootScreen {
                 // TODO: wire to security::yubikey::detect_devices()
                 // TODO: offer ssh-keygen, GitHub import, YubiKey enrollment
                 KeyCode::Enter => {
-                    self.continue_to_remote();
+                    self.phase = FirstBootPhase::ShowSshKey;
+                    self.spawn_ssh_key_check();
                     None
                 }
                 KeyCode::Char('s') => {
@@ -909,6 +1185,18 @@ impl FirstBootScreen {
                     self.handle_text_input(*key);
                     None
                 }
+            },
+            FirstBootPhase::RepoHealthWarning => match code {
+                KeyCode::Enter => {
+                    self.continue_after_repo_warning();
+                    None
+                }
+                KeyCode::Char('s') => {
+                    self.skip();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
             },
             FirstBootPhase::Done => match code {
                 KeyCode::Char('q') => Some(Action::Quit),
@@ -993,6 +1281,27 @@ mod tests {
     }
 
     #[test]
+    fn test_count_nonempty_lines_ignores_blank_lines() {
+        assert_eq!(count_nonempty_lines(" M flake.lock\n\n?? notes.txt\n"), 2);
+    }
+
+    #[test]
+    fn test_parse_rev_list_counts_reads_ahead_and_behind() {
+        assert_eq!(parse_rev_list_counts("3\t2\n").unwrap(), (3, 2));
+    }
+
+    #[test]
+    fn test_skip_from_ssh_key_setup_completes_onboarding() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::SshKeySetup;
+        screen.skip();
+
+        assert_eq!(*screen.phase(), FirstBootPhase::Done);
+        assert!(screen.push_skipped);
+        assert!(screen.marker_removed);
+    }
+
+    #[test]
     fn test_skip_from_ssh_key() {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.phase = FirstBootPhase::ShowSshKey;
@@ -1005,6 +1314,17 @@ mod tests {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.phase = FirstBootPhase::RemoteInput;
         screen.skip();
+        assert_eq!(*screen.phase(), FirstBootPhase::Done);
+        assert!(screen.push_skipped);
+        assert!(screen.marker_removed);
+    }
+
+    #[test]
+    fn test_skip_from_failed_completes_onboarding() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::Failed("auth failed".to_string());
+        screen.skip();
+
         assert_eq!(*screen.phase(), FirstBootPhase::Done);
         assert!(screen.push_skipped);
         assert!(screen.marker_removed);
@@ -1025,6 +1345,53 @@ mod tests {
         screen.poll();
         assert!(screen.ssh_public_key().is_some());
         assert!(screen.ssh_public_key().unwrap().contains("ssh-ed25519"));
+    }
+
+    #[tokio::test]
+    async fn test_continue_after_repo_warning_starts_push_phase() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::RepoHealthWarning;
+
+        screen.continue_after_repo_warning();
+
+        assert_eq!(*screen.phase(), FirstBootPhase::Pushing);
+        assert!(screen.rx.is_some());
+    }
+
+    #[test]
+    fn test_poll_repo_prepared_warns_when_repo_is_dirty() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::PreparingPush;
+
+        tx.send(FirstBootMessage::RepoPrepared(Ok(RepoHealthStatus {
+            working_tree_changes: 2,
+            ahead_count: 0,
+        })))
+        .unwrap();
+
+        screen.poll();
+        assert_eq!(*screen.phase(), FirstBootPhase::RepoHealthWarning);
+        assert_eq!(screen.repo_health_status.working_tree_changes, 2);
+    }
+
+    #[tokio::test]
+    async fn test_poll_repo_prepared_pushes_clean_repo() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::PreparingPush;
+
+        tx.send(FirstBootMessage::RepoPrepared(Ok(RepoHealthStatus {
+            working_tree_changes: 0,
+            ahead_count: 0,
+        })))
+        .unwrap();
+
+        screen.poll();
+        assert_eq!(*screen.phase(), FirstBootPhase::Pushing);
+        assert!(screen.rx.is_some());
     }
 
     #[test]

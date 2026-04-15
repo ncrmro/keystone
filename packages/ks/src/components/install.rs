@@ -605,6 +605,42 @@ fn vendor_embedded_keystone_input(repo_dir: &Path) -> AnyhowResult<Option<PathBu
     Ok(Some(vendored_dir))
 }
 
+fn normalize_staged_install_repo(repo_dir: &Path, source_lock_path: &Path) -> Result<(), String> {
+    let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+    if !vendored_dir.exists() {
+        return Ok(());
+    }
+
+    if !source_lock_path.is_file() {
+        return Err(format!(
+            "Cannot normalize {} because {} is missing",
+            vendored_dir.display(),
+            source_lock_path.display()
+        ));
+    }
+
+    let target_lock_path = repo_dir.join("flake.lock");
+    let source_lock = std::fs::read(source_lock_path)
+        .map_err(|e| format!("Failed to read {}: {}", source_lock_path.display(), e))?;
+    std::fs::write(&target_lock_path, source_lock).map_err(|e| {
+        format!(
+            "Failed to restore {} from {}: {}",
+            target_lock_path.display(),
+            source_lock_path.display(),
+            e
+        )
+    })?;
+
+    std::fs::remove_dir_all(&vendored_dir)
+        .map_err(|e| format!("Failed to remove {}: {}", vendored_dir.display(), e))?;
+
+    Ok(())
+}
+
+fn normalize_installed_repo_state(repo_dir: &Path) -> Result<(), String> {
+    normalize_staged_install_repo(repo_dir, &Path::new(INSTALL_REPO_PATH).join("flake.lock"))
+}
+
 fn parse_hardware_disk_device(hardware_path: &Path) -> Option<String> {
     let content = std::fs::read_to_string(hardware_path).ok()?;
     let mut in_devices = false;
@@ -1637,6 +1673,21 @@ impl InstallScreen {
 
             match install_result {
                 Ok(()) => {
+                    if let Err(e) = normalize_installed_repo_state(&config_dir) {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                            "post-install repo normalization failed: {}",
+                            e
+                        ))));
+                        return;
+                    }
+                    if let Err(e) = amend_install_commit(&config_dir, &tx).await {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                            "post-install repo amend failed: {}",
+                            e
+                        ))));
+                        return;
+                    }
+
                     let _ = tx.send(InstallMessage::Output(
                         "Copying config to installed system...".to_string(),
                     ));
@@ -2205,8 +2256,24 @@ async fn copy_dir_recursive_async(src: &Path, dst: &Path) -> Result<(), String> 
     {
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .await
+            .map_err(|e| format!("Failed to inspect {}: {}", src_path.display(), e))?;
 
-        if src_path.is_dir() {
+        if file_type.is_symlink() {
+            let link_target = tokio::fs::read_link(&src_path)
+                .await
+                .map_err(|e| format!("Failed to read symlink {}: {}", src_path.display(), e))?;
+            std::os::unix::fs::symlink(&link_target, &dst_path).map_err(|e| {
+                format!(
+                    "Failed to recreate symlink {} -> {}: {}",
+                    dst_path.display(),
+                    link_target.display(),
+                    e
+                )
+            })?;
+        } else if file_type.is_dir() {
             tokio::fs::create_dir_all(&dst_path)
                 .await
                 .map_err(|e| format!("Failed to create dir {}: {}", dst_path.display(), e))?;
@@ -2280,26 +2347,6 @@ async fn git_config_get(repo_dir: &Path, key: &str) -> Result<Option<String>, St
         .output()
         .await
         .map_err(|e| format!("Failed to read git config {key}: {e}"))?;
-
-    if !output.status.success() {
-        return Ok(None);
-    }
-
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(value))
-    }
-}
-
-async fn git_remote_get_url(repo_dir: &Path, remote: &str) -> Result<Option<String>, String> {
-    let output = Command::new("git")
-        .args(["remote", "get-url", remote])
-        .current_dir(repo_dir)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to inspect git remote {remote}: {e}"))?;
 
     if !output.status.success() {
         return Ok(None);
@@ -2521,75 +2568,42 @@ async fn create_install_commit(
         "Recorded local install commit.".to_string(),
     ));
 
-    push_install_commit(config_dir, tx).await;
-
     Ok(())
 }
 
-async fn push_install_commit(config_dir: &Path, tx: &mpsc::UnboundedSender<InstallMessage>) {
-    match git_remote_get_url(config_dir, "origin").await {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            let _ = tx.send(InstallMessage::Output(
-                "No origin remote configured; leaving install commit local.".to_string(),
-            ));
-            return;
-        }
-        Err(error) => {
-            let _ = tx.send(InstallMessage::Output(format!(
-                "Warning: failed to inspect git remote origin: {}",
-                error
-            )));
-            return;
-        }
-    }
-
+async fn amend_install_commit(
+    config_dir: &Path,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
     let _ = tx.send(InstallMessage::Output(
-        "Attempting to push install commit to origin/main...".to_string(),
+        "Normalizing install repo state before handoff...".to_string(),
     ));
 
-    let output = match Command::new("git")
-        .args(["push", "-u", "origin", "main"])
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env(
-            "GIT_SSH_COMMAND",
-            "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
-        )
+    let _ = Command::new("git")
+        .args([
+            "rm",
+            "--cached",
+            "-f",
+            "--ignore-unmatch",
+            FIRST_BOOT_MARKER,
+        ])
         .current_dir(config_dir)
         .output()
+        .await;
+
+    run_command_quiet("git", &["add", "-A", "."], Some(config_dir), false)
         .await
-    {
-        Ok(output) => output,
-        Err(error) => {
-            let _ = tx.send(InstallMessage::Output(format!(
-                "Warning: failed to start git push: {}",
-                error
-            )));
-            return;
-        }
-    };
+        .map_err(|e| format!("Failed to stage normalized install repo: {e}"))?;
+    run_command_quiet(
+        "git",
+        &["commit", "--amend", "--no-edit"],
+        Some(config_dir),
+        false,
+    )
+    .await
+    .map_err(|e| format!("Failed to amend install commit: {e}"))?;
 
-    if output.status.success() {
-        let _ = tx.send(InstallMessage::Output(
-            "Pushed install commit to origin/main.".to_string(),
-        ));
-        return;
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let details = if !stderr.is_empty() {
-        stderr
-    } else if !stdout.is_empty() {
-        stdout
-    } else {
-        "no output".to_string()
-    };
-
-    let _ = tx.send(InstallMessage::Output(format!(
-        "Warning: failed to push install commit to origin/main: {}",
-        details
-    )));
+    Ok(())
 }
 
 /// Copy the prepared config to the installed system for the post-install onboarding flow.
@@ -3531,6 +3545,112 @@ mod tests {
         assert_eq!(
             mounted_repo_dir,
             PathBuf::from("/mnt/home/noah/.keystone/repos/noah/keystone-config")
+        );
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_restores_lock_and_removes_vendored_input() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("source-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+
+        std::fs::create_dir_all(&vendored_dir).unwrap();
+        std::fs::write(&source_lock, "original-lock").unwrap();
+        std::fs::write(repo_dir.join("flake.lock"), "path-lock").unwrap();
+        std::fs::write(vendored_dir.join("CLAUDE.md"), "vendored").unwrap();
+
+        normalize_staged_install_repo(&repo_dir, &source_lock).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.join("flake.lock")).unwrap(),
+            "original-lock"
+        );
+        assert!(!vendored_dir.exists());
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_requires_source_lock_when_vendored_input_exists() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("missing-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+
+        std::fs::create_dir_all(&vendored_dir).unwrap();
+        std::fs::write(repo_dir.join("flake.lock"), "path-lock").unwrap();
+
+        let error = normalize_staged_install_repo(&repo_dir, &source_lock).unwrap_err();
+
+        assert!(error.contains("missing"));
+        assert!(vendored_dir.exists());
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.join("flake.lock")).unwrap(),
+            "path-lock"
+        );
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_keeps_flake_lock_writable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("source-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+        let target_lock = repo_dir.join("flake.lock");
+
+        std::fs::create_dir_all(&vendored_dir).unwrap();
+        std::fs::write(&source_lock, "original-lock").unwrap();
+        std::fs::write(&target_lock, "path-lock").unwrap();
+        std::fs::set_permissions(&source_lock, std::fs::Permissions::from_mode(0o444)).unwrap();
+        std::fs::set_permissions(&target_lock, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        normalize_staged_install_repo(&repo_dir, &source_lock).unwrap();
+
+        let mode = std::fs::metadata(&target_lock)
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_ne!(mode & 0o200, 0);
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_is_noop_without_vendored_input() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("source-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let target_lock = repo_dir.join("flake.lock");
+
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        std::fs::write(&source_lock, "original-lock").unwrap();
+        std::fs::write(&target_lock, "existing-lock").unwrap();
+
+        normalize_staged_install_repo(&repo_dir, &source_lock).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&target_lock).unwrap(),
+            "existing-lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_copy_dir_recursive_async_preserves_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+
+        std::fs::create_dir_all(&src).unwrap();
+        tokio::fs::create_dir_all(&dst).await.unwrap();
+        std::fs::write(src.join("target.txt"), "hello").unwrap();
+        std::os::unix::fs::symlink("target.txt", src.join("link.txt")).unwrap();
+
+        copy_dir_recursive_async(&src, &dst).await.unwrap();
+
+        let metadata = std::fs::symlink_metadata(dst.join("link.txt")).unwrap();
+        assert!(metadata.file_type().is_symlink());
+        assert_eq!(
+            std::fs::read_link(dst.join("link.txt")).unwrap(),
+            PathBuf::from("target.txt")
         );
     }
 
