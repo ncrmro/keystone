@@ -23,6 +23,12 @@ in
   options.keystone.desktop = {
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities for Home Manager";
 
+    browser = mkOption {
+      type = types.str;
+      default = "chromium";
+      description = "Default browser binary name. Used by the $mod+B keybinding.";
+    };
+
     uhk = {
       enable = mkOption {
         type = types.bool;

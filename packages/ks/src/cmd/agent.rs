@@ -56,20 +56,8 @@ fn load_conventions(ks_repo: &Path) -> Result<String> {
     Ok(sections.join("\n\n---\n\n"))
 }
 
-async fn build_host_table(hosts_nix: &Path) -> Result<Option<String>> {
-    let output = tokio::process::Command::new("nix")
-        .args(["eval", "-f"])
-        .arg(hosts_nix)
-        .args(["--json", "--apply", "builtins.attrNames"])
-        .output()
-        .await
-        .context("Failed to list hosts from hosts.nix")?;
-    if !output.status.success() {
-        return Ok(None);
-    }
-
-    let hosts: Vec<String> =
-        serde_json::from_slice(&output.stdout).context("Failed to parse host list")?;
+async fn build_host_table(repo_root: &Path) -> Result<Option<String>> {
+    let hosts = repo::list_hosts(repo_root).await?;
     if hosts.is_empty() {
         return Ok(None);
     }
@@ -85,7 +73,7 @@ async fn build_host_table(hosts_nix: &Path) -> Result<Option<String>> {
     ];
 
     for host in hosts {
-        let info = match repo::host_info(hosts_nix, &host).await {
+        let info = match repo::host_info(repo_root, &host).await {
             Ok(info) => info,
             Err(_) => continue,
         };
@@ -258,8 +246,7 @@ async fn build_prompt(repo_root: &Path, current_host: Option<&str>) -> Result<St
     }
     append_section(&mut prompt, None, &current_host_body);
 
-    let hosts_nix = repo_root.join("hosts.nix");
-    if let Some(host_table) = build_host_table(&hosts_nix).await? {
+    if let Some(host_table) = build_host_table(repo_root).await? {
         append_section(&mut prompt, Some("## Hosts"), &host_table);
     }
 
