@@ -1029,12 +1029,10 @@ impl FirstBootScreen {
                      Press Enter to continue."
                         .to_string()
                 }
-                (Some(SbStatus::KeysGenerated), _) => {
-                    "\n  [ok] Secure Boot keys generated.\n  \
+                (Some(SbStatus::KeysGenerated), _) => "\n  [ok] Secure Boot keys generated.\n  \
                      A reboot is needed to activate Secure Boot.\n\n  \
                      Press Enter to continue."
-                        .to_string()
-                }
+                    .to_string(),
                 (Some(SbStatus::SetupMode), Some(Ok(_))) => {
                     "\n  [ok] Secure Boot keys enrolled successfully!\n\n  \
                      Press Enter to continue."
@@ -1052,18 +1050,14 @@ impl FirstBootScreen {
                      Press Enter to enroll Secure Boot keys or 's' to skip."
                         .to_string()
                 }
-                (Some(SbStatus::NotInSetupMode), _) => {
-                    "\n  Secure Boot is not in Setup Mode.\n  \
+                (Some(SbStatus::NotInSetupMode), _) => "\n  Secure Boot is not in Setup Mode.\n  \
                      Keys cannot be enrolled from the OS.\n\n  \
                      To enroll: enable Setup Mode in BIOS, then reboot.\n\n  \
                      Press Enter to continue or 's' to skip."
-                        .to_string()
-                }
-                _ => {
-                    "\n  Could not determine Secure Boot status.\n\n  \
+                    .to_string(),
+                _ => "\n  Could not determine Secure Boot status.\n\n  \
                      Press Enter to continue or 's' to skip."
-                        .to_string()
-                }
+                    .to_string(),
             }
         };
 
@@ -1104,11 +1098,9 @@ impl FirstBootScreen {
             "\n  Checking TPM status...".to_string()
         } else {
             match &self.tpm_status {
-                Some(TpmStatus::Enrolled) => {
-                    "\n  [ok] TPM auto-unlock is configured.\n\n  \
+                Some(TpmStatus::Enrolled) => "\n  [ok] TPM auto-unlock is configured.\n\n  \
                      Press Enter to continue."
-                        .to_string()
-                }
+                    .to_string(),
                 Some(TpmStatus::Available) => {
                     format!(
                         "\n  TPM2 device detected but not yet enrolled.\n\n  \
@@ -1117,17 +1109,13 @@ impl FirstBootScreen {
                         super::security::tpm::enroll_instructions()
                     )
                 }
-                Some(TpmStatus::NotAvailable) => {
-                    "\n  No TPM2 device detected.\n\n  \
+                Some(TpmStatus::NotAvailable) => "\n  No TPM2 device detected.\n\n  \
                      TPM auto-unlock is not available on this system.\n\n  \
                      Press Enter to continue."
-                        .to_string()
-                }
-                _ => {
-                    "\n  Could not determine TPM status.\n\n  \
+                    .to_string(),
+                _ => "\n  Could not determine TPM status.\n\n  \
                      Press Enter to continue or 's' to skip."
-                        .to_string()
-                }
+                    .to_string(),
             }
         };
 
@@ -1556,10 +1544,10 @@ mod tests {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.phase = FirstBootPhase::SecureBootEnroll;
         screen.sb_status = Some(secure_boot::Status::Enrolled);
-        screen.handle_key_event(KeyCode::Enter, &crossterm::event::KeyEvent::new(
+        screen.handle_key_event(
             KeyCode::Enter,
-            crossterm::event::KeyModifiers::NONE,
-        ));
+            &crossterm::event::KeyEvent::new(KeyCode::Enter, crossterm::event::KeyModifiers::NONE),
+        );
         assert_eq!(*screen.phase(), FirstBootPhase::TpmEnroll);
     }
 
@@ -1567,10 +1555,13 @@ mod tests {
     async fn test_sb_skip_advances_to_tpm() {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.phase = FirstBootPhase::SecureBootEnroll;
-        screen.handle_key_event(KeyCode::Char('s'), &crossterm::event::KeyEvent::new(
+        screen.handle_key_event(
             KeyCode::Char('s'),
-            crossterm::event::KeyModifiers::NONE,
-        ));
+            &crossterm::event::KeyEvent::new(
+                KeyCode::Char('s'),
+                crossterm::event::KeyModifiers::NONE,
+            ),
+        );
         assert_eq!(*screen.phase(), FirstBootPhase::TpmEnroll);
     }
 
@@ -1579,10 +1570,10 @@ mod tests {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.phase = FirstBootPhase::SecureBootEnroll;
         screen.sb_busy = true;
-        screen.handle_key_event(KeyCode::Enter, &crossterm::event::KeyEvent::new(
+        screen.handle_key_event(
             KeyCode::Enter,
-            crossterm::event::KeyModifiers::NONE,
-        ));
+            &crossterm::event::KeyEvent::new(KeyCode::Enter, crossterm::event::KeyModifiers::NONE),
+        );
         // Should stay on SecureBootEnroll since busy
         assert_eq!(*screen.phase(), FirstBootPhase::SecureBootEnroll);
     }
@@ -1602,10 +1593,7 @@ mod tests {
 
         screen.poll();
         assert!(!screen.sb_busy);
-        assert_eq!(
-            screen.sb_status,
-            Some(secure_boot::Status::Enrolled)
-        );
+        assert_eq!(screen.sb_status, Some(secure_boot::Status::Enrolled));
     }
 
     #[test]
@@ -1616,17 +1604,12 @@ mod tests {
         screen.phase = FirstBootPhase::TpmEnroll;
         screen.tpm_busy = true;
 
-        tx.send(FirstBootMessage::TpmStatus(
-            tpm::Status::Available,
-        ))
-        .unwrap();
+        tx.send(FirstBootMessage::TpmStatus(tpm::Status::Available))
+            .unwrap();
 
         screen.poll();
         assert!(!screen.tpm_busy);
-        assert_eq!(
-            screen.tpm_status,
-            Some(tpm::Status::Available)
-        );
+        assert_eq!(screen.tpm_status, Some(tpm::Status::Available));
     }
 
     #[test]

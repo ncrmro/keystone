@@ -138,9 +138,7 @@ pub async fn provision() -> anyhow::Result<String> {
         let status = check_status().await;
         return match status {
             Status::Enrolled => Ok("Secure Boot is already enrolled.".into()),
-            Status::KeysGenerated => {
-                Ok("Keys exist. Reboot to activate Secure Boot.".into())
-            }
+            Status::KeysGenerated => Ok("Keys exist. Reboot to activate Secure Boot.".into()),
             _ => Ok("Secure Boot keys already exist.".into()),
         };
     }
