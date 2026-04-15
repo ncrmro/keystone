@@ -355,16 +355,8 @@ async fn run_audio_transcribe_command(args: cli::AudioTranscribeArgs) -> Result<
         .or_else(|| std::env::var("WHISPER_SERVER_URL").ok());
     let language = args
         .language
-        .or_else(|| std::env::var("AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE").ok());
-    let language = match language {
-        Some(l) => l,
-        None => anyhow::bail!(
-            "No language specified.\n\n\
-             Set a default:  export AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE=en\n\
-             Or per-command:  ks audio-transcribe -l en <file>\n\n\
-             Use \"auto\" if you work with multiple languages."
-        ),
-    };
+        .or_else(|| std::env::var("AUDIO_TRANSCRIBE_DEFAULT_LANGUAGE").ok())
+        .unwrap_or_else(|| "auto".to_string());
 
     let result = if let Some(ref server_url) = server {
         cmd::audio_transcribe::execute_remote(

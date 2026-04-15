@@ -54,6 +54,9 @@ serde_json = "1"
 anyhow = "1"
 thiserror = "2"
 
+# Temporary directory (scoped cleanup for transcription scratch space)
+tempfile = "3"
+
 [dev-dependencies]
 insta = "1"
 tempfile = "3"

@@ -135,7 +135,7 @@ pub enum Command {
     /// Launch an AI coding agent with Keystone context.
     Agent(AgentArgs),
 
-    /// Transcribe audio or video files locally using whisper.cpp.
+    /// Transcribe audio or video files locally or remotely using whisper.cpp.
     AudioTranscribe(AudioTranscribeArgs),
 
     /// Generate a system health diagnostic report.

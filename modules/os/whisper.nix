@@ -1,7 +1,7 @@
 # Whisper.cpp speech-to-text server with GPU acceleration.
 #
 # Auto-enables when keystone.services.whisper.host matches this machine.
-# Binds 0.0.0.0 by default so other tailnet machines can reach the API.
+# Binds localhost so only tailnet-proxied connections can reach the API.
 #
 # Usage (in services registry):
 #   keystone.services.whisper = {
@@ -43,7 +43,7 @@ in
       serviceConfig = {
         DynamicUser = true;
         StateDirectory = "whisper";
-        ExecStart = "${whisperPackage}/bin/whisper-server --model /var/lib/whisper/${modelFile} --host 0.0.0.0 --port ${toString svcCfg.port} --convert";
+        ExecStart = "${whisperPackage}/bin/whisper-server --model /var/lib/whisper/${modelFile} --host 127.0.0.1 --port ${toString svcCfg.port} --convert";
         Restart = "on-failure";
         RestartSec = 5;
       };
@@ -62,6 +62,6 @@ in
       '';
     };
 
-    networking.firewall.allowedTCPPorts = [ svcCfg.port ];
+    networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ svcCfg.port ];
   };
 }
