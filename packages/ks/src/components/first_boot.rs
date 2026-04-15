@@ -307,6 +307,9 @@ enum FirstBootMessage {
     RepoPrepared(Result<RepoHealthStatus, String>),
     PushResult(Result<(), String>),
     Failed(String),
+    SecureBootStatus(super::security::secure_boot::Status),
+    SecureBootEnrollResult(Result<String, String>),
+    TpmStatus(super::security::tpm::Status),
 }
 
 pub struct FirstBootScreen {
@@ -320,6 +323,11 @@ pub struct FirstBootScreen {
     push_skipped: bool,
     done_message: String,
     marker_removed: bool,
+    sb_status: Option<super::security::secure_boot::Status>,
+    sb_busy: bool,
+    sb_enroll_result: Option<Result<String, String>>,
+    tpm_status: Option<super::security::tpm::Status>,
+    tpm_busy: bool,
 }
 
 impl FirstBootScreen {
@@ -353,6 +361,11 @@ impl FirstBootScreen {
             push_skipped: false,
             done_message: "Setup complete.".to_string(),
             marker_removed: false,
+            sb_status: None,
+            sb_busy: false,
+            sb_enroll_result: None,
+            tpm_status: None,
+            tpm_busy: false,
         }
     }
 
@@ -370,6 +383,49 @@ impl FirstBootScreen {
             return;
         }
         self.phase = FirstBootPhase::SecureBootEnroll;
+        self.spawn_sb_check();
+    }
+
+    fn spawn_sb_check(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.rx = Some(rx);
+        self.sb_busy = true;
+
+        tokio::spawn(async move {
+            let status = super::security::secure_boot::check_status().await;
+            let _ = tx.send(FirstBootMessage::SecureBootStatus(status));
+        });
+    }
+
+    fn spawn_sb_enroll(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.rx = Some(rx);
+        self.sb_busy = true;
+
+        tokio::spawn(async move {
+            let _ = tx.send(FirstBootMessage::Output(
+                "Enrolling Secure Boot keys...".to_string(),
+            ));
+            match super::security::secure_boot::enroll_keys().await {
+                Ok(out) => {
+                    let _ = tx.send(FirstBootMessage::SecureBootEnrollResult(Ok(out)));
+                }
+                Err(e) => {
+                    let _ = tx.send(FirstBootMessage::SecureBootEnrollResult(Err(e.to_string())));
+                }
+            }
+        });
+    }
+
+    fn spawn_tpm_check(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.rx = Some(rx);
+        self.tpm_busy = true;
+
+        tokio::spawn(async move {
+            let status = super::security::tpm::check_status().await;
+            let _ = tx.send(FirstBootMessage::TpmStatus(status));
+        });
     }
 
     fn spawn_ssh_key_check(&mut self) {
@@ -631,6 +687,18 @@ impl FirstBootScreen {
                 FirstBootMessage::Failed(e) => {
                     self.phase = FirstBootPhase::Failed(e);
                 }
+                FirstBootMessage::SecureBootStatus(status) => {
+                    self.sb_busy = false;
+                    self.sb_status = Some(status);
+                }
+                FirstBootMessage::SecureBootEnrollResult(result) => {
+                    self.sb_busy = false;
+                    self.sb_enroll_result = Some(result);
+                }
+                FirstBootMessage::TpmStatus(status) => {
+                    self.tpm_busy = false;
+                    self.tpm_status = Some(status);
+                }
             }
         }
     }
@@ -639,12 +707,8 @@ impl FirstBootScreen {
         match &self.phase {
             FirstBootPhase::Welcome => self.render_welcome(frame, area),
             // Security enrollment (Stage 5)
-            FirstBootPhase::SecureBootEnroll => {
-                self.render_enrollment_step(frame, area, "Secure Boot", "sbctl enroll-keys")
-            }
-            FirstBootPhase::TpmEnroll => {
-                self.render_enrollment_step(frame, area, "TPM2", "systemd-cryptenroll")
-            }
+            FirstBootPhase::SecureBootEnroll => self.render_secure_boot(frame, area),
+            FirstBootPhase::TpmEnroll => self.render_tpm(frame, area),
             FirstBootPhase::RebootPrompt => self.render_reboot_prompt(frame, area),
             // SSH + push (Stage 6)
             FirstBootPhase::SshKeySetup => {
@@ -938,6 +1002,150 @@ impl FirstBootScreen {
         frame.render_widget(help, chunks[2]);
     }
 
+    fn render_secure_boot(&self, frame: &mut Frame, area: Rect) {
+        use super::security::secure_boot::Status as SbStatus;
+
+        let t = crate::theme::default();
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let heading = Paragraph::new(Text::styled("Setup: Secure Boot", t.title_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(heading, chunks[0]);
+
+        let body_text = if self.sb_busy {
+            "\n  Checking Secure Boot status...".to_string()
+        } else {
+            match (&self.sb_status, &self.sb_enroll_result) {
+                (Some(SbStatus::Enrolled), _) => {
+                    "\n  [ok] Secure Boot keys are enrolled and active.\n\n  \
+                     Press Enter to continue."
+                        .to_string()
+                }
+                (Some(SbStatus::KeysGenerated), _) => {
+                    "\n  [ok] Secure Boot keys generated.\n  \
+                     A reboot is needed to activate Secure Boot.\n\n  \
+                     Press Enter to continue."
+                        .to_string()
+                }
+                (Some(SbStatus::SetupMode), Some(Ok(_))) => {
+                    "\n  [ok] Secure Boot keys enrolled successfully!\n\n  \
+                     Press Enter to continue."
+                        .to_string()
+                }
+                (Some(SbStatus::SetupMode), Some(Err(e))) => {
+                    format!(
+                        "\n  [error] Enrollment failed: {}\n\n  \
+                         Press Enter to retry or 's' to skip.",
+                        e
+                    )
+                }
+                (Some(SbStatus::SetupMode), None) => {
+                    "\n  UEFI is in Setup Mode — ready to enroll keys.\n\n  \
+                     Press Enter to enroll Secure Boot keys or 's' to skip."
+                        .to_string()
+                }
+                (Some(SbStatus::NotInSetupMode), _) => {
+                    "\n  Secure Boot is not in Setup Mode.\n  \
+                     Keys cannot be enrolled from the OS.\n\n  \
+                     To enroll: enable Setup Mode in BIOS, then reboot.\n\n  \
+                     Press Enter to continue or 's' to skip."
+                        .to_string()
+                }
+                _ => {
+                    "\n  Could not determine Secure Boot status.\n\n  \
+                     Press Enter to continue or 's' to skip."
+                        .to_string()
+                }
+            }
+        };
+
+        let body = Paragraph::new(Text::styled(body_text, Style::default()))
+            .block(Block::default().borders(Borders::ALL))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(body, chunks[1]);
+
+        let help_text = if self.sb_busy {
+            "Checking..."
+        } else {
+            "Enter: proceed • s: skip • q: quit"
+        };
+        let help = Paragraph::new(Text::styled(help_text, t.inactive_style()))
+            .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
+    }
+
+    fn render_tpm(&self, frame: &mut Frame, area: Rect) {
+        use super::security::tpm::Status as TpmStatus;
+
+        let t = crate::theme::default();
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let heading = Paragraph::new(Text::styled("Setup: TPM2", t.title_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(heading, chunks[0]);
+
+        let body_text = if self.tpm_busy {
+            "\n  Checking TPM status...".to_string()
+        } else {
+            match &self.tpm_status {
+                Some(TpmStatus::Enrolled) => {
+                    "\n  [ok] TPM auto-unlock is configured.\n\n  \
+                     Press Enter to continue."
+                        .to_string()
+                }
+                Some(TpmStatus::Available) => {
+                    format!(
+                        "\n  TPM2 device detected but not yet enrolled.\n\n  \
+                         {}\n\n  \
+                         Press Enter to continue (you can enroll after this wizard).",
+                        super::security::tpm::enroll_instructions()
+                    )
+                }
+                Some(TpmStatus::NotAvailable) => {
+                    "\n  No TPM2 device detected.\n\n  \
+                     TPM auto-unlock is not available on this system.\n\n  \
+                     Press Enter to continue."
+                        .to_string()
+                }
+                _ => {
+                    "\n  Could not determine TPM status.\n\n  \
+                     Press Enter to continue or 's' to skip."
+                        .to_string()
+                }
+            }
+        };
+
+        let body = Paragraph::new(Text::styled(body_text, Style::default()))
+            .block(Block::default().borders(Borders::ALL))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(body, chunks[1]);
+
+        let help_text = if self.tpm_busy {
+            "Checking..."
+        } else {
+            "Enter: continue • s: skip • q: quit"
+        };
+        let help = Paragraph::new(Text::styled(help_text, t.inactive_style()))
+            .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
+    }
+
     fn render_reboot_prompt(&self, frame: &mut Frame, area: Rect) {
         let t = crate::theme::default();
         let chunks = Layout::default()
@@ -1099,32 +1307,55 @@ impl FirstBootScreen {
                 None
             }
             // Security enrollment (Stage 5)
-            FirstBootPhase::SecureBootEnroll => match code {
-                // TODO: wire to security::secure_boot::enroll_keys()
-                KeyCode::Enter => {
-                    self.phase = FirstBootPhase::TpmEnroll;
-                    None
+            FirstBootPhase::SecureBootEnroll => {
+                if self.sb_busy {
+                    return None;
                 }
-                KeyCode::Char('s') => {
-                    self.phase = FirstBootPhase::TpmEnroll;
-                    None
+                match code {
+                    KeyCode::Enter => {
+                        use super::security::secure_boot::Status as SbStatus;
+                        match (&self.sb_status, &self.sb_enroll_result) {
+                            // Setup mode, no enrollment attempted yet → enroll
+                            (Some(SbStatus::SetupMode), None) => {
+                                self.spawn_sb_enroll();
+                                None
+                            }
+                            // Setup mode, enrollment failed → retry
+                            (Some(SbStatus::SetupMode), Some(Err(_))) => {
+                                self.sb_enroll_result = None;
+                                self.spawn_sb_enroll();
+                                None
+                            }
+                            // Any other state → advance to TPM
+                            _ => {
+                                self.phase = FirstBootPhase::TpmEnroll;
+                                self.spawn_tpm_check();
+                                None
+                            }
+                        }
+                    }
+                    KeyCode::Char('s') => {
+                        self.phase = FirstBootPhase::TpmEnroll;
+                        self.spawn_tpm_check();
+                        None
+                    }
+                    KeyCode::Char('q') => Some(Action::Quit),
+                    _ => None,
                 }
-                KeyCode::Char('q') => Some(Action::Quit),
-                _ => None,
-            },
-            FirstBootPhase::TpmEnroll => match code {
-                // TODO: wire to security::tpm::enroll()
-                KeyCode::Enter => {
-                    self.phase = FirstBootPhase::RebootPrompt;
-                    None
+            }
+            FirstBootPhase::TpmEnroll => {
+                if self.tpm_busy {
+                    return None;
                 }
-                KeyCode::Char('s') => {
-                    self.phase = FirstBootPhase::RebootPrompt;
-                    None
+                match code {
+                    KeyCode::Enter | KeyCode::Char('s') => {
+                        self.phase = FirstBootPhase::RebootPrompt;
+                        None
+                    }
+                    KeyCode::Char('q') => Some(Action::Quit),
+                    _ => None,
                 }
-                KeyCode::Char('q') => Some(Action::Quit),
-                _ => None,
-            },
+            }
             FirstBootPhase::RebootPrompt => match code {
                 KeyCode::Char('r') => Some(Action::Reboot),
                 KeyCode::Char('s') => {
@@ -1221,6 +1452,7 @@ impl FirstBootScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::security::{secure_boot, tpm};
 
     fn test_first_boot_config() -> FirstBootConfig {
         FirstBootConfig {
@@ -1237,8 +1469,8 @@ mod tests {
         assert_eq!(*screen.phase(), FirstBootPhase::Welcome);
     }
 
-    #[test]
-    fn test_start_moves_into_secure_boot_enrollment() {
+    #[tokio::test]
+    async fn test_start_moves_into_secure_boot_enrollment() {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.start();
         assert_eq!(*screen.phase(), FirstBootPhase::SecureBootEnroll);
@@ -1317,6 +1549,84 @@ mod tests {
         assert_eq!(*screen.phase(), FirstBootPhase::Done);
         assert!(screen.push_skipped);
         assert!(screen.marker_removed);
+    }
+
+    #[tokio::test]
+    async fn test_sb_enrolled_advances_to_tpm() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::SecureBootEnroll;
+        screen.sb_status = Some(secure_boot::Status::Enrolled);
+        screen.handle_key_event(KeyCode::Enter, &crossterm::event::KeyEvent::new(
+            KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        assert_eq!(*screen.phase(), FirstBootPhase::TpmEnroll);
+    }
+
+    #[tokio::test]
+    async fn test_sb_skip_advances_to_tpm() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::SecureBootEnroll;
+        screen.handle_key_event(KeyCode::Char('s'), &crossterm::event::KeyEvent::new(
+            KeyCode::Char('s'),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        assert_eq!(*screen.phase(), FirstBootPhase::TpmEnroll);
+    }
+
+    #[test]
+    fn test_sb_busy_ignores_input() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::SecureBootEnroll;
+        screen.sb_busy = true;
+        screen.handle_key_event(KeyCode::Enter, &crossterm::event::KeyEvent::new(
+            KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        // Should stay on SecureBootEnroll since busy
+        assert_eq!(*screen.phase(), FirstBootPhase::SecureBootEnroll);
+    }
+
+    #[test]
+    fn test_poll_sb_status() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::SecureBootEnroll;
+        screen.sb_busy = true;
+
+        tx.send(FirstBootMessage::SecureBootStatus(
+            secure_boot::Status::Enrolled,
+        ))
+        .unwrap();
+
+        screen.poll();
+        assert!(!screen.sb_busy);
+        assert_eq!(
+            screen.sb_status,
+            Some(secure_boot::Status::Enrolled)
+        );
+    }
+
+    #[test]
+    fn test_poll_tpm_status() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::TpmEnroll;
+        screen.tpm_busy = true;
+
+        tx.send(FirstBootMessage::TpmStatus(
+            tpm::Status::Available,
+        ))
+        .unwrap();
+
+        screen.poll();
+        assert!(!screen.tpm_busy);
+        assert_eq!(
+            screen.tpm_status,
+            Some(tpm::Status::Available)
+        );
     }
 
     #[test]

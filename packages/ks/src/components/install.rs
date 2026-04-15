@@ -1688,6 +1688,33 @@ impl InstallScreen {
                         return;
                     }
 
+                    // Generate Secure Boot keys in the installed system (non-fatal)
+                    let _ = tx.send(InstallMessage::Output(
+                        "Generating Secure Boot keys in target...".to_string(),
+                    ));
+                    let sb_result = run_command(
+                        "nixos-enter",
+                        &["--root", "/mnt", "--", "sbctl", "create-keys"],
+                        &config_dir,
+                        &tx,
+                        &cancel_token,
+                        true,
+                    )
+                    .await;
+                    match sb_result {
+                        Ok(()) => {
+                            let _ = tx.send(InstallMessage::Output(
+                                "Secure Boot keys generated.".to_string(),
+                            ));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(InstallMessage::Output(format!(
+                                "SB key generation skipped: {} (will retry on first boot)",
+                                e
+                            )));
+                        }
+                    }
+
                     let _ = tx.send(InstallMessage::Output(
                         "Copying config to installed system...".to_string(),
                     ));

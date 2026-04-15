@@ -40,15 +40,18 @@ in
     # (lanzaboote provides its own bootloader)
     boot.loader.systemd-boot.enable = mkForce false;
 
-    # Activation script to provision Secure Boot keys on first boot
+    # Minimal fallback: generate keys if missing.
+    # Detection and enrollment logic lives in ks (provision-secure-boot command
+    # and first-boot TUI). This activation script only ensures keys exist so
+    # lanzaboote can sign boot entries.
     system.activationScripts.secureBootProvisioning = {
       text = ''
-        # Run Secure Boot provisioning script with tool paths
-        ${pkgs.bash}/bin/bash ${./scripts/provision.sh} \
-          "${pkgs.sbctl}/bin/sbctl" \
-          "${pkgs.gawk}/bin/awk"
+        if [ ! -f /var/lib/sbctl/keys/db/db.pem ]; then
+          echo "[secure-boot] Generating Secure Boot keys..."
+          ${pkgs.sbctl}/bin/sbctl create-keys || true
+        fi
       '';
-      deps = [ ]; # Run early in activation
+      deps = [ ];
     };
   };
 }
