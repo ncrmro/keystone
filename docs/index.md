@@ -128,6 +128,7 @@ Keep development workflows separate from initial setup:
 - **[Experimental features](experimental.md)** - Stability tiers and the `keystone.experimental` flag
 - **[GitHub Repository](https://github.com/ncrmro/keystone)** - Source code and issue tracking
 - **[Create `keystone-config`](#core-concept-keystone-config)** - Scaffold a new Keystone configuration repo
+- **[Team Schedules](team-schedules.md)** - Recurring team cadences and CalDAV calendar management
 
 ## Contributing
 
