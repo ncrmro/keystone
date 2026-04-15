@@ -212,6 +212,11 @@
         test-iso-evaluation = import ./module/iso-evaluation.nix {
           inherit pkgs lib;
         };
+
+        test-desktop-autostart-assertion = import ./module/desktop-autostart-assertion.nix {
+          inherit pkgs lib home-manager;
+          self = keystone;
+        };
       };
 
       # Also expose tests as packages for convenience
