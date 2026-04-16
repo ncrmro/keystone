@@ -71,10 +71,7 @@ pub async fn github_graphql(
         }
     }
 
-    let output = cmd
-        .output()
-        .await
-        .context("failed to run gh api graphql")?;
+    let output = cmd.output().await.context("failed to run gh api graphql")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -102,11 +99,7 @@ pub async fn github_graphql(
 }
 
 /// Execute a Forgejo REST API call via curl.
-pub async fn forgejo_rest(
-    host: &str,
-    token: &str,
-    endpoint: &str,
-) -> Result<serde_json::Value> {
+pub async fn forgejo_rest(host: &str, token: &str, endpoint: &str) -> Result<serde_json::Value> {
     let url = format!("{host}/api/v1{endpoint}");
     let output = Command::new("curl")
         .args([

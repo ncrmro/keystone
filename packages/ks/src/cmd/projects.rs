@@ -538,9 +538,7 @@ async fn resolve_slug_from_cwd() -> Result<Option<String>> {
         .await;
 
     let url = match output {
-        Ok(o) if o.status.success() => {
-            String::from_utf8_lossy(&o.stdout).trim().to_string()
-        }
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
         _ => return Ok(None),
     };
 
@@ -566,7 +564,12 @@ async fn fetch_github_repo_status(
     owner: &str,
     repo_name: &str,
     full_repo: &str,
-) -> (Vec<MilestoneStatus>, Vec<IssueStatus>, Vec<PrStatus>, Vec<CommitStatus>) {
+) -> (
+    Vec<MilestoneStatus>,
+    Vec<IssueStatus>,
+    Vec<PrStatus>,
+    Vec<CommitStatus>,
+) {
     let query = r#"
 query($owner: String!, $repo: String!) {
   repository(owner: $owner, name: $repo) {
@@ -648,21 +651,18 @@ query($owner: String!, $repo: String!) {
 
 fn parse_github_milestones(repo_data: &serde_json::Value, full_repo: &str) -> Vec<MilestoneStatus> {
     let mut milestones = Vec::new();
-    if let Some(nodes) = repo_data.pointer("/milestones/nodes").and_then(|n| n.as_array()) {
+    if let Some(nodes) = repo_data
+        .pointer("/milestones/nodes")
+        .and_then(|n| n.as_array())
+    {
         for node in nodes {
             let title = node
                 .get("title")
                 .and_then(|t| t.as_str())
                 .unwrap_or("")
                 .to_string();
-            let number = node
-                .get("number")
-                .and_then(|n| n.as_u64())
-                .unwrap_or(0);
-            let due_on = node
-                .get("dueOn")
-                .and_then(|d| d.as_str())
-                .map(String::from);
+            let number = node.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+            let due_on = node.get("dueOn").and_then(|d| d.as_str()).map(String::from);
             let open = node
                 .pointer("/open/totalCount")
                 .and_then(|n| n.as_u64())
@@ -672,11 +672,7 @@ fn parse_github_milestones(repo_data: &serde_json::Value, full_repo: &str) -> Ve
                 .and_then(|n| n.as_u64())
                 .unwrap_or(0);
             let total = open + closed;
-            let pct = if total > 0 {
-                (closed * 100) / total
-            } else {
-                0
-            };
+            let pct = if total > 0 { (closed * 100) / total } else { 0 };
 
             let mut flags = Vec::new();
             if due_on.is_none() {
@@ -700,7 +696,10 @@ fn parse_github_milestones(repo_data: &serde_json::Value, full_repo: &str) -> Ve
 
 fn parse_github_issues(repo_data: &serde_json::Value, full_repo: &str) -> Vec<IssueStatus> {
     let mut issues = Vec::new();
-    if let Some(nodes) = repo_data.pointer("/issues/nodes").and_then(|n| n.as_array()) {
+    if let Some(nodes) = repo_data
+        .pointer("/issues/nodes")
+        .and_then(|n| n.as_array())
+    {
         for node in nodes {
             let number = node.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
             let title = node
@@ -756,7 +755,10 @@ fn parse_github_issues(repo_data: &serde_json::Value, full_repo: &str) -> Vec<Is
 
 fn parse_github_prs(repo_data: &serde_json::Value, full_repo: &str) -> Vec<PrStatus> {
     let mut prs = Vec::new();
-    if let Some(nodes) = repo_data.pointer("/pullRequests/nodes").and_then(|n| n.as_array()) {
+    if let Some(nodes) = repo_data
+        .pointer("/pullRequests/nodes")
+        .and_then(|n| n.as_array())
+    {
         for node in nodes {
             let number = node.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
             let title = node
@@ -899,16 +901,9 @@ fn parse_forgejo_milestones(data: &serde_json::Value, full_repo: &str) -> Vec<Mi
                 .filter(|s| !s.is_empty() && *s != "null")
                 .map(String::from);
             let open = m.get("open_issues").and_then(|n| n.as_u64()).unwrap_or(0);
-            let closed = m
-                .get("closed_issues")
-                .and_then(|n| n.as_u64())
-                .unwrap_or(0);
+            let closed = m.get("closed_issues").and_then(|n| n.as_u64()).unwrap_or(0);
             let total = open + closed;
-            let pct = if total > 0 {
-                (closed * 100) / total
-            } else {
-                0
-            };
+            let pct = if total > 0 { (closed * 100) / total } else { 0 };
             let mut flags = Vec::new();
             if due_on.is_none() {
                 flags.push("no-due-date".to_string());
@@ -1049,12 +1044,18 @@ fn discover_checkouts(full_repo: &str) -> Vec<(PathBuf, String)> {
     let mut checkout_paths = Vec::new();
 
     // Human: ~/repos/{owner}/{repo}/ and ~/.worktrees/{owner}/{repo}/*/
-    let main_checkout = PathBuf::from(&home).join("repos").join(owner).join(repo_name);
+    let main_checkout = PathBuf::from(&home)
+        .join("repos")
+        .join(owner)
+        .join(repo_name);
     if main_checkout.exists() {
         checkout_paths.push((main_checkout, home.clone()));
     }
     collect_worktree_dirs(
-        &PathBuf::from(&home).join(".worktrees").join(owner).join(repo_name),
+        &PathBuf::from(&home)
+            .join(".worktrees")
+            .join(owner)
+            .join(repo_name),
         &home,
         &mut checkout_paths,
     );
@@ -1191,8 +1192,16 @@ async fn parse_checkout_branches(
             owner: owner_name.clone(),
             pr_number,
             pr_state,
-            worktree_path: if is_worktree { Some(checkout_str.clone()) } else { None },
-            checkout_path: if !is_worktree { Some(checkout_str.clone()) } else { None },
+            worktree_path: if is_worktree {
+                Some(checkout_str.clone())
+            } else {
+                None
+            },
+            checkout_path: if !is_worktree {
+                Some(checkout_str.clone())
+            } else {
+                None
+            },
             commits_ahead: ahead,
             last_commit_age_days: last_commit_age,
             merged,
@@ -1363,8 +1372,7 @@ async fn execute_status_single(slug: &str, json: bool) -> Result<()> {
 
             // Track PR head refs for branch matching
             for pr in &prs {
-                pr_head_refs
-                    .insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
+                pr_head_refs.insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
             }
 
             all_milestones.extend(ms);
@@ -1372,12 +1380,10 @@ async fn execute_status_single(slug: &str, json: bool) -> Result<()> {
             all_prs.extend(prs);
             all_commits.extend(commits);
         } else if let (Some(ref host), Some(ref token)) = (&fj_host, &fj_token) {
-            let (ms, issues, prs) =
-                fetch_forgejo_repo_status(host, token, &normalized).await;
+            let (ms, issues, prs) = fetch_forgejo_repo_status(host, token, &normalized).await;
 
             for pr in &prs {
-                pr_head_refs
-                    .insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
+                pr_head_refs.insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
             }
 
             all_milestones.extend(ms);
@@ -1435,7 +1441,10 @@ fn render_status_human(status: &ProjectStatus) {
             let due = m.due_on.as_deref().unwrap_or("no due date");
             println!(
                 "  {} ({}/{} closed, {}%) — {due}",
-                m.title, m.closed_issues, m.open_issues + m.closed_issues, m.completion_pct
+                m.title,
+                m.closed_issues,
+                m.open_issues + m.closed_issues,
+                m.completion_pct
             );
         }
         println!();
@@ -1477,10 +1486,7 @@ fn render_status_human(status: &ProjectStatus) {
     if !status.branches.is_empty() {
         println!("Branches ({}):", status.branches.len());
         for b in &status.branches {
-            let pr = b
-                .pr_number
-                .map(|n| format!(" PR#{n}"))
-                .unwrap_or_default();
+            let pr = b.pr_number.map(|n| format!(" PR#{n}")).unwrap_or_default();
             let flags = if b.flags.is_empty() {
                 String::new()
             } else {
@@ -1498,7 +1504,11 @@ fn render_status_human(status: &ProjectStatus) {
     if !status.recent_commits.is_empty() {
         println!("Recent commits:");
         for c in &status.recent_commits {
-            let short_sha = if c.sha.len() >= 7 { &c.sha[..7] } else { &c.sha };
+            let short_sha = if c.sha.len() >= 7 {
+                &c.sha[..7]
+            } else {
+                &c.sha
+            };
             println!("  {short_sha} {} ({}d ago)", c.message, c.age_days);
         }
         println!();
@@ -2047,7 +2057,10 @@ mod tests {
         assert_eq!(milestones.len(), 2);
         assert_eq!(milestones[0].title, "v0.5");
         assert_eq!(milestones[0].number, 3);
-        assert_eq!(milestones[0].due_on, Some("2026-05-01T00:00:00Z".to_string()));
+        assert_eq!(
+            milestones[0].due_on,
+            Some("2026-05-01T00:00:00Z".to_string())
+        );
         assert_eq!(milestones[0].open_issues, 4);
         assert_eq!(milestones[0].closed_issues, 6);
         assert_eq!(milestones[0].completion_pct, 60);

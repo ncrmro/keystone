@@ -274,7 +274,6 @@ async fn fetch_email_body(id: &str) -> Result<String> {
 
 // ── GitHub source ──────────────────────────────────────────────────────
 
-
 /// Fetch unread GitHub notifications — metadata only, no enrichment.
 /// ISSUE-REQ-3: Does NOT pass `all=true` — only unread notifications.
 /// Uses exactly 1 API call. Agent fetches full details JIT during task execution.
@@ -363,7 +362,6 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
 }
 
 // ── Forgejo source ────────────────────────────────────────────────────
-
 
 /// Fetch unread Forgejo notifications — metadata only, no enrichment.
 /// ISSUE-REQ-4: Uses unread-only notifications endpoint.
