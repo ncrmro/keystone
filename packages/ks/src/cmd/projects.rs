@@ -450,84 +450,84 @@ struct ProjectStatus {
 }
 
 #[derive(Debug, Serialize)]
-pub struct MilestoneStatus {
-    pub repo: String,
-    pub title: String,
-    pub number: u64,
-    pub due_on: Option<String>,
-    pub open_issues: u64,
-    pub closed_issues: u64,
-    pub completion_pct: u64,
-    pub flags: Vec<String>,
+struct MilestoneStatus {
+    repo: String,
+    title: String,
+    number: u64,
+    due_on: Option<String>,
+    open_issues: u64,
+    closed_issues: u64,
+    completion_pct: u64,
+    flags: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct IssueStatus {
-    pub repo: String,
-    pub number: u64,
-    pub title: String,
-    pub state: String,
-    pub milestone: Option<String>,
-    pub labels: Vec<String>,
-    pub assignees: Vec<String>,
-    pub created_at: String,
-    pub age_days: u64,
+struct IssueStatus {
+    repo: String,
+    number: u64,
+    title: String,
+    state: String,
+    milestone: Option<String>,
+    labels: Vec<String>,
+    assignees: Vec<String>,
+    created_at: String,
+    age_days: u64,
 }
 
 #[derive(Debug, Serialize)]
-pub struct PrStatus {
-    pub repo: String,
-    pub number: u64,
-    pub title: String,
-    pub draft: bool,
-    pub author: String,
-    pub head_ref: String,
-    pub milestone: Option<String>,
-    pub created_at: String,
-    pub age_days: u64,
-    pub flags: Vec<String>,
+struct PrStatus {
+    repo: String,
+    number: u64,
+    title: String,
+    draft: bool,
+    author: String,
+    head_ref: String,
+    milestone: Option<String>,
+    created_at: String,
+    age_days: u64,
+    flags: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct BranchStatus {
-    pub repo: String,
-    pub name: String,
-    pub owner: String,
-    pub pr_number: Option<u64>,
-    pub pr_state: Option<String>,
-    pub worktree_path: Option<String>,
-    pub checkout_path: Option<String>,
-    pub commits_ahead: u64,
-    pub last_commit_age_days: u64,
-    pub merged: bool,
-    pub flags: Vec<String>,
+struct BranchStatus {
+    repo: String,
+    name: String,
+    owner: String,
+    pr_number: Option<u64>,
+    pr_state: Option<String>,
+    worktree_path: Option<String>,
+    checkout_path: Option<String>,
+    commits_ahead: u64,
+    last_commit_age_days: u64,
+    merged: bool,
+    flags: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct CommitStatus {
-    pub repo: String,
-    pub sha: String,
-    pub message: String,
-    pub age_days: u64,
+struct CommitStatus {
+    repo: String,
+    sha: String,
+    message: String,
+    age_days: u64,
 }
 
 #[derive(Debug, Serialize)]
-pub struct TaskSummary {
-    pub name: String,
-    pub status: String,
-    pub project: Option<String>,
-    pub source: Option<String>,
-    pub source_ref: Option<String>,
-    pub blocked_reason: Option<String>,
+struct TaskSummary {
+    name: String,
+    status: String,
+    project: Option<String>,
+    source: Option<String>,
+    source_ref: Option<String>,
+    blocked_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct AttentionSection {
-    pub stale_prs: Vec<serde_json::Value>,
-    pub issues_without_milestone: Vec<serde_json::Value>,
-    pub milestones_without_due_date: Vec<serde_json::Value>,
-    pub stale_branches: Vec<serde_json::Value>,
-    pub merged_branches_to_cleanup: Vec<serde_json::Value>,
+struct AttentionSection {
+    stale_prs: Vec<serde_json::Value>,
+    issues_without_milestone: Vec<serde_json::Value>,
+    milestones_without_due_date: Vec<serde_json::Value>,
+    stale_branches: Vec<serde_json::Value>,
+    merged_branches_to_cleanup: Vec<serde_json::Value>,
 }
 
 /// Resolve slug from cwd git remote when no slug is provided.
@@ -1033,6 +1033,42 @@ fn parse_forgejo_prs(data: &serde_json::Value, full_repo: &str) -> Vec<PrStatus>
         .collect()
 }
 
+/// Resolve the default branch ref for a checkout (origin/main or origin/master).
+async fn resolve_default_branch(checkout_path: &str) -> String {
+    // Try origin/HEAD first (set by git clone)
+    let output = Command::new("git")
+        .args([
+            "-C",
+            checkout_path,
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+        ])
+        .output()
+        .await;
+
+    if let Ok(o) = output {
+        if o.status.success() {
+            let refname = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !refname.is_empty() {
+                return refname;
+            }
+        }
+    }
+
+    // Fallback: check if origin/main exists
+    let main_check = Command::new("git")
+        .args(["-C", checkout_path, "rev-parse", "--verify", "origin/main"])
+        .output()
+        .await;
+
+    if main_check.map(|o| o.status.success()).unwrap_or(false) {
+        return "origin/main".to_string();
+    }
+
+    // Last resort
+    "origin/master".to_string()
+}
+
 /// Discover local git checkouts and worktrees for a repo across all users.
 fn discover_checkouts(full_repo: &str) -> Vec<(PathBuf, String)> {
     let parts: Vec<&str> = full_repo.split('/').collect();
@@ -1113,21 +1149,27 @@ async fn parse_checkout_branches(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
+    // Resolve default branch (origin/main or origin/master)
+    let default_ref = resolve_default_branch(&checkout_str).await;
+
     // One call: branches + ahead count + last commit date
     let branch_output = Command::new("git")
         .args([
             "-C",
             &checkout_str,
             "for-each-ref",
-            "--format=%(refname:short)\t%(ahead-behind:HEAD)\t%(creatordate:iso)",
+            &format!(
+                "--format=%(refname:short)\t%(ahead-behind:{})\t%(creatordate:iso)",
+                default_ref
+            ),
             "refs/heads/",
         ])
         .output()
         .await;
 
-    // One call: merged branches
+    // One call: merged branches (relative to default branch, not HEAD)
     let merged_output = Command::new("git")
-        .args(["-C", &checkout_str, "branch", "--merged", "HEAD"])
+        .args(["-C", &checkout_str, "branch", "--merged", &default_ref])
         .output()
         .await;
 
@@ -1280,7 +1322,7 @@ fn gather_tasks(slug: &str) -> HashMap<String, Vec<TaskSummary>> {
 }
 
 /// Sort milestones: due_on ascending, None last.
-pub fn sort_milestones(milestones: &mut [MilestoneStatus]) {
+fn sort_milestones(milestones: &mut [MilestoneStatus]) {
     milestones.sort_by(|a, b| match (&a.due_on, &b.due_on) {
         (Some(da), Some(db)) => da.cmp(db),
         (Some(_), None) => std::cmp::Ordering::Less,
@@ -1290,7 +1332,7 @@ pub fn sort_milestones(milestones: &mut [MilestoneStatus]) {
 }
 
 /// Compute the attention section from aggregated status data.
-pub fn compute_attention(
+fn compute_attention(
     milestones: &[MilestoneStatus],
     issues: &[IssueStatus],
     prs: &[PrStatus],
@@ -1299,31 +1341,31 @@ pub fn compute_attention(
     let stale_prs: Vec<serde_json::Value> = prs
         .iter()
         .filter(|p| p.age_days > 14)
-        .map(|p| serde_json::json!({"repo": p.repo, "number": p.number, "title": p.title, "age_days": p.age_days}))
+        .map(|p| serde_json::json!({"repo": &p.repo, "number": p.number, "title": &p.title, "age_days": p.age_days}))
         .collect();
 
     let issues_without_milestone: Vec<serde_json::Value> = issues
         .iter()
         .filter(|i| i.milestone.is_none())
-        .map(|i| serde_json::json!({"repo": i.repo, "number": i.number, "title": i.title}))
+        .map(|i| serde_json::json!({"repo": &i.repo, "number": i.number, "title": &i.title}))
         .collect();
 
     let milestones_without_due_date: Vec<serde_json::Value> = milestones
         .iter()
         .filter(|m| m.due_on.is_none())
-        .map(|m| serde_json::json!({"repo": m.repo, "title": m.title, "number": m.number}))
+        .map(|m| serde_json::json!({"repo": &m.repo, "title": &m.title, "number": m.number}))
         .collect();
 
     let stale_branches: Vec<serde_json::Value> = branches
         .iter()
         .filter(|b| b.last_commit_age_days > 14 && !b.merged)
-        .map(|b| serde_json::json!({"repo": b.repo, "name": b.name, "owner": b.owner, "age_days": b.last_commit_age_days}))
+        .map(|b| serde_json::json!({"repo": &b.repo, "name": &b.name, "owner": &b.owner, "age_days": b.last_commit_age_days}))
         .collect();
 
     let merged_branches_to_cleanup: Vec<serde_json::Value> = branches
         .iter()
         .filter(|b| b.merged)
-        .map(|b| serde_json::json!({"repo": b.repo, "name": b.name, "owner": b.owner}))
+        .map(|b| serde_json::json!({"repo": &b.repo, "name": &b.name, "owner": &b.owner}))
         .collect();
 
     AttentionSection {
@@ -1353,9 +1395,6 @@ async fn execute_status_single(slug: &str, json: bool) -> Result<()> {
     let mut all_commits = Vec::new();
     let mut all_branches = Vec::new();
 
-    // Build a map of headRefName -> (pr_number, state) for branch matching
-    let mut pr_head_refs: HashMap<String, (u64, String)> = HashMap::new();
-
     let fj_host = std::env::var("FORGEJO_HOST").ok();
     let fj_token = std::env::var("FORGEJO_TOKEN").ok();
 
@@ -1366,13 +1405,15 @@ async fn execute_status_single(slug: &str, json: bool) -> Result<()> {
             continue;
         }
 
+        // Per-repo PR head ref map to avoid cross-repo branch/PR mismatches
+        let mut repo_pr_head_refs: HashMap<String, (u64, String)> = HashMap::new();
+
         if is_github_repo(repo) {
             let (ms, issues, prs, commits) =
                 fetch_github_repo_status(parts[0], parts[1], &normalized).await;
 
-            // Track PR head refs for branch matching
             for pr in &prs {
-                pr_head_refs.insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
+                repo_pr_head_refs.insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
             }
 
             all_milestones.extend(ms);
@@ -1383,7 +1424,7 @@ async fn execute_status_single(slug: &str, json: bool) -> Result<()> {
             let (ms, issues, prs) = fetch_forgejo_repo_status(host, token, &normalized).await;
 
             for pr in &prs {
-                pr_head_refs.insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
+                repo_pr_head_refs.insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
             }
 
             all_milestones.extend(ms);
@@ -1391,8 +1432,8 @@ async fn execute_status_single(slug: &str, json: bool) -> Result<()> {
             all_prs.extend(prs);
         }
 
-        // Gather local branches
-        let branches = gather_local_branches(&normalized, &pr_head_refs).await;
+        // Gather local branches scoped to this repo's PRs
+        let branches = gather_local_branches(&normalized, &repo_pr_head_refs).await;
         all_branches.extend(branches);
     }
 

@@ -99,6 +99,9 @@ pub async fn github_graphql(
 }
 
 /// Execute a Forgejo REST API call via curl.
+// TODO: Token in argv is visible via /proc on multi-user systems. Migrate to
+// reqwest or pass auth via stdin/config file when keystone adds an HTTP client.
+// Matches existing pattern in notifications.rs for now.
 pub async fn forgejo_rest(host: &str, token: &str, endpoint: &str) -> Result<serde_json::Value> {
     let url = format!("{host}/api/v1{endpoint}");
     let output = Command::new("curl")
