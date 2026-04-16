@@ -18,6 +18,7 @@ use std::process::{Command as StdCommand, Stdio};
 
 use anyhow::{Context, Result as AnyhowResult};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
+use rnix::{Root, SyntaxKind, SyntaxNode};
 use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -296,30 +297,12 @@ impl InstallerConfig {
 
     /// Get the dot-joined attribute path text from a NODE_ATTRPATH_VALUE.
     fn attr_path_text(node: &rnix::SyntaxNode) -> String {
-        node.children()
-            .find(|n| n.kind() == rnix::SyntaxKind::NODE_ATTRPATH)
-            .map(|ap| {
-                ap.children()
-                    .filter(|n| n.kind() == rnix::SyntaxKind::NODE_IDENT)
-                    .map(|n| n.text().to_string())
-                    .collect::<Vec<_>>()
-                    .join(".")
-            })
-            .unwrap_or_default()
+        nix_attr_path_text(node)
     }
 
     /// Extract a string literal value from a NODE_ATTRPATH_VALUE node.
     fn extract_string_literal(node: &rnix::SyntaxNode) -> Option<String> {
-        for descendant in node.descendants() {
-            if descendant.kind() == rnix::SyntaxKind::NODE_STRING {
-                let text = descendant.text().to_string();
-                let trimmed = text.trim_matches('"');
-                if !trimmed.is_empty() {
-                    return Some(trimmed.to_string());
-                }
-            }
-        }
-        None
+        nix_extract_string(node)
     }
 
     /// Replace the disk placeholder in hardware.nix (or configuration.nix for legacy layout).
@@ -367,50 +350,48 @@ impl InstallerConfig {
 
     fn inject_disk_into_hardware(hardware_path: &Path, device: &str) -> std::io::Result<()> {
         let content = std::fs::read_to_string(hardware_path)?;
-        let mut updated = Vec::new();
-        let mut in_devices = false;
-        let mut replaced = false;
-        let mut indent = String::new();
+        let root = Root::parse(&content);
+        let syntax = root.syntax();
 
-        for line in content.lines() {
-            if !in_devices && line.contains("keystone.os.storage.devices") && line.contains('[') {
-                indent = line
-                    .chars()
-                    .take_while(|c| c.is_whitespace())
-                    .collect::<String>();
-                updated.push(format!("{indent}keystone.os.storage.devices = ["));
-                updated.push(format!("{indent}  \"{device}\""));
-                if line.contains("];") {
-                    updated.push(format!("{indent}];"));
-                } else {
-                    in_devices = true;
-                }
-                replaced = true;
-                continue;
-            }
-
-            if in_devices {
-                if line.contains("];") {
-                    updated.push(format!("{indent}];"));
-                    in_devices = false;
-                }
-                continue;
-            }
-
-            updated.push(line.to_string());
-        }
-
-        if !replaced {
-            return Err(std::io::Error::new(
+        let attr_node = nix_find_attr(&syntax, "keystone.os.storage.devices").ok_or_else(|| {
+            std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
                     "Could not find keystone.os.storage.devices in {}",
                     hardware_path.display()
                 ),
-            ));
-        }
+            )
+        })?;
 
-        std::fs::write(hardware_path, format!("{}\n", updated.join("\n")))?;
+        // Find the NODE_LIST within the attr value to splice.
+        let list_node = attr_node
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::NODE_LIST)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "keystone.os.storage.devices is not a list in {}",
+                        hardware_path.display()
+                    ),
+                )
+            })?;
+
+        let range = list_node.text_range();
+        let start = usize::from(range.start());
+        let end = usize::from(range.end());
+
+        // Derive indentation from the attr node's line.
+        let line_start = content[..start].rfind('\n').map_or(0, |p| p + 1);
+        let indent: String = content[line_start..]
+            .chars()
+            .take_while(|c| c.is_whitespace())
+            .collect();
+
+        let replacement = format!("[\n{indent}  \"{device}\"\n{indent}]");
+        let updated = format!("{}{}{}", &content[..start], replacement, &content[end..]);
+
+        std::fs::write(hardware_path, updated)?;
         Ok(())
     }
 
@@ -641,70 +622,86 @@ fn normalize_installed_repo_state(repo_dir: &Path) -> Result<(), String> {
     normalize_staged_install_repo(repo_dir, &Path::new(INSTALL_REPO_PATH).join("flake.lock"))
 }
 
-fn parse_hardware_disk_device(hardware_path: &Path) -> Option<String> {
-    let content = std::fs::read_to_string(hardware_path).ok()?;
-    let mut in_devices = false;
+// --- rnix AST helpers ---
 
-    for line in content.lines() {
-        if !in_devices && line.contains("keystone.os.storage.devices") && line.contains('[') {
-            in_devices = true;
+/// Join attr path segments, handling both bare idents (`foo`) and quoted string
+/// keys (`"/"`) so paths like `fileSystems."/"` render correctly.
+fn nix_attr_path_text(node: &SyntaxNode) -> String {
+    node.children()
+        .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
+        .map(|ap| {
+            ap.children()
+                .filter_map(|n| match n.kind() {
+                    SyntaxKind::NODE_IDENT => Some(n.text().to_string()),
+                    SyntaxKind::NODE_STRING => Some(n.text().to_string()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(".")
+        })
+        .unwrap_or_default()
+}
+
+/// Find the first `NODE_ATTRPATH_VALUE` descendant whose dot-joined attr path
+/// matches `target_path`. Works for both attrset entries and `let` bindings.
+fn nix_find_attr(root: &SyntaxNode, target_path: &str) -> Option<SyntaxNode> {
+    root.descendants().find(|node| {
+        node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE && nix_attr_path_text(node) == target_path
+    })
+}
+
+/// Extract a single string literal value from a `NODE_ATTRPATH_VALUE` node.
+fn nix_extract_string(node: &SyntaxNode) -> Option<String> {
+    // Skip the attrpath child and look at the value position for a string.
+    for child in node.children() {
+        if child.kind() == SyntaxKind::NODE_STRING {
+            let text = child.text().to_string();
+            return Some(text.trim_matches('"').to_string());
         }
-
-        if in_devices {
-            if line.contains("];") {
-                break;
-            }
-
-            if line.contains("/dev/disk/by-id/") {
-                let start = line.find('"')? + 1;
-                let end = line[start..].find('"')? + start;
-                return Some(line[start..end].to_string());
+    }
+    // Also check one level deeper (value might be wrapped).
+    for descendant in node.descendants() {
+        if descendant.kind() == SyntaxKind::NODE_STRING {
+            let text = descendant.text().to_string();
+            let trimmed = text.trim_matches('"');
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
             }
         }
     }
-
     None
 }
 
-fn extract_quoted_strings(line: &str) -> Vec<String> {
+/// Extract all string elements from a `NODE_LIST` that is the value of a
+/// `NODE_ATTRPATH_VALUE` node.
+fn nix_extract_string_list(node: &SyntaxNode) -> Vec<String> {
     let mut values = Vec::new();
-    let mut current = String::new();
-    let mut in_string = false;
-    let mut escape = false;
-
-    for ch in line.chars() {
-        if !in_string {
-            if ch == '"' {
-                in_string = true;
-                current.clear();
+    for descendant in node.descendants() {
+        if descendant.kind() == SyntaxKind::NODE_LIST {
+            for child in descendant.children() {
+                if child.kind() == SyntaxKind::NODE_STRING {
+                    let text = child.text().to_string();
+                    let trimmed = text.trim_matches('"').to_string();
+                    if !trimmed.is_empty() && !values.contains(&trimmed) {
+                        values.push(trimmed);
+                    }
+                }
             }
-            continue;
-        }
-
-        if escape {
-            current.push(ch);
-            escape = false;
-            continue;
-        }
-
-        match ch {
-            '\\' => escape = true,
-            '"' => {
-                in_string = false;
-                values.push(current.clone());
-                current.clear();
-            }
-            _ => current.push(ch),
+            break;
         }
     }
-
     values
 }
 
-fn push_unique(values: &mut Vec<String>, candidate: String) {
-    if !values.iter().any(|existing| existing == &candidate) {
-        values.push(candidate);
-    }
+fn parse_hardware_disk_device(hardware_path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(hardware_path).ok()?;
+    let root = Root::parse(&content);
+    let syntax = root.syntax();
+    nix_find_attr(&syntax, "keystone.os.storage.devices")
+        .map(|node| nix_extract_string_list(&node))
+        .unwrap_or_default()
+        .into_iter()
+        .find(|d| d.contains("/dev/disk/by-id/"))
 }
 
 fn is_placeholder_host_id(host_id: &str) -> bool {
@@ -717,60 +714,27 @@ fn is_valid_host_id(host_id: &str) -> bool {
         && !is_placeholder_host_id(host_id)
 }
 
-fn resolve_install_host_id(current_hardware_nix: &str) -> String {
-    parse_nix_string_assignment(current_hardware_nix, "networking.hostId")
-        .filter(|host_id| is_valid_host_id(host_id))
-        .unwrap_or_else(crate::template::generate_host_id)
-}
-
 fn is_placeholder_storage_device(device: &str) -> bool {
     device == crate::template::DISK_PLACEHOLDER || device.contains("YOUR-")
 }
 
-fn parse_nix_string_assignment(content: &str, attr: &str) -> Option<String> {
-    content.lines().find_map(|line| {
-        let trimmed = line.trim();
-        if trimmed.starts_with(attr) && trimmed.contains('=') {
-            extract_quoted_strings(trimmed).into_iter().next()
-        } else {
-            None
-        }
-    })
-}
-
-fn parse_nix_string_list_assignment(content: &str, attr: &str) -> Vec<String> {
-    let mut values = Vec::new();
-    let mut in_list = false;
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if !in_list && trimmed.starts_with(attr) && trimmed.contains('[') {
-            in_list = true;
-        }
-
-        if in_list {
-            for value in extract_quoted_strings(trimmed) {
-                push_unique(&mut values, value);
-            }
-            if trimmed.contains("];") {
-                break;
-            }
-        }
-    }
-
-    values
-}
-
 fn extract_stable_disk_identifiers(config: &str) -> Vec<String> {
+    let root = Root::parse(config);
+    let syntax = root.syntax();
     let mut ids = Vec::new();
 
-    for line in config.lines() {
-        for value in extract_quoted_strings(line) {
-            if value.contains("/dev/disk/by-")
-                || value.contains("UUID=")
-                || value.contains("PARTUUID=")
+    for node in syntax.descendants() {
+        if node.kind() == SyntaxKind::NODE_STRING {
+            let text = node.text().to_string();
+            let trimmed = text.trim_matches('"');
+            if trimmed.contains("/dev/disk/by-")
+                || trimmed.contains("UUID=")
+                || trimmed.contains("PARTUUID=")
             {
-                push_unique(&mut ids, value);
+                let value = trimmed.to_string();
+                if !ids.contains(&value) {
+                    ids.push(value);
+                }
             }
         }
     }
@@ -809,39 +773,71 @@ fn ensure_marker_gitignore_contents(current: Option<&str>) -> String {
 
 fn strip_generated_storage_assignments(generated_hardware: &str) -> String {
     let storage_prefixes = ["fileSystems.", "swapDevices", "boot.initrd.luks.devices."];
-    let mut sanitized = String::new();
-    let mut skipping = false;
-    let mut nesting_depth: i32 = 0;
+    let root = Root::parse(generated_hardware);
+    let syntax = root.syntax();
 
-    for line in generated_hardware.lines() {
-        let trimmed = line.trim_start();
-
-        if !skipping
-            && storage_prefixes
-                .iter()
-                .any(|prefix| trimmed.starts_with(prefix) && trimmed.contains('='))
-        {
-            skipping = true;
-            nesting_depth = 0;
-        }
-
-        if skipping {
-            nesting_depth += line.matches('{').count() as i32;
-            nesting_depth += line.matches('[').count() as i32;
-            nesting_depth -= line.matches('}').count() as i32;
-            nesting_depth -= line.matches(']').count() as i32;
-
-            if nesting_depth <= 0 && trimmed.ends_with(';') {
-                skipping = false;
-            }
+    // Collect text ranges of storage-related attr assignments to exclude.
+    let mut exclude: Vec<std::ops::Range<usize>> = Vec::new();
+    for node in syntax.descendants() {
+        if node.kind() != SyntaxKind::NODE_ATTRPATH_VALUE {
             continue;
         }
-
-        sanitized.push_str(line);
-        sanitized.push('\n');
+        let path = nix_attr_path_text(&node);
+        if storage_prefixes
+            .iter()
+            .any(|prefix| path.starts_with(prefix) || path == "swapDevices")
+        {
+            let range = node.text_range();
+            let start = usize::from(range.start());
+            let mut end = usize::from(range.end());
+            // Consume the trailing semicolon and whitespace/newline that follows
+            // the node so we don't leave blank lines.
+            let rest = &generated_hardware[end..];
+            for ch in rest.chars() {
+                if ch == ';' || ch == ' ' || ch == '\t' {
+                    end += ch.len_utf8();
+                } else if ch == '\n' {
+                    end += 1;
+                    break;
+                } else {
+                    break;
+                }
+            }
+            exclude.push(start..end);
+        }
     }
 
-    sanitized.trim_end().to_string()
+    // Reconstruct source, skipping excluded ranges.
+    exclude.sort_by_key(|r| r.start);
+    let mut sanitized = String::new();
+    let mut cursor = 0;
+    for range in &exclude {
+        if range.start > cursor {
+            sanitized.push_str(&generated_hardware[cursor..range.start]);
+        }
+        cursor = range.end;
+    }
+    if cursor < generated_hardware.len() {
+        sanitized.push_str(&generated_hardware[cursor..]);
+    }
+
+    // Collapse runs of blank lines left by removals.
+    let mut result = String::new();
+    let mut blank_count = 0;
+    for line in sanitized.lines() {
+        if line.trim().is_empty() {
+            blank_count += 1;
+            if blank_count <= 1 {
+                result.push('\n');
+            }
+        } else {
+            blank_count = 0;
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+
+    result.trim_end().to_string()
 }
 
 fn resolve_hardware_path(config: &InstallerConfig) -> Result<PathBuf, String> {
@@ -863,14 +859,25 @@ fn build_reconciled_hardware_wrapper(
     current_hardware_nix: &str,
     selected_disk: Option<&str>,
 ) -> Result<String, String> {
-    let system = parse_nix_string_assignment(current_hardware_nix, "system")
+    // Parse once, extract all values from the AST.
+    let root = Root::parse(current_hardware_nix);
+    let syntax = root.syntax();
+
+    let system = nix_find_attr(&syntax, "system")
+        .and_then(|n| nix_extract_string(&n))
         .unwrap_or_else(|| "x86_64-linux".to_string());
-    let host_id = resolve_install_host_id(current_hardware_nix);
-    let mut storage_devices =
-        parse_nix_string_list_assignment(current_hardware_nix, "keystone.os.storage.devices")
-            .into_iter()
-            .filter(|device| !is_placeholder_storage_device(device))
-            .collect::<Vec<_>>();
+
+    let host_id = nix_find_attr(&syntax, "networking.hostId")
+        .and_then(|n| nix_extract_string(&n))
+        .filter(|id| is_valid_host_id(id))
+        .unwrap_or_else(crate::template::generate_host_id);
+
+    let mut storage_devices = nix_find_attr(&syntax, "keystone.os.storage.devices")
+        .map(|n| nix_extract_string_list(&n))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|device| !is_placeholder_storage_device(device))
+        .collect::<Vec<_>>();
     if storage_devices.is_empty() {
         if let Some(device) = selected_disk {
             storage_devices.push(device.to_string());
@@ -882,13 +889,14 @@ fn build_reconciled_hardware_wrapper(
                 .to_string(),
         );
     }
-    let storage_mode =
-        parse_nix_string_assignment(current_hardware_nix, "keystone.os.storage.mode")
-            .unwrap_or_else(|| "single".to_string());
-    let remote_unlock_network_module = parse_nix_string_assignment(
-        current_hardware_nix,
-        "keystone.os.remoteUnlock.networkModule",
-    );
+
+    let storage_mode = nix_find_attr(&syntax, "keystone.os.storage.mode")
+        .and_then(|n| nix_extract_string(&n))
+        .unwrap_or_else(|| "single".to_string());
+
+    let remote_unlock_network_module =
+        nix_find_attr(&syntax, "keystone.os.remoteUnlock.networkModule")
+            .and_then(|n| nix_extract_string(&n));
 
     let rendered_storage_devices = storage_devices
         .iter()
