@@ -68,13 +68,6 @@ impl FirstBootConfig {
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .or_else(|| {
-                std::fs::read_to_string("/etc/keystone/system-flake")
-                    .ok()
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .map(PathBuf::from)
-            })
-            .or_else(|| {
                 let home = home::home_dir()?;
                 Some(
                     home.join(".keystone")

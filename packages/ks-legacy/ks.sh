@@ -1551,19 +1551,6 @@ push_repo_for_lock() {
   fi
 }
 
-record_local_system_flake() {
-  local repo_root="$1"
-  [[ -z "$repo_root" ]] && return 0
-
-  if is_root_user; then
-    install -d -m 0755 /etc/keystone
-    printf '%s\n' "$repo_root" > /etc/keystone/system-flake
-  else
-    sudo install -d -m 0755 /etc/keystone
-    printf '%s\n' "$repo_root" | sudo tee /etc/keystone/system-flake >/dev/null
-  fi
-}
-
 # --- Build and deploy current unlocked state ---
 deploy_unlocked_current_state() {
   local repo_root="$1"
@@ -1645,7 +1632,6 @@ deploy_unlocked_current_state() {
         run_root_command touch /var/run/nixos-rebuild-safe-to-update-bootloader
         run_root_command "$path/bin/switch-to-configuration" "$mode"
       fi
-      record_local_system_flake "$repo_root"
     else
       if [[ -z "$ssh_target" ]]; then
         echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2
@@ -2136,7 +2122,6 @@ cmd_update() {
         run_root_command touch /var/run/nixos-rebuild-safe-to-update-bootloader
         run_root_command "$path/bin/switch-to-configuration" "$mode"
       fi
-      record_local_system_flake "$repo_root"
     else
       if [[ -z "$ssh_target" ]]; then
         echo "Error: $host has no sshTarget (local-only host). Cannot deploy remotely." >&2; exit 1

@@ -14,11 +14,6 @@ keystone_config_repo_root() {
     return 0
   fi
 
-  if [[ -s /etc/keystone/system-flake ]]; then
-    cat /etc/keystone/system-flake
-    return 0
-  fi
-
   local repo_root=""
   repo_root=$(find "$HOME/.keystone/repos" -maxdepth 2 -type d -name nixos-config 2>/dev/null | head -n1 || true)
 

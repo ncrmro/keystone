@@ -500,10 +500,11 @@ run_e2e_checkpoints() {
     # Verify all checkpoints
     local failed=0
 
-    if ssh_cmd "sudo -n test -f /mnt/etc/keystone/system-flake" 2>/dev/null; then
-        log_ok "E2E: /etc/keystone/system-flake exists"
+    local canonical_repo="/mnt/home/${ADMIN_USERNAME}/.keystone/repos/${ADMIN_USERNAME}/${repo_name}"
+    if ssh_cmd "sudo -n test -f ${canonical_repo}/flake.nix" 2>/dev/null; then
+        log_ok "E2E: canonical repo contains flake.nix"
     else
-        log_error "E2E: /etc/keystone/system-flake MISSING"
+        log_error "E2E: canonical repo missing flake.nix at ${canonical_repo}"
         failed=1
     fi
 

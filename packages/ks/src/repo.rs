@@ -9,7 +9,6 @@ use tokio::fs;
 use crate::config::KeystoneRepo;
 
 const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
-const SYSTEM_FLAKE_POINTER_PATH: &str = "/etc/keystone/system-flake";
 
 /// Detected repository layout.
 ///
@@ -91,14 +90,6 @@ fn nonempty_env_path(var: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-fn read_nonempty_path_file(path: &Path) -> Option<PathBuf> {
-    std::fs::read_to_string(path)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-}
-
 fn repo_resolution_error(source: &str, path: &Path) -> anyhow::Error {
     anyhow::anyhow!(
         "Configured {} points to {}, but that path is not a Keystone config repo.\n\
@@ -106,14 +97,6 @@ fn repo_resolution_error(source: &str, path: &Path) -> anyhow::Error {
         source,
         path.display()
     )
-}
-
-fn repo_paths_match(left: &Path, right: &Path) -> bool {
-    std::fs::canonicalize(left)
-        .ok()
-        .zip(std::fs::canonicalize(right).ok())
-        .map(|(a, b)| a == b)
-        .unwrap_or_else(|| left == right)
 }
 
 fn canonical_installed_repo_path_for(home: &Path, owner: &str) -> PathBuf {
@@ -173,7 +156,6 @@ fn find_repo_with_context(
     nixos_config_dir: Option<&Path>,
     git_root: Option<&Path>,
     keystone_system_flake: Option<&Path>,
-    system_flake_pointer: Option<&Path>,
 ) -> Result<PathBuf> {
     if let Some(path) = nixos_config_dir {
         return normalize_repo_root(path)
@@ -184,30 +166,17 @@ fn find_repo_with_context(
         return Ok(root);
     }
 
-    let canonical_installed_repo =
-        canonical_installed_repo_path(home).and_then(|path| normalize_repo_root(&path));
-
     if let Some(path) = keystone_system_flake {
-        let mirrors_system_pointer = system_flake_pointer
-            .map(|pointer| repo_paths_match(path, pointer))
-            .unwrap_or(false);
-        match normalize_repo_root(path) {
-            Some(repo) if !mirrors_system_pointer => return Ok(repo),
-            Some(_) => {}
-            None if !mirrors_system_pointer => {
-                return Err(repo_resolution_error("KEYSTONE_SYSTEM_FLAKE", path));
-            }
-            None => {}
+        if let Some(repo) = normalize_repo_root(path) {
+            return Ok(repo);
         }
+        return Err(repo_resolution_error("KEYSTONE_SYSTEM_FLAKE", path));
     }
 
-    if let Some(repo) = canonical_installed_repo {
+    if let Some(repo) =
+        canonical_installed_repo_path(home).and_then(|path| normalize_repo_root(&path))
+    {
         return Ok(repo);
-    }
-
-    if let Some(path) = system_flake_pointer {
-        return normalize_repo_root(path)
-            .ok_or_else(|| repo_resolution_error(SYSTEM_FLAKE_POINTER_PATH, path));
     }
 
     let repos = home.join(".keystone").join("repos");
@@ -227,11 +196,10 @@ fn find_repo_with_context(
          Looked for, in order:\n\
            - NIXOS_CONFIG_DIR\n\
            - current git repo root\n\
+           - KEYSTONE_SYSTEM_FLAKE\n\
            - ~/.keystone/repos/<owner>/{DEFAULT_INSTALLED_REPO_NAME}\n\
-           - {}\n\
            - ~/.keystone/repos/**\n\
            - ~/nixos-config",
-        SYSTEM_FLAKE_POINTER_PATH,
     )
 }
 
@@ -243,7 +211,6 @@ pub fn find_repo() -> Result<PathBuf> {
         nonempty_env_path("NIXOS_CONFIG_DIR").as_deref(),
         current_git_root().as_deref(),
         nonempty_env_path("KEYSTONE_SYSTEM_FLAKE").as_deref(),
-        read_nonempty_path_file(Path::new(SYSTEM_FLAKE_POINTER_PATH)).as_deref(),
     )
 }
 
@@ -1245,28 +1212,7 @@ mod tests {
     }
 
     #[test]
-    fn find_repo_with_context_prefers_canonical_repo_over_mirrored_pointer() {
-        let home = tempfile::tempdir().unwrap();
-        let canonical_repo = canonical_installed_repo_path(home.path()).unwrap();
-        let mirrored_pointer = home.path().join("pointer-repo");
-
-        write_flake_repo(&canonical_repo);
-        write_flake_repo(&mirrored_pointer);
-
-        let repo = find_repo_with_context(
-            home.path(),
-            None,
-            None,
-            Some(mirrored_pointer.as_path()),
-            Some(mirrored_pointer.as_path()),
-        )
-        .unwrap();
-
-        assert_eq!(repo, std::fs::canonicalize(&canonical_repo).unwrap());
-    }
-
-    #[test]
-    fn find_repo_with_context_allows_explicit_key_system_flake_override() {
+    fn find_repo_with_context_prefers_system_flake_env_over_canonical() {
         let home = tempfile::tempdir().unwrap();
         let canonical_repo = canonical_installed_repo_path(home.path()).unwrap();
         let override_repo = home.path().join("override-repo");
@@ -1275,37 +1221,32 @@ mod tests {
         write_flake_repo(&override_repo);
 
         let repo =
-            find_repo_with_context(home.path(), None, None, Some(override_repo.as_path()), None)
-                .unwrap();
+            find_repo_with_context(home.path(), None, None, Some(override_repo.as_path())).unwrap();
 
         assert_eq!(repo, std::fs::canonicalize(&override_repo).unwrap());
     }
 
     #[test]
-    fn find_repo_with_context_reports_invalid_key_system_flake_override() {
+    fn find_repo_with_context_falls_back_to_canonical_repo() {
         let home = tempfile::tempdir().unwrap();
-        let invalid_repo = home.path().join("missing-repo");
+        let canonical_repo = canonical_installed_repo_path(home.path()).unwrap();
 
-        let error =
-            find_repo_with_context(home.path(), None, None, Some(invalid_repo.as_path()), None)
-                .unwrap_err();
+        write_flake_repo(&canonical_repo);
 
-        assert!(error.to_string().contains("KEYSTONE_SYSTEM_FLAKE"));
-        assert!(error
-            .to_string()
-            .contains(&invalid_repo.display().to_string()));
+        let repo = find_repo_with_context(home.path(), None, None, None).unwrap();
+
+        assert_eq!(repo, std::fs::canonicalize(&canonical_repo).unwrap());
     }
 
     #[test]
-    fn find_repo_with_context_reports_invalid_system_pointer_when_no_canonical_repo_exists() {
+    fn find_repo_with_context_reports_invalid_system_flake_env() {
         let home = tempfile::tempdir().unwrap();
-        let invalid_repo = home.path().join("missing-pointer");
+        let invalid_repo = home.path().join("missing-repo");
 
-        let error =
-            find_repo_with_context(home.path(), None, None, None, Some(invalid_repo.as_path()))
-                .unwrap_err();
+        let error = find_repo_with_context(home.path(), None, None, Some(invalid_repo.as_path()))
+            .unwrap_err();
 
-        assert!(error.to_string().contains(SYSTEM_FLAKE_POINTER_PATH));
+        assert!(error.to_string().contains("KEYSTONE_SYSTEM_FLAKE"));
         assert!(error
             .to_string()
             .contains(&invalid_repo.display().to_string()));
