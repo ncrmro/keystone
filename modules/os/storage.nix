@@ -157,7 +157,6 @@ in
         # LUKS credstore configuration
         luks.devices.credstore = {
           device = "/dev/zvol/rpool/credstore";
-          fallbackToPassword = true;
           crypttabExtraOpts = lib.optionals osCfg.tpm.enable [
             "tpm2-measure-pcr=yes"
             "tpm2-device=auto"
@@ -415,7 +414,6 @@ in
 
       boot.initrd.luks.devices.cryptroot = {
         device = "/dev/disk/by-partlabel/disk-root-root";
-        fallbackToPassword = true;
         crypttabExtraOpts = lib.optionals osCfg.tpm.enable [
           "tpm2-measure-pcr=yes"
           "tpm2-device=auto"
@@ -425,7 +423,6 @@ in
       # Hibernation support: persistent LUKS swap + resumeDevice
       boot.initrd.luks.devices.cryptswap = mkIf (enableSwap && cfg.hibernate.enable) {
         device = "/dev/disk/by-partlabel/disk-root-swap";
-        fallbackToPassword = true;
         crypttabExtraOpts = lib.optionals osCfg.tpm.enable [
           "tpm2-measure-pcr=yes"
           "tpm2-device=auto"
