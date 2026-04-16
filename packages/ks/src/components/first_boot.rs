@@ -285,9 +285,9 @@ pub enum FirstBootPhase {
     // Stage 5: First boot after install
     Welcome,
     // Security enrollment (Stage 5 continued)
-    SecureBootEnroll, // TODO: wire to security::secure_boot
-    TpmEnroll,        // TODO: wire to security::tpm
-    RebootPrompt,     // reboot for SB+TPM to take effect
+    SecureBootEnroll,
+    TpmEnroll,
+    RebootPrompt, // reboot for SB+TPM to take effect
     // Stage 6: After security reboot
     SshKeySetup,       // TODO: detect/generate/import SSH keys
     ShowSshKey,        // display public key for user to add to GitHub
