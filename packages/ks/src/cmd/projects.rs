@@ -1826,4 +1826,306 @@ mod tests {
         );
         assert_eq!(map.len(), 3);
     }
+
+    // ── Status: milestone sorting ────────────────────────────────
+
+    fn make_milestone(title: &str, due_on: Option<&str>) -> MilestoneStatus {
+        MilestoneStatus {
+            repo: "test/repo".to_string(),
+            title: title.to_string(),
+            number: 1,
+            due_on: due_on.map(String::from),
+            open_issues: 5,
+            closed_issues: 3,
+            completion_pct: 37,
+            flags: vec![],
+        }
+    }
+
+    #[test]
+    fn test_milestone_sort_due_dates_ascending() {
+        let mut milestones = vec![
+            make_milestone("Late", Some("2026-06-01")),
+            make_milestone("Early", Some("2026-01-15")),
+            make_milestone("Mid", Some("2026-03-10")),
+        ];
+        sort_milestones(&mut milestones);
+        assert_eq!(milestones[0].title, "Early");
+        assert_eq!(milestones[1].title, "Mid");
+        assert_eq!(milestones[2].title, "Late");
+    }
+
+    #[test]
+    fn test_milestone_sort_none_last() {
+        let mut milestones = vec![
+            make_milestone("No date", None),
+            make_milestone("Has date", Some("2026-01-01")),
+            make_milestone("Also no date", None),
+        ];
+        sort_milestones(&mut milestones);
+        assert_eq!(milestones[0].title, "Has date");
+        // None entries sorted by title
+        assert_eq!(milestones[1].title, "Also no date");
+        assert_eq!(milestones[2].title, "No date");
+    }
+
+    // ── Status: staleness computation ────────────────────────────
+
+    #[test]
+    fn test_stale_pr_detection() {
+        let prs = vec![
+            PrStatus {
+                repo: "test/repo".to_string(),
+                number: 1,
+                title: "Fresh PR".to_string(),
+                draft: false,
+                author: "user".to_string(),
+                head_ref: "feat/fresh".to_string(),
+                milestone: None,
+                created_at: "2026-04-14T00:00:00Z".to_string(),
+                age_days: 1,
+                flags: vec![],
+            },
+            PrStatus {
+                repo: "test/repo".to_string(),
+                number: 2,
+                title: "Stale PR".to_string(),
+                draft: false,
+                author: "user".to_string(),
+                head_ref: "feat/stale".to_string(),
+                milestone: None,
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                age_days: 104,
+                flags: vec!["stale".to_string()],
+            },
+        ];
+
+        let attention = compute_attention(&[], &[], &prs, &[]);
+        assert_eq!(attention.stale_prs.len(), 1);
+        assert_eq!(
+            attention.stale_prs[0]
+                .get("number")
+                .and_then(|n| n.as_u64()),
+            Some(2)
+        );
+    }
+
+    // ── Status: attention section generation ─────────────────────
+
+    #[test]
+    fn test_attention_issues_without_milestone() {
+        let issues = vec![
+            IssueStatus {
+                repo: "test/repo".to_string(),
+                number: 10,
+                title: "Has milestone".to_string(),
+                state: "open".to_string(),
+                milestone: Some("v1.0".to_string()),
+                labels: vec![],
+                assignees: vec![],
+                created_at: "2026-04-01T00:00:00Z".to_string(),
+                age_days: 14,
+            },
+            IssueStatus {
+                repo: "test/repo".to_string(),
+                number: 11,
+                title: "No milestone".to_string(),
+                state: "open".to_string(),
+                milestone: None,
+                labels: vec![],
+                assignees: vec![],
+                created_at: "2026-04-01T00:00:00Z".to_string(),
+                age_days: 14,
+            },
+        ];
+
+        let attention = compute_attention(&[], &issues, &[], &[]);
+        assert_eq!(attention.issues_without_milestone.len(), 1);
+        assert_eq!(
+            attention.issues_without_milestone[0]
+                .get("number")
+                .and_then(|n| n.as_u64()),
+            Some(11)
+        );
+    }
+
+    #[test]
+    fn test_attention_milestones_without_due_date() {
+        let milestones = vec![
+            make_milestone("Dated", Some("2026-06-01")),
+            make_milestone("Undated", None),
+        ];
+        let attention = compute_attention(&milestones, &[], &[], &[]);
+        assert_eq!(attention.milestones_without_due_date.len(), 1);
+        assert_eq!(
+            attention.milestones_without_due_date[0]
+                .get("title")
+                .and_then(|t| t.as_str()),
+            Some("Undated")
+        );
+    }
+
+    #[test]
+    fn test_attention_stale_and_merged_branches() {
+        let branches = vec![
+            BranchStatus {
+                repo: "test/repo".to_string(),
+                name: "feat/stale".to_string(),
+                owner: "user".to_string(),
+                pr_number: None,
+                pr_state: None,
+                worktree_path: None,
+                checkout_path: None,
+                commits_ahead: 3,
+                last_commit_age_days: 30,
+                merged: false,
+                flags: vec!["stale".to_string()],
+            },
+            BranchStatus {
+                repo: "test/repo".to_string(),
+                name: "feat/merged".to_string(),
+                owner: "user".to_string(),
+                pr_number: Some(5),
+                pr_state: Some("closed".to_string()),
+                worktree_path: None,
+                checkout_path: None,
+                commits_ahead: 0,
+                last_commit_age_days: 2,
+                merged: true,
+                flags: vec!["cleanup-candidate".to_string()],
+            },
+        ];
+
+        let attention = compute_attention(&[], &[], &[], &branches);
+        assert_eq!(attention.stale_branches.len(), 1);
+        assert_eq!(
+            attention.stale_branches[0]
+                .get("name")
+                .and_then(|n| n.as_str()),
+            Some("feat/stale")
+        );
+        assert_eq!(attention.merged_branches_to_cleanup.len(), 1);
+        assert_eq!(
+            attention.merged_branches_to_cleanup[0]
+                .get("name")
+                .and_then(|n| n.as_str()),
+            Some("feat/merged")
+        );
+    }
+
+    // ── Status: slug detection from repo URL ─────────────────────
+
+    #[test]
+    fn test_slug_detection_from_github_url() {
+        let pf = ProjectFile {
+            projects: vec![make_project("keystone", &["ncrmro/keystone"])],
+        };
+        let result = detect_by_repo(&pf, "https://github.com/ncrmro/keystone.git");
+        assert_eq!(result.slug, Some("keystone".to_string()));
+        assert_eq!(result.confidence, "exact");
+    }
+
+    #[test]
+    fn test_slug_detection_from_ssh_url() {
+        let pf = ProjectFile {
+            projects: vec![make_project("keystone", &["ncrmro/keystone"])],
+        };
+        let result = detect_by_repo(&pf, "git@github.com:ncrmro/keystone.git");
+        assert_eq!(result.slug, Some("keystone".to_string()));
+    }
+
+    // ── Status: GraphQL response parsing ─────────────────────────
+
+    #[test]
+    fn test_parse_github_milestones_from_json() {
+        let data = serde_json::json!({
+            "milestones": {
+                "nodes": [
+                    {
+                        "title": "v0.5",
+                        "number": 3,
+                        "dueOn": "2026-05-01T00:00:00Z",
+                        "open": {"totalCount": 4},
+                        "closed": {"totalCount": 6}
+                    },
+                    {
+                        "title": "Backlog",
+                        "number": 1,
+                        "dueOn": null,
+                        "open": {"totalCount": 10},
+                        "closed": {"totalCount": 0}
+                    }
+                ]
+            }
+        });
+
+        let milestones = parse_github_milestones(&data, "ncrmro/keystone");
+        assert_eq!(milestones.len(), 2);
+        assert_eq!(milestones[0].title, "v0.5");
+        assert_eq!(milestones[0].number, 3);
+        assert_eq!(milestones[0].due_on, Some("2026-05-01T00:00:00Z".to_string()));
+        assert_eq!(milestones[0].open_issues, 4);
+        assert_eq!(milestones[0].closed_issues, 6);
+        assert_eq!(milestones[0].completion_pct, 60);
+        assert!(milestones[0].flags.is_empty());
+
+        assert_eq!(milestones[1].title, "Backlog");
+        assert!(milestones[1].due_on.is_none());
+        assert!(milestones[1].flags.contains(&"no-due-date".to_string()));
+    }
+
+    #[test]
+    fn test_parse_github_issues_from_json() {
+        let data = serde_json::json!({
+            "issues": {
+                "nodes": [
+                    {
+                        "number": 42,
+                        "title": "Fix the widget",
+                        "createdAt": "2026-04-01T12:00:00Z",
+                        "labels": {"nodes": [{"name": "bug"}, {"name": "priority"}]},
+                        "assignees": {"nodes": [{"login": "ncrmro"}]},
+                        "milestone": {"title": "v0.5"}
+                    }
+                ]
+            }
+        });
+
+        let issues = parse_github_issues(&data, "ncrmro/keystone");
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].number, 42);
+        assert_eq!(issues[0].title, "Fix the widget");
+        assert_eq!(issues[0].labels, vec!["bug", "priority"]);
+        assert_eq!(issues[0].assignees, vec!["ncrmro"]);
+        assert_eq!(issues[0].milestone, Some("v0.5".to_string()));
+    }
+
+    #[test]
+    fn test_parse_github_prs_from_json() {
+        let data = serde_json::json!({
+            "pullRequests": {
+                "nodes": [
+                    {
+                        "number": 100,
+                        "title": "Add feature X",
+                        "isDraft": true,
+                        "createdAt": "2026-04-10T08:00:00Z",
+                        "author": {"login": "ncrmro"},
+                        "headRefName": "feat/feature-x",
+                        "milestone": null
+                    }
+                ]
+            }
+        });
+
+        let prs = parse_github_prs(&data, "ncrmro/keystone");
+        assert_eq!(prs.len(), 1);
+        assert_eq!(prs[0].number, 100);
+        assert_eq!(prs[0].title, "Add feature X");
+        assert!(prs[0].draft);
+        assert_eq!(prs[0].author, "ncrmro");
+        assert_eq!(prs[0].head_ref, "feat/feature-x");
+        assert!(prs[0].milestone.is_none());
+        assert!(prs[0].flags.contains(&"draft".to_string()));
+    }
 }
