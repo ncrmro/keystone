@@ -4,11 +4,13 @@
 //! provider/model configuration. Detection resolves notifications to
 //! projects deterministically (repo match) or heuristically (subject match).
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
+use tokio::process::Command;
 
 // ── CLI definition ────────────────────────────────────────────────────
 
@@ -63,6 +65,16 @@ pub enum ProjectCommand {
         /// Match by subject text (heuristic).
         #[arg(long)]
         subject: Option<String>,
+    },
+
+    /// Show live project status: milestones, issues, PRs, branches, tasks.
+    Status {
+        /// Project slug. Auto-detected from cwd if omitted.
+        slug: Option<String>,
+
+        /// Show status for all projects.
+        #[arg(long)]
+        all: bool,
     },
 }
 
@@ -273,6 +285,9 @@ pub async fn execute(args: &ProjectArgs) -> Result<()> {
         Some(ProjectCommand::Detect { repo, subject }) => {
             execute_detect(repo.as_deref(), subject.as_deref())
         }
+        Some(ProjectCommand::Status { slug, all }) => {
+            execute_status(slug.as_deref(), *all, args.json).await
+        }
     }
 }
 
@@ -418,6 +433,1189 @@ fn execute_detect(repo: Option<&str>, subject: Option<&str>) -> Result<()> {
 
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
+}
+
+// ── Status ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct ProjectStatus {
+    project: Project,
+    milestones: Vec<MilestoneStatus>,
+    issues: Vec<IssueStatus>,
+    pull_requests: Vec<PrStatus>,
+    branches: Vec<BranchStatus>,
+    recent_commits: Vec<CommitStatus>,
+    tasks: HashMap<String, Vec<TaskSummary>>,
+    attention: AttentionSection,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MilestoneStatus {
+    pub repo: String,
+    pub title: String,
+    pub number: u64,
+    pub due_on: Option<String>,
+    pub open_issues: u64,
+    pub closed_issues: u64,
+    pub completion_pct: u64,
+    pub flags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IssueStatus {
+    pub repo: String,
+    pub number: u64,
+    pub title: String,
+    pub state: String,
+    pub milestone: Option<String>,
+    pub labels: Vec<String>,
+    pub assignees: Vec<String>,
+    pub created_at: String,
+    pub age_days: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PrStatus {
+    pub repo: String,
+    pub number: u64,
+    pub title: String,
+    pub draft: bool,
+    pub author: String,
+    pub head_ref: String,
+    pub milestone: Option<String>,
+    pub created_at: String,
+    pub age_days: u64,
+    pub flags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BranchStatus {
+    pub repo: String,
+    pub name: String,
+    pub owner: String,
+    pub pr_number: Option<u64>,
+    pub pr_state: Option<String>,
+    pub worktree_path: Option<String>,
+    pub checkout_path: Option<String>,
+    pub commits_ahead: u64,
+    pub last_commit_age_days: u64,
+    pub merged: bool,
+    pub flags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CommitStatus {
+    pub repo: String,
+    pub sha: String,
+    pub message: String,
+    pub age_days: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskSummary {
+    pub name: String,
+    pub status: String,
+    pub project: Option<String>,
+    pub source: Option<String>,
+    pub source_ref: Option<String>,
+    pub blocked_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AttentionSection {
+    pub stale_prs: Vec<serde_json::Value>,
+    pub issues_without_milestone: Vec<serde_json::Value>,
+    pub milestones_without_due_date: Vec<serde_json::Value>,
+    pub stale_branches: Vec<serde_json::Value>,
+    pub merged_branches_to_cleanup: Vec<serde_json::Value>,
+}
+
+/// Resolve slug from cwd git remote when no slug is provided.
+async fn resolve_slug_from_cwd() -> Result<Option<String>> {
+    let output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .await;
+
+    let url = match output {
+        Ok(o) if o.status.success() => {
+            String::from_utf8_lossy(&o.stdout).trim().to_string()
+        }
+        _ => return Ok(None),
+    };
+
+    if url.is_empty() {
+        return Ok(None);
+    }
+
+    let path = projects_file_path();
+    let pf = load_projects_from(&path)?;
+    let result = detect_by_repo(&pf, &url);
+    Ok(result.slug)
+}
+
+/// Determine whether a repo is hosted on GitHub (vs Forgejo/other).
+fn is_github_repo(repo: &str) -> bool {
+    // Simple heuristic: GitHub repos don't contain a custom domain
+    // Forgejo repos in this codebase use git.ncrmro.com
+    !repo.contains("git.ncrmro.com")
+}
+
+/// Fetch milestones, issues, PRs, and commits for a GitHub repo via GraphQL.
+async fn fetch_github_repo_status(
+    owner: &str,
+    repo_name: &str,
+    full_repo: &str,
+) -> (Vec<MilestoneStatus>, Vec<IssueStatus>, Vec<PrStatus>, Vec<CommitStatus>) {
+    let query = r#"
+query($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+    milestones(states: [OPEN], first: 10, orderBy: {field: DUE_DATE, direction: ASC}) {
+      nodes {
+        title
+        number
+        dueOn
+        open: issues(states: [OPEN]) { totalCount }
+        closed: issues(states: [CLOSED]) { totalCount }
+      }
+    }
+    issues(states: [OPEN], first: 50, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      nodes {
+        number
+        title
+        createdAt
+        labels(first: 5) { nodes { name } }
+        assignees(first: 3) { nodes { login } }
+        milestone { title }
+      }
+    }
+    pullRequests(states: [OPEN], first: 20) {
+      nodes {
+        number
+        title
+        isDraft
+        createdAt
+        author { login }
+        headRefName
+        milestone { title }
+      }
+    }
+    defaultBranchRef {
+      target {
+        ... on Commit {
+          history(first: 10) {
+            nodes { oid messageHeadline committedDate }
+          }
+        }
+      }
+    }
+  }
+}
+"#;
+
+    let variables = serde_json::json!({
+        "owner": owner,
+        "repo": repo_name,
+    });
+
+    let resp = match crate::platform::github_graphql(query, variables).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("warning: GitHub GraphQL failed for {full_repo}: {e}");
+            return (vec![], vec![], vec![], vec![]);
+        }
+    };
+
+    let repo_data = match resp.pointer("/data/repository") {
+        Some(r) => r,
+        None => return (vec![], vec![], vec![], vec![]),
+    };
+
+    // Parse milestones
+    let milestones = parse_github_milestones(repo_data, full_repo);
+
+    // Parse issues
+    let issues = parse_github_issues(repo_data, full_repo);
+
+    // Parse PRs
+    let prs = parse_github_prs(repo_data, full_repo);
+
+    // Parse recent commits
+    let commits = parse_github_commits(repo_data, full_repo);
+
+    (milestones, issues, prs, commits)
+}
+
+fn parse_github_milestones(repo_data: &serde_json::Value, full_repo: &str) -> Vec<MilestoneStatus> {
+    let mut milestones = Vec::new();
+    if let Some(nodes) = repo_data.pointer("/milestones/nodes").and_then(|n| n.as_array()) {
+        for node in nodes {
+            let title = node
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            let number = node
+                .get("number")
+                .and_then(|n| n.as_u64())
+                .unwrap_or(0);
+            let due_on = node
+                .get("dueOn")
+                .and_then(|d| d.as_str())
+                .map(String::from);
+            let open = node
+                .pointer("/open/totalCount")
+                .and_then(|n| n.as_u64())
+                .unwrap_or(0);
+            let closed = node
+                .pointer("/closed/totalCount")
+                .and_then(|n| n.as_u64())
+                .unwrap_or(0);
+            let total = open + closed;
+            let pct = if total > 0 {
+                (closed * 100) / total
+            } else {
+                0
+            };
+
+            let mut flags = Vec::new();
+            if due_on.is_none() {
+                flags.push("no-due-date".to_string());
+            }
+
+            milestones.push(MilestoneStatus {
+                repo: full_repo.to_string(),
+                title,
+                number,
+                due_on,
+                open_issues: open,
+                closed_issues: closed,
+                completion_pct: pct,
+                flags,
+            });
+        }
+    }
+    milestones
+}
+
+fn parse_github_issues(repo_data: &serde_json::Value, full_repo: &str) -> Vec<IssueStatus> {
+    let mut issues = Vec::new();
+    if let Some(nodes) = repo_data.pointer("/issues/nodes").and_then(|n| n.as_array()) {
+        for node in nodes {
+            let number = node.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+            let title = node
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            let created_at = node
+                .get("createdAt")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .to_string();
+            let milestone = node
+                .pointer("/milestone/title")
+                .and_then(|m| m.as_str())
+                .map(String::from);
+            let labels: Vec<String> = node
+                .pointer("/labels/nodes")
+                .and_then(|n| n.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|l| l.get("name").and_then(|n| n.as_str()).map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let assignees: Vec<String> = node
+                .pointer("/assignees/nodes")
+                .and_then(|n| n.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|a| a.get("login").and_then(|l| l.as_str()).map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let age_days = crate::time::days_since(&created_at);
+
+            issues.push(IssueStatus {
+                repo: full_repo.to_string(),
+                number,
+                title,
+                state: "open".to_string(),
+                milestone,
+                labels,
+                assignees,
+                created_at,
+                age_days,
+            });
+        }
+    }
+    issues
+}
+
+fn parse_github_prs(repo_data: &serde_json::Value, full_repo: &str) -> Vec<PrStatus> {
+    let mut prs = Vec::new();
+    if let Some(nodes) = repo_data.pointer("/pullRequests/nodes").and_then(|n| n.as_array()) {
+        for node in nodes {
+            let number = node.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+            let title = node
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            let draft = node
+                .get("isDraft")
+                .and_then(|d| d.as_bool())
+                .unwrap_or(false);
+            let created_at = node
+                .get("createdAt")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .to_string();
+            let author = node
+                .pointer("/author/login")
+                .and_then(|a| a.as_str())
+                .unwrap_or("")
+                .to_string();
+            let head_ref = node
+                .get("headRefName")
+                .and_then(|h| h.as_str())
+                .unwrap_or("")
+                .to_string();
+            let milestone = node
+                .pointer("/milestone/title")
+                .and_then(|m| m.as_str())
+                .map(String::from);
+
+            let age_days = crate::time::days_since(&created_at);
+            let mut flags = Vec::new();
+            if age_days > 14 {
+                flags.push("stale".to_string());
+            }
+            if draft {
+                flags.push("draft".to_string());
+            }
+
+            prs.push(PrStatus {
+                repo: full_repo.to_string(),
+                number,
+                title,
+                draft,
+                author,
+                head_ref,
+                milestone,
+                created_at,
+                age_days,
+                flags,
+            });
+        }
+    }
+    prs
+}
+
+fn parse_github_commits(repo_data: &serde_json::Value, full_repo: &str) -> Vec<CommitStatus> {
+    let mut commits = Vec::new();
+    let nodes = repo_data
+        .pointer("/defaultBranchRef/target/history/nodes")
+        .and_then(|n| n.as_array());
+
+    if let Some(nodes) = nodes {
+        for node in nodes {
+            let sha = node
+                .get("oid")
+                .and_then(|o| o.as_str())
+                .unwrap_or("")
+                .to_string();
+            let message = node
+                .get("messageHeadline")
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .to_string();
+            let date = node
+                .get("committedDate")
+                .and_then(|d| d.as_str())
+                .unwrap_or("");
+            let age_days = crate::time::days_since(date);
+
+            commits.push(CommitStatus {
+                repo: full_repo.to_string(),
+                sha,
+                message,
+                age_days,
+            });
+        }
+    }
+    commits
+}
+
+/// Fetch milestones, issues, and PRs for a Forgejo repo via REST.
+async fn fetch_forgejo_repo_status(
+    host: &str,
+    token: &str,
+    full_repo: &str,
+) -> (Vec<MilestoneStatus>, Vec<IssueStatus>, Vec<PrStatus>) {
+    let ms_endpoint = format!("/repos/{full_repo}/milestones?state=open");
+    let issues_endpoint = format!("/repos/{full_repo}/issues?state=open&type=issues");
+    let prs_endpoint = format!("/repos/{full_repo}/pulls?state=open");
+
+    let ms_fut = crate::platform::forgejo_rest(host, token, &ms_endpoint);
+    let issues_fut = crate::platform::forgejo_rest(host, token, &issues_endpoint);
+    let prs_fut = crate::platform::forgejo_rest(host, token, &prs_endpoint);
+
+    let (ms_res, issues_res, prs_res) = futures::future::join3(ms_fut, issues_fut, prs_fut).await;
+
+    let milestones = ms_res
+        .map(|v| parse_forgejo_milestones(&v, full_repo))
+        .unwrap_or_default();
+
+    let issues = issues_res
+        .map(|v| parse_forgejo_issues(&v, full_repo))
+        .unwrap_or_default();
+
+    let prs = prs_res
+        .map(|v| parse_forgejo_prs(&v, full_repo))
+        .unwrap_or_default();
+
+    (milestones, issues, prs)
+}
+
+fn parse_forgejo_milestones(data: &serde_json::Value, full_repo: &str) -> Vec<MilestoneStatus> {
+    let arr = match data.as_array() {
+        Some(a) => a,
+        None => return vec![],
+    };
+    arr.iter()
+        .map(|m| {
+            let title = m
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            let number = m.get("id").and_then(|n| n.as_u64()).unwrap_or(0);
+            let due_on = m
+                .get("due_on")
+                .and_then(|d| d.as_str())
+                .filter(|s| !s.is_empty() && *s != "null")
+                .map(String::from);
+            let open = m.get("open_issues").and_then(|n| n.as_u64()).unwrap_or(0);
+            let closed = m
+                .get("closed_issues")
+                .and_then(|n| n.as_u64())
+                .unwrap_or(0);
+            let total = open + closed;
+            let pct = if total > 0 {
+                (closed * 100) / total
+            } else {
+                0
+            };
+            let mut flags = Vec::new();
+            if due_on.is_none() {
+                flags.push("no-due-date".to_string());
+            }
+            MilestoneStatus {
+                repo: full_repo.to_string(),
+                title,
+                number,
+                due_on,
+                open_issues: open,
+                closed_issues: closed,
+                completion_pct: pct,
+                flags,
+            }
+        })
+        .collect()
+}
+
+fn parse_forgejo_issues(data: &serde_json::Value, full_repo: &str) -> Vec<IssueStatus> {
+    let arr = match data.as_array() {
+        Some(a) => a,
+        None => return vec![],
+    };
+    arr.iter()
+        .map(|i| {
+            let number = i.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+            let title = i
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            let created_at = i
+                .get("created_at")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .to_string();
+            let milestone = i
+                .pointer("/milestone/title")
+                .and_then(|m| m.as_str())
+                .map(String::from);
+            let labels: Vec<String> = i
+                .get("labels")
+                .and_then(|l| l.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|l| l.get("name").and_then(|n| n.as_str()).map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let assignees: Vec<String> = i
+                .get("assignees")
+                .and_then(|a| a.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|a| a.get("login").and_then(|l| l.as_str()).map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let age_days = crate::time::days_since(&created_at);
+            IssueStatus {
+                repo: full_repo.to_string(),
+                number,
+                title,
+                state: "open".to_string(),
+                milestone,
+                labels,
+                assignees,
+                created_at,
+                age_days,
+            }
+        })
+        .collect()
+}
+
+fn parse_forgejo_prs(data: &serde_json::Value, full_repo: &str) -> Vec<PrStatus> {
+    let arr = match data.as_array() {
+        Some(a) => a,
+        None => return vec![],
+    };
+    arr.iter()
+        .map(|p| {
+            let number = p.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+            let title = p
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            let created_at = p
+                .get("created_at")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .to_string();
+            let author = p
+                .pointer("/user/login")
+                .and_then(|a| a.as_str())
+                .unwrap_or("")
+                .to_string();
+            let head_ref = p
+                .pointer("/head/ref")
+                .and_then(|h| h.as_str())
+                .unwrap_or("")
+                .to_string();
+            let milestone = p
+                .pointer("/milestone/title")
+                .and_then(|m| m.as_str())
+                .map(String::from);
+            // Forgejo REST does not have an isDraft field in the list endpoint
+            let draft = false;
+            let age_days = crate::time::days_since(&created_at);
+            let mut flags = Vec::new();
+            if age_days > 14 {
+                flags.push("stale".to_string());
+            }
+            PrStatus {
+                repo: full_repo.to_string(),
+                number,
+                title,
+                draft,
+                author,
+                head_ref,
+                milestone,
+                created_at,
+                age_days,
+                flags,
+            }
+        })
+        .collect()
+}
+
+/// Discover local git checkouts and worktrees for a repo, gather branch info.
+async fn gather_local_branches(
+    full_repo: &str,
+    pr_head_refs: &HashMap<String, (u64, String)>,
+) -> Vec<BranchStatus> {
+    let mut branches = Vec::new();
+    let parts: Vec<&str> = full_repo.split('/').collect();
+    if parts.len() != 2 {
+        return branches;
+    }
+    let (owner, repo_name) = (parts[0], parts[1]);
+
+    // Discover checkouts: ~/repos/{owner}/{repo}/
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let mut checkout_paths = Vec::new();
+
+    let main_checkout = PathBuf::from(&home).join("repos").join(owner).join(repo_name);
+    if main_checkout.exists() {
+        checkout_paths.push((main_checkout, home.clone()));
+    }
+
+    // Discover worktrees: ~/.worktrees/{owner}/{repo}/*/
+    let worktrees_base = PathBuf::from(&home)
+        .join(".worktrees")
+        .join(owner)
+        .join(repo_name);
+    if worktrees_base.exists() {
+        if let Ok(entries) = std::fs::read_dir(&worktrees_base) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    checkout_paths.push((path, home.clone()));
+                }
+            }
+        }
+    }
+
+    // Scan agent home directories
+    if let Ok(entries) = std::fs::read_dir("/home") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with("agent-") {
+                continue;
+            }
+            let agent_home = entry.path();
+            let agent_checkout = agent_home.join("repos").join(owner).join(repo_name);
+            if agent_checkout.exists() {
+                checkout_paths.push((agent_checkout, agent_home.to_string_lossy().to_string()));
+            }
+            let agent_worktrees = agent_home.join(".worktrees").join(owner).join(repo_name);
+            if agent_worktrees.exists() {
+                if let Ok(wt_entries) = std::fs::read_dir(&agent_worktrees) {
+                    for wt_entry in wt_entries.flatten() {
+                        let path = wt_entry.path();
+                        if path.is_dir() {
+                            checkout_paths.push((
+                                path,
+                                agent_home.to_string_lossy().to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (checkout_path, owner_home) in &checkout_paths {
+        let checkout_str = checkout_path.to_string_lossy().to_string();
+        let owner_name = PathBuf::from(owner_home)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        // Get branches with ahead counts
+        let branch_output = Command::new("git")
+            .args([
+                "-C",
+                &checkout_str,
+                "for-each-ref",
+                "--format=%(refname:short)\t%(ahead-behind:HEAD)",
+                "refs/heads/",
+            ])
+            .output()
+            .await;
+
+        // Get merged branches
+        let merged_output = Command::new("git")
+            .args(["-C", &checkout_str, "branch", "--merged", "HEAD"])
+            .output()
+            .await;
+
+        let merged_set: std::collections::HashSet<String> = merged_output
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .map(|l| l.trim().trim_start_matches("* ").to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if let Ok(output) = branch_output {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let parts: Vec<&str> = line.split('\t').collect();
+                    if parts.is_empty() {
+                        continue;
+                    }
+                    let branch_name = parts[0].to_string();
+                    let ahead = if parts.len() > 1 {
+                        // Format is "ahead behind" separated by space
+                        parts[1]
+                            .split_whitespace()
+                            .next()
+                            .and_then(|n| n.parse::<u64>().ok())
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    };
+
+                    // Skip main/master
+                    if branch_name == "main" || branch_name == "master" {
+                        continue;
+                    }
+
+                    let merged = merged_set.contains(&branch_name);
+
+                    // Match to PR
+                    let (pr_number, pr_state) = pr_head_refs
+                        .get(&branch_name)
+                        .map(|(n, s)| (Some(*n), Some(s.clone())))
+                        .unwrap_or((None, None));
+
+                    // Get last commit date for staleness
+                    let date_output = Command::new("git")
+                        .args([
+                            "-C",
+                            &checkout_str,
+                            "log",
+                            "-1",
+                            "--format=%aI",
+                            &branch_name,
+                        ])
+                        .output()
+                        .await;
+
+                    let last_commit_age = date_output
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| {
+                            let date = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                            crate::time::days_since(&date)
+                        })
+                        .unwrap_or(0);
+
+                    let is_worktree =
+                        checkout_str.contains(".worktrees/");
+                    let worktree_path = if is_worktree {
+                        Some(checkout_str.clone())
+                    } else {
+                        None
+                    };
+                    let checkout_display = if !is_worktree {
+                        Some(checkout_str.clone())
+                    } else {
+                        None
+                    };
+
+                    let mut flags = Vec::new();
+                    if last_commit_age > 14 && !merged {
+                        flags.push("stale".to_string());
+                    }
+                    if merged && branch_name != "main" && branch_name != "master" {
+                        flags.push("cleanup-candidate".to_string());
+                    }
+
+                    branches.push(BranchStatus {
+                        repo: full_repo.to_string(),
+                        name: branch_name,
+                        owner: owner_name.clone(),
+                        pr_number,
+                        pr_state,
+                        worktree_path,
+                        checkout_path: checkout_display,
+                        commits_ahead: ahead,
+                        last_commit_age_days: last_commit_age,
+                        merged,
+                        flags,
+                    });
+                }
+            }
+        }
+    }
+
+    branches
+}
+
+/// Load tasks from home TASKS.yaml files, filtered by project slug.
+fn gather_tasks(slug: &str) -> HashMap<String, Vec<TaskSummary>> {
+    let mut result: HashMap<String, Vec<TaskSummary>> = HashMap::new();
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let mut paths: Vec<(String, PathBuf)> = Vec::new();
+
+    // Current user
+    let user_name = PathBuf::from(&home)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "user".to_string());
+    let user_tasks = PathBuf::from(&home).join("TASKS.yaml");
+    paths.push((user_name, user_tasks));
+
+    // Agent users
+    if let Ok(entries) = std::fs::read_dir("/home") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("agent-") {
+                let agent_tasks = entry.path().join("TASKS.yaml");
+                paths.push((name, agent_tasks));
+            }
+        }
+    }
+
+    for (owner_name, path) in &paths {
+        if let Ok(tf) = crate::cmd::tasks::load_tasks_from(path) {
+            let filtered: Vec<TaskSummary> = tf
+                .tasks
+                .iter()
+                .filter(|t| t.project.as_deref() == Some(slug))
+                .map(|t| TaskSummary {
+                    name: t.name.clone(),
+                    status: t.status.clone(),
+                    project: t.project.clone(),
+                    source: t.source.clone(),
+                    source_ref: t.source_ref.clone(),
+                    blocked_reason: t.blocked_reason.clone(),
+                })
+                .collect();
+            if !filtered.is_empty() {
+                result.insert(owner_name.clone(), filtered);
+            }
+        }
+    }
+
+    result
+}
+
+/// Sort milestones: due_on ascending, None last.
+pub fn sort_milestones(milestones: &mut [MilestoneStatus]) {
+    milestones.sort_by(|a, b| match (&a.due_on, &b.due_on) {
+        (Some(da), Some(db)) => da.cmp(db),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.title.cmp(&b.title),
+    });
+}
+
+/// Compute the attention section from aggregated status data.
+pub fn compute_attention(
+    milestones: &[MilestoneStatus],
+    issues: &[IssueStatus],
+    prs: &[PrStatus],
+    branches: &[BranchStatus],
+) -> AttentionSection {
+    let stale_prs: Vec<serde_json::Value> = prs
+        .iter()
+        .filter(|p| p.age_days > 14)
+        .map(|p| serde_json::json!({"repo": p.repo, "number": p.number, "title": p.title, "age_days": p.age_days}))
+        .collect();
+
+    let issues_without_milestone: Vec<serde_json::Value> = issues
+        .iter()
+        .filter(|i| i.milestone.is_none())
+        .map(|i| serde_json::json!({"repo": i.repo, "number": i.number, "title": i.title}))
+        .collect();
+
+    let milestones_without_due_date: Vec<serde_json::Value> = milestones
+        .iter()
+        .filter(|m| m.due_on.is_none())
+        .map(|m| serde_json::json!({"repo": m.repo, "title": m.title, "number": m.number}))
+        .collect();
+
+    let stale_branches: Vec<serde_json::Value> = branches
+        .iter()
+        .filter(|b| b.last_commit_age_days > 14 && !b.merged)
+        .map(|b| serde_json::json!({"repo": b.repo, "name": b.name, "owner": b.owner, "age_days": b.last_commit_age_days}))
+        .collect();
+
+    let merged_branches_to_cleanup: Vec<serde_json::Value> = branches
+        .iter()
+        .filter(|b| b.merged)
+        .map(|b| serde_json::json!({"repo": b.repo, "name": b.name, "owner": b.owner}))
+        .collect();
+
+    AttentionSection {
+        stale_prs,
+        issues_without_milestone,
+        milestones_without_due_date,
+        stale_branches,
+        merged_branches_to_cleanup,
+    }
+}
+
+/// Execute the status subcommand for a single project.
+async fn execute_status_single(slug: &str, json: bool) -> Result<()> {
+    let path = projects_file_path();
+    let pf = load_projects_from(&path)?;
+
+    let project = pf
+        .projects
+        .iter()
+        .find(|p| p.slug == slug)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("project '{slug}' not found"))?;
+
+    let mut all_milestones = Vec::new();
+    let mut all_issues = Vec::new();
+    let mut all_prs = Vec::new();
+    let mut all_commits = Vec::new();
+    let mut all_branches = Vec::new();
+
+    // Build a map of headRefName -> (pr_number, state) for branch matching
+    let mut pr_head_refs: HashMap<String, (u64, String)> = HashMap::new();
+
+    let fj_host = std::env::var("FORGEJO_HOST").ok();
+    let fj_token = std::env::var("FORGEJO_TOKEN").ok();
+
+    for repo in &project.repos {
+        let normalized = normalize_repo(repo);
+        let parts: Vec<&str> = normalized.split('/').collect();
+        if parts.len() != 2 {
+            continue;
+        }
+
+        if is_github_repo(repo) {
+            let (ms, issues, prs, commits) =
+                fetch_github_repo_status(parts[0], parts[1], &normalized).await;
+
+            // Track PR head refs for branch matching
+            for pr in &prs {
+                pr_head_refs
+                    .insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
+            }
+
+            all_milestones.extend(ms);
+            all_issues.extend(issues);
+            all_prs.extend(prs);
+            all_commits.extend(commits);
+        } else if let (Some(ref host), Some(ref token)) = (&fj_host, &fj_token) {
+            let (ms, issues, prs) =
+                fetch_forgejo_repo_status(host, token, &normalized).await;
+
+            for pr in &prs {
+                pr_head_refs
+                    .insert(pr.head_ref.clone(), (pr.number, "open".to_string()));
+            }
+
+            all_milestones.extend(ms);
+            all_issues.extend(issues);
+            all_prs.extend(prs);
+        }
+
+        // Gather local branches
+        let branches = gather_local_branches(&normalized, &pr_head_refs).await;
+        all_branches.extend(branches);
+    }
+
+    // Sort milestones
+    sort_milestones(&mut all_milestones);
+
+    // Gather tasks
+    let tasks = gather_tasks(slug);
+
+    // Compute attention
+    let attention = compute_attention(&all_milestones, &all_issues, &all_prs, &all_branches);
+
+    let status = ProjectStatus {
+        project,
+        milestones: all_milestones,
+        issues: all_issues,
+        pull_requests: all_prs,
+        branches: all_branches,
+        recent_commits: all_commits,
+        tasks,
+        attention,
+    };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&status)?);
+    } else {
+        render_status_human(&status);
+    }
+
+    Ok(())
+}
+
+fn render_status_human(status: &ProjectStatus) {
+    let name = status
+        .project
+        .name
+        .as_deref()
+        .unwrap_or(&status.project.slug);
+    println!("Project: {name}\n");
+
+    // Milestones
+    if !status.milestones.is_empty() {
+        println!("Milestones:");
+        for m in &status.milestones {
+            let due = m.due_on.as_deref().unwrap_or("no due date");
+            println!(
+                "  {} ({}/{} closed, {}%) — {due}",
+                m.title, m.closed_issues, m.open_issues + m.closed_issues, m.completion_pct
+            );
+        }
+        println!();
+    }
+
+    // Issues
+    if !status.issues.is_empty() {
+        println!("Open issues ({}):", status.issues.len());
+        for i in &status.issues {
+            let ms = i
+                .milestone
+                .as_ref()
+                .map(|m| format!(" [{m}]"))
+                .unwrap_or_default();
+            println!("  {}#{}: {}{ms}", i.repo, i.number, i.title);
+        }
+        println!();
+    }
+
+    // PRs
+    if !status.pull_requests.is_empty() {
+        println!("Open PRs ({}):", status.pull_requests.len());
+        for p in &status.pull_requests {
+            let draft_label = if p.draft { " [draft]" } else { "" };
+            let flags = if p.flags.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", p.flags.join(", "))
+            };
+            println!(
+                "  {}#{}: {} by {}{draft_label}{flags}",
+                p.repo, p.number, p.title, p.author
+            );
+        }
+        println!();
+    }
+
+    // Branches
+    if !status.branches.is_empty() {
+        println!("Branches ({}):", status.branches.len());
+        for b in &status.branches {
+            let pr = b
+                .pr_number
+                .map(|n| format!(" PR#{n}"))
+                .unwrap_or_default();
+            let flags = if b.flags.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", b.flags.join(", "))
+            };
+            println!(
+                "  {} [{}] +{} commits{pr}{flags}",
+                b.name, b.owner, b.commits_ahead
+            );
+        }
+        println!();
+    }
+
+    // Recent commits
+    if !status.recent_commits.is_empty() {
+        println!("Recent commits:");
+        for c in &status.recent_commits {
+            let short_sha = if c.sha.len() >= 7 { &c.sha[..7] } else { &c.sha };
+            println!("  {short_sha} {} ({}d ago)", c.message, c.age_days);
+        }
+        println!();
+    }
+
+    // Tasks
+    if !status.tasks.is_empty() {
+        println!("Tasks:");
+        for (owner, tasks) in &status.tasks {
+            println!("  {owner}:");
+            for t in tasks {
+                println!("    {} [{}]", t.name, t.status);
+            }
+        }
+        println!();
+    }
+
+    // Attention
+    let att = &status.attention;
+    let attention_items = att.stale_prs.len()
+        + att.issues_without_milestone.len()
+        + att.milestones_without_due_date.len()
+        + att.stale_branches.len()
+        + att.merged_branches_to_cleanup.len();
+
+    if attention_items > 0 {
+        println!("Attention ({attention_items} items):");
+        for p in &att.stale_prs {
+            let repo = p.get("repo").and_then(|r| r.as_str()).unwrap_or("");
+            let num = p.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+            let age = p.get("age_days").and_then(|a| a.as_u64()).unwrap_or(0);
+            println!("  Stale PR: {repo}#{num} ({age}d)");
+        }
+        for i in &att.issues_without_milestone {
+            let repo = i.get("repo").and_then(|r| r.as_str()).unwrap_or("");
+            let num = i.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+            println!("  No milestone: {repo}#{num}");
+        }
+        for m in &att.milestones_without_due_date {
+            let title = m.get("title").and_then(|t| t.as_str()).unwrap_or("");
+            println!("  No due date: milestone \"{title}\"");
+        }
+        for b in &att.stale_branches {
+            let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            let age = b.get("age_days").and_then(|a| a.as_u64()).unwrap_or(0);
+            println!("  Stale branch: {name} ({age}d)");
+        }
+        for b in &att.merged_branches_to_cleanup {
+            let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            println!("  Cleanup: {name} (merged)");
+        }
+    }
+}
+
+async fn execute_status(slug: Option<&str>, all: bool, json: bool) -> Result<()> {
+    if all {
+        let path = projects_file_path();
+        let pf = load_projects_from(&path)?;
+
+        if pf.projects.is_empty() {
+            if json {
+                println!("[]");
+            } else {
+                println!("No projects configured.");
+            }
+            return Ok(());
+        }
+
+        // For --all mode with JSON, collect all statuses (we run them sequentially
+        // to avoid overwhelming API rate limits)
+        if json {
+            // Collect all project slugs, then run each
+            let slugs: Vec<String> = pf.projects.iter().map(|p| p.slug.clone()).collect();
+            print!("[");
+            for (i, s) in slugs.iter().enumerate() {
+                if i > 0 {
+                    print!(",");
+                }
+                // For --all --json we print each individually
+                // (simpler than collecting into a Vec<ProjectStatus>)
+                execute_status_single(s, true).await?;
+            }
+            println!("]");
+        } else {
+            for p in &pf.projects {
+                println!("═══ {} ═══\n", p.name.as_deref().unwrap_or(&p.slug));
+                execute_status_single(&p.slug, false).await?;
+                println!();
+            }
+        }
+        return Ok(());
+    }
+
+    let resolved_slug = match slug {
+        Some(s) => s.to_string(),
+        None => resolve_slug_from_cwd()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("could not detect project from cwd; provide a slug"))?,
+    };
+
+    execute_status_single(&resolved_slug, json).await
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
