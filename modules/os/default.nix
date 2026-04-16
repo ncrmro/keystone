@@ -235,6 +235,7 @@ in
     ./git-server
     ./agents
     ./hypervisor.nix
+    ./github-runner.nix
     ./iphone-tether.nix
     ./ollama.nix
     ./immich.nix

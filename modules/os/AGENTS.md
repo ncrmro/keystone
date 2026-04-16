@@ -49,11 +49,30 @@ Users with `desktop.enable` additionally get Hyprland.
 keystone.os.hypervisor = {
   enable = true;
   defaultUri = "qemu:///session";
+  nestedVirtualization.enable = true;
 };
 ```
 
 Provides: OVMF (Secure Boot), swtpm (TPM 2.0 emulation), SPICE display, polkit rules
 for `libvirtd` group. All `keystone.os.users` auto-added to `libvirtd` group.
+`nestedVirtualization.enable` sets the host KVM module parameters needed for
+guests that must run their own KVM/QEMU workloads; guests still need host CPU
+passthrough to see the virtualization extensions.
+
+## GitHub Runner (`github-runner.nix`)
+
+```nix
+keystone.os.githubRunner = {
+  enable = true;
+  url = "https://github.com/example/repo";
+  tokenFile = "/run/agenix/github-runner-token";
+};
+```
+
+Provides: a dedicated NixOS guest VM that runs `services.github-runners` with
+host CPU passthrough and outbound-only QEMU user-mode networking. Requires
+`keystone.os.hypervisor.enable = true;` and
+`keystone.os.hypervisor.nestedVirtualization.enable = true;`.
 
 ## Hardware Keys (`hardware-key.nix`)
 
@@ -89,6 +108,7 @@ See `docs/hardware-keys.md` for enrollment workflow.
 | Ollama           | `keystone.os.ollama`                   | LLM runtime                              |
 | Mail             | `keystone.mail.host`                   | Stalwart (auto-enables on matching host) |
 | Git Server       | `keystone.os.gitServer`                | Forgejo + agent repo provisioning        |
+| GitHub Runner    | `keystone.os.githubRunner`             | Isolated NixOS guest VM for GitHub CI    |
 | Journal Remote   | `keystone.os.journalRemote`            | Port 19532, Tailscale-only               |
 
 ## Deployment Patterns
