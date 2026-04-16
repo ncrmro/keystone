@@ -616,13 +616,31 @@ in
             enable = mkOption {
               type = types.bool;
               default = true;
-              description = "Enable screenshot syncing to Immich for ML indexing.";
+              description = "Enable screenshot syncing to the Immich host via rsync over SSH.";
             };
 
             syncOnCalendar = mkOption {
               type = types.str;
               default = "*:0/5";
               description = "Systemd calendar expression for screenshot sync interval.";
+            };
+
+            rsyncTarget = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "SSH hostname to rsync screenshots to. Defaults to keystone.services.immich.host.";
+              example = "ocean";
+            };
+
+            rsyncDestPath = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = ''
+                Destination path on the rsync target host.
+                Defaults to /srv/screenshots/agent-<name>/hosts/<hostname>/Pictures/.
+                Must end with a trailing slash.
+              '';
+              example = "/srv/screenshots/agent-researcher/hosts/workstation/Pictures/";
             };
           };
 
