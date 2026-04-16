@@ -1728,6 +1728,17 @@ impl InstallScreen {
                         return;
                     }
 
+                    let (_, mounted_repo) = installed_repo_paths(user, &repo_owner, &repo_name);
+                    if let Err(e) =
+                        validate_installed_hardware(&mounted_repo, &flake_host, &tx).await
+                    {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                            "hardware validation failed: {}",
+                            e
+                        ))));
+                        return;
+                    }
+
                     let _ = tx.send(InstallMessage::Finished(InstallResult::Success));
                 }
                 Err(e) => {
@@ -2654,13 +2665,11 @@ fn installed_repo_paths(username: &str, repo_owner: &str, repo_name: &str) -> (P
     (system_repo_dir, mounted_repo_dir)
 }
 
-/// Stage the config repo into a temporary directory with first-boot marker and system-flake pointer.
+/// Stage the config repo into a temporary directory with first-boot marker.
 async fn stage_config_to_temp(
     config_dir: &Path,
     staging_root: &Path,
     staged_repo_dir: &Path,
-    staged_system_flake: &Path,
-    system_repo_dir: &Path,
 ) -> Result<(), String> {
     let _ = tokio::fs::remove_dir_all(staging_root).await;
     tokio::fs::create_dir_all(staged_repo_dir)
@@ -2674,13 +2683,6 @@ async fn stage_config_to_temp(
     tokio::fs::write(staged_repo_dir.join(FIRST_BOOT_MARKER), "")
         .await
         .map_err(|e| format!("Failed to write first-boot marker: {}", e))?;
-    // Write the final on-disk repo location, not the install-time /mnt path.
-    tokio::fs::write(
-        staged_system_flake,
-        format!("{}\n", system_repo_dir.display()),
-    )
-    .await
-    .map_err(|e| format!("Failed to stage system flake path: {}", e))?;
 
     let staged_marker_string = staged_repo_dir
         .join(FIRST_BOOT_MARKER)
@@ -2793,7 +2795,7 @@ async fn copy_config_to_target(
     repo_name: &str,
     tx: &mpsc::UnboundedSender<InstallMessage>,
 ) -> Result<(), String> {
-    let (system_repo_dir, mounted_repo_dir) = installed_repo_paths(username, repo_owner, repo_name);
+    let (_, mounted_repo_dir) = installed_repo_paths(username, repo_owner, repo_name);
     let target_home = PathBuf::from("/mnt").join(
         Path::new("/home")
             .join(username)
@@ -2811,14 +2813,11 @@ async fn copy_config_to_target(
         std::process::id()
     ));
     let staged_repo_dir = staging_root.join(repo_name);
-    let staged_system_flake = staging_root.join("system-flake");
     let repo_parent_string = repo_parent.display().to_string();
     let repo_dir_string = mounted_repo_dir.display().to_string();
     let staged_repo_contents = format!("{}/.", staged_repo_dir.display());
-    let staged_system_flake_string = staged_system_flake.display().to_string();
     let target_marker = mounted_repo_dir.join(FIRST_BOOT_MARKER);
     let target_marker_string = target_marker.display().to_string();
-    let target_system_flake = "/mnt/etc/keystone/system-flake";
     let installed_ssh_keys = read_install_metadata_lines("installed-ssh-keys");
     let target_ssh_dir = target_home.join(".ssh");
     let target_authorized_keys = target_ssh_dir.join("authorized_keys");
@@ -2830,14 +2829,7 @@ async fn copy_config_to_target(
 
     // Stage the repo in /tmp first, then copy it into /mnt through sudo so the
     // installer's success state means the first-boot handoff is actually usable.
-    stage_config_to_temp(
-        config_dir,
-        &staging_root,
-        &staged_repo_dir,
-        &staged_system_flake,
-        &system_repo_dir,
-    )
-    .await?;
+    stage_config_to_temp(config_dir, &staging_root, &staged_repo_dir).await?;
 
     let _ = tx.send(InstallMessage::Output(format!(
         "Copying installed repo to {}",
@@ -2864,30 +2856,6 @@ async fn copy_config_to_target(
         .await
         .map_err(|e| format!("Installed repo is missing the first-boot marker: {}", e))?;
 
-    let _ = tx.send(InstallMessage::Output(format!(
-        "Writing KEYSTONE_SYSTEM_FLAKE pointer to {}",
-        target_system_flake
-    )));
-    run_command_quiet("install", &["-d", "/mnt/etc/keystone"], None, true)
-        .await
-        .map_err(|e| format!("Failed to create /mnt/etc/keystone: {}", e))?;
-    run_command_quiet(
-        "install",
-        &[
-            "-m",
-            "0644",
-            &staged_system_flake_string,
-            target_system_flake,
-        ],
-        None,
-        true,
-    )
-    .await
-    .map_err(|e| format!("Failed to write system flake path: {}", e))?;
-    run_command_quiet("test", &["-f", target_system_flake], None, true)
-        .await
-        .map_err(|e| format!("Installed system is missing system-flake: {}", e))?;
-
     if !installed_ssh_keys.is_empty() {
         let _ = tx.send(InstallMessage::Output(format!(
             "Installing development SSH keys for {}",
@@ -2907,9 +2875,82 @@ async fn copy_config_to_target(
     let _ = tokio::fs::remove_dir_all(&staging_root).await;
 
     let _ = tx.send(InstallMessage::Output(format!(
-        "Config copied to {} and /etc/keystone/system-flake updated",
+        "Config copied to {}",
         mounted_repo_dir.display()
     )));
+    Ok(())
+}
+
+/// Validate that the installed canonical repo contains reconciled hardware files.
+///
+/// After the installer copies the config repo to the target system, this function
+/// verifies that the hardware reconciliation from install time is actually present.
+/// Without this, a rebuild from the canonical repo can produce an unbootable system
+/// (e.g., missing initrd modules like `vmd` on Dell hardware).
+///
+/// `flake_host` is the selected host key from the installer config — used to locate
+/// the host directory under `hosts/`. This avoids depending on a `hostname` file
+/// which may not exist in all repo layouts.
+async fn validate_installed_hardware(
+    mounted_repo_dir: &Path,
+    flake_host: &str,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
+    let _ = tx.send(InstallMessage::Output(
+        "Validating reconciled hardware in installed repo...".to_string(),
+    ));
+
+    let host_dir = mounted_repo_dir.join("hosts").join(flake_host);
+    let generated_hw = host_dir.join(GENERATED_HARDWARE_FILENAME);
+    let flat_generated_hw = mounted_repo_dir.join(GENERATED_HARDWARE_FILENAME);
+
+    if tokio::fs::metadata(&generated_hw).await.is_err()
+        && tokio::fs::metadata(&flat_generated_hw).await.is_err()
+    {
+        return Err(format!(
+            "Installed repo is missing {}: a rebuild from this repo may produce \
+             an unbootable system with missing initrd modules. \
+             Expected at {} or {}",
+            GENERATED_HARDWARE_FILENAME,
+            generated_hw.display(),
+            flat_generated_hw.display(),
+        ));
+    }
+
+    // Verify hardware.nix exists and imports hardware-generated.nix
+    let hardware_nix = host_dir.join("hardware.nix");
+    let flat_hardware_nix = mounted_repo_dir.join("hardware.nix");
+
+    let hardware_nix_path = if tokio::fs::metadata(&hardware_nix).await.is_ok() {
+        hardware_nix
+    } else if tokio::fs::metadata(&flat_hardware_nix).await.is_ok() {
+        flat_hardware_nix
+    } else {
+        return Err(format!(
+            "Installed repo is missing hardware.nix: cannot verify import of {}. \
+             Expected at {} or {}",
+            GENERATED_HARDWARE_FILENAME,
+            host_dir.join("hardware.nix").display(),
+            mounted_repo_dir.join("hardware.nix").display(),
+        ));
+    };
+
+    let hw_content = tokio::fs::read_to_string(&hardware_nix_path)
+        .await
+        .map_err(|e| format!("Cannot read {}: {}", hardware_nix_path.display(), e))?;
+
+    if !hw_content.contains(GENERATED_HARDWARE_FILENAME) {
+        return Err(format!(
+            "{} does not import {}: a rebuild may miss \
+             machine-specific initrd modules and storage configuration",
+            hardware_nix_path.display(),
+            GENERATED_HARDWARE_FILENAME,
+        ));
+    }
+
+    let _ = tx.send(InstallMessage::Output(
+        "Reconciled hardware validation passed".to_string(),
+    ));
     Ok(())
 }
 
@@ -3561,7 +3602,7 @@ mod tests {
     }
 
     #[test]
-    fn test_installed_repo_paths_keep_system_flake_pointer_outside_mnt() {
+    fn test_installed_repo_paths_returns_canonical_and_mounted_paths() {
         let (system_repo_dir, mounted_repo_dir) =
             installed_repo_paths("noah", "noah", "keystone-config");
 
@@ -3814,5 +3855,80 @@ in
         assert!(!sanitized.contains("fileSystems.\"/boot\""));
         assert!(!sanitized.contains("boot.initrd.luks.devices.\"cryptroot\""));
         assert!(!sanitized.contains("swapDevices = [ ];"));
+    }
+
+    #[tokio::test]
+    async fn validate_installed_hardware_passes_with_reconciled_files() {
+        let repo = tempfile::tempdir().unwrap();
+        let host_dir = repo.path().join("hosts").join("test-laptop");
+        std::fs::create_dir_all(&host_dir).unwrap();
+        std::fs::write(
+            host_dir.join(GENERATED_HARDWARE_FILENAME),
+            "{ /* generated */ }",
+        )
+        .unwrap();
+        std::fs::write(
+            host_dir.join("hardware.nix"),
+            "{ imports = [ ./hardware-generated.nix ]; }",
+        )
+        .unwrap();
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let result = validate_installed_hardware(repo.path(), "test-laptop", &tx).await;
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
+    }
+
+    #[tokio::test]
+    async fn validate_installed_hardware_fails_missing_generated() {
+        let repo = tempfile::tempdir().unwrap();
+        let host_dir = repo.path().join("hosts").join("test-laptop");
+        std::fs::create_dir_all(&host_dir).unwrap();
+        std::fs::write(host_dir.join("hardware.nix"), "{ }").unwrap();
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let result = validate_installed_hardware(repo.path(), "test-laptop", &tx).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains(GENERATED_HARDWARE_FILENAME));
+    }
+
+    #[tokio::test]
+    async fn validate_installed_hardware_fails_missing_import() {
+        let repo = tempfile::tempdir().unwrap();
+        let host_dir = repo.path().join("hosts").join("test-laptop");
+        std::fs::create_dir_all(&host_dir).unwrap();
+        std::fs::write(
+            host_dir.join(GENERATED_HARDWARE_FILENAME),
+            "{ /* generated */ }",
+        )
+        .unwrap();
+        // hardware.nix exists but does NOT import hardware-generated.nix
+        std::fs::write(
+            host_dir.join("hardware.nix"),
+            "{ imports = [ ./qemu-guest.nix ]; }",
+        )
+        .unwrap();
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let result = validate_installed_hardware(repo.path(), "test-laptop", &tx).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not import"));
+    }
+
+    #[tokio::test]
+    async fn validate_installed_hardware_fails_missing_hardware_nix() {
+        let repo = tempfile::tempdir().unwrap();
+        let host_dir = repo.path().join("hosts").join("test-laptop");
+        std::fs::create_dir_all(&host_dir).unwrap();
+        std::fs::write(
+            host_dir.join(GENERATED_HARDWARE_FILENAME),
+            "{ /* generated */ }",
+        )
+        .unwrap();
+        // hardware-generated.nix exists but hardware.nix is missing
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let result = validate_installed_hardware(repo.path(), "test-laptop", &tx).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("missing hardware.nix"));
     }
 }

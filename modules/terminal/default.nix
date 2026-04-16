@@ -24,11 +24,6 @@ let
       exit 0
     fi
 
-    if [[ -s /etc/keystone/system-flake ]]; then
-      cat /etc/keystone/system-flake
-      exit 0
-    fi
-
     if [[ -n "''${NIXOS_CONFIG_DIR:-}" && -f "$NIXOS_CONFIG_DIR/hosts.nix" ]]; then
       readlink -f "$NIXOS_CONFIG_DIR"
       exit 0

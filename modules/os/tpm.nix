@@ -176,7 +176,10 @@ in
       }
     ];
 
-    # Enrollment commands
+    # SECURITY: TPM auto-unlock is not active until explicit enrollment via one of
+    # the commands below. The tpm2-device=auto crypttab hint in storage.nix tells
+    # systemd-cryptsetup to attempt TPM unlock, but when no TPM token is enrolled
+    # in the LUKS header, it falls back to password (fallbackToPassword = true).
     environment.systemPackages = [
       # Recovery key enrollment
       (pkgs.writeShellScriptBin "keystone-enroll-recovery" ''
