@@ -116,6 +116,13 @@ let
         - Treat issues, pull requests, milestones, and boards as the canonical public record for status, review state, and decisions that affect collaborators.
         - Use notes to preserve durable rationale and memory, not to replace shared-surface tracking.
       ''
+      ''
+        ## PR review comments
+
+        - When addressing PR review comments (Copilot, human, or any reviewer), reply to each comment with the fix commit hash or an explanation of why it was not applied.
+        - Never leave review comments unresolved — every comment MUST receive a reply.
+        - See `process.pr-review-response` for the full lifecycle: fetch comments, fix, reply, push, re-request review.
+      ''
     ]
     ++ inlinedConventions
     ++ optional (referencedConventions != [ ]) ''

@@ -3,6 +3,9 @@
 //! Generates flake.nix, configuration.nix, and hardware.nix from
 //! user-provided configuration parameters.
 
+pub(crate) const DISK_PLACEHOLDER: &str = "__KEYSTONE_DISK__";
+pub(crate) const HOST_ID_PLACEHOLDER: &str = "00000000";
+
 /// Machine type determines which Keystone modules are included.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MachineType {
@@ -252,7 +255,7 @@ pub fn generate_iso_flake_nix(config: &GenerateConfig) -> String {
 /// boot modules, and firmware settings.
 pub fn generate_hardware_nix(config: &GenerateConfig) -> String {
     let host_id = generate_host_id();
-    let raw_disk = config.disk_device.as_deref().unwrap_or("__KEYSTONE_DISK__");
+    let raw_disk = config.disk_device.as_deref().unwrap_or(DISK_PLACEHOLDER);
     let disk_device = escape_nix_string(raw_disk);
 
     format!(
@@ -313,7 +316,7 @@ in
 }
 
 /// Generate a random 8-character hex host ID.
-fn generate_host_id() -> String {
+pub(crate) fn generate_host_id() -> String {
     use std::io::Read;
     let mut buf = [0u8; 4];
     if let Ok(mut f) = std::fs::File::open("/dev/urandom") {

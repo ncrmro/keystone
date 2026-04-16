@@ -91,6 +91,7 @@ in
         Service = {
           Type = "oneshot";
           RemainAfterExit = true;
+          TimeoutStartSec = "15s";
           Environment = [
             "SSH_AUTH_SOCK=${sshCfg.authSock}"
           ];
@@ -109,10 +110,39 @@ in
 
           ExecStart = toString (
             pkgs.writeShellScript "ssh-auto-load" ''
+              set -euo pipefail
+
+              key_file=${lib.escapeShellArg cfg.keyFile}
+              pubkey_file="$key_file.pub"
+
+              if [[ -f "$pubkey_file" ]]; then
+                key_fingerprint="$(${pkgs.openssh}/bin/ssh-keygen -lf "$pubkey_file" | ${pkgs.gawk}/bin/awk '{print $2}')"
+                if [[ -n "$key_fingerprint" ]] && ${pkgs.openssh}/bin/ssh-add -l 2>/dev/null | ${pkgs.gnugrep}/bin/grep -Fq -- "$key_fingerprint"; then
+                  echo "ssh-auto-load: key already loaded"
+                  exit 0
+                fi
+              fi
+
               export SSH_ASKPASS="${askpassScript}"
               export SSH_ASKPASS_REQUIRE="force"
               export DISPLAY="none"
-              ${pkgs.openssh}/bin/ssh-add ${cfg.keyFile}
+
+              if ${pkgs.coreutils}/bin/timeout 10s ${pkgs.openssh}/bin/ssh-add "$key_file"; then
+                exit 0
+              else
+                status=$?
+              fi
+
+              if [[ "$status" -eq 124 ]]; then
+                echo "ssh-auto-load: timed out adding key; passphrase secret may be stale" >&2
+              else
+                echo "ssh-auto-load: failed to add key (exit $status); passphrase secret may be stale" >&2
+              fi
+
+              # SSH auto-load is a convenience service. A stale passphrase secret
+              # must not wedge Home Manager activation or leave the user manager
+              # blocked in a long-running oneshot start.
+              exit 0
             ''
           );
         };

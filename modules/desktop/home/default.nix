@@ -23,6 +23,12 @@ in
   options.keystone.desktop = {
     enable = mkEnableOption "Keystone Desktop - Core desktop packages and utilities for Home Manager";
 
+    browser = mkOption {
+      type = types.str;
+      default = "chromium";
+      description = "Default browser binary name. Used by the $mod+B keybinding.";
+    };
+
     uhk = {
       enable = mkOption {
         type = types.bool;
@@ -53,6 +59,16 @@ in
         default = null;
         description = "Default CUPS printer name to apply at desktop session start.";
       };
+    };
+
+    startupLockCommand = mkOption {
+      type = types.str;
+      default = "keystone-startup-lock";
+      description = ''
+        Command to run as the first user-visible exec-once entry in Hyprland.
+        Must present a lock surface or terminate the session (fail-closed).
+        See convention os.hyprland-autostart.
+      '';
     };
   };
 

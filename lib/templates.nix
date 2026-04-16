@@ -593,6 +593,7 @@ rec {
     {
       admin,
       repoOwner ? null,
+      repoName ? "keystone-config",
       defaults ? { },
       shared ? { },
       hostsRoot ? null,
@@ -606,18 +607,21 @@ rec {
           builder = mkLaptop;
           system = "x86_64-linux";
           nixosModules = [ ];
+          desktop = true;
         };
 
         workstation = {
           builder = mkWorkstation;
           system = "x86_64-linux";
           nixosModules = [ ];
+          desktop = true;
         };
 
         server = {
           builder = mkServer;
           system = "x86_64-linux";
           nixosModules = [ self.nixosModules.server ];
+          desktop = false;
         };
       };
 
@@ -638,8 +642,12 @@ rec {
         "sshKeys"
       ];
       sharedUsers = shared.users or { };
+      # NixOS modules applied OS-wide on every host.
       sharedSystemModules = shared.systemModules or [ ];
+      # Home Manager modules applied per-user on every host.
       sharedUserModules = shared.userModules or [ ];
+      # Home Manager modules applied per-user on desktop hosts (laptop, workstation) only.
+      sharedDesktopUserModules = shared.desktopUserModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
       effectiveRepoRoot =
         if repoRoot != null then
@@ -755,7 +763,8 @@ rec {
               };
               modules = [
                 {
-                  home-manager.sharedModules = sharedUserModules;
+                  home-manager.sharedModules =
+                    sharedUserModules ++ lib.optionals kindDefaults.desktop sharedDesktopUserModules;
                 }
               ]
               ++ lib.optional (adminSshKeys != [ ]) {
@@ -853,11 +862,11 @@ rec {
             adminEmail = sharedAdmin.email;
             repoPath = effectiveRepoRoot;
             repoOwner = effectiveRepoOwner;
-            repoName =
-              if effectiveRepoRoot == null then
-                "keystone-config"
-              else
-                builtins.baseNameOf (toString effectiveRepoRoot);
+            # Use an explicit repo name instead of deriving it from the flake
+            # evaluation path. During `nix build`, the repo root often resolves
+            # to a store-style `...-source` path, which would leak that hash
+            # into the installed config handoff.
+            inherit repoName;
           };
         };
     };

@@ -25,11 +25,13 @@ grep -RIn "TODO:" flake.nix hosts/
 Fill in:
 
 - `owner.name` in `flake.nix`
-- `owner.username` in `flake.nix` if your primary username is not `admin`
+- `owner.username` in `flake.nix` if your primary username is not `keystone`
 - `owner.email` in `flake.nix`
 - `defaults.timeZone` in `flake.nix`
 - hostnames in `flake.nix` if `laptop`, `server-ocean`, or `macbook` should be renamed
-- `system`, `networking.hostId`, and `keystone.os.storage.devices` in Linux `hardware.nix` files
+- `system` in Linux `hardware.nix` files if the default architecture is wrong
+- `networking.hostId` only if you are not using `ks install`
+- `keystone.os.storage.devices` only if you are not using `ks install`
 
 ## File layout
 

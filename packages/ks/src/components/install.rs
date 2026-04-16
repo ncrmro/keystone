@@ -12,6 +12,7 @@
 //! 6. **Done** — Prompt to remove USB and reboot
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
 
@@ -153,7 +154,7 @@ impl InstallerConfig {
             Self::parse_configuration_nix(&effective_dir).unwrap_or((None, None));
 
         // Treat the placeholder as "no disk configured"
-        let disk_device = disk_device.filter(|d| d != "__KEYSTONE_DISK__");
+        let disk_device = disk_device.filter(|d| d != crate::template::DISK_PLACEHOLDER);
 
         Ok(Some(Self {
             source: InstallSource::PrebakedConfig,
@@ -604,6 +605,42 @@ fn vendor_embedded_keystone_input(repo_dir: &Path) -> AnyhowResult<Option<PathBu
     Ok(Some(vendored_dir))
 }
 
+fn normalize_staged_install_repo(repo_dir: &Path, source_lock_path: &Path) -> Result<(), String> {
+    let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+    if !vendored_dir.exists() {
+        return Ok(());
+    }
+
+    if !source_lock_path.is_file() {
+        return Err(format!(
+            "Cannot normalize {} because {} is missing",
+            vendored_dir.display(),
+            source_lock_path.display()
+        ));
+    }
+
+    let target_lock_path = repo_dir.join("flake.lock");
+    let source_lock = std::fs::read(source_lock_path)
+        .map_err(|e| format!("Failed to read {}: {}", source_lock_path.display(), e))?;
+    std::fs::write(&target_lock_path, source_lock).map_err(|e| {
+        format!(
+            "Failed to restore {} from {}: {}",
+            target_lock_path.display(),
+            source_lock_path.display(),
+            e
+        )
+    })?;
+
+    std::fs::remove_dir_all(&vendored_dir)
+        .map_err(|e| format!("Failed to remove {}: {}", vendored_dir.display(), e))?;
+
+    Ok(())
+}
+
+fn normalize_installed_repo_state(repo_dir: &Path) -> Result<(), String> {
+    normalize_staged_install_repo(repo_dir, &Path::new(INSTALL_REPO_PATH).join("flake.lock"))
+}
+
 fn parse_hardware_disk_device(hardware_path: &Path) -> Option<String> {
     let content = std::fs::read_to_string(hardware_path).ok()?;
     let mut in_devices = false;
@@ -668,6 +705,26 @@ fn push_unique(values: &mut Vec<String>, candidate: String) {
     if !values.iter().any(|existing| existing == &candidate) {
         values.push(candidate);
     }
+}
+
+fn is_placeholder_host_id(host_id: &str) -> bool {
+    host_id == crate::template::HOST_ID_PLACEHOLDER
+}
+
+fn is_valid_host_id(host_id: &str) -> bool {
+    host_id.len() == 8
+        && host_id.chars().all(|ch| ch.is_ascii_hexdigit())
+        && !is_placeholder_host_id(host_id)
+}
+
+fn resolve_install_host_id(current_hardware_nix: &str) -> String {
+    parse_nix_string_assignment(current_hardware_nix, "networking.hostId")
+        .filter(|host_id| is_valid_host_id(host_id))
+        .unwrap_or_else(crate::template::generate_host_id)
+}
+
+fn is_placeholder_storage_device(device: &str) -> bool {
+    device == crate::template::DISK_PLACEHOLDER || device.contains("YOUR-")
 }
 
 fn parse_nix_string_assignment(content: &str, attr: &str) -> Option<String> {
@@ -808,10 +865,12 @@ fn build_reconciled_hardware_wrapper(
 ) -> Result<String, String> {
     let system = parse_nix_string_assignment(current_hardware_nix, "system")
         .unwrap_or_else(|| "x86_64-linux".to_string());
-    let host_id = parse_nix_string_assignment(current_hardware_nix, "networking.hostId")
-        .unwrap_or_else(|| "00000000".to_string());
+    let host_id = resolve_install_host_id(current_hardware_nix);
     let mut storage_devices =
-        parse_nix_string_list_assignment(current_hardware_nix, "keystone.os.storage.devices");
+        parse_nix_string_list_assignment(current_hardware_nix, "keystone.os.storage.devices")
+            .into_iter()
+            .filter(|device| !is_placeholder_storage_device(device))
+            .collect::<Vec<_>>();
     if storage_devices.is_empty() {
         if let Some(device) = selected_disk {
             storage_devices.push(device.to_string());
@@ -943,6 +1002,187 @@ pub struct InstallScreen {
     discovering_disks: bool,
 }
 
+fn preferred_disk_index(disks: &[DiskEntry], preferred_disk: Option<&str>) -> usize {
+    preferred_disk
+        .and_then(|path| disks.iter().position(|disk| disk.by_id_path == path))
+        .unwrap_or(0)
+}
+
+fn format_disk_summary(disk: &DiskEntry) -> String {
+    let mut details = vec![disk.model.clone(), disk.size.clone()];
+    if !disk.transport.is_empty() {
+        details.push(disk.transport.clone());
+    }
+
+    format!("{} ({})", disk.by_id_path, details.join(", "))
+}
+
+fn format_available_disks(disks: &[DiskEntry], selected_disk: Option<&str>) -> String {
+    if disks.is_empty() {
+        return "Discovered disks: none".to_string();
+    }
+
+    let mut lines = vec!["Discovered disks:".to_string()];
+    for disk in disks {
+        let marker = if selected_disk.is_some_and(|path| path == disk.by_id_path) {
+            "*"
+        } else {
+            "-"
+        };
+        lines.push(format!("  {} {}", marker, format_disk_summary(disk)));
+    }
+
+    lines.join("\n")
+}
+
+const HEADLESS_CONFIRMATION_TOKEN: &str = "destroy";
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum HeadlessSelectionSource {
+    Requested,
+    AutoSelected,
+    Prompted,
+}
+
+fn format_numbered_available_disks(disks: &[DiskEntry], preferred_index: usize) -> String {
+    if disks.is_empty() {
+        return "Discovered disks: none".to_string();
+    }
+
+    let mut lines = vec!["Discovered disks:".to_string()];
+    for (index, disk) in disks.iter().enumerate() {
+        let mut line = format!("  {}. {}", index + 1, format_disk_summary(disk));
+        if index == preferred_index {
+            line.push_str("  [best guess]");
+        }
+        lines.push(line);
+    }
+
+    lines.join("\n")
+}
+
+fn parse_headless_disk_selection(
+    input: &str,
+    disk_count: usize,
+    preferred_index: usize,
+) -> Result<usize, String> {
+    if disk_count == 0 {
+        return Err("Install cancelled. No disks were available for selection.".to_string());
+    }
+
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Ok(preferred_index);
+    }
+
+    let selected = trimmed.parse::<usize>().map_err(|_| {
+        format!(
+            "Install cancelled. Expected a disk number between 1 and {}.",
+            disk_count
+        )
+    })?;
+    if !(1..=disk_count).contains(&selected) {
+        return Err(format!(
+            "Install cancelled. Expected a disk number between 1 and {}.",
+            disk_count
+        ));
+    }
+
+    Ok(selected - 1)
+}
+
+fn prompt_for_headless_disk_selection(
+    host: &str,
+    disks: &[DiskEntry],
+    preferred_index: usize,
+) -> Result<usize, String> {
+    eprintln!("No --disk was provided for host '{}'.", host);
+    eprintln!("Installer media is excluded from this list.");
+    eprintln!(
+        "{}",
+        format_numbered_available_disks(disks, preferred_index)
+    );
+    eprintln!(
+        "Press Enter to use {} or type a disk number between 1 and {}.",
+        preferred_index + 1,
+        disks.len()
+    );
+    eprint!("Disk> ");
+    std::io::stderr()
+        .flush()
+        .map_err(|error| format!("Failed to flush disk selection prompt: {}", error))?;
+
+    let mut selection = String::new();
+    std::io::stdin()
+        .read_line(&mut selection)
+        .map_err(|error| format!("Failed to read disk selection: {}", error))?;
+
+    parse_headless_disk_selection(&selection, disks.len(), preferred_index)
+}
+
+fn build_headless_confirmation_message(
+    host: &str,
+    selected_disk: &str,
+    selection_source: HeadlessSelectionSource,
+    disks: &[DiskEntry],
+) -> String {
+    let mut lines = Vec::new();
+
+    match selection_source {
+        HeadlessSelectionSource::Requested | HeadlessSelectionSource::Prompted => {
+            lines.push(format!(
+                "Headless install is ready for host '{}' on '{}'.",
+                host, selected_disk
+            ));
+        }
+        HeadlessSelectionSource::AutoSelected => {
+            lines.push(format!("No --disk was provided for host '{}'.", host));
+            lines.push(format!("Only available install disk: {}", selected_disk));
+        }
+    }
+
+    lines.push(format!("This will erase all data on '{}'.", selected_disk));
+    lines.push(String::new());
+    lines.push(format_available_disks(disks, Some(selected_disk)));
+    lines.push(String::new());
+    lines.push(format!(
+        "Type '{}' to confirm installation, or anything else to cancel.",
+        HEADLESS_CONFIRMATION_TOKEN
+    ));
+
+    lines.join("\n")
+}
+
+fn confirm_headless_install(
+    host: &str,
+    selected_disk: &str,
+    selection_source: HeadlessSelectionSource,
+    disks: &[DiskEntry],
+) -> Result<(), String> {
+    eprintln!(
+        "{}",
+        build_headless_confirmation_message(host, selected_disk, selection_source, disks)
+    );
+    eprint!("Confirmation> ");
+    std::io::stderr()
+        .flush()
+        .map_err(|error| format!("Failed to flush confirmation prompt: {}", error))?;
+
+    let mut confirmation = String::new();
+    std::io::stdin()
+        .read_line(&mut confirmation)
+        .map_err(|error| format!("Failed to read confirmation: {}", error))?;
+
+    if confirmation.trim() != HEADLESS_CONFIRMATION_TOKEN {
+        return Err(format!(
+            "Install cancelled. Expected '{}' at the confirmation prompt.",
+            HEADLESS_CONFIRMATION_TOKEN
+        ));
+    }
+
+    Ok(())
+}
+
 impl InstallScreen {
     pub fn new(config: InstallerConfig) -> Self {
         let (phase, available_hosts) = match &config.source {
@@ -1042,9 +1282,36 @@ impl InstallScreen {
         self.selected_host_index = index;
     }
 
-    /// Run the install headlessly — no TUI.  Selects the pre-set host and
-    /// first available disk, then streams output to stdout.
-    pub async fn run_headless(&mut self) -> Result<(), String> {
+    fn set_disk_by_path(&mut self, disk_path: &str) -> Result<(), String> {
+        let Some(index) = self
+            .available_disks
+            .iter()
+            .position(|disk| disk.by_id_path == disk_path)
+        else {
+            let best_guess = self
+                .available_disks
+                .get(preferred_disk_index(
+                    &self.available_disks,
+                    self.config.disk_device.as_deref(),
+                ))
+                .map(|disk| disk.by_id_path.as_str());
+            return Err(format!(
+                "Requested disk '{}' was not found.\n{}\nBest guess: {}",
+                disk_path,
+                format_available_disks(&self.available_disks, best_guess),
+                best_guess.unwrap_or("none")
+            ));
+        };
+
+        self.selected_disk_index = index;
+        Ok(())
+    }
+
+    /// Run the install headlessly — no TUI. Resolves disk selection using the
+    /// same disk discovery as the TUI, prompting for a numbered choice when
+    /// multiple installable disks remain, then requires an explicit
+    /// confirmation prompt before destructive actions proceed.
+    pub async fn run_headless(&mut self, disk_path: Option<&str>) -> Result<(), String> {
         // Phase 1: select host (copies repo, vendors keystone input)
         self.select_host();
         if let InstallPhase::Failed(msg) = &self.phase {
@@ -1057,14 +1324,56 @@ impl InstallScreen {
             .await
             .map_err(|e| format!("Disk discovery failed: {}", e))?;
         if disks.is_empty() {
-            return Err("No disks found".to_string());
+            return Err("No installable disks found after excluding installer media.".to_string());
         }
-        eprintln!(
-            "Found {} disk(s), selecting: {}",
-            disks.len(),
-            disks[0].by_id_path
-        );
         self.available_disks = disks;
+        let selection_source = if let Some(disk_path) = disk_path {
+            self.set_disk_by_path(disk_path)?;
+            HeadlessSelectionSource::Requested
+        } else if self.available_disks.len() == 1 {
+            self.selected_disk_index = 0;
+            HeadlessSelectionSource::AutoSelected
+        } else {
+            let preferred_index =
+                preferred_disk_index(&self.available_disks, self.config.disk_device.as_deref());
+            self.selected_disk_index = prompt_for_headless_disk_selection(
+                &self.config.flake_host,
+                &self.available_disks,
+                preferred_index,
+            )?;
+            HeadlessSelectionSource::Prompted
+        };
+        let selected_disk = self.available_disks[self.selected_disk_index]
+            .by_id_path
+            .clone();
+        eprintln!("Found {} installable disk(s).", self.available_disks.len());
+        match selection_source {
+            HeadlessSelectionSource::Requested => {
+                eprintln!("Using requested disk: {}", selected_disk);
+            }
+            HeadlessSelectionSource::AutoSelected => {
+                eprintln!(
+                    "{}",
+                    format_available_disks(&self.available_disks, Some(&selected_disk))
+                );
+                eprintln!("Auto-selected only available disk: {}", selected_disk);
+            }
+            HeadlessSelectionSource::Prompted => {
+                eprintln!("Selected disk: {}", selected_disk);
+            }
+        }
+
+        confirm_headless_install(
+            &self.config.flake_host,
+            &selected_disk,
+            selection_source,
+            &self.available_disks,
+        )?;
+
+        eprintln!(
+            "Installing host '{}' headlessly to '{}'...",
+            self.config.flake_host, selected_disk
+        );
         self.phase = InstallPhase::DiskSelection;
         self.select_disk();
         if let InstallPhase::Failed(msg) = &self.phase {
@@ -1148,8 +1457,9 @@ impl InstallScreen {
         }
 
         let hardware_path = writable_repo.join(&selected.hardware_path);
-        let disk_device = parse_hardware_disk_device(&hardware_path)
-            .filter(|path| path.contains("/dev/disk/by-id/") && !path.contains("YOUR-"));
+        let disk_device = parse_hardware_disk_device(&hardware_path).filter(|path| {
+            path.contains("/dev/disk/by-id/") && !is_placeholder_storage_device(path)
+        });
 
         self.config.config_dir = writable_repo;
         self.config.flake_host = selected.flake_host;
@@ -1363,6 +1673,21 @@ impl InstallScreen {
 
             match install_result {
                 Ok(()) => {
+                    if let Err(e) = normalize_installed_repo_state(&config_dir) {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                            "post-install repo normalization failed: {}",
+                            e
+                        ))));
+                        return;
+                    }
+                    if let Err(e) = amend_install_commit(&config_dir, &tx).await {
+                        let _ = tx.send(InstallMessage::Finished(InstallResult::Failed(format!(
+                            "post-install repo amend failed: {}",
+                            e
+                        ))));
+                        return;
+                    }
+
                     let _ = tx.send(InstallMessage::Output(
                         "Copying config to installed system...".to_string(),
                     ));
@@ -1448,16 +1773,11 @@ impl InstallScreen {
                 }
                 InstallMessage::DisksDiscovered(disks) => {
                     self.available_disks = disks;
-                    self.selected_disk_index = 0;
-                    if let Some(preconfigured_disk) = self.config.disk_device.as_deref() {
-                        if let Some((index, _)) = self
-                            .available_disks
-                            .iter()
-                            .enumerate()
-                            .find(|(_, disk)| disk.by_id_path == preconfigured_disk)
-                        {
-                            self.selected_disk_index = index;
-                        }
+                    if !self.available_disks.is_empty() {
+                        self.selected_disk_index = preferred_disk_index(
+                            &self.available_disks,
+                            self.config.disk_device.as_deref(),
+                        );
                     }
                     self.discovering_disks = false;
                 }
@@ -1936,8 +2256,24 @@ async fn copy_dir_recursive_async(src: &Path, dst: &Path) -> Result<(), String> 
     {
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .await
+            .map_err(|e| format!("Failed to inspect {}: {}", src_path.display(), e))?;
 
-        if src_path.is_dir() {
+        if file_type.is_symlink() {
+            let link_target = tokio::fs::read_link(&src_path)
+                .await
+                .map_err(|e| format!("Failed to read symlink {}: {}", src_path.display(), e))?;
+            std::os::unix::fs::symlink(&link_target, &dst_path).map_err(|e| {
+                format!(
+                    "Failed to recreate symlink {} -> {}: {}",
+                    dst_path.display(),
+                    link_target.display(),
+                    e
+                )
+            })?;
+        } else if file_type.is_dir() {
             tokio::fs::create_dir_all(&dst_path)
                 .await
                 .map_err(|e| format!("Failed to create dir {}: {}", dst_path.display(), e))?;
@@ -2231,6 +2567,41 @@ async fn create_install_commit(
     let _ = tx.send(InstallMessage::Output(
         "Recorded local install commit.".to_string(),
     ));
+
+    Ok(())
+}
+
+async fn amend_install_commit(
+    config_dir: &Path,
+    tx: &mpsc::UnboundedSender<InstallMessage>,
+) -> Result<(), String> {
+    let _ = tx.send(InstallMessage::Output(
+        "Normalizing install repo state before handoff...".to_string(),
+    ));
+
+    let _ = Command::new("git")
+        .args([
+            "rm",
+            "--cached",
+            "-f",
+            "--ignore-unmatch",
+            FIRST_BOOT_MARKER,
+        ])
+        .current_dir(config_dir)
+        .output()
+        .await;
+
+    run_command_quiet("git", &["add", "-A", "."], Some(config_dir), false)
+        .await
+        .map_err(|e| format!("Failed to stage normalized install repo: {e}"))?;
+    run_command_quiet(
+        "git",
+        &["commit", "--amend", "--no-edit"],
+        Some(config_dir),
+        false,
+    )
+    .await
+    .map_err(|e| format!("Failed to amend install commit: {e}"))?;
 
     Ok(())
 }
@@ -3003,6 +3374,134 @@ mod tests {
     }
 
     #[test]
+    fn test_preferred_disk_index_falls_back_to_first_disk() {
+        let disks = vec![
+            DiskEntry {
+                by_id_path: "/dev/disk/by-id/nvme-first".to_string(),
+                model: "Fast Disk".to_string(),
+                size: "1T".to_string(),
+                transport: "nvme".to_string(),
+            },
+            DiskEntry {
+                by_id_path: "/dev/disk/by-id/ata-second".to_string(),
+                model: "Slow Disk".to_string(),
+                size: "2T".to_string(),
+                transport: "sata".to_string(),
+            },
+        ];
+
+        assert_eq!(preferred_disk_index(&disks, None), 0);
+        assert_eq!(
+            preferred_disk_index(&disks, Some("/dev/disk/by-id/missing")),
+            0
+        );
+    }
+
+    #[test]
+    fn test_set_disk_by_path_selects_requested_disk() {
+        let mut screen = InstallScreen::new(test_config_no_disk());
+        screen.available_disks = vec![
+            DiskEntry {
+                by_id_path: "/dev/disk/by-id/ata-other".to_string(),
+                model: "Other Disk".to_string(),
+                size: "1T".to_string(),
+                transport: "sata".to_string(),
+            },
+            DiskEntry {
+                by_id_path: "/dev/disk/by-id/virtio-keystone-test-disk".to_string(),
+                model: "Fixture Disk".to_string(),
+                size: "64G".to_string(),
+                transport: "virtio".to_string(),
+            },
+        ];
+
+        screen
+            .set_disk_by_path("/dev/disk/by-id/virtio-keystone-test-disk")
+            .unwrap();
+
+        assert_eq!(screen.selected_disk_index(), 1);
+    }
+
+    #[test]
+    fn test_set_disk_by_path_errors_when_requested_disk_missing() {
+        let mut screen = InstallScreen::new(test_config_no_disk());
+        screen.available_disks = vec![DiskEntry {
+            by_id_path: "/dev/disk/by-id/ata-other".to_string(),
+            model: "Other Disk".to_string(),
+            size: "1T".to_string(),
+            transport: "sata".to_string(),
+        }];
+
+        let error = screen
+            .set_disk_by_path("/dev/disk/by-id/virtio-keystone-test-disk")
+            .unwrap_err();
+
+        assert!(error
+            .contains("Requested disk '/dev/disk/by-id/virtio-keystone-test-disk' was not found."));
+        assert!(error.contains("Discovered disks:"));
+        assert!(error.contains("Best guess: /dev/disk/by-id/ata-other"));
+    }
+
+    #[test]
+    fn test_build_headless_confirmation_message_for_auto_selected_disk() {
+        let disks = vec![DiskEntry {
+            by_id_path: "/dev/disk/by-id/nvme-best".to_string(),
+            model: "Best Disk".to_string(),
+            size: "2T".to_string(),
+            transport: "nvme".to_string(),
+        }];
+
+        let message = build_headless_confirmation_message(
+            "laptop",
+            "/dev/disk/by-id/nvme-best",
+            HeadlessSelectionSource::AutoSelected,
+            &disks,
+        );
+
+        assert!(message.contains("No --disk was provided for host 'laptop'."));
+        assert!(message.contains("This will erase all data on '/dev/disk/by-id/nvme-best'."));
+        assert!(message.contains("Type 'destroy' to confirm installation"));
+    }
+
+    #[test]
+    fn test_build_headless_confirmation_message_for_prompted_disk() {
+        let disks = vec![DiskEntry {
+            by_id_path: "/dev/disk/by-id/nvme-best".to_string(),
+            model: "Best Disk".to_string(),
+            size: "2T".to_string(),
+            transport: "nvme".to_string(),
+        }];
+
+        let message = build_headless_confirmation_message(
+            "laptop",
+            "/dev/disk/by-id/nvme-best",
+            HeadlessSelectionSource::Prompted,
+            &disks,
+        );
+
+        assert!(message.contains("Headless install is ready for host 'laptop'"));
+        assert!(!message.contains("Only available install disk"));
+    }
+
+    #[test]
+    fn test_parse_headless_disk_selection_accepts_enter_for_default() {
+        assert_eq!(parse_headless_disk_selection("", 3, 1).unwrap(), 1);
+        assert_eq!(parse_headless_disk_selection(" \n", 3, 2).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_parse_headless_disk_selection_accepts_one_based_choice() {
+        assert_eq!(parse_headless_disk_selection("2", 3, 0).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_parse_headless_disk_selection_rejects_invalid_choice() {
+        let error = parse_headless_disk_selection("9", 3, 0).unwrap_err();
+
+        assert!(error.contains("Expected a disk number between 1 and 3"));
+    }
+
+    #[test]
     fn test_build_command_spec_wraps_privileged_commands_in_sudo() {
         let command = build_command_spec("disko", &["--mode", "disko"], true);
 
@@ -3046,6 +3545,112 @@ mod tests {
         assert_eq!(
             mounted_repo_dir,
             PathBuf::from("/mnt/home/noah/.keystone/repos/noah/keystone-config")
+        );
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_restores_lock_and_removes_vendored_input() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("source-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+
+        std::fs::create_dir_all(&vendored_dir).unwrap();
+        std::fs::write(&source_lock, "original-lock").unwrap();
+        std::fs::write(repo_dir.join("flake.lock"), "path-lock").unwrap();
+        std::fs::write(vendored_dir.join("CLAUDE.md"), "vendored").unwrap();
+
+        normalize_staged_install_repo(&repo_dir, &source_lock).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.join("flake.lock")).unwrap(),
+            "original-lock"
+        );
+        assert!(!vendored_dir.exists());
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_requires_source_lock_when_vendored_input_exists() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("missing-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+
+        std::fs::create_dir_all(&vendored_dir).unwrap();
+        std::fs::write(repo_dir.join("flake.lock"), "path-lock").unwrap();
+
+        let error = normalize_staged_install_repo(&repo_dir, &source_lock).unwrap_err();
+
+        assert!(error.contains("missing"));
+        assert!(vendored_dir.exists());
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.join("flake.lock")).unwrap(),
+            "path-lock"
+        );
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_keeps_flake_lock_writable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("source-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
+        let target_lock = repo_dir.join("flake.lock");
+
+        std::fs::create_dir_all(&vendored_dir).unwrap();
+        std::fs::write(&source_lock, "original-lock").unwrap();
+        std::fs::write(&target_lock, "path-lock").unwrap();
+        std::fs::set_permissions(&source_lock, std::fs::Permissions::from_mode(0o444)).unwrap();
+        std::fs::set_permissions(&target_lock, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        normalize_staged_install_repo(&repo_dir, &source_lock).unwrap();
+
+        let mode = std::fs::metadata(&target_lock)
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_ne!(mode & 0o200, 0);
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_is_noop_without_vendored_input() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("source-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let target_lock = repo_dir.join("flake.lock");
+
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        std::fs::write(&source_lock, "original-lock").unwrap();
+        std::fs::write(&target_lock, "existing-lock").unwrap();
+
+        normalize_staged_install_repo(&repo_dir, &source_lock).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&target_lock).unwrap(),
+            "existing-lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_copy_dir_recursive_async_preserves_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+
+        std::fs::create_dir_all(&src).unwrap();
+        tokio::fs::create_dir_all(&dst).await.unwrap();
+        std::fs::write(src.join("target.txt"), "hello").unwrap();
+        std::os::unix::fs::symlink("target.txt", src.join("link.txt")).unwrap();
+
+        copy_dir_recursive_async(&src, &dst).await.unwrap();
+
+        let metadata = std::fs::symlink_metadata(dst.join("link.txt")).unwrap();
+        assert!(metadata.file_type().is_symlink());
+        assert_eq!(
+            std::fs::read_link(dst.join("link.txt")).unwrap(),
+            PathBuf::from("target.txt")
         );
     }
 
@@ -3120,6 +3725,30 @@ in
         let reconciled =
             build_reconciled_hardware_wrapper(current, Some("/dev/disk/by-id/fallback")).unwrap();
 
+        assert!(reconciled.contains("\"/dev/disk/by-id/fallback\""));
+    }
+
+    #[test]
+    fn test_build_reconciled_hardware_wrapper_generates_host_id_from_placeholder() {
+        let current = r#"let
+  system = "x86_64-linux";
+in
+{
+  inherit system;
+
+  module = { ... }: {
+    networking.hostId = "00000000";
+    keystone.os.storage.devices = [
+      "__KEYSTONE_DISK__"
+    ];
+  };
+}
+"#;
+
+        let reconciled =
+            build_reconciled_hardware_wrapper(current, Some("/dev/disk/by-id/fallback")).unwrap();
+
+        assert!(!reconciled.contains("networking.hostId = \"00000000\";"));
         assert!(reconciled.contains("\"/dev/disk/by-id/fallback\""));
     }
 

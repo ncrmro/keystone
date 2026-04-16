@@ -12,11 +12,6 @@ local function shell_quote(value)
 end
 
 local function command_path(name)
-    local home = os.getenv("HOME") or ""
-    if home ~= "" then
-        return home .. "/.local/bin/" .. name
-    end
-
     return name
 end
 

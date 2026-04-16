@@ -32,7 +32,7 @@
     }:
     keystone.lib.mkSystemFlake {
       admin = {
-        username = "admin"; # TODO: Change to your login username
+        username = "keystone"; # TODO: Change to your login username
         fullName = "Your Name"; # TODO: Change to your full name
         email = "admin@example.com"; # TODO: Change to your email
         initialPassword = "changeme";
@@ -43,8 +43,8 @@
       };
       hostsRoot = ./hosts;
       shared = {
-        # Start with `userModules` for tools and config that should follow your
-        # login environment on every host. This is the common case.
+        # Home Manager user packages — installed per-user on every host.
+        # Start here for tools that should follow your login environment.
         userModules = [
           (
             { pkgs, ... }:
@@ -56,9 +56,9 @@
           )
         ];
 
-        # Use `systemModules` only when something truly belongs at the OS level,
-        # such as root-owned packages, system-wide services, or packages needed
-        # for other users too.
+        # NixOS system modules — OS-wide on every host. Use only when something
+        # truly belongs at the system level (root-owned packages, services,
+        # packages needed for other users).
         systemModules = [
           (
             { pkgs, ... }:
@@ -69,6 +69,21 @@
             }
           )
         ];
+
+        # Home Manager desktop packages — per-user on laptop and workstation
+        # hosts only, not servers. Use for GUI apps.
+        # desktopUserModules = [
+        #   (
+        #     { pkgs, ... }:
+        #     {
+        #       home.packages = with pkgs; [
+        #         obsidian
+        #         vscode
+        #         bitwarden-desktop
+        #       ];
+        #     }
+        #   )
+        # ];
       };
       keystoneServices = {
         # Shared infrastructure services are placed globally here.
