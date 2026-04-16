@@ -106,18 +106,8 @@ pub async fn execute(args: &NotificationArgs) -> Result<()> {
 
 // ── Fetch ──────────────────────────────────────────────────────────────
 
-/// Resolve GitHub username from env var or gh CLI.
-fn resolve_github_username() -> Option<String> {
-    std::env::var("GITHUB_USERNAME").ok().or_else(|| {
-        std::process::Command::new("gh")
-            .args(["api", "/user", "--jq", ".login"])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .filter(|s| !s.is_empty())
-    })
-}
+use crate::platform;
+use crate::time;
 
 /// Collect a source fetch result into entries and manifest.
 fn collect_source(
@@ -166,7 +156,7 @@ async fn execute_fetch(
 
     if should_fetch("github") {
         // Username not required for fetch — only used for filtering reviews
-        let username = resolve_github_username();
+        let username = platform::resolve_github_username();
         collect_source(
             fetch_github(username.as_deref().unwrap_or("")).await,
             "github",
@@ -284,22 +274,6 @@ async fn fetch_email_body(id: &str) -> Result<String> {
 
 // ── GitHub source ──────────────────────────────────────────────────────
 
-/// Parse number from a REST API URL like
-/// `https://api.github.com/repos/owner/repo/issues/123`
-fn parse_number_from_url(url: &str) -> Option<u64> {
-    url.rsplit('/').next()?.parse().ok()
-}
-
-/// Construct HTML URL from repo + subject type + number.
-fn github_html_url(repo: &str, subject_type: &str, number: u64) -> String {
-    let kind = if subject_type == "PullRequest" {
-        "pull"
-    } else {
-        "issues"
-    };
-    format!("https://github.com/{repo}/{kind}/{number}")
-}
-
 /// Fetch unread GitHub notifications — metadata only, no enrichment.
 /// ISSUE-REQ-3: Does NOT pass `all=true` — only unread notifications.
 /// Uses exactly 1 API call. Agent fetches full details JIT during task execution.
@@ -341,7 +315,7 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
             continue;
         }
 
-        let Some(number) = parse_number_from_url(subject_url) else {
+        let Some(number) = platform::parse_number_from_url(subject_url) else {
             continue; // Skip unparseable URLs rather than emitting number=0
         };
 
@@ -358,7 +332,7 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
             .get("updated_at")
             .and_then(|u| u.as_str())
             .unwrap_or("");
-        let url = github_html_url(repo, subject_type, number);
+        let url = platform::github_html_url(repo, subject_type, number);
 
         items.push(serde_json::json!({
             "repo": repo,
@@ -388,16 +362,6 @@ async fn fetch_github(_username: &str) -> Result<(SourceEntry, Vec<String>)> {
 }
 
 // ── Forgejo source ────────────────────────────────────────────────────
-
-/// Construct Forgejo HTML URL from host + repo + subject type + number.
-fn forgejo_html_url(host: &str, repo: &str, subject_type: &str, number: u64) -> String {
-    let kind = if subject_type == "Pull" {
-        "pulls"
-    } else {
-        "issues"
-    };
-    format!("{host}/{repo}/{kind}/{number}")
-}
 
 /// Fetch unread Forgejo notifications — metadata only, no enrichment.
 /// ISSUE-REQ-4: Uses unread-only notifications endpoint.
@@ -470,8 +434,8 @@ async fn fetch_forgejo(
             continue;
         }
 
-        let number = parse_number_from_url(subject_url).unwrap_or(0);
-        let html_url = forgejo_html_url(host, repo, subject_type, number);
+        let number = platform::parse_number_from_url(subject_url).unwrap_or(0);
+        let html_url = platform::forgejo_html_url(host, repo, subject_type, number);
 
         items.push(serde_json::json!({
             "repo": repo,
@@ -668,7 +632,7 @@ async fn fetch_all_sources() -> Vec<SourceEntry> {
         }
     }
 
-    let gh_user = resolve_github_username();
+    let gh_user = platform::resolve_github_username();
     if let Ok((entry, _)) = fetch_github(gh_user.as_deref().unwrap_or("")).await {
         let empty = serde_json::Value::Array(vec![]);
         if entry.data != empty {
@@ -781,7 +745,7 @@ async fn execute_sources(json: bool) -> Result<()> {
 // ── Helpers ────────────────────────────────────────────────────────────
 
 fn chrono_now() -> String {
-    crate::cmd::tasks::iso_now()
+    time::iso_now()
 }
 
 fn timestamp_slug() -> String {

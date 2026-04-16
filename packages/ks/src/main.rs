@@ -30,11 +30,13 @@ mod config;
 mod disk;
 mod github;
 mod nix;
+mod platform;
 mod repo;
 mod ssh_keys;
 mod system;
 mod template;
 mod theme;
+mod time;
 mod tui;
 mod widgets;
 
