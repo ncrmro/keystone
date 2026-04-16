@@ -5,7 +5,7 @@
 //! projects deterministically (repo match) or heuristically (subject match).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
@@ -1038,44 +1038,28 @@ fn parse_forgejo_prs(data: &serde_json::Value, full_repo: &str) -> Vec<PrStatus>
         .collect()
 }
 
-/// Discover local git checkouts and worktrees for a repo, gather branch info.
-async fn gather_local_branches(
-    full_repo: &str,
-    pr_head_refs: &HashMap<String, (u64, String)>,
-) -> Vec<BranchStatus> {
-    let mut branches = Vec::new();
+/// Discover local git checkouts and worktrees for a repo across all users.
+fn discover_checkouts(full_repo: &str) -> Vec<(PathBuf, String)> {
     let parts: Vec<&str> = full_repo.split('/').collect();
     if parts.len() != 2 {
-        return branches;
+        return Vec::new();
     }
     let (owner, repo_name) = (parts[0], parts[1]);
-
-    // Discover checkouts: ~/repos/{owner}/{repo}/
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     let mut checkout_paths = Vec::new();
 
+    // Human: ~/repos/{owner}/{repo}/ and ~/.worktrees/{owner}/{repo}/*/
     let main_checkout = PathBuf::from(&home).join("repos").join(owner).join(repo_name);
     if main_checkout.exists() {
         checkout_paths.push((main_checkout, home.clone()));
     }
+    collect_worktree_dirs(
+        &PathBuf::from(&home).join(".worktrees").join(owner).join(repo_name),
+        &home,
+        &mut checkout_paths,
+    );
 
-    // Discover worktrees: ~/.worktrees/{owner}/{repo}/*/
-    let worktrees_base = PathBuf::from(&home)
-        .join(".worktrees")
-        .join(owner)
-        .join(repo_name);
-    if worktrees_base.exists() {
-        if let Ok(entries) = std::fs::read_dir(&worktrees_base) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    checkout_paths.push((path, home.clone()));
-                }
-            }
-        }
-    }
-
-    // Scan agent home directories
+    // Agents: /home/agent-*/repos/ and /home/agent-*/.worktrees/
     if let Ok(entries) = std::fs::read_dir("/home") {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
@@ -1083,158 +1067,157 @@ async fn gather_local_branches(
                 continue;
             }
             let agent_home = entry.path();
+            let agent_home_str = agent_home.to_string_lossy().to_string();
             let agent_checkout = agent_home.join("repos").join(owner).join(repo_name);
             if agent_checkout.exists() {
-                checkout_paths.push((agent_checkout, agent_home.to_string_lossy().to_string()));
+                checkout_paths.push((agent_checkout, agent_home_str.clone()));
             }
-            let agent_worktrees = agent_home.join(".worktrees").join(owner).join(repo_name);
-            if agent_worktrees.exists() {
-                if let Ok(wt_entries) = std::fs::read_dir(&agent_worktrees) {
-                    for wt_entry in wt_entries.flatten() {
-                        let path = wt_entry.path();
-                        if path.is_dir() {
-                            checkout_paths.push((
-                                path,
-                                agent_home.to_string_lossy().to_string(),
-                            ));
-                        }
-                    }
-                }
-            }
+            collect_worktree_dirs(
+                &agent_home.join(".worktrees").join(owner).join(repo_name),
+                &agent_home_str,
+                &mut checkout_paths,
+            );
         }
     }
 
-    for (checkout_path, owner_home) in &checkout_paths {
-        let checkout_str = checkout_path.to_string_lossy().to_string();
-        let owner_name = PathBuf::from(owner_home)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
+    checkout_paths
+}
 
-        // Get branches with ahead counts
-        let branch_output = Command::new("git")
-            .args([
-                "-C",
-                &checkout_str,
-                "for-each-ref",
-                "--format=%(refname:short)\t%(ahead-behind:HEAD)",
-                "refs/heads/",
-            ])
-            .output()
-            .await;
-
-        // Get merged branches
-        let merged_output = Command::new("git")
-            .args(["-C", &checkout_str, "branch", "--merged", "HEAD"])
-            .output()
-            .await;
-
-        let merged_set: std::collections::HashSet<String> = merged_output
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .map(|l| l.trim().trim_start_matches("* ").to_string())
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        if let Ok(output) = branch_output {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    let parts: Vec<&str> = line.split('\t').collect();
-                    if parts.is_empty() {
-                        continue;
-                    }
-                    let branch_name = parts[0].to_string();
-                    let ahead = if parts.len() > 1 {
-                        // Format is "ahead behind" separated by space
-                        parts[1]
-                            .split_whitespace()
-                            .next()
-                            .and_then(|n| n.parse::<u64>().ok())
-                            .unwrap_or(0)
-                    } else {
-                        0
-                    };
-
-                    // Skip main/master
-                    if branch_name == "main" || branch_name == "master" {
-                        continue;
-                    }
-
-                    let merged = merged_set.contains(&branch_name);
-
-                    // Match to PR
-                    let (pr_number, pr_state) = pr_head_refs
-                        .get(&branch_name)
-                        .map(|(n, s)| (Some(*n), Some(s.clone())))
-                        .unwrap_or((None, None));
-
-                    // Get last commit date for staleness
-                    let date_output = Command::new("git")
-                        .args([
-                            "-C",
-                            &checkout_str,
-                            "log",
-                            "-1",
-                            "--format=%aI",
-                            &branch_name,
-                        ])
-                        .output()
-                        .await;
-
-                    let last_commit_age = date_output
-                        .ok()
-                        .filter(|o| o.status.success())
-                        .map(|o| {
-                            let date = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                            crate::time::days_since(&date)
-                        })
-                        .unwrap_or(0);
-
-                    let is_worktree =
-                        checkout_str.contains(".worktrees/");
-                    let worktree_path = if is_worktree {
-                        Some(checkout_str.clone())
-                    } else {
-                        None
-                    };
-                    let checkout_display = if !is_worktree {
-                        Some(checkout_str.clone())
-                    } else {
-                        None
-                    };
-
-                    let mut flags = Vec::new();
-                    if last_commit_age > 14 && !merged {
-                        flags.push("stale".to_string());
-                    }
-                    if merged && branch_name != "main" && branch_name != "master" {
-                        flags.push("cleanup-candidate".to_string());
-                    }
-
-                    branches.push(BranchStatus {
-                        repo: full_repo.to_string(),
-                        name: branch_name,
-                        owner: owner_name.clone(),
-                        pr_number,
-                        pr_state,
-                        worktree_path,
-                        checkout_path: checkout_display,
-                        commits_ahead: ahead,
-                        last_commit_age_days: last_commit_age,
-                        merged,
-                        flags,
-                    });
-                }
+/// Collect subdirectories of a worktree base path.
+fn collect_worktree_dirs(base: &Path, owner_home: &str, out: &mut Vec<(PathBuf, String)>) {
+    if !base.exists() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(base) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                out.push((path, owner_home.to_string()));
             }
         }
+    }
+}
+
+/// Parse branches from a single git checkout using batched git commands.
+/// Uses `for-each-ref` with creatordate to avoid per-branch git log calls.
+async fn parse_checkout_branches(
+    checkout_path: &Path,
+    owner_home: &str,
+    full_repo: &str,
+    pr_head_refs: &HashMap<String, (u64, String)>,
+) -> Vec<BranchStatus> {
+    let checkout_str = checkout_path.to_string_lossy().to_string();
+    let owner_name = PathBuf::from(owner_home)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // One call: branches + ahead count + last commit date
+    let branch_output = Command::new("git")
+        .args([
+            "-C",
+            &checkout_str,
+            "for-each-ref",
+            "--format=%(refname:short)\t%(ahead-behind:HEAD)\t%(creatordate:iso)",
+            "refs/heads/",
+        ])
+        .output()
+        .await;
+
+    // One call: merged branches
+    let merged_output = Command::new("git")
+        .args(["-C", &checkout_str, "branch", "--merged", "HEAD"])
+        .output()
+        .await;
+
+    let merged_set: std::collections::HashSet<String> = merged_output
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|l| l.trim().trim_start_matches("* ").to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let is_worktree = checkout_str.contains(".worktrees/");
+    let mut branches = Vec::new();
+
+    let output = match branch_output {
+        Ok(o) if o.status.success() => o,
+        _ => return branches,
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.is_empty() {
+            continue;
+        }
+        let branch_name = fields[0].to_string();
+        if branch_name == "main" || branch_name == "master" {
+            continue;
+        }
+
+        let ahead = fields
+            .get(1)
+            .and_then(|f| f.split_whitespace().next())
+            .and_then(|n| n.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        let last_commit_age = fields
+            .get(2)
+            .map(|d| crate::time::days_since(d.trim()))
+            .unwrap_or(0);
+
+        let merged = merged_set.contains(&branch_name);
+        let (pr_number, pr_state) = pr_head_refs
+            .get(&branch_name)
+            .map(|(n, s)| (Some(*n), Some(s.clone())))
+            .unwrap_or((None, None));
+
+        let mut flags = Vec::new();
+        if last_commit_age > 14 && !merged {
+            flags.push("stale".to_string());
+        }
+        if merged {
+            flags.push("cleanup-candidate".to_string());
+        }
+
+        branches.push(BranchStatus {
+            repo: full_repo.to_string(),
+            name: branch_name,
+            owner: owner_name.clone(),
+            pr_number,
+            pr_state,
+            worktree_path: if is_worktree { Some(checkout_str.clone()) } else { None },
+            checkout_path: if !is_worktree { Some(checkout_str.clone()) } else { None },
+            commits_ahead: ahead,
+            last_commit_age_days: last_commit_age,
+            merged,
+            flags,
+        });
     }
 
     branches
+}
+
+/// Discover local git checkouts and worktrees for a repo, gather branch info.
+async fn gather_local_branches(
+    full_repo: &str,
+    pr_head_refs: &HashMap<String, (u64, String)>,
+) -> Vec<BranchStatus> {
+    let checkout_paths = discover_checkouts(full_repo);
+    let mut all_branches = Vec::new();
+
+    for (checkout_path, owner_home) in &checkout_paths {
+        let branches =
+            parse_checkout_branches(checkout_path, owner_home, full_repo, pr_head_refs).await;
+        all_branches.extend(branches);
+    }
+
+    all_branches
 }
 
 /// Load tasks from home TASKS.yaml files, filtered by project slug.
@@ -1436,6 +1419,7 @@ async fn execute_status_single(slug: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::cognitive_complexity)]
 fn render_status_human(status: &ProjectStatus) {
     let name = status
         .project
