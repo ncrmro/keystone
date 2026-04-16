@@ -351,6 +351,17 @@ impl InstallerConfig {
     fn inject_disk_into_hardware(hardware_path: &Path, device: &str) -> std::io::Result<()> {
         let content = std::fs::read_to_string(hardware_path)?;
         let root = Root::parse(&content);
+        if !root.errors().is_empty() {
+            let errors: Vec<_> = root.errors().iter().map(|e| e.to_string()).collect();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Failed to parse {}: {}",
+                    hardware_path.display(),
+                    errors.join("; ")
+                ),
+            ));
+        }
         let syntax = root.syntax();
 
         let attr_node = nix_find_attr(&syntax, "keystone.os.storage.devices").ok_or_else(|| {
@@ -389,7 +400,10 @@ impl InstallerConfig {
             .collect();
 
         let replacement = format!("[\n{indent}  \"{device}\"\n{indent}]");
-        let updated = format!("{}{}{}", &content[..start], replacement, &content[end..]);
+        let mut updated = format!("{}{}{}", &content[..start], replacement, &content[end..]);
+        if !updated.ends_with('\n') {
+            updated.push('\n');
+        }
 
         std::fs::write(hardware_path, updated)?;
         Ok(())
@@ -656,7 +670,10 @@ fn nix_extract_string(node: &SyntaxNode) -> Option<String> {
     for child in node.children() {
         if child.kind() == SyntaxKind::NODE_STRING {
             let text = child.text().to_string();
-            return Some(text.trim_matches('"').to_string());
+            let trimmed = text.trim_matches('"');
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
         }
     }
     // Also check one level deeper (value might be wrapped).
@@ -774,6 +791,11 @@ fn ensure_marker_gitignore_contents(current: Option<&str>) -> String {
 fn strip_generated_storage_assignments(generated_hardware: &str) -> String {
     let storage_prefixes = ["fileSystems.", "swapDevices", "boot.initrd.luks.devices."];
     let root = Root::parse(generated_hardware);
+    if !root.errors().is_empty() {
+        // If the generated hardware config can't be parsed, return it unchanged
+        // rather than risk corrupting the output with bad range calculations.
+        return generated_hardware.to_string();
+    }
     let syntax = root.syntax();
 
     // Collect text ranges of storage-related attr assignments to exclude.
@@ -861,6 +883,13 @@ fn build_reconciled_hardware_wrapper(
 ) -> Result<String, String> {
     // Parse once, extract all values from the AST.
     let root = Root::parse(current_hardware_nix);
+    if !root.errors().is_empty() {
+        let errors: Vec<_> = root.errors().iter().map(|e| e.to_string()).collect();
+        return Err(format!(
+            "Failed to parse current hardware.nix: {}",
+            errors.join("; ")
+        ));
+    }
     let syntax = root.syntax();
 
     let system = nix_find_attr(&syntax, "system")
@@ -3938,5 +3967,49 @@ in
         let result = validate_installed_hardware(repo.path(), "test-laptop", &tx).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("missing hardware.nix"));
+    }
+
+    #[test]
+    fn test_inject_disk_into_hardware_replaces_devices_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let hardware_path = dir.path().join("hardware.nix");
+        let original = r#"{ config, pkgs, ... }:
+{
+  imports = [
+    ./hardware-generated.nix
+  ];
+
+  other.setting = "keep";
+
+  keystone.os.storage.devices = [
+    "/dev/old-disk"
+  ];
+
+  networking.hostName = "demo";
+}
+"#;
+        std::fs::write(&hardware_path, original).unwrap();
+
+        InstallerConfig::inject_disk_into_hardware(&hardware_path, "/dev/disk/by-id/new-target")
+            .unwrap();
+
+        let updated = std::fs::read_to_string(&hardware_path).unwrap();
+        assert!(
+            updated.contains("\"/dev/disk/by-id/new-target\""),
+            "should contain new device"
+        );
+        assert!(
+            !updated.contains("/dev/old-disk"),
+            "should not contain old device"
+        );
+        assert!(
+            updated.contains("other.setting = \"keep\";"),
+            "should preserve other attrs"
+        );
+        assert!(
+            updated.contains("networking.hostName = \"demo\";"),
+            "should preserve trailing attrs"
+        );
+        assert!(updated.ends_with('\n'), "should end with newline");
     }
 }

@@ -96,11 +96,8 @@ ks_nix_ast_review:
       - new Nix source handling that does not use `rnix`
       - migration debt that should be called out explicitly when touched
 
-      Current known debt to flag if it persists or spreads:
-      - `strip_generated_storage_assignments()`
-      - `parse_nix_string_assignment()`
-      - `parse_nix_string_list_assignment()`
-      - `build_reconciled_hardware_wrapper()`
+      Flag any remaining or newly introduced text-based `.nix` parsing that
+      should use rnix AST operations instead.
 
 # =====================================================================
 # ks component architecture review

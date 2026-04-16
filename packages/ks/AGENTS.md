@@ -148,11 +148,8 @@ When Rust code reads or writes `.nix` source, it should use the installed
 - Existing non-AST Nix source handling is migration debt and must not be copied
   into new code paths.
 
-Current documented debt in `src/components/install.rs`:
-- `strip_generated_storage_assignments()`
-- `parse_nix_string_assignment()`
-- `parse_nix_string_list_assignment()`
-- `build_reconciled_hardware_wrapper()`
+Migration debt is tracked in #375. The `src/components/install.rs` functions
+listed there were migrated to rnix in PR #378.
 
 ## Clippy Configuration
 
