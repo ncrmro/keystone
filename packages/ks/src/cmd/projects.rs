@@ -672,7 +672,7 @@ fn parse_github_milestones(repo_data: &serde_json::Value, full_repo: &str) -> Ve
                 .and_then(|n| n.as_u64())
                 .unwrap_or(0);
             let total = open + closed;
-            let pct = if total > 0 { (closed * 100) / total } else { 0 };
+            let pct = (closed * 100).checked_div(total).unwrap_or(0);
 
             let mut flags = Vec::new();
             if due_on.is_none() {
@@ -903,7 +903,7 @@ fn parse_forgejo_milestones(data: &serde_json::Value, full_repo: &str) -> Vec<Mi
             let open = m.get("open_issues").and_then(|n| n.as_u64()).unwrap_or(0);
             let closed = m.get("closed_issues").and_then(|n| n.as_u64()).unwrap_or(0);
             let total = open + closed;
-            let pct = if total > 0 { (closed * 100) / total } else { 0 };
+            let pct = (closed * 100).checked_div(total).unwrap_or(0);
             let mut flags = Vec::new();
             if due_on.is_none() {
                 flags.push("no-due-date".to_string());
