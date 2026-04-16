@@ -278,7 +278,7 @@ pub fn prune_tasks(task_file: &mut TaskFile, all: bool) -> usize {
     if all {
         task_file.tasks.retain(|t| t.status != "completed");
     } else {
-        let cutoff = chrono_days_ago(30);
+        let cutoff = crate::time::chrono_days_ago(30);
         task_file.tasks.retain(|t| {
             if t.status != "completed" {
                 return true;
@@ -747,6 +747,10 @@ fn execute_prune(all: bool) -> Result<()> {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
+pub fn iso_now() -> String {
+    crate::time::iso_now()
+}
+
 pub fn slugify(text: &str) -> String {
     text.to_lowercase()
         .chars()
@@ -759,45 +763,6 @@ pub fn slugify(text: &str) -> String {
         .chars()
         .take(60)
         .collect()
-}
-
-pub fn iso_now() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let secs_per_day = 86400u64;
-    let days = now / secs_per_day;
-    let time_of_day = now % secs_per_day;
-    let hours = time_of_day / 3600;
-    let minutes = (time_of_day % 3600) / 60;
-    let seconds = time_of_day % 60;
-    let (year, month, day) = epoch_days_to_ymd(days);
-    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
-}
-
-fn epoch_days_to_ymd(days: u64) -> (u64, u64, u64) {
-    let z = days + 719468;
-    let era = z / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
-}
-
-fn chrono_days_ago(days: u64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let past = now.saturating_sub(days * 86400);
-    let (year, month, day) = epoch_days_to_ymd(past / 86400);
-    format!("{year:04}-{month:02}-{day:02}")
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -1163,22 +1128,5 @@ mod tests {
         assert_eq!(proposal.items[0].rationale, "Production is down");
     }
 
-    // ── iso_now / epoch_days_to_ymd ───────────────────────────────
-
-    #[test]
-    fn test_iso_now_format() {
-        let now = iso_now();
-        // Should match YYYY-MM-DDTHH:MM:SSZ
-        assert!(now.len() == 20, "unexpected length: {now}");
-        assert!(now.ends_with('Z'));
-        assert_eq!(&now[4..5], "-");
-        assert_eq!(&now[10..11], "T");
-    }
-
-    #[test]
-    fn test_epoch_known_date() {
-        // 2026-01-01 = day 20454 from epoch
-        let (y, m, d) = epoch_days_to_ymd(20454);
-        assert_eq!((y, m, d), (2026, 1, 1));
-    }
+    // Time tests moved to crate::time::tests
 }
