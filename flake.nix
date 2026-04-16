@@ -102,6 +102,7 @@
 
     # Rust build tooling — splits dependency builds for fast incremental rebuilds
     crane.url = "github:ipetkov/crane";
+
   };
 
   outputs =
@@ -360,6 +361,10 @@
 
       # Focused flake checks — run via `nix flake check` and CI.
       # Repo-wide nixfmt and shellcheck live in pre-commit and dedicated CI jobs.
+      #
+      # CI runs check-* groups as parallel matrix jobs with per-group path
+      # filtering. Individual checks remain available for local use:
+      #   nix build .#checks.x86_64-linux.agent-evaluation
       checks.x86_64-linux =
         let
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
@@ -371,6 +376,7 @@
           ks = ksPkgs.keystone.ks;
           ksRustTests = ks.passthru.tests.cargo-test;
           ksRustClippy = ks.passthru.tests.cargo-clippy;
+          ksRustFmt = ks.passthru.tests.cargo-fmt;
           ksHelp = import ./tests/module/ks-help.nix {
             pkgs = ksPkgs;
             inherit ks;
@@ -386,14 +392,14 @@
           ksDoctorReport = import ./tests/module/ks-doctor-report.nix {
             inherit pkgs;
           };
-        in
-        {
-          # Module evaluation tests (fast, no VM boot required)
-          os-evaluation = import ./tests/module/os-evaluation.nix {
+
+          # --- Individual checks (available for local builds) ---
+
+          osEvaluation = import ./tests/module/os-evaluation.nix {
             inherit pkgs lib;
             self = self;
           };
-          agent-evaluation = import ./tests/module/agent-evaluation.nix {
+          agentEvaluation = import ./tests/module/agent-evaluation.nix {
             inherit
               pkgs
               lib
@@ -403,7 +409,7 @@
               ;
             self = self;
           };
-          template-evaluation = import ./tests/module/template-evaluation.nix {
+          templateEvaluation = import ./tests/module/template-evaluation.nix {
             inherit
               pkgs
               lib
@@ -412,59 +418,44 @@
               ;
             self = self;
           };
-          server-evaluation = import ./tests/module/server-evaluation.nix {
+          serverEvaluation = import ./tests/module/server-evaluation.nix {
             inherit pkgs lib nixpkgs;
             self = self;
           };
-          ks-help = ksHelp;
-          ks-lock-sync = import ./tests/module/ks-lock-sync.nix {
+          ksLockSync = import ./tests/module/ks-lock-sync.nix {
             inherit pkgs;
           };
-          keystone-photos = ksPhotos;
-          projects-schema = import ./tests/module/projects-schema.nix {
+          projectsSchema = import ./tests/module/projects-schema.nix {
             inherit pkgs lib;
           };
-          pz-regression = import ./tests/module/pz-regression.nix {
+          pzRegression = import ./tests/module/pz-regression.nix {
             inherit pkgs lib;
           };
-          pz-project-menu = import ./tests/module/pz-project-menu.nix {
+          pzProjectMenu = import ./tests/module/pz-project-menu.nix {
             inherit pkgs lib;
           };
-          pz-host-launcher-state = import ./tests/module/pz-host-launcher-state.nix {
+          pzHostLauncherState = import ./tests/module/pz-host-launcher-state.nix {
             inherit pkgs lib;
           };
-          keystone-secrets-menu = import ./tests/module/keystone-secrets-menu.nix {
+          keystoneSecretsMenu = import ./tests/module/keystone-secrets-menu.nix {
             inherit pkgs lib;
           };
-          keystone-update-menu = import ./tests/module/keystone-update-menu.nix {
+          keystoneUpdateMenu = import ./tests/module/keystone-update-menu.nix {
             inherit pkgs lib;
           };
-          keystone-fingerprint-menu = import ./tests/module/keystone-fingerprint-menu.nix {
+          keystoneFingerprintMenu = import ./tests/module/keystone-fingerprint-menu.nix {
             inherit pkgs lib;
           };
-          hyprland-bindings-agent-conflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
+          hyprlandBindingsAgentConflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
             inherit pkgs;
           };
-          ks-approve = ksApprove;
-          ks-doctor-report = ksDoctorReport;
-          ks-rust-tests = ksRustTests;
-          ks-rust-clippy = ksRustClippy;
-          ks = pkgs.runCommand "ks-checks" { } ''
-            mkdir -p "$out"
-            ln -s ${ksHelp} "$out/help"
-            ln -s ${ksPhotos} "$out/photos"
-            ln -s ${ksApprove} "$out/approve"
-            ln -s ${ksDoctorReport} "$out/doctor-report"
-            ln -s ${ksRustTests} "$out/rust-tests"
-            ln -s ${ksRustClippy} "$out/rust-clippy"
-          '';
-          agentctl-regression = import ./tests/module/agentctl-regression.nix {
+          agentctlRegression = import ./tests/module/agentctl-regression.nix {
             inherit pkgs;
           };
-          binary-cache-client-merge = import ./tests/module/binary-cache-client-merge.nix {
+          binaryCacheClientMerge = import ./tests/module/binary-cache-client-merge.nix {
             inherit pkgs lib self;
           };
-          zellij-tab-prompt = import ./tests/module/zellij-tab-prompt.nix {
+          zellijTabPrompt = import ./tests/module/zellij-tab-prompt.nix {
             inherit
               pkgs
               lib
@@ -472,18 +463,97 @@
               home-manager
               ;
           };
-          agent-task-loop-hash-regression = import ./tests/module/agent-task-loop-hash-regression.nix {
+          agentTaskLoopHashRegression = import ./tests/module/agent-task-loop-hash-regression.nix {
             inherit pkgs lib;
           };
-          agent-task-loop-ping-pong = import ./tests/module/agent-task-loop-ping-pong.nix {
+          agentTaskLoopPingPong = import ./tests/module/agent-task-loop-ping-pong.nix {
             inherit pkgs lib;
           };
-          agent-runtime-coherence = import ./tests/module/agent-runtime-coherence.nix {
+          agentRuntimeCoherence = import ./tests/module/agent-runtime-coherence.nix {
             inherit pkgs lib;
           };
-          agent-queue-migration = import ./tests/module/agent-queue-migration.nix {
+          agentQueueMigration = import ./tests/module/agent-queue-migration.nix {
             inherit pkgs lib;
           };
+        in
+        {
+          # Individual checks — for local debugging (nix build .#checks.x86_64-linux.<name>)
+          os-evaluation = osEvaluation;
+          agent-evaluation = agentEvaluation;
+          template-evaluation = templateEvaluation;
+          server-evaluation = serverEvaluation;
+          ks-help = ksHelp;
+          ks-lock-sync = ksLockSync;
+          keystone-photos = ksPhotos;
+          projects-schema = projectsSchema;
+          pz-regression = pzRegression;
+          pz-project-menu = pzProjectMenu;
+          pz-host-launcher-state = pzHostLauncherState;
+          keystone-secrets-menu = keystoneSecretsMenu;
+          keystone-update-menu = keystoneUpdateMenu;
+          keystone-fingerprint-menu = keystoneFingerprintMenu;
+          hyprland-bindings-agent-conflict = hyprlandBindingsAgentConflict;
+          ks-approve = ksApprove;
+          ks-doctor-report = ksDoctorReport;
+          ks-rust-tests = ksRustTests;
+          ks-rust-clippy = ksRustClippy;
+          ks-rust-fmt = ksRustFmt;
+          agentctl-regression = agentctlRegression;
+          binary-cache-client-merge = binaryCacheClientMerge;
+          zellij-tab-prompt = zellijTabPrompt;
+          agent-task-loop-hash-regression = agentTaskLoopHashRegression;
+          agent-task-loop-ping-pong = agentTaskLoopPingPong;
+          agent-runtime-coherence = agentRuntimeCoherence;
+          agent-queue-migration = agentQueueMigration;
+
+          # --- CI groups — parallel matrix jobs via nix-github-actions ---
+
+          # Heavy NixOS module evaluation (single-threaded eval dominates wall time)
+          check-eval = pkgs.runCommand "check-eval" { } ''
+            mkdir -p "$out"
+            ln -s ${osEvaluation} "$out/os-evaluation"
+            ln -s ${agentEvaluation} "$out/agent-evaluation"
+            ln -s ${templateEvaluation} "$out/template-evaluation"
+            ln -s ${serverEvaluation} "$out/server-evaluation"
+          '';
+
+          # ks CLI: Rust build, lint, format, and integration tests
+          check-ks = pkgs.runCommand "check-ks" { } ''
+            mkdir -p "$out"
+            ln -s ${ksRustTests} "$out/rust-tests"
+            ln -s ${ksRustClippy} "$out/rust-clippy"
+            ln -s ${ksRustFmt} "$out/rust-fmt"
+            ln -s ${ksHelp} "$out/help"
+            ln -s ${ksPhotos} "$out/photos"
+            ln -s ${ksApprove} "$out/approve"
+            ln -s ${ksDoctorReport} "$out/doctor-report"
+            ln -s ${ksLockSync} "$out/lock-sync"
+          '';
+
+          # Lightweight shell script tests (runCommand, no heavy deps)
+          check-scripts = pkgs.runCommand "check-scripts" { } ''
+            mkdir -p "$out"
+            ln -s ${agentctlRegression} "$out/agentctl-regression"
+            ln -s ${pzRegression} "$out/pz-regression"
+            ln -s ${pzProjectMenu} "$out/pz-project-menu"
+            ln -s ${pzHostLauncherState} "$out/pz-host-launcher-state"
+            ln -s ${keystoneSecretsMenu} "$out/keystone-secrets-menu"
+            ln -s ${keystoneUpdateMenu} "$out/keystone-update-menu"
+            ln -s ${keystoneFingerprintMenu} "$out/keystone-fingerprint-menu"
+            ln -s ${projectsSchema} "$out/projects-schema"
+            ln -s ${hyprlandBindingsAgentConflict} "$out/hyprland-bindings-agent-conflict"
+          '';
+
+          # Agent runtime and miscellaneous module tests
+          check-agents = pkgs.runCommand "check-agents" { } ''
+            mkdir -p "$out"
+            ln -s ${agentTaskLoopHashRegression} "$out/agent-task-loop-hash-regression"
+            ln -s ${agentTaskLoopPingPong} "$out/agent-task-loop-ping-pong"
+            ln -s ${agentRuntimeCoherence} "$out/agent-runtime-coherence"
+            ln -s ${agentQueueMigration} "$out/agent-queue-migration"
+            ln -s ${binaryCacheClientMerge} "$out/binary-cache-client-merge"
+            ln -s ${zellijTabPrompt} "$out/zellij-tab-prompt"
+          '';
         };
 
       # Packages exported for consumption — sourced from the overlay (single source of truth)

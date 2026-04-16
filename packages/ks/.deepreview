@@ -1,7 +1,7 @@
 # =====================================================================
 # ks validation
 # Runs cargo fmt --check, clippy, and tests when Rust source changes.
-# Mirrors the ks CLI validation expectations in packages/ks/AGENTS.md.
+# Mirrors the CI pipeline in .github/workflows/validate.yml (check-ks group).
 # =====================================================================
 ks_validate:
   description: "Run cargo fmt check, clippy, and tests for ks Rust source changes."

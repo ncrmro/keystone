@@ -109,6 +109,7 @@ package.overrideAttrs (old: {
           cargoClippyExtraArgs = "--all-targets --all-features -- --deny warnings";
         }
       );
+      cargo-fmt = craneLib.cargoFmt { inherit (commonArgs) pname version src; };
     };
   };
 })
