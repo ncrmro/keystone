@@ -21,43 +21,45 @@ verification — without waiting for the user to nudge each step forward.
 5. The agent MUST NOT undraft, request review, or merge while checks are
    in progress or failing.
 
+## Issue Linkage
+
+6. PRs MUST reference their originating issue in the body using `Closes #N`
+   or `Fixes #N` to auto-close on merge.
+7. If multiple issues are addressed, each MUST be referenced explicitly.
+8. PRs without an originating issue SHOULD still reference related issues
+   with `Refs #N` for traceability.
+
 ## Undraft and Review
 
-6. Once CI is green and all PR-body tasks are checked off, the agent MUST
-   mark the PR ready for review (`gh pr ready` on GitHub, remove `WIP:`
-   prefix on Forgejo).
-7. The agent MUST request reviewers per `process.code-review-ownership`.
-   Copilot SHOULD also be requested as a supplementary reviewer per
-   `process.copilot-agent`.
-8. The agent MUST watch for review feedback and address every comment per
-   `process.pr-review-response` — fixing or explaining each one, replying
-   on the PR, and re-requesting review.
-9. After pushing review fixes, the agent MUST re-watch CI to green before
-   re-requesting review.
+9.  Once CI is green and all PR-body tasks are checked off, the agent MUST
+    mark the PR ready for review (`gh pr ready` on GitHub, remove `WIP:`
+    prefix on Forgejo).
+10. The agent MUST request reviewers per `process.code-review-ownership`.
+    Copilot SHOULD also be requested as a supplementary reviewer per
+    `process.copilot-agent`.
+11. The agent MUST watch for review feedback and address every comment per
+    `process.pr-review-response` — fixing or explaining each one, replying
+    on the PR, and re-requesting review.
+12. After pushing review fixes, the agent MUST re-watch CI to green before
+    re-requesting review.
 
 ## Merge
 
-10. When CI is green and approval exists, the agent SHOULD enable auto-merge
+13. When CI is green and approval exists, the agent SHOULD enable auto-merge
     via `gh pr merge --auto --squash --delete-branch` on GitHub, or merge
     explicitly on Forgejo per `process.continuous-integration` rules 23-24.
-11. If the repository uses a merge queue, the agent MUST wait for the PR to
+14. If the repository uses a merge queue, the agent MUST wait for the PR to
     enter and exit the queue successfully — not just for the merge button.
-12. The agent MUST verify the merge completed by checking the default branch
-    for the merge commit (`gh pr view --json mergeCommit,state` or
-    `git log origin/main`).
+15. When the user has requested merge, the agent MUST stay engaged through
+    the full merge lifecycle (queue entry, queue exit, default branch
+    verification) and confirm completion.
 
 ## Post-Merge Verification
 
-13. After merge, the agent MUST verify that the default branch CI is green
+16. After merge, the agent MUST verify that the default branch CI is green
     on the merge commit. If post-merge CI fails, the agent MUST flag it
     immediately.
-14. If the repository has a deploy pipeline, the agent SHOULD watch for
+17. If the repository has a deploy pipeline, the agent SHOULD watch for
     successful deployment and report the outcome.
-15. The agent MUST clean up the worktree after merge per
+18. The agent MUST clean up the worktree after merge per
     `process.feature-delivery`.
-
-## Merge Lifecycle
-
-16. When the user has requested merge, the agent MUST stay engaged through
-    the full merge lifecycle (queue entry, queue exit, default branch
-    verification) and confirm completion.
