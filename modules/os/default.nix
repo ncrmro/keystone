@@ -240,6 +240,7 @@ in
     ./immich.nix
     ./tailscale.nix
     ./containers.nix
+    ./ephemeral-datasets.nix
     ./journal-remote.nix
     ./alloy.nix
     ./observability.nix
