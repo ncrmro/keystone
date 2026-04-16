@@ -249,7 +249,7 @@ async fn fetch_email() -> Result<(SourceEntry, Vec<String>)> {
     let bodies: Vec<_> = futures::future::join_all(body_futures).await;
 
     let mut enriched = Vec::new();
-    for (env, (_id, body)) in envelopes.iter().zip(bodies.into_iter()) {
+    for (env, (_id, body)) in envelopes.iter().zip(bodies) {
         let mut obj = serde_json::Map::new();
         obj.insert("id".to_string(), serde_json::Value::String(env.id.clone()));
         for (k, v) in &env.rest {

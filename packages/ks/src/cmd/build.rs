@@ -89,7 +89,7 @@ pub async fn build_home_manager_records(
 
     Ok(target_map
         .into_iter()
-        .zip(paths.into_iter())
+        .zip(paths)
         .map(|((host, user), store_path)| HmActivationRecord {
             host,
             user,
