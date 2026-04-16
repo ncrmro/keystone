@@ -39,6 +39,7 @@ let
   pz-src = ../packages/pz;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
+  obs-mcp-pkg-src = ../packages/obs-mcp;
   lfs-s3-pkg-src = ../packages/lfs-s3;
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
   keystone-deepwork-jobs-src = ../packages/keystone-deepwork-jobs;
@@ -165,6 +166,7 @@ in
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;
     };
+    obs-mcp = final.callPackage obs-mcp-pkg-src { };
     lfs-s3 = final.callPackage lfs-s3-pkg-src {
       inherit lfs-s3-src;
     };
