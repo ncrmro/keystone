@@ -123,6 +123,22 @@ let
         - Never leave review comments unresolved — every comment MUST receive a reply.
         - See `process.pr-review-response` for the full lifecycle: fetch comments, fix, reply, push, re-request review.
       ''
+      ''
+        ## Agency
+
+        - Act with agency — drive tasks to completion without waiting for nudges between steps.
+        - Only escalate when genuinely blocked: repeated failures, product decisions, or policy the agent cannot resolve.
+      ''
+      ''
+        ## PR shepherding
+
+        - Push PRs as draft initially. Watch CI to green before undrafting.
+        - Once green, undraft, request reviewers (CODEOWNERS + Copilot), and address all review comments.
+        - After approval, enable auto-merge or merge explicitly. If a merge queue exists, wait for it to complete.
+        - After merge, verify default branch CI is green on the merge commit. Report deployment status if applicable.
+        - When the user requests merge, stay engaged through the full lifecycle (queue, verification) and confirm completion.
+        - See `process.pr-shepherding` for the full convention.
+      ''
     ]
     ++ inlinedConventions
     ++ optional (referencedConventions != [ ]) ''

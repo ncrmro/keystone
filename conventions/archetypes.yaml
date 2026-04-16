@@ -45,6 +45,7 @@ archetypes:
       - process.project-navigation
     referenced_conventions:
       - process.version-control
+      - process.pr-shepherding
       - process.privileged-approval
       - tool.standard-utilities
       - os.requirements
@@ -86,6 +87,7 @@ archetypes:
       - code.shell-scripts
       - process.issue-journal
       - process.project-board
+      - process.pr-shepherding
       - process.vcs-context-continuity
       - process.enable-by-default
       - os.requirements
@@ -110,6 +112,7 @@ archetypes:
       - process.continuous-integration
       - process.copilot-agent
       - process.pr-review-response
+      - process.pr-shepherding
       - process.deepwork-job
       - process.feature-delivery
       - process.issue-journal
@@ -159,6 +162,7 @@ archetypes:
           - process.diagrams
           - tool.mermaid
           - process.feature-delivery
+          - process.pr-shepherding
           - process.pull-request
           - process.refactor
           - code.shell-scripts
@@ -297,6 +301,7 @@ skills:
       - process.pull-request
       - process.code-review-ownership
       - process.continuous-integration
+      - process.pr-shepherding
       - process.refactor
       - process.version-control
       - process.version-control-advanced
