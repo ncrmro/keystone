@@ -404,9 +404,9 @@ impl FirstBootScreen {
 
         tokio::spawn(async move {
             let _ = tx.send(FirstBootMessage::Output(
-                "Enrolling Secure Boot keys...".to_string(),
+                "Provisioning Secure Boot keys...".to_string(),
             ));
-            match super::security::secure_boot::enroll_keys().await {
+            match super::security::secure_boot::provision().await {
                 Ok(out) => {
                     let _ = tx.send(FirstBootMessage::SecureBootEnrollResult(Ok(out)));
                 }

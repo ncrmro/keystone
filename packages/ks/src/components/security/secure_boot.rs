@@ -29,6 +29,35 @@ pub enum Status {
     NotInSetupMode,
 }
 
+fn status_from_facts(
+    secure_boot_enabled: bool,
+    setup_mode_enabled: bool,
+    sb_keys_exist: bool,
+    saw_setup_mode_line: bool,
+) -> Status {
+    if secure_boot_enabled {
+        return Status::Enrolled;
+    }
+
+    // Setup Mode must win over key presence so enrollment remains available
+    // after keys are generated but before they are enrolled.
+    if setup_mode_enabled {
+        return Status::SetupMode;
+    }
+
+    // Keys exist but Secure Boot is not active yet — most commonly after
+    // install-time key generation, awaiting enrollment or reboot.
+    if sb_keys_exist {
+        return Status::KeysGenerated;
+    }
+
+    if saw_setup_mode_line {
+        return Status::NotInSetupMode;
+    }
+
+    Status::Unknown
+}
+
 /// Check Secure Boot status via `sbctl status`.
 ///
 /// Parses lines like:
@@ -53,26 +82,14 @@ pub async fn check_status() -> Status {
     let setup_mode_enabled = text
         .lines()
         .any(|l| l.contains("Setup Mode:") && l.contains("Enabled"));
+    let saw_setup_mode_line = text.lines().any(|l| l.contains("Setup Mode:"));
 
-    if secure_boot_enabled {
-        return Status::Enrolled;
-    }
-
-    // Keys exist but SB not active yet — generated during install, awaiting reboot
-    if keys_exist() {
-        return Status::KeysGenerated;
-    }
-
-    if setup_mode_enabled {
-        return Status::SetupMode;
-    }
-
-    // sbctl ran but we couldn't parse meaningful status
-    if text.contains("Setup Mode:") {
-        return Status::NotInSetupMode;
-    }
-
-    Status::Unknown
+    status_from_facts(
+        secure_boot_enabled,
+        setup_mode_enabled,
+        keys_exist(),
+        saw_setup_mode_line,
+    )
 }
 
 /// Generate Secure Boot keys via `sbctl create-keys`.
@@ -134,22 +151,68 @@ fn keys_exist() -> bool {
 ///
 /// Called by `ks provision-secure-boot` and the install flow.
 pub async fn provision() -> anyhow::Result<String> {
-    if keys_exist() {
-        let status = check_status().await;
-        return match status {
-            Status::Enrolled => Ok("Secure Boot is already enrolled.".into()),
-            Status::KeysGenerated => Ok("Keys exist. Reboot to activate Secure Boot.".into()),
-            _ => Ok("Secure Boot keys already exist.".into()),
-        };
+    let status = check_status().await;
+    match status {
+        Status::Enrolled => Ok("Secure Boot is already enrolled.".into()),
+        Status::SetupMode => {
+            if !keys_exist() {
+                generate_keys().await?;
+            }
+            enroll_keys().await?;
+            Ok("Secure Boot keys enrolled. Reboot to activate Secure Boot.".into())
+        }
+        Status::KeysGenerated => Ok("Keys exist. Reboot to activate Secure Boot.".into()),
+        Status::NotInSetupMode => {
+            if !keys_exist() {
+                generate_keys().await?;
+                Ok("Keys generated. Enter UEFI Setup Mode and re-run to enroll.".into())
+            } else {
+                Ok(
+                    "Secure Boot keys already exist. Enter UEFI Setup Mode and re-run to enroll."
+                        .into(),
+                )
+            }
+        }
+        Status::Unknown => {
+            if !keys_exist() {
+                generate_keys().await?;
+                Ok("Keys generated. Re-run Secure Boot provisioning to continue.".into())
+            } else {
+                Ok("Secure Boot keys already exist.".into())
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{status_from_facts, Status};
+
+    #[test]
+    fn setup_mode_takes_priority_over_existing_keys() {
+        assert_eq!(
+            status_from_facts(false, true, true, true),
+            Status::SetupMode
+        );
     }
 
-    generate_keys().await?;
+    #[test]
+    fn keys_generated_used_when_setup_mode_is_disabled() {
+        assert_eq!(
+            status_from_facts(false, false, true, true),
+            Status::KeysGenerated
+        );
+    }
 
-    let status = check_status().await;
-    if status == Status::SetupMode {
-        enroll_keys().await?;
-        Ok("Keys generated and enrolled. Reboot to activate Secure Boot.".into())
-    } else {
-        Ok("Keys generated. Enter UEFI Setup Mode and re-run to enroll.".into())
+    #[test]
+    fn not_in_setup_mode_requires_parsed_status_line() {
+        assert_eq!(
+            status_from_facts(false, false, false, true),
+            Status::NotInSetupMode
+        );
+        assert_eq!(
+            status_from_facts(false, false, false, false),
+            Status::Unknown
+        );
     }
 }
