@@ -158,9 +158,12 @@ in
         luks.devices.credstore = {
           device = "/dev/zvol/rpool/credstore";
           # tpm2-measure-pcr ensures TPM state integrity
+          # token-timeout ensures systemd-cryptsetup falls back to password
+          # prompt after 30 s when TPM unlock fails (e.g. PCR mismatch)
           crypttabExtraOpts = [
             "tpm2-measure-pcr=yes"
             "tpm2-device=auto"
+            "token-timeout=30s"
           ];
         };
 
@@ -197,8 +200,18 @@ in
             Type = "oneshot";
             ImportCredential = "zfs-sysroot.mount";
             RemainAfterExit = true;
-            ExecStart = "${config.boot.zfs.package}/bin/zfs load-key -L file://\"\${CREDENTIALS_DIRECTORY}\"/zfs-sysroot.mount rpool/crypt";
           };
+          script = ''
+            echo "rpool-load-key: loading ZFS encryption key from credstore..."
+            if ! ${config.boot.zfs.package}/bin/zfs load-key \
+                -L file://"''${CREDENTIALS_DIRECTORY}"/zfs-sysroot.mount rpool/crypt; then
+              echo "CRITICAL: failed to load ZFS encryption key from credstore" >&2
+              echo "  Check: systemctl status systemd-cryptsetup@credstore.service" >&2
+              echo "  If TPM unlock failed, supply your password or recovery key" >&2
+              echo "  at the console prompt, then retry this service." >&2
+              exit 1
+            fi
+          '';
         };
 
         # Fix udev/cryptsetup race condition during initrd transition
@@ -418,6 +431,7 @@ in
         crypttabExtraOpts = [
           "tpm2-measure-pcr=yes"
           "tpm2-device=auto"
+          "token-timeout=30s"
         ];
       };
 
@@ -427,6 +441,7 @@ in
         crypttabExtraOpts = [
           "tpm2-measure-pcr=yes"
           "tpm2-device=auto"
+          "token-timeout=30s"
         ];
       };
 
