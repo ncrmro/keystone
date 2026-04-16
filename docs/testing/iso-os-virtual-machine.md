@@ -5,6 +5,8 @@ description: End-to-end testing of template generation, installer ISO, and deskt
 
 # ISO and OS virtual machine testing
 
+For a concise agent-oriented runbook, see [docs/testing/copilot-agents.md](./copilot-agents.md).
+
 ## Goal
 
 Validate the full Keystone onboarding chain in a VM before touching real hardware:
