@@ -15,7 +15,7 @@ on:
         type: boolean
         default: false
     secrets:
-      CACHIX_AUTH_TOKEN:
+      CACHIX_CI_AUTH_TOKEN:
         required: false
 
 permissions:
@@ -29,7 +29,7 @@ jobs:
   warm-cache:
     runs-on: ubuntu-latest
     env:
-      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      CACHIX_CI_AUTH_TOKEN: ${{ secrets.CACHIX_CI_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,18 +48,19 @@ jobs:
           gc-max-store-size-linux: 6G
           save: ${{ github.event_name == 'workflow_call' && inputs.save_nix_cache || false }}
 
-      - name: Configure Cachix
-        if: env.CACHIX_AUTH_TOKEN == ''
+      # Pull from ks-systems (read-only, trusted production cache)
+      - name: Configure Cachix (ks-systems)
         uses: cachix/cachix-action@v15
         with:
           name: ks-systems
 
-      - name: Configure Cachix (auth)
-        if: env.CACHIX_AUTH_TOKEN != ''
+      # Push to ks-ci (CI-only cache, isolated from production)
+      - name: Configure Cachix (ks-ci)
+        if: env.CACHIX_CI_AUTH_TOKEN != ''
         uses: cachix/cachix-action@v15
         with:
-          name: ks-systems
-          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
+          name: ks-ci
+          authToken: ${{ env.CACHIX_CI_AUTH_TOKEN }}
 
       - name: Warm cache
         run: |
