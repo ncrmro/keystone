@@ -16,7 +16,7 @@ no subdirectories for active specs.
 
 All new specs MUST be flat files at `specs/REQ-NNN-slug.md`. Do NOT create
 subdirectories with `requirements.md` inside them. The next available number
-is `REQ-029`.
+is `REQ-032`.
 
 ## Editing rules
 
@@ -31,7 +31,7 @@ is `REQ-029`.
 ## Numbering
 
 1. New `REQ-*` specs MUST use the next available requirement number. Current
-   highest is `REQ-028` — next new spec is `REQ-029`.
+   highest is `REQ-031` — next new spec is `REQ-032`.
 2. A new focused requirement should get its own `REQ-*` file even when split
    out from a broader spec.
 3. Revisions to an existing spec keep the same `REQ-*` number when scope is

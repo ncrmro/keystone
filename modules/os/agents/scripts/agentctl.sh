@@ -290,6 +290,7 @@ if [ $# -lt 2 ]; then
   echo "  exec              Run an arbitrary command as the agent" >&2
   echo "  tasks             Show agent tasks in a table (pending/in_progress first)" >&2
   echo "  email             Show the agent's inbox (recent envelopes)" >&2
+  echo "  identity          Show the resolved agent identity model (JSON)" >&2
   echo "  shell             Open interactive shell as the agent (with SSH agent)" >&2
   echo "  claude            Start interactive Claude session (supports --project, --role, --roles)" >&2
   echo "  gemini            Start interactive Gemini session (supports --project, --role, --roles)" >&2
@@ -333,6 +334,7 @@ if [ $# -lt 2 ]; then
   echo "  agentctl drago codex" >&2
   echo "  agentctl drago opencode" >&2
   echo "  agentctl drago vnc" >&2
+  echo "  agentctl drago identity" >&2
   echo "  agentctl drago mail task --subject \"Fix CI pipeline\"" >&2
   echo "  agentctl drago provision                     # full flow incl. hwrekey" >&2
   echo "  agentctl drago provision --skip-rekey        # skip hwrekey at end" >&2
@@ -357,6 +359,10 @@ OLLAMA_ENABLED="false"
 OLLAMA_HOST="http://localhost:11434"
 OLLAMA_DEFAULT_MODEL=""
 set_agent_ollama "$AGENT_NAME"
+
+# Resolved identity JSON file (REQ-030)
+AGENT_IDENTITY_FILE=""
+set_agent_identity "$AGENT_NAME"
 
 THIS_HOST="$(cat /etc/hostname)"
 
@@ -507,6 +513,30 @@ case "$CMD" in
     ;;
   email)
     exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec himalaya envelope list "$@"
+    ;;
+  identity)
+    # REQ-030: Show the resolved agent identity model as JSON.
+    # Build-time inputs come from the Nix-generated identity file.
+    # Runtime inputs (SOUL.md, TEAM.md, SERVICES.md existence) are probed live.
+    if [ -z "$AGENT_IDENTITY_FILE" ] || [ ! -f "$AGENT_IDENTITY_FILE" ]; then
+      echo "Error: resolved identity file not found for agent '$AGENT_NAME'." >&2
+      echo "Rebuild the system to generate agent identity metadata." >&2
+      exit 1
+    fi
+    BUILD_IDENTITY=$(cat "$AGENT_IDENTITY_FILE")
+    # Probe runtime identity input existence
+    probe_identity_file() {
+      sudo -u "agent-${AGENT_NAME}" "$HELPER" exec test -f "$NOTES_DIR/$1" 2>/dev/null && echo true || echo false
+    }
+    SOUL_EXISTS=$(probe_identity_file "SOUL.md")
+    TEAM_EXISTS=$(probe_identity_file "TEAM.md")
+    SERVICES_EXISTS=$(probe_identity_file "SERVICES.md")
+    # Merge build-time identity with runtime probe results
+    printf '%s\n' "$BUILD_IDENTITY" | jq \
+      --argjson soul "$SOUL_EXISTS" \
+      --argjson team "$TEAM_EXISTS" \
+      --argjson services "$SERVICES_EXISTS" \
+      '. + {runtimeInputStatus: {soulMd: $soul, teamMd: $team, servicesMd: $services}}'
     ;;
   shell)
     exec sudo -u "agent-${AGENT_NAME}" "$HELPER" exec bash -c "cd $NOTES_DIR && exec bash -l"

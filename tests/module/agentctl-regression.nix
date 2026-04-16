@@ -161,6 +161,11 @@ pkgs.runCommand "test-agentctl-regression"
       OLLAMA_DEFAULT_MODEL=""
       export OLLAMA_ENABLED OLLAMA_HOST OLLAMA_DEFAULT_MODEL
     }
+
+    set_agent_identity() {
+      AGENT_IDENTITY_FILE=""
+      export AGENT_IDENTITY_FILE
+    }
     EOF
 
     export AGENTCTL_ENV_FILE="$PWD/agentctl.env"

@@ -654,6 +654,40 @@ in
             };
           };
         };
+
+        # Resolved agent identity model (REQ-030).
+        # Read-only composite of all build-time identity inputs for this agent.
+        # Provides a single inspectable attribute for operator introspection and
+        # cross-tool validation.
+        resolvedIdentity = mkOption {
+          type = types.attrs;
+          readOnly = true;
+          description = ''
+            Read-only resolved agent identity model. Composes archetype defaults,
+            per-agent config, convention lists, and identity input paths into one
+            inspectable attribute. See specs/REQ-030-agent-identity-model.md.
+          '';
+          default = {
+            inherit name;
+            inherit (config) fullName email archetype host;
+            capabilities = config.capabilities;
+            notesPath = config.notes.path;
+            identityInputPaths = {
+              soul = "${config.notes.path}/SOUL.md";
+              team = "${config.notes.path}/TEAM.md";
+              services = "${config.notes.path}/SERVICES.md";
+            };
+            toolSurfaces = {
+              claude = "~/.claude/CLAUDE.md";
+              gemini = "~/.gemini/GEMINI.md";
+              codex = "~/.codex/AGENTS.md";
+              opencode = "~/.config/opencode/AGENTS.md";
+              canonical = "~/.keystone/AGENTS.md";
+            };
+            github.username = config.github.username;
+            forgejo.username = config.forgejo.username;
+          };
+        };
       };
     }
   );
