@@ -295,20 +295,40 @@ repo_checkout="$(json_get '.repoCheckout')"
 archetype="$(json_get '.archetype')"
 development_mode="$(json_get '.developmentMode')"
 
-if [[ "$repo_checkout" == "null" || -z "$repo_checkout" ]]; then
-  echo "Error: manifest does not declare a live keystone repo checkout" >&2
+# Resolve templates_dir.
+# Priority: KEYSTONE_AGENT_TEMPLATES_DIR (Nix-store bundled) → live checkout → error.
+if [[ -n "${KEYSTONE_AGENT_TEMPLATES_DIR:-}" && -d "$KEYSTONE_AGENT_TEMPLATES_DIR" ]]; then
+  templates_dir="$KEYSTONE_AGENT_TEMPLATES_DIR"
+elif [[ "$repo_checkout" != "null" && -n "$repo_checkout" && -d "$repo_checkout/modules/terminal/agent-assets" ]]; then
+  templates_dir="$repo_checkout/modules/terminal/agent-assets"
+else
+  echo "Error: no templates directory found." >&2
+  if [[ -n "${KEYSTONE_AGENT_TEMPLATES_DIR:-}" ]]; then
+    echo "  KEYSTONE_AGENT_TEMPLATES_DIR=$KEYSTONE_AGENT_TEMPLATES_DIR (not found)" >&2
+  else
+    echo "  KEYSTONE_AGENT_TEMPLATES_DIR is not set" >&2
+  fi
+  if [[ "$repo_checkout" != "null" && -n "$repo_checkout" ]]; then
+    echo "  $repo_checkout/modules/terminal/agent-assets (not found)" >&2
+  else
+    echo "  repoCheckout not set in manifest" >&2
+  fi
   exit 1
 fi
 
-if [[ ! -d "$repo_checkout" ]]; then
-  repo_slug="${repo_checkout##*/.keystone/repos/}"
-  echo "Live keystone repo checkout not found at $repo_checkout — cloning $repo_slug..."
-  mkdir -p "$(dirname "$repo_checkout")"
-  git clone "https://github.com/$repo_slug.git" "$repo_checkout"
+# Resolve conventions_dir from live checkout or manifest fallback.
+if [[ "$repo_checkout" != "null" && -n "$repo_checkout" ]]; then
+  if [[ ! -d "$repo_checkout" ]]; then
+    repo_slug="${repo_checkout##*/.keystone/repos/}"
+    echo "Live keystone repo checkout not found at $repo_checkout — cloning $repo_slug..."
+    mkdir -p "$(dirname "$repo_checkout")"
+    git clone "https://github.com/$repo_slug.git" "$repo_checkout"
+  fi
+  conventions_dir="$repo_checkout/conventions"
+else
+  conventions_dir="$(json_get '.fallbackConventionsDir')"
 fi
 
-conventions_dir="$repo_checkout/conventions"
-templates_dir="$repo_checkout/modules/terminal/agent-assets"
 archetypes_file="$conventions_dir/archetypes.yaml"
 
 if [[ ! -f "$archetypes_file" ]]; then
