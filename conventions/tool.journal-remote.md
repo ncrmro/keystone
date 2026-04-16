@@ -10,11 +10,12 @@ This module is a canonical example of the `process.enable-by-default` convention
 
 ## Architecture
 
-The journal-remote system has three components:
+The journal-remote system has two components:
 
-- **`systemd-journal-upload`** — runs on every non-server host, forwards local journal entries to the server over HTTPS via `journal.<domain>` when a domain is configured, or direct HTTP as fallback.
-- **nginx** — runs on the server host, terminates HTTPS and proxies to the local `systemd-journal-remote` backend. Access is restricted to Tailscale IPs.
-- **`systemd-journal-remote`** — runs on the server host, receives and stores journals in `/var/log/journal/remote/`.
+- **`systemd-journal-upload`** — runs on every non-server host, forwards local journal entries to the server over HTTPS directly to `journal.<domain>:<port>` when a domain is configured, or plain HTTP as fallback.
+- **`systemd-journal-remote`** — runs on the server host, terminates HTTPS using the ACME wildcard certificate, receives journal entries, and stores them in `/var/log/journal/remote/`. The listener is restricted to Tailscale IPs via the `tailscale0` firewall interface.
+
+nginx is NOT in the journal upload data path. `systemd-journal-remote` handles TLS directly, which preserves the real client source IP in journal filenames (files are named `remote-<tailscale-ip>@...` instead of `remote-127.0.0.1@...`).
 
 Configuration is auto-derived from `keystone.hosts`: set `journalRemote = true` on the server host entry and all other hosts auto-forward. No per-host config needed.
 
@@ -85,7 +86,7 @@ ssh root@ocean journalctl --directory=/var/log/journal/remote/ -p err --since '1
 
 11. Upload health on a client host MUST be checked with `systemctl status systemd-journal-upload.service`.
 12. Server health MUST be checked with `systemctl status systemd-journal-remote.service` on the server host.
-13. If `systemd-journal-upload` is in a restart loop, agents SHOULD check connectivity to the server: `curl -sk https://journal.<domain>/` from the client host when a domain is configured, or `curl -s http://<server>:19532/` otherwise.
+13. If `systemd-journal-upload` is in a restart loop, agents SHOULD check connectivity to the server: `curl -sk https://journal.<domain>:19532/` from the client host when a domain is configured, or `curl -s http://<server>:19532/` otherwise.
 14. Disk usage of collected journals SHOULD be monitored with `du -sh /var/log/journal/remote/` on the server host.
 
 ```bash
