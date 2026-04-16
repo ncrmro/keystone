@@ -128,6 +128,10 @@ let
 
         - Act with agency — drive tasks to completion without waiting for nudges between steps.
         - Only escalate when genuinely blocked: repeated failures, product decisions, or policy the agent cannot resolve.
+        - Verify assumptions before acting on them. Do not make factual statements without verification.
+        - Research libraries and tools before using them — validate you are using the latest version and API surface.
+        - Do not add backwards-compatibility shims unless explicitly requested.
+        - Explore multiple possible solutions and choose the one that balances lowest maintenance burden with succinct, elegant code.
       ''
       ''
         ## PR shepherding
