@@ -371,5 +371,22 @@ in
         fi
       ''
     );
+
+    # Clean up stale keystone-job-*.service units left behind by the abandoned
+    # keystone-notes 0.1.0 binary (010-notes branch, never merged). That tool wrote
+    # ~/.config/systemd/user/keystone-job-{name}.service files pointing to a nix
+    # store path that no longer exists, causing activation failures on every rebuild.
+    home.activation.cleanupKeystone010JobUnits = lib.hm.dag.entryBefore [ "reloadSystemd" ] ''
+      _unitDir="$HOME/.config/systemd/user"
+      if ls "$_unitDir"/keystone-job-*.service >/dev/null 2>&1; then
+        echo "Removing stale keystone-job-* units from keystone-notes 0.1.0..."
+        for _unit in "$_unitDir"/keystone-job-*.service; do
+          _name="$(basename "$_unit" .service)"
+          ${pkgs.systemd}/bin/systemctl --user stop "$_name" 2>/dev/null || true
+          ${pkgs.systemd}/bin/systemctl --user disable "$_name" 2>/dev/null || true
+          rm -f "$_unit" "$_unitDir/$_name.timer"
+        done
+      fi
+    '';
   };
 }
