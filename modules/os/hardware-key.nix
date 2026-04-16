@@ -9,8 +9,10 @@
 # keystone.keys.<user>.hardwareKeys — this module only handles
 # hardware enablement (pcscd, udev, GPG agent) and rootKeys wiring.
 #
+# For FIDO2 boot-time LUKS unlock, see the unified disk encryption
+# model in modules/os/disk-encryption.nix and docs/os/disk-encryption.md.
+#
 # TODO: Physical touch for sudo authentication (PAM U2F)
-# TODO: LUKS disk encryption enrollment (slot configuration)
 #
 {
   lib,
@@ -50,13 +52,6 @@ in
         "ncrmro/yubi-green"
       ];
     };
-
-    # TODO: LUKS support
-    # luksSlot = mkOption {
-    #   type = types.int;
-    #   default = 2;
-    #   description = "LUKS keyslot to use for hardware key enrollment";
-    # };
 
     # TODO: Sudo touch authentication
     # sudoTouchAuth = mkEnableOption "Require physical touch on hardware key for sudo";

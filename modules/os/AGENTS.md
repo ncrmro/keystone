@@ -24,6 +24,31 @@ keystone.os.storage = {
 
 **ext4 alternative**: LUKS-encrypted ext4 with optional hibernate. No snapshots/compression.
 
+## Disk Encryption (`disk-encryption.nix`)
+
+Unified model for block-storage unlock methods. The options under
+`keystone.os.diskEncryption` describe *which* unlock mechanisms the
+machine uses without changing how the enrollment scripts work.
+
+```nix
+keystone.os.diskEncryption = {
+  unlockMethods = {
+    tpm2.enable = true;          # default: true
+    fido2.enable = false;        # requires keystone.hardwareKey.enable
+    password.enable = true;      # strongly recommended fallback
+    recoveryKey.enable = false;
+  };
+  fallback.passwordPromptTimeout = 90;  # seconds
+  device = "/dev/zvol/rpool/credstore"; # set for ext4: /dev/disk/by-partlabel/disk-root-root
+};
+```
+
+**Assertions**: At least one human-usable fallback (password or recovery key)
+must remain enabled. FIDO2 requires the hardware-key module.
+
+See `docs/os/disk-encryption.md` for the full user-facing reference covering
+boot chain, fallback behavior, recovery, and recommended configuration matrices.
+
 ## Users (`users.nix`)
 
 ```nix

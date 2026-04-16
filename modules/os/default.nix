@@ -222,6 +222,7 @@ in
     ./notifications.nix
     ./storage.nix
     ./secure-boot.nix
+    ./disk-encryption.nix
     ./tpm.nix
     ./hardware-key.nix
     ./privileged-approval.nix
@@ -408,6 +409,86 @@ in
           - PCR 1: Firmware configuration
           - PCR 7: Secure Boot state
           Common alternatives: [7] for Secure Boot only (more update-resilient)
+        '';
+      };
+    };
+
+    # Disk encryption — unified model for block-storage unlock methods.
+    # See docs/os/disk-encryption.md for full reference.
+    diskEncryption = {
+      unlockMethods = {
+        tpm2 = {
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = ''
+              TPM2-based automatic unlock.  When enabled the system will
+              attempt to unseal the LUKS key via the TPM on every boot.
+              Requires Secure Boot (`keystone.os.secureBoot.enable`).
+              Defaults to true, matching `keystone.os.tpm.enable`.
+            '';
+          };
+        };
+
+        fido2 = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = ''
+              FIDO2 hardware-key unlock (e.g. YubiKey).  The user will be
+              prompted for a touch and optional PIN at boot when TPM2
+              unlock is not configured or fails.
+              Requires `keystone.hardwareKey.enable = true`.
+            '';
+          };
+        };
+
+        password = {
+          enable = mkOption {
+            type = types.bool;
+            default = true;
+            description = ''
+              Interactive password fallback.  Strongly recommended to keep
+              enabled so that the system remains recoverable when all
+              hardware-backed methods fail.
+            '';
+          };
+        };
+
+        recoveryKey = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = ''
+              Recovery key enrollment.  A high-entropy key that should be
+              stored offline (password manager or printed paper).
+              Provides last-resort access when all other methods fail.
+            '';
+          };
+        };
+      };
+
+      fallback = {
+        passwordPromptTimeout = mkOption {
+          type = types.int;
+          default = 90;
+          description = ''
+            Seconds to wait for interactive password entry when automatic
+            unlock (TPM2 / FIDO2) fails before dropping to the emergency
+            console.
+          '';
+        };
+      };
+
+      device = mkOption {
+        type = types.str;
+        default = "/dev/zvol/rpool/credstore";
+        description = ''
+          The LUKS device that the unlock methods operate on.
+
+          For ZFS this is the credstore zvol (which stores the ZFS
+          encryption key).  For ext4 set this to
+          "/dev/disk/by-partlabel/disk-root-root".
         '';
       };
     };

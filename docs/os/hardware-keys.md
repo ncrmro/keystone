@@ -7,6 +7,15 @@ description: Using hardware security keys for SSH authentication, GPG signing, a
 
 This guide covers using hardware security keys (YubiKey, SoloKey, etc.) with Keystone for SSH authentication, GPG signing, and secrets management.
 
+> **Boot-time disk unlock vs. session secrets**: Hardware keys serve two
+> independent roles in Keystone. The key's **FIDO2 applet** can be
+> enrolled for **boot-time LUKS unlock** (see [Disk Encryption](disk-encryption.md)).
+> The key's **PIV applet** (via `age-plugin-yubikey`) is used for
+> **user-session secret decryption** with agenix. These are separate
+> enrollments — enabling one does not enable the other. This page covers
+> the session-secrets side; see the Disk Encryption guide for FIDO2 boot
+> unlock.
+
 ## Prerequisites
 
 Enable the hardware-key module in your NixOS configuration:
