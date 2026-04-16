@@ -5,6 +5,14 @@
 
 use std::path::Path;
 
+// Must stay in sync with the installer ISO volume label defined by the build.
+// Prefer setting INSTALLER_VOLUME_LABEL at compile time (for example from Nix)
+// so installer-media exclusion cannot silently drift from the ISO label.
+const INSTALLER_VOLUME_LABEL: &str = match option_env!("INSTALLER_VOLUME_LABEL") {
+    Some(label) => label,
+    None => "KEYSTONE",
+};
+
 /// A discovered disk device suitable for installation.
 #[derive(Debug, Clone)]
 pub struct DiskEntry {
@@ -37,6 +45,21 @@ fn parse_blockdevices(lsblk_output: &[u8]) -> Vec<serde_json::Value> {
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default()
+}
+
+fn installer_device_name(blockdevices: &[serde_json::Value]) -> Option<String> {
+    let device = blockdevices.first()?;
+    match device.get("type").and_then(|v| v.as_str()) {
+        Some("disk") => device
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|name| name.to_string()),
+        Some("part") => device
+            .get("pkname")
+            .and_then(|v| v.as_str())
+            .map(|name| name.to_string()),
+        _ => None,
+    }
 }
 
 fn should_skip_by_id_name(name: &str) -> bool {
@@ -97,6 +120,27 @@ fn build_device_map(raw_links: &[(String, String)]) -> std::collections::HashMap
     }
 
     device_map
+}
+
+async fn discover_installer_device_name() -> anyhow::Result<Option<String>> {
+    let installer_label_path = Path::new("/dev/disk/by-label").join(INSTALLER_VOLUME_LABEL);
+    if !installer_label_path.exists() {
+        return Ok(None);
+    }
+
+    let lsblk_output = tokio::process::Command::new("lsblk")
+        .args(["--json", "-o", "NAME,PKNAME,TYPE"])
+        .arg(installer_label_path)
+        .output()
+        .await?;
+
+    if !lsblk_output.status.success() {
+        return Ok(None);
+    }
+
+    Ok(installer_device_name(&parse_blockdevices(
+        &lsblk_output.stdout,
+    )))
 }
 
 fn find_lsblk_info<'a>(
@@ -171,10 +215,17 @@ pub async fn discover_disks() -> anyhow::Result<Vec<DiskEntry>> {
     let blockdevices = parse_blockdevices(&lsblk_output.stdout);
     let raw_links = collect_raw_links(by_id_dir).await?;
     let device_map = build_device_map(&raw_links);
+    let installer_device_name = discover_installer_device_name().await?;
 
     // Build DiskEntry list by correlating with lsblk
     let mut disks: Vec<DiskEntry> = Vec::new();
     for (dev_name, by_id_name) in &device_map {
+        if installer_device_name
+            .as_deref()
+            .is_some_and(|installer_device| installer_device == dev_name)
+        {
+            continue;
+        }
         if let Some(entry) = build_disk_entry(dev_name, by_id_name, &blockdevices) {
             disks.push(entry);
         }
@@ -211,5 +262,44 @@ mod tests {
 
         assert!(nvme.sort_key() < sata.sort_key());
         assert!(sata.sort_key() < usb.sort_key());
+    }
+
+    #[test]
+    fn test_installer_device_name_prefers_parent_disk_for_partition() {
+        let blockdevices = parse_blockdevices(
+            br#"{
+              "blockdevices": [
+                {
+                  "name": "sda1",
+                  "pkname": "sda",
+                  "type": "part"
+                }
+              ]
+            }"#,
+        );
+
+        assert_eq!(
+            installer_device_name(&blockdevices),
+            Some("sda".to_string())
+        );
+    }
+
+    #[test]
+    fn test_installer_device_name_uses_disk_name_directly() {
+        let blockdevices = parse_blockdevices(
+            br#"{
+              "blockdevices": [
+                {
+                  "name": "sda",
+                  "type": "disk"
+                }
+              ]
+            }"#,
+        );
+
+        assert_eq!(
+            installer_device_name(&blockdevices),
+            Some("sda".to_string())
+        );
     }
 }

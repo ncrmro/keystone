@@ -116,6 +116,33 @@ let
         - Treat issues, pull requests, milestones, and boards as the canonical public record for status, review state, and decisions that affect collaborators.
         - Use notes to preserve durable rationale and memory, not to replace shared-surface tracking.
       ''
+      ''
+        ## PR review comments
+
+        - When addressing PR review comments (Copilot, human, or any reviewer), reply to each comment with the fix commit hash or an explanation of why it was not applied.
+        - Never leave review comments unresolved — every comment MUST receive a reply.
+        - See `process.pr-review-response` for the full lifecycle: fetch comments, fix, reply, push, re-request review.
+      ''
+      ''
+        ## Agency
+
+        - Act with agency — drive tasks to completion without waiting for nudges between steps.
+        - Only escalate when genuinely blocked: repeated failures, product decisions, or policy the agent cannot resolve.
+        - Verify assumptions before acting on them. Do not make factual statements without verification.
+        - Research libraries and tools before using them — validate you are using the latest version and API surface.
+        - Do not add backwards-compatibility shims unless explicitly requested.
+        - Explore multiple possible solutions and choose the one that balances lowest maintenance burden with succinct, elegant code.
+      ''
+      ''
+        ## PR shepherding
+
+        - Push PRs as draft initially. Watch CI to green before undrafting.
+        - Once green, undraft, request reviewers (CODEOWNERS + Copilot), and address all review comments.
+        - After approval, enable auto-merge or merge explicitly. If a merge queue exists, wait for it to complete.
+        - After merge, verify default branch CI is green on the merge commit. Report deployment status if applicable.
+        - When the user requests merge, stay engaged through the full lifecycle (queue, verification) and confirm completion.
+        - See `process.pr-shepherding` for the full convention.
+      ''
     ]
     ++ inlinedConventions
     ++ optional (referencedConventions != [ ]) ''

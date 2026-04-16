@@ -89,9 +89,8 @@ async fn resolve_grafana_url(repo_root: &Path) -> Result<String> {
         }
     }
 
-    let hosts_nix = repo_root.join("hosts.nix");
-    if !hosts_nix.is_file() {
-        anyhow::bail!("hosts.nix not found while resolving Grafana URL")
+    if repo::detect_layout(repo_root).is_none() {
+        anyhow::bail!("No recognized repo layout found while resolving Grafana URL")
     }
 
     let mut grafana_host = None;
@@ -105,23 +104,8 @@ async fn resolve_grafana_url(repo_root: &Path) -> Result<String> {
     }
 
     if grafana_host.is_none() {
-        let server_hosts = eval_nix_json(&[
-            "eval".to_string(),
-            "-f".to_string(),
-            hosts_nix.display().to_string(),
-            "--json".to_string(),
-            "--apply".to_string(),
-            "hosts: builtins.filter (k: (builtins.getAttr k hosts).role == \"server\") (builtins.attrNames hosts)".to_string(),
-        ])
-        .await
-        .unwrap_or_else(|_| json!([]));
-
-        for host in server_hosts
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|value| value.as_str())
-        {
+        let all_hosts = repo::list_hosts(repo_root).await.unwrap_or_default();
+        for host in &all_hosts {
             if host_has_grafana(repo_root, host).await.unwrap_or(false) {
                 grafana_host = Some(host.to_string());
                 break;

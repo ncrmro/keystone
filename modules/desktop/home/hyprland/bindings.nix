@@ -23,7 +23,7 @@ in
         # Application launchers
         "$mod, Return, exec, ghostty"
         "$mod, Space, exec, walker"
-        "$mod, B, exec, chromium"
+        "$mod, B, exec, $browser"
         "$mod, E, exec, $fileManager"
 
         # Menu system

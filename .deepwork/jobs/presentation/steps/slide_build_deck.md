@@ -53,11 +53,12 @@ Create the Slidev project on disk and populate it with every slide from the plan
    - Add a per-slide frontmatter block with `layout:` and optional `class:` overrides.
    - Render `key_points` as a Markdown bullet list (`- item`).
    - For `two-cols` layout, split points across `::left::` and `::right::` dividers.
-   - For `image-right` / `image-left`, add a placeholder image comment if no asset exists:
-     ```markdown
-     <!-- TODO: replace with actual image -->
-     ![placeholder](https://placehold.co/600x400)
-     ```
+   - For `image-right` / `image-left` layouts:
+     - If an asset exists, reference it with `image: /images/<filename>` and add
+       `imageAlt: "<description from _media/index.yaml>"` on the next line.
+     - If no asset exists yet, leave a TODO comment: `image: <!-- TODO: replace with actual image -->`
+     - For `<img>` tags used inline, always include `alt="<description>"`.
+     - Pull descriptions from `_media/index.yaml` rather than re-reading the image file.
    - For `fact` or `quote` layouts, use the largest key point as the featured text.
    - Add speaker notes as an HTML comment block at the end of each slide:
      ```markdown
@@ -65,6 +66,11 @@ Create the Slidev project on disk and populate it with every slide from the plan
      Speaker notes go here.
      -->
      ```
+   - **Speaker notes and image relevance**: When a slide has an image, the speaker notes MUST
+     contain at least one sentence explaining *why* that image is on this slide — not just what
+     it depicts. If the image serves a non-obvious purpose (e.g., providing the agent with precise
+     hardware context to prevent hallucination, reinforcing credibility, or making an emotional
+     point), state that purpose explicitly in the notes.
 
 4. **Cover slide convention**
 
@@ -178,6 +184,9 @@ Speaker notes for slide 3.
 - Every slide from `slide_content_plan.md` is present in the deck.
 - Slides use appropriate Slidev layouts rather than blank `default` throughout.
 - Each slide has a speaker notes comment block.
+- Every `image:` frontmatter field is paired with an `imageAlt:` field containing the description from `_media/index.yaml`.
+- Every `<img>` tag has an `alt` attribute with the description from `_media/index.yaml`.
+- Speaker notes for any slide with an image include a sentence explaining *why* the image is on that slide.
 - The `slides_md_path.txt` file contains a valid, accessible file path.
 
 ## Context

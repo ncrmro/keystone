@@ -9,6 +9,14 @@ with lib;
 let
   desktopCfg = config.keystone.desktop;
   cfg = desktopCfg.hyprland;
+
+  browserCommand =
+    {
+      "chromium" = "uwsm app -- chromium --new-window --ozone-platform=wayland";
+      "google-chrome-stable" = "uwsm app -- google-chrome-stable --new-window --ozone-platform=wayland";
+      "firefox" = "uwsm app -- firefox --new-window";
+    }
+    .${desktopCfg.browser} or "uwsm app -- ${desktopCfg.browser} --new-window";
   hyprlandPkg = keystoneInputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
 in
 {
@@ -37,12 +45,6 @@ in
       type = types.str;
       default = "uwsm app -- nautilus --new-window";
       description = "Default file manager application";
-    };
-
-    browser = mkOption {
-      type = types.str;
-      default = "uwsm app -- chromium --new-window --ozone-platform=wayland";
-      description = "Default browser application";
     };
 
     scale = mkOption {
@@ -94,7 +96,7 @@ in
         # Default applications
         "$terminal" = mkDefault cfg.terminal;
         "$fileManager" = mkDefault cfg.fileManager;
-        "$browser" = mkDefault cfg.browser;
+        "$browser" = mkDefault browserCommand;
 
         # Disable start-hyprland warning - UWSM handles session management
         # See: specs/001-keystone-os/research.desktop.md#about-the-start-hyprland-warning

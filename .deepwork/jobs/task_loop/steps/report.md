@@ -11,8 +11,8 @@ Read the updated TASKS.yaml and ISSUES.yaml from the execute step and produce a 
 ### Process
 
 1. **Read the updated files**
-   - Read TASKS.yaml from the repo root
-   - Read ISSUES.yaml from the repo root
+   - Read TASKS.yaml from the working directory
+   - Read ISSUES.yaml from the working directory
    - Identify the task that was just processed (it should be the one with status `completed` or `blocked` that was most recently changed)
 
 2. **Write the report**

@@ -182,7 +182,7 @@ This loop takes 2-3 minutes instead of 15+ minutes for a full reinstall.
 
 # SSH in and drive manually:
 ssh -i .test-iso-dev-key -p 12260 keystone@localhost
-ks install --host laptop   # or drive the TUI with: TERM=xterm-256color ks
+ks install --host laptop   # excludes installer media, may prompt for a disk number, then asks for `destroy`
 ```
 
 Then use snapshot commands directly to save and restore checkpoints.
@@ -219,10 +219,16 @@ Skip the TUI entirely for automated testing:
 ```bash
 # On the live ISO (via SSH):
 ks install --host laptop
+# or pin the disk explicitly:
+ks install --host laptop --disk /dev/disk/by-id/virtio-keystone-test-disk
 ```
 
-This auto-discovers disks, selects the first one, and streams output to stderr.
-Exit code 0 means success. The `--e2e` flag in `test-iso` uses this internally.
+The command prints discovered disks, highlights the selected target, and then
+requires you to type `destroy` before it will erase the disk. If `--disk` is
+omitted, it excludes installer media first, auto-selects the only remaining
+disk, or prompts for a numbered disk choice when multiple candidates remain.
+Exit code 0 means success. The `--e2e` flag in `test-iso` passes `--disk` and
+pipes the confirmation token into this prompt.
 
 ## Screenshot-based reboot validation
 
@@ -428,10 +434,12 @@ TERM=xterm-256color ks
 
 ### Automated TUI driving
 
-For scripted testing, `ks install --host laptop` is preferred over driving
-the TUI with `expect` or FIFO-based key injection. The headless install
-reuses the same code paths (host selection, disk discovery, disko,
-nixos-install, handoff) without needing a PTY.
+For scripted testing, `ks install --host laptop` is preferred over driving the
+TUI with `expect` or FIFO-based key injection. The headless install reuses the
+same code paths (host selection, disk discovery, disko, nixos-install,
+handoff) without needing a PTY. For automation, pass `--disk` so only the
+destructive confirmation prompt remains, then pipe `destroy` into stdin to
+satisfy it.
 
 If TUI-level regression testing is needed (verifying screen rendering,
 navigation, key bindings), use `ks --screenshot <screen>` which renders a

@@ -43,7 +43,23 @@ content into a numbered slide plan with titles, key points, and speaker notes.
    - **Body** (bulk of slides): main argument, evidence, examples, data
    - **Close** (1–2 slides): summary, call-to-action or next steps, contact/links
 
-4. **Plan each slide**
+4. **Build or check the media manifest**
+
+   Before planning slides, check whether `_media/index.yaml` exists in the output directory:
+
+   - If it exists, read it — it is the canonical source of image descriptions for this presentation.
+   - If images are being added that aren't in the index, add an entry for each with `file` and `description`.
+   - **If the purpose of an image on a specific slide isn't obvious from its description alone, use
+     the `AskUserQuestion` tool to ask a clarifying question before assigning it.** Do not infer intent
+     when the connection could be interpreted multiple ways. For example: "You have
+     `esp32-c3-ascii-pinout.png` — what is the key point this image is making on the Early Mistakes
+     slide?" Batch multiple unclear images into a single `AskUserQuestion` call rather than asking one
+     at a time.
+   - Images are not just decoration. Some serve as long-term context (e.g., a pinout tells the agent
+     exactly which hardware is in use, reducing hallucination risk). The plan should record *why* each
+     image is present, not just *what* it shows.
+
+5. **Plan each slide**
 
    For every slide in the plan, specify:
 
@@ -52,11 +68,13 @@ content into a numbered slide plan with titles, key points, and speaker notes.
    - `layout`: recommended Slidev layout (`cover`, `intro`, `default`, `center`,
      `two-cols`, `image-right`, `image-left`, `fact`, `quote`, `section`, `end`)
    - `key_points`: bullet list of 2–4 points to appear on the slide
-   - `visual_hint`: description of any image, diagram, or code block to include
+   - `visual_hint`: description of the image/diagram to include AND why it belongs on this slide
      (use `none` if the slide is text-only)
-   - `speaker_notes`: 2–5 sentences the presenter should say while on this slide
+   - `speaker_notes`: 2–5 sentences the presenter should say while on this slide; if an image is
+     present and its relevance isn't self-evident, speaker notes MUST include a sentence explaining
+     why that image is there
 
-5. **Validate calibration**
+6. **Validate calibration**
 
    - Total slide count MUST be between `floor(duration / 2)` and `ceil(duration / 1)`.
    - No more than 4 bullet points per slide.
@@ -105,6 +123,8 @@ content into a numbered slide plan with titles, key points, and speaker notes.
 - Every slide has speaker notes summarizing what to say.
 - No slide has more than 4 key points.
 - A layout is specified for every slide.
+- Every image assignment has a stated reason in `visual_hint` — not just what the image shows, but why it belongs on this slide.
+- Any image whose relevance was unclear was resolved via `AskUserQuestion` before finalizing the plan.
 
 ## Context
 

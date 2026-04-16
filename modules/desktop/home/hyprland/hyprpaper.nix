@@ -20,11 +20,7 @@ in
       settings = {
         splash = false;
         wallpaper = [
-          {
-            monitor = "";
-            path = "${config.xdg.configHome}/keystone/current/background";
-            fit_mode = "cover";
-          }
+          ",${config.xdg.configHome}/keystone/current/background"
         ];
       };
     };

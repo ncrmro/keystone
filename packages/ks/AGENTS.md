@@ -79,6 +79,60 @@ src/
 5. If the component has a CLI subcommand, add it to `cli.rs` and wire
    `types.rs` + `run.rs` in `main.rs`.
 
+## CLI Subcommands
+
+### `ks notification` — Unified notification fetch with source-level read tracking
+
+Replaces shell-script fetchers (`fetch-email-source`, `fetch-github-sources`,
+`fetch-forgejo-sources`) with a single Rust subcommand. Fetches only unseen/unread
+items and supports marking them as read at the source after successful processing.
+
+| Command | What |
+|---------|------|
+| `ks notification` | Human-readable list of unread notifications |
+| `ks notification fetch` | Fetch unseen items, output JSON |
+| `ks notification fetch --manifest` | Also write manifest for later ack |
+| `ks notification ack <manifest>` | Mark items read at source |
+| `ks notification sources` | Show configured sources and status |
+
+Sources: email (himalaya), GitHub (gh API), Forgejo (curl + token).
+GitHub/Forgejo return metadata only (1 API call each); email enriches with body.
+
+### `ks task` — Unified task management for humans and agents
+
+CRUD on `TASKS.yaml` with AI-powered ingest and prioritization.
+Prioritization proposals include per-task rationale as JSON.
+
+| Command | What |
+|---------|------|
+| `ks task` | List tasks grouped by status |
+| `ks task add <desc>` | Create pending task (auto-slugify name) |
+| `ks task start <name>` | Mark in-progress |
+| `ks task done <name>` | Mark completed |
+| `ks task block <name>` | Mark blocked with optional reason |
+| `ks task ingest --file <json>` | Output AI prompt for notification→task conversion |
+| `ks task ingest --apply` | Apply AI ingest result from stdin |
+| `ks task prioritize` | Output AI prompt for task ranking |
+| `ks task proposal` | Show current prioritization proposal |
+| `ks task proposal --accept` | Apply proposed ordering |
+| `ks task prune [--all]` | Remove old completed tasks |
+
+### `ks project` — Project management with detection and provider overrides
+
+Projects map repos to named entities with priority and per-project provider config.
+Detection resolves notifications to projects deterministically or heuristically.
+
+| Command | What |
+|---------|------|
+| `ks project` | List all projects |
+| `ks project show <slug>` | Full project details |
+| `ks project add <slug>` | Create project (`--name`, `--repo`, `--priority`) |
+| `ks project remove <slug>` | Remove project |
+| `ks project detect --repo <url>` | Exact repo→project lookup |
+| `ks project detect --subject <text>` | Heuristic name/slug match |
+
+Detection output: `{"slug": "keystone", "confidence": "exact|heuristic|none", "method": "..."}`
+
 ## Clippy Configuration
 
 The crate enables strict clippy lint groups:

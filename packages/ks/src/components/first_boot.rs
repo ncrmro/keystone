@@ -28,6 +28,19 @@ use crate::component::Component;
 use crate::widgets::TextInput;
 
 const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
+const REMOTE_MAIN_REF: &str = "origin/main";
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct RepoHealthStatus {
+    working_tree_changes: usize,
+    ahead_count: usize,
+}
+
+impl RepoHealthStatus {
+    fn needs_warning(&self) -> bool {
+        self.working_tree_changes > 0 || self.ahead_count > 0
+    }
+}
 
 /// Configuration for the first-boot flow.
 #[derive(Debug, Clone)]
@@ -107,35 +120,196 @@ impl FirstBootConfig {
     }
 }
 
+fn count_nonempty_lines(text: &str) -> usize {
+    text.lines().filter(|line| !line.trim().is_empty()).count()
+}
+
+fn parse_rev_list_counts(output: &str) -> Result<(usize, usize), String> {
+    let mut fields = output.split_whitespace();
+    let behind = fields
+        .next()
+        .ok_or_else(|| format!("Unexpected git rev-list output: {}", output.trim()))?
+        .parse::<usize>()
+        .map_err(|e| format!("Failed to parse behind count from git rev-list: {}", e))?;
+    let ahead = fields
+        .next()
+        .ok_or_else(|| format!("Unexpected git rev-list output: {}", output.trim()))?
+        .parse::<usize>()
+        .map_err(|e| format!("Failed to parse ahead count from git rev-list: {}", e))?;
+
+    Ok((behind, ahead))
+}
+
+async fn git_remote_get_url(repo_dir: &PathBuf, remote: &str) -> Result<Option<String>, String> {
+    let output = Command::new("git")
+        .args(["remote", "get-url", remote])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("git remote get-url {} failed: {}", remote, e))?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if stdout.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(stdout))
+    }
+}
+
+async fn ensure_origin_remote(repo_dir: &PathBuf, remote_url: &str) -> Result<(), String> {
+    match git_remote_get_url(repo_dir, "origin").await? {
+        Some(current_url) if current_url == remote_url => Ok(()),
+        Some(_) => Command::new("git")
+            .args(["remote", "set-url", "origin", remote_url])
+            .current_dir(repo_dir)
+            .output()
+            .await
+            .map_err(|e| format!("git remote set-url failed: {}", e))
+            .and_then(|output| {
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                    Err(format!(
+                        "git remote set-url failed: {}",
+                        if stderr.is_empty() {
+                            "no output".to_string()
+                        } else {
+                            stderr
+                        }
+                    ))
+                }
+            }),
+        None => Command::new("git")
+            .args(["remote", "add", "origin", remote_url])
+            .current_dir(repo_dir)
+            .output()
+            .await
+            .map_err(|e| format!("git remote add failed: {}", e))
+            .and_then(|output| {
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                    Err(format!(
+                        "git remote add failed: {}",
+                        if stderr.is_empty() {
+                            "no output".to_string()
+                        } else {
+                            stderr
+                        }
+                    ))
+                }
+            }),
+    }
+}
+
+async fn gather_repo_health(repo_dir: &PathBuf) -> Result<RepoHealthStatus, String> {
+    let status_output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("git status --porcelain failed: {}", e))?;
+
+    if !status_output.status.success() {
+        let stderr = String::from_utf8_lossy(&status_output.stderr)
+            .trim()
+            .to_string();
+        return Err(format!(
+            "git status --porcelain failed: {}",
+            if stderr.is_empty() {
+                "no output".to_string()
+            } else {
+                stderr
+            }
+        ));
+    }
+
+    let working_tree_changes =
+        count_nonempty_lines(String::from_utf8_lossy(&status_output.stdout).as_ref());
+
+    let remote_ref_output = Command::new("git")
+        .args(["rev-parse", "--verify", REMOTE_MAIN_REF])
+        .current_dir(repo_dir)
+        .output()
+        .await
+        .map_err(|e| format!("git rev-parse {} failed: {}", REMOTE_MAIN_REF, e))?;
+
+    let ahead_count = if remote_ref_output.status.success() {
+        let rev_list_output = Command::new("git")
+            .args(["rev-list", "--left-right", "--count", "origin/main...HEAD"])
+            .current_dir(repo_dir)
+            .output()
+            .await
+            .map_err(|e| format!("git rev-list origin/main...HEAD failed: {}", e))?;
+
+        if !rev_list_output.status.success() {
+            let stderr = String::from_utf8_lossy(&rev_list_output.stderr)
+                .trim()
+                .to_string();
+            return Err(format!(
+                "git rev-list origin/main...HEAD failed: {}",
+                if stderr.is_empty() {
+                    "no output".to_string()
+                } else {
+                    stderr
+                }
+            ));
+        }
+
+        let (_, ahead) =
+            parse_rev_list_counts(String::from_utf8_lossy(&rev_list_output.stdout).as_ref())?;
+        ahead
+    } else {
+        0
+    };
+
+    Ok(RepoHealthStatus {
+        working_tree_changes,
+        ahead_count,
+    })
+}
+
 /// Phases of the first-boot wizard.
 ///
 /// Onboarding flow (REQ-008):
 /// Stage 5: Secure Boot → TPM → reboot
-/// Stage 6: SSH keys → push pending install commit → secrets
+/// Stage 6: SSH keys → repo review → push pending install commit → secrets
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FirstBootPhase {
     // Stage 5: First boot after install
     Welcome,
     // Security enrollment (Stage 5 continued)
-    SecureBootEnroll, // TODO: wire to security::secure_boot
-    TpmEnroll,        // TODO: wire to security::tpm
-    RebootPrompt,     // reboot for SB+TPM to take effect
+    SecureBootEnroll,
+    TpmEnroll,
+    RebootPrompt, // reboot for SB+TPM to take effect
     // Stage 6: After security reboot
-    SshKeySetup,  // TODO: detect/generate/import SSH keys
-    ShowSshKey,   // display public key for user to add to GitHub
-    RemoteInput,  // enter git remote URL
-    Pushing,      // push the pending install commit
-    SecretsSetup, // TODO: agenix secrets initialization
+    SshKeySetup,       // TODO: detect/generate/import SSH keys
+    ShowSshKey,        // display public key for user to add to GitHub
+    RemoteInput,       // enter git remote URL
+    PreparingPush,     // set remote and inspect repo health before push
+    RepoHealthWarning, // warn when local repo state is not fully committed/pushed
+    Pushing,           // push the pending install commit
+    SecretsSetup,      // TODO: agenix secrets initialization
     Done,
     Failed(String),
 }
 
 /// Messages from first-boot async operations.
-pub enum FirstBootMessage {
+enum FirstBootMessage {
     Output(String),
     SshKey(String),
+    RepoPrepared(Result<RepoHealthStatus, String>),
     PushResult(Result<(), String>),
     Failed(String),
+    SecureBootStatus(super::security::secure_boot::Status),
+    SecureBootEnrollResult(Result<String, String>),
+    TpmStatus(super::security::tpm::Status),
 }
 
 pub struct FirstBootScreen {
@@ -143,11 +317,17 @@ pub struct FirstBootScreen {
     phase: FirstBootPhase,
     output_lines: Vec<String>,
     ssh_public_key: Option<String>,
+    repo_health_status: RepoHealthStatus,
     remote_input: TextInput,
     rx: Option<mpsc::UnboundedReceiver<FirstBootMessage>>,
     push_skipped: bool,
     done_message: String,
     marker_removed: bool,
+    sb_status: Option<super::security::secure_boot::Status>,
+    sb_busy: bool,
+    sb_enroll_result: Option<Result<String, String>>,
+    tpm_status: Option<super::security::tpm::Status>,
+    tpm_busy: bool,
 }
 
 impl FirstBootScreen {
@@ -175,11 +355,17 @@ impl FirstBootScreen {
             phase: FirstBootPhase::Welcome,
             output_lines: Vec::new(),
             ssh_public_key: None,
+            repo_health_status: RepoHealthStatus::default(),
             remote_input,
             rx: None,
             push_skipped: false,
             done_message: "Setup complete.".to_string(),
             marker_removed: false,
+            sb_status: None,
+            sb_busy: false,
+            sb_enroll_result: None,
+            tpm_status: None,
+            tpm_busy: false,
         }
     }
 
@@ -197,6 +383,49 @@ impl FirstBootScreen {
             return;
         }
         self.phase = FirstBootPhase::SecureBootEnroll;
+        self.spawn_sb_check();
+    }
+
+    fn spawn_sb_check(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.rx = Some(rx);
+        self.sb_busy = true;
+
+        tokio::spawn(async move {
+            let status = super::security::secure_boot::check_status().await;
+            let _ = tx.send(FirstBootMessage::SecureBootStatus(status));
+        });
+    }
+
+    fn spawn_sb_enroll(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.rx = Some(rx);
+        self.sb_busy = true;
+
+        tokio::spawn(async move {
+            let _ = tx.send(FirstBootMessage::Output(
+                "Provisioning Secure Boot keys...".to_string(),
+            ));
+            match super::security::secure_boot::provision().await {
+                Ok(out) => {
+                    let _ = tx.send(FirstBootMessage::SecureBootEnrollResult(Ok(out)));
+                }
+                Err(e) => {
+                    let _ = tx.send(FirstBootMessage::SecureBootEnrollResult(Err(e.to_string())));
+                }
+            }
+        });
+    }
+
+    fn spawn_tpm_check(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.rx = Some(rx);
+        self.tpm_busy = true;
+
+        tokio::spawn(async move {
+            let status = super::security::tpm::check_status().await;
+            let _ = tx.send(FirstBootMessage::TpmStatus(status));
+        });
     }
 
     fn spawn_ssh_key_check(&mut self) {
@@ -255,7 +484,7 @@ impl FirstBootScreen {
         });
     }
 
-    fn spawn_push(&mut self) {
+    fn spawn_prepare_push(&mut self) {
         let (tx, rx) = mpsc::unbounded_channel();
         self.rx = Some(rx);
         let config_dir = self.config.config_dir.clone();
@@ -267,36 +496,32 @@ impl FirstBootScreen {
                 remote_url
             )));
 
-            let remote_check = Command::new("git")
-                .args(["remote", "get-url", "origin"])
-                .current_dir(&config_dir)
-                .output()
-                .await;
-
-            let remote_exists = remote_check.map(|o| o.status.success()).unwrap_or(false);
-
-            if remote_exists {
-                let _ = Command::new("git")
-                    .args(["remote", "set-url", "origin", &remote_url])
-                    .current_dir(&config_dir)
-                    .output()
-                    .await;
-            } else {
-                let add = Command::new("git")
-                    .args(["remote", "add", "origin", &remote_url])
-                    .current_dir(&config_dir)
-                    .output()
-                    .await;
-
-                if let Err(e) = add {
-                    let _ = tx.send(FirstBootMessage::PushResult(Err(format!(
-                        "git remote add failed: {}",
-                        e
-                    ))));
-                    return;
-                }
+            if let Err(e) = ensure_origin_remote(&config_dir, &remote_url).await {
+                let _ = tx.send(FirstBootMessage::RepoPrepared(Err(e)));
+                return;
             }
 
+            let _ = tx.send(FirstBootMessage::Output(
+                "Checking keystone-config repo health...".to_string(),
+            ));
+
+            match gather_repo_health(&config_dir).await {
+                Ok(status) => {
+                    let _ = tx.send(FirstBootMessage::RepoPrepared(Ok(status)));
+                }
+                Err(e) => {
+                    let _ = tx.send(FirstBootMessage::RepoPrepared(Err(e)));
+                }
+            }
+        });
+    }
+
+    fn spawn_push(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.rx = Some(rx);
+        let config_dir = self.config.config_dir.clone();
+
+        tokio::spawn(async move {
             let _ = tx.send(FirstBootMessage::Output("Pushing to remote...".to_string()));
 
             let push = Command::new("git")
@@ -329,18 +554,22 @@ impl FirstBootScreen {
     /// Skip the current step.
     pub fn skip(&mut self) {
         match self.phase {
-            FirstBootPhase::ShowSshKey => {
-                self.phase = FirstBootPhase::RemoteInput;
-                self.remote_input.set_focused(true);
-            }
-            FirstBootPhase::RemoteInput => {
+            FirstBootPhase::SshKeySetup => {
                 self.push_skipped = true;
                 self.complete(
                     true,
                     "Post-install onboarding completed without pushing the install commit.",
                 );
             }
-            FirstBootPhase::Pushing => {
+            FirstBootPhase::ShowSshKey => {
+                self.phase = FirstBootPhase::RemoteInput;
+                self.remote_input.set_focused(true);
+            }
+            FirstBootPhase::RemoteInput
+            | FirstBootPhase::PreparingPush
+            | FirstBootPhase::RepoHealthWarning
+            | FirstBootPhase::Pushing
+            | FirstBootPhase::Failed(_) => {
                 self.push_skipped = true;
                 self.complete(
                     true,
@@ -353,13 +582,16 @@ impl FirstBootScreen {
 
     /// Continue from ShowSshKey to RemoteInput.
     pub fn continue_to_remote(&mut self) {
-        if self.phase == FirstBootPhase::ShowSshKey {
+        if matches!(
+            self.phase,
+            FirstBootPhase::ShowSshKey | FirstBootPhase::SshKeySetup
+        ) {
             self.phase = FirstBootPhase::RemoteInput;
             self.remote_input.set_focused(true);
         }
     }
 
-    /// Submit the remote URL and start pushing.
+    /// Submit the remote URL and review repo state before pushing.
     pub fn submit_remote(&mut self) {
         if self.phase != FirstBootPhase::RemoteInput {
             return;
@@ -373,13 +605,21 @@ impl FirstBootScreen {
             );
             return;
         }
-        self.phase = FirstBootPhase::Pushing;
-        self.spawn_push();
+        self.repo_health_status = RepoHealthStatus::default();
+        self.phase = FirstBootPhase::PreparingPush;
+        self.spawn_prepare_push();
     }
 
     /// Retry a failed push.
     pub fn retry_push(&mut self) {
         if matches!(self.phase, FirstBootPhase::Failed(_)) {
+            self.phase = FirstBootPhase::PreparingPush;
+            self.spawn_prepare_push();
+        }
+    }
+
+    pub fn continue_after_repo_warning(&mut self) {
+        if self.phase == FirstBootPhase::RepoHealthWarning {
             self.phase = FirstBootPhase::Pushing;
             self.spawn_push();
         }
@@ -420,6 +660,19 @@ impl FirstBootScreen {
                 FirstBootMessage::SshKey(key) => {
                     self.ssh_public_key = Some(key);
                 }
+                FirstBootMessage::RepoPrepared(Ok(status)) => {
+                    self.repo_health_status = status;
+                    if self.repo_health_status.needs_warning() {
+                        self.phase = FirstBootPhase::RepoHealthWarning;
+                    } else {
+                        self.phase = FirstBootPhase::Pushing;
+                        self.spawn_push();
+                    }
+                }
+                FirstBootMessage::RepoPrepared(Err(e)) => {
+                    self.output_lines.push(format!("Repo check failed: {}", e));
+                    self.phase = FirstBootPhase::Failed(e);
+                }
                 FirstBootMessage::PushResult(Ok(())) => {
                     self.output_lines.push("Push successful!".to_string());
                     self.complete(
@@ -434,6 +687,18 @@ impl FirstBootScreen {
                 FirstBootMessage::Failed(e) => {
                     self.phase = FirstBootPhase::Failed(e);
                 }
+                FirstBootMessage::SecureBootStatus(status) => {
+                    self.sb_busy = false;
+                    self.sb_status = Some(status);
+                }
+                FirstBootMessage::SecureBootEnrollResult(result) => {
+                    self.sb_busy = false;
+                    self.sb_enroll_result = Some(result);
+                }
+                FirstBootMessage::TpmStatus(status) => {
+                    self.tpm_busy = false;
+                    self.tpm_status = Some(status);
+                }
             }
         }
     }
@@ -442,12 +707,8 @@ impl FirstBootScreen {
         match &self.phase {
             FirstBootPhase::Welcome => self.render_welcome(frame, area),
             // Security enrollment (Stage 5)
-            FirstBootPhase::SecureBootEnroll => {
-                self.render_enrollment_step(frame, area, "Secure Boot", "sbctl enroll-keys")
-            }
-            FirstBootPhase::TpmEnroll => {
-                self.render_enrollment_step(frame, area, "TPM2", "systemd-cryptenroll")
-            }
+            FirstBootPhase::SecureBootEnroll => self.render_secure_boot(frame, area),
+            FirstBootPhase::TpmEnroll => self.render_tpm(frame, area),
             FirstBootPhase::RebootPrompt => self.render_reboot_prompt(frame, area),
             // SSH + push (Stage 6)
             FirstBootPhase::SshKeySetup => {
@@ -455,6 +716,8 @@ impl FirstBootScreen {
             }
             FirstBootPhase::ShowSshKey => self.render_ssh_key(frame, area),
             FirstBootPhase::RemoteInput => self.render_remote_input(frame, area),
+            FirstBootPhase::PreparingPush => self.render_progress(frame, area),
+            FirstBootPhase::RepoHealthWarning => self.render_repo_health_warning(frame, area),
             FirstBootPhase::Pushing => self.render_progress(frame, area),
             FirstBootPhase::SecretsSetup => {
                 self.render_enrollment_step(frame, area, "Secrets", "agenix init")
@@ -486,7 +749,7 @@ impl FirstBootScreen {
                  This wizard will:\n  \
                  1. Continue Secure Boot enrollment\n  \
                  2. Continue TPM2 enrollment\n  \
-                 3. Set up SSH keys and push the install commit\n  \
+                 3. Set up SSH keys, review repo state, and push the install commit\n  \
                  4. Initialize secrets for services\n\n  \
                  Hardware detection and the initial local commit already happened during install.\n",
                 self.config.hostname
@@ -520,6 +783,7 @@ impl FirstBootScreen {
             .split(area);
 
         let phase_label = match &self.phase {
+            FirstBootPhase::PreparingPush => "Checking repo state...",
             FirstBootPhase::Pushing => "Pushing to remote...",
             _ => "Working...",
         };
@@ -619,11 +883,86 @@ impl FirstBootScreen {
         self.remote_input.render(frame, chunks[2], "Remote URL");
 
         let help = Paragraph::new(Text::styled(
-            "Enter: push • s: skip push",
+            "Enter: review repo • Esc: skip push",
             t.inactive_style(),
         ))
         .alignment(Alignment::Center);
         frame.render_widget(help, chunks[3]);
+    }
+
+    fn render_repo_health_warning(&self, frame: &mut Frame, area: Rect) {
+        let t = crate::theme::default();
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let heading = Paragraph::new(Text::styled(
+            "Repo state warning",
+            t.warning_style().add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(heading, chunks[0]);
+
+        let mut lines = vec![
+            Line::from(""),
+            Line::from("  Keystone found local repo state that is not fully committed and pushed."),
+            Line::from(""),
+        ];
+
+        if self.repo_health_status.working_tree_changes > 0 {
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "  {} working tree change(s) are still uncommitted.",
+                    self.repo_health_status.working_tree_changes
+                ),
+                t.warning_style(),
+            )));
+            lines.push(Line::from(
+                "  Those changes will not be included in the push unless you commit them first.",
+            ));
+            lines.push(Line::from(""));
+        }
+
+        if self.repo_health_status.ahead_count > 0 {
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "  {} local commit(s) are ahead of {}.",
+                    self.repo_health_status.ahead_count, REMOTE_MAIN_REF
+                ),
+                t.warning_style(),
+            )));
+            lines.push(Line::from(
+                "  Continuing will push those local commits to the configured origin.",
+            ));
+            lines.push(Line::from(""));
+        }
+
+        lines.push(Line::from(format!(
+            "  Repo: {}",
+            self.config.config_dir.display()
+        )));
+
+        let body = Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(t.warning)),
+            )
+            .wrap(Wrap { trim: false });
+        frame.render_widget(body, chunks[1]);
+
+        let help = Paragraph::new(Text::styled(
+            "Enter: continue to push • s: skip push • q: quit",
+            t.inactive_style(),
+        ))
+        .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
     }
 
     /// Generic enrollment step placeholder for SB, TPM, SSH, secrets.
@@ -663,6 +1002,138 @@ impl FirstBootScreen {
         frame.render_widget(help, chunks[2]);
     }
 
+    fn render_secure_boot(&self, frame: &mut Frame, area: Rect) {
+        use super::security::secure_boot::Status as SbStatus;
+
+        let t = crate::theme::default();
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let heading = Paragraph::new(Text::styled("Setup: Secure Boot", t.title_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(heading, chunks[0]);
+
+        let body_text = if self.sb_busy {
+            "\n  Checking Secure Boot status...".to_string()
+        } else {
+            match (&self.sb_status, &self.sb_enroll_result) {
+                (Some(SbStatus::Enrolled), _) => {
+                    "\n  [ok] Secure Boot keys are enrolled and active.\n\n  \
+                     Press Enter to continue."
+                        .to_string()
+                }
+                (Some(SbStatus::KeysGenerated), _) => "\n  [ok] Secure Boot keys generated.\n  \
+                     A reboot is needed to activate Secure Boot.\n\n  \
+                     Press Enter to continue."
+                    .to_string(),
+                (Some(SbStatus::SetupMode), Some(Ok(_))) => {
+                    "\n  [ok] Secure Boot keys enrolled successfully!\n\n  \
+                     Press Enter to continue."
+                        .to_string()
+                }
+                (Some(SbStatus::SetupMode), Some(Err(e))) => {
+                    format!(
+                        "\n  [error] Enrollment failed: {}\n\n  \
+                         Press Enter to retry or 's' to skip.",
+                        e
+                    )
+                }
+                (Some(SbStatus::SetupMode), None) => {
+                    "\n  UEFI is in Setup Mode — ready to enroll keys.\n\n  \
+                     Press Enter to enroll Secure Boot keys or 's' to skip."
+                        .to_string()
+                }
+                (Some(SbStatus::NotInSetupMode), _) => "\n  Secure Boot is not in Setup Mode.\n  \
+                     Keys cannot be enrolled from the OS.\n\n  \
+                     To enroll: enable Setup Mode in BIOS, then reboot.\n\n  \
+                     Press Enter to continue or 's' to skip."
+                    .to_string(),
+                _ => "\n  Could not determine Secure Boot status.\n\n  \
+                     Press Enter to continue or 's' to skip."
+                    .to_string(),
+            }
+        };
+
+        let body = Paragraph::new(Text::styled(body_text, Style::default()))
+            .block(Block::default().borders(Borders::ALL))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(body, chunks[1]);
+
+        let help_text = if self.sb_busy {
+            "Checking..."
+        } else {
+            "Enter: proceed • s: skip • q: quit"
+        };
+        let help = Paragraph::new(Text::styled(help_text, t.inactive_style()))
+            .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
+    }
+
+    fn render_tpm(&self, frame: &mut Frame, area: Rect) {
+        use super::security::tpm::Status as TpmStatus;
+
+        let t = crate::theme::default();
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(5),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let heading = Paragraph::new(Text::styled("Setup: TPM2", t.title_style()))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::BOTTOM));
+        frame.render_widget(heading, chunks[0]);
+
+        let body_text = if self.tpm_busy {
+            "\n  Checking TPM status...".to_string()
+        } else {
+            match &self.tpm_status {
+                Some(TpmStatus::Enrolled) => "\n  [ok] TPM auto-unlock is configured.\n\n  \
+                     Press Enter to continue."
+                    .to_string(),
+                Some(TpmStatus::Available) => {
+                    format!(
+                        "\n  TPM2 device detected but not yet enrolled.\n\n  \
+                         {}\n\n  \
+                         Press Enter to continue (you can enroll after this wizard).",
+                        super::security::tpm::enroll_instructions()
+                    )
+                }
+                Some(TpmStatus::NotAvailable) => "\n  No TPM2 device detected.\n\n  \
+                     TPM auto-unlock is not available on this system.\n\n  \
+                     Press Enter to continue."
+                    .to_string(),
+                _ => "\n  Could not determine TPM status.\n\n  \
+                     Press Enter to continue or 's' to skip."
+                    .to_string(),
+            }
+        };
+
+        let body = Paragraph::new(Text::styled(body_text, Style::default()))
+            .block(Block::default().borders(Borders::ALL))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(body, chunks[1]);
+
+        let help_text = if self.tpm_busy {
+            "Checking..."
+        } else {
+            "Enter: continue • s: skip • q: quit"
+        };
+        let help = Paragraph::new(Text::styled(help_text, t.inactive_style()))
+            .alignment(Alignment::Center);
+        frame.render_widget(help, chunks[2]);
+    }
+
     fn render_reboot_prompt(&self, frame: &mut Frame, area: Rect) {
         let t = crate::theme::default();
         let chunks = Layout::default()
@@ -681,8 +1152,8 @@ impl FirstBootScreen {
 
         let body = Paragraph::new(Text::styled(
             "\n  Secure Boot and TPM enrollment require a reboot to take effect.\n\n  \
-             After rebooting, the TUI will continue with SSH key setup\n  \
-             and push the pending install commit.",
+             After rebooting, the TUI will continue with SSH key setup,\n  \
+             review the repo state, and push the pending install commit.",
             Style::default(),
         ))
         .block(Block::default().borders(Borders::ALL));
@@ -778,7 +1249,7 @@ impl FirstBootScreen {
         frame.render_widget(output, chunks[1]);
 
         let help = Paragraph::new(Text::styled(
-            "r: retry push • s: skip • q: exit",
+            "r: retry • s: skip • q: exit",
             t.inactive_style(),
         ))
         .alignment(Alignment::Center);
@@ -819,37 +1290,60 @@ impl FirstBootScreen {
                 KeyCode::Char('q') => Some(Action::Quit),
                 _ => None,
             },
-            FirstBootPhase::Pushing => {
+            FirstBootPhase::PreparingPush | FirstBootPhase::Pushing => {
                 // No user input during async phases
                 None
             }
             // Security enrollment (Stage 5)
-            FirstBootPhase::SecureBootEnroll => match code {
-                // TODO: wire to security::secure_boot::enroll_keys()
-                KeyCode::Enter => {
-                    self.phase = FirstBootPhase::TpmEnroll;
-                    None
+            FirstBootPhase::SecureBootEnroll => {
+                if self.sb_busy {
+                    return None;
                 }
-                KeyCode::Char('s') => {
-                    self.phase = FirstBootPhase::TpmEnroll;
-                    None
+                match code {
+                    KeyCode::Enter => {
+                        use super::security::secure_boot::Status as SbStatus;
+                        match (&self.sb_status, &self.sb_enroll_result) {
+                            // Setup mode, no enrollment attempted yet → enroll
+                            (Some(SbStatus::SetupMode), None) => {
+                                self.spawn_sb_enroll();
+                                None
+                            }
+                            // Setup mode, enrollment failed → retry
+                            (Some(SbStatus::SetupMode), Some(Err(_))) => {
+                                self.sb_enroll_result = None;
+                                self.spawn_sb_enroll();
+                                None
+                            }
+                            // Any other state → advance to TPM
+                            _ => {
+                                self.phase = FirstBootPhase::TpmEnroll;
+                                self.spawn_tpm_check();
+                                None
+                            }
+                        }
+                    }
+                    KeyCode::Char('s') => {
+                        self.phase = FirstBootPhase::TpmEnroll;
+                        self.spawn_tpm_check();
+                        None
+                    }
+                    KeyCode::Char('q') => Some(Action::Quit),
+                    _ => None,
                 }
-                KeyCode::Char('q') => Some(Action::Quit),
-                _ => None,
-            },
-            FirstBootPhase::TpmEnroll => match code {
-                // TODO: wire to security::tpm::enroll()
-                KeyCode::Enter => {
-                    self.phase = FirstBootPhase::RebootPrompt;
-                    None
+            }
+            FirstBootPhase::TpmEnroll => {
+                if self.tpm_busy {
+                    return None;
                 }
-                KeyCode::Char('s') => {
-                    self.phase = FirstBootPhase::RebootPrompt;
-                    None
+                match code {
+                    KeyCode::Enter | KeyCode::Char('s') => {
+                        self.phase = FirstBootPhase::RebootPrompt;
+                        None
+                    }
+                    KeyCode::Char('q') => Some(Action::Quit),
+                    _ => None,
                 }
-                KeyCode::Char('q') => Some(Action::Quit),
-                _ => None,
-            },
+            }
             FirstBootPhase::RebootPrompt => match code {
                 KeyCode::Char('r') => Some(Action::Reboot),
                 KeyCode::Char('s') => {
@@ -865,7 +1359,8 @@ impl FirstBootScreen {
                 // TODO: wire to security::yubikey::detect_devices()
                 // TODO: offer ssh-keygen, GitHub import, YubiKey enrollment
                 KeyCode::Enter => {
-                    self.continue_to_remote();
+                    self.phase = FirstBootPhase::ShowSshKey;
+                    self.spawn_ssh_key_check();
                     None
                 }
                 KeyCode::Char('s') => {
@@ -910,6 +1405,18 @@ impl FirstBootScreen {
                     None
                 }
             },
+            FirstBootPhase::RepoHealthWarning => match code {
+                KeyCode::Enter => {
+                    self.continue_after_repo_warning();
+                    None
+                }
+                KeyCode::Char('s') => {
+                    self.skip();
+                    None
+                }
+                KeyCode::Char('q') => Some(Action::Quit),
+                _ => None,
+            },
             FirstBootPhase::Done => match code {
                 KeyCode::Char('q') => Some(Action::Quit),
                 _ => None,
@@ -933,6 +1440,7 @@ impl FirstBootScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::security::{secure_boot, tpm};
 
     fn test_first_boot_config() -> FirstBootConfig {
         FirstBootConfig {
@@ -949,8 +1457,8 @@ mod tests {
         assert_eq!(*screen.phase(), FirstBootPhase::Welcome);
     }
 
-    #[test]
-    fn test_start_moves_into_secure_boot_enrollment() {
+    #[tokio::test]
+    async fn test_start_moves_into_secure_boot_enrollment() {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.start();
         assert_eq!(*screen.phase(), FirstBootPhase::SecureBootEnroll);
@@ -993,6 +1501,27 @@ mod tests {
     }
 
     #[test]
+    fn test_count_nonempty_lines_ignores_blank_lines() {
+        assert_eq!(count_nonempty_lines(" M flake.lock\n\n?? notes.txt\n"), 2);
+    }
+
+    #[test]
+    fn test_parse_rev_list_counts_reads_ahead_and_behind() {
+        assert_eq!(parse_rev_list_counts("3\t2\n").unwrap(), (3, 2));
+    }
+
+    #[test]
+    fn test_skip_from_ssh_key_setup_completes_onboarding() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::SshKeySetup;
+        screen.skip();
+
+        assert_eq!(*screen.phase(), FirstBootPhase::Done);
+        assert!(screen.push_skipped);
+        assert!(screen.marker_removed);
+    }
+
+    #[test]
     fn test_skip_from_ssh_key() {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.phase = FirstBootPhase::ShowSshKey;
@@ -1005,6 +1534,90 @@ mod tests {
         let mut screen = FirstBootScreen::new(test_first_boot_config());
         screen.phase = FirstBootPhase::RemoteInput;
         screen.skip();
+        assert_eq!(*screen.phase(), FirstBootPhase::Done);
+        assert!(screen.push_skipped);
+        assert!(screen.marker_removed);
+    }
+
+    #[tokio::test]
+    async fn test_sb_enrolled_advances_to_tpm() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::SecureBootEnroll;
+        screen.sb_status = Some(secure_boot::Status::Enrolled);
+        screen.handle_key_event(
+            KeyCode::Enter,
+            &crossterm::event::KeyEvent::new(KeyCode::Enter, crossterm::event::KeyModifiers::NONE),
+        );
+        assert_eq!(*screen.phase(), FirstBootPhase::TpmEnroll);
+    }
+
+    #[tokio::test]
+    async fn test_sb_skip_advances_to_tpm() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::SecureBootEnroll;
+        screen.handle_key_event(
+            KeyCode::Char('s'),
+            &crossterm::event::KeyEvent::new(
+                KeyCode::Char('s'),
+                crossterm::event::KeyModifiers::NONE,
+            ),
+        );
+        assert_eq!(*screen.phase(), FirstBootPhase::TpmEnroll);
+    }
+
+    #[test]
+    fn test_sb_busy_ignores_input() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::SecureBootEnroll;
+        screen.sb_busy = true;
+        screen.handle_key_event(
+            KeyCode::Enter,
+            &crossterm::event::KeyEvent::new(KeyCode::Enter, crossterm::event::KeyModifiers::NONE),
+        );
+        // Should stay on SecureBootEnroll since busy
+        assert_eq!(*screen.phase(), FirstBootPhase::SecureBootEnroll);
+    }
+
+    #[test]
+    fn test_poll_sb_status() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::SecureBootEnroll;
+        screen.sb_busy = true;
+
+        tx.send(FirstBootMessage::SecureBootStatus(
+            secure_boot::Status::Enrolled,
+        ))
+        .unwrap();
+
+        screen.poll();
+        assert!(!screen.sb_busy);
+        assert_eq!(screen.sb_status, Some(secure_boot::Status::Enrolled));
+    }
+
+    #[test]
+    fn test_poll_tpm_status() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::TpmEnroll;
+        screen.tpm_busy = true;
+
+        tx.send(FirstBootMessage::TpmStatus(tpm::Status::Available))
+            .unwrap();
+
+        screen.poll();
+        assert!(!screen.tpm_busy);
+        assert_eq!(screen.tpm_status, Some(tpm::Status::Available));
+    }
+
+    #[test]
+    fn test_skip_from_failed_completes_onboarding() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::Failed("auth failed".to_string());
+        screen.skip();
+
         assert_eq!(*screen.phase(), FirstBootPhase::Done);
         assert!(screen.push_skipped);
         assert!(screen.marker_removed);
@@ -1025,6 +1638,53 @@ mod tests {
         screen.poll();
         assert!(screen.ssh_public_key().is_some());
         assert!(screen.ssh_public_key().unwrap().contains("ssh-ed25519"));
+    }
+
+    #[tokio::test]
+    async fn test_continue_after_repo_warning_starts_push_phase() {
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.phase = FirstBootPhase::RepoHealthWarning;
+
+        screen.continue_after_repo_warning();
+
+        assert_eq!(*screen.phase(), FirstBootPhase::Pushing);
+        assert!(screen.rx.is_some());
+    }
+
+    #[test]
+    fn test_poll_repo_prepared_warns_when_repo_is_dirty() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::PreparingPush;
+
+        tx.send(FirstBootMessage::RepoPrepared(Ok(RepoHealthStatus {
+            working_tree_changes: 2,
+            ahead_count: 0,
+        })))
+        .unwrap();
+
+        screen.poll();
+        assert_eq!(*screen.phase(), FirstBootPhase::RepoHealthWarning);
+        assert_eq!(screen.repo_health_status.working_tree_changes, 2);
+    }
+
+    #[tokio::test]
+    async fn test_poll_repo_prepared_pushes_clean_repo() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut screen = FirstBootScreen::new(test_first_boot_config());
+        screen.rx = Some(rx);
+        screen.phase = FirstBootPhase::PreparingPush;
+
+        tx.send(FirstBootMessage::RepoPrepared(Ok(RepoHealthStatus {
+            working_tree_changes: 0,
+            ahead_count: 0,
+        })))
+        .unwrap();
+
+        screen.poll();
+        assert_eq!(*screen.phase(), FirstBootPhase::Pushing);
+        assert!(screen.rx.is_some());
     }
 
     #[test]

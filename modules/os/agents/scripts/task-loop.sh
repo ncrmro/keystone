@@ -3,8 +3,12 @@
 # All tools (yq, jq, claude, gemini, codex, himalaya, git, etc.) come from the
 # home-manager profile PATH set in notes.nix — no individual path resolution.
 #
+# Queue and control files (TASKS.yaml, PROJECTS.yaml, ISSUES.yaml) live in
+# the agent home directory ($HOME), NOT in the notes repo.  The notes repo is
+# used only for memory, reports, handoffs, and long-term knowledge.
+#
 # Placeholders (injected via pkgs.replaceVars):
-#   @notesDir@         - Agent notes checkout path
+#   @notesDir@         - Agent notes checkout path (used only for migration)
 #   @maxTasks@         - Max tasks per execute loop
 #   @agentName@        - Agent name
 #   @githubUsername@   - GitHub username
@@ -26,7 +30,7 @@ for cmd in bash tr systemctl jq yq; do
 done
 
 # Config values substituted by NixOS module via pkgs.replaceVars
-NOTES_DIR="@notesDir@"
+NOTES_DIR="@notesDir@"    # only used for one-time migration
 MAX_TASKS="@maxTasks@"
 AGENT_NAME="@agentName@"
 GITHUB_USERNAME="@githubUsername@"
@@ -387,11 +391,17 @@ if ! flock -n 9; then
   exit 0
 fi
 
-if [[ ! -d "$NOTES_DIR" ]]; then
-  echo "Notes directory $NOTES_DIR does not exist yet, skipping"
-  exit 0
-fi
-cd "$NOTES_DIR"
+# -- Migrate queue files from notes repo to agent home (one-time) -------------
+# ISSUE-REQ-5/20: queue and control files live in $HOME, not $NOTES_DIR.
+for _mf in TASKS.yaml PROJECTS.yaml ISSUES.yaml SCHEDULES.yaml; do
+  if [[ -f "$NOTES_DIR/$_mf" && ! -f "$HOME/$_mf" ]]; then
+    cp "$NOTES_DIR/$_mf" "$HOME/$_mf"
+    log "Migrated $_mf from $NOTES_DIR to $HOME"
+  fi
+done
+unset _mf
+
+cd "$HOME"
 emit_event "run_start" "Starting agent task loop" "status" "started"
 
 if [[ -f "$PAUSE_FILE" ]]; then
@@ -500,8 +510,12 @@ if [[ "$(echo "$SOURCES_JSON" | jq '[.[].data | length] | add // 0')" -gt 0 ]]; 
   else
     log "Step 2: Ingesting sources..."
     emit_event "stage_start" "Ingesting sources" "stage_name" "ingest"
-    mkdir -p "$NOTES_DIR/.deepwork"
-    echo "$SOURCES_JSON" | jq '.' > "$NOTES_DIR/.deepwork/sources.json"
+    mkdir -p "$HOME/.deepwork"
+    echo "$SOURCES_JSON" | jq '.' > "$HOME/.deepwork/sources.json"
+    # Back up TASKS.yaml before LLM-driven ingest for corruption recovery
+    if [[ -f TASKS.yaml ]]; then
+      cp TASKS.yaml "$STATE_DIR/TASKS.yaml.pre-ingest"
+    fi
     INGEST_RUNTIME=$(resolve_stage_runtime "ingest")
     set +o pipefail
     run_provider_prompt "ingest" "$INGEST_RUNTIME" "/deepwork task_loop ingest" 2>&1 | tee -a "$LOG_FILE" >&2
@@ -516,11 +530,35 @@ if [[ "$(echo "$SOURCES_JSON" | jq '[.[].data | length] | add // 0')" -gt 0 ]]; 
     fi
 
     if ! yq '.' TASKS.yaml >/dev/null 2>&1; then
-      log "  ERROR: TASKS.yaml corrupted during ingest. Reverting..."
-      git checkout TASKS.yaml || git restore TASKS.yaml || true
+      log "  ERROR: TASKS.yaml corrupted during ingest. Pausing task loop."
+      if [[ -f "$STATE_DIR/TASKS.yaml.pre-ingest" ]]; then
+        cp "$STATE_DIR/TASKS.yaml.pre-ingest" TASKS.yaml
+      else
+        printf 'tasks: []\n' > TASKS.yaml
+      fi
+      # Document corruption in ISSUES.yaml
+      if [[ ! -f ISSUES.yaml ]]; then
+        printf 'issues: []\n' > ISSUES.yaml
+      fi
+      CORRUPT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      yq -i ".issues += [{
+        \"name\": \"tasks-yaml-corrupted-ingest-${TIMESTAMP}\",
+        \"description\": \"TASKS.yaml was corrupted during the ingest stage and restored from backup.\",
+        \"discovered_during\": \"task-loop-ingest\",
+        \"status\": \"open\",
+        \"created_at\": \"$CORRUPT_TS\"
+      }]" ISSUES.yaml
+      # Pause the task loop so an operator investigates
+      mkdir -p "$(dirname "$PAUSE_FILE")"
+      {
+        printf "paused_at=%s\n" "$CORRUPT_TS"
+        printf "paused_by=task-loop\n"
+        printf "reason=TASKS.yaml corrupted during ingest stage\n"
+      } > "$PAUSE_FILE"
       INGEST_RAN=false
+      RUN_STATUS="error"
     fi
-    emit_event "stage_finish" "Finished ingest stage" "stage_name" "ingest" "status" "ok"
+    emit_event "stage_finish" "Finished ingest stage" "stage_name" "ingest" "status" "$(if [[ "$RUN_STATUS" == "error" ]]; then printf 'error'; else printf 'ok'; fi)"
   fi
 else
   log "  No source data to ingest, skipping"
@@ -558,6 +596,10 @@ else
   else
     log "Step 3: Prioritizing tasks..."
     emit_event "stage_start" "Prioritizing tasks" "stage_name" "prioritize"
+    # Back up TASKS.yaml before LLM-driven prioritize for corruption recovery
+    if [[ -f TASKS.yaml ]]; then
+      cp TASKS.yaml "$STATE_DIR/TASKS.yaml.pre-prioritize"
+    fi
     PRIORITIZE_RUNTIME=$(resolve_stage_runtime "prioritize")
     set +o pipefail
     run_provider_prompt "prioritize" "$PRIORITIZE_RUNTIME" "/deepwork task_loop prioritize" 2>&1 | tee -a "$LOG_FILE" >&2
@@ -568,8 +610,32 @@ else
       log "  WARNING: Prioritize step failed, continuing..."
     else
       if ! yq '.' TASKS.yaml >/dev/null 2>&1; then
-        log "  ERROR: TASKS.yaml corrupted during prioritize. Reverting..."
-        git checkout TASKS.yaml || git restore TASKS.yaml || true
+        log "  ERROR: TASKS.yaml corrupted during prioritize. Pausing task loop."
+        if [[ -f "$STATE_DIR/TASKS.yaml.pre-prioritize" ]]; then
+          cp "$STATE_DIR/TASKS.yaml.pre-prioritize" TASKS.yaml
+        else
+          printf 'tasks: []\n' > TASKS.yaml
+        fi
+        # Document corruption in ISSUES.yaml
+        if [[ ! -f ISSUES.yaml ]]; then
+          printf 'issues: []\n' > ISSUES.yaml
+        fi
+        CORRUPT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        yq -i ".issues += [{
+          \"name\": \"tasks-yaml-corrupted-prioritize-${TIMESTAMP}\",
+          \"description\": \"TASKS.yaml was corrupted during the prioritize stage and restored from backup.\",
+          \"discovered_during\": \"task-loop-prioritize\",
+          \"status\": \"open\",
+          \"created_at\": \"$CORRUPT_TS\"
+        }]" ISSUES.yaml
+        # Pause the task loop so an operator investigates
+        mkdir -p "$(dirname "$PAUSE_FILE")"
+        {
+          printf "paused_at=%s\n" "$CORRUPT_TS"
+          printf "paused_by=task-loop\n"
+          printf "reason=TASKS.yaml corrupted during prioritize stage\n"
+        } > "$PAUSE_FILE"
+        RUN_STATUS="error"
       else
         echo -n "$CURRENT_HASH" > "$PRIORITIZE_HASH_FILE"
       fi

@@ -32,12 +32,18 @@ in
         (modulesPath + "/profiles/qemu-guest.nix")
       ];
 
-      # Required for ZFS - unique 8-character hex string
-      networking.hostId = "00000000"; # TODO: Generate and replace this value
+      # Required for ZFS - unique 8-character hex string.
+      # `ks install` replaces this placeholder automatically during the first
+      # install commit if you leave it unchanged.
+      networking.hostId = "00000000";
 
-      # Root disk(s) for the server host.
+      # Root disk(s) for the server host. `ks install` replaces this placeholder
+      # automatically with the disk you confirm in the installer flow.
       keystone.os.storage.devices = [
-        "/dev/disk/by-id/YOUR-SERVER-DISK-ID-HERE" # TODO: Replace with your disk ID
+        "__KEYSTONE_DISK__"
+        # Add your own stable /dev/disk/by-id/... paths here if you are not
+        # using the installer flow:
+        # "/dev/disk/by-id/YOUR-SERVER-DISK-ID-HERE"
       ];
 
       # Set to "stripe", "mirror", or a raidz mode for multi-disk server roots.

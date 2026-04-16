@@ -48,6 +48,7 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 27. Copilot SHOULD also be requested as a supplementary reviewer per `process.copilot-agent`.
 28. Review feedback MUST be addressed per `process.copilot-agent` conversation resolution rules (fix or explain every comment). For human reviewer feedback, agents MUST also follow `process.pr-review-response` for the full response lifecycle (fetch comments, push fixes, reply, re-request review).
 29. PRs MUST be squash-merged per `process.pull-request`.
+30. Agents MUST shepherd PRs end-to-end per `process.pr-shepherding` — from draft through CI stabilization, undraft, review, merge queue, and post-merge verification.
 
 ## Traceability
 

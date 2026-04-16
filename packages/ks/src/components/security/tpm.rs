@@ -5,9 +5,14 @@
 //!
 //! Flow:
 //! 1. Check if TPM2 device exists (/dev/tpmrm0)
-//! 2. Enroll LUKS key with systemd-cryptenroll --tpm2-device=auto
-//! 3. Verify unlock works
-//! 4. Prompt reboot
+//! 2. Check enrollment status from disk-unlock-status.json
+//! 3. Show instructions for manual enrollment (requires interactive password)
+
+use serde::Deserialize;
+
+const DISK_UNLOCK_STATUS_FILE: &str = "/var/lib/keystone/disk-unlock-status.json";
+const TPM_ENROLLMENT_MARKER: &str = "/var/lib/keystone/tpm-enrollment-complete";
+const TPM_DEVICE: &str = "/dev/tpmrm0";
 
 /// TPM2 enrollment state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,16 +27,47 @@ pub enum Status {
     NotAvailable,
 }
 
-/// Check TPM2 status.
-///
-/// TODO: check /dev/tpmrm0 exists, check if LUKS already has TPM2 token
-pub async fn check_status() -> Status {
-    Status::Unknown
+#[derive(Deserialize)]
+struct DiskUnlockStatus {
+    #[serde(default)]
+    tpm_enrolled: bool,
 }
 
-/// Enroll TPM2 for automatic disk unlock.
-///
-/// TODO: run `systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=1+7`
-pub async fn enroll() -> anyhow::Result<String> {
-    anyhow::bail!("TPM2 enrollment not yet implemented")
+/// Check TPM2 status by probing device and reading enrollment state.
+pub async fn check_status() -> Status {
+    if !tokio::fs::try_exists(TPM_DEVICE).await.unwrap_or(false) {
+        return Status::NotAvailable;
+    }
+
+    // Check the JSON status file written by keystone-tpm-check.service
+    if let Ok(content) = tokio::fs::read_to_string(DISK_UNLOCK_STATUS_FILE).await {
+        if let Ok(status) = serde_json::from_str::<DiskUnlockStatus>(&content) {
+            if status.tpm_enrolled {
+                return Status::Enrolled;
+            }
+        }
+    }
+
+    // Fallback: check the marker file
+    if tokio::fs::try_exists(TPM_ENROLLMENT_MARKER)
+        .await
+        .unwrap_or(false)
+    {
+        return Status::Enrolled;
+    }
+
+    Status::Available
+}
+
+/// TPM enrollment requires interactive password input via systemd-cryptenroll,
+/// so we return instructions rather than attempting auto-enrollment from the TUI.
+pub fn enroll_instructions() -> String {
+    "To enroll TPM for automatic disk unlock:\n\n\
+     Option 1 (recommended): Generate recovery key + enroll TPM\n\
+       $ sudo keystone-enroll-recovery\n\n\
+     Option 2: Set custom password + enroll TPM\n\
+       $ sudo keystone-enroll-password\n\n\
+     Option 3: Standalone TPM enrollment (advanced)\n\
+       $ sudo keystone-enroll-tpm --auto"
+        .into()
 }

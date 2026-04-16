@@ -163,6 +163,9 @@ in
         ## Video Player
         mpv
 
+        # Browser
+        chromium
+
         # File management
         nautilus
         file-roller
@@ -181,7 +184,8 @@ in
         # Polkit agent
         keystone.hyprpolkitagent
 
-        # Cursor themes
+        # GTK themes and cursor themes
+        gnome-themes-extra
         adwaita-icon-theme
 
         # Additional Hyprland tools
