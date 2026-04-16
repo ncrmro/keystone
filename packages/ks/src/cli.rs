@@ -138,6 +138,9 @@ pub enum Command {
     /// Launch an AI coding agent with Keystone context.
     Agent(AgentArgs),
 
+    /// Transcribe audio or video files locally or remotely using whisper.cpp.
+    AudioTranscribe(AudioTranscribeArgs),
+
     /// Generate a system health diagnostic report.
     Doctor(DoctorArgs),
 
@@ -165,6 +168,31 @@ pub struct InstallArgs {
     /// for a numbered disk choice.
     #[arg(long)]
     pub disk: Option<String>,
+}
+
+#[derive(Args)]
+pub struct AudioTranscribeArgs {
+    /// Path to audio or video file.
+    pub file: String,
+
+    /// Whisper model size (e.g. tiny, base, small, medium, large-v3).
+    #[arg(short, long)]
+    pub model: Option<String>,
+
+    /// Spoken language (or "auto" for detection).
+    #[arg(short, long)]
+    pub language: Option<String>,
+
+    /// Output directory (default: same as input file).
+    #[arg(long)]
+    pub output_dir: Option<String>,
+
+    /// Whisper server URL for remote transcription (e.g. http://workstation:8080).
+    #[arg(long)]
+    pub server: Option<String>,
+
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Args)]

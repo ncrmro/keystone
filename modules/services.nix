@@ -112,6 +112,41 @@ in
       description = "List of hostnames acting as GPU/ML workers.";
     };
 
+    whisper.host = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "ncrmro-workstation";
+      description = ''
+        The networking.hostName of the whisper.cpp transcription server.
+        Auto-enables whisper-server on that host with GPU acceleration.
+      '';
+    };
+
+    whisper.acceleration = mkOption {
+      type = types.nullOr (
+        types.enum [
+          "rocm"
+          "cuda"
+          "vulkan"
+        ]
+      );
+      default = null;
+      description = "GPU acceleration backend for the whisper server. null uses CPU only.";
+      example = "rocm";
+    };
+
+    whisper.port = mkOption {
+      type = types.port;
+      default = 8080;
+      description = "Listen port for the whisper HTTP API.";
+    };
+
+    whisper.model = mkOption {
+      type = types.str;
+      default = "large-v3";
+      description = "Default whisper model to load at startup.";
+    };
+
     generatedTagOwners = mkOption {
       type = types.attrsOf (types.listOf types.str);
       default = { };
@@ -166,5 +201,6 @@ in
     (validateHost "mail" cfg.mail.host)
     ++ (validateHost "git" cfg.git.host)
     ++ (validateHost "immich" cfg.immich.host)
-    ++ (concatMap (h: validateHost "immich.workers" h) cfg.immich.workers);
+    ++ (concatMap (h: validateHost "immich.workers" h) cfg.immich.workers)
+    ++ (validateHost "whisper" cfg.whisper.host);
 }
