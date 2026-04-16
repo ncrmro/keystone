@@ -3,6 +3,7 @@
 use serde::Serialize;
 
 pub mod agent;
+pub mod agent_loop;
 pub mod agents;
 pub mod approve;
 pub mod build;

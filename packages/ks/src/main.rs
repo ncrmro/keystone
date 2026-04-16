@@ -93,6 +93,7 @@ async fn main() -> Result<()> {
             Command::Grafana { args } => run_grafana_command(args).await,
             Command::Print { args } => run_print_command(args).await,
             Command::Agent(args) => run_agent_command(args).await,
+            Command::AgentLoop(args) => cmd::agent_loop::execute(&args).await,
             Command::Doctor(args) => run_doctor_command(args).await,
             Command::Install(args) => run_headless_install(&args.host, args.disk.as_deref()).await,
             Command::Notification(args) => cmd::notifications::execute(&args).await,
