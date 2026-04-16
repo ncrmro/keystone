@@ -134,11 +134,11 @@ fn collect_source(
     }
 }
 
-async fn execute_fetch(
-    write_manifest: bool,
+/// Fetch notifications from all configured sources and return structured entries.
+/// Called by both `execute_fetch` (CLI) and `agent_loop`.
+pub async fn fetch_sources(
     source_filter: Option<&[&str]>,
-    _json_output: bool,
-) -> Result<()> {
+) -> Result<(Vec<SourceEntry>, Vec<ManifestSource>)> {
     let mut entries: Vec<SourceEntry> = Vec::new();
     let mut manifest_sources: Vec<ManifestSource> = Vec::new();
 
@@ -155,7 +155,6 @@ async fn execute_fetch(
     }
 
     if should_fetch("github") {
-        // Username not required for fetch — only used for filtering reviews
         let username = platform::resolve_github_username();
         collect_source(
             fetch_github(username.as_deref().unwrap_or("")).await,
@@ -168,7 +167,6 @@ async fn execute_fetch(
     if should_fetch("forgejo") {
         let fj_host = std::env::var("FORGEJO_HOST").ok();
         let fj_token = std::env::var("FORGEJO_TOKEN").ok();
-        // Username not required — only host + token needed for notification fetch
         if let (Some(ref host), Some(ref token)) = (&fj_host, &fj_token) {
             collect_source(
                 fetch_forgejo(host, token, "").await,
@@ -178,6 +176,16 @@ async fn execute_fetch(
             );
         }
     }
+
+    Ok((entries, manifest_sources))
+}
+
+async fn execute_fetch(
+    write_manifest: bool,
+    source_filter: Option<&[&str]>,
+    _json_output: bool,
+) -> Result<()> {
+    let (entries, manifest_sources) = fetch_sources(source_filter).await?;
 
     // ISSUE-REQ-8: Write manifest for later ack
     if write_manifest && !manifest_sources.is_empty() {

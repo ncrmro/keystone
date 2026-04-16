@@ -417,6 +417,11 @@ fn execute_list(json: bool) -> Result<()> {
         .iter()
         .filter(|t| t.status == "blocked")
         .collect();
+    let errored: Vec<_> = task_file
+        .tasks
+        .iter()
+        .filter(|t| t.status == "error")
+        .collect();
     let completed: Vec<_> = task_file
         .tasks
         .iter()
@@ -447,6 +452,14 @@ fn execute_list(json: bool) -> Result<()> {
             if !reason.is_empty() {
                 println!("    reason: {reason}");
             }
+        }
+        println!();
+    }
+
+    if !errored.is_empty() {
+        println!("Errored ({}):", errored.len());
+        for t in &errored {
+            print_task(t);
         }
         println!();
     }

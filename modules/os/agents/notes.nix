@@ -132,31 +132,57 @@ in
           username = "agent-${name}";
         in
         {
-          "agent-${name}-task-loop" = {
-            description = "Autonomous task loop for ${username}";
-            unitConfig.ConditionUser = username;
-            # Use the agent's full home-manager profile for all tools (yq, jq,
-            # bash, git, claude, himalaya, etc.). Nix and /run/current-system/sw/bin
-            # are added as fallbacks for system tools not in the profile.
-            environment = {
-              PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.nix ]}";
-              SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
-              GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
-              PROMETHEUS_TEXTFILE_DIR = config.keystone.os.observability.nodeExporter.textfileDirectory;
+          "agent-${name}-task-loop" =
+            let
+              notesDir = agentCfg.notes.path;
+              maxTasks = agentCfg.notes.taskLoop.maxTasks;
+              defaultsJson = serializeTaskLoopStage agentCfg.notes.taskLoop.defaults;
+              ingestJson = serializeTaskLoopStage agentCfg.notes.taskLoop.ingest;
+              prioritizeJson = serializeTaskLoopStage agentCfg.notes.taskLoop.prioritize;
+              executeJson = serializeTaskLoopStage agentCfg.notes.taskLoop.execute;
+              profilesJson = builtins.toJSON (
+                lib.recursiveUpdate builtInTaskLoopProfiles agentCfg.notes.taskLoop.profiles
+              );
+            in
+            {
+              description = "Autonomous task loop for ${username}";
+              unitConfig.ConditionUser = username;
+              # Use the agent's full home-manager profile for all tools (yq, jq,
+              # bash, git, claude, himalaya, etc.). Nix and /run/current-system/sw/bin
+              # are added as fallbacks for system tools not in the profile.
+              environment = {
+                PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.nix ]}";
+                SSH_AUTH_SOCK = "/run/agent-${name}-ssh-agent/agent.sock";
+                GIT_SSH_COMMAND = "${pkgs.openssh}/bin/ssh -o StrictHostKeyChecking=accept-new";
+                PROMETHEUS_TEXTFILE_DIR = config.keystone.os.observability.nodeExporter.textfileDirectory;
+                KS_TASKS_FILE = "/home/${username}/TASKS.yaml";
+                KS_PROJECTS_FILE = "/home/${username}/PROJECTS.yaml";
+                KS_AGENT_NAME = name;
+                KS_AGENT_DEFAULTS_JSON = defaultsJson;
+                KS_AGENT_INGEST_JSON = ingestJson;
+                KS_AGENT_PRIORITIZE_JSON = prioritizeJson;
+                KS_AGENT_EXECUTE_JSON = executeJson;
+                KS_AGENT_PROFILES_JSON = profilesJson;
+              };
+              serviceConfig = {
+                Type = "oneshot";
+                # Agent tasks (e.g. Claude) can run for extended periods; the
+                # default 90s timeout would SIGKILL mid-execution, and flock
+                # handles concurrency so the timer safely skips overlapping runs.
+                TimeoutStartSec = "1h";
+                SyslogIdentifier = "agent-${name}-task-loop";
+                LogRateLimitIntervalSec = 0;
+              };
+              script =
+                if config.keystone.experimental then
+                  ''
+                    exec ${pkgs.keystone.ks}/bin/ks agent-loop --max-tasks=${toString maxTasks}
+                  ''
+                else
+                  ''
+                    exec ${pkgs.bash}/bin/bash ${agentTaskLoopScript name agentCfg}
+                  '';
             };
-            serviceConfig = {
-              Type = "oneshot";
-              # Agent tasks (e.g. Claude) can run for extended periods; the
-              # default 90s timeout would SIGKILL mid-execution, and flock
-              # handles concurrency so the timer safely skips overlapping runs.
-              TimeoutStartSec = "1h";
-              SyslogIdentifier = "agent-${name}-task-loop";
-              LogRateLimitIntervalSec = 0;
-            };
-            script = ''
-              exec ${pkgs.bash}/bin/bash ${agentTaskLoopScript name agentCfg}
-            '';
-          };
 
           "agent-${name}-scheduler" = {
             description = "Daily scheduler for ${username}";

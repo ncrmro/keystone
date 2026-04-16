@@ -3,8 +3,8 @@
 use clap::{Args, Parser, Subcommand};
 
 use crate::cmd::{
-    notifications::NotificationArgs, photos::PhotosCommand, projects::ProjectArgs,
-    screenshots::ScreenshotsCommand, tasks::TaskArgs,
+    agent_loop::AgentLoopArgs, notifications::NotificationArgs, photos::PhotosCommand,
+    projects::ProjectArgs, screenshots::ScreenshotsCommand, tasks::TaskArgs,
 };
 
 /// Keystone CLI/TUI — NixOS infrastructure configuration and management.
@@ -137,6 +137,10 @@ pub enum Command {
 
     /// Launch an AI coding agent with Keystone context.
     Agent(AgentArgs),
+
+    /// Run the autonomous agent task loop (replaces task-loop.sh).
+    #[command(name = "agent-loop")]
+    AgentLoop(AgentLoopArgs),
 
     /// Generate a system health diagnostic report.
     Doctor(DoctorArgs),
