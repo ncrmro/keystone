@@ -6,7 +6,30 @@ Based on the audit report, propose a concrete migration plan that converts the e
 
 ## Task
 
-1. **File classification**: For each markdown file (excluding operational files), determine:
+1. **Execution mode selection**: Determine how the migration will interact with git before any files are touched.
+
+   Inspect the current working directory:
+
+   ```bash
+   git rev-parse --abbrev-ref HEAD          # check current branch
+   git rev-parse --show-toplevel            # check repo root
+   ```
+
+   Choose one of the following modes and record it in the migration plan:
+
+   - **No-commit mode**: Mutations accumulate in the working tree; no git commits are created. Use when:
+     - The notes repo is a Keystone-managed main checkout (branch is `main` and repo lives under `~/repos/<owner>/<repo>/`), or
+     - The operator wants to review all changes as a single diff before committing.
+     - Reversibility: `git checkout -- .` undoes all mutations. The migration log is the per-file record.
+   - **Logical-batch mode**: Mutations are grouped into phase-based commits (structure moves, frontmatter, link rewrites, tag/cleanup). One to four commits total. Use when:
+     - The notes repo is a personal checkout not managed by Keystone, or
+     - A dedicated worktree has been created for this migration.
+   - **Worktree mode**: Create a dedicated git worktree before migrating (`git worktree add ~/.worktrees/<repo>/<branch> -b <branch>`), apply all mutations there, then open a PR. Use when:
+     - The notes repo is Keystone-managed and the operator wants a reviewable commit history rather than a single bulk diff.
+
+   **MUST NOT**: Under no circumstances create one commit per migrated file. Per-file commits produce commit spam, conflict with Keystone's worktree safety rules (`process.git-repos`), and push agents toward mutating the main checkout directly.
+
+2. **File classification**: For each markdown file (excluding operational files), determine:
    - Target note type: fleeting, literature, permanent, decision, index, or report
    - Target directory: inbox/, literature/, notes/, decisions/, index/, reports/, or an explicitly preserved spike/support path
    - Classification rationale (brief)
@@ -109,6 +132,10 @@ Write `.deepwork/tmp/migration_plan.md`:
 
 ```markdown
 # Migration Plan
+
+## Execution Mode
+
+(no-commit / logical-batch / worktree — with rationale)
 
 ## Source Format
 
