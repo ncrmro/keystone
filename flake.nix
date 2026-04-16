@@ -520,6 +520,7 @@
             keystone-deepwork-jobs
             keystone-conventions
             slidev
+            immich-analyze
             ;
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
         };
