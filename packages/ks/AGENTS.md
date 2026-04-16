@@ -133,6 +133,24 @@ Detection resolves notifications to projects deterministically or heuristically.
 
 Detection output: `{"slug": "keystone", "confidence": "exact|heuristic|none", "method": "..."}`
 
+## Nix source handling
+
+When Rust code reads or writes `.nix` source, it should use the installed
+`rnix` parser (`rnix = "0.11"` in `Cargo.toml`) and operate on the AST.
+
+**Rules:**
+- Rust code must not parse Nix source with string matching, regexes, line
+  filtering, or ad hoc text extraction.
+- Rust code must not rewrite Nix source with string replacement, line-based
+  filtering, or template reconstruction.
+- New Nix source handling in `ks` should use `rnix` for both read paths and
+  write paths.
+- Existing non-AST Nix source handling is migration debt and must not be copied
+  into new code paths.
+
+Migration debt is tracked in #375. The `src/components/install.rs` functions
+listed there were migrated to rnix in PR #378.
+
 ## Clippy Configuration
 
 The crate enables strict clippy lint groups:
