@@ -46,6 +46,7 @@ generate `virtualHosts` and DNS records automatically.
 | adguard | adguard.home | 3000 | tailscaleAndLocal |
 | seaweedfs | s3 | 8333 | tailscale |
 | journal-remote | journal | dynamic† | tailscale |
+| zulip | zulip | 8083 | tailscale |
 
 †`journal-remote` auto-activates when `services.journald.remote.enable = true`. It has no
 `keystone.server.services.*` option; its port is read directly from
