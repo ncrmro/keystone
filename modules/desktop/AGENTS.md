@@ -26,6 +26,27 @@ MUST NOT expose an unlocked desktop.
 
 OS-level changes require a full `nixos-rebuild switch` — not just `ks build`.
 
+## Validation safety
+
+Desktop validation MUST NOT probe real Wayland binaries against the developer's
+active session. Tools such as `hyprlock`, `hyprpaper`, `hypridle`, and
+`hyprctl` will attach to the current compositor when environment variables such
+as `WAYLAND_DISPLAY`, `HYPRLAND_INSTANCE_SIGNATURE`, and `XDG_RUNTIME_DIR` are
+in scope.
+
+When validating generated desktop config:
+
+1. Prefer rendered-config assertions first.
+2. Run real-binary smoke tests only in an isolated environment that does not
+   inherit the live session variables above.
+3. Prefer Nix check derivations or other non-interactive test wrappers over
+   ad hoc terminal probes on the developer machine.
+4. If a real session is required, use a dedicated test compositor or test host
+   — never the operator's current unlocked desktop session.
+
+CRITICAL: live-session validation can lock the operator screen, kill the active
+wallpaper process, or otherwise mutate the running desktop while debugging.
+
 ## Home-Manager Level (`home/`)
 
 Enabled via `keystone.desktop.enable = true` in home-manager config. Components:
