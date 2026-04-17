@@ -450,11 +450,15 @@
             inherit pkgs;
           };
           desktopAutostartAssertion = import ./tests/module/desktop-autostart-assertion.nix {
-            inherit pkgs lib home-manager;
+            pkgs = ksPkgs;
+            lib = ksPkgs.lib;
+            inherit home-manager;
             self = self;
           };
           hyprlandConfigSmoke = import ./tests/module/hyprland-config-smoke.nix {
-            inherit pkgs lib home-manager;
+            pkgs = ksPkgs;
+            lib = ksPkgs.lib;
+            inherit home-manager;
             self = self;
           };
           agentctlRegression = import ./tests/module/agentctl-regression.nix {
