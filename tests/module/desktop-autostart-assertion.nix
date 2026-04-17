@@ -25,6 +25,8 @@ let
           home.homeDirectory = "/home/testuser";
           home.stateVersion = "25.05";
 
+          programs.ssh.enableDefaultConfig = false;
+
           keystone.terminal = {
             enable = true;
             git = {
@@ -41,6 +43,7 @@ let
       ]
       ++ extraModules;
     }).config;
+  boolString = value: if value then "true" else "false";
 
   # Test 1: Default config should have startup lock in exec-once
   defaultConfig = evalDesktop [ ];
@@ -71,22 +74,14 @@ let
   mkAfterHasCustom = builtins.any (cmd: cmd == "my-custom-app") mkAfterExecOnce;
 
   # Test 4: Verify assertion fires when lock is replaced via mkForce
-  badConfig = evalDesktop [
+  badConfigResult = builtins.tryEval (evalDesktop [
     {
       wayland.windowManager.hyprland.settings.exec-once = lib.mkForce [
         "some-other-app"
       ];
     }
-  ];
-  badAssertionResult = builtins.tryEval (
-    let
-      failingAssertions = builtins.filter (a: !a.assertion) badConfig.assertions;
-    in
-    builtins.length failingAssertions == 0
-  );
-  # tryEval succeeds (no Nix error), but the value should be false
-  # because the assertion condition fails
-  assertionTripped = badAssertionResult.success && !badAssertionResult.value;
+  ]);
+  assertionTripped = !badConfigResult.success;
 
   # Test 5: Custom startupLockCommand is used in exec-once
   customLockConfig = evalDesktop [
@@ -108,22 +103,22 @@ pkgs.runCommand "test-desktop-autostart-assertion" { } ''
     fi
   }
 
-  check "${builtins.toString hasStartupLock}" \
+  check "${boolString hasStartupLock}" \
     "default exec-once contains keystone-startup-lock"
 
-  check "${builtins.toString lockIsFirst}" \
+  check "${boolString lockIsFirst}" \
     "startup lock is the first user-visible exec-once entry"
 
-  check "${builtins.toString mkAfterHasLock}" \
+  check "${boolString mkAfterHasLock}" \
     "mkAfter preserves startup lock in exec-once"
 
-  check "${builtins.toString mkAfterHasCustom}" \
+  check "${boolString mkAfterHasCustom}" \
     "mkAfter appends custom entry to exec-once"
 
-  check "${builtins.toString assertionTripped}" \
+  check "${boolString assertionTripped}" \
     "assertion fires when exec-once is replaced without lock"
 
-  check "${builtins.toString hasCustomLock}" \
+  check "${boolString hasCustomLock}" \
     "custom startupLockCommand appears in exec-once"
 
   if [ "$errors" -gt 0 ]; then

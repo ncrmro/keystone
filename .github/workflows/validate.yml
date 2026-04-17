@@ -63,6 +63,7 @@ jobs:
       check_eval: ${{ steps.pr-policy.outputs.check_eval || steps.call-policy.outputs.check_eval || 'true' }}
       check_ks: ${{ steps.pr-policy.outputs.check_ks || steps.call-policy.outputs.check_ks || 'true' }}
       check_scripts: ${{ steps.pr-policy.outputs.check_scripts || steps.call-policy.outputs.check_scripts || 'true' }}
+      check_desktop: ${{ steps.pr-policy.outputs.check_desktop || steps.call-policy.outputs.check_desktop || 'true' }}
       check_agents: ${{ steps.pr-policy.outputs.check_agents || steps.call-policy.outputs.check_agents || 'true' }}
       iso_build: ${{ steps.pr-policy.outputs.iso_build || steps.call-policy.outputs.iso_build || 'false' }}
       nixfmt: ${{ steps.pr-policy.outputs.nixfmt || steps.call-policy.outputs.nixfmt || 'false' }}
@@ -101,8 +102,14 @@ jobs:
               - 'tests/module/pz-*.nix'
               - 'tests/module/keystone-*-menu.nix'
               - 'tests/module/agentctl-*.nix'
-              - 'tests/module/hyprland-*.nix'
               - 'tests/module/projects-schema.nix'
+            check_desktop:
+              - '.github/workflows/validate.yml'
+              - 'flake.nix'
+              - 'flake.lock'
+              - 'modules/desktop/**'
+              - 'tests/module/desktop-*.nix'
+              - 'tests/module/hyprland-*.nix'
             check_agents:
               - '.github/workflows/validate.yml'
               - 'flake.nix'
@@ -143,6 +150,7 @@ jobs:
             echo "check_eval=${{ steps.filter.outputs.check_eval }}"
             echo "check_ks=${{ steps.filter.outputs.check_ks }}"
             echo "check_scripts=${{ steps.filter.outputs.check_scripts }}"
+            echo "check_desktop=${{ steps.filter.outputs.check_desktop }}"
             echo "check_agents=${{ steps.filter.outputs.check_agents }}"
             echo "iso_build=${{ steps.filter.outputs.iso_build }}"
             echo "nixfmt=${{ steps.filter.outputs.nixfmt }}"
@@ -157,6 +165,7 @@ jobs:
             echo "check_eval=true"
             echo "check_ks=true"
             echo "check_scripts=true"
+            echo "check_desktop=true"
             echo "check_agents=true"
             echo "iso_build=${{ inputs.force_iso_build }}"
             echo "nixfmt=true"
@@ -200,6 +209,19 @@ jobs:
         with:
           check: checks.x86_64-linux.check-scripts
           cache-name: scripts
+          cache-branch-name: ${{ github.event_name == 'workflow_call' && inputs.cache_branch_name || '' }}
+          cachix-ci-auth-token: ${{ secrets.CACHIX_CI_AUTH_TOKEN }}
+
+  desktop:
+    needs: changes
+    if: needs.changes.outputs.check_desktop == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix-check
+        with:
+          check: checks.x86_64-linux.check-desktop
+          cache-name: desktop
           cache-branch-name: ${{ github.event_name == 'workflow_call' && inputs.cache_branch_name || '' }}
           cachix-ci-auth-token: ${{ secrets.CACHIX_CI_AUTH_TOKEN }}
 

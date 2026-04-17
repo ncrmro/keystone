@@ -449,6 +449,18 @@
           hyprlandBindingsAgentConflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
             inherit pkgs;
           };
+          desktopAutostartAssertion = import ./tests/module/desktop-autostart-assertion.nix {
+            pkgs = ksPkgs;
+            lib = ksPkgs.lib;
+            inherit home-manager;
+            self = self;
+          };
+          hyprlandConfigSmoke = import ./tests/module/hyprland-config-smoke.nix {
+            pkgs = ksPkgs;
+            lib = ksPkgs.lib;
+            inherit home-manager;
+            self = self;
+          };
           agentctlRegression = import ./tests/module/agentctl-regression.nix {
             inherit pkgs;
           };
@@ -493,6 +505,8 @@
           keystone-update-menu = keystoneUpdateMenu;
           keystone-fingerprint-menu = keystoneFingerprintMenu;
           hyprland-bindings-agent-conflict = hyprlandBindingsAgentConflict;
+          desktop-autostart-assertion = desktopAutostartAssertion;
+          hyprland-config-smoke = hyprlandConfigSmoke;
           ks-approve = ksApprove;
           ks-doctor-report = ksDoctorReport;
           ks-rust-tests = ksRustTests;
@@ -541,7 +555,14 @@
             ln -s ${keystoneUpdateMenu} "$out/keystone-update-menu"
             ln -s ${keystoneFingerprintMenu} "$out/keystone-fingerprint-menu"
             ln -s ${projectsSchema} "$out/projects-schema"
+          '';
+
+          # Desktop config serialization and startup regressions
+          check-desktop = pkgs.runCommand "check-desktop" { } ''
+            mkdir -p "$out"
             ln -s ${hyprlandBindingsAgentConflict} "$out/hyprland-bindings-agent-conflict"
+            ln -s ${desktopAutostartAssertion} "$out/desktop-autostart-assertion"
+            ln -s ${hyprlandConfigSmoke} "$out/hyprland-config-smoke"
           '';
 
           # Agent runtime and miscellaneous module tests

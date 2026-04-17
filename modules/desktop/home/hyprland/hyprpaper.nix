@@ -19,6 +19,9 @@ in
       ];
       settings = {
         splash = false;
+        preload = [
+          "${config.xdg.configHome}/keystone/current/background"
+        ];
         wallpaper = [
           ",${config.xdg.configHome}/keystone/current/background"
         ];
