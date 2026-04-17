@@ -7,6 +7,7 @@
 with lib;
 let
   desktopCfg = config.keystone.desktop;
+  lockCommand = "pidof hyprlock || hyprlock --immediate-render";
 in
 {
   config = mkIf desktopCfg.enable {
@@ -25,8 +26,8 @@ in
       enable = mkDefault true;
       settings = {
         general = {
-          lock_cmd = "pidof hyprlock || hyprlock";
-          before_sleep_cmd = "pidof hyprlock || hyprlock";
+          lock_cmd = lockCommand;
+          before_sleep_cmd = lockCommand;
           after_sleep_cmd = "hyprctl dispatch dpms on";
           ignore_dbus_inhibit = true;
           inhibit_sleep = 3;
@@ -36,7 +37,7 @@ in
           # Lock screen at 5 minutes
           {
             timeout = 300;
-            on-timeout = "pidof hyprlock || hyprlock";
+            on-timeout = lockCommand;
           }
           # DPMS off at 5.5 minutes
           {

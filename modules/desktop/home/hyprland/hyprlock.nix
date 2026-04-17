@@ -13,11 +13,6 @@ in
     programs.hyprlock = {
       enable = mkDefault true;
       settings = {
-        general = {
-          disable_loading_bar = true;
-          no_fade_in = false;
-        };
-
         auth = {
           fingerprint.enabled = true;
         };
@@ -45,10 +40,8 @@ in
           outline_thickness = 4;
 
           font_family = "JetBrainsMono Nerd Font";
-          font_size = 32;
           font_color = "rgb(cdd6f4)";
 
-          placeholder_color = "rgb(9399b2)";
           placeholder_text = "  Enter Password";
           check_color = "rgb(a6e3a1)";
           fail_text = "Wrong ($ATTEMPTS)";

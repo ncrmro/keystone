@@ -20,6 +20,7 @@ timeout_steps="${KEYSTONE_STARTUP_LOCK_TIMEOUT_STEPS:-50}"
 # NOT extend the per-attempt timeout.
 max_lock_attempts="${KEYSTONE_STARTUP_LOCK_MAX_ATTEMPTS:-3}"
 retry_delay_seconds="${KEYSTONE_STARTUP_LOCK_RETRY_DELAY:-1}"
+hyprlock_cmd=(hyprlock --immediate-render)
 
 log() {
   local priority="$1"
@@ -67,7 +68,7 @@ fail_closed() {
 }
 
 try_lock() {
-  hyprlock >/dev/null 2>&1 &
+  "${hyprlock_cmd[@]}" >/dev/null 2>&1 &
   lock_pid=$!
 
   for _ in $(seq 1 "$timeout_steps"); do
