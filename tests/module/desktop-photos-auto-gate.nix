@@ -37,7 +37,7 @@ pkgs.runCommand "test-desktop-photos-auto-gate"
 
     # ISSUE-REQ-1: photos.enable default must also require the user's
     # per-user Immich API key secret declaration.
-    if ! grep -F '-immich-api-key' "$desktop_home" >/dev/null; then
+    if ! grep -F -- '-immich-api-key' "$desktop_home" >/dev/null; then
       fail "ISSUE-REQ-1: photos.enable default must gate on the user's <username>-immich-api-key secret"
     fi
     if ! grep -E 'age[[:space:]]*\.?[[:space:]]*secrets|age"[[:space:]]+"secrets' "$desktop_home" >/dev/null; then
