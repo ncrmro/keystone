@@ -203,9 +203,10 @@
             ];
           }).config.system.build.isoImage;
 
-        # Build the Pi Kodi appliance sd-image. Two-phase: a bootstrap image
-        # flashes to SD, first boot auto-installs the final ZFS-rooted Kodi
-        # system onto an attached USB disk. See modules/appliances/pi-kodi.nix.
+        # Build the Pi Kodi appliance. Two-phase: a bootstrap image flashes to
+        # a USB stick, first boot auto-installs the final ZFS-rooted Kodi
+        # system onto the inserted SD card (ZFS lives on SD so scrub can
+        # validate + repair silent bit rot). See modules/appliances/pi-kodi.nix.
         mkPiKodiAppliance =
           {
             nixpkgs,
@@ -214,11 +215,10 @@
             hostId ? "ca77ed01",
             # pftf/RPi4 firmware files — consumer fetches a release and maps files.
             uefiFirmware,
-            # Device paths the FINAL system expects. For the first-boot install
-            # these are runtime-discovered, but keystone.os.storage assertions
-            # require non-empty values at eval time, so default to stable stubs.
-            bootDevice ? "/dev/disk/by-id/mmc-SD-kodi-pi",
-            devices ? [ "/dev/disk/by-id/usb-pi-kodi-target" ],
+            # Device path the FINAL system expects for its single-disk SD layout.
+            # The install script discovers the real SD at runtime, but keystone
+            # assertions require a non-empty value at eval time.
+            devices ? [ "/dev/disk/by-id/mmc-pi-kodi-target" ],
           }:
           let
             system = "aarch64-linux";
@@ -254,8 +254,9 @@
                       swap.size = "0"; # Pi platform swap layout not implemented
                       zfs.kernel = nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
                       pi = {
-                        bootMedium = "external";
-                        bootDevice = bootDevice;
+                        # SD is both the ESP carrier and the ZFS pool disk —
+                        # the installer carrier is a USB stick, disposable.
+                        bootMedium = "sd";
                         uefiFirmware = uefiFirmware;
                       };
                     };
