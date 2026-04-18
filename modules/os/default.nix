@@ -378,6 +378,26 @@ in
             - Or a kernel packages set (e.g., pkgs.linuxPackages_6_12)
           '';
         };
+
+        backup = {
+          poolImportServices = mkOption {
+            type = types.attrsOf types.str;
+            default = { };
+            description = ''
+              Map of local ZFS pool name to the systemd service that imports it.
+              Used to add after/requires dependencies on syncoid services and on
+              the receiver-side dataset initialization service so ZFS replication
+              does not start until non-boot pools are available.
+
+              Only required for pools that are NOT imported automatically at boot
+              (e.g., secondary storage pools like `ocean` on ocean or `lake` on maia).
+            '';
+            example = {
+              ocean = "import-ocean";
+              lake = "import-lake";
+            };
+          };
+        };
       };
     };
 
