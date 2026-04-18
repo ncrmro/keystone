@@ -122,9 +122,23 @@ fn canonical_installed_repo_path(home: &Path) -> Option<PathBuf> {
     current_repo_owner(home).map(|owner| canonical_installed_repo_path_for(home, &owner))
 }
 
-/// Walk up to `max_depth` levels looking for a directory with a recognized layout.
+/// Predicate: does `path` look like a real Keystone config repo root?
 ///
-/// Checks for `hosts.nix` (legacy) first, then `flake.nix` + `hosts/` (mkSystemFlake).
+/// A config repo root MUST have `flake.nix` at the top level alongside either
+/// `hosts.nix` (legacy) or `hosts/` (mkSystemFlake). This is strictly tighter
+/// than [`detect_layout`]: the keystone platform repo itself ships
+/// `modules/hosts.nix` as a NixOS module options file, and without the
+/// flake.nix-alongside requirement the recursive walker would misidentify
+/// `keystone/modules/` as a config repo and break host resolution.
+fn is_config_repo_root(path: &Path) -> bool {
+    if !path.join("flake.nix").is_file() {
+        return false;
+    }
+    path.join("hosts.nix").is_file() || path.join("hosts").is_dir()
+}
+
+/// Walk up to `max_depth` levels looking for a directory that qualifies as a
+/// config repo root per [`is_config_repo_root`].
 fn find_config_repo_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
     if max_depth == 0 {
         return None;
@@ -134,13 +148,18 @@ fn find_config_repo_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_file() && path.file_name().and_then(|name| name.to_str()) == Some("hosts.nix") {
+            // CRITICAL: a bare hosts.nix file is not enough — keystone's own
+            // modules/hosts.nix would otherwise be promoted to a repo root.
             let parent = path.parent()?.to_path_buf();
-            return std::fs::canonicalize(&parent).ok().or(Some(parent));
+            if is_config_repo_root(&parent) {
+                return std::fs::canonicalize(&parent).ok().or(Some(parent));
+            }
+            continue;
         }
         if !path.is_dir() {
             continue;
         }
-        if detect_layout(&path).is_some() {
+        if is_config_repo_root(&path) {
             return std::fs::canonicalize(&path).ok().or(Some(path));
         }
         if let Some(found) = find_config_repo_recursive(&path, max_depth - 1) {
