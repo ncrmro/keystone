@@ -372,8 +372,10 @@ let
         pkgs.coreutils
         pkgs.findutils
         pkgs.gawk
+        pkgs.ghostty
         pkgs.gnugrep
         pkgs.jq
+        pkgs.keystone.ks
         pkgs.libnotify
         pkgs.systemd
         pkgs.walker

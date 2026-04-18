@@ -140,8 +140,8 @@ main_json() {
       },
       {
         Text: "Update",
-        Subtext: "Use nix flake update",
-        Value: "blocked\tUpdate\tUse nix flake update for system updates.",
+        Subtext: "Run ks update in a terminal",
+        Value: "run-update",
         Icon: "software-update-available-symbolic"
       },
       {
@@ -421,6 +421,9 @@ dispatch() {
       ;;
     screenrecord)
       detach "$(keystone_cmd keystone-screenrecord)"
+      ;;
+    run-update)
+      detach ghostty -e ks update
       ;;
     screenshot-smart)
       detach "$(keystone_cmd keystone-screenshot)" smart
