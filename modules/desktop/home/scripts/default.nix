@@ -497,6 +497,7 @@ let
       package = keystoneFingerprintMenu;
       runtimeInputs = [
         pkgs.coreutils
+        pkgs.fprintd
         pkgs.gnugrep
         pkgs.jq
         pkgs.libnotify
