@@ -27,7 +27,7 @@ in
         "$mod, E, exec, $fileManager"
 
         # Menu system
-        "$mod, Escape, exec, keystone-menu"
+        "$mod, Escape, exec, keystone-menu system"
         "$mod, K, exec, keystone-menu-keybindings"
 
         # Context switcher
