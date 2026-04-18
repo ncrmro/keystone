@@ -202,6 +202,106 @@
               }
             ];
           }).config.system.build.isoImage;
+
+        # Build the Pi Kodi appliance sd-image. Two-phase: a bootstrap image
+        # flashes to SD, first boot auto-installs the final ZFS-rooted Kodi
+        # system onto an attached USB disk. See modules/appliances/pi-kodi.nix.
+        mkPiKodiAppliance =
+          {
+            nixpkgs,
+            sshKeys ? [ ],
+            hostName ? "kodi-pi",
+            hostId ? "ca77ed01",
+            # pftf/RPi4 firmware files — consumer fetches a release and maps files.
+            uefiFirmware,
+            # Device paths the FINAL system expects. For the first-boot install
+            # these are runtime-discovered, but keystone.os.storage assertions
+            # require non-empty values at eval time, so default to stable stubs.
+            bootDevice ? "/dev/disk/by-id/mmc-SD-kodi-pi",
+            devices ? [ "/dev/disk/by-id/usb-pi-kodi-target" ],
+          }:
+          let
+            system = "aarch64-linux";
+
+            # Phase 2: the ZFS-rooted Kodi appliance that runs post-install.
+            finalSystem = nixpkgs.lib.nixosSystem {
+              inherit system;
+              modules = [
+                agenix.nixosModules.default
+                disko.nixosModules.disko
+                lanzaboote.nixosModules.lanzaboote
+                home-manager.nixosModules.default
+                ./modules/domain.nix
+                ./modules/services.nix
+                ./modules/hosts.nix
+                ./modules/os
+                {
+                  nixpkgs.overlays = [ self.overlays.default ];
+                  _module.args.keystoneInputs = keystoneInputs;
+
+                  keystone.os = {
+                    enable = true;
+                    secureBoot.enable = false;
+                    tpm.enable = false;
+                    services.eternalTerminal.enable = false;
+                    services.avahi.enable = false;
+
+                    storage = {
+                      enable = true;
+                      type = "zfs";
+                      platform = "pi";
+                      devices = devices;
+                      swap.size = "0"; # Pi platform swap layout not implemented
+                      zfs.kernel = nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
+                      pi = {
+                        bootMedium = "external";
+                        bootDevice = bootDevice;
+                        uefiFirmware = uefiFirmware;
+                      };
+                    };
+
+                    services.kodi.enable = true;
+                  };
+
+                  # Skip the keystone.hosts registry lookup for tailscale — the
+                  # appliance isn't part of the fleet inventory.
+                  keystone.os.tailscale.enable = nixpkgs.lib.mkForce false;
+
+                  networking.hostName = hostName;
+                  networking.hostId = hostId;
+                  users.users.root.openssh.authorizedKeys.keys = sshKeys;
+
+                  boot.zfs = {
+                    forceImportRoot = false;
+                    devNodes = "/dev/disk/by-id";
+                    extraPools = [ "rpool" ];
+                  };
+                  # Cap ARC so Kodi has headroom on a 4–8 GiB Pi.
+                  boot.kernelParams = [ "zfs.zfs_arc_max=536870912" ];
+
+                  system.stateVersion = "25.05";
+                }
+              ];
+            };
+
+            # Phase 1: bootstrap sd-image carrying finalSystem's closure.
+            bootstrapSystem = nixpkgs.lib.nixosSystem {
+              inherit system;
+              modules = [
+                "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64.nix"
+                ./modules/appliances/pi-kodi.nix
+                {
+                  nixpkgs.overlays = [ self.overlays.default ];
+                  _module.args.finalSystem = finalSystem;
+                  _module.args.finalSystemToplevel = finalSystem.config.system.build.toplevel;
+                  keystone.piKodi = {
+                    inherit sshKeys uefiFirmware;
+                  };
+                }
+              ];
+            };
+          in
+          bootstrapSystem.config.system.build.sdImage;
       };
 
       # ISO configuration without SSH keys (use lib.mkInstallerIso for keys)
