@@ -65,12 +65,13 @@ in
 
     # Stage pftf firmware files onto the FAT32 firmware partition that the
     # sd-image builder creates. After install, systemd-boot will coexist here.
+    # sd-image-aarch64 sets its own populateFirmwareCommands (rpi firmware +
+    # extlinux.conf) using types.lines, so ours concatenates. Each line MUST
+    # end in a newline or bash merges it with the next block.
     sdImage.firmwareSize = 1024; # MiB — pftf + future systemd-boot + kernels
-    sdImage.populateFirmwareCommands =
-      let
-        copyCmds = mapAttrsToList (name: src: "cp -v ${src} firmware/${name}") cfg.uefiFirmware;
-      in
-      concatStringsSep "\n" copyCmds;
+    sdImage.populateFirmwareCommands = concatStrings (
+      mapAttrsToList (name: src: "cp -v ${src} firmware/${name}\n") cfg.uefiFirmware
+    );
     sdImage.imageBaseName = mkForce "keystone-pi-kodi-bootstrap";
 
     # Expand the ext4 bootstrap rootfs to fill the SD so the closure fits.
