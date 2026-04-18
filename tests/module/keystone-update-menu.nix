@@ -52,6 +52,26 @@ pkgs.runCommand "test-keystone-update-menu"
     EOF
     chmod +x "$PWD/bin/keystone-detach"
 
+    cat > "$PWD/bin/keystone-desktop-config" <<'EOF'
+    #!${pkgs.bash}/bin/bash
+    set -euo pipefail
+    case "''${1:-}" in
+      config-repo-root)
+        if [[ -n "''${KEYSTONE_SYSTEM_FLAKE:-}" ]]; then
+          printf '%s\n' "$KEYSTONE_SYSTEM_FLAKE"
+        else
+          echo "KEYSTONE_SYSTEM_FLAKE unset in test harness" >&2
+          exit 1
+        fi
+        ;;
+      *)
+        echo "Unexpected keystone-desktop-config subcommand: $*" >&2
+        exit 1
+        ;;
+    esac
+    EOF
+    chmod +x "$PWD/bin/keystone-desktop-config"
+
     cat > "$PWD/bin/ghostty" <<'EOF'
     #!${pkgs.bash}/bin/bash
     exit 0
