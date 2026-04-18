@@ -61,7 +61,9 @@ in
     services.greetd = {
       enable = true;
       settings.default_session = {
-        command = "${pkgs.cage}/bin/cage -s -- ${cfg.package}/bin/kodi-standalone";
+        # XDG_SESSION_CLASS=user ensures pam_systemd registers this as a
+        # real user session, not a greeter — required for polkit/device access.
+        command = "${pkgs.coreutils}/bin/env XDG_SESSION_CLASS=user ${pkgs.cage}/bin/cage -s -- ${cfg.package}/bin/kodi-standalone";
         user = cfg.user;
       };
     };
@@ -78,12 +80,14 @@ in
       ];
       allowedUDPPorts = [
         1900 # SSDP / UPnP
+        5353 # mDNS (Avahi service discovery)
         9777
       ];
     };
 
     services.avahi = {
       enable = true;
+      openFirewall = mkDefault cfg.openFirewall;
       publish = {
         enable = true;
         userServices = true;

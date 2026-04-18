@@ -732,6 +732,13 @@ in
         assertion = !cfg.storage.enable || cfg.storage.type == "ext4" -> cfg.storage.mode == "single";
         message = "ext4 only supports single-disk mode";
       }
+      {
+        assertion = !cfg.storage.enable || !(cfg.storage.platform == "pi" && cfg.storage.type == "ext4");
+        message = ''
+          keystone.os.storage.platform = "pi" + type = "ext4" is not yet
+          implemented. Use type = "zfs" on Pi hosts, or platform = "uefi" for ext4.
+        '';
+      }
       # Non-storage assertions
       {
         assertion = cfg.remoteUnlock.enable -> (cfg.remoteUnlock.authorizedKeys != [ ] || cfg.users != { });
