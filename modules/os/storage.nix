@@ -386,6 +386,50 @@ in
               For multi-disk pools set bootMedium = "external".
             '';
           }
+          {
+            assertion = cfg.pi.bootMedium != "external" || length cfg.devices > 0;
+            message = ''
+              keystone.os.storage.pi.bootMedium = "external" requires at least one
+              device in keystone.os.storage.devices for the ZFS pool.
+            '';
+          }
+          {
+            assertion = cfg.pi.bootMedium != "external" || !(lib.elem cfg.pi.bootDevice cfg.devices);
+            message = ''
+              keystone.os.storage.pi.bootDevice (${toString cfg.pi.bootDevice}) must not
+              also appear in keystone.os.storage.devices — disko cannot manage the same
+              physical disk twice. Remove it from devices or switch to bootMedium = "sd".
+            '';
+          }
+          {
+            assertion = cfg.pi.uefiFirmware != { };
+            message = ''
+              keystone.os.storage.pi.uefiFirmware is empty. The Pi UEFI boot path
+              requires pftf/RPi4 firmware files on the ESP — fetch a pftf release
+              and map its files here, or the Pi will not boot.
+            '';
+          }
+          {
+            assertion = config.networking.hostId != "";
+            message = ''
+              networking.hostId must be set for ZFS pool identity on the Pi platform.
+              Pick a stable 8-hex-char value (e.g. `networking.hostId = "deadbeef";`).
+            '';
+          }
+          {
+            assertion = !enableSwap;
+            message = ''
+              keystone.os.storage.swap is not yet supported on platform = "pi".
+              Set storage.swap.size = "0" (or use zram via zramSwap) until Pi swap
+              layout is implemented.
+            '';
+          }
+          {
+            assertion = !cfg.hibernate.enable;
+            message = ''
+              keystone.os.storage.hibernate is not supported on platform = "pi".
+            '';
+          }
         ];
 
         boot.supportedFilesystems = [ "zfs" ];
