@@ -100,7 +100,7 @@ in
             tooltip-format-disconnected = "Disconnected";
             interval = 3;
             spacing = 1;
-            on-click = "nm-connection-editor";
+            on-click = "keystone-wifi-menu open-menu";
           };
 
           battery = {

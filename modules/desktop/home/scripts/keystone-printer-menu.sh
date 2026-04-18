@@ -3,10 +3,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-# shellcheck source=./keystone-desktop-config.sh
-source "${SCRIPT_DIR}/keystone-desktop-config.sh"
-
 notify() {
   notify-send "$@"
 }
@@ -279,7 +275,7 @@ printer_defaults_snippet() {
 }
 
 save_printer_defaults() {
-  printer_defaults_snippet | keystone_write_desktop_state_section "printer defaults"
+  printer_defaults_snippet | keystone-desktop-config write-desktop-state-section "printer defaults"
 }
 
 apply_config_defaults() {

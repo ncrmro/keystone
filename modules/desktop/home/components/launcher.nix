@@ -159,6 +159,11 @@ in
           sourcePath = ./keystone-printer.lua;
         }
         {
+          targetPath = ".config/elephant/menus/keystone-wifi.lua";
+          relativePath = "modules/desktop/home/components/keystone-wifi.lua";
+          sourcePath = ./keystone-wifi.lua;
+        }
+        {
           targetPath = ".config/elephant/menus/keystone-audio.lua";
           relativePath = "modules/desktop/home/components/keystone-audio.lua";
           sourcePath = ./keystone-audio.lua;
@@ -342,6 +347,10 @@ in
             "menus:keystone-printer" = {
               input = " Printers";
               list = "No printers found";
+            };
+            "menus:keystone-wifi" = {
+              input = " Wi-Fi";
+              list = "No Wi-Fi networks found";
             };
             "menus:keystone-audio" = {
               input = " Audio";

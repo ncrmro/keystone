@@ -188,6 +188,13 @@ let
     builtins.readFile ./keystone-launch-walker.sh
   );
 
+  # Shared desktop-config helper, packaged as a subcommand CLI so other menu
+  # scripts (each in its own writeShellScriptBin $out/bin) can invoke helpers
+  # without relying on an unpackaged sibling path.
+  keystoneDesktopConfig = pkgs.writeShellScriptBin "keystone-desktop-config" (
+    builtins.readFile ./keystone-desktop-config.sh
+  );
+
   # Detached process launcher for menu-triggered long-lived commands.
   keystoneDetach = pkgs.writeShellScriptBin "keystone-detach" ''
     set -euo pipefail
@@ -272,6 +279,11 @@ let
     builtins.readFile ./keystone-secrets-menu.sh
   );
 
+  # Wi-Fi scan/join controller for Elephant/Walker
+  keystoneWifiMenu = pkgs.writeShellScriptBin "keystone-wifi-menu" (
+    builtins.readFile ./keystone-wifi-menu.sh
+  );
+
   # Keybindings viewer script
   keystoneMenuKeybindings = pkgs.writeShellScriptBin "keystone-menu-keybindings" (
     builtins.readFile ./keystone-menu-keybindings.sh
@@ -348,6 +360,18 @@ let
     })
     (mkHomeScriptCommand {
       inherit config pkgs;
+      commandName = "keystone-desktop-config";
+      relativePath = "modules/desktop/home/scripts/keystone-desktop-config.sh";
+      package = keystoneDesktopConfig;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.hostname
+        pkgs.python3
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
       commandName = "keystone-menu";
       relativePath = "modules/desktop/home/scripts/keystone-menu.sh";
       package = keystoneMenu;
@@ -372,13 +396,23 @@ let
         pkgs.coreutils
         pkgs.findutils
         pkgs.gawk
+        pkgs.ghostty
         pkgs.gnugrep
         pkgs.jq
+        pkgs.keystone.ks
         pkgs.libnotify
         pkgs.systemd
         pkgs.walker
         pkgs.xdg-utils
       ];
+      # Capability gating for ISSUE-REQ-1 (issue #390): the script's main_json
+      # emits Photos/Agents/Contexts entries only when the corresponding env var
+      # is "true". Values are evaluated at build time from the desktop config.
+      extraEnvSetup = ''
+        export KEYSTONE_MENU_SHOW_PHOTOS="${if cfg.photos.enable then "true" else "false"}"
+        export KEYSTONE_MENU_SHOW_AGENTS="${if cfg.agents.enable then "true" else "false"}"
+        export KEYSTONE_MENU_SHOW_CONTEXTS="${if cfg.contexts.enable then "true" else "false"}"
+      '';
     })
     (mkHomeScriptCommand {
       inherit config pkgs;
@@ -495,6 +529,7 @@ let
       package = keystoneFingerprintMenu;
       runtimeInputs = [
         pkgs.coreutils
+        pkgs.fprintd
         pkgs.gnugrep
         pkgs.jq
         pkgs.libnotify
@@ -537,6 +572,23 @@ let
         pkgs.util-linux
         pkgs.walker
         pkgs.yubikey-manager
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-wifi-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-wifi-menu.sh";
+      package = keystoneWifiMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.gawk
+        pkgs.gnugrep
+        pkgs.gnused
+        pkgs.jq
+        pkgs.libnotify
+        pkgs.networkmanager
+        pkgs.util-linux
+        pkgs.walker
       ];
     })
     (mkHomeScriptCommand {

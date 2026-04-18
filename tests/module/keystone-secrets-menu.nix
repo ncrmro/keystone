@@ -71,7 +71,7 @@ pkgs.runCommand "test-keystone-secrets-menu"
     EOF
     chmod +x "$PWD/bin/ghostty"
 
-    for command_name in keystone-audio-menu keystone-monitor-menu keystone-hardware-menu keystone-fingerprint-menu keystone-accounts-menu keystone-printer-menu; do
+    for command_name in keystone-audio-menu keystone-monitor-menu keystone-hardware-menu keystone-fingerprint-menu keystone-accounts-menu keystone-printer-menu keystone-wifi-menu; do
       cat > "$PWD/bin/$command_name" <<EOF
     #!${pkgs.bash}/bin/bash
     exit 0

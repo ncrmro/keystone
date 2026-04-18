@@ -25,7 +25,7 @@ keystone_cmd() {
 }
 
 entries_json() {
-  local audio_menu monitor_menu hardware_menu fingerprint_menu accounts_menu printer_menu setup_menu secrets_menu
+  local audio_menu monitor_menu hardware_menu fingerprint_menu accounts_menu printer_menu setup_menu secrets_menu wifi_menu
   local current_flake="" show_secrets=false
   audio_menu=$(keystone_cmd keystone-audio-menu)
   monitor_menu=$(keystone_cmd keystone-monitor-menu)
@@ -35,6 +35,7 @@ entries_json() {
   printer_menu=$(keystone_cmd keystone-printer-menu)
   setup_menu=$(keystone_cmd keystone-setup-menu)
   secrets_menu=$(keystone_cmd keystone-secrets-menu)
+  wifi_menu=$(keystone_cmd keystone-wifi-menu)
 
   current_flake="$(keystone-current-system-flake 2>/dev/null || true)"
   if [[ -d "$HOME/.keystone/repos/ncrmro/agenix-secrets" ]]; then
@@ -105,9 +106,10 @@ entries_json() {
       else empty end),
       {
         Text: "Wifi",
-        Subtext: "Controller not implemented yet",
-        Value: "blocked\tWifi\tWifi setup is not implemented yet.",
-        Preview: ($setup_menu + " preview-blocked " + ("Wifi" | @sh) + " " + ("Wifi setup is not implemented yet." | @sh)),
+        Subtext: "Scan, join, and manage Wi-Fi networks",
+        Value: "wifi",
+        SubMenu: "keystone-wifi",
+        Preview: ($wifi_menu + " summary"),
         PreviewType: "command"
       },
       {
@@ -127,6 +129,7 @@ entries_json() {
     --arg printer_menu "$printer_menu" \
     --arg setup_menu "$setup_menu" \
     --arg secrets_menu "$secrets_menu" \
+    --arg wifi_menu "$wifi_menu" \
     --argjson show_secrets "$show_secrets"
 }
 
@@ -144,7 +147,7 @@ dispatch() {
   IFS=$'\t' read -r action title message <<<"$payload"
 
   case "$action" in
-    audio | monitors | printer | hardware | fingerprint | accounts | secrets)
+    audio | monitors | printer | hardware | fingerprint | accounts | secrets | wifi)
       ;;
     blocked)
       notify "$title" "$message"
