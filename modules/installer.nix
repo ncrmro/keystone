@@ -88,6 +88,16 @@ in
       readOnly = true;
       description = "The installer ISO image derivation with SSH keys baked in.";
     };
+
+    sdImage = mkOption {
+      type = types.package;
+      readOnly = true;
+      description = ''
+        The aarch64 Raspberry Pi SD-image installer derivation with SSH keys
+        baked in. Build via `build-pi-installer` or reference from a consumer
+        flake to flash a ready-to-boot installer card.
+      '';
+    };
   };
 
   config = mkIf osCfg.enable {
@@ -157,20 +167,51 @@ in
       in
       isoSystem.config.system.build.isoImage;
 
-    # System-wide build-iso command.
-    # Uses unsafeDiscardStringContext so the ISO isn't built during nixos-rebuild —
+    # Pi SD-image installer — nested aarch64 eval, same SSH keys as the ISO.
+    # Always built for aarch64-linux regardless of host arch; requires an
+    # aarch64 builder or boot.binfmt.emulatedSystems = [ "aarch64-linux" ]
+    # on the building host.
+    keystone.os.installer.sdImage =
+      let
+        sdSystem = import "${pkgs.path}/nixos/lib/eval-config.nix" {
+          system = "aarch64-linux";
+          modules = [
+            "${pkgs.path}/nixos/modules/installer/sd-card/sd-image-aarch64-installer.nix"
+            ./sd-installer.nix
+            {
+              nixpkgs.overlays = [ keystoneInputs.keystoneOverlay ];
+              keystone.piInstaller.sshKeys = installerCfg.sshKeys;
+            }
+          ];
+        };
+      in
+      sdSystem.config.system.build.sdImage;
+
+    # System-wide build commands.
+    # Uses unsafeDiscardStringContext so images aren't built during nixos-rebuild —
     # the .drv file exists from evaluation, but outputs are only realized on demand.
     environment.systemPackages =
       let
-        drvPath = builtins.unsafeDiscardStringContext installerCfg.isoImage.drvPath;
+        isoDrv = builtins.unsafeDiscardStringContext installerCfg.isoImage.drvPath;
+        sdDrv = builtins.unsafeDiscardStringContext installerCfg.sdImage.drvPath;
       in
       [
         (pkgs.writeShellScriptBin "build-iso" ''
           echo "Building installer ISO (${toString (length installerCfg.sshKeys)} SSH keys)..."
-          nix build '${drvPath}^*' -o installer-iso "$@"
+          nix build '${isoDrv}^*' -o installer-iso "$@"
           iso=$(find installer-iso/iso -name '*.iso' 2>/dev/null | head -1)
           if [ -n "$iso" ]; then
             echo "ISO: $iso ($(du -h "$iso" | cut -f1))"
+          fi
+        '')
+        (pkgs.writeShellScriptBin "build-pi-installer" ''
+          echo "Building Pi SD-image installer (${toString (length installerCfg.sshKeys)} SSH keys)..."
+          echo "Note: requires aarch64 builder or boot.binfmt.emulatedSystems = [ \"aarch64-linux\" ]."
+          nix build '${sdDrv}^*' -o pi-installer "$@"
+          img=$(find pi-installer/sd-image -name '*.img.zst' 2>/dev/null | head -1)
+          if [ -n "$img" ]; then
+            echo "Image: $img ($(du -h "$img" | cut -f1))"
+            echo "Flash: zstdcat \"$img\" | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync"
           fi
         '')
       ];
