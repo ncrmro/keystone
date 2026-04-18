@@ -293,6 +293,93 @@ let
       }
     ];
 
+    # ZFS backup with same-host (local) target — ocean backs up rpool → ocean pool on itself
+    zfs-backup-local = eval "zfs-backup-local" [
+      {
+        keystone.hosts = {
+          ocean = {
+            hostname = "ocean";
+            role = "server";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOcean ocean";
+            zfs = {
+              backups.rpool.targets = [
+                "ocean:ocean"
+                "maia:lake"
+              ];
+            };
+          };
+          maia = {
+            hostname = "maia";
+            role = "server";
+            sshTarget = "maia.ts";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMaia maia";
+          };
+        };
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "ocean";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    # ZFS backup with poolImportServices wired — ocean imports its 'ocean' pool via a custom service
+    zfs-backup-pool-import = eval "zfs-backup-pool-import" [
+      {
+        keystone.hosts = {
+          ocean = {
+            hostname = "ocean";
+            role = "server";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOcean ocean";
+            zfs = {
+              backups.rpool.targets = [
+                "ocean:ocean"
+                "maia:lake"
+              ];
+            };
+          };
+          maia = {
+            hostname = "maia";
+            role = "server";
+            sshTarget = "maia.ts";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMaia maia";
+          };
+        };
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+            zfs.backup.poolImportServices = {
+              ocean = "import-ocean";
+            };
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "ocean";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
     # ZFS backup receiver — host targeted by another host's backups
     zfs-backup-receiver = eval "zfs-backup-receiver" [
       {
