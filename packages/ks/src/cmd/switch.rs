@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use tokio::task::JoinHandle;
 
 use crate::{
     cmd::{build, ssh::SshSessionManager},
@@ -21,6 +22,90 @@ pub struct DeploySession {
     local_hosts: BTreeSet<String>,
     remote_targets: BTreeMap<String, String>,
     ssh: SshSessionManager,
+}
+
+/// Guard that keeps sudo credentials alive by refreshing every 60 seconds.
+/// Dropping the guard cancels the background refresh task.
+pub struct SudoKeepAlive {
+    handle: JoinHandle<()>,
+}
+
+impl Drop for SudoKeepAlive {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
+/// Check whether any of the target hosts match the current machine's hostname.
+pub async fn has_local_hosts(repo_root: &Path, hosts: &[String]) -> Result<bool> {
+    let current_hostname = hostname::get()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    for host in hosts {
+        let info = repo::host_info(repo_root, host).await?;
+        if info.hostname == current_hostname {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Cache sudo credentials upfront and spawn a keepalive loop that refreshes
+/// the ticket every 60 seconds.  Returns `None` when there are no local hosts
+/// (remote-only deploy) or the current user is already root.
+pub async fn ensure_sudo(repo_root: &Path, hosts: &[String]) -> Result<Option<SudoKeepAlive>> {
+    if !has_local_hosts(repo_root, hosts).await? {
+        return Ok(None);
+    }
+    cache_sudo().await
+}
+
+/// Prompt for sudo credentials and spawn a keepalive loop.
+/// Returns `None` when the current user is already root.
+async fn cache_sudo() -> Result<Option<SudoKeepAlive>> {
+    // Already root — nothing to cache.
+    if unsafe { libc::geteuid() } == 0 {
+        eprintln!("Running as root...");
+        return Ok(None);
+    }
+
+    eprintln!("Caching sudo credentials (needed for local deploy)...");
+    let status = tokio::process::Command::new("sudo")
+        .arg("-v")
+        .status()
+        .await
+        .context("Failed to cache sudo credentials")?;
+    if !status.success() {
+        anyhow::bail!("sudo credential caching failed");
+    }
+
+    let handle = tokio::spawn(async {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            match tokio::process::Command::new("sudo")
+                .args(["-n", "true"])
+                .status()
+                .await
+            {
+                Ok(status) if status.success() => {}
+                Ok(status) => {
+                    eprintln!(
+                        "Warning: sudo keepalive refresh failed with status {status}; stopping keepalive loop."
+                    );
+                    break;
+                }
+                Err(err) => {
+                    eprintln!(
+                        "Warning: failed to run sudo keepalive refresh: {err}; stopping keepalive loop."
+                    );
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(Some(SudoKeepAlive { handle }))
 }
 
 async fn build_targets(repo_root: &Path, hosts: &[String]) -> Result<Vec<String>> {
@@ -425,6 +510,7 @@ pub async fn execute(hosts_arg: Option<&str>, boot: bool) -> Result<SwitchResult
     let repo_root = repo::find_repo()?;
     let hosts = repo::resolve_hosts(&repo_root, hosts_arg).await?;
     let mode = if boot { "boot" } else { "switch" };
+    let _sudo_guard = ensure_sudo(&repo_root, &hosts).await?;
     let session = prepare_deploy_session(&repo_root, &hosts).await?;
     let store_paths = build_targets(&repo_root, &hosts).await?;
 
@@ -475,5 +561,21 @@ mod tests {
         assert!(!local_system_closure_matches(
             "/nix/store/does-not-exist-system"
         ));
+    }
+
+    #[tokio::test]
+    async fn sudo_keepalive_aborts_on_drop() {
+        let handle = tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        });
+        let abort_handle = handle.abort_handle();
+        let guard = SudoKeepAlive { handle };
+        assert!(!abort_handle.is_finished());
+        drop(guard);
+        // Give the runtime a tick to process the abort
+        tokio::task::yield_now().await;
+        assert!(abort_handle.is_finished());
     }
 }

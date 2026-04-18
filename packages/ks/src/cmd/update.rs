@@ -161,6 +161,10 @@ async fn update_dev(repo_root: &Path, mode: &str, hosts: &[String]) -> Result<Up
 }
 
 async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result<UpdateResult> {
+    // Cache sudo credentials immediately — before any pull, lock, or build —
+    // so the user is not interrupted after a long build phase.
+    let _sudo_guard = cmd::switch::ensure_sudo(repo_root, hosts).await?;
+
     let pull_status = tokio::process::Command::new("git")
         .args(["-C"])
         .arg(repo_root)
