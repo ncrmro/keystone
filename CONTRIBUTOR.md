@@ -97,6 +97,23 @@ ks switch                   # Fast deploy current local state
 ks doctor                   # Diagnose system health
 ```
 
+### E2E testing
+
+`bin/test-e2e` runs the full installer pipeline from the keystone repo:
+ISO build → VM boot → install → reboot → desktop validation.
+
+```bash
+bin/test-e2e                  # Full e2e (build + boot + install + validate)
+bin/test-e2e --build-only     # ISO build only (CI parity)
+bin/test-e2e --clean          # Regenerate fixture before running
+bin/test-e2e --no-build       # Reuse existing ISO
+```
+
+The script generates a consumer-flake fixture from the default template,
+locks it to the current keystone checkout, and delegates to the fixture's
+`test-iso`. The fixture is cached at `/tmp/keystone-e2e-fixture/` and refreshed
+automatically on each run.
+
 ## AI instruction regeneration
 
 AI instruction files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are automatically
