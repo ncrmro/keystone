@@ -138,7 +138,14 @@ let
 
         - Push PRs as draft initially. Watch CI to green before undrafting.
         - Once green, undraft, request reviewers (CODEOWNERS + Copilot), and address all review comments.
-        - PRs MUST reference their originating issue. Use `Closes #N` or `Fixes #N` in the PR body to auto-close on merge.
+        - Every PR MUST link its originating issue in the PR body.
+        - Use a **closing keyword** (`Closes #N`, `Fixes #N`, `Resolves #N`) ONLY when this PR fully resolves the issue — the forge auto-closes it on merge.
+        - Use a **plain reference** (`#N`, or `Part of #N` / `Contributes to #N` for clarity) when the PR implements only part of the issue or is one of several PRs under a tracking issue or epic. The issue MUST remain open after merge.
+        - For cross-repo refs use `owner/repo#N` (GitHub) or `org/repo#N` (Forgejo).
+        - If there is no issue, open one first — do not create orphan PRs.
+        - Assign the PR and its originating issue to a **milestone** when one exists for the current work stream. Milestones are the unit of stakeholder-visible progress — an unassigned PR is invisible on the project board.
+        - Milestones have no closing keyword. Assign via the milestone field (`gh pr edit N --milestone "<name>"`), not the PR body.
+        - If no milestone fits, check with the product agent before creating one — milestones are a product artifact, not an engineering convenience.
         - After approval, enable auto-merge or merge explicitly. If a merge queue exists, wait for it to complete.
         - After merge, verify default branch CI is green on the merge commit. Report deployment status if applicable.
         - When the user requests merge, stay engaged through the full lifecycle (queue, verification) and confirm completion.
