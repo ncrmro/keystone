@@ -279,6 +279,11 @@ let
     builtins.readFile ./keystone-secrets-menu.sh
   );
 
+  # Wi-Fi scan/join controller for Elephant/Walker
+  keystoneWifiMenu = pkgs.writeShellScriptBin "keystone-wifi-menu" (
+    builtins.readFile ./keystone-wifi-menu.sh
+  );
+
   # Keybindings viewer script
   keystoneMenuKeybindings = pkgs.writeShellScriptBin "keystone-menu-keybindings" (
     builtins.readFile ./keystone-menu-keybindings.sh
@@ -572,6 +577,22 @@ let
         pkgs.util-linux
         pkgs.walker
         pkgs.yubikey-manager
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
+      commandName = "keystone-wifi-menu";
+      relativePath = "modules/desktop/home/scripts/keystone-wifi-menu.sh";
+      package = keystoneWifiMenu;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.gawk
+        pkgs.gnugrep
+        pkgs.gnused
+        pkgs.jq
+        pkgs.libnotify
+        pkgs.networkmanager
+        pkgs.walker
       ];
     })
     (mkHomeScriptCommand {
