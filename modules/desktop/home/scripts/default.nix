@@ -400,6 +400,14 @@ let
         pkgs.walker
         pkgs.xdg-utils
       ];
+      # Capability gating for ISSUE-REQ-1 (issue #390): the script's main_json
+      # emits Photos/Agents/Contexts entries only when the corresponding env var
+      # is "true". Values are evaluated at build time from the desktop config.
+      extraEnvSetup = ''
+        export KEYSTONE_MENU_SHOW_PHOTOS="${if cfg.photos.enable then "true" else "false"}"
+        export KEYSTONE_MENU_SHOW_AGENTS="${if cfg.agents.enable then "true" else "false"}"
+        export KEYSTONE_MENU_SHOW_CONTEXTS="${if cfg.contexts.enable then "true" else "false"}"
+      '';
     })
     (mkHomeScriptCommand {
       inherit config pkgs;

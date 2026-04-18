@@ -10,6 +10,7 @@ let
 in
 {
   imports = [
+    ../../shared/experimental.nix
     ./components
     ./hyprland
     ./scripts
@@ -59,6 +60,30 @@ in
         default = null;
         description = "Default CUPS printer name to apply at desktop session start.";
       };
+    };
+
+    # Top-level Walker main-menu surfaces. Each gates one hard-coded entry in
+    # keystone-main-menu's main_json via KEYSTONE_MENU_SHOW_* env vars. Default
+    # to keystone.experimental so only stable surfaces appear by default.
+    photos.enable = mkOption {
+      type = types.bool;
+      default = config.keystone.experimental;
+      defaultText = literalExpression "config.keystone.experimental";
+      description = "Show the Photos entry in the Mod+Escape Walker main menu.";
+    };
+
+    agents.enable = mkOption {
+      type = types.bool;
+      default = config.keystone.experimental;
+      defaultText = literalExpression "config.keystone.experimental";
+      description = "Show the Agents entry in the Mod+Escape Walker main menu.";
+    };
+
+    contexts.enable = mkOption {
+      type = types.bool;
+      default = config.keystone.experimental;
+      defaultText = literalExpression "config.keystone.experimental";
+      description = "Show the Contexts entry in the Mod+Escape Walker main menu.";
     };
 
     startupLockCommand = mkOption {
