@@ -426,7 +426,6 @@ let
         pkgs.ghostty
         pkgs.jq
         pkgs.keystone.ks
-        keystoneDesktopConfig
         pkgs.libnotify
         pkgs.nix
         pkgs.python3
@@ -448,7 +447,6 @@ let
         pkgs.ghostty
         pkgs.jq
         pkgs.keystone.ks
-        keystoneDesktopConfig
         pkgs.libnotify
         pkgs.nix
         pkgs.systemd
@@ -472,7 +470,6 @@ let
       relativePath = "modules/desktop/home/scripts/keystone-audio-menu.sh";
       package = keystoneAudioMenu;
       runtimeInputs = [
-        keystoneDesktopConfig
         pkgs.jq
         pkgs.libnotify
         pkgs.pulseaudio
@@ -487,7 +484,6 @@ let
       package = keystonePrinterMenu;
       runtimeInputs = [
         pkgs.cups
-        keystoneDesktopConfig
         pkgs.jq
         pkgs.libnotify
         pkgs.python3
@@ -503,7 +499,6 @@ let
         pkgs.coreutils
         pkgs.gawk
         hyprlandPkg
-        keystoneDesktopConfig
         pkgs.jq
         pkgs.libnotify
         pkgs.python3
@@ -592,6 +587,7 @@ let
         pkgs.jq
         pkgs.libnotify
         pkgs.networkmanager
+        pkgs.util-linux
         pkgs.walker
       ];
     })

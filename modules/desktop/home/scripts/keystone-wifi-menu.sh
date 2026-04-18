@@ -220,7 +220,11 @@ join_network() {
     return 0
   fi
 
-  if nmcli device wifi connect "$ssid" password "$passphrase" >/dev/null 2>&1; then
+  # SECURITY: feed the passphrase on stdin via `nmcli --ask` rather than
+  # passing it as a `password <pw>` argv token, which would expose the
+  # secret in /proc/<pid>/cmdline for the duration of the connect call.
+  if printf '%s\n' "$passphrase" \
+       | nmcli --ask device wifi connect "$ssid" >/dev/null 2>&1; then
     notify "Wi-Fi connected" "$ssid"
   else
     notify "Wi-Fi failed" "Could not join $ssid — check the passphrase"
