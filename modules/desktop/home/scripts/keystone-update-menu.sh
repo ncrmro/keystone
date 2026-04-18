@@ -5,8 +5,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 SCRIPT_REPO_ROOT="$(readlink -f "${SCRIPT_DIR}/../../../..")"
-# shellcheck source=./keystone-desktop-config.sh
-source "${SCRIPT_DIR}/keystone-desktop-config.sh"
 
 KEYSTONE_RELEASE_OWNER="ncrmro"
 KEYSTONE_RELEASE_REPO="keystone"
@@ -236,7 +234,7 @@ load_state() {
   local update_reason=""
   local dirty="false"
 
-  if ! repo_root=$(keystone_config_repo_root 2>/dev/null); then
+  if ! repo_root=$(keystone-desktop-config config-repo-root 2>/dev/null); then
     jq -n --arg error "Unable to locate the active system flake." '{ ok: false, error: $error }'
     return 0
   fi

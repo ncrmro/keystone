@@ -3,10 +3,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-# shellcheck source=./keystone-desktop-config.sh
-source "${SCRIPT_DIR}/keystone-desktop-config.sh"
-
 STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}/keystone-monitor-menu"
 mkdir -p "$STATE_DIR"
 
@@ -445,8 +441,8 @@ config_snippet() {
 
 save_monitor_defaults() {
   local target_file=""
-  target_file=$(keystone_home_manager_host_file)
-  config_snippet | keystone_write_desktop_state_section "monitors"
+  target_file=$(keystone-desktop-config home-manager-host-file)
+  config_snippet | keystone-desktop-config write-desktop-state-section "monitors"
   notify "Saved monitor defaults" "Updated ${target_file}"
 }
 
@@ -765,7 +761,7 @@ cmd_preview_action() {
       ;;
     save-layout)
       printf "Save the current monitor layout for this host.\n\nThis writes the current monitor state into the managed desktop block in:\n%s\n\nCurrent snippet:\n%s\n" \
-        "$(keystone_home_manager_host_file)" \
+        "$(keystone-desktop-config home-manager-host-file)" \
         "$(config_snippet)"
       ;;
     *)

@@ -3,10 +3,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-# shellcheck source=./keystone-desktop-config.sh
-source "${SCRIPT_DIR}/keystone-desktop-config.sh"
-
 notify() {
   notify-send "$@"
 }
@@ -303,7 +299,7 @@ audio_defaults_snippet() {
 }
 
 save_audio_defaults() {
-  audio_defaults_snippet | keystone_write_desktop_state_section "audio defaults"
+  audio_defaults_snippet | keystone-desktop-config write-desktop-state-section "audio defaults"
 }
 
 open_menu() {

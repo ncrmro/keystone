@@ -188,6 +188,13 @@ let
     builtins.readFile ./keystone-launch-walker.sh
   );
 
+  # Shared desktop-config helper, packaged as a subcommand CLI so other menu
+  # scripts (each in its own writeShellScriptBin $out/bin) can invoke helpers
+  # without relying on an unpackaged sibling path.
+  keystoneDesktopConfig = pkgs.writeShellScriptBin "keystone-desktop-config" (
+    builtins.readFile ./keystone-desktop-config.sh
+  );
+
   # Detached process launcher for menu-triggered long-lived commands.
   keystoneDetach = pkgs.writeShellScriptBin "keystone-detach" ''
     set -euo pipefail
@@ -348,6 +355,18 @@ let
     })
     (mkHomeScriptCommand {
       inherit config pkgs;
+      commandName = "keystone-desktop-config";
+      relativePath = "modules/desktop/home/scripts/keystone-desktop-config.sh";
+      package = keystoneDesktopConfig;
+      runtimeInputs = [
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.hostname
+        pkgs.python3
+      ];
+    })
+    (mkHomeScriptCommand {
+      inherit config pkgs;
       commandName = "keystone-menu";
       relativePath = "modules/desktop/home/scripts/keystone-menu.sh";
       package = keystoneMenu;
@@ -394,6 +413,7 @@ let
         pkgs.ghostty
         pkgs.jq
         pkgs.keystone.ks
+        keystoneDesktopConfig
         pkgs.libnotify
         pkgs.nix
         pkgs.python3
@@ -415,6 +435,7 @@ let
         pkgs.ghostty
         pkgs.jq
         pkgs.keystone.ks
+        keystoneDesktopConfig
         pkgs.libnotify
         pkgs.nix
         pkgs.systemd
@@ -438,6 +459,7 @@ let
       relativePath = "modules/desktop/home/scripts/keystone-audio-menu.sh";
       package = keystoneAudioMenu;
       runtimeInputs = [
+        keystoneDesktopConfig
         pkgs.jq
         pkgs.libnotify
         pkgs.pulseaudio
@@ -452,6 +474,7 @@ let
       package = keystonePrinterMenu;
       runtimeInputs = [
         pkgs.cups
+        keystoneDesktopConfig
         pkgs.jq
         pkgs.libnotify
         pkgs.python3
@@ -467,6 +490,7 @@ let
         pkgs.coreutils
         pkgs.gawk
         hyprlandPkg
+        keystoneDesktopConfig
         pkgs.jq
         pkgs.libnotify
         pkgs.python3

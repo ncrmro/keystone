@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Shared helpers for persisting desktop state into nixos-config.
+# keystone-desktop-config — Shared helpers for persisting desktop state into
+# nixos-config. Packaged as a CLI with subcommands so other Walker menu
+# scripts (each built via writeShellScriptBin into its own $out/bin) can
+# reach these helpers without a sibling-path source.
 
 set -euo pipefail
 
@@ -107,3 +110,45 @@ keystone_write_desktop_state_section() {
   target_file=$(keystone_home_manager_host_file)
   keystone_write_managed_section "$target_file" "desktop state" "$section_name"
 }
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage: keystone-desktop-config <subcommand> [args...]
+
+Subcommands:
+  config-repo-root
+      Print the resolved nixos-config repo root.
+  home-manager-host-file
+      Print the path to the current host's home-manager .nix file.
+  write-managed-section <target-file> <top-label> <section-name>
+      Read section body from stdin; upsert it into <target-file>.
+  write-desktop-state-section <section-name>
+      Read section body from stdin; upsert into the current host's
+      home-manager file under the "desktop state" top-label.
+USAGE
+  exit 2
+}
+
+main() {
+  # CRITICAL: dispatch must fail loudly on unknown subcommands so upstream
+  # callers surface typos instead of silently no-op'ing.
+  local sub="${1:-}"
+  if [[ -z "$sub" ]]; then
+    usage
+  fi
+  shift
+
+  case "$sub" in
+    config-repo-root) keystone_config_repo_root "$@" ;;
+    home-manager-host-file) keystone_home_manager_host_file "$@" ;;
+    write-managed-section) keystone_write_managed_section "$@" ;;
+    write-desktop-state-section) keystone_write_desktop_state_section "$@" ;;
+    -h | --help | help) usage ;;
+    *)
+      printf "keystone-desktop-config: unknown subcommand: %s\n" "$sub" >&2
+      usage
+      ;;
+  esac
+}
+
+main "$@"

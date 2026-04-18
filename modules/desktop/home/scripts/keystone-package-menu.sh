@@ -3,10 +3,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-# shellcheck source=./keystone-desktop-config.sh
-source "${SCRIPT_DIR}/keystone-desktop-config.sh"
-
 notify() {
   notify-send "$@"
 }
@@ -195,7 +191,7 @@ current_host_key() {
   local repo_root=""
   local hostname=""
 
-  repo_root=$(keystone_config_repo_root)
+  repo_root=$(keystone-desktop-config config-repo-root)
   hostname=$(current_hostname)
 
   host_registry_json "$repo_root" | jq -r --arg hostname "$hostname" '
@@ -460,7 +456,7 @@ cmd_search_and_install() {
   local current_key=""
   local current_name=""
 
-  if ! repo_root=$(keystone_config_repo_root 2>/dev/null); then
+  if ! repo_root=$(keystone-desktop-config config-repo-root 2>/dev/null); then
     notify "Install unavailable" "Unable to locate the active system flake."
     return 0
   fi
