@@ -62,6 +62,48 @@ all configuration auto-derives from that single declaration.
 17. Syncoid SHOULD use `--compress=none` when sending raw-encrypted datasets — the
     data is already incompressible due to encryption.
 
+## Local (Same-Host) Targets
+
+A host MAY replicate a source pool to another pool on the same machine
+(e.g., `"ocean:ocean"` from a host whose hostname is `ocean`). These targets
+MUST be handled without SSH:
+
+17a. When a target's `hostKey` resolves to the current host, the module MUST
+     emit a syncoid command whose `target` is a local dataset path
+     (`<targetPool>/backups/<hostname>/<sourcePool>`) — NOT a
+     `user@host:dataset` URI.
+17b. Local-target syncoid services MUST NOT copy the host SSH key, MUST NOT
+     use `--sshkey`, and MUST NOT register a sync user on the "remote" side —
+     the source and target are the same machine.
+17c. Local-target syncoid services MUST still emit per-target Prometheus
+     metrics via `ExecStopPost`, matching remote targets for dashboard parity.
+17d. The receiver-side code path (sync user, `authorized_keys`, ZFS delegation)
+     MUST skip entries whose sender hostname equals the current hostname —
+     those are local targets, not incoming SSH backups.
+
+## Pool Import Services
+
+Hosts with non-boot ZFS pools (e.g., a secondary `ocean` pool on host `ocean`,
+a `lake` pool on host `maia`) must not start sanoid/syncoid/init services
+until the pool is imported. The module MUST expose a mechanism to wire these
+dependencies without per-host boilerplate in nixos-config.
+
+17e. The module MUST expose
+     `keystone.os.storage.zfs.backup.poolImportServices` as
+     `attrsOf str` — a map from local pool name to the name of the systemd
+     service that imports the pool (e.g., `{ ocean = "import-ocean"; }`).
+17f. For every syncoid service emitted on the sender, if either the source
+     pool OR (for local targets) the target pool has an entry in
+     `poolImportServices`, the service MUST have `after` and `requires`
+     set to the corresponding `<import>.service`.
+17g. On the receiver, the dataset initialization service MUST also depend on
+     the import services of any incoming target pool present in
+     `poolImportServices`, so ZFS delegation does not run before the pool
+     is imported.
+17h. Pools that do not appear in `poolImportServices` (e.g., `rpool`, which
+     is imported during stage-1 boot) MUST NOT contribute dependencies —
+     the option defaults to `{}` and missing pools silently add no deps.
+
 ## SSH Authentication
 
 18. Remote syncoid MUST authenticate using the host's SSH key
