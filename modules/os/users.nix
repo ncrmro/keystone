@@ -209,6 +209,35 @@ in
               ''
           ) screenshotUsers
         )
+        ++ concatLists (
+          mapAttrsToList (
+            username: userCfg:
+            optional
+              (
+                userCfg.desktop.enable
+                && immichServiceCfg.host != null
+                && !(config.age.secrets ? "${username}-immich-api-key")
+              )
+              ''
+                Walker Photos is available on this fleet (keystone.services.immich.host = "${immichServiceCfg.host}"), but agenix secret "${username}-immich-api-key" is not declared for user '${username}'.
+
+                The Photos entry in the Walker main menu will stay hidden until the secret exists. To enable it:
+
+                1. Add to agenix-secrets/secrets.nix:
+                   "secrets/${username}-immich-api-key.age".publicKeys = adminKeys ++ [ systems.${hostname} ];
+                2. Create the secret with the user's Immich API key:
+                   cd agenix-secrets && agenix -e secrets/${username}-immich-api-key.age
+                3. If keystone.secrets.repo is null, declare it in host config:
+                   age.secrets.${username}-immich-api-key = {
+                     file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-immich-api-key.age";
+                     owner = "${username}";
+                     mode = "0400";
+                   };
+
+                TODO: automate Immich API key provisioning and secret enrollment from Keystone tooling.
+              ''
+          ) (filterAttrs (_: u: u.desktop.enable) effectiveUsers)
+        )
         ++ optional (hasDesktopModule && length desktopUsernames > 1) ''
           Multiple users have keystone.os.users.<name>.desktop.enable = true. Keystone defaulted keystone.desktop.user to "${inferredDesktopUser}".
 
