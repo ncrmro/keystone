@@ -332,6 +332,138 @@ let
         };
       }
     ];
+
+    # ZFS backup sender with local (intra-host) target — gap 1
+    # Workstation replicates rpool to a local second pool (backup) and also to remote ocean
+    zfs-backup-local-target = eval "zfs-backup-local-target" [
+      {
+        keystone.hosts = {
+          workstation = {
+            hostname = "workstation";
+            role = "client";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 workstation";
+            zfs = {
+              backups.rpool.targets = [
+                "workstation:backup" # local intra-host replication
+                "ocean:ocean" # remote replication
+              ];
+            };
+          };
+          ocean = {
+            hostname = "ocean";
+            role = "server";
+            sshTarget = "ocean.ts";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOcean ocean";
+          };
+        };
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "workstation";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    # ZFS backup with poolImportServices — gap 2
+    # Receiver gates zfs-backup-init on a non-boot pool import service
+    zfs-backup-pool-import = eval "zfs-backup-pool-import" [
+      {
+        keystone.hosts = {
+          workstation = {
+            hostname = "workstation";
+            role = "client";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 workstation";
+            zfs = {
+              backups.rpool.targets = [
+                "ocean:ocean"
+              ];
+            };
+          };
+          ocean = {
+            hostname = "ocean";
+            role = "server";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOcean ocean";
+          };
+        };
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          # gap 2: gate backup-init on the ocean pool import service
+          zfsBackup.poolImportServices.ocean = "import-ocean";
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "ocean";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    # ZFS backup receiver with SSH key fallback — gap 4
+    # Sender has no hostPublicKey; receiver uses keystone.keys fallback
+    zfs-backup-key-fallback = eval "zfs-backup-key-fallback" [
+      {
+        keystone.keys.ncrmro = {
+          hosts.ocean.publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFallback ocean@ncrmro";
+        };
+        keystone.hosts = {
+          workstation = {
+            hostname = "workstation";
+            role = "client";
+            # gap 4: no hostPublicKey — receiver must use sshKeyFallbackUser
+            zfs = {
+              backups.rpool.targets = [
+                "ocean:ocean"
+              ];
+            };
+          };
+          ocean = {
+            hostname = "ocean";
+            role = "server";
+            hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOcean ocean";
+          };
+        };
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+          };
+          # gap 4: fall back to ncrmro's allKeys for senders without hostPublicKey
+          zfsBackup.sshKeyFallbackUser = "ncrmro";
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+          };
+        };
+        networking.hostName = "ocean";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-os-evaluation"
@@ -353,6 +485,11 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - zfs-backup-sender: ZFS backup sender with remote targets"
+    echo "  - zfs-backup-receiver: ZFS backup receiver"
+    echo "  - zfs-backup-local-target: ZFS backup with local intra-host target (gap 1)"
+    echo "  - zfs-backup-pool-import: ZFS backup with poolImportServices (gap 2)"
+    echo "  - zfs-backup-key-fallback: ZFS backup receiver with SSH key fallback (gap 4)"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
