@@ -570,15 +570,15 @@ mod tests {
 
     #[test]
     fn normalize_hostname_strips_fqdn_and_case() {
-        assert_eq!(normalize_hostname("ncrmro-workstation"), "ncrmro-workstation");
+        assert_eq!(
+            normalize_hostname("ncrmro-workstation"),
+            "ncrmro-workstation"
+        );
         assert_eq!(
             normalize_hostname("NCRMRO-Workstation.local\n"),
             "ncrmro-workstation"
         );
-        assert_eq!(
-            normalize_hostname(" host.lan.example "),
-            "host"
-        );
+        assert_eq!(normalize_hostname(" host.lan.example "), "host");
     }
 
     #[test]
