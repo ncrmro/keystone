@@ -22,7 +22,12 @@ stable_lock_steps="${KEYSTONE_STARTUP_LOCK_STABLE_LOCK_STEPS:-20}"
 # appears or hyprlock stays stable after readiness.
 max_lock_attempts="${KEYSTONE_STARTUP_LOCK_MAX_ATTEMPTS:-3}"
 retry_delay_seconds="${KEYSTONE_STARTUP_LOCK_RETRY_DELAY:-1}"
-hyprlock_cmd=(hyprlock)
+# Launch hyprlock via a transient systemd scope in lock.slice so that a
+# config-parse SIGABRT is contained in the scope's cgroup and does not
+# propagate into Hyprland's crash reporter.  systemd-run --scope keeps the
+# calling process alive until hyprlock exits, preserving the PID-based
+# monitoring and exit-status logic below.
+hyprlock_cmd=(systemd-run --user --scope --slice=lock.slice -- hyprlock)
 
 log() {
   local priority="$1"

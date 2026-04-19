@@ -10,6 +10,28 @@ let
 in
 {
   config = mkIf desktopCfg.enable {
+    # Isolate hyprlock inside a dedicated user service so that a config-parse
+    # SIGABRT does not propagate into Hyprland's crash reporter and take down
+    # the entire session.  Type=oneshot / Restart=no means one invocation per
+    # start request; the Slice keeps it inside lock.slice for resource
+    # accounting.  Lock-triggering callers (hypridle, keystone-startup-lock)
+    # use "systemctl --user start --no-block hyprlock" so they remain
+    # unblocked while the service runs.
+    systemd.user.services.hyprlock = {
+      Unit = {
+        Description = "Hyprlock screen locker";
+        Documentation = "https://wiki.hyprland.org/Hypr-Ecosystem/hyprlock/";
+        After = [ "graphical-session.target" ];
+        PartOf = [ "graphical-session.target" ];
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.hyprlock}/bin/hyprlock";
+        Restart = "no";
+        Slice = "lock.slice";
+      };
+    };
+
     programs.hyprlock = {
       enable = mkDefault true;
       settings = {

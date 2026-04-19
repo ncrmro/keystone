@@ -41,6 +41,17 @@ let
   hyprpaperConf = desktopConfig.xdg.configFile."hypr/hyprpaper.conf".source;
   hyprlandPkg = desktopConfig.wayland.windowManager.hyprland.package;
   startupLockScript = ../../modules/desktop/home/scripts/keystone-startup-lock.sh;
+
+  # Eval-time hardening checks: verify the hyprlock systemd service is defined
+  # with the correct isolation attributes (Type=oneshot, Restart=no,
+  # Slice=lock.slice).  These are evaluated during nix flake check so that a
+  # future refactor that drops the service definition is caught pre-merge.
+  boolString = v: if v then "true" else "false";
+  hyprlockService = desktopConfig.systemd.user.services.hyprlock or { };
+  svcExists = hyprlockService ? Service;
+  svcType = (hyprlockService.Service or { }).Type or "";
+  svcRestart = (hyprlockService.Service or { }).Restart or "";
+  svcSlice = (hyprlockService.Service or { }).Slice or "";
 in
 pkgs.runCommand "hyprland-config-smoke"
   {
@@ -83,24 +94,51 @@ pkgs.runCommand "hyprland-config-smoke"
       fi
     }
 
+    check() {
+      if [ "$1" = "true" ]; then
+        echo "PASS: $2"
+      else
+        echo "FAIL: $2" >&2
+        exit 1
+      fi
+    }
+
     assert_contains "${hyprpaperConf}" "preload=/home/testuser/.config/keystone/current/background" \
       "hyprpaper preloads the theme background before assigning wallpaper"
     assert_contains "${hyprpaperConf}" "wallpaper=,/home/testuser/.config/keystone/current/background" \
       "hyprpaper assigns the theme background to all monitors"
 
-    assert_contains "${hypridleConf}" "lock_cmd=pidof hyprlock || hyprlock" \
-      "hypridle lock command invokes hyprlock"
-    assert_contains "${hypridleConf}" "before_sleep_cmd=pidof hyprlock || hyprlock" \
-      "hypridle locks before suspend"
-    assert_contains "${hypridleConf}" "on-timeout=pidof hyprlock || hyprlock" \
-      "hypridle timeout triggers lock"
+    # hypridle must invoke the systemd service rather than raw hyprlock so that
+    # a config-parse SIGABRT is contained in lock.slice.
+    assert_contains "${hypridleConf}" "lock_cmd=pidof hyprlock || systemctl --user start --no-block hyprlock" \
+      "hypridle lock command invokes hyprlock via systemd service"
+    assert_contains "${hypridleConf}" "before_sleep_cmd=pidof hyprlock || systemctl --user start --no-block hyprlock" \
+      "hypridle locks before suspend via systemd service"
+    assert_contains "${hypridleConf}" "on-timeout=pidof hyprlock || systemctl --user start --no-block hyprlock" \
+      "hypridle timeout triggers lock via systemd service"
     assert_not_contains "${hypridleConf}" "immediate-render" \
       "hypridle does not use --immediate-render (causes blank lock screen)"
 
-    assert_contains "${hyprlandConf}" "switch:on:Lid Switch, exec, pidof hyprlock || hyprlock; systemctl suspend" \
-      "lid-close binding locks and suspends"
-    assert_contains "${startupLockScript}" "hyprlock_cmd=(hyprlock)" \
-      "startup lock wrapper launches hyprlock without --immediate-render"
+    assert_contains "${hyprlandConf}" "switch:on:Lid Switch, exec, pidof hyprlock || systemctl --user start --no-block hyprlock; systemctl suspend" \
+      "lid-close binding locks via systemd service and suspends"
+
+    # keystone-startup-lock must use systemd-run --scope so hyprlock is not a
+    # direct child of the Hyprland exec-once process tree when it aborts.
+    assert_contains "${startupLockScript}" "systemd-run --user --scope --slice=lock.slice" \
+      "startup lock wrapper isolates hyprlock in a systemd scope"
+
+    # Hardening: verify the systemd.user.services.hyprlock service is defined
+    # with Type=oneshot, Restart=no, Slice=lock.slice so a config-parse
+    # SIGABRT is contained and does not propagate into Hyprland's crash
+    # reporter.
+    check "${boolString svcExists}" \
+      "systemd.user.services.hyprlock is defined"
+    check "${boolString (svcType == "oneshot")}" \
+      "hyprlock systemd service is Type=oneshot (got: ${svcType})"
+    check "${boolString (svcRestart == "no")}" \
+      "hyprlock systemd service has Restart=no (got: ${svcRestart})"
+    check "${boolString (svcSlice == "lock.slice")}" \
+      "hyprlock systemd service is in Slice=lock.slice (got: ${svcSlice})"
 
     assert_contains "${hyprlockConf}" "source=" \
       "hyprlock sources theme colors from theme hyprlock.conf"
