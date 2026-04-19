@@ -231,6 +231,12 @@ let
   uniqueSenderHostnames = unique (map (b: b.senderHostname) incomingBackups);
   incomingTargetPools = unique (map (b: b.targetPool) incomingBackups);
 
+  # Receiver: pool-import service deps for target pools that are NOT
+  # imported at boot (e.g. ocean's `ocean` pool, maia's `lake` pool).
+  # Applied to the dataset-init/delegation oneshot unit so `zfs create` /
+  # `zfs allow` cannot run before the pool is imported.
+  receiverImportDeps = unique (importDepsFor incomingTargetPools);
+
   # ZFS binary (matches kernel module version)
   zfsBin = "${config.boot.zfs.package}/bin/zfs";
 
@@ -412,10 +418,25 @@ in
     })
 
     # --- Receiver: ZFS dataset initialization and permission delegation (convention rules 23-24) ---
+    # Implemented as a systemd oneshot so we can order it after non-boot
+    # pool imports (convention rule 17g). Running as an activation script
+    # would execute before late-imported pools are available.
     (mkIf hasIncomingBackups {
-      system.activationScripts.zfsBackupDatasets = {
-        deps = [ "users" ];
-        text = concatStringsSep "\n" (
+      systemd.services.zfs-backup-receiver-init = {
+        description = "Initialize ZFS backup datasets and delegate permissions";
+        wantedBy = [ "multi-user.target" ];
+        after = [
+          "zfs.target"
+          "zfs-import.target"
+          "local-fs.target"
+        ]
+        ++ receiverImportDeps;
+        requires = receiverImportDeps;
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = concatStringsSep "\n" (
           map (backup: ''
             # Create backup dataset hierarchy if it doesn't exist
             if ! ${zfsBin} list ${escapeShellArg "${backup.targetPool}/backups/${backup.senderHostname}/${backup.sourcePool}"} >/dev/null 2>&1; then
