@@ -319,29 +319,43 @@ let
     builtins.readFile ./keystone-notes-inbox.sh
   );
 
-  # Battery monitor script
+  # Battery monitor — persistent UPower D-Bus signal watcher.
+  # Subscribes to org.freedesktop.UPower via gdbus monitor and sends a
+  # critical notification whenever the battery crosses the low threshold
+  # while discharging.  No polling; reacts to real-time D-Bus signals.
   keystoneBatteryMonitor = pkgs.writeShellScriptBin "keystone-battery-monitor" ''
     BATTERY_THRESHOLD=10
     NOTIFICATION_FLAG="/run/user/$UID/keystone_battery_notified"
 
-    # Get battery level
-    BATTERY_LEVEL=$(${pkgs.upower}/bin/upower -i $(${pkgs.upower}/bin/upower -e | grep 'BAT') | grep -E "percentage" | awk '{print $2}' | tr -d '%')
-    BATTERY_STATE=$(${pkgs.upower}/bin/upower -i $(${pkgs.upower}/bin/upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}')
+    check_and_notify() {
+      local device level state
+      device=$(${pkgs.upower}/bin/upower -e | grep 'BAT' | head -1)
+      [[ -z "$device" ]] && return
 
-    send_notification() {
-      ${pkgs.libnotify}/bin/notify-send -u critical " Time to recharge!" "Battery is down to ''${1}%" -i battery-caution -t 30000
+      level=$(${pkgs.upower}/bin/upower -i "$device" | grep -E "^\s+percentage:" | awk '{print $2}' | tr -d '%')
+      state=$(${pkgs.upower}/bin/upower -i "$device" | grep -E "^\s+state:" | awk '{print $2}')
+
+      if [[ -n "$level" && "$level" =~ ^[0-9]+$ ]]; then
+        if [[ "$state" == "discharging" && "$level" -le "$BATTERY_THRESHOLD" ]]; then
+          if [[ ! -f "$NOTIFICATION_FLAG" ]]; then
+            ${pkgs.libnotify}/bin/notify-send -u critical " Time to recharge!" "Battery is down to ''${level}%" -i battery-caution -t 30000
+            touch "$NOTIFICATION_FLAG"
+          fi
+        else
+          rm -f "$NOTIFICATION_FLAG"
+        fi
+      fi
     }
 
-    if [[ -n "$BATTERY_LEVEL" && "$BATTERY_LEVEL" =~ ^[0-9]+$ ]]; then
-      if [[ $BATTERY_STATE == "discharging" && $BATTERY_LEVEL -le $BATTERY_THRESHOLD ]]; then
-        if [[ ! -f $NOTIFICATION_FLAG ]]; then
-          send_notification $BATTERY_LEVEL
-          touch $NOTIFICATION_FLAG
-        fi
-      else
-        rm -f $NOTIFICATION_FLAG
+    # Initial check immediately on startup
+    check_and_notify
+
+    # Subscribe to UPower D-Bus signals; react whenever battery properties change
+    while IFS= read -r line; do
+      if [[ "$line" =~ PropertiesChanged|DeviceChanged ]]; then
+        check_and_notify
       fi
-    fi
+    done < <(${pkgs.glib}/bin/gdbus monitor --system --dest org.freedesktop.UPower 2>/dev/null)
   '';
 
   # Startup lock wrapper. Launches hyprlock at session start and terminates the
@@ -715,27 +729,24 @@ in
                 }' keystone-audio-menu apply-config-defaults"
               ]);
 
-          # Periodically check battery level and send a notification when low
+          # Persistent UPower D-Bus watcher — replaces the old oneshot + timer pair.
+          # The service subscribes to org.freedesktop.UPower signals and reacts in
+          # real time; no polling fallback.  The ConditionPathExistsGlob gate keeps
+          # it from starting on hosts without a battery.
           systemd.user.services.keystone-battery-monitor = {
             Unit = {
-              Description = "Keystone low battery notification";
+              Description = "Keystone low battery notification (UPower D-Bus watcher)";
+              ConditionPathExistsGlob = "/sys/class/power_supply/BAT*";
+              After = [ "graphical-session.target" ];
             };
             Service = {
-              Type = "oneshot";
+              Type = "simple";
               ExecStart = "${keystoneBatteryMonitor}/bin/keystone-battery-monitor";
-            };
-          };
-
-          systemd.user.timers.keystone-battery-monitor = {
-            Unit = {
-              Description = "Timer for low battery notification";
-            };
-            Timer = {
-              OnBootSec = "1min";
-              OnUnitActiveSec = "1min";
+              Restart = "on-failure";
+              RestartSec = "5s";
             };
             Install = {
-              WantedBy = [ "timers.target" ];
+              WantedBy = [ "graphical-session.target" ];
             };
           };
         }
