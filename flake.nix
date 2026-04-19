@@ -181,6 +181,35 @@
           ;
         lib = nixpkgs.lib;
       };
+
+      # Default pftf/RPi4 UEFI firmware, pinned to v1.41. Supplies the file
+      # mapping that lib.mkPiKodiAppliance's uefiFirmware argument expects.
+      # Consumers override individual entries or the whole attrset to pin a
+      # different release.
+      defaultPftfRPi4 =
+        let
+          pkgs = nixpkgs.legacyPackages.aarch64-linux;
+          pftf = pkgs.fetchzip {
+            url = "https://github.com/pftf/RPi4/releases/download/v1.41/RPi4_UEFI_Firmware_v1.41.zip";
+            stripRoot = false;
+            hash = "sha256-MVvoIO26JNEi1maOYcgk0h/Heb9W+Y8mgh7l8GFC4/k=";
+          };
+        in
+        {
+          "RPI_EFI.fd" = "${pftf}/RPI_EFI.fd";
+          "config.txt" = "${pftf}/config.txt";
+          "start4.elf" = "${pftf}/start4.elf";
+          "fixup4.dat" = "${pftf}/fixup4.dat";
+          "bcm2711-rpi-4-b.dtb" = "${pftf}/bcm2711-rpi-4-b.dtb";
+          "bcm2711-rpi-400.dtb" = "${pftf}/bcm2711-rpi-400.dtb";
+          "bcm2711-rpi-cm4.dtb" = "${pftf}/bcm2711-rpi-cm4.dtb";
+          "overlays/miniuart-bt.dtbo" = "${pftf}/overlays/miniuart-bt.dtbo";
+          "overlays/upstream-pi4.dtbo" = "${pftf}/overlays/upstream-pi4.dtbo";
+          "firmware/brcm/brcmfmac43455-sdio.bin" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.bin";
+          "firmware/brcm/brcmfmac43455-sdio.clm_blob" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.clm_blob";
+          "firmware/brcm/brcmfmac43455-sdio.Raspberry" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.Raspberry";
+          "firmware/brcm/brcmfmac43455-sdio.txt" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.txt";
+        };
     in
     {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
@@ -213,8 +242,8 @@
             sshKeys ? [ ],
             hostName ? "kodi-pi",
             hostId ? "ca77ed01",
-            # pftf/RPi4 firmware files — consumer fetches a release and maps files.
-            uefiFirmware,
+            # pftf/RPi4 firmware files — defaults to v1.41 pinned in the flake.
+            uefiFirmware ? defaultPftfRPi4,
             # Device path the FINAL system expects for its single-disk SD layout.
             # The install script discovers the real SD at runtime, but keystone
             # assertions require a non-empty value at eval time.
@@ -715,6 +744,14 @@
             ;
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
         };
+
+      # aarch64 Raspberry Pi appliance builds.
+      #   pi-kodi — two-phase Kodi kiosk appliance (USB installer → SD ZFS).
+      #     No SSH keys baked in by default; consumer uses lib.mkPiKodiAppliance
+      #     to rebuild with keys. Uses pinned pftf/RPi4 v1.41 firmware.
+      packages.aarch64-linux = {
+        pi-kodi = self.lib.mkPiKodiAppliance { inherit nixpkgs; };
+      };
 
       # Development shell
       devShells.x86_64-linux =
