@@ -325,7 +325,34 @@ in
 
         uefiFirmware = mkOption {
           type = types.attrsOf types.path;
-          default = { };
+          default =
+            let
+              # Pinned pftf/RPi4 v1.41 — a reasonable default so consumers
+              # don't have to reinvent the firmware file mapping for every Pi
+              # host. Override individual entries or the whole attrset to pin
+              # a different release.
+              pftf = pkgs.fetchzip {
+                url = "https://github.com/pftf/RPi4/releases/download/v1.41/RPi4_UEFI_Firmware_v1.41.zip";
+                stripRoot = false;
+                hash = "sha256-MVvoIO26JNEi1maOYcgk0h/Heb9W+Y8mgh7l8GFC4/k=";
+              };
+            in
+            {
+              "RPI_EFI.fd" = "${pftf}/RPI_EFI.fd";
+              "config.txt" = "${pftf}/config.txt";
+              "start4.elf" = "${pftf}/start4.elf";
+              "fixup4.dat" = "${pftf}/fixup4.dat";
+              "bcm2711-rpi-4-b.dtb" = "${pftf}/bcm2711-rpi-4-b.dtb";
+              "bcm2711-rpi-400.dtb" = "${pftf}/bcm2711-rpi-400.dtb";
+              "bcm2711-rpi-cm4.dtb" = "${pftf}/bcm2711-rpi-cm4.dtb";
+              "overlays/miniuart-bt.dtbo" = "${pftf}/overlays/miniuart-bt.dtbo";
+              "overlays/upstream-pi4.dtbo" = "${pftf}/overlays/upstream-pi4.dtbo";
+              "firmware/brcm/brcmfmac43455-sdio.bin" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.bin";
+              "firmware/brcm/brcmfmac43455-sdio.clm_blob" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.clm_blob";
+              "firmware/brcm/brcmfmac43455-sdio.Raspberry" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.Raspberry";
+              "firmware/brcm/brcmfmac43455-sdio.txt" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.txt";
+            };
+          defaultText = literalExpression "pftf/RPi4 v1.41 firmware file mapping";
           example = literalExpression ''
             {
               "RPI_EFI.fd" = "''${pftf}/RPI_EFI.fd";
@@ -336,9 +363,9 @@ in
           '';
           description = ''
             Files from the pftf/RPi4 UEFI firmware release to drop onto the ESP
-            (via boot.loader.systemd-boot.extraFiles). Consumers fetch a specific
-            pftf release and map its files here — no fixed default because pftf
-            versions change and belong in host config.
+            (via boot.loader.systemd-boot.extraFiles). Defaults to a pinned
+            pftf v1.41 mapping so any Pi host boots without extra config;
+            override to pin a different release or add downstream DTB overlays.
           '';
         };
       };
