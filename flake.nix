@@ -182,34 +182,6 @@
         lib = nixpkgs.lib;
       };
 
-      # Default pftf/RPi4 UEFI firmware, pinned to v1.41. Supplies the file
-      # mapping that lib.mkPiKodiAppliance's uefiFirmware argument expects.
-      # Consumers override individual entries or the whole attrset to pin a
-      # different release.
-      defaultPftfRPi4 =
-        let
-          pkgs = nixpkgs.legacyPackages.aarch64-linux;
-          pftf = pkgs.fetchzip {
-            url = "https://github.com/pftf/RPi4/releases/download/v1.41/RPi4_UEFI_Firmware_v1.41.zip";
-            stripRoot = false;
-            hash = "sha256-MVvoIO26JNEi1maOYcgk0h/Heb9W+Y8mgh7l8GFC4/k=";
-          };
-        in
-        {
-          "RPI_EFI.fd" = "${pftf}/RPI_EFI.fd";
-          "config.txt" = "${pftf}/config.txt";
-          "start4.elf" = "${pftf}/start4.elf";
-          "fixup4.dat" = "${pftf}/fixup4.dat";
-          "bcm2711-rpi-4-b.dtb" = "${pftf}/bcm2711-rpi-4-b.dtb";
-          "bcm2711-rpi-400.dtb" = "${pftf}/bcm2711-rpi-400.dtb";
-          "bcm2711-rpi-cm4.dtb" = "${pftf}/bcm2711-rpi-cm4.dtb";
-          "overlays/miniuart-bt.dtbo" = "${pftf}/overlays/miniuart-bt.dtbo";
-          "overlays/upstream-pi4.dtbo" = "${pftf}/overlays/upstream-pi4.dtbo";
-          "firmware/brcm/brcmfmac43455-sdio.bin" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.bin";
-          "firmware/brcm/brcmfmac43455-sdio.clm_blob" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.clm_blob";
-          "firmware/brcm/brcmfmac43455-sdio.Raspberry" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.Raspberry";
-          "firmware/brcm/brcmfmac43455-sdio.txt" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.txt";
-        };
     in
     {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
@@ -231,107 +203,6 @@
               }
             ];
           }).config.system.build.isoImage;
-
-        # Build the Pi Kodi appliance. Two-phase: a bootstrap image flashes to
-        # a USB stick, first boot auto-installs the final ZFS-rooted Kodi
-        # system onto the inserted SD card (ZFS lives on SD so scrub can
-        # validate + repair silent bit rot). See modules/appliances/pi-kodi.nix.
-        mkPiKodiAppliance =
-          {
-            nixpkgs,
-            sshKeys ? [ ],
-            hostName ? "kodi-pi",
-            hostId ? "ca77ed01",
-            # pftf/RPi4 firmware files — defaults to v1.41 pinned in the flake.
-            uefiFirmware ? defaultPftfRPi4,
-            # Device path the FINAL system expects for its single-disk SD layout.
-            # The install script discovers the real SD at runtime, but keystone
-            # assertions require a non-empty value at eval time.
-            devices ? [ "/dev/disk/by-id/mmc-pi-kodi-target" ],
-          }:
-          let
-            system = "aarch64-linux";
-
-            # Phase 2: the ZFS-rooted Kodi appliance that runs post-install.
-            finalSystem = nixpkgs.lib.nixosSystem {
-              inherit system;
-              modules = [
-                agenix.nixosModules.default
-                disko.nixosModules.disko
-                lanzaboote.nixosModules.lanzaboote
-                home-manager.nixosModules.default
-                ./modules/domain.nix
-                ./modules/services.nix
-                ./modules/hosts.nix
-                ./modules/os
-                {
-                  nixpkgs.overlays = [ self.overlays.default ];
-                  _module.args.keystoneInputs = keystoneInputs;
-
-                  keystone.os = {
-                    enable = true;
-                    secureBoot.enable = false;
-                    tpm.enable = false;
-                    services.eternalTerminal.enable = false;
-                    services.avahi.enable = false;
-
-                    storage = {
-                      enable = true;
-                      type = "zfs";
-                      platform = "pi";
-                      devices = devices;
-                      swap.size = "0"; # Pi platform swap layout not implemented
-                      zfs.kernel = nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
-                      pi = {
-                        # SD is both the ESP carrier and the ZFS pool disk —
-                        # the installer carrier is a USB stick, disposable.
-                        bootMedium = "sd";
-                        uefiFirmware = uefiFirmware;
-                      };
-                    };
-
-                    services.kodi.enable = true;
-                  };
-
-                  # Skip the keystone.hosts registry lookup for tailscale — the
-                  # appliance isn't part of the fleet inventory.
-                  keystone.os.tailscale.enable = nixpkgs.lib.mkForce false;
-
-                  networking.hostName = hostName;
-                  networking.hostId = hostId;
-                  users.users.root.openssh.authorizedKeys.keys = sshKeys;
-
-                  boot.zfs = {
-                    forceImportRoot = false;
-                    devNodes = "/dev/disk/by-id";
-                    extraPools = [ "rpool" ];
-                  };
-                  # Cap ARC so Kodi has headroom on a 4–8 GiB Pi.
-                  boot.kernelParams = [ "zfs.zfs_arc_max=536870912" ];
-
-                  system.stateVersion = "25.05";
-                }
-              ];
-            };
-
-            # Phase 1: bootstrap sd-image carrying finalSystem's closure.
-            bootstrapSystem = nixpkgs.lib.nixosSystem {
-              inherit system;
-              modules = [
-                "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64.nix"
-                ./modules/appliances/pi-kodi.nix
-                {
-                  nixpkgs.overlays = [ self.overlays.default ];
-                  _module.args.finalSystem = finalSystem;
-                  _module.args.finalSystemToplevel = finalSystem.config.system.build.toplevel;
-                  keystone.piKodi = {
-                    inherit sshKeys uefiFirmware;
-                  };
-                }
-              ];
-            };
-          in
-          bootstrapSystem.config.system.build.sdImage;
       };
 
       # ISO configuration without SSH keys (use lib.mkInstallerIso for keys)
@@ -744,14 +615,6 @@
             ;
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
         };
-
-      # aarch64 Raspberry Pi appliance builds.
-      #   pi-kodi — two-phase Kodi kiosk appliance (USB installer → SD ZFS).
-      #     No SSH keys baked in by default; consumer uses lib.mkPiKodiAppliance
-      #     to rebuild with keys. Uses pinned pftf/RPi4 v1.41 firmware.
-      packages.aarch64-linux = {
-        pi-kodi = self.lib.mkPiKodiAppliance { inherit nixpkgs; };
-      };
 
       # Development shell
       devShells.x86_64-linux =
