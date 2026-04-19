@@ -12,6 +12,7 @@ pub enum MachineType {
     Server,
     Workstation,
     Laptop,
+    ThinClient,
 }
 
 impl MachineType {
@@ -20,6 +21,7 @@ impl MachineType {
             MachineType::Server => "Server (headless)",
             MachineType::Workstation => "Workstation (desktop + ZFS)",
             MachineType::Laptop => "Laptop (desktop + ext4 + hibernate)",
+            MachineType::ThinClient => "Thin Client (desktop + ext4 + remote)",
         }
     }
 
@@ -29,6 +31,7 @@ impl MachineType {
             MachineType::Server => "server",
             MachineType::Workstation => "workstation",
             MachineType::Laptop => "laptop",
+            MachineType::ThinClient => "thin-client",
         }
     }
 }
@@ -450,6 +453,7 @@ mod tests {
             (MachineType::Server, "server"),
             (MachineType::Workstation, "workstation"),
             (MachineType::Laptop, "laptop"),
+            (MachineType::ThinClient, "thin-client"),
         ] {
             let config = GenerateConfig {
                 machine_type,
@@ -613,5 +617,6 @@ mod tests {
         assert_eq!(MachineType::Server.kind(), "server");
         assert_eq!(MachineType::Workstation.kind(), "workstation");
         assert_eq!(MachineType::Laptop.kind(), "laptop");
+        assert_eq!(MachineType::ThinClient.kind(), "thin-client");
     }
 }

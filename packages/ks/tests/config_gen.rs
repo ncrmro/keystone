@@ -93,3 +93,20 @@ fn test_laptop_kind_in_flake() {
         "laptop config should have kind = laptop"
     );
 }
+
+#[test]
+fn test_thin_client_kind_in_flake() {
+    let config = GenerateConfig {
+        hostname: "my-thin-client".to_string(),
+        machine_type: MachineType::ThinClient,
+        storage_type: StorageType::Ext4,
+        disk_device: Some("/dev/nvme0n1".to_string()),
+        ..test_config()
+    };
+
+    let flake = ks::template::generate_flake_nix(&config);
+    assert!(
+        flake.contains(r#"kind = "thin-client""#),
+        "thin-client config should have kind = thin-client"
+    );
+}
