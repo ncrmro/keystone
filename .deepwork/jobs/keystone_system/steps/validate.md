@@ -59,9 +59,9 @@ Verify that the deployed changes are working correctly across all hosts. This st
    - If no other hosts are affected, document why and skip multi-host checks
 
 6. **Check other affected hosts**
-   - For each affected remote host:
-     - SSH in and check service status: `ssh root@<host> systemctl --failed`
-     - Check for any deployment-related issues: `ssh root@<host> journalctl -p err --since '1 hour ago'`
+   - For each affected remote host (probe as the Keystone admin user resolved in survey_fleet step 5 — NOT as `root`, whose key is FIDO2-gated; and NOT as a hardcoded personal username):
+     - SSH in and check service status: `ssh "$ADMIN_USER@<host>" systemctl --failed`
+     - Check for any deployment-related issues: `ssh "$ADMIN_USER@<host>" journalctl -p err --since '1 hour ago'`
      - If the remote host needs updating too, inform the human
    - Ask structured questions to confirm if the human wants to update remote hosts now
 

@@ -44,9 +44,13 @@ Build a comprehensive snapshot of the fleet's current state to inform the update
      ```
    - Note any failed units or recent errors — these are pre-existing issues, not caused by pending changes
 
-4. **Gather fleet data via nix eval**
+4. **Gather fleet data via nix eval** *(required — this is the authoritative fleet registry, not `config.keystone.hosts`)*
    Use the same nix eval patterns as `ks doctor` (see AGENTS.md "Nix Eval for System Context"):
-   - **Hosts table**: `nix eval -f <config-path>/hosts.nix --json`
+   - **Hosts table** — MUST run this first; every subsequent host probe iterates its output:
+     ```bash
+     nix eval -f <config-path>/hosts.nix --json
+     ```
+     Do NOT substitute `config.keystone.hosts` — that option attrset is typically empty; the top-level `hosts.nix` file is the source of truth consumed by the `ks` CLI.
    - **Agents** (per host):
      ```bash
      nix eval <config-path>#nixosConfigurations.<HOST>.config.keystone.os.agents \
@@ -68,15 +72,25 @@ Build a comprehensive snapshot of the fleet's current state to inform the update
      ```
 
 5. **Check host reachability**
-   - From the hosts table, for each host with an `sshTarget`, check reachability:
+   - From the hosts table, for each host with an `sshTarget`, check reachability. **Probe as the Keystone admin user, not as `root`** — on Keystone hosts, `root`'s SSH key is FIDO2 (ED25519-SK) and will fail when no hardware key is plugged in, giving false-negative outages. The admin user's keys are not hardware-gated and match how `ks` deploys.
+   - **Resolve the admin username dynamically** (do NOT hardcode a personal username in the step output — keystone is used by many operators):
      ```bash
-     ssh -o ConnectTimeout=5 -o BatchMode=yes root@<sshTarget> echo ok 2>/dev/null
+     ADMIN_USER="$(nix eval --raw <config-path>#nixosConfigurations.<HOST>.config.keystone.os.users \
+       --apply 'u: let admins = builtins.attrNames (builtins.filterAttrs (_: v: v.admin or false) u);
+                  in if admins == [] then "" else builtins.head admins' 2>/dev/null)"
+     # Fallback: the current $USER on the workstation is typically the admin
+     ADMIN_USER="${ADMIN_USER:-$USER}"
+     ```
+   - Then probe with that user:
+     ```bash
+     ssh -o ConnectTimeout=5 -o BatchMode=yes "$ADMIN_USER@<sshTarget>" echo ok 2>/dev/null
      ```
    - Record which hosts are reachable and which are not
    - For reachable hosts, capture their current NixOS generation:
      ```bash
-     ssh root@<sshTarget> readlink /nix/var/nix/profiles/system
+     ssh "$ADMIN_USER@<sshTarget>" readlink /nix/var/nix/profiles/system
      ```
+   - If a host fails with `sign_and_send_pubkey: signing failed for ED25519-SK … device not found`, the probe accidentally targeted `root` — re-run against `$ADMIN_USER@` before reporting the host offline.
    - Skip VMs and test hosts (those with `sshTarget: null` or `baremetal: false` where not cloud)
 
 6. **Cross-reference known issues with GitHub**
