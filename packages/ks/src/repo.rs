@@ -64,6 +64,12 @@ fn looks_like_keystone_repo(path: &Path) -> bool {
 }
 
 fn normalize_repo_root(path: &Path) -> Option<PathBuf> {
+    // CRITICAL: never mistake a keystone platform repo (or worktree of one) for a
+    // consumer config flake — keystone's modules/hosts.nix will later blow up nix
+    // eval with "expected a set but found a function". See find_config_repo_recursive.
+    if looks_like_keystone_repo(path) {
+        return None;
+    }
     detect_layout(path)?;
     std::fs::canonicalize(path)
         .ok()
@@ -125,8 +131,18 @@ fn canonical_installed_repo_path(home: &Path) -> Option<PathBuf> {
 /// Walk up to `max_depth` levels looking for a directory with a recognized layout.
 ///
 /// Checks for `hosts.nix` (legacy) first, then `flake.nix` + `hosts/` (mkSystemFlake).
+///
+/// CRITICAL: skip any directory that looks like a keystone platform repo — keystone
+/// has `modules/hosts.nix` (a NixOS options module, a lambda) that MUST NOT be
+/// mistaken for a consumer flake's root-level `hosts.nix` host registry. Without
+/// this guard, descending into `~/.keystone/repos/ncrmro/keystone/modules/` would
+/// return `modules/` as the config repo and later `nix eval --apply builtins.attrNames`
+/// fails with "expected a set but found a function".
 fn find_config_repo_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
     if max_depth == 0 {
+        return None;
+    }
+    if looks_like_keystone_repo(dir) {
         return None;
     }
 
@@ -134,10 +150,18 @@ fn find_config_repo_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_file() && path.file_name().and_then(|name| name.to_str()) == Some("hosts.nix") {
+            // Only accept hosts.nix at a flake root — guards against matching
+            // modules/hosts.nix inside a keystone platform repo.
             let parent = path.parent()?.to_path_buf();
-            return std::fs::canonicalize(&parent).ok().or(Some(parent));
+            if parent.join("flake.nix").is_file() {
+                return std::fs::canonicalize(&parent).ok().or(Some(parent));
+            }
+            continue;
         }
         if !path.is_dir() {
+            continue;
+        }
+        if looks_like_keystone_repo(&path) {
             continue;
         }
         if detect_layout(&path).is_some() {
@@ -1236,6 +1260,64 @@ mod tests {
         let repo = find_repo_with_context(home.path(), None, None, None).unwrap();
 
         assert_eq!(repo, std::fs::canonicalize(&canonical_repo).unwrap());
+    }
+
+    /// Create a directory layout that looks like a keystone platform repo:
+    /// flake.nix + docs/ks.md + packages/ks/ + modules/hosts.nix.
+    fn write_keystone_like_repo(path: &Path) {
+        std::fs::create_dir_all(path.join("docs")).unwrap();
+        std::fs::create_dir_all(path.join("packages").join("ks")).unwrap();
+        std::fs::create_dir_all(path.join("modules")).unwrap();
+        std::fs::write(path.join("flake.nix"), "{ }").unwrap();
+        std::fs::write(path.join("docs").join("ks.md"), "").unwrap();
+        // Mimic keystone's lambda-typed options module.
+        std::fs::write(
+            path.join("modules").join("hosts.nix"),
+            "{ config, lib, ... }: { }\n",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn normalize_repo_root_rejects_keystone_platform_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        write_keystone_like_repo(dir.path());
+        // Even if a keystone repo happens to have hosts.nix or hosts/ at root,
+        // treat it as the platform repo, not a consumer config.
+        std::fs::write(dir.path().join("hosts.nix"), "{ }").unwrap();
+        assert!(normalize_repo_root(dir.path()).is_none());
+    }
+
+    #[test]
+    fn find_config_repo_recursive_skips_keystone_worktree_modules_hosts_nix() {
+        // Simulate user layout: ~/.keystone/repos/ncrmro/keystone/modules/hosts.nix
+        // must not be returned as a config repo candidate.
+        let home = tempfile::tempdir().unwrap();
+        let repos = home.path().join(".keystone").join("repos").join("ncrmro");
+        std::fs::create_dir_all(&repos).unwrap();
+        write_keystone_like_repo(&repos.join("keystone"));
+
+        // No real config repo exists here — discovery must fail, not return
+        // the keystone modules/ directory.
+        assert!(find_config_repo_recursive(&home.path().join(".keystone").join("repos"), 4).is_none());
+    }
+
+    #[test]
+    fn find_config_repo_recursive_finds_real_consumer_flake_alongside_keystone() {
+        let home = tempfile::tempdir().unwrap();
+        let owner_dir = home.path().join(".keystone").join("repos").join("ncrmro");
+        std::fs::create_dir_all(&owner_dir).unwrap();
+        // A keystone platform worktree — must be skipped.
+        write_keystone_like_repo(&owner_dir.join("keystone"));
+        // A real consumer flake — must be returned.
+        let consumer = owner_dir.join("nixos-config");
+        std::fs::create_dir_all(&consumer).unwrap();
+        std::fs::write(consumer.join("flake.nix"), "{ }").unwrap();
+        std::fs::write(consumer.join("hosts.nix"), "{ }").unwrap();
+
+        let found =
+            find_config_repo_recursive(&home.path().join(".keystone").join("repos"), 4).unwrap();
+        assert_eq!(found, std::fs::canonicalize(&consumer).unwrap());
     }
 
     #[test]
