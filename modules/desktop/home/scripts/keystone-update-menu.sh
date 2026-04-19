@@ -416,7 +416,7 @@ preview_summary() {
         "Status: " + .status_summary,
         (
           if .update_allowed then
-            "Update command: nix flake update " + .input_name + " --flake " + .repo_root + " && ks update " + .host_key
+            "Update command: ks update"
           else
             "Update: " + .update_reason
           end
@@ -490,7 +490,7 @@ entries_json() {
           if .update_allowed then
             {
               Text: "Update current host",
-              Subtext: ("Relock " + .input_name + " and run ks update " + .host_key),
+              Subtext: ("Run ks update to install " + .latest_tag),
               Value: "run-update",
               Icon: "system-software-update-symbolic",
               Preview: "keystone-update-menu preview-summary",
@@ -525,9 +525,6 @@ entries_json() {
 
 run_update() {
   local state_json=""
-  local repo_root=""
-  local input_name=""
-  local host_key=""
   local command_literal=""
 
   state_json=$(load_state)
@@ -536,16 +533,10 @@ run_update() {
     return 0
   fi
 
-  repo_root=$(printf '%s\n' "$state_json" | jq -r '.repo_root')
-  input_name=$(printf '%s\n' "$state_json" | jq -r '.input_name')
-  host_key=$(printf '%s\n' "$state_json" | jq -r '.host_key')
-
-  command_literal=$(terminal_command_literal nix flake update "$input_name" --flake "$repo_root")
-  command_literal+=" && "
-  command_literal+=$(terminal_command_literal ks update "$host_key")
+  command_literal=$(terminal_command_literal ks update)
 
   launch_terminal_command "keystone-os-update" "$command_literal"
-  notify "Keystone update started" "Relocking ${input_name} in ${repo_root} and updating ${host_key}."
+  notify "Keystone update started" "Running ks update..."
 }
 
 dispatch() {
