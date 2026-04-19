@@ -169,6 +169,12 @@ learn_json() {
   jq -n '
     [
       {
+        Text: "Keystone Docs",
+        Subtext: "Open the Keystone documentation",
+        Value: "open-url\thttps://github.com/ncrmro/keystone",
+        Icon: "help-browser-symbolic"
+      },
+      {
         Text: "Keybindings",
         Subtext: "Search current Hyprland keybindings",
         Value: "open-keybindings",
