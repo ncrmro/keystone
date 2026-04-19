@@ -75,7 +75,15 @@ fn looks_like_keystone_repo(path: &Path) -> bool {
 /// or `hosts/`), then — unless `KS_SKIP_REPO_NIX_EVAL` is set — asserts that
 /// the flake exposes a non-empty `nixosConfigurations` attrset. The env var
 /// exists so tests can stub repos without a working Nix evaluator.
+///
+/// CRITICAL: never mistake a keystone platform repo (or worktree of one) for a
+/// consumer config flake — keystone's `modules/hosts.nix` is a NixOS options
+/// module (a lambda) that will later blow up `nix eval` with "expected a set
+/// but found a function".
 fn validate_repo_path(path: &Path) -> Option<PathBuf> {
+    if looks_like_keystone_repo(path) {
+        return None;
+    }
     detect_layout(path)?;
     let canonical = std::fs::canonicalize(path)
         .ok()
@@ -1295,6 +1303,33 @@ mod tests {
             validate_repo_path(dir.path()).is_none(),
             "stub flake with no nixosConfigurations must not validate"
         );
+    }
+
+    /// Create a directory layout that looks like a keystone platform repo:
+    /// flake.nix + docs/ks.md + packages/ks/ + modules/hosts.nix.
+    fn write_keystone_like_repo(path: &Path) {
+        std::fs::create_dir_all(path.join("docs")).unwrap();
+        std::fs::create_dir_all(path.join("packages").join("ks")).unwrap();
+        std::fs::create_dir_all(path.join("modules")).unwrap();
+        std::fs::write(path.join("flake.nix"), "{ }").unwrap();
+        std::fs::write(path.join("docs").join("ks.md"), "").unwrap();
+        // Mimic keystone's lambda-typed options module.
+        std::fs::write(
+            path.join("modules").join("hosts.nix"),
+            "{ config, lib, ... }: { }\n",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn validate_repo_path_rejects_keystone_platform_repo() {
+        let _guard = SkipNixEvalGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        write_keystone_like_repo(dir.path());
+        // Even if a keystone repo happens to have hosts.nix or hosts/ at root,
+        // treat it as the platform repo, not a consumer config.
+        std::fs::write(dir.path().join("hosts.nix"), "{ }").unwrap();
+        assert!(validate_repo_path(dir.path()).is_none());
     }
 
     #[test]
