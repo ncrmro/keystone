@@ -122,6 +122,12 @@ Options:
                         checkpoints, capture screenshots, and report pass/fail.
                         Headed (default): uses virgl + grim over SSH for screenshots.
                         Headless (--headless): uses llvmpipe + QEMU screendump.
+  --direct [HOST]       Build a bootable qcow2 directly from the NixOS host
+                        configuration (no ISO or installer required).  HOST
+                        defaults to 'laptop'.  Builds
+                        packages.x86_64-linux.vm-image-HOST, boots it via
+                        bin/virtual-machine, waits for SSH, and runs basic
+                        health checks.  The ISO-based path is not affected.
   --ssh-timeout SEC     Max wait time for SSH in headless mode (default: $SSH_WAIT_TIMEOUT).
   --disk-size GB        Size of the attached install disk image in GB (default: $VM_DISK_SIZE).
   --disk-path PATH      Path to the attached install disk image
@@ -138,6 +144,8 @@ Examples:
   ./bin/test-iso                           # GUI + serial
   ./bin/test-iso --dev                     # build from local changes + use repo-local test SSH key
   ./bin/test-iso --headless                # no window, polls SSH
+  ./bin/test-iso --direct laptop           # direct qcow2 build + boot (no ISO)
+  ./bin/test-iso --direct laptop --headless  # direct, headless, SSH validation
   ./bin/test-iso --disk-size 100G          # attach a larger install disk
   ./bin/test-iso --update-keystone-input   # refresh keystone input then build
   ./bin/test-iso --ssh-key ~/.ssh/id_ed25519.pub
@@ -153,6 +161,8 @@ BOOT=true
 HEADLESS=false
 E2E_MODE=false
 E2E_HOST="laptop"
+DIRECT_MODE=false
+DIRECT_HOST="laptop"
 UPDATE_KEYSTONE_INPUT=false
 DEV_MODE=false
 
@@ -195,6 +205,16 @@ while [[ $# -gt 0 ]]; do
         --e2e-host)
             E2E_HOST="$2"
             shift 2
+            ;;
+        --direct)
+            DIRECT_MODE=true
+            # Optional positional argument: host name (default "laptop")
+            if [[ $# -gt 1 && "$2" != --* ]]; then
+                DIRECT_HOST="$2"
+                shift 2
+            else
+                shift
+            fi
             ;;
         --ssh-timeout)
             SSH_WAIT_TIMEOUT="$2"
@@ -532,6 +552,208 @@ run_e2e_checkpoints() {
     return 0
 }
 
+# ── direct qcow2 mode ─────────────────────────────────────────────────────────
+
+# Build and boot a pre-formatted qcow2 image directly from the NixOS flake
+# (packages.x86_64-linux.vm-image-<host>), skipping the ISO installer.
+#
+# Validates:
+#   1. qcow2 image builds successfully from the project flake
+#   2. VM boots to SSH with the pre-installed system
+#   3. Basic OS health (uname + systemctl status)
+#
+# The caller is responsible for providing SSH keys via --ssh-key / --dev so
+# the admin user has authorized_keys in the built image.  When building in
+# --dev mode, SSH keys are injected into the flake snapshot before the build.
+run_direct_image() {
+    local host="${DIRECT_HOST:-laptop}"
+    local direct_result="/tmp/keystone-vm-image-${host}-$$"
+    local system="x86_64-linux"
+    local direct_vm_name="keystone-direct-$$"
+
+    log_info "Direct image mode: building vm-image-${host} for host '${host}'"
+
+    if [[ -z "$KEYSTONE_LOCKED_PATH" || ! -x "$KEYSTONE_LOCKED_PATH/bin/virtual-machine" ]]; then
+        log_error "Cannot locate bin/virtual-machine via KEYSTONE_LOCKED_PATH."
+        log_error "Ensure the flake has a path-locked keystone input."
+        exit 1
+    fi
+
+    local vm_script="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+
+    # ── snapshot the project (same mechanism as ISO build) ────────────────────
+
+    local snapshot_dir
+    snapshot_dir="$(mktemp -d)"
+    PROJECT_SNAPSHOT_DIR="$snapshot_dir"
+
+    if [[ "$DEV_MODE" != "true" ]]; then
+        assert_clean_repo
+    else
+        log_warn "Direct image: building from current working tree snapshot (--dev mode)."
+    fi
+
+    create_project_snapshot "$snapshot_dir"
+
+    # Inject SSH keys so the admin user has authorized_keys in the built image.
+    if [[ -n "$SSH_KEYS_LIST" ]]; then
+        sed -i "s|# sshKeys = \\[\\];.*|sshKeys = $nix_keys_list;|" \
+            "$snapshot_dir/flake.nix"
+        sed -i "s|sshKeys = \\[\\];.*|sshKeys = $nix_keys_list;|" \
+            "$snapshot_dir/flake.nix"
+    fi
+
+    # ── build the VM image ────────────────────────────────────────────────────
+
+    log_info "Building packages.${system}.vm-image-${host} ..."
+
+    local keystone_expr="self.inputs.keystone"
+    if [[ -n "$KEYSTONE_LOCKED_PATH" && -e "$KEYSTONE_LOCKED_PATH" ]]; then
+        keystone_expr="builtins.getFlake (toString $(printf '%q' "$KEYSTONE_LOCKED_PATH"))"
+    fi
+
+    # Build via the flake's packages output (produced by mkSystemFlake).
+    nix build \
+        --impure \
+        --expr "
+          let
+            self = builtins.getFlake (toString $(printf '%q' "$snapshot_dir"));
+          in
+          self.outputs.packages.${system}.vm-image-${host}" \
+        --out-link "$direct_result" \
+        --print-build-logs
+
+    # ── locate the qcow2 output ───────────────────────────────────────────────
+
+    local qcow2_path
+    qcow2_path="$(find "$direct_result" -maxdepth 1 -name '*.qcow2' -print -quit 2>/dev/null || true)"
+    if [[ -z "$qcow2_path" ]]; then
+        log_error "Build succeeded but no qcow2 found in $direct_result"
+        log_error "Available files:"
+        ls -la "$direct_result/" >&2 || true
+        cleanup_project_snapshot
+        rm -f "$direct_result"
+        exit 1
+    fi
+
+    local image_size
+    image_size="$(du -h "$qcow2_path" | cut -f1)"
+    log_ok "VM image built: $qcow2_path ($image_size)"
+
+    if [[ "$BOOT" == "false" ]]; then
+        log_ok "Image available at: $qcow2_path (--build-only; not booting)"
+        rm -f "$direct_result"
+        cleanup_project_snapshot
+        exit 0
+    fi
+
+    # ── prepare a writable copy of the image ─────────────────────────────────
+    #
+    # The Nix store path is read-only; copy it to a mutable location so the VM
+    # can write EFI variables and qcow2 snapshots without touching the store.
+
+    log_info "Copying image to $VM_DISK_PATH ..."
+    cp --reflink=auto "$qcow2_path" "$VM_DISK_PATH"
+    chmod u+w "$VM_DISK_PATH"
+
+    # ── set up cleanup ────────────────────────────────────────────────────────
+
+    direct_cleanup() {
+        if [[ -n "${direct_vm_name:-}" ]]; then
+            "$vm_script" --reset "$direct_vm_name" 2>/dev/null || true
+        fi
+        rm -f "$VM_DISK_PATH" "$direct_result"
+    }
+    trap 'direct_cleanup; cleanup_project_snapshot' EXIT
+
+    # ── boot the pre-built image ──────────────────────────────────────────────
+
+    log_info "Booting direct image via libvirt (no ISO)"
+    log_info "SSH port forwarding: localhost:$SSH_PORT → VM:22"
+    echo >&2
+    log_ok "SSH command:"
+    if [[ "$USE_DEV_SSH_KEY" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+        log_ok "  ssh -i $DEV_SSH_KEY_PATH -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+    else
+        log_ok "  ssh -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+    fi
+    echo >&2
+
+    local vm_args=(
+        --name "$direct_vm_name"
+        --disk-path "$VM_DISK_PATH"
+        --memory "$QEMU_MEM"
+        --vcpus "$QEMU_CPUS"
+        --ssh-port "$SSH_PORT"
+        --ssh-user "$ADMIN_USERNAME"
+        --start
+    )
+
+    if [[ "$USE_DEV_SSH_KEY" == "true" && -f "$DEV_SSH_KEY_PATH" ]]; then
+        vm_args+=(--ssh-key "$DEV_SSH_KEY_PATH")
+    fi
+
+    if [[ "$HEADLESS" == "true" ]]; then
+        vm_args+=(--headless)
+        log_info "Starting headless VM..."
+    else
+        log_info "Starting VM with SPICE display..."
+    fi
+
+    vm_args+=(--wait-ssh --ssh-timeout "$SSH_WAIT_TIMEOUT")
+
+    "$vm_script" "${vm_args[@]}"
+    log_ok "SSH is up!"
+
+    # ── run basic health validation ───────────────────────────────────────────
+
+    log_info "Direct: running SSH health checks"
+    local failed=0
+
+    local kernel_version
+    if kernel_version="$(ssh_cmd uname -r 2>/dev/null)"; then
+        log_ok "Direct: kernel: $kernel_version"
+    else
+        log_error "Direct: uname -r failed"
+        failed=1
+    fi
+
+    if ssh_cmd "systemctl is-system-running --wait" 2>/dev/null; then
+        log_ok "Direct: system is running"
+    else
+        local system_state
+        system_state="$(ssh_cmd "systemctl is-system-running" 2>/dev/null || echo unknown)"
+        # "degraded" is acceptable for test images; "starting" means boot incomplete
+        if [[ "$system_state" == "degraded" ]]; then
+            log_warn "Direct: system state is degraded (some units failed — acceptable for test images)"
+        else
+            log_error "Direct: unexpected system state: $system_state"
+            failed=1
+        fi
+    fi
+
+    if (( failed )); then
+        log_error "Direct: health checks FAILED"
+        direct_cleanup
+        cleanup_project_snapshot
+        exit 1
+    fi
+
+    log_ok "Direct: all health checks passed for host '${host}'"
+
+    if [[ "$HEADLESS" == "true" ]]; then
+        direct_cleanup
+        cleanup_project_snapshot
+        exit 0
+    fi
+
+    # Keep the VM alive for interactive use when not headless
+    log_warn "VM '$direct_vm_name' is running. Press Ctrl-C to shut it down."
+    while virsh -c qemu:///session dominfo "$direct_vm_name" 2>/dev/null | grep -q "running"; do
+        sleep 5
+    done
+}
+
 # ── read admin identity from flake ───────────────────────────────────────────
 
 ADMIN_USERNAME="$(nix eval --raw "${PROJECT_DIR}#adminUsername" 2>/dev/null)"
@@ -683,6 +905,14 @@ while IFS= read -r key; do
     nix_keys_list+=" \"$escaped\""
 done <<< "$SSH_KEYS_LIST"
 nix_keys_list+=" ]"
+
+# ── direct image mode (bypass ISO + installer) ────────────────────────────────
+
+if [[ "$DIRECT_MODE" == "true" ]]; then
+    run_direct_image
+    # run_direct_image exits internally; this is a safety net.
+    exit $?
+fi
 
 # ── build ─────────────────────────────────────────────────────────────────────
 

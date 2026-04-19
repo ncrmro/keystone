@@ -1,6 +1,6 @@
 ---
 title: ISO and OS virtual machine testing
-description: End-to-end testing of template generation, installer ISO, and desktop validation in QEMU
+description: End-to-end testing of template generation, installer ISO, desktop validation, and direct qcow2 image building in QEMU
 ---
 
 # ISO and OS virtual machine testing
@@ -15,6 +15,137 @@ Validate the full Keystone onboarding chain in a VM before touching real hardwar
 4. SSH works post-reboot with declarative keys from `admin.sshKeys`
 
 When the VM passes, the same template-generated ISO works on real hardware.
+
+## Two testing paths
+
+Keystone provides two independent VM testing paths for different layers of the
+stack.  Both coexist; neither replaces the other.
+
+| Path | Command | Tests | Time |
+|------|---------|-------|------|
+| **ISO + installer** | `test-iso --dev --e2e` | Installer TUI, disko, nixos-install, handoff | 20–30 min |
+| **Direct qcow2** | `test-iso --direct laptop` | NixOS modules, storage config, boot chain | 2–10 min |
+
+Use the **direct path** when iterating on NixOS modules, storage layout, TPM,
+or boot configuration — anything that does not involve the installer itself.
+
+Use the **ISO path** when testing the installer (`ks` binary, TUI flow,
+`ks install` behaviour).
+
+## Direct qcow2 image workflow
+
+`test-iso --direct` builds a bootable qcow2 directly from a host's NixOS
+configuration using disko's image mode, then boots it via `bin/virtual-machine`.
+No ISO is built or booted.
+
+### How it works
+
+```
+nix build .#packages.x86_64-linux.vm-image-laptop
+  └─ keystone.lib.mkVMImage { nixosSystem = nixosConfigurations.laptop; }
+       └─ disko imageBuilder: partition + format virtual disk, copy Nix store
+            └─ outputs: result/disk0.qcow2  (ZFS)  or  result/root.qcow2  (ext4)
+
+bin/virtual-machine --disk-path result/disk0.qcow2 --start test-vm
+  └─ Q35 + OVMF + swtpm + SPICE (same hardware config as ISO path)
+```
+
+### Quick start
+
+```bash
+# Build and boot in headless mode, run SSH health check, then clean up:
+cd /path/to/keystone-config
+./bin/test-iso --direct laptop --dev --headless
+
+# Build image only (do not start VM):
+./bin/test-iso --direct laptop --dev --build-only
+
+# Boot with a SPICE window for interactive debugging:
+./bin/test-iso --direct laptop --dev
+```
+
+### Building the image independently
+
+`mkSystemFlake` exposes `packages.${system}.vm-image-${name}` for every Linux
+host automatically.  You can build images without `test-iso`:
+
+```bash
+nix build .#packages.x86_64-linux.vm-image-laptop
+ls result/          # disk0.qcow2 (ZFS) or root.qcow2 (ext4)
+```
+
+To boot the pre-built image with full UEFI + SecureBoot + TPM:
+
+```bash
+VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+"$VM_SCRIPT" --name test-direct \
+             --disk-path result/disk0.qcow2 \
+             --ssh-port 12260 \
+             --memory 8192 \
+             --headless \
+             --start \
+             --wait-ssh
+```
+
+### Using `mkVMImage` in your own flake
+
+```nix
+# flake.nix
+packages.x86_64-linux.my-vm-image = keystone.lib.mkVMImage {
+  nixosSystem = nixosConfigurations.laptop;
+  # Optional overrides:
+  # imageFormat = "qcow2";   # default
+  # memSize = 4096;          # builder VM RAM in MB
+  # devices = [ "/dev/vda" ]; # virtual disk paths for builder VM
+};
+```
+
+### Snapshot-based iteration with direct images
+
+Direct images support the same qcow2 snapshot workflow as ISO-installed disks:
+
+```bash
+VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+VM_NAME="keystone-direct-$$"
+
+# Create a snapshot after first boot
+"$VM_SCRIPT" --snapshot "$VM_NAME" post-direct
+
+# List snapshots
+"$VM_SCRIPT" --list-snapshots "$VM_NAME"
+
+# Restore and reboot
+"$VM_SCRIPT" --destroy "$VM_NAME"
+"$VM_SCRIPT" --restore "$VM_NAME" post-direct
+"$VM_SCRIPT" --post-install-reboot "$VM_NAME" --headless
+```
+
+### Storage layout in image mode
+
+disko's image builder automatically remaps storage device paths to virtual
+ones (`/dev/vda`, `/dev/vdb`, …) regardless of what paths are declared in the
+host's `hardware.nix`.  The resulting image boots with the same storage layout
+on any Q35 VM with matching virtual disk count.
+
+`mkVMImage` overrides `keystone.os.storage.devices` to `["/dev/vda"]` by
+default.  This ensures the NixOS initrd (ZFS devNodes, LUKS crypttab) also
+uses the virtual path and boots correctly without hardware-specific disk IDs.
+
+For multi-disk configs (ZFS mirror, raidz), pass additional devices:
+
+```nix
+packages.x86_64-linux.vm-image-mirror = keystone.lib.mkVMImage {
+  nixosSystem = nixosConfigurations.server;
+  devices = [ "/dev/vda" "/dev/vdb" ];
+};
+```
+
+### LUKS and ZFS encryption in image mode
+
+Direct images use the same credstore-password (`keystone`) that the installer
+sets up.  At boot, the initrd prompts for the LUKS passphrase.  In interactive
+mode you type `keystone` at the console or over SSH.  In fully automated mode,
+use `qemu-guest-agent` or `QEMU monitor sendkey` sequences.
 
 ## What lives in the ISO vs what is evaluated at install time
 
@@ -51,7 +182,23 @@ VM. Changes take effect by updating the fixture's keystone flake input.
 | Screenshot capture | `screendump` via QEMU monitor |
 | Checkpoint validation | SSH-based checks from the host |
 
+
 ## Quick iteration workflow
+
+### After changing NixOS modules or storage config (direct path — fastest)
+
+Use the direct qcow2 path to validate module changes without the ISO installer:
+
+```bash
+cd /path/to/keystone-config
+
+# Headless direct validation (2–10 min depending on store hits):
+./bin/test-iso --direct laptop --dev --headless
+
+# Or build standalone for manual testing:
+nix build .#packages.x86_64-linux.vm-image-laptop
+bin/virtual-machine --disk-path result/disk0.qcow2 --ssh-port 12260 --headless --start --wait-ssh
+```
 
 ### First run (creates fixture and builds ISO)
 
@@ -60,7 +207,7 @@ cd /tmp/keystone-dev-template-fixture   # or any consumer repo
 ./bin/test-iso --dev --headless --e2e --port 12260 --memory 12288
 ```
 
-### After changing NixOS modules or lib/templates.nix
+### After changing NixOS modules or lib/templates.nix (ISO path)
 
 No ISO rebuild needed — the modules are evaluated during `nixos-install`:
 
@@ -162,7 +309,8 @@ This loop takes 2-3 minutes instead of 15+ minutes for a full reinstall.
 
 | Situation | Strategy | Time |
 |-----------|----------|------|
-| Module/template change, install known good | Restore `post-install` → `nixos-rebuild switch` | 2-3 min |
+| NixOS module change (storage, TPM, boot) | `test-iso --direct laptop --headless` | 2-10 min |
+| Module change, install known good | Restore `post-install` → `nixos-rebuild switch` | 2-3 min |
 | Boot/LUKS issues | Restore `post-install` → re-boot | 30 sec |
 | Installer change (`ks` binary) | Full reinstall (rebuild ISO) | 15-20 min |
 | Disko layout change | Delete disk → full reinstall | 15-20 min |
@@ -310,6 +458,9 @@ virtio-gpu device in VMs and on real GPUs on bare metal.
 | nixos-install rebuilds from source | Closure not in cache | Run `bin/warm-cachix` or `nix build .#nixosConfigurations.laptop.config.system.build.toplevel` on the host first |
 | `No disks found` in ks install | Disk has no serial number | `ks` discovers disks via `/dev/disk/by-id/`; virtio-blk needs `<serial>` in XML |
 | PCI slot conflict on VM start | qemu:commandline device collides with libvirt-managed device | Assign explicit `bus=pcie.0,addr=0xNN` to qemu:commandline devices |
+| `vm-image-<host> not found` in direct mode | `mkSystemFlake` not called in flake | Check `packages.x86_64-linux.vm-image-*` are exposed; ensure `hostsRoot` is set |
+| Direct image OOM during build | Builder VM (disko) needs more RAM | Override `disko.memSize` via `extraConfig` in `mkVMImage` |
+| LUKS prompt hangs in headless direct mode | initrd waiting for passphrase | Type passphrase over serial console or use `QEMU monitor sendkey` sequences |
 
 ## Existing VM test infrastructure
 
@@ -323,6 +474,7 @@ on it. See #339 for the consolidation plan.
 | `bin/build-vm` | 2 | — | No | No | — | Fast nixos-rebuild iteration |
 | `bin/test-microvm-tpm` | 1 | Q35 | No | tpm-tis | — | Lightweight TPM test (~20s) |
 | `test-iso --e2e` | — | (via virtual-machine) | Yes | Yes | virtio-gpu | Template → ISO → install → desktop |
+| `test-iso --direct` | — | (via virtual-machine) | Yes | Yes | SPICE/headless | Direct qcow2 → boot → SSH validation |
 
 Test configs in `tests/flake.nix`: `test-server`, `test-hyprland`, `build-vm-terminal`,
 `build-vm-desktop`, `tpm-microvm`.

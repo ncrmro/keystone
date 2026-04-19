@@ -467,6 +467,62 @@ rec {
   mkSharedMacosHome = mkSharedMacosHomeHelper;
   inherit mkInstallerIsoForFlake;
 
+  # Build a bootable qcow2 disk image directly from a NixOS host configuration.
+  #
+  # Uses disko's image builder to partition and format a virtual disk, then
+  # copies the NixOS store closure into it — no ISO or installer required.
+  #
+  # Usage:
+  #   packages.x86_64-linux.vm-image-laptop = keystone.lib.mkVMImage {
+  #     inherit (nixosConfigurations) laptop;
+  #   };
+  #
+  # The resulting derivation contains one qcow2 file per disko disk (e.g.
+  # disk0.qcow2 for ZFS configs, root.qcow2 for ext4 configs).  Boot it with:
+  #
+  #   bin/virtual-machine --disk-path result/disk0.qcow2 --start test-vm
+  #
+  # Storage devices are automatically remapped to /dev/vda, /dev/vdb, … by
+  # disko's image builder; no hardware paths need to be set in the config.
+  mkVMImage =
+    {
+      # A nixpkgs.lib.nixosSystem result, e.g. nixosConfigurations.laptop.
+      nixosSystem,
+      # Disk devices to use inside the builder VM.  Disko's prepareDiskoConfig
+      # remaps these to /dev/vda, /dev/vdb, … automatically; passing virtual
+      # paths here ensures the NixOS initrd config (ZFS devNodes, LUKS device
+      # references) is also consistent with the image layout.
+      devices ? [ "/dev/vda" ],
+      # Output image format.  qcow2 supports snapshots; raw is faster to write.
+      imageFormat ? "qcow2",
+      # RAM (MB) for the ephemeral QEMU builder VM.  ZFS needs more than the
+      # disko default of 1024 MB; 4096 is sufficient for a single-disk pool.
+      memSize ? 4096,
+      # Additional NixOS modules applied only during image build (not at
+      # runtime).  Use to inject test SSH keys, disable TPM assertions, etc.
+      extraConfig ? { },
+    }:
+    let
+      extendedSystem = nixosSystem.extendModules {
+        modules = [
+          {
+            # Override storage devices with virtual paths for the builder VM.
+            # This fixes ZFS devNodes, LUKS crypttab references, and any other
+            # initrd config that derives from keystone.os.storage.devices.
+            keystone.os.storage.devices = lib.mkForce devices;
+            # Produce a qcow2 (disko defaults to raw).
+            disko.imageBuilder.imageFormat = lib.mkDefault imageFormat;
+            # Always include the Nix store so the image can boot standalone.
+            disko.imageBuilder.copyNixStore = lib.mkDefault true;
+            # Give the builder VM enough RAM for ZFS pool creation.
+            disko.memSize = lib.mkDefault memSize;
+          }
+          extraConfig
+        ];
+      };
+    in
+    extendedSystem.config.system.build.diskoImages;
+
   mkLaptop =
     {
       storage ? { },
@@ -848,6 +904,20 @@ rec {
       packages.${installerSystem} =
         let
           pkgs = nixpkgs.legacyPackages.${installerSystem};
+          nixosConfigs = lib.mapAttrs mkLinuxInventoryHost linuxHosts;
+          # Build vm-image-<name> for every Linux host whose architecture
+          # matches the installer system (avoids cross-compilation failures).
+          vmImagePackages =
+            lib.mapAttrs'
+              (
+                name: _:
+                lib.nameValuePair "vm-image-${name}" (mkVMImage {
+                  nixosSystem = nixosConfigs.${name};
+                })
+              )
+              (
+                lib.filterAttrs (name: _: linuxHostSystemFor name linuxHosts.${name} == installerSystem) linuxHosts
+              );
         in
         {
           installerTargetsJson = pkgs.writeText "installer-targets.json" (builtins.toJSON installerTargets);
@@ -868,6 +938,7 @@ rec {
             # into the installed config handoff.
             inherit repoName;
           };
-        };
+        }
+        // vmImagePackages;
     };
 }
