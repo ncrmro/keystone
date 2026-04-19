@@ -385,9 +385,19 @@ in
             default = { };
             description = ''
               Map of local ZFS pool name to the systemd service that imports it.
-              Used to add after/requires dependencies on syncoid services and on
-              the receiver-side dataset initialization service so ZFS replication
-              does not start until non-boot pools are available.
+
+              Applied in two places, both guarded by per-pool membership in
+              this attrset:
+
+              - Sender side: each `syncoid-<name>.service` gains
+                `after`/`requires` on the import services for its source pool
+                and, for same-host (local) targets, its target pool. Syncoid
+                will not attempt replication before the relevant pools exist.
+              - Receiver side: the `zfs-backup-receiver-init.service` unit
+                (which runs `zfs create` and `zfs allow` for every incoming
+                backup) gains `after`/`requires` on the import services for
+                every incoming target pool. Dataset creation and permission
+                delegation cannot run before the target pool is imported.
 
               Only required for pools that are NOT imported automatically at boot
               (e.g., secondary storage pools like `ocean` on ocean or `lake` on maia).
