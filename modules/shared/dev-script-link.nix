@@ -111,10 +111,23 @@ in
 
         exec "${package}/bin/${commandName}" "$@"
       '';
+      # In packaged (non-dev) mode, wrap the package to embed extraEnvSetup so
+      # build-time configuration (e.g. KEYSTONE_MENU_SHOW_AGENTS) is always
+      # applied regardless of keystone.development. Without this wrap, env vars
+      # set only in the dev-mode commandWrapper are silently absent in production,
+      # causing capability-gated menu entries to fall back to their false defaults.
+      packageWithEnv =
+        if extraEnvSetup == "" then
+          package
+        else
+          pkgs.writeShellScriptBin commandName ''
+            ${extraEnvSetup}
+            exec "${package}/bin/${commandName}" "$@"
+          '';
     in
     lib.mkMerge [
       (lib.mkIf (repoCheckout == null) {
-        home.packages = [ package ];
+        home.packages = [ packageWithEnv ];
       })
       (lib.mkIf (repoCheckout != null) {
         home.file.".local/bin/${commandName}" = {

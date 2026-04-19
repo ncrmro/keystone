@@ -72,18 +72,37 @@
 
         # Home Manager desktop packages — per-user on laptop and workstation
         # hosts only, not servers. Use for GUI apps.
+        # See: docs/desktop/post-install-apps.md for the full onboarding guide.
         # desktopUserModules = [
         #   (
         #     { pkgs, ... }:
         #     {
         #       home.packages = with pkgs; [
-        #         obsidian
-        #         vscode
-        #         bitwarden-desktop
+        #         # --- Browser (pick one, then set keystone.desktop.browser below) ---
+        #         # chromium              # Chromium (open-source Chrome base)
+        #         # google-chrome-stable  # Google Chrome
+        #         # firefox               # Firefox
+        #
+        #         # --- Editors and IDEs ---
+        #         # vscode                # VS Code (supports Claude Code extension)
+        #         # obsidian              # Knowledge management (vaults at ~/notes/)
+        #
+        #         # --- Password managers ---
+        #         # bitwarden-desktop     # Bitwarden GUI
+        #         # bitwarden-cli         # bw CLI for scripting
+        #
+        #         # --- AI coding ---
+        #         # pkgs.keystone.codex   # Antigravity IDE
         #       ];
         #     }
         #   )
         # ];
+
+        # Default browser binding ($mod+B). Uncomment and match the browser you
+        # add in desktopUserModules above.
+        # keystone.desktop.browser = "chromium";
+        # keystone.desktop.browser = "google-chrome-stable";
+        # keystone.desktop.browser = "firefox";
       };
       keystoneServices = {
         # Shared infrastructure services are placed globally here.
