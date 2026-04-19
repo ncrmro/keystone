@@ -64,6 +64,7 @@ archetypes:
       - tool.zk-notes
       - process.enable-by-default
       - os.zfs-backup
+      - os.systemd-over-activation
       - tool.stalwart
       - process.vcs-context-continuity
 
@@ -131,6 +132,7 @@ archetypes:
       - tool.github
       - tool.journal-remote
       - os.zfs-backup
+      - os.systemd-over-activation
       - tool.cloudflare-workers
       - tool.zk
       - process.knowledge-management
