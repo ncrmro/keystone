@@ -496,7 +496,7 @@ in
               if ! zfs list ${escapeShellArg dataset} >/dev/null 2>&1; then
                 zfs create -p ${escapeShellArg dataset} || true
               fi
-              zfs allow ${syncUser} receive,create,mount,rollback,destroy ${escapeShellArg parentDataset}
+              zfs allow ${escapeShellArg syncUser} receive,create,mount,rollback,destroy ${escapeShellArg parentDataset}
             ''
           ) incomingBackups
         );
