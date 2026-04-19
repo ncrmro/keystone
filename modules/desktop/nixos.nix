@@ -110,6 +110,13 @@ in
       class = "user";
     };
 
+    # Create the /etc/pam.d/hyprlock service file so that hyprlock uses the
+    # correct PAM rules instead of falling back to /etc/pam.d/su.  Without
+    # this stanza, the journal emits:
+    #   [ERR] Pam module "/etc/pam.d/hyprlock" does not exist! Falling back …
+    # which degrades both password and fingerprint auth on the lock screen.
+    security.pam.services.hyprlock = { };
+
     # Pipewire audio stack
     security.rtkit.enable = mkDefault true;
     services.pulseaudio.enable = mkDefault false;

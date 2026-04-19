@@ -7,7 +7,11 @@
 with lib;
 let
   desktopCfg = config.keystone.desktop;
-  lockCommand = "pidof hyprlock || hyprlock";
+  # Invoke hyprlock via its systemd service so that a config-parse SIGABRT is
+  # contained in lock.slice rather than propagating into Hyprland's crash
+  # reporter.  The pidof guard prevents launching a duplicate instance when
+  # one is already running (e.g. startup lock).
+  lockCommand = "pidof hyprlock || systemctl --user start --no-block hyprlock";
 in
 {
   config = mkIf desktopCfg.enable {
