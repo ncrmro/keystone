@@ -167,3 +167,10 @@ cat /var/lib/prometheus-node-exporter/zfs_backup_rpool-to-ocean.prom
 # Full fleet check
 ks doctor
 ```
+
+## Related conventions
+
+- `os.systemd-over-activation` — receiver-side dataset initialization and
+  permission delegation MUST run as a systemd oneshot ordered after the
+  relevant pool-import unit, not as a `system.activationScripts` entry.
+  Rule 17g depends on that ordering edge being expressible.

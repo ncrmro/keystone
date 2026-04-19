@@ -31,6 +31,12 @@
 15. NixOS modules SHOULD have VM tests (`nixos/tests`) for non-trivial behavior.
 16. Flake checks (`nix flake check`) MUST pass before pushing.
 
+## NixOS System Activation
+
+For NixOS `system.activationScripts` vs `systemd.services` oneshots, see
+`os.systemd-over-activation`. Default to systemd; activation scripts are the
+narrow exception.
+
 ## Home-Manager File Management
 
 17. Config files that the managed tool modifies at runtime MUST NOT use `home.file` with `.text` or `.source`, because home-manager creates an immutable Nix store symlink that the tool cannot write to.
