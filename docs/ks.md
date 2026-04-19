@@ -52,16 +52,19 @@ ks build --lock ocean
 ### `ks update`
 
 ```bash
-ks update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-users] [HOSTS]
+ks update [--debug] [--dev] [--boot] [--pull] [--user USERS] [--all-users] [HOSTS]
 ```
 
 Pull, verify, build, and deploy Keystone hosts.
+
+Lock mode (pull latest flake inputs, build, push) is the default behavior.
+Use `--dev` to deploy the current local checkout without locking.
+Use `ks switch` to apply the current local state without any pull, lock, or push steps.
 
 - `--debug`: Show warnings from `git` and `nix` commands.
 - `--dev`: Build and deploy the current unlocked checkout without pull, lock, or push.
 - `--boot`: Register the new generation for next boot without switching now.
 - `--pull`: Pull managed repos only, then stop.
-- `--lock`: Force lock mode explicitly. This is the default unless `--dev` is set.
 - `--user USERS`: Limit home-manager activation to a comma-separated user list.
 - `--all-users`: Activate all home-manager users on each target host.
 
