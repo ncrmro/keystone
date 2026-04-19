@@ -904,20 +904,19 @@ rec {
       packages.${installerSystem} =
         let
           pkgs = nixpkgs.legacyPackages.${installerSystem};
-          nixosConfigs = lib.mapAttrs mkLinuxInventoryHost linuxHosts;
           # Build vm-image-<name> for every Linux host whose architecture
           # matches the installer system (avoids cross-compilation failures).
-          vmImagePackages =
-            lib.mapAttrs'
-              (
-                name: _:
-                lib.nameValuePair "vm-image-${name}" (mkVMImage {
-                  nixosSystem = nixosConfigs.${name};
-                })
-              )
-              (
-                lib.filterAttrs (name: _: linuxHostSystemFor name linuxHosts.${name} == installerSystem) linuxHosts
-              );
+          # Filter first to avoid evaluating configs for hosts that won't be packaged.
+          vmImageHosts = lib.filterAttrs (
+            name: _: linuxHostSystemFor name linuxHosts.${name} == installerSystem
+          ) linuxHosts;
+          linuxHostConfigurations = lib.mapAttrs mkLinuxInventoryHost vmImageHosts;
+          vmImagePackages = lib.mapAttrs' (
+            name: _:
+            lib.nameValuePair "vm-image-${name}" (mkVMImage {
+              nixosSystem = linuxHostConfigurations.${name};
+            })
+          ) vmImageHosts;
         in
         {
           installerTargetsJson = pkgs.writeText "installer-targets.json" (builtins.toJSON installerTargets);
