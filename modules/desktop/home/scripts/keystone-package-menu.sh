@@ -32,8 +32,8 @@ entries_json() {
   jq -n '
     [
       {
-        Text: "Search packages",
-        Subtext: "Search the current system flake package set and choose an install target",
+        Text: "Add Nix package",
+        Subtext: "Search nixpkgs and install temporarily (nix shell) or permanently (home.packages)",
         Value: "search-and-install",
         Icon: "system-software-install-symbolic"
       }
@@ -51,16 +51,11 @@ current_system() {
 
 keystone_dev_enabled() {
   local repo_root="$1"
-  local host_key=""
+  local hostname=""
   local value=""
 
-  host_key=$(current_host_key)
-  if [[ -z "$host_key" ]]; then
-    printf "false\n"
-    return 0
-  fi
-
-  value=$(nix eval "$repo_root#nixosConfigurations.${host_key}.config.keystone.development" --json 2>/dev/null || printf 'false')
+  hostname=$(current_hostname)
+  value=$(nix eval "$repo_root#nixosConfigurations.${hostname}.config.keystone.development" --json 2>/dev/null || printf 'false')
   if [[ "$value" == "true" ]]; then
     printf "true\n"
   else
@@ -168,140 +163,17 @@ pick_package() {
   printf "%s\n" "$selected"
 }
 
-pick_target() {
+pick_install_mode() {
   local selected=""
 
   selected=$(
-    cat <<'EOF' | prompt_selection "Install target"
-System	system	Manage environment.systemPackages in the system flake
-Home Manager	home-manager	Manage home.packages in the current user's config
-Nix profile	nix-profile	Install for this user from the locked nixpkgs input
+    cat <<'EOF' | prompt_selection "Install mode"
+Temporary	temporary	Open a nix shell in a terminal (session-scoped, closes with the terminal)
+Permanent	permanent	Append to home.packages and apply with ks update
 EOF
   ) || return 1
 
   printf "%s\n" "$selected"
-}
-
-host_registry_json() {
-  local repo_root="$1"
-  nix eval --json --file "${repo_root}/hosts.nix"
-}
-
-current_host_key() {
-  local repo_root=""
-  local hostname=""
-
-  repo_root=$(keystone-desktop-config config-repo-root)
-  hostname=$(current_hostname)
-
-  host_registry_json "$repo_root" | jq -r --arg hostname "$hostname" '
-    to_entries[]
-    | select(.value.hostname == $hostname)
-    | .key
-  ' | head -n1
-}
-
-pick_system_host() {
-  local repo_root="$1"
-  local current_key="$2"
-  local selected=""
-
-  selected=$(
-    host_registry_json "$repo_root" | jq -r --arg current_key "$current_key" '
-      to_entries
-      | sort_by(
-          (if .key == $current_key then 0 else 1 end),
-          .key
-        )
-      | .[]
-      | [
-          (
-            if .key == $current_key then
-              .value.hostname + " (current)"
-            else
-              .value.hostname
-            end
-          ),
-          .key,
-          (.value.sshTarget // "local-only"),
-          "System install target"
-        ]
-      | @tsv
-    ' | prompt_selection "System host"
-  ) || return 1
-
-  printf "%s\n" "$selected"
-}
-
-pick_home_manager_host() {
-  local repo_root="$1"
-  local current_hostname="$2"
-  local selected=""
-  local host_json=""
-
-  host_json=$(host_registry_json "$repo_root")
-  selected=$(
-    find "${repo_root}/home-manager/${USER}" -maxdepth 1 -type f -name '*.nix' -printf '%f\n' 2>/dev/null \
-      | sed 's/\.nix$//' \
-      | while IFS= read -r host_name; do
-          [[ -z "$host_name" || "$host_name" == "base" ]] && continue
-          if printf '%s\n' "$host_json" | jq -e --arg host_name "$host_name" '
-            to_entries[]
-            | select(.value.hostname == $host_name)
-          ' >/dev/null; then
-            if [[ "$host_name" == "$current_hostname" ]]; then
-              printf "%s\t%s\t%s\n" "${host_name} (current)" "$host_name" "Home Manager install target"
-            else
-              printf "%s\t%s\t%s\n" "$host_name" "$host_name" "Home Manager install target"
-            fi
-          fi
-        done \
-      | awk -F '\t' -v current="$current_hostname" '
-          {
-            rank = ($2 == current ? 0 : 1)
-            print rank "\t" $0
-          }
-        ' \
-      | sort \
-      | cut -f2- \
-      | prompt_selection "Home Manager host"
-  ) || return 1
-
-  printf "%s\n" "$selected"
-}
-
-resolve_system_host_file() {
-  local repo_root="$1"
-  local host_key="$2"
-  local hostname=""
-  local matches=()
-
-  hostname=$(host_registry_json "$repo_root" | jq -r --arg host_key "$host_key" '.[$host_key].hostname // empty')
-  if [[ -z "$hostname" ]]; then
-    printf "Unable to resolve hostname for host key %s\n" "$host_key" >&2
-    return 1
-  fi
-
-  mapfile -t matches < <(rg -l "networking\\.hostName\\s*=\\s*\"${hostname}\";" "${repo_root}/hosts" -g 'default.nix' 2>/dev/null || true)
-  if [[ "${#matches[@]}" -ne 1 ]]; then
-    printf "Unable to uniquely resolve system host file for %s\n" "$hostname" >&2
-    return 1
-  fi
-
-  printf "%s\n" "${matches[0]}"
-}
-
-resolve_home_manager_host_file() {
-  local repo_root="$1"
-  local host_name="$2"
-  local candidate="${repo_root}/home-manager/${USER}/${host_name}.nix"
-
-  if [[ ! -f "$candidate" ]]; then
-    printf "Unable to locate Home Manager file: %s\n" "$candidate" >&2
-    return 1
-  fi
-
-  printf "%s\n" "$candidate"
 }
 
 write_package_install_block() {
@@ -391,52 +263,39 @@ launch_terminal_command() {
 
 apply_install() {
   local repo_root="$1"
-  local target_kind="$2"
-  local target_host="$3"
-  local nixpkgs_ref="$4"
-  local package_attr="$5"
+  local mode="$2"
+  local nixpkgs_ref="$3"
+  local package_attr="$4"
   local target_file=""
   local is_dev=""
   local command_literal=""
+  local current_name=""
 
-  is_dev=$(keystone_dev_enabled "$repo_root")
-
-  case "$target_kind" in
-    nix-profile)
-      command_literal=$(terminal_command_literal nix profile install "${nixpkgs_ref}#${package_attr}")
-      launch_terminal_command "keystone-package-install" "$command_literal"
-      notify "Package install started" "Installing ${package_attr} into the user profile."
+  case "$mode" in
+    temporary)
+      command_literal=$(terminal_command_literal nix shell "${nixpkgs_ref}#${package_attr}")
+      launch_terminal_command "nix-shell-${package_attr}" "$command_literal"
+      notify "Temporary shell opened" "${package_attr} is available in this session only. It will be cleaned up when the terminal closes."
       ;;
-    home-manager)
-      if ! target_file=$(resolve_home_manager_host_file "$repo_root" "$target_host" 2>/dev/null); then
-        notify "Install blocked" "Unable to locate the Home Manager file for ${target_host}."
+    permanent)
+      current_name=$(current_hostname)
+      is_dev=$(keystone_dev_enabled "$repo_root")
+      if ! target_file=$(keystone-desktop-config home-manager-host-file 2>/dev/null); then
+        notify "Install blocked" "Unable to locate the Home Manager file for ${current_name}. Ensure a home-manager config exists for this host."
         return 0
       fi
       write_package_install_block "$target_file" "home-manager" "$package_attr"
       notify "Config updated" "Added ${package_attr} to ${target_file}."
       if [[ "$is_dev" == "true" ]]; then
-        command_literal=$(terminal_command_literal ks update --dev "$target_host")
+        command_literal=$(terminal_command_literal ks update --dev "$current_name")
       else
-        command_literal=$(terminal_command_literal ks update --lock "$target_host")
+        command_literal=$(terminal_command_literal ks update --lock "$current_name")
       fi
       launch_terminal_command "keystone-package-install" "$command_literal"
-      ;;
-    system)
-      if ! target_file=$(resolve_system_host_file "$repo_root" "$target_host" 2>/dev/null); then
-        notify "Install blocked" "Unable to resolve a unique system host file for ${target_host}."
-        return 0
-      fi
-      write_package_install_block "$target_file" "system" "$package_attr"
-      notify "Config updated" "Added ${package_attr} to ${target_file}."
-      if [[ "$is_dev" == "true" ]]; then
-        notify "System package saved" "Development mode detected. Run ks update --lock ${target_host} to apply the system change."
-      else
-        command_literal=$(terminal_command_literal ks update --lock "$target_host")
-        launch_terminal_command "keystone-package-install" "$command_literal"
-      fi
+      notify "Available in new shells" "Restart your shell or run: exec \$SHELL"
       ;;
     *)
-      printf "Unknown install target: %s\n" "$target_kind" >&2
+      printf "Unknown install mode: %s\n" "$mode" >&2
       exit 1
       ;;
   esac
@@ -448,13 +307,9 @@ cmd_search_and_install() {
   local system=""
   local query=""
   local package_choice=""
-  local target_choice=""
-  local host_choice=""
+  local mode_choice=""
   local package_attr=""
-  local target_kind=""
-  local target_host=""
-  local current_key=""
-  local current_name=""
+  local mode=""
 
   if ! repo_root=$(keystone-desktop-config config-repo-root 2>/dev/null); then
     notify "Install unavailable" "Unable to locate the active system flake."
@@ -465,8 +320,6 @@ cmd_search_and_install() {
     return 0
   fi
   system=$(current_system)
-  current_key=$(current_host_key || true)
-  current_name=$(current_hostname)
 
   query=$(prompt_input "Search packages") || return 0
   if [[ "${#query}" -lt 2 ]]; then
@@ -480,24 +333,10 @@ cmd_search_and_install() {
   }
   IFS=$'\t' read -r _ package_attr _ <<<"$package_choice"
 
-  target_choice=$(pick_target) || return 0
-  IFS=$'\t' read -r _ target_kind _ <<<"$target_choice"
+  mode_choice=$(pick_install_mode) || return 0
+  IFS=$'\t' read -r _ mode _ <<<"$mode_choice"
 
-  case "$target_kind" in
-    system)
-      host_choice=$(pick_system_host "$repo_root" "$current_key") || return 0
-      IFS=$'\t' read -r _ target_host _ _ <<<"$host_choice"
-      ;;
-    home-manager)
-      host_choice=$(pick_home_manager_host "$repo_root" "$current_name") || return 0
-      IFS=$'\t' read -r _ target_host _ <<<"$host_choice"
-      ;;
-    nix-profile)
-      target_host=""
-      ;;
-  esac
-
-  apply_install "$repo_root" "$target_kind" "$target_host" "$nixpkgs_ref" "$package_attr"
+  apply_install "$repo_root" "$mode" "$nixpkgs_ref" "$package_attr"
 }
 
 dispatch() {
