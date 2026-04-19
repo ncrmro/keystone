@@ -1299,7 +1299,9 @@ mod tests {
 
         // No real config repo exists here — discovery must fail, not return
         // the keystone modules/ directory.
-        assert!(find_config_repo_recursive(&home.path().join(".keystone").join("repos"), 4).is_none());
+        assert!(
+            find_config_repo_recursive(&home.path().join(".keystone").join("repos"), 4).is_none()
+        );
     }
 
     #[test]
