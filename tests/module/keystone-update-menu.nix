@@ -259,8 +259,9 @@ pkgs.runCommand "test-keystone-update-menu"
 
     keystone-update-menu dispatch 'run-update'
     grep -F -- 'ghostty --title keystone-os-update -e bash -lc' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
-    grep -F -- "nix flake update keystone --flake $KEYSTONE_SYSTEM_FLAKE && ks update mox" "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
-    grep -F 'Relocking keystone' "$XDG_RUNTIME_DIR/notify-send.txt" >/dev/null
+    grep -F -- "ks approve --reason" "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+    grep -F -- "-- ks update" "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+    grep -F 'Keystone update started' "$XDG_RUNTIME_DIR/notify-send.txt" >/dev/null
 
     touch "$XDG_RUNTIME_DIR/dirty"
     dirty_json="$(keystone-update-menu entries-json)"
