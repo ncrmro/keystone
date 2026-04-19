@@ -331,7 +331,7 @@ is on `PATH`. Run `rbw unlock` once per session to allow background access.
 
 ---
 
-## SSH access for remote debugging
+## Adding SSH keys for remote access
 
 To allow an operator to SSH into a freshly installed laptop (for example, for
 rc validation debugging), add their public key to the `admin.sshKeys` list in
