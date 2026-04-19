@@ -332,18 +332,41 @@ export async function pingPong(config: Config, report: Report) {
   }
 
   emit("info", "waiting for pong reply", { tag });
+  // Belt-and-suspenders matcher: the tag MUST appear in the subject (strict,
+  // to avoid cross-run false positives), but pong evidence MAY come from
+  // either the subject (e.g., `Re: [pong] <tag>`, the preferred format) or
+  // the message body. This keeps the smoke green when an agent replies with
+  // a non-flipped subject (e.g., `Re: [ping] <tag>`) as long as the body
+  // clearly says `pong`.
   const found = await pollUntil(async () => {
     try {
       const raw = execSync(
         'himalaya envelope list -o json "not flag seen"',
         { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
       );
-      const envelopes: Array<{ subject: string }> = JSON.parse(raw);
-      return envelopes.some(
-        (e) =>
-          /pong/i.test(e.subject) &&
-          e.subject.includes(tag),
-      );
+      const envelopes: Array<{ id?: string | number; subject: string }> =
+        JSON.parse(raw);
+      for (const e of envelopes) {
+        if (!e.subject.includes(tag)) continue;
+        if (/p[io]ng/i.test(e.subject)) {
+          // Subject mentions ping or pong AND has the tag: accept. If the
+          // subject only says `ping`, we still trust it because the tag is
+          // unique per smoke run and the reply is threaded on our ping.
+          if (/pong/i.test(e.subject)) return true;
+          // Subject says `ping` — confirm via body before accepting.
+          if (e.id === undefined) continue;
+          try {
+            const body = execSync(
+              `himalaya message read ${String(e.id)}`,
+              { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+            );
+            if (/pong/i.test(body)) return true;
+          } catch {
+            // Fall through — body unreadable, keep polling.
+          }
+        }
+      }
+      return false;
     } catch {
       return false;
     }
