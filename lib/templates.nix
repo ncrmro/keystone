@@ -467,7 +467,8 @@ rec {
   mkSharedMacosHome = mkSharedMacosHomeHelper;
   inherit mkInstallerIsoForFlake;
 
-  mkLaptop =
+  # Shared builder for ext4 desktop hosts (laptop and thin-client).
+  mkExt4DesktopHost =
     {
       storage ? { },
       desktop ? true,
@@ -484,6 +485,10 @@ rec {
         } storage;
       }
     );
+
+  mkLaptop = mkExt4DesktopHost;
+
+  mkThinClient = mkExt4DesktopHost;
 
   mkWorkstation =
     {
@@ -610,6 +615,13 @@ rec {
           desktop = true;
         };
 
+        thin-client = {
+          builder = mkThinClient;
+          system = "x86_64-linux";
+          nixosModules = [ ];
+          desktop = true;
+        };
+
         workstation = {
           builder = mkWorkstation;
           system = "x86_64-linux";
@@ -711,7 +723,7 @@ rec {
           storageType =
             if hostCfg ? storage && hostCfg.storage ? type then
               hostCfg.storage.type
-            else if hostCfg.kind == "laptop" then
+            else if hostCfg.kind == "laptop" || hostCfg.kind == "thin-client" then
               "ext4"
             else
               "zfs";
