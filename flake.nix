@@ -330,6 +330,9 @@
           ];
         };
 
+        # 1Password CLI + optional GUI with SSH agent and polkit integration
+        onePassword = ./modules/os/1password.nix;
+
         # Headscale DNS import — consume server DNS records on headscale host
         headscale-dns = ./modules/server/headscale/dns-import.nix;
         headscale-acl = ./modules/server/headscale/acl-import.nix;
