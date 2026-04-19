@@ -52,7 +52,7 @@ The task loop orchestrator has already run declarative shell commands to fetch s
 
 ### Core rules
 
-- **Ping/Pong**: Any message containing "ping" (from any source) MUST always create a task to reply with "pong". This is a standing requirement that applies regardless of sender or context.
+- **Ping/Pong**: Any message containing "ping" (from any source) MUST always create a task to reply with "pong". This is a standing requirement that applies regardless of sender or context. The reply subject MUST contain the word `pong` so subject-based assertions pass — when the source is an email with subject `[ping] <tag>`, the reply subject MUST be `Re: [pong] <tag>` (keep the `Re:` prefix so mail threading is preserved, but flip `ping` → `pong`). The reply body MUST also contain `pong`.
 
 ### Scheduled tasks
 

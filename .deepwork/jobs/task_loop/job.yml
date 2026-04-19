@@ -85,7 +85,7 @@ workflows:
       and selects the model for each task's execution session. Tasks MAY have their model pre-set
       (e.g., by ingest or manually); prioritize preserves those.
 
-      Core rule: Any "ping" message from any source MUST generate a "pong" reply task.
+      Core rule: Any "ping" message from any source MUST generate a "pong" reply task. Email pong replies MUST use subject `Re: [pong] <tag>` (flip `ping` → `pong` while preserving the `Re:` prefix) and MUST include `pong` in the body.
     steps:
       - name: parse_sources
         instructions: |
@@ -143,7 +143,7 @@ workflows:
 
           ### Core rules
 
-          - **Ping/Pong**: Any message containing "ping" (from any source) MUST always create a task to reply with "pong". This is a standing requirement that applies regardless of sender or context.
+          - **Ping/Pong**: Any message containing "ping" (from any source) MUST always create a task to reply with "pong". This is a standing requirement that applies regardless of sender or context. The reply subject MUST contain the word `pong` so subject-based assertions pass — when the source is an email with subject `[ping] <tag>`, the reply subject MUST be `Re: [pong] <tag>` (keep the `Re:` prefix so mail threading is preserved, but flip `ping` → `pong`). The reply body MUST also contain `pong`.
 
           ### Scheduled tasks
 
@@ -290,7 +290,7 @@ workflows:
       and selects the model for each task's execution session. Tasks MAY have their model pre-set
       (e.g., by ingest or manually); prioritize preserves those.
 
-      Core rule: Any "ping" message from any source MUST generate a "pong" reply task.
+      Core rule: Any "ping" message from any source MUST generate a "pong" reply task. Email pong replies MUST use subject `Re: [pong] <tag>` (flip `ping` → `pong` while preserving the `Re:` prefix) and MUST include `pong` in the body.
     steps:
       - name: reorder_tasks
         instructions: |
@@ -456,7 +456,7 @@ workflows:
       and selects the model for each task's execution session. Tasks MAY have their model pre-set
       (e.g., by ingest or manually); prioritize preserves those.
 
-      Core rule: Any "ping" message from any source MUST generate a "pong" reply task.
+      Core rule: Any "ping" message from any source MUST generate a "pong" reply task. Email pong replies MUST use subject `Re: [pong] <tag>` (flip `ping` → `pong` while preserving the `Re:` prefix) and MUST include `pong` in the body.
     steps:
       - name: execute
         instructions: |
