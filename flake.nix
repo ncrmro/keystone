@@ -173,6 +173,15 @@
         }
       ];
 
+      # Shared aarch64 SD-image installer module list for Raspberry Pi hosts.
+      piInstallerModules = [
+        "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64-installer.nix"
+        ./modules/sd-installer.nix
+        {
+          nixpkgs.overlays = [ self.overlays.default ];
+        }
+      ];
+
       templateLib = import ./lib/templates.nix {
         inherit
           self
@@ -202,6 +211,20 @@
               }
             ];
           }).config.system.build.isoImage;
+
+        # Build an aarch64 Raspberry Pi SD-image installer with the given SSH
+        # keys baked in. Output is a flashable .img.zst under result/sd-image/.
+        mkInstallerSdImage =
+          {
+            nixpkgs,
+            sshKeys ? [ ],
+          }:
+          (nixpkgs.lib.nixosSystem {
+            system = "aarch64-linux";
+            modules = piInstallerModules ++ [
+              { keystone.piInstaller.sshKeys = sshKeys; }
+            ];
+          }).config.system.build.sdImage;
       };
 
       # ISO configuration without SSH keys (use lib.mkInstallerIso for keys)
@@ -210,6 +233,10 @@
         keystoneIso = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           modules = installerModules "x86_64-linux";
+        };
+        keystonePiInstaller = nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          modules = piInstallerModules;
         };
       };
 
@@ -619,6 +646,13 @@
             ;
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
         };
+
+      # aarch64 Pi SD installer image. Build with:
+      #   nix build .#packages.aarch64-linux.pi-installer
+      # Requires either an aarch64 builder or boot.binfmt.emulatedSystems.
+      packages.aarch64-linux = {
+        pi-installer = self.lib.mkInstallerSdImage { inherit nixpkgs; };
+      };
 
       # Development shell
       devShells.x86_64-linux =
