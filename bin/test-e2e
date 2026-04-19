@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Run the full e2e test pipeline from the keystone repo.
+#
+# Generates a consumer-flake fixture from the default template, locks it
+# to the current keystone checkout, then delegates to the fixture's
+# test-iso script. All flags are passed through.
+#
+# Usage:
+#   bin/test-e2e                          # full e2e (build + boot + install + validate)
+#   bin/test-e2e --build-only             # ISO build only
+#   bin/test-e2e --clean                  # regenerate fixture before running
+#   bin/test-e2e --no-build --port 12260  # reuse existing ISO, custom port
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+FIXTURE_DIR="/tmp/keystone-e2e-fixture"
+CLEAN=false
+PASSTHROUGH_ARGS=()
+
+log_info() { printf '\033[0;34m%s\033[0m\n' "$*"; }
+log_error() { printf '\033[0;31m%s\033[0m\n' "$*" >&2; }
+
+# Separate --clean from passthrough args
+for arg in "$@"; do
+    if [[ "$arg" == "--clean" ]]; then
+        CLEAN=true
+    else
+        PASSTHROUGH_ARGS+=("$arg")
+    fi
+done
+
+# Default to --dev --headless --e2e when no mode flags are given
+has_mode_flag=false
+for arg in "${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"}"; do
+    case "$arg" in
+        --e2e|--build-only|--no-build) has_mode_flag=true ;;
+    esac
+done
+if [[ "$has_mode_flag" == false ]]; then
+    PASSTHROUGH_ARGS=(--dev --headless --e2e "${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"}")
+fi
+
+# Ensure --dev is present (required for keystone-repo builds)
+has_dev=false
+for arg in "${PASSTHROUGH_ARGS[@]}"; do
+    [[ "$arg" == "--dev" ]] && has_dev=true
+done
+if [[ "$has_dev" == false ]]; then
+    PASSTHROUGH_ARGS=(--dev "${PASSTHROUGH_ARGS[@]}")
+fi
+
+if [[ "$CLEAN" == true ]] && [[ -d "$FIXTURE_DIR" ]]; then
+    log_info "Cleaning existing fixture..."
+    rm -rf "$FIXTURE_DIR"
+fi
+
+if [[ ! -d "$FIXTURE_DIR" ]]; then
+    log_info "Generating consumer-flake fixture from template..."
+    "$REPO_ROOT/bin/generate-template-fixture" \
+        --output "$FIXTURE_DIR" \
+        --keystone-source "path:${REPO_ROOT}"
+else
+    log_info "Refreshing fixture keystone lock..."
+    (cd "$FIXTURE_DIR" && nix flake lock --override-input keystone "path:${REPO_ROOT}")
+    # Commit the lock update so test-iso sees a clean tree
+    if ! git -C "$FIXTURE_DIR" diff --quiet flake.lock 2>/dev/null; then
+        git -C "$FIXTURE_DIR" add flake.lock
+        git -C "$FIXTURE_DIR" commit -m "chore: refresh keystone lock" --no-gpg-sign >/dev/null
+    fi
+fi
+
+if [[ ! -x "$FIXTURE_DIR/bin/test-iso" ]]; then
+    log_error "Fixture missing bin/test-iso — try bin/test-e2e --clean"
+    exit 1
+fi
+
+log_info "Running: bin/test-iso ${PASSTHROUGH_ARGS[*]}"
+exec "$FIXTURE_DIR/bin/test-iso" "${PASSTHROUGH_ARGS[@]}"

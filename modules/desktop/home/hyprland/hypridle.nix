@@ -7,7 +7,7 @@
 with lib;
 let
   desktopCfg = config.keystone.desktop;
-  lockCommand = "pidof hyprlock || hyprlock --immediate-render";
+  lockCommand = "pidof hyprlock || hyprlock";
 in
 {
   config = mkIf desktopCfg.enable {

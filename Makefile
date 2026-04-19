@@ -4,6 +4,7 @@
 .PHONY: test-tui-eval test-tui-build
 .PHONY: vm-create vm-start vm-stop vm-destroy vm-reset vm-ssh vm-console vm-display vm-status vm-post-install vm-reset-secureboot
 .PHONY: build-vm-terminal build-vm-desktop build-iso build-iso-ssh
+.PHONY: test-e2e test-e2e-build
 .PHONY: test-deploy test-desktop test-hm
 
 # Default VM name for libvirt targets
@@ -150,6 +151,14 @@ vm-post-install: ## Post-install: remove ISO, snapshot, reboot
 
 vm-reset-secureboot: ## Reset to Secure Boot setup mode
 	./bin/virtual-machine --reset-setup-mode $(VM_NAME)
+
+## E2E Testing (ISO build + VM boot + install + validate)
+
+test-e2e: ## Run full e2e test from keystone repo
+	./bin/test-e2e
+
+test-e2e-build: ## Build e2e ISO only (no VM boot)
+	./bin/test-e2e --build-only
 
 ## Deployment Testing
 

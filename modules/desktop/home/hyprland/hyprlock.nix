@@ -13,6 +13,13 @@ in
     programs.hyprlock = {
       enable = mkDefault true;
       settings = {
+        source = mkDefault "${config.xdg.configHome}/keystone/current/theme/hyprlock.conf";
+
+        general = {
+          disable_loading_bar = true;
+          no_fade_in = false;
+        };
+
         auth = {
           fingerprint.enabled = true;
         };
@@ -35,15 +42,17 @@ in
           halign = "center";
           valign = "center";
 
-          inner_color = "rgb(1e1e2e)";
-          outer_color = "rgb(89b4fa)";
+          inner_color = "$inner_color";
+          outer_color = "$outer_color";
           outline_thickness = 4;
 
           font_family = "JetBrainsMono Nerd Font";
-          font_color = "rgb(cdd6f4)";
+          font_size = 32;
+          font_color = "$font_color";
 
+          placeholder_color = "$placeholder_color";
           placeholder_text = "  Enter Password";
-          check_color = "rgb(a6e3a1)";
+          check_color = "$check_color";
           fail_text = "Wrong ($ATTEMPTS)";
 
           rounding = 0;
@@ -55,7 +64,7 @@ in
           monitor = "";
           text = "$FPRINTPROMPT";
           text_align = "center";
-          color = "rgb(f9e2af)";
+          color = "$font_color";
           font_size = 24;
           font_family = "JetBrainsMono Nerd Font";
           position = "0, -100";

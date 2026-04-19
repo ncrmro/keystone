@@ -88,29 +88,35 @@ pkgs.runCommand "hyprland-config-smoke"
     assert_contains "${hyprpaperConf}" "wallpaper=,/home/testuser/.config/keystone/current/background" \
       "hyprpaper assigns the theme background to all monitors"
 
-    assert_contains "${hypridleConf}" "lock_cmd=pidof hyprlock || hyprlock --immediate-render" \
-      "hypridle uses immediate-render for the lock command"
-    assert_contains "${hypridleConf}" "before_sleep_cmd=pidof hyprlock || hyprlock --immediate-render" \
-      "hypridle uses immediate-render before suspend"
-    assert_contains "${hypridleConf}" "on-timeout=pidof hyprlock || hyprlock --immediate-render" \
-      "hypridle timeout locking uses immediate-render"
+    assert_contains "${hypridleConf}" "lock_cmd=pidof hyprlock || hyprlock" \
+      "hypridle lock command invokes hyprlock"
+    assert_contains "${hypridleConf}" "before_sleep_cmd=pidof hyprlock || hyprlock" \
+      "hypridle locks before suspend"
+    assert_contains "${hypridleConf}" "on-timeout=pidof hyprlock || hyprlock" \
+      "hypridle timeout triggers lock"
+    assert_not_contains "${hypridleConf}" "immediate-render" \
+      "hypridle does not use --immediate-render (causes blank lock screen)"
 
-    assert_contains "${hyprlandConf}" "switch:on:Lid Switch, exec, pidof hyprlock || hyprlock --immediate-render; systemctl suspend" \
-      "lid-close binding uses immediate-render before suspend"
-    assert_contains "${startupLockScript}" "hyprlock_cmd=(hyprlock --immediate-render)" \
-      "startup lock wrapper launches hyprlock with immediate-render"
+    assert_contains "${hyprlandConf}" "switch:on:Lid Switch, exec, pidof hyprlock || hyprlock; systemctl suspend" \
+      "lid-close binding locks and suspends"
+    assert_contains "${startupLockScript}" "hyprlock_cmd=(hyprlock)" \
+      "startup lock wrapper launches hyprlock without --immediate-render"
 
-    assert_not_contains "${hyprlockConf}" "disable_loading_bar" \
-      "hyprlock config omits removed general.disable_loading_bar"
-    assert_not_contains "${hyprlockConf}" "no_fade_in" \
-      "hyprlock config omits removed general.no_fade_in"
-    assert_not_contains "${hyprlockConf}" "placeholder_color" \
-      "hyprlock config omits removed input-field.placeholder_color"
+    assert_contains "${hyprlockConf}" "source=" \
+      "hyprlock sources theme colors from theme hyprlock.conf"
+    assert_contains "${hyprlockConf}" "disable_loading_bar" \
+      "hyprlock general section is present"
+    assert_contains "${hyprlockConf}" "inner_color=\$inner_color" \
+      "hyprlock uses theme variable for inner_color"
+    assert_contains "${hyprlockConf}" "font_color=\$font_color" \
+      "hyprlock uses theme variable for font_color"
+    assert_contains "${hyprlockConf}" "placeholder_color=\$placeholder_color" \
+      "hyprlock uses theme variable for placeholder_color"
     if printf '%s\n' "$input_field_block" | grep -F "font_size" >/dev/null; then
-      echo "FAIL: hyprlock input-field omits removed font_size" >&2
-      exit 1
+      echo "PASS: hyprlock input-field includes font_size"
     else
-      echo "PASS: hyprlock input-field omits removed font_size"
+      echo "FAIL: hyprlock input-field missing font_size" >&2
+      exit 1
     fi
 
     export HOME="$PWD/home"

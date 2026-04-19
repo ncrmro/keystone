@@ -22,7 +22,7 @@ stable_lock_steps="${KEYSTONE_STARTUP_LOCK_STABLE_LOCK_STEPS:-20}"
 # appears or hyprlock stays stable after readiness.
 max_lock_attempts="${KEYSTONE_STARTUP_LOCK_MAX_ATTEMPTS:-3}"
 retry_delay_seconds="${KEYSTONE_STARTUP_LOCK_RETRY_DELAY:-1}"
-hyprlock_cmd=(hyprlock --immediate-render)
+hyprlock_cmd=(hyprlock)
 
 log() {
   local priority="$1"
