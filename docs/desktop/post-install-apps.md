@@ -64,10 +64,9 @@ keystone.lib.mkSystemFlake {
     ];
   };
 
-  # Default browser binding ($mod+B). Set to match the browser you added above.
+  # Default browser binding ($mod+B). Set to match the browser you added above
+  # ("chromium", "google-chrome-stable", or "firefox").
   # keystone.desktop.browser = "chromium";
-  # keystone.desktop.browser = "google-chrome-stable";
-  # keystone.desktop.browser = "firefox";
 
   hosts = {
     laptop = { kind = "laptop"; };          # gets desktopUserModules
@@ -110,9 +109,8 @@ option, the keybinding does nothing.
 **Step 2** — set the browser option in `flake.nix` or a shared module:
 
 ```nix
-keystone.desktop.browser = "chromium";           # Chromium (open-source)
-# keystone.desktop.browser = "google-chrome-stable"; # Google Chrome
-# keystone.desktop.browser = "firefox";              # Firefox
+# Set to match the package you added: "chromium", "google-chrome-stable", or "firefox"
+keystone.desktop.browser = "chromium";
 ```
 
 **Step 3** — apply:

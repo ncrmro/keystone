@@ -99,10 +99,8 @@
         # ];
 
         # Default browser binding ($mod+B). Uncomment and match the browser you
-        # add in desktopUserModules above.
+        # add in desktopUserModules above ("chromium", "google-chrome-stable", or "firefox").
         # keystone.desktop.browser = "chromium";
-        # keystone.desktop.browser = "google-chrome-stable";
-        # keystone.desktop.browser = "firefox";
       };
       keystoneServices = {
         # Shared infrastructure services are placed globally here.
