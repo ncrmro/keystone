@@ -116,5 +116,23 @@ in
 
     # The aarch64 sd-image-installer profile sets the system to aarch64-linux
     # and uses generic-extlinux-compatible bootloader — nothing else to wire.
+
+    # Why: on first-boot testing (see PR #396), both Pi HDMI connectors
+    # reported disconnected via HPD and vc4 failed with
+    # "Cannot find any crtc or sizes" because /boot/firmware/config.txt was
+    # empty. Force HDMI hotplug and safe mode so the installer always lights
+    # up a screen for interactive recovery, even with quirky monitors/KVMs.
+    # The upstream sd-image-aarch64 profile copies config.txt from the
+    # raspberrypifw store path (mode 0444), so we must restore write
+    # permission before appending. populateFirmwareCommands runs with the
+    # working dir already parent-of `firmware/`, so use a relative path.
+    sdImage.populateFirmwareCommands = lib.mkAfter ''
+      chmod +w firmware/config.txt
+      cat >> firmware/config.txt <<EOF
+      hdmi_force_hotplug=1
+      hdmi_safe=1
+      disable_overscan=1
+      EOF
+    '';
   };
 }
