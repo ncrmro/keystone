@@ -68,12 +68,41 @@ fn looks_like_keystone_repo(path: &Path) -> bool {
 }
 
 /// Validate that `path` is a recognised Keystone config repo and return its
-/// canonical form, or `None` if the layout is not recognised.
+/// canonical form, or `None` if the layout is not recognised or exposes no
+/// hosts.
+///
+/// This performs a cheap structural check (`flake.nix` + either `hosts.nix`
+/// or `hosts/`), then — unless `KS_SKIP_REPO_NIX_EVAL` is set — asserts that
+/// the flake exposes a non-empty `nixosConfigurations` attrset. The env var
+/// exists so tests can stub repos without a working Nix evaluator.
 fn validate_repo_path(path: &Path) -> Option<PathBuf> {
     detect_layout(path)?;
-    std::fs::canonicalize(path)
+    let canonical = std::fs::canonicalize(path)
         .ok()
-        .or_else(|| Some(path.to_path_buf()))
+        .unwrap_or_else(|| path.to_path_buf());
+
+    if std::env::var_os("KS_SKIP_REPO_NIX_EVAL").is_some() {
+        return Some(canonical);
+    }
+
+    // Assert that `<path>#nixosConfigurations` evaluates to a non-empty
+    // attrset. This catches the "stub flake with no hosts" regression that a
+    // pure file-presence check misses.
+    let output = std::process::Command::new("nix")
+        .arg("eval")
+        .arg(format!("{}#nixosConfigurations", canonical.display()))
+        .args(["--apply", "a: builtins.length (builtins.attrNames a)", "--json"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+    let count: u64 = serde_json::from_slice(&output.stdout).ok()?;
+    if count == 0 {
+        return None;
+    }
+    Some(canonical)
 }
 
 /// The default path of the system flake pointer file.
@@ -1090,6 +1119,28 @@ mod tests {
         std::fs::write(path.join("flake.nix"), "{ }").unwrap();
     }
 
+    /// Guard: every test that calls `find_repo` or `validate_repo_path` with
+    /// a stub flake.nix must skip the nix eval step, otherwise `nix eval`
+    /// attempts to evaluate the empty attrset and fails. Production callers
+    /// do not set this var; validation runs the real check there.
+    ///
+    /// CRITICAL: env mutation is process-global; serialise guard usage with
+    /// a mutex so parallel tests don't observe each other's env state.
+    static SKIP_NIX_EVAL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    struct SkipNixEvalGuard(std::sync::MutexGuard<'static, ()>);
+    impl SkipNixEvalGuard {
+        fn new() -> Self {
+            let lock = SKIP_NIX_EVAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+            std::env::set_var("KS_SKIP_REPO_NIX_EVAL", "1");
+            Self(lock)
+        }
+    }
+    impl Drop for SkipNixEvalGuard {
+        fn drop(&mut self) {
+            std::env::remove_var("KS_SKIP_REPO_NIX_EVAL");
+        }
+    }
+
     #[test]
     fn derive_ssh_target_requires_values() {
         assert_eq!(derive_ssh_target("", "tail.example.ts.net"), None);
@@ -1153,6 +1204,7 @@ mod tests {
 
     #[test]
     fn find_repo_flake_override_accepted() {
+        let _guard = SkipNixEvalGuard::new();
         let repo = tempfile::tempdir().unwrap();
         write_flake_repo(repo.path());
 
@@ -1172,6 +1224,7 @@ mod tests {
 
     #[test]
     fn find_repo_pointer_file_resolves_valid_repo() {
+        let _guard = SkipNixEvalGuard::new();
         let repo = tempfile::tempdir().unwrap();
         write_flake_repo(repo.path());
 
@@ -1213,7 +1266,36 @@ mod tests {
     }
 
     #[test]
+    fn validate_repo_path_rejects_empty_nixos_configurations() {
+        // A stub flake.nix with no nixosConfigurations must be rejected by
+        // the real (non-skip) validation path. This requires `nix` on PATH;
+        // the check fails closed if nix returns non-zero, which is the
+        // behaviour we want — a stub repo MUST NOT validate.
+        if std::process::Command::new("nix")
+            .arg("--version")
+            .output()
+            .map(|o| !o.status.success())
+            .unwrap_or(true)
+        {
+            eprintln!("skipping: nix not available");
+            return;
+        }
+        // Hold the shared env lock so a parallel test with
+        // SkipNixEvalGuard doesn't mask our un-set state.
+        let _lock = SKIP_NIX_EVAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("KS_SKIP_REPO_NIX_EVAL");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("hosts")).unwrap();
+        std::fs::write(dir.path().join("flake.nix"), "{ outputs = _: { }; }").unwrap();
+        assert!(
+            validate_repo_path(dir.path()).is_none(),
+            "stub flake with no nixosConfigurations must not validate"
+        );
+    }
+
+    #[test]
     fn find_repo_rejects_module_function_hosts_nix() {
+        let _guard = SkipNixEvalGuard::new();
         // A directory with only hosts.nix (no flake.nix) must be rejected —
         // this is the module-function masquerading as attrset bug.
         let dir = tempfile::tempdir().unwrap();
