@@ -646,7 +646,24 @@
       #   nix build .#packages.aarch64-linux.pi-installer
       # Requires either an aarch64 builder or boot.binfmt.emulatedSystems.
       packages.aarch64-linux = {
-        pi-installer = self.lib.mkInstallerSdImage { inherit nixpkgs; };
+        # TODO: replace with auto-collection from keystone.keys registry
+        # (see vega parity-research). Hardcoded here to avoid flake-output
+        # recursion into consumer nixosConfigurations.
+        pi-installer = self.lib.mkInstallerSdImage {
+          inherit nixpkgs;
+          sshKeys = [
+            # ncrmro host keys
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyrDBVcGK+pUZOTUA7MLoD5vYK/kaPF6TNNyoDmwNl2 ncrmro@ncrmro-laptop-fw7k"
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGiFUbcDdzBGNgo7GdRvuRvZ9Yf195pIm2jbiM0uJwW0 ncrmro@ncrmro-workstation"
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEE6cFSyJoiaURB7+961zETflBNPJUZszH9xyowzbpNu ncrmro@ocean"
+            "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBCUAyM7/owpfpJPuzQMmkmnlAcqB91QIfVsj1TueIU3hUtoHGR6FcKfFgJA5gkhww10A91M6iPSHD2kd/BNBGD4= ncrmro@ncrmro-laptop"
+            # ncrmro hardware keys
+            "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAILEOo3uKwbDN1SJemQx8UPVXv0TjKn2VfZSTVFfp3tlcAAAACnNzaDpuY3Jtcm8= ncrmro-yubi-black"
+            "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIDtwsz3zAJokZ3rnVyXUxmeUGba61b8KIW3u4aE52dK2AAAAFXNzaDpuY3Jtcm8teXViaS1ncmVlbg== ncrmro-yubi-green"
+            # drago agent (ocean/workstation fleet access)
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID9TbHc93b0RWSekJcUmlDkw0UulfzkbJqdd0ejfuV2C agent-drago"
+          ];
+        };
       };
 
       # Development shell
