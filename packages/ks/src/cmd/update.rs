@@ -150,8 +150,7 @@ async fn verify_all_repos_lock_ready(repo_root: &Path) -> Result<()> {
 }
 
 async fn update_dev(repo_root: &Path, mode: &str, hosts: &[String]) -> Result<UpdateResult> {
-    let _ = repo_root;
-    cmd::switch::execute(Some(&hosts.join(",")), mode == "boot", None).await?;
+    cmd::switch::execute(Some(&hosts.join(",")), mode == "boot", Some(repo_root)).await?;
 
     Ok(UpdateResult {
         hosts: hosts.to_vec(),
@@ -181,7 +180,8 @@ async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result
     verify_all_repos_lock_ready(repo_root).await?;
 
     let deploy_session = cmd::switch::prepare_deploy_session(repo_root, hosts).await?;
-    let build_result = cmd::build::execute(Some(&hosts.join(",")), true, None, false, None).await?;
+    let build_result =
+        cmd::build::execute(Some(&hosts.join(",")), true, None, false, Some(repo_root)).await?;
     cmd::switch::deploy_paths_with_session(
         repo_root,
         &deploy_session,

@@ -484,7 +484,8 @@ async fn run_agent_command(args: cli::AgentArgs, flake: Option<&std::path::Path>
 /// Run the `doctor` subcommand.
 async fn run_doctor_command(args: cli::DoctorArgs, flake: Option<&std::path::Path>) -> Result<()> {
     if !args.json {
-        return cmd::doctor::render_and_maybe_launch(args.local.as_deref(), &args.args).await;
+        return cmd::doctor::render_and_maybe_launch(args.local.as_deref(), &args.args, flake)
+            .await;
     }
 
     match cmd::doctor::execute(flake).await {

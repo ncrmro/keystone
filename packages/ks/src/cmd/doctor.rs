@@ -510,8 +510,9 @@ fn render_report(markdown: &str) -> Result<()> {
 pub async fn render_and_maybe_launch(
     local_model: Option<&str>,
     passthrough_args: &[String],
+    flake_override: Option<&std::path::Path>,
 ) -> Result<()> {
-    let report = execute(None).await?;
+    let report = execute(flake_override).await?;
     render_report(&report.markdown)?;
 
     if !util::interactive_terminal() {
@@ -524,7 +525,9 @@ pub async fn render_and_maybe_launch(
     let mut reply = String::new();
     io::stdin().read_line(&mut reply).ok();
     match reply.trim() {
-        "y" | "Y" | "yes" | "YES" => agent::execute(local_model, passthrough_args, None).await,
+        "y" | "Y" | "yes" | "YES" => {
+            agent::execute(local_model, passthrough_args, flake_override).await
+        }
         _ => Ok(()),
     }
 }

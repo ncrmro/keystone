@@ -60,39 +60,22 @@ yubikey_status() {
 }
 
 current_config_repo() {
-  if [[ -n "${KEYSTONE_SYSTEM_FLAKE:-}" && -d "${KEYSTONE_SYSTEM_FLAKE}" ]]; then
-    printf "%s\n" "$KEYSTONE_SYSTEM_FLAKE"
-    return 0
-  fi
-
-  if command -v keystone-current-system-flake >/dev/null 2>&1; then
-    local repo_root=""
-    repo_root="$(keystone-current-system-flake 2>/dev/null || true)"
-    if [[ -n "$repo_root" && -d "$repo_root" ]]; then
-      printf "%s\n" "$repo_root"
+  # Authoritative source: pointer file written at NixOS activation time.
+  # KEYSTONE_SYSTEM_FLAKE_POINTER_FILE may be set in test environments.
+  local _pointer_file="${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
+  if [[ -r "$_pointer_file" ]]; then
+    local _path
+    _path="$(tr -d '\n' < "$_pointer_file" 2>/dev/null || true)"
+    if [[ -n "$_path" && -d "$_path" ]]; then
+      printf "%s\n" "$_path"
       return 0
     fi
-  fi
-
-  if [[ -n "${NIXOS_CONFIG_DIR:-}" && -d "${NIXOS_CONFIG_DIR}" ]]; then
-    printf "%s\n" "$NIXOS_CONFIG_DIR"
-    return 0
-  fi
-
-  if [[ -d "$HOME/nixos-config" ]]; then
-    printf "%s\n" "$HOME/nixos-config"
-    return 0
   fi
 
   return 1
 }
 
 secrets_repo_path() {
-  if [[ -n "${NIXOS_CONFIG_DIR:-}" && -d "${NIXOS_CONFIG_DIR}/agenix-secrets" ]]; then
-    readlink -f "${NIXOS_CONFIG_DIR}/agenix-secrets"
-    return 0
-  fi
-
   local config_repo=""
   config_repo="$(current_config_repo || true)"
 

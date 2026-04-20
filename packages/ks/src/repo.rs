@@ -76,19 +76,26 @@ fn validate_repo_path(path: &Path) -> Option<PathBuf> {
         .or_else(|| Some(path.to_path_buf()))
 }
 
-/// Read the system flake pointer from `/run/current-system/keystone-system-flake`.
+/// The default path of the system flake pointer file.
+const SYSTEM_FLAKE_POINTER_FILE: &str = "/run/current-system/keystone-system-flake";
+
+/// Read the system flake pointer from the given file path.
 ///
 /// This file is written at NixOS activation time by `keystone.systemFlake` and
 /// contains the absolute path to the consumer flake that built the running
 /// system.
-fn read_system_flake_pointer() -> Option<PathBuf> {
-    let content =
-        std::fs::read_to_string("/run/current-system/keystone-system-flake").ok()?;
+fn read_system_flake_pointer_from(pointer_file: &Path) -> Option<PathBuf> {
+    let content = std::fs::read_to_string(pointer_file).ok()?;
     let path = content.trim();
     if path.is_empty() {
         return None;
     }
     Some(PathBuf::from(path))
+}
+
+/// Read the system flake pointer from `/run/current-system/keystone-system-flake`.
+fn read_system_flake_pointer() -> Option<PathBuf> {
+    read_system_flake_pointer_from(Path::new(SYSTEM_FLAKE_POINTER_FILE))
 }
 
 /// Locate the active Keystone config repository.
@@ -100,6 +107,13 @@ fn read_system_flake_pointer() -> Option<PathBuf> {
 /// 3. Error with a clear message pointing the user at `--flake` or at
 ///    fixing their system flake.
 pub fn find_repo(flake_override: Option<&Path>) -> Result<PathBuf> {
+    find_repo_with_pointer(flake_override, Path::new(SYSTEM_FLAKE_POINTER_FILE))
+}
+
+fn find_repo_with_pointer(
+    flake_override: Option<&Path>,
+    pointer_file: &Path,
+) -> Result<PathBuf> {
     // 1. Explicit --flake flag.
     if let Some(path) = flake_override {
         return validate_repo_path(path).ok_or_else(|| {
@@ -112,12 +126,13 @@ pub fn find_repo(flake_override: Option<&Path>) -> Result<PathBuf> {
     }
 
     // 2. System pointer file.
-    if let Some(path) = read_system_flake_pointer() {
+    if let Some(path) = read_system_flake_pointer_from(pointer_file) {
         return validate_repo_path(&path).ok_or_else(|| {
             anyhow::anyhow!(
-                "/run/current-system/keystone-system-flake points to '{}', but that path \
+                "{} points to '{}', but that path \
                  is not a valid Keystone config repo.\n\
                  Fix keystone.systemFlake.path in your NixOS config, or use --flake <path>.",
+                pointer_file.display(),
                 path.display()
             )
         });
@@ -128,9 +143,10 @@ pub fn find_repo(flake_override: Option<&Path>) -> Result<PathBuf> {
         "Cannot find a Keystone config repo.\n\
          Looked for:\n\
            1. --flake <path> CLI flag\n\
-           2. /run/current-system/keystone-system-flake (written by keystone.systemFlake)\n\
+           2. {} (written by keystone.systemFlake)\n\
          Use --flake <path> to specify the consumer flake explicitly, or ensure that\n\
-         keystone.systemFlake.path is set correctly in your NixOS configuration."
+         keystone.systemFlake.path is set correctly in your NixOS configuration.",
+        pointer_file.display()
     )
 }
 
@@ -1155,34 +1171,45 @@ mod tests {
     }
 
     #[test]
-    fn find_repo_pointer_file_read() {
+    fn find_repo_pointer_file_resolves_valid_repo() {
         let repo = tempfile::tempdir().unwrap();
         write_flake_repo(repo.path());
 
-        // Write a fake pointer file
+        // Write a pointer file pointing at the valid repo.
         let pointer_dir = tempfile::tempdir().unwrap();
         let pointer = pointer_dir.path().join("keystone-system-flake");
-        std::fs::write(
-            &pointer,
-            format!("{}\n", repo.path().display()),
-        )
-        .unwrap();
+        std::fs::write(&pointer, format!("{}\n", repo.path().display())).unwrap();
 
-        // read_system_flake_pointer reads a fixed path, so we test validate_repo_path directly.
-        let validated = validate_repo_path(repo.path());
-        assert!(validated.is_some());
+        // Use find_repo_with_pointer to exercise the pointer-file branch end-to-end.
+        let found = find_repo_with_pointer(None, &pointer).unwrap();
+        assert_eq!(found, std::fs::canonicalize(repo.path()).unwrap());
+    }
+
+    #[test]
+    fn find_repo_pointer_file_invalid_repo_errors() {
+        // Pointer file points at a path that is not a valid repo.
+        let tmp = tempfile::tempdir().unwrap();
+        let pointer = tmp.path().join("keystone-system-flake");
+        let bad_repo = tmp.path().join("bad-repo");
+        std::fs::create_dir_all(&bad_repo).unwrap();
+        // No flake.nix in bad_repo.
+        std::fs::write(&pointer, format!("{}\n", bad_repo.display())).unwrap();
+
+        let err = find_repo_with_pointer(None, &pointer).unwrap_err();
+        assert!(err.to_string().contains("keystone.systemFlake.path") || err.to_string().contains("not a valid"));
     }
 
     #[test]
     fn find_repo_no_pointer_no_override_errors() {
-        // Without a pointer file or override, find_repo should error with guidance.
-        // We can't easily suppress the real /run/current-system/keystone-system-flake
-        // in unit tests (it either exists or not on the test host), so we test the
-        // error message shape when given an explicit missing path.
-        let dir = tempfile::tempdir().unwrap();
-        let missing = dir.path().join("nonexistent");
-        let err = find_repo(Some(&missing)).unwrap_err();
-        assert!(err.to_string().contains("--flake"));
+        // Use a nonexistent pointer file — simulates a non-NixOS or fresh host.
+        let tmp = tempfile::tempdir().unwrap();
+        let missing_pointer = tmp.path().join("keystone-system-flake");
+        // Don't create the pointer file.
+
+        let err = find_repo_with_pointer(None, &missing_pointer).unwrap_err();
+        // Error should mention the pointer file location and --flake.
+        let msg = err.to_string();
+        assert!(msg.contains("--flake") || msg.contains("keystone.systemFlake"));
     }
 
     #[test]

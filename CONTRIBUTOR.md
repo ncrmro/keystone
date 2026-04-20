@@ -43,7 +43,24 @@ gh pr create
 
 For changes specific to your fleet (host config, user preferences, secrets),
 edit `ncrmro/nixos-config` directly. These don't need a keystone PR — just
-commit and `ks update --lock` from nixos-config.
+commit and `ks update --lock`.
+
+### Consumer flake resolution
+
+`ks update` and `ks switch` resolve the consumer flake from a single
+authoritative source: the NixOS option `keystone.systemFlake.path`, surfaced
+at activation time as `/run/current-system/keystone-system-flake`.
+
+- Default: `~/<adminUsername>/.keystone/repos/<adminUsername>/keystone-config`
+- Override: `ks --flake <path> update` (explicit flag only — no CWD, env-var, or git-walk fallbacks)
+
+When developing in a worktree, pass `--flake` explicitly:
+
+```bash
+ks --flake ~/.worktrees/ncrmro/keystone/<branch> update --dev
+```
+
+No shell exports, no `KEYSTONE_SYSTEM_FLAKE` env var, no `NIXOS_CONFIG_DIR`.
 
 ## Review before merge
 
