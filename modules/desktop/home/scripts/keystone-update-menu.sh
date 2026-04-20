@@ -416,7 +416,7 @@ preview_summary() {
         "Status: " + .status_summary,
         (
           if .update_allowed then
-            "Update command: ks update"
+            "Update command: cd " + .repo_root + " && ks update"
           else
             "Update: " + .update_reason
           end
@@ -490,7 +490,7 @@ entries_json() {
           if .update_allowed then
             {
               Text: "Update current host",
-              Subtext: ("Run ks update to install " + .latest_tag),
+              Subtext: "Run ks update to pull the latest config and deploy",
               Value: "run-update",
               Icon: "system-software-update-symbolic",
               Preview: "keystone-update-menu preview-summary",
@@ -525,6 +525,7 @@ entries_json() {
 
 run_update() {
   local state_json=""
+  local repo_root=""
   local command_literal=""
 
   state_json=$(load_state)
@@ -533,10 +534,17 @@ run_update() {
     return 0
   fi
 
-  command_literal=$(terminal_command_literal ks update)
+  repo_root=$(printf '%s\n' "$state_json" | jq -r '.repo_root')
+
+  # CRITICAL: cd into the repo_root the menu inspected so `ks update` resolves
+  # the same consumer flake. Without this the command runs under `bash -lc`
+  # from $HOME and `ks update` would rely on its own repo discovery, which can
+  # deploy a different repo than the one surfaced in the menu.
+  command_literal="cd $(printf '%q' "$repo_root") && "
+  command_literal+=$(terminal_command_literal ks update)
 
   launch_terminal_command "keystone-os-update" "$command_literal"
-  notify "Keystone update started" "Running ks update..."
+  notify "Keystone update started" "Running ks update in ${repo_root}..."
 }
 
 dispatch() {

@@ -259,8 +259,12 @@ pkgs.runCommand "test-keystone-update-menu"
 
     keystone-update-menu dispatch 'run-update'
     grep -F -- 'ghostty --title keystone-os-update -e bash -lc' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
-    grep -F -- "nix flake update keystone --flake $KEYSTONE_SYSTEM_FLAKE && ks update mox" "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
-    grep -F 'Relocking keystone' "$XDG_RUNTIME_DIR/notify-send.txt" >/dev/null
+    # Command must cd into the inspected repo_root so `ks update` resolves the
+    # same consumer flake the menu read state from (see run_update comment).
+    grep -F -- "cd $KEYSTONE_SYSTEM_FLAKE && ks update" "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+    # Menu must not re-lock the flake itself; ks update owns lock/pull/push.
+    ! grep -F -- 'nix flake update' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+    grep -F 'Running ks update' "$XDG_RUNTIME_DIR/notify-send.txt" >/dev/null
 
     touch "$XDG_RUNTIME_DIR/dirty"
     dirty_json="$(keystone-update-menu entries-json)"
