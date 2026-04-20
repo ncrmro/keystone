@@ -832,7 +832,7 @@ $ROLE_PROMPT"
     USERNAME="agent-${AGENT_NAME}"
 
     # Find secrets directory — read from the system flake pointer file.
-    local _system_flake=""
+    _system_flake=""
     if [ -r /run/current-system/keystone-system-flake ]; then
       _system_flake="$(tr -d '\n' < /run/current-system/keystone-system-flake 2>/dev/null || true)"
     fi
