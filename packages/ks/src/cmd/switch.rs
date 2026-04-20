@@ -506,8 +506,8 @@ pub async fn deploy_paths(
     deploy_paths_with_session(repo_root, &session, mode, hosts, store_paths).await
 }
 
-pub async fn execute(hosts_arg: Option<&str>, boot: bool) -> Result<SwitchResult> {
-    let repo_root = repo::find_repo()?;
+pub async fn execute(hosts_arg: Option<&str>, boot: bool, flake_override: Option<&std::path::Path>) -> Result<SwitchResult> {
+    let repo_root = repo::find_repo(flake_override)?;
     let hosts = repo::resolve_hosts(&repo_root, hosts_arg).await?;
     let mode = if boot { "boot" } else { "switch" };
     let _sudo_guard = ensure_sudo(&repo_root, &hosts).await?;

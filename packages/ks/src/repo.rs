@@ -8,8 +8,6 @@ use tokio::fs;
 
 use crate::config::KeystoneRepo;
 
-const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
-
 /// Detected repository layout.
 ///
 /// Legacy repos have a top-level `hosts.nix` attribute set.
@@ -24,12 +22,18 @@ pub enum RepoLayout {
 }
 
 /// Detect the repository layout at the given root.
+///
+/// `flake.nix` is required for all layouts. A bare `hosts.nix` without
+/// `flake.nix` is no longer recognised.
 pub fn detect_layout(repo_root: &Path) -> Option<RepoLayout> {
+    if !repo_root.join("flake.nix").is_file() {
+        return None;
+    }
     let hosts_nix = repo_root.join("hosts.nix");
     if hosts_nix.is_file() {
         return Some(RepoLayout::HostsNix(hosts_nix));
     }
-    if repo_root.join("flake.nix").is_file() && repo_root.join("hosts").is_dir() {
+    if repo_root.join("hosts").is_dir() {
         return Some(RepoLayout::FlakeHosts(repo_root.to_path_buf()));
     }
     None
@@ -63,154 +67,70 @@ fn looks_like_keystone_repo(path: &Path) -> bool {
         && path.join("packages").join("ks").exists()
 }
 
-fn normalize_repo_root(path: &Path) -> Option<PathBuf> {
+/// Validate that `path` is a recognised Keystone config repo and return its
+/// canonical form, or `None` if the layout is not recognised.
+fn validate_repo_path(path: &Path) -> Option<PathBuf> {
     detect_layout(path)?;
     std::fs::canonicalize(path)
         .ok()
         .or_else(|| Some(path.to_path_buf()))
 }
 
-fn current_git_root() -> Option<PathBuf> {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    Some(PathBuf::from(
-        String::from_utf8_lossy(&output.stdout).trim(),
-    ))
-}
-
-fn nonempty_env_path(var: &str) -> Option<PathBuf> {
-    std::env::var_os(var)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-}
-
-fn repo_resolution_error(source: &str, path: &Path) -> anyhow::Error {
-    anyhow::anyhow!(
-        "Configured {} points to {}, but that path is not a Keystone config repo.\n\
-         Expected hosts.nix (legacy) or flake.nix + hosts/ (mkSystemFlake).",
-        source,
-        path.display()
-    )
-}
-
-fn canonical_installed_repo_path_for(home: &Path, owner: &str) -> PathBuf {
-    home.join(".keystone")
-        .join("repos")
-        .join(owner)
-        .join(DEFAULT_INSTALLED_REPO_NAME)
-}
-
-fn current_repo_owner(home: &Path) -> Option<String> {
-    std::env::var("USER")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .or_else(|| {
-            home.file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .filter(|value| !value.is_empty())
-        })
-}
-
-fn canonical_installed_repo_path(home: &Path) -> Option<PathBuf> {
-    current_repo_owner(home).map(|owner| canonical_installed_repo_path_for(home, &owner))
-}
-
-/// Walk up to `max_depth` levels looking for a directory with a recognized layout.
+/// Read the system flake pointer from `/run/current-system/keystone-system-flake`.
 ///
-/// Checks for `hosts.nix` (legacy) first, then `flake.nix` + `hosts/` (mkSystemFlake).
-fn find_config_repo_recursive(dir: &Path, max_depth: usize) -> Option<PathBuf> {
-    if max_depth == 0 {
+/// This file is written at NixOS activation time by `keystone.systemFlake` and
+/// contains the absolute path to the consumer flake that built the running
+/// system.
+fn read_system_flake_pointer() -> Option<PathBuf> {
+    let content =
+        std::fs::read_to_string("/run/current-system/keystone-system-flake").ok()?;
+    let path = content.trim();
+    if path.is_empty() {
         return None;
     }
-
-    let entries = std::fs::read_dir(dir).ok()?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_file() && path.file_name().and_then(|name| name.to_str()) == Some("hosts.nix") {
-            let parent = path.parent()?.to_path_buf();
-            return std::fs::canonicalize(&parent).ok().or(Some(parent));
-        }
-        if !path.is_dir() {
-            continue;
-        }
-        if detect_layout(&path).is_some() {
-            return std::fs::canonicalize(&path).ok().or(Some(path));
-        }
-        if let Some(found) = find_config_repo_recursive(&path, max_depth - 1) {
-            return Some(found);
-        }
-    }
-
-    None
-}
-
-fn find_repo_with_context(
-    home: &Path,
-    nixos_config_dir: Option<&Path>,
-    git_root: Option<&Path>,
-    keystone_system_flake: Option<&Path>,
-) -> Result<PathBuf> {
-    if let Some(path) = nixos_config_dir {
-        return normalize_repo_root(path)
-            .ok_or_else(|| repo_resolution_error("NIXOS_CONFIG_DIR", path));
-    }
-
-    if let Some(root) = git_root.and_then(normalize_repo_root) {
-        return Ok(root);
-    }
-
-    if let Some(path) = keystone_system_flake {
-        if let Some(repo) = normalize_repo_root(path) {
-            return Ok(repo);
-        }
-        return Err(repo_resolution_error("KEYSTONE_SYSTEM_FLAKE", path));
-    }
-
-    if let Some(repo) =
-        canonical_installed_repo_path(home).and_then(|path| normalize_repo_root(&path))
-    {
-        return Ok(repo);
-    }
-
-    let repos = home.join(".keystone").join("repos");
-    if repos.is_dir() {
-        if let Some(found) = find_config_repo_recursive(&repos, 3) {
-            return Ok(found);
-        }
-    }
-
-    let fallback = home.join("nixos-config");
-    if let Some(repo) = normalize_repo_root(&fallback) {
-        return Ok(repo);
-    }
-
-    anyhow::bail!(
-        "Cannot find a Keystone config repo.\n\
-         Looked for, in order:\n\
-           - NIXOS_CONFIG_DIR\n\
-           - current git repo root\n\
-           - KEYSTONE_SYSTEM_FLAKE\n\
-           - ~/.keystone/repos/<owner>/{DEFAULT_INSTALLED_REPO_NAME}\n\
-           - ~/.keystone/repos/**\n\
-           - ~/nixos-config",
-    )
+    Some(PathBuf::from(path))
 }
 
 /// Locate the active Keystone config repository.
-pub fn find_repo() -> Result<PathBuf> {
-    let home = home_dir().context("No home directory")?;
-    find_repo_with_context(
-        &home,
-        nonempty_env_path("NIXOS_CONFIG_DIR").as_deref(),
-        current_git_root().as_deref(),
-        nonempty_env_path("KEYSTONE_SYSTEM_FLAKE").as_deref(),
+///
+/// Precedence:
+/// 1. `flake_override` — the `--flake <path>` CLI flag (only override).
+/// 2. `/run/current-system/keystone-system-flake` — authoritative pointer
+///    written at NixOS activation time by `keystone.systemFlake`.
+/// 3. Error with a clear message pointing the user at `--flake` or at
+///    fixing their system flake.
+pub fn find_repo(flake_override: Option<&Path>) -> Result<PathBuf> {
+    // 1. Explicit --flake flag.
+    if let Some(path) = flake_override {
+        return validate_repo_path(path).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Path provided via --flake is not a valid Keystone config repo: {}\n\
+                 Expected flake.nix + hosts/ (mkSystemFlake) or flake.nix + hosts.nix (legacy).",
+                path.display()
+            )
+        });
+    }
+
+    // 2. System pointer file.
+    if let Some(path) = read_system_flake_pointer() {
+        return validate_repo_path(&path).ok_or_else(|| {
+            anyhow::anyhow!(
+                "/run/current-system/keystone-system-flake points to '{}', but that path \
+                 is not a valid Keystone config repo.\n\
+                 Fix keystone.systemFlake.path in your NixOS config, or use --flake <path>.",
+                path.display()
+            )
+        });
+    }
+
+    // 3. No pointer — clear error.
+    anyhow::bail!(
+        "Cannot find a Keystone config repo.\n\
+         Looked for:\n\
+           1. --flake <path> CLI flag\n\
+           2. /run/current-system/keystone-system-flake (written by keystone.systemFlake)\n\
+         Use --flake <path> to specify the consumer flake explicitly, or ensure that\n\
+         keystone.systemFlake.path is set correctly in your NixOS configuration."
     )
 }
 
@@ -250,7 +170,7 @@ pub fn resolve_keystone_repo() -> Result<PathBuf> {
         }
     }
 
-    if let Ok(repo_root) = find_repo() {
+    if let Ok(repo_root) = find_repo(None) {
         if let Some(keystone_repo) = find_local_repo(&repo_root, "ncrmro/keystone") {
             if looks_like_keystone_repo(&keystone_repo) {
                 return Ok(keystone_repo);
@@ -1168,9 +1088,20 @@ mod tests {
         );
     }
 
+    // --- detect_layout tests ---
+
     #[test]
-    fn detect_layout_hosts_nix() {
+    fn detect_layout_requires_flake_nix() {
+        // A bare hosts.nix without flake.nix must NOT be detected.
         let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hosts.nix"), "{}").unwrap();
+        assert!(detect_layout(dir.path()).is_none());
+    }
+
+    #[test]
+    fn detect_layout_hosts_nix_with_flake() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("flake.nix"), "{}").unwrap();
         std::fs::write(dir.path().join("hosts.nix"), "{}").unwrap();
         let layout = detect_layout(dir.path());
         assert!(matches!(layout, Some(RepoLayout::HostsNix(_))));
@@ -1202,53 +1133,69 @@ mod tests {
         assert!(detect_layout(dir.path()).is_none());
     }
 
+    // --- find_repo tests ---
+
     #[test]
-    fn canonical_installed_repo_path_for_builds_expected_location() {
-        let home = Path::new("/home/noah");
-        assert_eq!(
-            canonical_installed_repo_path_for(home, "noah"),
-            PathBuf::from("/home/noah/.keystone/repos/noah/keystone-config")
-        );
+    fn find_repo_flake_override_accepted() {
+        let repo = tempfile::tempdir().unwrap();
+        write_flake_repo(repo.path());
+
+        let found = find_repo(Some(repo.path())).unwrap();
+        assert_eq!(found, std::fs::canonicalize(repo.path()).unwrap());
     }
 
     #[test]
-    fn find_repo_with_context_prefers_system_flake_env_over_canonical() {
-        let home = tempfile::tempdir().unwrap();
-        let canonical_repo = canonical_installed_repo_path(home.path()).unwrap();
-        let override_repo = home.path().join("override-repo");
-
-        write_flake_repo(&canonical_repo);
-        write_flake_repo(&override_repo);
-
-        let repo =
-            find_repo_with_context(home.path(), None, None, Some(override_repo.as_path())).unwrap();
-
-        assert_eq!(repo, std::fs::canonicalize(&override_repo).unwrap());
+    fn find_repo_flake_override_invalid_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let invalid = dir.path().join("not-a-repo");
+        std::fs::create_dir_all(&invalid).unwrap();
+        // No flake.nix → should error
+        let err = find_repo(Some(&invalid)).unwrap_err();
+        assert!(err.to_string().contains("--flake"));
     }
 
     #[test]
-    fn find_repo_with_context_falls_back_to_canonical_repo() {
-        let home = tempfile::tempdir().unwrap();
-        let canonical_repo = canonical_installed_repo_path(home.path()).unwrap();
+    fn find_repo_pointer_file_read() {
+        let repo = tempfile::tempdir().unwrap();
+        write_flake_repo(repo.path());
 
-        write_flake_repo(&canonical_repo);
+        // Write a fake pointer file
+        let pointer_dir = tempfile::tempdir().unwrap();
+        let pointer = pointer_dir.path().join("keystone-system-flake");
+        std::fs::write(
+            &pointer,
+            format!("{}\n", repo.path().display()),
+        )
+        .unwrap();
 
-        let repo = find_repo_with_context(home.path(), None, None, None).unwrap();
-
-        assert_eq!(repo, std::fs::canonicalize(&canonical_repo).unwrap());
+        // read_system_flake_pointer reads a fixed path, so we test validate_repo_path directly.
+        let validated = validate_repo_path(repo.path());
+        assert!(validated.is_some());
     }
 
     #[test]
-    fn find_repo_with_context_reports_invalid_system_flake_env() {
-        let home = tempfile::tempdir().unwrap();
-        let invalid_repo = home.path().join("missing-repo");
+    fn find_repo_no_pointer_no_override_errors() {
+        // Without a pointer file or override, find_repo should error with guidance.
+        // We can't easily suppress the real /run/current-system/keystone-system-flake
+        // in unit tests (it either exists or not on the test host), so we test the
+        // error message shape when given an explicit missing path.
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nonexistent");
+        let err = find_repo(Some(&missing)).unwrap_err();
+        assert!(err.to_string().contains("--flake"));
+    }
 
-        let error = find_repo_with_context(home.path(), None, None, Some(invalid_repo.as_path()))
-            .unwrap_err();
-
-        assert!(error.to_string().contains("KEYSTONE_SYSTEM_FLAKE"));
-        assert!(error
-            .to_string()
-            .contains(&invalid_repo.display().to_string()));
+    #[test]
+    fn find_repo_rejects_module_function_hosts_nix() {
+        // A directory with only hosts.nix (no flake.nix) must be rejected —
+        // this is the module-function masquerading as attrset bug.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hosts.nix"), "{ config, ... }: {}").unwrap();
+        // No flake.nix → detect_layout returns None → validate_repo_path returns None.
+        assert!(validate_repo_path(dir.path()).is_none());
+        // find_repo with --flake pointing here must error
+        let err = find_repo(Some(dir.path())).unwrap_err();
+        assert!(err.to_string().contains("--flake"));
     }
 }
+

@@ -151,7 +151,7 @@ async fn verify_all_repos_lock_ready(repo_root: &Path) -> Result<()> {
 
 async fn update_dev(repo_root: &Path, mode: &str, hosts: &[String]) -> Result<UpdateResult> {
     let _ = repo_root;
-    cmd::switch::execute(Some(&hosts.join(",")), mode == "boot").await?;
+    cmd::switch::execute(Some(&hosts.join(",")), mode == "boot", None).await?;
 
     Ok(UpdateResult {
         hosts: hosts.to_vec(),
@@ -181,7 +181,7 @@ async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result
     verify_all_repos_lock_ready(repo_root).await?;
 
     let deploy_session = cmd::switch::prepare_deploy_session(repo_root, hosts).await?;
-    let build_result = cmd::build::execute(Some(&hosts.join(",")), true, None, false).await?;
+    let build_result = cmd::build::execute(Some(&hosts.join(",")), true, None, false, None).await?;
     cmd::switch::deploy_paths_with_session(
         repo_root,
         &deploy_session,
@@ -215,8 +215,9 @@ pub async fn execute(
     dev: bool,
     boot: bool,
     pull_only: bool,
+    flake_override: Option<&std::path::Path>,
 ) -> Result<UpdateResult> {
-    let repo_root = repo::find_repo()?;
+    let repo_root = repo::find_repo(flake_override)?;
     let hosts = repo::resolve_hosts(&repo_root, hosts_arg).await?;
     let mode = if boot { "boot" } else { "switch" };
 

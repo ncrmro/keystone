@@ -27,7 +27,6 @@ use crate::action::Action;
 use crate::component::Component;
 use crate::widgets::TextInput;
 
-const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
 const REMOTE_MAIN_REF: &str = "origin/main";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -62,20 +61,25 @@ impl FirstBootConfig {
     }
 
     fn installed_config_dir() -> Option<PathBuf> {
-        let default_owner = Self::default_repo_owner();
+        // 1. Authoritative pointer file (written at NixOS activation time).
+        if let Ok(content) =
+            std::fs::read_to_string("/run/current-system/keystone-system-flake")
+        {
+            let path = content.trim();
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
+            }
+        }
 
-        std::env::var_os("KEYSTONE_SYSTEM_FLAKE")
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-            .or_else(|| {
-                let home = home::home_dir()?;
-                Some(
-                    home.join(".keystone")
-                        .join("repos")
-                        .join(default_owner)
-                        .join(DEFAULT_INSTALLED_REPO_NAME),
-                )
-            })
+        // 2. Fallback: derive from the install-config username.
+        let default_owner = Self::default_repo_owner();
+        let home = home::home_dir()?;
+        Some(
+            home.join(".keystone")
+                .join("repos")
+                .join(&default_owner)
+                .join("keystone-config"),
+        )
     }
 
     /// Detect first-boot mode by looking for the marker file.
@@ -330,7 +334,7 @@ impl FirstBootScreen {
             .file_name()
             .and_then(|name| name.to_str())
             .filter(|name| !name.is_empty())
-            .unwrap_or(DEFAULT_INSTALLED_REPO_NAME);
+            .unwrap_or("keystone-config");
         let default_remote = config
             .github_username
             .as_ref()

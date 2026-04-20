@@ -368,7 +368,7 @@ async fn export_dashboard(repo_root: &Path, uid: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn execute(args: &[String]) -> Result<()> {
+pub async fn execute(args: &[String], flake_override: Option<&std::path::Path>) -> Result<()> {
     if args.is_empty() || matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
         print_help();
         return Ok(());
@@ -380,7 +380,7 @@ pub async fn execute(args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    let repo_root = repo::find_repo()?;
+    let repo_root = repo::find_repo(flake_override)?;
     match args.first().map(String::as_str) {
         Some("dashboards") => match args.get(1).map(String::as_str) {
             Some("apply") => apply_dashboards(&repo_root).await,

@@ -293,10 +293,14 @@ impl App {
 }
 
 fn current_system_flake_path() -> Option<PathBuf> {
-    std::env::var_os("KEYSTONE_SYSTEM_FLAKE")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .and_then(|path| normalize_flake_repo_path(&path))
+    // Read the authoritative pointer written at NixOS activation time.
+    let content =
+        std::fs::read_to_string("/run/current-system/keystone-system-flake").ok()?;
+    let path = content.trim();
+    if path.is_empty() {
+        return None;
+    }
+    normalize_flake_repo_path(&PathBuf::from(path))
 }
 
 fn normalize_flake_repo_path(path: &Path) -> Option<PathBuf> {
