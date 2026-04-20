@@ -24,7 +24,11 @@ ks update -h
 
 - `HOSTS` is a comma-separated list such as `workstation,ocean`.
 - When `HOSTS` is omitted, `ks` resolves the current host from `hosts.nix`.
-- Repo discovery checks `$NIXOS_CONFIG_DIR`, the current git repo root, `~/.keystone/repos/*/`, then `~/nixos-config`.
+- Repo discovery reads `/run/current-system/keystone-system-flake` (written at activation time by `keystone.systemFlake`). Override with `--flake <path>`.
+
+## Global flags
+
+- `--flake <PATH>`: Override the consumer flake path (default: read from `/run/current-system/keystone-system-flake`).
 
 ## Commands
 

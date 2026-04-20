@@ -21,7 +21,7 @@ pkgs.runCommand "test-keystone-update-menu"
     export REPO_ROOT="${../..}"
     export HOME="$PWD/home"
     export XDG_RUNTIME_DIR="$PWD/runtime"
-    export KEYSTONE_SYSTEM_FLAKE="$PWD/nixos-config"
+    export KEYSTONE_SYSTEM_FLAKE_POINTER_FILE="$PWD/keystone-system-flake"
     export KEYSTONE_CONFIG_HOST="mox"
     export PATH="$PWD/bin:${
       lib.makeBinPath [
@@ -36,7 +36,11 @@ pkgs.runCommand "test-keystone-update-menu"
       ]
     }"
 
+    KEYSTONE_SYSTEM_FLAKE="$PWD/nixos-config"
     mkdir -p "$HOME/.local/bin" "$XDG_RUNTIME_DIR" "$KEYSTONE_SYSTEM_FLAKE" "$PWD/bin"
+
+    # Write the pointer file so scripts can locate the system flake.
+    printf '%s\n' "$KEYSTONE_SYSTEM_FLAKE" > "$KEYSTONE_SYSTEM_FLAKE_POINTER_FILE"
 
     cat > "$PWD/bin/keystone-update-menu" <<'EOF'
     #!${pkgs.bash}/bin/bash
@@ -57,10 +61,12 @@ pkgs.runCommand "test-keystone-update-menu"
     set -euo pipefail
     case "''${1:-}" in
       config-repo-root)
-        if [[ -n "''${KEYSTONE_SYSTEM_FLAKE:-}" ]]; then
-          printf '%s\n' "$KEYSTONE_SYSTEM_FLAKE"
+        _pointer_file="''${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
+        if [[ -r "$_pointer_file" ]]; then
+          tr -d '\n' < "$_pointer_file"
+          printf '\n'
         else
-          echo "KEYSTONE_SYSTEM_FLAKE unset in test harness" >&2
+          echo "Pointer file not found: $_pointer_file" >&2
           exit 1
         fi
         ;;

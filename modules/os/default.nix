@@ -219,6 +219,7 @@ in
   imports = [
     ../keys.nix
     ../secrets.nix
+    ../shared/system-flake.nix
     ./notifications.nix
     ./storage.nix
     ./secure-boot.nix

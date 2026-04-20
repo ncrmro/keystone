@@ -33,15 +33,22 @@ machine's hostname as resolved from `hosts.nix`.
 
 ### Repo Discovery
 
-**REQ-019.1** `ks` MUST discover the nixos-config repository root using
+**REQ-019.1** `ks` MUST discover the consumer flake repository root using
 the following priority chain:
 
-1. `$NIXOS_CONFIG_DIR` environment variable (if it contains `hosts.nix`)
-2. Git repository root of the current working directory (if it contains `hosts.nix`)
-3. Any directory under `~/.keystone/repos/` (up to depth 3) that contains `hosts.nix`
-4. `~/nixos-config` as fallback
+1. `--flake <path>` CLI flag (explicit override)
+2. `/run/current-system/keystone-system-flake` pointer file (written at NixOS activation time by `keystone.systemFlake`)
+3. Hard error with guidance
 
-**REQ-019.2** All discovered paths MUST be resolved via `readlink -f`
+**REQ-019.1a** The pointer file MUST contain the absolute path to the consumer
+flake followed by a newline. It is written by `system.extraSystemBuilderCmds`
+in `modules/shared/system-flake.nix` using the value of `keystone.systemFlake.path`.
+
+**REQ-019.1b** A valid consumer flake MUST contain `flake.nix` AND either
+`hosts/` (mkSystemFlake layout) or `hosts.nix` (legacy layout). A bare
+`hosts.nix` without `flake.nix` is rejected.
+
+**REQ-019.2** All discovered paths MUST be resolved via `std::fs::canonicalize`
 to eliminate symlinks, because Nix `path:` flake URIs break on symlinks.
 
 ### Help and usage
