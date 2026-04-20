@@ -294,8 +294,7 @@ impl App {
 
 fn current_system_flake_path() -> Option<PathBuf> {
     // Read the authoritative pointer written at NixOS activation time.
-    let content =
-        std::fs::read_to_string("/run/current-system/keystone-system-flake").ok()?;
+    let content = std::fs::read_to_string("/run/current-system/keystone-system-flake").ok()?;
     let path = content.trim();
     if path.is_empty() {
         return None;

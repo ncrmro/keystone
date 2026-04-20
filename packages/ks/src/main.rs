@@ -64,7 +64,17 @@ async fn main() -> Result<()> {
                 all_users,
                 hosts,
                 json,
-            } => run_build_command(hosts.as_deref(), lock, user.as_deref(), all_users, json, flake).await,
+            } => {
+                run_build_command(
+                    hosts.as_deref(),
+                    lock,
+                    user.as_deref(),
+                    all_users,
+                    json,
+                    flake,
+                )
+                .await
+            }
             Command::Switch { boot, hosts, json } => {
                 run_switch_command(hosts.as_deref(), boot, json, flake).await
             }

@@ -62,9 +62,7 @@ impl FirstBootConfig {
 
     fn installed_config_dir() -> Option<PathBuf> {
         // 1. Authoritative pointer file (written at NixOS activation time).
-        if let Ok(content) =
-            std::fs::read_to_string("/run/current-system/keystone-system-flake")
-        {
+        if let Ok(content) = std::fs::read_to_string("/run/current-system/keystone-system-flake") {
             let path = content.trim();
             if !path.is_empty() {
                 return Some(PathBuf::from(path));

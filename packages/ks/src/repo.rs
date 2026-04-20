@@ -91,7 +91,11 @@ fn validate_repo_path(path: &Path) -> Option<PathBuf> {
     let output = std::process::Command::new("nix")
         .arg("eval")
         .arg(format!("{}#nixosConfigurations", canonical.display()))
-        .args(["--apply", "a: builtins.length (builtins.attrNames a)", "--json"])
+        .args([
+            "--apply",
+            "a: builtins.length (builtins.attrNames a)",
+            "--json",
+        ])
         .output()
         .ok()?;
 
@@ -139,10 +143,7 @@ pub fn find_repo(flake_override: Option<&Path>) -> Result<PathBuf> {
     find_repo_with_pointer(flake_override, Path::new(SYSTEM_FLAKE_POINTER_FILE))
 }
 
-fn find_repo_with_pointer(
-    flake_override: Option<&Path>,
-    pointer_file: &Path,
-) -> Result<PathBuf> {
+fn find_repo_with_pointer(flake_override: Option<&Path>, pointer_file: &Path) -> Result<PathBuf> {
     // 1. Explicit --flake flag.
     if let Some(path) = flake_override {
         return validate_repo_path(path).ok_or_else(|| {
@@ -1249,7 +1250,10 @@ mod tests {
         std::fs::write(&pointer, format!("{}\n", bad_repo.display())).unwrap();
 
         let err = find_repo_with_pointer(None, &pointer).unwrap_err();
-        assert!(err.to_string().contains("keystone.systemFlake.path") || err.to_string().contains("not a valid"));
+        assert!(
+            err.to_string().contains("keystone.systemFlake.path")
+                || err.to_string().contains("not a valid")
+        );
     }
 
     #[test]
@@ -1307,4 +1311,3 @@ mod tests {
         assert!(err.to_string().contains("--flake"));
     }
 }
-

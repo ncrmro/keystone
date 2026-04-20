@@ -920,7 +920,9 @@ fn selector_to_string(selector: &Selector) -> Option<String> {
     }
 }
 
-pub async fn execute_secrets_todo(flake_override: Option<&std::path::Path>) -> Result<HardwareKeySecretsTodo> {
+pub async fn execute_secrets_todo(
+    flake_override: Option<&std::path::Path>,
+) -> Result<HardwareKeySecretsTodo> {
     let repo_root = repo::find_repo(flake_override)?;
     let host = repo::resolve_current_host(&repo_root)
         .await?
