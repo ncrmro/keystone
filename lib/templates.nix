@@ -498,11 +498,24 @@ rec {
       # RAM (MB) for the ephemeral QEMU builder VM.  ZFS needs more than the
       # disko default of 1024 MB; 4096 is sufficient for a single-disk pool.
       memSize ? 4096,
+      # Size (disko string, e.g. "32G") of each builder VM disk.  Disko
+      # defaults to 2G, which cannot hold the typical keystone layout
+      # (ESP + 8G swap + root closure).  32G fits a full desktop host;
+      # qcow2 is sparse, so the on-disk footprint is only what's written.
+      imageSize ? "32G",
       # Additional NixOS modules applied only during image build (not at
       # runtime).  Use to inject test SSH keys, disable TPM assertions, etc.
       extraConfig ? { },
     }:
     let
+      # Read disk attribute names from the un-extended config.  Reading
+      # config.disko.devices.disk from inside a module that also defines
+      # it would be an infinite recursion (the attrset's keys would
+      # depend on the definition we're adding).  The logical disk names
+      # in storage.nix don't change when we override devices, so this
+      # is safe.
+      diskNames = lib.attrNames nixosSystem.config.disko.devices.disk;
+
       extendedSystem = nixosSystem.extendModules {
         modules = [
           {
@@ -516,6 +529,13 @@ rec {
             disko.imageBuilder.copyNixStore = lib.mkDefault true;
             # Give the builder VM enough RAM for ZFS pool creation.
             disko.memSize = lib.mkDefault memSize;
+            # Size every declared disk for the image builder.  Disko defaults
+            # to 2G which cannot fit the typical keystone layout (ESP + swap
+            # + root closure).  Only the imageSize attribute is overridden;
+            # other per-disk config is preserved by module merging.
+            disko.devices.disk = lib.genAttrs diskNames (_: {
+              imageSize = lib.mkForce imageSize;
+            });
           }
           extraConfig
         ];
