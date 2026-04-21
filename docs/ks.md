@@ -24,7 +24,11 @@ ks update -h
 
 - `HOSTS` is a comma-separated list such as `workstation,ocean`.
 - When `HOSTS` is omitted, `ks` resolves the current host from `hosts.nix`.
-- Repo discovery checks `$NIXOS_CONFIG_DIR`, the current git repo root, `~/.keystone/repos/*/`, then `~/nixos-config`.
+- Repo discovery reads `/run/current-system/keystone-system-flake` (written at activation time by `keystone.systemFlake`). Override with `--flake <path>`.
+
+## Global flags
+
+- `--flake <PATH>`: Override the consumer flake path (default: read from `/run/current-system/keystone-system-flake`).
 
 ## Commands
 
@@ -57,11 +61,15 @@ ks update [--debug] [--dev] [--boot] [--pull] [--lock] [--user USERS] [--all-use
 
 Pull, verify, build, and deploy Keystone hosts.
 
+Lock mode (pull latest flake inputs, build, push) is the default behavior.
+Use `--dev` to deploy the current local checkout without locking.
+Use `ks switch` to apply the current local state without any pull, lock, or push steps.
+
 - `--debug`: Show warnings from `git` and `nix` commands.
 - `--dev`: Build and deploy the current unlocked checkout without pull, lock, or push.
 - `--boot`: Register the new generation for next boot without switching now.
-- `--pull`: Pull managed repos only, then stop.
-- `--lock`: Force lock mode explicitly. This is the default unless `--dev` is set.
+- `--pull`: Pull managed repos only, then stop. Only takes effect when combined with `--dev`; without `--dev` it is ignored and the full lock-mode cycle runs.
+- `--lock`: Force lock mode explicitly. This is the default; it overrides `--dev` when both are passed.
 - `--user USERS`: Limit home-manager activation to a comma-separated user list.
 - `--all-users`: Activate all home-manager users on each target host.
 

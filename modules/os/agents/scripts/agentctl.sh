@@ -831,12 +831,19 @@ $ROLE_PROMPT"
 
     USERNAME="agent-${AGENT_NAME}"
 
-    # Find secrets directory (same convention as hwrekey)
-    NIXOS_CONFIG_DIR="${NIXOS_CONFIG_DIR:-$HOME/nixos-config}"
-    SECRETS_DIR="$NIXOS_CONFIG_DIR/agenix-secrets"
+    # Find secrets directory — read from the system flake pointer file.
+    _system_flake=""
+    if [ -r /run/current-system/keystone-system-flake ]; then
+      _system_flake="$(tr -d '\n' < /run/current-system/keystone-system-flake 2>/dev/null || true)"
+    fi
+    if [ -z "$_system_flake" ]; then
+      echo "Error: /run/current-system/keystone-system-flake not found." >&2
+      echo "Ensure keystone.systemFlake.path is set in your NixOS config." >&2
+      exit 1
+    fi
+    SECRETS_DIR="$_system_flake/agenix-secrets"
     if [ ! -d "$SECRETS_DIR" ]; then
       echo "Error: secrets directory not found: $SECRETS_DIR" >&2
-      echo "Set NIXOS_CONFIG_DIR to your nixos-config checkout." >&2
       exit 1
     fi
 

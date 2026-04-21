@@ -7,25 +7,20 @@
 set -euo pipefail
 
 keystone_config_repo_root() {
-  if [[ -n "${KEYSTONE_SYSTEM_FLAKE:-}" ]]; then
-    printf "%s\n" "$KEYSTONE_SYSTEM_FLAKE"
-    return 0
+  # Authoritative source: pointer file written at NixOS activation time.
+  # KEYSTONE_SYSTEM_FLAKE_POINTER_FILE may be set in test environments.
+  local _pointer_file="${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
+  if [[ -r "$_pointer_file" ]]; then
+    local _path
+    _path="$(tr -d '\n' < "$_pointer_file")"
+    if [[ -n "$_path" && -d "$_path" ]]; then
+      printf "%s\n" "$_path"
+      return 0
+    fi
   fi
 
-  if [[ -n "${KEYSTONE_CONFIG_REPO:-}" ]]; then
-    printf "%s\n" "$KEYSTONE_CONFIG_REPO"
-    return 0
-  fi
-
-  local repo_root=""
-  repo_root=$(find "$HOME/.keystone/repos" -maxdepth 2 -type d -name nixos-config 2>/dev/null | head -n1 || true)
-
-  if [[ -z "$repo_root" ]]; then
-    printf "Unable to locate nixos-config under ~/.keystone/repos\n" >&2
-    return 1
-  fi
-
-  printf "%s\n" "$repo_root"
+  printf "Unable to locate system flake: %s not found or invalid.\n" "$_pointer_file" >&2
+  return 1
 }
 
 keystone_home_manager_host_file() {
