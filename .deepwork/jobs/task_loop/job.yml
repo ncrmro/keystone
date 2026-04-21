@@ -24,7 +24,7 @@ step_arguments:
         Check that no duplicate tasks were created for items already tracked.
         Every new task has status set to pending.
         Tasks are associated with a project from PROJECTS.yaml when the relationship is clear from the source data.
-        Core rules (e.g., ping/pong) are applied.
+        Core rules defined in the parse_sources step (e.g., Ping/Pong) are applied.
         Reply emails are evaluated for new task content in the reply body above the quoted text.
         TASKS.yaml has exactly one top-level key ('tasks') containing a list. No other top-level keys exist.
         Task fields use canonical names (name, description, status, project, source, source_ref, model, workflow, needs).
@@ -84,8 +84,6 @@ workflows:
       tasks requiring deep reasoning or complex architecture. The keystone task loop reads this field
       and selects the model for each task's execution session. Tasks MAY have their model pre-set
       (e.g., by ingest or manually); prioritize preserves those.
-
-      Core rule: Any "ping" message from any source MUST generate a "pong" reply task. Email pong replies MUST use subject `Re: [pong] <tag>` (flip `ping` → `pong` while preserving the `Re:` prefix) and MUST include `pong` in the body.
     steps:
       - name: parse_sources
         instructions: |
@@ -289,8 +287,6 @@ workflows:
       tasks requiring deep reasoning or complex architecture. The keystone task loop reads this field
       and selects the model for each task's execution session. Tasks MAY have their model pre-set
       (e.g., by ingest or manually); prioritize preserves those.
-
-      Core rule: Any "ping" message from any source MUST generate a "pong" reply task. Email pong replies MUST use subject `Re: [pong] <tag>` (flip `ping` → `pong` while preserving the `Re:` prefix) and MUST include `pong` in the body.
     steps:
       - name: reorder_tasks
         instructions: |
@@ -455,8 +451,6 @@ workflows:
       tasks requiring deep reasoning or complex architecture. The keystone task loop reads this field
       and selects the model for each task's execution session. Tasks MAY have their model pre-set
       (e.g., by ingest or manually); prioritize preserves those.
-
-      Core rule: Any "ping" message from any source MUST generate a "pong" reply task. Email pong replies MUST use subject `Re: [pong] <tag>` (flip `ping` → `pong` while preserving the `Re:` prefix) and MUST include `pong` in the body.
     steps:
       - name: execute
         instructions: |

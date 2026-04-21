@@ -47,7 +47,7 @@ intervention.
            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  task-loop.sh → Step 2: Ingest (Haiku)                      │
-│  parse_sources.md                                           │
+│  parse_sources step (job.yml)                               │
 │                                                             │
 │  NEW: Explicit pr-review handling                           │
 │  ┌────────────────────────────────────────────────────────┐ │
@@ -77,7 +77,7 @@ intervention.
 ## Affected Modules
 
 - `conventions/process.pr-review-response.md` — **new** convention for responding to PR review feedback
-- `.deepwork/jobs/task_loop/steps/parse_sources.md` — add explicit PR review ingest rules
+- `.deepwork/jobs/task_loop/job.yml` — add explicit PR review ingest rules to the `parse_sources` step
 - `packages/fetch-github-sources/bin/fetch-github-sources` — add `pr_branch` field to review output
 - `packages/fetch-forgejo-sources/bin/fetch-forgejo-sources` — add `pr_branch` field to review output
 - `conventions/process.feature-delivery.md` — update rule 25 to reference `process.pr-review-response`
@@ -93,7 +93,7 @@ intervention.
 
 **REQ-024.3** Fetch scripts MUST NOT include bulky fields like `diff_hunk` in review comment output. The executing agent fetches full review context (including diff hunks) directly from the platform API at execution time.
 
-### Ingest (parse_sources.md)
+### Ingest (parse_sources step)
 
 **REQ-024.4** The ingest step MUST recognize `github-pr-reviews` and `forgejo-pr-reviews` as distinct source categories in the pre-fetched JSON.
 
@@ -154,7 +154,7 @@ intervention.
 
 - `packages/fetch-github-sources/bin/fetch-github-sources` — Phase 4 (lines 68-115)
 - `packages/fetch-forgejo-sources/bin/fetch-forgejo-sources` — equivalent review discovery
-- `.deepwork/jobs/task_loop/steps/parse_sources.md` — ingest step instructions
+- `.deepwork/jobs/task_loop/job.yml` — ingest step instructions (`parse_sources`)
 - `conventions/process.copilot-agent.md` — rules 10-15 (responding to Copilot feedback)
 - `conventions/process.code-review-ownership.md` — reviewer assignment via CODEOWNERS
 - `conventions/process.feature-delivery.md` — rule 25 (addressing review feedback)
