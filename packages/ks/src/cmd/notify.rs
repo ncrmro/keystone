@@ -16,12 +16,12 @@ use std::process::Command;
 
 /// Result tag passed by the template unit instance (`@success` / `@failure`).
 #[derive(Debug, Clone, Copy)]
-enum Result_ {
+enum NotifyResult {
     Success,
     Failure,
 }
 
-impl Result_ {
+impl NotifyResult {
     fn parse(raw: &str) -> Result<Self> {
         match raw {
             "success" => Ok(Self::Success),
@@ -45,14 +45,14 @@ impl Result_ {
 ///
 /// We only recognize units we explicitly own — unknown units fall back to the
 /// raw name so notifications are still useful during development.
-fn unit_title(unit: &str, result: Result_) -> String {
+fn unit_title(unit: &str, result: NotifyResult) -> String {
     let friendly = match unit {
         "ks-update.service" => "Keystone update",
         other => other,
     };
     match result {
-        Result_::Success => format!("{friendly} complete"),
-        Result_::Failure => format!("{friendly} failed"),
+        NotifyResult::Success => format!("{friendly} complete"),
+        NotifyResult::Failure => format!("{friendly} failed"),
     }
 }
 
@@ -86,10 +86,10 @@ fn journal_tail(unit: &str) -> Result<String> {
 
 /// Build the notification body. Success stays brief; failure includes the last
 /// journal lines so the user can triage without opening a terminal.
-fn notification_body(unit: &str, result: Result_) -> String {
+fn notification_body(unit: &str, result: NotifyResult) -> String {
     match result {
-        Result_::Success => format!("{unit} finished successfully."),
-        Result_::Failure => match journal_tail(unit) {
+        NotifyResult::Success => format!("{unit} finished successfully."),
+        NotifyResult::Failure => match journal_tail(unit) {
             Ok(tail) if !tail.is_empty() => format!("{unit} failed.\n\n{tail}"),
             _ => format!("{unit} failed. See journalctl --user -u {unit} for details."),
         },
@@ -97,7 +97,7 @@ fn notification_body(unit: &str, result: Result_) -> String {
 }
 
 pub fn execute(unit: &str, result: &str) -> Result<()> {
-    let parsed = Result_::parse(result)?;
+    let parsed = NotifyResult::parse(result)?;
     let title = unit_title(unit, parsed);
     let body = notification_body(unit, parsed);
 
