@@ -1,4 +1,4 @@
-//! `ks update menu ...` — Walker provider backend for the Keystone OS update
+//! `ks update-menu ...` — Walker provider backend for the Keystone OS update
 //! entry.
 //!
 //! Subcommands:
@@ -38,7 +38,7 @@ const RELEASE_REPO: &str = "keystone";
 
 /// Full state emitted when discovery succeeds. Field names match the shape
 /// produced by the legacy bash `load_state` so downstream tooling (or humans
-/// inspecting `ks update menu status`) sees the same structure.
+/// inspecting `ks update-menu status`) sees the same structure.
 #[derive(Debug, Serialize)]
 struct OkState {
     ok: bool, // always true
