@@ -126,8 +126,8 @@ struct FlakeOriginal {
 
 fn read_flake_lock(repo_root: &Path) -> Result<FlakeLock> {
     let path = repo_root.join("flake.lock");
-    let bytes = std::fs::read(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let bytes =
+        std::fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
     serde_json::from_slice(&bytes).with_context(|| format!("failed to parse {}", path.display()))
 }
 
@@ -179,9 +179,7 @@ fn release_tag_for_rev(rev: &str) -> String {
         .args(["describe", "--tags", "--exact-match", rev])
         .output();
     match output {
-        Ok(out) if out.status.success() => {
-            String::from_utf8_lossy(&out.stdout).trim().to_string()
-        }
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim().to_string(),
         _ => String::new(),
     }
 }
@@ -964,4 +962,3 @@ mod tests {
         dispatch("noop").unwrap();
     }
 }
-
