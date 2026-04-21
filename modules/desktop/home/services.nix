@@ -22,6 +22,23 @@ let
   cfg = config.keystone.desktop;
   ksBin = "${pkgs.keystone.ks}/bin/ks";
   systemdBin = "${pkgs.systemd}/bin/systemd-inhibit";
+
+  # `ks update` (invoked by ks-update.service) shells out to git, nix,
+  # pkexec, and keystone-approve-exec. Systemd user units start with a
+  # minimal PATH that does not include these, so spawn-by-name would fail
+  # inside the unit even though it works in an interactive shell.
+  #
+  # `/run/current-system/sw/bin` is the NixOS system-wide toolchain and
+  # contains git, nix, and keystone-approve-exec. `/run/wrappers/bin`
+  # holds setuid wrappers like pkexec. Together they cover everything
+  # `ks update --approve` needs for a supervised background run.
+  updatePath = "/run/wrappers/bin:/run/current-system/sw/bin";
+
+  # `ks notify` only shells out to journalctl (systemd) and notify-send
+  # (libnotify). Pin those explicitly rather than relying on the system
+  # path so the notifier keeps working even if the system profile
+  # excludes libnotify for any reason.
+  notifyPath = "${pkgs.systemd}/bin:${pkgs.libnotify}/bin";
 in
 {
   config = mkIf cfg.enable {
@@ -38,6 +55,7 @@ in
       };
       Service = {
         Type = "oneshot";
+        Environment = [ "PATH=${updatePath}" ];
         # systemd-inhibit blocks suspend/shutdown for the duration of the
         # update so a laptop lid close mid-rebuild doesn't wedge the unit.
         ExecStart = ''
@@ -63,6 +81,7 @@ in
       };
       Service = {
         Type = "oneshot";
+        Environment = [ "PATH=${notifyPath}" ];
         ExecStart = "${ksBin} notify ks-update.service %i";
       };
     };
