@@ -14,6 +14,7 @@ in
     ./components
     ./hyprland
     ./scripts
+    ./services.nix
     ./theming
     # Terminal is provided by nixosModules.operating-system via
     # home-manager.sharedModules since 2a9c266. Do not re-import here

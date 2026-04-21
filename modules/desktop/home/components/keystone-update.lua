@@ -22,10 +22,15 @@ local function command_path(name)
     return name
 end
 
-Action = command_path("keystone-update-menu") .. " dispatch '%VALUE%'"
+-- %VALUE% is interpolated inside single quotes, so every activation value
+-- emitted by `ks menu update entries` MUST be shell-safe under single-quote
+-- rules: no single quotes, backslashes, or unescaped control characters.
+-- `ks menu update` enforces this on the producer side (stable tokens +
+-- URL allowlist); dispatch also re-validates URL payloads defensively.
+Action = command_path("ks") .. " menu update dispatch '%VALUE%'"
 
 function GetEntries()
-    local handle = io.popen(command_path("keystone-update-menu") .. " entries-json 2>/dev/null")
+    local handle = io.popen(command_path("ks") .. " menu update entries 2>/dev/null")
     if not handle then
         return {}
     end

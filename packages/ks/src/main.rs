@@ -88,10 +88,20 @@ async fn main() -> Result<()> {
                 all_users: _,
                 hosts,
                 json,
+                approve,
             } => {
                 let dev_mode = dev && !lock;
                 let pull_only = pull && dev_mode;
-                run_update_command(hosts.as_deref(), dev_mode, boot, pull_only, json, flake).await
+                run_update_command(
+                    hosts.as_deref(),
+                    dev_mode,
+                    boot,
+                    pull_only,
+                    approve,
+                    json,
+                    flake,
+                )
+                .await
             }
             Command::Approve(args) => run_approve_command(args).await,
             Command::Agents(args) => run_agents_command(args).await,
@@ -110,6 +120,9 @@ async fn main() -> Result<()> {
             Command::Notification(args) => cmd::notifications::execute(&args).await,
             Command::Task(args) => cmd::tasks::execute(&args).await,
             Command::Project(args) => cmd::projects::execute(&args).await,
+            Command::Notify { unit, result } => cmd::notify::execute(&unit, &result),
+            Command::Menu { command } => cmd::menu::execute(command, flake).await,
+            Command::RunBackground { unit } => cmd::run_background::execute(&unit),
         };
     }
 
@@ -379,9 +392,46 @@ async fn run_update_command(
     dev: bool,
     boot: bool,
     pull_only: bool,
+    approve: bool,
     json: bool,
     flake: Option<&std::path::Path>,
 ) -> Result<()> {
+    // When `--approve` is set and we are not already inside the approval
+    // broker (i.e., KS_APPROVE_EXECUTING is unset), re-invoke ourselves
+    // through `ks approve`. On success, approve::execute exec's the helper
+    // and replaces this process, so the update body only runs in the
+    // post-approval child (where KS_APPROVE_EXECUTING=1).
+    //
+    // Forward the original argv minus `--approve` so flags like `--boot`,
+    // `--json`, `--flake`, and host selection survive the round-trip
+    // through the broker. Dropping `--approve` prevents the approved child
+    // from re-entering this branch.
+    if approve && std::env::var_os("KS_APPROVE_EXECUTING").is_none() {
+        let host_label = cmd::util::hostname_label();
+        let reason = format!("Run the Keystone update workflow on {host_label}.");
+        let mut requested_argv: Vec<String> = std::env::args_os()
+            .enumerate()
+            .filter_map(|(idx, arg)| {
+                // argv[0] is the program path — replace with a stable
+                // `ks` token so the approval allowlist matches regardless
+                // of how the binary was invoked on the original call.
+                if idx == 0 {
+                    return Some("ks".to_string());
+                }
+                if arg == "--approve" {
+                    return None;
+                }
+                Some(arg.to_string_lossy().into_owned())
+            })
+            .collect();
+        // Defensive fallback for the pathological case where argv is empty
+        // (should not happen in practice under std::env::args_os).
+        if requested_argv.is_empty() {
+            requested_argv = vec!["ks".to_string(), "update".to_string()];
+        }
+        return cmd::approve::execute(&reason, &requested_argv);
+    }
+
     match cmd::update::execute(hosts, dev, boot, pull_only, flake).await {
         Ok(result) => {
             if json {
