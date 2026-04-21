@@ -8,6 +8,24 @@ use crate::cmd::{
     update_menu::UpdateMenuCommand,
 };
 
+/// Walker menu provider backends. Each provider is a subcommand under `ks
+/// menu <provider>` — e.g., `ks menu update <action>`. Grouping keeps the
+/// top-level namespace clean as more provider scripts from
+/// `modules/desktop/home/scripts/` migrate to `ks`.
+#[derive(clap::Subcommand)]
+pub enum MenuCommand {
+    /// Walker provider backend for the Keystone OS update entry.
+    ///
+    /// Subcommands emit JSON/text that Walker reads from stdout
+    /// (`entries`, `preview-summary`, `preview-release-notes`) or perform
+    /// activation side effects (`dispatch`). Replaces the legacy
+    /// `keystone-update-menu` shell script.
+    Update {
+        #[command(subcommand)]
+        action: UpdateMenuCommand,
+    },
+}
+
 /// Keystone CLI/TUI — NixOS infrastructure configuration and management.
 #[derive(Parser)]
 #[command(name = "ks", version, about)]
@@ -187,16 +205,17 @@ pub enum Command {
         result: String,
     },
 
-    /// Walker provider backend for the Keystone OS update entry.
+    /// Walker menu provider backends (`ks menu <provider> <action>`).
     ///
-    /// Subcommands emit JSON/text that Walker reads from stdout
-    /// (`entries`, `preview-summary`, `preview-release-notes`) or perform
-    /// activation side effects (`dispatch`). Replaces the legacy
-    /// `keystone-update-menu` shell script.
-    #[command(name = "update-menu")]
-    UpdateMenu {
+    /// Groups menu-provider subcommands so future migrations of
+    /// `modules/desktop/home/scripts/*-menu.sh` (audio, package, main, agent,
+    /// …) slot in as siblings under `menu` rather than flat top-level
+    /// commands. Currently the only provider is `update` — see
+    /// [`MenuCommand::Update`].
+    #[command(name = "menu")]
+    Menu {
         #[command(subcommand)]
-        command: UpdateMenuCommand,
+        command: MenuCommand,
     },
 }
 

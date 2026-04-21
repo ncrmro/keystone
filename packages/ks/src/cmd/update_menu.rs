@@ -1,4 +1,4 @@
-//! `ks update-menu ...` — Walker provider backend for the Keystone OS update
+//! `ks menu update ...` — Walker provider backend for the Keystone OS update
 //! entry.
 //!
 //! Subcommands:
@@ -38,7 +38,7 @@ const RELEASE_REPO: &str = "keystone";
 
 /// Full state emitted when discovery succeeds. Field names match the shape
 /// produced by the legacy bash `load_state` so downstream tooling (or humans
-/// inspecting `ks update-menu status`) sees the same structure.
+/// inspecting `ks menu update status`) sees the same structure.
 #[derive(Debug, Serialize)]
 struct OkState {
     ok: bool, // always true
@@ -582,7 +582,7 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
     };
 
     // `host_key` is retained for state inspection (surfaced by
-    // `ks update-menu status`) but is no longer a gating precondition for
+    // `ks menu update status`) but is no longer a gating precondition for
     // offering the update entry. The dispatch path is `ks update` with no
     // explicit host, and ks resolves the current host on its own via the
     // keystone-system-flake pointer — so a hosts.nix that can't be read
@@ -777,7 +777,7 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
                 "Subtext": s.status_summary,
                 "Value": ACT_NOOP,
                 "Icon": "dialog-information-symbolic",
-                "Preview": "ks update-menu preview-summary",
+                "Preview": "ks menu update preview-summary",
                 "PreviewType": "command",
             })];
             if url_is_shell_safe(&s.latest_url) {
@@ -786,7 +786,7 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
                     "Subtext": "GitHub release notes and changelog",
                     "Value": format!("{ACT_OPEN_RELEASE}\t{}", s.latest_url),
                     "Icon": "software-update-available-symbolic",
-                    "Preview": "ks update-menu preview-release-notes",
+                    "Preview": "ks menu update preview-release-notes",
                     "PreviewType": "command",
                 }));
             }
@@ -801,7 +801,7 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
                     "Subtext": "Run ks update to relock inputs and update this host",
                     "Value": ACT_RUN_UPDATE,
                     "Icon": "system-software-update-symbolic",
-                    "Preview": "ks update-menu preview-summary",
+                    "Preview": "ks menu update preview-summary",
                     "PreviewType": "command",
                 }));
             } else {
@@ -810,7 +810,7 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
                     "Subtext": s.update_reason,
                     "Value": ACT_BLOCKED_UPDATE,
                     "Icon": "dialog-warning-symbolic",
-                    "Preview": "ks update-menu preview-summary",
+                    "Preview": "ks menu update preview-summary",
                     "PreviewType": "command",
                 }));
             }
@@ -821,7 +821,7 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
             "Subtext": e.error,
             "Value": ACT_BLOCKED_KEYSTONE,
             "Icon": "dialog-warning-symbolic",
-            "Preview": "ks update-menu preview-summary",
+            "Preview": "ks menu update preview-summary",
             "PreviewType": "command",
         })],
     };

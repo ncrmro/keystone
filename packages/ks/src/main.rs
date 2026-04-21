@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
             Command::Task(args) => cmd::tasks::execute(&args).await,
             Command::Project(args) => cmd::projects::execute(&args).await,
             Command::Notify { unit, result } => cmd::notify::execute(&unit, &result),
-            Command::UpdateMenu { command } => cmd::update_menu::execute(command, flake).await,
+            Command::Menu { command } => cmd::menu::execute(command, flake).await,
         };
     }
 

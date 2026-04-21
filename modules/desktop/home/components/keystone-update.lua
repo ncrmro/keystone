@@ -23,14 +23,14 @@ local function command_path(name)
 end
 
 -- %VALUE% is interpolated inside single quotes, so every activation value
--- emitted by `ks update-menu entries` MUST be shell-safe under single-quote
+-- emitted by `ks menu update entries` MUST be shell-safe under single-quote
 -- rules: no single quotes, backslashes, or unescaped control characters.
--- `ks update-menu` enforces this on the producer side (stable tokens +
+-- `ks menu update` enforces this on the producer side (stable tokens +
 -- URL allowlist); dispatch also re-validates URL payloads defensively.
-Action = command_path("ks") .. " update-menu dispatch '%VALUE%'"
+Action = command_path("ks") .. " menu update dispatch '%VALUE%'"
 
 function GetEntries()
-    local handle = io.popen(command_path("ks") .. " update-menu entries 2>/dev/null")
+    local handle = io.popen(command_path("ks") .. " menu update entries 2>/dev/null")
     if not handle then
         return {}
     end

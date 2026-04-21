@@ -55,7 +55,7 @@ pkgs.runCommand "test-desktop-walker-surfaces"
     # not packaged. writeShellScriptBin places each script in its own $out/bin,
     # so a sibling keystone-desktop-config.sh path never resolves at runtime.
     #
-    # keystone-update-menu.sh was removed in favour of `ks update-menu` — the
+    # keystone-update-menu.sh was removed in favour of `ks menu update` — the
     # Rust binary can't accidentally source a sibling path, so it's exempt from
     # this sweep.
     for s in \
