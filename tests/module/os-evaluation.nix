@@ -41,6 +41,83 @@ let
       touch $out
     '';
 
+  # Evaluate a module set and assert that keystone.os.adminUsername resolves
+  # to the expected value. Used to pin the auto-derivation precedence.
+  assertAdminUsername =
+    name: expected: modules:
+    let
+      result = nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+        ]
+        ++ modules;
+      };
+      actual = result.config.keystone.os.adminUsername;
+    in
+    pkgs.runCommand "admin-username-${name}" { } ''
+      if [ "${actual}" != "${expected}" ]; then
+        echo "FAIL: ${name}: expected adminUsername=${expected}, got ${actual}" >&2
+        exit 1
+      fi
+      echo "OK: ${name}: adminUsername=${actual}"
+      touch $out
+    '';
+
+  # Evaluate a module set and assert that the multi-wheel assertion triggers.
+  # The keystone.os.adminUsername itself still resolves (to "admin"), but the
+  # assertion on config.assertions flags the ambiguity. We probe that list.
+  assertMultiWheelError =
+    name: modules:
+    let
+      result = nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+        ]
+        ++ modules;
+      };
+      failing = builtins.filter (a: !a.assertion) result.config.assertions;
+      hasExpected = builtins.any (a: lib.hasInfix "multiple entries with \"wheel\"" a.message) failing;
+    in
+    pkgs.runCommand "admin-username-fails-${name}" { } ''
+      ${
+        if hasExpected then
+          ''echo "OK: ${name}: multi-wheel assertion fired"''
+        else
+          ''
+            echo "FAIL: ${name}: expected multi-wheel assertion to fire" >&2
+            exit 1
+          ''
+      }
+      touch $out
+    '';
+
+  # Shared boilerplate for adminUsername tests — minimal storage + filesystem
+  # so the OS module evaluates far enough to populate adminUsername.
+  adminBase = {
+    keystone.os = {
+      enable = true;
+      storage = {
+        type = "zfs";
+        devices = [ "/dev/vda" ];
+      };
+    };
+    networking.hostId = "deadbeef";
+    fileSystems."/" = {
+      device = lib.mkForce "rpool/crypt/system";
+      fsType = lib.mkForce "zfs";
+    };
+  };
+
   tests = {
     minimal-zfs = eval "minimal-zfs" [
       {
@@ -329,6 +406,81 @@ let
         fileSystems."/" = {
           device = lib.mkForce "rpool/crypt/system";
           fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    # adminUsername auto-derivation: single wheel user wins.
+    admin-username-single-wheel = assertAdminUsername "single-wheel" "alice" [
+      adminBase
+      {
+        keystone.os.users.alice = {
+          fullName = "Alice";
+          extraGroups = [ "wheel" ];
+          initialPassword = "pw";
+        };
+        keystone.os.users.bob = {
+          fullName = "Bob";
+          initialPassword = "pw";
+        };
+      }
+    ];
+
+    # adminUsername auto-derivation: zero wheel users falls back to "admin".
+    admin-username-no-wheel = assertAdminUsername "no-wheel" "admin" [
+      adminBase
+      {
+        keystone.os.users.alice = {
+          fullName = "Alice";
+          initialPassword = "pw";
+        };
+      }
+    ];
+
+    # adminUsername auto-derivation: explicit assignment always wins.
+    admin-username-explicit-wins = assertAdminUsername "explicit-wins" "bob" [
+      adminBase
+      {
+        keystone.os.adminUsername = "bob";
+        keystone.os.users.alice = {
+          fullName = "Alice";
+          extraGroups = [ "wheel" ];
+          initialPassword = "pw";
+        };
+      }
+    ];
+
+    # adminUsername auto-derivation: multiple wheel users fires the assertion.
+    admin-username-multi-wheel-fails = assertMultiWheelError "multi-wheel" [
+      adminBase
+      {
+        keystone.os.users.alice = {
+          fullName = "Alice";
+          extraGroups = [ "wheel" ];
+          initialPassword = "pw";
+        };
+        keystone.os.users.bob = {
+          fullName = "Bob";
+          extraGroups = [ "wheel" ];
+          initialPassword = "pw";
+        };
+      }
+    ];
+
+    # Multi-wheel with explicit adminUsername matching one of them is valid.
+    admin-username-multi-wheel-explicit = assertAdminUsername "multi-wheel-explicit" "bob" [
+      adminBase
+      {
+        keystone.os.adminUsername = "bob";
+        keystone.os.users.alice = {
+          fullName = "Alice";
+          extraGroups = [ "wheel" ];
+          initialPassword = "pw";
+        };
+        keystone.os.users.bob = {
+          fullName = "Bob";
+          extraGroups = [ "wheel" ];
+          initialPassword = "pw";
         };
       }
     ];

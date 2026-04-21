@@ -27,6 +27,10 @@ with lib;
 let
   cfg = config.keystone.os;
 
+  # Users in keystone.os.users whose extraGroups contains "wheel". Used to
+  # auto-derive adminUsername when the consumer hasn't set it explicitly.
+  wheelUserNames = filter (n: elem "wheel" (cfg.users.${n}.extraGroups or [ ])) (attrNames cfg.users);
+
   # Look up the current host in the registry to access per-host metadata (e.g. baremetal).
   currentHost = findFirst (h: h.hostname == config.networking.hostName) null (
     attrValues config.keystone.hosts
@@ -572,9 +576,21 @@ in
     adminUsername = mkOption {
       type = types.str;
       default = "admin";
+      defaultText = literalExpression ''
+        If exactly one entry in keystone.os.users has "wheel" in extraGroups,
+        that username is used. If multiple wheel users exist, evaluation fails
+        with an assertion (set adminUsername explicitly). Otherwise "admin".
+      '';
       description = ''
-        Unix username for the administrator account. Defaults to "admin".
-        Set via admin.username in mkSystemFlake.
+        Unix username for the administrator account.
+
+        Default resolution precedence:
+          1. An explicit assignment wins (highest precedence).
+          2. If exactly one keystone.os.users entry has "wheel" in extraGroups,
+             that username is used.
+          3. If multiple wheel users exist, evaluation fails — set
+             adminUsername explicitly.
+          4. Otherwise falls back to "admin".
       '';
       example = "noah";
     };
@@ -621,6 +637,12 @@ in
 
   config = mkIf cfg.enable {
     keystone.security.privilegedApproval.enable = mkDefault true;
+
+    # Auto-derive adminUsername when exactly one user has "wheel" in extraGroups.
+    # Multiple wheel users is an explicit error (see assertions below) so the
+    # consumer knows to set adminUsername; zero wheel users falls through to
+    # the literal "admin" default from the option declaration.
+    keystone.os.adminUsername = mkIf (length wheelUserNames == 1) (mkDefault (head wheelUserNames));
 
     nix.settings.substituters = mkIf cfg.binaryCaches.ksSystems.enable (mkBefore [
       cfg.binaryCaches.ksSystems.url
@@ -682,6 +704,21 @@ in
         assertion =
           !cfg.storage.hibernate.enable || cfg.storage.swap.size != "0" && cfg.storage.swap.size != "";
         message = "Hibernation requires swap to be enabled (storage.swap.size must not be '0' or empty)";
+      }
+      # CRITICAL: silently picking one of several wheel users would mislead
+      # downstream consumers that key off adminUsername (e.g. systemFlake.path).
+      # When multiple wheel users exist, adminUsername must be set explicitly
+      # to one of them.
+      {
+        assertion = length wheelUserNames <= 1 || elem cfg.adminUsername wheelUserNames;
+        message = ''
+          keystone.os.users has multiple entries with "wheel" in extraGroups
+          (${concatStringsSep ", " wheelUserNames}), so keystone cannot
+          auto-derive keystone.os.adminUsername. Set it explicitly to one of
+          those usernames, e.g.:
+
+            keystone.os.adminUsername = "${head wheelUserNames}";
+        '';
       }
     ];
 
