@@ -110,6 +110,7 @@ async fn main() -> Result<()> {
             Command::Notification(args) => cmd::notifications::execute(&args).await,
             Command::Task(args) => cmd::tasks::execute(&args).await,
             Command::Project(args) => cmd::projects::execute(&args).await,
+            Command::Notify { unit, result } => cmd::notify::execute(&unit, &result),
         };
     }
 

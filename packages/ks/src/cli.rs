@@ -161,6 +161,21 @@ pub enum Command {
 
     /// Manage projects — list, add, detect, configure provider overrides.
     Project(ProjectArgs),
+
+    /// Fire a desktop notification for a completed systemd user unit.
+    ///
+    /// Invoked by OnSuccess=/OnFailure= template units (e.g.,
+    /// `ks-update-notify@success.service`). Reads the tail of the source
+    /// unit's journal to build a body the user can triage without opening a
+    /// terminal.
+    Notify {
+        /// Source unit name (e.g., `ks-update.service`).
+        unit: String,
+
+        /// Result tag passed by the template instance: `success` or
+        /// `failure`.
+        result: String,
+    },
 }
 
 #[derive(Args)]
