@@ -400,10 +400,35 @@ async fn run_update_command(
     // through `ks approve`. On success, approve::execute exec's the helper
     // and replaces this process, so the update body only runs in the
     // post-approval child (where KS_APPROVE_EXECUTING=1).
+    //
+    // Forward the original argv minus `--approve` so flags like `--boot`,
+    // `--json`, `--flake`, and host selection survive the round-trip
+    // through the broker. Dropping `--approve` prevents the approved child
+    // from re-entering this branch.
     if approve && std::env::var_os("KS_APPROVE_EXECUTING").is_none() {
         let host_label = cmd::util::hostname_label();
         let reason = format!("Run the Keystone update workflow on {host_label}.");
-        return cmd::approve::execute(&reason, &["ks".to_string(), "update".to_string()]);
+        let mut requested_argv: Vec<String> = std::env::args_os()
+            .enumerate()
+            .filter_map(|(idx, arg)| {
+                // argv[0] is the program path — replace with a stable
+                // `ks` token so the approval allowlist matches regardless
+                // of how the binary was invoked on the original call.
+                if idx == 0 {
+                    return Some("ks".to_string());
+                }
+                if arg == "--approve" {
+                    return None;
+                }
+                Some(arg.to_string_lossy().into_owned())
+            })
+            .collect();
+        // Defensive fallback for the pathological case where argv is empty
+        // (should not happen in practice under std::env::args_os).
+        if requested_argv.is_empty() {
+            requested_argv = vec!["ks".to_string(), "update".to_string()];
+        }
+        return cmd::approve::execute(&reason, &requested_argv);
     }
 
     match cmd::update::execute(hosts, dev, boot, pull_only, flake).await {
