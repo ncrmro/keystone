@@ -416,7 +416,7 @@ preview_summary() {
         "Status: " + .status_summary,
         (
           if .update_allowed then
-            "Update command: nix flake update " + .input_name + " --flake " + .repo_root + " && ks update " + .host_key
+            "Update command: cd " + .repo_root + " && ks update"
           else
             "Update: " + .update_reason
           end
@@ -490,7 +490,7 @@ entries_json() {
           if .update_allowed then
             {
               Text: "Update current host",
-              Subtext: ("Relock " + .input_name + " and run ks update " + .host_key),
+              Subtext: "Run ks update to pull the latest config and deploy",
               Value: "run-update",
               Icon: "system-software-update-symbolic",
               Preview: "keystone-update-menu preview-summary",
@@ -526,8 +526,6 @@ entries_json() {
 run_update() {
   local state_json=""
   local repo_root=""
-  local input_name=""
-  local host_key=""
   local command_literal=""
 
   state_json=$(load_state)
@@ -537,15 +535,16 @@ run_update() {
   fi
 
   repo_root=$(printf '%s\n' "$state_json" | jq -r '.repo_root')
-  input_name=$(printf '%s\n' "$state_json" | jq -r '.input_name')
-  host_key=$(printf '%s\n' "$state_json" | jq -r '.host_key')
 
-  command_literal=$(terminal_command_literal nix flake update "$input_name" --flake "$repo_root")
-  command_literal+=" && "
-  command_literal+=$(terminal_command_literal ks update "$host_key")
+  # CRITICAL: cd into the repo_root the menu inspected so `ks update` resolves
+  # the same consumer flake. Without this the command runs under `bash -lc`
+  # from $HOME and `ks update` would rely on its own repo discovery, which can
+  # deploy a different repo than the one surfaced in the menu.
+  command_literal="cd $(printf '%q' "$repo_root") && "
+  command_literal+=$(terminal_command_literal ks update)
 
   launch_terminal_command "keystone-os-update" "$command_literal"
-  notify "Keystone update started" "Relocking ${input_name} in ${repo_root} and updating ${host_key}."
+  notify "Keystone update started" "Running ks update in ${repo_root}..."
 }
 
 dispatch() {

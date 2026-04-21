@@ -21,7 +21,7 @@ pkgs.runCommand "test-keystone-update-menu"
     export REPO_ROOT="${../..}"
     export HOME="$PWD/home"
     export XDG_RUNTIME_DIR="$PWD/runtime"
-    export KEYSTONE_SYSTEM_FLAKE="$PWD/nixos-config"
+    export KEYSTONE_SYSTEM_FLAKE_POINTER_FILE="$PWD/keystone-system-flake"
     export KEYSTONE_CONFIG_HOST="mox"
     export PATH="$PWD/bin:${
       lib.makeBinPath [
@@ -36,7 +36,11 @@ pkgs.runCommand "test-keystone-update-menu"
       ]
     }"
 
+    KEYSTONE_SYSTEM_FLAKE="$PWD/nixos-config"
     mkdir -p "$HOME/.local/bin" "$XDG_RUNTIME_DIR" "$KEYSTONE_SYSTEM_FLAKE" "$PWD/bin"
+
+    # Write the pointer file so scripts can locate the system flake.
+    printf '%s\n' "$KEYSTONE_SYSTEM_FLAKE" > "$KEYSTONE_SYSTEM_FLAKE_POINTER_FILE"
 
     cat > "$PWD/bin/keystone-update-menu" <<'EOF'
     #!${pkgs.bash}/bin/bash
@@ -57,10 +61,12 @@ pkgs.runCommand "test-keystone-update-menu"
     set -euo pipefail
     case "''${1:-}" in
       config-repo-root)
-        if [[ -n "''${KEYSTONE_SYSTEM_FLAKE:-}" ]]; then
-          printf '%s\n' "$KEYSTONE_SYSTEM_FLAKE"
+        _pointer_file="''${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
+        if [[ -r "$_pointer_file" ]]; then
+          tr -d '\n' < "$_pointer_file"
+          printf '\n'
         else
-          echo "KEYSTONE_SYSTEM_FLAKE unset in test harness" >&2
+          echo "Pointer file not found: $_pointer_file" >&2
           exit 1
         fi
         ;;
@@ -259,8 +265,12 @@ pkgs.runCommand "test-keystone-update-menu"
 
     keystone-update-menu dispatch 'run-update'
     grep -F -- 'ghostty --title keystone-os-update -e bash -lc' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
-    grep -F -- "nix flake update keystone --flake $KEYSTONE_SYSTEM_FLAKE && ks update mox" "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
-    grep -F 'Relocking keystone' "$XDG_RUNTIME_DIR/notify-send.txt" >/dev/null
+    # Command must cd into the inspected repo_root so `ks update` resolves the
+    # same consumer flake the menu read state from (see run_update comment).
+    grep -F -- "cd $KEYSTONE_SYSTEM_FLAKE && ks update" "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+    # Menu must not re-lock the flake itself; ks update owns lock/pull/push.
+    ! grep -F -- 'nix flake update' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null
+    grep -F 'Running ks update' "$XDG_RUNTIME_DIR/notify-send.txt" >/dev/null
 
     touch "$XDG_RUNTIME_DIR/dirty"
     dirty_json="$(keystone-update-menu entries-json)"

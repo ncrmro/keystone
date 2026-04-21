@@ -15,6 +15,11 @@ pub struct Cli {
     #[arg(long, value_name = "SCREEN")]
     pub screenshot: Option<String>,
 
+    /// Override the consumer flake path (default: read from
+    /// /run/current-system/keystone-system-flake).
+    #[arg(long, value_name = "PATH", global = true)]
+    pub flake: Option<std::path::PathBuf>,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }
