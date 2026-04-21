@@ -54,11 +54,14 @@ pkgs.runCommand "test-desktop-walker-surfaces"
     # ISSUE-REQ-3/4: Setup controllers MUST NOT source a sibling helper that is
     # not packaged. writeShellScriptBin places each script in its own $out/bin,
     # so a sibling keystone-desktop-config.sh path never resolves at runtime.
+    #
+    # keystone-update-menu.sh was removed in favour of `ks update-menu` — the
+    # Rust binary can't accidentally source a sibling path, so it's exempt from
+    # this sweep.
     for s in \
       "$scripts/keystone-audio-menu.sh" \
       "$scripts/keystone-monitor-menu.sh" \
       "$scripts/keystone-printer-menu.sh" \
-      "$scripts/keystone-update-menu.sh" \
       "$scripts/keystone-package-menu.sh"; do
       if grep -F 'source "''${SCRIPT_DIR}/keystone-desktop-config.sh"' "$s" >/dev/null; then
         fail "ISSUE-REQ-3/4: $(basename "$s") must not source a sibling keystone-desktop-config.sh — helper must be packaged"
