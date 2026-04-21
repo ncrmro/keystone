@@ -22,10 +22,10 @@ local function command_path(name)
     return name
 end
 
-Action = command_path("keystone-update-menu") .. " dispatch '%VALUE%'"
+Action = command_path("ks") .. " update-menu dispatch '%VALUE%'"
 
 function GetEntries()
-    local handle = io.popen(command_path("keystone-update-menu") .. " entries-json 2>/dev/null")
+    local handle = io.popen(command_path("ks") .. " update-menu entries 2>/dev/null")
     if not handle then
         return {}
     end
