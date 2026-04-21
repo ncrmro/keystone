@@ -429,6 +429,35 @@ async fn fetch_release_commit_rev(tag: &str) -> Result<String> {
 // Host key resolution
 // -----------------------------------------------------------------------------
 
+/// Local-only precondition check used by dispatch to close the TOCTOU
+/// window between entries-render and activation. Returns `Ok(())` when
+/// the menu's update action can proceed, or `Err(reason)` with the same
+/// user-facing text `load_state` would produce for the same failure
+/// mode. Does **not** fetch from GitHub — `latest_tag` is stale by design
+/// between render and dispatch, and a network hiccup should not block a
+/// user whose local state is actually fine.
+fn evaluate_local_gate(flake_override: Option<&Path>) -> Result<(), String> {
+    let repo_root = repo::find_repo(flake_override)
+        .map_err(|_| "Unable to locate the active system flake.".to_string())?;
+
+    if !repo_root.join("flake.lock").exists() {
+        return Err("The active system flake has no flake.lock.".into());
+    }
+
+    let lock =
+        read_flake_lock(&repo_root).map_err(|err| format!("Unable to read flake.lock: {err}"))?;
+
+    find_keystone_input(&lock).map_err(|err| {
+        format!("Unable to find a Keystone GitHub input in the active system flake: {err}")
+    })?;
+
+    if !git_status_clean(&repo_root) {
+        return Err("The active system flake has uncommitted changes.".into());
+    }
+
+    Ok(())
+}
+
 async fn current_host_key(repo_root: &Path) -> Option<String> {
     match repo::resolve_current_host(repo_root).await {
         Ok(Some(host)) => Some(host),
@@ -967,7 +996,17 @@ async fn dispatch(value: &str, flake: Option<&Path>) -> Result<()> {
             }
             xdg_open_detached(payload)
         }
-        ACT_RUN_UPDATE => start_update_unit(),
+        ACT_RUN_UPDATE => {
+            // Close the TOCTOU window between entries-render and click: if
+            // the user dirtied the tree after opening the menu, refuse
+            // before firing the polkit popup (otherwise the approval
+            // round-trip ends with `ks update` failing — strictly worse
+            // UX than refusing up front with the same reason).
+            match evaluate_local_gate(flake) {
+                Ok(()) => start_update_unit(),
+                Err(reason) => run_notify_send("Keystone update unavailable", &reason),
+            }
+        }
         other => Err(anyhow!("unknown update menu action: {other}")),
     }
 }
@@ -1372,6 +1411,17 @@ mod tests {
     async fn dispatch_noop_is_ok() {
         dispatch("", None).await.unwrap();
         dispatch("noop", None).await.unwrap();
+    }
+
+    #[test]
+    fn evaluate_local_gate_rejects_missing_flake() {
+        // With a guaranteed-nonexistent flake override, the gate must
+        // refuse rather than silently pretend local preconditions are
+        // met. Exact message is user-facing copy; keep the test loose
+        // on wording and strict on rejection.
+        let err = evaluate_local_gate(Some(Path::new("/nonexistent/path/used/only/in/unit/tests")))
+            .unwrap_err();
+        assert!(!err.is_empty(), "gate must return a non-empty reason");
     }
 
     #[tokio::test]
