@@ -44,7 +44,7 @@ impl Drop for SudoKeepAlive {
 /// is the bare short name. Without normalization, a local deploy is misclassified
 /// as remote and errors out demanding an sshTarget.
 pub(crate) fn normalize_hostname(raw: &str) -> String {
-    let trimmed = raw.trim().to_lowercase();
+    let trimmed = raw.trim().to_ascii_lowercase();
     match trimmed.split_once('.') {
         Some((short, _)) => short.to_string(),
         None => trimmed,
