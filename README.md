@@ -104,7 +104,7 @@ for full control over your configuration.
             storage.devices = [ "/dev/disk/by-id/nvme-..." ];
             users.admin = {
               fullName = "Admin";
-              extraGroups = [ "wheel" ];
+              admin = true;
               authorizedKeys = [ "ssh-ed25519 ..." ];
             };
           };
