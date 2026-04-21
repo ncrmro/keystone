@@ -11,9 +11,11 @@
 //!   row.
 //! - `preview-release-notes` — emit the plain-text preview pane for the
 //!   release-notes row.
-//! - `dispatch <value>` — handle a Walker activation. Activation values
-//!   include `run-update`, `open-release-page\t<url>`, `blocked\t<title>\t<body>`,
-//!   and `noop`.
+//! - `dispatch <value>` — handle a Walker activation. Activation values are
+//!   restricted to the stable tokens listed in the `Activation values`
+//!   block below (`run-update`, `noop`, `blocked-update-unavailable`,
+//!   `blocked-keystone-unavailable`, and `open-release-page\t<url>`) so the
+//!   Lua provider's single-quoted `%VALUE%` interpolation stays safe.
 //!
 //! Replaces the previous bash implementation at
 //! `modules/desktop/home/scripts/keystone-update-menu.sh`.
@@ -638,6 +640,49 @@ fn render_preview_release_notes(state: &MenuState) -> String {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Activation values
+// -----------------------------------------------------------------------------
+//
+// Walker's Lua provider single-quotes `%VALUE%` into a shell command. Free-
+// form text containing a single quote, backslash, or control character would
+// either break shell quoting or let an attacker inject into the dispatch
+// argv. The activation values below are restricted to a fixed set of tokens
+// so the Lua layer stays quoting-safe without encoding/decoding.
+//
+// For actions that carry a payload (currently only `open-release-page`), the
+// payload must either:
+//   (a) be a well-formed URL with no single quotes / whitespace, or
+//   (b) be a stable tag that `dispatch` looks up fresh from `load_state`.
+//
+// Free-form error or reason strings MUST NOT be embedded in Values —
+// `dispatch` re-reads state when it needs to render the text.
+
+/// Activation tokens. Keep these stable; the Lua provider file and any
+/// external callers rely on them being shell-safe single words.
+const ACT_NOOP: &str = "noop";
+const ACT_RUN_UPDATE: &str = "run-update";
+const ACT_BLOCKED_UPDATE: &str = "blocked-update-unavailable";
+const ACT_BLOCKED_KEYSTONE: &str = "blocked-keystone-unavailable";
+const ACT_OPEN_RELEASE: &str = "open-release-page";
+
+/// A URL is considered shell-safe for Walker dispatch if it contains only
+/// characters that are always literal under both single-quote and no-quote
+/// shell parsing: ASCII letters, digits, and a small set of URL punctuation.
+/// GitHub release URLs always satisfy this; anything outside the allowlist
+/// falls back to an empty value so the entry is filtered instead of
+/// risking a quoting break.
+fn url_is_shell_safe(url: &str) -> bool {
+    !url.is_empty()
+        && url.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(
+                    c,
+                    ':' | '/' | '.' | '-' | '_' | '~' | '%' | '?' | '=' | '&' | '#' | '+'
+                )
+        })
+}
+
 fn render_entries_json(state: &MenuState) -> Result<String> {
     let entries: Vec<Value> = match state {
         MenuState::Ok(s) => {
@@ -646,40 +691,40 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
             } else {
                 short(&s.current_rev).to_string()
             };
-            let mut entries = vec![
-                serde_json::json!({
-                    "Text": format!("Current: {}", current_label),
-                    "Subtext": s.status_summary,
-                    "Value": "noop",
-                    "Icon": "dialog-information-symbolic",
-                    "Preview": "ks update menu preview-summary",
-                    "PreviewType": "command",
-                }),
-                serde_json::json!({
+            let mut entries = vec![serde_json::json!({
+                "Text": format!("Current: {}", current_label),
+                "Subtext": s.status_summary,
+                "Value": ACT_NOOP,
+                "Icon": "dialog-information-symbolic",
+                "Preview": "ks update-menu preview-summary",
+                "PreviewType": "command",
+            })];
+            if url_is_shell_safe(&s.latest_url) {
+                entries.push(serde_json::json!({
                     "Text": format!("Latest: {}", s.latest_tag),
                     "Subtext": "GitHub release notes and changelog",
-                    "Value": format!("open-release-page\t{}", s.latest_url),
+                    "Value": format!("{ACT_OPEN_RELEASE}\t{}", s.latest_url),
                     "Icon": "software-update-available-symbolic",
-                    "Preview": "ks update menu preview-release-notes",
+                    "Preview": "ks update-menu preview-release-notes",
                     "PreviewType": "command",
-                }),
-            ];
+                }));
+            }
             if s.update_allowed {
                 entries.push(serde_json::json!({
                     "Text": "Update current host",
                     "Subtext": format!("Run ks update to install {} on this host", s.latest_tag),
-                    "Value": "run-update",
+                    "Value": ACT_RUN_UPDATE,
                     "Icon": "system-software-update-symbolic",
-                    "Preview": "ks update menu preview-summary",
+                    "Preview": "ks update-menu preview-summary",
                     "PreviewType": "command",
                 }));
             } else {
                 entries.push(serde_json::json!({
                     "Text": "Update unavailable",
                     "Subtext": s.update_reason,
-                    "Value": format!("blocked\tUpdate unavailable\t{}", s.update_reason),
+                    "Value": ACT_BLOCKED_UPDATE,
                     "Icon": "dialog-warning-symbolic",
-                    "Preview": "ks update menu preview-summary",
+                    "Preview": "ks update-menu preview-summary",
                     "PreviewType": "command",
                 }));
             }
@@ -688,9 +733,9 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
         MenuState::Err(e) => vec![serde_json::json!({
             "Text": "Keystone OS unavailable",
             "Subtext": e.error,
-            "Value": format!("blocked\tKeystone OS unavailable\t{}", e.error),
+            "Value": ACT_BLOCKED_KEYSTONE,
             "Icon": "dialog-warning-symbolic",
-            "Preview": "ks update menu preview-summary",
+            "Preview": "ks update-menu preview-summary",
             "PreviewType": "command",
         })],
     };
@@ -739,17 +784,66 @@ fn start_update_unit() -> Result<()> {
     Ok(())
 }
 
-fn dispatch(value: &str) -> Result<()> {
-    let mut parts = value.splitn(3, '\t');
+/// Look up the current blocker text from fresh state. Called when the user
+/// activates a blocked-* token and we need to render a meaningful notification
+/// without having embedded the reason in the activation value.
+async fn blocked_update_notification(flake: Option<&Path>) -> (String, String) {
+    let state = load_state(flake).await;
+    match &state {
+        MenuState::Ok(s) if !s.update_allowed => (
+            "Keystone update unavailable".to_string(),
+            if s.update_reason.is_empty() {
+                s.status_summary.clone()
+            } else {
+                s.update_reason.clone()
+            },
+        ),
+        MenuState::Ok(_) => (
+            "Keystone update unavailable".to_string(),
+            "Status changed since the menu was rendered — open the Update menu to refresh."
+                .to_string(),
+        ),
+        MenuState::Err(e) => ("Keystone OS unavailable".to_string(), e.error.clone()),
+    }
+}
+
+async fn blocked_keystone_notification(flake: Option<&Path>) -> (String, String) {
+    let state = load_state(flake).await;
+    match &state {
+        MenuState::Err(e) => ("Keystone OS unavailable".to_string(), e.error.clone()),
+        MenuState::Ok(_) => (
+            "Keystone OS unavailable".to_string(),
+            "Status recovered — reopen the Update menu to refresh.".to_string(),
+        ),
+    }
+}
+
+async fn dispatch(value: &str, flake: Option<&Path>) -> Result<()> {
+    // Activation values are restricted to a small set of stable tokens
+    // (see the Activation values section above). `open-release-page` is the
+    // only action that carries a payload, and its payload is a URL that has
+    // already passed `url_is_shell_safe` at entries-render time.
+    let mut parts = value.splitn(2, '\t');
     let action = parts.next().unwrap_or("");
-    let arg1 = parts.next().unwrap_or("");
-    let arg2 = parts.next().unwrap_or("");
+    let payload = parts.next().unwrap_or("");
 
     match action {
-        "" | "noop" => Ok(()),
-        "blocked" => run_notify_send(arg1, arg2),
-        "open-release-page" => xdg_open_detached(arg1),
-        "run-update" => start_update_unit(),
+        "" | ACT_NOOP => Ok(()),
+        ACT_BLOCKED_UPDATE => {
+            let (title, body) = blocked_update_notification(flake).await;
+            run_notify_send(&title, &body)
+        }
+        ACT_BLOCKED_KEYSTONE => {
+            let (title, body) = blocked_keystone_notification(flake).await;
+            run_notify_send(&title, &body)
+        }
+        ACT_OPEN_RELEASE => {
+            if !url_is_shell_safe(payload) {
+                anyhow::bail!("open-release-page payload failed safety check");
+            }
+            xdg_open_detached(payload)
+        }
+        ACT_RUN_UPDATE => start_update_unit(),
         other => Err(anyhow!("unknown update menu action: {other}")),
     }
 }
@@ -798,7 +892,7 @@ pub async fn execute(cmd: UpdateMenuCommand, flake: Option<&Path>) -> Result<()>
             println!("{}", render_preview_release_notes(&state));
             Ok(())
         }
-        UpdateMenuCommand::Dispatch { value } => dispatch(&value),
+        UpdateMenuCommand::Dispatch { value } => dispatch(&value, flake).await,
     }
 }
 
@@ -854,12 +948,12 @@ mod tests {
         assert_eq!(arr[0]["Text"], "Current: v0.7.0");
         assert_eq!(arr[1]["Text"], "Latest: v0.8.0");
         assert_eq!(arr[2]["Text"], "Update current host");
-        assert_eq!(arr[2]["Value"], "run-update");
+        assert_eq!(arr[2]["Value"], ACT_RUN_UPDATE);
         assert!(
             arr[1]["Value"]
                 .as_str()
                 .unwrap()
-                .starts_with("open-release-page\t"),
+                .starts_with(&format!("{ACT_OPEN_RELEASE}\t")),
             "latest entry must open the release page on activation"
         );
     }
@@ -875,12 +969,15 @@ mod tests {
         let arr = parsed.as_array().unwrap();
         let blocked = &arr[2];
         assert_eq!(blocked["Text"], "Update unavailable");
-        let value = blocked["Value"].as_str().unwrap();
-        assert!(
-            value.starts_with("blocked\t"),
-            "blocked entry must use the notify fallback, got {value}"
+        // The Value MUST be a stable token — blocker text is rendered at
+        // dispatch time by re-reading state (see the `Activation values`
+        // block). Embedding free-form text here would break Lua's single-
+        // quoted shell wrapping when the text contains a quote.
+        assert_eq!(blocked["Value"], ACT_BLOCKED_UPDATE);
+        assert_eq!(
+            blocked["Subtext"],
+            "The active system flake has uncommitted changes."
         );
-        assert!(value.contains("uncommitted changes"));
     }
 
     #[test]
@@ -896,6 +993,44 @@ mod tests {
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0]["Text"], "Keystone OS unavailable");
         assert_eq!(arr[0]["Subtext"], "No flake.lock found.");
+        assert_eq!(arr[0]["Value"], ACT_BLOCKED_KEYSTONE);
+    }
+
+    #[test]
+    fn entries_skip_release_row_when_url_is_unsafe() {
+        // A release URL with a shell metachar (e.g. a single quote from a
+        // hypothetical GitHub glitch) must not be embedded into the Value —
+        // render_entries_json should drop that entry rather than risk
+        // breaking Lua's single-quoted Action.
+        let mut fixture = ok_fixture();
+        fixture.latest_url = "https://github.com/owner/repo/releases/tag/v0'8".into();
+        let state = MenuState::Ok(fixture);
+        let rendered = render_entries_json(&state).unwrap();
+        let parsed: Value = serde_json::from_str(&rendered).unwrap();
+        let arr = parsed.as_array().unwrap();
+        // Current + Update entries remain, but the Latest (release-page)
+        // entry is filtered because the URL failed the safety check.
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["Text"], "Current: v0.7.0");
+        assert_eq!(arr[1]["Value"], ACT_RUN_UPDATE);
+    }
+
+    #[test]
+    fn url_is_shell_safe_accepts_real_release_urls() {
+        assert!(url_is_shell_safe(
+            "https://github.com/ncrmro/keystone/releases/tag/v0.8.0"
+        ));
+        assert!(url_is_shell_safe(
+            "https://github.com/owner/repo/releases/tag/v1.2.3-rc1+build.42"
+        ));
+    }
+
+    #[test]
+    fn url_is_shell_safe_rejects_quote_and_space() {
+        assert!(!url_is_shell_safe("https://github.com/owner/repo/tag/v0'8"));
+        assert!(!url_is_shell_safe("https://github.com/a b"));
+        assert!(!url_is_shell_safe(""));
+        assert!(!url_is_shell_safe("https://github.com/owner/repo\n"));
     }
 
     #[test]
@@ -948,18 +1083,34 @@ mod tests {
         assert!(rendered.contains("https://example/release"));
     }
 
-    #[test]
-    fn dispatch_rejects_unknown_actions() {
-        let err = dispatch("mystery-action").unwrap_err();
+    #[tokio::test]
+    async fn dispatch_rejects_unknown_actions() {
+        let err = dispatch("mystery-action", None).await.unwrap_err();
         assert!(
             err.to_string().contains("unknown update menu action"),
             "got: {err}"
         );
     }
 
-    #[test]
-    fn dispatch_noop_is_ok() {
-        dispatch("").unwrap();
-        dispatch("noop").unwrap();
+    #[tokio::test]
+    async fn dispatch_noop_is_ok() {
+        dispatch("", None).await.unwrap();
+        dispatch("noop", None).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn dispatch_rejects_unsafe_open_release_payload() {
+        // Defense in depth: even if entries were tampered with, dispatch
+        // must refuse to hand an unsafe URL to xdg-open.
+        let err = dispatch(
+            &format!("{ACT_OPEN_RELEASE}\thttps://example.com/a'b"),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("failed safety check"),
+            "got: {err}"
+        );
     }
 }

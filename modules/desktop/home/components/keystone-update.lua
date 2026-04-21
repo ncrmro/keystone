@@ -22,6 +22,11 @@ local function command_path(name)
     return name
 end
 
+-- %VALUE% is interpolated inside single quotes, so every activation value
+-- emitted by `ks update-menu entries` MUST be shell-safe under single-quote
+-- rules: no single quotes, backslashes, or unescaped control characters.
+-- `ks update-menu` enforces this on the producer side (stable tokens +
+-- URL allowlist); dispatch also re-validates URL payloads defensively.
 Action = command_path("ks") .. " update-menu dispatch '%VALUE%'"
 
 function GetEntries()
