@@ -581,13 +581,18 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
         )
     };
 
+    // `host_key` is retained for state inspection (surfaced by
+    // `ks update-menu status`) but is no longer a gating precondition for
+    // offering the update entry. The dispatch path is `ks update` with no
+    // explicit host, and ks resolves the current host on its own via the
+    // keystone-system-flake pointer — so a hosts.nix that can't be read
+    // here would still succeed at deploy time, and blocking the menu purely
+    // on that lookup would produce spurious "Update unavailable" entries.
     let mut update_allowed = false;
     let update_reason = match status_kind {
         "behind" => {
             if dirty {
                 "The active system flake has uncommitted changes.".to_string()
-            } else if host_key.is_empty() {
-                "Unable to resolve the current host key from hosts.nix.".to_string()
             } else {
                 update_allowed = true;
                 String::new()
@@ -788,7 +793,12 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
             if s.update_allowed {
                 entries.push(serde_json::json!({
                     "Text": "Update current host",
-                    "Subtext": format!("Run ks update to install {} on this host", s.latest_tag),
+                    // Don't promise that `ks update` lands the host exactly on
+                    // `latest_tag` — it relocks the consumer flake's inputs
+                    // and the result may advance past the published release
+                    // depending on how the input is configured. Describe the
+                    // action, not the target revision.
+                    "Subtext": "Run ks update to relock inputs and update this host",
                     "Value": ACT_RUN_UPDATE,
                     "Icon": "system-software-update-symbolic",
                     "Preview": "ks update-menu preview-summary",
