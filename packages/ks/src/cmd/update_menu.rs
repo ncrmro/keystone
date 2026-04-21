@@ -240,9 +240,29 @@ fn git_status_clean(repo_root: &Path) -> bool {
     }
 }
 
-/// Try to resolve `rev` to an exact-match release tag via a local keystone
-/// checkout. If no local checkout is available or the rev has no tag, returns
-/// an empty string (matching the bash semantics).
+/// Parse a `v<major>.<minor>.<patch>` tag into a sortable tuple. Returns
+/// `None` for any tag that isn't exactly that shape — pre-releases
+/// (`v1.2.3-rc1`), build metadata (`v1.2.3+build.42`), and non-release
+/// markers (`prod`, `release-candidate`) are deliberately filtered out so
+/// `current_tag` only ever reflects a published release.
+fn parse_release_tag(tag: &str) -> Option<(u32, u32, u32)> {
+    let rest = tag.strip_prefix('v')?;
+    let mut parts = rest.split('.');
+    let major: u32 = parts.next()?.parse().ok()?;
+    let minor: u32 = parts.next()?.parse().ok()?;
+    let patch: u32 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+/// Try to resolve `rev` to a release tag (`v<major>.<minor>.<patch>`) via
+/// the local keystone checkout. When multiple release tags point at the
+/// same rev, returns the highest-numbered one. Anything not matching the
+/// release-tag shape — pre-releases, build metadata, arbitrary tags — is
+/// ignored. Matches the legacy bash probe's semantics so `current_tag`
+/// cannot be set by unrelated tags pointing at the same commit.
 fn release_tag_for_rev(rev: &str) -> String {
     let keystone_root = match repo::resolve_keystone_repo() {
         Ok(path) => path,
@@ -251,12 +271,19 @@ fn release_tag_for_rev(rev: &str) -> String {
     let output = Command::new("git")
         .arg("-C")
         .arg(&keystone_root)
-        .args(["describe", "--tags", "--exact-match", rev])
+        .args(["tag", "--points-at", rev])
         .output();
-    match output {
-        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim().to_string(),
-        _ => String::new(),
-    }
+    let raw = match output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+        _ => return String::new(),
+    };
+
+    raw.lines()
+        .map(str::trim)
+        .filter_map(|tag| parse_release_tag(tag).map(|ver| (tag.to_string(), ver)))
+        .max_by_key(|(_, ver)| *ver)
+        .map(|(tag, _)| tag)
+        .unwrap_or_default()
 }
 
 fn rev_exists_locally(rev: &str) -> bool {
@@ -1010,6 +1037,34 @@ mod tests {
             dirty: false,
             update_allowed: true,
         }
+    }
+
+    #[test]
+    fn parse_release_tag_accepts_plain_semver() {
+        assert_eq!(parse_release_tag("v0.8.0"), Some((0, 8, 0)));
+        assert_eq!(parse_release_tag("v1.2.3"), Some((1, 2, 3)));
+        assert_eq!(parse_release_tag("v10.20.300"), Some((10, 20, 300)));
+    }
+
+    #[test]
+    fn parse_release_tag_rejects_prereleases_and_metadata() {
+        // Pre-releases and build metadata must not be treated as release
+        // tags — they'd spuriously flag the menu as "behind" against a
+        // stable release that doesn't yet exist.
+        assert_eq!(parse_release_tag("v1.2.3-rc1"), None);
+        assert_eq!(parse_release_tag("v1.2.3+build.42"), None);
+        assert_eq!(parse_release_tag("v1.2.3.4"), None);
+    }
+
+    #[test]
+    fn parse_release_tag_rejects_non_release_names() {
+        assert_eq!(parse_release_tag("prod"), None);
+        assert_eq!(parse_release_tag("release-candidate"), None);
+        assert_eq!(parse_release_tag(""), None);
+        assert_eq!(parse_release_tag("v"), None);
+        assert_eq!(parse_release_tag("v1.2"), None);
+        assert_eq!(parse_release_tag("1.2.3"), None); // no leading 'v'
+        assert_eq!(parse_release_tag("vAbC.1.2"), None);
     }
 
     #[test]
