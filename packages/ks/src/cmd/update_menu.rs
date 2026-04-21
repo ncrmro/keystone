@@ -1006,7 +1006,23 @@ async fn dispatch(value: &str, flake: Option<&Path>) -> Result<()> {
             // round-trip ends with `ks update` failing — strictly worse
             // UX than refusing up front with the same reason).
             match evaluate_local_gate(flake) {
-                Ok(()) => start_update_unit(),
+                Ok(()) => {
+                    // If `systemctl --user start` itself fails (unit not
+                    // loaded, user bus unavailable, systemctl not on PATH),
+                    // the error propagates out of `dispatch` → Walker. But
+                    // Walker doesn't surface stderr to the user, so this
+                    // would be a silent failure. Catch and surface via
+                    // notify-send with a pointer at the journal so the user
+                    // has something actionable.
+                    if let Err(err) = start_update_unit() {
+                        run_notify_send(
+                            "Keystone update failed to start",
+                            &format!("{err}\n\nSee journalctl --user -u ks-update.service -b"),
+                        )
+                    } else {
+                        Ok(())
+                    }
+                }
                 Err(reason) => run_notify_send("Keystone update unavailable", &reason),
             }
         }
