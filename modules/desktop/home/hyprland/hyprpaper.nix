@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  keystoneInputs,
   ...
 }:
 with lib;
@@ -12,6 +13,7 @@ in
   config = mkIf desktopCfg.enable {
     services.hyprpaper = {
       enable = mkDefault true;
+      package = keystoneInputs.hyprpaper.packages.${pkgs.stdenv.hostPlatform.system}.hyprpaper;
       # TODO: remove once home-manager is updated — newer HM defaults importantPrefixes to ["$" "monitor"]
       importantPrefixes = [
         "$"

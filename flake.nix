@@ -21,6 +21,14 @@
       inputs.crane.follows = "crane";
     };
     hyprland.url = "github:hyprwm/Hyprland";
+    hyprpaper = {
+      url = "github:hyprwm/hyprpaper";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.hyprlang.follows = "hyprland/hyprlang";
+      inputs.hyprutils.follows = "hyprland/hyprutils";
+      inputs.hyprgraphics.follows = "hyprland/hyprgraphics";
+      inputs.hyprwayland-scanner.follows = "hyprland/hyprwayland-scanner";
+    };
     himalaya = {
       url = "github:pimalaya/himalaya";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -115,6 +123,7 @@
       omarchy,
       lanzaboote,
       hyprland,
+      hyprpaper,
       himalaya,
       calendula,
       cardamum,
@@ -144,6 +153,7 @@
           lanzaboote
           home-manager
           hyprland
+          hyprpaper
           himalaya
           llm-agents
           browser-previews
