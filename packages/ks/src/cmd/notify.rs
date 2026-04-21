@@ -101,10 +101,13 @@ pub fn execute(unit: &str, result: &str) -> Result<()> {
     let title = unit_title(unit, parsed);
     let body = notification_body(unit, parsed);
 
+    // `--` stops notify-send's option parsing so a unit name / rendered
+    // title beginning with `-` isn't misread as a flag.
     let status = Command::new("notify-send")
         .args([
             "--app-name=Keystone",
             &format!("--urgency={}", parsed.urgency()),
+            "--",
             &title,
             &body,
         ])

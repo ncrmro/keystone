@@ -905,8 +905,11 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
 // -----------------------------------------------------------------------------
 
 fn run_notify_send(summary: &str, body: &str) -> Result<()> {
+    // `--` stops notify-send's option parsing so a summary / body that
+    // starts with `-` (e.g., a reason string carrying a CLI flag) isn't
+    // misread as a flag.
     let status = Command::new("notify-send")
-        .args(["--app-name=Keystone", summary, body])
+        .args(["--app-name=Keystone", "--", summary, body])
         .status()
         .context("failed to invoke notify-send")?;
     if !status.success() {
