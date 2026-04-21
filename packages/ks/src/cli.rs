@@ -93,6 +93,15 @@ pub enum Command {
 
         #[arg(long)]
         json: bool,
+
+        /// Route this invocation through the approval broker before running
+        /// the update body. Used by `ks-update.service` so the Walker-
+        /// triggered flow gets a polkit prompt instead of assuming root.
+        ///
+        /// When `KS_APPROVE_EXECUTING` is set (i.e., we are already the
+        /// approved child), this flag is a no-op and the body runs directly.
+        #[arg(long)]
+        approve: bool,
     },
 
     /// Request approval for one allowlisted privileged command.

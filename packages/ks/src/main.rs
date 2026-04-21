@@ -88,10 +88,20 @@ async fn main() -> Result<()> {
                 all_users: _,
                 hosts,
                 json,
+                approve,
             } => {
                 let dev_mode = dev && !lock;
                 let pull_only = pull && dev_mode;
-                run_update_command(hosts.as_deref(), dev_mode, boot, pull_only, json, flake).await
+                run_update_command(
+                    hosts.as_deref(),
+                    dev_mode,
+                    boot,
+                    pull_only,
+                    approve,
+                    json,
+                    flake,
+                )
+                .await
             }
             Command::Approve(args) => run_approve_command(args).await,
             Command::Agents(args) => run_agents_command(args).await,
@@ -380,9 +390,21 @@ async fn run_update_command(
     dev: bool,
     boot: bool,
     pull_only: bool,
+    approve: bool,
     json: bool,
     flake: Option<&std::path::Path>,
 ) -> Result<()> {
+    // When `--approve` is set and we are not already inside the approval
+    // broker (i.e., KS_APPROVE_EXECUTING is unset), re-invoke ourselves
+    // through `ks approve`. On success, approve::execute exec's the helper
+    // and replaces this process, so the update body only runs in the
+    // post-approval child (where KS_APPROVE_EXECUTING=1).
+    if approve && std::env::var_os("KS_APPROVE_EXECUTING").is_none() {
+        let host_label = cmd::util::hostname_label();
+        let reason = format!("Run the Keystone update workflow on {host_label}.");
+        return cmd::approve::execute(&reason, &["ks".to_string(), "update".to_string()]);
+    }
+
     match cmd::update::execute(hosts, dev, boot, pull_only, flake).await {
         Ok(result) => {
             if json {
