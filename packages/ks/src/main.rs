@@ -122,6 +122,7 @@ async fn main() -> Result<()> {
             Command::Project(args) => cmd::projects::execute(&args).await,
             Command::Notify { unit, result } => cmd::notify::execute(&unit, &result),
             Command::Menu { command } => cmd::menu::execute(command, flake).await,
+            Command::RunBackground { unit } => cmd::run_background::execute(&unit),
         };
     }
 

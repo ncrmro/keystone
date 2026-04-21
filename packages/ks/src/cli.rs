@@ -217,6 +217,18 @@ pub enum Command {
         #[command(subcommand)]
         command: MenuCommand,
     },
+
+    /// Start a systemd user unit in the background.
+    ///
+    /// Thin wrapper around `systemctl --user start` restricted to
+    /// `ks-<name>.service` units. Used by Walker dispatch paths and other
+    /// trigger surfaces that should kick off a supervised background task
+    /// (e.g., `ks-update.service`) without opening a terminal.
+    #[command(name = "run-background")]
+    RunBackground {
+        /// Unit to start (must match `ks-<name>.service`).
+        unit: String,
+    },
 }
 
 #[derive(Args)]

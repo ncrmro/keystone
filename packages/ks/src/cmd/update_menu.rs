@@ -852,22 +852,17 @@ fn xdg_open_detached(url: &str) -> Result<()> {
     Ok(())
 }
 
-/// Start the background update unit via systemd --user. This replaces the
-/// previous Ghostty-detach path: the unit handles approval (pkexec via
-/// hyprpolkitagent), logging (journal), and completion notification
-/// (OnSuccess/OnFailure -> ks-update-notify@.service).
+/// Start the background update unit via systemd --user. Delegates to
+/// `ks run-background` so the systemctl spawn plus error-surface
+/// translation lives in one place — the next Walker provider that needs
+/// a background-unit trigger can call the same verb instead of
+/// re-implementing this function.
+///
+/// The unit handles approval (pkexec via hyprpolkitagent), logging
+/// (journal), and completion notification (OnSuccess/OnFailure ->
+/// ks-update-notify@.service).
 fn start_update_unit() -> Result<()> {
-    let status = Command::new("systemctl")
-        .args(["--user", "start", "ks-update.service"])
-        .status()
-        .context("failed to invoke systemctl --user start ks-update.service")?;
-    if !status.success() {
-        anyhow::bail!(
-            "systemctl --user start ks-update.service exited with status {:?}",
-            status.code()
-        );
-    }
-    Ok(())
+    crate::cmd::run_background::execute("ks-update.service")
 }
 
 /// Look up the current blocker text from fresh state. Called when the user

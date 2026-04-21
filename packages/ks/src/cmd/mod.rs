@@ -17,6 +17,7 @@ pub mod notify;
 pub mod photos;
 pub mod print;
 pub mod projects;
+pub mod run_background;
 pub mod screenshots;
 pub mod ssh;
 pub mod switch;
