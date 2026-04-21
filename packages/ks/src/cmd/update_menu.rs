@@ -149,20 +149,21 @@ fn find_keystone_input(lock: &FlakeLock) -> Option<(&String, &FlakeNode)> {
 // Git helpers
 // -----------------------------------------------------------------------------
 
+/// Mirror the legacy bash `repo_is_clean` check. Uses
+/// `git status --porcelain --untracked-files=normal` so a working tree with
+/// untracked files is flagged as dirty — matching the previous behaviour and
+/// preventing `ks update` from racing against in-flight local work.
 fn git_status_clean(repo_root: &Path) -> bool {
-    let checks: [&[&str]; 2] = [&["diff", "--quiet"], &["diff", "--cached", "--quiet"]];
-    for args in checks {
-        let status = Command::new("git")
-            .arg("-C")
-            .arg(repo_root)
-            .args(args)
-            .status();
-        match status {
-            Ok(s) if s.success() => continue,
-            _ => return false,
-        }
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["status", "--porcelain", "--untracked-files=normal"])
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim().is_empty(),
+        _ => false,
     }
-    true
 }
 
 /// Try to resolve `rev` to an exact-match release tag via a local keystone
