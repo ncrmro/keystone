@@ -5,6 +5,7 @@ use clap::{Args, Parser, Subcommand};
 use crate::cmd::{
     agent_loop::AgentLoopArgs, notifications::NotificationArgs, photos::PhotosCommand,
     projects::ProjectArgs, screenshots::ScreenshotsCommand, tasks::TaskArgs,
+    update_menu::UpdateMenuCommand,
 };
 
 /// Keystone CLI/TUI — NixOS infrastructure configuration and management.
@@ -184,6 +185,18 @@ pub enum Command {
         /// Result tag passed by the template instance: `success` or
         /// `failure`.
         result: String,
+    },
+
+    /// Walker provider backend for the Keystone OS update entry.
+    ///
+    /// Subcommands emit JSON/text that Walker reads from stdout
+    /// (`entries`, `preview-summary`, `preview-release-notes`) or perform
+    /// activation side effects (`dispatch`). Replaces the legacy
+    /// `keystone-update-menu` shell script.
+    #[command(name = "update-menu")]
+    UpdateMenu {
+        #[command(subcommand)]
+        command: UpdateMenuCommand,
     },
 }
 
