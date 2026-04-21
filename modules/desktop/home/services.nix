@@ -64,12 +64,17 @@ in
         Environment = [ "PATH=${updatePath}" ];
         # systemd-inhibit blocks suspend/shutdown for the duration of the
         # update so a laptop lid close mid-rebuild doesn't wedge the unit.
-        ExecStart = ''
-          ${systemdBin} --what=sleep:shutdown:idle \
-            --why='Keystone OS update in progress' \
-            --mode=block \
-            ${ksBin} update --approve
-        '';
+        # Single-line form (concatStringsSep) matches the keystone unit
+        # idiom and avoids relying on systemd's line-continuation parsing.
+        ExecStart = concatStringsSep " " [
+          systemdBin
+          "--what=sleep:shutdown:idle"
+          "--why=\"Keystone OS update in progress\""
+          "--mode=block"
+          ksBin
+          "update"
+          "--approve"
+        ];
         # Polkit prompts may sit for a while if the user steps away. 30 min
         # is enough to cover the largest real updates plus approval latency;
         # beyond that we surface a timeout failure via OnFailure.
