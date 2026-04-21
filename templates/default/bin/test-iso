@@ -626,7 +626,8 @@ run_direct_image() {
     # ── locate the qcow2 output ───────────────────────────────────────────────
 
     local qcow2_path
-    qcow2_path="$(find "$direct_result" -maxdepth 1 -name '*.qcow2' -print -quit 2>/dev/null || true)"
+    # -L follows the nix build --out-link symlink into the store path
+    qcow2_path="$(find -L "$direct_result" -maxdepth 1 -name '*.qcow2' -print -quit 2>/dev/null || true)"
     if [[ -z "$qcow2_path" ]]; then
         log_error "Build succeeded but no qcow2 found in $direct_result"
         log_error "Available files:"
