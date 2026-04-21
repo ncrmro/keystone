@@ -2,30 +2,40 @@
 //! Walker dispatch paths and keybinds that kick off a supervised background
 //! task (e.g., `ks-update.service`) without opening a terminal.
 //!
-//! Thin wrapper around `systemctl --user start`. The unit name is restricted
-//! to a `ks-<name>.service` allowlist so caller surfaces that accept
-//! external input (Walker dispatch values, future keybinds, potentially
-//! cron) cannot activate arbitrary user units. The consumer stays simple:
-//! one binary invocation instead of reimplementing the systemctl spawn
-//! plus error-surface translation per caller.
+//! Thin wrapper around `systemctl --user start`. The unit name must match a
+//! `ks-<name>.service` shape constraint (prefix `ks-`, suffix `.service`,
+//! `<name>` restricted to lowercase ASCII + digits + hyphens) so caller
+//! surfaces that accept external input (Walker dispatch values, future
+//! keybinds, potentially cron) cannot activate arbitrary user units. This
+//! is a structural check — not a literal allowlist of approved unit names.
+//! When a literal allowlist becomes worthwhile (i.e., when multiple
+//! background-task units exist and the set can be enumerated), tighten
+//! here.
+//!
+//! The consumer stays simple: one binary invocation instead of
+//! reimplementing the systemctl spawn plus error-surface translation per
+//! caller.
 
 use anyhow::{anyhow, Context, Result};
 use std::process::Command;
 
-/// Validate that a unit name matches the `ks-<name>.service` shape this
-/// verb is intended to start. Rejects anything outside the allowlist so
-/// callers cannot trick the verb into starting arbitrary user units.
+/// Validate that `unit` matches the `ks-<name>.service` shape this verb
+/// accepts. The check is structural (prefix / suffix / allowed characters
+/// in `<name>`), not a literal allowlist of known unit names — see the
+/// module docstring for rationale. Rejects shell metacharacters, path
+/// traversal, uppercase (which would require systemd escaping), empty
+/// stems, non-`.service` suffixes, and any prefix other than `ks-`.
 ///
 /// Allowed characters in `<name>`: lowercase ASCII, digits, hyphens.
-/// These are the conventions keystone uses for its own service names
-/// and are all safe under shell and systemd unit-name rules.
+/// These are the conventions keystone uses for its own service names and
+/// are all safe under shell and systemd unit-name rules.
 pub(crate) fn validate_unit_name(unit: &str) -> Result<()> {
     if !unit.ends_with(".service") {
         return Err(anyhow!("unit {unit:?} is not a .service unit"));
     }
     if !unit.starts_with("ks-") {
         return Err(anyhow!(
-            "unit {unit:?} is not in the ks-<name>.service allowlist"
+            "unit {unit:?} does not match the ks-<name>.service shape"
         ));
     }
     let stem = unit.trim_end_matches(".service").trim_start_matches("ks-");
@@ -37,7 +47,7 @@ pub(crate) fn validate_unit_name(unit: &str) -> Result<()> {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     {
         return Err(anyhow!(
-            "unit {unit:?} contains characters outside the allowlist (lowercase ascii, digits, hyphens)"
+            "unit {unit:?} contains characters outside the ks-<name>.service shape (lowercase ascii, digits, hyphens)"
         ));
     }
     Ok(())
@@ -75,7 +85,10 @@ mod tests {
     #[test]
     fn rejects_non_ks_prefixed_units() {
         let err = validate_unit_name("user-session.service").unwrap_err();
-        assert!(err.to_string().contains("allowlist"), "got: {err}");
+        assert!(
+            err.to_string().contains("ks-<name>.service shape"),
+            "got: {err}"
+        );
     }
 
     #[test]
