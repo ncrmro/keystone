@@ -440,9 +440,6 @@
           keystoneSecretsMenu = import ./tests/module/keystone-secrets-menu.nix {
             inherit pkgs lib;
           };
-          keystoneUpdateMenu = import ./tests/module/keystone-update-menu.nix {
-            inherit pkgs lib;
-          };
           keystoneFingerprintMenu = import ./tests/module/keystone-fingerprint-menu.nix {
             inherit pkgs lib;
           };
@@ -505,7 +502,6 @@
           pz-project-menu = pzProjectMenu;
           pz-host-launcher-state = pzHostLauncherState;
           keystone-secrets-menu = keystoneSecretsMenu;
-          keystone-update-menu = keystoneUpdateMenu;
           keystone-fingerprint-menu = keystoneFingerprintMenu;
           hyprland-bindings-agent-conflict = hyprlandBindingsAgentConflict;
           desktop-walker-surfaces = desktopWalkerSurfaces;
@@ -556,7 +552,6 @@
             ln -s ${pzProjectMenu} "$out/pz-project-menu"
             ln -s ${pzHostLauncherState} "$out/pz-host-launcher-state"
             ln -s ${keystoneSecretsMenu} "$out/keystone-secrets-menu"
-            ln -s ${keystoneUpdateMenu} "$out/keystone-update-menu"
             ln -s ${keystoneFingerprintMenu} "$out/keystone-fingerprint-menu"
             ln -s ${projectsSchema} "$out/projects-schema"
           '';

@@ -807,3 +807,161 @@ pub async fn execute(cmd: UpdateMenuCommand, flake: Option<&Path>) -> Result<()>
 // elsewhere in the crate.
 #[allow(dead_code)]
 fn _keep(_: &PathBuf) {}
+
+// -----------------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ok_fixture() -> OkState {
+        OkState {
+            ok: true,
+            repo_root: "/etc/nixos-config".into(),
+            input_name: "keystone".into(),
+            current_rev: "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeee".into(),
+            current_tag: "v0.7.0".into(),
+            latest_tag: "v0.8.0".into(),
+            latest_name: "v0.8.0".into(),
+            latest_url: "https://github.com/ncrmro/keystone/releases/tag/v0.8.0".into(),
+            latest_published: "2026-04-01T10:00:00Z".into(),
+            latest_body: "## Changes\n- Added Walker update menu".into(),
+            latest_rev: "bbbbbbbbccccccccddddddddeeeeeeeeffffffff".into(),
+            host_key: "mox".into(),
+            status_kind: "behind".into(),
+            status_summary: "A newer Keystone release is available on GitHub.".into(),
+            update_reason: String::new(),
+            dirty: false,
+            update_allowed: true,
+        }
+    }
+
+    #[test]
+    fn short_returns_first_seven_chars() {
+        assert_eq!(short("aaaaaaaabbbbbbbbccccccccddddddddeeeeeeee"), "aaaaaaa");
+        assert_eq!(short("abc"), "abc");
+        assert_eq!(short(""), "");
+    }
+
+    #[test]
+    fn entries_ok_state_has_three_entries_with_update_row() {
+        let state = MenuState::Ok(ok_fixture());
+        let rendered = render_entries_json(&state).unwrap();
+        let parsed: Value = serde_json::from_str(&rendered).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 3);
+        assert_eq!(arr[0]["Text"], "Current: v0.7.0");
+        assert_eq!(arr[1]["Text"], "Latest: v0.8.0");
+        assert_eq!(arr[2]["Text"], "Update current host");
+        assert_eq!(arr[2]["Value"], "run-update");
+        assert!(
+            arr[1]["Value"]
+                .as_str()
+                .unwrap()
+                .starts_with("open-release-page\t"),
+            "latest entry must open the release page on activation"
+        );
+    }
+
+    #[test]
+    fn entries_blocks_when_update_not_allowed() {
+        let mut fixture = ok_fixture();
+        fixture.update_allowed = false;
+        fixture.update_reason = "The active system flake has uncommitted changes.".into();
+        let state = MenuState::Ok(fixture);
+        let rendered = render_entries_json(&state).unwrap();
+        let parsed: Value = serde_json::from_str(&rendered).unwrap();
+        let arr = parsed.as_array().unwrap();
+        let blocked = &arr[2];
+        assert_eq!(blocked["Text"], "Update unavailable");
+        let value = blocked["Value"].as_str().unwrap();
+        assert!(
+            value.starts_with("blocked\t"),
+            "blocked entry must use the notify fallback, got {value}"
+        );
+        assert!(value.contains("uncommitted changes"));
+    }
+
+    #[test]
+    fn entries_err_state_surfaces_error() {
+        let state = MenuState::Err(ErrState {
+            ok: false,
+            error: "No flake.lock found.".into(),
+            ..Default::default()
+        });
+        let rendered = render_entries_json(&state).unwrap();
+        let parsed: Value = serde_json::from_str(&rendered).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["Text"], "Keystone OS unavailable");
+        assert_eq!(arr[0]["Subtext"], "No flake.lock found.");
+    }
+
+    #[test]
+    fn preview_summary_ok_formats_key_fields() {
+        let state = MenuState::Ok(ok_fixture());
+        let rendered = render_preview_summary(&state);
+        assert!(rendered.contains("Keystone OS update status"));
+        assert!(rendered.contains("Consumer flake: /etc/nixos-config"));
+        assert!(rendered.contains("Current: v0.7.0 (aaaaaaa)"));
+        assert!(rendered.contains("Latest: v0.8.0 (bbbbbbb)"));
+        assert!(rendered.contains("Update command: ks update"));
+    }
+
+    #[test]
+    fn preview_summary_shows_blocker_when_update_not_allowed() {
+        let mut fixture = ok_fixture();
+        fixture.update_allowed = false;
+        fixture.update_reason = "Working tree dirty.".into();
+        let rendered = render_preview_summary(&MenuState::Ok(fixture));
+        assert!(rendered.contains("Update: Working tree dirty."));
+        assert!(!rendered.contains("Update command: ks update"));
+    }
+
+    #[test]
+    fn preview_release_notes_renders_body_and_url() {
+        let state = MenuState::Ok(ok_fixture());
+        let rendered = render_preview_release_notes(&state);
+        assert!(rendered.contains("v0.8.0"));
+        assert!(rendered.contains("Tag: v0.8.0"));
+        assert!(rendered.contains("Published: 2026-04-01T10:00:00Z"));
+        assert!(rendered.contains("Added Walker update menu"));
+        assert!(rendered.contains("https://github.com/ncrmro/keystone/releases/tag/v0.8.0"));
+    }
+
+    #[test]
+    fn preview_release_notes_uses_partial_err_state_when_available() {
+        let state = MenuState::Err(ErrState {
+            ok: false,
+            latest_tag: Some("v0.8.0".into()),
+            latest_body: Some("Release notes body".into()),
+            latest_url: Some("https://example/release".into()),
+            error: "Could not resolve release commit".into(),
+            ..Default::default()
+        });
+        let rendered = render_preview_release_notes(&state);
+        // Partial render should surface the tag even though the overall state
+        // is errored out.
+        assert!(rendered.contains("Tag: v0.8.0"));
+        assert!(rendered.contains("Release notes body"));
+        assert!(rendered.contains("https://example/release"));
+    }
+
+    #[test]
+    fn dispatch_rejects_unknown_actions() {
+        let err = dispatch("mystery-action").unwrap_err();
+        assert!(
+            err.to_string().contains("unknown update menu action"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn dispatch_noop_is_ok() {
+        dispatch("").unwrap();
+        dispatch("noop").unwrap();
+    }
+}
+
