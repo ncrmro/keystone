@@ -102,13 +102,44 @@ enum MenuState {
 #[derive(Debug, Deserialize)]
 struct FlakeLock {
     nodes: std::collections::HashMap<String, FlakeNode>,
-    // root handling not needed for our purposes
+    // The `root` attribute names the entry node; the legacy bash probe
+    // anchored resolution there so the menu is immune to transitive
+    // dependencies that happen to pin the same GitHub repo.
+    #[serde(default = "default_root")]
+    root: String,
+}
+
+fn default_root() -> String {
+    "root".to_string()
 }
 
 #[derive(Debug, Deserialize)]
 struct FlakeNode {
     locked: Option<FlakeLocked>,
     original: Option<FlakeOriginal>,
+    /// Present on the root node; maps input names to node ids (either a
+    /// direct string, or a resolution-path array for `follows` inputs).
+    #[serde(default)]
+    inputs: std::collections::HashMap<String, InputRef>,
+}
+
+/// A root-level input entry points either at a node name (direct input) or a
+/// resolution path (a `follows` chain). We only care about the direct case
+/// when identifying which input is the keystone one.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum InputRef {
+    Direct(String),
+    Path(Vec<String>),
+}
+
+impl InputRef {
+    fn as_node_name(&self) -> Option<&str> {
+        match self {
+            InputRef::Direct(name) => Some(name.as_str()),
+            InputRef::Path(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,18 +164,59 @@ fn read_flake_lock(repo_root: &Path) -> Result<FlakeLock> {
     serde_json::from_slice(&bytes).with_context(|| format!("failed to parse {}", path.display()))
 }
 
-/// Find the flake node that points at `{owner}/{repo}` on GitHub.
-fn find_keystone_input(lock: &FlakeLock) -> Option<(&String, &FlakeNode)> {
-    lock.nodes.iter().find(|(_, node)| {
-        node.original
+/// Find the consumer flake's direct input that points at
+/// `{RELEASE_OWNER}/{RELEASE_REPO}` on GitHub.
+///
+/// Walks `nodes[<root>].inputs` (the entry node declared by `flake.lock`'s
+/// top-level `root` attribute) rather than scanning every node, so a
+/// transitive dependency that happens to also depend on `ncrmro/keystone`
+/// can't cause us to read the wrong locked revision. Returns the **root
+/// input name** (e.g., `"keystone"`) and the resolved node. Errors if zero
+/// or multiple root inputs match — the legacy bash probe had the same
+/// "exactly one" contract and silent ambiguity would quietly point the
+/// menu at an unrelated pin.
+fn find_keystone_input(lock: &FlakeLock) -> Result<(String, &FlakeNode)> {
+    let root_node = lock
+        .nodes
+        .get(&lock.root)
+        .ok_or_else(|| anyhow!("flake.lock root node '{}' missing", lock.root))?;
+
+    let mut matches: Vec<(String, &FlakeNode)> = Vec::new();
+    for (input_name, input_ref) in &root_node.inputs {
+        let Some(node_name) = input_ref.as_node_name() else {
+            // Skip `follows` paths — those resolve to another input, not a
+            // direct GitHub source, so they cannot be the keystone input.
+            continue;
+        };
+        let Some(node) = lock.nodes.get(node_name) else {
+            continue;
+        };
+        let matches_keystone = node
+            .original
             .as_ref()
             .map(|o| {
                 o.kind.as_deref() == Some("github")
                     && o.owner.as_deref() == Some(RELEASE_OWNER)
                     && o.repo.as_deref() == Some(RELEASE_REPO)
             })
-            .unwrap_or(false)
-    })
+            .unwrap_or(false);
+        if matches_keystone {
+            matches.push((input_name.clone(), node));
+        }
+    }
+
+    match matches.len() {
+        0 => Err(anyhow!(
+            "no root input pins {RELEASE_OWNER}/{RELEASE_REPO} on GitHub"
+        )),
+        1 => Ok(matches.into_iter().next().unwrap()),
+        n => {
+            let names: Vec<&str> = matches.iter().map(|(name, _)| name.as_str()).collect();
+            Err(anyhow!(
+                "found {n} root inputs pinning {RELEASE_OWNER}/{RELEASE_REPO}: {names:?}"
+            ))
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -360,15 +432,19 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
         }
     };
 
-    let Some((input_name, node)) = find_keystone_input(&lock) else {
-        return MenuState::Err(ErrState {
-            ok: false,
-            repo_root: Some(repo_root_str),
-            error: "Unable to find a Keystone GitHub input in the active system flake.".into(),
-            ..Default::default()
-        });
+    let (input_name, node) = match find_keystone_input(&lock) {
+        Ok(pair) => pair,
+        Err(err) => {
+            return MenuState::Err(ErrState {
+                ok: false,
+                repo_root: Some(repo_root_str),
+                error: format!(
+                    "Unable to find a Keystone GitHub input in the active system flake: {err}"
+                ),
+                ..Default::default()
+            });
+        }
     };
-    let input_name = input_name.clone();
 
     let Some(locked) = node.locked.as_ref() else {
         return MenuState::Err(ErrState {
@@ -1081,6 +1157,130 @@ mod tests {
         assert!(rendered.contains("Tag: v0.8.0"));
         assert!(rendered.contains("Release notes body"));
         assert!(rendered.contains("https://example/release"));
+    }
+
+    fn parse_lock(raw: &str) -> FlakeLock {
+        serde_json::from_str(raw).expect("test fixture must be valid flake.lock JSON")
+    }
+
+    #[test]
+    fn find_keystone_input_walks_root_inputs_and_ignores_transitive() {
+        // Simulates a consumer flake whose direct input `keystone` is the
+        // real ncrmro/keystone pin, while `other/keystone-fork` is an
+        // unrelated node that *also* has original.owner=ncrmro repo=keystone
+        // (as could happen with a transitive dep that pins the same repo).
+        let raw = r#"{
+            "root": "root",
+            "version": 7,
+            "nodes": {
+                "root": {
+                    "inputs": {
+                        "keystone": "keystone",
+                        "nixpkgs": "nixpkgs"
+                    }
+                },
+                "keystone": {
+                    "locked": {"type": "github", "rev": "aaaaaaaa"},
+                    "original": {"type": "github", "owner": "ncrmro", "repo": "keystone"}
+                },
+                "transitive_keystone": {
+                    "locked": {"type": "github", "rev": "ffffffff"},
+                    "original": {"type": "github", "owner": "ncrmro", "repo": "keystone"}
+                },
+                "nixpkgs": {
+                    "locked": {"type": "github", "rev": "cccccccc"},
+                    "original": {"type": "github", "owner": "NixOS", "repo": "nixpkgs"}
+                }
+            }
+        }"#;
+        let lock = parse_lock(raw);
+        let (name, node) = find_keystone_input(&lock).expect("should find exactly one root match");
+        assert_eq!(name, "keystone");
+        assert_eq!(
+            node.locked.as_ref().unwrap().rev.as_deref(),
+            Some("aaaaaaaa")
+        );
+    }
+
+    #[test]
+    fn find_keystone_input_errors_when_no_root_input_matches() {
+        // Root declares only a nixpkgs input; the keystone node exists only
+        // as a transitive dep. We must not silently return it.
+        let raw = r#"{
+            "root": "root",
+            "version": 7,
+            "nodes": {
+                "root": {"inputs": {"nixpkgs": "nixpkgs"}},
+                "transitive_keystone": {
+                    "locked": {"type": "github", "rev": "ffffffff"},
+                    "original": {"type": "github", "owner": "ncrmro", "repo": "keystone"}
+                },
+                "nixpkgs": {
+                    "locked": {"type": "github", "rev": "cccccccc"},
+                    "original": {"type": "github", "owner": "NixOS", "repo": "nixpkgs"}
+                }
+            }
+        }"#;
+        let lock = parse_lock(raw);
+        let err = find_keystone_input(&lock).unwrap_err();
+        assert!(err.to_string().contains("no root input pins"), "got: {err}");
+    }
+
+    #[test]
+    fn find_keystone_input_errors_when_multiple_root_inputs_match() {
+        // Pathological but possible: the user declared two direct inputs
+        // both pinning ncrmro/keystone under different names. We must
+        // refuse rather than pick one arbitrarily.
+        let raw = r#"{
+            "root": "root",
+            "version": 7,
+            "nodes": {
+                "root": {
+                    "inputs": {
+                        "keystone": "keystone",
+                        "keystone_alt": "keystone_alt"
+                    }
+                },
+                "keystone": {
+                    "locked": {"type": "github", "rev": "aaaaaaaa"},
+                    "original": {"type": "github", "owner": "ncrmro", "repo": "keystone"}
+                },
+                "keystone_alt": {
+                    "locked": {"type": "github", "rev": "bbbbbbbb"},
+                    "original": {"type": "github", "owner": "ncrmro", "repo": "keystone"}
+                }
+            }
+        }"#;
+        let lock = parse_lock(raw);
+        let err = find_keystone_input(&lock).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("found 2 root inputs"), "got: {msg}");
+    }
+
+    #[test]
+    fn find_keystone_input_skips_follows_inputs() {
+        // A `follows` input appears as an array value in root.inputs.
+        // That path cannot be a direct GitHub source, so we must skip it
+        // when looking for the keystone pin.
+        let raw = r#"{
+            "root": "root",
+            "version": 7,
+            "nodes": {
+                "root": {
+                    "inputs": {
+                        "keystone": "keystone",
+                        "nixpkgs": ["keystone", "nixpkgs"]
+                    }
+                },
+                "keystone": {
+                    "locked": {"type": "github", "rev": "aaaaaaaa"},
+                    "original": {"type": "github", "owner": "ncrmro", "repo": "keystone"}
+                }
+            }
+        }"#;
+        let lock = parse_lock(raw);
+        let (name, _) = find_keystone_input(&lock).expect("should resolve");
+        assert_eq!(name, "keystone");
     }
 
     #[tokio::test]
