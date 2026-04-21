@@ -202,6 +202,12 @@ async fn gather_ollama_diagnostics(repo_root: &Path, current_host: Option<&str>)
 }
 
 async fn ssh_probe(target: &str, timeout_seconds: &str) -> bool {
+    // `.status()` inherits parent stdio by default — when a fleet host
+    // rejects the SSH probe, the child's "Permission denied" message
+    // leaks onto the parent's stderr (and for callers running under
+    // streams-merged shells, onto stdout), corrupting `ks doctor --json`.
+    // Explicitly null out all stdio so the probe is silent regardless of
+    // outcome — we only care about the exit status.
     tokio::process::Command::new("ssh")
         .args([
             "-o",
@@ -211,6 +217,9 @@ async fn ssh_probe(target: &str, timeout_seconds: &str) -> bool {
         ])
         .arg(format!("root@{}", target))
         .arg("true")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .await
         .map(|status| status.success())
@@ -218,10 +227,13 @@ async fn ssh_probe(target: &str, timeout_seconds: &str) -> bool {
 }
 
 async fn remote_nixos_generation(target: &str) -> String {
+    // `.output()` captures both stdout and stderr, so SSH's error output
+    // doesn't leak to the parent's streams. We only read stdout below.
     tokio::process::Command::new("ssh")
         .args(["-o", "ConnectTimeout=5", "-o", "BatchMode=yes"])
         .arg(format!("root@{}", target))
         .arg("nixos-version")
+        .stdin(std::process::Stdio::null())
         .output()
         .await
         .ok()
