@@ -6,6 +6,12 @@
 # hyprpolkitagent; output goes to the journal; completion fires a
 # notification via the ks-update-notify@.service template.
 #
+# Principal parity (process.keystone-principal-parity): these units are
+# deliberately gated on `keystone.desktop.enable` — they're only useful on
+# principals that run a graphical session. Agents declared with desktop
+# access inherit the units automatically; headless principals don't get
+# them. Do not move this module to a desktop-neutral location.
+#
 # Rationale: see issue #414 and the accompanying PR. Prior to this module
 # the Walker update entry launched Ghostty and ran `ks approve -- ks update`
 # inline — this moves that work to a supervised background unit so the
