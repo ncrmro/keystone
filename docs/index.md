@@ -122,6 +122,7 @@ Keep development workflows separate from initial setup:
 
 ## Quick Links
 
+- **[FAQ](faq.md)** - Common questions about Keystone, comparisons, and getting started
 - **[Release notes](releasing.md)** - Release process and stable-release reference
 - **[Project posts](posts.md)** - Working-backwards and narrative project material
 - **[Research notes](research/universal-deepwork-job-library.md)** - Long-form supporting research captured in the docs tree
