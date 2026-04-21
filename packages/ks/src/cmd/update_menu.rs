@@ -316,14 +316,32 @@ fn rev_is_ancestor_of(ancestor: &str, descendant: &str) -> bool {
 // GitHub release fetch
 // -----------------------------------------------------------------------------
 
+/// Total budget for any single GitHub API call made by the menu backend.
+/// Keep small: Walker calls `ks menu update entries` synchronously on menu
+/// open, and a hung fetch stalls the whole desktop menu render. Fail fast
+/// and surface an `ErrState` (which renders a visible "Keystone OS
+/// unavailable" row) rather than hang.
+const GITHUB_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const GITHUB_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Build a bounded reqwest client for GitHub API calls. Centralizing so
+/// every call site picks up the same timeout + user-agent defaults.
+fn github_client() -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(GITHUB_REQUEST_TIMEOUT)
+        .connect_timeout(GITHUB_CONNECT_TIMEOUT)
+        .user_agent("ks")
+        .build()
+        .context("failed to build GitHub reqwest client")
+}
+
 async fn fetch_latest_release() -> Result<Value> {
     let url = format!(
         "https://api.github.com/repos/{}/{}/releases/latest",
         RELEASE_OWNER, RELEASE_REPO
     );
-    let mut req = reqwest::Client::new()
+    let mut req = github_client()?
         .get(&url)
-        .header("User-Agent", "ks")
         .header("Accept", "application/vnd.github+json");
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         if !token.is_empty() {
@@ -347,9 +365,8 @@ async fn fetch_release_commit_rev(tag: &str) -> Result<String> {
         "https://api.github.com/repos/{}/{}/git/ref/tags/{}",
         RELEASE_OWNER, RELEASE_REPO, tag
     );
-    let mut req = reqwest::Client::new()
+    let mut req = github_client()?
         .get(&url)
-        .header("User-Agent", "ks")
         .header("Accept", "application/vnd.github+json");
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         if !token.is_empty() {
@@ -382,9 +399,8 @@ async fn fetch_release_commit_rev(tag: &str) -> Result<String> {
         "https://api.github.com/repos/{}/{}/git/tags/{}",
         RELEASE_OWNER, RELEASE_REPO, sha
     );
-    let mut tag_req = reqwest::Client::new()
+    let mut tag_req = github_client()?
         .get(&tag_url)
-        .header("User-Agent", "ks")
         .header("Accept", "application/vnd.github+json");
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         if !token.is_empty() {
