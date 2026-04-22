@@ -140,15 +140,33 @@ in
     # `desktopUsers`: every user with desktop.enable gets them. `zfs`
     # lands in `allUsers` whenever ZFS storage is in use — everyone needs
     # /dev/zfs access for their home dataset operations.
+    #
+    # `dialout` and `media` land in `adminOnly` unconditionally. The
+    # admin-on-every-host pattern makes a separate enable gate redundant:
+    # every keystone admin needs serial console access (Pi UART debug,
+    # ESP32/RP2040/Arduino flashing, Zigbee/Z-Wave USB coordinators,
+    # router/switch consoles) and media-pool ownership. See the
+    # "Why admins get dialout" section of process.user-groups.md.
     (mkIf osCfg.enable {
       keystone.os._autoUserGroups = {
         allUsers = optionals useZfs [ "zfs" ];
+        adminOnly = [
+          "dialout"
+          "media"
+        ];
         desktopUsers = [
           "networkmanager"
           "video"
           "audio"
         ];
       };
+
+      # `media` is NOT a standard nixpkgs group, unlike `dialout` (gid 27,
+      # created by users-groups.nix). Declare it here so admin membership
+      # references a real group. Consumer flakes that provision media
+      # pools should chown/chmod against `media`; no module currently
+      # pins the gid.
+      users.groups.media = { };
     })
 
     (mkIf (osCfg.enable && cfg != { }) {
