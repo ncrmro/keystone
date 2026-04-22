@@ -232,6 +232,7 @@ in
     ./ssh.nix
     ./eternal-terminal.nix
     ./airplay.nix
+    ./kodi.nix
     ./mail.nix
     ./git-server
     ./agents
@@ -269,6 +270,79 @@ in
           - zfs: Full features (snapshots, compression, checksums, native encryption)
           - ext4: Simple/legacy (LUKS encryption only, no advanced features)
         '';
+      };
+
+      platform = mkOption {
+        type = types.enum [
+          "uefi"
+          "pi"
+        ];
+        default = "uefi";
+        description = ''
+          Hardware/boot platform. Selects bootloader, firmware partition layout, and
+          encryption defaults.
+          - uefi: x86_64 UEFI with systemd-boot, LUKS credstore, optional TPM2 unlock.
+          - pi: Raspberry Pi (aarch64) booting pftf/RPi4 UEFI firmware + systemd-boot.
+            No LUKS credstore (no TPM on Pi); use native ZFS encryption if needed.
+            Consumers must supply pftf firmware files via storage.pi.uefiFirmware.
+        '';
+      };
+
+      pi = {
+        bootMedium = mkOption {
+          type = types.enum [
+            "sd"
+            "external"
+          ];
+          default = "external";
+          description = ''
+            Where the Pi firmware + /boot lives:
+            - sd: firmware/boot + ZFS root share a single SD/eMMC device
+              (storage.devices[0] is partitioned: firmware + zfs).
+              Convenient but writes wear the SD card.
+            - external: SD holds only firmware + /boot (via storage.pi.bootDevice);
+              ZFS pool lives on storage.devices (USB/NVMe). Recommended for servers.
+          '';
+        };
+
+        bootDevice = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = "/dev/disk/by-id/mmc-SC64G_0x12345678";
+          description = ''
+            Device holding the Pi firmware and /boot partition when
+            storage.pi.bootMedium = "external". Ignored when bootMedium = "sd"
+            (the first entry of storage.devices is used instead).
+          '';
+        };
+
+        firmwareSize = mkOption {
+          type = types.str;
+          default = "1G";
+          description = ''
+            Size of the FAT32 ESP partition. Holds pftf/RPi4 UEFI firmware plus
+            systemd-boot, kernels, and initrds — keep ≥1G for multiple generations.
+          '';
+        };
+
+        uefiFirmware = mkOption {
+          type = types.attrsOf types.path;
+          default = { };
+          example = literalExpression ''
+            {
+              "RPI_EFI.fd" = "''${pftf}/RPI_EFI.fd";
+              "config.txt" = "''${pftf}/config.txt";
+              "bcm2711-rpi-4-b.dtb" = "''${pftf}/bcm2711-rpi-4-b.dtb";
+              # ...firmware blobs from pftf/RPi4 release zip
+            }
+          '';
+          description = ''
+            Files from the pftf/RPi4 UEFI firmware release to drop onto the ESP
+            (via boot.loader.systemd-boot.extraFiles). Consumers fetch a specific
+            pftf release and map its files here — no fixed default because pftf
+            versions change and belong in host config.
+          '';
+        };
       };
 
       devices = mkOption {
@@ -659,6 +733,13 @@ in
       {
         assertion = !cfg.storage.enable || cfg.storage.type == "ext4" -> cfg.storage.mode == "single";
         message = "ext4 only supports single-disk mode";
+      }
+      {
+        assertion = !cfg.storage.enable || !(cfg.storage.platform == "pi" && cfg.storage.type == "ext4");
+        message = ''
+          keystone.os.storage.platform = "pi" + type = "ext4" is not yet
+          implemented. Use type = "zfs" on Pi hosts, or platform = "uefi" for ext4.
+        '';
       }
       # Non-storage assertions
       {
