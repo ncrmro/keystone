@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
-# test-iso — build the installer ISO with SSH keys and boot it in QEMU
+# test-iso — build and boot Keystone in QEMU (installer ISO or direct qcow2)
 #
-# Usage:
-#   ./bin/test-iso                          # auto-detect ~/.ssh/id_*.pub
+# Two paths:
+#   --direct:  build a bootable qcow2 from a host's NixOS config, boot it,
+#              auto-unlock LUKS over serial, SSH-validate.  ~2-10 min.
+#              Use this for NixOS module, storage, or boot changes.
+#   (default): build the installer ISO, boot it, install into a virtual
+#              disk, reboot, validate.  ~20-30 min.  Use this when testing
+#              the installer flow itself.
+#
+# Usage (fast direct path):
+#   ./bin/test-iso --direct laptop --dev --headless       # build qcow2 + boot + SSH (2-10 min)
+#   ./bin/test-iso --direct laptop --dev                  # keep SPICE window open for interactive use
+#   ./bin/test-iso --direct laptop --dev --build-only     # just build the qcow2, do not boot
+#
+# Usage (ISO + installer path):
+#   ./bin/test-iso                          # full ISO + installer, auto-detect ~/.ssh/id_*.pub
+#   ./bin/test-iso --dev                    # build from a dirty tree, use repo-local test SSH key
+#   ./bin/test-iso --dev --headless --e2e   # full automated run with screenshots
 #   ./bin/test-iso --ssh-key ~/.ssh/id_ed25519.pub
-#   ./bin/test-iso --ssh-key "ssh-ed25519 AAAA... user@host"
 #   ./bin/test-iso --build-only             # build but don't start VM
 #   ./bin/test-iso --no-build               # skip build, boot existing ISO
-#   ./bin/test-iso --dev                    # build from a dirty tree and use a repo-local test SSH key
 #   ./bin/test-iso --update-keystone-input  # refresh keystone flake input before build
 #
 # SSH access once the VM boots:
-#   ssh -p 2222 -o StrictHostKeyChecking=no keystone@localhost
+#   ssh -p 12222 -o StrictHostKeyChecking=no keystone@localhost
 
 set -euo pipefail
 
@@ -29,6 +42,11 @@ SSH_WAIT_TIMEOUT=240
 VM_DISK_SIZE=64
 DEV_SSH_KEY_PATH="$PROJECT_DIR/.test-iso-dev-key"
 USE_DEV_SSH_KEY=false
+
+# Typed at the initrd LUKS prompt in --direct mode.  A non-empty value here
+# (set via --luks-passphrase) takes precedence over DIRECT_LUKS_PASSPHRASE,
+# which in turn overrides the built-in "keystone" default.
+DIRECT_LUKS_PASS=""
 
 # Colors
 RED='\033[0;31m'
@@ -95,7 +113,11 @@ EOF
 
 show_help() {
     cat >&2 << EOF
-test-iso — build the installer ISO with SSH keys and boot it in QEMU
+test-iso — build and boot Keystone in QEMU (installer ISO or direct qcow2)
+
+Two independent paths:
+  --direct:  qcow2 straight from NixOS config, auto-unlock LUKS, SSH.  ~2-10 min.
+  (default): build the installer ISO, install into a virtual disk, validate.  ~20-30 min.
 
 Usage:
   $(basename "$0") [OPTIONS]
@@ -126,9 +148,16 @@ Options:
                         configuration (no ISO or installer required).  HOST
                         defaults to 'laptop'.  Builds
                         packages.x86_64-linux.vm-image-HOST, boots it via
-                        bin/virtual-machine, waits for SSH, and runs basic
-                        health checks.  The ISO-based path is not affected.
-  --ssh-timeout SEC     Max wait time for SSH in headless mode (default: $SSH_WAIT_TIMEOUT).
+                        bin/virtual-machine, automatically types the LUKS
+                        passphrase over the serial console, waits for SSH,
+                        and runs basic health checks.  Typical run time is
+                        2-10 min.  The ISO-based path is not affected.
+  --luks-passphrase P   Passphrase to feed the initrd LUKS prompt in --direct
+                        mode (default: "keystone").  Can also be set via the
+                        DIRECT_LUKS_PASSPHRASE env var.
+  --ssh-timeout SEC     Max wait time for SSH in headless mode (default:
+                        $SSH_WAIT_TIMEOUT; --direct mode floors this at 720
+                        to cover LUKS unlock and first-boot activation).
   --disk-size GB        Size of the attached install disk image in GB (default: $VM_DISK_SIZE).
   --disk-path PATH      Path to the attached install disk image
                         (default: $VM_DISK_PATH).
@@ -140,12 +169,16 @@ Options:
 By default the QEMU window opens (GUI mode) with serial output on the
 terminal. Use --headless to run without a window (SSH-only).
 
-Examples:
-  ./bin/test-iso                           # GUI + serial
-  ./bin/test-iso --dev                     # build from local changes + use repo-local test SSH key
-  ./bin/test-iso --headless                # no window, polls SSH
-  ./bin/test-iso --direct laptop           # direct qcow2 build + boot (no ISO)
-  ./bin/test-iso --direct laptop --headless  # direct, headless, SSH validation
+Examples (fastest direct path first):
+  ./bin/test-iso --direct laptop --dev --headless          # build qcow2 + boot + SSH (2-10 min)
+  ./bin/test-iso --direct laptop --dev                     # same, keep SPICE window open
+  ./bin/test-iso --direct laptop --dev --build-only        # just build, do not boot
+  ./bin/test-iso --direct laptop --dev --luks-passphrase "s3cret"
+
+  ./bin/test-iso                           # full ISO + installer + GUI (20-30 min)
+  ./bin/test-iso --dev                     # ISO path from local changes
+  ./bin/test-iso --dev --headless --e2e    # full automated e2e with screenshots
+  ./bin/test-iso --headless                # ISO path, no window
   ./bin/test-iso --disk-size 100G          # attach a larger install disk
   ./bin/test-iso --update-keystone-input   # refresh keystone input then build
   ./bin/test-iso --ssh-key ~/.ssh/id_ed25519.pub
@@ -218,6 +251,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --ssh-timeout)
             SSH_WAIT_TIMEOUT="$2"
+            shift 2
+            ;;
+        --luks-passphrase)
+            DIRECT_LUKS_PASS="$2"
             shift 2
             ;;
         --disk-size)
@@ -728,7 +765,15 @@ run_direct_image() {
     # initrd cryptsetup-ask-password prompt lands on the same PTY.  After
     # unlock, the still-looping writes turn into harmless failed serial
     # getty login attempts until the feeder is killed at cleanup.
-    local luks_passphrase="${DIRECT_LUKS_PASSPHRASE:-keystone}"
+    #
+    # Precedence: --luks-passphrase flag > DIRECT_LUKS_PASSPHRASE env >
+    # built-in "keystone" default (the installer's credstore-password).
+    local luks_passphrase
+    if [[ -n "${DIRECT_LUKS_PASS:-}" ]]; then
+        luks_passphrase="$DIRECT_LUKS_PASS"
+    else
+        luks_passphrase="${DIRECT_LUKS_PASSPHRASE:-keystone}"
+    fi
     local luks_feeder_pid=""
     feed_luks_passphrase() {
         local vm_name="$1" pass="$2" pty=""
