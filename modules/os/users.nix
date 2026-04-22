@@ -37,15 +37,22 @@ let
   desktopUsers = filterAttrs (_: userCfg: userCfg.desktop.enable) cfg;
   desktopUsernames = attrNames desktopUsers;
   inferredDesktopUser = if desktopUsernames == [ ] then null else head desktopUsernames;
-  desktopAccessGroups = [
-    "networkmanager"
-    "video"
-    "audio"
-  ];
 
   # Check if ZFS is being used
   # TODO: Re-evaluate ZFS home folder management. Current implementation can interfere with legacy setups.
   useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
+
+  # Read from the _autoUserGroups sink (declared in the options block).
+  # Capability modules (containers, hypervisor, etc.) append to this sink
+  # with `mkIf cfg.enable`, and users.nix consumes it when building each
+  # user's final extraGroups. Follows the "many producers, one consumer"
+  # pattern that assertions/warnings use.
+  #
+  # NOTE: lives at keystone.os._autoUserGroups (not keystone.os.users._autoGroups
+  # as the originating issue sketched) because keystone.os.users is typed
+  # `attrsOf userSubmodule` and cannot host a non-user attribute without
+  # breaking that type discipline. See conventions/process.user-groups.md.
+  autoGroups = osCfg._autoUserGroups;
 
   # Public keys valid on a specific host for a user
   # (that host's software key + all hardware keys)
@@ -83,7 +90,67 @@ let
       "http://${hostTarget}:2283";
 in
 {
+  options.keystone.os._autoUserGroups = mkOption {
+    internal = true;
+    description = ''
+      Private sink for module-owned supplementary groups. Capability
+      modules (containers, hypervisor, hardware/media) append to the
+      appropriate scope with `mkIf cfg.enable`; users.nix consumes the
+      sink when building each user's final extraGroups.
+
+      Scopes:
+      - allUsers:     appended to every keystone.os.users entry
+      - adminOnly:    appended only to the user flagged admin = true
+      - desktopUsers: appended to every user with desktop.enable = true
+
+      Lives at keystone.os._autoUserGroups rather than
+      keystone.os.users._autoGroups because keystone.os.users is typed
+      `attrsOf userSubmodule` and cannot host a non-user attribute.
+
+      See conventions/process.user-groups.md.
+    '';
+    default = { };
+    type = types.submodule {
+      options = {
+        allUsers = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Groups appended to every keystone-managed user.";
+        };
+        adminOnly = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Groups appended only to the user flagged admin = true.";
+        };
+        desktopUsers = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Groups appended to users with desktop.enable = true.";
+        };
+      };
+    };
+  };
+
   config = mkMerge [
+    # Seed the auto-groups sink with the groups this module owns directly.
+    # Capability modules (containers, hypervisor, etc.) append to the same
+    # sink from their own config blocks — see conventions/process.user-groups.md.
+    #
+    # Desktop access groups (networkmanager, video, audio) land in
+    # `desktopUsers`: every user with desktop.enable gets them. `zfs`
+    # lands in `allUsers` whenever ZFS storage is in use — everyone needs
+    # /dev/zfs access for their home dataset operations.
+    (mkIf osCfg.enable {
+      keystone.os._autoUserGroups = {
+        allUsers = optionals useZfs [ "zfs" ];
+        desktopUsers = [
+          "networkmanager"
+          "video"
+          "audio"
+        ];
+      };
+    })
+
     (mkIf (osCfg.enable && cfg != { }) {
       # Enable ZFS delegation for non-root users (only if using ZFS)
       boot.extraModprobeConfig = mkIf useZfs ''
@@ -255,7 +322,17 @@ in
       # Enable zsh system-wide if any user has terminal enabled
       programs.zsh.enable = mkIf (any (u: u.terminal.enable) (attrValues cfg)) true;
 
-      # Generate NixOS users
+      # Generate NixOS users.
+      #
+      # extraGroups layers in this order:
+      #   1. user's explicit extraGroups (consumer override)
+      #   2. "wheel" when admin = true (sudo authorization)
+      #   3. autoGroups.allUsers      (applied to every user)
+      #   4. autoGroups.adminOnly     (applied only when admin = true)
+      #   5. autoGroups.desktopUsers  (applied when desktop.enable)
+      #
+      # Capability modules append to the autoGroups sink with `mkIf cfg.enable`.
+      # See conventions/process.user-groups.md for the capability → group map.
       users.users = mapAttrs (username: userCfg: {
         isNormalUser = true;
         uid = userCfg.uid;
@@ -265,8 +342,9 @@ in
         extraGroups = unique (
           userCfg.extraGroups
           ++ optionals userCfg.admin [ "wheel" ]
-          ++ optionals (hasDesktopModule && userCfg.desktop.enable) desktopAccessGroups
-          ++ (optionals useZfs [ "zfs" ])
+          ++ autoGroups.allUsers
+          ++ optionals userCfg.admin autoGroups.adminOnly
+          ++ optionals (hasDesktopModule && userCfg.desktop.enable) autoGroups.desktopUsers
         );
         initialPassword = userCfg.initialPassword;
         hashedPassword = userCfg.hashedPassword;
