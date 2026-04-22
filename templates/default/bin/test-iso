@@ -662,11 +662,14 @@ run_direct_image() {
 
     # ── set up cleanup ────────────────────────────────────────────────────────
 
+    # The trap fires at script EXIT, which can be after run_direct_image
+    # returns and its locals are out of scope.  Parameter expansion with
+    # `:-` keeps the trap compatible with `set -u`.
     direct_cleanup() {
         if [[ -n "${direct_vm_name:-}" ]]; then
             "$vm_script" --reset "$direct_vm_name" 2>/dev/null || true
         fi
-        rm -f "$VM_DISK_PATH" "$direct_result"
+        rm -f "${VM_DISK_PATH:-}" "${direct_result:-}"
     }
     trap 'direct_cleanup; cleanup_project_snapshot' EXIT
 
