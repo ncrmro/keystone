@@ -56,11 +56,12 @@ impl TemplateParams {
         let machine_type = match self.kind.as_str() {
             "workstation" => MachineType::Workstation,
             "laptop" => MachineType::Laptop,
+            "thin-client" => MachineType::ThinClient,
             _ => MachineType::Server,
         };
 
         let storage_type = match machine_type {
-            MachineType::Laptop => StorageType::Ext4,
+            MachineType::Laptop | MachineType::ThinClient => StorageType::Ext4,
             _ => StorageType::Zfs,
         };
 
@@ -112,7 +113,7 @@ impl TemplateParams {
         };
 
         let hostname = prompt(&mut out, "Hostname", "");
-        let kind = prompt(&mut out, "Kind (server/workstation/laptop)", "server");
+        let kind = prompt(&mut out, "Kind (server/workstation/laptop/thin-client)", "server");
         let username = prompt(&mut out, "Username", "admin");
         let password = prompt(&mut out, "Password", "changeme");
         let disk_device_raw = prompt(&mut out, "Disk device (optional)", "");

@@ -100,6 +100,7 @@
       #
       # Common host shapes:
       # - laptop
+      # - thin-client
       # - workstation
       # - server
       # - macbook

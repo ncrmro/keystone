@@ -136,11 +136,12 @@ impl CreateConfigScreen {
                 self.machine_type = match self.machine_type {
                     MachineType::Server => MachineType::Workstation,
                     MachineType::Workstation => MachineType::Laptop,
-                    MachineType::Laptop => MachineType::Server,
+                    MachineType::Laptop => MachineType::ThinClient,
+                    MachineType::ThinClient => MachineType::Server,
                 };
                 // Auto-set storage type based on machine type
                 self.storage_type = match self.machine_type {
-                    MachineType::Laptop => StorageType::Ext4,
+                    MachineType::Laptop | MachineType::ThinClient => StorageType::Ext4,
                     _ => StorageType::Zfs,
                 };
             }
@@ -602,6 +603,10 @@ mod tests {
 
         screen.cycle_selection_next();
         assert_eq!(screen.machine_type, MachineType::Laptop);
+        assert_eq!(screen.storage_type, StorageType::Ext4); // auto-set
+
+        screen.cycle_selection_next();
+        assert_eq!(screen.machine_type, MachineType::ThinClient);
         assert_eq!(screen.storage_type, StorageType::Ext4); // auto-set
 
         screen.cycle_selection_next();
