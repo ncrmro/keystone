@@ -85,6 +85,29 @@ let
         ENDJSON
       '';
 
+    # Guard: exercise the auto-exposed vm-image-<host> packages added by
+    # mkSystemFlake so evaluation regressions (e.g. storage assertion
+    # failures on multi-disk hosts) show up in CI.  Only the derivation
+    # paths are recorded — the heavy image build stays out of eval tests.
+    template-default-vm-images =
+      let
+        vmImageSystem = templateOutputs.nixosConfigurations.laptop.pkgs.stdenv.hostPlatform.system;
+        vmImagePackages = templateOutputs.packages.${vmImageSystem};
+        laptopImage = vmImagePackages.vm-image-laptop;
+        serverImage = vmImagePackages.vm-image-server-ocean;
+      in
+      pkgs.runCommand "eval-template-vm-images" { } ''
+        mkdir -p $out
+        cat > $out/template-default-vm-images.json <<'ENDJSON'
+        {
+          "name": "template-default-vm-images",
+          "kind": "vm-images",
+          "laptopDrvName": "${laptopImage.name}",
+          "serverDrvName": "${serverImage.name}"
+        }
+        ENDJSON
+      '';
+
     laptop-ext4 = evalNixos "laptop-ext4" (
       self.lib.mkLaptop {
         hostname = "laptop";

@@ -116,8 +116,27 @@ ks doctor                   # Diagnose system health
 
 ### E2E testing
 
-`bin/test-e2e` runs the full installer pipeline from the keystone repo:
-ISO build → VM boot → install → reboot → desktop validation.
+`bin/test-e2e` runs a VM test pipeline from the keystone repo.  It
+generates a consumer-flake fixture from the default template, locks it
+to the current keystone checkout, and delegates to the fixture's
+`test-iso`. The fixture is cached at `/tmp/keystone-e2e-fixture/` and
+refreshed automatically on each run.  See
+[ISO and OS virtual machine testing](docs/testing/iso-os-virtual-machine.md)
+for the full reference.
+
+There are two paths; pick the one that matches your change:
+
+**Direct qcow2 (2-10 min)** — NixOS modules, storage, boot chain,
+anything below the installer:
+
+```bash
+bin/test-e2e --direct laptop --headless   # build + boot + SSH check, clean up
+bin/test-e2e --direct --headless          # same; host defaults to 'laptop'
+bin/test-e2e --direct laptop              # keep SPICE window open for debugging
+```
+
+**Full ISO + installer (20-30 min)** — installer TUI, `ks install`,
+post-reboot desktop validation:
 
 ```bash
 bin/test-e2e                  # Full e2e (build + boot + install + validate)
@@ -126,10 +145,11 @@ bin/test-e2e --clean          # Regenerate fixture before running
 bin/test-e2e --no-build       # Reuse existing ISO
 ```
 
-The script generates a consumer-flake fixture from the default template,
-locks it to the current keystone checkout, and delegates to the fixture's
-`test-iso`. The fixture is cached at `/tmp/keystone-e2e-fixture/` and refreshed
-automatically on each run.
+`bin/test-e2e` forwards user-supplied flags to `test-iso`, so anything
+in `test-iso --help` (e.g. `--luks-passphrase`, `--port`, `--memory`)
+generally works with `bin/test-e2e` too. It may also add wrapper
+defaults such as `--dev` and a default mode (`--e2e --headless`) when
+no mode flag is provided.
 
 ## AI instruction regeneration
 
