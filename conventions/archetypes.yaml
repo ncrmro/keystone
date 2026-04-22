@@ -65,6 +65,7 @@ archetypes:
       - process.enable-by-default
       - os.zfs-backup
       - os.systemd-over-activation
+      - process.user-groups
       - tool.stalwart
       - process.vcs-context-continuity
 
@@ -93,6 +94,7 @@ archetypes:
       - process.enable-by-default
       - os.requirements
       - process.deepwork-job
+      - process.user-groups
       - tool.process-compose-agent
 
   engineer:
@@ -133,6 +135,7 @@ archetypes:
       - tool.journal-remote
       - os.zfs-backup
       - os.systemd-over-activation
+      - process.user-groups
       - tool.cloudflare-workers
       - tool.zk
       - process.knowledge-management

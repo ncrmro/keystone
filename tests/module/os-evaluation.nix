@@ -118,6 +118,50 @@ let
     };
   };
 
+  # Evaluate a module set and assert the named user's group membership.
+  # The assertion is scoped to the `includes`/`excludes` lists — the user
+  # MUST have every group in `includes` and MUST NOT have any group in
+  # `excludes`, but MAY have additional groups not listed in either.
+  # Pins _autoUserGroups sink wiring from the capability modules.
+  assertUserGroups =
+    name: username: includes: excludes: modules:
+    let
+      result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+        ]
+        ++ modules;
+      };
+      userGroups = result.config.users.users.${username}.extraGroups;
+      missing = builtins.filter (g: !(builtins.elem g userGroups)) includes;
+      unexpected = builtins.filter (g: builtins.elem g userGroups) excludes;
+      ok = missing == [ ] && unexpected == [ ];
+      groupsJson = builtins.toJSON userGroups;
+      missingJson = builtins.toJSON missing;
+      unexpectedJson = builtins.toJSON unexpected;
+    in
+    pkgs.runCommand "user-groups-${name}" { } ''
+      ${
+        if ok then
+          ''
+            echo "OK: ${name}: ${username} groups = ${groupsJson}"
+          ''
+        else
+          ''
+            echo "FAIL: ${name}: ${username} groups = ${groupsJson}" >&2
+            echo "  missing: ${missingJson}" >&2
+            echo "  unexpected: ${unexpectedJson}" >&2
+            exit 1
+          ''
+      }
+      touch $out
+    '';
+
   tests = {
     minimal-zfs = eval "minimal-zfs" [
       {
@@ -489,6 +533,119 @@ let
         };
       }
     ];
+
+    # --- _autoUserGroups sink: capability-driven admin groups ---
+    #
+    # Admin with containers.enable (default on) gets podman. dialout and
+    # media are admin-auto even with no capability flags, because they
+    # land in adminOnly unconditionally.
+    auto-groups-admin-containers =
+      assertUserGroups "admin-containers" "alice"
+        [
+          "wheel"
+          "podman"
+          "dialout"
+          "media"
+          "zfs"
+        ]
+        [ ]
+        [
+          adminBase
+          {
+            keystone.os.users.alice = {
+              fullName = "Alice";
+              initialPassword = "pw";
+              admin = true;
+            };
+          }
+        ];
+
+    # Admin with hypervisor.enable gets libvirtd in addition to the
+    # unconditional admin groups.
+    auto-groups-admin-hypervisor =
+      assertUserGroups "admin-hypervisor" "alice"
+        [
+          "wheel"
+          "libvirtd"
+          "podman"
+          "dialout"
+          "media"
+          "zfs"
+        ]
+        [ ]
+        [
+          adminBase
+          {
+            keystone.os.hypervisor.enable = true;
+            keystone.os.users.alice = {
+              fullName = "Alice";
+              initialPassword = "pw";
+              admin = true;
+            };
+          }
+        ];
+
+    # Non-admin wheel user does NOT inherit admin-scoped groups. They
+    # get wheel (because they declared it) and zfs (allUsers when ZFS
+    # storage is in use) — nothing else. Hardware/service access
+    # follows admin = true, not sudo.
+    auto-groups-non-admin-wheel =
+      assertUserGroups "non-admin-wheel" "bob" [ "wheel" "zfs" ]
+        [
+          "podman"
+          "libvirtd"
+          "dialout"
+          "media"
+        ]
+        [
+          adminBase
+          {
+            keystone.os.hypervisor.enable = true;
+            keystone.os.users.alice = {
+              fullName = "Alice";
+              initialPassword = "pw";
+              admin = true;
+            };
+            keystone.os.users.bob = {
+              fullName = "Bob";
+              initialPassword = "pw";
+              extraGroups = [ "wheel" ];
+            };
+          }
+        ];
+
+    # TODO: add a shadow-warning regression test. Reading
+    # result.config.warnings from an eval-config result cascades into
+    # full home-manager evaluation (systemd.services.home-manager-*
+    # → claudeJsonConfig.data → deepwork-library-jobs), which fails
+    # under the local keystone-conventions derivation invalidation
+    # issue. The shadow-warning code itself is simple and covered by
+    # the sink wiring tests; wire the warning test once the cascade
+    # is disentangled or once we can emit warnings via a narrower
+    # option.
+
+    # Containers disabled → admin does NOT get podman, but still gets
+    # the unconditional admin groups (dialout, media).
+    auto-groups-admin-no-containers =
+      assertUserGroups "admin-no-containers" "alice"
+        [
+          "wheel"
+          "dialout"
+          "media"
+          "zfs"
+        ]
+        [ "podman" ]
+        [
+          adminBase
+          {
+            keystone.os.containers.enable = false;
+            keystone.os.users.alice = {
+              fullName = "Alice";
+              initialPassword = "pw";
+              admin = true;
+            };
+          }
+        ];
   };
 in
 pkgs.runCommand "test-os-evaluation"

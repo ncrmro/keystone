@@ -1,7 +1,9 @@
 # Keystone OS Hypervisor Module
 #
 # Libvirt/KVM hypervisor with OVMF, TPM emulation, and SPICE support.
-# Automatically adds all keystone.os.users to the libvirtd group.
+# Grants `libvirtd` group membership to the admin user only (via the
+# _autoUserGroups.adminOnly sink); non-admin users with a polkit path
+# retain prompt-based access. See conventions/process.user-groups.md.
 # When keystone.desktop is also enabled, adds virt-manager GUI.
 #
 # Home-manager integration (when imported):
@@ -81,7 +83,11 @@ in
         pkgs.passt
       ];
 
-      # Polkit: allow libvirtd group members to manage VMs
+      # Polkit: allow libvirtd group members to manage VMs.
+      # This rule also covers non-admin wheel users via the polkit auth
+      # flow (they get an interactive prompt, not silent access); only
+      # the admin receives libvirtd membership below for a frictionless
+      # virt-manager session.
       security.polkit.enable = true;
       security.polkit.extraConfig = ''
         polkit.addRule(function(action, subject) {
@@ -92,10 +98,17 @@ in
         });
       '';
 
-      # Auto-add all keystone.os.users to libvirtd group
-      users.users = mapAttrs (_: _: {
-        extraGroups = [ "libvirtd" ];
-      }) osCfg.users;
+      # Grant the admin user membership in the `libvirtd` group. Previously
+      # keystone added every keystone.os.users entry to libvirtd; we now
+      # narrow to admin-only, because hardware/service access follows
+      # `admin = true`, not sudo. Non-admin users that need libvirtd
+      # silent access should opt in via their own `extraGroups`. See
+      # conventions/process.user-groups.md.
+      #
+      # The libvirtd group itself is created by the upstream libvirtd
+      # module (nixos/modules/virtualisation/libvirtd.nix assigns a fixed
+      # gid), so no explicit users.groups.libvirtd declaration is needed.
+      keystone.os._autoUserGroups.adminOnly = [ "libvirtd" ];
 
       # OVMF firmware symlinks
       systemd.tmpfiles.rules = [
