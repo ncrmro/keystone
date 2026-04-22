@@ -474,7 +474,7 @@ rec {
   #
   # Usage:
   #   packages.x86_64-linux.vm-image-laptop = keystone.lib.mkVMImage {
-  #     inherit (nixosConfigurations) laptop;
+  #     nixosSystem = nixosConfigurations.laptop;
   #   };
   #
   # The resulting derivation contains one qcow2 file per disko disk (e.g.
@@ -491,8 +491,11 @@ rec {
       # Disk devices to use inside the builder VM.  Disko's prepareDiskoConfig
       # remaps these to /dev/vda, /dev/vdb, … automatically; passing virtual
       # paths here ensures the NixOS initrd config (ZFS devNodes, LUKS device
-      # references) is also consistent with the image layout.
-      devices ? [ "/dev/vda" ],
+      # references) is also consistent with the image layout.  When null
+      # (default), one /dev/vd{a,b,c,…} path is generated per declared disk so
+      # multi-disk storage modes (mirror/raidz) keep passing their minimum
+      # device-count assertions.
+      devices ? null,
       # Output image format.  qcow2 supports snapshots; raw is faster to write.
       imageFormat ? "qcow2",
       # RAM (MB) for the ephemeral QEMU builder VM.  ZFS needs more than the
@@ -516,13 +519,25 @@ rec {
       # is safe.
       diskNames = lib.attrNames nixosSystem.config.disko.devices.disk;
 
+      # Default one virtual path per declared disk (/dev/vda, /dev/vdb, …).
+      # Preserving the device-count matters for mirror/raidz hosts where
+      # keystone.os.storage asserts a minimum number of devices.
+      effectiveDevices =
+        if devices != null then
+          devices
+        else
+          let
+            letters = lib.stringToCharacters "abcdefghijklmnopqrstuvwxyz";
+          in
+          lib.genList (i: "/dev/vd${builtins.elemAt letters i}") (builtins.length diskNames);
+
       extendedSystem = nixosSystem.extendModules {
         modules = [
           {
             # Override storage devices with virtual paths for the builder VM.
             # This fixes ZFS devNodes, LUKS crypttab references, and any other
             # initrd config that derives from keystone.os.storage.devices.
-            keystone.os.storage.devices = lib.mkForce devices;
+            keystone.os.storage.devices = lib.mkForce effectiveDevices;
             # Produce a qcow2 (disko defaults to raw).
             disko.imageBuilder.imageFormat = lib.mkDefault imageFormat;
             # Always include the Nix store so the image can boot standalone.
