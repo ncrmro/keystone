@@ -604,9 +604,18 @@ run_e2e_checkpoints() {
 # --dev mode, SSH keys are injected into the flake snapshot before the build.
 run_direct_image() {
     local host="${DIRECT_HOST:-laptop}"
-    local direct_result="/tmp/keystone-vm-image-${host}-$$"
     local system="x86_64-linux"
-    local direct_vm_name="keystone-direct-$$"
+
+    # Promote state the EXIT trap needs into the script scope.  Keeping
+    # these as function-locals meant that when `set -e` propagated a
+    # non-zero $vm_script exit through the function's `return`, the EXIT
+    # trap fired in the global scope with all locals already torn down —
+    # so virsh --reset got an empty domain name and the VM leaked.
+    DIRECT_VM_NAME="keystone-direct-$$"
+    DIRECT_RESULT="/tmp/keystone-vm-image-${host}-$$"
+    # Local aliases so the rest of the function reads naturally.
+    local direct_result="$DIRECT_RESULT"
+    local direct_vm_name="$DIRECT_VM_NAME"
 
     log_info "Direct image mode: building vm-image-${host} for host '${host}'"
 
@@ -699,17 +708,20 @@ run_direct_image() {
 
     # ── set up cleanup ────────────────────────────────────────────────────────
 
-    # The trap fires at script EXIT, which can be after run_direct_image
-    # returns and its locals are out of scope.  Parameter expansion with
-    # `:-` keeps the trap compatible with `set -u`.
+    # The trap fires at script EXIT, which happens after run_direct_image
+    # returns (function locals are gone by then).  Read the promoted
+    # script-scope state — DIRECT_VM_NAME, DIRECT_RESULT, LUKS_FEEDER_PID,
+    # VM_DISK_PATH — so the trap still has the data it needs to reset
+    # the VM and remove the qcow2.  Parameter expansion with `:-` keeps
+    # the trap safe if run_direct_image exits before these are set.
     direct_cleanup() {
-        if [[ -n "${luks_feeder_pid:-}" ]]; then
-            kill "$luks_feeder_pid" 2>/dev/null || true
+        if [[ -n "${LUKS_FEEDER_PID:-}" ]]; then
+            kill "$LUKS_FEEDER_PID" 2>/dev/null || true
         fi
-        if [[ -n "${direct_vm_name:-}" ]]; then
-            "$vm_script" --reset "$direct_vm_name" 2>/dev/null || true
+        if [[ -n "${DIRECT_VM_NAME:-}" ]]; then
+            "$vm_script" --reset "$DIRECT_VM_NAME" 2>/dev/null || true
         fi
-        rm -f "${VM_DISK_PATH:-}" "${direct_result:-}"
+        rm -f "${VM_DISK_PATH:-}" "${DIRECT_RESULT:-}"
     }
     trap 'direct_cleanup; cleanup_project_snapshot' EXIT
 
@@ -774,10 +786,10 @@ run_direct_image() {
     else
         luks_passphrase="${DIRECT_LUKS_PASSPHRASE:-keystone}"
     fi
-    local luks_feeder_pid=""
     feed_luks_passphrase() {
         local vm_name="$1" pass="$2" pty=""
-        # Wait up to 60 s for the domain to appear.
+        # Wait up to 60 s for the libvirt domain to appear; before
+        # then there is no PTY to write to.
         local i
         for i in $(seq 1 60); do
             pty="$(virsh -c qemu:///session dumpxml "$vm_name" 2>/dev/null \
@@ -786,19 +798,25 @@ run_direct_image() {
             sleep 1
         done
         [[ -z "$pty" ]] && return 0
-        # Feed the passphrase every 5 s for up to 5 min.  Only the first
-        # one reaching the prompt matters; extras after unlock are noise.
-        for i in $(seq 1 60); do
+        # Feed the passphrase every 5 s until killed.  The bounded loop
+        # we used before (60 × 5 s = 5 min) assumed LUKS would prompt
+        # inside that window, but first-boot on a cold image can push
+        # the prompt well past 5 min — in which case the passphrase
+        # never lands and the run hangs at cryptroot until SSH times
+        # out.  Looping forever is safe: the main script kills us once
+        # SSH succeeds (or via the EXIT trap on failure), and
+        # post-unlock writes are harmless serial-login noise.
+        while true; do
             printf '%s\n' "$pass" > "$pty" 2>/dev/null || true
             sleep 5
         done
     }
     feed_luks_passphrase "$direct_vm_name" "$luks_passphrase" &
-    luks_feeder_pid=$!
+    LUKS_FEEDER_PID=$!
 
     "$vm_script" "${vm_args[@]}"
-    kill "$luks_feeder_pid" 2>/dev/null || true
-    luks_feeder_pid=""
+    kill "$LUKS_FEEDER_PID" 2>/dev/null || true
+    LUKS_FEEDER_PID=""
     log_ok "SSH is up!"
 
     # ── run basic health validation ───────────────────────────────────────────
