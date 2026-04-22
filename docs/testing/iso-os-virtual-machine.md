@@ -189,10 +189,12 @@ Override the passphrase with either a CLI flag or env var:
 DIRECT_LUKS_PASSPHRASE=s3cret ./bin/test-iso --direct laptop --dev --headless
 ```
 
-The direct-mode SSH timeout is floored at 720 seconds (12 min) to cover LUKS
-unlock plus first-boot activation (home-manager, sshd host keys, nix-daemon).
-Pass `--ssh-timeout N` above 720 for unusually slow hardware; lower values
-are raised automatically.
+The direct-mode SSH timeout is floored at 1800 seconds (30 min) to cover
+LUKS unlock plus first-boot activation (home-manager, sshd host keys,
+nix-daemon).  Observed initrd-phase durations range from ~8 min to ~13 min
+across runs on the same host — the 30 min floor gives comfortable headroom
+without masking real hangs.  Pass `--ssh-timeout N` above 1800 for
+unusually slow hardware; lower values are raised automatically.
 
 For interactive SPICE sessions (omit `--headless`), type the passphrase at
 the console — the auto-feeder still runs in the background but an
@@ -512,7 +514,7 @@ virtio-gpu device in VMs and on real GPUs on bare metal.
 | `vm-image-<host> not found` in direct mode | `mkSystemFlake` not called in flake | Check `packages.x86_64-linux.vm-image-*` are exposed; ensure `hostsRoot` is set |
 | Direct image OOM during build | Builder VM (disko) needs more RAM | Override `disko.memSize` via `extraConfig` in `mkVMImage` |
 | LUKS prompt hangs in headless direct mode | Auto-feeder never reached the serial PTY, or the image's passphrase differs from `keystone` | Confirm `boot.kernelParams` includes `console=ttyS0,115200` (added by `mkVMImage`); check `virsh -c qemu:///session dumpxml <vm>` shows a `/dev/pts/N` serial; pass `--luks-passphrase` if the image uses a non-default passphrase |
-| SSH validation aborts before LUKS unlocks | Default `--ssh-timeout` lower than first-boot takes | `--direct` floors the SSH timeout at 720 seconds; raise further with `--ssh-timeout 900` if needed |
+| SSH validation aborts before LUKS unlocks | Default `--ssh-timeout` lower than first-boot takes | `--direct` floors the SSH timeout at 1800 seconds; raise further with `SSH_WAIT_TIMEOUT=2400` or `--ssh-timeout 2400` if LUKS consistently takes more than ~25 min |
 
 ## Existing VM test infrastructure
 

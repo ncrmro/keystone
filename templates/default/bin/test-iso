@@ -156,8 +156,9 @@ Options:
                         mode (default: "keystone").  Can also be set via the
                         DIRECT_LUKS_PASSPHRASE env var.
   --ssh-timeout SEC     Max wait time for SSH in headless mode (default:
-                        $SSH_WAIT_TIMEOUT; --direct mode floors this at 720
-                        to cover LUKS unlock and first-boot activation).
+                        $SSH_WAIT_TIMEOUT; --direct mode floors this at 1800
+                        to cover LUKS unlock — observed 8-13 min on
+                        desktop-class laptop configs — and first-boot).
   --disk-size GB        Size of the attached install disk image in GB (default: $VM_DISK_SIZE).
   --disk-path PATH      Path to the attached install disk image
                         (default: $VM_DISK_PATH).
@@ -625,7 +626,10 @@ run_direct_image() {
         exit 1
     fi
 
-    local vm_script="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+    # Promote to script scope so the EXIT trap (which runs after
+    # run_direct_image returns) can still invoke $VM_SCRIPT --reset.
+    VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
+    local vm_script="$VM_SCRIPT"
 
     # ── snapshot the project (same mechanism as ISO build) ────────────────────
 
@@ -718,8 +722,8 @@ run_direct_image() {
         if [[ -n "${LUKS_FEEDER_PID:-}" ]]; then
             kill "$LUKS_FEEDER_PID" 2>/dev/null || true
         fi
-        if [[ -n "${DIRECT_VM_NAME:-}" ]]; then
-            "$vm_script" --reset "$DIRECT_VM_NAME" 2>/dev/null || true
+        if [[ -n "${DIRECT_VM_NAME:-}" && -n "${VM_SCRIPT:-}" ]]; then
+            "$VM_SCRIPT" --reset "$DIRECT_VM_NAME" 2>/dev/null || true
         fi
         rm -f "${VM_DISK_PATH:-}" "${DIRECT_RESULT:-}"
     }
@@ -762,12 +766,15 @@ run_direct_image() {
     # The direct path must wait for: kernel load + initrd + LUKS unlock
     # + systemd + multi-user.target + sshd + first-boot work (sshd host
     # key generation, home-manager activation, nix-daemon setup, etc.).
-    # Measured ~8-9 min on a desktop-class laptop config; pad to 12 min
-    # so callers don't hit spurious timeouts.  Users can still raise
-    # further with --ssh-timeout for very slow hardware.
+    # Observed initrd-phase durations (dominated by LUKS) range from
+    # ~8 min to ~13 min across runs on the same host; SSH times out
+    # with too-tight floors.  1800 s (30 min) gives comfortable
+    # headroom without masking real hangs.  Users can set
+    # SSH_WAIT_TIMEOUT / --ssh-timeout above this to go higher; values
+    # below are raised to the floor.
     local direct_ssh_timeout="${SSH_WAIT_TIMEOUT:-240}"
-    if (( direct_ssh_timeout < 720 )); then
-        direct_ssh_timeout=720
+    if (( direct_ssh_timeout < 1800 )); then
+        direct_ssh_timeout=1800
     fi
     vm_args+=(--wait-ssh --ssh-timeout "$direct_ssh_timeout")
 
