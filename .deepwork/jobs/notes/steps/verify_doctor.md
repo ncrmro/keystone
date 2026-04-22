@@ -6,7 +6,19 @@ Run post-migration health checks to confirm the notebook is valid and no data wa
 
 ## Task
 
-1. **Index check**: Run `zk index` — should complete without errors.
+1. **Execution mode verification**: Confirm the migration respected the declared execution mode.
+
+   ```bash
+   git log --oneline -20
+   git status
+   ```
+
+   - **No-commit mode**: `git status` should show unstaged or staged changes; `git log` should show no new migration commits. PASS if no migration commits were created on `main`.
+   - **Logical-batch mode**: PASS if commits exist and none have the pattern `chore(notes): migrate <single-file>`. There should be between one and five phase commits. FAIL if per-file commits are present.
+   - **Worktree mode**: PASS if migration commits are on a dedicated branch (not `main`) and a PR is open or ready to open.
+   - FAIL in any mode if migration commits appear directly on `main` of a Keystone-managed main checkout.
+
+2. **Index check**: Run `zk index` — should complete without errors.
 
 2. **Frontmatter coverage**: Check all markdown files in `notes/`, `literature/`, `decisions/`, and `index/` have valid frontmatter:
 
@@ -98,6 +110,13 @@ Write `.deepwork/tmp/doctor_report.md`:
 ```markdown
 # Doctor Report
 
+## Execution Mode
+
+- Mode used: (no-commit / logical-batch / worktree)
+- Commits on main checkout: (none / N — PASS if none for no-commit/worktree)
+- Per-file commits present: (yes — FAIL / no — PASS)
+- Branch or worktree: (branch name or "N/A for no-commit")
+
 ## Index Status
 
 - `zk index`: OK (N notes indexed)
@@ -157,5 +176,7 @@ Write `.deepwork/tmp/doctor_report.md`:
 ## Important Notes
 
 - The doctor report is transient workflow state. Store it under `.deepwork/tmp/` and do not commit it.
+- The workflow MUST FAIL if migration commits were created directly on `main` of a Keystone-managed main checkout.
+- The workflow MUST FAIL if per-file migration commits are found (any commit matching `chore(notes): migrate <single-file>`).
 - The workflow should FAIL if substantial note-like markdown still lives outside canonical groups without an explicit operational-residue justification.
 - The workflow should also FAIL if there are obvious missing project tags on clearly project-owned notes after migration.
