@@ -21,16 +21,43 @@ When the VM passes, the same template-generated ISO works on real hardware.
 Keystone provides two independent VM testing paths for different layers of the
 stack.  Both coexist; neither replaces the other.
 
-| Path | Command | Tests | Time |
-|------|---------|-------|------|
-| **ISO + installer** | `test-iso --dev --e2e` | Installer TUI, disko, nixos-install, handoff | 20–30 min |
-| **Direct qcow2** | `test-iso --direct laptop` | NixOS modules, storage config, boot chain | 2–10 min |
+| Path | Tests | Time |
+|------|-------|------|
+| **Direct qcow2** | NixOS modules, storage config, boot chain | 2–10 min |
+| **ISO + installer** | Installer TUI, disko, nixos-install, handoff | 20–30 min |
 
-Use the **direct path** when iterating on NixOS modules, storage layout, TPM,
-or boot configuration — anything that does not involve the installer itself.
+### Fastest direct path (most common)
 
-Use the **ISO path** when testing the installer (`ks` binary, TUI flow,
-`ks install` behaviour).
+```bash
+# From the keystone repo — regenerates the fixture, then runs test-iso:
+bin/test-e2e --direct laptop --headless
+
+# From any consumer flake generated from the default template:
+./bin/test-iso --direct laptop --dev --headless
+```
+
+Both invocations do the same thing:
+
+1. Build `packages.x86_64-linux.vm-image-laptop` — a pre-installed qcow2.
+2. Boot it via `bin/virtual-machine` (Q35 + OVMF + swtpm + SPICE).
+3. Auto-type the `keystone` LUKS passphrase over the serial console.
+4. Wait for SSH, run `uname -r` and `systemctl is-system-running`, clean up.
+
+Use `--direct` any time you are iterating on NixOS modules, storage layout,
+TPM, or boot chain — anything below the installer.
+
+Drop `--headless` to leave a SPICE window open for interactive debugging; the
+auto-feeder still runs in the background.
+
+### Full ISO + installer path
+
+Use this when testing the installer itself (`ks` binary, TUI flow,
+`ks install` behaviour):
+
+```bash
+# From the keystone repo — the default when no mode flag is given:
+bin/test-e2e                      # full e2e with screenshots (20-30 min)
+```
 
 ## Direct qcow2 image workflow
 
@@ -142,10 +169,34 @@ packages.x86_64-linux.vm-image-mirror = keystone.lib.mkVMImage {
 
 ### LUKS and ZFS encryption in image mode
 
-Direct images use the same credstore-password (`keystone`) that the installer
-sets up.  At boot, the initrd prompts for the LUKS passphrase.  In interactive
-mode you type `keystone` at the console or over SSH.  In fully automated mode,
-use `qemu-guest-agent` or `QEMU monitor sendkey` sequences.
+Direct images use the same `keystone` LUKS passphrase the installer sets up
+via the credstore.  At every boot the initrd prompts for it.
+
+`test-iso --direct` (and `bin/test-e2e --direct`) auto-types the passphrase
+over the serial console, so no manual interaction is needed.  `mkVMImage`
+sets `boot.kernelParams = [ "console=tty0" "console=ttyS0,115200" ]`, which
+routes the initrd `cryptsetup-ask-password` prompt onto the serial PTY that
+`bin/virtual-machine` exposes.  A background feeder writes the passphrase to
+that PTY every five seconds until SSH comes up; post-unlock writes are
+harmless (they surface as failed serial getty login attempts and stop when
+the feeder is killed at cleanup).
+
+Override the passphrase with either a CLI flag or env var:
+
+```bash
+./bin/test-iso --direct laptop --dev --headless --luks-passphrase "s3cret"
+# or
+DIRECT_LUKS_PASSPHRASE=s3cret ./bin/test-iso --direct laptop --dev --headless
+```
+
+The direct-mode SSH timeout is floored at 720 seconds (12 min) to cover LUKS
+unlock plus first-boot activation (home-manager, sshd host keys, nix-daemon).
+Pass `--ssh-timeout N` above 720 for unusually slow hardware; lower values
+are raised automatically.
+
+For interactive SPICE sessions (omit `--headless`), type the passphrase at
+the console — the auto-feeder still runs in the background but an
+interactive keystroke typically arrives first.
 
 ## What lives in the ISO vs what is evaluated at install time
 
@@ -460,7 +511,8 @@ virtio-gpu device in VMs and on real GPUs on bare metal.
 | PCI slot conflict on VM start | qemu:commandline device collides with libvirt-managed device | Assign explicit `bus=pcie.0,addr=0xNN` to qemu:commandline devices |
 | `vm-image-<host> not found` in direct mode | `mkSystemFlake` not called in flake | Check `packages.x86_64-linux.vm-image-*` are exposed; ensure `hostsRoot` is set |
 | Direct image OOM during build | Builder VM (disko) needs more RAM | Override `disko.memSize` via `extraConfig` in `mkVMImage` |
-| LUKS prompt hangs in headless direct mode | initrd waiting for passphrase | Type passphrase over serial console or use `QEMU monitor sendkey` sequences |
+| LUKS prompt hangs in headless direct mode | Auto-feeder never reached the serial PTY, or the image's passphrase differs from `keystone` | Confirm `boot.kernelParams` includes `console=ttyS0,115200` (added by `mkVMImage`); check `virsh -c qemu:///session dumpxml <vm>` shows a `/dev/pts/N` serial; pass `--luks-passphrase` if the image uses a non-default passphrase |
+| SSH validation aborts before LUKS unlocks | Default `--ssh-timeout` lower than first-boot takes | `--direct` floors the SSH timeout at 720 seconds; raise further with `--ssh-timeout 900` if needed |
 
 ## Existing VM test infrastructure
 
