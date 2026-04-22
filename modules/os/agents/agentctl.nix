@@ -68,6 +68,16 @@ let
   );
   knownAgents = concatStringsSep ", " (attrNames cfg);
   tasksFormatter = ./scripts/tasks-formatter.py;
+  # Per-agent resolved identity JSON files (REQ-030)
+  agentIdentityFiles = mapAttrs (
+    name: agentCfg:
+    pkgs.writeText "agent-${name}-identity.json" (builtins.toJSON agentCfg.resolvedIdentity)
+  ) cfg;
+  agentIdentityCases = concatStringsSep "\n" (
+    mapAttrsToList (
+      name: _: "    ${name}) AGENT_IDENTITY_FILE=\"${agentIdentityFiles.${name}}\" ;;"
+    ) cfg
+  );
   agentctlEnv = pkgs.writeText "agentctl-env.sh" ''
         PYTHON3="${pkgs.python3}/bin/python3"
         TASKS_FORMATTER="${tasksFormatter}"
@@ -125,6 +135,12 @@ let
         set_agent_provision() {
           case "$1" in
     ${agentProvisionCases}
+          esac
+        }
+
+        set_agent_identity() {
+          case "$1" in
+    ${agentIdentityCases}
           esac
         }
   '';
