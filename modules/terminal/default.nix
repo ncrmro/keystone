@@ -36,6 +36,7 @@ in
   imports = [
     ../shared/experimental.nix
     ../shared/repos.nix
+    ../shared/update.nix
     ./shell.nix
     ./editor.nix
     ./ai.nix
@@ -239,6 +240,11 @@ in
       CODE_DIR = codeRoot;
       WORKTREE_DIR = worktreeRoot;
       NOTES_DIR = notesPath;
+      # Keep interactive `ks menu update status` and the background
+      # ks-update.service agreeing on which release feed they poll.
+      # services.nix threads the same value into the worker and notifier
+      # unit Environment blocks.
+      KS_UPDATE_CHANNEL = config.keystone.update.channel;
     };
 
     programs.lazygit.enable = mkIf cfg.git.enable (mkDefault true);

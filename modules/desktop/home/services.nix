@@ -17,6 +17,18 @@
 # inline — this moves that work to a supervised background unit so the
 # success path is silent (polkit prompt + desktop notification) and the
 # failure path preserves logs in the journal for on-demand review.
+#
+# Update channel: `keystone.update.channel` (stable | unstable) selects which
+# GitHub source `ks menu update` tracks. The channel is passed in via
+# the KS_UPDATE_CHANNEL environment variable on both the worker unit
+# (ks-update.service) and the notifier template (ks-update-notify@.service)
+# so the Walker preview, release fetch, and notification copy all agree on
+# which source the host is tracking. Stable (default) uses `/releases/latest`
+# and only accepts `v<M>.<m>.<p>` tags; unstable uses
+# `/repos/OWNER/REPO/branches/main` and tracks the tip commit of `main` — a
+# moving SHA, not a tagged release. Changing the option requires a rebuild
+# because the channel is embedded into the unit Environment at activation
+# time, not read from a runtime file.
 {
   config,
   lib,
@@ -26,6 +38,7 @@
 with lib;
 let
   cfg = config.keystone.desktop;
+  updateChannel = config.keystone.update.channel;
   ksBin = "${pkgs.keystone.ks}/bin/ks";
   systemdBin = "${pkgs.systemd}/bin/systemd-inhibit";
 
@@ -61,7 +74,10 @@ in
       };
       Service = {
         Type = "oneshot";
-        Environment = [ "PATH=${updatePath}" ];
+        Environment = [
+          "PATH=${updatePath}"
+          "KS_UPDATE_CHANNEL=${updateChannel}"
+        ];
         # systemd-inhibit blocks suspend/shutdown for the duration of the
         # update so a laptop lid close mid-rebuild doesn't wedge the unit.
         # Single-line form (concatStringsSep) matches the keystone unit
@@ -92,7 +108,10 @@ in
       };
       Service = {
         Type = "oneshot";
-        Environment = [ "PATH=${notifyPath}" ];
+        Environment = [
+          "PATH=${notifyPath}"
+          "KS_UPDATE_CHANNEL=${updateChannel}"
+        ];
         ExecStart = "${ksBin} notify ks-update.service %i";
       };
     };
