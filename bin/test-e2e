@@ -79,6 +79,23 @@ else
         git -C "$FIXTURE_DIR" add flake.lock
         git -C "$FIXTURE_DIR" commit -m "chore: refresh keystone lock" --no-gpg-sign >/dev/null
     fi
+
+    # Sync the fixture's bin/ scripts from the current template.
+    #
+    # Without this, edits to templates/default/bin/test-iso only take
+    # effect on --clean, which is a papercut: users hit `Unknown option`
+    # from a stale fixture after adding a flag in the worktree.  The bin
+    # scripts are host-side test tooling and do not participate in flake
+    # evaluation, so overwriting them here is safe.  Local ad-hoc edits
+    # inside the fixture are intentionally clobbered — edit the template
+    # instead.
+    log_info "Syncing fixture bin/ from template..."
+    cp -f "$REPO_ROOT/templates/default/bin/"* "$FIXTURE_DIR/bin/"
+    chmod +x "$FIXTURE_DIR/bin/"*
+    if ! git -C "$FIXTURE_DIR" diff --quiet bin 2>/dev/null; then
+        git -C "$FIXTURE_DIR" add bin
+        git -C "$FIXTURE_DIR" commit -m "chore: sync bin/ from template" --no-gpg-sign >/dev/null
+    fi
 fi
 
 if [[ ! -x "$FIXTURE_DIR/bin/test-iso" ]]; then
