@@ -666,6 +666,9 @@ run_direct_image() {
     # returns and its locals are out of scope.  Parameter expansion with
     # `:-` keeps the trap compatible with `set -u`.
     direct_cleanup() {
+        if [[ -n "${luks_feeder_pid:-}" ]]; then
+            kill "$luks_feeder_pid" 2>/dev/null || true
+        fi
         if [[ -n "${direct_vm_name:-}" ]]; then
             "$vm_script" --reset "$direct_vm_name" 2>/dev/null || true
         fi
@@ -707,9 +710,50 @@ run_direct_image() {
         log_info "Starting VM with SPICE display..."
     fi
 
-    vm_args+=(--wait-ssh --ssh-timeout "$SSH_WAIT_TIMEOUT")
+    # The direct path must wait for: kernel load + initrd + LUKS unlock
+    # + systemd + multi-user.target + sshd + first-boot work (sshd host
+    # key generation, home-manager activation, nix-daemon setup, etc.).
+    # Measured ~8-9 min on a desktop-class laptop config; pad to 12 min
+    # so callers don't hit spurious timeouts.  Users can still raise
+    # further with --ssh-timeout for very slow hardware.
+    local direct_ssh_timeout="${SSH_WAIT_TIMEOUT:-240}"
+    if (( direct_ssh_timeout < 720 )); then
+        direct_ssh_timeout=720
+    fi
+    vm_args+=(--wait-ssh --ssh-timeout "$direct_ssh_timeout")
+
+    # Start a background helper that waits for the libvirt domain to be
+    # defined, finds the serial PTY, and writes the LUKS passphrase to it
+    # periodically.  The image is built with console=ttyS0,115200 so the
+    # initrd cryptsetup-ask-password prompt lands on the same PTY.  After
+    # unlock, the still-looping writes turn into harmless failed serial
+    # getty login attempts until the feeder is killed at cleanup.
+    local luks_passphrase="${DIRECT_LUKS_PASSPHRASE:-keystone}"
+    local luks_feeder_pid=""
+    feed_luks_passphrase() {
+        local vm_name="$1" pass="$2" pty=""
+        # Wait up to 60 s for the domain to appear.
+        local i
+        for i in $(seq 1 60); do
+            pty="$(virsh -c qemu:///session dumpxml "$vm_name" 2>/dev/null \
+                | grep -o '/dev/pts/[0-9]*' | head -1 || true)"
+            [[ -n "$pty" ]] && break
+            sleep 1
+        done
+        [[ -z "$pty" ]] && return 0
+        # Feed the passphrase every 5 s for up to 5 min.  Only the first
+        # one reaching the prompt matters; extras after unlock are noise.
+        for i in $(seq 1 60); do
+            printf '%s\n' "$pass" > "$pty" 2>/dev/null || true
+            sleep 5
+        done
+    }
+    feed_luks_passphrase "$direct_vm_name" "$luks_passphrase" &
+    luks_feeder_pid=$!
 
     "$vm_script" "${vm_args[@]}"
+    kill "$luks_feeder_pid" 2>/dev/null || true
+    luks_feeder_pid=""
     log_ok "SSH is up!"
 
     # ── run basic health validation ───────────────────────────────────────────
