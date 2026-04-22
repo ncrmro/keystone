@@ -39,6 +39,69 @@ publishes stable releases.
 - Keystone does not currently publish release binaries or packages from this workflow.
 - Consumers primarily consume Keystone through the git repository and flake input.
 
+## Update channels
+
+Hosts running the Walker update menu (`ks menu update`, wired up via
+`modules/desktop/home/services.nix`) track one of two sources. Selection is
+declarative, through the `keystone.update.channel` option:
+
+- `stable` (default) — the Walker menu reads `/releases/latest` and only
+  treats strict `v<major>.<minor>.<patch>` tags as release-tag matches.
+  If the repository has no matching tagged release, `/releases/latest`
+  returns 404 and the menu renders `Keystone OS unavailable`.
+- `unstable` — the menu reads `GET /repos/OWNER/REPO/branches/main` —
+  this tracks the tip commit, not a tagged release. The displayed
+  `latest` row renders as `main@<short-sha>` and always reflects the
+  current head of `main`.
+
+To change a host's channel:
+
+```nix
+# In your consumer flake (nixos-config)
+keystone.update.channel = "unstable";
+```
+
+Then run `ks update --dev` (deploy the current checkout) to pick up the
+new value. The channel is embedded into the `ks-update.service` unit
+environment and the shell's `home.sessionVariables` at activation time,
+so interactive `ks menu update status` and background Walker dispatches
+agree on which source the host polls.
+
+The stable channel remains the default and requires no per-host declaration.
+
+### Fleet default and per-host overrides
+
+Consumer flakes that use `keystone.lib.mkSystemFlake` can set the fleet-wide
+channel once and override it per host:
+
+```nix
+keystone.lib.mkSystemFlake {
+  defaults = {
+    timeZone = "UTC";
+    updateChannel = "unstable"; # fleet-wide default
+  };
+  hosts = {
+    laptop = { kind = "laptop"; }; # inherits unstable
+    server = {
+      kind = "server";
+      updateChannel = "stable"; # overrides the fleet default
+    };
+  };
+}
+```
+
+Resolution order (highest precedence first):
+
+1. `config.keystone.update.channel` set directly in a host's NixOS or
+   home-manager modules.
+2. The host entry's `updateChannel` attribute in `hosts`.
+3. `defaults.updateChannel` in `mkSystemFlake`.
+4. The option default (`"stable"`, declared in
+   `modules/shared/update.nix`).
+
+The fleet and per-host attributes apply through `lib.mkDefault`, so explicit
+module-level declarations always win.
+
 ## Branch protection
 
 Keystone now uses GitHub repository rulesets for branch protection.
