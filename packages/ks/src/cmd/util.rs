@@ -60,3 +60,29 @@ pub fn interactive_terminal() -> bool {
 pub fn stderr_terminal() -> bool {
     io::stderr().is_terminal()
 }
+
+/// Best-effort short hostname for user-facing messages. Falls back to a
+/// generic label so callers can always format a readable string.
+pub fn hostname_label() -> String {
+    // KEYSTONE_CONFIG_HOST is set by the host-identity shell hook and is
+    // the keystone "host key" rather than `uname -n`. Prefer it when
+    // present so messages match what the user sees elsewhere.
+    if let Ok(value) = env::var("KEYSTONE_CONFIG_HOST") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    match Command::new("uname").arg("-n").output() {
+        Ok(out) if out.status.success() => {
+            let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if raw.is_empty() {
+                "this host".to_string()
+            } else {
+                raw
+            }
+        }
+        _ => "this host".to_string(),
+    }
+}

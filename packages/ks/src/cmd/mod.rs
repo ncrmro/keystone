@@ -11,10 +11,13 @@ pub mod docs;
 pub mod doctor;
 pub mod grafana;
 pub mod hardware_key;
+pub mod menu;
 pub mod notifications;
+pub mod notify;
 pub mod photos;
 pub mod print;
 pub mod projects;
+pub mod run_background;
 pub mod screenshots;
 pub mod ssh;
 pub mod switch;
@@ -22,6 +25,7 @@ pub mod sync_agent_assets;
 pub mod sync_host_keys;
 pub mod tasks;
 pub mod update;
+pub mod update_menu;
 pub mod util;
 
 // Re-export template types and execution from their canonical location.
