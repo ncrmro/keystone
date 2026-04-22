@@ -310,7 +310,31 @@ in
           Multiple users have keystone.os.users.<name>.desktop.enable = true. Keystone defaulted keystone.desktop.user to "${inferredDesktopUser}".
 
           Set keystone.desktop.user explicitly if a different desktop login user should own the session.
-        '';
+        ''
+        # Shadow warning: a user's explicit extraGroups entry is
+        # already auto-granted by keystone. Surface it so consumers
+        # can shrink their lists.
+        ++ concatLists (
+          mapAttrsToList (
+            username: userCfg:
+            let
+              # Mirror the grant layering in users.users.<name>.extraGroups
+              # below: wheel comes from `admin = true` (separate from the
+              # sink), the other three come from the _autoUserGroups sink.
+              autoForUser =
+                optionals userCfg.admin [ "wheel" ]
+                ++ autoGroups.allUsers
+                ++ optionals userCfg.admin autoGroups.adminOnly
+                ++ optionals (hasDesktopModule && userCfg.desktop.enable) autoGroups.desktopUsers;
+              shadowed = filter (g: elem g autoForUser) userCfg.extraGroups;
+            in
+            optional (shadowed != [ ]) ''
+              User '${username}' has extraGroups entries already auto-granted by keystone: ${concatStringsSep ", " shadowed}.
+
+              Remove them from keystone.os.users.${username}.extraGroups — they come from module wiring (see conventions/process.user-groups.md).
+            ''
+          ) cfg
+        );
 
       # Auto-declare age.secrets for sshAutoLoad when secrets.repo is set
       age.secrets = mkIf (config.keystone.secrets.repo != null) (
