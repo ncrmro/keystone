@@ -596,10 +596,13 @@ run_direct_image() {
     create_project_snapshot "$snapshot_dir"
 
     # Inject SSH keys so the admin user has authorized_keys in the built image.
+    # The regex tolerates any whitespace inside the brackets since nixfmt
+    # writes `sshKeys = [ ]` (with spaces) — the unspaced variant `[]` would
+    # silently no-op on a freshly-formatted template.
     if [[ -n "$SSH_KEYS_LIST" ]]; then
-        sed -i "s|# sshKeys = \\[\\];.*|sshKeys = $nix_keys_list;|" \
+        sed -i "s|# sshKeys = \\[[[:space:]]*\\];.*|sshKeys = $nix_keys_list;|" \
             "$snapshot_dir/flake.nix"
-        sed -i "s|sshKeys = \\[\\];.*|sshKeys = $nix_keys_list;|" \
+        sed -i "s|sshKeys = \\[[[:space:]]*\\];.*|sshKeys = $nix_keys_list;|" \
             "$snapshot_dir/flake.nix"
     fi
 
