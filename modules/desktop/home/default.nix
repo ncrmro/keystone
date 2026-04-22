@@ -2,11 +2,25 @@
   config,
   lib,
   pkgs,
+  # Receive the NixOS-level config so that home-manager option defaults can key
+  # off fleet-level and OS-level state (e.g. keystone.services.immich.host,
+  # age.secrets). Follows the pattern used in modules/terminal/default.nix:9.
+  osConfig ? null,
   ...
 }:
 with lib;
 let
   cfg = config.keystone.desktop;
+
+  # Photos auto-enable signals. Fleet Immich host + this user's agenix
+  # api-key secret declaration. When the fleet runs Immich but the secret
+  # is missing, modules/os/users.nix emits a warning with remediation.
+  osc = osConfig;
+  fleetImmichHost = attrByPath [ "keystone" "services" "immich" "host" ] null osc;
+  fleetHasImmich = fleetImmichHost != null;
+  photosUser = config.home.username or null;
+  hasPhotosApiKey =
+    photosUser != null && hasAttrByPath [ "age" "secrets" "${photosUser}-immich-api-key" ] osc;
 in
 {
   imports = [
@@ -64,13 +78,26 @@ in
     };
 
     # Top-level Walker main-menu surfaces. Each gates one hard-coded entry in
-    # keystone-main-menu's main_json via KEYSTONE_MENU_SHOW_* env vars. Default
-    # to keystone.experimental so only stable surfaces appear by default.
+    # keystone-main-menu's main_json via KEYSTONE_MENU_SHOW_* env vars.
+    #
+    # Photos gates on actual Immich availability (fleet Immich host + user's
+    # api-key secret), not on keystone.experimental — hiding the entry on
+    # fleets without Photos is the correct default. agents and contexts
+    # remain keystone.experimental-gated.
     photos.enable = mkOption {
       type = types.bool;
-      default = config.keystone.experimental;
-      defaultText = literalExpression "config.keystone.experimental";
-      description = "Show the Photos entry in the Mod+Escape Walker main menu.";
+      default = fleetHasImmich && hasPhotosApiKey;
+      defaultText = literalExpression ''
+        osConfig.keystone.services.immich.host != null
+        && osConfig.age.secrets ? "<username>-immich-api-key"
+      '';
+      description = ''
+        Show the Photos entry in the Mod+Escape Walker main menu.
+        Auto-enabled when the fleet runs Immich (keystone.services.immich.host)
+        AND the user's agenix secret <username>-immich-api-key is declared.
+        modules/os/users.nix emits a warning with remediation steps when the
+        fleet has Immich but the secret is missing.
+      '';
     };
 
     agents.enable = mkOption {
