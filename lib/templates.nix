@@ -536,6 +536,17 @@ rec {
             disko.devices.disk = lib.genAttrs diskNames (_: {
               imageSize = lib.mkForce imageSize;
             });
+            # Expose the initrd LUKS passphrase prompt (and any other early
+            # /dev/console output) on serial.  Without this, cryptsetup-ask
+            # -password only draws on VGA — a headless caller has no way to
+            # type the passphrase and the VM hangs forever in initrd.
+            # ttyS0 is listed last so it wins /dev/console for userspace
+            # prompts; tty0 is kept so an interactive GUI caller also sees
+            # the prompt.
+            boot.kernelParams = [
+              "console=tty0"
+              "console=ttyS0,115200"
+            ];
           }
           extraConfig
         ];
