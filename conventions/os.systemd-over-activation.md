@@ -64,10 +64,11 @@ the ZFS backup receiver fix — see `os.zfs-backup` rule 17g.
 ## Observability requirements
 
 9. Any module that provides a long-running or failure-prone systemd oneshot
-   SHOULD expose the unit's state to Prometheus via the
-   `node_systemd` exporter (already enabled fleet-wide) rather than
-   inventing a custom metric for success/failure. See
-   `process.grafana-dashboard-development` for how to surface it.
+   SHOULD expose the unit's state to Prometheus via the node exporter
+   `systemd` collector (for example, the `node_systemd_unit_*` metrics,
+   already enabled fleet-wide) rather than inventing a custom metric for
+   success/failure. See `process.grafana-dashboard-development` for how to
+   surface it.
 
 ## Golden example
 

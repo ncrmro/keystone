@@ -32,11 +32,13 @@ systemd_over_activation:
          `podman`, `nerdctl`, `curl`, `wget`, `openssl`, `ssh`, `scp`, `rsync`,
          `git` (beyond config-only operations), `pg_dump`, `mysql`, `redis-cli`,
          or any binary that performs I/O against a service → FLAG.
-      2. **Depends on a non-rpool ZFS pool, a non-root mount, a network
-         interface, or a service that comes up later.** Look for references
-         to pool names other than `rpool` (e.g., `ocean`, `lake`, `tank`,
-         `storage`), to mount points outside `/`, `/nix`, `/etc`, `/var`,
-         `/run`, or to URLs/hostnames → FLAG.
+      2. **Depends on a non-rpool ZFS pool, a mount point other than the
+         root filesystem, a network interface, or a service that comes up
+         later.** Look for references to pool names other than `rpool`
+         (e.g., `ocean`, `lake`, `tank`, `storage`), to mount points other
+         than the root filesystem, or to paths rooted somewhere other than
+         `/nix`, `/etc`, `/var`, `/run`, `/root`, or `/var/lib`, or to
+         URLs/hostnames → FLAG.
       3. **Needs retry, manual re-trigger, or failure-state visibility.** If
          the script uses `|| true` to swallow errors, retries in a loop, or
          its failure would meaningfully break a dependent service → FLAG.
