@@ -379,9 +379,36 @@ run_provider_prompt() {
 
 build_task_runtime_json() {
   local task_name="$1"
-  local task_entry
-  task_entry=$(yq -o=json "[.tasks[] | select(.name == \"$task_name\")] | .[0]" TASKS.yaml)
+  local task_source_ref="${2:-}"
+  local selector task_entry
+  selector=$(task_selector_expression "$task_name" "$task_source_ref")
+  task_entry=$(yq -o=json "$selector" TASKS.yaml)
   printf '%s' "$task_entry" | jq -c '{profile: (.profile // ""), provider: (.provider // ""), model: (.model // ""), fallback_model: (.fallback_model // ""), effort: (.effort // "")}'
+}
+
+# Prefer source_ref for selection when present so malformed pending tasks with
+# empty .name (e.g. bad ingest output) still resolve to the correct yq path and
+# can be mutated in place without matching every empty-name row.
+task_selector_expression() {
+  local task_name="$1"
+  local task_source_ref="${2:-}"
+  jq -nr \
+    --arg task_name "$task_name" \
+    --arg task_source_ref "$task_source_ref" '
+      if $task_source_ref != "" then
+        "(.tasks[] | select((.source_ref // \"\") == " + ($task_source_ref | tojson) + "))"
+      else
+        "(.tasks[] | select((.name // \"\") == " + ($task_name | tojson) + "))"
+      end
+    '
+}
+
+count_invalid_pending_tasks() {
+  yq '.tasks | map(select(.status == "pending" and ((.name // "") == ""))) | length' TASKS.yaml 2>/dev/null || printf '0\n'
+}
+
+first_pending_task_json() {
+  yq -o=json '.tasks | map(select(.status == "pending")) | .[0] // {}' TASKS.yaml 2>/dev/null || printf '{}\n'
 }
 
 # Lock to prevent concurrent runs (flock auto-releases on process death, even SIGKILL)
@@ -657,9 +684,21 @@ TASK_COUNT=0
 ATTEMPTED_TASKS=":"
 
 while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
-  TASK_NAME=$(yq '[.tasks[] | select(.status == "pending")] | .[0].name' TASKS.yaml 2>/dev/null || echo "null")
+  # CRITICAL: Mark pending tasks with empty .name as error before selecting the
+  # next task. A malformed row from a bad ingest used to crash the whole loop
+  # when yq tried to mutate .tasks[] | select(.name == "") — the selector would
+  # match every empty-name row (including new ones), producing unbounded retry.
+  INVALID_PENDING_COUNT=$(count_invalid_pending_tasks)
+  if [[ "$INVALID_PENDING_COUNT" -gt 0 ]]; then
+    log "  Marking $INVALID_PENDING_COUNT pending task(s) with empty name as error"
+    yq -i '(.tasks[] | select(.status == "pending" and ((.name // "") == ""))).status = "error"' TASKS.yaml
+    TASKS_FAILED=$((TASKS_FAILED + INVALID_PENDING_COUNT))
+  fi
 
-  if [[ "$TASK_NAME" == "null" || -z "$TASK_NAME" ]]; then
+  TASK_JSON=$(first_pending_task_json)
+  TASK_NAME=$(printf '%s\n' "$TASK_JSON" | jq -r '.name // ""')
+
+  if [[ -z "$TASK_NAME" || "$TASK_NAME" == "null" ]]; then
     log "  No more pending tasks"
     break
   fi
@@ -670,11 +709,12 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
   fi
   ATTEMPTED_TASKS="${ATTEMPTED_TASKS}${TASK_NAME}:"
 
-  TASK_DESC=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].description" TASKS.yaml)
-  TASK_WORKFLOW=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].workflow // \"\"" TASKS.yaml)
-  TASK_NEEDS=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].needs // []" TASKS.yaml)
-  TASK_SOURCE=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].source // \"\"" TASKS.yaml)
-  TASK_SOURCE_REF=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].source_ref // \"\"" TASKS.yaml)
+  TASK_DESC=$(printf '%s\n' "$TASK_JSON" | jq -r '.description // ""')
+  TASK_WORKFLOW=$(printf '%s\n' "$TASK_JSON" | jq -r '.workflow // ""')
+  TASK_NEEDS=$(printf '%s\n' "$TASK_JSON" | jq -c '.needs // []')
+  TASK_SOURCE=$(printf '%s\n' "$TASK_JSON" | jq -r '.source // ""')
+  TASK_SOURCE_REF=$(printf '%s\n' "$TASK_JSON" | jq -r '.source_ref // ""')
+  TASK_SELECTOR=$(task_selector_expression "$TASK_NAME" "$TASK_SOURCE_REF")
 
   if [[ "$TASK_NEEDS" != "[]" && "$TASK_NEEDS" != "null" ]]; then
     NEEDS_MET=true
@@ -711,8 +751,8 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
     "source_ref" "$TASK_SOURCE_REF"
 
   TASK_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).started_at = \"$TASK_STARTED_AT\"" TASKS.yaml
-  yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"in_progress\"" TASKS.yaml
+  yq -i "${TASK_SELECTOR}.started_at = \"$TASK_STARTED_AT\"" TASKS.yaml
+  yq -i "${TASK_SELECTOR}.status = \"in_progress\"" TASKS.yaml
 
   if [[ -n "$TASK_WORKFLOW" && "$TASK_WORKFLOW" != "null" && "$TASK_WORKFLOW" != "" ]]; then
     PROMPT="/deepwork $TASK_WORKFLOW
@@ -726,7 +766,7 @@ Task: $TASK_NAME
 Description: $TASK_DESC"
   fi
 
-  TASK_RUNTIME_JSON=$(build_task_runtime_json "$TASK_NAME")
+  TASK_RUNTIME_JSON=$(build_task_runtime_json "$TASK_NAME" "$TASK_SOURCE_REF")
   if [[ -z "$TASK_RUNTIME_JSON" ]]; then
     TASK_RUNTIME_JSON="{}"
   fi
@@ -749,12 +789,12 @@ Description: $TASK_DESC"
 
   if [[ "$TASK_EXIT" -eq 0 ]]; then
     TASK_COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).completed_at = \"$TASK_COMPLETED_AT\"" TASKS.yaml
-    yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"completed\"" TASKS.yaml
+    yq -i "${TASK_SELECTOR}.completed_at = \"$TASK_COMPLETED_AT\"" TASKS.yaml
+    yq -i "${TASK_SELECTOR}.status = \"completed\"" TASKS.yaml
     TASKS_COMPLETED=$((TASKS_COMPLETED + 1))
     log "  Task $TASK_NAME completed (log: $TASK_LOG)"
   else
-    yq -i "(.tasks[] | select(.name == \"$TASK_NAME\")).status = \"error\"" TASKS.yaml
+    yq -i "${TASK_SELECTOR}.status = \"error\"" TASKS.yaml
     RUN_STATUS="degraded"
     TASKS_FAILED=$((TASKS_FAILED + 1))
     log "  Task $TASK_NAME errored (exit $TASK_EXIT, log: $TASK_LOG)"
