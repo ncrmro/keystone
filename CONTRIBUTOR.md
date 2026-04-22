@@ -145,9 +145,11 @@ bin/test-e2e --clean          # Regenerate fixture before running
 bin/test-e2e --no-build       # Reuse existing ISO
 ```
 
-Flags are passed through to `test-iso` unchanged, so anything in
-`test-iso --help` (e.g. `--luks-passphrase`, `--port`, `--memory`)
-works with `bin/test-e2e` too.
+`bin/test-e2e` forwards user-supplied flags to `test-iso`, so anything
+in `test-iso --help` (e.g. `--luks-passphrase`, `--port`, `--memory`)
+generally works with `bin/test-e2e` too. It may also add wrapper
+defaults such as `--dev` and a default mode (`--e2e --headless`) when
+no mode flag is provided.
 
 ## AI instruction regeneration
 
