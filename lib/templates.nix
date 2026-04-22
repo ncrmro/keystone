@@ -54,15 +54,21 @@ let
         # Tailscale requires hosts registry — template configs don't have one
         tailscale.enable = lib.mkDefault false;
         inherit
-          admin
           adminUsername
-          users
           storage
           secureBoot
           tpm
           ssh
           remoteUnlock
           ;
+        # Merge the admin user into users at adminUsername with admin = true.
+        # This is the single source of truth for administrator identity;
+        # other entries in users are regular (non-admin) users.
+        users = users // {
+          ${adminUsername} = admin // {
+            admin = true;
+          };
+        };
       };
 
       nix.settings.trusted-users = [

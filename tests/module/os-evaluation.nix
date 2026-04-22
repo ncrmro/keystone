@@ -41,6 +41,83 @@ let
       touch $out
     '';
 
+  # Evaluate a module set and assert keystone.os.adminUsername resolves
+  # to `expected`. Pins the auto-derivation from the admin flag.
+  assertAdminUsername =
+    name: expected: modules:
+    let
+      result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+        ]
+        ++ modules;
+      };
+      actual = result.config.keystone.os.adminUsername;
+    in
+    pkgs.runCommand "admin-username-${name}" { } ''
+      if [ "${actual}" != "${expected}" ]; then
+        echo "FAIL: ${name}: expected adminUsername=${expected}, got ${actual}" >&2
+        exit 1
+      fi
+      echo "OK: ${name}: adminUsername=${actual}"
+      touch $out
+    '';
+
+  # Evaluate a module set and assert at least one failing assertion contains
+  # `expectedText`. adminUsername itself still resolves (to its default) —
+  # the assertion list is what flags the invalid config.
+  assertHasFailingAssertion =
+    name: expectedText: modules:
+    let
+      result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+        ]
+        ++ modules;
+      };
+      failing = builtins.filter (a: !a.assertion) result.config.assertions;
+      matched = builtins.any (a: lib.hasInfix expectedText a.message) failing;
+    in
+    pkgs.runCommand "admin-assertion-${name}" { } ''
+      ${
+        if matched then
+          ''echo "OK: ${name}: assertion containing '${expectedText}' fired"''
+        else
+          ''
+            echo "FAIL: ${name}: expected a failing assertion containing '${expectedText}'" >&2
+            exit 1
+          ''
+      }
+      touch $out
+    '';
+
+  # Minimal storage + fs so the OS module evaluates far enough to populate
+  # users and assertions. Shared by every admin-flag test below.
+  adminBase = {
+    keystone.os = {
+      enable = true;
+      storage = {
+        type = "zfs";
+        devices = [ "/dev/vda" ];
+      };
+    };
+    networking.hostId = "deadbeef";
+    fileSystems."/" = {
+      device = lib.mkForce "rpool/crypt/system";
+      fsType = lib.mkForce "zfs";
+    };
+  };
+
   tests = {
     minimal-zfs = eval "minimal-zfs" [
       {
@@ -53,6 +130,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
         };
         networking.hostId = "deadbeef";
@@ -98,7 +176,7 @@ let
           users.admin = {
             fullName = "Admin User";
             email = "admin@example.com";
-            extraGroups = [ "wheel" ];
+            admin = true;
             initialPassword = "adminpass";
             terminal.enable = true;
             zfs.quota = "100G";
@@ -123,6 +201,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
         };
         fileSystems."/" = {
@@ -145,6 +224,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
         };
         fileSystems."/" = {
@@ -172,6 +252,7 @@ let
             users.testuser = {
               fullName = "Test User";
               initialPassword = "testpass";
+              admin = true;
             };
           };
         };
@@ -203,6 +284,7 @@ let
             users.testuser = {
               fullName = "Test User";
               initialPassword = "testpass";
+              admin = true;
             };
           };
         };
@@ -233,6 +315,7 @@ let
             users.testuser = {
               fullName = "Test User";
               initialPassword = "testpass";
+              admin = true;
             };
           };
         };
@@ -282,6 +365,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
         };
         networking.hostName = "workstation";
@@ -322,6 +406,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
         };
         networking.hostName = "ocean";
@@ -329,6 +414,78 @@ let
         fileSystems."/" = {
           device = lib.mkForce "rpool/crypt/system";
           fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    # Single admin flag → adminUsername derives to that user.
+    admin-username-single-admin = assertAdminUsername "single-admin" "alice" [
+      adminBase
+      {
+        keystone.os.users.alice = {
+          fullName = "Alice";
+          initialPassword = "pw";
+          admin = true;
+        };
+        keystone.os.users.bob = {
+          fullName = "Bob";
+          initialPassword = "pw";
+        };
+      }
+    ];
+
+    # Explicit adminUsername matching the admin flag → valid.
+    admin-username-explicit-matches = assertAdminUsername "explicit-matches" "alice" [
+      adminBase
+      {
+        keystone.os.adminUsername = "alice";
+        keystone.os.users.alice = {
+          fullName = "Alice";
+          initialPassword = "pw";
+          admin = true;
+        };
+      }
+    ];
+
+    # No admin-flagged user → "requires an administrator" assertion fires.
+    admin-username-no-admin-fails = assertHasFailingAssertion "no-admin" "requires an administrator" [
+      adminBase
+      {
+        keystone.os.users.alice = {
+          fullName = "Alice";
+          initialPassword = "pw";
+        };
+      }
+    ];
+
+    # Two admin-flagged users → "Multiple users are flagged" assertion fires.
+    admin-username-multi-admin-fails =
+      assertHasFailingAssertion "multi-admin" "Multiple users are flagged"
+        [
+          adminBase
+          {
+            keystone.os.users.alice = {
+              fullName = "Alice";
+              initialPassword = "pw";
+              admin = true;
+            };
+            keystone.os.users.bob = {
+              fullName = "Bob";
+              initialPassword = "pw";
+              admin = true;
+            };
+          }
+        ];
+
+    # Explicit adminUsername disagreeing with the admin flag → mismatch assertion fires.
+    admin-username-mismatch-fails = assertHasFailingAssertion "mismatch" "not flagged admin = true" [
+      adminBase
+      {
+        keystone.os.adminUsername = "bob";
+        keystone.os.users.alice = {
+          fullName = "Alice";
+          initialPassword = "pw";
+          admin = true;
         };
       }
     ];

@@ -20,25 +20,21 @@ let
   osCfg = config.keystone.os;
   cfg = osCfg.users;
   adminUsername = osCfg.adminUsername;
-  legacyAdminCfg = if cfg ? admin then cfg.admin else null;
-  effectiveAdminCfg = if osCfg.admin != null then osCfg.admin else legacyAdminCfg;
-  effectiveUsers =
-    (removeAttrs cfg [ "admin" ])
-    // optionalAttrs (effectiveAdminCfg != null) {
-      ${adminUsername} = effectiveAdminCfg // {
-        extraGroups = unique ([ "wheel" ] ++ effectiveAdminCfg.extraGroups);
-      };
-    };
-  # Admin can be either an explicit keystone.os.admin or any user with wheel group
-  hasAdmin =
-    effectiveAdminCfg != null || any (u: elem "wheel" u.extraGroups) (attrValues effectiveUsers);
+
+  # CRITICAL: admin identity is a single fact. Exactly one user has admin =
+  # true; that user owns adminUsername, which downstream derivations
+  # (systemFlake.path, admin home directory) depend on. Authorization is
+  # separate — add extraGroups = [ "wheel" ] to any other user that needs
+  # sudo.
+  adminUsersNames = filter (n: cfg.${n}.admin or false) (attrNames cfg);
+
   keysCfg = config.keystone.keys;
   hostname = config.networking.hostName;
   immichServiceCfg = config.keystone.services.immich;
 
   # Whether the keystone desktop NixOS module is imported (gates home-manager desktop config)
   hasDesktopModule = options.keystone ? desktop;
-  desktopUsers = filterAttrs (_: userCfg: userCfg.desktop.enable) effectiveUsers;
+  desktopUsers = filterAttrs (_: userCfg: userCfg.desktop.enable) cfg;
   desktopUsernames = attrNames desktopUsers;
   inferredDesktopUser = if desktopUsernames == [ ] then null else head desktopUsernames;
   desktopAccessGroups = [
@@ -63,7 +59,7 @@ let
 
   screenshotUsers = filterAttrs (
     _: userCfg: userCfg.desktop.enable && userCfg.desktop.screenshotSync.enable
-  ) effectiveUsers;
+  ) cfg;
 
   immichServerUrl =
     let
@@ -88,7 +84,7 @@ let
 in
 {
   config = mkMerge [
-    (mkIf (osCfg.enable && effectiveUsers != { }) {
+    (mkIf (osCfg.enable && cfg != { }) {
       # Enable ZFS delegation for non-root users (only if using ZFS)
       boot.extraModprobeConfig = mkIf useZfs ''
         options zfs zfs_admin_snapshot=1
@@ -105,12 +101,34 @@ in
       # Assertions
       assertions = [
         {
-          assertion = hasAdmin;
-          message = "Keystone OS requires an administrator — set keystone.os.admin or add a user with 'wheel' in extraGroups.";
+          assertion = length adminUsersNames == 1;
+          message =
+            if adminUsersNames == [ ] then
+              ''
+                Keystone OS requires an administrator. Set admin = true on
+                exactly one entry in keystone.os.users.
+              ''
+            else
+              ''
+                Multiple users are flagged keystone.os.users.<name>.admin = true:
+                ${concatStringsSep ", " adminUsersNames}.
+
+                Exactly one user must be the admin — it owns adminUsername and
+                downstream path derivations. Give the others
+                extraGroups = [ "wheel" ] if they need sudo.
+              '';
         }
         {
-          assertion = !(osCfg.admin != null && legacyAdminCfg != null);
-          message = "Define the administrator in keystone.os.admin, not both keystone.os.admin and keystone.os.users.admin.";
+          # adminUsername must name the admin-flagged user. Explicit assignments
+          # still win (via mkDefault in default.nix) but cannot drift from the
+          # flag — silent mismatch would break systemFlake.path.
+          assertion = adminUsersNames == [ ] || elem adminUsername adminUsersNames;
+          message = ''
+            keystone.os.adminUsername = "${adminUsername}" but that user is
+            not flagged admin = true. Set admin = true on
+            keystone.os.users.${adminUsername} or remove the explicit
+            adminUsername assignment.
+          '';
         }
         {
           assertion =
@@ -123,7 +141,7 @@ in
         {
           assertion =
             let
-              uids = filter (u: u != null) (mapAttrsToList (_: u: u.uid) effectiveUsers);
+              uids = filter (u: u != null) (mapAttrsToList (_: u: u.uid) cfg);
               uniqueUids = unique uids;
             in
             length uids == length uniqueUids;
@@ -137,7 +155,7 @@ in
             assertion = userCfg.desktop.enable;
             message = "User '${username}' enables desktop.screenshotSync but desktop.enable is false.";
           }
-        ) effectiveUsers
+        ) cfg
       )
       ++ optionals (screenshotUsers != { }) [
         {
@@ -175,17 +193,11 @@ in
                 };
             '';
           }
-        ) effectiveUsers
+        ) cfg
       );
 
       warnings =
-        optional (osCfg.admin != null && legacyAdminCfg != null) ''
-          Both keystone.os.admin and keystone.os.users.admin are set. Use keystone.os.admin only.
-        ''
-        ++ optional (osCfg.admin == null && legacyAdminCfg != null) ''
-          keystone.os.users.admin is deprecated. Move the administrator definition to keystone.os.admin.
-        ''
-        ++ concatLists (
+        concatLists (
           mapAttrsToList (
             username: userCfg:
             optional
@@ -235,13 +247,13 @@ in
                   mode = "0400";
                 }
               ))
-            ) effectiveUsers
+            ) cfg
           )
         )
       );
 
       # Enable zsh system-wide if any user has terminal enabled
-      programs.zsh.enable = mkIf (any (u: u.terminal.enable) (attrValues effectiveUsers)) true;
+      programs.zsh.enable = mkIf (any (u: u.terminal.enable) (attrValues cfg)) true;
 
       # Generate NixOS users
       users.users = mapAttrs (username: userCfg: {
@@ -252,6 +264,7 @@ in
         createHome = !useZfs; # Let ZFS dataset provide home when using ZFS
         extraGroups = unique (
           userCfg.extraGroups
+          ++ optionals userCfg.admin [ "wheel" ]
           ++ optionals (hasDesktopModule && userCfg.desktop.enable) desktopAccessGroups
           ++ (optionals useZfs [ "zfs" ])
         );
@@ -260,7 +273,7 @@ in
         # Read all keys from keystone.keys registry
         openssh.authorizedKeys.keys = if keysCfg ? ${username} then keysCfg.${username}.allKeys else [ ];
         shell = mkIf userCfg.terminal.enable pkgs.zsh;
-      }) effectiveUsers;
+      }) cfg;
 
       # Home directory ownership for ext4 (ZFS handles this in its service)
       systemd.services.create-user-homes = mkIf (!useZfs) {
@@ -285,7 +298,7 @@ in
               fi
               chown ${username}:users /home/${username}
               chmod 700 /home/${username}
-            '') effectiveUsers
+            '') cfg
           )}
         '';
       };
@@ -341,12 +354,7 @@ in
     # because the module system only reads the mkIf's `content` attribute.
     (optionalAttrs (options ? home-manager) {
       home-manager =
-        mkIf
-          (
-            osCfg.enable
-            && effectiveUsers != { }
-            && any (u: u.terminal.enable || u.desktop.enable) (attrValues effectiveUsers)
-          )
+        mkIf (osCfg.enable && cfg != { } && any (u: u.terminal.enable || u.desktop.enable) (attrValues cfg))
           {
             useGlobalPkgs = mkDefault true;
             useUserPackages = mkDefault true;
@@ -403,7 +411,7 @@ in
                     };
                   }
                 )
-            ) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) effectiveUsers);
+            ) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) cfg);
           };
     })
 
