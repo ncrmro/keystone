@@ -1,0 +1,143 @@
+name: publication
+version: 1.2.0
+summary: Transform research, projects, and ideas into polished publications with audience-specific tone
+common_job_info_provided_to_all_steps_at_runtime: 'A comprehensive workflow for creating high-quality publications from source material.
+
+  Takes projects, spikes, research notes, or ideas and transforms them into polished
+
+  articles, blog posts, technical writeups, or internal documents.
+
+
+  The workflow:
+
+  1. Analyzes source material and audience requirements
+
+  2. Creates a structured outline tailored to publication type
+
+  3. Drafts content with appropriate tone and depth
+
+  4. Reviews for quality, tone consistency, and audience fit
+
+
+  Produces publication-ready markdown documents with metadata, optimized for the
+
+  target audience (technical practitioners, general tech readers, or internal teams)
+
+  and appropriate tone (professional, funny/facetious, or academic).
+
+
+  Supports multiple publication types: blog posts, internal docs, technical articles,
+
+  and tutorials. Includes comprehensive quality validation to ensure engaging,
+
+  well-structured, and actionable content.
+
+  '
+workflows:
+- name: publication
+  summary: Transform source material into a polished publication
+  steps:
+  - research_and_scope
+  - create_outline
+  - draft_publication
+  - review_publication
+steps:
+- id: research_and_scope
+  name: Research and Scope
+  description: Analyze source material and define publication scope, audience, and approach
+  instructions_file: steps/research_and_scope.md
+  inputs:
+  - name: source_material
+    description: Path to the project, spike, research notes, or idea to publish
+  - name: target_audience
+    description: 'Target audience: technical_practitioners, general_tech, or internal_team'
+  - name: publication_tone
+    description: 'Desired tone: professional, funny, or academic'
+  - name: publication_type
+    description: 'Type: blog, announcement, internal, technical_article, or tutorial'
+  outputs:
+    scope:
+      type: file
+      description: Output from Research and Scope step
+      required: true
+  dependencies: []
+  reviews: []
+- id: create_outline
+  name: Create Outline
+  description: Develop a structured outline based on research findings and publication goals
+  instructions_file: steps/create_outline.md
+  inputs:
+  - file: workflow/publications/[slug]/scope.md
+    from_step: research_and_scope
+  outputs:
+    outline:
+      type: file
+      description: Output from Create Outline step
+      required: true
+  dependencies:
+  - research_and_scope
+  reviews: []
+- id: draft_publication
+  name: Draft Publication
+  description: Write the full publication following the outline with appropriate tone and depth
+  instructions_file: steps/draft_publication.md
+  inputs:
+  - file: workflow/publications/[slug]/scope.md
+    from_step: research_and_scope
+  - file: workflow/publications/[slug]/outline.md
+    from_step: create_outline
+  outputs:
+    draft:
+      type: file
+      description: Output from Draft Publication step
+      required: true
+  dependencies:
+  - research_and_scope
+  - create_outline
+  reviews: []
+- id: review_publication
+  name: Review Publication
+  description: Validate publication quality, tone consistency, and audience appropriateness
+  instructions_file: steps/review_publication.md
+  inputs:
+  - file: workflow/publications/[slug]/draft.md
+    from_step: draft_publication
+  - file: workflow/publications/[slug]/scope.md
+    from_step: research_and_scope
+  outputs:
+    README:
+      type: file
+      description: Output from Review Publication step
+      required: true
+    metadata:
+      type: file
+      description: Output from Review Publication step
+      required: true
+  dependencies:
+  - draft_publication
+  - research_and_scope
+  hooks:
+    after_agent:
+    - prompt: 'Verify the final publication meets ALL quality criteria:
+
+        1. **Engaging Opening**: Strong hook in first 2-3 sentences, clear value proposition
+
+        2. **Clear Structure**: Logical flow, clear headings, smooth transitions
+
+        3. **Tone Consistency**: Selected tone maintained throughout entire publication
+
+        4. **Audience Appropriateness**: Depth and language match target audience expertise
+
+        5. **Actionable Takeaways**: Clear conclusions, specific next steps, useful resources
+
+        6. **Verified Citations**: All external links verified to exist (use WebSearch to confirm)
+
+        7. **Writing Style Guide**: Passes WRITING_STYLE.md 8-point diagnostic (precise vocab, layered meaning, no LLM filler, no formulaic titles)
+
+
+        If ALL criteria are met, state that publication quality is validated.
+
+        If any criteria fail, explain what needs improvement and request revision.
+
+        '
+  reviews: []
