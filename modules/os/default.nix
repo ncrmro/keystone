@@ -256,6 +256,7 @@ in
     ./ssh.nix
     ./eternal-terminal.nix
     ./airplay.nix
+    ./kodi.nix
     ./mail.nix
     ./git-server
     ./agents
@@ -293,6 +294,106 @@ in
           - zfs: Full features (snapshots, compression, checksums, native encryption)
           - ext4: Simple/legacy (LUKS encryption only, no advanced features)
         '';
+      };
+
+      platform = mkOption {
+        type = types.enum [
+          "uefi"
+          "pi"
+        ];
+        default = "uefi";
+        description = ''
+          Hardware/boot platform. Selects bootloader, firmware partition layout, and
+          encryption defaults.
+          - uefi: x86_64 UEFI with systemd-boot, LUKS credstore, optional TPM2 unlock.
+          - pi: Raspberry Pi (aarch64) booting pftf/RPi4 UEFI firmware + systemd-boot.
+            No LUKS credstore (no TPM on Pi); use native ZFS encryption if needed.
+            Consumers must supply pftf firmware files via storage.pi.uefiFirmware.
+        '';
+      };
+
+      pi = {
+        bootMedium = mkOption {
+          type = types.enum [
+            "sd"
+            "external"
+          ];
+          default = "external";
+          description = ''
+            Where the Pi firmware + /boot lives:
+            - sd: firmware/boot + ZFS root share a single SD/eMMC device
+              (storage.devices[0] is partitioned: firmware + zfs).
+              Convenient but writes wear the SD card.
+            - external: SD holds only firmware + /boot (via storage.pi.bootDevice);
+              ZFS pool lives on storage.devices (USB/NVMe). Recommended for servers.
+          '';
+        };
+
+        bootDevice = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = "/dev/disk/by-id/mmc-SC64G_0x12345678";
+          description = ''
+            Device holding the Pi firmware and /boot partition when
+            storage.pi.bootMedium = "external". Ignored when bootMedium = "sd"
+            (the first entry of storage.devices is used instead).
+          '';
+        };
+
+        firmwareSize = mkOption {
+          type = types.str;
+          default = "1G";
+          description = ''
+            Size of the FAT32 ESP partition. Holds pftf/RPi4 UEFI firmware plus
+            systemd-boot, kernels, and initrds — keep ≥1G for multiple generations.
+          '';
+        };
+
+        uefiFirmware = mkOption {
+          type = types.attrsOf types.path;
+          default =
+            let
+              # Pinned pftf/RPi4 v1.41 — a reasonable default so consumers
+              # don't have to reinvent the firmware file mapping for every Pi
+              # host. Override individual entries or the whole attrset to pin
+              # a different release.
+              pftf = pkgs.fetchzip {
+                url = "https://github.com/pftf/RPi4/releases/download/v1.41/RPi4_UEFI_Firmware_v1.41.zip";
+                stripRoot = false;
+                hash = "sha256-MVvoIO26JNEi1maOYcgk0h/Heb9W+Y8mgh7l8GFC4/k=";
+              };
+            in
+            {
+              "RPI_EFI.fd" = "${pftf}/RPI_EFI.fd";
+              "config.txt" = "${pftf}/config.txt";
+              "start4.elf" = "${pftf}/start4.elf";
+              "fixup4.dat" = "${pftf}/fixup4.dat";
+              "bcm2711-rpi-4-b.dtb" = "${pftf}/bcm2711-rpi-4-b.dtb";
+              "bcm2711-rpi-400.dtb" = "${pftf}/bcm2711-rpi-400.dtb";
+              "bcm2711-rpi-cm4.dtb" = "${pftf}/bcm2711-rpi-cm4.dtb";
+              "overlays/miniuart-bt.dtbo" = "${pftf}/overlays/miniuart-bt.dtbo";
+              "overlays/upstream-pi4.dtbo" = "${pftf}/overlays/upstream-pi4.dtbo";
+              "firmware/brcm/brcmfmac43455-sdio.bin" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.bin";
+              "firmware/brcm/brcmfmac43455-sdio.clm_blob" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.clm_blob";
+              "firmware/brcm/brcmfmac43455-sdio.Raspberry" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.Raspberry";
+              "firmware/brcm/brcmfmac43455-sdio.txt" = "${pftf}/firmware/brcm/brcmfmac43455-sdio.txt";
+            };
+          defaultText = literalExpression "pftf/RPi4 v1.41 firmware file mapping";
+          example = literalExpression ''
+            {
+              "RPI_EFI.fd" = "''${pftf}/RPI_EFI.fd";
+              "config.txt" = "''${pftf}/config.txt";
+              "bcm2711-rpi-4-b.dtb" = "''${pftf}/bcm2711-rpi-4-b.dtb";
+              # ...firmware blobs from pftf/RPi4 release zip
+            }
+          '';
+          description = ''
+            Files from the pftf/RPi4 UEFI firmware release to drop onto the ESP
+            (via boot.loader.systemd-boot.extraFiles). Defaults to a pinned
+            pftf v1.41 mapping so any Pi host boots without extra config;
+            override to pin a different release or add downstream DTB overlays.
+          '';
+        };
       };
 
       devices = mkOption {
@@ -683,6 +784,13 @@ in
       {
         assertion = !cfg.storage.enable || cfg.storage.type == "ext4" -> cfg.storage.mode == "single";
         message = "ext4 only supports single-disk mode";
+      }
+      {
+        assertion = !cfg.storage.enable || !(cfg.storage.platform == "pi" && cfg.storage.type == "ext4");
+        message = ''
+          keystone.os.storage.platform = "pi" + type = "ext4" is not yet
+          implemented. Use type = "zfs" on Pi hosts, or platform = "uefi" for ext4.
+        '';
       }
       # Non-storage assertions
       {
