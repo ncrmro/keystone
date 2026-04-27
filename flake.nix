@@ -508,6 +508,9 @@
           agentQueueMigration = import ./tests/module/agent-queue-migration.nix {
             inherit pkgs lib;
           };
+          consumerFlakePathRegression = import ./tests/module/consumer-flake-path-regression.nix {
+            inherit pkgs;
+          };
         in
         {
           # Individual checks — for local debugging (nix build .#checks.x86_64-linux.<name>)
@@ -542,6 +545,7 @@
           agent-task-loop-ping-pong = agentTaskLoopPingPong;
           agent-runtime-coherence = agentRuntimeCoherence;
           agent-queue-migration = agentQueueMigration;
+          consumer-flake-path-regression = consumerFlakePathRegression;
 
           # --- CI groups — parallel matrix jobs via nix-github-actions ---
 
@@ -579,6 +583,7 @@
             ln -s ${keystoneFingerprintMenu} "$out/keystone-fingerprint-menu"
             ln -s ${keystoneUpdateMenuWiring} "$out/keystone-update-menu-wiring"
             ln -s ${projectsSchema} "$out/projects-schema"
+            ln -s ${consumerFlakePathRegression} "$out/consumer-flake-path-regression"
           '';
 
           # Desktop config serialization and startup regressions
