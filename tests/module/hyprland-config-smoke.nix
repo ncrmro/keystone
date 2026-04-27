@@ -85,8 +85,10 @@ pkgs.runCommand "hyprland-config-smoke"
 
     assert_contains "${hyprpaperConf}" "preload=/home/testuser/.config/keystone/current/background" \
       "hyprpaper preloads the theme background before assigning wallpaper"
-    assert_contains "${hyprpaperConf}" "wallpaper=,/home/testuser/.config/keystone/current/background" \
-      "hyprpaper assigns the theme background to all monitors"
+    assert_contains "${hyprpaperConf}" "monitor=*" \
+      "hyprpaper wallpaper block targets all monitors with wildcard"
+    assert_contains "${hyprpaperConf}" "path=/home/testuser/.config/keystone/current/background" \
+      "hyprpaper wallpaper block points at the theme background"
 
     assert_contains "${hypridleConf}" "lock_cmd=pidof hyprlock || hyprlock" \
       "hypridle lock command invokes hyprlock"
