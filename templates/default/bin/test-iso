@@ -805,6 +805,24 @@ run_direct_image() {
             sleep 1
         done
         [[ -z "$pty" ]] && return 0
+
+        # CRITICAL: do NOT start writing until systemd-boot has handed
+        # off to the kernel.  systemd-boot reads the same serial console
+        # at its boot menu, and interprets the literal `e` keystroke as
+        # "edit kernel command line".  If the feeder writes "keystone\n"
+        # while sd-boot's menu is still up, sd-boot drops into edit
+        # mode, prepends "ystone" to the cmdline, and boots with a
+        # corrupted cmdline whose first token is `ystoneinit=…/init`.
+        # That breaks NixOS's initrd-find-nixos-closure tokenization
+        # ("No init= parameter on the kernel command line"), trips
+        # OnFailure=emergency.target, and SSH never comes up.
+        #
+        # 15 s is comfortably past sd-boot's default 5 s timeout while
+        # still being well before the LUKS prompt appears (~T=10-30 s
+        # measured on this host); ask-password waits indefinitely so
+        # arriving "late" never matters.
+        sleep "${DIRECT_LUKS_FEED_DELAY:-15}"
+
         # Feed the passphrase every 5 s until killed.  The bounded loop
         # we used before (60 × 5 s = 5 min) assumed LUKS would prompt
         # inside that window, but first-boot on a cold image can push
