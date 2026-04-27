@@ -519,14 +519,13 @@ fn render_markdown(markdown: &str) -> Result<()> {
 }
 
 #[allow(clippy::cognitive_complexity)]
-pub async fn execute_doctor(
-    selector: Option<&str>,
-    flake_override: Option<&std::path::Path>,
-) -> Result<HardwareKeyDoctorReport> {
-    let repo_root = repo::find_repo(flake_override)?;
+pub async fn execute_doctor(selector: Option<&str>) -> Result<HardwareKeyDoctorReport> {
+    let repo_root = repo::find_repo()?;
     let Some(host) = repo::resolve_current_host(&repo_root).await? else {
         anyhow::bail!(
-            "Could not resolve the current host. Use --flake <path> or ensure keystone.systemFlake.path is set."
+            "Could not resolve the current host. Ensure your consumer flake at \
+             $HOME/.keystone/repos/$USER/keystone-config declares a host matching \
+             this machine's networking.hostName."
         );
     };
     let current_user = repo::resolve_current_hm_user(&repo_root, &host).await?;
@@ -920,10 +919,8 @@ fn selector_to_string(selector: &Selector) -> Option<String> {
     }
 }
 
-pub async fn execute_secrets_todo(
-    flake_override: Option<&std::path::Path>,
-) -> Result<HardwareKeySecretsTodo> {
-    let repo_root = repo::find_repo(flake_override)?;
+pub async fn execute_secrets_todo() -> Result<HardwareKeySecretsTodo> {
+    let repo_root = repo::find_repo()?;
     let host = repo::resolve_current_host(&repo_root)
         .await?
         .ok_or_else(|| anyhow!("Could not resolve current host from hosts.nix"))?;

@@ -681,8 +681,8 @@ pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
     })
 }
 
-pub async fn execute(flake_override: Option<&std::path::Path>) -> Result<DoctorReport> {
-    let repo_root = repo::find_repo(flake_override)?;
+pub async fn execute() -> Result<DoctorReport> {
+    let repo_root = repo::find_repo()?;
     gather_report(&repo_root).await
 }
 
@@ -716,9 +716,8 @@ fn render_report(markdown: &str) -> Result<()> {
 pub async fn render_and_maybe_launch(
     local_model: Option<&str>,
     passthrough_args: &[String],
-    flake_override: Option<&std::path::Path>,
 ) -> Result<()> {
-    let report = execute(flake_override).await?;
+    let report = execute().await?;
     render_report(&report.markdown)?;
 
     if !util::interactive_terminal() {
@@ -731,9 +730,7 @@ pub async fn render_and_maybe_launch(
     let mut reply = String::new();
     io::stdin().read_line(&mut reply).ok();
     match reply.trim() {
-        "y" | "Y" | "yes" | "YES" => {
-            agent::execute(local_model, passthrough_args, flake_override).await
-        }
+        "y" | "Y" | "yes" | "YES" => agent::execute(local_model, passthrough_args).await,
         _ => Ok(()),
     }
 }

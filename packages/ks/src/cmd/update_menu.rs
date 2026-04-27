@@ -681,9 +681,9 @@ async fn fetch_release_commit_rev(tag: &str) -> Result<String> {
 /// mode. Does **not** fetch from GitHub — `latest_tag` is stale by design
 /// between render and dispatch, and a network hiccup should not block a
 /// user whose local state is actually fine.
-fn evaluate_local_gate(flake_override: Option<&Path>) -> Result<(), String> {
-    let repo_root = repo::find_repo(flake_override)
-        .map_err(|_| "Unable to locate the active system flake.".to_string())?;
+fn evaluate_local_gate() -> Result<(), String> {
+    let repo_root =
+        repo::find_repo().map_err(|_| "Unable to locate the active system flake.".to_string())?;
 
     if !repo_root.join("flake.lock").exists() {
         return Err("The active system flake has no flake.lock.".into());
@@ -714,14 +714,14 @@ async fn current_host_key(repo_root: &Path) -> Option<String> {
 // State orchestration
 // -----------------------------------------------------------------------------
 
-async fn load_state(flake_override: Option<&Path>) -> MenuState {
+async fn load_state() -> MenuState {
     // Resolve once at the top so every MenuState::Err branch agrees on
     // which channel the user attempted — avoids a whole-function signature
     // sprawl and keeps the channel-aware error branches trivial.
     let channel = Channel::current();
     let channel_str = channel.as_str().to_string();
 
-    let repo_root = match repo::find_repo(flake_override) {
+    let repo_root = match repo::find_repo() {
         Ok(path) => path,
         Err(_) => {
             return MenuState::Err(ErrState {
@@ -862,8 +862,8 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
     // `host_key` is retained for state inspection (surfaced by
     // `ks menu update status`) but is no longer a gating precondition for
     // offering the update entry. The dispatch path is `ks update` with no
-    // explicit host, and ks resolves the current host on its own via the
-    // keystone-system-flake pointer — so a hosts.nix that can't be read
+    // explicit host, and ks resolves the current host on its own from the
+    // canonical consumer-flake checkout — so a hosts.nix that can't be read
     // here would still succeed at deploy time, and blocking the menu purely
     // on that lookup would produce spurious "Update unavailable" entries.
     let mut update_allowed = false;
@@ -1178,8 +1178,8 @@ fn start_update_unit() -> Result<()> {
 /// Look up the current blocker text from fresh state. Called when the user
 /// activates a blocked-* token and we need to render a meaningful notification
 /// without having embedded the reason in the activation value.
-async fn blocked_update_notification(flake: Option<&Path>) -> (String, String) {
-    let state = load_state(flake).await;
+async fn blocked_update_notification() -> (String, String) {
+    let state = load_state().await;
     match &state {
         MenuState::Ok(s) if !s.update_allowed => (
             "Keystone update unavailable".to_string(),
@@ -1198,8 +1198,8 @@ async fn blocked_update_notification(flake: Option<&Path>) -> (String, String) {
     }
 }
 
-async fn blocked_keystone_notification(flake: Option<&Path>) -> (String, String) {
-    let state = load_state(flake).await;
+async fn blocked_keystone_notification() -> (String, String) {
+    let state = load_state().await;
     match &state {
         MenuState::Err(e) => ("Keystone OS unavailable".to_string(), e.error.clone()),
         MenuState::Ok(_) => (
@@ -1209,7 +1209,7 @@ async fn blocked_keystone_notification(flake: Option<&Path>) -> (String, String)
     }
 }
 
-async fn dispatch(value: &str, flake: Option<&Path>) -> Result<()> {
+async fn dispatch(value: &str) -> Result<()> {
     // Activation values are restricted to a small set of stable tokens
     // (see the Activation values section above). `open-release-page` is the
     // only action that carries a payload, and its payload is a URL that has
@@ -1221,11 +1221,11 @@ async fn dispatch(value: &str, flake: Option<&Path>) -> Result<()> {
     match action {
         "" | ACT_NOOP => Ok(()),
         ACT_BLOCKED_UPDATE => {
-            let (title, body) = blocked_update_notification(flake).await;
+            let (title, body) = blocked_update_notification().await;
             run_notify_send(&title, &body)
         }
         ACT_BLOCKED_KEYSTONE => {
-            let (title, body) = blocked_keystone_notification(flake).await;
+            let (title, body) = blocked_keystone_notification().await;
             run_notify_send(&title, &body)
         }
         ACT_OPEN_RELEASE => {
@@ -1240,7 +1240,7 @@ async fn dispatch(value: &str, flake: Option<&Path>) -> Result<()> {
             // before firing the polkit popup (otherwise the approval
             // round-trip ends with `ks update` failing — strictly worse
             // UX than refusing up front with the same reason).
-            match evaluate_local_gate(flake) {
+            match evaluate_local_gate() {
                 Ok(()) => {
                     // If `systemctl --user start` itself fails (unit not
                     // loaded, user bus unavailable, systemctl not on PATH),
@@ -1287,29 +1287,29 @@ pub enum UpdateMenuCommand {
     },
 }
 
-pub async fn execute(cmd: UpdateMenuCommand, flake: Option<&Path>) -> Result<()> {
+pub async fn execute(cmd: UpdateMenuCommand) -> Result<()> {
     match cmd {
         UpdateMenuCommand::Status => {
-            let state = load_state(flake).await;
+            let state = load_state().await;
             println!("{}", serde_json::to_string_pretty(&state)?);
             Ok(())
         }
         UpdateMenuCommand::Entries => {
-            let state = load_state(flake).await;
+            let state = load_state().await;
             println!("{}", render_entries_json(&state)?);
             Ok(())
         }
         UpdateMenuCommand::PreviewSummary => {
-            let state = load_state(flake).await;
+            let state = load_state().await;
             println!("{}", render_preview_summary(&state));
             Ok(())
         }
         UpdateMenuCommand::PreviewReleaseNotes => {
-            let state = load_state(flake).await;
+            let state = load_state().await;
             println!("{}", render_preview_release_notes(&state));
             Ok(())
         }
-        UpdateMenuCommand::Dispatch { value } => dispatch(&value, flake).await,
+        UpdateMenuCommand::Dispatch { value } => dispatch(&value).await,
     }
 }
 
@@ -1801,7 +1801,7 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_rejects_unknown_actions() {
-        let err = dispatch("mystery-action", None).await.unwrap_err();
+        let err = dispatch("mystery-action").await.unwrap_err();
         assert!(
             err.to_string().contains("unknown update menu action"),
             "got: {err}"
@@ -1810,19 +1810,50 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_noop_is_ok() {
-        dispatch("", None).await.unwrap();
-        dispatch("noop", None).await.unwrap();
+        dispatch("").await.unwrap();
+        dispatch("noop").await.unwrap();
     }
 
     #[test]
     fn evaluate_local_gate_rejects_missing_flake() {
-        // With a guaranteed-nonexistent flake override, the gate must
-        // refuse rather than silently pretend local preconditions are
-        // met. Exact message is user-facing copy; keep the test loose
-        // on wording and strict on rejection.
-        let err = evaluate_local_gate(Some(Path::new("/nonexistent/path/used/only/in/unit/tests")))
-            .unwrap_err();
+        // Without a canonical consumer flake checked out at
+        // $HOME/.keystone/repos/$USER/keystone-config the gate must refuse
+        // rather than silently pretend local preconditions are met.
+        // The unit-test sandbox has no such checkout, so calling the gate
+        // directly is sufficient — no flake override is needed any more.
+        //
+        // CRITICAL: env mutation here must coordinate with the env-mutating
+        // tests in `crate::repo::tests`. We share the same crate-wide
+        // mutex so cargo's parallel test runner can't observe one test's
+        // state inside another.
+        let lock = crate::repo::tests::USER_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let prior_home = std::env::var_os("HOME");
+        let prior_user = std::env::var_os("USER");
+        let prior_sudo_user = std::env::var_os("SUDO_USER");
+        let scratch = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", scratch.path());
+        std::env::set_var("USER", "ks-update-menu-test");
+        std::env::remove_var("SUDO_USER");
+
+        let err = evaluate_local_gate().unwrap_err();
         assert!(!err.is_empty(), "gate must return a non-empty reason");
+
+        if let Some(value) = prior_home {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(value) = prior_user {
+            std::env::set_var("USER", value);
+        } else {
+            std::env::remove_var("USER");
+        }
+        if let Some(value) = prior_sudo_user {
+            std::env::set_var("SUDO_USER", value);
+        }
+        drop(lock);
     }
 
     #[test]
@@ -1917,12 +1948,9 @@ mod tests {
     async fn dispatch_rejects_unsafe_open_release_payload() {
         // Defense in depth: even if entries were tampered with, dispatch
         // must refuse to hand an unsafe URL to xdg-open.
-        let err = dispatch(
-            &format!("{ACT_OPEN_RELEASE}\thttps://example.com/a'b"),
-            None,
-        )
-        .await
-        .unwrap_err();
+        let err = dispatch(&format!("{ACT_OPEN_RELEASE}\thttps://example.com/a'b"))
+            .await
+            .unwrap_err();
         assert!(
             err.to_string().contains("failed safety check"),
             "got: {err}"

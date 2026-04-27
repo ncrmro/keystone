@@ -92,17 +92,6 @@ launcher_state_json() {
 }
 
 find_hosts_repo() {
-  # Prefer the authoritative pointer file written at NixOS activation time.
-  local _pointer_file="${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
-  if [[ -r "$_pointer_file" ]]; then
-    local _path
-    _path="$(tr -d '\n' < "$_pointer_file" 2>/dev/null || true)"
-    if [[ -n "$_path" && -f "$_path/hosts.nix" ]]; then
-      readlink -f "$_path"
-      return 0
-    fi
-  fi
-
   if [[ -n "${NIXOS_CONFIG_DIR:-}" ]] && [[ -f "$NIXOS_CONFIG_DIR/hosts.nix" ]]; then
     readlink -f "$NIXOS_CONFIG_DIR"
     return 0

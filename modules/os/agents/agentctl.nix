@@ -78,6 +78,8 @@ let
         MAIL_HOST="${mailHost}"
         OPENSSL="${pkgs.openssl}"
         COREUTILS="${pkgs.coreutils}"
+        # GLIBC provides getent, which is part of glibc (not coreutils).
+        GLIBC="${pkgs.glibc.bin}"
         GNUGREP="${pkgs.gnugrep}"
         GNUSED="${pkgs.gnused}"
         NIX="${pkgs.nix}"

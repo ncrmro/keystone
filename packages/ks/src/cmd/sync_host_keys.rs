@@ -230,8 +230,8 @@ async fn sync_host_entry(
     Ok(HostSyncOutcome::Updated { content, pubkey })
 }
 
-pub async fn execute(flake_override: Option<&std::path::Path>) -> Result<SyncHostKeysResult> {
-    let repo_root = repo::find_repo(flake_override)?;
+pub async fn execute() -> Result<SyncHostKeysResult> {
+    let repo_root = repo::find_repo()?;
     let hosts_nix = repo_root.join("hosts.nix");
     if !hosts_nix.is_file() {
         anyhow::bail!(

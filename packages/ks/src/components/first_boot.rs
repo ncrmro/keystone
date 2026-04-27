@@ -61,21 +61,16 @@ impl FirstBootConfig {
     }
 
     fn installed_config_dir() -> Option<PathBuf> {
-        // 1. Authoritative pointer file (written at NixOS activation time).
-        if let Ok(content) = std::fs::read_to_string("/run/current-system/keystone-system-flake") {
-            let path = content.trim();
-            if !path.is_empty() {
-                return Some(PathBuf::from(path));
-            }
-        }
-
-        // 2. Fallback: derive from the install-config username.
-        let default_owner = Self::default_repo_owner();
+        // The canonical consumer flake path is a deterministic function of
+        // the install-config username and $HOME — no pointer file or
+        // resolution helper involved. See
+        // `conventions/architecture.consumer-flake-path.md` for the rule.
+        let owner = Self::default_repo_owner();
         let home = home::home_dir()?;
         Some(
             home.join(".keystone")
                 .join("repos")
-                .join(&default_owner)
+                .join(&owner)
                 .join("keystone-config"),
         )
     }

@@ -831,17 +831,27 @@ $ROLE_PROMPT"
 
     USERNAME="agent-${AGENT_NAME}"
 
-    # Find secrets directory — read from the system flake pointer file.
-    _system_flake=""
-    if [ -r /run/current-system/keystone-system-flake ]; then
-      _system_flake="$(tr -d '\n' < /run/current-system/keystone-system-flake 2>/dev/null || true)"
-    fi
-    if [ -z "$_system_flake" ]; then
-      echo "Error: /run/current-system/keystone-system-flake not found." >&2
-      echo "Ensure keystone.systemFlake.path is set in your NixOS config." >&2
+    # Find secrets directory at the canonical consumer-flake path. The
+    # admin's keystone-config checkout lives under their own home, not
+    # the agent service account's; provision is invoked interactively
+    # from the admin's shell, so $SUDO_USER (or $USER) names them.
+    PROVISION_OWNER="${SUDO_USER:-${USER:-}}"
+    if [ -z "$PROVISION_OWNER" ]; then
+      echo "Error: cannot determine the admin user (SUDO_USER and USER are unset)." >&2
+      echo "Run agentctl provision from your admin shell, not as root directly." >&2
       exit 1
     fi
-    SECRETS_DIR="$_system_flake/agenix-secrets"
+    # getent is part of glibc, not coreutils — keep them on separate roots.
+    PROVISION_HOME=$("$GLIBC"/bin/getent passwd "$PROVISION_OWNER" | "$COREUTILS"/bin/cut -d: -f6 || true)
+    if [ -z "$PROVISION_HOME" ]; then
+      PROVISION_HOME="/home/$PROVISION_OWNER"
+    fi
+    SYSTEM_FLAKE="$PROVISION_HOME/.keystone/repos/$PROVISION_OWNER/keystone-config"
+    if [ ! -d "$SYSTEM_FLAKE" ]; then
+      echo "Error: Keystone consumer flake not found at canonical path: $SYSTEM_FLAKE" >&2
+      exit 1
+    fi
+    SECRETS_DIR="$SYSTEM_FLAKE/agenix-secrets"
     if [ ! -d "$SECRETS_DIR" ]; then
       echo "Error: secrets directory not found: $SECRETS_DIR" >&2
       exit 1

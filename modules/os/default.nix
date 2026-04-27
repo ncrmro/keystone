@@ -38,11 +38,12 @@ let
 
   # Users explicitly flagged as the fleet administrator.
   #
-  # CRITICAL: adminUsername and downstream path derivations (systemFlake.path,
-  # admin home directory) need a single unambiguous admin. The users.nix
-  # assertions enforce that exactly one user has admin = true; the derivation
-  # below reads this list without touching adminUsername so there is no cycle
-  # between the option and its consumers.
+  # CRITICAL: adminUsername and downstream path derivations (admin home
+  # directory, the canonical consumer-flake path used by ks) need a single
+  # unambiguous admin. The users.nix assertions enforce that exactly one
+  # user has admin = true; the derivation below reads this list without
+  # touching adminUsername so there is no cycle between the option and its
+  # consumers.
   adminFlaggedUserNames = filter (n: cfg.users.${n}.admin or false) (attrNames cfg.users);
 
   fullNameFor = name: config.keystone.os.users.${name}.fullName;
@@ -243,7 +244,6 @@ in
   imports = [
     ../keys.nix
     ../secrets.nix
-    ../shared/system-flake.nix
     ./notifications.nix
     ./storage.nix
     ./secure-boot.nix

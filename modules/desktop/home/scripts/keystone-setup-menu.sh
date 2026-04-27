@@ -37,13 +37,21 @@ entries_json() {
   secrets_menu=$(keystone_cmd keystone-secrets-menu)
   wifi_menu=$(keystone_cmd keystone-wifi-menu)
 
-  current_flake=""
-  local _pointer_file="${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
-  if [[ -r "$_pointer_file" ]]; then
-    current_flake="$(tr -d '\n' < "$_pointer_file" 2>/dev/null || true)"
+  # The Keystone consumer flake lives at the canonical path
+  # $HOME/.keystone/repos/$USER/keystone-config. Show the Secrets entry
+  # when either the repo's agenix-secrets/ subtree exists or the standalone
+  # ncrmro/agenix-secrets checkout is present.
+  local _user="${USER:-$(id -un 2>/dev/null || true)}"
+  if [[ -n "$_user" ]]; then
+    current_flake="$HOME/.keystone/repos/${_user}/keystone-config"
+  else
+    current_flake=""
   fi
   if [[ -d "$HOME/.keystone/repos/ncrmro/agenix-secrets" ]]; then
     show_secrets=true
+  # SECURITY: a missing $current_flake would let `[[ -d "/agenix-secrets" ]]`
+  # match an unrelated root-level directory and surface the Secrets entry
+  # on a host that has no consumer flake. Keep the non-empty guard.
   elif [[ -n "$current_flake" && -d "$current_flake/agenix-secrets" ]]; then
     show_secrets=true
   fi

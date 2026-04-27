@@ -60,16 +60,21 @@ yubikey_status() {
 }
 
 current_config_repo() {
-  # Authoritative source: pointer file written at NixOS activation time.
-  # KEYSTONE_SYSTEM_FLAKE_POINTER_FILE may be set in test environments.
-  local _pointer_file="${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
-  if [[ -r "$_pointer_file" ]]; then
-    local _path
-    _path="$(tr -d '\n' < "$_pointer_file" 2>/dev/null || true)"
-    if [[ -n "$_path" && -d "$_path" ]]; then
-      printf "%s\n" "$_path"
-      return 0
-    fi
+  # The Keystone consumer flake lives at the canonical path
+  # $HOME/.keystone/repos/$USER/keystone-config. Tests override $HOME
+  # and $USER to redirect this lookup; production callers MUST NOT
+  # introduce a pointer-file or env-var resolver.
+  local _user="${USER:-}"
+  if [[ -z "$_user" ]]; then
+    _user="$(id -un 2>/dev/null || true)"
+  fi
+  if [[ -z "$_user" ]]; then
+    return 1
+  fi
+  local _root="$HOME/.keystone/repos/${_user}/keystone-config"
+  if [[ -d "$_root" ]]; then
+    printf "%s\n" "$_root"
+    return 0
   fi
 
   return 1

@@ -24,11 +24,9 @@ ks update -h
 
 - `HOSTS` is a comma-separated list such as `workstation,ocean`.
 - When `HOSTS` is omitted, `ks` resolves the current host from `hosts.nix`.
-- Repo discovery reads `/run/current-system/keystone-system-flake` (written at activation time by `keystone.systemFlake`). Override with `--flake <path>`.
-
-## Global flags
-
-- `--flake <PATH>`: Override the consumer flake path (default: read from `/run/current-system/keystone-system-flake`).
+- Repo discovery resolves the consumer flake at the canonical path
+  `$HOME/.keystone/repos/$USER/keystone-config`. The path is a deterministic
+  function of `$USER` and `$HOME`; there is no override flag.
 
 ## Commands
 

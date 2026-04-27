@@ -369,12 +369,8 @@ async fn launch_agent(
     util::finish_status(status)
 }
 
-pub async fn execute(
-    local_model: Option<&str>,
-    passthrough_args: &[String],
-    flake_override: Option<&std::path::Path>,
-) -> Result<()> {
-    let repo_root = repo::find_repo(flake_override)?;
+pub async fn execute(local_model: Option<&str>, passthrough_args: &[String]) -> Result<()> {
+    let repo_root = repo::find_repo()?;
     let current_host = repo::resolve_current_host(&repo_root).await?;
     let prompt = build_prompt(&repo_root, current_host.as_deref()).await?;
     launch_agent(

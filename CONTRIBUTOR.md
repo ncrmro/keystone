@@ -47,20 +47,16 @@ commit and `ks update --lock`.
 
 ### Consumer flake resolution
 
-`ks update` and `ks switch` resolve the consumer flake from a single
-authoritative source: the NixOS option `keystone.systemFlake.path`, surfaced
-at activation time as `/run/current-system/keystone-system-flake`.
+`ks update` and `ks switch` resolve the consumer flake at the canonical
+path `$HOME/.keystone/repos/$USER/keystone-config`. The path is a
+deterministic function of `$USER` and `$HOME` — no pointer file, env var,
+CWD walk, or `--flake` flag is involved. See
+`conventions/architecture.consumer-flake-path.md` for the rationale and
+the regression gate.
 
-- Default: `~/<adminUsername>/.keystone/repos/<adminUsername>/keystone-config`
-- Override: `ks --flake <path> update` (explicit flag only — no CWD, env-var, or git-walk fallbacks)
-
-When developing in a worktree, pass `--flake` explicitly:
-
-```bash
-ks --flake ~/.worktrees/ncrmro/keystone/<branch> update --dev
-```
-
-No shell exports, no `KEYSTONE_SYSTEM_FLAKE` env var, no `NIXOS_CONFIG_DIR`.
+When developing on a branch, do the work in a worktree and either symlink
+or move the canonical path to the worktree, or operate from the canonical
+checkout itself.
 
 ## Review before merge
 
