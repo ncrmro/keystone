@@ -171,6 +171,7 @@ let
       fullName ? defaults.fullName,
       email ? defaults.email,
       timeZone ? defaults.timeZone or "UTC",
+      updateChannel ? defaults.updateChannel or "stable",
       modules ? [ ],
       ...
     }@args:
@@ -185,6 +186,7 @@ let
           home.stateVersion = args.stateVersion or "25.05";
           home.sessionVariables.TZ = timeZone;
 
+          keystone.update.channel = lib.mkDefault updateChannel;
           keystone.projects.enable = false;
           keystone.terminal = {
             enable = true;
@@ -757,6 +759,7 @@ rec {
       # Home Manager modules applied per-user on desktop hosts (laptop, workstation) only.
       sharedDesktopUserModules = shared.desktopUserModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
+      sharedUpdateChannel = defaults.updateChannel or "stable";
       effectiveRepoRoot =
         if repoRoot != null then
           repoRoot
@@ -849,6 +852,7 @@ rec {
             (lib.optional (hardwareSpec ? module) hardwareSpec.module)
             ++ (lib.optional (configurationPath != null) (normalizeModuleSpec configurationPath))
             ++ (hostCfg.modules or [ ]);
+          hostUpdateChannel = if hostCfg ? updateChannel then hostCfg.updateChannel else sharedUpdateChannel;
           builderArgs =
             (builtins.removeAttrs hostCfg [
               "kind"
@@ -857,6 +861,7 @@ rec {
               "services"
               "config"
               "modules"
+              "updateChannel"
             ])
             // {
               hostname = hostCfg.hostname or name;
@@ -868,11 +873,25 @@ rec {
               nixosModules = kindDefaults.nixosModules ++ (hostCfg.nixosModules or [ ]);
               config = lib.recursiveUpdate mergedConfig {
                 keystone.services = keystoneServices;
+                keystone.update.channel = lib.mkDefault hostUpdateChannel;
               };
               modules = [
                 {
+                  # NixOS and home-manager have separate option trees. The
+                  # `config` block above sets keystone.update.channel at the
+                  # NixOS level, but the Walker `ks-update.service` and the
+                  # terminal `KS_UPDATE_CHANNEL` sessionVariable are declared
+                  # in home-manager modules reading home-manager's config. A
+                  # sharedModules entry bridges the same value across, so
+                  # unit Environment and user shell agree on the channel.
                   home-manager.sharedModules =
-                    sharedUserModules ++ lib.optionals kindDefaults.desktop sharedDesktopUserModules;
+                    sharedUserModules
+                    ++ lib.optionals kindDefaults.desktop sharedDesktopUserModules
+                    ++ [
+                      {
+                        keystone.update.channel = lib.mkDefault hostUpdateChannel;
+                      }
+                    ];
                 }
               ]
               ++ lib.optional (adminSshKeys != [ ]) {
@@ -904,6 +923,7 @@ rec {
               "kind"
               "configuration"
               "modules"
+              "updateChannel"
             ])
             // {
               system = if hostCfg ? system then hostCfg.system else kindDefaults.system;
@@ -911,6 +931,7 @@ rec {
               fullName = if hostCfg ? fullName then hostCfg.fullName else sharedAdmin.fullName;
               email = if hostCfg ? email then hostCfg.email else sharedAdmin.email;
               timeZone = if hostCfg ? timeZone then hostCfg.timeZone else sharedTimeZone;
+              updateChannel = if hostCfg ? updateChannel then hostCfg.updateChannel else sharedUpdateChannel;
               modules = sharedUserModules ++ modules;
             };
         in

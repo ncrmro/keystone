@@ -11,6 +11,7 @@ in
 {
   imports = [
     ../../shared/experimental.nix
+    ../../shared/update.nix
     ./components
     ./hyprland
     ./scripts

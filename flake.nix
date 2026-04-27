@@ -257,6 +257,9 @@
         # Experimental feature flag (keystone.experimental)
         experimental = ./modules/shared/experimental.nix;
 
+        # Update channel selector (keystone.update.channel) — stable | unstable
+        update = ./modules/shared/update.nix;
+
         # Managed repo registry + development mode toggle (keystone.repos, keystone.development)
         repos = ./modules/shared/repos.nix;
 
@@ -276,6 +279,7 @@
             ./modules/hosts.nix
             ./modules/shared/experimental.nix
             ./modules/shared/repos.nix
+            ./modules/shared/update.nix
             ./modules/os
             ./modules/installer.nix
           ];
@@ -428,6 +432,10 @@
               ;
             self = self;
           };
+          templateUpdateChannel = import ./tests/module/template-update-channel.nix {
+            inherit pkgs lib;
+            self = self;
+          };
           serverEvaluation = import ./tests/module/server-evaluation.nix {
             inherit pkgs lib nixpkgs;
             self = self;
@@ -506,6 +514,7 @@
           os-evaluation = osEvaluation;
           agent-evaluation = agentEvaluation;
           template-evaluation = templateEvaluation;
+          template-update-channel = templateUpdateChannel;
           server-evaluation = serverEvaluation;
           ks-help = ksHelp;
           ks-lock-sync = ksLockSync;
@@ -542,6 +551,7 @@
             ln -s ${osEvaluation} "$out/os-evaluation"
             ln -s ${agentEvaluation} "$out/agent-evaluation"
             ln -s ${templateEvaluation} "$out/template-evaluation"
+            ln -s ${templateUpdateChannel} "$out/template-update-channel"
             ln -s ${serverEvaluation} "$out/server-evaluation"
           '';
 

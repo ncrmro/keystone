@@ -40,6 +40,7 @@
       };
       defaults = {
         timeZone = "UTC"; # TODO: Set your default timezone
+        updateChannel = "stable"; # "stable" | "unstable" — see docs/releasing.md
       };
       hostsRoot = ./hosts;
       shared = {

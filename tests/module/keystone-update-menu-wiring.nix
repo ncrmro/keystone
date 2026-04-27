@@ -26,6 +26,8 @@ let
   servicesFile = ../../modules/desktop/home/services.nix;
   updateMenuRs = ../../packages/ks/src/cmd/update_menu.rs;
   runBackgroundRs = ../../packages/ks/src/cmd/run_background.rs;
+  updateChannelOption = ../../modules/shared/update.nix;
+  terminalDefault = ../../modules/terminal/default.nix;
 in
 pkgs.runCommand "test-keystone-update-menu-wiring"
   {
@@ -92,6 +94,57 @@ pkgs.runCommand "test-keystone-update-menu-wiring"
 
     if ! grep -F 'ks-update.service' ${runBackgroundRs} >/dev/null 2>&1; then
       : # currently run_background.rs doesn't hard-code the name — that's fine
+    fi
+
+    # -- Channel wiring: KS_UPDATE_CHANNEL reaches ks at runtime ----------
+    #
+    # The Rust backend reads KS_UPDATE_CHANNEL from the env. The desktop
+    # services and terminal home-manager module must thread the declared
+    # keystone.update.channel value in, otherwise Walker / interactive
+    # shells will silently fall back to the default "stable" even after
+    # a consumer flake sets channel = "unstable". This is the class of bug
+    # unit tests can't catch because the coupling spans three files.
+    #
+    # Match the *assignment* shape rather than the bare token so comments
+    # referencing the option (which happen throughout both files) don't
+    # satisfy the check if the actual wiring is removed.
+
+    # services.nix binds `updateChannel = config.keystone.update.channel;`
+    # and then interpolates it into Environment = [ "KS_UPDATE_CHANNEL=..." ].
+    if ! grep -E '=[[:space:]]*config\.keystone\.update\.channel' ${servicesFile} >/dev/null; then
+      fail "services.nix must bind updateChannel = config.keystone.update.channel to thread into unit env"
+    fi
+    # Match the Nix interpolation literally: KS_UPDATE_CHANNEL=''${updateChannel}
+    # (escaped here so Nix passes the raw ''${...} through to grep).
+    if ! grep -F 'KS_UPDATE_CHANNEL=''${updateChannel}' ${servicesFile} >/dev/null; then
+      fail "services.nix must set KS_UPDATE_CHANNEL=\''${updateChannel} in ks-update.service / ks-update-notify@.service Environment"
+    fi
+
+    # terminal/default.nix sets it as a home.sessionVariables attribute
+    # whose value is `config.keystone.update.channel` (no string literal).
+    if ! grep -E 'KS_UPDATE_CHANNEL[[:space:]]*=[[:space:]]*config\.keystone\.update\.channel' ${terminalDefault} >/dev/null; then
+      fail "terminal/default.nix must set KS_UPDATE_CHANNEL = config.keystone.update.channel in home.sessionVariables"
+    fi
+
+    # -- Option exists somewhere under modules/ ---------------------------
+    #
+    # Pin the location: `modules/shared/update.nix` is the canonical
+    # declaration file. If it moves, the test grep has to move too — the
+    # failure explicitly tells maintainers which file to fix.
+
+    if ! grep -F 'options.keystone.update' ${updateChannelOption} >/dev/null; then
+      fail "modules/shared/update.nix must declare options.keystone.update (with .channel)"
+    fi
+    for tok in '"stable"' '"unstable"'; do
+      if ! grep -F "$tok" ${updateChannelOption} >/dev/null; then
+        fail "modules/shared/update.nix must list $tok in the channel enum"
+      fi
+    done
+
+    # -- Rust entrypoint reads the env var --------------------------------
+
+    if ! grep -F 'KS_UPDATE_CHANNEL' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs must read KS_UPDATE_CHANNEL for channel dispatch"
     fi
 
     touch "$out"

@@ -33,15 +33,56 @@ const RELEASE_OWNER: &str = "ncrmro";
 const RELEASE_REPO: &str = "keystone";
 
 // -----------------------------------------------------------------------------
+// Channel
+// -----------------------------------------------------------------------------
+
+/// Release source the menu tracks. Selected by `keystone.update.channel` in
+/// the Nix module, threaded in via the KS_UPDATE_CHANNEL environment
+/// variable. Fail-closed default is `Stable` so an unset, empty, or unknown
+/// env value never flips a host onto the moving-main source implicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Channel {
+    /// `/releases/latest` — latest tagged release `v<M>.<m>.<p>`.
+    Stable,
+    /// `/repos/OWNER/REPO/branches/main` — HEAD of `main`, a moving commit
+    /// SHA rather than a tagged release.
+    Unstable,
+}
+
+impl Channel {
+    /// Resolve the active channel from KS_UPDATE_CHANNEL. Any value other
+    /// than exactly `"unstable"` maps to `Stable` — including empty strings,
+    /// mixed case, and typos like `"beta"` — so a misconfigured environment
+    /// never quietly flips a host onto the moving-main source.
+    fn current() -> Self {
+        match std::env::var("KS_UPDATE_CHANNEL").as_deref() {
+            Ok("unstable") => Self::Unstable,
+            _ => Self::Stable,
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Unstable => "unstable",
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // State
 // -----------------------------------------------------------------------------
 
 /// Full state emitted when discovery succeeds. Field names match the shape
 /// produced by the legacy bash `load_state` so downstream tooling (or humans
 /// inspecting `ks menu update status`) sees the same structure.
+///
+/// `channel` is always populated (`"stable"` or `"unstable"`) so downstream
+/// diagnostics always know which source produced `latest_*`.
 #[derive(Debug, Serialize)]
 struct OkState {
     ok: bool, // always true
+    channel: String,
     repo_root: String,
     input_name: String,
     current_rev: String,
@@ -61,10 +102,17 @@ struct OkState {
 }
 
 /// Error state. Partial fields are populated when available so previews can
-/// still render something useful.
+/// still render something useful. Every real construction site sets
+/// `channel` explicitly from `Channel::current().as_str()` so an error
+/// surface discloses which source the menu was attempting to track. `Default`
+/// is derived only so the `..Default::default()` update syntax can fill the
+/// Optional fields in each call site; a raw `ErrState::default()` would
+/// produce an empty `channel` and is not a valid production value.
 #[derive(Debug, Serialize, Default)]
 struct ErrState {
     ok: bool, // always false
+    #[serde(default)]
+    channel: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     repo_root: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -240,13 +288,28 @@ fn git_status_clean(repo_root: &Path) -> bool {
     }
 }
 
-/// Parse a `v<major>.<minor>.<patch>` tag into a sortable tuple. Returns
-/// `None` for any tag that isn't exactly that shape — pre-releases
-/// (`v1.2.3-rc1`), build metadata (`v1.2.3+build.42`), and non-release
-/// markers (`prod`, `release-candidate`) are deliberately filtered out so
-/// `current_tag` only ever reflects a published release.
-fn parse_release_tag(tag: &str) -> Option<(u32, u32, u32)> {
+/// Sortable release-tag key. Field order drives the derived `Ord` over
+/// `(major, minor, patch)`. Only strict `v<M>.<m>.<p>` tags parse — any tag
+/// carrying a pre-release suffix (`-rc.1`, `-alpha.1`, etc.) is rejected.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct ReleaseKey {
+    major: u32,
+    minor: u32,
+    patch: u32,
+}
+
+/// Parse a release tag of shape `v<M>.<m>.<p>` into a sortable key.
+/// Keystone's release pipeline owns the tag shape: strict semver, no
+/// pre-release suffix, no build metadata. Anything else yields `None`
+/// and is dropped at the call site.
+fn parse_release_tag(tag: &str) -> Option<ReleaseKey> {
     let rest = tag.strip_prefix('v')?;
+    // Reject anything carrying pre-release (`-`) or build (`+`) suffixes.
+    // The release pipeline never emits either, and the menu should not
+    // guess at their meaning.
+    if rest.contains('-') || rest.contains('+') {
+        return None;
+    }
     let mut parts = rest.split('.');
     let major: u32 = parts.next()?.parse().ok()?;
     let minor: u32 = parts.next()?.parse().ok()?;
@@ -254,16 +317,25 @@ fn parse_release_tag(tag: &str) -> Option<(u32, u32, u32)> {
     if parts.next().is_some() {
         return None;
     }
-    Some((major, minor, patch))
+    Some(ReleaseKey {
+        major,
+        minor,
+        patch,
+    })
 }
 
-/// Try to resolve `rev` to a release tag (`v<major>.<minor>.<patch>`) via
-/// the local keystone checkout. When multiple release tags point at the
-/// same rev, returns the highest-numbered one. Anything not matching the
-/// release-tag shape — pre-releases, build metadata, arbitrary tags — is
-/// ignored. Matches the legacy bash probe's semantics so `current_tag`
-/// cannot be set by unrelated tags pointing at the same commit.
-fn release_tag_for_rev(rev: &str) -> String {
+/// Try to resolve `rev` to a release tag via the local keystone checkout.
+/// When multiple release tags point at the same rev, returns the highest
+/// one by `ReleaseKey` order.
+///
+/// Only strict `v<major>.<minor>.<patch>` tags match — unstable tracks
+/// `main@<sha>`, not a tag, so on the unstable channel this function's
+/// output is informational only (it still surfaces a matching release tag
+/// when one happens to point at the currently-locked rev).
+///
+/// Matches the legacy bash probe's semantics so `current_tag` cannot be
+/// set by unrelated tags pointing at the same commit.
+fn release_tag_for_rev(rev: &str, _channel: Channel) -> String {
     let keystone_root = match repo::resolve_keystone_repo() {
         Ok(path) => path,
         Err(_) => return String::new(),
@@ -281,7 +353,7 @@ fn release_tag_for_rev(rev: &str) -> String {
     raw.lines()
         .map(str::trim)
         .filter_map(|tag| parse_release_tag(tag).map(|ver| (tag.to_string(), ver)))
-        .max_by_key(|(_, ver)| *ver)
+        .max_by(|a, b| a.1.cmp(&b.1))
         .map(|(tag, _)| tag)
         .unwrap_or_default()
 }
@@ -335,7 +407,39 @@ fn github_client() -> Result<reqwest::Client> {
         .context("failed to build GitHub reqwest client")
 }
 
-async fn fetch_latest_release() -> Result<Value> {
+/// Normalized release metadata consumed by `load_state`. Both channels
+/// produce this shape: stable from a `/releases/latest` body, unstable from
+/// a `/branches/main` body. Keeping the extraction pure (in
+/// `parse_stable_release` and `parse_unstable_branch`) means unit tests can
+/// exercise the full unstable path — which otherwise cannot be mocked
+/// without an HTTP dep.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReleaseInfo {
+    latest_tag: String,
+    latest_name: String,
+    latest_url: String,
+    latest_published: String,
+    latest_body: String,
+    latest_rev: String,
+}
+
+/// Fetch the release metadata for the active channel.
+///
+/// - Stable (`/releases/latest`) returns the latest tagged release. This
+///   endpoint returns 404 when the repo has no tagged releases, which we
+///   surface to the caller as an error so the menu renders
+///   `Keystone OS unavailable`.
+/// - Unstable (`/repos/OWNER/REPO/branches/main`) returns the tip commit
+///   of `main` — a moving SHA, not a tagged release. The `latest_rev` is
+///   inline in the response so we never need a separate ref-to-sha lookup.
+async fn fetch_latest_release(channel: Channel) -> Result<ReleaseInfo> {
+    match channel {
+        Channel::Stable => fetch_stable_latest_release().await,
+        Channel::Unstable => fetch_unstable_latest_release().await,
+    }
+}
+
+async fn fetch_stable_latest_release() -> Result<ReleaseInfo> {
     let url = format!(
         "https://api.github.com/repos/{}/{}/releases/latest",
         RELEASE_OWNER, RELEASE_REPO
@@ -355,7 +459,148 @@ async fn fetch_latest_release() -> Result<Value> {
         .json::<Value>()
         .await
         .context("GitHub response was not valid JSON")?;
-    Ok(json)
+    let tag = parse_stable_release(&json)?;
+    let rev = fetch_release_commit_rev(&tag.latest_tag).await?;
+    Ok(ReleaseInfo {
+        latest_rev: rev,
+        ..tag
+    })
+}
+
+/// Pure extraction: map a `/releases/latest` body into `ReleaseInfo`
+/// (without the commit rev, which requires a second API call).
+fn parse_stable_release(json: &Value) -> Result<ReleaseInfo> {
+    let latest_tag = json
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if latest_tag.is_empty() {
+        anyhow::bail!("GitHub did not return a latest release tag for Keystone.");
+    }
+    let latest_name = json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&latest_tag)
+        .to_string();
+    let latest_url = json
+        .get("html_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let latest_published = json
+        .get("published_at")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let latest_body = json
+        .get("body")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("No release notes available.")
+        .to_string();
+    Ok(ReleaseInfo {
+        latest_tag,
+        latest_name,
+        latest_url,
+        latest_published,
+        latest_body,
+        latest_rev: String::new(),
+    })
+}
+
+async fn fetch_unstable_latest_release() -> Result<ReleaseInfo> {
+    // `GET /repos/OWNER/REPO/branches/main` returns the tip commit of
+    // `main` inline — no separate ref-to-sha lookup needed. The response
+    // has the shape:
+    //   { "name": "main",
+    //     "commit": { "sha": "...",
+    //                 "html_url": "...",
+    //                 "commit": { "committer": {"date": "..."},
+    //                             "message": "..." } } }
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/branches/main",
+        RELEASE_OWNER, RELEASE_REPO
+    );
+    let mut req = github_client()?
+        .get(&url)
+        .header("Accept", "application/vnd.github+json");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        if !token.is_empty() {
+            req = req.header("Authorization", format!("Bearer {token}"));
+        }
+    }
+    let response = req.send().await.context("GitHub request failed")?;
+    let json: Value = response
+        .error_for_status()
+        .context("GitHub returned non-success status")?
+        .json()
+        .await
+        .context("GitHub response was not valid JSON")?;
+    parse_unstable_branch(&json)
+}
+
+/// Pure extraction: map a `/branches/main` body into `ReleaseInfo`. Errors
+/// only when the commit SHA is missing, since without it the menu cannot
+/// compare against the locked rev.
+fn parse_unstable_branch(json: &Value) -> Result<ReleaseInfo> {
+    let commit = json
+        .get("commit")
+        .ok_or_else(|| anyhow!("GitHub branch response missing 'commit' object"))?;
+    let sha = commit
+        .get("sha")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow!("GitHub branch response missing 'commit.sha'"))?
+        .to_string();
+    // `html_url` points at the commit on GitHub; fall back to the `main`
+    // tree view when the field is absent so the menu always has a link.
+    let latest_url = commit
+        .get("html_url")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            format!(
+                "https://github.com/{}/{}/tree/main",
+                RELEASE_OWNER, RELEASE_REPO
+            )
+        });
+    let inner = commit.get("commit");
+    let latest_published = inner
+        .and_then(|c| c.get("committer"))
+        .and_then(|c| c.get("date"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let message = inner
+        .and_then(|c| c.get("message"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    // Display the first paragraph of the commit message (typically the
+    // subject line) so the preview pane stays compact. `str::split_once`
+    // on a blank-line separator matches the conventional commit shape.
+    let latest_body = message
+        .split_once("\n\n")
+        .map(|(head, _)| head)
+        .unwrap_or(&message)
+        .trim()
+        .to_string();
+    let latest_body = if latest_body.is_empty() {
+        "No commit message.".to_string()
+    } else {
+        latest_body
+    };
+    Ok(ReleaseInfo {
+        latest_tag: "main".to_string(),
+        latest_name: format!("main@{}", short(&sha)),
+        latest_url,
+        latest_published,
+        latest_body,
+        latest_rev: sha,
+    })
 }
 
 /// Resolve a tag to its commit sha by querying the GitHub refs API.
@@ -470,11 +715,18 @@ async fn current_host_key(repo_root: &Path) -> Option<String> {
 // -----------------------------------------------------------------------------
 
 async fn load_state(flake_override: Option<&Path>) -> MenuState {
+    // Resolve once at the top so every MenuState::Err branch agrees on
+    // which channel the user attempted — avoids a whole-function signature
+    // sprawl and keeps the channel-aware error branches trivial.
+    let channel = Channel::current();
+    let channel_str = channel.as_str().to_string();
+
     let repo_root = match repo::find_repo(flake_override) {
         Ok(path) => path,
         Err(_) => {
             return MenuState::Err(ErrState {
                 ok: false,
+                channel: channel_str,
                 error: "Unable to locate the active system flake.".into(),
                 ..Default::default()
             });
@@ -486,6 +738,7 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
     if !repo_root.join("flake.lock").exists() {
         return MenuState::Err(ErrState {
             ok: false,
+            channel: channel_str,
             repo_root: Some(repo_root_str),
             error: "The active system flake has no flake.lock.".into(),
             ..Default::default()
@@ -497,6 +750,7 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
         Err(err) => {
             return MenuState::Err(ErrState {
                 ok: false,
+                channel: channel_str,
                 repo_root: Some(repo_root_str),
                 error: format!("Unable to read flake.lock: {err}"),
                 ..Default::default()
@@ -509,6 +763,7 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
         Err(err) => {
             return MenuState::Err(ErrState {
                 ok: false,
+                channel: channel_str,
                 repo_root: Some(repo_root_str),
                 error: format!(
                     "Unable to find a Keystone GitHub input in the active system flake: {err}"
@@ -521,6 +776,7 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
     let Some(locked) = node.locked.as_ref() else {
         return MenuState::Err(ErrState {
             ok: false,
+            channel: channel_str,
             repo_root: Some(repo_root_str),
             input_name: Some(input_name),
             error: "The Keystone input has no locked revision.".into(),
@@ -531,6 +787,7 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
     if locked.kind.as_deref() != Some("github") {
         return MenuState::Err(ErrState {
             ok: false,
+            channel: channel_str,
             repo_root: Some(repo_root_str),
             input_name: Some(input_name),
             error: "The Keystone input is not locked to a GitHub source.".into(),
@@ -541,6 +798,7 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
     let Some(current_rev) = locked.rev.clone() else {
         return MenuState::Err(ErrState {
             ok: false,
+            channel: channel_str,
             repo_root: Some(repo_root_str),
             input_name: Some(input_name),
             error: "Unable to read the locked Keystone revision from flake.lock.".into(),
@@ -548,14 +806,15 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
         });
     };
 
-    let current_tag = release_tag_for_rev(&current_rev);
+    let current_tag = release_tag_for_rev(&current_rev, channel);
     let dirty = !git_status_clean(&repo_root);
 
-    let release = match fetch_latest_release().await {
-        Ok(v) => v,
+    let release = match fetch_latest_release(channel).await {
+        Ok(r) => r,
         Err(err) => {
             return MenuState::Err(ErrState {
                 ok: false,
+                channel: channel_str,
                 repo_root: Some(repo_root_str),
                 input_name: Some(input_name),
                 current_rev: Some(current_rev),
@@ -567,67 +826,14 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
         }
     };
 
-    let latest_tag = release
-        .get("tag_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    if latest_tag.is_empty() {
-        return MenuState::Err(ErrState {
-            ok: false,
-            repo_root: Some(repo_root_str),
-            input_name: Some(input_name),
-            current_rev: Some(current_rev),
-            current_tag: Some(current_tag),
-            error: "GitHub did not return a latest release tag for Keystone.".into(),
-            ..Default::default()
-        });
-    }
-
-    let latest_name = release
-        .get("name")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or(&latest_tag)
-        .to_string();
-    let latest_url = release
-        .get("html_url")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let latest_published = release
-        .get("published_at")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let latest_body = release
-        .get("body")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("No release notes available.")
-        .to_string();
-
-    let latest_rev = match fetch_release_commit_rev(&latest_tag).await {
-        Ok(rev) => rev,
-        Err(err) => {
-            return MenuState::Err(ErrState {
-                ok: false,
-                repo_root: Some(repo_root_str),
-                input_name: Some(input_name),
-                current_rev: Some(current_rev),
-                current_tag: Some(current_tag),
-                latest_tag: Some(latest_tag),
-                latest_name: Some(latest_name),
-                latest_url: Some(latest_url),
-                latest_published: Some(latest_published),
-                latest_body: Some(latest_body),
-                error: format!(
-                    "Unable to resolve the commit for the latest Keystone release tag: {err}"
-                ),
-                ..Default::default()
-            });
-        }
-    };
+    let ReleaseInfo {
+        latest_tag,
+        latest_name,
+        latest_url,
+        latest_published,
+        latest_body,
+        latest_rev,
+    } = release;
 
     let host_key = current_host_key(&repo_root).await.unwrap_or_default();
 
@@ -676,6 +882,7 @@ async fn load_state(flake_override: Option<&Path>) -> MenuState {
 
     MenuState::Ok(OkState {
         ok: true,
+        channel: channel_str,
         repo_root: repo_root_str,
         input_name,
         current_rev,
@@ -724,6 +931,10 @@ fn render_preview_summary(state: &MenuState) -> String {
             [
                 "Keystone OS update status".to_string(),
                 String::new(),
+                // Surface the channel near the top so users inspecting
+                // `ks menu update preview-summary` can immediately see
+                // which release feed produced `latest_*`.
+                format!("Channel: {}", s.channel),
                 format!("Consumer flake: {}", s.repo_root),
                 format!("Input: {}", s.input_name),
                 format!("Current: {} ({})", current_label, short(&s.current_rev)),
@@ -733,7 +944,20 @@ fn render_preview_summary(state: &MenuState) -> String {
             ]
             .join("\n")
         }
-        MenuState::Err(e) => ["Keystone OS update unavailable", "", &e.error].join("\n"),
+        MenuState::Err(e) => {
+            // Even the error path should disclose which channel was
+            // attempted — useful when "Keystone OS unavailable" is actually
+            // "branches/main returned 404 on unstable" and the user wants
+            // to flip to stable.
+            let mut lines: Vec<String> =
+                vec!["Keystone OS update unavailable".to_string(), String::new()];
+            if !e.channel.is_empty() {
+                lines.push(format!("Channel: {}", e.channel));
+                lines.push(String::new());
+            }
+            lines.push(e.error.clone());
+            lines.join("\n")
+        }
     }
 }
 
@@ -853,9 +1077,20 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
                 "PreviewType": "command",
             })];
             if url_is_shell_safe(&s.latest_url) {
+                // Branch the subtext on channel so the Walker row matches
+                // what `latest_url` actually points to: the stable channel
+                // links to a tagged release page (release notes), while the
+                // unstable channel links to the tip commit on `main`
+                // (commit message). Naming the channel in both variants
+                // keeps a flipped host visibly distinct from the stable
+                // feed so it doesn't read like the release feed drifted.
+                let subtext = match s.channel.as_str() {
+                    "unstable" => "Latest commit on main (unstable channel)".to_string(),
+                    _ => format!("GitHub release notes and changelog ({} channel)", s.channel,),
+                };
                 entries.push(serde_json::json!({
                     "Text": format!("Latest: {}", s.latest_tag),
-                    "Subtext": "GitHub release notes and changelog",
+                    "Subtext": subtext,
                     "Value": format!("{ACT_OPEN_RELEASE}\t{}", s.latest_url),
                     "Icon": "software-update-available-symbolic",
                     "Preview": "ks menu update preview-release-notes",
@@ -1094,6 +1329,7 @@ mod tests {
     fn ok_fixture() -> OkState {
         OkState {
             ok: true,
+            channel: "stable".into(),
             repo_root: "/etc/nixos-config".into(),
             input_name: "keystone".into(),
             current_rev: "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeee".into(),
@@ -1113,21 +1349,35 @@ mod tests {
         }
     }
 
-    #[test]
-    fn parse_release_tag_accepts_plain_semver() {
-        assert_eq!(parse_release_tag("v0.8.0"), Some((0, 8, 0)));
-        assert_eq!(parse_release_tag("v1.2.3"), Some((1, 2, 3)));
-        assert_eq!(parse_release_tag("v10.20.300"), Some((10, 20, 300)));
+    fn key(major: u32, minor: u32, patch: u32) -> ReleaseKey {
+        ReleaseKey {
+            major,
+            minor,
+            patch,
+        }
     }
 
     #[test]
-    fn parse_release_tag_rejects_prereleases_and_metadata() {
-        // Pre-releases and build metadata must not be treated as release
-        // tags — they'd spuriously flag the menu as "behind" against a
-        // stable release that doesn't yet exist.
-        assert_eq!(parse_release_tag("v1.2.3-rc1"), None);
+    fn parse_release_tag_accepts_plain_semver() {
+        assert_eq!(parse_release_tag("v0.8.0"), Some(key(0, 8, 0)));
+        assert_eq!(parse_release_tag("v1.2.3"), Some(key(1, 2, 3)));
+        assert_eq!(parse_release_tag("v10.20.300"), Some(key(10, 20, 300)));
+    }
+
+    #[test]
+    fn parse_release_tag_rejects_malformed_shapes() {
+        // Keystone's release pipeline emits strict `v<M>.<m>.<p>` tags only.
+        // Any pre-release suffix, build metadata, over-long triple, or
+        // missing-`v` form must be rejected so `current_tag` cannot be
+        // populated by an unrelated tag that happens to point at the same
+        // commit.
+        assert_eq!(parse_release_tag("v1.2.3-rc.1"), None);
+        assert_eq!(parse_release_tag("v1.2.3-foo"), None);
+        assert_eq!(parse_release_tag("v1.2.3-alpha.1"), None);
         assert_eq!(parse_release_tag("v1.2.3+build.42"), None);
         assert_eq!(parse_release_tag("v1.2.3.4"), None);
+        assert_eq!(parse_release_tag("1.2.3"), None);
+        assert_eq!(parse_release_tag("v1.2"), None);
     }
 
     #[test]
@@ -1136,8 +1386,6 @@ mod tests {
         assert_eq!(parse_release_tag("release-candidate"), None);
         assert_eq!(parse_release_tag(""), None);
         assert_eq!(parse_release_tag("v"), None);
-        assert_eq!(parse_release_tag("v1.2"), None);
-        assert_eq!(parse_release_tag("1.2.3"), None); // no leading 'v'
         assert_eq!(parse_release_tag("vAbC.1.2"), None);
     }
 
@@ -1146,6 +1394,140 @@ mod tests {
         assert_eq!(short("aaaaaaaabbbbbbbbccccccccddddddddeeeeeeee"), "aaaaaaa");
         assert_eq!(short("abc"), "abc");
         assert_eq!(short(""), "");
+    }
+
+    // CRITICAL: env mutation is process-global; serialise KS_UPDATE_CHANNEL
+    // guard usage with a mutex so parallel tests don't observe each other's
+    // env state. Same pattern as SKIP_NIX_EVAL_LOCK in repo.rs.
+    static CHANNEL_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    struct ChannelEnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        prior: Option<String>,
+    }
+    impl ChannelEnvGuard {
+        fn new(value: Option<&str>) -> Self {
+            let lock = CHANNEL_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+            let prior = std::env::var("KS_UPDATE_CHANNEL").ok();
+            match value {
+                Some(v) => std::env::set_var("KS_UPDATE_CHANNEL", v),
+                None => std::env::remove_var("KS_UPDATE_CHANNEL"),
+            }
+            Self { _lock: lock, prior }
+        }
+    }
+    impl Drop for ChannelEnvGuard {
+        fn drop(&mut self) {
+            match self.prior.as_deref() {
+                Some(v) => std::env::set_var("KS_UPDATE_CHANNEL", v),
+                None => std::env::remove_var("KS_UPDATE_CHANNEL"),
+            }
+        }
+    }
+
+    #[test]
+    fn channel_current_defaults_to_stable() {
+        let _guard = ChannelEnvGuard::new(None);
+        assert_eq!(Channel::current(), Channel::Stable);
+        assert_eq!(Channel::current().as_str(), "stable");
+    }
+
+    #[test]
+    fn channel_current_reads_unstable_env() {
+        let _guard = ChannelEnvGuard::new(Some("unstable"));
+        assert_eq!(Channel::current(), Channel::Unstable);
+        assert_eq!(Channel::current().as_str(), "unstable");
+    }
+
+    #[test]
+    fn channel_current_rejects_unknown_value() {
+        // Fail-closed: any value other than exactly "unstable" maps to
+        // Stable. A misconfigured env never silently flips a host onto
+        // the moving-main source. Verifies the guarantee across the usual
+        // suspects: empty, typos, capitalisation, neighbours, legacy names.
+        for val in [
+            "",
+            "beta",
+            "Unstable",
+            "UNSTABLE",
+            "stable",
+            "nightly",
+            "pre-release",
+            "unstable ",
+        ] {
+            let _guard = ChannelEnvGuard::new(Some(val));
+            assert_eq!(
+                Channel::current(),
+                Channel::Stable,
+                "value {val:?} must fail-closed to Stable"
+            );
+        }
+    }
+
+    #[test]
+    fn ok_state_includes_channel() {
+        let state = MenuState::Ok(ok_fixture());
+        let rendered = serde_json::to_value(&state).unwrap();
+        // Untagged enum serialization means OkState's fields are at the
+        // top level of the object. The fixture pins channel to "stable"
+        // so we check against that value.
+        assert_eq!(rendered["channel"], "stable");
+    }
+
+    #[test]
+    fn err_state_includes_channel_when_populated() {
+        let state = MenuState::Err(ErrState {
+            ok: false,
+            channel: "unstable".into(),
+            error: "Simulated failure.".into(),
+            ..Default::default()
+        });
+        let rendered = serde_json::to_value(&state).unwrap();
+        assert_eq!(rendered["channel"], "unstable");
+    }
+
+    #[test]
+    fn preview_summary_shows_channel_line() {
+        let mut fixture = ok_fixture();
+        fixture.channel = "unstable".into();
+        let rendered = render_preview_summary(&MenuState::Ok(fixture));
+        assert!(
+            rendered.contains("Channel: unstable"),
+            "preview summary must disclose the active channel, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn entries_latest_subtext_unstable_describes_main_commit() {
+        // The unstable channel's `latest_url` points to a commit on `main`
+        // (and the preview body is a commit message), so the subtext must
+        // describe a commit — not "release notes and changelog" — to match
+        // what users actually see when they activate the row.
+        let mut fixture = ok_fixture();
+        fixture.channel = "unstable".into();
+        let rendered = render_entries_json(&MenuState::Ok(fixture)).unwrap();
+        let parsed: Value = serde_json::from_str(&rendered).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr[1]["Text"], "Latest: v0.8.0");
+        assert_eq!(
+            arr[1]["Subtext"],
+            "Latest commit on main (unstable channel)"
+        );
+    }
+
+    #[test]
+    fn entries_latest_subtext_stable_describes_release_notes() {
+        // The stable channel links to a tagged release page so the subtext
+        // describes release notes. Naming the channel keeps the row
+        // visibly distinct from the unstable variant.
+        let fixture = ok_fixture();
+        assert_eq!(fixture.channel, "stable");
+        let rendered = render_entries_json(&MenuState::Ok(fixture)).unwrap();
+        let parsed: Value = serde_json::from_str(&rendered).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(
+            arr[1]["Subtext"],
+            "GitHub release notes and changelog (stable channel)"
+        );
     }
 
     #[test]
@@ -1441,6 +1823,94 @@ mod tests {
         let err = evaluate_local_gate(Some(Path::new("/nonexistent/path/used/only/in/unit/tests")))
             .unwrap_err();
         assert!(!err.is_empty(), "gate must return a non-empty reason");
+    }
+
+    #[test]
+    fn unstable_state_uses_branch_sha_for_latest_rev() {
+        // Simulates the `GET /repos/OWNER/REPO/branches/main` response
+        // shape. The unstable channel MUST read the commit SHA inline
+        // rather than issuing a second ref-to-sha lookup, and MUST
+        // synthesize the display label as `main@<short-sha>`.
+        let sha = "aabbccddeeff00112233445566778899aabbccdd";
+        let payload = serde_json::json!({
+            "name": "main",
+            "commit": {
+                "sha": sha,
+                "html_url": format!("https://github.com/ncrmro/keystone/commit/{sha}"),
+                "commit": {
+                    "committer": { "date": "2026-04-22T12:00:00Z" },
+                    "message": "feat(ks): add update channel\n\nLonger body that should not appear in the preview pane.",
+                }
+            }
+        });
+        let info = parse_unstable_branch(&payload).expect("branch response parses");
+        assert_eq!(info.latest_tag, "main");
+        assert_eq!(info.latest_rev, sha);
+        assert_eq!(info.latest_name, format!("main@{}", &sha[..7]));
+        assert_eq!(info.latest_published, "2026-04-22T12:00:00Z");
+        assert_eq!(
+            info.latest_url,
+            format!("https://github.com/ncrmro/keystone/commit/{sha}")
+        );
+        // Body is the first paragraph (conventional commit subject line).
+        assert_eq!(info.latest_body, "feat(ks): add update channel");
+    }
+
+    #[test]
+    fn unstable_state_falls_back_to_tree_url_when_html_url_missing() {
+        // A missing / empty `commit.html_url` must not drop the latest
+        // row — fall back to the tree-view URL so the menu always has a
+        // shell-safe link.
+        let payload = serde_json::json!({
+            "name": "main",
+            "commit": {
+                "sha": "0000000000000000000000000000000000000001",
+                "commit": {
+                    "committer": { "date": "2026-04-22T12:00:00Z" },
+                    "message": "chore: bump deps",
+                }
+            }
+        });
+        let info = parse_unstable_branch(&payload).unwrap();
+        assert_eq!(
+            info.latest_url,
+            "https://github.com/ncrmro/keystone/tree/main"
+        );
+    }
+
+    #[test]
+    fn unstable_state_errors_when_sha_missing() {
+        // Without a commit SHA the menu cannot compare against the
+        // locked rev, so the parser must surface an error.
+        let payload = serde_json::json!({
+            "name": "main",
+            "commit": {
+                "commit": { "committer": {"date": "2026-04-22T12:00:00Z"} }
+            }
+        });
+        let err = parse_unstable_branch(&payload).unwrap_err();
+        assert!(
+            err.to_string().contains("commit.sha"),
+            "expected sha error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn unstable_state_body_falls_back_when_message_empty() {
+        // A commit with an empty message should produce a non-empty
+        // body so the preview pane stays renderable.
+        let payload = serde_json::json!({
+            "name": "main",
+            "commit": {
+                "sha": "0000000000000000000000000000000000000002",
+                "commit": {
+                    "committer": { "date": "2026-04-22T12:00:00Z" },
+                    "message": "",
+                }
+            }
+        });
+        let info = parse_unstable_branch(&payload).unwrap();
+        assert_eq!(info.latest_body, "No commit message.");
     }
 
     #[tokio::test]
