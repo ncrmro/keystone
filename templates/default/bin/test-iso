@@ -720,10 +720,10 @@ run_direct_image() {
     # the trap safe if run_direct_image exits before these are set.
     direct_cleanup() {
         if [[ -n "${LUKS_FEEDER_PID:-}" ]]; then
+            # The supervisor subshell holds the cat drain as its
+            # child; SIGTERM the children too.
+            pkill -TERM -P "$LUKS_FEEDER_PID" 2>/dev/null || true
             kill "$LUKS_FEEDER_PID" 2>/dev/null || true
-        fi
-        if [[ -n "${DIRECT_DRAIN_PID:-}" ]]; then
-            kill "$DIRECT_DRAIN_PID" 2>/dev/null || true
         fi
         if [[ -n "${DIRECT_VM_NAME:-}" && -n "${VM_SCRIPT:-}" ]]; then
             "$VM_SCRIPT" --reset "$DIRECT_VM_NAME" 2>/dev/null || true
@@ -796,70 +796,78 @@ run_direct_image() {
     else
         luks_passphrase="${DIRECT_LUKS_PASSPHRASE:-keystone}"
     fi
-    # Wait up to 60 s for the libvirt domain to appear, then resolve
-    # its host-side serial PTY.  Both the drain and the feeder need
-    # the PTY, so discover it once in the parent.
-    local serial_pty="" k
-    for k in $(seq 1 60); do
-        serial_pty="$(virsh -c qemu:///session dumpxml "$direct_vm_name" 2>/dev/null \
-            | grep -o '/dev/pts/[0-9]*' | head -1 || true)"
-        [[ -n "$serial_pty" ]] && break
-        sleep 1
-    done
-
-    if [[ -n "$serial_pty" ]]; then
-        # CRITICAL #1: drain the host-side serial PTY in the
-        # background.  QEMU's `-chardev pty` blocks the guest's
-        # serial writes when the host-side buffer fills with no
-        # reader.  In a headless run this stalls the kernel's
-        # serial-console writes (systemd boot progress, debug logs),
-        # which can wedge first-boot tasks indefinitely — SSH never
-        # comes up, even though LUKS has unlocked.  A single `cat >
-        # /dev/null` reader is enough to keep the buffer drained.
-        # Empirically verified: without this, `bin/test-e2e --direct
-        # laptop --headless` hangs at SSH timeout; with it, SSH is
-        # up in ~30 s.
-        cat "$serial_pty" > /dev/null 2>&1 &
-        DIRECT_DRAIN_PID=$!
-
-        # CRITICAL #2: feed the LUKS passphrase only AFTER
-        # systemd-boot has handed off to the kernel.  systemd-boot
-        # reads the same serial console at its boot menu and
-        # interprets the literal `e` keystroke as "edit kernel
-        # command line".  If the feeder writes "keystone\n" while
-        # sd-boot's menu is still up, sd-boot drops into edit mode,
-        # prepends "ystone" to the cmdline, and boots with a
-        # corrupted cmdline whose first token is
-        # `ystoneinit=…/init`.  NixOS's initrd-find-nixos-closure
-        # then fails with "No init= parameter on the kernel command
-        # line", trips OnFailure=emergency.target, and SSH never
-        # comes up.
-        #
-        # 15 s is comfortably past sd-boot's default 5 s timeout
-        # while still well before the LUKS prompt appears
-        # (~T=10-30 s on this host).  ask-password waits
-        # indefinitely, so arriving "late" never matters.  Looping
-        # forever is safe: the main script kills the feeder once
-        # SSH succeeds (or via the EXIT trap on failure), and
-        # post-unlock writes are harmless serial-login noise.
-        (
-            sleep "${DIRECT_LUKS_FEED_DELAY:-15}"
-            while true; do
-                printf '%s\n' "$luks_passphrase" > "$serial_pty" 2>/dev/null || true
-                sleep 5
-            done
-        ) &
-        LUKS_FEEDER_PID=$!
-    fi
+    # The drain and feeder need the VM's serial PTY, but the VM
+    # isn't created until $vm_script runs (below).  Spawn a small
+    # supervisor in the background that:
+    #   1. polls libvirt up to 60 s for the domain to appear,
+    #   2. starts a `cat > /dev/null` drain on the PTY (CRITICAL #1
+    #      below),
+    #   3. waits the configured delay (CRITICAL #2 below), then
+    #   4. writes the LUKS passphrase every 5 s until killed.
+    #
+    # The supervisor's PID becomes LUKS_FEEDER_PID; killing it
+    # propagates SIGTERM to the cat drain that was started inside
+    # the same subshell.  We export the inner cat's PID via the
+    # `__pid` channel so the main shell's cleanup trap can also
+    # reach it directly if the supervisor died early.
+    #
+    # CRITICAL #1: drain the host-side serial PTY.  QEMU's
+    # `-chardev pty` blocks the guest's serial writes when the
+    # host-side buffer fills with no reader.  In a headless run
+    # this stalls the kernel's serial-console writes (systemd boot
+    # progress, debug logs), which can wedge first-boot tasks
+    # indefinitely — SSH never comes up, even though LUKS has
+    # unlocked.  A single `cat > /dev/null` reader is enough.
+    # Empirically: without this, `bin/test-e2e --direct laptop
+    # --headless` hangs at SSH timeout on this host; with it, SSH
+    # is up in ~30 s.
+    #
+    # CRITICAL #2: feed the LUKS passphrase only AFTER systemd-boot
+    # has handed off to the kernel.  systemd-boot reads the same
+    # serial console at its boot menu and interprets the literal
+    # `e` keystroke as "edit kernel command line".  If the feeder
+    # writes "keystone\n" while sd-boot's menu is still up,
+    # sd-boot drops into edit mode, prepends "ystone" to the
+    # cmdline, and boots with a corrupted cmdline whose first
+    # token is `ystoneinit=…/init`.  NixOS's
+    # initrd-find-nixos-closure then fails with "No init=
+    # parameter on the kernel command line", trips
+    # OnFailure=emergency.target, and SSH never comes up.
+    #
+    # 15 s is comfortably past sd-boot's default 5 s timeout while
+    # still well before the LUKS prompt appears (~T=10-30 s on
+    # this host).  ask-password waits indefinitely, so arriving
+    # "late" never matters.  Looping forever is safe: the main
+    # script kills the supervisor once SSH succeeds (or via the
+    # EXIT trap on failure), and post-unlock writes are harmless
+    # serial-login noise.
+    (
+        pty=""
+        for _ in $(seq 1 60); do
+            pty="$(virsh -c qemu:///session dumpxml "$direct_vm_name" 2>/dev/null \
+                | grep -o '/dev/pts/[0-9]*' | head -1 || true)"
+            [[ -n "$pty" ]] && break
+            sleep 1
+        done
+        [[ -z "$pty" ]] && exit 0
+        cat "$pty" > /dev/null 2>&1 &
+        sleep "${DIRECT_LUKS_FEED_DELAY:-15}"
+        while true; do
+            printf '%s\n' "$luks_passphrase" > "$pty" 2>/dev/null || true
+            sleep 5
+        done
+    ) &
+    LUKS_FEEDER_PID=$!
 
     "$vm_script" "${vm_args[@]}"
     if [[ -n "${LUKS_FEEDER_PID:-}" ]]; then
+        # SIGTERM the supervisor; its `cat` drain is the
+        # supervisor's child, so SIGHUP-on-parent-exit takes care
+        # of it.  Also SIGTERM-kill any direct child of the
+        # supervisor that's still around (belt-and-braces).
+        pkill -TERM -P "$LUKS_FEEDER_PID" 2>/dev/null || true
         kill "$LUKS_FEEDER_PID" 2>/dev/null || true
         LUKS_FEEDER_PID=""
-    fi
-    if [[ -n "${DIRECT_DRAIN_PID:-}" ]]; then
-        kill "$DIRECT_DRAIN_PID" 2>/dev/null || true
-        DIRECT_DRAIN_PID=""
     fi
     log_ok "SSH is up!"
 
