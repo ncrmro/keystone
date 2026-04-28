@@ -51,6 +51,7 @@ in
     ./agent-mail.nix
     ./sandbox.nix
     ./secrets.nix
+    ./1password.nix
     ./ssh-auto-load.nix
     ./forgejo.nix
     ./grafana.nix
