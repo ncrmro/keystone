@@ -393,6 +393,62 @@ validate_desktop_session() {
     fi
     log_ok "Direct: no Hyprland/hyprlock config errors in journal"
 
+    # Per #344: probe the system journal for the symptom set that
+    # historically indicated a desktop-stack regression we wouldn't
+    # otherwise catch — process aborts (SIGABRT / core dumps),
+    # greetd PAM misconfiguration ("Pam module ... does not exist"),
+    # and the hyprlock startup-lock denial pattern ("yeeten" / lock
+    # finished during startup).  These are unit-scoped (greetd plus
+    # any hyprland-* / hyprlock-* / uwsm-* unit instance), so they
+    # complement the per-UID config-error grep above without
+    # duplicating it.
+    if ! validate_desktop_journal_clean; then
+        return 1
+    fi
+
+    return 0
+}
+
+# Grep the system journal for the desktop-stack symptom set tracked
+# in #344.  Returns non-zero when any pattern matches.  Kept narrow
+# (unit-scoped, current boot only) so unrelated noise does not
+# trigger spurious failures.
+validate_desktop_journal_clean() {
+    log_info "Direct: scanning system journal for desktop-stack failure patterns..."
+
+    # Discover the actual hyprland/hyprlock/uwsm unit instances on
+    # the running system; their names vary by uwsm version (e.g.
+    # `hyprland-uwsm.service`, `wayland-wm@hyprland.service`).
+    # Falling back to a glob of the common prefixes covers both.
+    local units
+    units="$(ssh_cmd "systemctl list-units --no-legend --no-pager --all 2>/dev/null \
+        | awk '{print \$1}' \
+        | grep -E '^(greetd|hyprland|hyprlock|uwsm|wayland-wm)[-@.].*\\.(service|target)\$' \
+        || true" 2>/dev/null)"
+    local unit_args="-u greetd"
+    if [[ -n "$units" ]]; then
+        local u
+        while IFS= read -r u; do
+            [[ -z "$u" ]] && continue
+            unit_args+=" -u ${u}"
+        done <<< "$units"
+    else
+        # Best-effort glob if discovery turned up nothing — covers
+        # systems where the units are user-scoped only.
+        unit_args+=' -u "hyprland-*" -u "hyprlock-*" -u "uwsm-*"'
+    fi
+
+    local hits
+    hits="$(ssh_cmd "journalctl -b --no-pager ${unit_args} 2>/dev/null \
+        | grep -E 'SIGABRT|core dumped|Pam module .* does not exist|ext_session_lock_v1.*finished|fail(ed)?[ -].*lock|yeeten' \
+        | grep -vE 'audit|may be (ignored|killed)' \
+        || true" 2>/dev/null)"
+    if [[ -n "$hits" ]]; then
+        log_error "Direct: desktop-stack failure patterns in journal:"
+        printf '%s\n' "$hits" | head -20 >&2
+        return 1
+    fi
+    log_ok "Direct: desktop-stack journal clean"
     return 0
 }
 
