@@ -149,8 +149,12 @@ async fn verify_all_repos_lock_ready(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn update_dev(repo_root: &Path, mode: &str, hosts: &[String]) -> Result<UpdateResult> {
-    cmd::switch::execute(Some(&hosts.join(",")), mode == "boot", Some(repo_root)).await?;
+async fn update_dev(_repo_root: &Path, mode: &str, hosts: &[String]) -> Result<UpdateResult> {
+    // _repo_root is captured at the top-level to detect the canonical layout
+    // before sub-commands re-resolve. Each sub-command resolves the same
+    // canonical path independently — they cannot disagree because the rule
+    // is a pure function of $USER and $HOME.
+    cmd::switch::execute(Some(&hosts.join(",")), mode == "boot").await?;
 
     Ok(UpdateResult {
         hosts: hosts.to_vec(),
@@ -180,8 +184,7 @@ async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result
     verify_all_repos_lock_ready(repo_root).await?;
 
     let deploy_session = cmd::switch::prepare_deploy_session(repo_root, hosts).await?;
-    let build_result =
-        cmd::build::execute(Some(&hosts.join(",")), true, None, false, Some(repo_root)).await?;
+    let build_result = cmd::build::execute(Some(&hosts.join(",")), true, None, false).await?;
     cmd::switch::deploy_paths_with_session(
         repo_root,
         &deploy_session,
@@ -215,9 +218,8 @@ pub async fn execute(
     dev: bool,
     boot: bool,
     pull_only: bool,
-    flake_override: Option<&std::path::Path>,
 ) -> Result<UpdateResult> {
-    let repo_root = repo::find_repo(flake_override)?;
+    let repo_root = repo::find_repo()?;
     let hosts = repo::resolve_hosts(&repo_root, hosts_arg).await?;
     let mode = if boot { "boot" } else { "switch" };
 

@@ -68,6 +68,7 @@ archetypes:
       - process.user-groups
       - tool.stalwart
       - process.vcs-context-continuity
+      - architecture.consumer-flake-path
 
   # Archetype for working directly on keystone platform repos:
   # ncrmro/keystone, ncrmro/nixos-config, Unsupervisedcom/deepwork.
@@ -81,6 +82,7 @@ archetypes:
       - process.project-navigation
       - tool.standard-utilities
       - process.keystone-development
+      - architecture.consumer-flake-path
     referenced_conventions:
       - process.keystone-development-mode
       - tool.nix-devshell
@@ -142,6 +144,7 @@ archetypes:
       - process.notes
       - tool.zk-notes
       - tool.stalwart
+      - architecture.consumer-flake-path
     roles:
       # Role: code-reviewer
       # Used when the agent is strictly reviewing PRs authored by others (or subagents).

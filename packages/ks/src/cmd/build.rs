@@ -218,9 +218,8 @@ pub async fn execute(
     lock: bool,
     user_filter: Option<&str>,
     all_users: bool,
-    flake_override: Option<&std::path::Path>,
 ) -> Result<BuildResult> {
-    let repo_root = repo::find_repo(flake_override)?;
+    let repo_root = repo::find_repo()?;
     let hosts = repo::resolve_hosts(&repo_root, hosts_arg).await?;
 
     if lock {

@@ -23,6 +23,9 @@ pkgs.runCommand "test-pz-host-launcher-state"
     export HOME="$PWD/home"
     export XDG_STATE_HOME="$PWD/state"
     export XDG_CACHE_HOME="$PWD/cache"
+    # pz resolves the consumer flake from the canonical path
+    # $HOME/.keystone/repos/$USER/keystone-config; override $USER too.
+    export USER="ncrmro"
     export PATH="$PWD/bin:${
       lib.makeBinPath [
         pkgs.bash
@@ -37,6 +40,7 @@ pkgs.runCommand "test-pz-host-launcher-state"
       ]
     }"
     export VAULT_ROOT="$HOME/notes"
+    CONFIG_REPO="$HOME/.keystone/repos/ncrmro/keystone-config"
 
     mkdir -p \
       "$HOME" \
@@ -44,7 +48,7 @@ pkgs.runCommand "test-pz-host-launcher-state"
       "$XDG_CACHE_HOME" \
       "$VAULT_ROOT" \
       "$PWD/bin" \
-      "$HOME/.keystone/repos/example/config"
+      "$CONFIG_REPO"
 
     cat > "$PWD/bin/pz" <<'EOF'
     #!${pkgs.bash}/bin/bash
@@ -52,7 +56,7 @@ pkgs.runCommand "test-pz-host-launcher-state"
     EOF
     chmod +x "$PWD/bin/pz"
 
-    cat > "$HOME/.keystone/repos/example/config/projects.yaml" <<'EOF'
+    cat > "$CONFIG_REPO/projects.yaml" <<'EOF'
     keystone:
       mission: "Build Keystone tooling."
       repos:
@@ -108,7 +112,7 @@ pkgs.runCommand "test-pz-host-launcher-state"
     EOF
     chmod +x "$PWD/bin/nix"
 
-    cat > "$HOME/.keystone/repos/example/config/hosts.nix" <<'EOF'
+    cat > "$CONFIG_REPO/hosts.nix" <<'EOF'
     {}
     EOF
 

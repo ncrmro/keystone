@@ -51,7 +51,6 @@ async fn main() -> Result<()> {
 
     // Route subcommands
     if let Some(command) = cli.command {
-        let flake = cli.flake.as_deref();
         return match command {
             Command::Template {
                 github_username,
@@ -64,19 +63,9 @@ async fn main() -> Result<()> {
                 all_users,
                 hosts,
                 json,
-            } => {
-                run_build_command(
-                    hosts.as_deref(),
-                    lock,
-                    user.as_deref(),
-                    all_users,
-                    json,
-                    flake,
-                )
-                .await
-            }
+            } => run_build_command(hosts.as_deref(), lock, user.as_deref(), all_users, json).await,
             Command::Switch { boot, hosts, json } => {
-                run_switch_command(hosts.as_deref(), boot, json, flake).await
+                run_switch_command(hosts.as_deref(), boot, json).await
             }
             Command::Update {
                 debug: _,
@@ -92,36 +81,27 @@ async fn main() -> Result<()> {
             } => {
                 let dev_mode = dev && !lock;
                 let pull_only = pull && dev_mode;
-                run_update_command(
-                    hosts.as_deref(),
-                    dev_mode,
-                    boot,
-                    pull_only,
-                    approve,
-                    json,
-                    flake,
-                )
-                .await
+                run_update_command(hosts.as_deref(), dev_mode, boot, pull_only, approve, json).await
             }
             Command::Approve(args) => run_approve_command(args).await,
             Command::Agents(args) => run_agents_command(args).await,
             Command::Docs { topic_or_path } => run_docs_command(topic_or_path).await,
             Command::Photos { command } => run_photos_command(command).await,
-            Command::HardwareKey { command } => run_hardware_key_command(command, flake).await,
+            Command::HardwareKey { command } => run_hardware_key_command(command).await,
             Command::Screenshots { command } => run_screenshots_command(command).await,
             Command::SyncAgentAssets => run_sync_agent_assets_command().await,
-            Command::SyncHostKeys => run_sync_host_keys_command(flake).await,
-            Command::Grafana { args } => run_grafana_command(args, flake).await,
+            Command::SyncHostKeys => run_sync_host_keys_command().await,
+            Command::Grafana { args } => run_grafana_command(args).await,
             Command::Print { args } => run_print_command(args).await,
-            Command::Agent(args) => run_agent_command(args, flake).await,
+            Command::Agent(args) => run_agent_command(args).await,
             Command::AgentLoop(args) => cmd::agent_loop::execute(&args).await,
-            Command::Doctor(args) => run_doctor_command(args, flake).await,
+            Command::Doctor(args) => run_doctor_command(args).await,
             Command::Install(args) => run_headless_install(&args.host, args.disk.as_deref()).await,
             Command::Notification(args) => cmd::notifications::execute(&args).await,
             Command::Task(args) => cmd::tasks::execute(&args).await,
             Command::Project(args) => cmd::projects::execute(&args).await,
             Command::Notify { unit, result } => cmd::notify::execute(&unit, &result),
-            Command::Menu { command } => cmd::menu::execute(command, flake).await,
+            Command::Menu { command } => cmd::menu::execute(command).await,
             Command::RunBackground { unit } => cmd::run_background::execute(&unit),
         };
     }
@@ -334,9 +314,8 @@ async fn run_build_command(
     user_filter: Option<&str>,
     all_users: bool,
     json: bool,
-    flake: Option<&std::path::Path>,
 ) -> Result<()> {
-    match cmd::build::execute(hosts, lock, user_filter, all_users, flake).await {
+    match cmd::build::execute(hosts, lock, user_filter, all_users).await {
         Ok(result) => {
             if json {
                 print_json_success(&result)
@@ -361,13 +340,8 @@ async fn run_build_command(
 }
 
 /// Run the `switch` subcommand.
-async fn run_switch_command(
-    hosts: Option<&str>,
-    boot: bool,
-    json: bool,
-    flake: Option<&std::path::Path>,
-) -> Result<()> {
-    match cmd::switch::execute(hosts, boot, flake).await {
+async fn run_switch_command(hosts: Option<&str>, boot: bool, json: bool) -> Result<()> {
+    match cmd::switch::execute(hosts, boot).await {
         Ok(result) => {
             if json {
                 print_json_success(&result)
@@ -394,7 +368,6 @@ async fn run_update_command(
     pull_only: bool,
     approve: bool,
     json: bool,
-    flake: Option<&std::path::Path>,
 ) -> Result<()> {
     // When `--approve` is set and we are not already inside the approval
     // broker (i.e., KS_APPROVE_EXECUTING is unset), re-invoke ourselves
@@ -403,9 +376,9 @@ async fn run_update_command(
     // post-approval child (where KS_APPROVE_EXECUTING=1).
     //
     // Forward the original argv minus `--approve` so flags like `--boot`,
-    // `--json`, `--flake`, and host selection survive the round-trip
-    // through the broker. Dropping `--approve` prevents the approved child
-    // from re-entering this branch.
+    // `--json`, and host selection survive the round-trip through the
+    // broker. Dropping `--approve` prevents the approved child from
+    // re-entering this branch.
     if approve && std::env::var_os("KS_APPROVE_EXECUTING").is_none() {
         let host_label = cmd::util::hostname_label();
         let reason = format!("Run the Keystone update workflow on {host_label}.");
@@ -432,7 +405,7 @@ async fn run_update_command(
         return cmd::approve::execute(&reason, &requested_argv);
     }
 
-    match cmd::update::execute(hosts, dev, boot, pull_only, flake).await {
+    match cmd::update::execute(hosts, dev, boot, pull_only).await {
         Ok(result) => {
             if json {
                 print_json_success(&result)
@@ -464,13 +437,10 @@ async fn run_photos_command(command: cmd::photos::PhotosCommand) -> Result<()> {
     cmd::photos::execute_command(command).await
 }
 
-async fn run_hardware_key_command(
-    command: HardwareKeyCommand,
-    flake: Option<&std::path::Path>,
-) -> Result<()> {
+async fn run_hardware_key_command(command: HardwareKeyCommand) -> Result<()> {
     match command {
         HardwareKeyCommand::Doctor { selector, json } => {
-            match cmd::hardware_key::execute_doctor(selector.as_deref(), flake).await {
+            match cmd::hardware_key::execute_doctor(selector.as_deref()).await {
                 Ok(report) => {
                     if json {
                         print_json_success(&report)
@@ -488,7 +458,7 @@ async fn run_hardware_key_command(
             }
         }
         HardwareKeyCommand::Secrets { json } => {
-            match cmd::hardware_key::execute_secrets_todo(flake).await {
+            match cmd::hardware_key::execute_secrets_todo().await {
                 Ok(todo) => {
                     if json {
                         print_json_success(&todo)
@@ -512,8 +482,8 @@ async fn run_screenshots_command(command: cmd::screenshots::ScreenshotsCommand) 
     cmd::screenshots::execute_command(command).await
 }
 
-async fn run_grafana_command(args: Vec<String>, flake: Option<&std::path::Path>) -> Result<()> {
-    cmd::grafana::execute(&args, flake).await
+async fn run_grafana_command(args: Vec<String>) -> Result<()> {
+    cmd::grafana::execute(&args).await
 }
 
 async fn run_print_command(args: Vec<String>) -> Result<()> {
@@ -532,23 +502,22 @@ async fn run_sync_agent_assets_command() -> Result<()> {
     cmd::sync_agent_assets::execute()
 }
 
-async fn run_sync_host_keys_command(flake: Option<&std::path::Path>) -> Result<()> {
-    let _ = cmd::sync_host_keys::execute(flake).await?;
+async fn run_sync_host_keys_command() -> Result<()> {
+    let _ = cmd::sync_host_keys::execute().await?;
     Ok(())
 }
 
-async fn run_agent_command(args: cli::AgentArgs, flake: Option<&std::path::Path>) -> Result<()> {
-    cmd::agent::execute(args.local.as_deref(), &args.args, flake).await
+async fn run_agent_command(args: cli::AgentArgs) -> Result<()> {
+    cmd::agent::execute(args.local.as_deref(), &args.args).await
 }
 
 /// Run the `doctor` subcommand.
-async fn run_doctor_command(args: cli::DoctorArgs, flake: Option<&std::path::Path>) -> Result<()> {
+async fn run_doctor_command(args: cli::DoctorArgs) -> Result<()> {
     if !args.json {
-        return cmd::doctor::render_and_maybe_launch(args.local.as_deref(), &args.args, flake)
-            .await;
+        return cmd::doctor::render_and_maybe_launch(args.local.as_deref(), &args.args).await;
     }
 
-    match cmd::doctor::execute(flake).await {
+    match cmd::doctor::execute().await {
         Ok(report) => print_json_success(&report),
         Err(e) => print_json_error(&e),
     }

@@ -11,7 +11,7 @@ Build a comprehensive snapshot of the fleet's current state to inform the update
 ### Process
 
 1. **Determine the keystone revision gap**
-   - Find the config repo by reading the activation-time pointer at `/run/current-system/keystone-system-flake` (written by `keystone.systemFlake`). On a non-running-NixOS host, fall back to `~/.keystone/repos/nixos-config`.
+   - The consumer flake lives at the canonical path `$HOME/.keystone/repos/$USER/keystone-config` (a deterministic function of `$USER` and `$HOME`). Use that path directly — there is no pointer file or environment-variable resolver.
    - Read `flake.lock` to extract the currently locked keystone revision:
      ```bash
      nix eval --raw <nixos-config-path>#inputs.keystone.rev 2>/dev/null \

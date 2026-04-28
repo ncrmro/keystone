@@ -31,7 +31,11 @@ pkgs.runCommand "test-pz-project-menu"
     export HOME="$PWD/home"
     export XDG_STATE_HOME="$PWD/state"
     export XDG_RUNTIME_DIR="$PWD/runtime"
-    export NIXOS_CONFIG_DIR="$PWD/nixos-config"
+    # pz resolves the consumer flake from the canonical path
+    # $HOME/.keystone/repos/$USER/keystone-config; override $USER too so
+    # the harness controls the lookup without a pointer-file or env-var.
+    export USER="ncrmro"
+    NIXOS_CONFIG_DIR="$HOME/.keystone/repos/ncrmro/keystone-config"
     export PATH="$PWD/bin:${
       lib.makeBinPath [
         pkgs.bash
@@ -48,7 +52,8 @@ pkgs.runCommand "test-pz-project-menu"
     }"
     export VAULT_ROOT="$HOME/notes"
 
-    mkdir -p "$HOME" "$HOME/.local/bin" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR" "$VAULT_ROOT" "$PWD/bin" "$NIXOS_CONFIG_DIR"
+    mkdir -p "$HOME" "$HOME/.local/bin" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR" "$VAULT_ROOT" "$PWD/bin"
+    mkdir -p "$NIXOS_CONFIG_DIR"
 
     cat > "$NIXOS_CONFIG_DIR/hosts.nix" <<'EOF'
     {

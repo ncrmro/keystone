@@ -117,75 +117,85 @@ fn validate_repo_path(path: &Path) -> Option<PathBuf> {
     Some(canonical)
 }
 
-/// The default path of the system flake pointer file.
-const SYSTEM_FLAKE_POINTER_FILE: &str = "/run/current-system/keystone-system-flake";
-
-/// Read the system flake pointer from the given file path.
+/// Look up the home directory for `user` via `getent passwd`.
 ///
-/// This file is written at NixOS activation time by `keystone.systemFlake` and
-/// contains the absolute path to the consumer flake that built the running
-/// system.
-fn read_system_flake_pointer_from(pointer_file: &Path) -> Option<PathBuf> {
-    let content = std::fs::read_to_string(pointer_file).ok()?;
-    let path = content.trim();
-    if path.is_empty() {
+/// CRITICAL: under `sudo`, `$HOME` is typically `/root` while `$SUDO_USER`
+/// names the invoker. Joining `$HOME` with `$SUDO_USER` would produce
+/// `/root/.keystone/repos/<invoker>/keystone-config`, which contradicts the
+/// canonical-path rule. We resolve the invoker's home through NSS so the
+/// lookup keeps working with LDAP, sssd, and other passwd backends — not
+/// just `/etc/passwd`.
+fn lookup_user_home(user: &str) -> Option<PathBuf> {
+    let output = std::process::Command::new("getent")
+        .args(["passwd", user])
+        .output()
+        .ok()?;
+    if !output.status.success() {
         return None;
     }
-    Some(PathBuf::from(path))
+    // passwd format: name:passwd:uid:gid:gecos:home:shell — home is field 6.
+    let line = std::str::from_utf8(&output.stdout)
+        .ok()?
+        .trim_end_matches('\n');
+    let home = line.split(':').nth(5).filter(|value| !value.is_empty())?;
+    Some(PathBuf::from(home))
 }
 
-/// Read the system flake pointer from `/run/current-system/keystone-system-flake`.
-fn read_system_flake_pointer() -> Option<PathBuf> {
-    read_system_flake_pointer_from(Path::new(SYSTEM_FLAKE_POINTER_FILE))
-}
-
-/// Locate the active Keystone config repository.
+/// Compute the canonical consumer-flake path for the current user.
 ///
-/// Precedence:
-/// 1. `flake_override` — the `--flake <path>` CLI flag (only override).
-/// 2. `/run/current-system/keystone-system-flake` — authoritative pointer
-///    written at NixOS activation time by `keystone.systemFlake`.
-/// 3. Error with a clear message pointing the user at `--flake` or at
-///    fixing their system flake.
-pub fn find_repo(flake_override: Option<&Path>) -> Result<PathBuf> {
-    find_repo_with_pointer(flake_override, Path::new(SYSTEM_FLAKE_POINTER_FILE))
+/// The path is a deterministic function of the resolved user (`$SUDO_USER`
+/// preferred, else `$USER`) and that user's actual home directory:
+/// `<user-home>/.keystone/repos/<user>/keystone-config`. There is no pointer
+/// file, environment override, or filesystem heuristic — every caller in the
+/// codebase MUST agree on this single rule.
+///
+/// CRITICAL: under `sudo`, `$HOME` is `/root` while the consumer flake lives
+/// under the invoker's home. When `$SUDO_USER` is set we resolve the home
+/// directory from passwd (via `getent`) instead of trusting `$HOME`. When
+/// only `$USER` is set we trust `$HOME` directly.
+///
+/// CRITICAL: the agent kept reinventing pointer-file resolution because it
+/// matches NixOS training-corpus patterns. Do not reintroduce it here. See
+/// `conventions/architecture.consumer-flake-path.md` and the
+/// `consumer-flake-path-regression` flake check.
+pub fn canonical_consumer_flake_path() -> Result<PathBuf> {
+    let sudo_user = std::env::var("SUDO_USER")
+        .ok()
+        .filter(|value| !value.is_empty());
+    let env_user = std::env::var("USER").ok().filter(|value| !value.is_empty());
+    let user = sudo_user.clone().or_else(|| env_user.clone()).context(
+        "Cannot determine current user: $USER is unset.\n\
+             The Keystone consumer flake lives at \
+             $HOME/.keystone/repos/$USER/keystone-config.",
+    )?;
+    let home = match &sudo_user {
+        Some(invoker) => lookup_user_home(invoker)
+            .or_else(home_dir)
+            .with_context(|| format!("Failed to resolve home directory for {invoker}"))?,
+        None => home_dir().context("Failed to get home directory")?,
+    };
+    Ok(home
+        .join(".keystone")
+        .join("repos")
+        .join(user)
+        .join("keystone-config"))
 }
 
-fn find_repo_with_pointer(flake_override: Option<&Path>, pointer_file: &Path) -> Result<PathBuf> {
-    // 1. Explicit --flake flag.
-    if let Some(path) = flake_override {
-        return validate_repo_path(path).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Path provided via --flake is not a valid Keystone config repo: {}\n\
-                 Expected flake.nix + hosts/ (mkSystemFlake) or flake.nix + hosts.nix (legacy).",
-                path.display()
-            )
-        });
-    }
-
-    // 2. System pointer file.
-    if let Some(path) = read_system_flake_pointer_from(pointer_file) {
-        return validate_repo_path(&path).ok_or_else(|| {
-            anyhow::anyhow!(
-                "{} points to '{}', but that path \
-                 is not a valid Keystone config repo.\n\
-                 Fix keystone.systemFlake.path in your NixOS config, or use --flake <path>.",
-                pointer_file.display(),
-                path.display()
-            )
-        });
-    }
-
-    // 3. No pointer — clear error.
-    anyhow::bail!(
-        "Cannot find a Keystone config repo.\n\
-         Looked for:\n\
-           1. --flake <path> CLI flag\n\
-           2. {} (written by keystone.systemFlake)\n\
-         Use --flake <path> to specify the consumer flake explicitly, or ensure that\n\
-         keystone.systemFlake.path is set correctly in your NixOS configuration.",
-        pointer_file.display()
-    )
+/// Locate the active Keystone config repository at the canonical path.
+///
+/// The consumer flake MUST live at `$HOME/.keystone/repos/$USER/keystone-config`.
+/// `ks` and all keystone shell scripts derive this path from `$USER` directly.
+/// There is no pointer file, environment variable, or filesystem heuristic.
+pub fn find_repo() -> Result<PathBuf> {
+    let path = canonical_consumer_flake_path()?;
+    validate_repo_path(&path).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Keystone consumer flake not found at the canonical path: {}\n\
+             Expected flake.nix + hosts/ (mkSystemFlake) or flake.nix + hosts.nix (legacy).\n\
+             Clone or move your consumer flake to that location.",
+            path.display()
+        )
+    })
 }
 
 /// Discover a local checkout for a repo registry key (`owner/repo`).
@@ -224,7 +234,7 @@ pub fn resolve_keystone_repo() -> Result<PathBuf> {
         }
     }
 
-    if let Ok(repo_root) = find_repo(None) {
+    if let Ok(repo_root) = find_repo() {
         if let Some(keystone_repo) = find_local_repo(&repo_root, "ncrmro/keystone") {
             if looks_like_keystone_repo(&keystone_repo) {
                 return Ok(keystone_repo);
@@ -1120,7 +1130,7 @@ pub async fn create_github_repo(repo_path: &std::path::Path, repo_name: &str) ->
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn write_flake_repo(path: &Path) {
@@ -1209,72 +1219,207 @@ mod tests {
         assert!(detect_layout(dir.path()).is_none());
     }
 
-    // --- find_repo tests ---
+    // --- canonical_consumer_flake_path / find_repo tests ---
+    //
+    // The path is a deterministic function of $USER and $HOME; we exercise
+    // both at once by overriding HOME (and USER on hosts where SUDO_USER is
+    // unset) to point at a fixture under tempfile.
 
-    #[test]
-    fn find_repo_flake_override_accepted() {
-        let _guard = SkipNixEvalGuard::new();
-        let repo = tempfile::tempdir().unwrap();
-        write_flake_repo(repo.path());
+    /// Crate-wide guard for tests that mutate $HOME, $USER, or $SUDO_USER.
+    /// Cargo runs all #[test]s in a single process by default, so any test
+    /// that pokes those env vars MUST acquire this lock to avoid racing
+    /// the canonical-path tests in this module and the gate test in
+    /// `cmd::update_menu::tests`. There is no per-module variant — every
+    /// env-mutating test in the crate locks the same mutex.
+    pub(crate) static USER_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-        let found = find_repo(Some(repo.path())).unwrap();
-        assert_eq!(found, std::fs::canonicalize(repo.path()).unwrap());
+    /// Run `body` with $HOME and $USER overridden so the canonical path
+    /// resolves to a tempfile-backed location. Restores the prior env on
+    /// drop, with a process-wide mutex to keep parallel tests sane.
+    fn with_user_env<F: FnOnce(&Path, &str)>(user: &str, body: F) {
+        let _lock = USER_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let home = tempfile::tempdir().unwrap();
+        let prior_home = std::env::var_os("HOME");
+        let prior_user = std::env::var_os("USER");
+        let prior_sudo_user = std::env::var_os("SUDO_USER");
+        std::env::set_var("HOME", home.path());
+        std::env::set_var("USER", user);
+        // SUDO_USER takes precedence over USER in canonical_consumer_flake_path,
+        // so explicitly clear it for tests that want to control the result.
+        std::env::remove_var("SUDO_USER");
+        body(home.path(), user);
+        if let Some(value) = prior_home {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(value) = prior_user {
+            std::env::set_var("USER", value);
+        } else {
+            std::env::remove_var("USER");
+        }
+        if let Some(value) = prior_sudo_user {
+            std::env::set_var("SUDO_USER", value);
+        }
     }
 
     #[test]
-    fn find_repo_flake_override_invalid_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let invalid = dir.path().join("not-a-repo");
-        std::fs::create_dir_all(&invalid).unwrap();
-        // No flake.nix → should error
-        let err = find_repo(Some(&invalid)).unwrap_err();
-        assert!(err.to_string().contains("--flake"));
+    fn canonical_consumer_flake_path_uses_user_and_home() {
+        with_user_env("alice", |home, _| {
+            let path = canonical_consumer_flake_path().unwrap();
+            assert_eq!(
+                path,
+                home.join(".keystone")
+                    .join("repos")
+                    .join("alice")
+                    .join("keystone-config")
+            );
+        });
     }
 
     #[test]
-    fn find_repo_pointer_file_resolves_valid_repo() {
-        let _guard = SkipNixEvalGuard::new();
-        let repo = tempfile::tempdir().unwrap();
-        write_flake_repo(repo.path());
+    fn canonical_consumer_flake_path_prefers_sudo_user() {
+        // SUDO_USER must win over USER for the username component of the
+        // path. We use a deliberately-nonexistent invoker so `getent` fails
+        // and the resolver falls back to $HOME (which the test controls).
+        // A separate test exercises the real getent lookup path against the
+        // running process's own user.
+        let _lock = USER_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let home = tempfile::tempdir().unwrap();
+        let prior_home = std::env::var_os("HOME");
+        let prior_user = std::env::var_os("USER");
+        let prior_sudo_user = std::env::var_os("SUDO_USER");
+        std::env::set_var("HOME", home.path());
+        std::env::set_var("USER", "root");
+        // CRITICAL: this username must be guaranteed-absent from passwd, or
+        // the assertion below would compare against an unrelated home.
+        std::env::set_var("SUDO_USER", "ks-test-nonexistent-invoker");
 
-        // Write a pointer file pointing at the valid repo.
-        let pointer_dir = tempfile::tempdir().unwrap();
-        let pointer = pointer_dir.path().join("keystone-system-flake");
-        std::fs::write(&pointer, format!("{}\n", repo.path().display())).unwrap();
-
-        // Use find_repo_with_pointer to exercise the pointer-file branch end-to-end.
-        let found = find_repo_with_pointer(None, &pointer).unwrap();
-        assert_eq!(found, std::fs::canonicalize(repo.path()).unwrap());
-    }
-
-    #[test]
-    fn find_repo_pointer_file_invalid_repo_errors() {
-        // Pointer file points at a path that is not a valid repo.
-        let tmp = tempfile::tempdir().unwrap();
-        let pointer = tmp.path().join("keystone-system-flake");
-        let bad_repo = tmp.path().join("bad-repo");
-        std::fs::create_dir_all(&bad_repo).unwrap();
-        // No flake.nix in bad_repo.
-        std::fs::write(&pointer, format!("{}\n", bad_repo.display())).unwrap();
-
-        let err = find_repo_with_pointer(None, &pointer).unwrap_err();
-        assert!(
-            err.to_string().contains("keystone.systemFlake.path")
-                || err.to_string().contains("not a valid")
+        let path = canonical_consumer_flake_path().unwrap();
+        assert_eq!(
+            path,
+            home.path()
+                .join(".keystone")
+                .join("repos")
+                .join("ks-test-nonexistent-invoker")
+                .join("keystone-config"),
+            "SUDO_USER must win over USER so `sudo ks` still resolves the invoker's checkout"
         );
+
+        if let Some(value) = prior_home {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(value) = prior_user {
+            std::env::set_var("USER", value);
+        } else {
+            std::env::remove_var("USER");
+        }
+        if let Some(value) = prior_sudo_user {
+            std::env::set_var("SUDO_USER", value);
+        } else {
+            std::env::remove_var("SUDO_USER");
+        }
     }
 
     #[test]
-    fn find_repo_no_pointer_no_override_errors() {
-        // Use a nonexistent pointer file — simulates a non-NixOS or fresh host.
-        let tmp = tempfile::tempdir().unwrap();
-        let missing_pointer = tmp.path().join("keystone-system-flake");
-        // Don't create the pointer file.
+    fn canonical_consumer_flake_path_uses_invoker_home_under_sudo() {
+        // Real-world contract: under `sudo` $HOME is /root but the consumer
+        // flake lives in the invoker's home. We resolve the invoker's home
+        // via passwd (getent). This test exercises that path against the
+        // running process's actual user so we don't need to mock getent.
+        let Some(real_user) = std::process::Command::new("id")
+            .arg("-un")
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .filter(|value| !value.is_empty())
+        else {
+            eprintln!("skipping: cannot determine current user via id -un");
+            return;
+        };
+        // Skip when getent is not available on PATH (Nix sandbox builds).
+        if std::process::Command::new("getent")
+            .args(["passwd", &real_user])
+            .output()
+            .map(|o| !o.status.success())
+            .unwrap_or(true)
+        {
+            eprintln!("skipping: getent passwd {real_user} not resolvable");
+            return;
+        }
+        let Some(real_home) = lookup_user_home(&real_user) else {
+            eprintln!("skipping: lookup_user_home returned None");
+            return;
+        };
 
-        let err = find_repo_with_pointer(None, &missing_pointer).unwrap_err();
-        // Error should mention the pointer file location and --flake.
-        let msg = err.to_string();
-        assert!(msg.contains("--flake") || msg.contains("keystone.systemFlake"));
+        let _lock = USER_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let prior_home = std::env::var_os("HOME");
+        let prior_user = std::env::var_os("USER");
+        let prior_sudo_user = std::env::var_os("SUDO_USER");
+        // Simulate a sudo invocation: HOME=/root, USER=root, SUDO_USER=invoker.
+        std::env::set_var("HOME", "/root");
+        std::env::set_var("USER", "root");
+        std::env::set_var("SUDO_USER", &real_user);
+
+        let path = canonical_consumer_flake_path().unwrap();
+        let expected = real_home
+            .join(".keystone")
+            .join("repos")
+            .join(&real_user)
+            .join("keystone-config");
+        assert_eq!(
+            path, expected,
+            "under sudo, the consumer-flake path must root at the invoker's home, not /root"
+        );
+
+        if let Some(value) = prior_home {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(value) = prior_user {
+            std::env::set_var("USER", value);
+        } else {
+            std::env::remove_var("USER");
+        }
+        if let Some(value) = prior_sudo_user {
+            std::env::set_var("SUDO_USER", value);
+        } else {
+            std::env::remove_var("SUDO_USER");
+        }
+    }
+
+    #[test]
+    fn find_repo_resolves_canonical_layout() {
+        let _guard = SkipNixEvalGuard::new();
+        with_user_env("alice", |home, user| {
+            let repo = home
+                .join(".keystone")
+                .join("repos")
+                .join(user)
+                .join("keystone-config");
+            std::fs::create_dir_all(&repo).unwrap();
+            write_flake_repo(&repo);
+
+            let found = find_repo().unwrap();
+            assert_eq!(found, std::fs::canonicalize(&repo).unwrap());
+        });
+    }
+
+    #[test]
+    fn find_repo_errors_when_canonical_path_missing() {
+        with_user_env("alice", |_home, _| {
+            // Don't create the repo at all.
+            let err = find_repo().unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("canonical path"),
+                "expected error to mention canonical path, got: {msg}"
+            );
+        });
     }
 
     #[test]
@@ -1336,13 +1481,22 @@ mod tests {
     fn find_repo_rejects_module_function_hosts_nix() {
         let _guard = SkipNixEvalGuard::new();
         // A directory with only hosts.nix (no flake.nix) must be rejected —
-        // this is the module-function masquerading as attrset bug.
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("hosts.nix"), "{ config, ... }: {}").unwrap();
-        // No flake.nix → detect_layout returns None → validate_repo_path returns None.
-        assert!(validate_repo_path(dir.path()).is_none());
-        // find_repo with --flake pointing here must error
-        let err = find_repo(Some(dir.path())).unwrap_err();
-        assert!(err.to_string().contains("--flake"));
+        // this is the module-function-masquerading-as-attrset bug. The fix
+        // lives in detect_layout, which now requires flake.nix; verifying it
+        // through validate_repo_path covers the full surface that find_repo
+        // itself exercises after #461.
+        with_user_env("alice", |home, user| {
+            let repo = home
+                .join(".keystone")
+                .join("repos")
+                .join(user)
+                .join("keystone-config");
+            std::fs::create_dir_all(&repo).unwrap();
+            std::fs::write(repo.join("hosts.nix"), "{ config, ... }: {}").unwrap();
+            // No flake.nix at the canonical path → find_repo errors.
+            assert!(validate_repo_path(&repo).is_none());
+            let err = find_repo().unwrap_err();
+            assert!(err.to_string().contains("canonical path"));
+        });
     }
 }

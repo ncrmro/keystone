@@ -106,7 +106,6 @@ pkgs.runCommand "ks-doctor-report"
     export CODE_DIR="$HOME/repos"
     export WORKTREE_DIR="$HOME/.worktrees"
     export DEEPWORK_ADDITIONAL_JOBS_FOLDERS="$HOME/.keystone/repos/ncrmro/keystone/.deepwork/jobs:$HOME/missing-jobs"
-    export NIXOS_CONFIG_DIR="$HOME/nixos-config"
 
     output="$(${pkgs.bash}/bin/bash ${../../packages/ks-legacy/doctor-report.sh} \
       --repo-root "$HOME/nixos-config" \

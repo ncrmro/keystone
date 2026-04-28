@@ -22,10 +22,10 @@ let
   adminUsername = osCfg.adminUsername;
 
   # CRITICAL: admin identity is a single fact. Exactly one user has admin =
-  # true; that user owns adminUsername, which downstream derivations
-  # (systemFlake.path, admin home directory) depend on. Authorization is
-  # separate — add extraGroups = [ "wheel" ] to any other user that needs
-  # sudo.
+  # true; that user owns adminUsername, which downstream derivations (admin
+  # home directory and the canonical consumer-flake path used by ks) depend
+  # on. Authorization is separate — add extraGroups = [ "wheel" ] to any
+  # other user that needs sudo.
   adminUsersNames = filter (n: cfg.${n}.admin or false) (attrNames cfg);
 
   keysCfg = config.keystone.keys;
@@ -206,7 +206,8 @@ in
         {
           # adminUsername must name the admin-flagged user. Explicit assignments
           # still win (via mkDefault in default.nix) but cannot drift from the
-          # flag — silent mismatch would break systemFlake.path.
+          # flag — silent mismatch would break admin-derived paths
+          # (e.g., the canonical consumer-flake path under the admin's home).
           assertion = adminUsersNames == [ ] || elem adminUsername adminUsersNames;
           message = ''
             keystone.os.adminUsername = "${adminUsername}" but that user is

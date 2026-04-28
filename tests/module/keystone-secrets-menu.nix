@@ -21,7 +21,6 @@ pkgs.runCommand "test-keystone-secrets-menu"
     export REPO_ROOT="${../..}"
     export HOME="$PWD/home"
     export XDG_RUNTIME_DIR="$PWD/runtime"
-    export KEYSTONE_SYSTEM_FLAKE_POINTER_FILE="$PWD/keystone-system-flake"
     export PATH="$PWD/bin:${
       lib.makeBinPath [
         pkgs.bash
@@ -35,14 +34,16 @@ pkgs.runCommand "test-keystone-secrets-menu"
       ]
     }"
 
-    NIXOS_CONFIG_DIR="$PWD/nixos-config"
+    # The desktop scripts resolve the consumer flake at the canonical path
+    # $HOME/.keystone/repos/$USER/keystone-config. Override $USER too so
+    # the harness controls the lookup without a pointer-file or env-var
+    # mechanism.
+    export USER="ncrmro"
+    NIXOS_CONFIG_DIR="$HOME/.keystone/repos/ncrmro/keystone-config"
 
     mkdir -p "$HOME/.local/bin" "$HOME/.age" "$XDG_RUNTIME_DIR" "$NIXOS_CONFIG_DIR/agenix-secrets/secrets" \
       "$NIXOS_CONFIG_DIR/home-manager/ncrmro" "$NIXOS_CONFIG_DIR/hosts/ocean" \
       "$NIXOS_CONFIG_DIR/hosts/ncrmro-workstation" "$PWD/bin"
-
-    # Write the pointer file so scripts can locate the system flake.
-    printf '%s\n' "$NIXOS_CONFIG_DIR" > "$KEYSTONE_SYSTEM_FLAKE_POINTER_FILE"
 
     cat > "$HOME/.age/yubikey-identity.txt" <<'EOF'
     # serial:36854515
@@ -179,16 +180,14 @@ pkgs.runCommand "test-keystone-secrets-menu"
     preview_secret="$(keystone-secrets-menu preview-secret secrets/ncrmro-github-token.age)"
     printf '%s\n' "$preview_secret" | grep -F 'YubiKey: identity file present, YubiKey detected: 36854515' >/dev/null
 
+    # Hide the agenix-secrets subtree so the canonical-path lookup yields
+    # a consumer flake without secrets, and verify the Secrets entry is
+    # suppressed.
     mv "$NIXOS_CONFIG_DIR/agenix-secrets" "$PWD/hidden-agenix-secrets"
-    # Point the pointer file at a path without agenix-secrets to test the "no secrets" case.
-    printf '%s\n' "$PWD/no-secrets-flake" > "$KEYSTONE_SYSTEM_FLAKE_POINTER_FILE"
-    mkdir -p "$PWD/no-secrets-flake"
     setup_entries_json="$(keystone-setup-menu entries-json)"
     printf '%s\n' "$setup_entries_json" | jq -e '
       any(.[]; .Text == "Secrets") | not
     ' >/dev/null
-    # Restore the pointer file and agenix-secrets.
-    printf '%s\n' "$NIXOS_CONFIG_DIR" > "$KEYSTONE_SYSTEM_FLAKE_POINTER_FILE"
     mv "$PWD/hidden-agenix-secrets" "$NIXOS_CONFIG_DIR/agenix-secrets"
 
     keystone-secrets-menu dispatch $'view-value\tsecrets/ncrmro-github-token.age'

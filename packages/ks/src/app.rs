@@ -293,13 +293,12 @@ impl App {
 }
 
 fn current_system_flake_path() -> Option<PathBuf> {
-    // Read the authoritative pointer written at NixOS activation time.
-    let content = std::fs::read_to_string("/run/current-system/keystone-system-flake").ok()?;
-    let path = content.trim();
-    if path.is_empty() {
-        return None;
-    }
-    normalize_flake_repo_path(&PathBuf::from(path))
+    // The active consumer flake lives at the canonical, deterministic path
+    // for this user. No pointer file, no env var, no walk — see
+    // `repo::canonical_consumer_flake_path` and the
+    // `consumer-flake-path-regression` flake check.
+    let path = repo::canonical_consumer_flake_path().ok()?;
+    normalize_flake_repo_path(&path)
 }
 
 fn normalize_flake_repo_path(path: &Path) -> Option<PathBuf> {

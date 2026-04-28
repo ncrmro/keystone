@@ -33,22 +33,22 @@ machine's hostname as resolved from `hosts.nix`.
 
 ### Repo Discovery
 
-**REQ-019.1** `ks` MUST discover the consumer flake repository root using
-the following priority chain:
+**REQ-019.1** `ks` MUST discover the consumer flake repository at the
+canonical path `$HOME/.keystone/repos/$USER/keystone-config`. The path is
+a deterministic function of `$USER` (or `$SUDO_USER` when running through
+`sudo`) and `$HOME`. There is no `--flake` override flag, environment-variable
+override, pointer file, or filesystem-heuristic fallback.
 
-1. `--flake <path>` CLI flag (explicit override)
-2. `/run/current-system/keystone-system-flake` pointer file (written at NixOS activation time by `keystone.systemFlake`)
-3. Hard error with guidance
-
-**REQ-019.1a** The pointer file MUST contain the absolute path to the consumer
-flake followed by a newline. It is written by `system.extraSystemBuilderCmds`
-in `modules/shared/system-flake.nix` using the value of `keystone.systemFlake.path`.
-
-**REQ-019.1b** A valid consumer flake MUST contain `flake.nix` AND either
+**REQ-019.1a** A valid consumer flake MUST contain `flake.nix` AND either
 `hosts/` (mkSystemFlake layout) or `hosts.nix` (legacy layout). A bare
-`hosts.nix` without `flake.nix` is rejected.
+`hosts.nix` without `flake.nix` is rejected — this catches the
+module-function-masquerading-as-attrset bug.
 
-**REQ-019.2** All discovered paths MUST be resolved via `std::fs::canonicalize`
+**REQ-019.1b** When the canonical path is missing or fails the layout
+check, `ks` MUST exit with a clear error pointing the user at the
+canonical path and the layout requirement.
+
+**REQ-019.2** Discovered paths MUST be resolved via `std::fs::canonicalize`
 to eliminate symlinks, because Nix `path:` flake URIs break on symlinks.
 
 ### Help and usage

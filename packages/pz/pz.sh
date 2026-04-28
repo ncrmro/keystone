@@ -92,44 +92,28 @@ launcher_state_json() {
 }
 
 find_hosts_repo() {
-  # Prefer the authoritative pointer file written at NixOS activation time.
-  local _pointer_file="${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
-  if [[ -r "$_pointer_file" ]]; then
-    local _path
-    _path="$(tr -d '\n' < "$_pointer_file" 2>/dev/null || true)"
-    if [[ -n "$_path" && -f "$_path/hosts.nix" ]]; then
-      readlink -f "$_path"
-      return 0
-    fi
+  # The consumer flake — the only repo pz cares about — lives at the
+  # canonical path $HOME/.keystone/repos/$USER/keystone-config (a
+  # deterministic function of $USER and $HOME). Tests override $HOME and
+  # $USER to redirect this lookup; production callers MUST NOT introduce
+  # an env-var override or filesystem cascade. See
+  # conventions/architecture.consumer-flake-path.md.
+  local _user="${USER:-}"
+  if [[ -z "$_user" ]]; then
+    _user="$(id -un 2>/dev/null || true)"
   fi
-
-  if [[ -n "${NIXOS_CONFIG_DIR:-}" ]] && [[ -f "$NIXOS_CONFIG_DIR/hosts.nix" ]]; then
-    readlink -f "$NIXOS_CONFIG_DIR"
+  if [[ -z "$_user" ]]; then
+    echo "error: cannot determine current user (\$USER unset and id failed)" >&2
+    return 1
+  fi
+  local _root="$HOME/.keystone/repos/${_user}/keystone-config"
+  if [[ -f "$_root/hosts.nix" ]]; then
+    readlink -f "$_root"
     return 0
   fi
 
-  local git_root=""
-  git_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
-  if [[ -n "$git_root" && -f "$git_root/hosts.nix" ]]; then
-    readlink -f "$git_root"
-    return 0
-  fi
-
-  if [[ -d "$HOME/.keystone/repos" ]]; then
-    local match=""
-    match=$(find "$HOME/.keystone/repos" -maxdepth 3 -name hosts.nix -print -quit)
-    if [[ -n "$match" ]]; then
-      readlink -f "$(dirname "$match")"
-      return 0
-    fi
-  fi
-
-  if [[ -f "$HOME/nixos-config/hosts.nix" ]]; then
-    readlink -f "$HOME/nixos-config"
-    return 0
-  fi
-
-  echo "error: cannot find nixos-config repo (no hosts.nix found)" >&2
+  echo "error: Keystone consumer flake not found at canonical path: $_root" >&2
+  echo "  Expected hosts.nix at $_root/hosts.nix." >&2
   return 1
 }
 

@@ -7,19 +7,26 @@
 set -euo pipefail
 
 keystone_config_repo_root() {
-  # Authoritative source: pointer file written at NixOS activation time.
-  # KEYSTONE_SYSTEM_FLAKE_POINTER_FILE may be set in test environments.
-  local _pointer_file="${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
-  if [[ -r "$_pointer_file" ]]; then
-    local _path
-    _path="$(tr -d '\n' < "$_pointer_file")"
-    if [[ -n "$_path" && -d "$_path" ]]; then
-      printf "%s\n" "$_path"
-      return 0
-    fi
+  # The Keystone consumer flake lives at the canonical path
+  # $HOME/.keystone/repos/$USER/keystone-config — a deterministic function
+  # of $USER and $HOME. Tests override $HOME (and $USER, where needed)
+  # to redirect this lookup; production callers MUST NOT introduce a
+  # different env var or pointer-file mechanism.
+  local _user="${USER:-}"
+  if [[ -z "$_user" ]]; then
+    _user="$(id -un 2>/dev/null || true)"
+  fi
+  if [[ -z "$_user" ]]; then
+    printf "Cannot determine current user (\$USER unset).\n" >&2
+    return 1
+  fi
+  local _root="$HOME/.keystone/repos/${_user}/keystone-config"
+  if [[ -d "$_root" ]]; then
+    printf "%s\n" "$_root"
+    return 0
   fi
 
-  printf "Unable to locate system flake: %s not found or invalid.\n" "$_pointer_file" >&2
+  printf "Keystone consumer flake not found at canonical path: %s\n" "$_root" >&2
   return 1
 }
 
