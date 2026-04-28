@@ -312,6 +312,68 @@ ssh_cmd() {
         "${ADMIN_USERNAME}@localhost" "$@"
 }
 
+# Validate that the Hyprland desktop session started cleanly under
+# the autologin we baked into the image.  Probes:
+#   * greetd is enabled (skip non-desktop hosts gracefully)
+#   * Hyprland is running for the admin user
+#   * hyprlock is running (or has run — keystone-startup-lock may
+#     legitimately exit after the startup grace window)
+#   * journalctl shows no Hyprland config-parser errors
+# Returns 0 when the host has no desktop, when validation passes, or
+# logs warnings / non-zero when something is off.
+validate_desktop_session() {
+    log_info "Direct: checking for Hyprland desktop session..."
+
+    if ! ssh_cmd 'systemctl is-active greetd.service >/dev/null 2>&1'; then
+        log_info "Direct: greetd not active — skipping desktop validation"
+        return 0
+    fi
+
+    log_info "Direct: greetd active; waiting up to 120 s for Hyprland to start..."
+    local i hypr_pid=""
+    for i in $(seq 1 120); do
+        hypr_pid="$(ssh_cmd "pgrep -u ${ADMIN_USERNAME} -x Hyprland 2>/dev/null | head -1" 2>/dev/null || true)"
+        [[ -n "$hypr_pid" ]] && break
+        sleep 1
+    done
+
+    if [[ -z "$hypr_pid" ]]; then
+        log_error "Direct: Hyprland never started for ${ADMIN_USERNAME} (greetd autologin or hyprland.service may have failed)"
+        ssh_cmd "journalctl --user-unit '*' -p err --no-pager -n 30 2>&1 || journalctl _UID=\$(id -u ${ADMIN_USERNAME}) -p err --no-pager -n 30" | head -30 >&2 || true
+        return 1
+    fi
+    log_ok "Direct: Hyprland is running (pid ${hypr_pid})"
+
+    # hyprlock: keystone-startup-lock starts hyprlock, but the script
+    # explicitly tolerates it exiting after the grace window.  Treat
+    # absence as a warning, not a hard fail; the journal grep below is
+    # the authoritative check for hyprlock config errors.
+    if ssh_cmd "pgrep -u ${ADMIN_USERNAME} -x hyprlock >/dev/null 2>&1"; then
+        log_ok "Direct: hyprlock is running"
+    else
+        log_warn "Direct: hyprlock not running (startup-lock may have exited cleanly — checking journal)"
+    fi
+
+    # Config / parser errors in the user journal.  Look for anything
+    # priority<=err coming from Hyprland or hyprlock; these are the
+    # signatures of bad keybindings, missing executables, or syntax
+    # errors in hyprland.conf/hyprlock.conf.
+    local cfg_errors
+    cfg_errors="$(ssh_cmd "
+        journalctl _UID=\$(id -u ${ADMIN_USERNAME}) -p err --no-pager --since '10 minutes ago' 2>/dev/null \
+          | grep -E 'Hyprland|hyprlock|hyprland\\.conf|hyprlock\\.conf|Config error|Parse error' \
+          | grep -v 'systemd\\[' \
+          || true" 2>/dev/null)"
+    if [[ -n "$cfg_errors" ]]; then
+        log_error "Direct: Hyprland/hyprlock journal errors:"
+        printf '%s\n' "$cfg_errors" | head -20 >&2
+        return 1
+    fi
+    log_ok "Direct: no Hyprland/hyprlock config errors in journal"
+
+    return 0
+}
+
 # Run the headless installer via `ks install --host --disk` and feed the
 # required destructive confirmation token over stdin.
 run_e2e_installer() {
@@ -658,21 +720,36 @@ run_direct_image() {
 
     # ── build the VM image ────────────────────────────────────────────────────
 
-    log_info "Building packages.${system}.vm-image-${host} ..."
+    log_info "Building vm-image-${host} with desktop e2e overrides ..."
 
     local keystone_expr="self.inputs.keystone"
     if [[ -n "$KEYSTONE_LOCKED_PATH" && -e "$KEYSTONE_LOCKED_PATH" ]]; then
         keystone_expr="builtins.getFlake (toString $(printf '%q' "$KEYSTONE_LOCKED_PATH"))"
     fi
 
-    # Build via the flake's packages output (produced by mkSystemFlake).
+    # Build via keystone.lib.mkVMImage directly (instead of the
+    # auto-exposed packages.${system}.vm-image-${host}) so we can
+    # layer in test-only overrides via extraConfig:
+    #
+    # 1. greetd autologin — without this the desktop session never
+    #    starts on a headless run, so we couldn't observe whether
+    #    Hyprland/hyprlock came up cleanly.  initial_session has
+    #    no effect on hosts that don't enable greetd.
     nix build \
         --impure \
         --expr "
           let
             self = builtins.getFlake (toString $(printf '%q' "$snapshot_dir"));
-          in
-          self.outputs.packages.${system}.vm-image-${host}" \
+            keystone = ${keystone_expr};
+          in keystone.lib.mkVMImage {
+            nixosSystem = self.outputs.nixosConfigurations.${host};
+            extraConfig = {
+              services.greetd.settings.initial_session = {
+                command = \"env XDG_SESSION_CLASS=user uwsm start -F Hyprland\";
+                user = \"${ADMIN_USERNAME}\";
+              };
+            };
+          }" \
         --out-link "$direct_result" \
         --print-build-logs
 
@@ -900,6 +977,17 @@ run_direct_image() {
 
     if (( failed )); then
         log_error "Direct: health checks FAILED"
+        direct_cleanup
+        cleanup_project_snapshot
+        exit 1
+    fi
+
+    # Desktop validation — proves Hyprland/hyprlock actually start
+    # under the autologin we baked in, and that nothing in their
+    # config files trips a parser/runtime error.  No-op on hosts
+    # without greetd (server-ocean and friends).
+    if ! validate_desktop_session; then
+        log_error "Direct: desktop validation FAILED"
         direct_cleanup
         cleanup_project_snapshot
         exit 1
