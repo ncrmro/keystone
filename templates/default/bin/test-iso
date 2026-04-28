@@ -795,6 +795,9 @@ run_direct_image() {
     fi
     feed_luks_passphrase() {
         local vm_name="$1" pass="$2" pty=""
+        local trace="${DIRECT_LUKS_FEED_TRACE:-/tmp/keystone-direct-feed-trace.log}"
+        : > "$trace" 2>/dev/null || true
+        printf '[%s] feeder start vm=%s\n' "$(date +%H:%M:%S.%3N)" "$vm_name" >> "$trace"
         # Wait up to 60 s for the libvirt domain to appear; before
         # then there is no PTY to write to.
         local i
@@ -804,7 +807,11 @@ run_direct_image() {
             [[ -n "$pty" ]] && break
             sleep 1
         done
-        [[ -z "$pty" ]] && return 0
+        if [[ -z "$pty" ]]; then
+            printf '[%s] feeder: PTY not found, aborting\n' "$(date +%H:%M:%S.%3N)" >> "$trace"
+            return 0
+        fi
+        printf '[%s] feeder: PTY=%s\n' "$(date +%H:%M:%S.%3N)" "$pty" >> "$trace"
 
         # CRITICAL: do NOT start writing until systemd-boot has handed
         # off to the kernel.  systemd-boot reads the same serial console
@@ -821,7 +828,9 @@ run_direct_image() {
         # still being well before the LUKS prompt appears (~T=10-30 s
         # measured on this host); ask-password waits indefinitely so
         # arriving "late" never matters.
-        sleep "${DIRECT_LUKS_FEED_DELAY:-15}"
+        local delay="${DIRECT_LUKS_FEED_DELAY:-15}"
+        printf '[%s] feeder: sleeping %ss to clear sd-boot menu\n' "$(date +%H:%M:%S.%3N)" "$delay" >> "$trace"
+        sleep "$delay"
 
         # Feed the passphrase every 5 s until killed.  The bounded loop
         # we used before (60 × 5 s = 5 min) assumed LUKS would prompt
@@ -831,8 +840,14 @@ run_direct_image() {
         # out.  Looping forever is safe: the main script kills us once
         # SSH succeeds (or via the EXIT trap on failure), and
         # post-unlock writes are harmless serial-login noise.
+        local n=0
         while true; do
-            printf '%s\n' "$pass" > "$pty" 2>/dev/null || true
+            n=$((n+1))
+            if printf '%s\n' "$pass" > "$pty" 2>/dev/null; then
+                printf '[%s] feed %d ok pty=%s\n' "$(date +%H:%M:%S.%3N)" "$n" "$pty" >> "$trace"
+            else
+                printf '[%s] feed %d FAIL\n' "$(date +%H:%M:%S.%3N)" "$n" >> "$trace"
+            fi
             sleep 5
         done
     }
