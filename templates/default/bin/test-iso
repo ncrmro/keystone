@@ -406,6 +406,51 @@ validate_desktop_session() {
         return 1
     fi
 
+    # Login-session sanity: the admin's seat-attached session must
+    # be Active (greetd autologin handed off cleanly) and ideally
+    # report LockedHint=yes (keystone-startup-lock presented a real
+    # lock surface, not just spawned hyprlock).  We only warn on the
+    # LockedHint, since some hyprlock paths exit cleanly after the
+    # user authenticates during the validation window.
+    if ! validate_loginctl_session; then
+        return 1
+    fi
+
+    return 0
+}
+
+# Verify the admin user has an Active login session and capture its
+# LockedHint so a regression in keystone-startup-lock is observable
+# even when hyprlock has already exited cleanly.
+validate_loginctl_session() {
+    log_info "Direct: checking loginctl session for ${ADMIN_USERNAME}..."
+
+    local session_id
+    session_id="$(ssh_cmd "loginctl list-sessions --no-legend --no-pager 2>/dev/null \
+        | awk -v u='${ADMIN_USERNAME}' '\$3 == u { print \$1; exit }'" 2>/dev/null)"
+    if [[ -z "$session_id" ]]; then
+        log_error "Direct: no loginctl session for ${ADMIN_USERNAME}"
+        ssh_cmd "loginctl list-sessions --no-pager 2>&1" >&2 || true
+        return 1
+    fi
+
+    local state locked_hint
+    state="$(ssh_cmd "loginctl show-session ${session_id} -p State --value 2>/dev/null" 2>/dev/null)"
+    locked_hint="$(ssh_cmd "loginctl show-session ${session_id} -p LockedHint --value 2>/dev/null" 2>/dev/null)"
+    if [[ "$state" != "active" ]]; then
+        log_error "Direct: session ${session_id} is '${state}', expected 'active'"
+        ssh_cmd "loginctl session-status ${session_id} --no-pager 2>&1 | head -30" >&2 || true
+        return 1
+    fi
+    log_ok "Direct: session ${session_id} active (LockedHint=${locked_hint:-unknown})"
+
+    # LockedHint=yes is the strongest evidence keystone-startup-lock
+    # presented a real lock surface.  If it is `no` or empty the
+    # session is still Active — flag as warn rather than fail since
+    # hyprlock may have already authenticated and exited.
+    if [[ "$locked_hint" != "yes" ]]; then
+        log_warn "Direct: LockedHint != yes — startup lock either authenticated already or never engaged"
+    fi
     return 0
 }
 
