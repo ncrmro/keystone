@@ -752,6 +752,11 @@ rec {
         "sshKeys"
       ];
       sharedUsers = shared.users or { };
+      # Agent identities applied to every host's keystone.os.agents.
+      # The module system merges this attrset with any per-host
+      # keystone.os.agents declarations, so hosts can add agents without
+      # losing the fleet-wide set.
+      sharedAgents = shared.agents or { };
       # NixOS modules applied OS-wide on every host.
       sharedSystemModules = shared.systemModules or [ ];
       # Home Manager modules applied per-user on every host.
@@ -898,6 +903,9 @@ rec {
                 # Bridge admin.sshKeys to installed hosts so the keys survive
                 # NixOS system activation (which overwrites ~/.ssh/authorized_keys).
                 users.users.${adminUsername}.openssh.authorizedKeys.keys = adminSshKeys;
+              }
+              ++ lib.optional (sharedAgents != { }) {
+                keystone.os.agents = sharedAgents;
               }
               ++ sharedSystemModules
               ++ modules;
