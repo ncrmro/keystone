@@ -332,14 +332,23 @@ validate_desktop_session() {
     log_info "Direct: greetd active; waiting up to 120 s for Hyprland to start..."
     local i hypr_pid=""
     for i in $(seq 1 120); do
-        hypr_pid="$(ssh_cmd "pgrep -u ${ADMIN_USERNAME} -x Hyprland 2>/dev/null | head -1" 2>/dev/null || true)"
+        # Use -f so a wrapper or binary-rename (e.g. uwsm spawning
+        # Hyprland under a different argv0) still counts.
+        hypr_pid="$(ssh_cmd "pgrep -u ${ADMIN_USERNAME} -f '\\bHyprland\\b' 2>/dev/null | head -1" 2>/dev/null || true)"
         [[ -n "$hypr_pid" ]] && break
         sleep 1
     done
 
     if [[ -z "$hypr_pid" ]]; then
         log_error "Direct: Hyprland never started for ${ADMIN_USERNAME} (greetd autologin or hyprland.service may have failed)"
-        ssh_cmd "journalctl --user-unit '*' -p err --no-pager -n 30 2>&1 || journalctl _UID=\$(id -u ${ADMIN_USERNAME}) -p err --no-pager -n 30" | head -30 >&2 || true
+        echo "--- diagnostic: user processes (uid=$(ssh_cmd "id -u ${ADMIN_USERNAME}")) ---" >&2
+        ssh_cmd "ps -u ${ADMIN_USERNAME} -o pid,stat,start,cmd 2>&1 | head -40" >&2 || true
+        echo "--- diagnostic: greetd status ---" >&2
+        ssh_cmd "systemctl status greetd --no-pager -n 30 2>&1" >&2 || true
+        echo "--- diagnostic: user manager status ---" >&2
+        ssh_cmd "loginctl list-sessions --no-pager 2>&1; sudo -n machinectl shell ${ADMIN_USERNAME}@.host /run/current-system/sw/bin/systemctl --user --no-pager --failed 2>&1 || systemctl --user --machine ${ADMIN_USERNAME}@ --no-pager --failed 2>&1" >&2 || true
+        echo "--- diagnostic: user-1000 journal (errors, recent) ---" >&2
+        ssh_cmd "journalctl _UID=\$(id -u ${ADMIN_USERNAME}) -p err --no-pager -n 40 2>&1 || true" >&2 || true
         return 1
     fi
     log_ok "Direct: Hyprland is running (pid ${hypr_pid})"
