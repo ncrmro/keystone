@@ -70,6 +70,51 @@ The intended flow is:
 This gives Keystone Desktop a fast project-oriented navigation model instead of
 just a flat application launcher.
 
+## Adding Nix packages
+
+The **Install** entry in the Mod+Escape main menu opens a package search and
+install flow powered by `keystone-package-menu`.
+
+### How it works
+
+1. Open the main Walker menu (`Mod+Escape`) and select **Install**.
+2. Select **Add Nix package** from the sub-menu.
+3. Type a search term (minimum two characters). Walker searches **nixpkgs**
+   from the consumer flake's locked inputs using `nix search`. The locked
+   revision is used so results match exactly what your system would install.
+4. Select a package from the results.
+5. Choose an install mode:
+   - **Temporary** — opens `nix shell <locked-nixpkgs>#<package>` in a Ghostty
+     terminal, where `<locked-nixpkgs>` is the nixpkgs revision pinned in your
+     `flake.lock`. The package is available only while that terminal session is
+     open. No config files are modified. The shell is cleaned up when you
+     close the terminal.
+   - **Permanent** — appends the package attribute to `home.packages` in your
+     current host's home-manager config, then runs `ks update --dev` (or
+     `ks update --lock` if dev mode is not active). After the rebuild completes
+     you will be reminded to restart your shell with `exec $SHELL`.
+
+### Search engine choice
+
+Keystone uses `nix search` against the locked nixpkgs input from the consumer
+flake. This approach requires no additional tooling (`nix-index`, `manix`, or
+`nix-search-tv`) and guarantees that search results match the exact nixpkgs
+revision pinned in `flake.lock`. The trade-off is that the first search on a
+cold Nix evaluation cache can be slower than index-based alternatives.
+
+### Edge cases
+
+- **Package not found** — a notification is shown and the flow exits cleanly.
+  If the package exists only in a flake input other than nixpkgs, add that
+  flake as a consumer flake input and re-run the search.
+- **Permanent install: no home-manager config found** — the flow notifies you
+  that no matching config file was found and exits without making changes.
+  Ensure a `home-manager/<user>/<hostname>.nix` file exists in the consumer
+  flake for the current host.
+- **Approval semantics** — `ks update --dev` is privilege-gated per
+  `process.privileged-approval`. The permanent install path runs the update
+  inside a Ghostty terminal so the standard approval flow applies.
+
 ## Desktop keybindings
 
 The most important launcher-related keybindings are:

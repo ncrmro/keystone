@@ -137,7 +137,7 @@ main_json() {
       },
       {
         Text: "Install",
-        Subtext: "Search and install packages from the current system flake",
+        Subtext: "Add a Nix package temporarily (nix shell) or permanently (home.packages)",
         Value: "install",
         Icon: "list-add-symbolic",
         SubMenu: "keystone-install"
