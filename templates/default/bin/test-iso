@@ -353,14 +353,27 @@ validate_desktop_session() {
     fi
     log_ok "Direct: Hyprland is running (pid ${hypr_pid})"
 
-    # hyprlock: keystone-startup-lock starts hyprlock, but the script
-    # explicitly tolerates it exiting after the grace window.  Treat
-    # absence as a warning, not a hard fail; the journal grep below is
-    # the authoritative check for hyprlock config errors.
+    # hyprlock: keystone-startup-lock launches hyprlock at session
+    # start and is allowed to exit cleanly after the grace window
+    # if hyprlock stays alive — so absence-now is not necessarily a
+    # bug.  We do, however, require evidence in the journal that
+    # hyprlock was actually launched at least once; otherwise we
+    # have not validated the lockscreen surface at all.
+    local hl_running=0 hl_launched=0
     if ssh_cmd "pgrep -u ${ADMIN_USERNAME} -x hyprlock >/dev/null 2>&1"; then
+        hl_running=1
         log_ok "Direct: hyprlock is running"
-    else
-        log_warn "Direct: hyprlock not running (startup-lock may have exited cleanly — checking journal)"
+    fi
+    if ssh_cmd "journalctl _UID=\$(id -u ${ADMIN_USERNAME}) --no-pager --since '10 minutes ago' 2>/dev/null \
+                  | grep -E 'keystone-startup-lock.*launched hyprlock|hyprlock\\[' >/dev/null"; then
+        hl_launched=1
+        log_ok "Direct: hyprlock was launched (journal evidence)"
+    fi
+    if (( hl_running == 0 && hl_launched == 0 )); then
+        log_error "Direct: hyprlock never launched and is not running — keystone-startup-lock likely failed"
+        ssh_cmd "journalctl _UID=\$(id -u ${ADMIN_USERNAME}) --no-pager --since '10 minutes ago' 2>/dev/null \
+                  | grep -E 'keystone-startup-lock|hyprlock' | tail -30" >&2 || true
+        return 1
     fi
 
     # Config / parser errors in the user journal.  Look for anything
