@@ -68,10 +68,22 @@ let
   llmAgentsVersionCheckHomeHook =
     llmAgentsPkgs.callPackage "${llm-agents-src}/packages/versionCheckHomeHook/default.nix"
       { };
+  # Required since llm-agents.nix commit 4049025 (2026-04-26): packages like
+  # gemini-cli `inherit (perSystem.self) buildNpmPackage`. Upstream wraps
+  # nixpkgs' buildNpmPackage with an eval-time guard that requires
+  # fetchNpmDeps to support `fetcherVersion = 2`. The guard's failure message
+  # tells you to bump nixpkgs (>= 203662a570c4, 2026-02-15) or switch to
+  # overlays.default / the flake packages directly. Without this attr, the
+  # inherit fails with "attribute 'buildNpmPackage' missing" and blocks every
+  # host build.
+  llmAgentsBuildNpmPackage =
+    llmAgentsPkgs.callPackage "${llm-agents-src}/packages/buildNpmPackage/default.nix"
+      { };
   llmAgentsPerSystem = {
     self = {
       wrapBuddy = llmAgentsWrapBuddy;
       versionCheckHomeHook = llmAgentsVersionCheckHomeHook;
+      buildNpmPackage = llmAgentsBuildNpmPackage;
     };
   };
 in
