@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  osConfig ? null,
   ...
 }:
 with lib;
@@ -11,9 +12,26 @@ let
   isAgent = lib.hasPrefix "agent-" config.home.username;
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
   repoCheckout = if isAgent then null else devScripts.resolveRepoCheckout config "keystone";
-  agentsLib = import ../os/agents/lib.nix { inherit lib config pkgs; };
+  # agentsLib reads `config.keystone.os.*`, so it must be constructed with the
+  # NixOS config (osConfig), not the home-manager config tree.
+  agentsLib =
+    if osConfig != null then
+      import ../os/agents/lib.nix {
+        inherit lib pkgs;
+        config = osConfig;
+      }
+    else
+      null;
+  # `keystone.os.agents` is a NixOS-level option, not a home-manager option,
+  # so reading it from `config` always returned { } here and the manifest
+  # never reflected the host's agent set. Bridge via `osConfig` (the standard
+  # home-manager pattern, used elsewhere in keystone for keystone.development
+  # and keystone.repos) so the generated agent-assets.json matches reality.
   osAgents =
-    if config.keystone ? os && config.keystone.os ? agents then config.keystone.os.agents else { };
+    if osConfig != null && osConfig.keystone ? os && osConfig.keystone.os ? agents then
+      osConfig.keystone.os.agents
+    else
+      { };
   manifestRelPath = ".config/keystone/agent-assets.json";
   scriptRelPath = "modules/terminal/scripts/keystone-sync-agent-assets.sh";
   scriptPackage = pkgs.writeShellScriptBin "keystone-sync-agent-assets" (
