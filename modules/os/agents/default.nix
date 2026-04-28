@@ -21,10 +21,17 @@
 #     # SSH public key declared in keystone.keys."agent-researcher"
 #   };
 #
+# Fleet-wide declaration:
+#   Consumer flakes using `mkSystemFlake` can declare agents once via
+#   `shared.agents`; the template injects them into every host's
+#   `keystone.os.agents`. Per-host `keystone.os.agents.<name>` entries merge
+#   with the fleet set (module-system attrset merge), so hosts can add
+#   host-only agents without losing the shared identities.
+#
 # Host filtering:
-#   Agent identities are shared across all hosts (via a common import like
-#   agent-identities.nix), but the `host` field controls WHERE feature-specific
-#   resources are created:
+#   Agent identities are shared across all hosts (via `shared.agents` in
+#   `mkSystemFlake`, or a common import like agent-identities.nix), but the
+#   `host` field controls WHERE feature-specific resources are created:
 #
 #   ALWAYS created on every importing host (uses `cfg`, the full agent set):
 #   - OS user/group accounts (agents need accounts for SSH access everywhere)
