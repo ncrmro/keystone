@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 
+pub mod activate;
 pub mod agent;
 pub mod agent_loop;
 pub mod agents;

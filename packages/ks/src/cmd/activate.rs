@@ -1,0 +1,218 @@
+//! `ks activate <store-path>` — narrow privileged activation for a
+//! pre-built NixOS system closure.
+//!
+//! This is the only step of the Walker → Update flow that requires root.
+//! Everything upstream (channel resolution, flake input override, `nix
+//! build`, `git commit`, `git push`) runs in the user's session where
+//! credentials and network already work.
+//!
+//! Allowlist contract: the privileged-approval module installs an entry
+//! whose `argv` matches `["ks", "activate"]` (prefix), so the only way
+//! to reach root is `ks approve --reason <text> -- ks activate
+//! <store-path>`. The store path arrives as a positional arg and is
+//! validated here before any privileged side effect.
+//!
+//! Idempotence: running this against the closure already pointed at by
+//! `/run/current-system` short-circuits to a no-op. This matches the
+//! `local_system_closure_matches` fast path used by `cmd::switch` and
+//! lets the Walker flow safely retry without double-activating.
+//!
+//! Implementation choice: explicit profile bump + `switch-to-configuration`
+//! rather than `nixos-rebuild switch --no-build`. Reasons:
+//!   - `nixos-rebuild` would re-evaluate the flake under root, which
+//!     defeats the user-side build we just produced. The store path is
+//!     already realized; we only need to activate it.
+//!   - The two-step shape (`nix-env --profile … --set <path>` then
+//!     `<path>/bin/switch-to-configuration switch`) matches what
+//!     `cmd::switch::set_local_system_profile` + `switch_local_system`
+//!     already do for `ks switch`, so failure modes are familiar.
+
+use anyhow::{anyhow, Context, Result};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// Validate the store-path argument before any privileged side effect.
+/// Rejects relative paths, empty strings, and paths that don't live under
+/// `/nix/store/`. The allowlist already restricts callers to argv shape
+/// `["ks", "activate", <path>]`, but defense-in-depth: the validator runs
+/// inside the privileged child too, so even a misconfigured allowlist
+/// can't push activation against an arbitrary path.
+fn validate_store_path(raw: &str) -> Result<PathBuf> {
+    if raw.trim().is_empty() {
+        anyhow::bail!("ks activate requires a store path argument");
+    }
+    let path = PathBuf::from(raw);
+    if !path.is_absolute() {
+        anyhow::bail!("store path must be absolute: {raw}");
+    }
+    if !path.starts_with("/nix/store/") {
+        anyhow::bail!("store path must live under /nix/store/: {raw}");
+    }
+    if !path.exists() {
+        anyhow::bail!(
+            "store path does not exist: {} \
+             (did the user-side `nix build` succeed?)",
+            path.display()
+        );
+    }
+    let switch_bin = path.join("bin/switch-to-configuration");
+    if !switch_bin.is_file() {
+        anyhow::bail!(
+            "store path is not a NixOS system closure (missing {}): {}",
+            switch_bin.display(),
+            path.display()
+        );
+    }
+    Ok(path)
+}
+
+/// Returns true when `/run/current-system` already points at `path`.
+/// Same probe `cmd::switch::local_system_closure_matches` uses; duplicated
+/// here so this module stays standalone (avoids pulling switch's
+/// SshSessionManager and friends into a privileged code path).
+fn current_system_matches(path: &Path) -> bool {
+    let current = std::fs::canonicalize("/run/current-system").ok();
+    let target = std::fs::canonicalize(path).ok();
+    match (current, target) {
+        (Some(c), Some(t)) => c == t,
+        _ => false,
+    }
+}
+
+/// Bump the system profile to point at the new closure. Equivalent to
+/// `nix-env --profile /nix/var/nix/profiles/system --set <path>`. Runs
+/// directly (no sudo) — this command path is reachable only after the
+/// approval broker re-exec'd as root, so EUID is already 0.
+fn set_system_profile(path: &Path) -> Result<()> {
+    let status = Command::new("nix-env")
+        .args(["--profile", "/nix/var/nix/profiles/system", "--set"])
+        .arg(path)
+        .status()
+        .context("failed to invoke nix-env to set system profile")?;
+    if !status.success() {
+        anyhow::bail!(
+            "nix-env --profile system --set {} exited {:?}",
+            path.display(),
+            status.code()
+        );
+    }
+    Ok(())
+}
+
+/// Touch the bootloader-safe-to-update marker before invoking
+/// switch-to-configuration. Mirrors `cmd::switch::switch_local_system`.
+fn mark_bootloader_safe() -> Result<()> {
+    let status = Command::new("touch")
+        .arg("/var/run/nixos-rebuild-safe-to-update-bootloader")
+        .status()
+        .context("failed to touch nixos-rebuild-safe-to-update-bootloader")?;
+    if !status.success() {
+        anyhow::bail!(
+            "touch /var/run/nixos-rebuild-safe-to-update-bootloader exited {:?}",
+            status.code()
+        );
+    }
+    Ok(())
+}
+
+/// Run `<path>/bin/switch-to-configuration <mode>` directly. The closure
+/// at `path` carries its own switch-to-configuration so we always invoke
+/// the version that matches the closure being activated — never a stale
+/// one from a previous generation.
+fn switch_to_configuration(path: &Path, mode: &str) -> Result<()> {
+    let switch_bin = path.join("bin/switch-to-configuration");
+    let status = Command::new(&switch_bin)
+        .arg(mode)
+        .status()
+        .with_context(|| format!("failed to invoke {}", switch_bin.display()))?;
+    if !status.success() {
+        anyhow::bail!(
+            "{} {} exited {:?}",
+            switch_bin.display(),
+            mode,
+            status.code()
+        );
+    }
+    Ok(())
+}
+
+fn is_root() -> bool {
+    // SAFETY: getuid() is always defined and never fails on Linux.
+    // Reading effective user id requires no allocation; falling back
+    // to the `id -u` shellout would add a dependency on `id` being on
+    // PATH, which the systemd unit's stripped PATH may not guarantee.
+    unsafe { libc::geteuid() == 0 }
+}
+
+/// Public entry point. Validates inputs, short-circuits if the closure
+/// is already current, then bumps the profile and runs
+/// switch-to-configuration in `mode`.
+pub fn execute(store_path: &str, mode: &str) -> Result<()> {
+    let path = validate_store_path(store_path)?;
+
+    if !matches!(mode, "switch" | "boot" | "test" | "dry-activate") {
+        return Err(anyhow!(
+            "ks activate: unsupported mode '{mode}' (expected switch|boot|test|dry-activate)"
+        ));
+    }
+
+    if !is_root() {
+        anyhow::bail!(
+            "ks activate must run as root. Invoke via:\n  \
+             ks approve --reason \"<reason>\" -- ks activate {} {mode}",
+            path.display()
+        );
+    }
+
+    if current_system_matches(&path) {
+        eprintln!(
+            "ks activate: /run/current-system already points at {} — nothing to do.",
+            path.display()
+        );
+        return Ok(());
+    }
+
+    eprintln!(
+        "ks activate: bumping system profile to {} ({})",
+        path.display(),
+        mode
+    );
+    set_system_profile(&path)?;
+    mark_bootloader_safe()?;
+    switch_to_configuration(&path, mode)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_store_path_rejects_empty() {
+        let err = validate_store_path("").unwrap_err().to_string();
+        assert!(err.contains("requires a store path"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_store_path_rejects_relative() {
+        let err = validate_store_path("relative/path")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("must be absolute"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_store_path_rejects_outside_nix_store() {
+        let err = validate_store_path("/etc/passwd").unwrap_err().to_string();
+        assert!(err.contains("/nix/store/"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_store_path_rejects_missing_path() {
+        // A path under /nix/store that almost-certainly doesn't exist.
+        let err = validate_store_path("/nix/store/0000000000000000000000000000000000000-bogus")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("does not exist"), "got: {err}");
+    }
+}

@@ -123,6 +123,18 @@ pub enum Command {
         approve: bool,
     },
 
+    /// Activate a pre-built NixOS system closure (privileged).
+    ///
+    /// This is the narrow root-only step of the Walker → Update flow.
+    /// The closure at `<store-path>` must already exist in the local
+    /// /nix/store; `ks activate` does not build, lock, or fetch
+    /// anything. The supervised flow is:
+    ///   ks approve --reason "<text>" -- ks activate <store-path>
+    ///
+    /// Running this command outside the approval broker (i.e., not as
+    /// root) returns an error pointing the caller at the broker form.
+    Activate(ActivateArgs),
+
     /// Request approval for one allowlisted privileged command.
     Approve(ApproveArgs),
 
@@ -256,6 +268,18 @@ pub struct ApproveArgs {
 
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub command: Vec<String>,
+}
+
+#[derive(Args)]
+pub struct ActivateArgs {
+    /// Pre-built NixOS system closure under /nix/store. Must already
+    /// be realized — `ks activate` does not build.
+    pub store_path: String,
+
+    /// Activation mode forwarded to switch-to-configuration.
+    /// Defaults to `switch`.
+    #[arg(long, default_value = "switch")]
+    pub mode: String,
 }
 
 #[derive(Args)]

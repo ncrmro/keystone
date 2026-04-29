@@ -103,6 +103,7 @@ async fn main() -> Result<()> {
                 )
                 .await
             }
+            Command::Activate(args) => cmd::activate::execute(&args.store_path, &args.mode),
             Command::Approve(args) => run_approve_command(args).await,
             Command::Agents(args) => run_agents_command(args).await,
             Command::Docs { topic_or_path } => run_docs_command(topic_or_path).await,
