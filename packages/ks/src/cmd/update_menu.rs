@@ -29,8 +29,8 @@ use serde_json::Value;
 
 use crate::repo;
 
-const RELEASE_OWNER: &str = "ncrmro";
-const RELEASE_REPO: &str = "keystone";
+pub(crate) const RELEASE_OWNER: &str = "ncrmro";
+pub(crate) const RELEASE_REPO: &str = "keystone";
 
 // -----------------------------------------------------------------------------
 // Channel
@@ -40,8 +40,11 @@ const RELEASE_REPO: &str = "keystone";
 /// the Nix module, threaded in via the KS_UPDATE_CHANNEL environment
 /// variable. Fail-closed default is `Stable` so an unset, empty, or unknown
 /// env value never flips a host onto the moving-main source implicitly.
+///
+/// Visible at crate scope so the Walker → Update orchestrator
+/// (`cmd::update`) can resolve the same target the menu surfaces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Channel {
+pub(crate) enum Channel {
     /// `/releases/latest` — latest tagged release `v<M>.<m>.<p>`.
     Stable,
     /// `/repos/OWNER/REPO/branches/main` — HEAD of `main`, a moving commit
@@ -54,14 +57,14 @@ impl Channel {
     /// than exactly `"unstable"` maps to `Stable` — including empty strings,
     /// mixed case, and typos like `"beta"` — so a misconfigured environment
     /// never quietly flips a host onto the moving-main source.
-    fn current() -> Self {
+    pub(crate) fn current() -> Self {
         match std::env::var("KS_UPDATE_CHANNEL").as_deref() {
             Ok("unstable") => Self::Unstable,
             _ => Self::Stable,
         }
     }
 
-    fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Stable => "stable",
             Self::Unstable => "unstable",
@@ -413,14 +416,17 @@ fn github_client() -> Result<reqwest::Client> {
 /// `parse_stable_release` and `parse_unstable_branch`) means unit tests can
 /// exercise the full unstable path — which otherwise cannot be mocked
 /// without an HTTP dep.
+///
+/// Crate-visible so `cmd::update` can drive the same channel-aware target
+/// resolution the menu surfaces.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ReleaseInfo {
-    latest_tag: String,
-    latest_name: String,
-    latest_url: String,
-    latest_published: String,
-    latest_body: String,
-    latest_rev: String,
+pub(crate) struct ReleaseInfo {
+    pub(crate) latest_tag: String,
+    pub(crate) latest_name: String,
+    pub(crate) latest_url: String,
+    pub(crate) latest_published: String,
+    pub(crate) latest_body: String,
+    pub(crate) latest_rev: String,
 }
 
 /// Fetch the release metadata for the active channel.
@@ -432,7 +438,7 @@ struct ReleaseInfo {
 /// - Unstable (`/repos/OWNER/REPO/branches/main`) returns the tip commit
 ///   of `main` — a moving SHA, not a tagged release. The `latest_rev` is
 ///   inline in the response so we never need a separate ref-to-sha lookup.
-async fn fetch_latest_release(channel: Channel) -> Result<ReleaseInfo> {
+pub(crate) async fn fetch_latest_release(channel: Channel) -> Result<ReleaseInfo> {
     match channel {
         Channel::Stable => fetch_stable_latest_release().await,
         Channel::Unstable => fetch_unstable_latest_release().await,
