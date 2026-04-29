@@ -101,6 +101,34 @@ let
       touch $out
     '';
 
+  # Evaluate a module set and assert two string values are equal.
+  # `getActual` is a function from the NixOS config to the value to check.
+  # `expectedStr` is the expected value as a string.
+  assertConfigValue =
+    name: expectedStr: getActual: modules:
+    let
+      result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+        ]
+        ++ modules;
+      };
+      actual = builtins.toString (getActual result.config);
+    in
+    pkgs.runCommand "assert-config-${name}" { } ''
+      if [ "${actual}" != "${expectedStr}" ]; then
+        echo "FAIL: ${name}: expected '${expectedStr}', got '${actual}'" >&2
+        exit 1
+      fi
+      echo "OK: ${name}: value = '${actual}'"
+      touch $out
+    '';
+
   # Minimal storage + fs so the OS module evaluates far enough to populate
   # users and assertions. Shared by every admin-flag test below.
   # arcMax is set to avoid the physicalMemoryGB assertion (these tests focus
@@ -669,60 +697,70 @@ let
           }
         ];
 
-    # ZFS host with physicalMemoryGB set → arc cap computes, no assertion.
-    arc-cap-from-registry = eval "arc-cap-from-registry" [
-      {
-        keystone.hosts.myhost = {
-          hostname = "myhost";
-          role = "client";
-          physicalMemoryGB = 64;
-        };
-        keystone.os = {
-          enable = true;
-          storage = {
-            type = "zfs";
-            devices = [ "/dev/vda" ];
-            # arcMax null; physicalMemoryGB in host registry provides the value
-          };
-          users.testuser = {
-            fullName = "Test User";
-            initialPassword = "testpass";
-            admin = true;
-          };
-        };
-        networking.hostName = "myhost";
-        networking.hostId = "deadbeef";
-        fileSystems."/" = {
-          device = lib.mkForce "rpool/crypt/system";
-          fsType = lib.mkForce "zfs";
-        };
-      }
-    ];
+    # ZFS host with physicalMemoryGB set → arc cap computes to 25% of RAM.
+    # Also asserts the computed boot.kernelParams contains the expected byte count:
+    # 64 GiB * 1024^3 / 4 = 17179869184 bytes.
+    arc-cap-from-registry =
+      assertConfigValue "arc-cap-from-registry"
+        # 64 GiB * 1073741824 / 4 = 17179869184
+        "zfs.zfs_arc_max=17179869184"
+        (cfg: lib.findFirst (lib.hasPrefix "zfs.zfs_arc_max=") null cfg.boot.kernelParams)
+        [
+          {
+            keystone.hosts.myhost = {
+              hostname = "myhost";
+              role = "client";
+              physicalMemoryGB = 64;
+            };
+            keystone.os = {
+              enable = true;
+              storage = {
+                type = "zfs";
+                devices = [ "/dev/vda" ];
+                # arcMax null; physicalMemoryGB in host registry provides the value
+              };
+              users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            };
+            networking.hostName = "myhost";
+            networking.hostId = "deadbeef";
+            fileSystems."/" = {
+              device = lib.mkForce "rpool/crypt/system";
+              fsType = lib.mkForce "zfs";
+            };
+          }
+        ];
 
-    # memoryPressure.enable = false → zram is not configured.
-    memory-pressure-disabled = eval "memory-pressure-disabled" [
-      {
-        keystone.os = {
-          enable = true;
-          memoryPressure.enable = false;
-          storage = {
-            type = "zfs";
-            devices = [ "/dev/vda" ];
-            zfs.arcMax = "4G";
-          };
-          users.testuser = {
-            fullName = "Test User";
-            initialPassword = "testpass";
-            admin = true;
-          };
-        };
-        networking.hostId = "deadbeef";
-        fileSystems."/" = {
-          device = lib.mkForce "rpool/crypt/system";
-          fsType = lib.mkForce "zfs";
-        };
-      }
-    ];
+    # memoryPressure.enable = false → zramSwap must NOT be enabled.
+    memory-pressure-disabled =
+      assertConfigValue "memory-pressure-disabled" "false"
+        (cfg: if cfg.zramSwap.enable then "true" else "false")
+        [
+          {
+            keystone.os = {
+              enable = true;
+              memoryPressure.enable = false;
+              storage = {
+                type = "zfs";
+                devices = [ "/dev/vda" ];
+                zfs.arcMax = "4G";
+              };
+              users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            };
+            networking.hostId = "deadbeef";
+            fileSystems."/" = {
+              device = lib.mkForce "rpool/crypt/system";
+              fsType = lib.mkForce "zfs";
+            };
+          }
+        ];
   };
 in
 pkgs.runCommand "test-os-evaluation"

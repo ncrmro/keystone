@@ -65,7 +65,7 @@ let
     if cfg.zfs.arcMax != null then
       parseSize cfg.zfs.arcMax
     else if physicalMemoryGB != null then
-      physicalMemoryGB * bytesPerGiB / 4 # 25% of RAM
+      builtins.div (physicalMemoryGB * bytesPerGiB) 4 # 25% of RAM (integer division)
     else
       4 * bytesPerGiB; # unreachable in valid configs — assertion below catches this
 
@@ -120,12 +120,16 @@ in
         {
           assertion = cfg.zfs.arcMax != null || physicalMemoryGB != null;
           message = ''
-            keystone.os.storage.zfs.arcMax is null and physicalMemoryGB is not set
-            in keystone.hosts for host "${config.networking.hostName}".
+            keystone.os.storage.zfs.arcMax is null and no physicalMemoryGB has been
+            found in keystone.hosts for host "${config.networking.hostName}".
             Either set an explicit ARC size:
               keystone.os.storage.zfs.arcMax = "8G";
-            or provide the host's physical RAM in the registry:
-              keystone.hosts.${config.networking.hostName}.physicalMemoryGB = 64;
+            or provide the host's physical RAM on the keystone.hosts entry whose
+            hostname = "${config.networking.hostName}":
+              keystone.hosts.<registry-key> = {
+                hostname = "${config.networking.hostName}";
+                physicalMemoryGB = 64;
+              };
             The module will then compute zfs_arc_max as 25% of physical RAM.
           '';
         }

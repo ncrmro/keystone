@@ -10,11 +10,11 @@ from runaway processes without requiring a hard reboot. It is controlled by
   anonymous page eviction
            |
            v
-  +------------------+         +--------------------+
-  | zram (zstd)      |  PSI    | systemd-oomd       |
-  | compressed swap  | ------> | kills cgroup at    |
-  | in RAM, prio=100 | alert   | DefaultMemory-     |
-  +------------------+         | PressureSec = 20s  |
+  +------------------+         +------------------------------+
+  | zram (zstd)      |  PSI    | systemd-oomd                 |
+  | compressed swap  | ------> | kills cgroup at              |
+  | in RAM, prio=100 | alert   | DefaultMemoryPressure-       |
+  +------------------+         | DurationSec = 20s            |
            |                   +--------------------+
            v (overflow only)            |
   +------------------+                  v
