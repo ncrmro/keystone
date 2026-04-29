@@ -95,10 +95,10 @@ in
 
     # zswap and zram are mutually exclusive: zswap intercepts pages before they
     # reach the zram device, silently bypassing it. Fail fast if both are on.
-    # Note: this assertion only checks boot.zswap.enable; zswap can also be
-    # activated via a "zswap.enabled=1" kernel parameter, which is not checked
-    # here because scanning boot.kernelParams during assertion evaluation would
-    # create circular evaluation dependencies with other modules.
+    # Note: this assertion only checks boot.zswap.enable; if you have enabled
+    # zswap via a "zswap.enabled=1" kernel parameter instead, you must ensure
+    # that parameter is removed manually — scanning boot.kernelParams in an
+    # assertion would create circular evaluation dependencies with other modules.
     assertions = [
       {
         assertion = !(config.boot.zswap.enable or false);
@@ -106,9 +106,10 @@ in
           keystone.os.memoryPressure enables zram swap, but boot.zswap.enable is
           also true. zswap and zram are mutually exclusive — zswap intercepts pages
           before they reach zram. Either:
-            • Remove boot.zswap.enable = true (and also ensure no "zswap.enabled=1"
-              kernel parameter is present), or
+            • Remove boot.zswap.enable = true, or
             • Set keystone.os.memoryPressure.enable = false.
+          Also ensure no "zswap.enabled=1" kernel parameter is present; that path
+          is not checked here and would silently bypass zram.
         '';
       }
     ];

@@ -67,7 +67,7 @@ let
     else if physicalMemoryGB != null then
       builtins.div (physicalMemoryGB * bytesPerGiB) 4 # 25% of RAM (integer division)
     else
-      throw "keystone.os.storage: arcMaxBytes computed without arcMax or physicalMemoryGB. The matching assertion should have caught this earlier — please report.";
+      throw "keystone.os.storage: arcMaxBytes reached the unreachable else branch — neither keystone.os.storage.zfs.arcMax nor physicalMemoryGB is set, but the assertion (cfg.zfs.arcMax != null || physicalMemoryGB != null) should have caught this. Please report.";
 
   # Build ZFS vdev type based on mode and device count
   zfsVdevType =
@@ -492,7 +492,7 @@ in
         # REQ-17: Swap MUST NOT target a ZFS zvol — known deadlock hazard.
         # See https://github.com/openzfs/zfs/issues/7734
         {
-          assertion = !(any (sd: hasInfix "zvol" sd.device) config.swapDevices);
+          assertion = !(any (sd: lib.hasPrefix "/dev/zvol/" sd.device) config.swapDevices);
           message = ''
             Swap MUST NOT be placed on a ZFS zvol — this is a known deadlock hazard.
             See https://github.com/openzfs/zfs/issues/7734.
