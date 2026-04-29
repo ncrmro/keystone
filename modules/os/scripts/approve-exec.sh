@@ -21,7 +21,20 @@ die() {
 join_argv_json() {
   # shellcheck disable=SC2016
   # jq filter is intentionally single-quoted.
-  "$JQ" -cn --args "$@" '$ARGS.positional'
+  #
+  # CRITICAL: two jq argv quirks both bite this helper:
+  #   1. The filter program MUST come before `--args`, otherwise jq treats
+  #      the filter as just another positional, finds no filter, falls back
+  #      to interpreting the first positional ("ks") as a filter, and dies
+  #      with "jq: error: ks/0 is not defined".
+  #   2. `--args` only consumes non-option-shaped tokens as positionals; any
+  #      `--flag` after `--args` (e.g. `ks update --approve`,
+  #      `keystone-enroll-fido2 --auto`) is parsed as a jq option unless a
+  #      `--` separator immediately follows `--args`.
+  # Both bites only manifest in non-tty contexts (e.g. ks-update.service
+  # invoking `ks update --approve`); interactive callers historically went
+  # through a tty path that bypassed this helper entirely.
+  "$JQ" -cn '$ARGS.positional' --args -- "$@"
 }
 
 match_entry_json() {

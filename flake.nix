@@ -403,6 +403,10 @@
             pkgs = ksPkgs;
             inherit ks;
           };
+          approveExecScript = import ./tests/module/approve-exec-script.nix {
+            pkgs = ksPkgs;
+            lib = ksPkgs.lib;
+          };
           ksDoctorReport = import ./tests/module/ks-doctor-report.nix {
             inherit pkgs;
           };
@@ -531,6 +535,7 @@
           desktop-autostart-assertion = desktopAutostartAssertion;
           hyprland-config-smoke = hyprlandConfigSmoke;
           ks-approve = ksApprove;
+          approve-exec-script = approveExecScript;
           ks-doctor-report = ksDoctorReport;
           ks-rust-tests = ksRustTests;
           ks-rust-clippy = ksRustClippy;
@@ -564,6 +569,7 @@
             ln -s ${ksHelp} "$out/help"
             ln -s ${ksPhotos} "$out/photos"
             ln -s ${ksApprove} "$out/approve"
+            ln -s ${approveExecScript} "$out/approve-exec-script"
             ln -s ${ksDoctorReport} "$out/doctor-report"
             ln -s ${ksLockSync} "$out/lock-sync"
           '';
