@@ -26,6 +26,7 @@ pub mod sync_agent_assets;
 pub mod sync_host_keys;
 pub mod tasks;
 pub mod update;
+pub mod update_approve;
 pub mod update_menu;
 pub mod util;
 
