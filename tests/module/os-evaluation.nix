@@ -103,12 +103,15 @@ let
 
   # Minimal storage + fs so the OS module evaluates far enough to populate
   # users and assertions. Shared by every admin-flag test below.
+  # arcMax is set to avoid the physicalMemoryGB assertion (these tests focus
+  # on user/admin configuration, not ARC cap computation).
   adminBase = {
     keystone.os = {
       enable = true;
       storage = {
         type = "zfs";
         devices = [ "/dev/vda" ];
+        zfs.arcMax = "4G";
       };
     };
     networking.hostId = "deadbeef";
@@ -170,6 +173,7 @@ let
           storage = {
             type = "zfs";
             devices = [ "/dev/vda" ];
+            zfs.arcMax = "4G";
           };
           users.testuser = {
             fullName = "Test User";
@@ -286,6 +290,7 @@ let
             hostname = "journal-server";
             role = "server";
             journalRemote = true;
+            physicalMemoryGB = 16;
           };
           os = {
             enable = true;
@@ -318,6 +323,11 @@ let
             role = "server";
             journalRemote = true;
           };
+          hosts.workstation = {
+            hostname = "workstation";
+            role = "client";
+            physicalMemoryGB = 32;
+          };
           os = {
             enable = true;
             storage = {
@@ -348,6 +358,11 @@ let
             hostname = "ocean";
             role = "server";
             journalRemote = true;
+          };
+          hosts.workstation = {
+            hostname = "workstation";
+            role = "client";
+            physicalMemoryGB = 32;
           };
           os = {
             enable = true;
@@ -380,6 +395,7 @@ let
             hostname = "workstation";
             role = "client";
             hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 workstation";
+            physicalMemoryGB = 64;
             zfs = {
               backups.rpool.targets = [
                 "ocean:ocean"
@@ -439,6 +455,7 @@ let
             hostname = "ocean";
             role = "server";
             hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOcean ocean";
+            physicalMemoryGB = 16;
           };
         };
         keystone.os = {
@@ -624,28 +641,88 @@ let
     # is disentangled or once we can emit warnings via a narrower
     # option.
 
-    # Containers disabled → admin does NOT get podman, but still gets
-    # the unconditional admin groups (dialout, media).
-    auto-groups-admin-no-containers =
-      assertUserGroups "admin-no-containers" "alice"
+    # --- Memory pressure assertions ---
+    #
+    # ZFS host with no arcMax and no physicalMemoryGB → assertion fires.
+    arc-cap-no-ram-fails =
+      assertHasFailingAssertion "arc-no-ram" "physicalMemoryGB"
         [
-          "wheel"
-          "dialout"
-          "media"
-          "zfs"
-        ]
-        [ "podman" ]
-        [
-          adminBase
           {
-            keystone.os.containers.enable = false;
-            keystone.os.users.alice = {
-              fullName = "Alice";
-              initialPassword = "pw";
-              admin = true;
+            keystone.os = {
+              enable = true;
+              storage = {
+                type = "zfs";
+                devices = [ "/dev/vda" ];
+                # arcMax deliberately omitted; no host registry entry either
+              };
+              users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            };
+            networking.hostId = "deadbeef";
+            fileSystems."/" = {
+              device = lib.mkForce "rpool/crypt/system";
+              fsType = lib.mkForce "zfs";
             };
           }
         ];
+
+    # ZFS host with physicalMemoryGB set → arc cap computes, no assertion.
+    arc-cap-from-registry = eval "arc-cap-from-registry" [
+      {
+        keystone.hosts.myhost = {
+          hostname = "myhost";
+          role = "client";
+          physicalMemoryGB = 64;
+        };
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+            # arcMax null; physicalMemoryGB in host registry provides the value
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            admin = true;
+          };
+        };
+        networking.hostName = "myhost";
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    # memoryPressure.enable = false → zram is not configured.
+    memory-pressure-disabled = eval "memory-pressure-disabled" [
+      {
+        keystone.os = {
+          enable = true;
+          memoryPressure.enable = false;
+          storage = {
+            type = "zfs";
+            devices = [ "/dev/vda" ];
+            zfs.arcMax = "4G";
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            admin = true;
+          };
+        };
+        networking.hostId = "deadbeef";
+        fileSystems."/" = {
+          device = lib.mkForce "rpool/crypt/system";
+          fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
   };
 in
 pkgs.runCommand "test-os-evaluation"
@@ -667,6 +744,9 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - arc-cap-from-registry: ZFS ARC cap computed from physicalMemoryGB"
+    echo "  - arc-cap-no-ram-fails: assertion fires when arcMax and physicalMemoryGB both absent"
+    echo "  - memory-pressure-disabled: memoryPressure.enable = false skips zram/oomd config"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out

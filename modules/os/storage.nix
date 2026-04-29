@@ -30,20 +30,44 @@ let
   # Compute device directory for ZFS import (matches devNodes)
   importDir = builtins.dirOf firstDevice;
 
-  # Convert arcMax to bytes for kernel param
+  # Look up the current host in the registry for per-host metadata (physicalMemoryGB).
+  # Returns null when the host is not in the registry or has not declared physicalMemoryGB.
+  currentHost = findFirst (h: h.hostname == config.networking.hostName) null (
+    attrValues config.keystone.hosts
+  );
+
+  # physicalMemoryGB from the host registry; null when absent.
+  # Used for the 25%-of-RAM ARC cap computation.
+  physicalMemoryGB = if currentHost != null then currentHost.physicalMemoryGB else null;
+
+  # Bytes per GiB — named constant to make size arithmetic readable.
+  bytesPerGiB = 1024 * 1024 * 1024;
+
+  # Convert arcMax to bytes for the zfs_arc_max kernel parameter.
+  #
+  # Resolution order:
+  #   1. Explicit arcMax string (e.g. "8G") → parsed verbatim
+  #   2. physicalMemoryGB in host registry  → 25% of RAM
+  #   3. Neither set → assertion fires; the fallback value is never used in a
+  #      valid configuration.
   arcMaxBytes =
     let
       # Parse size string like "4G" or "8G"
       parseSize =
         s:
         if hasSuffix "G" s then
-          (toInt (removeSuffix "G" s)) * 1024 * 1024 * 1024
+          (toInt (removeSuffix "G" s)) * bytesPerGiB
         else if hasSuffix "M" s then
           (toInt (removeSuffix "M" s)) * 1024 * 1024
         else
           toInt s;
     in
-    if cfg.zfs.arcMax != null then parseSize cfg.zfs.arcMax else 4 * 1024 * 1024 * 1024; # Default 4GB
+    if cfg.zfs.arcMax != null then
+      parseSize cfg.zfs.arcMax
+    else if physicalMemoryGB != null then
+      physicalMemoryGB * bytesPerGiB / 4 # 25% of RAM
+    else
+      4 * bytesPerGiB; # unreachable in valid configs — assertion below catches this
 
   # Build ZFS vdev type based on mode and device count
   zfsVdevType =
@@ -75,7 +99,7 @@ in
         else
           cfg.zfs.kernel;
 
-      # Build-time ZFS compatibility assertion
+      # Build-time ZFS compatibility and ARC cap assertions
       assertions = [
         {
           assertion =
@@ -89,6 +113,20 @@ in
             ZFS (${config.boot.zfs.package.version}).
             Pin a compatible kernel via keystone.os.storage.zfs.kernel, e.g.:
               keystone.os.storage.zfs.kernel = pkgs.linuxPackages_6_12;
+          '';
+        }
+        # REQ-10: physicalMemoryGB is required when arcMax is null so the module
+        # can compute a 25%-of-RAM ARC cap. Fail early with a clear message.
+        {
+          assertion = cfg.zfs.arcMax != null || physicalMemoryGB != null;
+          message = ''
+            keystone.os.storage.zfs.arcMax is null and physicalMemoryGB is not set
+            in keystone.hosts for host "${config.networking.hostName}".
+            Either set an explicit ARC size:
+              keystone.os.storage.zfs.arcMax = "8G";
+            or provide the host's physical RAM in the registry:
+              keystone.hosts.${config.networking.hostName}.physicalMemoryGB = 64;
+            The module will then compute zfs_arc_max as 25% of physical RAM.
           '';
         }
       ];

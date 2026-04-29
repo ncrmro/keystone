@@ -246,6 +246,7 @@ in
     ../shared/system-flake.nix
     ./notifications.nix
     ./storage.nix
+    ./memory-pressure.nix
     ./secure-boot.nix
     ./tpm.nix
     ./hardware-key.nix
