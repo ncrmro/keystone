@@ -73,6 +73,23 @@ pkgs.runCommand "test-keystone-update-menu-wiring"
       fail "services.nix must wire OnFailure= on ks-update.service"
     fi
 
+    # -- ks-update.service imports graphical-session env -------------------
+    #
+    # `ks update --approve` (the unit's ExecStart) checks DISPLAY /
+    # WAYLAND_DISPLAY / XDG_SESSION_TYPE to decide pkexec vs sudo. Without
+    # PassEnvironment the user manager doesn't propagate those into the
+    # unit's env, ks falls through to sudo, sudo has no tty, and the unit
+    # silently exits 1. XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS are
+    # needed for pkexec to find hyprpolkitagent on the user bus.
+    if ! grep -F 'PassEnvironment' ${servicesFile} >/dev/null; then
+      fail "services.nix must declare PassEnvironment on ks-update.service so the graphical-session env reaches ks --approve"
+    fi
+    for var in DISPLAY WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS; do
+      if ! grep -F "$var" ${servicesFile} >/dev/null; then
+        fail "ks-update.service PassEnvironment must include $var"
+      fi
+    done
+
     # -- Activation tokens defined in Rust match dispatch handling ---------
     #
     # The Lua provider's Action single-quotes %VALUE%, so every token

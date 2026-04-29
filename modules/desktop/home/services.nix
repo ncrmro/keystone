@@ -74,6 +74,17 @@ in
       };
       Service = {
         Type = "oneshot";
+        # CRITICAL: import the graphical-session env from the user manager.
+        # `ks update --approve` calls `cmd::approve::has_graphical_session()`
+        # which checks DISPLAY / WAYLAND_DISPLAY / XDG_SESSION_TYPE to decide
+        # between pkexec (graphical, polkit prompt) and sudo (terminal).
+        # systemd user units start with a near-empty environment, so without
+        # PassEnvironment the function returns false, ks falls back to sudo,
+        # sudo finds no tty, and the unit silently exits 1 in milliseconds.
+        # XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS are required for pkexec
+        # to reach hyprpolkitagent on the user bus — without them the polkit
+        # prompt never renders and authentication fails silently.
+        PassEnvironment = "DISPLAY WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS";
         Environment = [
           "PATH=${updatePath}"
           "KS_UPDATE_CHANNEL=${updateChannel}"
