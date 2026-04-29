@@ -63,6 +63,7 @@ in
     # systemd-oomd — cgroup-level OOM killer, acts on PSI pressure signals
     # before the kernel oom-killer fires. Monitors user, root, and system slices.
     systemd.oomd = {
+      enable = true;
       enableUserSlices = true;
       enableRootSlice = true;
       enableSystemSlice = true;
@@ -94,14 +95,20 @@ in
 
     # zswap and zram are mutually exclusive: zswap intercepts pages before they
     # reach the zram device, silently bypassing it. Fail fast if both are on.
+    # Note: this assertion only checks boot.zswap.enable; zswap can also be
+    # activated via a "zswap.enabled=1" kernel parameter, which is not checked
+    # here because scanning boot.kernelParams during assertion evaluation would
+    # create circular evaluation dependencies with other modules.
     assertions = [
       {
         assertion = !(config.boot.zswap.enable or false);
         message = ''
           keystone.os.memoryPressure enables zram swap, but boot.zswap.enable is
           also true. zswap and zram are mutually exclusive — zswap intercepts pages
-          before they reach zram. Disable boot.zswap.enable or set
-          keystone.os.memoryPressure.enable = false.
+          before they reach zram. Either:
+            • Remove boot.zswap.enable = true (and also ensure no "zswap.enabled=1"
+              kernel parameter is present), or
+            • Set keystone.os.memoryPressure.enable = false.
         '';
       }
     ];

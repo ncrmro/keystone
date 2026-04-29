@@ -67,7 +67,7 @@ let
     else if physicalMemoryGB != null then
       builtins.div (physicalMemoryGB * bytesPerGiB) 4 # 25% of RAM (integer division)
     else
-      4 * bytesPerGiB; # unreachable in valid configs — assertion below catches this
+      throw "keystone.os.storage: arcMaxBytes computed without arcMax or physicalMemoryGB. The matching assertion should have caught this earlier — please report.";
 
   # Build ZFS vdev type based on mode and device count
   zfsVdevType =
@@ -285,6 +285,8 @@ in
                       content = {
                         type = "swap";
                         randomEncryption = true;
+                        # priority = -1 keeps disk swap below zram (priority 100) at all times
+                        priority = -1;
                       };
                     };
                   };
@@ -370,10 +372,13 @@ in
         devNodes = importDir;
       };
 
-      # Kernel parameters for ZFS
-      boot.kernelParams = [
-        "zfs.zfs_arc_max=${toString arcMaxBytes}"
-      ];
+      # Kernel parameters for ZFS.
+      # lib.optional guards against forcing arcMaxBytes (which throws) when both
+      # arcMax and physicalMemoryGB are null — the assertion below will catch that
+      # case. The throw is a backstop against future assertion-bypass scenarios.
+      boot.kernelParams = lib.optional
+        (cfg.zfs.arcMax != null || physicalMemoryGB != null)
+        "zfs.zfs_arc_max=${toString arcMaxBytes}";
 
       # Enable ZFS services
       services.zfs = {
@@ -441,12 +446,17 @@ in
                       passwordFile = "${./scripts/credstore-password}";
                       content = {
                         type = "swap";
+                        # priority = 0: above random-encryption swap (−1), below zram (100).
+                        # Must be positive for a valid hibernation resume target.
+                        priority = 0;
                       };
                     }
                   else
                     {
                       type = "swap";
                       randomEncryption = true;
+                      # priority = -1 keeps disk swap below zram (priority 100) at all times
+                      priority = -1;
                     };
               };
             };
@@ -474,6 +484,22 @@ in
       boot.resumeDevice = mkIf cfg.hibernate.enable "/dev/mapper/cryptswap";
 
       boot.initrd.availableKernelModules = mkIf cfg.hibernate.enable (lib.mkAfter [ "resume" ]);
+    })
+
+    # Global assertions — active for all storage types when keystone.os is enabled
+    (mkIf osCfg.enable {
+      assertions = [
+        # REQ-17: Swap MUST NOT target a ZFS zvol — known deadlock hazard.
+        # See https://github.com/openzfs/zfs/issues/7734
+        {
+          assertion = !(any (sd: hasInfix "zvol" sd.device) config.swapDevices);
+          message = ''
+            Swap MUST NOT be placed on a ZFS zvol — this is a known deadlock hazard.
+            See https://github.com/openzfs/zfs/issues/7734.
+            Remove the zvol-backed entry from boot.swapDevices or swapDevices.
+          '';
+        }
+      ];
     })
   ];
 }

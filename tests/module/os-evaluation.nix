@@ -659,6 +659,29 @@ let
           }
         ];
 
+    # Containers disabled → admin does NOT get podman, but still gets
+    # the unconditional admin groups (dialout, media).
+    auto-groups-admin-no-containers =
+      assertUserGroups "admin-no-containers" "alice"
+        [
+          "wheel"
+          "dialout"
+          "media"
+          "zfs"
+        ]
+        [ "podman" ]
+        [
+          adminBase
+          {
+            keystone.os.containers.enable = false;
+            keystone.os.users.alice = {
+              fullName = "Alice";
+              initialPassword = "pw";
+              admin = true;
+            };
+          }
+        ];
+
     # TODO: add a shadow-warning regression test. Reading
     # result.config.warnings from an eval-config result cascades into
     # full home-manager evaluation (systemd.services.home-manager-*
@@ -784,6 +807,7 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
     echo "  - arc-cap-from-registry: ZFS ARC cap computed from physicalMemoryGB"
     echo "  - arc-cap-no-ram-fails: assertion fires when arcMax and physicalMemoryGB both absent"
+    echo "  - auto-groups-admin-no-containers: containers.enable=false removes podman from admin groups"
     echo "  - memory-pressure-disabled: memoryPressure.enable = false skips zram/oomd config"
     echo ""
     echo "All configurations evaluated successfully!"
