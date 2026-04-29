@@ -107,9 +107,15 @@ let
       config ? { },
       nixosModules ? [ ],
       modules ? [ ],
+      # specialArgs are forwarded directly to nixpkgs.lib.nixosSystem so
+      # consumer modules using `{ inputs, outputs, ... }:` can be evaluated
+      # without triggering `_module.args`-based infinite recursion. Defining
+      # `inputs` via `_module.args` works for runtime config but breaks when
+      # a module uses `inputs` inside its own `imports = [ ... ];` list.
+      specialArgs ? { },
     }:
     nixpkgs.lib.nixosSystem {
-      inherit system;
+      inherit system specialArgs;
       modules = [
         self.nixosModules.operating-system
       ]
@@ -758,6 +764,14 @@ rec {
       sharedUserModules = shared.userModules or [ ];
       # Home Manager modules applied per-user on desktop hosts (laptop, workstation) only.
       sharedDesktopUserModules = shared.desktopUserModules or [ ];
+      # specialArgs forwarded to every Linux host's nixosSystem call.
+      # Use this to provide module function args like `inputs`, `self`,
+      # `outputs` that consumer modules consume via the
+      # `{ inputs, ... }: { imports = [ inputs.X ]; ... }` pattern. These
+      # args must be visible at module-import time, which `_module.args`
+      # cannot satisfy without infinite recursion. Per-host
+      # `hosts.<name>.specialArgs` are merged on top of `shared.specialArgs`.
+      sharedSpecialArgs = shared.specialArgs or { };
       sharedTimeZone = defaults.timeZone or "UTC";
       sharedUpdateChannel = defaults.updateChannel or "stable";
       effectiveRepoRoot =
@@ -862,6 +876,7 @@ rec {
               "config"
               "modules"
               "updateChannel"
+              "specialArgs"
             ])
             // {
               hostname = hostCfg.hostname or name;
@@ -871,6 +886,7 @@ rec {
               inherit adminUsername;
               users = sharedUsers // (hostCfg.users or { });
               nixosModules = kindDefaults.nixosModules ++ (hostCfg.nixosModules or [ ]);
+              specialArgs = sharedSpecialArgs // (hostCfg.specialArgs or { });
               config = lib.recursiveUpdate mergedConfig {
                 keystone.services = keystoneServices;
                 keystone.update.channel = lib.mkDefault hostUpdateChannel;
