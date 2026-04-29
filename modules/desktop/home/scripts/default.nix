@@ -316,12 +316,18 @@ let
 
   # Battery monitor script
   keystoneBatteryMonitor = pkgs.writeShellScriptBin "keystone-battery-monitor" ''
+    # Defense-in-depth: skip if upowerd is not running
+    ${pkgs.procps}/bin/pgrep -x upowerd >/dev/null || exit 0
+
     BATTERY_THRESHOLD=10
     NOTIFICATION_FLAG="/run/user/$UID/keystone_battery_notified"
 
-    # Get battery level
-    BATTERY_LEVEL=$(${pkgs.upower}/bin/upower -i $(${pkgs.upower}/bin/upower -e | grep 'BAT') | grep -E "percentage" | awk '{print $2}' | tr -d '%')
-    BATTERY_STATE=$(${pkgs.upower}/bin/upower -i $(${pkgs.upower}/bin/upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}')
+    # Get battery info from a single upower invocation
+    BATTERY_DEVICE=$(${pkgs.upower}/bin/upower -e | grep 'BAT')
+    [[ -n "$BATTERY_DEVICE" ]] || exit 0
+    BATTERY_INFO=$(${pkgs.upower}/bin/upower -i "$BATTERY_DEVICE")
+    BATTERY_LEVEL=$(echo "$BATTERY_INFO" | grep -E "percentage" | awk '{print $2}' | tr -d '%')
+    BATTERY_STATE=$(echo "$BATTERY_INFO" | grep -E "state" | awk '{print $2}')
 
     send_notification() {
       ${pkgs.libnotify}/bin/notify-send -u critical " Time to recharge!" "Battery is down to ''${1}%" -i battery-caution -t 30000
@@ -692,6 +698,7 @@ in
           systemd.user.services.keystone-battery-monitor = {
             Unit = {
               Description = "Keystone low battery notification";
+              ConditionPathExistsGlob = "/sys/class/power_supply/BAT*";
             };
             Service = {
               Type = "oneshot";
