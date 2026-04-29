@@ -5,7 +5,26 @@ use clap::{Args, Parser, Subcommand};
 use crate::cmd::{
     agent_loop::AgentLoopArgs, notifications::NotificationArgs, photos::PhotosCommand,
     projects::ProjectArgs, screenshots::ScreenshotsCommand, tasks::TaskArgs,
+    update_menu::UpdateMenuCommand,
 };
+
+/// Walker menu provider backends. Each provider is a subcommand under `ks
+/// menu <provider>` — e.g., `ks menu update <action>`. Grouping keeps the
+/// top-level namespace clean as more provider scripts from
+/// `modules/desktop/home/scripts/` migrate to `ks`.
+#[derive(clap::Subcommand)]
+pub enum MenuCommand {
+    /// Walker provider backend for the Keystone OS update entry.
+    ///
+    /// Subcommands emit JSON/text that Walker reads from stdout
+    /// (`entries`, `preview-summary`, `preview-release-notes`) or perform
+    /// activation side effects (`dispatch`). Replaces the legacy
+    /// `keystone-update-menu` shell script.
+    Update {
+        #[command(subcommand)]
+        action: UpdateMenuCommand,
+    },
+}
 
 /// Keystone CLI/TUI — NixOS infrastructure configuration and management.
 #[derive(Parser)]
@@ -14,6 +33,11 @@ pub struct Cli {
     /// Render a single screen to stdout as ANSI and exit.
     #[arg(long, value_name = "SCREEN")]
     pub screenshot: Option<String>,
+
+    /// Override the consumer flake path (default: read from
+    /// /run/current-system/keystone-system-flake).
+    #[arg(long, value_name = "PATH", global = true)]
+    pub flake: Option<std::path::PathBuf>,
 
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -88,6 +112,15 @@ pub enum Command {
 
         #[arg(long)]
         json: bool,
+
+        /// Route this invocation through the approval broker before running
+        /// the update body. Used by `ks-update.service` so the Walker-
+        /// triggered flow gets a polkit prompt instead of assuming root.
+        ///
+        /// When `KS_APPROVE_EXECUTING` is set (i.e., we are already the
+        /// approved child), this flag is a no-op and the body runs directly.
+        #[arg(long)]
+        approve: bool,
     },
 
     /// Request approval for one allowlisted privileged command.
@@ -156,6 +189,51 @@ pub enum Command {
 
     /// Manage projects — list, add, detect, configure provider overrides.
     Project(ProjectArgs),
+
+    /// Fire a desktop notification for a completed systemd user unit.
+    ///
+    /// Invoked by OnSuccess=/OnFailure= template units (e.g.,
+    /// `ks-update-notify@success.service`). Reads the tail of the source
+    /// unit's journal to build a body the user can triage without opening a
+    /// terminal.
+    Notify {
+        /// Source unit name (e.g., `ks-update.service`).
+        unit: String,
+
+        /// Result tag passed by the template instance: `success` or
+        /// `failure`.
+        result: String,
+    },
+
+    /// Walker menu provider backends (`ks menu <provider> <action>`).
+    ///
+    /// Groups menu-provider subcommands so future migrations of
+    /// `modules/desktop/home/scripts/*-menu.sh` (audio, package, main, agent,
+    /// …) slot in as siblings under `menu` rather than flat top-level
+    /// commands. Currently the only provider is `update` — see
+    /// [`MenuCommand::Update`].
+    #[command(name = "menu")]
+    Menu {
+        #[command(subcommand)]
+        command: MenuCommand,
+    },
+
+    /// Start a systemd user unit in the background.
+    ///
+    /// Thin wrapper around `systemctl --user start`, with the unit name
+    /// constrained to the `ks-<name>.service` shape (prefix + suffix +
+    /// lowercase-ASCII `<name>`) so caller surfaces accepting external
+    /// input cannot activate arbitrary user units. Structural check, not
+    /// a literal allowlist — see `cmd::run_background` module docs.
+    ///
+    /// Used by Walker dispatch paths and other trigger surfaces that
+    /// should kick off a supervised background task (e.g.,
+    /// `ks-update.service`) without opening a terminal.
+    #[command(name = "run-background")]
+    RunBackground {
+        /// Unit to start (must match `ks-<name>.service`).
+        unit: String,
+    },
 }
 
 #[derive(Args)]

@@ -20,36 +20,39 @@ let
   osCfg = config.keystone.os;
   cfg = osCfg.users;
   adminUsername = osCfg.adminUsername;
-  legacyAdminCfg = if cfg ? admin then cfg.admin else null;
-  effectiveAdminCfg = if osCfg.admin != null then osCfg.admin else legacyAdminCfg;
-  effectiveUsers =
-    (removeAttrs cfg [ "admin" ])
-    // optionalAttrs (effectiveAdminCfg != null) {
-      ${adminUsername} = effectiveAdminCfg // {
-        extraGroups = unique ([ "wheel" ] ++ effectiveAdminCfg.extraGroups);
-      };
-    };
-  # Admin can be either an explicit keystone.os.admin or any user with wheel group
-  hasAdmin =
-    effectiveAdminCfg != null || any (u: elem "wheel" u.extraGroups) (attrValues effectiveUsers);
+
+  # CRITICAL: admin identity is a single fact. Exactly one user has admin =
+  # true; that user owns adminUsername, which downstream derivations
+  # (systemFlake.path, admin home directory) depend on. Authorization is
+  # separate — add extraGroups = [ "wheel" ] to any other user that needs
+  # sudo.
+  adminUsersNames = filter (n: cfg.${n}.admin or false) (attrNames cfg);
+
   keysCfg = config.keystone.keys;
   hostname = config.networking.hostName;
   immichServiceCfg = config.keystone.services.immich;
 
   # Whether the keystone desktop NixOS module is imported (gates home-manager desktop config)
   hasDesktopModule = options.keystone ? desktop;
-  desktopUsers = filterAttrs (_: userCfg: userCfg.desktop.enable) effectiveUsers;
+  desktopUsers = filterAttrs (_: userCfg: userCfg.desktop.enable) cfg;
   desktopUsernames = attrNames desktopUsers;
   inferredDesktopUser = if desktopUsernames == [ ] then null else head desktopUsernames;
-  desktopAccessGroups = [
-    "networkmanager"
-    "video"
-    "audio"
-  ];
 
   # Check if ZFS is being used
   # TODO: Re-evaluate ZFS home folder management. Current implementation can interfere with legacy setups.
   useZfs = osCfg.storage.type == "zfs" && osCfg.storage.enable;
+
+  # Read from the _autoUserGroups sink (declared in the options block).
+  # Capability modules (containers, hypervisor, etc.) append to this sink
+  # with `mkIf cfg.enable`, and users.nix consumes it when building each
+  # user's final extraGroups. Follows the "many producers, one consumer"
+  # pattern that assertions/warnings use.
+  #
+  # NOTE: lives at keystone.os._autoUserGroups (not keystone.os.users._autoGroups
+  # as the originating issue sketched) because keystone.os.users is typed
+  # `attrsOf userSubmodule` and cannot host a non-user attribute without
+  # breaking that type discipline. See conventions/process.user-groups.md.
+  autoGroups = osCfg._autoUserGroups;
 
   # Public keys valid on a specific host for a user
   # (that host's software key + all hardware keys)
@@ -63,7 +66,7 @@ let
 
   screenshotUsers = filterAttrs (
     _: userCfg: userCfg.desktop.enable && userCfg.desktop.screenshotSync.enable
-  ) effectiveUsers;
+  ) cfg;
 
   immichServerUrl =
     let
@@ -87,8 +90,86 @@ let
       "http://${hostTarget}:2283";
 in
 {
+  options.keystone.os._autoUserGroups = mkOption {
+    internal = true;
+    description = ''
+      Private sink for module-owned supplementary groups. Capability
+      modules (containers, hypervisor, hardware/media) append to the
+      appropriate scope with `mkIf cfg.enable`; users.nix consumes the
+      sink when building each user's final extraGroups.
+
+      Scopes:
+      - allUsers:     appended to every keystone.os.users entry
+      - adminOnly:    appended only to the user flagged admin = true
+      - desktopUsers: appended to every user with desktop.enable = true
+
+      Lives at keystone.os._autoUserGroups rather than
+      keystone.os.users._autoGroups because keystone.os.users is typed
+      `attrsOf userSubmodule` and cannot host a non-user attribute.
+
+      See conventions/process.user-groups.md.
+    '';
+    default = { };
+    type = types.submodule {
+      options = {
+        allUsers = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Groups appended to every keystone-managed user.";
+        };
+        adminOnly = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Groups appended only to the user flagged admin = true.";
+        };
+        desktopUsers = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Groups appended to users with desktop.enable = true.";
+        };
+      };
+    };
+  };
+
   config = mkMerge [
-    (mkIf (osCfg.enable && effectiveUsers != { }) {
+    # Seed the auto-groups sink with the groups this module owns directly.
+    # Capability modules (containers, hypervisor, etc.) append to the same
+    # sink from their own config blocks — see conventions/process.user-groups.md.
+    #
+    # Desktop access groups (networkmanager, video, audio) land in
+    # `desktopUsers`: every user with desktop.enable gets them. `zfs`
+    # lands in `allUsers` whenever ZFS storage is in use — everyone needs
+    # /dev/zfs access for their home dataset operations.
+    #
+    # `dialout` and `media` land in `adminOnly` unconditionally. The
+    # admin-on-every-host pattern makes a separate enable gate redundant:
+    # every keystone admin needs serial console access (Pi UART debug,
+    # ESP32/RP2040/Arduino flashing, Zigbee/Z-Wave USB coordinators,
+    # router/switch consoles) and media-pool ownership. See the
+    # "Why admins get dialout" section of process.user-groups.md.
+    (mkIf osCfg.enable {
+      keystone.os._autoUserGroups = {
+        allUsers = optionals useZfs [ "zfs" ];
+        adminOnly = [
+          "dialout"
+          "media"
+        ];
+        desktopUsers = [
+          "networkmanager"
+          "video"
+          "audio"
+        ];
+      };
+
+      # `media` is NOT a standard nixpkgs group, unlike `dialout` (gid 27,
+      # created by users-groups.nix). Declare it here so admin membership
+      # references a real group. Consumer flakes that provision media
+      # pools should chown/chmod against `media`; no module currently
+      # pins the gid.
+      users.groups.media = { };
+    })
+
+    (mkIf (osCfg.enable && cfg != { }) {
       # Enable ZFS delegation for non-root users (only if using ZFS)
       boot.extraModprobeConfig = mkIf useZfs ''
         options zfs zfs_admin_snapshot=1
@@ -105,12 +186,34 @@ in
       # Assertions
       assertions = [
         {
-          assertion = hasAdmin;
-          message = "Keystone OS requires an administrator — set keystone.os.admin or add a user with 'wheel' in extraGroups.";
+          assertion = length adminUsersNames == 1;
+          message =
+            if adminUsersNames == [ ] then
+              ''
+                Keystone OS requires an administrator. Set admin = true on
+                exactly one entry in keystone.os.users.
+              ''
+            else
+              ''
+                Multiple users are flagged keystone.os.users.<name>.admin = true:
+                ${concatStringsSep ", " adminUsersNames}.
+
+                Exactly one user must be the admin — it owns adminUsername and
+                downstream path derivations. Give the others
+                extraGroups = [ "wheel" ] if they need sudo.
+              '';
         }
         {
-          assertion = !(osCfg.admin != null && legacyAdminCfg != null);
-          message = "Define the administrator in keystone.os.admin, not both keystone.os.admin and keystone.os.users.admin.";
+          # adminUsername must name the admin-flagged user. Explicit assignments
+          # still win (via mkDefault in default.nix) but cannot drift from the
+          # flag — silent mismatch would break systemFlake.path.
+          assertion = adminUsersNames == [ ] || elem adminUsername adminUsersNames;
+          message = ''
+            keystone.os.adminUsername = "${adminUsername}" but that user is
+            not flagged admin = true. Set admin = true on
+            keystone.os.users.${adminUsername} or remove the explicit
+            adminUsername assignment.
+          '';
         }
         {
           assertion =
@@ -123,7 +226,7 @@ in
         {
           assertion =
             let
-              uids = filter (u: u != null) (mapAttrsToList (_: u: u.uid) effectiveUsers);
+              uids = filter (u: u != null) (mapAttrsToList (_: u: u.uid) cfg);
               uniqueUids = unique uids;
             in
             length uids == length uniqueUids;
@@ -137,7 +240,7 @@ in
             assertion = userCfg.desktop.enable;
             message = "User '${username}' enables desktop.screenshotSync but desktop.enable is false.";
           }
-        ) effectiveUsers
+        ) cfg
       )
       ++ optionals (screenshotUsers != { }) [
         {
@@ -175,17 +278,11 @@ in
                 };
             '';
           }
-        ) effectiveUsers
+        ) cfg
       );
 
       warnings =
-        optional (osCfg.admin != null && legacyAdminCfg != null) ''
-          Both keystone.os.admin and keystone.os.users.admin are set. Use keystone.os.admin only.
-        ''
-        ++ optional (osCfg.admin == null && legacyAdminCfg != null) ''
-          keystone.os.users.admin is deprecated. Move the administrator definition to keystone.os.admin.
-        ''
-        ++ concatLists (
+        concatLists (
           mapAttrsToList (
             username: userCfg:
             optional
@@ -213,7 +310,31 @@ in
           Multiple users have keystone.os.users.<name>.desktop.enable = true. Keystone defaulted keystone.desktop.user to "${inferredDesktopUser}".
 
           Set keystone.desktop.user explicitly if a different desktop login user should own the session.
-        '';
+        ''
+        # Shadow warning: a user's explicit extraGroups entry is
+        # already auto-granted by keystone. Surface it so consumers
+        # can shrink their lists.
+        ++ concatLists (
+          mapAttrsToList (
+            username: userCfg:
+            let
+              # Mirror the grant layering in users.users.<name>.extraGroups
+              # below: wheel comes from `admin = true` (separate from the
+              # sink), the other three come from the _autoUserGroups sink.
+              autoForUser =
+                optionals userCfg.admin [ "wheel" ]
+                ++ autoGroups.allUsers
+                ++ optionals userCfg.admin autoGroups.adminOnly
+                ++ optionals (hasDesktopModule && userCfg.desktop.enable) autoGroups.desktopUsers;
+              shadowed = filter (g: elem g autoForUser) userCfg.extraGroups;
+            in
+            optional (shadowed != [ ]) ''
+              User '${username}' has extraGroups entries already auto-granted by keystone: ${concatStringsSep ", " shadowed}.
+
+              Remove them from keystone.os.users.${username}.extraGroups — they come from module wiring (see conventions/process.user-groups.md).
+            ''
+          ) cfg
+        );
 
       # Auto-declare age.secrets for sshAutoLoad when secrets.repo is set
       age.secrets = mkIf (config.keystone.secrets.repo != null) (
@@ -235,15 +356,25 @@ in
                   mode = "0400";
                 }
               ))
-            ) effectiveUsers
+            ) cfg
           )
         )
       );
 
       # Enable zsh system-wide if any user has terminal enabled
-      programs.zsh.enable = mkIf (any (u: u.terminal.enable) (attrValues effectiveUsers)) true;
+      programs.zsh.enable = mkIf (any (u: u.terminal.enable) (attrValues cfg)) true;
 
-      # Generate NixOS users
+      # Generate NixOS users.
+      #
+      # extraGroups layers in this order:
+      #   1. user's explicit extraGroups (consumer override)
+      #   2. "wheel" when admin = true (sudo authorization)
+      #   3. autoGroups.allUsers      (applied to every user)
+      #   4. autoGroups.adminOnly     (applied only when admin = true)
+      #   5. autoGroups.desktopUsers  (applied when desktop.enable)
+      #
+      # Capability modules append to the autoGroups sink with `mkIf cfg.enable`.
+      # See conventions/process.user-groups.md for the capability → group map.
       users.users = mapAttrs (username: userCfg: {
         isNormalUser = true;
         uid = userCfg.uid;
@@ -252,15 +383,17 @@ in
         createHome = !useZfs; # Let ZFS dataset provide home when using ZFS
         extraGroups = unique (
           userCfg.extraGroups
-          ++ optionals (hasDesktopModule && userCfg.desktop.enable) desktopAccessGroups
-          ++ (optionals useZfs [ "zfs" ])
+          ++ optionals userCfg.admin [ "wheel" ]
+          ++ autoGroups.allUsers
+          ++ optionals userCfg.admin autoGroups.adminOnly
+          ++ optionals (hasDesktopModule && userCfg.desktop.enable) autoGroups.desktopUsers
         );
         initialPassword = userCfg.initialPassword;
         hashedPassword = userCfg.hashedPassword;
         # Read all keys from keystone.keys registry
         openssh.authorizedKeys.keys = if keysCfg ? ${username} then keysCfg.${username}.allKeys else [ ];
         shell = mkIf userCfg.terminal.enable pkgs.zsh;
-      }) effectiveUsers;
+      }) cfg;
 
       # Home directory ownership for ext4 (ZFS handles this in its service)
       systemd.services.create-user-homes = mkIf (!useZfs) {
@@ -285,7 +418,7 @@ in
               fi
               chown ${username}:users /home/${username}
               chmod 700 /home/${username}
-            '') effectiveUsers
+            '') cfg
           )}
         '';
       };
@@ -341,12 +474,7 @@ in
     # because the module system only reads the mkIf's `content` attribute.
     (optionalAttrs (options ? home-manager) {
       home-manager =
-        mkIf
-          (
-            osCfg.enable
-            && effectiveUsers != { }
-            && any (u: u.terminal.enable || u.desktop.enable) (attrValues effectiveUsers)
-          )
+        mkIf (osCfg.enable && cfg != { } && any (u: u.terminal.enable || u.desktop.enable) (attrValues cfg))
           {
             useGlobalPkgs = mkDefault true;
             useUserPackages = mkDefault true;
@@ -403,7 +531,7 @@ in
                     };
                   }
                 )
-            ) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) effectiveUsers);
+            ) (filterAttrs (_: u: u.terminal.enable || u.desktop.enable) cfg);
           };
     })
 

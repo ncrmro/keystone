@@ -21,6 +21,14 @@
       inputs.crane.follows = "crane";
     };
     hyprland.url = "github:hyprwm/Hyprland";
+    hyprpaper = {
+      url = "github:hyprwm/hyprpaper";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.hyprlang.follows = "hyprland/hyprlang";
+      inputs.hyprutils.follows = "hyprland/hyprutils";
+      inputs.hyprgraphics.follows = "hyprland/hyprgraphics";
+      inputs.hyprwayland-scanner.follows = "hyprland/hyprwayland-scanner";
+    };
     himalaya = {
       url = "github:pimalaya/himalaya";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -115,6 +123,7 @@
       omarchy,
       lanzaboote,
       hyprland,
+      hyprpaper,
       himalaya,
       calendula,
       cardamum,
@@ -144,6 +153,7 @@
           lanzaboote
           home-manager
           hyprland
+          hyprpaper
           himalaya
           llm-agents
           browser-previews
@@ -247,6 +257,9 @@
         # Experimental feature flag (keystone.experimental)
         experimental = ./modules/shared/experimental.nix;
 
+        # Update channel selector (keystone.update.channel) — stable | unstable
+        update = ./modules/shared/update.nix;
+
         # Managed repo registry + development mode toggle (keystone.repos, keystone.development)
         repos = ./modules/shared/repos.nix;
 
@@ -266,6 +279,7 @@
             ./modules/hosts.nix
             ./modules/shared/experimental.nix
             ./modules/shared/repos.nix
+            ./modules/shared/update.nix
             ./modules/os
             ./modules/installer.nix
           ];
@@ -418,6 +432,10 @@
               ;
             self = self;
           };
+          templateUpdateChannel = import ./tests/module/template-update-channel.nix {
+            inherit pkgs lib;
+            self = self;
+          };
           serverEvaluation = import ./tests/module/server-evaluation.nix {
             inherit pkgs lib nixpkgs;
             self = self;
@@ -440,10 +458,10 @@
           keystoneSecretsMenu = import ./tests/module/keystone-secrets-menu.nix {
             inherit pkgs lib;
           };
-          keystoneUpdateMenu = import ./tests/module/keystone-update-menu.nix {
+          keystoneFingerprintMenu = import ./tests/module/keystone-fingerprint-menu.nix {
             inherit pkgs lib;
           };
-          keystoneFingerprintMenu = import ./tests/module/keystone-fingerprint-menu.nix {
+          keystoneUpdateMenuWiring = import ./tests/module/keystone-update-menu-wiring.nix {
             inherit pkgs lib;
           };
           hyprlandBindingsAgentConflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
@@ -496,6 +514,7 @@
           os-evaluation = osEvaluation;
           agent-evaluation = agentEvaluation;
           template-evaluation = templateEvaluation;
+          template-update-channel = templateUpdateChannel;
           server-evaluation = serverEvaluation;
           ks-help = ksHelp;
           ks-lock-sync = ksLockSync;
@@ -505,8 +524,8 @@
           pz-project-menu = pzProjectMenu;
           pz-host-launcher-state = pzHostLauncherState;
           keystone-secrets-menu = keystoneSecretsMenu;
-          keystone-update-menu = keystoneUpdateMenu;
           keystone-fingerprint-menu = keystoneFingerprintMenu;
+          keystone-update-menu-wiring = keystoneUpdateMenuWiring;
           hyprland-bindings-agent-conflict = hyprlandBindingsAgentConflict;
           desktop-walker-surfaces = desktopWalkerSurfaces;
           desktop-autostart-assertion = desktopAutostartAssertion;
@@ -532,6 +551,7 @@
             ln -s ${osEvaluation} "$out/os-evaluation"
             ln -s ${agentEvaluation} "$out/agent-evaluation"
             ln -s ${templateEvaluation} "$out/template-evaluation"
+            ln -s ${templateUpdateChannel} "$out/template-update-channel"
             ln -s ${serverEvaluation} "$out/server-evaluation"
           '';
 
@@ -556,8 +576,8 @@
             ln -s ${pzProjectMenu} "$out/pz-project-menu"
             ln -s ${pzHostLauncherState} "$out/pz-host-launcher-state"
             ln -s ${keystoneSecretsMenu} "$out/keystone-secrets-menu"
-            ln -s ${keystoneUpdateMenu} "$out/keystone-update-menu"
             ln -s ${keystoneFingerprintMenu} "$out/keystone-fingerprint-menu"
+            ln -s ${keystoneUpdateMenuWiring} "$out/keystone-update-menu-wiring"
             ln -s ${projectsSchema} "$out/projects-schema"
           '';
 

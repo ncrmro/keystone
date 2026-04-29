@@ -23,9 +23,10 @@ at the Nix module level, see `process.keystone-development-mode`.
 
 4. `ks build` MUST be used to verify changes compile before deploying. It builds
    the full system for the current host using local keystone checkouts in dev mode.
-5. `ks update --dev` deploys **home-manager profiles only**. Use this after editing
-   terminal config, conventions, or deepwork jobs. Despite the narrower scope,
-   it MUST still be treated as an approval-gated operation per
+5. `ks update --dev` deploys the current local unlocked keystone checkout via
+   `ks switch`. When the system closure is unchanged it short-circuits to a
+   home-manager-only activation. Use after editing terminal config, conventions,
+   deepwork jobs, or any keystone module. Approval-gated per
    `process.privileged-approval`.
 6. `ks update` runs the full update cycle: pull, lock, build, push, deploy. It MUST
    be treated as an approval-gated operation per `process.privileged-approval`.
@@ -42,8 +43,8 @@ at the Nix module level, see `process.keystone-development-mode`.
    keystone-dev --boot    # nixos-rebuild boot (safe for dbus/init changes)
    ```
 10. When `keystone.development = true`, `ks build` and `ks update --dev` automatically
-    use the live `ncrmro/keystone` checkout — no `keystone-dev` wrapper needed for
-    home-manager profile changes. Approval policy still applies to `ks update --dev`.
+    use the live `ncrmro/keystone` checkout — no `keystone-dev` wrapper needed.
+    Approval policy still applies to `ks update --dev`.
 11. When managing the local service stack (database, backend, frontend) during development, agents MUST follow `tool.process-compose-agent` for reliable orchestration.
 
 ## Change flow: keystone → nixos-config

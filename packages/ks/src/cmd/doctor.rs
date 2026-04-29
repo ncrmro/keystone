@@ -202,6 +202,12 @@ async fn gather_ollama_diagnostics(repo_root: &Path, current_host: Option<&str>)
 }
 
 async fn ssh_probe(target: &str, timeout_seconds: &str) -> bool {
+    // `.status()` inherits parent stdio by default — when a fleet host
+    // rejects the SSH probe, the child's "Permission denied" message
+    // leaks onto the parent's stderr (and for callers running under
+    // streams-merged shells, onto stdout), corrupting `ks doctor --json`.
+    // Explicitly null out all stdio so the probe is silent regardless of
+    // outcome — we only care about the exit status.
     tokio::process::Command::new("ssh")
         .args([
             "-o",
@@ -211,6 +217,9 @@ async fn ssh_probe(target: &str, timeout_seconds: &str) -> bool {
         ])
         .arg(format!("root@{}", target))
         .arg("true")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .await
         .map(|status| status.success())
@@ -218,10 +227,13 @@ async fn ssh_probe(target: &str, timeout_seconds: &str) -> bool {
 }
 
 async fn remote_nixos_generation(target: &str) -> String {
+    // `.output()` captures both stdout and stderr, so SSH's error output
+    // doesn't leak to the parent's streams. We only read stdout below.
     tokio::process::Command::new("ssh")
         .args(["-o", "ConnectTimeout=5", "-o", "BatchMode=yes"])
         .arg(format!("root@{}", target))
         .arg("nixos-version")
+        .stdin(std::process::Stdio::null())
         .output()
         .await
         .ok()
@@ -388,6 +400,193 @@ fn gather_agent_tasks() -> String {
     lines.join("\n")
 }
 
+/// Check whether a systemd user unit exists on the user bus. Uses
+/// `systemctl --user cat <unit>` which returns 0 when the unit file is
+/// findable — works for both concrete units and template units
+/// (`foo@.service`). A non-zero exit means the unit is not present.
+async fn systemctl_user_unit_exists(unit: &str) -> bool {
+    match tokio::process::Command::new("systemctl")
+        .args(["--user", "cat", unit])
+        .output()
+        .await
+    {
+        Ok(out) => out.status.success(),
+        Err(_) => false,
+    }
+}
+
+/// Check whether a systemd user unit is currently active.
+async fn systemctl_user_is_active(unit: &str) -> bool {
+    match tokio::process::Command::new("systemctl")
+        .args(["--user", "is-active", unit])
+        .output()
+        .await
+    {
+        Ok(out) => String::from_utf8_lossy(&out.stdout).trim() == "active",
+        Err(_) => false,
+    }
+}
+
+/// Probe whether a notification daemon is registered on the session bus
+/// by asking `org.freedesktop.Notifications` for its server info. A
+/// responding daemon (mako/dunst/swaync/…) is enough; we don't care
+/// which implementation.
+async fn notification_daemon_active() -> bool {
+    match tokio::process::Command::new("busctl")
+        .args([
+            "--user",
+            "--timeout=2",
+            "call",
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            "GetServerInformation",
+        ])
+        .output()
+        .await
+    {
+        Ok(out) => out.status.success(),
+        Err(_) => false,
+    }
+}
+
+/// Check whether `/run/wrappers/bin/pkexec` exists and has its setuid bit
+/// set. Without the wrapper, `ks approve` cannot escalate into the
+/// policy-kit helper and the Walker-triggered update path fails silently.
+fn pkexec_is_setuid() -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let path = Path::new("/run/wrappers/bin/pkexec");
+    match fs::metadata(path) {
+        Ok(meta) => {
+            let mode = meta.permissions().mode();
+            // setuid bit (04000) + owner-exec bit (0100) both set.
+            (mode & 0o4000) != 0 && (mode & 0o100) != 0
+        }
+        Err(_) => false,
+    }
+}
+
+/// Verify the runtime prereqs for the Walker-triggered update flow
+/// introduced alongside `ks-update.service`:
+///
+/// 1. A polkit authentication agent is active on the user bus (so the
+///    approval popup can render).
+/// 2. A notification daemon is registered on the session D-Bus (so
+///    `ks notify` actually surfaces to the user).
+/// 3. `/run/wrappers/bin/pkexec` is setuid (so `ks approve` can
+///    escalate).
+/// 4. `ks-update.service` and `ks-update-notify@.service` are loaded on
+///    the user bus (so the dispatch -> unit -> notifier chain works).
+///
+/// Only runs on hosts that look like desktops (detected by the presence
+/// of the `hyprpolkitagent.service` user unit). On headless hosts the
+/// check is skipped — missing desktop-trigger plumbing is expected
+/// there, not an error.
+/// One desktop-trigger prereq result. Format derived once, then rendered
+/// into both the markdown fragment and a structured DiagnosticCheck.
+struct DesktopCheck {
+    name: &'static str,
+    label: &'static str,
+    ok: bool,
+    ok_md: &'static str,
+    err_md: &'static str,
+    ok_detail: &'static str,
+    err_detail: &'static str,
+}
+
+impl DesktopCheck {
+    fn render_markdown(&self, md: &mut String) {
+        md.push_str(&format!(
+            "- {}: {}\n",
+            self.label,
+            if self.ok { self.ok_md } else { self.err_md }
+        ));
+    }
+
+    fn as_check(&self) -> DiagnosticCheck {
+        DiagnosticCheck {
+            name: self.name.into(),
+            status: if self.ok { "ok" } else { "error" }.into(),
+            detail: if self.ok {
+                self.ok_detail
+            } else {
+                self.err_detail
+            }
+            .into(),
+        }
+    }
+}
+
+async fn gather_desktop_triggers() -> (String, Vec<DiagnosticCheck>) {
+    let is_desktop = systemctl_user_unit_exists("hyprpolkitagent.service").await;
+    if !is_desktop {
+        return (String::new(), Vec::new());
+    }
+
+    let polkit_ok = systemctl_user_is_active("hyprpolkitagent.service").await;
+    let notify_ok = notification_daemon_active().await;
+    let pkexec_ok = pkexec_is_setuid();
+    let update_loaded = systemctl_user_unit_exists("ks-update.service").await;
+    let notifier_loaded = systemctl_user_unit_exists("ks-update-notify@.service").await;
+
+    let results = [
+        DesktopCheck {
+            name: "desktop-triggers.polkit-agent",
+            label: "Polkit auth agent",
+            ok: polkit_ok,
+            ok_md: "active (hyprpolkitagent.service)",
+            err_md: "**inactive** — start `hyprpolkitagent.service`; without it approval popups cannot render and `ks update --approve` silently fails",
+            ok_detail: "hyprpolkitagent.service active",
+            err_detail: "hyprpolkitagent.service not active",
+        },
+        DesktopCheck {
+            name: "desktop-triggers.notification-daemon",
+            label: "Notification daemon",
+            ok: notify_ok,
+            ok_md: "responding on org.freedesktop.Notifications",
+            err_md: "**not responding** — install and run mako / dunst / swaync; `ks notify` silently no-ops without a daemon on the session bus",
+            ok_detail: "org.freedesktop.Notifications responds on user bus",
+            err_detail: "org.freedesktop.Notifications did not respond",
+        },
+        DesktopCheck {
+            name: "desktop-triggers.pkexec",
+            label: "pkexec wrapper",
+            ok: pkexec_ok,
+            ok_md: "/run/wrappers/bin/pkexec is setuid",
+            err_md: "**missing or not setuid** — `ks approve` cannot escalate; check that `security.wrappers.pkexec` is populated in the system module",
+            ok_detail: "/run/wrappers/bin/pkexec setuid",
+            err_detail: "/run/wrappers/bin/pkexec not setuid",
+        },
+        DesktopCheck {
+            name: "desktop-triggers.ks-update-service",
+            label: "ks-update.service",
+            ok: update_loaded,
+            ok_md: "loaded",
+            err_md: "**not loaded** — this host is missing the keystone.desktop services module or `ks update --dev` hasn't applied yet",
+            ok_detail: "ks-update.service loaded on user bus",
+            err_detail: "ks-update.service not loaded",
+        },
+        DesktopCheck {
+            name: "desktop-triggers.ks-update-notify-template",
+            label: "ks-update-notify@.service template",
+            ok: notifier_loaded,
+            ok_md: "loaded",
+            err_md: "**not loaded** — completion notifications won't fire",
+            ok_detail: "ks-update-notify@.service template loaded",
+            err_detail: "ks-update-notify@.service template not loaded",
+        },
+    ];
+
+    let mut md = String::from("### Desktop-triggered background flow\n\n");
+    let mut checks = Vec::with_capacity(results.len());
+    for r in &results {
+        r.render_markdown(&mut md);
+        checks.push(r.as_check());
+    }
+    md.push('\n');
+    (md, checks)
+}
+
 pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
     let hostname = hostname::get()
         .context("Failed to get hostname")?
@@ -467,6 +666,13 @@ pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
         markdown.push('\n');
     }
 
+    doctor_progress("checking desktop-trigger prereqs");
+    let (desktop_md, desktop_checks) = gather_desktop_triggers().await;
+    if !desktop_md.is_empty() {
+        markdown.push_str(&desktop_md);
+    }
+    checks.extend(desktop_checks);
+
     Ok(DoctorReport {
         hostname,
         nixos_generation: generation,
@@ -475,8 +681,8 @@ pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
     })
 }
 
-pub async fn execute() -> Result<DoctorReport> {
-    let repo_root = repo::find_repo()?;
+pub async fn execute(flake_override: Option<&std::path::Path>) -> Result<DoctorReport> {
+    let repo_root = repo::find_repo(flake_override)?;
     gather_report(&repo_root).await
 }
 
@@ -510,8 +716,9 @@ fn render_report(markdown: &str) -> Result<()> {
 pub async fn render_and_maybe_launch(
     local_model: Option<&str>,
     passthrough_args: &[String],
+    flake_override: Option<&std::path::Path>,
 ) -> Result<()> {
-    let report = execute().await?;
+    let report = execute(flake_override).await?;
     render_report(&report.markdown)?;
 
     if !util::interactive_terminal() {
@@ -524,7 +731,9 @@ pub async fn render_and_maybe_launch(
     let mut reply = String::new();
     io::stdin().read_line(&mut reply).ok();
     match reply.trim() {
-        "y" | "Y" | "yes" | "YES" => agent::execute(local_model, passthrough_args).await,
+        "y" | "Y" | "yes" | "YES" => {
+            agent::execute(local_model, passthrough_args, flake_override).await
+        }
         _ => Ok(()),
     }
 }

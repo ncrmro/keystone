@@ -113,7 +113,26 @@ pkgs.runCommand "test-agent-task-loop-ping-pong"
     printf '%s\n' '#!${pkgs.bash}/bin/bash' "cat ${calendulaEventsFixture}" > "$PWD/stubs/calendula"
     chmod +x "$PWD/stubs/calendula"
 
-    # Stub: claude — handles ingest, prioritize, and execute stages
+    # Stub: himalaya — captures sent messages to a sink file so we can assert
+    # the ping/pong contract is honored end-to-end. On `message send`, stdin
+    # is appended to the sink; any other args are a no-op.
+    printf '%s\n' \
+      '#!${pkgs.bash}/bin/bash' \
+      'set -euo pipefail' \
+      'sink="''${TASK_LOOP_TEST_STATE_DIR:?}/himalaya-sent.eml"' \
+      'if [[ "''${1:-}" == "message" && "''${2:-}" == "send" ]]; then' \
+      '  cat >> "$sink"' \
+      '  printf "\n--- END MESSAGE ---\n" >> "$sink"' \
+      'fi' \
+      'exit 0' \
+      > "$PWD/stubs/himalaya"
+    chmod +x "$PWD/stubs/himalaya"
+
+    # Stub: claude — handles ingest, prioritize, and execute stages. The
+    # execute stub simulates an agent obeying the parse_sources Ping/Pong
+    # contract (subject `Re: [pong] <tag>`, body `pong`) by piping the reply
+    # through the himalaya stub. If the contract in job.yml drifts from the
+    # pong-subject/pong-body convention, the assertions below fail.
     cat > "$PWD/stubs/claude" <<'STUBEOF'
     #!${pkgs.bash}/bin/bash
     set -euo pipefail
@@ -124,16 +143,18 @@ pkgs.runCommand "test-agent-task-loop-ping-pong"
 
     if printf '%s' "$args" | grep -q "task_loop ingest"; then
       printf '%s\n' "1" > "$state_dir/ingest-count"
-      printf 'tasks:\n  - name: reply-pong-to-test\n    description: "Reply with pong to the ping email from test@ncrmro.com"\n    status: pending\n    source: email\n    source_ref: "email-1-test@ncrmro.com"\n' > "$agent_home/TASKS.yaml"
+      printf 'tasks:\n  - name: reply-pong-to-test\n    description: "Reply to the [ping] e2e-test email with subject '"'"'Re: [pong] e2e-test'"'"' and body '"'"'pong'"'"' per the task_loop Ping/Pong core rule."\n    status: pending\n    source: email\n    source_ref: "email-1-test@ncrmro.com"\n' > "$agent_home/TASKS.yaml"
 
     elif printf '%s' "$args" | grep -q "task_loop prioritize"; then
       printf '%s\n' "1" > "$state_dir/prioritize-count"
       yq -i '(.tasks[] | select(.name == "reply-pong-to-test")).model = "haiku"' "$agent_home/TASKS.yaml"
 
     else
-      # Execute stage: record the task name and exit 0
+      # Execute stage: simulate an agent obeying the contract by sending a
+      # pong reply through the himalaya stub.
       printf '%s\n' "1" > "$state_dir/execute-count"
       printf '%s\n' "$args" > "$state_dir/execute-args"
+      printf 'From: agent-test@ncrmro.com\nTo: test@ncrmro.com\nSubject: Re: [pong] e2e-test\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\n\npong\n' | himalaya message send
     fi
 
     printf '%s\n' '{"total_tokens":1}'
@@ -184,6 +205,26 @@ pkgs.runCommand "test-agent-task-loop-ping-pong"
       exit 1
     fi
     echo "PASS: pong task completed"
+
+    # 6. Contract enforcement: the simulated reply in the himalaya sink MUST
+    #    contain the pong subject flip and a pong body per the parse_sources
+    #    core rule. Drift in that contract fails CI here.
+    sink="$TASK_LOOP_TEST_STATE_DIR/himalaya-sent.eml"
+    if [[ ! -f "$sink" ]]; then
+      echo "FAIL: no outbound message was captured — execute stage did not send a reply" >&2
+      exit 1
+    fi
+    if ! grep -q '^Subject: Re: \[pong\] ' "$sink"; then
+      echo "FAIL: sent reply subject does not match the Ping/Pong contract (expected 'Re: [pong] <tag>')" >&2
+      cat "$sink" >&2
+      exit 1
+    fi
+    if ! grep -qi '^pong$' "$sink"; then
+      echo "FAIL: sent reply body does not contain 'pong' per the Ping/Pong contract" >&2
+      cat "$sink" >&2
+      exit 1
+    fi
+    echo "PASS: outbound reply honors the Ping/Pong contract (subject + body)"
 
     echo ""
     echo "All ping-pong pipeline assertions passed."

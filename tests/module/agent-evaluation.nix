@@ -329,6 +329,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
         };
         fileSystems."/" = {
@@ -350,6 +351,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
             terminal.enable = true;
             email = "testuser@example.com";
             capabilities = [ "ks" ];
@@ -375,6 +377,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
             terminal.enable = true;
             email = "testuser@example.com";
             capabilities = [ "ks" ];
@@ -399,6 +402,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.drago = {
             fullName = "Drago";
@@ -468,6 +472,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.researcher = {
             fullName = "Research Agent";
@@ -494,6 +499,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents = {
             researcher = {
@@ -528,6 +534,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.researcher = {
             uid = 4050;
@@ -554,6 +561,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.researcher = {
             fullName = "Research Agent";
@@ -583,6 +591,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.researcher = {
             fullName = "Research Agent";
@@ -613,6 +622,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.researcher = {
             fullName = "Research Agent";
@@ -638,6 +648,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.researcher = {
             fullName = "Research Agent";
@@ -667,6 +678,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.drago = {
             fullName = "Drago";
@@ -692,6 +704,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.drago = {
             fullName = "Drago";
@@ -820,6 +833,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.researcher = {
             fullName = "Research Agent";
@@ -851,6 +865,7 @@ let
           users.testuser = {
             fullName = "Test User";
             initialPassword = "testpass";
+            admin = true;
           };
           agents.researcher = {
             fullName = "Research Agent";
@@ -986,6 +1001,7 @@ let
             users.testuser = {
               fullName = "Test User";
               initialPassword = "testpass";
+              admin = true;
               desktop = {
                 enable = true;
                 screenshotSync.enable = true;

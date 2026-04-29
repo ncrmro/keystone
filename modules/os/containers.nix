@@ -42,6 +42,17 @@ in
       defaultNetwork.settings.dns_enabled = true;
     };
 
+    # Grant the admin user membership in the `podman` group. The group
+    # itself is already created by the upstream podman module
+    # (nixos/modules/virtualisation/podman/default.nix declares
+    # `users.groups.podman = { };` unconditionally when virtualisation.podman
+    # is enabled), so no `users.groups.podman = {};` is needed here.
+    #
+    # Non-admin wheel users do NOT get this automatically — hardware/service
+    # access follows `admin = true`, not sudo. See
+    # conventions/process.user-groups.md.
+    keystone.os._autoUserGroups.adminOnly = [ "podman" ];
+
     environment.systemPackages =
       with pkgs;
       [

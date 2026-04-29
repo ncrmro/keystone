@@ -85,6 +85,29 @@ let
         ENDJSON
       '';
 
+    # Guard: exercise the auto-exposed vm-image-<host> packages added by
+    # mkSystemFlake so evaluation regressions (e.g. storage assertion
+    # failures on multi-disk hosts) show up in CI.  Only the derivation
+    # paths are recorded — the heavy image build stays out of eval tests.
+    template-default-vm-images =
+      let
+        vmImageSystem = templateOutputs.nixosConfigurations.laptop.pkgs.stdenv.hostPlatform.system;
+        vmImagePackages = templateOutputs.packages.${vmImageSystem};
+        laptopImage = vmImagePackages.vm-image-laptop;
+        serverImage = vmImagePackages.vm-image-server-ocean;
+      in
+      pkgs.runCommand "eval-template-vm-images" { } ''
+        mkdir -p $out
+        cat > $out/template-default-vm-images.json <<'ENDJSON'
+        {
+          "name": "template-default-vm-images",
+          "kind": "vm-images",
+          "laptopDrvName": "${laptopImage.name}",
+          "serverDrvName": "${serverImage.name}"
+        }
+        ENDJSON
+      '';
+
     laptop-ext4 = evalNixos "laptop-ext4" (
       self.lib.mkLaptop {
         hostname = "laptop";
@@ -205,6 +228,95 @@ let
         };
       }).nixosConfigurations.vps
     );
+
+    # Guard: shared.agents passed to mkSystemFlake must inject the same
+    # agent identities into every host's keystone.os.agents, while still
+    # allowing per-host additions to merge in.  Eval-only — agent users are
+    # defined OS-wide so they appear in users.users on every host.
+    inventory-fleet-agents-host-a =
+      let
+        fleet = self.lib.mkSystemFlake {
+          admin = {
+            username = "admin";
+            fullName = "Fleet Owner";
+            email = "fleet@example.com";
+            initialPassword = "changeme";
+          };
+          defaults.timeZone = "UTC";
+          keystoneServices = {
+            git.host = "host-a";
+          };
+          shared.agents = {
+            fleeter = {
+              fullName = "Fleet-Wide Agent";
+              host = "host-a";
+            };
+          };
+          hosts = {
+            host-a = {
+              kind = "server";
+              hostname = "host-a";
+              hardware = null;
+              configuration = null;
+              storage.devices = [ "/dev/disk/by-id/host-a-root-001" ];
+              modules = [
+                {
+                  networking.hostId = "aaaaaaaa";
+                  keystone.os.agents.local-a = {
+                    fullName = "Host-A Local Agent";
+                    host = "host-a";
+                  };
+                }
+              ];
+              services.openssh.enable = true;
+            };
+            host-b = {
+              kind = "server";
+              hostname = "host-b";
+              hardware = null;
+              configuration = null;
+              storage.devices = [ "/dev/disk/by-id/host-b-root-001" ];
+              modules = [
+                {
+                  networking.hostId = "bbbbbbbb";
+                }
+              ];
+              services.openssh.enable = true;
+            };
+          };
+        };
+        hostA = fleet.nixosConfigurations.host-a.config;
+        hostB = fleet.nixosConfigurations.host-b.config;
+        # Force evaluation of both hosts' agent sets.
+        agentsA = builtins.attrNames hostA.keystone.os.agents;
+        agentsB = builtins.attrNames hostB.keystone.os.agents;
+        expectFleetA = builtins.elem "fleeter" agentsA;
+        expectFleetB = builtins.elem "fleeter" agentsB;
+        expectLocalA = builtins.elem "local-a" agentsA;
+        expectLocalNotOnB = !(builtins.elem "local-a" agentsB);
+        ok = expectFleetA && expectFleetB && expectLocalA && expectLocalNotOnB;
+        agentsAJson = builtins.toJSON agentsA;
+        agentsBJson = builtins.toJSON agentsB;
+      in
+      if !ok then
+        throw ''
+          inventory-fleet-agents: shared.agents did not propagate as expected.
+            host-a agents: ${agentsAJson}
+            host-b agents: ${agentsBJson}
+            expected: 'fleeter' on both hosts; 'local-a' on host-a only.
+        ''
+      else
+        pkgs.runCommand "eval-template-inventory-fleet-agents" { } ''
+          mkdir -p $out
+          cat > $out/inventory-fleet-agents-host-a.json <<'ENDJSON'
+          {
+            "name": "inventory-fleet-agents-host-a",
+            "kind": "fleet-agents",
+            "hostAAgents": ${agentsAJson},
+            "hostBAgents": ${agentsBJson}
+          }
+          ENDJSON
+        '';
   };
 
   homeTests = lib.optionalAttrs (home-manager != null) {

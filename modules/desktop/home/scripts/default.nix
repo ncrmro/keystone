@@ -234,11 +234,6 @@ let
     builtins.readFile ./keystone-package-menu.sh
   );
 
-  # Keystone OS release status and update flow for Walker
-  keystoneUpdateMenu = pkgs.writeShellScriptBin "keystone-update-menu" (
-    builtins.readFile ./keystone-update-menu.sh
-  );
-
   # Desktop setup launcher for Walker/Elephant
   keystoneSetupMenu = pkgs.writeShellScriptBin "keystone-setup-menu" (
     builtins.readFile ./keystone-setup-menu.sh
@@ -437,27 +432,6 @@ let
         pkgs.python3
         pkgs.ripgrep
         pkgs.walker
-      ];
-    })
-    (mkHomeScriptCommand {
-      inherit config pkgs;
-      commandName = "keystone-update-menu";
-      relativePath = "modules/desktop/home/scripts/keystone-update-menu.sh";
-      package = keystoneUpdateMenu;
-      runtimeInputs = [
-        pkgs.coreutils
-        pkgs.curl
-        pkgs.findutils
-        pkgs.git
-        pkgs.gh
-        pkgs.ghostty
-        pkgs.jq
-        pkgs.keystone.ks
-        pkgs.libnotify
-        pkgs.nix
-        pkgs.systemd
-        pkgs.walker
-        pkgs.xdg-utils
       ];
     })
     (mkHomeScriptCommand {
@@ -701,7 +675,6 @@ in
             keystoneBatteryMonitor
             keystoneDetach
             keystoneProjectMenu
-            keystoneUpdateMenu
             keystonePhotosMenu
             pkgs.jq
             pkgs.pulseaudio

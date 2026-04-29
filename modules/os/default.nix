@@ -12,9 +12,12 @@
 # Usage:
 #   keystone.os = {
 #     enable = true;
-#     admin.fullName = "System Administrator";
 #     storage.devices = [ "/dev/disk/by-id/..." ];
-#     users.alice = { fullName = "Alice"; email = "alice@example.com"; };
+#     users.alice = {
+#       fullName = "Alice";
+#       email = "alice@example.com";
+#       admin = true;  # Exactly one user MUST be flagged admin.
+#     };
 #   };
 #
 {
@@ -33,12 +36,16 @@ let
   );
   isBaremetal = currentHost != null && currentHost.baremetal;
 
-  fullNameFor =
-    name:
-    if name == "admin" && cfg.admin != null then
-      cfg.admin.fullName
-    else
-      config.keystone.os.users.${name}.fullName;
+  # Users explicitly flagged as the fleet administrator.
+  #
+  # CRITICAL: adminUsername and downstream path derivations (systemFlake.path,
+  # admin home directory) need a single unambiguous admin. The users.nix
+  # assertions enforce that exactly one user has admin = true; the derivation
+  # below reads this list without touching adminUsername so there is no cycle
+  # between the option and its consumers.
+  adminFlaggedUserNames = filter (n: cfg.users.${n}.admin or false) (attrNames cfg.users);
+
+  fullNameFor = name: config.keystone.os.users.${name}.fullName;
 
   # User submodule type definition
   userSubmodule = types.submodule (
@@ -79,6 +86,23 @@ let
             "wheel"
             "networkmanager"
           ];
+        };
+
+        admin = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Designate this user as the fleet administrator.
+
+            Exactly one user across keystone.os.users MUST have admin = true.
+            Admin users are automatically added to the wheel group, and their
+            username becomes the default for keystone.os.adminUsername.
+
+            Give additional users that need sudo but are not the canonical
+            admin their own extraGroups = [ "wheel" ] — admin-ness is an
+            identity fact (path derivations, home directory), not an
+            authorization fact.
+          '';
         };
 
         initialPassword = mkOption {
@@ -219,6 +243,7 @@ in
   imports = [
     ../keys.nix
     ../secrets.nix
+    ../shared/system-flake.nix
     ./notifications.nix
     ./storage.nix
     ./secure-boot.nix
@@ -571,29 +596,22 @@ in
     adminUsername = mkOption {
       type = types.str;
       default = "admin";
+      defaultText = literalExpression ''
+        The name of the keystone.os.users.<name> entry with admin = true.
+        Falls back to the literal "admin" only when no user is flagged —
+        which is itself a configuration error caught by assertion.
+      '';
       description = ''
-        Unix username for the administrator account. Defaults to "admin".
+        Unix username for the administrator account.
+
+        By default this derives from the user flagged
+        keystone.os.users.<name>.admin = true. An explicit assignment still
+        wins (via mkDefault), but MUST name the admin-flagged user —
+        otherwise evaluation fails with an assertion pointing at the drift.
+
         Set via admin.username in mkSystemFlake.
       '';
       example = "noah";
-    };
-
-    admin = mkOption {
-      type = types.nullOr (userSubmodule);
-      default = null;
-      description = ''
-        Canonical default administrator for this Keystone multi-host system.
-        Keystone synthesizes the user account named by adminUsername from this
-        definition and grants administrator privileges automatically.
-      '';
-      example = literalExpression ''
-        {
-          fullName = "System Administrator";
-          email = "admin@example.com";
-          initialPassword = "changeme";
-          terminal.enable = true;
-        }
-      '';
     };
 
     users = mkOption {
@@ -620,6 +638,13 @@ in
 
   config = mkIf cfg.enable {
     keystone.security.privilegedApproval.enable = mkDefault true;
+
+    # Derive adminUsername from the user flagged admin = true.
+    # mkDefault keeps explicit assignments winning; consistency with the
+    # admin flag is validated by assertions in modules/os/users.nix.
+    keystone.os.adminUsername = mkIf (adminFlaggedUserNames != [ ]) (
+      mkDefault (head adminFlaggedUserNames)
+    );
 
     nix.settings.substituters = mkIf cfg.binaryCaches.ksSystems.enable (mkBefore [
       cfg.binaryCaches.ksSystems.url

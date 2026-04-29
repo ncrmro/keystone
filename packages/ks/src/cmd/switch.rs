@@ -36,6 +36,27 @@ impl Drop for SudoKeepAlive {
     }
 }
 
+/// Normalize a hostname for comparison: trim whitespace, lowercase, and strip
+/// any DNS domain suffix (e.g. `host.local` → `host`).
+///
+/// CRITICAL: hostname::get() may return a FQDN (`ncrmro-workstation.local`) or a
+/// trailing-newline on some platforms, while the `hostname` field in hosts.nix
+/// is the bare short name. Without normalization, a local deploy is misclassified
+/// as remote and errors out demanding an sshTarget.
+pub(crate) fn normalize_hostname(raw: &str) -> String {
+    let trimmed = raw.trim().to_ascii_lowercase();
+    match trimmed.split_once('.') {
+        Some((short, _)) => short.to_string(),
+        None => trimmed,
+    }
+}
+
+/// Check whether a host entry refers to the current machine.
+pub(crate) fn is_local_host(current: &str, host_hostname: &str, host_key: &str) -> bool {
+    let current_n = normalize_hostname(current);
+    current_n == normalize_hostname(host_hostname) || current_n == normalize_hostname(host_key)
+}
+
 /// Check whether any of the target hosts match the current machine's hostname.
 pub async fn has_local_hosts(repo_root: &Path, hosts: &[String]) -> Result<bool> {
     let current_hostname = hostname::get()
@@ -44,7 +65,7 @@ pub async fn has_local_hosts(repo_root: &Path, hosts: &[String]) -> Result<bool>
         .to_string();
     for host in hosts {
         let info = repo::host_info(repo_root, host).await?;
-        if info.hostname == current_hostname {
+        if is_local_host(&current_hostname, &info.hostname, host) {
             return Ok(true);
         }
     }
@@ -413,14 +434,30 @@ pub async fn prepare_deploy_session(repo_root: &Path, hosts: &[String]) -> Resul
 
     for host in hosts {
         let host_info = repo::host_info(repo_root, host).await?;
-        if host_info.hostname == current_hostname {
+        if is_local_host(&current_hostname, &host_info.hostname, host) {
             local_hosts.insert(host.clone());
             continue;
         }
 
         let ssh_target = repo::resolve_ssh_target(repo_root, host, &host_info)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("{} has no sshTarget, cannot deploy remotely.", host))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "{} has no sshTarget, cannot deploy remotely.\n\
+                     current hostname: '{}' (normalized: '{}')\n\
+                     host.hostname:    '{}' (normalized: '{}')\n\
+                     host key:         '{}' (normalized: '{}')\n\
+                     If this host is the current machine, ensure its hosts.nix `hostname` \
+                     field matches `hostname(1)` output.",
+                    host,
+                    current_hostname,
+                    normalize_hostname(&current_hostname),
+                    host_info.hostname,
+                    normalize_hostname(&host_info.hostname),
+                    host,
+                    normalize_hostname(host),
+                )
+            })?;
 
         let mut resolved = ssh_target.clone();
         if let Some(fallback_ip) = host_info
@@ -506,8 +543,12 @@ pub async fn deploy_paths(
     deploy_paths_with_session(repo_root, &session, mode, hosts, store_paths).await
 }
 
-pub async fn execute(hosts_arg: Option<&str>, boot: bool) -> Result<SwitchResult> {
-    let repo_root = repo::find_repo()?;
+pub async fn execute(
+    hosts_arg: Option<&str>,
+    boot: bool,
+    flake_override: Option<&std::path::Path>,
+) -> Result<SwitchResult> {
+    let repo_root = repo::find_repo(flake_override)?;
     let hosts = repo::resolve_hosts(&repo_root, hosts_arg).await?;
     let mode = if boot { "boot" } else { "switch" };
     let _sudo_guard = ensure_sudo(&repo_root, &hosts).await?;
@@ -526,6 +567,45 @@ pub async fn execute(hosts_arg: Option<&str>, boot: bool) -> Result<SwitchResult
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_hostname_strips_fqdn_and_case() {
+        assert_eq!(
+            normalize_hostname("ncrmro-workstation"),
+            "ncrmro-workstation"
+        );
+        assert_eq!(
+            normalize_hostname("NCRMRO-Workstation.local\n"),
+            "ncrmro-workstation"
+        );
+        assert_eq!(normalize_hostname(" host.lan.example "), "host");
+    }
+
+    #[test]
+    fn is_local_host_matches_normalized_hostname() {
+        assert!(is_local_host(
+            "ncrmro-workstation",
+            "ncrmro-workstation",
+            "ncrmro-workstation"
+        ));
+        // FQDN vs short name — should still match.
+        assert!(is_local_host(
+            "ncrmro-workstation.local",
+            "ncrmro-workstation",
+            "ncrmro-workstation"
+        ));
+        // Host key matches even if hostname field differs.
+        assert!(is_local_host(
+            "ncrmro-workstation",
+            "other",
+            "ncrmro-workstation"
+        ));
+    }
+
+    #[test]
+    fn is_local_host_rejects_different_hosts() {
+        assert!(!is_local_host("laptop", "ocean", "ocean"));
+    }
 
     #[test]
     fn switch_result_serialization() {

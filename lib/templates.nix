@@ -54,15 +54,21 @@ let
         # Tailscale requires hosts registry — template configs don't have one
         tailscale.enable = lib.mkDefault false;
         inherit
-          admin
           adminUsername
-          users
           storage
           secureBoot
           tpm
           ssh
           remoteUnlock
           ;
+        # Merge the admin user into users at adminUsername with admin = true.
+        # This is the single source of truth for administrator identity;
+        # other entries in users are regular (non-admin) users.
+        users = users // {
+          ${adminUsername} = admin // {
+            admin = true;
+          };
+        };
       };
 
       nix.settings.trusted-users = [
@@ -165,6 +171,7 @@ let
       fullName ? defaults.fullName,
       email ? defaults.email,
       timeZone ? defaults.timeZone or "UTC",
+      updateChannel ? defaults.updateChannel or "stable",
       modules ? [ ],
       ...
     }@args:
@@ -179,6 +186,7 @@ let
           home.stateVersion = args.stateVersion or "25.05";
           home.sessionVariables.TZ = timeZone;
 
+          keystone.update.channel = lib.mkDefault updateChannel;
           keystone.projects.enable = false;
           keystone.terminal = {
             enable = true;
@@ -467,6 +475,108 @@ rec {
   mkSharedMacosHome = mkSharedMacosHomeHelper;
   inherit mkInstallerIsoForFlake;
 
+  # Build a bootable qcow2 disk image directly from a NixOS host configuration.
+  #
+  # Uses disko's image builder to partition and format a virtual disk, then
+  # copies the NixOS store closure into it — no ISO or installer required.
+  #
+  # Usage:
+  #   packages.x86_64-linux.vm-image-laptop = keystone.lib.mkVMImage {
+  #     nixosSystem = nixosConfigurations.laptop;
+  #   };
+  #
+  # The resulting derivation contains one qcow2 file per disko disk (e.g.
+  # disk0.qcow2 for ZFS configs, root.qcow2 for ext4 configs).  Boot it with:
+  #
+  #   bin/virtual-machine --disk-path result/disk0.qcow2 --start test-vm
+  #
+  # Storage devices are automatically remapped to /dev/vda, /dev/vdb, … by
+  # disko's image builder; no hardware paths need to be set in the config.
+  mkVMImage =
+    {
+      # A nixpkgs.lib.nixosSystem result, e.g. nixosConfigurations.laptop.
+      nixosSystem,
+      # Disk devices to use inside the builder VM.  Disko's prepareDiskoConfig
+      # remaps these to /dev/vda, /dev/vdb, … automatically; passing virtual
+      # paths here ensures the NixOS initrd config (ZFS devNodes, LUKS device
+      # references) is also consistent with the image layout.  When null
+      # (default), one /dev/vd{a,b,c,…} path is generated per declared disk so
+      # multi-disk storage modes (mirror/raidz) keep passing their minimum
+      # device-count assertions.
+      devices ? null,
+      # Output image format.  qcow2 supports snapshots; raw is faster to write.
+      imageFormat ? "qcow2",
+      # RAM (MB) for the ephemeral QEMU builder VM.  ZFS needs more than the
+      # disko default of 1024 MB; 4096 is sufficient for a single-disk pool.
+      memSize ? 4096,
+      # Size (disko string, e.g. "32G") of each builder VM disk.  Disko
+      # defaults to 2G, which cannot hold the typical keystone layout
+      # (ESP + 8G swap + root closure).  32G fits a full desktop host;
+      # qcow2 is sparse, so the on-disk footprint is only what's written.
+      imageSize ? "32G",
+      # Additional NixOS modules applied only during image build (not at
+      # runtime).  Use to inject test SSH keys, disable TPM assertions, etc.
+      extraConfig ? { },
+    }:
+    let
+      # Read disk attribute names from the un-extended config.  Reading
+      # config.disko.devices.disk from inside a module that also defines
+      # it would be an infinite recursion (the attrset's keys would
+      # depend on the definition we're adding).  The logical disk names
+      # in storage.nix don't change when we override devices, so this
+      # is safe.
+      diskNames = lib.attrNames nixosSystem.config.disko.devices.disk;
+
+      # Default one virtual path per declared disk (/dev/vda, /dev/vdb, …).
+      # Preserving the device-count matters for mirror/raidz hosts where
+      # keystone.os.storage asserts a minimum number of devices.
+      effectiveDevices =
+        if devices != null then
+          devices
+        else
+          let
+            letters = lib.stringToCharacters "abcdefghijklmnopqrstuvwxyz";
+          in
+          lib.genList (i: "/dev/vd${builtins.elemAt letters i}") (builtins.length diskNames);
+
+      extendedSystem = nixosSystem.extendModules {
+        modules = [
+          {
+            # Override storage devices with virtual paths for the builder VM.
+            # This fixes ZFS devNodes, LUKS crypttab references, and any other
+            # initrd config that derives from keystone.os.storage.devices.
+            keystone.os.storage.devices = lib.mkForce effectiveDevices;
+            # Produce a qcow2 (disko defaults to raw).
+            disko.imageBuilder.imageFormat = lib.mkDefault imageFormat;
+            # Always include the Nix store so the image can boot standalone.
+            disko.imageBuilder.copyNixStore = lib.mkDefault true;
+            # Give the builder VM enough RAM for ZFS pool creation.
+            disko.memSize = lib.mkDefault memSize;
+            # Size every declared disk for the image builder.  Disko defaults
+            # to 2G which cannot fit the typical keystone layout (ESP + swap
+            # + root closure).  Only the imageSize attribute is overridden;
+            # other per-disk config is preserved by module merging.
+            disko.devices.disk = lib.genAttrs diskNames (_: {
+              imageSize = lib.mkForce imageSize;
+            });
+            # Expose the initrd LUKS passphrase prompt (and any other early
+            # /dev/console output) on serial.  Without this, cryptsetup-ask
+            # -password only draws on VGA — a headless caller has no way to
+            # type the passphrase and the VM hangs forever in initrd.
+            # ttyS0 is listed last so it wins /dev/console for userspace
+            # prompts; tty0 is kept so an interactive GUI caller also sees
+            # the prompt.
+            boot.kernelParams = [
+              "console=tty0"
+              "console=ttyS0,115200"
+            ];
+          }
+          extraConfig
+        ];
+      };
+    in
+    extendedSystem.config.system.build.diskoImages;
+
   mkLaptop =
     {
       storage ? { },
@@ -642,6 +752,11 @@ rec {
         "sshKeys"
       ];
       sharedUsers = shared.users or { };
+      # Agent identities applied to every host's keystone.os.agents.
+      # The module system merges this attrset with any per-host
+      # keystone.os.agents declarations, so hosts can add agents without
+      # losing the fleet-wide set.
+      sharedAgents = shared.agents or { };
       # NixOS modules applied OS-wide on every host.
       sharedSystemModules = shared.systemModules or [ ];
       # Home Manager modules applied per-user on every host.
@@ -649,6 +764,7 @@ rec {
       # Home Manager modules applied per-user on desktop hosts (laptop, workstation) only.
       sharedDesktopUserModules = shared.desktopUserModules or [ ];
       sharedTimeZone = defaults.timeZone or "UTC";
+      sharedUpdateChannel = defaults.updateChannel or "stable";
       effectiveRepoRoot =
         if repoRoot != null then
           repoRoot
@@ -741,6 +857,7 @@ rec {
             (lib.optional (hardwareSpec ? module) hardwareSpec.module)
             ++ (lib.optional (configurationPath != null) (normalizeModuleSpec configurationPath))
             ++ (hostCfg.modules or [ ]);
+          hostUpdateChannel = if hostCfg ? updateChannel then hostCfg.updateChannel else sharedUpdateChannel;
           builderArgs =
             (builtins.removeAttrs hostCfg [
               "kind"
@@ -749,6 +866,7 @@ rec {
               "services"
               "config"
               "modules"
+              "updateChannel"
             ])
             // {
               hostname = hostCfg.hostname or name;
@@ -760,17 +878,34 @@ rec {
               nixosModules = kindDefaults.nixosModules ++ (hostCfg.nixosModules or [ ]);
               config = lib.recursiveUpdate mergedConfig {
                 keystone.services = keystoneServices;
+                keystone.update.channel = lib.mkDefault hostUpdateChannel;
               };
               modules = [
                 {
+                  # NixOS and home-manager have separate option trees. The
+                  # `config` block above sets keystone.update.channel at the
+                  # NixOS level, but the Walker `ks-update.service` and the
+                  # terminal `KS_UPDATE_CHANNEL` sessionVariable are declared
+                  # in home-manager modules reading home-manager's config. A
+                  # sharedModules entry bridges the same value across, so
+                  # unit Environment and user shell agree on the channel.
                   home-manager.sharedModules =
-                    sharedUserModules ++ lib.optionals kindDefaults.desktop sharedDesktopUserModules;
+                    sharedUserModules
+                    ++ lib.optionals kindDefaults.desktop sharedDesktopUserModules
+                    ++ [
+                      {
+                        keystone.update.channel = lib.mkDefault hostUpdateChannel;
+                      }
+                    ];
                 }
               ]
               ++ lib.optional (adminSshKeys != [ ]) {
                 # Bridge admin.sshKeys to installed hosts so the keys survive
                 # NixOS system activation (which overwrites ~/.ssh/authorized_keys).
                 users.users.${adminUsername}.openssh.authorizedKeys.keys = adminSshKeys;
+              }
+              ++ lib.optional (sharedAgents != { }) {
+                keystone.os.agents = sharedAgents;
               }
               ++ sharedSystemModules
               ++ modules;
@@ -796,6 +931,7 @@ rec {
               "kind"
               "configuration"
               "modules"
+              "updateChannel"
             ])
             // {
               system = if hostCfg ? system then hostCfg.system else kindDefaults.system;
@@ -803,6 +939,7 @@ rec {
               fullName = if hostCfg ? fullName then hostCfg.fullName else sharedAdmin.fullName;
               email = if hostCfg ? email then hostCfg.email else sharedAdmin.email;
               timeZone = if hostCfg ? timeZone then hostCfg.timeZone else sharedTimeZone;
+              updateChannel = if hostCfg ? updateChannel then hostCfg.updateChannel else sharedUpdateChannel;
               modules = sharedUserModules ++ modules;
             };
         in
@@ -848,6 +985,19 @@ rec {
       packages.${installerSystem} =
         let
           pkgs = nixpkgs.legacyPackages.${installerSystem};
+          # Build vm-image-<name> for every Linux host whose architecture
+          # matches the installer system (avoids cross-compilation failures).
+          # Filter first to avoid evaluating configs for hosts that won't be packaged.
+          vmImageHosts = lib.filterAttrs (
+            name: _: linuxHostSystemFor name linuxHosts.${name} == installerSystem
+          ) linuxHosts;
+          linuxHostConfigurations = lib.mapAttrs mkLinuxInventoryHost vmImageHosts;
+          vmImagePackages = lib.mapAttrs' (
+            name: _:
+            lib.nameValuePair "vm-image-${name}" (mkVMImage {
+              nixosSystem = linuxHostConfigurations.${name};
+            })
+          ) vmImageHosts;
         in
         {
           installerTargetsJson = pkgs.writeText "installer-targets.json" (builtins.toJSON installerTargets);
@@ -868,6 +1018,7 @@ rec {
             # into the installed config handoff.
             inherit repoName;
           };
-        };
+        }
+        // vmImagePackages;
     };
 }

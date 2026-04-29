@@ -332,6 +332,12 @@ export async function pingPong(config: Config, report: Report) {
   }
 
   emit("info", "waiting for pong reply", { tag });
+  // The contract (job.yml parse_sources step) requires the reply subject to
+  // be `Re: [pong] <tag>` — flip `ping` to `pong`, preserve the tag. The
+  // harness asserts that invariant exactly: tag present AND pong in subject.
+  // Contract drift is caught by the sandbox test under `nix flake check`
+  // (tests/module/agent-task-loop-ping-pong.nix), so the smoke does not need
+  // a body-fallback.
   const found = await pollUntil(async () => {
     try {
       const raw = execSync(
@@ -340,9 +346,7 @@ export async function pingPong(config: Config, report: Report) {
       );
       const envelopes: Array<{ subject: string }> = JSON.parse(raw);
       return envelopes.some(
-        (e) =>
-          /pong/i.test(e.subject) &&
-          e.subject.includes(tag),
+        (e) => e.subject.includes(tag) && /pong/i.test(e.subject),
       );
     } catch {
       return false;

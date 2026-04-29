@@ -37,7 +37,11 @@ entries_json() {
   secrets_menu=$(keystone_cmd keystone-secrets-menu)
   wifi_menu=$(keystone_cmd keystone-wifi-menu)
 
-  current_flake="$(keystone-current-system-flake 2>/dev/null || true)"
+  current_flake=""
+  local _pointer_file="${KEYSTONE_SYSTEM_FLAKE_POINTER_FILE:-/run/current-system/keystone-system-flake}"
+  if [[ -r "$_pointer_file" ]]; then
+    current_flake="$(tr -d '\n' < "$_pointer_file" 2>/dev/null || true)"
+  fi
   if [[ -d "$HOME/.keystone/repos/ncrmro/agenix-secrets" ]]; then
     show_secrets=true
   elif [[ -n "$current_flake" && -d "$current_flake/agenix-secrets" ]]; then
