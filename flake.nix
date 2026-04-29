@@ -464,6 +464,10 @@
           keystoneUpdateMenuWiring = import ./tests/module/keystone-update-menu-wiring.nix {
             inherit pkgs lib;
           };
+          keystoneUpdateApproveFlow = import ./tests/module/keystone-update-approve-flow.nix {
+            pkgs = ksPkgs;
+            inherit lib ks;
+          };
           hyprlandBindingsAgentConflict = import ./tests/module/hyprland-bindings-agent-conflict.nix {
             inherit pkgs;
           };
@@ -526,6 +530,7 @@
           keystone-secrets-menu = keystoneSecretsMenu;
           keystone-fingerprint-menu = keystoneFingerprintMenu;
           keystone-update-menu-wiring = keystoneUpdateMenuWiring;
+          keystone-update-approve-flow = keystoneUpdateApproveFlow;
           hyprland-bindings-agent-conflict = hyprlandBindingsAgentConflict;
           desktop-walker-surfaces = desktopWalkerSurfaces;
           desktop-autostart-assertion = desktopAutostartAssertion;
@@ -578,6 +583,7 @@
             ln -s ${keystoneSecretsMenu} "$out/keystone-secrets-menu"
             ln -s ${keystoneFingerprintMenu} "$out/keystone-fingerprint-menu"
             ln -s ${keystoneUpdateMenuWiring} "$out/keystone-update-menu-wiring"
+            ln -s ${keystoneUpdateApproveFlow} "$out/keystone-update-approve-flow"
             ln -s ${projectsSchema} "$out/projects-schema"
           '';
 
