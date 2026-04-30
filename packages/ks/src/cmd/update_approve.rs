@@ -6,6 +6,7 @@
 //! ```text
 //! walker → systemctl --user start ks-update.service
 //!        → ks update --approve                                  [user]
+//!             ├─ pre-flight: refuse if local != origin           [user]
 //!             ├─ resolve channel target ref via GitHub API       [user]
 //!             ├─ nix build --override-input keystone <ref>       [user]
 //!             ├─ ks approve … -- ks activate <store-path>        ← polkit
@@ -16,20 +17,45 @@
 //!             └─ notify success/failure                          [user]
 //! ```
 //!
+//! In-sync invariant:
+//!
+//! Before any side effect, the consumer flake's working tree MUST be
+//! clean and the current branch MUST equal `origin/<branch>`. The
+//! supervised flow refuses to start otherwise. This buys us:
+//!
+//! - Atomicity at the user layer: a successful update appends exactly
+//!   one new commit (the lock bump), so the final `git push` is a
+//!   guaranteed fast-forward by exactly one commit. No mid-flow
+//!   non-fast-forward errors after the privileged step has already run.
+//! - Comprehensibility: when the dialog refuses up front, the user
+//!   sees one concrete reason ("ahead of origin", "behind origin",
+//!   "uncommitted changes") instead of a partially-applied update
+//!   that activated but couldn't push.
+//!
 //! Atomicity contract:
 //!
+//! 0. Pre-flight: ensure consumer flake is in sync with origin.
 //! 1. Resolve target ref (no filesystem mutation).
 //! 2. `nix build --override-input keystone <ref>` (does NOT modify
 //!    `flake.lock`; failure here is a no-op on the consumer flake).
 //! 3. On build success, run `nix flake update keystone` so the lock
 //!    matches what we just built and activated.
 //! 4. polkit → `ks activate <store-path>` (single root invocation).
-//! 5. On activation success, commit lock + push.
+//! 5. On activation success, commit lock + push (guaranteed
+//!    fast-forward by exactly one commit, see the in-sync invariant
+//!    above).
 //!
-//! A failure at any step before step 4 leaves the consumer flake's
-//! `flake.lock` and working tree unchanged. A failure at step 5 leaves
-//! the activated host and a committed lock — the local generation is
-//! correct, the push can be retried by hand.
+//! Failure modes:
+//!
+//! - Step 0 fails → pre-flight refused to start. No side effects on
+//!   the host or the consumer flake. The error names the specific
+//!   reason (dirty / ahead / behind) so the user can resolve it
+//!   without inspecting logs.
+//! - A failure at any step before step 4 leaves the consumer flake's
+//!   `flake.lock` and working tree unchanged.
+//! - A failure at step 5 leaves the activated host and a committed
+//!   lock — the local generation is correct, the push can be retried
+//!   by hand.
 //!
 //! Never confuse this code path with `cmd::update::update_locked`. That
 //! is the terminal-only `ks update --lock` flow with full-fleet semantics
@@ -200,6 +226,137 @@ async fn current_branch(repo_root: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Pre-flight gate for the supervised update flow. Refuse to start
+/// unless the consumer flake is in sync with origin.
+///
+/// CRITICAL invariant: before we touch anything, `local == remote`. The
+/// supervised flow's only mutation is exactly one new commit (the
+/// keystone lock bump) on the activation-success branch, so the final
+/// `git push` is a guaranteed fast-forward by exactly one commit. This
+/// removes the failure mode where the orchestrator activated against
+/// the new closure but then tripped on a non-fast-forward push because
+/// `master` was ahead of `origin/master` — leaving the host updated
+/// and the consumer flake out of sync from the perspective of any
+/// other agent that goes to relock.
+///
+/// Refusing up front is also the only error mode the user can act on
+/// without inspecting logs: the dialog can name a single concrete
+/// reason ("uncommitted changes", "ahead of origin", "behind origin"),
+/// and the user knows what command to run before retrying.
+///
+/// Three sub-checks, in order:
+///
+/// 1. Working tree is clean. `git status --porcelain` exits 0 and
+///    produces no output.
+/// 2. `git fetch origin <branch>` is non-fatal — offline use is OK,
+///    we just compare against the cached ref. If the fetch succeeds,
+///    the next check uses fresh data.
+/// 3. `<branch>` and `origin/<branch>` resolve to the same commit. If
+///    not equal, bail with both shas in the error so the user can tell
+///    whether they're ahead (push) or behind (pull).
+async fn ensure_in_sync(repo_root: &Path) -> Result<()> {
+    let branch = current_branch(repo_root).await?;
+
+    // Sub-check 1: clean working tree. We use the bare
+    // `git status --porcelain` (no path filter) because ANY uncommitted
+    // change — not just to flake.lock — would either get mixed into the
+    // bump commit or block the commit altogether. Refuse and let the
+    // user clean up.
+    let status_output = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["status", "--porcelain"])
+        .output()
+        .await
+        .context("failed to inspect consumer flake working tree")?;
+    if !status_output.status.success() {
+        let stderr = String::from_utf8_lossy(&status_output.stderr);
+        anyhow::bail!(
+            "git status --porcelain exited {:?} in {}: {}",
+            status_output.status.code(),
+            repo_root.display(),
+            stderr.trim()
+        );
+    }
+    if !status_output.stdout.is_empty() {
+        let porcelain = String::from_utf8_lossy(&status_output.stdout);
+        anyhow::bail!(
+            "consumer flake has uncommitted changes at {}; commit or stash before updating:\n{}",
+            repo_root.display(),
+            porcelain.trim_end()
+        );
+    }
+
+    // Sub-check 2: refresh origin/<branch> so the comparison below
+    // sees the current remote tip. Non-fatal: if the user is offline
+    // we still want to compare against whatever ref we have cached —
+    // refusing the update entirely on a transient network blip would
+    // be more frustrating than the staleness risk it guards.
+    let fetch_status = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["fetch", "origin"])
+        .arg(&branch)
+        .status()
+        .await;
+    match fetch_status {
+        Ok(s) if !s.success() => {
+            eprintln!(
+                "Warning: git fetch origin {branch} exited {:?}; comparing against cached ref",
+                s.code()
+            );
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: failed to spawn git fetch origin {branch}: {e:#}; comparing against cached ref"
+            );
+        }
+        _ => {}
+    }
+
+    // Sub-check 3: local branch == origin/<branch>. Both sides must
+    // resolve. A missing origin ref is a hard error here because we
+    // have no defensible way to push a fast-forward into a branch we
+    // don't know exists.
+    let local_sha = rev_parse(repo_root, &branch).await?;
+    let remote_ref = format!("origin/{branch}");
+    let remote_sha = rev_parse(repo_root, &remote_ref).await.with_context(|| {
+        format!(
+            "could not resolve {remote_ref}; ensure the branch is published before running supervised update"
+        )
+    })?;
+    if local_sha != remote_sha {
+        anyhow::bail!(
+            "consumer flake branch {branch} ({local_sha}) is out of sync with origin/{branch} ({remote_sha}); pull or push before updating"
+        );
+    }
+    Ok(())
+}
+
+/// Resolve `<refspec>` to a commit SHA via `git rev-parse`. Pulled out
+/// so `ensure_in_sync` can compare local and remote tips with a single
+/// helper that produces a comparable string (vs. parsing porcelain
+/// output).
+async fn rev_parse(repo_root: &Path, refspec: &str) -> Result<String> {
+    let output = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["rev-parse", refspec])
+        .output()
+        .await
+        .with_context(|| format!("failed to invoke git rev-parse {refspec}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "git rev-parse {refspec} exited {:?} in {}: {}",
+            output.status.code(),
+            repo_root.display(),
+            stderr.trim()
+        );
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 /// Push the new lock commit. Best-effort — a failed push is logged but
 /// does not fail the whole update because the local activation already
 /// succeeded. The user can resolve the push by hand.
@@ -271,6 +428,12 @@ pub(crate) async fn run_supervised_update(
         host,
         channel.as_str()
     );
+
+    // Step 0: refuse to run unless the consumer flake is in sync with
+    // origin. See `ensure_in_sync` for the invariant — this is the
+    // only way to make the post-activation push a guaranteed
+    // fast-forward.
+    ensure_in_sync(&repo_root).await?;
 
     // Step 1: resolve the target ref via GitHub API. Runs in the
     // user's session — token + DNS available.
@@ -387,5 +550,200 @@ mod tests {
         let reason = approval_reason("ncrmro-laptop");
         assert!(reason.contains("ncrmro-laptop"), "reason: {reason}");
         assert!(reason.contains("Keystone update"), "reason: {reason}");
+    }
+
+    /// Build a working consumer-flake fixture: a bare "remote" repo
+    /// alongside a "local" repo that has cloned + tracked it. Returns
+    /// the (TempDir, local-repo-path, remote-repo-path) — TempDir keeps
+    /// both alive for the test's duration. The local repo is on
+    /// branch `master` with one commit, in sync with origin.
+    ///
+    /// CRITICAL: tests MUST pass `--initial-branch=master` to git init
+    /// and rely on the bare remote's HEAD pointing there. Some host
+    /// environments default to `main`; pinning the branch keeps the
+    /// fixture deterministic.
+    fn make_in_sync_fixture() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let tmp = tempfile::tempdir().expect("create tempdir for in-sync fixture");
+        let local = tmp.path().join("local");
+        let remote = tmp.path().join("remote.git");
+
+        // Remote: bare repo on `master`.
+        let s = std::process::Command::new("git")
+            .args(["init", "--bare", "--initial-branch=master"])
+            .arg(&remote)
+            .status()
+            .expect("git init --bare");
+        assert!(s.success(), "git init --bare failed");
+
+        // Local: regular repo on `master`, with one commit.
+        let s = std::process::Command::new("git")
+            .args(["init", "--initial-branch=master"])
+            .arg(&local)
+            .status()
+            .expect("git init local");
+        assert!(s.success(), "git init local failed");
+
+        // Identity, lest commit refuse on hosts without global config.
+        for (k, v) in [
+            ("user.email", "test@example.invalid"),
+            ("user.name", "Test"),
+            ("commit.gpgsign", "false"),
+        ] {
+            let s = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&local)
+                .args(["config", k, v])
+                .status()
+                .expect("git config");
+            assert!(s.success(), "git config {k} failed");
+        }
+
+        std::fs::write(local.join("flake.lock"), "{}").expect("write flake.lock");
+        for args in [
+            vec!["add", "flake.lock"],
+            vec!["commit", "-m", "init"],
+            vec!["remote", "add", "origin"],
+        ] {
+            let mut cmd = std::process::Command::new("git");
+            cmd.arg("-C").arg(&local).args(&args);
+            if args == vec!["remote", "add", "origin"] {
+                cmd.arg(&remote);
+            }
+            let s = cmd.status().expect("git command");
+            assert!(s.success(), "git {args:?} failed");
+        }
+        let s = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&local)
+            .args(["push", "-u", "origin", "master"])
+            .status()
+            .expect("git push");
+        assert!(s.success(), "git push -u origin master failed");
+
+        (tmp, local, remote)
+    }
+
+    #[tokio::test]
+    async fn ensure_in_sync_passes_when_clean_and_matching_origin() {
+        // Happy path. Working tree clean, local == origin/<branch>.
+        // ensure_in_sync MUST return Ok so the orchestrator can proceed
+        // to channel resolution and build.
+        let (_tmp, local, _remote) = make_in_sync_fixture();
+        ensure_in_sync(&local)
+            .await
+            .expect("clean + in-sync should pass");
+    }
+
+    #[tokio::test]
+    async fn ensure_in_sync_refuses_dirty_working_tree() {
+        // CRITICAL: refuse if the working tree has uncommitted changes.
+        // Otherwise, either the bump commit would absorb them (silent
+        // data loss into a chore commit) or the commit would fail
+        // partway and leave the host activated against a closure whose
+        // lock isn't recorded anywhere.
+        let (_tmp, local, _remote) = make_in_sync_fixture();
+        std::fs::write(local.join("dirty.txt"), "uncommitted\n").expect("write dirty file");
+
+        let err = ensure_in_sync(&local)
+            .await
+            .expect_err("dirty working tree must be rejected");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("uncommitted changes"),
+            "error should name the failure mode: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_in_sync_refuses_when_local_is_ahead_of_origin() {
+        // The exact failure mode that motivated this commit: local
+        // master had two cherry-picked commits beyond origin/master, so
+        // the supervised flow's post-activation `git push` tripped on a
+        // non-fast-forward. Refuse up front instead.
+        let (_tmp, local, _remote) = make_in_sync_fixture();
+
+        // Add a commit locally without pushing.
+        std::fs::write(local.join("ahead.txt"), "ahead\n").expect("write ahead file");
+        for args in [vec!["add", "ahead.txt"], vec!["commit", "-m", "ahead"]] {
+            let s = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&local)
+                .args(&args)
+                .status()
+                .expect("git command");
+            assert!(s.success(), "git {args:?} failed");
+        }
+
+        let err = ensure_in_sync(&local)
+            .await
+            .expect_err("ahead-of-origin must be rejected");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("out of sync"),
+            "error should name the failure mode: {msg}"
+        );
+        assert!(
+            msg.contains("master"),
+            "error should name the branch: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_in_sync_refuses_when_local_is_behind_origin() {
+        // Symmetric to the ahead case: if origin has commits the local
+        // doesn't, the lock-bump commit would be on a stale base. The
+        // user almost certainly wants `git pull --rebase` first.
+        let (_tmp, local, remote) = make_in_sync_fixture();
+
+        // Make a parallel clone, push a new commit, then cleanup.
+        let other = local.parent().unwrap().join("other");
+        let s = std::process::Command::new("git")
+            .args(["clone"])
+            .arg(&remote)
+            .arg(&other)
+            .status()
+            .expect("git clone other");
+        assert!(s.success(), "git clone failed");
+        for (k, v) in [
+            ("user.email", "test@example.invalid"),
+            ("user.name", "Test"),
+            ("commit.gpgsign", "false"),
+        ] {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&other)
+                .args(["config", k, v])
+                .status()
+                .expect("git config")
+                .success()
+                .then_some(())
+                .expect("git config failed");
+        }
+        std::fs::write(other.join("behind.txt"), "behind\n").expect("write behind file");
+        for args in [
+            vec!["add", "behind.txt"],
+            vec!["commit", "-m", "remote-ahead"],
+            vec!["push", "origin", "master"],
+        ] {
+            let s = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&other)
+                .args(&args)
+                .status()
+                .expect("git command");
+            assert!(s.success(), "git {args:?} failed");
+        }
+
+        // Now `local` is behind `origin/master`. ensure_in_sync should
+        // refuse. The fetch inside ensure_in_sync will refresh
+        // origin/master to the new tip.
+        let err = ensure_in_sync(&local)
+            .await
+            .expect_err("behind-origin must be rejected");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("out of sync"),
+            "error should name the failure mode: {msg}"
+        );
     }
 }
