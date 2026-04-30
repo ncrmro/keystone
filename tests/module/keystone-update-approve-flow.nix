@@ -82,7 +82,28 @@ pkgs.runCommand "test-keystone-update-approve-flow"
 
     grep -F '"activate".to_string()' ${updateApproveRs} >/dev/null \
       || fail "update_approve.rs elevated_argv must produce the activate verb"
-    if grep -E 'elevated_argv.*"(pull|push|fetch|commit|clone|update)"' ${updateApproveRs} >/dev/null; then
+
+    # The `elevated_argv` literal is a multi-line `vec![ ... ]`. A
+    # line-based `grep -E` (the original implementation) misses a
+    # forbidden verb added on its own line inside the vec. Use
+    # `grep -zP` (null-data PCRE so the pattern can span newlines) and
+    # bound the match to the `elevated_argv` function body by matching
+    # only characters that are not `}`. The function body contains no
+    # nested braces, so `[^}]*` is the cheapest correct scope; it
+    # naturally stops at the closing `}` of the function and prevents
+    # the regex from drifting into adjacent code (e.g. test fixtures
+    # that legitimately contain `"push"`).
+    #
+    # CRITICAL: anchor on `fn elevated_argv(` (with opening paren) so
+    # the pattern does NOT match test function names like
+    # `fn elevated_argv_contains_no_git_verbs(...) { ... "pull" ... }`.
+    # Without the paren anchor the prefix `fn elevated_argv` matches
+    # `fn elevated_argv_contains_no_git_verbs` and the regex then drifts
+    # into the test body which legitimately quotes the forbidden verbs.
+    #
+    # `grep -zP` is GNU-grep-specific — the surrounding fixture pulls
+    # `pkgs.gnugrep` into nativeBuildInputs and PATH, so this is safe.
+    if grep -zP 'fn elevated_argv\([^}]*"(pull|push|fetch|commit|clone|lock|update)"[^}]*\}' ${updateApproveRs} >/dev/null; then
       fail "update_approve.rs elevated_argv leaked a git/lock verb"
     fi
 
