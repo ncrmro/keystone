@@ -150,7 +150,7 @@ main_json() {
       },
       {
         Text: "Update",
-        Subtext: "Run ks update in a terminal",
+        Subtext: "Update this host (silent, polkit-approved)",
         Value: "run-update",
         Icon: "software-update-available-symbolic"
       },
@@ -433,7 +433,14 @@ dispatch() {
       detach "$(keystone_cmd keystone-screenrecord)"
       ;;
     run-update)
-      detach ghostty -e ks update
+      # CRITICAL: delegate to the dedicated update submenu's dispatch path
+      # so the top-level Walker entry uses the supervised ks-update.service
+      # flow (polkit prompt via hyprpolkitagent, silent success path,
+      # journaled failure) instead of spawning a terminal. The legacy
+      # `ghostty -e ks update` ceremony was retired by #404 in the dedicated
+      # submenu but survived here until #414. Any change to the unit-firing
+      # contract belongs in update_menu.rs::dispatch, not duplicated here.
+      ks menu update dispatch run-update
       ;;
     screenshot-smart)
       detach "$(keystone_cmd keystone-screenshot)" smart

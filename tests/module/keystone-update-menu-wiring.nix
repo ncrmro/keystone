@@ -28,6 +28,7 @@ let
   runBackgroundRs = ../../packages/ks/src/cmd/run_background.rs;
   updateChannelOption = ../../modules/shared/update.nix;
   terminalDefault = ../../modules/terminal/default.nix;
+  mainMenuShell = ../../modules/desktop/home/scripts/keystone-main-menu.sh;
 in
 pkgs.runCommand "test-keystone-update-menu-wiring"
   {
@@ -71,6 +72,23 @@ pkgs.runCommand "test-keystone-update-menu-wiring"
     if ! grep -F 'OnFailure' ${servicesFile} >/dev/null; then
       fail "services.nix must wire OnFailure= on ks-update.service"
     fi
+
+    # -- ks-update.service imports graphical-session env -------------------
+    #
+    # `ks update --approve` (the unit's ExecStart) checks DISPLAY /
+    # WAYLAND_DISPLAY / XDG_SESSION_TYPE to decide pkexec vs sudo. Without
+    # PassEnvironment the user manager doesn't propagate those into the
+    # unit's env, ks falls through to sudo, sudo has no tty, and the unit
+    # silently exits 1. XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS are
+    # needed for pkexec to find hyprpolkitagent on the user bus.
+    if ! grep -F 'PassEnvironment' ${servicesFile} >/dev/null; then
+      fail "services.nix must declare PassEnvironment on ks-update.service so the graphical-session env reaches ks --approve"
+    fi
+    for var in DISPLAY WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS; do
+      if ! grep -F "$var" ${servicesFile} >/dev/null; then
+        fail "ks-update.service PassEnvironment must include $var"
+      fi
+    done
 
     # -- Activation tokens defined in Rust match dispatch handling ---------
     #
@@ -145,6 +163,32 @@ pkgs.runCommand "test-keystone-update-menu-wiring"
 
     if ! grep -F 'KS_UPDATE_CHANNEL' ${updateMenuRs} >/dev/null; then
       fail "update_menu.rs must read KS_UPDATE_CHANNEL for channel dispatch"
+    fi
+
+    # -- Top-level Walker menu delegates update to ks-update.service ------
+    #
+    # CRITICAL: keystone-main-menu.sh emits a top-level "Update" entry that
+    # parallels the dedicated keystone-update submenu's "Run update" action.
+    # PR #404 retired the legacy `ghostty -e ks update` terminal ceremony in
+    # the dedicated submenu (Lua → Rust dispatch → ks-update.service unit),
+    # but the top-level entry was missed and silently regressed back to the
+    # terminal path on every host until #414 caught it.
+    #
+    # The fix is for keystone-main-menu.sh's dispatch to delegate to
+    # `ks menu update dispatch`, NOT to spawn its own terminal. These greps
+    # are behavior-shaped: they assert what the dispatch DOES, not just what
+    # token strings appear. Add new assertions here when the contract grows.
+
+    # Strip comment-only lines before grepping, so the deprecation comment
+    # documenting WHY this regression matters doesn't trip its own test.
+    if grep -v '^[[:space:]]*#' ${mainMenuShell} | grep -E 'ghostty[[:space:]]+-e[[:space:]]+ks[[:space:]]+update' >/dev/null; then
+      fail "keystone-main-menu.sh must not spawn a terminal for ks update — delegate to 'ks menu update dispatch'"
+    fi
+    if ! grep -F 'ks menu update dispatch' ${mainMenuShell} >/dev/null; then
+      fail "keystone-main-menu.sh's run-update case must call 'ks menu update dispatch' to reuse the supervised flow"
+    fi
+    if grep -v '^[[:space:]]*#' ${mainMenuShell} | grep -F 'in a terminal' >/dev/null; then
+      fail "keystone-main-menu.sh must not advertise 'in a terminal' in any subtext — Walker update path is silent + polkit"
     fi
 
     touch "$out"
