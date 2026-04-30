@@ -103,6 +103,7 @@ async fn main() -> Result<()> {
                 )
                 .await
             }
+            Command::Activate(args) => cmd::activate::execute(&args.store_path, &args.mode),
             Command::Approve(args) => run_approve_command(args).await,
             Command::Agents(args) => run_agents_command(args).await,
             Command::Docs { topic_or_path } => run_docs_command(topic_or_path).await,
@@ -387,6 +388,18 @@ async fn run_switch_command(
 }
 
 /// Run the `update` subcommand.
+///
+/// `--approve` and `--lock` (or `--dev`) are mutually exclusive code
+/// paths with different privilege contracts:
+///
+/// - `--approve` (Walker → ks-update.service) → `update_approve`:
+///   user-side channel-aware build, narrow polkit-elevated activation.
+///   Single host only — the host the unit runs on.
+/// - `--lock` / default → `cmd::update::execute`: terminal-only
+///   full-fleet update, sudo-cached activation. Multiple hosts allowed.
+///
+/// See issue #487 for the privilege-boundary rationale that drove the
+/// split.
 async fn run_update_command(
     hosts: Option<&str>,
     dev: bool,
@@ -396,40 +409,19 @@ async fn run_update_command(
     json: bool,
     flake: Option<&std::path::Path>,
 ) -> Result<()> {
-    // When `--approve` is set and we are not already inside the approval
-    // broker (i.e., KS_APPROVE_EXECUTING is unset), re-invoke ourselves
-    // through `ks approve`. On success, approve::execute exec's the helper
-    // and replaces this process, so the update body only runs in the
-    // post-approval child (where KS_APPROVE_EXECUTING=1).
-    //
-    // Forward the original argv minus `--approve` so flags like `--boot`,
-    // `--json`, `--flake`, and host selection survive the round-trip
-    // through the broker. Dropping `--approve` prevents the approved child
-    // from re-entering this branch.
-    if approve && std::env::var_os("KS_APPROVE_EXECUTING").is_none() {
-        let host_label = cmd::util::hostname_label();
-        let reason = format!("Run the Keystone update workflow on {host_label}.");
-        let mut requested_argv: Vec<String> = std::env::args_os()
-            .enumerate()
-            .filter_map(|(idx, arg)| {
-                // argv[0] is the program path — replace with a stable
-                // `ks` token so the approval allowlist matches regardless
-                // of how the binary was invoked on the original call.
-                if idx == 0 {
-                    return Some("ks".to_string());
-                }
-                if arg == "--approve" {
-                    return None;
-                }
-                Some(arg.to_string_lossy().into_owned())
-            })
-            .collect();
-        // Defensive fallback for the pathological case where argv is empty
-        // (should not happen in practice under std::env::args_os).
-        if requested_argv.is_empty() {
-            requested_argv = vec!["ks".to_string(), "update".to_string()];
+    if approve {
+        // `--approve` ignores --boot / --pull / --hosts / --dev: the
+        // Walker contract is "update *this* host on *this* channel,
+        // mode=switch". Surface a clear error rather than silently
+        // ignoring a flag that worked under the old broad allowlist.
+        if dev || boot || pull_only || hosts.is_some() {
+            anyhow::bail!(
+                "ks update --approve does not accept --dev/--boot/--pull/<hosts>; \
+                 it always activates the current host in switch mode. \
+                 Use `ks update --lock` from a terminal for fleet-wide updates."
+            );
         }
-        return cmd::approve::execute(&reason, &requested_argv);
+        return run_supervised_update_command(json, flake).await;
     }
 
     match cmd::update::execute(hosts, dev, boot, pull_only, flake).await {
@@ -442,6 +434,47 @@ async fn run_update_command(
                     "Update complete ({} mode) for: {}",
                     mode_label,
                     result.hosts.join(", ")
+                );
+                Ok(())
+            }
+        }
+        Err(e) => {
+            if json {
+                print_json_error(&e)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Drive the supervised (Walker) update flow. Wraps
+/// `cmd::update_approve::run_supervised_update` with the same
+/// JSON envelope translation used for the other update modes.
+///
+/// `run_supervised_update` now spawns + waits on the privileged child
+/// (so it can gate post-activation lock work on actual activation
+/// success), so control returns here on both happy and sad paths.
+async fn run_supervised_update_command(json: bool, flake: Option<&std::path::Path>) -> Result<()> {
+    match cmd::update_approve::run_supervised_update(flake).await {
+        Ok(outcome) => {
+            if json {
+                print_json_success(&serde_json::json!({
+                    "host": outcome.host,
+                    "channel": outcome.channel,
+                    "target_ref": outcome.target_ref,
+                    "store_path": outcome.store_path,
+                    "lock_advanced": outcome.lock_advanced,
+                    "pushed": outcome.pushed,
+                }))
+            } else {
+                eprintln!(
+                    "ks update --approve: activated {} on host {} (channel {}); lock_advanced={}, pushed={}",
+                    outcome.target_ref,
+                    outcome.host,
+                    outcome.channel,
+                    outcome.lock_advanced,
+                    outcome.pushed,
                 );
                 Ok(())
             }

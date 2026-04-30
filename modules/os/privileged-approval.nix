@@ -151,14 +151,24 @@ in
             "switch"
           ];
         }
+        # SECURITY: this entry replaces the previous broad `ks-update`
+        # prefix-match (which permitted root execution of `ks update
+        # <anything>` — fetch, lock, build, push, all as root). The
+        # Walker → Update flow now does the producer-side work in the
+        # user's session and only elevates this single command, whose
+        # argv is `["ks", "activate", <store-path>]`. The store path is
+        # validated against `/nix/store/` prefix in `cmd::activate` as
+        # defense-in-depth even though the prefix-match here already
+        # bounds the verb. See issue #487 for the privilege-boundary
+        # rationale.
         {
-          name = "ks-update";
-          displayName = "Run Keystone update";
-          reason = "Run the Keystone update workflow for this host.";
+          name = "ks-activate";
+          displayName = "Install Keystone update";
+          reason = "Activate a pre-built Keystone system closure on this host.";
           match = "prefix";
           argv = [
             "ks"
-            "update"
+            "activate"
           ];
         }
       ];

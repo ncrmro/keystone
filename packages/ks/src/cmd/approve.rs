@@ -1,4 +1,22 @@
 //! `ks approve` command — privileged allowlisted execution.
+//!
+//! Two entry points:
+//!
+//! - [`execute`] is the interactive `ks approve …` CLI invocation. It
+//!   resolves the helper, validates the policy, then `exec()`-replaces
+//!   the current process with `pkexec`/`sudo` running the helper. Used
+//!   when a human (or agent) types `ks approve` at the terminal — the
+//!   helper inherits the TTY and the process tree collapses cleanly.
+//!
+//! - [`run_and_wait`] is the orchestrator-callable variant. Same policy
+//!   resolution, but spawns the helper as a child and **waits** for it
+//!   to exit, returning the [`ExitStatus`]. Used by flows like
+//!   `cmd::update_approve` that need to perform follow-up work
+//!   *only on activation success*. With `execute`'s exec-replacement
+//!   semantics the orchestrator's post-activation steps (relock, commit,
+//!   push) would have to run *before* the privileged step, which
+//!   violates the atomicity contract — a failed activation would leave
+//!   the lock advanced.
 
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
@@ -6,7 +24,7 @@ use std::env;
 use std::ffi::OsString;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 
 #[derive(Debug, Deserialize)]
 struct ApprovalMatch {
@@ -100,7 +118,10 @@ fn exec_command(program: PathBuf, args: Vec<OsString>) -> Result<()> {
     Err(anyhow!(error)).context("Failed to launch approval helper")
 }
 
-pub fn execute(reason: &str, requested_argv: &[String]) -> Result<()> {
+/// Common pre-flight: validate inputs, resolve helper, validate against
+/// policy, print the dialog header, and build the helper argv. Shared
+/// by both [`execute`] (exec-replace) and [`run_and_wait`] (spawn-wait).
+fn prepare_invocation(reason: &str, requested_argv: &[String]) -> Result<(PathBuf, Vec<OsString>)> {
     if reason.trim().is_empty() {
         anyhow::bail!("--reason is required")
     }
@@ -122,17 +143,53 @@ pub fn execute(reason: &str, requested_argv: &[String]) -> Result<()> {
     ];
     args.extend(requested_argv.iter().map(OsString::from));
 
+    Ok((helper, args))
+}
+
+/// Choose the program + argv that should be run for the approval flow,
+/// given the helper path and pre-built helper args. Returns
+/// `(program, argv)` ready to hand to `exec` or `spawn`.
+fn select_program(helper: PathBuf, helper_args: Vec<OsString>) -> Result<(PathBuf, Vec<OsString>)> {
     if is_root_user()? || env::var_os("KS_APPROVE_EXECUTING").is_some() {
-        return exec_command(helper, args);
+        return Ok((helper, helper_args));
     }
 
     if has_graphical_session() && find_executable("pkexec").is_some() {
         let mut pkexec_args = vec![helper.into_os_string()];
-        pkexec_args.extend(args);
-        return exec_command(PathBuf::from("pkexec"), pkexec_args);
+        pkexec_args.extend(helper_args);
+        return Ok((PathBuf::from("pkexec"), pkexec_args));
     }
 
     let mut sudo_args = vec![helper.into_os_string()];
-    sudo_args.extend(args);
-    exec_command(PathBuf::from("sudo"), sudo_args)
+    sudo_args.extend(helper_args);
+    Ok((PathBuf::from("sudo"), sudo_args))
+}
+
+pub fn execute(reason: &str, requested_argv: &[String]) -> Result<()> {
+    let (helper, helper_args) = prepare_invocation(reason, requested_argv)?;
+    let (program, argv) = select_program(helper, helper_args)?;
+    exec_command(program, argv)
+}
+
+/// Spawn-and-wait variant of [`execute`]. Returns the helper's
+/// [`ExitStatus`] so the caller can decide whether to proceed with
+/// follow-up work. Used by `cmd::update_approve::run_supervised_update`
+/// to gate post-activation steps (relock, commit, push) on actual
+/// activation success.
+///
+/// Policy is identical to [`execute`]: the same helper resolution,
+/// allowlist validation, and pkexec/sudo branching apply. The only
+/// difference is that this returns control to the caller instead of
+/// `exec()`-replacing the process.
+pub fn run_and_wait(reason: &str, requested_argv: &[String]) -> Result<ExitStatus> {
+    let (helper, helper_args) = prepare_invocation(reason, requested_argv)?;
+    let (program, argv) = select_program(helper, helper_args)?;
+    let status = Command::new(&program)
+        .args(&argv)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .with_context(|| format!("failed to spawn approval helper via {}", program.display()))?;
+    Ok(status)
 }
