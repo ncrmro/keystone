@@ -436,6 +436,10 @@
             inherit pkgs lib;
             self = self;
           };
+          templateSpecialArgs = import ./tests/module/template-special-args.nix {
+            inherit pkgs lib;
+            self = self;
+          };
           serverEvaluation = import ./tests/module/server-evaluation.nix {
             inherit pkgs lib nixpkgs;
             self = self;
@@ -515,6 +519,7 @@
           agent-evaluation = agentEvaluation;
           template-evaluation = templateEvaluation;
           template-update-channel = templateUpdateChannel;
+          template-special-args = templateSpecialArgs;
           server-evaluation = serverEvaluation;
           ks-help = ksHelp;
           ks-lock-sync = ksLockSync;
@@ -552,6 +557,7 @@
             ln -s ${agentEvaluation} "$out/agent-evaluation"
             ln -s ${templateEvaluation} "$out/template-evaluation"
             ln -s ${templateUpdateChannel} "$out/template-update-channel"
+            ln -s ${templateSpecialArgs} "$out/template-special-args"
             ln -s ${serverEvaluation} "$out/server-evaluation"
           '';
 
