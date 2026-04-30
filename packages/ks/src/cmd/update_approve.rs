@@ -201,6 +201,17 @@ async fn relock_keystone_input(repo_root: &Path, rev: &str) -> Result<()> {
 /// Returns true when `flake.lock` has unstaged or staged changes
 /// relative to HEAD. We use this to decide whether the relock actually
 /// moved anything; if not, no commit / push is needed.
+//
+// CRITICAL: fail closed when `git status` itself errors. The previous
+// implementation `output.status.success() && !output.stdout.is_empty()`
+// silently treated git failures (not a worktree, missing git binary,
+// permissions error, …) as "clean" and skipped the commit/push step
+// while still letting the orchestrator continue. That hid genuine
+// configuration breakage from the user. Bail loudly instead so the
+// supervised update fails closed and the dialog reports something
+// concrete. The orchestrator's atomicity contract is preserved
+// because activation already succeeded — but a stale lock left
+// uncommitted is still a regression we want surfaced, not swallowed.
 async fn flake_lock_dirty(repo_root: &Path) -> Result<bool> {
     let output = tokio::process::Command::new("git")
         .arg("-C")
@@ -209,7 +220,16 @@ async fn flake_lock_dirty(repo_root: &Path) -> Result<bool> {
         .output()
         .await
         .context("failed to inspect flake.lock status")?;
-    Ok(output.status.success() && !output.stdout.is_empty())
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "git status --porcelain -- flake.lock exited {:?} in {}: {}",
+            output.status.code(),
+            repo_root.display(),
+            stderr.trim()
+        );
+    }
+    Ok(!output.stdout.is_empty())
 }
 
 async fn commit_lock(repo_root: &Path, target_ref: &str) -> Result<()> {
