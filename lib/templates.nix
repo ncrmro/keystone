@@ -770,7 +770,9 @@ rec {
       # `{ inputs, ... }: { imports = [ inputs.X ]; ... }` pattern. These
       # args must be visible at module-import time, which `_module.args`
       # cannot satisfy without infinite recursion. Per-host
-      # `hosts.<name>.specialArgs` are merged on top of `shared.specialArgs`.
+      # `hosts.<name>.specialArgs` are merged on top of `shared.specialArgs`
+      # via shallow last-write-wins (`sharedSpecialArgs // hostSpecialArgs`),
+      # so a host entry replaces the fleet value for any key it sets.
       sharedSpecialArgs = shared.specialArgs or { };
       sharedTimeZone = defaults.timeZone or "UTC";
       sharedUpdateChannel = defaults.updateChannel or "stable";
@@ -886,6 +888,10 @@ rec {
               inherit adminUsername;
               users = sharedUsers // (hostCfg.users or { });
               nixosModules = kindDefaults.nixosModules ++ (hostCfg.nixosModules or [ ]);
+              # Shallow last-write-wins merge: per-host `specialArgs` keys
+              # replace identical keys from `shared.specialArgs`. Nested
+              # values are not merged — set the full nested structure on
+              # the host if you need to override a sub-key.
               specialArgs = sharedSpecialArgs // (hostCfg.specialArgs or { });
               config = lib.recursiveUpdate mergedConfig {
                 keystone.services = keystoneServices;
