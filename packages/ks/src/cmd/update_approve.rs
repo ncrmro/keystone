@@ -11,7 +11,9 @@
 //!             ├─ nix build --override-input keystone <ref>       [user]
 //!             ├─ ks approve … -- ks activate <store-path>        ← polkit
 //!             │     └─ keystone-approve-exec → ks activate       [root]
-//!             ├─ on activation success: nix flake update keystone[user]
+//!             ├─ on activation success:                          [user]
+//!             │     nix flake lock --update-input keystone
+//!             │       --override-input keystone github:.../<rev>
 //!             ├─ git commit -m "chore: bump keystone to <ref>"   [user]
 //!             ├─ git push origin <branch>                        [user]
 //!             └─ notify success/failure                          [user]
@@ -32,18 +34,27 @@
 //!   "uncommitted changes") instead of a partially-applied update
 //!   that activated but couldn't push.
 //!
-//! Atomicity contract:
+//! Atomicity contract (activate-then-mutate):
 //!
 //! 0. Pre-flight: ensure consumer flake is in sync with origin.
 //! 1. Resolve target ref (no filesystem mutation).
-//! 2. `nix build --override-input keystone <ref>` (does NOT modify
-//!    `flake.lock`; failure here is a no-op on the consumer flake).
-//! 3. On build success, run `nix flake update keystone` so the lock
-//!    matches what we just built and activated.
-//! 4. polkit → `ks activate <store-path>` (single root invocation).
-//! 5. On activation success, commit lock + push (guaranteed
-//!    fast-forward by exactly one commit, see the in-sync invariant
-//!    above).
+//! 2. `nix build --override-input keystone <ref>` — does NOT modify
+//!    `flake.lock`. Failure here is a no-op on the consumer flake.
+//! 3. polkit → `ks activate <store-path>` via
+//!    [`cmd::approve::run_and_wait`]. The orchestrator waits for the
+//!    privileged child to exit instead of `exec()`-replacing itself, so
+//!    control returns here to gate the next step on the exit status.
+//! 4. **Only** on activation success: relock the consumer flake's
+//!    `keystone` input, pinned to the exact rev we just built and
+//!    activated (`--update-input keystone --override-input
+//!    keystone github:ncrmro/keystone/<rev>`). Without the override,
+//!    `nix flake update keystone` would re-resolve `github:ncrmro/keystone`
+//!    to the default-branch tip — which can disagree with the activated
+//!    closure on stable channels (where the target is a tag commit, not
+//!    branch tip) or on unstable when a new commit lands between resolve
+//!    and relock.
+//! 5. Commit the lock change, push (guaranteed fast-forward by exactly
+//!    one commit; see the in-sync invariant above), notify.
 //!
 //! Failure modes:
 //!
@@ -51,11 +62,15 @@
 //!   the host or the consumer flake. The error names the specific
 //!   reason (dirty / ahead / behind) so the user can resolve it
 //!   without inspecting logs.
-//! - A failure at any step before step 4 leaves the consumer flake's
-//!   `flake.lock` and working tree unchanged.
-//! - A failure at step 5 leaves the activated host and a committed
-//!   lock — the local generation is correct, the push can be retried
-//!   by hand.
+//! - Steps 1–3 fail → consumer flake's `flake.lock` and working tree
+//!   are untouched. The next Walker click retries from scratch.
+//! - Step 3 succeeds, step 4 fails → host is activated against the new
+//!   closure but the lock is stale. This is the same end state as
+//!   `--dev` activations and resolves on the next successful update.
+//! - Step 5 push fails → lock is committed locally; the user pushes by
+//!   hand or the next update sweeps it. With the pre-flight in place
+//!   the push is fast-forward by exactly one commit, so this failure
+//!   is now strictly a network/auth issue, not a divergence issue.
 //!
 //! Never confuse this code path with `cmd::update::update_locked`. That
 //! is the terminal-only `ks update --lock` flow with full-fleet semantics
@@ -83,23 +98,6 @@ pub(crate) struct ApproveUpdateOutcome {
     pub lock_advanced: bool,
     /// True when the commit was pushed to origin.
     pub pushed: bool,
-}
-
-/// Resolve the target ref for the active channel. For stable that's a
-/// release tag commit SHA (`fetch_release_commit_rev` already ran inside
-/// `fetch_latest_release`); for unstable it's the tip commit of `main`.
-async fn resolve_target_ref(channel: Channel) -> Result<(String, String)> {
-    let info = fetch_latest_release(channel)
-        .await
-        .with_context(|| format!("failed to resolve {} channel target", channel.as_str()))?;
-    if info.latest_rev.trim().is_empty() {
-        anyhow::bail!(
-            "{} channel returned no commit sha for target {}",
-            channel.as_str(),
-            info.latest_tag
-        );
-    }
-    Ok((info.latest_rev, info.latest_tag))
 }
 
 /// Build the system closure for `host` against an overridden keystone
@@ -156,19 +154,46 @@ async fn build_with_override(repo_root: &Path, host: &str, rev: &str) -> Result<
     Ok(path)
 }
 
-/// Lock the keystone input to the target rev using `nix flake update
-/// keystone`. Run AFTER the build succeeds so a failed build never
-/// mutates `flake.lock`.
-async fn relock_keystone_input(repo_root: &Path) -> Result<()> {
+/// Lock the keystone input to the exact target rev we just built and
+/// activated. Run AFTER successful activation so a failed activation
+/// never mutates `flake.lock`.
+//
+// CRITICAL: pin the lock to `github:ncrmro/keystone/<rev>` rather than
+// running a bare `nix flake update keystone`. For consumer flakes that
+// declare `keystone.url = "github:ncrmro/keystone"`, the bare update
+// would re-resolve the input to the default-branch tip, which can drift
+// from the channel-resolved rev in two ways:
+//   1. Stable channel: the target is a tag commit (often older than
+//      `main`); `update keystone` would jump to `main` tip and the lock
+//      would diverge from the activated closure.
+//   2. Unstable channel: between `resolve_target_ref` and this call,
+//      a new commit may land on `main`; `update keystone` would pick
+//      it up, locking to a rev we never built.
+// `--update-input keystone` forces the lockfile entry to refresh, and
+// `--override-input keystone github:.../<rev>` pins it to exactly the
+// rev we built — making the lock match the realized closure.
+async fn relock_keystone_input(repo_root: &Path, rev: &str) -> Result<()> {
+    let pinned = format!("github:ncrmro/keystone/{rev}");
     let status = tokio::process::Command::new("nix")
-        .args(["flake", "update", "keystone"])
+        .args([
+            "flake",
+            "lock",
+            "--update-input",
+            "keystone",
+            "--override-input",
+            "keystone",
+            &pinned,
+        ])
         .arg("--flake")
         .arg(repo_root)
         .status()
         .await
-        .context("failed to invoke nix flake update keystone")?;
+        .context("failed to invoke nix flake lock for keystone input")?;
     if !status.success() {
-        anyhow::bail!("nix flake update keystone exited {:?}", status.code());
+        anyhow::bail!(
+            "nix flake lock --update-input keystone --override-input keystone {pinned} exited {:?}",
+            status.code()
+        );
     }
     Ok(())
 }
@@ -399,21 +424,49 @@ pub(crate) fn approval_reason(host_label: &str) -> String {
     format!("Install Keystone update on {host_label}")
 }
 
-/// Drive the activation step through `cmd::approve::execute`. Returns
-/// only on failure — the success path execs the broker and replaces this
-/// process. The caller therefore must perform any post-activation work
-/// (lock commit + push) before invoking `activate_via_broker`. That
-/// inversion is awkward; we work around it by performing the post-work
-/// inline here, then exec'ing the broker as the last step. See
-/// `run_supervised_update` below for the actual sequencing.
-fn activate_via_broker(reason: &str, store_path: &str) -> Result<()> {
-    let argv = elevated_argv(store_path);
-    cmd::approve::execute(reason, &argv)
+/// Decide whether the orchestrator should proceed to the post-activation
+/// (lock-mutation) phase, given the privileged child's exit status.
+///
+/// Returns `true` only when the child exited with a zero status. Any
+/// non-zero exit (including signal termination, reported by `code()` as
+/// `None`) MUST keep the lock untouched — this is the atomicity guarantee
+/// the activate-then-mutate ordering buys us.
+///
+/// Pulled out as a pure function so the activation-failure branch is
+/// unit-testable without mocking pkexec/keystone-approve-exec.
+fn should_advance_lock(status: &std::process::ExitStatus) -> bool {
+    status.success()
 }
 
-/// Top-level entry. Resolves channel target → builds → relocks →
-/// commits → pushes → activates (privileged). Activation is last so
-/// `cmd::approve::execute`'s `exec()` replaces this process.
+/// Drive the activation step through `cmd::approve::run_and_wait`. The
+/// orchestrator-callable variant of the broker spawns the helper and
+/// waits for it to exit, so we can inspect the [`std::process::ExitStatus`]
+/// and gate post-activation work (relock, commit, push) on actual
+/// activation success. The interactive `cmd::approve::execute` path
+/// would `exec()`-replace this process and force us to perform that
+/// follow-up work *before* the privileged step — which is exactly the
+/// atomicity bug this commit fixes.
+fn activate_via_broker(reason: &str, store_path: &str) -> Result<bool> {
+    let argv = elevated_argv(store_path);
+    let status = cmd::approve::run_and_wait(reason, &argv)?;
+    if !should_advance_lock(&status) {
+        eprintln!(
+            "ks activate failed (exit {:?}) — leaving flake.lock unchanged.",
+            status.code()
+        );
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+/// Top-level entry. Resolves channel target → builds (no lock change)
+/// → activates (privileged, awaited) → on success, relocks pinned to
+/// the activated rev → commits → pushes.
+///
+/// Sequencing invariant: `relock_keystone_input` and `commit_lock` MUST
+/// only run on the activation-success branch. A failed activation must
+/// leave `flake.lock` and the working tree untouched so the next Walker
+/// click retries cleanly.
 pub(crate) async fn run_supervised_update(
     flake_override: Option<&Path>,
 ) -> Result<ApproveUpdateOutcome> {
@@ -437,9 +490,30 @@ pub(crate) async fn run_supervised_update(
 
     // Step 1: resolve the target ref via GitHub API. Runs in the
     // user's session — token + DNS available.
-    let (target_rev, target_tag) = resolve_target_ref(channel).await?;
+    let info = fetch_latest_release(channel)
+        .await
+        .with_context(|| format!("failed to resolve {} channel target", channel.as_str()))?;
+    if info.latest_rev.trim().is_empty() {
+        anyhow::bail!(
+            "{} channel returned no commit sha for target {}",
+            channel.as_str(),
+            info.latest_tag
+        );
+    }
+    let target_rev = info.latest_rev.clone();
+    let target_tag = info.latest_tag.clone();
+    // CRITICAL: use `latest_name` for the audit-trail commit message.
+    // For unstable, `latest_tag` is the literal "main" — losing the
+    // resolved SHA — while `latest_name` is `main@<shortsha>` and
+    // preserves traceability. For stable, both coincide on the tag,
+    // so this is a no-op there.
+    let target_label = if info.latest_name.is_empty() {
+        target_tag.clone()
+    } else {
+        info.latest_name.clone()
+    };
     eprintln!(
-        "Resolved {} channel target: {target_tag} ({target_rev})",
+        "Resolved {} channel target: {target_label} ({target_rev})",
         channel.as_str()
     );
 
@@ -449,60 +523,68 @@ pub(crate) async fn run_supervised_update(
     let store_path = build_with_override(&repo_root, &host, &target_rev).await?;
     eprintln!("Built closure: {store_path}");
 
-    // Step 3: now that the build succeeded, advance flake.lock to the
-    // target rev. The override-build above is functionally equivalent
-    // to what `nix flake update keystone` will produce, so the closure
-    // we just built matches what a fresh build off the new lock would
-    // produce.
-    relock_keystone_input(&repo_root).await?;
+    // Step 3: activate via the privileged broker. We *wait* for the
+    // child to exit so we can decide whether to mutate the lock based
+    // on whether activation actually succeeded. If it failed, return
+    // an outcome that records what we built but leave the lock alone.
+    let host_label = util::hostname_label();
+    let reason = approval_reason(&host_label);
+    eprintln!("Requesting approval to activate {store_path}…");
+    let activated = activate_via_broker(&reason, &store_path)?;
+    if !activated {
+        return Ok(ApproveUpdateOutcome {
+            host: host.clone(),
+            channel: channel.as_str(),
+            target_ref: target_label,
+            store_path: store_path.clone(),
+            lock_advanced: false,
+            pushed: false,
+        });
+    }
 
-    // Step 4: commit the lock change before activation. Sequencing
-    // rationale: if activation fails, the local closure was never
-    // promoted to /run/current-system, but the lock advance reflects
-    // the remote ref the user *wanted* to land. Leaving an uncommitted
-    // lock on the working tree would make the next menu render see
-    // "dirty tree" and refuse the next click.
+    // Step 4: relock pinned to the rev we just built and activated.
+    // See `relock_keystone_input` for why we use `--override-input`
+    // instead of a bare `nix flake update keystone`.
+    relock_keystone_input(&repo_root, &target_rev).await?;
+
+    // Step 5: commit the lock change. If the relock didn't move the
+    // lock (consumer was already on this rev), there's nothing to
+    // commit and we skip straight to the push decision.
     let lock_advanced = if flake_lock_dirty(&repo_root).await? {
-        commit_lock(&repo_root, &target_tag).await?;
+        commit_lock(&repo_root, &target_label).await?;
         true
     } else {
         eprintln!("flake.lock already pinned at {target_rev} — no commit needed.");
         false
     };
 
-    // Step 5: try to push. Best-effort — a network blip post-build
-    // shouldn't block local activation. Run before activation so the
-    // privileged exec doesn't strand the lock locally.
+    // Step 6: push best-effort. A network blip post-activation
+    // shouldn't fail the whole flow — the local generation is already
+    // promoted to /run/current-system and the lock is committed
+    // locally, so the user can recover by pushing by hand.
     let pushed = if lock_advanced {
         let branch = current_branch(&repo_root).await?;
-        push_lock(&repo_root, &branch).await.unwrap_or(false)
+        match push_lock(&repo_root, &branch).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!(
+                    "Warning: git push for branch {branch} failed to spawn: {e:#} — local lock advanced but remote is behind. Push by hand to sync.",
+                );
+                false
+            }
+        }
     } else {
         false
     };
 
-    // Step 6: activate. This is the only privileged step. The broker
-    // exec()'s into pkexec → keystone-approve-exec → root → ks activate
-    // — successful return from this function is unreachable.
-    let host_label = util::hostname_label();
-    let reason = approval_reason(&host_label);
-    eprintln!("Requesting approval to activate {store_path}…");
-
-    // Construct the outcome up front so JSON callers and tests see the
-    // same shape. The function only returns this if `activate_via_broker`
-    // fails (because on success the broker exec's away).
-    let outcome = ApproveUpdateOutcome {
-        host: host.clone(),
+    Ok(ApproveUpdateOutcome {
+        host,
         channel: channel.as_str(),
-        target_ref: target_tag,
-        store_path: store_path.clone(),
+        target_ref: target_label,
+        store_path,
         lock_advanced,
         pushed,
-    };
-
-    activate_via_broker(&reason, &store_path)?;
-    // Unreachable on success — `cmd::approve::execute` exec()'s into
-    // pkexec/sudo when no error occurs.
-    Ok(outcome)
+    })
 }
 
 /// Dummy import suppressor — keeps the implicit `PathBuf` reachable in
@@ -538,6 +620,38 @@ mod tests {
                 "argv leaked git verb {forbidden}: {argv:?}"
             );
         }
+    }
+
+    #[test]
+    fn should_advance_lock_only_on_zero_exit() {
+        // CRITICAL atomicity guard for issue #487: the orchestrator
+        // MUST NOT mutate flake.lock unless the privileged ks-activate
+        // child returned a zero exit status. ExitStatus has no
+        // public constructor, so we shell out to /usr/bin/env true /
+        // false (or `sh -c "exit N"`) to manufacture the two cases.
+        //
+        // Without this guard, a polkit-declined or ks-activate-failed
+        // run would leave flake.lock advanced to a rev that was never
+        // promoted to /run/current-system, contradicting the
+        // activate-then-mutate contract documented at the top of
+        // this module.
+        let success = std::process::Command::new("sh")
+            .args(["-c", "exit 0"])
+            .status()
+            .expect("spawn `sh -c 'exit 0'` for atomicity test");
+        assert!(
+            should_advance_lock(&success),
+            "zero exit should permit lock advance"
+        );
+
+        let failure = std::process::Command::new("sh")
+            .args(["-c", "exit 7"])
+            .status()
+            .expect("spawn `sh -c 'exit 7'` for atomicity test");
+        assert!(
+            !should_advance_lock(&failure),
+            "non-zero exit MUST block lock advance (atomicity invariant for issue #487)"
+        );
     }
 
     #[test]

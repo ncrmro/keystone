@@ -452,20 +452,30 @@ async fn run_update_command(
 /// `cmd::update_approve::run_supervised_update` with the same
 /// JSON envelope translation used for the other update modes.
 ///
-/// The success path of `run_supervised_update` exec()'s into pkexec,
-/// replacing this process — control only returns here on failure.
+/// `run_supervised_update` now spawns + waits on the privileged child
+/// (so it can gate post-activation lock work on actual activation
+/// success), so control returns here on both happy and sad paths.
 async fn run_supervised_update_command(json: bool, flake: Option<&std::path::Path>) -> Result<()> {
     match cmd::update_approve::run_supervised_update(flake).await {
-        Ok(_outcome) => {
-            // Unreachable in practice — `run_supervised_update` calls
-            // `cmd::approve::execute` last and that exec()'s into the
-            // helper. Kept here so the type checker is happy and so a
-            // future caller that breaks the exec-on-success contract
-            // surfaces something to JSON consumers.
+        Ok(outcome) => {
             if json {
-                print_json_success(&serde_json::json!({"approved": true}))
+                print_json_success(&serde_json::json!({
+                    "host": outcome.host,
+                    "channel": outcome.channel,
+                    "target_ref": outcome.target_ref,
+                    "store_path": outcome.store_path,
+                    "lock_advanced": outcome.lock_advanced,
+                    "pushed": outcome.pushed,
+                }))
             } else {
-                eprintln!("ks update --approve returned without exec'ing the broker (unexpected).");
+                eprintln!(
+                    "ks update --approve: activated {} on host {} (channel {}); lock_advanced={}, pushed={}",
+                    outcome.target_ref,
+                    outcome.host,
+                    outcome.channel,
+                    outcome.lock_advanced,
+                    outcome.pushed,
+                );
                 Ok(())
             }
         }
