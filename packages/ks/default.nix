@@ -100,6 +100,11 @@ package.overrideAttrs (old: {
         // {
           inherit cargoArtifacts;
           cargoTestExtraArgs = "--all-features";
+          # CRITICAL: ensure_in_sync_* unit tests in cmd::update_approve
+          # build real git fixtures via Command::new("git"). Without git
+          # on the sandbox PATH the tests panic at fixture setup, not at
+          # the assertion they're meant to exercise.
+          nativeCheckInputs = [ git ];
         }
       );
       cargo-clippy = craneLib.cargoClippy (
