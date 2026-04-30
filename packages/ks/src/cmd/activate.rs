@@ -37,6 +37,19 @@ use std::process::Command;
 /// `["ks", "activate", <path>]`, but defense-in-depth: the validator runs
 /// inside the privileged child too, so even a misconfigured allowlist
 /// can't push activation against an arbitrary path.
+//
+// SECURITY: path traversal via `..` segments. A naive `starts_with`
+// check on the raw string accepts inputs like `/nix/store/../tmp/evil`
+// which still has the `/nix/store/` prefix but resolves outside the
+// store. An attacker who can create files under `/tmp/evil/bin/` could
+// drop a fake `switch-to-configuration` and have it executed as root
+// once the broker re-execs us.
+//
+// Mitigation: canonicalize the path (`std::fs::canonicalize` resolves
+// `..` segments and follows symlinks) and re-check the *canonical*
+// path is under `/nix/store/`. canonicalize fails on non-existent
+// paths, so it doubles as the existence check; a missing-path failure
+// is also a hard bail.
 fn validate_store_path(raw: &str) -> Result<PathBuf> {
     if raw.trim().is_empty() {
         anyhow::bail!("ks activate requires a store path argument");
@@ -45,25 +58,38 @@ fn validate_store_path(raw: &str) -> Result<PathBuf> {
     if !path.is_absolute() {
         anyhow::bail!("store path must be absolute: {raw}");
     }
+    // Cheap pre-check: reject the obvious before paying for canonicalize.
+    // The authoritative check is on the canonical path below.
     if !path.starts_with("/nix/store/") {
         anyhow::bail!("store path must live under /nix/store/: {raw}");
     }
-    if !path.exists() {
-        anyhow::bail!(
-            "store path does not exist: {} \
+    let canonical = std::fs::canonicalize(&path).map_err(|e| {
+        anyhow!(
+            "store path does not exist or cannot be resolved: {} ({}) \
              (did the user-side `nix build` succeed?)",
-            path.display()
+            path.display(),
+            e
+        )
+    })?;
+    // SECURITY: re-check the canonical (post-`..`-resolution) path lives
+    // under `/nix/store/`. Without this, `/nix/store/../tmp/evil` would
+    // canonicalize to `/tmp/evil` and slip past.
+    if !canonical.starts_with("/nix/store/") {
+        anyhow::bail!(
+            "store path resolves outside /nix/store/: {} → {}",
+            path.display(),
+            canonical.display()
         );
     }
-    let switch_bin = path.join("bin/switch-to-configuration");
+    let switch_bin = canonical.join("bin/switch-to-configuration");
     if !switch_bin.is_file() {
         anyhow::bail!(
             "store path is not a NixOS system closure (missing {}): {}",
             switch_bin.display(),
-            path.display()
+            canonical.display()
         );
     }
-    Ok(path)
+    Ok(canonical)
 }
 
 /// Returns true when `/run/current-system` already points at `path`.
@@ -213,6 +239,32 @@ mod tests {
         let err = validate_store_path("/nix/store/0000000000000000000000000000000000000-bogus")
             .unwrap_err()
             .to_string();
-        assert!(err.contains("does not exist"), "got: {err}");
+        assert!(
+            err.contains("does not exist") || err.contains("cannot be resolved"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_store_path_rejects_path_traversal() {
+        // SECURITY regression guard: `/nix/store/../tmp/evil` has the
+        // `/nix/store/` prefix as a literal substring, but canonicalizes
+        // outside the store. Before the canonicalize fix, a `starts_with`
+        // check on the raw path accepted this and would have let an
+        // attacker who could write under /tmp execute their own
+        // `bin/switch-to-configuration` as root. The bail must happen
+        // before any privileged side effect.
+        let err = validate_store_path("/nix/store/../tmp/evil-keystone-traversal-probe")
+            .unwrap_err()
+            .to_string();
+        // Either canonicalize fails (path doesn't exist — preferred), or
+        // the canonical-path re-check trips. Both are hard bails before
+        // any side effect, so accept either error string.
+        assert!(
+            err.contains("does not exist")
+                || err.contains("cannot be resolved")
+                || err.contains("resolves outside"),
+            "expected traversal rejection, got: {err}"
+        );
     }
 }
