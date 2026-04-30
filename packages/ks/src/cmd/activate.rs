@@ -183,9 +183,15 @@ pub fn execute(store_path: &str, mode: &str) -> Result<()> {
     }
 
     if !is_root() {
+        // Mode is optional in the user-facing CLI (`switch` is the
+        // default), so emit a paste-ready invocation that uses the
+        // explicit `--mode` form Clap actually parses. Showing the
+        // mode as a positional arg (the previous "ks activate <path>
+        // {mode}" string) produced commands Clap rejected — copy/paste
+        // failed silently for users who hit the not-root branch.
         anyhow::bail!(
             "ks activate must run as root. Invoke via:\n  \
-             ks approve --reason \"<reason>\" -- ks activate {} {mode}",
+             ks approve --reason \"<reason>\" -- ks activate {} --mode {mode}",
             path.display()
         );
     }

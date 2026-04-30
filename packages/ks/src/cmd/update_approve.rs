@@ -79,7 +79,7 @@
 //! target, one polkit prompt.
 
 use anyhow::{anyhow, Context, Result};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::cmd::update_menu::{fetch_latest_release, Channel};
 use crate::cmd::{self, util};
@@ -606,12 +606,6 @@ pub(crate) async fn run_supervised_update(
         pushed,
     })
 }
-
-/// Dummy import suppressor — keeps the implicit `PathBuf` reachable in
-/// `pub(crate)` items even after refactors that elide the obvious
-/// callsites. Avoids a `dead_code` cycle on test builds.
-#[allow(dead_code)]
-fn _keep(_: &PathBuf) {}
 
 #[cfg(test)]
 mod tests {
