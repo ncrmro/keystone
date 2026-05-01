@@ -101,14 +101,45 @@ let
       touch $out
     '';
 
+  # Evaluate a module set and assert two string values are equal.
+  # `getActual` is a function from the NixOS config to the value to check.
+  # `expectedStr` is the expected value as a string.
+  assertConfigValue =
+    name: expectedStr: getActual: modules:
+    let
+      result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+        ]
+        ++ modules;
+      };
+      actual = builtins.toString (getActual result.config);
+    in
+    pkgs.runCommand "assert-config-${name}" { } ''
+      if [ "${actual}" != "${expectedStr}" ]; then
+        echo "FAIL: ${name}: expected '${expectedStr}', got '${actual}'" >&2
+        exit 1
+      fi
+      echo "OK: ${name}: value = '${actual}'"
+      touch $out
+    '';
+
   # Minimal storage + fs so the OS module evaluates far enough to populate
   # users and assertions. Shared by every admin-flag test below.
+  # arcMax is set to avoid the physicalMemoryGB assertion (these tests focus
+  # on user/admin configuration, not ARC cap computation).
   adminBase = {
     keystone.os = {
       enable = true;
       storage = {
         type = "zfs";
         devices = [ "/dev/vda" ];
+        zfs.arcMax = "4G";
       };
     };
     networking.hostId = "deadbeef";
@@ -170,6 +201,7 @@ let
           storage = {
             type = "zfs";
             devices = [ "/dev/vda" ];
+            zfs.arcMax = "4G";
           };
           users.testuser = {
             fullName = "Test User";
@@ -286,6 +318,7 @@ let
             hostname = "journal-server";
             role = "server";
             journalRemote = true;
+            physicalMemoryGB = 16;
           };
           os = {
             enable = true;
@@ -318,6 +351,11 @@ let
             role = "server";
             journalRemote = true;
           };
+          hosts.workstation = {
+            hostname = "workstation";
+            role = "client";
+            physicalMemoryGB = 32;
+          };
           os = {
             enable = true;
             storage = {
@@ -348,6 +386,11 @@ let
             hostname = "ocean";
             role = "server";
             journalRemote = true;
+          };
+          hosts.workstation = {
+            hostname = "workstation";
+            role = "client";
+            physicalMemoryGB = 32;
           };
           os = {
             enable = true;
@@ -380,6 +423,7 @@ let
             hostname = "workstation";
             role = "client";
             hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest123 workstation";
+            physicalMemoryGB = 64;
             zfs = {
               backups.rpool.targets = [
                 "ocean:ocean"
@@ -439,6 +483,7 @@ let
             hostname = "ocean";
             role = "server";
             hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOcean ocean";
+            physicalMemoryGB = 16;
           };
         };
         keystone.os = {
@@ -614,16 +659,6 @@ let
           }
         ];
 
-    # TODO: add a shadow-warning regression test. Reading
-    # result.config.warnings from an eval-config result cascades into
-    # full home-manager evaluation (systemd.services.home-manager-*
-    # → claudeJsonConfig.data → deepwork-library-jobs), which fails
-    # under the local keystone-conventions derivation invalidation
-    # issue. The shadow-warning code itself is simple and covered by
-    # the sink wiring tests; wire the warning test once the cascade
-    # is disentangled or once we can emit warnings via a narrower
-    # option.
-
     # Containers disabled → admin does NOT get podman, but still gets
     # the unconditional admin groups (dialout, media).
     auto-groups-admin-no-containers =
@@ -643,6 +678,109 @@ let
               fullName = "Alice";
               initialPassword = "pw";
               admin = true;
+            };
+          }
+        ];
+
+    # TODO: add a shadow-warning regression test. Reading
+    # result.config.warnings from an eval-config result cascades into
+    # full home-manager evaluation (systemd.services.home-manager-*
+    # → claudeJsonConfig.data → deepwork-library-jobs), which fails
+    # under the local keystone-conventions derivation invalidation
+    # issue. The shadow-warning code itself is simple and covered by
+    # the sink wiring tests; wire the warning test once the cascade
+    # is disentangled or once we can emit warnings via a narrower
+    # option.
+
+    # --- Memory pressure assertions ---
+    #
+    # ZFS host with no arcMax and no physicalMemoryGB → assertion fires.
+    arc-cap-no-ram-fails =
+      assertHasFailingAssertion "arc-no-ram" "physicalMemoryGB"
+        [
+          {
+            keystone.os = {
+              enable = true;
+              storage = {
+                type = "zfs";
+                devices = [ "/dev/vda" ];
+                # arcMax deliberately omitted; no host registry entry either
+              };
+              users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            };
+            networking.hostId = "deadbeef";
+            fileSystems."/" = {
+              device = lib.mkForce "rpool/crypt/system";
+              fsType = lib.mkForce "zfs";
+            };
+          }
+        ];
+
+    # ZFS host with physicalMemoryGB set → arc cap computes to 25% of RAM.
+    # Also asserts the computed boot.kernelParams contains the expected byte count:
+    # 64 GiB * 1024^3 / 4 = 17179869184 bytes.
+    arc-cap-from-registry =
+      assertConfigValue "arc-cap-from-registry"
+        # 64 GiB * 1073741824 / 4 = 17179869184
+        "zfs.zfs_arc_max=17179869184"
+        (cfg: lib.findFirst (lib.hasPrefix "zfs.zfs_arc_max=") null cfg.boot.kernelParams)
+        [
+          {
+            keystone.hosts.myhost = {
+              hostname = "myhost";
+              role = "client";
+              physicalMemoryGB = 64;
+            };
+            keystone.os = {
+              enable = true;
+              storage = {
+                type = "zfs";
+                devices = [ "/dev/vda" ];
+                # arcMax null; physicalMemoryGB in host registry provides the value
+              };
+              users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            };
+            networking.hostName = "myhost";
+            networking.hostId = "deadbeef";
+            fileSystems."/" = {
+              device = lib.mkForce "rpool/crypt/system";
+              fsType = lib.mkForce "zfs";
+            };
+          }
+        ];
+
+    # memoryPressure.enable = false → zramSwap must NOT be enabled.
+    memory-pressure-disabled =
+      assertConfigValue "memory-pressure-disabled" "false"
+        (cfg: if cfg.zramSwap.enable then "true" else "false")
+        [
+          {
+            keystone.os = {
+              enable = true;
+              memoryPressure.enable = false;
+              storage = {
+                type = "zfs";
+                devices = [ "/dev/vda" ];
+                zfs.arcMax = "4G";
+              };
+              users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            };
+            networking.hostId = "deadbeef";
+            fileSystems."/" = {
+              device = lib.mkForce "rpool/crypt/system";
+              fsType = lib.mkForce "zfs";
             };
           }
         ];
@@ -667,6 +805,10 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - arc-cap-from-registry: ZFS ARC cap computed from physicalMemoryGB"
+    echo "  - arc-cap-no-ram-fails: assertion fires when arcMax and physicalMemoryGB both absent"
+    echo "  - auto-groups-admin-no-containers: containers.enable=false removes podman from admin groups"
+    echo "  - memory-pressure-disabled: memoryPressure.enable = false skips zram/oomd config"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
