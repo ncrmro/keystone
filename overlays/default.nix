@@ -151,9 +151,28 @@ in
       pkgs = llmAgentsPkgs;
       perSystem = llmAgentsPerSystem;
     };
-    codex = import "${llm-agents-src}/packages/codex/default.nix" {
-      pkgs = llmAgentsPkgs;
-    };
+    codex =
+      (import "${llm-agents-src}/packages/codex/default.nix" {
+        pkgs = llmAgentsPkgs;
+      }).overrideAttrs
+        (old: {
+          cargoDeps = llmAgentsPkgs.rustPlatform.fetchCargoVendor {
+            inherit (old) src;
+            name = "codex-${old.version}";
+            sourceRoot = "source/codex-rs";
+            hash = "sha256-2ZoibDx2LFVdE+dQNei60/eh+qMeDVPVR5DLlK2E+XM=";
+            postBuild = ''
+              # SECURITY: nixpkgs' vendoring helper recursively probes every
+              # Cargo.toml in git dependencies. The rules_rust repo pulled in by
+              # Codex's `runfiles` crate contains many intentionally broken test
+              # and example workspaces, so keep only the standalone runfiles
+              # crate subtree that Codex actually depends on.
+              rules_rust_tree="$out/git/b56cbaa8465e74127f1ea216f813cd377295ad81"
+              find "$rules_rust_tree" -mindepth 1 -maxdepth 1 ! -name rust -exec rm -rf {} +
+              find "$rules_rust_tree/rust" -mindepth 1 -maxdepth 1 ! -name runfiles -exec rm -rf {} +
+            '';
+          };
+        });
     opencode = import "${llm-agents-src}/packages/opencode/default.nix" {
       pkgs = llmAgentsPkgs;
       perSystem = llmAgentsPerSystem;
