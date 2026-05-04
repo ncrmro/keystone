@@ -167,6 +167,7 @@ archetypes:
           - process.diagrams
           - tool.mermaid
           - process.feature-delivery
+          - process.in-flight-work-routing
           - process.pr-shepherding
           - process.pull-request
           - process.refactor
@@ -231,6 +232,7 @@ archetypes:
       - tool.standard-utilities
       - process.vcs-context-continuity
       - process.project-navigation
+      - process.in-flight-work-routing
     referenced_conventions:
       - process.task-tracking
       - process.project-board

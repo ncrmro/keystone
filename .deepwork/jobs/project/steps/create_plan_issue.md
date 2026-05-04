@@ -65,6 +65,8 @@ Read the scope analysis, review decision, and specs PR report from prior steps, 
    - Feature tasks should depend on infrastructure, not on each other
    - Use feature flags to avoid blocking on deployment order
 
+   **Important — in-flight PR routing**: When writing task descriptions that reference an existing open PR, apply `process.in-flight-work-routing` before hardcoding a branch reference. If the new work is in scope for that open PR (bug in its code, missing piece of its scope, or refinement), write "push commits to PR #N's branch (`{branch-name}`)" — NOT "PR against `{branch-name}`", which implies opening a new stacked PR.
+
 4. **Create the plan issue**
 
    **GitHub**:

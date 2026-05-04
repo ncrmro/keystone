@@ -12,7 +12,7 @@ This convention defines the end-to-end lifecycle of delivering features and fixe
 
 4. The issue body MUST serve as the plan of record — no separate `plan.md` files.
 5. The issue body MUST include a checklist of deliverables derived from the spec.
-6. Large issues MUST be decomposed into sub-issues, each becoming its own branch and PR.
+6. Large issues MUST be decomposed into sub-issues, each becoming its own branch and PR. Exception: follow-up work that is in scope for an already-open PR (bug in that PR's code, missing piece of its stated scope, or refinement from review) MUST be pushed to the existing PR's branch instead — see `process.in-flight-work-routing`.
 7. Sub-issues MUST reference the parent issue (e.g., "Part of #42").
 8. The issue body SHOULD be updated as the plan evolves; comments supplement but do not replace it.
 
