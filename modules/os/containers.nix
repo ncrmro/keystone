@@ -38,6 +38,11 @@ in
     virtualisation.docker.enable = lib.mkForce false;
     virtualisation.podman = {
       enable = true;
+      # Provides the `docker` CLI shim so existing docker-based tooling
+      # (scripts, compose files, IDE integrations) works transparently
+      # against podman. Safe because `virtualisation.docker.enable` is
+      # forced off above, so the shim never collides with real Docker.
+      dockerCompat = true;
       dockerSocket.enable = true;
       defaultNetwork.settings.dns_enabled = true;
     };
