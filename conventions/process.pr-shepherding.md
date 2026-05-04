@@ -6,6 +6,10 @@ Agents MUST act with agency when delivering pull requests. Shepherding means
 the agent owns the PR lifecycle end-to-end — from draft creation through merge
 verification — without waiting for the user to nudge each step forward.
 
+## Routing: New PR vs. Existing Branch
+
+Before opening any PR, the agent MUST evaluate whether the new work belongs on an existing in-flight PR's branch. If the new work is a bug in an open PR's code, a missing piece of its stated scope, or a refinement from review, the agent MUST push commits to that PR's branch instead of opening a new PR — see `process.in-flight-work-routing` for the full heuristic.
+
 ## Draft-First Delivery
 
 1. PRs MUST be pushed as drafts initially (`--draft` on GitHub, `WIP:` prefix

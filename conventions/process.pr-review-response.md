@@ -126,6 +126,7 @@ curl -sf -X PATCH -H "Authorization: token $FORGEJO_TOKEN" \
 13. This convention extends `process.feature-delivery` rule 25 for human reviewer feedback (not just Copilot).
 14. The comment resolution rules (fix or explain every comment) are consistent with `process.copilot-agent` rules 13-15.
 15. Agents operating in the `code-reviewer` role (reviewing others' PRs) follow `process.code-review-ownership` instead — this convention applies only to the **author** side.
+16. When review feedback surfaces new work that goes beyond the PR's stated scope, the agent MUST evaluate whether that new work is a separate concern before pushing it to this branch — see `process.in-flight-work-routing`.
 
 ## Golden Example
 

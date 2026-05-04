@@ -249,22 +249,31 @@ workflows:
              - Ask structured questions if the goal is ambiguous or underspecified
              - Identify which keystone modules/packages are likely affected
 
-          2. **Create the worktree**
+          2. **Route the work: existing PR or new branch?**
+             - Before creating a new branch, check for an open PR whose scope this goal logically belongs to:
+               ```bash
+               gh pr list --repo {owner}/{repo} --state open --json number,title,headRefName,body \
+                 | jq '.[] | select(.title | test("<goal keyword>"; "i"))'
+               ```
+             - If an open PR covers this goal (bug in its code, missing piece of its scope, or refinement): check out that PR's branch in the worktree instead of creating a new branch — see `process.in-flight-work-routing` Rule 1.
+             - If no such PR exists, or the goal is independent, continue to create a new branch below.
+
+          3. **Create the worktree** (skip if routing to an existing PR branch above)
              - Derive a branch name from the goal (e.g., `feat/add-ollama-module`, `fix/tpm-unlock-race`)
              - Follow conventional branch naming: `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`
              - Create the worktree: `git worktree add .claude/worktrees/<branch-name> -b <branch-name>`
 
-          3. **Analyze the scope**
+          4. **Analyze the scope**
              - Read the relevant source files to understand the current state
              - Determine if changes are **OS-level** (modules/os/, modules/server/, flake.nix) or **home-manager-only** (modules/terminal/, modules/desktop/home/)
              - This distinction matters for the build step — OS changes require full nix build, home-manager-only changes can use the fast `ks build` path
 
-          4. **Define validation criteria**
+          5. **Define validation criteria**
              - For every change, define how to verify it works BEFORE starting implementation
              - Include: what commands to run, what output to expect, what "success" looks like
              - Validation criteria must be concrete and testable — not "it should work"
 
-          5. **Write the plan**
+          6. **Write the plan**
              - List specific files to create or modify
              - Order steps logically (dependencies first)
              - Note any risks or things that could go wrong
