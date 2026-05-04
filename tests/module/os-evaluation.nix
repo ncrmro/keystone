@@ -625,9 +625,11 @@ let
     # option.
 
     # systemd-oomd is wired up by default and applies the keystone-specific
-    # 20-second pressure window. The DefaultMemoryPressureDurationSec value is
-    # the keystone-unique signature — the slice-enable flags overlap with
-    # NixOS defaults, so asserting the extraConfig is the cleanest pin.
+    # 20-second pressure window.  Two independent keystone signatures are
+    # checked so the test cannot pass vacuously if nixpkgs ever happens to
+    # adopt the same value as its own default:
+    #   1. DefaultMemoryPressureDurationSec is present in extraConfig and = "20s"
+    #   2. enableRootSlice = true  (NixOS upstream default is false)
     oomd-default-on =
       let
         result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
@@ -648,21 +650,37 @@ let
             }
           ];
         };
-        actual = result.config.systemd.oomd.extraConfig.DefaultMemoryPressureDurationSec or "<unset>";
+        oomdCfg = result.config.systemd.oomd;
+        hasDuration = builtins.hasAttr "DefaultMemoryPressureDurationSec" oomdCfg.extraConfig;
+        actualDuration = oomdCfg.extraConfig.DefaultMemoryPressureDurationSec or "<unset>";
+        actualRootSlice = oomdCfg.enableRootSlice;
       in
       pkgs.runCommand "oomd-default-on" { } ''
-        if [ "${actual}" != "20s" ]; then
-          echo "FAIL: oomd-default-on: expected DefaultMemoryPressureDurationSec=20s, got '${actual}'" >&2
-          exit 1
+        ok=1
+        if [ "${builtins.toJSON hasDuration}" != "true" ]; then
+          echo "FAIL: oomd-default-on: DefaultMemoryPressureDurationSec absent from extraConfig" >&2
+          ok=0
         fi
-        echo "OK: oomd-default-on: DefaultMemoryPressureDurationSec=${actual}"
+        if [ "${actualDuration}" != "20s" ]; then
+          echo "FAIL: oomd-default-on: expected DefaultMemoryPressureDurationSec=20s, got '${actualDuration}'" >&2
+          ok=0
+        fi
+        if [ "${builtins.toJSON actualRootSlice}" != "true" ]; then
+          echo "FAIL: oomd-default-on: expected enableRootSlice=true (keystone default), got '${builtins.toJSON actualRootSlice}'" >&2
+          ok=0
+        fi
+        [ "$ok" = "1" ] || exit 1
+        echo "OK: oomd-default-on: duration=${actualDuration} enableRootSlice=${builtins.toJSON actualRootSlice}"
         touch $out
       '';
 
-    # When keystone.os.oomd.enable = false, the keystone module MUST NOT set
-    # the 20 s pressure window. NixOS may still leave systemd-oomd enabled at
-    # its own defaults; this test only verifies the keystone contribution
-    # disappears.
+    # When keystone.os.oomd.enable = false, the keystone module MUST NOT inject
+    # its settings.  Two independent keystone-absence checks are made so the
+    # test cannot produce a false negative if nixpkgs ever also defaults one of
+    # these to the same value:
+    #   1. DefaultMemoryPressureDurationSec must be ABSENT from extraConfig
+    #      (key presence, not value comparison — robust against upstream adopting "20s")
+    #   2. enableRootSlice must be false  (the NixOS upstream default)
     oomd-disabled =
       let
         result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
@@ -684,14 +702,22 @@ let
             }
           ];
         };
-        actual = result.config.systemd.oomd.extraConfig.DefaultMemoryPressureDurationSec or "<unset>";
+        oomdCfg = result.config.systemd.oomd;
+        hasDuration = builtins.hasAttr "DefaultMemoryPressureDurationSec" oomdCfg.extraConfig;
+        actualRootSlice = oomdCfg.enableRootSlice;
       in
       pkgs.runCommand "oomd-disabled" { } ''
-        if [ "${actual}" = "20s" ]; then
-          echo "FAIL: oomd-disabled: keystone still applied DefaultMemoryPressureDurationSec=20s" >&2
-          exit 1
+        ok=1
+        if [ "${builtins.toJSON hasDuration}" = "true" ]; then
+          echo "FAIL: oomd-disabled: keystone still injected DefaultMemoryPressureDurationSec into extraConfig" >&2
+          ok=0
         fi
-        echo "OK: oomd-disabled: keystone did not apply pressure window (got '${actual}')"
+        if [ "${builtins.toJSON actualRootSlice}" = "true" ]; then
+          echo "FAIL: oomd-disabled: keystone still set enableRootSlice=true" >&2
+          ok=0
+        fi
+        [ "$ok" = "1" ] || exit 1
+        echo "OK: oomd-disabled: keystone contribution absent (hasDuration=${builtins.toJSON hasDuration} enableRootSlice=${builtins.toJSON actualRootSlice})"
         touch $out
       '';
 

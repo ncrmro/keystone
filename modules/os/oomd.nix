@@ -46,12 +46,12 @@ in
 
   config = mkIf (config.keystone.os.enable && cfg.enable) {
     systemd.oomd = {
-      enable = true;
-      enableUserSlices = true;
-      enableRootSlice = true;
-      enableSystemSlice = true;
+      enable = mkDefault true;
+      enableUserSlices = mkDefault true;
+      enableRootSlice = mkDefault true;
+      enableSystemSlice = mkDefault true;
       extraConfig = {
-        DefaultMemoryPressureDurationSec = "20s";
+        DefaultMemoryPressureDurationSec = mkDefault "20s";
       };
     };
   };
