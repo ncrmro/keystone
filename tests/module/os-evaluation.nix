@@ -624,6 +624,77 @@ let
     # is disentangled or once we can emit warnings via a narrower
     # option.
 
+    # systemd-oomd is wired up by default and applies the keystone-specific
+    # 20-second pressure window. The DefaultMemoryPressureDurationSec value is
+    # the keystone-unique signature — the slice-enable flags overlap with
+    # NixOS defaults, so asserting the extraConfig is the cleanest pin.
+    oomd-default-on =
+      let
+        result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+          system = "x86_64-linux";
+          modules = [
+            self.nixosModules.operating-system
+            {
+              system.stateVersion = "25.05";
+              boot.loader.systemd-boot.enable = true;
+            }
+            adminBase
+            {
+              keystone.os.users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            }
+          ];
+        };
+        actual = result.config.systemd.oomd.extraConfig.DefaultMemoryPressureDurationSec or "<unset>";
+      in
+      pkgs.runCommand "oomd-default-on" { } ''
+        if [ "${actual}" != "20s" ]; then
+          echo "FAIL: oomd-default-on: expected DefaultMemoryPressureDurationSec=20s, got '${actual}'" >&2
+          exit 1
+        fi
+        echo "OK: oomd-default-on: DefaultMemoryPressureDurationSec=${actual}"
+        touch $out
+      '';
+
+    # When keystone.os.oomd.enable = false, the keystone module MUST NOT set
+    # the 20 s pressure window. NixOS may still leave systemd-oomd enabled at
+    # its own defaults; this test only verifies the keystone contribution
+    # disappears.
+    oomd-disabled =
+      let
+        result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+          system = "x86_64-linux";
+          modules = [
+            self.nixosModules.operating-system
+            {
+              system.stateVersion = "25.05";
+              boot.loader.systemd-boot.enable = true;
+            }
+            adminBase
+            {
+              keystone.os.oomd.enable = false;
+              keystone.os.users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            }
+          ];
+        };
+        actual = result.config.systemd.oomd.extraConfig.DefaultMemoryPressureDurationSec or "<unset>";
+      in
+      pkgs.runCommand "oomd-disabled" { } ''
+        if [ "${actual}" = "20s" ]; then
+          echo "FAIL: oomd-disabled: keystone still applied DefaultMemoryPressureDurationSec=20s" >&2
+          exit 1
+        fi
+        echo "OK: oomd-disabled: keystone did not apply pressure window (got '${actual}')"
+        touch $out
+      '';
+
     # Containers disabled → admin does NOT get podman, but still gets
     # the unconditional admin groups (dialout, media).
     auto-groups-admin-no-containers =
@@ -667,6 +738,8 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - oomd-default-on: keystone.os.oomd.enable defaults to true and applies 20 s pressure window"
+    echo "  - oomd-disabled: keystone.os.oomd.enable = false drops the keystone-specific oomd contribution"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
