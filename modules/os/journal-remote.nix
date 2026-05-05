@@ -171,12 +171,28 @@ in
         };
       };
 
-      systemd.services.systemd-journal-upload.serviceConfig = {
-        # systemd-journal-upload exits 1 for malformed or oversized local
-        # journal entries. Treat that as retryable so observability cannot
-        # make switch-to-configuration fail an otherwise valid system update.
-        SuccessExitStatus = [ 1 ];
-        RestartSec = mkForce "5min";
+      systemd.services.systemd-journal-upload = {
+        serviceConfig = {
+          # systemd-journal-upload exits 1 for malformed or oversized local
+          # journal entries. Treat that as retryable so observability cannot
+          # make switch-to-configuration fail an otherwise valid system update.
+          SuccessExitStatus = [ 1 ];
+          RestartSec = mkForce "5min";
+        };
+
+        # Don't let switch-to-configuration restart this unit during a system
+        # switch. With SuccessExitStatus=1 and RestartSec=5min, the unit sits
+        # in `activating` between auto-restart cycles whenever the local
+        # journal hits a malformed entry; switch-to-configuration's
+        # post-restart health check sees that transient state and exits 4
+        # ("warning: units failed"), which `ks update --approve` then treats
+        # as a hard failure and refuses to advance flake.lock. The currently
+        # running daemon keeps uploading regardless of switches; config
+        # changes here (URL, certs, drop-ins) take effect on the next reboot
+        # or manual `systemctl restart systemd-journal-upload`. That trade
+        # is acceptable for an observability uploader — losing a flake.lock
+        # advance every time the daemon is mid-cycle is not.
+        restartIfChanged = false;
       };
     })
   ]);
