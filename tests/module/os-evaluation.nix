@@ -178,24 +178,30 @@ let
         ++ modules;
       };
       env = result.config.services.immich.machine-learning.environment;
+      rocmOverlayResult = (builtins.head result.config.nixpkgs.overlays) { } {
+        onnxruntime.override = args: args;
+      };
       actualDevice = env.DEVICE or null;
       actualHsaGfxVersion = env.HSA_OVERRIDE_GFX_VERSION or null;
+      actualOnnxruntimeRocmSupport = rocmOverlayResult.onnxruntime.rocmSupport or false;
       deviceOk = actualDevice == "rocm";
       hsaOk = actualHsaGfxVersion == expectedHsaGfxVersion;
+      onnxruntimeOk = actualOnnxruntimeRocmSupport == true;
       actualDeviceJson = builtins.toJSON actualDevice;
       actualHsaGfxVersionJson = builtins.toJSON actualHsaGfxVersion;
       expectedHsaGfxVersionJson = builtins.toJSON expectedHsaGfxVersion;
+      actualOnnxruntimeRocmSupportJson = builtins.toJSON actualOnnxruntimeRocmSupport;
     in
     pkgs.runCommand "immich-rocm-worker-${name}" { } ''
       ${
-        if deviceOk && hsaOk then
+        if deviceOk && hsaOk && onnxruntimeOk then
           ''
-            echo "OK: ${name}: DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}"
+            echo "OK: ${name}: DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}, onnxruntime.rocmSupport=${actualOnnxruntimeRocmSupportJson}"
           ''
         else
           ''
-            echo "FAIL: ${name}: expected DEVICE=\"rocm\", HSA_OVERRIDE_GFX_VERSION=${expectedHsaGfxVersionJson}" >&2
-            echo "  actual DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}" >&2
+            echo "FAIL: ${name}: expected DEVICE=\"rocm\", HSA_OVERRIDE_GFX_VERSION=${expectedHsaGfxVersionJson}, onnxruntime.rocmSupport=true" >&2
+            echo "  actual DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}, onnxruntime.rocmSupport=${actualOnnxruntimeRocmSupportJson}" >&2
             exit 1
           ''
       }
