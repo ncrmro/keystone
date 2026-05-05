@@ -170,6 +170,14 @@ in
           TrustedCertificateFile = "/etc/ssl/certs/ca-bundle.crt";
         };
       };
+
+      systemd.services.systemd-journal-upload.serviceConfig = {
+        # systemd-journal-upload exits 1 for malformed or oversized local
+        # journal entries. Treat that as retryable so observability cannot
+        # make switch-to-configuration fail an otherwise valid system update.
+        SuccessExitStatus = [ 1 ];
+        RestartSec = mkForce "5min";
+      };
     })
   ]);
 }
