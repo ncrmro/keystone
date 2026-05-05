@@ -8,13 +8,19 @@
 # What those unit tests can't see is the *wiring* between files:
 #
 #   - keystone-update.lua must call `ks menu update …`.
-#   - services.nix must declare both ks-update.service and the
-#     ks-update-notify@.service template.
+#   - update_menu.rs::start_update_session must spawn the update via the
+#     graphical-session app launcher (`uwsm app -- systemd-inhibit …
+#     systemd-cat -t ks-update ks update --approve`), not via a user
+#     systemd unit. The unit-based path was retired because it lost the
+#     graphical session env that pkexec needs to reach hyprpolkitagent.
+#   - system-flake.nix must write `/run/current-system/keystone-update-channel`
+#     from `keystone.update.channel` so detached session apps have a stable
+#     channel source without depending on session env freshness.
 #   - The activation tokens emitted by entries_json (in Rust) must be the
 #     same tokens dispatch matches on (in Rust) and the same tokens the
 #     Lua provider feeds into the Action.
 #
-# If anyone renames the subcommand, drops a unit, or edits activation
+# If anyone renames the subcommand, drops the launcher, or edits activation
 # tokens without the corresponding other-file update, this test fails
 # loudly instead of silently breaking the desktop flow.
 {
@@ -23,10 +29,10 @@
 }:
 let
   luaFile = ../../modules/desktop/home/components/keystone-update.lua;
-  servicesFile = ../../modules/desktop/home/services.nix;
   updateMenuRs = ../../packages/ks/src/cmd/update_menu.rs;
-  runBackgroundRs = ../../packages/ks/src/cmd/run_background.rs;
+  repoRs = ../../packages/ks/src/repo.rs;
   updateChannelOption = ../../modules/shared/update.nix;
+  systemFlakeFile = ../../modules/shared/system-flake.nix;
   terminalDefault = ../../modules/terminal/default.nix;
   mainMenuShell = ../../modules/desktop/home/scripts/keystone-main-menu.sh;
 in
@@ -58,37 +64,39 @@ pkgs.runCommand "test-keystone-update-menu-wiring"
       fail "keystone-update.lua still references the legacy 'update-menu' command"
     fi
 
-    # -- services.nix declares the worker and notifier units --------------
-
-    if ! grep -F 'ks-update.service' ${servicesFile} >/dev/null; then
-      fail "services.nix must reference ks-update.service"
-    fi
-    if ! grep -F 'ks-update-notify@' ${servicesFile} >/dev/null; then
-      fail "services.nix must declare the ks-update-notify@ template"
-    fi
-    if ! grep -F 'OnSuccess' ${servicesFile} >/dev/null; then
-      fail "services.nix must wire OnSuccess= on ks-update.service"
-    fi
-    if ! grep -F 'OnFailure' ${servicesFile} >/dev/null; then
-      fail "services.nix must wire OnFailure= on ks-update.service"
-    fi
-
-    # -- ks-update.service imports graphical-session env -------------------
+    # -- update_menu.rs spawns the update as a session app, not a unit ----
     #
-    # `ks update --approve` (the unit's ExecStart) checks DISPLAY /
-    # WAYLAND_DISPLAY / XDG_SESSION_TYPE to decide pkexec vs sudo. Without
-    # PassEnvironment the user manager doesn't propagate those into the
-    # unit's env, ks falls through to sudo, sudo has no tty, and the unit
-    # silently exits 1. XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS are
-    # needed for pkexec to find hyprpolkitagent on the user bus.
-    if ! grep -F 'PassEnvironment' ${servicesFile} >/dev/null; then
-      fail "services.nix must declare PassEnvironment on ks-update.service so the graphical-session env reaches ks --approve"
+    # The retired `ks-update.service` path lost the graphical session env
+    # pkexec needs to talk to hyprpolkitagent. start_update_session must
+    # build a `uwsm app -- systemd-inhibit … systemd-cat -t ks-update
+    # ks update --approve` argv so the update inherits DISPLAY /
+    # WAYLAND_DISPLAY / DBUS_SESSION_BUS_ADDRESS from the session.
+
+    if ! grep -F 'start_update_session' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs must define start_update_session for the graphical-session app launch"
     fi
-    for var in DISPLAY WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS; do
-      if ! grep -F "$var" ${servicesFile} >/dev/null; then
-        fail "ks-update.service PassEnvironment must include $var"
-      fi
-    done
+    if ! grep -F 'uwsm' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs must launch the update via uwsm app -- … so it inherits the graphical session env"
+    fi
+    if ! grep -F '--identifier=ks-update' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs must tag the session app with systemd-cat --identifier=ks-update for journal lookup"
+    fi
+    if ! grep -F 'systemd-inhibit' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs must wrap the update in systemd-inhibit so suspend/shutdown can't wedge a switch"
+    fi
+    if ! grep -F '"--approve"' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs session-app argv must invoke ks update --approve"
+    fi
+    if ! grep -F 'KS_UPDATE_NOTIFY' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs must set KS_UPDATE_NOTIFY=1 so ks main fires notify-send (replaces the retired ks-update-notify@ template)"
+    fi
+
+    # Guard against regression: the unit-based launcher is gone. If anyone
+    # reintroduces `systemctl --user start ks-update.service` without first
+    # solving the session-env problem, fail loudly.
+    if grep -F 'ks-update.service' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs must not reference ks-update.service — the unit was retired in favor of the uwsm session-app launcher"
+    fi
 
     # -- Activation tokens defined in Rust match dispatch handling ---------
     #
@@ -108,40 +116,44 @@ pkgs.runCommand "test-keystone-update-menu-wiring"
       fi
     done
 
-    # -- run-background unit validation references ks-update.service ------
-
-    if ! grep -F 'ks-update.service' ${runBackgroundRs} >/dev/null 2>&1; then
-      : # currently run_background.rs doesn't hard-code the name — that's fine
-    fi
-
-    # -- Channel wiring: KS_UPDATE_CHANNEL reaches ks at runtime ----------
+    # -- Channel wiring ---------------------------------------------------
     #
-    # The Rust backend reads KS_UPDATE_CHANNEL from the env. The desktop
-    # services and terminal home-manager module must thread the declared
-    # keystone.update.channel value in, otherwise Walker / interactive
-    # shells will silently fall back to the default "stable" even after
-    # a consumer flake sets channel = "unstable". This is the class of bug
-    # unit tests can't catch because the coupling spans three files.
+    # The Rust backend resolves the channel from KS_UPDATE_CHANNEL first
+    # (interactive shells / tests) and falls back to
+    # /run/current-system/keystone-update-channel (detached session apps).
+    # Three files have to agree:
     #
-    # Match the *assignment* shape rather than the bare token so comments
-    # referencing the option (which happen throughout both files) don't
-    # satisfy the check if the actual wiring is removed.
+    #   - system-flake.nix writes the runtime pointer from
+    #     config.keystone.update.channel so it is regenerated on every
+    #     nixos-rebuild switch / boot.
+    #   - terminal/default.nix exports KS_UPDATE_CHANNEL for interactive
+    #     shells so `ks menu update status` from a terminal also tracks
+    #     the declared channel.
+    #   - update_menu.rs reads both paths via repo::read_system_update_channel
+    #     plus an env lookup. Match the function so it can't be silently
+    #     deleted.
 
-    # services.nix binds `updateChannel = config.keystone.update.channel;`
-    # and then interpolates it into Environment = [ "KS_UPDATE_CHANNEL=..." ].
-    if ! grep -E '=[[:space:]]*config\.keystone\.update\.channel' ${servicesFile} >/dev/null; then
-      fail "services.nix must bind updateChannel = config.keystone.update.channel to thread into unit env"
+    if ! grep -F 'keystone-update-channel' ${systemFlakeFile} >/dev/null; then
+      fail "system-flake.nix must write /run/current-system/keystone-update-channel for runtime channel discovery"
     fi
-    # Match the Nix interpolation literally: KS_UPDATE_CHANNEL=''${updateChannel}
-    # (escaped here so Nix passes the raw ''${...} through to grep).
-    if ! grep -F 'KS_UPDATE_CHANNEL=''${updateChannel}' ${servicesFile} >/dev/null; then
-      fail "services.nix must set KS_UPDATE_CHANNEL=\''${updateChannel} in ks-update.service / ks-update-notify@.service Environment"
+    if ! grep -E 'config\.keystone\.update\.channel' ${systemFlakeFile} >/dev/null; then
+      fail "system-flake.nix must source the runtime channel pointer from config.keystone.update.channel"
     fi
 
     # terminal/default.nix sets it as a home.sessionVariables attribute
     # whose value is `config.keystone.update.channel` (no string literal).
     if ! grep -E 'KS_UPDATE_CHANNEL[[:space:]]*=[[:space:]]*config\.keystone\.update\.channel' ${terminalDefault} >/dev/null; then
       fail "terminal/default.nix must set KS_UPDATE_CHANNEL = config.keystone.update.channel in home.sessionVariables"
+    fi
+
+    if ! grep -F 'KS_UPDATE_CHANNEL' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs must read KS_UPDATE_CHANNEL for channel dispatch"
+    fi
+    if ! grep -F 'read_system_update_channel' ${updateMenuRs} >/dev/null; then
+      fail "update_menu.rs must fall back to repo::read_system_update_channel when KS_UPDATE_CHANNEL is unset"
+    fi
+    if ! grep -F 'keystone-update-channel' ${repoRs} >/dev/null; then
+      fail "repo.rs must read /run/current-system/keystone-update-channel as the runtime channel pointer"
     fi
 
     # -- Option exists somewhere under modules/ ---------------------------
@@ -159,20 +171,14 @@ pkgs.runCommand "test-keystone-update-menu-wiring"
       fi
     done
 
-    # -- Rust entrypoint reads the env var --------------------------------
-
-    if ! grep -F 'KS_UPDATE_CHANNEL' ${updateMenuRs} >/dev/null; then
-      fail "update_menu.rs must read KS_UPDATE_CHANNEL for channel dispatch"
-    fi
-
-    # -- Top-level Walker menu delegates update to ks-update.service ------
+    # -- Top-level Walker menu delegates update to the dedicated submenu --
     #
     # CRITICAL: keystone-main-menu.sh emits a top-level "Update" entry that
     # parallels the dedicated keystone-update submenu's "Run update" action.
     # PR #404 retired the legacy `ghostty -e ks update` terminal ceremony in
-    # the dedicated submenu (Lua → Rust dispatch → ks-update.service unit),
-    # but the top-level entry was missed and silently regressed back to the
-    # terminal path on every host until #414 caught it.
+    # the dedicated submenu (Lua → Rust dispatch), but the top-level entry
+    # was missed and silently regressed back to the terminal path on every
+    # host until #414 caught it.
     #
     # The fix is for keystone-main-menu.sh's dispatch to delegate to
     # `ks menu update dispatch`, NOT to spawn its own terminal. These greps
