@@ -78,7 +78,7 @@ pkgs.runCommand "test-keystone-update-menu-wiring"
     if ! grep -F 'uwsm' ${updateMenuRs} >/dev/null; then
       fail "update_menu.rs must launch the update via uwsm app -- … so it inherits the graphical session env"
     fi
-    if ! grep -F '--identifier=ks-update' ${updateMenuRs} >/dev/null; then
+    if ! grep -F -- '--identifier=ks-update' ${updateMenuRs} >/dev/null; then
       fail "update_menu.rs must tag the session app with systemd-cat --identifier=ks-update for journal lookup"
     fi
     if ! grep -F 'systemd-inhibit' ${updateMenuRs} >/dev/null; then
