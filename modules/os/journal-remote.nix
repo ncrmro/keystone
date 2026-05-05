@@ -192,7 +192,11 @@ in
         # or manual `systemctl restart systemd-journal-upload`. That trade
         # is acceptable for an observability uploader — losing a flake.lock
         # advance every time the daemon is mid-cycle is not.
-        restartIfChanged = false;
+        #
+        # mkDefault so a host that needs different behavior (e.g., wants
+        # immediate config rollout via stop/start during switch) can
+        # override without an option-redefinition conflict.
+        restartIfChanged = mkDefault false;
       };
     })
   ]);
