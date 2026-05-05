@@ -467,16 +467,14 @@ fn pkexec_is_setuid() -> bool {
 }
 
 /// Verify the runtime prereqs for the Walker-triggered update flow
-/// introduced alongside `ks-update.service`:
+/// launched from the graphical session:
 ///
 /// 1. A polkit authentication agent is active on the user bus (so the
 ///    approval popup can render).
 /// 2. A notification daemon is registered on the session D-Bus (so
-///    `ks notify` actually surfaces to the user).
+///    completion/failure notifications surface to the user).
 /// 3. `/run/wrappers/bin/pkexec` is setuid (so `ks approve` can
 ///    escalate).
-/// 4. `ks-update.service` and `ks-update-notify@.service` are loaded on
-///    the user bus (so the dispatch -> unit -> notifier chain works).
 ///
 /// Only runs on hosts that look like desktops (detected by the presence
 /// of the `hyprpolkitagent.service` user unit). On headless hosts the
@@ -526,9 +524,6 @@ async fn gather_desktop_triggers() -> (String, Vec<DiagnosticCheck>) {
     let polkit_ok = systemctl_user_is_active("hyprpolkitagent.service").await;
     let notify_ok = notification_daemon_active().await;
     let pkexec_ok = pkexec_is_setuid();
-    let update_loaded = systemctl_user_unit_exists("ks-update.service").await;
-    let notifier_loaded = systemctl_user_unit_exists("ks-update-notify@.service").await;
-
     let results = [
         DesktopCheck {
             name: "desktop-triggers.polkit-agent",
@@ -557,27 +552,9 @@ async fn gather_desktop_triggers() -> (String, Vec<DiagnosticCheck>) {
             ok_detail: "/run/wrappers/bin/pkexec setuid",
             err_detail: "/run/wrappers/bin/pkexec not setuid",
         },
-        DesktopCheck {
-            name: "desktop-triggers.ks-update-service",
-            label: "ks-update.service",
-            ok: update_loaded,
-            ok_md: "loaded",
-            err_md: "**not loaded** — this host is missing the keystone.desktop services module or `ks update --dev` hasn't applied yet",
-            ok_detail: "ks-update.service loaded on user bus",
-            err_detail: "ks-update.service not loaded",
-        },
-        DesktopCheck {
-            name: "desktop-triggers.ks-update-notify-template",
-            label: "ks-update-notify@.service template",
-            ok: notifier_loaded,
-            ok_md: "loaded",
-            err_md: "**not loaded** — completion notifications won't fire",
-            ok_detail: "ks-update-notify@.service template loaded",
-            err_detail: "ks-update-notify@.service template not loaded",
-        },
     ];
 
-    let mut md = String::from("### Desktop-triggered background flow\n\n");
+    let mut md = String::from("### Desktop-triggered update flow\n\n");
     let mut checks = Vec::with_capacity(results.len());
     for r in &results {
         r.render_markdown(&mut md);

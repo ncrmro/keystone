@@ -18,6 +18,8 @@ let
   cfg = config.keystone.systemFlake;
 in
 {
+  imports = [ ./update.nix ];
+
   options.keystone.systemFlake = {
     path = mkOption {
       type = types.path;
@@ -39,9 +41,11 @@ in
   config = {
     # Write the resolved path into the system derivation so that it is
     # available at /run/current-system/keystone-system-flake after every
-    # nixos-rebuild switch / boot.
-    system.extraSystemBuilderCmds = ''
+    # nixos-rebuild switch / boot. The effective update channel is written
+    # alongside it so runtime tools do not depend on session env freshness.
+    system.systemBuilderCommands = ''
       printf '%s\n' "${cfg.path}" > $out/keystone-system-flake
+      printf '%s\n' "${config.keystone.update.channel}" > $out/keystone-update-channel
     '';
   };
 }

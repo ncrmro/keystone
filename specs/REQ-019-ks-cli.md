@@ -41,8 +41,12 @@ the following priority chain:
 3. Hard error with guidance
 
 **REQ-019.1a** The pointer file MUST contain the absolute path to the consumer
-flake followed by a newline. It is written by `system.extraSystemBuilderCmds`
+flake followed by a newline. It is written by `system.systemBuilderCommands`
 in `modules/shared/system-flake.nix` using the value of `keystone.systemFlake.path`.
+The same `systemBuilderCommands` block writes
+`/run/current-system/keystone-update-channel` from
+`config.keystone.update.channel` so detached graphical-session apps have a
+stable channel source without depending on shell env propagation.
 
 **REQ-019.1b** A valid consumer flake MUST contain `flake.nix` AND either
 `hosts/` (mkSystemFlake layout) or `hosts.nix` (legacy layout). A bare

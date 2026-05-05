@@ -5,8 +5,9 @@
 # selection is available everywhere. Nix deduplicates identical imports.
 #
 # The channel selects which GitHub source the Walker update menu
-# (ks menu update) tracks. It is surfaced to `ks` at runtime via the
-# KS_UPDATE_CHANNEL environment variable.
+# (ks menu update) tracks. It is surfaced to `ks` at runtime via
+# /run/current-system/keystone-update-channel, with KS_UPDATE_CHANNEL as
+# an optional override for interactive shells and tests.
 { lib, ... }:
 {
   options.keystone.update = {
@@ -26,8 +27,8 @@
           `/repos/OWNER/REPO/branches/main` endpoint and tracks the tip
           commit directly.
 
-        Changing the channel requires a flake rebuild so the new value is
-        threaded into the ks-update.service environment and the user shell.
+        Changing the channel requires a flake rebuild so the running system's
+        `/run/current-system/keystone-update-channel` file is regenerated.
       '';
     };
   };

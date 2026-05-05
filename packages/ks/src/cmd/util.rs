@@ -22,6 +22,31 @@ pub fn require_executable(name: &str, guidance: &str) -> Result<PathBuf> {
     find_executable(name).ok_or_else(|| anyhow!(guidance.to_string()))
 }
 
+/// Fire a desktop notification via `notify-send` under the Keystone app
+/// name. `--` separates the args from the literal title/body so a unit name
+/// or rendered title beginning with `-` isn't misread as a flag.
+pub fn notify_send(summary: &str, body: &str, urgency: &str) -> Result<()> {
+    let status = Command::new("notify-send")
+        .args([
+            "--app-name=Keystone",
+            &format!("--urgency={urgency}"),
+            "--",
+            summary,
+            body,
+        ])
+        .status()
+        .context("failed to invoke notify-send (is libnotify installed?)")?;
+
+    if !status.success() {
+        anyhow::bail!(
+            "notify-send exited with status {}",
+            status.code().unwrap_or(-1)
+        );
+    }
+
+    Ok(())
+}
+
 pub fn run_inherited(command: &mut Command, context: &str) -> Result<ExitStatus> {
     command
         .stdin(Stdio::inherit())

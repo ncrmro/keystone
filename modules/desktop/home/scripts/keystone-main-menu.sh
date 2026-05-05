@@ -434,12 +434,13 @@ dispatch() {
       ;;
     run-update)
       # CRITICAL: delegate to the dedicated update submenu's dispatch path
-      # so the top-level Walker entry uses the supervised ks-update.service
-      # flow (polkit prompt via hyprpolkitagent, silent success path,
-      # journaled failure) instead of spawning a terminal. The legacy
-      # `ghostty -e ks update` ceremony was retired by #404 in the dedicated
-      # submenu but survived here until #414. Any change to the unit-firing
-      # contract belongs in update_menu.rs::dispatch, not duplicated here.
+      # so the top-level Walker entry stays aligned with the authoritative
+      # update launcher. The submenu spawns `ks update --approve` via
+      # `uwsm app -- systemd-inhibit … systemd-cat -t ks-update …` (no
+      # terminal); polkit prompt + notify-send make the run silent on
+      # success and journaled under tag `ks-update` on failure. Any
+      # change to the launch contract belongs in
+      # update_menu.rs::dispatch, not duplicated here.
       ks menu update dispatch run-update
       ;;
     screenshot-smart)

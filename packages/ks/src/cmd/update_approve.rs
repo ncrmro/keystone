@@ -4,8 +4,9 @@
 //! Privilege boundary (issue #487):
 //!
 //! ```text
-//! walker → systemctl --user start ks-update.service
-//!        → ks update --approve                                  [user]
+//! walker → uwsm app -- systemd-inhibit … systemd-cat
+//!                          --identifier=ks-update ks update --approve
+//!                                                          [user session]
 //!             ├─ pre-flight: refuse if local != origin           [user]
 //!             ├─ resolve channel target ref via GitHub API       [user]
 //!             ├─ nix build --override-input keystone <ref>       [user]
@@ -545,21 +546,18 @@ pub(crate) async fn run_supervised_update(
 
     // Step 3: activate via the privileged broker. We *wait* for the
     // child to exit so we can decide whether to mutate the lock based
-    // on whether activation actually succeeded. If it failed, return
-    // an outcome that records what we built but leave the lock alone.
+    // on whether activation actually succeeded. If it failed, abort the
+    // flow and leave the lock alone.
     let host_label = util::hostname_label();
     let reason = approval_reason(&host_label);
     eprintln!("Requesting approval to activate {store_path}…");
     let activated = activate_via_broker(&reason, &store_path)?;
     if !activated {
-        return Ok(ApproveUpdateOutcome {
-            host: host.clone(),
-            channel: channel.as_str(),
-            target_ref: target_label,
-            store_path: store_path.clone(),
-            lock_advanced: false,
-            pushed: false,
-        });
+        anyhow::bail!(
+            "activation was not approved or failed for {} on host {}; flake.lock was left unchanged",
+            target_label,
+            host
+        );
     }
 
     // Step 4: relock pinned to the rev we just built and activated.
