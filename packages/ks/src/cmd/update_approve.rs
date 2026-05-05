@@ -4,7 +4,8 @@
 //! Privilege boundary (issue #487):
 //!
 //! ```text
-//! walker → uwsm app -- systemd-cat -t ks-update ks update --approve
+//! walker → uwsm app -- systemd-inhibit … systemd-cat
+//!                          --identifier=ks-update ks update --approve
 //!                                                          [user session]
 //!             ├─ pre-flight: refuse if local != origin           [user]
 //!             ├─ resolve channel target ref via GitHub API       [user]
