@@ -435,8 +435,12 @@ dispatch() {
     run-update)
       # CRITICAL: delegate to the dedicated update submenu's dispatch path
       # so the top-level Walker entry stays aligned with the authoritative
-      # update launcher. Approval needs a real terminal on this desktop
-      # stack, so the submenu owns the Ghostty launch logic.
+      # update launcher. The submenu spawns `ks update --approve` via
+      # `uwsm app -- systemd-inhibit … systemd-cat -t ks-update …` (no
+      # terminal); polkit prompt + notify-send make the run silent on
+      # success and journaled under tag `ks-update` on failure. Any
+      # change to the launch contract belongs in
+      # update_menu.rs::dispatch, not duplicated here.
       ks menu update dispatch run-update
       ;;
     screenshot-smart)
