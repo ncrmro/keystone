@@ -13,7 +13,8 @@ hyprpolkitagent.overrideAttrs (old: {
     mv "$out/libexec/hyprpolkitagent" "$out/libexec/.hyprpolkitagent-keystone"
     cat > "$out/libexec/hyprpolkitagent" <<EOF
     #!${stdenv.shell}
-    export KEYSTONE_POLKIT_THEME="''${KEYSTONE_POLKIT_THEME:-$HOME/.config/keystone/current/polkit.json}"
+    export KEYSTONE_POLKIT_THEME="''${KEYSTONE_POLKIT_THEME:-\$HOME/.config/keystone/current/polkit.json}"
+    export QML_XHR_ALLOW_FILE_READ="''${QML_XHR_ALLOW_FILE_READ:-1}"
     exec "$out/libexec/.hyprpolkitagent-keystone" "\$@"
     EOF
     chmod +x "$out/libexec/hyprpolkitagent"
