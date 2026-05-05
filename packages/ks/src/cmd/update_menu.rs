@@ -1185,19 +1185,8 @@ fn xdg_open_detached(url: &str) -> Result<()> {
     Ok(())
 }
 
-fn find_executable(name: &str) -> Option<PathBuf> {
-    let path = env::var_os("PATH")?;
-    for entry in env::split_paths(&path) {
-        let candidate = entry.join(name);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    None
-}
-
 fn command_or_name(name: &str) -> PathBuf {
-    find_executable(name).unwrap_or_else(|| PathBuf::from(name))
+    super::util::find_executable(name).unwrap_or_else(|| PathBuf::from(name))
 }
 
 fn update_session_command_with_paths(
@@ -1255,7 +1244,7 @@ fn update_session_command(
 /// `/dev/tty` path.
 fn start_update_session(flake: Option<&Path>) -> Result<()> {
     let ks_bin = env::current_exe().context("failed to resolve current ks executable")?;
-    let (program, args) = update_session_command(&ks_bin, flake, find_executable("uwsm"));
+    let (program, args) = update_session_command(&ks_bin, flake, super::util::find_executable("uwsm"));
 
     Command::new(&program)
         .args(&args)

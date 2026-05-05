@@ -14,6 +14,8 @@
 use anyhow::{Context, Result};
 use std::process::Command;
 
+use super::util::notify_send;
+
 /// Result tag passed by the template unit instance (`@success` / `@failure`).
 #[derive(Debug, Clone, Copy)]
 enum NotifyResult {
@@ -101,25 +103,5 @@ pub fn execute(unit: &str, result: &str) -> Result<()> {
     let title = unit_title(unit, parsed);
     let body = notification_body(unit, parsed);
 
-    // `--` stops notify-send's option parsing so a unit name / rendered
-    // title beginning with `-` isn't misread as a flag.
-    let status = Command::new("notify-send")
-        .args([
-            "--app-name=Keystone",
-            &format!("--urgency={}", parsed.urgency()),
-            "--",
-            &title,
-            &body,
-        ])
-        .status()
-        .context("failed to invoke notify-send (is libnotify installed?)")?;
-
-    if !status.success() {
-        anyhow::bail!(
-            "notify-send exited with status {}",
-            status.code().unwrap_or(-1)
-        );
-    }
-
-    Ok(())
+    notify_send(&title, &body, parsed.urgency())
 }

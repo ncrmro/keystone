@@ -13,7 +13,6 @@
 #![warn(clippy::cognitive_complexity)]
 
 use std::io;
-use std::process::Command as StdCommand;
 
 use anyhow::Result;
 use clap::Parser;
@@ -483,7 +482,7 @@ async fn run_supervised_update_command(json: bool, flake: Option<&std::path::Pat
                         "Activated {} on {} (channel {}).",
                         outcome.target_ref, outcome.host, outcome.channel
                     );
-                    let _ = desktop_notify("Keystone update complete", &body, "normal");
+                    let _ = cmd::util::notify_send("Keystone update complete", &body, "normal");
                 }
                 Ok(())
             }
@@ -494,7 +493,7 @@ async fn run_supervised_update_command(json: bool, flake: Option<&std::path::Pat
                     "{:#}\n\nSee journalctl --user -t ks-update -b for details.",
                     e
                 );
-                let _ = desktop_notify("Keystone update failed", &body, "critical");
+                let _ = cmd::util::notify_send("Keystone update failed", &body, "critical");
             }
             if json {
                 print_json_error(&e)
@@ -503,24 +502,6 @@ async fn run_supervised_update_command(json: bool, flake: Option<&std::path::Pat
             }
         }
     }
-}
-
-fn desktop_notify(summary: &str, body: &str, urgency: &str) -> Result<()> {
-    let status = StdCommand::new("notify-send")
-        .args([
-            "--app-name=Keystone",
-            &format!("--urgency={urgency}"),
-            "--",
-            summary,
-            body,
-        ])
-        .status()?;
-
-    if !status.success() {
-        anyhow::bail!("notify-send exited with status {:?}", status.code());
-    }
-
-    Ok(())
 }
 
 async fn run_docs_command(topic_or_path: Option<String>) -> Result<()> {
