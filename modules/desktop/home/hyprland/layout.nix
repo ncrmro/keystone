@@ -67,13 +67,17 @@ in
         # whichever tile slot it lands in, and the QML theming looks
         # broken because the layout assumes the natural size. The Qt app
         # doesn't set a Wayland app_id (class is empty in `hyprctl
-        # clients`), so match on title — `Authentication required` is the
-        # standard polkit prompt title across actions. `pin` keeps it
-        # above tiled windows so an active terminal can't focus-steal it.
-        "float on, match:title ^(Authentication required)$"
-        "center on, match:title ^(Authentication required)$"
-        "size 486 246, match:title ^(Authentication required)$"
-        "pin on, match:title ^(Authentication required)$"
+        # clients`), so match on the empty class AND the title together.
+        # AND-matching on class ^$ scopes the rule to classless windows
+        # so localized prompt titles in other apps (matching English
+        # `Authentication required`) don't get accidentally floated;
+        # hyprpolkitagent itself is the only window we've seen ship with
+        # no class. `pin` keeps it above tiled windows so an active
+        # terminal can't focus-steal it.
+        "float on, match:class ^$, match:title ^(Authentication required)$"
+        "center on, match:class ^$, match:title ^(Authentication required)$"
+        "size 486 246, match:class ^$, match:title ^(Authentication required)$"
+        "pin on, match:class ^$, match:title ^(Authentication required)$"
       ];
 
       # layerrule disabled until Hyprland 0.52+ syntax is confirmed
