@@ -20,8 +20,10 @@
 //! Replaces the previous bash implementation at
 //! `modules/desktop/home/scripts/keystone-update-menu.sh`.
 
+use std::env;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -37,9 +39,10 @@ pub(crate) const RELEASE_REPO: &str = "keystone";
 // -----------------------------------------------------------------------------
 
 /// Release source the menu tracks. Selected by `keystone.update.channel` in
-/// the Nix module, threaded in via the KS_UPDATE_CHANNEL environment
-/// variable. Fail-closed default is `Stable` so an unset, empty, or unknown
-/// env value never flips a host onto the moving-main source implicitly.
+/// the Nix module, surfaced at runtime via `KS_UPDATE_CHANNEL` and
+/// `/run/current-system/keystone-update-channel`. Fail-closed default is
+/// `Stable` so an unset, empty, or unknown source never flips a host onto the
+/// moving-main source implicitly.
 ///
 /// Visible at crate scope so the Walker → Update orchestrator
 /// (`cmd::update`) can resolve the same target the menu surfaces.
@@ -53,15 +56,29 @@ pub(crate) enum Channel {
 }
 
 impl Channel {
-    /// Resolve the active channel from KS_UPDATE_CHANNEL. Any value other
-    /// than exactly `"unstable"` maps to `Stable` — including empty strings,
-    /// mixed case, and typos like `"beta"` — so a misconfigured environment
-    /// never quietly flips a host onto the moving-main source.
-    pub(crate) fn current() -> Self {
-        match std::env::var("KS_UPDATE_CHANNEL").as_deref() {
-            Ok("unstable") => Self::Unstable,
-            _ => Self::Stable,
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "stable" => Some(Self::Stable),
+            "unstable" => Some(Self::Unstable),
+            _ => None,
         }
+    }
+
+    /// Resolve the active channel from KS_UPDATE_CHANNEL first, then the
+    /// runtime pointer file written into `/run/current-system`. Any other
+    /// value maps to `Stable` so a misconfigured runtime never quietly flips a
+    /// host onto the moving-main source.
+    pub(crate) fn current() -> Self {
+        std::env::var("KS_UPDATE_CHANNEL")
+            .ok()
+            .as_deref()
+            .and_then(Self::parse)
+            .or_else(|| {
+                repo::read_system_update_channel()
+                    .as_deref()
+                    .and_then(Self::parse)
+            })
+            .unwrap_or(Self::Stable)
     }
 
     pub(crate) fn as_str(&self) -> &'static str {
@@ -1168,17 +1185,87 @@ fn xdg_open_detached(url: &str) -> Result<()> {
     Ok(())
 }
 
-/// Start the background update unit via systemd --user. Delegates to
-/// `ks run-background` so the systemctl spawn plus error-surface
-/// translation lives in one place — the next Walker provider that needs
-/// a background-unit trigger can call the same verb instead of
-/// re-implementing this function.
-///
-/// The unit handles approval (pkexec via hyprpolkitagent), logging
-/// (journal), and completion notification (OnSuccess/OnFailure ->
-/// ks-update-notify@.service).
-fn start_update_unit() -> Result<()> {
-    crate::cmd::run_background::execute("ks-update.service")
+fn find_executable(name: &str) -> Option<PathBuf> {
+    let path = env::var_os("PATH")?;
+    for entry in env::split_paths(&path) {
+        let candidate = entry.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn command_or_name(name: &str) -> PathBuf {
+    find_executable(name).unwrap_or_else(|| PathBuf::from(name))
+}
+
+fn update_session_command_with_paths(
+    ks_bin: &Path,
+    flake: Option<&Path>,
+    uwsm: Option<PathBuf>,
+    systemd_inhibit: PathBuf,
+    systemd_cat: PathBuf,
+) -> (PathBuf, Vec<OsString>) {
+    let mut inner_args = vec![
+        OsString::from("--what=sleep:shutdown:idle"),
+        OsString::from("--why=Keystone OS update in progress"),
+        OsString::from("--mode=block"),
+        systemd_cat.into_os_string(),
+        OsString::from("--identifier=ks-update"),
+        ks_bin.as_os_str().to_os_string(),
+        OsString::from("update"),
+        OsString::from("--approve"),
+    ];
+    if let Some(flake_path) = flake {
+        inner_args.push(OsString::from("--flake"));
+        inner_args.push(flake_path.as_os_str().to_os_string());
+    }
+
+    match uwsm {
+        Some(uwsm_bin) => {
+            let mut args = vec![
+                OsString::from("app"),
+                OsString::from("--"),
+                systemd_inhibit.into_os_string(),
+            ];
+            args.extend(inner_args);
+            (uwsm_bin, args)
+        }
+        None => (systemd_inhibit, inner_args),
+    }
+}
+
+fn update_session_command(
+    ks_bin: &Path,
+    flake: Option<&Path>,
+    uwsm: Option<PathBuf>,
+) -> (PathBuf, Vec<OsString>) {
+    update_session_command_with_paths(
+        ks_bin,
+        flake,
+        uwsm,
+        command_or_name("systemd-inhibit"),
+        command_or_name("systemd-cat"),
+    )
+}
+
+/// Launch the update flow as a graphical-session app so `pkexec` can talk to
+/// the desktop polkit agent instead of falling back to the broken user-service
+/// `/dev/tty` path.
+fn start_update_session(flake: Option<&Path>) -> Result<()> {
+    let ks_bin = env::current_exe().context("failed to resolve current ks executable")?;
+    let (program, args) = update_session_command(&ks_bin, flake, find_executable("uwsm"));
+
+    Command::new(&program)
+        .args(&args)
+        .env("KS_UPDATE_NOTIFY", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .with_context(|| format!("failed to spawn session update via {}", program.display()))?;
+    Ok(())
 }
 
 /// Look up the current blocker text from fresh state. Called when the user
@@ -1243,27 +1330,13 @@ async fn dispatch(value: &str, flake: Option<&Path>) -> Result<()> {
         ACT_RUN_UPDATE => {
             // Close the TOCTOU window between entries-render and click: if
             // the user dirtied the tree after opening the menu, refuse
-            // before firing the polkit popup (otherwise the approval
+            // before launching the session update (otherwise the approval
             // round-trip ends with `ks update` failing — strictly worse
             // UX than refusing up front with the same reason).
             match evaluate_local_gate(flake) {
-                Ok(()) => {
-                    // If `systemctl --user start` itself fails (unit not
-                    // loaded, user bus unavailable, systemctl not on PATH),
-                    // the error propagates out of `dispatch` → Walker. But
-                    // Walker doesn't surface stderr to the user, so this
-                    // would be a silent failure. Catch and surface via
-                    // notify-send with a pointer at the journal so the user
-                    // has something actionable.
-                    if let Err(err) = start_update_unit() {
-                        run_notify_send(
-                            "Keystone update failed to start",
-                            &format!("{err}\n\nSee journalctl --user -u ks-update.service -b"),
-                        )
-                    } else {
-                        Ok(())
-                    }
-                }
+                Ok(()) => start_update_session(flake).or_else(|err| {
+                    run_notify_send("Keystone update failed to start", &err.to_string())
+                }),
                 Err(reason) => run_notify_send("Keystone update unavailable", &reason),
             }
         }
@@ -1402,6 +1475,52 @@ mod tests {
         assert_eq!(short(""), "");
     }
 
+    #[test]
+    fn update_session_command_uses_uwsm_and_journald_when_available() {
+        let (program, args) = update_session_command_with_paths(
+            Path::new("/run/current-system/sw/bin/ks"),
+            Some(Path::new("/tmp/test flake")),
+            Some(PathBuf::from("/run/current-system/sw/bin/uwsm")),
+            PathBuf::from("/run/current-system/sw/bin/systemd-inhibit"),
+            PathBuf::from("/run/current-system/sw/bin/systemd-cat"),
+        );
+        let rendered: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(program, PathBuf::from("/run/current-system/sw/bin/uwsm"));
+        assert_eq!(
+            rendered[0..3],
+            ["app", "--", "/run/current-system/sw/bin/systemd-inhibit"]
+        );
+        assert!(rendered.contains(&"--identifier=ks-update".to_string()));
+        assert!(rendered.contains(&"/run/current-system/sw/bin/ks".to_string()));
+        assert!(rendered.contains(&"--approve".to_string()));
+        assert!(rendered.contains(&"--flake".to_string()));
+        assert!(rendered.contains(&"/tmp/test flake".to_string()));
+    }
+
+    #[test]
+    fn update_session_command_falls_back_without_uwsm() {
+        let (program, args) = update_session_command_with_paths(
+            Path::new("/run/current-system/sw/bin/ks"),
+            None,
+            None,
+            PathBuf::from("/run/current-system/sw/bin/systemd-inhibit"),
+            PathBuf::from("/run/current-system/sw/bin/systemd-cat"),
+        );
+        let rendered: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            program,
+            PathBuf::from("/run/current-system/sw/bin/systemd-inhibit")
+        );
+        assert!(rendered.contains(&"--identifier=ks-update".to_string()));
+        assert!(rendered.contains(&"/run/current-system/sw/bin/ks".to_string()));
+    }
+
     // CRITICAL: env mutation is process-global; serialise KS_UPDATE_CHANNEL
     // guard usage with a mutex so parallel tests don't observe each other's
     // env state. Same pattern as SKIP_NIX_EVAL_LOCK in repo.rs.
@@ -1409,16 +1528,27 @@ mod tests {
     struct ChannelEnvGuard {
         _lock: std::sync::MutexGuard<'static, ()>,
         prior: Option<String>,
+        prior_file: Option<std::ffi::OsString>,
+        _tempdir: tempfile::TempDir,
     }
     impl ChannelEnvGuard {
         fn new(value: Option<&str>) -> Self {
             let lock = CHANNEL_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
             let prior = std::env::var("KS_UPDATE_CHANNEL").ok();
+            let prior_file = std::env::var_os("KEYSTONE_UPDATE_CHANNEL_FILE");
+            let tempdir = tempfile::tempdir().expect("temp runtime dir");
+            let runtime_file = tempdir.path().join("keystone-update-channel");
+            std::env::set_var("KEYSTONE_UPDATE_CHANNEL_FILE", &runtime_file);
             match value {
                 Some(v) => std::env::set_var("KS_UPDATE_CHANNEL", v),
                 None => std::env::remove_var("KS_UPDATE_CHANNEL"),
             }
-            Self { _lock: lock, prior }
+            Self {
+                _lock: lock,
+                prior,
+                prior_file,
+                _tempdir: tempdir,
+            }
         }
     }
     impl Drop for ChannelEnvGuard {
@@ -1426,6 +1556,10 @@ mod tests {
             match self.prior.as_deref() {
                 Some(v) => std::env::set_var("KS_UPDATE_CHANNEL", v),
                 None => std::env::remove_var("KS_UPDATE_CHANNEL"),
+            }
+            match self.prior_file.as_deref() {
+                Some(v) => std::env::set_var("KEYSTONE_UPDATE_CHANNEL_FILE", v),
+                None => std::env::remove_var("KEYSTONE_UPDATE_CHANNEL_FILE"),
             }
         }
     }
@@ -1440,6 +1574,15 @@ mod tests {
     #[test]
     fn channel_current_reads_unstable_env() {
         let _guard = ChannelEnvGuard::new(Some("unstable"));
+        assert_eq!(Channel::current(), Channel::Unstable);
+        assert_eq!(Channel::current().as_str(), "unstable");
+    }
+
+    #[test]
+    fn channel_current_reads_runtime_file_when_env_missing() {
+        let _guard = ChannelEnvGuard::new(None);
+        let path = std::env::var("KEYSTONE_UPDATE_CHANNEL_FILE").unwrap();
+        std::fs::write(path, "unstable\n").unwrap();
         assert_eq!(Channel::current(), Channel::Unstable);
         assert_eq!(Channel::current().as_str(), "unstable");
     }
@@ -1467,6 +1610,14 @@ mod tests {
                 "value {val:?} must fail-closed to Stable"
             );
         }
+    }
+
+    #[test]
+    fn channel_current_env_overrides_runtime_file() {
+        let _guard = ChannelEnvGuard::new(Some("unstable"));
+        let path = std::env::var("KEYSTONE_UPDATE_CHANNEL_FILE").unwrap();
+        std::fs::write(path, "stable\n").unwrap();
+        assert_eq!(Channel::current(), Channel::Unstable);
     }
 
     #[test]

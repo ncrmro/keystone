@@ -119,6 +119,9 @@ fn validate_repo_path(path: &Path) -> Option<PathBuf> {
 
 /// The default path of the system flake pointer file.
 const SYSTEM_FLAKE_POINTER_FILE: &str = "/run/current-system/keystone-system-flake";
+/// The default path of the system update-channel pointer file.
+const SYSTEM_UPDATE_CHANNEL_FILE: &str = "/run/current-system/keystone-update-channel";
+const SYSTEM_UPDATE_CHANNEL_FILE_ENV: &str = "KEYSTONE_UPDATE_CHANNEL_FILE";
 
 /// Read the system flake pointer from the given file path.
 ///
@@ -137,6 +140,24 @@ fn read_system_flake_pointer_from(pointer_file: &Path) -> Option<PathBuf> {
 /// Read the system flake pointer from `/run/current-system/keystone-system-flake`.
 fn read_system_flake_pointer() -> Option<PathBuf> {
     read_system_flake_pointer_from(Path::new(SYSTEM_FLAKE_POINTER_FILE))
+}
+
+fn read_system_update_channel_from(path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let value = content.trim();
+    match value {
+        "stable" | "unstable" => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+/// Read the current system update channel from
+/// `/run/current-system/keystone-update-channel`.
+pub fn read_system_update_channel() -> Option<String> {
+    let path = std::env::var_os(SYSTEM_UPDATE_CHANNEL_FILE_ENV)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(SYSTEM_UPDATE_CHANNEL_FILE));
+    read_system_update_channel_from(&path)
 }
 
 /// Locate the active Keystone config repository.
@@ -1275,6 +1296,30 @@ mod tests {
         // Error should mention the pointer file location and --flake.
         let msg = err.to_string();
         assert!(msg.contains("--flake") || msg.contains("keystone.systemFlake"));
+    }
+
+    #[test]
+    fn read_system_update_channel_accepts_valid_values() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("keystone-update-channel");
+        std::fs::write(&path, "unstable\n").unwrap();
+        assert_eq!(
+            read_system_update_channel_from(&path).as_deref(),
+            Some("unstable")
+        );
+        std::fs::write(&path, "stable\n").unwrap();
+        assert_eq!(
+            read_system_update_channel_from(&path).as_deref(),
+            Some("stable")
+        );
+    }
+
+    #[test]
+    fn read_system_update_channel_rejects_invalid_values() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("keystone-update-channel");
+        std::fs::write(&path, "beta\n").unwrap();
+        assert!(read_system_update_channel_from(&path).is_none());
     }
 
     #[test]

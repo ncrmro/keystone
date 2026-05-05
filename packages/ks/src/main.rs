@@ -13,6 +13,7 @@
 #![warn(clippy::cognitive_complexity)]
 
 use std::io;
+use std::process::Command as StdCommand;
 
 use anyhow::Result;
 use clap::Parser;
@@ -392,9 +393,9 @@ async fn run_switch_command(
 /// `--approve` and `--lock` (or `--dev`) are mutually exclusive code
 /// paths with different privilege contracts:
 ///
-/// - `--approve` (Walker → ks-update.service) → `update_approve`:
+/// - `--approve` (Walker → graphical session app) → `update_approve`:
 ///   user-side channel-aware build, narrow polkit-elevated activation.
-///   Single host only — the host the unit runs on.
+///   Single host only — the host the session app runs on.
 /// - `--lock` / default → `cmd::update::execute`: terminal-only
 ///   full-fleet update, sudo-cached activation. Multiple hosts allowed.
 ///
@@ -456,6 +457,7 @@ async fn run_update_command(
 /// (so it can gate post-activation lock work on actual activation
 /// success), so control returns here on both happy and sad paths.
 async fn run_supervised_update_command(json: bool, flake: Option<&std::path::Path>) -> Result<()> {
+    let notify = std::env::var_os("KS_UPDATE_NOTIFY").is_some();
     match cmd::update_approve::run_supervised_update(flake).await {
         Ok(outcome) => {
             if json {
@@ -476,10 +478,24 @@ async fn run_supervised_update_command(json: bool, flake: Option<&std::path::Pat
                     outcome.lock_advanced,
                     outcome.pushed,
                 );
+                if notify {
+                    let body = format!(
+                        "Activated {} on {} (channel {}).",
+                        outcome.target_ref, outcome.host, outcome.channel
+                    );
+                    let _ = desktop_notify("Keystone update complete", &body, "normal");
+                }
                 Ok(())
             }
         }
         Err(e) => {
+            if notify && !json {
+                let body = format!(
+                    "{:#}\n\nSee journalctl --user -t ks-update -b for details.",
+                    e
+                );
+                let _ = desktop_notify("Keystone update failed", &body, "critical");
+            }
             if json {
                 print_json_error(&e)
             } else {
@@ -487,6 +503,24 @@ async fn run_supervised_update_command(json: bool, flake: Option<&std::path::Pat
             }
         }
     }
+}
+
+fn desktop_notify(summary: &str, body: &str, urgency: &str) -> Result<()> {
+    let status = StdCommand::new("notify-send")
+        .args([
+            "--app-name=Keystone",
+            &format!("--urgency={urgency}"),
+            "--",
+            summary,
+            body,
+        ])
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("notify-send exited with status {:?}", status.code());
+    }
+
+    Ok(())
 }
 
 async fn run_docs_command(topic_or_path: Option<String>) -> Result<()> {

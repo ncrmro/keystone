@@ -240,10 +240,8 @@ in
       CODE_DIR = codeRoot;
       WORKTREE_DIR = worktreeRoot;
       NOTES_DIR = notesPath;
-      # Keep interactive `ks menu update status` and the background
-      # ks-update.service agreeing on which release feed they poll.
-      # services.nix threads the same value into the worker and notifier
-      # unit Environment blocks.
+      # Interactive shells can override the system runtime channel pointer;
+      # correctness no longer depends on this being present in detached apps.
       KS_UPDATE_CHANNEL = config.keystone.update.channel;
     };
 
