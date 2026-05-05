@@ -1,7 +1,7 @@
 {
   pkgs,
   lib,
-  self,
+  keystoneInputs,
   home-manager,
 }:
 let
@@ -10,25 +10,36 @@ let
     (home-manager.lib.homeManagerConfiguration {
       inherit pkgs;
       modules = [
-        self.homeModules.terminal
-        self.homeModules.desktop
+        ../../modules/desktop/home/hyprland
         {
-          home.username = "testuser";
-          home.homeDirectory = "/home/testuser";
-          home.stateVersion = "25.05";
-
-          programs.ssh.enableDefaultConfig = false;
-
-          keystone.terminal = {
-            enable = true;
-            git = {
-              userName = "Test User";
-              userEmail = "test@test";
+          options.keystone.desktop = {
+            enable = lib.mkEnableOption "test desktop";
+            browser = lib.mkOption {
+              type = lib.types.str;
+              default = "chromium";
+            };
+            startupLockCommand = lib.mkOption {
+              type = lib.types.str;
+              default = "keystone-startup-lock";
             };
           };
+          options.keystone.terminal.editor = lib.mkOption {
+            type = lib.types.str;
+            default = "hx";
+          };
 
-          keystone.desktop.enable = true;
-          wayland.windowManager.hyprland.enable = true;
+          config = {
+            _module.args.keystoneInputs = keystoneInputs;
+
+            home.username = "testuser";
+            home.homeDirectory = "/home/testuser";
+            home.stateVersion = "25.05";
+
+            programs.ssh.enableDefaultConfig = false;
+
+            keystone.desktop.enable = true;
+            wayland.windowManager.hyprland.enable = true;
+          };
         }
       ]
       ++ extraModules;

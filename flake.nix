@@ -486,13 +486,12 @@
             pkgs = ksPkgs;
             lib = ksPkgs.lib;
             inherit home-manager;
-            self = self;
           };
           hyprlandConfigSmoke = import ./tests/module/hyprland-config-smoke.nix {
             pkgs = ksPkgs;
             lib = ksPkgs.lib;
             inherit home-manager;
-            self = self;
+            inherit keystoneInputs;
           };
           agentctlRegression = import ./tests/module/agentctl-regression.nix {
             inherit pkgs;

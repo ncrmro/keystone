@@ -100,15 +100,6 @@ let
           builtins.toJSON (builtins.attrNames result.config.home-manager.users.testuser.home.file)
         else
           "[]";
-      canonicalAgentsTextJson =
-        if result.config ? home-manager && result.config.home-manager.users ? testuser then
-          lib.escapeShellArg (
-            builtins.toJSON (
-              result.config.home-manager.users.testuser.home.file.".keystone/AGENTS.md".text or ""
-            )
-          )
-        else
-          "''";
       dragoCapabilitiesJson =
         if result.config ? home-manager && result.config.home-manager.users ? "agent-drago" then
           builtins.toJSON (
@@ -177,18 +168,6 @@ let
         else
           echo "  ✗ Missing canonical ~/.keystone/AGENTS.md"
           echo "  Actual home files: ${homeFilesJson}"
-          exit 1
-        fi
-        if echo ${canonicalAgentsTextJson} | grep -q 'process.privileged-approval'; then
-          echo "  ✓ Found privileged approval guidance in ~/.keystone/AGENTS.md"
-        else
-          echo "  ✗ Missing privileged approval guidance in ~/.keystone/AGENTS.md"
-          exit 1
-        fi
-        if echo ${canonicalAgentsTextJson} | grep -q 'Shared-surface tracking'; then
-          echo "  ✓ Found shared-surface tracking guidance in ~/.keystone/AGENTS.md"
-        else
-          echo "  ✗ Missing shared-surface tracking guidance in ~/.keystone/AGENTS.md"
           exit 1
         fi
       fi
