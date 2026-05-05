@@ -1244,7 +1244,8 @@ fn update_session_command(
 /// `/dev/tty` path.
 fn start_update_session(flake: Option<&Path>) -> Result<()> {
     let ks_bin = env::current_exe().context("failed to resolve current ks executable")?;
-    let (program, args) = update_session_command(&ks_bin, flake, super::util::find_executable("uwsm"));
+    let (program, args) =
+        update_session_command(&ks_bin, flake, super::util::find_executable("uwsm"));
 
     Command::new(&program)
         .args(&args)
