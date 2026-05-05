@@ -70,6 +70,23 @@ in
       description = "GPU acceleration for workers. Defaults to rocm if host is a worker.";
     };
 
+    hsaGfxVersion = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "12.0.1";
+      description = ''
+        HSA_OVERRIDE_GFX_VERSION override for ROCm GPU compatibility.
+
+        Set this when the ROCm version in nixpkgs does not directly support
+        your AMD GPU's native gfx target. Leave this unset to let ROCm use the
+        GPU's native target.
+
+        Common override values:
+        - RX 7900 XTX (RDNA 3 / gfx1100): "11.0.0"
+        - RX 9070 series (RDNA 4 / gfx1201): "12.0.1"
+      '';
+    };
+
     host = mkOption {
       type = types.str;
       default = "127.0.0.1";
@@ -87,6 +104,14 @@ in
   };
 
   config = mkIf cfg.enable {
+    nixpkgs.overlays = mkIf (cfg.acceleration == "rocm") [
+      (final: prev: {
+        onnxruntime = prev.onnxruntime.override {
+          rocmSupport = true;
+        };
+      })
+    ];
+
     services.immich = mkMerge [
       # Common config
       {
@@ -119,7 +144,9 @@ in
       (mkIf (cfg.acceleration == "rocm") {
         machine-learning.environment = {
           DEVICE = "rocm";
-          HSA_OVERRIDE_GFX_VERSION = "10.3.0"; # Consumer GPU support
+        }
+        // lib.optionalAttrs (cfg.hsaGfxVersion != null) {
+          HSA_OVERRIDE_GFX_VERSION = cfg.hsaGfxVersion;
         };
       })
     ];
