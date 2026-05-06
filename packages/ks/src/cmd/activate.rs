@@ -145,21 +145,40 @@ fn mark_bootloader_safe() -> Result<()> {
 /// at `path` carries its own switch-to-configuration so we always invoke
 /// the version that matches the closure being activated — never a stale
 /// one from a previous generation.
+///
+/// Exit-code handling: 0 = clean success, 4 = success-with-warnings,
+/// anything else = real failure.
+///
+/// Exit 4 is NixOS' "warning: the following units failed: …" outcome.
+/// The system *is* on the new generation by then: `/run/current-system`
+/// and `/nix/var/nix/profiles/system` are bumped, agenix has run, `/etc`
+/// is current, and the configured units have been
+/// started/restarted/reloaded. The warning typically reflects a unit
+/// that happens to be in `activating (auto-restart)` state during the
+/// post-switch check window — common for daemons with `Restart=always`
+/// plus a long `RestartSec` (e.g., `systemd-journal-upload` exiting 1
+/// on malformed local journal entries between cycles). Treating exit 4
+/// as a hard failure aborts `ks update --approve`'s post-activation
+/// work (relock, commit, push, notify) even though the system is
+/// already on the new generation, so we surface a notice and proceed.
 fn switch_to_configuration(path: &Path, mode: &str) -> Result<()> {
     let switch_bin = path.join("bin/switch-to-configuration");
     let status = Command::new(&switch_bin)
         .arg(mode)
         .status()
         .with_context(|| format!("failed to invoke {}", switch_bin.display()))?;
-    if !status.success() {
-        anyhow::bail!(
-            "{} {} exited {:?}",
-            switch_bin.display(),
-            mode,
-            status.code()
-        );
+    match status.code() {
+        Some(0) => Ok(()),
+        Some(4) => {
+            eprintln!(
+                "{} {}: completed with warnings (exit 4) — system is on the new generation; some units flagged in the post-switch check. Continuing.",
+                switch_bin.display(),
+                mode
+            );
+            Ok(())
+        }
+        other => anyhow::bail!("{} {} exited {:?}", switch_bin.display(), mode, other),
     }
-    Ok(())
 }
 
 fn is_root() -> bool {
