@@ -13,7 +13,7 @@
 //!             ├─ ks approve … -- ks activate <store-path>        ← polkit
 //!             │     └─ keystone-approve-exec → ks activate       [root]
 //!             ├─ on activation success:                          [user]
-//!             │     nix flake lock --update-input keystone
+//!             │     nix flake update keystone
 //!             │       --override-input keystone github:.../<rev>
 //!             ├─ git commit -m "chore: bump keystone to <ref>"   [user]
 //!             ├─ git push origin <branch>                        [user]
@@ -47,7 +47,7 @@
 //!    control returns here to gate the next step on the exit status.
 //! 4. **Only** on activation success: relock the consumer flake's
 //!    `keystone` input, pinned to the exact rev we just built and
-//!    activated (`--update-input keystone --override-input
+//!    activated (`nix flake update keystone --override-input
 //!    keystone github:ncrmro/keystone/<rev>`). Without the override,
 //!    `nix flake update keystone` would re-resolve `github:ncrmro/keystone`
 //!    to the default-branch tip — which can disagree with the activated
@@ -170,29 +170,35 @@ async fn build_with_override(repo_root: &Path, host: &str, rev: &str) -> Result<
 //   2. Unstable channel: between `resolve_target_ref` and this call,
 //      a new commit may land on `main`; `update keystone` would pick
 //      it up, locking to a rev we never built.
-// `--update-input keystone` forces the lockfile entry to refresh, and
-// `--override-input keystone github:.../<rev>` pins it to exactly the
-// rev we built — making the lock match the realized closure.
+// `nix flake update keystone` forces the lockfile entry to refresh,
+// and `--override-input keystone github:.../<rev>` pins it to exactly
+// the rev we built — making the lock match the realized closure.
+//
+// Use the modern `nix flake update <input>` form rather than the
+// deprecated `nix flake lock --update-input <input>` alias: nix 2.20+
+// rejects `--flake <path>` after the deprecated alias (the alias
+// rewrites to `flake update`, and `flake update` doesn't accept
+// `--flake` as a flag) and prints `error: unrecognised flag '--flake'`.
+// Set the flake via `current_dir` instead — same pattern as the build
+// command in `build_system_closure`.
 async fn relock_keystone_input(repo_root: &Path, rev: &str) -> Result<()> {
     let pinned = format!("github:ncrmro/keystone/{rev}");
     let status = tokio::process::Command::new("nix")
         .args([
             "flake",
-            "lock",
-            "--update-input",
+            "update",
             "keystone",
             "--override-input",
             "keystone",
             &pinned,
         ])
-        .arg("--flake")
-        .arg(repo_root)
+        .current_dir(repo_root)
         .status()
         .await
-        .context("failed to invoke nix flake lock for keystone input")?;
+        .context("failed to invoke nix flake update for keystone input")?;
     if !status.success() {
         anyhow::bail!(
-            "nix flake lock --update-input keystone --override-input keystone {pinned} exited {:?}",
+            "nix flake update keystone --override-input keystone {pinned} exited {:?}",
             status.code()
         );
     }
