@@ -60,6 +60,24 @@ in
         "float on, match:class ^(com.mitchellh.ghostty)$, match:title ^(keystone-notes-inbox)$"
         "center on, match:class ^(com.mitchellh.ghostty)$, match:title ^(keystone-notes-inbox)$"
         "size 1000 700, match:class ^(com.mitchellh.ghostty)$, match:title ^(keystone-notes-inbox)$"
+
+        # hyprpolkitagent's password dialog is a 486×246 modal but Hyprland
+        # tiles it by default — `xdg_toplevel.configure` arrives with
+        # WindowMaximized state, the input field gets stretched into
+        # whichever tile slot it lands in, and the QML theming looks
+        # broken because the layout assumes the natural size. The Qt app
+        # doesn't set a Wayland app_id (class is empty in `hyprctl
+        # clients`), so match on the empty class AND the title together.
+        # AND-matching on class ^$ scopes the rule to classless windows
+        # so localized prompt titles in other apps (matching English
+        # `Authentication required`) don't get accidentally floated;
+        # hyprpolkitagent itself is the only window we've seen ship with
+        # no class. `pin` keeps it above tiled windows so an active
+        # terminal can't focus-steal it.
+        "float on, match:class ^$, match:title ^(Authentication required)$"
+        "center on, match:class ^$, match:title ^(Authentication required)$"
+        "size 486 246, match:class ^$, match:title ^(Authentication required)$"
+        "pin on, match:class ^$, match:title ^(Authentication required)$"
       ];
 
       # layerrule disabled until Hyprland 0.52+ syntax is confirmed
