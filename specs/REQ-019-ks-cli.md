@@ -218,6 +218,91 @@ pause marker for one agent or all configured agents.
 target agent task loop is paused. It SHOULD include the pause timestamp,
 pause actor, and pause reason when present.
 
+### Supervised update flow (`ks update --approve`)
+
+The supervised update path is the desktop-triggered, single-host channel-update
+flow invoked by Walker → Update. Implementation: `packages/ks/src/cmd/update_approve.rs`.
+Privileged elevation goes through `cmd::approve` (REQ-016 family) and is
+narrow: only `ks activate <store-path>` runs as root. Channel resolution,
+`nix build`, `nix flake update`, `git commit`, and `git push` all run in
+the user's session.
+
+**REQ-019.31** `ks update --approve` MUST run the following steps in order
+on every invocation:
+
+1. **Pre-flight in-sync check.** Refuse to start unless the consumer flake's
+   working tree is clean AND the current branch resolves to the same SHA
+   as `origin/<branch>`. The error MUST name the specific reason
+   (uncommitted changes / ahead / behind) so the user can act without
+   inspecting logs.
+2. **Channel resolution.** Resolve the active channel
+   (`keystone.update.channel`, REQ-019.1a runtime pointer + env override)
+   to a concrete keystone rev via the GitHub API.
+3. **Early polkit prompt (cache warm).** Trigger the `com.ncrmro.keystone.approve`
+   action via `cmd::approve::run_and_wait` with a no-op activation payload
+   (`ks activate /run/current-system`, which short-circuits in
+   `cmd::activate::execute` because the closure is already current). The
+   prompt MUST appear within ~2 s of Walker dispatch so the user can
+   authenticate while still focused on the action. Polkit's
+   `auth_admin_keep` (configured by `keystone.security.privilegedApproval`)
+   then caches the credential for ~5 min, covering the build and
+   activation steps without a second prompt.
+4. **Build-phase notification.** Emit a `notify-send` "Keystone update:
+   building <target>…" via `cmd::util::notify_send`, gated by
+   `KS_UPDATE_NOTIFY=1` in the same way the launcher already sets the
+   completion / failure notifications. This bridges the silent
+   build-phase wait so the user has feedback after authenticating.
+5. **Lock-first bump.** Update `flake.lock`'s `keystone` input to
+   `github:ncrmro/keystone/<rev>` via
+   `nix flake update keystone --override-input keystone github:.../<rev>`,
+   then commit it with subject `chore: bump keystone to <target>`.
+   Capture the resulting commit SHA as `bump_sha`. The commit MUST NOT
+   be pushed yet — push is the final post-activation step.
+6. **Build.** Run `nix build` against the consumer flake's
+   `nixosConfigurations.<host>.config.system.build.toplevel`. The lock
+   now points at the target rev, so no `--override-input` is needed for
+   correctness; local file-source overrides (dev mode) MAY still be
+   layered.
+7. **Activation.** Drive `ks activate <store-path>` via the privileged
+   broker (`cmd::approve::run_and_wait`). Polkit MUST hit the cached
+   credential from step 3 and not re-prompt under normal conditions; if
+   the cache has expired, the user MAY be prompted again as degraded
+   UX, which is acceptable but SHOULD be rare.
+8. **Push.** On activation success, `git push origin <branch>` is
+   best-effort. A failed push is logged as a warning but does not fail
+   the run — the local generation is already promoted and the lock
+   matches it.
+9. **Final notification.** `notify-send` "Keystone update complete" on
+   success or "failed" on any failure path with a journal pointer.
+
+**REQ-019.31a** Steps 1, 2, and 3 MUST run before any filesystem mutation
+on the consumer flake. The user MAY cancel the polkit prompt to abort
+the run cleanly with no side effects.
+
+**REQ-019.31b** Steps 5 (lock bump) and 7 (activation) form the atomicity
+contract. If activation fails — including any non-zero exit other than
+the documented switch-to-configuration exit code 4 (success-with-warnings,
+see `cmd::activate::switch_to_configuration`) — the orchestrator MUST
+roll back the bump commit by verifying `HEAD` still equals `bump_sha`
+and running `git reset --hard HEAD~1`. Rollback MUST refuse if `HEAD`
+diverged from `bump_sha` between commit and failure (the user committed
+in parallel) and surface a clear error rather than discarding their work.
+
+**REQ-019.31c** Push failure (step 8) after a successful activation MUST
+NOT trigger rollback. The local generation is on the new closure; the
+lock matches; only the remote is behind. The user can resolve by hand.
+
+**REQ-019.31d** All notifications emitted by the supervised flow MUST be
+gated on `KS_UPDATE_NOTIFY=1`. The launcher (`cmd::update_menu::start_update_session`)
+sets this; direct CLI invocations do not, so they remain quiet on the
+desktop.
+
+**REQ-019.31e** The polkit dialog's `Approval request:` line MUST name
+the host (e.g., "Install Keystone update on ncrmro-laptop") so a user
+with multiple machines can tell which host the dialog is for. The
+allowlist `displayName` provides the static title; the per-request
+`Requested reason:` carries the host context.
+
 ## Edge Cases
 
 - If `gh` CLI is not available, lock mode MUST fall back to direct

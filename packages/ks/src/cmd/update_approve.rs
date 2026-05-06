@@ -1,7 +1,8 @@
 //! `ks update --approve` — Walker-triggered, channel-aware update flow
 //! with narrow polkit-elevated activation.
 //!
-//! Privilege boundary (issue #487):
+//! Spec: REQ-019.31 (specs/REQ-019-ks-cli.md). Privilege boundary
+//! initially defined in issue #487.
 //!
 //! ```text
 //! walker → uwsm app -- systemd-inhibit … systemd-cat
@@ -9,16 +10,31 @@
 //!                                                          [user session]
 //!             ├─ pre-flight: refuse if local != origin           [user]
 //!             ├─ resolve channel target ref via GitHub API       [user]
-//!             ├─ nix build --override-input keystone <ref>       [user]
-//!             ├─ ks approve … -- ks activate <store-path>        ← polkit
-//!             │     └─ keystone-approve-exec → ks activate       [root]
-//!             ├─ on activation success:                          [user]
-//!             │     nix flake update keystone
-//!             │       --override-input keystone github:.../<rev>
+//!             ├─ ks approve … -- ks activate /run/current-system ← polkit (warm)
+//!             │     └─ no-op (current-system already matches);
+//!             │       polkit caches credential under auth_admin_keep
+//!             ├─ notify-send "Building <target>…"                [user]
+//!             ├─ nix flake update keystone                       [user]
+//!             │     --override-input keystone github:.../<rev>
 //!             ├─ git commit -m "chore: bump keystone to <ref>"   [user]
-//!             ├─ git push origin <branch>                        [user]
+//!             │     CAPTURE bump_sha = HEAD
+//!             ├─ nix build                                       [user]
+//!             ├─ ks approve … -- ks activate <store-path>        ← polkit (cache hit)
+//!             │     └─ keystone-approve-exec → ks activate       [root]
+//!             ├─ git push origin <branch>                        [user, soft fail]
 //!             └─ notify success/failure                          [user]
 //! ```
+//!
+//! Why early-auth + lock-first?
+//!
+//! The previous order was build-then-prompt: the user clicked Walker →
+//! Update and waited 1–2 minutes (silent nix build) before the polkit
+//! dialog appeared. By that point the user had often context-switched
+//! away and the dialog timed out (exit 127, "Not authorized"), so an
+//! otherwise-clean run failed at the auth step. Today's order asks
+//! permission first, surfaces a "Building…" notification immediately
+//! after auth, and spends the cache window on actual work instead of
+//! dead build time.
 //!
 //! In-sync invariant:
 //!
@@ -26,58 +42,65 @@
 //! clean and the current branch MUST equal `origin/<branch>`. The
 //! supervised flow refuses to start otherwise. This buys us:
 //!
-//! - Atomicity at the user layer: a successful update appends exactly
-//!   one new commit (the lock bump), so the final `git push` is a
-//!   guaranteed fast-forward by exactly one commit. No mid-flow
-//!   non-fast-forward errors after the privileged step has already run.
+//! - Rollback is unambiguous: the bump commit is always HEAD, has
+//!   exactly one parent, and touches only `flake.lock`. A failure
+//!   between commit and successful activation rewinds with
+//!   `git reset --hard HEAD~1` after verifying HEAD == bump_sha.
 //! - Comprehensibility: when the dialog refuses up front, the user
 //!   sees one concrete reason ("ahead of origin", "behind origin",
 //!   "uncommitted changes") instead of a partially-applied update
 //!   that activated but couldn't push.
 //!
-//! Atomicity contract (activate-then-mutate):
+//! Atomicity contract (lock-first with rollback on failure):
 //!
 //! 0. Pre-flight: ensure consumer flake is in sync with origin.
 //! 1. Resolve target ref (no filesystem mutation).
-//! 2. `nix build --override-input keystone <ref>` — does NOT modify
-//!    `flake.lock`. Failure here is a no-op on the consumer flake.
-//! 3. polkit → `ks activate <store-path>` via
-//!    [`cmd::approve::run_and_wait`]. The orchestrator waits for the
-//!    privileged child to exit instead of `exec()`-replacing itself, so
-//!    control returns here to gate the next step on the exit status.
-//! 4. **Only** on activation success: relock the consumer flake's
-//!    `keystone` input, pinned to the exact rev we just built and
-//!    activated (`nix flake update keystone --override-input
-//!    keystone github:ncrmro/keystone/<rev>`). Without the override,
-//!    `nix flake update keystone` would re-resolve `github:ncrmro/keystone`
-//!    to the default-branch tip — which can disagree with the activated
-//!    closure on stable channels (where the target is a tag commit, not
-//!    branch tip) or on unstable when a new commit lands between resolve
-//!    and relock.
-//! 5. Commit the lock change, push (guaranteed fast-forward by exactly
-//!    one commit; see the in-sync invariant above), notify.
+//! 2. Warm the polkit credential via a no-op `ks activate
+//!    /run/current-system`. The activation short-circuits in
+//!    `cmd::activate::execute` because the closure already matches
+//!    current-system; only side effect is polkit caching the credential
+//!    under `auth_admin_keep` for ~5 min.
+//! 3. notify-send "Building <target>…" so the user has feedback during
+//!    the build phase.
+//! 4. Bump `flake.lock` (`nix flake update keystone --override-input
+//!    keystone github:.../<rev>`) and commit it. Capture HEAD as
+//!    `bump_sha`. NOT pushed yet.
+//! 5. `nix build` against the consumer flake's
+//!    `nixosConfigurations.<host>.config.system.build.toplevel`. The
+//!    lock is correct, so no per-build `--override-input keystone`
+//!    needed; local file-source overrides MAY still be layered.
+//! 6. `ks activate <store-path>` via [`cmd::approve::run_and_wait`].
+//!    The polkit cache from step 2 should cover this prompt; if it
+//!    has expired, the user may be prompted again (degraded UX, not
+//!    a failure).
+//! 7. On activation success: `git push origin <branch>` (best-effort,
+//!    soft fail), notify-send "complete".
+//! 8. On any failure between steps 4 and 6 success:
+//!    `rollback_lock_bump(bump_sha)` — verifies HEAD == bump_sha then
+//!    `git reset --hard HEAD~1`. Refuses if HEAD diverged. notify-send
+//!    "failed" with a journal pointer.
 //!
 //! Failure modes:
 //!
-//! - Step 0 fails → pre-flight refused to start. No side effects on
-//!   the host or the consumer flake. The error names the specific
-//!   reason (dirty / ahead / behind) so the user can resolve it
-//!   without inspecting logs.
-//! - Steps 1–3 fail → consumer flake's `flake.lock` and working tree
-//!   are untouched. The next Walker click retries from scratch.
-//! - Step 3 succeeds, step 4 fails → host is activated against the new
-//!   closure but the lock is stale. This is the same end state as
-//!   `--dev` activations and resolves on the next successful update.
-//! - Step 5 push fails → lock is committed locally; the user pushes by
-//!   hand or the next update sweeps it. With the pre-flight in place
-//!   the push is fast-forward by exactly one commit, so this failure
-//!   is now strictly a network/auth issue, not a divergence issue.
+//! - Step 0 fails → pre-flight refused to start. No side effects.
+//! - Step 2 fails (user cancelled or auth failed) → consumer flake
+//!   untouched. Next click retries from scratch.
+//! - Steps 4 fails (lock update or commit) → working tree may have a
+//!   modified `flake.lock` if the failure happened mid-step. The
+//!   rollback path runs `git reset --hard HEAD` then a final
+//!   `git checkout -- flake.lock` to restore clean state.
+//! - Steps 5–6 fail → bump commit exists; rollback resets `HEAD~1`,
+//!   leaving the consumer flake exactly as it was before the run.
+//! - Step 6 succeeds, step 7 push fails → KEEP the bump commit. System
+//!   is on the new closure, lock matches; only the remote is behind.
+//!   User pushes by hand. This matches the previous best-effort push
+//!   contract.
 //!
 //! Never confuse this code path with `cmd::update::update_locked`. That
 //! is the terminal-only `ks update --lock` flow with full-fleet semantics
 //! (pull all managed repos, deploy multiple hosts, sudo-cached
 //! activation). This module is consumer-OS-style: one host, one channel
-//! target, one polkit prompt.
+//! target, polkit-elevated activation.
 
 use anyhow::{anyhow, Context, Result};
 use std::path::Path;
@@ -101,19 +124,14 @@ pub(crate) struct ApproveUpdateOutcome {
     pub pushed: bool,
 }
 
-/// Build the system closure for `host` against an overridden keystone
-/// input pinned at `rev`. Uses `--override-input` so `flake.lock` is
-/// untouched — a build failure leaves the consumer flake clean. Returns
-/// the realized store path of the system toplevel.
-async fn build_with_override(repo_root: &Path, host: &str, rev: &str) -> Result<String> {
-    let mut override_args = repo::local_override_args(repo_root).await?;
-    // CRITICAL: this is the override that points the build at the
-    // channel-resolved target. It MUST coexist with any
-    // `local_override_args` (which redirect file-source inputs in
-    // development mode) — the new override layers on top.
-    override_args.push("--override-input".to_string());
-    override_args.push("keystone".to_string());
-    override_args.push(format!("github:ncrmro/keystone/{rev}"));
+/// Build the system closure for `host` using the current `flake.lock`.
+/// The lock-first flow bumps `flake.lock` to the target rev BEFORE this
+/// is called, so `nix build` resolves the keystone input from the lock
+/// — no per-build `--override-input keystone` needed. Local file-source
+/// overrides (dev-mode `repo::local_override_args`) are still layered.
+/// Returns the realized store path of the system toplevel.
+async fn build_locked(repo_root: &Path, host: &str, target_label: &str) -> Result<String> {
+    let override_args = repo::local_override_args(repo_root).await?;
 
     let target = format!(
         "{}#nixosConfigurations.{}.config.system.build.toplevel",
@@ -131,12 +149,7 @@ async fn build_with_override(repo_root: &Path, host: &str, rev: &str) -> Result<
     }
     cmd.current_dir(repo_root);
 
-    eprintln!(
-        "Building {host} system closure against keystone@{rev}…\n  target: {target}",
-        host = host,
-        rev = rev,
-        target = target
-    );
+    eprintln!("Building {host} system closure for keystone@{target_label}…\n  target: {target}",);
 
     let output = cmd
         .output()
@@ -468,17 +481,17 @@ fn should_advance_lock(status: &std::process::ExitStatus) -> bool {
 /// Drive the activation step through `cmd::approve::run_and_wait`. The
 /// orchestrator-callable variant of the broker spawns the helper and
 /// waits for it to exit, so we can inspect the [`std::process::ExitStatus`]
-/// and gate post-activation work (relock, commit, push) on actual
-/// activation success. The interactive `cmd::approve::execute` path
-/// would `exec()`-replace this process and force us to perform that
-/// follow-up work *before* the privileged step — which is exactly the
-/// atomicity bug this commit fixes.
+/// and gate post-activation work (push) on actual activation success.
+/// The interactive `cmd::approve::execute` path would `exec()`-replace
+/// this process and force us to perform that follow-up work *before*
+/// the privileged step — which is exactly the atomicity bug the
+/// orchestrator-callable variant exists to avoid.
 fn activate_via_broker(reason: &str, store_path: &str) -> Result<bool> {
     let argv = elevated_argv(store_path);
     let status = cmd::approve::run_and_wait(reason, &argv)?;
     if !should_advance_lock(&status) {
         eprintln!(
-            "ks activate failed (exit {:?}) — leaving flake.lock unchanged.",
+            "ks activate failed (exit {:?}) — rolling back the flake.lock bump.",
             status.code()
         );
         return Ok(false);
@@ -486,14 +499,120 @@ fn activate_via_broker(reason: &str, store_path: &str) -> Result<bool> {
     Ok(true)
 }
 
-/// Top-level entry. Resolves channel target → builds (no lock change)
-/// → activates (privileged, awaited) → on success, relocks pinned to
-/// the activated rev → commits → pushes.
+/// Warm the polkit credential cache by firing a no-op activation. The
+/// allowlist matches `["ks", "activate", …]` (prefix), so the helper
+/// validates `["ks", "activate", "/run/current-system"]` and execs
+/// `ks activate /run/current-system` as root. `cmd::activate::execute`
+/// then short-circuits (the closure already matches `current-system`)
+/// and returns 0 with no side effects.
 ///
-/// Sequencing invariant: `relock_keystone_input` and `commit_lock` MUST
-/// only run on the activation-success branch. A failed activation must
-/// leave `flake.lock` and the working tree untouched so the next Walker
-/// click retries cleanly.
+/// Net effect: the user sees the polkit dialog within seconds of
+/// Walker dispatch, authenticates once, and polkit caches the
+/// credential under `auth_admin_keep` (configured by
+/// `keystone.security.privilegedApproval` — see
+/// `modules/os/privileged-approval.nix:112`). The cache (~5 min default)
+/// covers the build and final activation prompt without re-asking.
+///
+/// On user cancellation / auth failure the helper returns non-zero;
+/// this function returns Ok(false) and the caller aborts the run with
+/// no side effects on the consumer flake. We treat this as the user
+/// explicitly declining the update.
+fn warm_polkit_cache(host_label: &str) -> Result<bool> {
+    let argv = elevated_argv("/run/current-system");
+    let reason = approval_reason(host_label);
+    eprintln!("Requesting approval for the upcoming activation (warming polkit cache)…");
+    let status = cmd::approve::run_and_wait(&reason, &argv)?;
+    if !status.success() {
+        eprintln!(
+            "Polkit approval cancelled or failed (exit {:?}) — aborting update.",
+            status.code()
+        );
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+/// Best-effort desktop notification surfaced after the early polkit
+/// approval, before the build phase begins. Bridges the silent
+/// build-phase wait with feedback so the user knows the update is
+/// progressing. Gated on `KS_UPDATE_NOTIFY=1` (set by the launcher in
+/// `cmd::update_menu::start_update_session`) so direct CLI invocations
+/// stay quiet on the desktop. Failures are swallowed — this is purely
+/// UX feedback.
+fn notify_build_phase(target_label: &str) {
+    if std::env::var_os("KS_UPDATE_NOTIFY").is_none() {
+        return;
+    }
+    let body = format!("Building keystone@{target_label}…");
+    let _ = util::notify_send("Keystone update", &body, "normal");
+}
+
+/// Bump the keystone input in `flake.lock` to `target_rev` and commit
+/// it on the current branch. Returns `(lock_advanced, bump_sha)`:
+///
+/// - `lock_advanced = true` and `bump_sha = Some(sha)` when the lock
+///   moved and a new commit landed.
+/// - `lock_advanced = false` and `bump_sha = None` when the lock was
+///   already at `target_rev` (no relock changes, no commit). In that
+///   case the caller has nothing to roll back.
+async fn bump_lock_and_commit(
+    repo_root: &Path,
+    target_rev: &str,
+    target_label: &str,
+) -> Result<(bool, Option<String>)> {
+    relock_keystone_input(repo_root, target_rev).await?;
+    if !flake_lock_dirty(repo_root).await? {
+        eprintln!("flake.lock already pinned at {target_rev} — no commit needed.");
+        return Ok((false, None));
+    }
+    commit_lock(repo_root, target_label).await?;
+    let sha = rev_parse(repo_root, "HEAD").await?;
+    eprintln!("Committed flake.lock bump (HEAD={sha}).");
+    Ok((true, Some(sha)))
+}
+
+/// Rewind the bump commit if HEAD still equals `expected_sha`. Refuses
+/// if HEAD diverged (someone committed in parallel between our commit
+/// and the failure point) — we surface a clear error instead of
+/// destroying the user's work via `git reset --hard`.
+///
+/// On success the working tree is at the pre-bump SHA and is clean.
+async fn rollback_lock_bump(repo_root: &Path, expected_sha: &str) -> Result<()> {
+    let head_now = rev_parse(repo_root, "HEAD").await?;
+    if head_now != expected_sha {
+        anyhow::bail!(
+            "rollback refused: HEAD ({head_now}) diverged from the bump commit ({expected_sha}). \
+             Resolve manually — your work is intact."
+        );
+    }
+    let status = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["reset", "--hard", "HEAD~1"])
+        .status()
+        .await
+        .context("failed to invoke git reset for rollback")?;
+    if !status.success() {
+        anyhow::bail!("git reset --hard HEAD~1 exited {:?}", status.code());
+    }
+    eprintln!("Rolled back flake.lock bump.");
+    Ok(())
+}
+
+/// Top-level entry. Spec: REQ-019.31. Order:
+///
+/// 1. Pre-flight (in-sync) → refuse unless local == origin.
+/// 2. Resolve channel target.
+/// 3. **Early polkit warm.** Fires the dialog within ~2 s of Walker
+///    dispatch. User cancellation aborts cleanly.
+/// 4. notify-send "Building …" (gated on `KS_UPDATE_NOTIFY=1`).
+/// 5. Bump `flake.lock` and commit. Captured `bump_sha` is the rollback
+///    target for any subsequent failure.
+/// 6. `nix build` against the bumped lock.
+/// 7. `ks activate` via broker. Polkit cache from step 3 should hit.
+/// 8. On success: best-effort `git push`.
+/// 9. On any failure between 5 and 7 success: rollback the bump
+///    commit via `rollback_lock_bump`. Refuses if HEAD diverged.
 pub(crate) async fn run_supervised_update(
     flake_override: Option<&Path>,
 ) -> Result<ApproveUpdateOutcome> {
@@ -509,14 +628,10 @@ pub(crate) async fn run_supervised_update(
         channel.as_str()
     );
 
-    // Step 0: refuse to run unless the consumer flake is in sync with
-    // origin. See `ensure_in_sync` for the invariant — this is the
-    // only way to make the post-activation push a guaranteed
-    // fast-forward.
+    // Step 1: pre-flight in-sync check.
     ensure_in_sync(&repo_root).await?;
 
-    // Step 1: resolve the target ref via GitHub API. Runs in the
-    // user's session — token + DNS available.
+    // Step 2: resolve target ref via GitHub API.
     let info = fetch_latest_release(channel)
         .await
         .with_context(|| format!("failed to resolve {} channel target", channel.as_str()))?;
@@ -532,8 +647,7 @@ pub(crate) async fn run_supervised_update(
     // CRITICAL: use `latest_name` for the audit-trail commit message.
     // For unstable, `latest_tag` is the literal "main" — losing the
     // resolved SHA — while `latest_name` is `main@<shortsha>` and
-    // preserves traceability. For stable, both coincide on the tag,
-    // so this is a no-op there.
+    // preserves traceability. For stable, both coincide on the tag.
     let target_label = if info.latest_name.is_empty() {
         target_tag.clone()
     } else {
@@ -544,48 +658,51 @@ pub(crate) async fn run_supervised_update(
         channel.as_str()
     );
 
-    // Step 2: build the closure with the override. flake.lock untouched
-    // up to this point; a failure here is a no-op on the consumer
-    // flake's state.
-    let store_path = build_with_override(&repo_root, &host, &target_rev).await?;
-    eprintln!("Built closure: {store_path}");
-
-    // Step 3: activate via the privileged broker. We *wait* for the
-    // child to exit so we can decide whether to mutate the lock based
-    // on whether activation actually succeeded. If it failed, abort the
-    // flow and leave the lock alone.
     let host_label = util::hostname_label();
-    let reason = approval_reason(&host_label);
-    eprintln!("Requesting approval to activate {store_path}…");
-    let activated = activate_via_broker(&reason, &store_path)?;
-    if !activated {
+
+    // Step 3: warm the polkit cache. User cancellation aborts cleanly.
+    let warmed = warm_polkit_cache(&host_label)?;
+    if !warmed {
         anyhow::bail!(
-            "activation was not approved or failed for {} on host {}; flake.lock was left unchanged",
+            "approval cancelled or failed for {} on host {}; no changes made",
             target_label,
             host
         );
     }
 
-    // Step 4: relock pinned to the rev we just built and activated.
-    // See `relock_keystone_input` for why we use `--override-input`
-    // instead of a bare `nix flake update keystone`.
-    relock_keystone_input(&repo_root, &target_rev).await?;
+    // Step 4: surface "building" notification.
+    notify_build_phase(&target_label);
 
-    // Step 5: commit the lock change. If the relock didn't move the
-    // lock (consumer was already on this rev), there's nothing to
-    // commit and we skip straight to the push decision.
-    let lock_advanced = if flake_lock_dirty(&repo_root).await? {
-        commit_lock(&repo_root, &target_label).await?;
-        true
-    } else {
-        eprintln!("flake.lock already pinned at {target_rev} — no commit needed.");
-        false
+    // Step 5: bump lock + commit. `bump_sha` is None when the lock was
+    // already at the target rev (no commit, nothing to roll back).
+    let (lock_advanced, bump_sha) =
+        bump_lock_and_commit(&repo_root, &target_rev, &target_label).await?;
+
+    // Steps 6 + 7: build and activate. Wrap so any failure can roll
+    // back the bump commit before propagating the error.
+    let outcome = run_build_and_activate(&repo_root, &host, &target_label, &host_label).await;
+
+    let store_path = match outcome {
+        Ok(p) => p,
+        Err(e) => {
+            if let Some(sha) = bump_sha.as_deref() {
+                if let Err(rollback_err) = rollback_lock_bump(&repo_root, sha).await {
+                    eprintln!(
+                        "Warning: rollback failed: {rollback_err:#}. Manual cleanup required."
+                    );
+                }
+            }
+            return Err(e.context(format!(
+                "supervised update failed for {} on host {}",
+                target_label, host
+            )));
+        }
     };
 
-    // Step 6: push best-effort. A network blip post-activation
-    // shouldn't fail the whole flow — the local generation is already
-    // promoted to /run/current-system and the lock is committed
-    // locally, so the user can recover by pushing by hand.
+    // Step 8: push best-effort. A network blip post-activation does NOT
+    // trigger rollback — the system is on the new closure, the lock
+    // matches, and only the remote is behind. The user can recover by
+    // pushing by hand.
     let pushed = if lock_advanced {
         let branch = current_branch(&repo_root).await?;
         match push_lock(&repo_root, &branch).await {
@@ -609,6 +726,31 @@ pub(crate) async fn run_supervised_update(
         lock_advanced,
         pushed,
     })
+}
+
+/// Steps 6 + 7 of `run_supervised_update`, factored out so a single
+/// `?`-style early return covers both the build and activation paths
+/// from the orchestrator's perspective. Any failure here propagates up
+/// and triggers `rollback_lock_bump` in the caller.
+async fn run_build_and_activate(
+    repo_root: &Path,
+    host: &str,
+    target_label: &str,
+    host_label: &str,
+) -> Result<String> {
+    // Step 6: build against the bumped lock.
+    let store_path = build_locked(repo_root, host, target_label).await?;
+    eprintln!("Built closure: {store_path}");
+
+    // Step 7: activate via the privileged broker. Polkit cache from
+    // the warm step should hit; if not, the user re-prompts.
+    let reason = approval_reason(host_label);
+    eprintln!("Requesting activation of {store_path}…");
+    let activated = activate_via_broker(&reason, &store_path)?;
+    if !activated {
+        anyhow::bail!("activation was not approved or failed");
+    }
+    Ok(store_path)
 }
 
 #[cfg(test)]
@@ -817,6 +959,115 @@ mod tests {
         assert!(
             msg.contains("master"),
             "error should name the branch: {msg}"
+        );
+    }
+
+    /// Helper: write a `flake.lock` change, stage + commit it on top of
+    /// the in-sync fixture, return the resulting HEAD sha. Lets the
+    /// rollback tests exercise the same shape `bump_lock_and_commit`
+    /// produces (single-file, single-commit ahead of origin) without
+    /// relying on a real `nix flake update`.
+    async fn make_bump_commit(local: &Path, body: &str) -> String {
+        std::fs::write(local.join("flake.lock"), body).expect("rewrite flake.lock");
+        for args in [
+            vec!["add", "flake.lock"],
+            vec!["commit", "-m", "chore: bump keystone (test)"],
+        ] {
+            let s = std::process::Command::new("git")
+                .arg("-C")
+                .arg(local)
+                .args(&args)
+                .status()
+                .expect("git command");
+            assert!(s.success(), "git {args:?} failed");
+        }
+        rev_parse(local, "HEAD").await.expect("rev-parse HEAD")
+    }
+
+    #[tokio::test]
+    async fn rollback_lock_bump_resets_to_pre_bump_when_head_matches() {
+        // Happy path: bump_sha == HEAD → reset --hard HEAD~1 lands us
+        // back on the pre-bump SHA with a clean working tree. The
+        // rollback path is what makes lock-first safe under failures
+        // between the commit and a successful activation.
+        let (_tmp, local, _remote) = make_in_sync_fixture();
+        let pre_bump = rev_parse(&local, "HEAD").await.expect("rev-parse pre-bump");
+        let bump_sha = make_bump_commit(&local, "{ \"new\": true }\n").await;
+        assert_ne!(pre_bump, bump_sha, "fixture must produce a new commit");
+
+        rollback_lock_bump(&local, &bump_sha)
+            .await
+            .expect("rollback should succeed when HEAD matches");
+
+        let after = rev_parse(&local, "HEAD")
+            .await
+            .expect("rev-parse post-rollback");
+        assert_eq!(after, pre_bump, "rollback should restore pre-bump SHA");
+
+        // Working tree must be clean — the rollback restores the
+        // pre-bump flake.lock contents.
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&local)
+            .args(["status", "--porcelain"])
+            .output()
+            .expect("git status");
+        assert!(status.status.success(), "git status failed");
+        assert!(
+            status.stdout.is_empty(),
+            "working tree must be clean after rollback: {}",
+            String::from_utf8_lossy(&status.stdout)
+        );
+    }
+
+    #[tokio::test]
+    async fn rollback_lock_bump_refuses_when_head_diverged() {
+        // Defensive guard: if someone (or a parallel agent) committed
+        // between our bump and the rollback trigger, HEAD no longer
+        // matches `expected_sha`. `git reset --hard HEAD~1` would
+        // discard their work. Refuse and surface a clear error so the
+        // user can resolve manually.
+        let (_tmp, local, _remote) = make_in_sync_fixture();
+        let bump_sha = make_bump_commit(&local, "{ \"bumped\": true }\n").await;
+
+        // Drop another commit on top so HEAD != bump_sha.
+        std::fs::write(local.join("other.txt"), "parallel work\n").expect("write other.txt");
+        for args in [
+            vec!["add", "other.txt"],
+            vec!["commit", "-m", "parallel work"],
+        ] {
+            let s = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&local)
+                .args(&args)
+                .status()
+                .expect("git command");
+            assert!(s.success(), "git {args:?} failed");
+        }
+        let head_after_parallel = rev_parse(&local, "HEAD")
+            .await
+            .expect("rev-parse parallel head");
+        assert_ne!(
+            head_after_parallel, bump_sha,
+            "fixture must drift HEAD past the bump"
+        );
+
+        let err = rollback_lock_bump(&local, &bump_sha)
+            .await
+            .expect_err("rollback must refuse on diverged HEAD");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("diverged") || msg.contains("refused"),
+            "error must name the divergence: {msg}"
+        );
+
+        // Diverged commit must still be present — we did NOT reset.
+        let head_now = rev_parse(&local, "HEAD")
+            .await
+            .expect("rev-parse post-refusal");
+        assert_eq!(
+            head_now, head_after_parallel,
+            "refusing rollback must leave HEAD untouched"
         );
     }
 
