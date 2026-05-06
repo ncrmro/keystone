@@ -178,30 +178,29 @@ let
         ++ modules;
       };
       env = result.config.services.immich.machine-learning.environment;
-      rocmOverlayResult = (builtins.head result.config.nixpkgs.overlays) { } {
-        onnxruntime.override = args: args;
-      };
       actualDevice = env.DEVICE or null;
       actualHsaGfxVersion = env.HSA_OVERRIDE_GFX_VERSION or null;
-      actualOnnxruntimeRocmSupport = rocmOverlayResult.onnxruntime.rocmSupport or false;
+      # The rocm onnxruntime is plumbed via services.immich.package, so the
+      # override is no longer in nixpkgs.overlays. The module sets a
+      # passthru marker on the override branch we probe here.
+      packageOverridden = result.config.services.immich.package.keystoneRocmEnabled or false;
       deviceOk = actualDevice == "rocm";
       hsaOk = actualHsaGfxVersion == expectedHsaGfxVersion;
-      onnxruntimeOk = actualOnnxruntimeRocmSupport == true;
       actualDeviceJson = builtins.toJSON actualDevice;
       actualHsaGfxVersionJson = builtins.toJSON actualHsaGfxVersion;
       expectedHsaGfxVersionJson = builtins.toJSON expectedHsaGfxVersion;
-      actualOnnxruntimeRocmSupportJson = builtins.toJSON actualOnnxruntimeRocmSupport;
+      packageOverriddenJson = builtins.toJSON packageOverridden;
     in
     pkgs.runCommand "immich-rocm-worker-${name}" { } ''
       ${
-        if deviceOk && hsaOk && onnxruntimeOk then
+        if deviceOk && hsaOk && packageOverridden then
           ''
-            echo "OK: ${name}: DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}, onnxruntime.rocmSupport=${actualOnnxruntimeRocmSupportJson}"
+            echo "OK: ${name}: DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}, package overridden=${packageOverriddenJson}"
           ''
         else
           ''
-            echo "FAIL: ${name}: expected DEVICE=\"rocm\", HSA_OVERRIDE_GFX_VERSION=${expectedHsaGfxVersionJson}, onnxruntime.rocmSupport=true" >&2
-            echo "  actual DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}, onnxruntime.rocmSupport=${actualOnnxruntimeRocmSupportJson}" >&2
+            echo "FAIL: ${name}: expected DEVICE=\"rocm\", HSA_OVERRIDE_GFX_VERSION=${expectedHsaGfxVersionJson}, services.immich.package overridden" >&2
+            echo "  actual DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}, package overridden=${packageOverriddenJson}" >&2
             exit 1
           ''
       }
@@ -473,6 +472,41 @@ let
         };
       }
     ];
+
+    # Setting hsaGfxVersion without rocm acceleration must fire the module
+    # assertion rather than be silently ignored.
+    immich-hsa-without-rocm =
+      assertHasFailingAssertion "immich-hsa-without-rocm" "hsaGfxVersion only applies"
+        [
+          {
+            keystone = {
+              services.immich = {
+                host = "ocean";
+                workers = [ "gpu-worker" ];
+              };
+              hosts.gpu-worker = {
+                hostname = "gpu-worker";
+                role = "client";
+              };
+              os = {
+                enable = true;
+                storage = {
+                  type = "ext4";
+                  devices = [ "/dev/vda" ];
+                };
+                services.immich = {
+                  acceleration = lib.mkForce null;
+                  hsaGfxVersion = "11.0.0";
+                };
+              };
+            };
+            networking.hostName = "gpu-worker";
+            fileSystems."/" = {
+              device = lib.mkForce "/dev/vda2";
+              fsType = lib.mkForce "ext4";
+            };
+          }
+        ];
 
     immich-worker-rocm-native-hsa = assertImmichRocmWorker "native-hsa" null [
       {
