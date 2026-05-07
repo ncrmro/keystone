@@ -254,6 +254,7 @@ in
     ./remote-unlock.nix
     ./users.nix
     ./ssh.nix
+    ./network-egress.nix
     ./eternal-terminal.nix
     ./airplay.nix
     ./mail.nix
