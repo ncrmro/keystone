@@ -667,6 +667,121 @@ rec {
       }
     );
 
+  # Build a host configuration for an agent's dev VM — a sandbox where the
+  # agent (e.g. drago, luce) can iterate on a fork of keystone without
+  # endangering the parent host.  The resulting host is registered like any
+  # other in mkSystemFlake, so `vm-image-<name>` is auto-exposed and the
+  # parent host can boot it via keystone.server.devVm.hosts.<key>.image.
+  #
+  # Usage (in a consumer flake's host registry):
+  #
+  #   agent-drago-devvm = {
+  #     kind = "agent-dev-vm";
+  #     agent = "drago";
+  #     agentConfig = {
+  #       fullName = "Drago";
+  #       email = "agent-drago@example.com";
+  #       # the same shape used in keystone.os.agents.drago
+  #     };
+  #     fork = "git@github.com:ncrmro-drago/keystone.git";
+  #   };
+  #
+  # The dev VM uses ext4 storage (no encryption — the qcow2 lives on the
+  # parent host's encrypted disk), no Secure Boot, no TPM, and turns on
+  # tailscale + networkEgress so it can reach the public internet and the
+  # mesh but not the parent's home LAN.
+  mkAgentDevVm =
+    {
+      agent,
+      agentConfig ? { },
+      fork ? null,
+      hostname ? "agent-${agent}-devvm",
+      memory ? 6144,
+      vcpus ? 4,
+      additionalAllowedSubnets ? [ "192.168.200.0/24" ],
+      modules ? [ ],
+      storage ? { },
+      ...
+    }@args:
+    mkLinuxHost (
+      (builtins.removeAttrs args [
+        "agent"
+        "agentConfig"
+        "fork"
+        "memory"
+        "vcpus"
+        "additionalAllowedSubnets"
+      ])
+      // {
+        inherit hostname;
+        desktop = false;
+        secureBoot = {
+          enable = false;
+        };
+        tpm = {
+          enable = false;
+        };
+        storage = lib.recursiveUpdate {
+          type = "ext4";
+          mode = "single";
+          devices = [ "/dev/vda" ];
+        } storage;
+        modules = modules ++ [
+          (
+            { lib, pkgs, ... }:
+            {
+              keystone.os.agents.${agent} = lib.mkMerge [
+                agentConfig
+                { host = lib.mkForce hostname; }
+              ];
+              # Plain assignment (priority 100) beats the mkHostModule default
+              # (`mkDefault false`, priority 1000). Consumers can still flip it
+              # off with `lib.mkForce false`.
+              keystone.os.tailscale.enable = true;
+              keystone.os.networkEgress = {
+                enable = true;
+                allowedSubnets = [
+                  "100.64.0.0/10"
+                  "127.0.0.0/8"
+                ]
+                ++ additionalAllowedSubnets;
+              };
+              # CRITICAL: this VM hosts in-progress keystone module work; the
+              # firewall MUST stay on so networkEgress rules apply.
+              networking.firewall.enable = lib.mkForce true;
+
+              # First-boot fork clone. Best-effort — agent's ssh key may not
+              # be loaded yet on the very first boot, but task-loop will
+              # retry once the user session is up.
+              systemd.services."agent-fork-clone" = lib.mkIf (fork != null) {
+                description = "Clone keystone fork for agent ${agent}";
+                wantedBy = [ "multi-user.target" ];
+                after = [ "network-online.target" ];
+                wants = [ "network-online.target" ];
+                serviceConfig = {
+                  Type = "oneshot";
+                  RemainAfterExit = true;
+                  User = "agent-${agent}";
+                  Group = "agents";
+                };
+                path = [
+                  pkgs.git
+                  pkgs.openssh
+                ];
+                script = ''
+                  dest="$HOME/repos/ncrmro/keystone"
+                  if [ ! -d "$dest/.git" ]; then
+                    mkdir -p "$(dirname "$dest")"
+                    git clone "${fork}" "$dest" || exit 0
+                  fi
+                '';
+              };
+            }
+          )
+        ];
+      }
+    );
+
   mkMacosTerminal =
     {
       system ? "aarch64-darwin",
@@ -737,6 +852,15 @@ rec {
           builder = mkServer;
           system = "x86_64-linux";
           nixosModules = [ self.nixosModules.server ];
+          desktop = false;
+        };
+
+        # Per-agent sandbox VM. The agent (drago, luce, …) iterates on a
+        # keystone fork inside, parent host keeps a clean blast radius.
+        "agent-dev-vm" = {
+          builder = mkAgentDevVm;
+          system = "x86_64-linux";
+          nixosModules = [ ];
           desktop = false;
         };
       };
