@@ -63,6 +63,7 @@ in
     ./acme.nix
     ./nginx.nix
     ./dns.nix
+    ./dev-vm.nix
 
     # Service modules
     ./services/immich.nix
