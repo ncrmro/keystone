@@ -206,12 +206,12 @@ in
     # caches. Their parents already exist via the unit's CacheDirectory but
     # creating the leaves up-front avoids first-run races where systemd's
     # ProtectHome/PrivateTmp sandbox surprises the libraries.
-    systemd.tmpfiles.rules = mkIf (cfg.acceleration != null) (
-      [ "d /var/cache/immich/matplotlib 0700 immich immich -" ]
-      ++ optionals (cfg.acceleration == "rocm") [
-        "d /var/cache/immich/miopen 0700 immich immich -"
-      ]
-    );
+    systemd.tmpfiles.rules = [
+      "d /var/cache/immich/matplotlib 0700 immich immich -"
+    ]
+    ++ optionals (cfg.acceleration == "rocm") [
+      "d /var/cache/immich/miopen 0700 immich immich -"
+    ];
 
     # Manually disable server units on worker
     systemd.services.immich-server.enable = mkIf (cfg.role == "worker") false;

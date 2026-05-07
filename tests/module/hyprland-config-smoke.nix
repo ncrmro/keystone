@@ -9,6 +9,9 @@ let
     extraModules:
     (home-manager.lib.homeManagerConfiguration {
       inherit pkgs;
+      extraSpecialArgs = {
+        inherit keystoneInputs;
+      };
       modules = [
         ../../modules/desktop/home/hyprland
         {
@@ -29,8 +32,6 @@ let
           };
 
           config = {
-            _module.args.keystoneInputs = keystoneInputs;
-
             home.username = "testuser";
             home.homeDirectory = "/home/testuser";
             home.stateVersion = "25.05";
