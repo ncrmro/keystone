@@ -174,34 +174,37 @@ async fn build_locked(repo_root: &Path, host: &str, target_label: &str) -> Resul
     Ok(path)
 }
 
-/// Lock the keystone input to the exact target rev we just built and
-/// activated. Run AFTER successful activation so a failed activation
-/// never mutates `flake.lock`.
-//
-// CRITICAL: pin the lock to `github:ncrmro/keystone/<rev>` rather than
-// running a bare `nix flake update keystone`. For consumer flakes that
-// declare `keystone.url = "github:ncrmro/keystone"`, the bare update
-// would re-resolve the input to the default-branch tip, which can drift
-// from the channel-resolved rev in two ways:
-//   1. Stable channel: the target is a tag commit (often older than
-//      `main`); `update keystone` would jump to `main` tip and the lock
-//      would diverge from the activated closure.
-//   2. Unstable channel: between `resolve_target_ref` and this call,
-//      a new commit may land on `main`; `update keystone` would pick
-//      it up, locking to a rev we never built.
-// `nix flake update keystone` forces the lockfile entry to refresh,
-// and `--override-input keystone github:.../<rev>` pins it to exactly
-// the rev we built — making the lock match the realized closure.
-//
-// Use the modern `nix flake update <input>` form rather than the
-// deprecated `nix flake lock --update-input <input>` alias: nix 2.20+
-// rejects `--flake <path>` after the deprecated alias (the alias
-// rewrites to `flake update`, and `flake update` doesn't accept
-// `--flake` as a flag) and prints `error: unrecognised flag '--flake'`.
-// Set the flake via `current_dir` instead — same pattern as the build
-// command in `build_system_closure`.
-async fn relock_keystone_input(repo_root: &Path, rev: &str) -> Result<()> {
-    let pinned = format!("github:ncrmro/keystone/{rev}");
+/// Lock the keystone input to a fully-formed `--override-input` value.
+/// Caller is responsible for shape: channel mode passes
+/// `github:ncrmro/keystone/<rev>`; override mode (REQ-019.31f) passes
+/// the user-supplied flag value (`github:.../<branch>`,
+/// `path:/...worktree`, etc.) directly. Pre-2025 versions of this
+/// helper took a bare `<rev>` and wrapped it internally — that broke
+/// the override path because the flag value already includes the
+/// `github:ncrmro/keystone/` prefix and double-wrapping produced
+/// `github:ncrmro/keystone/github:ncrmro/keystone/<branch>`.
+///
+/// CRITICAL: pin the lock via `--override-input` rather than running a
+/// bare `nix flake update keystone`. For consumer flakes that declare
+/// `keystone.url = "github:ncrmro/keystone"`, the bare update would
+/// re-resolve the input to the default-branch tip, which can drift
+/// from the channel-resolved rev in two ways:
+///   1. Stable channel: the target is a tag commit (often older than
+///      `main`); `update keystone` would jump to `main` tip and the lock
+///      would diverge from the activated closure.
+///   2. Unstable channel: between `resolve_target_ref` and this call,
+///      a new commit may land on `main`; `update keystone` would pick
+///      it up, locking to a rev we never built.
+///
+/// Use the modern `nix flake update <input>` form rather than the
+/// deprecated `nix flake lock --update-input <input>` alias: nix 2.20+
+/// rejects `--flake <path>` after the deprecated alias.
+///
+/// Self-cleaning on failure: `nix flake update` may write to
+/// `flake.lock` before returning non-zero. We restore the working tree
+/// to `HEAD` so a partial relock can't strand the consumer flake in a
+/// state the next run's `ensure_in_sync` pre-flight refuses.
+async fn relock_keystone_input(repo_root: &Path, pinned: &str) -> Result<()> {
     let status = tokio::process::Command::new("nix")
         .args([
             "flake",
@@ -209,13 +212,16 @@ async fn relock_keystone_input(repo_root: &Path, rev: &str) -> Result<()> {
             "keystone",
             "--override-input",
             "keystone",
-            &pinned,
+            pinned,
         ])
         .current_dir(repo_root)
         .status()
         .await
         .context("failed to invoke nix flake update for keystone input")?;
     if !status.success() {
+        if let Err(re) = restore_flake_lock(repo_root).await {
+            eprintln!("Warning: failed to restore flake.lock after relock failure: {re:#}",);
+        }
         anyhow::bail!(
             "nix flake update keystone --override-input keystone {pinned} exited {:?}",
             status.code()
@@ -609,7 +615,8 @@ async fn bump_lock_and_commit_inner(
     target_rev: &str,
     target_label: &str,
 ) -> Result<(bool, Option<String>)> {
-    relock_keystone_input(repo_root, target_rev).await?;
+    let pinned = format!("github:ncrmro/keystone/{target_rev}");
+    relock_keystone_input(repo_root, &pinned).await?;
     if !flake_lock_dirty(repo_root).await? {
         eprintln!("flake.lock already pinned at {target_rev} — no commit needed.");
         return Ok((false, None));
