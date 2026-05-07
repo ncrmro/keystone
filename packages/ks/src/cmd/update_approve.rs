@@ -667,22 +667,102 @@ async fn rollback_lock_bump(repo_root: &Path, expected_sha: &str) -> Result<()> 
     Ok(())
 }
 
+/// Resolve the supervised flow's target rev/label. In override mode
+/// (REQ-019.31f) the flag value is used directly so callers can point
+/// at unpublished worktrees (`path:/…`) or feature branches
+/// (`github:…/<branch>`) without going through the channel API. In
+/// channel mode we hit the existing GitHub release / branch lookup.
+async fn resolve_target(
+    channel: Channel,
+    target_override: Option<&str>,
+) -> Result<(String, String)> {
+    match target_override {
+        Some(value) => Ok((value.to_string(), value.to_string())),
+        None => {
+            let info = fetch_latest_release(channel).await.with_context(|| {
+                format!("failed to resolve {} channel target", channel.as_str())
+            })?;
+            if info.latest_rev.trim().is_empty() {
+                anyhow::bail!(
+                    "{} channel returned no commit sha for target {}",
+                    channel.as_str(),
+                    info.latest_tag
+                );
+            }
+            // CRITICAL: prefer `latest_name` (e.g., `main@<shortsha>`)
+            // for the audit-trail label. `latest_tag` for unstable is
+            // the literal "main" — losing the resolved SHA. Stable
+            // channels coincide on the tag.
+            let target_label = if info.latest_name.is_empty() {
+                info.latest_tag.clone()
+            } else {
+                info.latest_name.clone()
+            };
+            eprintln!(
+                "Resolved {} channel target: {target_label} ({})",
+                channel.as_str(),
+                info.latest_rev,
+            );
+            Ok((info.latest_rev, target_label))
+        }
+    }
+}
+
+/// Cleanup the consumer flake at end-of-run.
+///
+/// - Override mode (REQ-019.31f) ALWAYS restores `flake.lock` from
+///   HEAD: success or failure both end with a clean working tree, no
+///   commits, nothing to push.
+/// - Channel mode rolls back the bump commit on failure (when one
+///   was created) so the consumer flake is back at the pre-update
+///   SHA.
+/// - Channel mode on success leaves the bump commit in place — the
+///   caller's push step picks it up.
+async fn cleanup_after_outcome(
+    repo_root: &Path,
+    target_override: Option<&str>,
+    bump_sha: Option<&str>,
+    failed: bool,
+) {
+    if target_override.is_some() {
+        if let Err(restore_err) = restore_flake_lock(repo_root).await {
+            eprintln!(
+                "Warning: failed to restore flake.lock after override-mode {}: \
+                 {restore_err:#}. Working tree may be dirty.",
+                if failed { "failure" } else { "success" }
+            );
+        }
+        return;
+    }
+    if failed {
+        if let Some(sha) = bump_sha {
+            if let Err(rollback_err) = rollback_lock_bump(repo_root, sha).await {
+                eprintln!("Warning: rollback failed: {rollback_err:#}. Manual cleanup required.");
+            }
+        }
+    }
+}
+
 /// Top-level entry. Spec: REQ-019.31. Order:
 ///
 /// 1. Pre-flight (in-sync) → refuse unless local == origin.
-/// 2. Resolve channel target.
+/// 2. Resolve target: channel API or `target_override` if Some.
 /// 3. **Early polkit warm.** Fires the dialog within ~2 s of Walker
 ///    dispatch. User cancellation aborts cleanly.
 /// 4. notify-send "Building …" (gated on `KS_UPDATE_NOTIFY=1`).
-/// 5. Bump `flake.lock` and commit. Captured `bump_sha` is the rollback
-///    target for any subsequent failure.
-/// 6. `nix build` against the bumped lock.
+/// 5. Lock change. Channel mode: bump + commit, capture `bump_sha`.
+///    Override mode (REQ-019.31f): working-tree-only relock, no commit.
+/// 6. `nix build` against the bumped/dirty lock.
 /// 7. `ks activate` via broker. Polkit cache from step 3 should hit.
-/// 8. On success: best-effort `git push`.
-/// 9. On any failure between 5 and 7 success: rollback the bump
-///    commit via `rollback_lock_bump`. Refuses if HEAD diverged.
+/// 8. On success in channel mode: best-effort `git push`. Override
+///    mode skips push.
+/// 9. Cleanup: channel mode rolls back the bump commit on failure
+///    (`rollback_lock_bump`). Override mode unconditionally restores
+///    the working-tree lock (`restore_flake_lock`) on success or
+///    failure so the consumer flake ends clean.
 pub(crate) async fn run_supervised_update(
     flake_override: Option<&Path>,
+    target_override: Option<&str>,
 ) -> Result<ApproveUpdateOutcome> {
     let repo_root = repo::find_repo(flake_override)?;
     let host = repo::resolve_current_host(&repo_root)
@@ -690,41 +770,27 @@ pub(crate) async fn run_supervised_update(
         .ok_or_else(|| anyhow!("could not resolve current host from repo registry"))?;
 
     let channel = Channel::current();
-    eprintln!(
-        "Running supervised update for host {} on channel {}",
-        host,
-        channel.as_str()
-    );
+    if let Some(value) = target_override {
+        eprintln!(
+            "Running supervised update for host {} with --keystone override {} \
+             (channel {} ignored; no commit, no push)",
+            host,
+            value,
+            channel.as_str()
+        );
+    } else {
+        eprintln!(
+            "Running supervised update for host {} on channel {}",
+            host,
+            channel.as_str()
+        );
+    }
 
     // Step 1: pre-flight in-sync check.
     ensure_in_sync(&repo_root).await?;
 
-    // Step 2: resolve target ref via GitHub API.
-    let info = fetch_latest_release(channel)
-        .await
-        .with_context(|| format!("failed to resolve {} channel target", channel.as_str()))?;
-    if info.latest_rev.trim().is_empty() {
-        anyhow::bail!(
-            "{} channel returned no commit sha for target {}",
-            channel.as_str(),
-            info.latest_tag
-        );
-    }
-    let target_rev = info.latest_rev.clone();
-    let target_tag = info.latest_tag.clone();
-    // CRITICAL: use `latest_name` for the audit-trail commit message.
-    // For unstable, `latest_tag` is the literal "main" — losing the
-    // resolved SHA — while `latest_name` is `main@<shortsha>` and
-    // preserves traceability. For stable, both coincide on the tag.
-    let target_label = if info.latest_name.is_empty() {
-        target_tag.clone()
-    } else {
-        info.latest_name.clone()
-    };
-    eprintln!(
-        "Resolved {} channel target: {target_label} ({target_rev})",
-        channel.as_str()
-    );
+    // Step 2: resolve target (channel API or override).
+    let (target_rev, target_label) = resolve_target(channel, target_override).await?;
 
     let host_label = util::hostname_label();
 
@@ -741,37 +807,42 @@ pub(crate) async fn run_supervised_update(
     // Step 4: surface "building" notification.
     notify_build_phase(&target_label);
 
-    // Step 5: bump lock + commit. `bump_sha` is None when the lock was
-    // already at the target rev (no commit, nothing to roll back).
-    let (lock_advanced, bump_sha) =
-        bump_lock_and_commit(&repo_root, &target_rev, &target_label).await?;
-
-    // Steps 6 + 7: build and activate. Wrap so any failure can roll
-    // back the bump commit before propagating the error.
-    let outcome = run_build_and_activate(&repo_root, &host, &target_label, &host_label).await;
-
-    let store_path = match outcome {
-        Ok(p) => p,
-        Err(e) => {
-            if let Some(sha) = bump_sha.as_deref() {
-                if let Err(rollback_err) = rollback_lock_bump(&repo_root, sha).await {
-                    eprintln!(
-                        "Warning: rollback failed: {rollback_err:#}. Manual cleanup required."
-                    );
-                }
-            }
-            return Err(e.context(format!(
-                "supervised update failed for {} on host {}",
-                target_label, host
-            )));
+    // Step 5: lock change.
+    //
+    // - Channel mode: relock + commit; `bump_sha` lets us roll back on
+    //   later failure.
+    // - Override mode: working-tree-only relock so the consumer flake
+    //   carries no commit a future `git push` could publish; the
+    //   matching `restore_flake_lock` runs unconditionally below.
+    let bump_sha = match target_override {
+        Some(_) => {
+            relock_keystone_input(&repo_root, &target_rev).await?;
+            None
+        }
+        None => {
+            bump_lock_and_commit(&repo_root, &target_rev, &target_label)
+                .await?
+                .1
         }
     };
+    let lock_advanced = bump_sha.is_some();
 
-    // Step 8: push best-effort. A network blip post-activation does NOT
-    // trigger rollback — the system is on the new closure, the lock
-    // matches, and only the remote is behind. The user can recover by
-    // pushing by hand.
-    let pushed = if lock_advanced {
+    // Steps 6 + 7: build and activate.
+    let outcome = run_build_and_activate(&repo_root, &host, &target_label, &host_label).await;
+    let failed = outcome.is_err();
+    cleanup_after_outcome(&repo_root, target_override, bump_sha.as_deref(), failed).await;
+    let store_path = outcome.map_err(|e| {
+        e.context(format!(
+            "supervised update failed for {} on host {}",
+            target_label, host
+        ))
+    })?;
+
+    // Step 8: push only in channel mode. Override mode never publishes.
+    // A network blip in channel mode does NOT trigger rollback — the
+    // system is on the new closure, the lock matches, and only the
+    // remote is behind.
+    let pushed = if target_override.is_none() && lock_advanced {
         let branch = current_branch(&repo_root).await?;
         match push_lock(&repo_root, &branch).await {
             Ok(p) => p,

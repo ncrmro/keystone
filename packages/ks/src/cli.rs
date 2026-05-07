@@ -122,6 +122,26 @@ pub enum Command {
         /// approved child), this flag is a no-op and the body runs directly.
         #[arg(long)]
         approve: bool,
+
+        /// Local-development override for the `--approve` supervised flow:
+        /// use this keystone ref instead of the channel-resolved target.
+        /// Accepts any value that `nix flake update keystone
+        /// --override-input keystone <value>` accepts — typically
+        /// `github:ncrmro/keystone/<branch-or-sha>` or
+        /// `path:/absolute/path/to/worktree`.
+        ///
+        /// In override mode the supervised flow modifies `flake.lock` in
+        /// the working tree only (no commit), runs build + activation
+        /// against that ref, and restores `flake.lock` on exit
+        /// regardless of outcome. Push is always skipped. The system is
+        /// activated against the override target while the consumer
+        /// flake stays clean — re-run `ks update --approve` without the
+        /// flag once you're done testing to bring the system back to the
+        /// channel rev.
+        ///
+        /// Only valid alongside `--approve`. Other update modes ignore it.
+        #[arg(long = "keystone")]
+        keystone_override: Option<String>,
     },
 
     /// Activate a pre-built NixOS system closure (privileged).

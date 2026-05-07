@@ -89,6 +89,7 @@ async fn main() -> Result<()> {
                 hosts,
                 json,
                 approve,
+                keystone_override,
             } => {
                 let dev_mode = dev && !lock;
                 let pull_only = pull && dev_mode;
@@ -100,6 +101,7 @@ async fn main() -> Result<()> {
                     approve,
                     json,
                     flake,
+                    keystone_override.as_deref(),
                 )
                 .await
             }
@@ -400,6 +402,7 @@ async fn run_switch_command(
 ///
 /// See issue #487 for the privilege-boundary rationale that drove the
 /// split.
+#[allow(clippy::too_many_arguments)]
 async fn run_update_command(
     hosts: Option<&str>,
     dev: bool,
@@ -408,6 +411,7 @@ async fn run_update_command(
     approve: bool,
     json: bool,
     flake: Option<&std::path::Path>,
+    keystone_override: Option<&str>,
 ) -> Result<()> {
     if approve {
         // `--approve` ignores --boot / --pull / --hosts / --dev: the
@@ -421,7 +425,13 @@ async fn run_update_command(
                  Use `ks update --lock` from a terminal for fleet-wide updates."
             );
         }
-        return run_supervised_update_command(json, flake).await;
+        return run_supervised_update_command(json, flake, keystone_override).await;
+    }
+    if keystone_override.is_some() {
+        anyhow::bail!(
+            "ks update --keystone <ref> is only valid with --approve. \
+             Other update modes use the locked keystone input."
+        );
     }
 
     match cmd::update::execute(hosts, dev, boot, pull_only, flake).await {
@@ -455,9 +465,13 @@ async fn run_update_command(
 /// `run_supervised_update` now spawns + waits on the privileged child
 /// (so it can gate post-activation lock work on actual activation
 /// success), so control returns here on both happy and sad paths.
-async fn run_supervised_update_command(json: bool, flake: Option<&std::path::Path>) -> Result<()> {
+async fn run_supervised_update_command(
+    json: bool,
+    flake: Option<&std::path::Path>,
+    keystone_override: Option<&str>,
+) -> Result<()> {
     let notify = std::env::var_os("KS_UPDATE_NOTIFY").is_some();
-    match cmd::update_approve::run_supervised_update(flake).await {
+    match cmd::update_approve::run_supervised_update(flake, keystone_override).await {
         Ok(outcome) => {
             if json {
                 print_json_success(&serde_json::json!({

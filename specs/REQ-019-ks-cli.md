@@ -308,6 +308,28 @@ with multiple machines can tell which host the dialog is for. The
 allowlist `displayName` provides the static title; the per-request
 `Requested reason:` carries the host context.
 
+**REQ-019.31f** `ks update --approve --keystone <ref>` provides a
+local-development override for the supervised flow. `<ref>` is any
+value accepted by `nix flake update keystone --override-input keystone
+<ref>` (typically `github:ncrmro/keystone/<branch-or-sha>` or
+`path:/absolute/path/to/worktree`). When set:
+
+1. Step 2 (channel resolution) is skipped; the flag value becomes the
+   target ref and target label directly.
+2. Step 5 advances `flake.lock` in the working tree only via
+   `relock_keystone_input` — **no commit, no `bump_sha`**.
+3. Step 8 (`git push`) is skipped unconditionally — the override is
+   never published.
+4. `restore_flake_lock` runs unconditionally at end-of-run (success or
+   failure), restoring `flake.lock` from `HEAD` so the consumer flake
+   ends clean.
+
+The user explicitly accepts the temporary divergence: the running
+system is activated against the override target while `flake.lock`
+points at the channel rev. Re-running `ks update --approve` without
+the flag brings the system back to the channel rev. The flag is
+invalid alongside any non-`--approve` mode.
+
 ## Edge Cases
 
 - If `gh` CLI is not available, lock mode MUST fall back to direct
