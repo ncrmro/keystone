@@ -10,9 +10,12 @@
 //!                                                          [user session]
 //!             ├─ pre-flight: refuse if local != origin           [user]
 //!             ├─ resolve channel target ref via GitHub API       [user]
-//!             ├─ ks approve … -- ks activate /run/current-system ← polkit (warm)
-//!             │     └─ no-op (current-system already matches);
-//!             │       polkit caches credential under auth_admin_keep
+//!             ├─ ks approve … -- ks activate <canonical(current)>  ← polkit (warm)
+//!             │     └─ canonicalize /run/current-system to its
+//!             │       /nix/store closure path (validate_store_path
+//!             │       rejects symlinks); ks activate short-circuits
+//!             │       because the closure already matches; polkit
+//!             │       caches credential under auth_admin_keep
 //!             ├─ notify-send "Building <target>…"                [user]
 //!             ├─ nix flake update keystone                       [user]
 //!             │     --override-input keystone github:.../<rev>
@@ -56,10 +59,13 @@
 //! 0. Pre-flight: ensure consumer flake is in sync with origin.
 //! 1. Resolve target ref (no filesystem mutation).
 //! 2. Warm the polkit credential via a no-op `ks activate
-//!    /run/current-system`. The activation short-circuits in
-//!    `cmd::activate::execute` because the closure already matches
-//!    current-system; only side effect is polkit caching the credential
-//!    under `auth_admin_keep` for ~5 min.
+//!    <canonical(current)>`. We canonicalize `/run/current-system`
+//!    first because `cmd::activate::validate_store_path` rejects
+//!    arguments outside `/nix/store/` (defense-in-depth). The
+//!    activation then short-circuits in `cmd::activate::execute`
+//!    because the closure already matches current-system; only side
+//!    effect is polkit caching the credential under `auth_admin_keep`
+//!    for ~5 min.
 //! 3. notify-send "Building <target>…" so the user has feedback during
 //!    the build phase.
 //! 4. Bump `flake.lock` (`nix flake update keystone --override-input
@@ -490,21 +496,25 @@ fn activate_via_broker(reason: &str, store_path: &str) -> Result<bool> {
     let argv = elevated_argv(store_path);
     let status = cmd::approve::run_and_wait(reason, &argv)?;
     if !should_advance_lock(&status) {
-        eprintln!(
-            "ks activate failed (exit {:?}) — rolling back the flake.lock bump.",
-            status.code()
-        );
+        // Only log the failure here. Whether a rollback is performed
+        // depends on caller state (was a bump committed or did the
+        // lock no-op?), so the rollback decision and its corresponding
+        // log line live in `run_supervised_update`'s error path.
+        eprintln!("ks activate failed (exit {:?}).", status.code());
         return Ok(false);
     }
     Ok(true)
 }
 
 /// Warm the polkit credential cache by firing a no-op activation. The
-/// allowlist matches `["ks", "activate", …]` (prefix), so the helper
-/// validates `["ks", "activate", "/run/current-system"]` and execs
-/// `ks activate /run/current-system` as root. `cmd::activate::execute`
-/// then short-circuits (the closure already matches `current-system`)
-/// and returns 0 with no side effects.
+/// allowlist matches `["ks", "activate", …]` (prefix). We canonicalize
+/// `/run/current-system` to its underlying `/nix/store/<closure>` first,
+/// because `cmd::activate::validate_store_path` rejects any argument
+/// that isn't under `/nix/store/` (defense in depth — the symlink
+/// itself isn't a store path). The helper then validates `["ks",
+/// "activate", "/nix/store/<closure>"]`, execs `ks activate <closure>`
+/// as root, and `cmd::activate::execute` short-circuits because the
+/// closure already matches `/run/current-system`.
 ///
 /// Net effect: the user sees the polkit dialog within seconds of
 /// Walker dispatch, authenticates once, and polkit caches the
@@ -518,7 +528,17 @@ fn activate_via_broker(reason: &str, store_path: &str) -> Result<bool> {
 /// no side effects on the consumer flake. We treat this as the user
 /// explicitly declining the update.
 fn warm_polkit_cache(host_label: &str) -> Result<bool> {
-    let argv = elevated_argv("/run/current-system");
+    let current = std::fs::canonicalize("/run/current-system").context(
+        "failed to canonicalize /run/current-system for the warm approval payload — \
+         the host has no current system generation?",
+    )?;
+    let current_str = current.to_str().ok_or_else(|| {
+        anyhow!(
+            "/run/current-system canonical path {} is not valid UTF-8",
+            current.display()
+        )
+    })?;
+    let argv = elevated_argv(current_str);
     let reason = approval_reason(host_label);
     eprintln!("Requesting approval for the upcoming activation (warming polkit cache)…");
     let status = cmd::approve::run_and_wait(&reason, &argv)?;
@@ -555,7 +575,36 @@ fn notify_build_phase(target_label: &str) {
 /// - `lock_advanced = false` and `bump_sha = None` when the lock was
 ///   already at `target_rev` (no relock changes, no commit). In that
 ///   case the caller has nothing to roll back.
+///
+/// Transactional contract: if any inner step (`relock_keystone_input`,
+/// `flake_lock_dirty`, `commit_lock`) fails partway, this function
+/// restores `flake.lock` to its `HEAD` state via
+/// `git checkout HEAD -- flake.lock` — both the working tree and the
+/// index are reset, so a subsequent `ensure_in_sync` pre-flight on
+/// the next run still sees a clean tree. Without this, a partial
+/// `nix flake update` (lock modified, commit not yet made) or a
+/// `commit` failure after `git add` would strand the consumer flake
+/// in a state the next run refuses to start from.
 async fn bump_lock_and_commit(
+    repo_root: &Path,
+    target_rev: &str,
+    target_label: &str,
+) -> Result<(bool, Option<String>)> {
+    match bump_lock_and_commit_inner(repo_root, target_rev, target_label).await {
+        Ok(result) => Ok(result),
+        Err(e) => {
+            if let Err(restore_err) = restore_flake_lock(repo_root).await {
+                eprintln!(
+                    "Warning: failed to restore flake.lock after bump failure: {restore_err:#}. \
+                     Working tree may be dirty; resolve manually before retrying.",
+                );
+            }
+            Err(e)
+        }
+    }
+}
+
+async fn bump_lock_and_commit_inner(
     repo_root: &Path,
     target_rev: &str,
     target_label: &str,
@@ -569,6 +618,25 @@ async fn bump_lock_and_commit(
     let sha = rev_parse(repo_root, "HEAD").await?;
     eprintln!("Committed flake.lock bump (HEAD={sha}).");
     Ok((true, Some(sha)))
+}
+
+/// Restore `flake.lock` from `HEAD` into both the index and the
+/// working tree. Used to roll back partial bump failures (mid-relock
+/// or mid-commit). After this call, `git status -- flake.lock`
+/// produces no output and the next supervised run's `ensure_in_sync`
+/// pre-flight passes again.
+async fn restore_flake_lock(repo_root: &Path) -> Result<()> {
+    let status = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["checkout", "HEAD", "--", "flake.lock"])
+        .status()
+        .await
+        .context("failed to invoke git checkout HEAD -- flake.lock")?;
+    if !status.success() {
+        anyhow::bail!("git checkout HEAD -- flake.lock exited {:?}", status.code());
+    }
+    Ok(())
 }
 
 /// Rewind the bump commit if HEAD still equals `expected_sha`. Refuses

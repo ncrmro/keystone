@@ -240,13 +240,18 @@ on every invocation:
    to a concrete keystone rev via the GitHub API.
 3. **Early polkit prompt (cache warm).** Trigger the `com.ncrmro.keystone.approve`
    action via `cmd::approve::run_and_wait` with a no-op activation payload
-   (`ks activate /run/current-system`, which short-circuits in
-   `cmd::activate::execute` because the closure is already current). The
-   prompt MUST appear within ~2 s of Walker dispatch so the user can
-   authenticate while still focused on the action. Polkit's
-   `auth_admin_keep` (configured by `keystone.security.privilegedApproval`)
-   then caches the credential for ~5 min, covering the build and
-   activation steps without a second prompt.
+   targeting the running system. The orchestrator MUST canonicalize
+   `/run/current-system` to its underlying `/nix/store/<closure>` path
+   before constructing the `ks activate <path>` argv, because
+   `cmd::activate::validate_store_path` rejects any argument not under
+   `/nix/store/` as defense-in-depth. `ks activate` then short-circuits
+   because the canonical closure already matches `/run/current-system`,
+   producing zero side effects beyond the polkit prompt. The prompt MUST
+   appear within ~2 s of Walker dispatch so the user can authenticate
+   while still focused on the action. Polkit's `auth_admin_keep`
+   (configured by `keystone.security.privilegedApproval`) then caches
+   the credential for ~5 min, covering the build and activation steps
+   without a second prompt.
 4. **Build-phase notification.** Emit a `notify-send` "Keystone update:
    building <target>…" via `cmd::util::notify_send`, gated by
    `KS_UPDATE_NOTIFY=1` in the same way the launcher already sets the
