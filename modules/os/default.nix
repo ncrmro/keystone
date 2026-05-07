@@ -486,7 +486,19 @@ in
         enable = mkOption {
           type = types.bool;
           default = true;
-          description = "Enable Avahi/mDNS for network discovery (.local hostnames)";
+          description = ''
+            Enable Avahi/mDNS for `.local` hostname resolution.
+
+            When enabled, runs avahi-daemon AND wires nssmdns4/nssmdns6 into
+            glibc NSS, so any normal hostname lookup (`getent hosts`,
+            Prometheus scrape targets, plain `ssh ocean.local`) resolves
+            `.local` names over mDNS. Disabling this breaks fleet-internal
+            name resolution that does not go through Tailscale MagicDNS.
+
+            VPS hosts (`keystone.hosts.<name>.baremetal = false`) SHOULD set
+            this to `false` — avahi advertises on the host's public network
+            interface and serves no purpose without local-link peers.
+          '';
         };
       };
 

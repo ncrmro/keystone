@@ -77,19 +77,36 @@ See `docs/hardware-keys.md` for enrollment workflow.
 
 ## Other OS Services
 
-| Service          | Option                                 | Key Detail                               |
-| ---------------- | -------------------------------------- | ---------------------------------------- |
-| SSH              | `keystone.os.ssh.enable`               | No password auth, no root password login |
-| Eternal Terminal | `keystone.os.services.eternalTerminal` | Port 2022, Tailscale-only                |
-| AirPlay          | `keystone.os.services.airplay`         | Shairport Sync                           |
-| systemd-resolved | `keystone.os.services.resolved`        | Required for Tailscale MagicDNS          |
-| Containers       | `keystone.os.containers.enable`        | Podman + fuse-overlayfs for ZFS          |
-| Tailscale        | `keystone.os.tailscale`                | VPN client                               |
-| iPhone Tether    | `keystone.os.iphoneTether.enable`      | libimobiledevice + usbmuxd               |
-| Ollama           | `keystone.os.ollama`                   | LLM runtime                              |
-| Mail             | `keystone.mail.host`                   | Stalwart (auto-enables on matching host) |
-| Git Server       | `keystone.os.gitServer`                | Forgejo + agent repo provisioning        |
-| Journal Remote   | `keystone.os.journalRemote`            | Port 19532, Tailscale-only               |
+| Service          | Option                                 | Key Detail                                                  |
+| ---------------- | -------------------------------------- | ----------------------------------------------------------- |
+| SSH              | `keystone.os.ssh.enable`               | No password auth, no root password login                    |
+| Eternal Terminal | `keystone.os.services.eternalTerminal` | Port 2022, Tailscale-only                                   |
+| AirPlay          | `keystone.os.services.airplay`         | Shairport Sync                                              |
+| Avahi / mDNS     | `keystone.os.services.avahi`           | Default on; wires nssmdns4 for `.local`. VPS SHOULD opt out |
+| systemd-resolved | `keystone.os.services.resolved`        | Required for Tailscale MagicDNS                             |
+| Containers       | `keystone.os.containers.enable`        | Podman + fuse-overlayfs for ZFS                             |
+| Tailscale        | `keystone.os.tailscale`                | VPN client                                                  |
+| iPhone Tether    | `keystone.os.iphoneTether.enable`      | libimobiledevice + usbmuxd                                  |
+| Ollama           | `keystone.os.ollama`                   | LLM runtime                                                 |
+| Mail             | `keystone.mail.host`                   | Stalwart (auto-enables on matching host)                    |
+| Git Server       | `keystone.os.gitServer`                | Forgejo + agent repo provisioning                           |
+| Journal Remote   | `keystone.os.journalRemote`            | Port 19532, Tailscale-only                                  |
+
+### Avahi / mDNS
+
+Default: **on**. Runs `avahi-daemon` and wires `nssmdns4`/`nssmdns6` into glibc
+NSS, so plain hostname lookups (`getent hosts ocean.local`, Prometheus scrape
+targets, `ssh ncrmro-laptop.local`) resolve `.local` names over mDNS. Disabling
+this breaks fleet-internal name resolution outside of Tailscale MagicDNS.
+
+VPS hosts (`keystone.hosts.<name>.baremetal = false`) SHOULD opt out:
+
+```nix
+keystone.os.services.avahi.enable = false;
+```
+
+Avahi advertises on the host's primary network interface and has no local-link
+peers on a public-internet VPS, so it adds noise without benefit there.
 
 ## Deployment Patterns
 
