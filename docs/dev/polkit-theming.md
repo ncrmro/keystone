@@ -161,16 +161,18 @@ After adding the theme:
 2. `bin/dev/test-polkit-theme.sh --all` once before merging to confirm
    the addition didn't regress any sibling theme.
 
-## Implementation note: duplicated bash
+## Implementation note: single source of truth
 
-The script inlines `write_polkit_theme()` rather than shelling out to
-the `keystone-theme-switch` wrapper. The wrapper also restarts waybar,
-walker, mako, and reloads hyprland — too noisy for a theme-only smoke
-test. The inline copy MUST stay in sync with the Nix definition in
-`modules/desktop/home/theming/default.nix`. A future improvement is to
-extract the function once and source it from both places (e.g. via a
-generated bash file in the theme module's output) so this duplication
-is no longer a maintenance hazard.
+The script builds and invokes `pkgs.keystone.write-polkit-theme` from
+the branch's working tree. That's the same binary production uses
+(both the home-manager activation hook and the `keystone-theme-switch`
+wrapper call it), so the test exercises byte-for-byte what ships —
+no in-script port to drift from the Nix definition.
+
+The script does NOT shell out to the `keystone-theme-switch` wrapper
+because that wrapper also restarts waybar, walker, mako, and reloads
+hyprland on every theme switch — too noisy for a theme-only smoke
+test. It only invokes the polkit-JSON binary directly.
 
 ## CI hookup (future)
 

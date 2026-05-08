@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Smoke-test the keystone hyprpolkitagent dialog against one or more
 # keystone themes. The whole point is to test the THEME FILES AND
-# write_polkit_theme() FROM THE CURRENT BRANCH'S WORKING TREE — not
-# whatever the activated keystone happens to ship — so a developer
-# can iterate on a theming change without `ks update --approve`.
+# the keystone-write-polkit-theme binary FROM THE CURRENT BRANCH'S
+# WORKING TREE — not whatever the activated keystone happens to ship
+# — so a developer can iterate on a theming change without
+# `ks update --approve`. The binary built and invoked here is the
+# same one production uses, so no logic drift.
 #
 # Validates that:
-#   1. write_polkit_theme() (this script's port) emits valid JSON
+#   1. keystone-write-polkit-theme emits valid JSON
 #   2. hyprpolkitagent restarts cleanly (no QML parse errors,
 #      no QQuickStyle fallback chain, no XHR file-read denial)
 #   3. The dialog renders and pkexec round-trips a no-op activation
@@ -156,94 +158,31 @@ fi
 
 trap restore_snapshot EXIT INT TERM
 
-# Port of write_polkit_theme() from modules/desktop/home/theming/default.nix.
-# We deliberately re-implement here rather than shelling out to the
-# generated keystone-theme-switch wrapper because that wrapper also
-# restarts waybar/mako/walker — too noisy for a test loop. The function
-# below MUST stay in sync with the Nix definition; the docs note this.
+# Build the branch's keystone-write-polkit-theme binary once and call it
+# per theme. This is the same binary that production
+# (keystone-theme-switch + the home-manager activation hook) invokes,
+# so what the test exercises is byte-for-byte what ships. No more
+# in-script port to drift from the Nix definition.
+WPT_BIN=""
+
+ensure_wpt_bin() {
+  [[ -n "$WPT_BIN" ]] && return 0
+
+  log "  building keystone-write-polkit-theme from branch..."
+  local store_path
+  if ! store_path=$(nix build "path:$REPO_ROOT#write-polkit-theme" --no-link --print-out-paths 2>&1); then
+    log "  ERROR: failed to build write-polkit-theme from $REPO_ROOT"
+    log "  This branch must include packages/write-polkit-theme/ — if the"
+    log "  branch was cut before that package landed, rebase onto main."
+    log "$store_path"
+    return 1
+  fi
+  WPT_BIN="$store_path/bin/keystone-write-polkit-theme"
+}
+
 write_polkit_theme() {
-  local theme_path="$1"
-  local output_path="$2"
-  local hyprlock_file="$theme_path/hyprlock.conf"
-  local waybar_file="$theme_path/waybar.css"
-  local is_light=false
-  local background=""
-  local surface=""
-  local border=""
-  local accent=""
-  local text=""
-  local muted_text=""
-  local placeholder=""
-  local error=""
-
-  read_hyprlock_color() {
-    local name="$1"
-    if [[ -f "$hyprlock_file" ]]; then
-      sed -n "s/^\$${name} = \(rgb([^)]*)\).*/\1/p" "$hyprlock_file" | head -1
-    fi
-  }
-
-  read_waybar_color() {
-    local name="$1"
-    if [[ -f "$waybar_file" ]]; then
-      sed -n "s/^@define-color $name \([^;]*\);/\1/p" "$waybar_file" | head -1
-    fi
-  }
-
-  if [[ -f "$theme_path/light.mode" ]]; then
-    is_light=true
-  fi
-
-  background="$(read_hyprlock_color color)"
-  [[ -n "$background" ]] || background="$(read_waybar_color background)"
-  [[ -n "$background" ]] || background="#111827"
-
-  surface="$(read_hyprlock_color inner_color)"
-  [[ -n "$surface" ]] || surface="$background"
-
-  border="$(read_hyprlock_color outer_color)"
-  [[ -n "$border" ]] || border="$(read_waybar_color gold)"
-  [[ -n "$border" ]] || border="#334155"
-
-  accent="$border"
-
-  text="$(read_waybar_color foreground)"
-  [[ -n "$text" ]] || text="$(read_hyprlock_color font_color)"
-  [[ -n "$text" ]] || text="#e5e7eb"
-
-  placeholder="$(read_hyprlock_color placeholder_color)"
-  [[ -n "$placeholder" ]] || placeholder="$text"
-
-  muted_text="$placeholder"
-
-  if [[ "$is_light" == true ]]; then
-    error="#b42318"
-  else
-    error="#fb7185"
-  fi
-
-  mkdir -p "$(dirname "$output_path")"
-  jq -n \
-    --arg background "$background" \
-    --arg surface "$surface" \
-    --arg border "$border" \
-    --arg accent "$accent" \
-    --arg text "$text" \
-    --arg mutedText "$muted_text" \
-    --arg placeholder "$placeholder" \
-    --arg error "$error" \
-    --argjson light "$is_light" \
-    '{
-      background: $background,
-      surface: $surface,
-      border: $border,
-      accent: $accent,
-      text: $text,
-      mutedText: $mutedText,
-      placeholder: $placeholder,
-      error: $error,
-      light: $light
-    }' > "$output_path"
+  ensure_wpt_bin || return 1
+  "$WPT_BIN" "$1" "$2"
 }
 
 # Theme directory search path, in priority order. Custom themes (the
