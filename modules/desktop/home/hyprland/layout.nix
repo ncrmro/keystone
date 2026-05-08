@@ -78,14 +78,19 @@ in
         "center on, match:class ^$, match:title ^(Authentication required)$"
         "size 486 246, match:class ^$, match:title ^(Authentication required)$"
         "pin on, match:class ^$, match:title ^(Authentication required)$"
-        # Translucency + blur make the polkit dialog read like the rest
-        # of the keystone surface (ghostty, walker) instead of an opaque
-        # Qt slab. Rounding matches the desktop. Active and inactive
-        # opacity differ by 0.07 to follow the global rule.
+        # Translucency makes the polkit dialog read like the rest of the
+        # keystone surface (ghostty, walker) instead of an opaque Qt
+        # slab. Hyprland's global decoration.blur block already blurs
+        # behind any window with alpha < 1, so the opacity rule alone
+        # gets the blur effect — Hyprland 0.54 dropped per-window
+        # `blur` as a windowrule field. Rounding matches the desktop.
+        # The Hyprland outer border stays visible (per-window
+        # `noborder`/`bordersize` aren't valid fields in 0.54 either);
+        # if it ever reads as a double frame against the QML's inner
+        # gold border, the fix is a global `general.border_size = 0`
+        # toggle, not a per-window rule.
         "opacity 0.97 0.9, match:class ^$, match:title ^(Authentication required)$"
-        "blur on, match:class ^$, match:title ^(Authentication required)$"
         "rounding 12, match:class ^$, match:title ^(Authentication required)$"
-        "noborder on, match:class ^$, match:title ^(Authentication required)$"
       ];
 
       # layerrule disabled until Hyprland 0.52+ syntax is confirmed
