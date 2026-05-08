@@ -194,6 +194,33 @@ in
 
     security.polkit.enable = mkDefault true;
 
+    # The XML policy in $out/share/polkit-1/actions/com.ncrmro.keystone.approve.policy
+    # declares `auth_admin_keep` and a `org.freedesktop.policykit.exec.path`
+    # annotation pointing at the symlink path
+    # `/run/current-system/sw/bin/keystone-approve-exec`. That annotation
+    # is *not* honoured at runtime: pkexec calls `realpath()` on the
+    # program before handing it to polkit, so polkit looks up the
+    # canonical Nix store path. The annotation matches the symlink path,
+    # never the canonical, so polkit silently falls back to the generic
+    # `org.freedesktop.policykit.exec` action — whose default for
+    # `allow_active` is `auth_admin` (no `_keep`). Result: a fresh
+    # password prompt on every pkexec call, including the post-build
+    # activation that `warm_polkit_cache` is meant to cover.
+    #
+    # Adding a JS rule that matches the *canonical* helper path
+    # (`${approvalHelper}/bin/keystone-approve-exec` is interpolated at
+    # build time) is the only way to actually get `AUTH_ADMIN_KEEP`
+    # applied. The XML policy stays in place for the description/message
+    # strings the dialog shows.
+    security.polkit.extraConfig = ''
+      polkit.addRule(function(action, subject) {
+        if (action.id == "org.freedesktop.policykit.exec" &&
+            action.lookup("program") == "${approvalHelper}/bin/keystone-approve-exec") {
+          return polkit.Result.AUTH_ADMIN_KEEP;
+        }
+      });
+    '';
+
     environment.etc."keystone/privileged-approval.json".text = builtins.toJSON approvalConfig;
 
     environment.systemPackages = [
