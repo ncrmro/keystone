@@ -91,26 +91,25 @@ log() {
 }
 
 # Locate the keystone repo root. We need it for both the custom-theme
-# files and to nix-eval the branch's pinned omarchy input. The chain:
-#   --repo PATH  >  $KEYSTONE_REPO  >  git rev-parse from $PWD  >  fail.
-resolve_repo_root() {
-  local candidate="$REPO_ARG"
-  if [[ -z "$candidate" ]]; then
-    candidate=$(git -C "${PWD}" rev-parse --show-toplevel 2>/dev/null || true)
-  fi
-  if [[ -z "$candidate" ]]; then
-    echo "error: pass --repo PATH or run from inside the keystone repo" >&2
-    exit 2
-  fi
-  if [[ ! -f "$candidate/flake.nix" ]] \
-     || [[ ! -d "$candidate/modules/desktop/home/theming" ]]; then
-    echo "error: $candidate does not look like a keystone checkout" >&2
-    exit 2
-  fi
-  printf '%s\n' "$candidate"
-}
+# files and to nix-eval the branch's pinned omarchy input. Resolution
+# chain: --repo PATH > $KEYSTONE_REPO > git rev-parse from $PWD > fail.
+# Errors abort the script directly (not via a function and command
+# substitution, which would only kill the subshell).
+REPO_ROOT="$REPO_ARG"
+if [[ -z "$REPO_ROOT" ]]; then
+  REPO_ROOT=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)
+fi
+if [[ -z "$REPO_ROOT" ]]; then
+  echo "error: pass --repo PATH or run from inside the keystone repo" >&2
+  exit 2
+fi
+if [[ ! -f "$REPO_ROOT/flake.nix" ]] \
+   || [[ ! -d "$REPO_ROOT/modules/desktop/home/theming" ]]; then
+  echo "error: $REPO_ROOT does not look like a keystone checkout" >&2
+  echo "       (cd into the keystone checkout, or pass --repo PATH)" >&2
+  exit 2
+fi
 
-REPO_ROOT=$(resolve_repo_root)
 CUSTOM_THEMES_DIR="$REPO_ROOT/modules/desktop/home/theming/themes"
 
 # Resolve the omarchy themes directory by nix-eval-ing the flake's
@@ -291,7 +290,9 @@ run_one() {
   local theme_name="$1"
   local theme_dir
   theme_dir="$(resolve_theme_dir "$theme_name")" || {
-    log "FAIL [$theme_name]: theme directory not found under $THEMES_DIR"
+    local search
+    search=$(theme_search_dirs | paste -sd ':' -)
+    log "FAIL [$theme_name]: theme directory not found (searched: $search)"
     return 1
   }
 
